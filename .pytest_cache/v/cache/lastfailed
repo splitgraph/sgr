@@ -1,0 +1,5 @@
+{
+  "test/splitgraph/test_commands.py::test_mount": true, 
+  "test/splitgraph/test_commands.py::test_unmount": true, 
+  "test/splitgraph/test_sgfile.py::test_sgfile": true
+}
