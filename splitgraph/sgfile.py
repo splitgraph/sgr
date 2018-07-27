@@ -27,10 +27,9 @@ def parse_commands(lines):
         if line.startswith('#') or not line:
             continue
         operator = line[:line.index(' ')]
-        if operator == 'SOURCE':
+        if operator in ('PULL', 'SOURCE', 'OUTPUT'):
+            # PULL URL REMOTE_MOUNTPOINT LOCAL_MOUNTPOINT
             # SOURCE MOUNTPOINT [HASH]
-            operands = line.split()[1:]
-        elif operator == 'OUTPUT':
             # OUTPUT MOUNTPOINT [HASH]
             operands = line.split()[1:]
         elif operator == 'SQL':

@@ -9,7 +9,7 @@ from splitgraph.constants import SPLITGRAPH_META_SCHEMA, SplitGraphException, _l
 from splitgraph.meta_handler import get_tables_at, get_all_foreign_tables, get_current_head, add_new_snap_id, \
     set_head, register_mountpoint, unregister_mountpoint, get_snap_parent, get_canonical_snap_id, \
     get_table, get_all_tables, register_table_object, get_all_snap_parents, register_objects, \
-    get_existing_objects
+    get_existing_objects, ensure_metadata_schema
 
 
 # Commands to import a foreign schema locally, with version control.
@@ -108,6 +108,7 @@ def materialize_table(conn, mountpoint, schema_snap, table, destination):
 
 
 def checkout(conn, mountpoint, schema_snap, tables=[]):
+    ensure_metadata_schema(conn)
     # Detect the actual schema snap we want to check out
     # if change_head is False, just copies that snapshot into table+suffix.
     schema_snap = get_canonical_snap_id(conn, mountpoint, schema_snap)
@@ -127,6 +128,7 @@ def checkout(conn, mountpoint, schema_snap, tables=[]):
 
 
 def commit(conn, mountpoint, schema_snap=None, store_as_pack=False):
+    ensure_metadata_schema(conn)
     _log("Committing...")
 
     HEAD = get_current_head(conn, mountpoint)
@@ -247,6 +249,7 @@ def mount_mongo(conn, server, port, username, password, mountpoint, extra_option
 
 
 def mount(conn, server, port, username, password, mountpoint, mount_handler, extra_options):
+    ensure_metadata_schema(conn)
     if mount_handler == 'postgres_fdw':
         mh_func = mount_postgres
     elif mount_handler == 'mongo_fdw':
@@ -301,6 +304,7 @@ def unmount(conn, mountpoint):
 
 
 def get_current_mountpoints_hashes(conn):
+    ensure_metadata_schema(conn)
     with conn.cursor() as cur:
         cur.execute("""SELECT mountpoint, snap_id FROM %s.snap_head""" % SPLITGRAPH_META_SCHEMA)
         return cur.fetchall()
@@ -389,6 +393,7 @@ def diff(conn, mountpoint, table_name, snap_1, snap_2):
 
 
 def init(conn, mountpoint):
+    ensure_metadata_schema(conn)
     # Initializes an empty repo with an initial commit (hash 0000...)
     with conn.cursor() as cur:
         cur.execute("""CREATE SCHEMA %s""" % cur.mogrify(mountpoint))
@@ -422,6 +427,7 @@ def _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_moun
 
 
 def pull(conn, remote_conn, remote_mountpoint, local_mountpoint):
+    ensure_metadata_schema(conn)
     # Pulls a schema from the remote, including all of its history.
 
     with conn.cursor() as cur:
@@ -469,6 +475,7 @@ def pull(conn, remote_conn, remote_mountpoint, local_mountpoint):
 
 
 def push(conn, remote_conn, remote_mountpoint, local_mountpoint):
+    ensure_metadata_schema(conn)
     # Inverse of pull: uploads missing pack/snap tables to the remote and updates its index.
     # Could actually be done by flipping the arguments in pull but that assumes the remote SG driver can connect
     # to us directly, which might not be the case. Although tunnels?

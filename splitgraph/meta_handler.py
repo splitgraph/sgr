@@ -39,6 +39,14 @@ def _create_metadata_schema(conn):
                     % (SPLITGRAPH_META_SCHEMA, "tables", SPLITGRAPH_META_SCHEMA, "snap_tree"))
 
 
+def ensure_metadata_schema(conn):
+    # Check if the metadata schema actually exists.
+    with conn.cursor() as cur:
+        cur.execute("""SELECT 1 FROM information_schema.schemata WHERE schema_name = %s""", (SPLITGRAPH_META_SCHEMA,))
+        if cur.fetchone() is None:
+            _create_metadata_schema(conn)
+
+
 def get_all_tables(conn, mountpoint):
     # Gets all user tables in the current mountpoint, tracked or untracked
     with conn.cursor() as cur:
@@ -89,6 +97,7 @@ def get_all_foreign_tables(conn, mountpoint):
 
 
 def get_current_head(conn, mountpoint, raise_on_none=True):
+    ensure_metadata_schema(conn)
     with conn.cursor() as cur:
         cur.execute("""SELECT snap_id FROM %s.snap_head WHERE mountpoint = %%s"""
                     % SPLITGRAPH_META_SCHEMA, (mountpoint,))
@@ -132,11 +141,6 @@ def mountpoint_exists(conn, mountpoint):
 
 def register_mountpoint(conn, mountpoint, snap_id, tables, table_object_ids):
     with conn.cursor() as cur:
-        # Check if the metadata schema actually exists.
-        cur.execute("""SELECT 1 FROM information_schema.schemata WHERE schema_name = %s""", (SPLITGRAPH_META_SCHEMA,))
-        if cur.fetchone() is None:
-            _create_metadata_schema(conn)
-
         cur.execute("""INSERT INTO %s.%s (snap_id, mountpoint, parent_id) VALUES (%%s, %%s, NULL)"""
                     % (SPLITGRAPH_META_SCHEMA, "snap_tree"), (snap_id, mountpoint))
         # Strictly speaking this is redundant since the checkout (of the "HEAD" commit) updates the head table.

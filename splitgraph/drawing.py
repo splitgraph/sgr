@@ -2,7 +2,7 @@
 from collections import defaultdict
 
 from splitgraph.constants import SplitGraphException
-from splitgraph.meta_handler import get_all_snap_parents, get_current_head
+from splitgraph.meta_handler import get_all_snap_parents, get_current_head, ensure_metadata_schema
 
 
 def calc_columns(children, start):
@@ -48,6 +48,7 @@ def render_node(node_id, children, node_cols, max_col, mark_node='', node_width=
 
 
 def render_tree(conn, mountpoint):
+    ensure_metadata_schema(conn)
     # Prepare the tree structure by loading the index from the db and flipping it
     children = defaultdict(list)
     base_node = None

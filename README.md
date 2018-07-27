@@ -10,6 +10,7 @@ Some example uses in do\_stuff.sh. Currently, it assigns a random "hash" (instea
 
 Limited/broken things:
 
+  * No commit timestamps so instead of checking out the latest commit in some cases it checks out a random one.
   * Only Postgres/Mongo FDW are supported. On cloning, the whole target schema/table gets copied over.
   * Postgres has a 63 character limit on table names, so tables are stored as "git objects" in the mounted schema (pack/snapshots) and there's an indirection in the meta schema mapping the table name and snap ID to the actual table.
   * Storing committed tables as diffs only supported for when there were no schema changes between versions (otherwise a snapshot is needed).
