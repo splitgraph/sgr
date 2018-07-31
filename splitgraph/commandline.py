@@ -187,14 +187,15 @@ def file_c(sgfile):
 
 @click.command(name='sql')
 @click.argument('sql')
-def sql_c(sql):
+@click.option('-a', '--show-all', is_flag=True)
+def sql_c(sql, show_all):
     conn = _conn()
     with conn.cursor() as cur:
         cur.execute(sql)
         try:
-            results = cur.fetchmany(10)
+            results = cur.fetchmany(10) if not show_all else cur.fetchall()
             pprint(results)
-            if cur.rowcount > 10:
+            if cur.rowcount > 10 and not show_all:
                 print "..."
         except ProgrammingError:
             pass  # sql wasn't a SELECT statement
