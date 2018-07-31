@@ -99,6 +99,7 @@ def test_commit_diff(commit_format, sg_pg_conn):
     with sg_pg_conn.cursor() as cur:
         cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise')""")
         cur.execute("""DELETE FROM test_pg_mount.fruits WHERE name = 'apple'""")
+        cur.execute("""UPDATE test_pg_mount.fruits SET name = 'guitar' WHERE fruit_id = 2""")
 
     head = get_current_head(sg_pg_conn, PG_MNT)
     new_head = commit(sg_pg_conn, PG_MNT, storage_format=commit_format)
@@ -109,8 +110,8 @@ def test_commit_diff(commit_format, sg_pg_conn):
 
     # The diff between the old and the new snaps should be the same as in the previous test
     added, removed = diff(sg_pg_conn, PG_MNT, 'fruits', snap_1=head, snap_2=new_head)
-    assert added == [(3, 'mayonnaise')]
-    assert removed == [(1, 'apple')]
+    assert added == [(3, 'mayonnaise'), (2, 'guitar')]
+    assert removed == [(1, 'apple'), (2, 'orange')]
 
 
 @pytest.mark.parametrize("commit_format", COMMIT_FORMATS)

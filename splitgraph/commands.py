@@ -100,6 +100,10 @@ def materialize_table(conn, mountpoint, schema_snap, table, destination):
         # Copy the given snap id over to "staging"
         cur.execute("""CREATE TABLE %s AS SELECT * FROM %s""" %
                     (fq_dest, cur.mogrify('%s.%s' % (mountpoint, object_id))))
+        # This is to work around logical replication not reflecting deletions from non-PKd tables. However, this makes
+        # it emit all column values in the row, not just the updated ones.
+        # FIXME: fiddling with it based on us inspecting the table structure.
+        cur.execute("""ALTER TABLE %s REPLICA IDENTITY FULL""" % fq_dest)
 
         # Apply the deltas sequentially to the checked out table
         for pack_object, object_format in reversed(to_apply):
@@ -135,6 +139,9 @@ def checkout(conn, mountpoint, schema_snap, tables=[]):
 def commit(conn, mountpoint, schema_snap=None, storage_format='SNAP'):
     ensure_metadata_schema(conn)
     _log("Committing...")
+
+    # required here so that the logical replication sees changes made before the commit in this tx
+    conn.commit()
 
     HEAD = get_current_head(conn, mountpoint)
 
@@ -469,6 +476,7 @@ def pull(conn, remote_conn, remote_mountpoint, local_mountpoint):
     # Instead of connecting and pushing queries to it from the Python client, we just mount the remote mountpoint
     # into a temporary space (without any checking out) and SELECT the required data into our local tables.
     remote_data_mountpoint = 'tmp_remote_data'
+    unmount(conn, remote_data_mountpoint)  # Maybe worth making sure we're not stepping on anyone else
     mount_postgres(conn, server=match.group(3), port=int(match.group(4)),
                    username=match.group(1), password=match.group(2), mountpoint=remote_data_mountpoint,
                    extra_options={'dbname': match.group(5), 'remote_schema': remote_mountpoint})
@@ -530,6 +538,7 @@ def push(conn, remote_conn, remote_mountpoint, local_mountpoint):
     remote_conn.commit()
 
     remote_data_mountpoint = 'tmp_remote_data'
+    unmount(conn, remote_data_mountpoint)
     mount_postgres(conn, server=match.group(3), port=int(match.group(4)),
                    username=match.group(1), password=match.group(2), mountpoint=remote_data_mountpoint,
                    extra_options={'dbname': match.group(5), 'remote_schema': remote_mountpoint})
