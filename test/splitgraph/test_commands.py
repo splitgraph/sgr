@@ -91,14 +91,17 @@ def test_diff_head(sg_pg_conn):
     assert removed == [(1, 'apple')]
 
 
-@pytest.mark.parametrize("commit_as_pack", [False, True])
-def test_commit_diff(commit_as_pack, sg_pg_conn):
+COMMIT_FORMATS = ['SNAP', 'DIFF', 'WAL']
+
+
+@pytest.mark.parametrize("commit_format", COMMIT_FORMATS)
+def test_commit_diff(commit_format, sg_pg_conn):
     with sg_pg_conn.cursor() as cur:
         cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise')""")
         cur.execute("""DELETE FROM test_pg_mount.fruits WHERE name = 'apple'""")
 
     head = get_current_head(sg_pg_conn, PG_MNT)
-    new_head = commit(sg_pg_conn, PG_MNT, store_as_pack=commit_as_pack)
+    new_head = commit(sg_pg_conn, PG_MNT, storage_format=commit_format)
 
     # After commit, we should be switched to the new commit hash and there should be no differences.
     assert get_current_head(sg_pg_conn, PG_MNT) == new_head
@@ -110,18 +113,18 @@ def test_commit_diff(commit_as_pack, sg_pg_conn):
     assert removed == [(1, 'apple')]
 
 
-@pytest.mark.parametrize("commit_as_pack", [False, True])
-def test_log_checkout(commit_as_pack, sg_pg_conn):
+@pytest.mark.parametrize("commit_format", COMMIT_FORMATS)
+def test_log_checkout(commit_format, sg_pg_conn):
     with sg_pg_conn.cursor() as cur:
         cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise')""")
 
     head = get_current_head(sg_pg_conn, PG_MNT)
-    head_1 = commit(sg_pg_conn, PG_MNT, store_as_pack=commit_as_pack)
+    head_1 = commit(sg_pg_conn, PG_MNT, storage_format=commit_format)
 
     with sg_pg_conn.cursor() as cur:
         cur.execute("""DELETE FROM test_pg_mount.fruits WHERE name = 'apple'""")
 
-    head_2 = commit(sg_pg_conn, PG_MNT, store_as_pack=commit_as_pack)
+    head_2 = commit(sg_pg_conn, PG_MNT, storage_format=commit_format)
 
     assert get_current_head(sg_pg_conn, PG_MNT) == head_2
     assert get_log(sg_pg_conn, PG_MNT, head_2) == [head_2, head_1, head]
@@ -142,8 +145,8 @@ def test_log_checkout(commit_as_pack, sg_pg_conn):
         assert list(cur.fetchall()) == [(2, 'orange'), (3, 'mayonnaise')]
 
 
-@pytest.mark.parametrize("commit_as_pack", [False, True])
-def test_table_changes(commit_as_pack, sg_pg_conn):
+@pytest.mark.parametrize("commit_format", COMMIT_FORMATS)
+def test_table_changes(commit_format, sg_pg_conn):
     with sg_pg_conn.cursor() as cur:
         cur.execute("""CREATE TABLE test_pg_mount.fruits_copy AS SELECT * FROM test_pg_mount.fruits""")
 
@@ -151,7 +154,7 @@ def test_table_changes(commit_as_pack, sg_pg_conn):
     # Check that table addition has been detected
     assert diff(sg_pg_conn, PG_MNT, 'fruits_copy', snap_1=head, snap_2=None) is True
 
-    head_1 = commit(sg_pg_conn, PG_MNT, store_as_pack=commit_as_pack)
+    head_1 = commit(sg_pg_conn, PG_MNT, storage_format=commit_format)
     # Checkout the old head and make sure the table doesn't exist in it
     checkout(sg_pg_conn, PG_MNT, head)
     assert not _table_exists(sg_pg_conn, PG_MNT, 'fruits_copy')
@@ -168,7 +171,7 @@ def test_table_changes(commit_as_pack, sg_pg_conn):
 
     # Make sure the diff shows it's been removed and commit it
     assert diff(sg_pg_conn, PG_MNT, 'fruits', snap_1=head_1, snap_2=None) is False
-    head_2 = commit(sg_pg_conn, PG_MNT, store_as_pack=commit_as_pack)
+    head_2 = commit(sg_pg_conn, PG_MNT, storage_format=commit_format)
 
     # Go through the 3 commits and ensure the table existence is maintained
     checkout(sg_pg_conn, PG_MNT, head)
@@ -181,14 +184,14 @@ def test_table_changes(commit_as_pack, sg_pg_conn):
 
 def test_empty_diff_reuses_object(sg_pg_conn):
     head = get_current_head(sg_pg_conn, PG_MNT)
-    head_1 = commit(sg_pg_conn, PG_MNT, store_as_pack=True)
+    head_1 = commit(sg_pg_conn, PG_MNT, storage_format='DIFF')
 
     obj_1, pack_1 = get_table(sg_pg_conn, PG_MNT, 'fruits', head)
     obj_2, pack_2 = get_table(sg_pg_conn, PG_MNT, 'fruits', head_1)
 
     assert obj_1 == obj_2
-    assert pack_1 is False
-    assert pack_2 is False  # Even though we asked to store as pack, since the diff is empty, we just point to the
+    assert pack_1 == 'SNAP'
+    assert pack_2 == 'SNAP'  # Even though we asked to store as pack, since the diff is empty, we just point to the
     # previous table.
 
 
@@ -203,7 +206,7 @@ def test_pull(sg_pg_conn):
     with sg_pg_conn.cursor() as cur:
         cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise')""")
 
-    head_1 = commit(sg_pg_conn, PG_MNT, store_as_pack=True)
+    head_1 = commit(sg_pg_conn, PG_MNT, storage_format='DIFF')
 
     # Check that the fruits table changed on the original mount
     with sg_pg_conn.cursor() as cur:
@@ -239,7 +242,7 @@ def test_push(sg_pg_conn):
     # Then, change our copy and commit.
     with sg_pg_conn.cursor() as cur:
         cur.execute("""INSERT INTO test_pg_mount_pull.fruits VALUES (3, 'mayonnaise')""")
-    head_1 = commit(sg_pg_conn, PG_MNT + '_pull', store_as_pack=True)
+    head_1 = commit(sg_pg_conn, PG_MNT + '_pull', storage_format='DIFF')
     # Since the pull procedure initializes a new connection, we have to commit our changes
     # in order to see them.
     sg_pg_conn.commit()

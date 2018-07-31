@@ -5,7 +5,7 @@ from random import getrandbits
 import psycopg2
 from psycopg2.extras import execute_batch
 
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA, SplitGraphException, _log
+from splitgraph.constants import SPLITGRAPH_META_SCHEMA, SplitGraphException, _log, get_random_object_id
 from splitgraph.meta_handler import get_tables_at, get_all_foreign_tables, get_current_head, add_new_snap_id, \
     set_head, register_mountpoint, unregister_mountpoint, get_snap_parent, get_canonical_snap_id, \
     get_table, get_all_tables, register_table_object, get_all_snap_parents, register_objects, \
@@ -21,6 +21,9 @@ from splitgraph.meta_handler import get_tables_at, get_all_foreign_tables, get_c
 #                         added or removed.
 #                         Row-by-row diffs for now because it's the simplest option without knowledge of any
 #                         pk/fk constraints.
+from splitgraph.pg_replication import apply_record_to_staging, stop_replication, start_replication, consume_changes, \
+    record_changes
+
 
 def _table_exists(conn, mountpoint, table_name):
     # WTF: postgres quietly truncates all table names to 63 characters
@@ -39,18 +42,14 @@ def _get_column_names(conn, mountpoint, table_name):
         return [c[0] for c in cur.fetchall()]
 
 
-def _get_random_object_id():
-    # Assign each table a random ID that it will be stored as.
-    # Note that postgres limits table names to 63 characters, so
-    # the IDs shall be 248-bit strings, hex-encoded, + a letter prefix since Postgres
-    # doesn't seem to support table names starting with a digit?
-    return "o%0.2x" % getrandbits(248)
-
-
-def _apply_pack_to_staging(conn, mountpoint, table_name, pack_object, destination):
+def _apply_pack_to_staging(conn, mountpoint, table_name, pack_object, object_format, destination):
     # Suffix: is appended to the staging table name in case the diff needs to be applied somewhere else.
     # Apply the diff from another table to the current staging area.
     # Assuming there are no schema changes between tables for now.
+    if object_format == 'WAL':
+        apply_record_to_staging(conn, mountpoint, pack_object, destination)
+        return
+
     column_names = _get_column_names(conn, mountpoint, table_name)
 
     with conn.cursor() as cur:
@@ -85,13 +84,13 @@ def materialize_table(conn, mountpoint, schema_snap, table, destination):
         while parent_snap is not None:
 
             # Is the parent pointing to a materialized snapshot or a delta?
-            object_id, is_pack = get_table(conn, mountpoint, table, parent_snap)
+            object_id, object_format = get_table(conn, mountpoint, table, parent_snap)
 
-            if not is_pack:
+            if object_format == 'SNAP':
                 snap_found = True
                 break
             else:
-                to_apply.append(object_id)
+                to_apply.append((object_id, object_format))
             parent_snap = get_snap_parent(conn, mountpoint, parent_snap)
         if not snap_found:
             # We didn't find an actual snapshot for this table -- either it doesn't exist in this
@@ -103,12 +102,14 @@ def materialize_table(conn, mountpoint, schema_snap, table, destination):
                     (fq_dest, cur.mogrify('%s.%s' % (mountpoint, object_id))))
 
         # Apply the deltas sequentially to the checked out table
-        for pack_object in reversed(to_apply):
-            _apply_pack_to_staging(conn, mountpoint, table, pack_object, destination)
+        for pack_object, object_format in reversed(to_apply):
+            _apply_pack_to_staging(conn, mountpoint, table, pack_object, object_format, destination)
 
 
 def checkout(conn, mountpoint, schema_snap, tables=[]):
     ensure_metadata_schema(conn)
+    stop_replication(conn, mountpoint)
+
     # Detect the actual schema snap we want to check out
     # if change_head is False, just copies that snapshot into table+suffix.
     schema_snap = get_canonical_snap_id(conn, mountpoint, schema_snap)
@@ -124,10 +125,14 @@ def checkout(conn, mountpoint, schema_snap, tables=[]):
     # Repoint the current HEAD for this mountpoint to the new snap ID
     set_head(conn, mountpoint, schema_snap)
 
+    # Start recording changes to the mountpoint.
+    conn.commit()
+    start_replication(conn, mountpoint)
+
     _log("Checked out %s:%s." % (mountpoint, schema_snap[:12]))
 
 
-def commit(conn, mountpoint, schema_snap=None, store_as_pack=False):
+def commit(conn, mountpoint, schema_snap=None, storage_format='SNAP'):
     ensure_metadata_schema(conn)
     _log("Committing...")
 
@@ -139,53 +144,61 @@ def commit(conn, mountpoint, schema_snap=None, store_as_pack=False):
     # Add the new snap ID to the tree
     add_new_snap_id(conn, mountpoint, HEAD, schema_snap)
 
-    with conn.cursor() as cur:
-        tracked_tables = get_tables_at(conn, mountpoint, HEAD)
-        for table in get_all_tables(conn, mountpoint):
-            object_id = _get_random_object_id()
-            # Store the diff instead of a full snapshot -- unless this is a new table, in which case
-            # we have to record it completely.
-            if store_as_pack and table in tracked_tables:
-                # Calculate the diff between HEAD and staging
-                # Column ordering?
-                added, removed = diff(conn, mountpoint, table, HEAD, None)
+    if storage_format == 'WAL':
+        wal_changes = consume_changes(conn, mountpoint)
+        record_changes(conn, mountpoint, wal_changes, HEAD, schema_snap)
+    else:
+        # todo refactor this horror
+        with conn.cursor() as cur:
+            tracked_tables = get_tables_at(conn, mountpoint, HEAD)
+            for table in get_all_tables(conn, mountpoint):
+                object_id = get_random_object_id()
+                # Store the diff instead of a full snapshot -- unless this is a new table, in which case
+                # we have to record it completely.
+                if storage_format == 'DIFF' and table in tracked_tables:
+                    # Calculate the diff between HEAD and staging
+                    # Column ordering?
+                    added, removed = diff(conn, mountpoint, table, HEAD, None)
 
-                # If the table is unchanged, we can just point the new commit to the old table's diff.
-                if not added and not removed:
-                    prev_object_id, prev_is_pack = get_table(conn, mountpoint, table, HEAD)
-                    register_table_object(conn, mountpoint, table, schema_snap, prev_object_id, prev_is_pack)
+                    # If the table is unchanged, we can just point the new commit to the old table's diff.
+                    if not added and not removed:
+                        prev_object_id, prev_format = get_table(conn, mountpoint, table, HEAD)
+                        register_table_object(conn, mountpoint, table, schema_snap, prev_object_id, prev_format)
+                    else:
+                        # Needs to be optimised later -- compute the diff in-db somehow.
+                        # Maybe have 2 tables -- added and removed? Then applying the diff is easier
+                        # (insert ... select, delete ... using)
+                        added = [tuple(list(a) + [True]) for a in added]
+                        removed = [tuple(list(r) + [False]) for r in removed]
+                        table_name = cur.mogrify("%s.%s" % (mountpoint, object_id))
+                        # Create the delta table: copy the schema from the staging area
+                        # (is there a better way than this)
+                        cur.execute("""CREATE TABLE %s AS SELECT * FROM %s WHERE 0=1 WITH NO DATA""" %
+                                    (table_name, cur.mogrify('%s.%s' % (mountpoint, table))))
+                        cur.execute("""ALTER TABLE %s ADD COLUMN sg_meta_ar_flag BOOLEAN NOT NULL DEFAULT TRUE""" % table_name)
+
+                        column_names = _get_column_names(conn, mountpoint, table)
+
+                        # Construct a psycopg statement to insert a row into the diff table
+                        query = """INSERT INTO %s VALUES """ % table_name
+                        query += "(" + ','.join(['%s'] * (len(column_names) + 1)) + ")"
+
+                        # Store the diff in the pack table.
+                        execute_batch(cur, query, added + removed, page_size=100)
+
+                        # Register the table object ID
+                        register_table_object(conn, mountpoint, table, schema_snap, object_id, object_format='DIFF')
                 else:
-                    # Needs to be optimised later -- compute the diff in-db somehow.
-                    # Maybe have 2 tables -- added and removed? Then applying the diff is easier
-                    # (insert ... select, delete ... using)
-                    added = [tuple(list(a) + [True]) for a in added]
-                    removed = [tuple(list(r) + [False]) for r in removed]
-                    table_name = cur.mogrify("%s.%s" % (mountpoint, object_id))
-                    # Create the delta table: copy the schema from the staging area
-                    # (is there a better way than this)
-                    cur.execute("""CREATE TABLE %s AS SELECT * FROM %s WHERE 0=1 WITH NO DATA""" %
-                                (table_name, cur.mogrify('%s.%s' % (mountpoint, table))))
-                    cur.execute("""ALTER TABLE %s ADD COLUMN sg_meta_ar_flag BOOLEAN NOT NULL DEFAULT TRUE""" % table_name)
+                    # If not storing as a delta, just copy the table into the snapshot table.
+                    cur.execute("""CREATE TABLE %s AS SELECT * FROM %s""" %
+                                (cur.mogrify('%s.%s' % (mountpoint, object_id)),
+                                 cur.mogrify('%s.%s' % (mountpoint, table))))
+                    register_table_object(conn, mountpoint, table, schema_snap, object_id, object_format='SNAP')
 
-                    column_names = _get_column_names(conn, mountpoint, table)
-
-                    # Construct a psycopg statement to insert a row into the diff table
-                    query = """INSERT INTO %s VALUES """ % table_name
-                    query += "(" + ','.join(['%s'] * (len(column_names) + 1)) + ")"
-
-                    # Store the diff in the pack table.
-                    execute_batch(cur, query, added + removed, page_size=100)
-
-                    # Register the table object ID
-                    register_table_object(conn, mountpoint, table, schema_snap, object_id, True)
-            else:
-                # If not storing as a delta, just copy the table into the snapshot table.
-                cur.execute("""CREATE TABLE %s AS SELECT * FROM %s""" %
-                            (cur.mogrify('%s.%s' % (mountpoint, object_id)),
-                             cur.mogrify('%s.%s' % (mountpoint, table))))
-                register_table_object(conn, mountpoint, table, schema_snap, object_id, False)
-
+    stop_replication(conn, mountpoint)
     set_head(conn, mountpoint, schema_snap)
+    conn.commit()  # need to commit before starting replication
+    start_replication(conn, mountpoint)
     _log("Committed as %s" % schema_snap[:12])
     return schema_snap
 
@@ -273,7 +286,7 @@ def mount(conn, server, port, username, password, mountpoint, mount_handler, ext
         table_object_ids = []
         for table in tables:
             # Create a dummy object ID for each table.
-            object_id = _get_random_object_id()
+            object_id = get_random_object_id()
             table_object_ids.append(object_id)
             cur.execute("""ALTER TABLE %s RENAME TO %s""" % (
                 cur.mogrify('%s.%s' % (mountpoint, table)),
@@ -293,6 +306,7 @@ def mount(conn, server, port, username, password, mountpoint, mount_handler, ext
 
 
 def unmount(conn, mountpoint):
+    stop_replication(conn, mountpoint)
     with conn.cursor() as cur:
         cur.execute("""DROP SCHEMA IF EXISTS %s CASCADE""" % cur.mogrify(mountpoint))
         # Drop server too if it exists (could have been a non-foreign mountpoint)
@@ -335,9 +349,9 @@ def materialized_table(conn, mountpoint, table_name, snap):
     if snap is not None:
         with conn.cursor() as cur:
             # See if the table snapshot already exists, otherwise reconstruct it
-            object_id, is_pack = get_table(conn, mountpoint, table_name, snap)
-            if is_pack:
-                tmp_id = _get_random_object_id()
+            object_id, object_format = get_table(conn, mountpoint, table_name, snap)
+            if object_format != 'SNAP':
+                tmp_id = get_random_object_id()
                 tmp_table = table_name + '_' + tmp_id
                 materialize_table(conn, mountpoint, snap, table_name, tmp_table)
                 yield tmp_table
@@ -419,7 +433,7 @@ def _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_moun
         add_new_snap_id(conn, local_mountpoint, remote_snap_parents[snap_id], snap_id)
         # Get the meta for all objects we'll need to fetch.
         with remote_conn.cursor() as cur:
-            cur.execute("""SELECT snap_id, table_name, object_id, is_pack from %s.tables 
+            cur.execute("""SELECT snap_id, table_name, object_id, format from %s.tables 
                            WHERE mountpoint = %%s AND snap_id = %%s"""
                         % SPLITGRAPH_META_SCHEMA, (remote_mountpoint, snap_id))
             object_meta.extend(cur.fetchall())
