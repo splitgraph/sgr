@@ -87,9 +87,12 @@ def has_pending_changes(conn, mountpoint):
 
 
 def dump_pending_changes(conn, mountpoint, table):
+    # First, make sure we're up to date on changes.
+    record_pending_changes(conn)
     with conn.cursor() as cur:
-        cur.execute("""SELECT kind, change FROM %s.%s WHERE mountpoint = %%s AND table_name == %%s"""
+        cur.execute("""SELECT kind, change FROM %s.%s WHERE mountpoint = %%s AND table_name = %%s"""
                     % (SPLITGRAPH_META_SCHEMA, "pending_changes"), (mountpoint, table))
+        return cur.fetchall()
 
 
 def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False):

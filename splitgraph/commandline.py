@@ -1,5 +1,6 @@
 import json
 import re
+from collections import Counter
 from pprint import pprint
 
 import click
@@ -107,22 +108,26 @@ def diff_c(verbose, table_name, mountpoint, snap_1, snap_2):
     for table_name, diff_result in diffs.iteritems():
         to_print = "%s: " % table_name
 
-        if isinstance(diff_result, tuple):
-            added, removed = diff_result
+        if isinstance(diff_result, list):
+            change_count = dict(Counter(d[0] for d in diff_result).most_common())
+            added = change_count.get(0, 0)
+            removed = change_count.get(1, 0)
+            updated = change_count.get(2, 0)
+
             count = []
             if added:
-                count.append("added %d rows" % len(added))
+                count.append("added %d rows" % added)
             if removed:
-                count.append("removed %d rows" % len(removed))
-            if not added and not removed:
+                count.append("removed %d rows" % removed)
+            if updated:
+                count.append("updated %d rows" % updated)
+            if added + removed + updated == 0:
                 count = ['no changes']
             print(to_print + ', '.join(count) + '.')
 
             if verbose:
-                if added:
-                    print "\n".join("+ %r" % (r,) for r in added)
-                if removed:
-                    print "\n".join("- %r" % (r,) for r in removed)
+                for kind, change in diff_result:
+                    print ['+', '-', 'U'][kind] + " " + change
         else:
             # Whole table was either added or removed
             print to_print + ("table added" if diff_result else "table removed")

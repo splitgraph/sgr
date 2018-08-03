@@ -1,4 +1,3 @@
-
 # Integration tests that assume the whole infrastructure is running
 from decimal import Decimal
 
@@ -89,10 +88,15 @@ def test_diff_head(sg_pg_conn):
         cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise')""")
         cur.execute("""DELETE FROM test_pg_mount.fruits WHERE name = 'apple'""")
 
+    sg_pg_conn.commit()  # otherwise the WAL writer won't see this.
     head = get_current_head(sg_pg_conn, PG_MNT)
-    added, removed = diff(sg_pg_conn, PG_MNT, 'fruits', snap_1=head, snap_2=None)
-    assert added == [(3, 'mayonnaise')]
-    assert removed == [(1, 'apple')]
+    change = diff(sg_pg_conn, PG_MNT, 'fruits', snap_1=head, snap_2=None)
+    assert change == [(0,
+                       '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "columnvalues": [3, '
+                       '"mayonnaise"]}'),
+                      (1,
+                       '{"oldkeys": {"keytypes": ["integer", "character varying"], "keyvalues": [1, "apple"], '
+                       '"keynames": ["fruit_id", "name"]}}')]
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
@@ -107,12 +111,21 @@ def test_commit_diff(include_snap, sg_pg_conn):
 
     # After commit, we should be switched to the new commit hash and there should be no differences.
     assert get_current_head(sg_pg_conn, PG_MNT) == new_head
-    assert diff(sg_pg_conn, PG_MNT, 'fruits', snap_1=new_head, snap_2=None) == ([], [])
+    assert diff(sg_pg_conn, PG_MNT, 'fruits', snap_1=new_head, snap_2=None) == []
 
     # The diff between the old and the new snaps should be the same as in the previous test
-    added, removed = diff(sg_pg_conn, PG_MNT, 'fruits', snap_1=head, snap_2=new_head)
-    assert added == [(3, 'mayonnaise'), (2, 'guitar')]
-    assert removed == [(1, 'apple'), (2, 'orange')]
+    change = diff(sg_pg_conn, PG_MNT, 'fruits', snap_1=head, snap_2=new_head)
+    assert change == [(0,
+                       '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], '
+                       '"columnvalues": [3, "mayonnaise"]}'),
+                      (1,
+                       '{"oldkeys": {"keytypes": ["integer", "character varying"], "keyvalues": [1, "apple"], '
+                       '"keynames": ["fruit_id", "name"]}}'),
+                      (2,
+                       '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], '
+                       '"oldkeys": {"keytypes": ["integer", "character varying"], "keyvalues": [2, "orange"], '
+                       '"keynames": ["fruit_id", "name"]}, "columnvalues": [2, "guitar"]}')]
+    assert diff(sg_pg_conn, PG_MNT, 'vegetables', snap_1=head, snap_2=new_head) == []
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
@@ -131,9 +144,17 @@ def test_multiple_mountpoint_commit_diff(include_snap, sg_pg_mg_conn):
     mongo_head = get_current_head(sg_pg_mg_conn, MG_MNT)
     new_head = commit(sg_pg_mg_conn, PG_MNT, include_snap=include_snap)
 
-    added, removed = diff(sg_pg_mg_conn, PG_MNT, 'fruits', snap_1=head, snap_2=new_head)
-    assert added == [(3, 'mayonnaise'), (2, 'guitar')]
-    assert removed == [(1, 'apple'), (2, 'orange')]
+    change = diff(sg_pg_mg_conn, PG_MNT, 'fruits', snap_1=head, snap_2=new_head)
+    assert change == [(0,
+                       '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], '
+                       '"columnvalues": [3, "mayonnaise"]}'),
+                      (1,
+                       '{"oldkeys": {"keytypes": ["integer", "character varying"], "keyvalues": [1, "apple"], '
+                       '"keynames": ["fruit_id", "name"]}}'),
+                      (2,
+                       '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], '
+                       '"oldkeys": {"keytypes": ["integer", "character varying"], "keyvalues": [2, "orange"], '
+                       '"keynames": ["fruit_id", "name"]}, "columnvalues": [2, "guitar"]}')]
 
     # PG has no pending changes, Mongo does
     assert get_current_head(sg_pg_mg_conn, MG_MNT) == mongo_head
@@ -147,7 +168,6 @@ def test_multiple_mountpoint_commit_diff(include_snap, sg_pg_mg_conn):
     with sg_pg_mg_conn.cursor() as cur:
         cur.execute("""SELECT duration from test_mg_mount.stuff WHERE name = 'James'""")
         assert cur.fetchall() == [(Decimal(2),)]
-
 
     # Update and commit
     with sg_pg_mg_conn.cursor() as cur:
@@ -169,6 +189,32 @@ def test_multiple_mountpoint_commit_diff(include_snap, sg_pg_mg_conn):
         assert cur.fetchall() == [(Decimal(15),)]
     assert has_pending_changes(sg_pg_mg_conn, MG_MNT) is False
     assert has_pending_changes(sg_pg_mg_conn, PG_MNT) is False
+
+
+@pytest.mark.parametrize("include_snap", [True, False])
+def test_diff_across_far_commits(include_snap, sg_pg_conn):
+    head = get_current_head(sg_pg_conn, PG_MNT)
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise')""")
+    commit(sg_pg_conn, PG_MNT, include_snap=include_snap)
+
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""DELETE FROM test_pg_mount.fruits WHERE name = 'apple'""")
+    commit(sg_pg_conn, PG_MNT, include_snap=include_snap)
+
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""UPDATE test_pg_mount.fruits SET name = 'guitar' WHERE fruit_id = 2""")
+    new_head = commit(sg_pg_conn, PG_MNT, include_snap=include_snap)
+
+    assert diff(sg_pg_conn, PG_MNT, 'fruits', head, new_head) == [
+        (0,  # insert mayonnaise
+         '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "columnvalues": [3, "mayonnaise"]}'),
+        (1,  # delete apple
+         '{"oldkeys": {"keytypes": ["integer", "character varying"], "keyvalues": [1, "apple"], "keynames": ["fruit_id", "name"]}}'),
+        (2,  # replace orange -> guitar
+         '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "oldkeys": {'
+         '"keytypes": ["integer", "character varying"], "keyvalues": [2, "orange"], "keynames": ["fruit_id", '
+         '"name"]}, "columnvalues": [2, "guitar"]}')]
 
 
 @pytest.mark.parametrize("include_snap", [True, False])

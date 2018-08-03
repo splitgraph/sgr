@@ -13,13 +13,10 @@ from splitgraph.meta_handler import get_tables_at, get_all_foreign_tables, get_c
 # Tables that are created in the local schema:
 # <table>_origin      -- an FDW table that is directly connected to the origin table
 # <table>             -- the current staging table/HEAD -- gets overwritten every time we check out a commit.
-# <object_id>         -- "git objects" that are either table snapshots or diffs. Diffs have the same schema as the
-#                         actual table apart from an extra boolean row sg_meta_ar_flag showing whether the row is
-#                         added or removed.
-#                         Row-by-row diffs for now because it's the simplest option without knowledge of any
-#                         pk/fk constraints.
+# <object_id>         -- "git objects" that are either table snapshots or diffs. Diffs use the JSON format and
+#                     -- are populated by dumping the WAL.
 from splitgraph.pg_replication import apply_record_to_staging, stop_replication, start_replication, \
-    record_pending_changes, commit_pending_changes, discard_pending_changes
+    record_pending_changes, commit_pending_changes, discard_pending_changes, dump_pending_changes
 
 
 def _table_exists(conn, mountpoint, table_name):
@@ -140,7 +137,7 @@ def mount_postgres(conn, server, port, username, password, mountpoint, extra_opt
         cur.execute("""CREATE SERVER %s
                         FOREIGN DATA WRAPPER postgres_fdw
                         OPTIONS (host %%s, port %%s, dbname %%s)""" %
-            cur.mogrify(mountpoint + '_server'), (server, str(port), dbname))
+                    cur.mogrify(mountpoint + '_server'), (server, str(port), dbname))
         cur.execute("""CREATE USER MAPPING FOR clientuser
                         SERVER %s
                         OPTIONS (user %%s, password %%s)""" % cur.mogrify(mountpoint + '_server'), (username, password))
@@ -183,7 +180,8 @@ def mount_mongo(conn, server, port, username, password, mountpoint, extra_option
             query = "CREATE FOREIGN TABLE %s (_id NAME " % cur.mogrify('%s.%s' % (mountpoint, table_name))
             if table_options['schema']:
                 query += ',' + ','.join(
-                    "%s %s" % (cur.mogrify(cname), cur.mogrify(ctype)) for cname, ctype in table_options['schema'].iteritems())
+                    "%s %s" % (cur.mogrify(cname), cur.mogrify(ctype)) for cname, ctype in
+                    table_options['schema'].iteritems())
             query += ") SERVER %s OPTIONS (database %%s, collection %%s)" % fq_server
 
             cur.execute(query, (db, coll))
@@ -238,7 +236,7 @@ def unmount(conn, mountpoint):
     with conn.cursor() as cur:
         cur.execute("""DROP SCHEMA IF EXISTS %s CASCADE""" % cur.mogrify(mountpoint))
         # Drop server too if it exists (could have been a non-foreign mountpoint)
-        cur.execute("""DROP SERVER IF EXISTS %s CASCADE""" % cur.mogrify(mountpoint + '_server',))
+        cur.execute("""DROP SERVER IF EXISTS %s CASCADE""" % cur.mogrify(mountpoint + '_server', ))
 
     # Currently we just discard all history info about the mounted schema
     unregister_mountpoint(conn, mountpoint)
@@ -287,52 +285,68 @@ def materialized_table(conn, mountpoint, table_name, snap):
         yield table_name
 
 
+def _table_exists_at(conn, mountpoint, table_name, image):
+    return _table_exists(conn, mountpoint, table_name) if image is None \
+        else bool(get_table(conn, mountpoint, table_name, image))
+
+
+def _find_path(conn, mountpoint, snap_1, snap_2):
+    path = []
+    while snap_2 is not None:
+        path.append(snap_2)
+        snap_2 = get_snap_parent(conn, mountpoint, snap_2)
+        if snap_2 == snap_1:
+            return path
+
+
 def diff(conn, mountpoint, table_name, snap_1, snap_2):
-    # Oh boy here we go
-    # Returns a tuple of (added: list, removed: list, updated: list) if the table exists in both snapshots.
+    # Returns a list of changes done to a table if it exists in both images.
     # Otherwise, returns True if the table was added and False if it was removed.
-
     with conn.cursor() as cur:
-        # The two table snapshots might have diffs between them (instead of proper snapshots).
-        # A naive algorithm: check both out into temporary tables
-        # Fetch both sides (and blow up our RAM)
-        # Diff them manually wo hashing (O(n^2))
-        # and then delete the temporary tables
-
-        # If the table doesn't exist in the first or the second snapshots, short-circuit and
+        # If the table doesn't exist in the first or the second image, short-circuit and
         # return the bool.
-        if snap_1 is None:
-            if not _table_exists(conn, mountpoint, table_name):
-                return True
+        if not _table_exists_at(conn, mountpoint, table_name, snap_1):
+            return True
+        if not _table_exists_at(conn, mountpoint, table_name, snap_2):
+            return False
+
+        # Special case: if diffing HEAD and staging, then just return the current pending changes.
+        HEAD = get_current_head(conn, mountpoint)
+        # TODO do we need to conflate them e.g. if A changed to B and then B changed to C, do we emit A -> C?
+        if snap_1 == HEAD and snap_2 is None:
+            return dump_pending_changes(conn, mountpoint, table_name)
+
+        # If the table is the same in the two images, short circuit as well.
+        if set(get_table(conn, mountpoint, table_name, snap_1)) == set(get_table(conn, mountpoint, table_name, snap_2)):
+            return []
+
+        # Otherwise, check if snap_1 is a parent of snap_2, then we can merge all the diffs.
+        path = _find_path(conn, mountpoint, snap_1, (snap_2 if snap_2 is not None else HEAD))
+        if path is not None:
+            result = []
+            for image in reversed(path):
+                diff_id = get_table_with_format(conn, mountpoint, table_name, image, 'DIFF')
+                cur.execute("""SELECT kind, change FROM %s""" % cur.mogrify('%s.%s' % (mountpoint, diff_id)))
+                result.extend(cur.fetchall())
+
+            # If snap_2 is staging, also include all changes that have happened since the last commit.
+            if snap_2 is None:
+                result.extend(dump_pending_changes(conn, mountpoint, table_name))
+            return result
+
         else:
-            if not get_table(conn, mountpoint, table_name, snap_1):
-                return True
-        if snap_2 is None:
-            if not _table_exists(conn, mountpoint, table_name):
-                return False
-        else:
-            if not get_table(conn, mountpoint, table_name, snap_2):
-                return False
+            # Finally, resort to manual diffing (images on different branches or reverse comparison order).
+            with materialized_table(conn, mountpoint, table_name, snap_1) as table_1:
+                with materialized_table(conn, mountpoint, table_name, snap_2) as table_2:
+                    # Check both tables out at the same time since then table_2 calculation can be based
+                    # on table_1's snapshot.
+                    cur.execute("""SELECT * FROM %s""" % cur.mogrify('%s.%s' % (mountpoint, table_1)))
+                    left = cur.fetchall()
+                    cur.execute("""SELECT * FROM %s""" % cur.mogrify('%s.%s' % (mountpoint, table_2)))
+                    right = cur.fetchall()
 
-        # TODO diff merging: If HEAD -> staging, then return the current pending changes.
-        # Otherwise, check if on the same path with a line of diffs.
-        # If so, merge the two diffs.
-        # How do we merge diffs? Just concatenate them? We can read changes to a table, maybe it's
-        # worth starting from that.
-
-        with materialized_table(conn, mountpoint, table_name, snap_1) as table_1:
-            with materialized_table(conn, mountpoint, table_name, snap_2) as table_2:
-                # Check both tables out at the same time since then table_2 calculation can be based
-                # on table_1's snapshot.
-                cur.execute("""SELECT * FROM %s""" % cur.mogrify('%s.%s' % (mountpoint, table_1)))
-                left = cur.fetchall()
-                cur.execute("""SELECT * FROM %s""" % cur.mogrify('%s.%s' % (mountpoint, table_2)))
-                right = cur.fetchall()
-
-        added = [r for r in right if r not in left]
-        removed = [r for r in left if r not in right]
-
-        return added, removed
+            # Mimic the diff format returned by the WAL
+            return [(1, r) for r in left if r not in right] + [(0, r) for r in right if r not in left]
 
 
 def init(conn, mountpoint):
@@ -349,9 +363,9 @@ def _make_conn(server, port, username, password, dbname):
 
 
 def _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_mountpoint):
-
     local_snap_parents = {snap_id: parent_id for snap_id, parent_id in get_all_snap_parents(conn, local_mountpoint)}
-    remote_snap_parents = {snap_id: parent_id for snap_id, parent_id in get_all_snap_parents(remote_conn, remote_mountpoint)}
+    remote_snap_parents = {snap_id: parent_id for snap_id, parent_id in
+                           get_all_snap_parents(remote_conn, remote_mountpoint)}
 
     # We assume here that none of the remote snapshot IDs have changed (are immutable) since otherwise the remote
     # would have created a new snapshot.
@@ -379,7 +393,7 @@ def pull(conn, remote_conn, remote_mountpoint, local_mountpoint):
     _log("Connecting to the remote driver...")
     match = re.match('(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn)
     remote_conn = _make_conn(server=match.group(3), port=int(match.group(4)), username=match.group(1),
-                   password=match.group(2), dbname=match.group(5))
+                             password=match.group(2), dbname=match.group(5))
 
     # Get the remote log and the list of objects we need to fetch.
     _log("Gathering remote metadata...")
@@ -404,7 +418,7 @@ def pull(conn, remote_conn, remote_mountpoint, local_mountpoint):
                    extra_options={'dbname': match.group(5), 'remote_schema': remote_mountpoint})
 
     for i, obj in enumerate(objects_to_fetch):
-        _log("(%d/%d) %s..." % (i+1, len(objects_to_fetch), obj))
+        _log("(%d/%d) %s..." % (i + 1, len(objects_to_fetch), obj))
         with conn.cursor() as cur:
             cur.execute("""CREATE TABLE %s AS SELECT * FROM %s""" % (
                 cur.mogrify('%s.%s' % (local_mountpoint, obj)),
@@ -428,7 +442,7 @@ def push(conn, remote_conn, remote_mountpoint, local_mountpoint):
     _log("Connecting to the remote driver...")
     match = re.match('(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn)
     remote_conn = _make_conn(server=match.group(3), port=int(match.group(4)), username=match.group(1),
-                   password=match.group(2), dbname=match.group(5))
+                             password=match.group(2), dbname=match.group(5))
 
     _log("Gathering remote metadata...")
     snaps_to_push, object_meta = _get_required_snaps_objects(remote_conn, conn, remote_mountpoint, local_mountpoint)
@@ -451,7 +465,7 @@ def push(conn, remote_conn, remote_mountpoint, local_mountpoint):
                            WHERE table_name = %s AND table_schema = %s""", (object_id, local_mountpoint))
             cols = cur.fetchall()
         with remote_conn.cursor() as cur:
-            query = """CREATE TABLE %s (""" % cur.mogrify("%s.%s" % (remote_mountpoint, object_id))\
+            query = """CREATE TABLE %s (""" % cur.mogrify("%s.%s" % (remote_mountpoint, object_id)) \
                     + ",".join("%s %s %s" % (cur.mogrify(cname), ctype, "NOT NULL" if not cnull else "")
                                for cname, ctype, cnull in cols) + ")"
             cur.execute(query)
@@ -466,7 +480,7 @@ def push(conn, remote_conn, remote_mountpoint, local_mountpoint):
                    extra_options={'dbname': match.group(5), 'remote_schema': remote_mountpoint})
 
     for i, obj in enumerate(objects_to_push):
-        _log("(%d/%d) %s..." % (i+1, len(objects_to_push), obj))
+        _log("(%d/%d) %s..." % (i + 1, len(objects_to_push), obj))
         with conn.cursor() as cur:
             cur.execute("""INSERT INTO %s SELECT * FROM %s""" % (
                 cur.mogrify('%s.%s' % (remote_data_mountpoint, obj)),
