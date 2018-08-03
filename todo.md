@@ -1,6 +1,7 @@
 # TODO
 
-  * Commits: add times and tags + (maybe) messages
+  * Commits: add times + (maybe) messages
+  * Tags: checkout by tag, refine the UI maybe (like sg tag mountpoint just tags the head)
   * Err on checkout if there are pending changes?
   * Somehow (?) record sgfiles in the snap_tree (?) as well (multiple ways to materialize a given image).
     * Is it an issue that an image can now have several parents of different types? Its commit tree parent,

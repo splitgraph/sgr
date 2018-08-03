@@ -5,7 +5,7 @@ from splitgraph.constants import SPLITGRAPH_META_SCHEMA, SplitGraphException, _l
 
 def _create_metadata_schema(conn):
     # Creates the metadata schema splitgraph_meta that stores
-    # the hash tree of schema snaps and the current HEAD pointers.
+    # the hash tree of schema snaps and the current tags.
     # This means we can't mount anything under the schema splitgraph_meta
     # -- much like we can't have a folder ".git" under Git version control...
 
@@ -129,20 +129,33 @@ def get_all_foreign_tables(conn, mountpoint):
 
 
 def get_current_head(conn, mountpoint, raise_on_none=True):
+    return get_tagged_id(conn, mountpoint, 'HEAD', raise_on_none)
+
+
+def get_tagged_id(conn, mountpoint, tag, raise_on_none=True):
     ensure_metadata_schema(conn)
     with conn.cursor() as cur:
-        cur.execute("""SELECT snap_id FROM %s.snap_tags WHERE mountpoint = %%s AND tag = 'HEAD'"""
-                    % SPLITGRAPH_META_SCHEMA, (mountpoint,))
+        cur.execute("""SELECT snap_id FROM %s.snap_tags WHERE mountpoint = %%s AND tag = %%s"""
+                    % SPLITGRAPH_META_SCHEMA, (mountpoint, tag))
         result = cur.fetchone()
         if result is None or result == (None,):
             if not mountpoint_exists(conn, mountpoint):
                 raise SplitGraphException("%s is not mounted." % mountpoint)
             elif raise_on_none:
-                raise SplitGraphException("No current checked out revision found for %s. Check one out with \"sg "
-                                          "checkout MOUNTPOINT SNAP_ID\"." % mountpoint)
+                if tag == 'HEAD':
+                    raise SplitGraphException("No current checked out revision found for %s. Check one out with \"sg "
+                                              "checkout MOUNTPOINT SNAP_ID\"." % mountpoint)
+                else:
+                    raise SplitGraphException("Tag %s not found in mountpoint %s" % (tag, mountpoint))
             else:
                 return None
         return result[0]
+
+
+def get_all_tags_hashes(conn, mountpoint):
+    with conn.cursor() as cur:
+        cur.execute("""SELECT snap_id, tag from %s.snap_tags WHERE mountpoint = %%s""" % SPLITGRAPH_META_SCHEMA, (mountpoint,))
+        return cur.fetchall()
 
 
 def add_new_snap_id(conn, mountpoint, parent_id, snap_id):
@@ -152,16 +165,21 @@ def add_new_snap_id(conn, mountpoint, parent_id, snap_id):
 
 
 def set_head(conn, mountpoint, snap_id):
+    set_tag(conn, mountpoint, snap_id, 'HEAD', force=True)
+
+
+def set_tag(conn, mountpoint, snap_id, tag, force=False):
     with conn.cursor() as cur:
-        cur.execute("""SELECT 1 FROM %s.snap_tags WHERE mountpoint = %%s AND tag = 'HEAD'""" % SPLITGRAPH_META_SCHEMA, (mountpoint,))
+        cur.execute("""SELECT 1 FROM %s.snap_tags WHERE mountpoint = %%s AND tag = %%s""" % SPLITGRAPH_META_SCHEMA, (mountpoint, tag))
         if cur.fetchone() is None:
-            cur.execute("""INSERT INTO %s.snap_tags (snap_id, mountpoint, tag) VALUES (%%s, %%s, 'HEAD')""" % SPLITGRAPH_META_SCHEMA,
-                        (snap_id,
-                         mountpoint))
+            cur.execute("""INSERT INTO %s.snap_tags (snap_id, mountpoint, tag) VALUES (%%s, %%s, %%s)""" % SPLITGRAPH_META_SCHEMA,
+                        (snap_id, mountpoint, tag))
         else:
-            cur.execute("""UPDATE %s.snap_tags SET snap_id = %%s WHERE mountpoint = %%s AND tag = 'HEAD'""" % SPLITGRAPH_META_SCHEMA,
-                        (snap_id,
-                         mountpoint))
+            if force:
+                cur.execute("""UPDATE %s.snap_tags SET snap_id = %%s WHERE mountpoint = %%s AND tag = %%s""" % SPLITGRAPH_META_SCHEMA,
+                            (snap_id, mountpoint, tag))
+            else:
+                raise SplitGraphException("Tag %s already exists in mountpoint %s!" % (tag, mountpoint))
 
 
 def mountpoint_exists(conn, mountpoint):

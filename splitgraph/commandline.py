@@ -1,6 +1,6 @@
 import json
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 from pprint import pprint
 
 import click
@@ -9,10 +9,10 @@ from psycopg2 import ProgrammingError
 
 from splitgraph.commands import mount, unmount, checkout, commit, get_current_head, \
     get_log, get_parent_children, diff, init, pull, push
-from splitgraph.constants import POSTGRES_CONNECTION
+from splitgraph.constants import POSTGRES_CONNECTION, SplitGraphException
 from splitgraph.drawing import render_tree
 from splitgraph.meta_handler import get_snap_parent, get_canonical_snap_id, get_all_tables, \
-    get_current_mountpoints_hashes
+    get_current_mountpoints_hashes, get_all_tags_hashes, set_tag
 from splitgraph.sgfile import parse_commands, execute_commands
 
 
@@ -238,6 +238,35 @@ def push_c(remote, remote_mountpoint, local_mountpoint):
     conn.commit()
 
 
+@click.command(name='tag')
+@click.argument('mountpoint')
+@click.argument('image', required=False)
+@click.argument('tag', required=False)
+@click.option('-f', '--force', required=False, is_flag=True)
+def tag_c(mountpoint, image, tag, force):
+    conn = _conn()
+    if tag is None:
+        # List all tags
+        all_tags = get_all_tags_hashes(conn, mountpoint)
+        tag_dict = defaultdict(list)
+        for img, tag in all_tags:
+            tag_dict[img].append(tag)
+        if image is None:
+            for img, tags in tag_dict.iteritems():
+                print "%s: %s" % (img[:12], ', '.join(tags))
+        else:
+            print ', '.join(tag_dict[image])
+        return
+
+    if tag == 'HEAD':
+        raise SplitGraphException("HEAD is a reserved tag!")
+
+    image = get_canonical_snap_id(conn, mountpoint, image)
+    set_tag(conn, mountpoint, image, tag, force)
+    print "Tagged %s:%s with %s." % (mountpoint, image, tag)
+    conn.commit()
+
+
 cli.add_command(status_c)
 cli.add_command(log_c)
 cli.add_command(mount_c)
@@ -250,3 +279,4 @@ cli.add_command(sql_c)
 cli.add_command(init_c)
 cli.add_command(pull_c)
 cli.add_command(push_c)
+cli.add_command(tag_c)
