@@ -23,8 +23,10 @@ def _create_metadata_schema(conn):
         cur.execute("""CREATE TABLE %s.%s (
                         mountpoint VARCHAR NOT NULL,
                         snap_id    VARCHAR,
+                        tag        VARCHAR,
+                        PRIMARY KEY (mountpoint, tag),
                         CONSTRAINT sh_fk FOREIGN KEY (mountpoint, snap_id) REFERENCES %s.%s)"""
-                    % (SPLITGRAPH_META_SCHEMA, "snap_head", SPLITGRAPH_META_SCHEMA, "snap_tree"))
+                    % (SPLITGRAPH_META_SCHEMA, "snap_tags", SPLITGRAPH_META_SCHEMA, "snap_tree"))
 
         # Maps a given table at a given point in time to an "object ID" (either a full snapshot or a
         # delta to a previous table).
@@ -129,7 +131,7 @@ def get_all_foreign_tables(conn, mountpoint):
 def get_current_head(conn, mountpoint, raise_on_none=True):
     ensure_metadata_schema(conn)
     with conn.cursor() as cur:
-        cur.execute("""SELECT snap_id FROM %s.snap_head WHERE mountpoint = %%s"""
+        cur.execute("""SELECT snap_id FROM %s.snap_tags WHERE mountpoint = %%s AND tag = 'HEAD'"""
                     % SPLITGRAPH_META_SCHEMA, (mountpoint,))
         result = cur.fetchone()
         if result is None or result == (None,):
@@ -151,13 +153,13 @@ def add_new_snap_id(conn, mountpoint, parent_id, snap_id):
 
 def set_head(conn, mountpoint, snap_id):
     with conn.cursor() as cur:
-        cur.execute("""SELECT 1 FROM %s.snap_head WHERE mountpoint = %%s""" % SPLITGRAPH_META_SCHEMA, (mountpoint,))
+        cur.execute("""SELECT 1 FROM %s.snap_tags WHERE mountpoint = %%s AND tag = 'HEAD'""" % SPLITGRAPH_META_SCHEMA, (mountpoint,))
         if cur.fetchone() is None:
-            cur.execute("""INSERT INTO %s.snap_head (snap_id, mountpoint) VALUES (%%s, %%s)""" % SPLITGRAPH_META_SCHEMA,
+            cur.execute("""INSERT INTO %s.snap_tags (snap_id, mountpoint, tag) VALUES (%%s, %%s, 'HEAD')""" % SPLITGRAPH_META_SCHEMA,
                         (snap_id,
                          mountpoint))
         else:
-            cur.execute("""UPDATE %s.snap_head SET snap_id = %%s WHERE mountpoint = %%s""" % SPLITGRAPH_META_SCHEMA,
+            cur.execute("""UPDATE %s.snap_tags SET snap_id = %%s WHERE mountpoint = %%s AND tag = 'HEAD'""" % SPLITGRAPH_META_SCHEMA,
                         (snap_id,
                          mountpoint))
 
@@ -173,9 +175,9 @@ def register_mountpoint(conn, mountpoint, snap_id, tables, table_object_ids):
     with conn.cursor() as cur:
         cur.execute("""INSERT INTO %s.%s (snap_id, mountpoint, parent_id) VALUES (%%s, %%s, NULL)"""
                     % (SPLITGRAPH_META_SCHEMA, "snap_tree"), (snap_id, mountpoint))
-        # Strictly speaking this is redundant since the checkout (of the "HEAD" commit) updates the head table.
-        cur.execute("""INSERT INTO %s.%s (mountpoint, snap_id) VALUES (%%s, %%s)"""
-                    % (SPLITGRAPH_META_SCHEMA, "snap_head"), (mountpoint, snap_id))
+        # Strictly speaking this is redundant since the checkout (of the "HEAD" commit) updates the tag table.
+        cur.execute("""INSERT INTO %s.%s (mountpoint, snap_id, tag) VALUES (%%s, %%s, 'HEAD')"""
+                    % (SPLITGRAPH_META_SCHEMA, "snap_tags"), (mountpoint, snap_id))
         for t, ti in zip(tables, table_object_ids):
             # Register the tables and the object IDs they were stored under.
             # They're obviously stored as snaps since there's nothing to diff to...
@@ -186,7 +188,7 @@ def register_mountpoint(conn, mountpoint, snap_id, tables, table_object_ids):
 
 def unregister_mountpoint(conn, mountpoint):
     with conn.cursor() as cur:
-        for meta_table in ["tables", "snap_head", "snap_tree"]:
+        for meta_table in ["tables", "snap_tags", "snap_tree"]:
             cur.execute("""DELETE FROM %s.%s WHERE mountpoint = %%s"""
                         % (SPLITGRAPH_META_SCHEMA, meta_table), (mountpoint,))
 
@@ -241,5 +243,5 @@ def get_existing_objects(conn, mountpoint):
 def get_current_mountpoints_hashes(conn):
     ensure_metadata_schema(conn)
     with conn.cursor() as cur:
-        cur.execute("""SELECT mountpoint, snap_id FROM %s.snap_head""" % SPLITGRAPH_META_SCHEMA)
+        cur.execute("""SELECT mountpoint, snap_id FROM %s.snap_tags WHERE tag = 'HEAD'""" % SPLITGRAPH_META_SCHEMA)
         return cur.fetchall()
