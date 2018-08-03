@@ -1,10 +1,14 @@
+
 # Integration tests that assume the whole infrastructure is running
+from decimal import Decimal
+
 import pytest
 
 from splitgraph.commandline import _conn
 from splitgraph.commands import mount, unmount, diff, commit, get_log, checkout, _table_exists, pull, push
 from splitgraph.constants import PG_HOST, PG_PORT, PG_DB, PG_USER, PG_PWD
 from splitgraph.meta_handler import get_current_head, get_table, get_all_snap_parents
+from splitgraph.pg_replication import has_pending_changes
 
 PG_MNT = 'test_pg_mount'
 MG_MNT = 'test_mg_mount'
@@ -112,6 +116,62 @@ def test_commit_diff(commit_format, sg_pg_conn):
     added, removed = diff(sg_pg_conn, PG_MNT, 'fruits', snap_1=head, snap_2=new_head)
     assert added == [(3, 'mayonnaise'), (2, 'guitar')]
     assert removed == [(1, 'apple'), (2, 'orange')]
+
+
+@pytest.mark.parametrize("commit_format", COMMIT_FORMATS)
+def test_multiple_mountpoint_commit_diff(commit_format, sg_pg_mg_conn):
+    with sg_pg_mg_conn.cursor() as cur:
+        cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise')""")
+        cur.execute("""DELETE FROM test_pg_mount.fruits WHERE name = 'apple'""")
+        cur.execute("""UPDATE test_pg_mount.fruits SET name = 'guitar' WHERE fruit_id = 2""")
+        cur.execute("""UPDATE test_mg_mount.stuff SET duration = 11 WHERE name = 'James'""")
+    # Both mountpoints have pending changes if we commit the PG connection.
+    sg_pg_mg_conn.commit()
+    assert has_pending_changes(sg_pg_mg_conn, MG_MNT) is True
+    assert has_pending_changes(sg_pg_mg_conn, PG_MNT) is True
+
+    head = get_current_head(sg_pg_mg_conn, PG_MNT)
+    mongo_head = get_current_head(sg_pg_mg_conn, MG_MNT)
+    new_head = commit(sg_pg_mg_conn, PG_MNT, storage_format=commit_format)
+
+    added, removed = diff(sg_pg_mg_conn, PG_MNT, 'fruits', snap_1=head, snap_2=new_head)
+    assert added == [(3, 'mayonnaise'), (2, 'guitar')]
+    assert removed == [(1, 'apple'), (2, 'orange')]
+
+    # PG has no pending changes, Mongo does
+    assert get_current_head(sg_pg_mg_conn, MG_MNT) == mongo_head
+    assert has_pending_changes(sg_pg_mg_conn, MG_MNT) is True
+    assert has_pending_changes(sg_pg_mg_conn, PG_MNT) is False
+
+    # Discard the commit to the mongodb
+    checkout(sg_pg_mg_conn, MG_MNT, mongo_head)
+    assert has_pending_changes(sg_pg_mg_conn, MG_MNT) is False
+    assert has_pending_changes(sg_pg_mg_conn, PG_MNT) is False
+    with sg_pg_mg_conn.cursor() as cur:
+        cur.execute("""SELECT duration from test_mg_mount.stuff WHERE name = 'James'""")
+        assert cur.fetchall() == [(Decimal(2),)]
+
+
+    # Update and commit
+    with sg_pg_mg_conn.cursor() as cur:
+        cur.execute("""UPDATE test_mg_mount.stuff SET duration = 15 WHERE name = 'James'""")
+    sg_pg_mg_conn.commit()
+    assert has_pending_changes(sg_pg_mg_conn, MG_MNT) is True
+    new_mongo_head = commit(sg_pg_mg_conn, MG_MNT, storage_format=commit_format)
+    assert has_pending_changes(sg_pg_mg_conn, MG_MNT) is False
+    assert has_pending_changes(sg_pg_mg_conn, PG_MNT) is False
+
+    checkout(sg_pg_mg_conn, MG_MNT, mongo_head)
+    with sg_pg_mg_conn.cursor() as cur:
+        cur.execute("""SELECT duration from test_mg_mount.stuff WHERE name = 'James'""")
+        assert cur.fetchall() == [(Decimal(2),)]
+
+    checkout(sg_pg_mg_conn, MG_MNT, new_mongo_head)
+    with sg_pg_mg_conn.cursor() as cur:
+        cur.execute("""SELECT duration from test_mg_mount.stuff WHERE name = 'James'""")
+        assert cur.fetchall() == [(Decimal(15),)]
+    assert has_pending_changes(sg_pg_mg_conn, MG_MNT) is False
+    assert has_pending_changes(sg_pg_mg_conn, PG_MNT) is False
 
 
 @pytest.mark.parametrize("commit_format", COMMIT_FORMATS)

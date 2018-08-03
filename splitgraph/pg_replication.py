@@ -80,6 +80,7 @@ def discard_pending_changes(conn, mountpoint):
 
 
 def has_pending_changes(conn, mountpoint):
+    record_pending_changes(conn)
     with conn.cursor() as cur:
         cur.execute("""SELECT 1 FROM %s.%s WHERE mountpoint = %%s""" % (SPLITGRAPH_META_SCHEMA, "pending_changes"), (mountpoint,))
         return cur.fetchone() is not None

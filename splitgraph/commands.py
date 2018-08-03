@@ -125,6 +125,8 @@ def commit(conn, mountpoint, schema_snap=None, storage_format='SNAP'):
     if storage_format == 'DIFF':
         commit_pending_changes(conn, mountpoint, HEAD, schema_snap)
     else:
+        # If we are storing a snapshot, clean the pending changes table and copy the whole table over.
+        discard_pending_changes(conn, mountpoint)
         with conn.cursor() as cur:
             for table in get_all_tables(conn, mountpoint):
                 object_id = get_random_object_id()
