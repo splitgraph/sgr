@@ -1,42 +1,47 @@
 import json
 
-from splitgraph.constants import get_random_object_id
+from psycopg2.extras import execute_batch
+
+from splitgraph.meta_handler import get_current_mountpoints_hashes
+
+from splitgraph.constants import get_random_object_id, SPLITGRAPH_META_SCHEMA
 
 from splitgraph.meta_handler import get_all_tables, get_table, register_table_object
 
 LOGICAL_DECODER = 'wal2json'
+REPLICATION_SLOT = 'sg_replication'
 
 
-def generate_slot_name(mountpoint):
-    return mountpoint
+def _replication_slot_exists(conn):
+    with conn.cursor() as cur:
+        cur.execute("""SELECT 1 FROM pg_replication_slots WHERE slot_name = %s""", (REPLICATION_SLOT,))
+        return cur.fetchone() is not None
 
 
-def start_replication(conn, mountpoint):
+def start_replication(conn):
     with conn.cursor() as cur:
         cur.execute("""SELECT 'init' FROM pg_create_logical_replication_slot(%s, %s)""",
-                    (generate_slot_name(mountpoint), LOGICAL_DECODER))
+                    (REPLICATION_SLOT, LOGICAL_DECODER))
 
 
-def stop_replication(conn, mountpoint):
-    slot = generate_slot_name(mountpoint)
-    with conn.cursor() as cur:
-        cur.execute("""SELECT 1 FROM pg_replication_slots WHERE slot_name = %s""", (slot,))
-        if cur.fetchone() is not None:
-            cur.execute("""SELECT 'stop' FROM pg_drop_replication_slot(%s)""",
-                        (slot,))
+def stop_replication(conn):
+    if _replication_slot_exists(conn):
+        with conn.cursor() as cur:
+            cur.execute("""SELECT 'stop' FROM pg_drop_replication_slot(%s)""", (REPLICATION_SLOT,))
 
 
-def consume_changes(conn, mountpoint):
-    # Make sure the decoder only returns changes for the user tables in the
-    # current mountpoint.
-    # Consuming changes means they won't be returned again from this slot. Since we're skipping over
-    # changes for other mountpoints, we have to have multiple logical slots.
-    table_names = get_all_tables(conn, mountpoint)
-    table_filter_param = ','.join('%s.%s' % (mountpoint, t.replace(' ', '\\ ')) for t in table_names),
+def _consume_changes(conn):
+    # Consuming changes means they won't be returned again from this slot. Perhaps worth doing peeking first
+    # in case we crash after consumption but before recording changes.
+    if not _replication_slot_exists(conn):
+        return []
+
+    all_mountpoints = [m[0] for m in get_current_mountpoints_hashes(conn)]
+    table_filter_param = ','.join('%s.*' % m for m in all_mountpoints)
 
     with conn.cursor() as cur:
         cur.execute("""SELECT data FROM pg_logical_slot_get_changes(%s, NULL, NULL, 'add-tables', %s)""",
-                    (generate_slot_name(mountpoint), table_filter_param))
+                    (REPLICATION_SLOT, table_filter_param))
 
         return cur.fetchall()
 
@@ -44,57 +49,73 @@ def consume_changes(conn, mountpoint):
 KIND = {'insert': 0, 'delete': 1, 'update': 2}
 
 
-def record_changes(conn, mountpoint, changes, HEAD, new_snap):
-    # Decode the changeset produced by wal2json, remove redundant information from it
-    # and save it to object tables.
+def record_pending_changes(conn):
+    changes = _consume_changes(conn)
+    if not changes:
+        return
+    # Decode the changeset produced by wal2json and save it to the pending_changes table.
+    mountpoints_tables = {m: get_all_tables(conn, m) for m, _ in get_current_mountpoints_hashes(conn)}
+    to_insert = []  # a list of tuples (schema, table, kind, change)
+    for changeset in changes:
+        changeset = json.loads(changeset[0])['change']
+        for change in changeset:
+            # kind: 0 is added, 1 is removed, 2 is updated.
+            # change: json
+            kind = change.pop('kind')
+            mountpoint = change.pop('schema')
+            table = change.pop('table')
+
+            if mountpoint not in mountpoints_tables or table not in mountpoints_tables[mountpoint]:
+                continue
+
+            to_insert.append((mountpoint, table, KIND[kind], json.dumps(change)))
+
+    with conn.cursor() as cur:
+        execute_batch(cur, """INSERT INTO %s.%s VALUES (%%s, %%s, %%s, %%s)""" % (SPLITGRAPH_META_SCHEMA, "pending_changes"), to_insert)
+
+
+def discard_pending_changes(conn, mountpoint):
+    with conn.cursor() as cur:
+        cur.execute("""DELETE FROM %s.%s WHERE mountpoint = %%s""" % (SPLITGRAPH_META_SCHEMA, "pending_changes"), (mountpoint,))
+
+
+def has_pending_changes(conn, mountpoint):
+    with conn.cursor() as cur:
+        cur.execute("""SELECT 1 FROM %s.%s WHERE mountpoint = %%s""" % (SPLITGRAPH_META_SCHEMA, "pending_changes"), (mountpoint,))
+        return cur.fetchone() is not None
+
+
+def commit_pending_changes(conn, mountpoint, HEAD, new_image):
     all_tables = get_all_tables(conn, mountpoint)
     with conn.cursor() as cur:
-        table_objects = {}
-        def get_table_object(t):
-            if t not in table_objects:
-                object_id = get_random_object_id()
+        cur.execute("""SELECT DISTINCT(table_name) FROM %s.%s
+                       WHERE mountpoint = %%s""" % (SPLITGRAPH_META_SCHEMA, "pending_changes"), (mountpoint,))
+        changed_tables = [c[0] for c in cur.fetchall()]
+        for table in all_tables:
+            table_info = get_table(conn, mountpoint, table, HEAD)
+            # If table created, store it as a snap
+            if table_info is None:
                 with conn.cursor() as cur:
-                    # kind: 0 is added, 1 is removed, 2 is updated.
-                    # change: json
+                    object_id = get_random_object_id()
+                    cur.execute("""CREATE TABLE %s AS SELECT * FROM %s""" %
+                                (cur.mogrify('%s.%s' % (mountpoint, object_id)),
+                                 cur.mogrify('%s.%s' % (mountpoint, table))))
+                    register_table_object(conn, mountpoint, table, new_image, object_id, object_format='SNAP')
+            else:
+                if table in changed_tables:
+                    object_id = get_random_object_id()
                     fq_table = cur.mogrify('%s.%s' % (mountpoint, object_id))
-                    cur.execute("""CREATE TABLE %s (kind smallint, change varchar)""" % fq_table)
-                table_objects[t] = object_id
-            return table_objects[t]
-
-        for changeset in changes:
-            changeset = json.loads(changeset[0])['change']
-            for change in changeset:
-                # Delete things that we can infer in other ways, leave only columnnames/types/values.
-                # import pdb; pdb.set_trace()
-                kind = change.pop('kind')
-                del change['schema']
-                table = change.pop('table')
-
-                if table not in all_tables:
-                    continue
-
-                fq_table = cur.mogrify('%s.%s' % (mountpoint, get_table_object(table)))
-
-                cur.execute("INSERT INTO %s VALUES (%%s, %%s)" % fq_table, (KIND[kind], json.dumps(change)))
-
-    # Register the new commit.
-    for t in all_tables:
-        table_info = get_table(conn, mountpoint, t, HEAD)
-        # If table created, store it as a snap
-        if table_info is None:
-            with conn.cursor() as cur:
-                object_id = get_random_object_id()
-                cur.execute("""CREATE TABLE %s AS SELECT * FROM %s""" %
-                            (cur.mogrify('%s.%s' % (mountpoint, object_id)),
-                             cur.mogrify('%s.%s' % (mountpoint, t))))
-                register_table_object(conn, mountpoint, t, new_snap, object_id, object_format='SNAP')
-            continue
-        if t not in table_objects:
-            # If the table wasn't changed, point the commit to the old table object
-            prev_object_id, prev_format = table_info
-            register_table_object(conn, mountpoint, t, new_snap, prev_object_id, prev_format)
-        else:
-            register_table_object(conn, mountpoint, t, new_snap, table_objects[t], object_format='WAL')
+                    # Move changes from the pending table to the actual object ID
+                    cur.execute("""CREATE TABLE %s AS 
+                                   WITH to_commit AS (DELETE FROM %s.%s WHERE mountpoint = %%s AND table_name = %%s
+                                                      RETURNING kind, change)
+                                   SELECT * FROM to_commit""" % (fq_table, SPLITGRAPH_META_SCHEMA, "pending_changes"),
+                                (mountpoint, table))
+                    register_table_object(conn, mountpoint, table, new_image, object_id, object_format='DIFF')
+                else:
+                    # If the table wasn't changed, point the commit to the old table object
+                    prev_object_id, prev_format = table_info
+                    register_table_object(conn, mountpoint, table, new_image, prev_object_id, prev_format)
 
 
 def apply_record_to_staging(conn, mountpoint, object_id, destination):

@@ -6,11 +6,12 @@ import click
 import psycopg2
 from psycopg2 import ProgrammingError
 
-from splitgraph.commands import mount, unmount, checkout, commit, get_current_mountpoints_hashes, get_current_head, \
+from splitgraph.commands import mount, unmount, checkout, commit, get_current_head, \
     get_log, get_parent_children, diff, init, pull, push
 from splitgraph.constants import POSTGRES_CONNECTION
 from splitgraph.drawing import render_tree
-from splitgraph.meta_handler import get_snap_parent, get_canonical_snap_id, get_all_tables
+from splitgraph.meta_handler import get_snap_parent, get_canonical_snap_id, get_all_tables, \
+    get_current_mountpoints_hashes
 from splitgraph.sgfile import parse_commands, execute_commands
 
 
@@ -166,7 +167,7 @@ def checkout_c(mountpoint, snapshot):
 @click.argument('mountpoint')
 @click.option('-h', '--commit-hash')
 @click.option('-d', '--store-as-diff', default=False, is_flag=True)
-def commit_c(mountpoint, commit_hash, store_as_diff, store_wal):
+def commit_c(mountpoint, commit_hash, store_as_diff):
     conn = _conn()
     if commit_hash and (len(commit_hash) != 64 or any([x not in 'abcdef0123456789' for x in set(commit_hash)])):
         print "Commit hash must be of the form [a-f0-9] x 64!"

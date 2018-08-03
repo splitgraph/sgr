@@ -1,13 +1,10 @@
 # TODO
 
   * Commits: add times and tags + (maybe) messages
-  * Single WAL consumption slot, write back to splitgraph_meta.pending_changes on various commands. Flow:
-    * Commit: move changes from the pending table to the diff table
-    * Checkout: err if pending changes, if force, delete pending changes to the schema
-    * Diff: if HEAD -> staging, dump the pending changes table.
+  * Err on checkout if there are pending changes?
   * Disallow storing non-base images (with parents) as only snaps (OK if snap is an extra to speed up checkouts). Maybe
     snap_tree should be called img_tree.
-  * Diff: combine WAL diffs if on the same path.
+  * Diff: combine WAL diffs if on the same path, dump pending changes if HEAD -> staging
   * Somehow (?) record sgfiles in the snap_tree as well (multiple ways to materialize a given image)
   * Indirection on object location on push/pull:
     * ability to have an object URL/protocol when pulling from remote

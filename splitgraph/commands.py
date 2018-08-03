@@ -3,15 +3,12 @@ from contextlib import contextmanager
 from random import getrandbits
 
 import psycopg2
-from psycopg2.extras import execute_batch
 
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, SplitGraphException, _log, get_random_object_id
 from splitgraph.meta_handler import get_tables_at, get_all_foreign_tables, get_current_head, add_new_snap_id, \
     set_head, register_mountpoint, unregister_mountpoint, get_snap_parent, get_canonical_snap_id, \
     get_table, get_all_tables, register_table_object, get_all_snap_parents, register_objects, \
     get_existing_objects, ensure_metadata_schema
-
-
 # Commands to import a foreign schema locally, with version control.
 # Tables that are created in the local schema:
 # <table>_origin      -- an FDW table that is directly connected to the origin table
@@ -21,8 +18,8 @@ from splitgraph.meta_handler import get_tables_at, get_all_foreign_tables, get_c
 #                         added or removed.
 #                         Row-by-row diffs for now because it's the simplest option without knowledge of any
 #                         pk/fk constraints.
-from splitgraph.pg_replication import apply_record_to_staging, stop_replication, start_replication, consume_changes, \
-    record_changes
+from splitgraph.pg_replication import apply_record_to_staging, stop_replication, start_replication, \
+    record_pending_changes, commit_pending_changes, discard_pending_changes
 
 
 def _table_exists(conn, mountpoint, table_name):
@@ -83,10 +80,12 @@ def materialize_table(conn, mountpoint, schema_snap, table, destination):
 
 def checkout(conn, mountpoint, schema_snap, tables=[]):
     ensure_metadata_schema(conn)
-    stop_replication(conn, mountpoint)
+    record_pending_changes(conn)
+
+    stop_replication(conn)
+    discard_pending_changes(conn, mountpoint)
 
     # Detect the actual schema snap we want to check out
-    # if change_head is False, just copies that snapshot into table+suffix.
     schema_snap = get_canonical_snap_id(conn, mountpoint, schema_snap)
     tables = tables or get_tables_at(conn, mountpoint, schema_snap)
     with conn.cursor() as cur:
@@ -102,17 +101,17 @@ def checkout(conn, mountpoint, schema_snap, tables=[]):
 
     # Start recording changes to the mountpoint.
     conn.commit()
-    start_replication(conn, mountpoint)
+    start_replication(conn)
 
     _log("Checked out %s:%s." % (mountpoint, schema_snap[:12]))
 
 
 def commit(conn, mountpoint, schema_snap=None, storage_format='SNAP'):
     ensure_metadata_schema(conn)
-    _log("Committing...")
-
     # required here so that the logical replication sees changes made before the commit in this tx
     conn.commit()
+    record_pending_changes(conn)
+    _log("Committing...")
 
     HEAD = get_current_head(conn, mountpoint)
 
@@ -124,8 +123,7 @@ def commit(conn, mountpoint, schema_snap=None, storage_format='SNAP'):
 
     # Store the diff instead of a full snapshot.
     if storage_format == 'DIFF':
-        wal_changes = consume_changes(conn, mountpoint)
-        record_changes(conn, mountpoint, wal_changes, HEAD, schema_snap)
+        commit_pending_changes(conn, mountpoint, HEAD, schema_snap)
     else:
         with conn.cursor() as cur:
             for table in get_all_tables(conn, mountpoint):
@@ -136,10 +134,10 @@ def commit(conn, mountpoint, schema_snap=None, storage_format='SNAP'):
                              cur.mogrify('%s.%s' % (mountpoint, table))))
                 register_table_object(conn, mountpoint, table, schema_snap, object_id, object_format='SNAP')
 
-    stop_replication(conn, mountpoint)
+    stop_replication(conn)
     set_head(conn, mountpoint, schema_snap)
     conn.commit()  # need to commit before starting replication
-    start_replication(conn, mountpoint)
+    start_replication(conn)
     _log("Committed as %s" % schema_snap[:12])
     return schema_snap
 
@@ -247,7 +245,7 @@ def mount(conn, server, port, username, password, mountpoint, mount_handler, ext
 
 
 def unmount(conn, mountpoint):
-    stop_replication(conn, mountpoint)
+    stop_replication(conn)
     with conn.cursor() as cur:
         cur.execute("""DROP SCHEMA IF EXISTS %s CASCADE""" % cur.mogrify(mountpoint))
         # Drop server too if it exists (could have been a non-foreign mountpoint)
@@ -256,13 +254,6 @@ def unmount(conn, mountpoint):
     # Currently we just discard all history info about the mounted schema
     unregister_mountpoint(conn, mountpoint)
     conn.commit()
-
-
-def get_current_mountpoints_hashes(conn):
-    ensure_metadata_schema(conn)
-    with conn.cursor() as cur:
-        cur.execute("""SELECT mountpoint, snap_id FROM %s.snap_head""" % SPLITGRAPH_META_SCHEMA)
-        return cur.fetchall()
 
 
 def get_parent_children(conn, mountpoint, snap_id):

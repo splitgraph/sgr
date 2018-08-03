@@ -39,12 +39,25 @@ def _create_metadata_schema(conn):
                     % (SPLITGRAPH_META_SCHEMA, "tables", SPLITGRAPH_META_SCHEMA, "snap_tree"))
 
 
+def _create_pending_changes(conn):
+    # We consume changes from the WAL for the tables that interest us into this schema so that
+    # postgres can flush parts of the WAL that it doesn't needs.
+    # Used on checkout/commit to keep track of changes that happened to a schema
+    with conn.cursor() as cur:
+        cur.execute("""CREATE TABLE %s.%s (
+                        mountpoint VARCHAR NOT NULL,
+                        table_name VARCHAR NOT NULL,
+                        kind       SMALLINT,
+                        change     VARCHAR NOT NULL)""" % (SPLITGRAPH_META_SCHEMA, "pending_changes"))
+
+
 def ensure_metadata_schema(conn):
     # Check if the metadata schema actually exists.
     with conn.cursor() as cur:
         cur.execute("""SELECT 1 FROM information_schema.schemata WHERE schema_name = %s""", (SPLITGRAPH_META_SCHEMA,))
         if cur.fetchone() is None:
             _create_metadata_schema(conn)
+            _create_pending_changes(conn)
 
 
 def get_all_tables(conn, mountpoint):
@@ -205,3 +218,10 @@ def get_existing_objects(conn, mountpoint):
         cur.execute("""SELECT object_id from %s.tables WHERE mountpoint = %%s"""
                     % SPLITGRAPH_META_SCHEMA, (mountpoint,))
         return [c[0] for c in cur.fetchall()]
+
+
+def get_current_mountpoints_hashes(conn):
+    ensure_metadata_schema(conn)
+    with conn.cursor() as cur:
+        cur.execute("""SELECT mountpoint, snap_id FROM %s.snap_head""" % SPLITGRAPH_META_SCHEMA)
+        return cur.fetchall()
