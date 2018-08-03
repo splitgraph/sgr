@@ -1,7 +1,6 @@
 # TODO
 
   * Commits: add times and tags + (maybe) messages
-  * Kill the old DIFF format and use WAL throughout.
   * Single WAL consumption slot, write back to splitgraph_meta.pending_changes on various commands. Flow:
     * Commit: move changes from the pending table to the diff table
     * Checkout: err if pending changes, if force, delete pending changes to the schema

@@ -166,7 +166,6 @@ def checkout_c(mountpoint, snapshot):
 @click.argument('mountpoint')
 @click.option('-h', '--commit-hash')
 @click.option('-d', '--store-as-diff', default=False, is_flag=True)
-@click.option('-w', '--store-wal', default=False, is_flag=True)
 def commit_c(mountpoint, commit_hash, store_as_diff, store_wal):
     conn = _conn()
     if commit_hash and (len(commit_hash) != 64 or any([x not in 'abcdef0123456789' for x in set(commit_hash)])):
@@ -174,8 +173,6 @@ def commit_c(mountpoint, commit_hash, store_as_diff, store_wal):
         return
     if store_as_diff:
         commit_mode = 'DIFF'
-    elif store_wal:
-        commit_mode = 'WAL'
     else:
         commit_mode = 'SNAP'
 

@@ -42,35 +42,6 @@ def _get_column_names(conn, mountpoint, table_name):
         return [c[0] for c in cur.fetchall()]
 
 
-def _apply_pack_to_staging(conn, mountpoint, table_name, pack_object, object_format, destination):
-    # Suffix: is appended to the staging table name in case the diff needs to be applied somewhere else.
-    # Apply the diff from another table to the current staging area.
-    # Assuming there are no schema changes between tables for now.
-    if object_format == 'WAL':
-        apply_record_to_staging(conn, mountpoint, pack_object, destination)
-        return
-
-    column_names = _get_column_names(conn, mountpoint, table_name)
-
-    with conn.cursor() as cur:
-        fq_snap_name = cur.mogrify('%s.%s' % (mountpoint, pack_object))
-        fq_staging_name = cur.mogrify('%s.%s' % (mountpoint, destination))
-
-        # Delete all rows from the staging table that were marked as removed.
-        # This gets more difficult without any PK enforcement on the table.
-        delete_qual = ' AND '.join("%s.%s = %s.%s" % (fq_staging_name, cur.mogrify(c), fq_snap_name, cur.mogrify(c))
-                                   for c in column_names)
-        # FIXME: this deletes duplicate rows in the staging table.
-        cur.execute("""DELETE FROM %s USING %s WHERE sg_meta_ar_flag = FALSE AND %s""" %
-                    (fq_staging_name, fq_snap_name, delete_qual))
-        # Add all rows into the staging table that were marked as added.
-        # We can't just exclude the sg_meta_ar_flag column so have to actually enumerate the exact
-        # columns we want from the select statement.
-        col_name_string = ','.join(cur.mogrify(c) for c in column_names)
-        cur.execute("""INSERT INTO %s (SELECT %s FROM %s WHERE sg_meta_ar_flag = TRUE)"""
-                    % (fq_staging_name, col_name_string, fq_snap_name))
-
-
 def materialize_table(conn, mountpoint, schema_snap, table, destination):
     with conn.cursor() as cur:
         fq_dest = cur.mogrify('%s.%s' % (mountpoint, destination))
@@ -107,7 +78,7 @@ def materialize_table(conn, mountpoint, schema_snap, table, destination):
 
         # Apply the deltas sequentially to the checked out table
         for pack_object, object_format in reversed(to_apply):
-            _apply_pack_to_staging(conn, mountpoint, table, pack_object, object_format, destination)
+            apply_record_to_staging(conn, mountpoint, pack_object, destination)
 
 
 def checkout(conn, mountpoint, schema_snap, tables=[]):
@@ -151,56 +122,19 @@ def commit(conn, mountpoint, schema_snap=None, storage_format='SNAP'):
     # Add the new snap ID to the tree
     add_new_snap_id(conn, mountpoint, HEAD, schema_snap)
 
-    if storage_format == 'WAL':
+    # Store the diff instead of a full snapshot.
+    if storage_format == 'DIFF':
         wal_changes = consume_changes(conn, mountpoint)
         record_changes(conn, mountpoint, wal_changes, HEAD, schema_snap)
     else:
-        # todo refactor this horror
         with conn.cursor() as cur:
-            tracked_tables = get_tables_at(conn, mountpoint, HEAD)
             for table in get_all_tables(conn, mountpoint):
                 object_id = get_random_object_id()
-                # Store the diff instead of a full snapshot -- unless this is a new table, in which case
-                # we have to record it completely.
-                if storage_format == 'DIFF' and table in tracked_tables:
-                    # Calculate the diff between HEAD and staging
-                    # Column ordering?
-                    added, removed = diff(conn, mountpoint, table, HEAD, None)
-
-                    # If the table is unchanged, we can just point the new commit to the old table's diff.
-                    if not added and not removed:
-                        prev_object_id, prev_format = get_table(conn, mountpoint, table, HEAD)
-                        register_table_object(conn, mountpoint, table, schema_snap, prev_object_id, prev_format)
-                    else:
-                        # Needs to be optimised later -- compute the diff in-db somehow.
-                        # Maybe have 2 tables -- added and removed? Then applying the diff is easier
-                        # (insert ... select, delete ... using)
-                        added = [tuple(list(a) + [True]) for a in added]
-                        removed = [tuple(list(r) + [False]) for r in removed]
-                        table_name = cur.mogrify("%s.%s" % (mountpoint, object_id))
-                        # Create the delta table: copy the schema from the staging area
-                        # (is there a better way than this)
-                        cur.execute("""CREATE TABLE %s AS SELECT * FROM %s WHERE 0=1 WITH NO DATA""" %
-                                    (table_name, cur.mogrify('%s.%s' % (mountpoint, table))))
-                        cur.execute("""ALTER TABLE %s ADD COLUMN sg_meta_ar_flag BOOLEAN NOT NULL DEFAULT TRUE""" % table_name)
-
-                        column_names = _get_column_names(conn, mountpoint, table)
-
-                        # Construct a psycopg statement to insert a row into the diff table
-                        query = """INSERT INTO %s VALUES """ % table_name
-                        query += "(" + ','.join(['%s'] * (len(column_names) + 1)) + ")"
-
-                        # Store the diff in the pack table.
-                        execute_batch(cur, query, added + removed, page_size=100)
-
-                        # Register the table object ID
-                        register_table_object(conn, mountpoint, table, schema_snap, object_id, object_format='DIFF')
-                else:
-                    # If not storing as a delta, just copy the table into the snapshot table.
-                    cur.execute("""CREATE TABLE %s AS SELECT * FROM %s""" %
-                                (cur.mogrify('%s.%s' % (mountpoint, object_id)),
-                                 cur.mogrify('%s.%s' % (mountpoint, table))))
-                    register_table_object(conn, mountpoint, table, schema_snap, object_id, object_format='SNAP')
+                # If not storing as a delta, just copy the table into the snapshot table.
+                cur.execute("""CREATE TABLE %s AS SELECT * FROM %s""" %
+                            (cur.mogrify('%s.%s' % (mountpoint, object_id)),
+                             cur.mogrify('%s.%s' % (mountpoint, table))))
+                register_table_object(conn, mountpoint, table, schema_snap, object_id, object_format='SNAP')
 
     stop_replication(conn, mountpoint)
     set_head(conn, mountpoint, schema_snap)

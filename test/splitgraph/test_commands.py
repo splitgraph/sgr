@@ -91,7 +91,7 @@ def test_diff_head(sg_pg_conn):
     assert removed == [(1, 'apple')]
 
 
-COMMIT_FORMATS = ['SNAP', 'DIFF', 'WAL']
+COMMIT_FORMATS = ['SNAP', 'DIFF']
 
 
 @pytest.mark.parametrize("commit_format", COMMIT_FORMATS)
