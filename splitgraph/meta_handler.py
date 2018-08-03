@@ -34,7 +34,7 @@ def _create_metadata_schema(conn):
                         table_name VARCHAR NOT NULL,
                         object_id  VARCHAR NOT NULL,
                         format     VARCHAR NOT NULL,
-                        PRIMARY KEY (mountpoint, snap_id, table_name),
+                        PRIMARY KEY (mountpoint, snap_id, table_name, format),
                         CONSTRAINT tb_fk FOREIGN KEY (mountpoint, snap_id) REFERENCES %s.%s)"""
                     % (SPLITGRAPH_META_SCHEMA, "tables", SPLITGRAPH_META_SCHEMA, "snap_tree"))
 
@@ -82,13 +82,23 @@ def get_tables_at(conn, mountpoint, snap_id):
         return [t[0] for t in cur.fetchall()]
 
 
+def get_table_with_format(conn, mountpoint, table_name, snap_id, object_format):
+    # Returns the object ID of a table at a given time, with a given format.
+    with conn.cursor() as cur:
+        cur.execute("""SELECT object_id from %s.tables 
+                       WHERE mountpoint = %%s AND snap_id = %%s AND table_name = %%s AND format = %%s"""
+                    % SPLITGRAPH_META_SCHEMA, (mountpoint, snap_id, table_name, object_format))
+        result = cur.fetchone()
+        return None if result is None else result[0]
+
+
 def get_table(conn, mountpoint, table_name, snap_id):
-    # Returns (object_id, object_format) from the table meta
+    # Returns a list of available[(object_id, object_format)] from the table meta
     with conn.cursor() as cur:
         cur.execute("""SELECT object_id, format from %s.tables 
                        WHERE mountpoint = %%s AND snap_id = %%s AND table_name = %%s"""
                     % SPLITGRAPH_META_SCHEMA, (mountpoint, snap_id, table_name))
-        return cur.fetchone()
+        return cur.fetchall()
 
 
 def register_table_object(conn, mountpoint, table, snap_id, object_id, object_format):
@@ -96,6 +106,13 @@ def register_table_object(conn, mountpoint, table, snap_id, object_id, object_fo
         query = """INSERT INTO %s.tables (mountpoint, snap_id, table_name, object_id, format)""" % SPLITGRAPH_META_SCHEMA
         query += """ VALUES (%s, %s, %s, %s, %s)"""
         cur.execute(query, (mountpoint, snap_id, table, object_id, object_format))
+
+
+def deregister_table_object(conn, mountpoint, object_id):
+    with conn.cursor() as cur:
+        query = """DELETE FROM %s.tables WHERE """ % SPLITGRAPH_META_SCHEMA
+        query += """ object_id = %s"""
+        cur.execute(query, (object_id,))
 
 
 def get_all_foreign_tables(conn, mountpoint):
@@ -160,7 +177,8 @@ def register_mountpoint(conn, mountpoint, snap_id, tables, table_object_ids):
         cur.execute("""INSERT INTO %s.%s (mountpoint, snap_id) VALUES (%%s, %%s)"""
                     % (SPLITGRAPH_META_SCHEMA, "snap_head"), (mountpoint, snap_id))
         for t, ti in zip(tables, table_object_ids):
-            # Register the tables and the object IDs they were stored under
+            # Register the tables and the object IDs they were stored under.
+            # They're obviously stored as snaps since there's nothing to diff to...
             cur.execute("""INSERT INTO %s.%s (mountpoint, snap_id, table_name, object_id, format)
                            VALUES (%%s, %%s, %%s, %%s, 'SNAP')"""
                         % (SPLITGRAPH_META_SCHEMA, "tables"), (mountpoint, snap_id, t, ti))

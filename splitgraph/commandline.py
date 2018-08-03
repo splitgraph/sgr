@@ -166,18 +166,14 @@ def checkout_c(mountpoint, snapshot):
 @click.command(name='commit')
 @click.argument('mountpoint')
 @click.option('-h', '--commit-hash')
-@click.option('-d', '--store-as-diff', default=False, is_flag=True)
-def commit_c(mountpoint, commit_hash, store_as_diff):
+@click.option('-s', '--include-snap', default=False, is_flag=True)
+def commit_c(mountpoint, commit_hash, include_snap):
     conn = _conn()
     if commit_hash and (len(commit_hash) != 64 or any([x not in 'abcdef0123456789' for x in set(commit_hash)])):
         print "Commit hash must be of the form [a-f0-9] x 64!"
         return
-    if store_as_diff:
-        commit_mode = 'DIFF'
-    else:
-        commit_mode = 'SNAP'
 
-    commit(conn, mountpoint, commit_hash, commit_mode)
+    commit(conn, mountpoint, commit_hash, include_snap=include_snap)
     conn.commit()
 
 

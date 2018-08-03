@@ -8,7 +8,7 @@ from splitgraph.constants import SPLITGRAPH_META_SCHEMA, SplitGraphException, _l
 from splitgraph.meta_handler import get_tables_at, get_all_foreign_tables, get_current_head, add_new_snap_id, \
     set_head, register_mountpoint, unregister_mountpoint, get_snap_parent, get_canonical_snap_id, \
     get_table, get_all_tables, register_table_object, get_all_snap_parents, register_objects, \
-    get_existing_objects, ensure_metadata_schema
+    get_existing_objects, ensure_metadata_schema, get_table_with_format, deregister_table_object
 # Commands to import a foreign schema locally, with version control.
 # Tables that are created in the local schema:
 # <table>_origin      -- an FDW table that is directly connected to the origin table
@@ -51,14 +51,14 @@ def materialize_table(conn, mountpoint, schema_snap, table, destination):
         snap_found = False
         while parent_snap is not None:
 
-            # Is the parent pointing to a materialized snapshot or a delta?
-            object_id, object_format = get_table(conn, mountpoint, table, parent_snap)
-
-            if object_format == 'SNAP':
+            # Do we have a snapshot of this image?
+            object_id = get_table_with_format(conn, mountpoint, table, parent_snap, 'SNAP')
+            if object_id is not None:
                 snap_found = True
                 break
             else:
-                to_apply.append((object_id, object_format))
+                # Otherwise, have to reconstruct it manually.
+                to_apply.append(get_table_with_format(conn, mountpoint, table, parent_snap, 'DIFF'))
             parent_snap = get_snap_parent(conn, mountpoint, parent_snap)
         if not snap_found:
             # We didn't find an actual snapshot for this table -- either it doesn't exist in this
@@ -74,7 +74,7 @@ def materialize_table(conn, mountpoint, schema_snap, table, destination):
         cur.execute("""ALTER TABLE %s REPLICA IDENTITY FULL""" % fq_dest)
 
         # Apply the deltas sequentially to the checked out table
-        for pack_object, object_format in reversed(to_apply):
+        for pack_object in reversed(to_apply):
             apply_record_to_staging(conn, mountpoint, pack_object, destination)
 
 
@@ -106,7 +106,7 @@ def checkout(conn, mountpoint, schema_snap, tables=[]):
     _log("Checked out %s:%s." % (mountpoint, schema_snap[:12]))
 
 
-def commit(conn, mountpoint, schema_snap=None, storage_format='SNAP'):
+def commit(conn, mountpoint, schema_snap=None, include_snap=False):
     ensure_metadata_schema(conn)
     # required here so that the logical replication sees changes made before the commit in this tx
     conn.commit()
@@ -121,20 +121,7 @@ def commit(conn, mountpoint, schema_snap=None, storage_format='SNAP'):
     # Add the new snap ID to the tree
     add_new_snap_id(conn, mountpoint, HEAD, schema_snap)
 
-    # Store the diff instead of a full snapshot.
-    if storage_format == 'DIFF':
-        commit_pending_changes(conn, mountpoint, HEAD, schema_snap)
-    else:
-        # If we are storing a snapshot, clean the pending changes table and copy the whole table over.
-        discard_pending_changes(conn, mountpoint)
-        with conn.cursor() as cur:
-            for table in get_all_tables(conn, mountpoint):
-                object_id = get_random_object_id()
-                # If not storing as a delta, just copy the table into the snapshot table.
-                cur.execute("""CREATE TABLE %s AS SELECT * FROM %s""" %
-                            (cur.mogrify('%s.%s' % (mountpoint, object_id)),
-                             cur.mogrify('%s.%s' % (mountpoint, table))))
-                register_table_object(conn, mountpoint, table, schema_snap, object_id, object_format='SNAP')
+    commit_pending_changes(conn, mountpoint, HEAD, schema_snap, include_snap=include_snap)
 
     stop_replication(conn)
     set_head(conn, mountpoint, schema_snap)
@@ -283,14 +270,16 @@ def materialized_table(conn, mountpoint, table_name, snap):
     if snap is not None:
         with conn.cursor() as cur:
             # See if the table snapshot already exists, otherwise reconstruct it
-            object_id, object_format = get_table(conn, mountpoint, table_name, snap)
-            if object_format != 'SNAP':
-                tmp_id = get_random_object_id()
-                tmp_table = table_name + '_' + tmp_id
-                materialize_table(conn, mountpoint, snap, table_name, tmp_table)
-                yield tmp_table
+            object_id = get_table_with_format(conn, mountpoint, table_name, snap, 'SNAP')
+            if object_id is None:
+                # Materialize the SNAP into a new object
+                new_id = get_random_object_id()
+                materialize_table(conn, mountpoint, snap, table_name, new_id)
+                register_table_object(conn, mountpoint, table_name, snap, new_id, 'SNAP')
+                yield new_id
                 # Maybe some cache management/expiry strategies here
-                cur.execute("""DROP TABLE IF EXISTS %s""" % cur.mogrify('%s.%s' % (mountpoint, tmp_table)))
+                cur.execute("""DROP TABLE IF EXISTS %s""" % cur.mogrify('%s.%s' % (mountpoint, object_id)))
+                deregister_table_object(conn, mountpoint, object_id)
             else:
                 yield object_id
     else:
@@ -300,7 +289,7 @@ def materialized_table(conn, mountpoint, table_name, snap):
 
 def diff(conn, mountpoint, table_name, snap_1, snap_2):
     # Oh boy here we go
-    # Returns a tuple of (added: list, removed: list) if the table exists in both snapshots.
+    # Returns a tuple of (added: list, removed: list, updated: list) if the table exists in both snapshots.
     # Otherwise, returns True if the table was added and False if it was removed.
 
     with conn.cursor() as cur:
@@ -316,14 +305,20 @@ def diff(conn, mountpoint, table_name, snap_1, snap_2):
             if not _table_exists(conn, mountpoint, table_name):
                 return True
         else:
-            if get_table(conn, mountpoint, table_name, snap_1) is None:
+            if not get_table(conn, mountpoint, table_name, snap_1):
                 return True
         if snap_2 is None:
             if not _table_exists(conn, mountpoint, table_name):
                 return False
         else:
-            if get_table(conn, mountpoint, table_name, snap_2) is None:
+            if not get_table(conn, mountpoint, table_name, snap_2):
                 return False
+
+        # TODO diff merging: If HEAD -> staging, then return the current pending changes.
+        # Otherwise, check if on the same path with a line of diffs.
+        # If so, merge the two diffs.
+        # How do we merge diffs? Just concatenate them? We can read changes to a table, maybe it's
+        # worth starting from that.
 
         with materialized_table(conn, mountpoint, table_name, snap_1) as table_1:
             with materialized_table(conn, mountpoint, table_name, snap_2) as table_2:

@@ -69,11 +69,11 @@ sg file test/resources/sample.sgfile
 sg log -t output
 sg sql "select * from output.fruits"
 
-echo We can also store commits as deltas instead of full snapshots, but table schema changes aren\'t supported yet
-echo Deltas are stored with the same schema as the snapshots + a bool flag for row added/removed.
+echo Also store a full snapshot together with the diff.
+echo Note schema changes aren''t supported yet.
 sg sql "insert into output.fruits values (4, 'yeast')"
 sg sql "delete from output.fruits where name = 'mayonnaise'"
-sg commit -d -h ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff output
+sg commit -s -h ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff output
 sg diff output ffffff -v
 
 # output_pull hasn't changed yet, obviously

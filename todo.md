@@ -2,8 +2,6 @@
 
   * Commits: add times and tags + (maybe) messages
   * Err on checkout if there are pending changes?
-  * Disallow storing non-base images (with parents) as only snaps (OK if snap is an extra to speed up checkouts). Maybe
-    snap_tree should be called img_tree.
   * Diff: combine WAL diffs if on the same path, dump pending changes if HEAD -> staging
   * Somehow (?) record sgfiles in the snap_tree as well (multiple ways to materialize a given image)
   * Indirection on object location on push/pull:

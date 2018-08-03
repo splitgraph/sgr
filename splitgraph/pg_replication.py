@@ -2,7 +2,7 @@ import json
 
 from psycopg2.extras import execute_batch
 
-from splitgraph.meta_handler import get_current_mountpoints_hashes
+from splitgraph.meta_handler import get_current_mountpoints_hashes, get_table_with_format
 
 from splitgraph.constants import get_random_object_id, SPLITGRAPH_META_SCHEMA
 
@@ -86,7 +86,13 @@ def has_pending_changes(conn, mountpoint):
         return cur.fetchone() is not None
 
 
-def commit_pending_changes(conn, mountpoint, HEAD, new_image):
+def dump_pending_changes(conn, mountpoint, table):
+    with conn.cursor() as cur:
+        cur.execute("""SELECT kind, change FROM %s.%s WHERE mountpoint = %%s AND table_name == %%s"""
+                    % (SPLITGRAPH_META_SCHEMA, "pending_changes"), (mountpoint, table))
+
+
+def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False):
     all_tables = get_all_tables(conn, mountpoint)
     with conn.cursor() as cur:
         cur.execute("""SELECT DISTINCT(table_name) FROM %s.%s
@@ -94,29 +100,36 @@ def commit_pending_changes(conn, mountpoint, HEAD, new_image):
         changed_tables = [c[0] for c in cur.fetchall()]
         for table in all_tables:
             table_info = get_table(conn, mountpoint, table, HEAD)
-            # If table created, store it as a snap
-            if table_info is None:
+            # Table already exists at the current HEAD
+            if table_info:
                 with conn.cursor() as cur:
-                    object_id = get_random_object_id()
-                    cur.execute("""CREATE TABLE %s AS SELECT * FROM %s""" %
-                                (cur.mogrify('%s.%s' % (mountpoint, object_id)),
-                                 cur.mogrify('%s.%s' % (mountpoint, table))))
-                    register_table_object(conn, mountpoint, table, new_image, object_id, object_format='SNAP')
-            else:
-                if table in changed_tables:
-                    object_id = get_random_object_id()
-                    fq_table = cur.mogrify('%s.%s' % (mountpoint, object_id))
-                    # Move changes from the pending table to the actual object ID
-                    cur.execute("""CREATE TABLE %s AS 
-                                   WITH to_commit AS (DELETE FROM %s.%s WHERE mountpoint = %%s AND table_name = %%s
-                                                      RETURNING kind, change)
-                                   SELECT * FROM to_commit""" % (fq_table, SPLITGRAPH_META_SCHEMA, "pending_changes"),
-                                (mountpoint, table))
-                    register_table_object(conn, mountpoint, table, new_image, object_id, object_format='DIFF')
-                else:
-                    # If the table wasn't changed, point the commit to the old table object
-                    prev_object_id, prev_format = table_info
-                    register_table_object(conn, mountpoint, table, new_image, prev_object_id, prev_format)
+                    if table in changed_tables:
+                        object_id = get_random_object_id()
+                        fq_table = cur.mogrify('%s.%s' % (mountpoint, object_id))
+                        # Move changes from the pending table to the actual object ID
+                        cur.execute("""CREATE TABLE %s AS 
+                                       WITH to_commit AS (DELETE FROM %s.%s WHERE mountpoint = %%s AND table_name = %%s
+                                                          RETURNING kind, change)
+                                       SELECT * FROM to_commit""" % (fq_table, SPLITGRAPH_META_SCHEMA, "pending_changes"),
+                                    (mountpoint, table))
+                        register_table_object(conn, mountpoint, table, new_image, object_id, object_format='DIFF')
+                    else:
+                        # If the table wasn't changed, point the commit to the old table objects (including
+                        # any of snaps or diffs).
+                        # This feels slightly weird: are we denormalized here?
+                        for prev_object_id, prev_format in table_info:
+                            register_table_object(conn, mountpoint, table, new_image, prev_object_id, prev_format)
+
+            # If table created (or we want to store a snap anyway), copy the whole table over as well.
+            if not table_info or include_snap:
+                # Make sure we didn't actually create a snap for this table.
+                if get_table_with_format(conn, mountpoint, table, HEAD, 'SNAP') is None:
+                    with conn.cursor() as cur:
+                        object_id = get_random_object_id()
+                        cur.execute("""CREATE TABLE %s AS SELECT * FROM %s""" %
+                                    (cur.mogrify('%s.%s' % (mountpoint, object_id)),
+                                     cur.mogrify('%s.%s' % (mountpoint, table))))
+                        register_table_object(conn, mountpoint, table, new_image, object_id, object_format='SNAP')
 
 
 def apply_record_to_staging(conn, mountpoint, object_id, destination):
