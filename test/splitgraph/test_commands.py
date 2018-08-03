@@ -6,7 +6,7 @@ import pytest
 from splitgraph.commandline import _conn
 from splitgraph.commands import mount, unmount, diff, commit, get_log, checkout, _table_exists, pull, push
 from splitgraph.constants import PG_HOST, PG_PORT, PG_DB, PG_USER, PG_PWD
-from splitgraph.meta_handler import get_current_head, get_table, get_all_snap_parents
+from splitgraph.meta_handler import get_current_head, get_table, get_all_snap_parents, get_snap_parent
 from splitgraph.pg_replication import has_pending_changes
 
 PG_MNT = 'test_pg_mount'
@@ -189,6 +189,23 @@ def test_multiple_mountpoint_commit_diff(include_snap, sg_pg_mg_conn):
         assert cur.fetchall() == [(Decimal(15),)]
     assert has_pending_changes(sg_pg_mg_conn, MG_MNT) is False
     assert has_pending_changes(sg_pg_mg_conn, PG_MNT) is False
+
+
+def test_delete_all_diff(sg_pg_conn):
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""DELETE FROM test_pg_mount.fruits""")
+    sg_pg_conn.commit()
+    assert has_pending_changes(sg_pg_conn, PG_MNT) is True
+    expected_diff = [(1,
+    '{"oldkeys": {"keytypes": ["integer", "character varying"], "keyvalues": [1, "apple"], "keynames": ["fruit_id", "name"]}}'),
+    (1,
+    '{"oldkeys": {"keytypes": ["integer", "character varying"], "keyvalues": [2, "orange"], "keynames": ["fruit_id", "name"]}}')]
+    assert diff(sg_pg_conn, PG_MNT, 'fruits', get_current_head(sg_pg_conn, PG_MNT), None) == expected_diff
+    new_head = commit(sg_pg_conn, PG_MNT)
+    assert has_pending_changes(sg_pg_conn, PG_MNT) is False
+    assert diff(sg_pg_conn, PG_MNT, 'fruits', new_head, None) == []
+    assert diff(sg_pg_conn, PG_MNT, 'fruits', get_snap_parent(sg_pg_conn, PG_MNT, new_head), new_head) == expected_diff
+
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
