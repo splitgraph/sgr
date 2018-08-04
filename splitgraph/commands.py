@@ -72,6 +72,7 @@ def materialize_table(conn, mountpoint, schema_snap, table, destination):
 
         # Apply the deltas sequentially to the checked out table
         for pack_object in reversed(to_apply):
+            _log("Applying %s..." % pack_object)
             apply_record_to_staging(conn, mountpoint, pack_object, destination)
 
 
