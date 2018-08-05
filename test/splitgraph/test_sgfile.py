@@ -1,6 +1,6 @@
 import os
 
-from splitgraph.commands import get_log, checkout, _table_exists, commit
+from splitgraph.commands import get_log, checkout, pg_table_exists, commit
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler import get_current_head, get_snap_parent
 from splitgraph.sgfile import parse_commands, execute_commands
@@ -63,7 +63,7 @@ def test_advanced_sgfile(sg_pg_mg_conn):
         assert cur.fetchall() == [(2, 'orange')]
     # Before that: empty mountpoint (hash 000...)
     checkout(sg_pg_mg_conn, 'output', log[2])
-    assert not _table_exists(sg_pg_mg_conn, 'output', 'fruits')
+    assert not pg_table_exists(sg_pg_mg_conn, 'output', 'fruits')
 
 
 def test_sgfile_cached(sg_pg_mg_conn):

@@ -8,7 +8,7 @@ import psycopg2
 from psycopg2 import ProgrammingError
 
 from splitgraph.commands import mount, unmount, checkout, commit, get_current_head, \
-    get_log, get_parent_children, diff, init, pull, push
+    get_log, get_parent_children, diff, init, pull, push, clone
 from splitgraph.constants import POSTGRES_CONNECTION, SplitGraphException
 from splitgraph.drawing import render_tree
 from splitgraph.meta_handler import get_snap_parent, get_canonical_snap_id, get_all_tables, \
@@ -219,12 +219,23 @@ def init_c(mountpoint):
 
 
 @click.command(name='pull')
+@click.argument('mountpoint')
+@click.argument('remote', default='origin')
+@click.option('-d', '--download-all', help='Download all objects immediately instead on checkout.')
+def pull_c(mountpoint, remote, download_all):
+    conn = _conn()
+    pull(conn, mountpoint, remote, download_all)
+    conn.commit()
+
+
+@click.command(name='clone')
 @click.argument('remote') # username:password@server:port/dbname
 @click.argument('remote_mountpoint')
 @click.argument('local_mountpoint')
-def pull_c(remote, remote_mountpoint, local_mountpoint):
+@click.option('-d', '--download-all', help='Download all objects immediately instead on checkout.')
+def clone_c(remote, remote_mountpoint, local_mountpoint, download_all):
     conn = _conn()
-    pull(conn, remote, remote_mountpoint, local_mountpoint)
+    clone(conn, remote, remote_mountpoint, local_mountpoint, download_all)
     conn.commit()
 
 
@@ -277,6 +288,7 @@ cli.add_command(commit_c)
 cli.add_command(file_c)
 cli.add_command(sql_c)
 cli.add_command(init_c)
+cli.add_command(clone_c)
 cli.add_command(pull_c)
 cli.add_command(push_c)
 cli.add_command(tag_c)

@@ -40,6 +40,30 @@ def _create_metadata_schema(conn):
                         CONSTRAINT tb_fk FOREIGN KEY (mountpoint, snap_id) REFERENCES %s.%s)"""
                     % (SPLITGRAPH_META_SCHEMA, "tables", SPLITGRAPH_META_SCHEMA, "snap_tree"))
 
+        # Keep track of what the remotes for a given mountpoint are (by default, we create an "origin" remote
+        # on initial pull)
+        cur.execute("""CREATE TABLE %s.%s (
+                        mountpoint         VARCHAR NOT NULL,
+                        remote_name        VARCHAR NOT NULL,
+                        remote_conn_string VARCHAR NOT NULL,
+                        remote_mountpoint  VARCHAR NOT NULL,
+                        PRIMARY KEY (mountpoint, remote_name))"""
+                    % (SPLITGRAPH_META_SCHEMA, "remotes"))
+
+        # another table:
+        # Maps objects to their actual remote locations used on materialization (checkout)
+        # an object can be in the local schema or also somewhere else (like on the remote or S3)
+        # object id, location, protocol where protocol is SQL/HTTP? location is LOCAL/(remote name)
+        # but then if we already have it, do we add an extra entry?
+        # but then local, HTTP doesn't make sense
+        # eg OID, LOCAL, SQL
+        #
+        # maybe just check LOCAL by querying the information schema, then don't have to maintain it
+        # so lookup path: check locally, if not, copy over (?) using remote locations
+
+        # _the_ dumbest thing: add object location to tables table (then it's duplicated)
+        # parse the location (eg http/remote) if can't find the object locally.
+
 
 def _create_pending_changes(conn):
     # We consume changes from the WAL for the tables that interest us into this schema so that
@@ -206,7 +230,7 @@ def register_mountpoint(conn, mountpoint, snap_id, tables, table_object_ids):
 
 def unregister_mountpoint(conn, mountpoint):
     with conn.cursor() as cur:
-        for meta_table in ["tables", "snap_tags", "snap_tree"]:
+        for meta_table in ["tables", "snap_tags", "snap_tree", "remotes"]:
             cur.execute("""DELETE FROM %s.%s WHERE mountpoint = %%s"""
                         % (SPLITGRAPH_META_SCHEMA, meta_table), (mountpoint,))
 
@@ -255,7 +279,19 @@ def get_existing_objects(conn, mountpoint):
     with conn.cursor() as cur:
         cur.execute("""SELECT object_id from %s.tables WHERE mountpoint = %%s"""
                     % SPLITGRAPH_META_SCHEMA, (mountpoint,))
-        return [c[0] for c in cur.fetchall()]
+        return set(c[0] for c in cur.fetchall())
+
+
+def get_downloaded_objects(conn, mountpoint):
+    # Minor normalization sadness here: this can return duplicate object IDs since
+    # we might repeat them if different versions of the same table point to the same object ID.
+    with conn.cursor() as cur:
+        cur.execute("""SELECT information_schema.tables.table_name FROM information_schema.tables JOIN %s.tables 
+                        ON information_schema.tables.table_name = %s.tables.object_id
+                        AND information_schema.tables.table_schema = mountpoint
+                        WHERE mountpoint = %%s"""
+                    % (SPLITGRAPH_META_SCHEMA, SPLITGRAPH_META_SCHEMA), (mountpoint,))
+        return set(c[0] for c in cur.fetchall())
 
 
 def get_current_mountpoints_hashes(conn):
@@ -263,3 +299,18 @@ def get_current_mountpoints_hashes(conn):
     with conn.cursor() as cur:
         cur.execute("""SELECT mountpoint, snap_id FROM %s.snap_tags WHERE tag = 'HEAD'""" % SPLITGRAPH_META_SCHEMA)
         return cur.fetchall()
+
+
+def get_remote_for(conn, mountpoint, remote_name='origin'):
+    with conn.cursor() as cur:
+        cur.execute("""SELECT remote_conn_string, remote_mountpoint FROM %s.remotes
+                        WHERE mountpoint = %%s AND remote_name = %%s"""
+                    % SPLITGRAPH_META_SCHEMA, (mountpoint, remote_name))
+        return cur.fetchone()
+
+
+def add_remote(conn, mountpoint, remote_conn, remote_mountpoint, remote_name='origin'):
+    with conn.cursor() as cur:
+        cur.execute("""INSERT INTO %s.remotes (mountpoint, remote_name, remote_conn_string, remote_mountpoint)
+                        VALUES (%%s, %%s, %%s, %%s)"""
+                    % SPLITGRAPH_META_SCHEMA, (mountpoint, remote_name, remote_conn, remote_mountpoint))

@@ -11,13 +11,10 @@
       + the original source images.
   * Record schema changes in the DIFF table
   * Figure out a better diff format for both the actual table and displaying it from sg diff
-  * Indirection on object location on push/pull:
-    * ability to have an object URL/protocol when pulling from remote
-    * when we pull the catalog from remote, we don't actually fetch the objects: we only lazily do it on
-      checkout. Maybe have an extra table mapping object IDs to their actual locations (and maybe
-      then we can put the object formats there, too).
-    * push: only push diffs/sgfiles to remote. Allow uploading actual objects to a different location and pushing
-      that to the remote instead (EC2 python client + envvars with AWS id/key)
+  * Indirection on object location on push:
+      * push: only push diff meta/sgfiles to remote. Allow uploading actual objects to a different location and pushing
+          that to the remote instead (EC2 python client + envvars with AWS id/key)
+  * Pull: On checkout, allow downloading from different locations other than the origin.
   * Stretch goal: gathering object locations and metadata on pull to see which materialization strategy (copy an image,
     apply some sgfiles or some diffs) is better based on our known remotes.
   * Add logging instead of print statements?

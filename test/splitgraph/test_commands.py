@@ -4,9 +4,10 @@ from decimal import Decimal
 import pytest
 
 from splitgraph.commandline import _conn
-from splitgraph.commands import mount, unmount, diff, commit, get_log, checkout, _table_exists, pull, push
+from splitgraph.commands import mount, unmount, diff, commit, get_log, checkout, pg_table_exists, pull, push, clone
 from splitgraph.constants import PG_HOST, PG_PORT, PG_DB, PG_USER, PG_PWD
-from splitgraph.meta_handler import get_current_head, get_table, get_all_snap_parents, get_snap_parent
+from splitgraph.meta_handler import get_current_head, get_table, get_all_snap_parents, get_snap_parent, \
+    get_downloaded_objects, get_existing_objects
 from splitgraph.pg_replication import has_pending_changes
 
 PG_MNT = 'test_pg_mount'
@@ -35,9 +36,11 @@ def sg_pg_conn():
     # SG connection with a mounted Postgres db
     conn = _conn()
     unmount(conn, PG_MNT)
+    unmount(conn, PG_MNT + '_pull')
     _mount_postgres(conn, PG_MNT)
     yield conn
     unmount(conn, PG_MNT)
+    unmount(conn, PG_MNT + '_pull')
 
 
 @pytest.fixture
@@ -278,17 +281,17 @@ def test_table_changes(include_snap, sg_pg_conn):
     head_1 = commit(sg_pg_conn, PG_MNT, include_snap=include_snap)
     # Checkout the old head and make sure the table doesn't exist in it
     checkout(sg_pg_conn, PG_MNT, head)
-    assert not _table_exists(sg_pg_conn, PG_MNT, 'fruits_copy')
+    assert not pg_table_exists(sg_pg_conn, PG_MNT, 'fruits_copy')
 
     # Make sure the table is reflected in the diff even if we're on a different commit
     assert diff(sg_pg_conn, PG_MNT, 'fruits_copy', snap_1=head, snap_2=head_1) is True
 
     # Go back and now delete a table
     checkout(sg_pg_conn, PG_MNT, head_1)
-    assert _table_exists(sg_pg_conn, PG_MNT, 'fruits_copy')
+    assert pg_table_exists(sg_pg_conn, PG_MNT, 'fruits_copy')
     with sg_pg_conn.cursor() as cur:
         cur.execute("""DROP TABLE test_pg_mount.fruits""")
-    assert not _table_exists(sg_pg_conn, PG_MNT, 'fruits')
+    assert not pg_table_exists(sg_pg_conn, PG_MNT, 'fruits')
 
     # Make sure the diff shows it's been removed and commit it
     assert diff(sg_pg_conn, PG_MNT, 'fruits', snap_1=head_1, snap_2=None) is False
@@ -296,11 +299,11 @@ def test_table_changes(include_snap, sg_pg_conn):
 
     # Go through the 3 commits and ensure the table existence is maintained
     checkout(sg_pg_conn, PG_MNT, head)
-    assert _table_exists(sg_pg_conn, PG_MNT, 'fruits')
+    assert pg_table_exists(sg_pg_conn, PG_MNT, 'fruits')
     checkout(sg_pg_conn, PG_MNT, head_1)
-    assert _table_exists(sg_pg_conn, PG_MNT, 'fruits')
+    assert pg_table_exists(sg_pg_conn, PG_MNT, 'fruits')
     checkout(sg_pg_conn, PG_MNT, head_2)
-    assert not _table_exists(sg_pg_conn, PG_MNT, 'fruits')
+    assert not pg_table_exists(sg_pg_conn, PG_MNT, 'fruits')
 
 
 def test_empty_diff_reuses_object(sg_pg_conn):
@@ -316,11 +319,12 @@ def test_empty_diff_reuses_object(sg_pg_conn):
     assert table_meta_1[0][1] == 'SNAP'
 
 
-def test_pull(sg_pg_conn):
+@pytest.mark.parametrize("download_all", [True, False])
+def test_pull(sg_pg_conn, download_all):
     # This is going to get awkward: we're going to pull a schema from ourselves since there's only one
     # pgcache for now.
-    pull(sg_pg_conn, '%s:%s@%s:%s/%s' % (PG_USER, PG_PWD, PG_HOST, PG_PORT, PG_DB),
-         PG_MNT, PG_MNT + '_pull')
+    clone(sg_pg_conn, '%s:%s@%s:%s/%s' % (PG_USER, PG_PWD, PG_HOST, PG_PORT, PG_DB),
+         PG_MNT, PG_MNT + '_pull', download_all=download_all)
     checkout(sg_pg_conn, PG_MNT + '_pull', get_current_head(sg_pg_conn, PG_MNT))
 
     # Do something to fruits
@@ -343,20 +347,59 @@ def test_pull(sg_pg_conn):
     # Since the pull procedure initializes a new connection, we have to commit our changes
     # in order to see them.
     sg_pg_conn.commit()
-    pull(sg_pg_conn, '%s:%s@%s:%s/%s' % (PG_USER, PG_PWD, PG_HOST, PG_PORT, PG_DB),
-         PG_MNT, PG_MNT + '_pull')
+    pull(sg_pg_conn, PG_MNT + '_pull', remote='origin')
 
     # Check out the newly-pulled commit and verify it has the same data.
     checkout(sg_pg_conn, PG_MNT + '_pull', head_1)
+
     with sg_pg_conn.cursor() as cur:
         cur.execute("""SELECT * FROM test_pg_mount_pull.fruits""")
         assert list(cur.fetchall()) == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]
     assert get_current_head(sg_pg_conn, PG_MNT + '_pull') == head_1
 
 
+def test_pulls_with_lazy_object_downloads(sg_pg_conn):
+    clone(sg_pg_conn, '%s:%s@%s:%s/%s' % (PG_USER, PG_PWD, PG_HOST, PG_PORT, PG_DB),
+         PG_MNT, PG_MNT + '_pull', download_all=False)
+    # Make sure we haven't downloaded anything until checkout
+    assert not get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull')
+
+    checkout(sg_pg_conn, PG_MNT + '_pull', get_current_head(sg_pg_conn, PG_MNT))
+    assert len(get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull')) == 2  # Original fruits and vegetables tables.
+    assert get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull') == get_existing_objects(sg_pg_conn, PG_MNT)
+
+    # In the meantime, make two branches off of origin (a total of 3 commits)
+    head = get_current_head(sg_pg_conn, PG_MNT)
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise')""")
+    left = commit(sg_pg_conn, PG_MNT)
+
+    checkout(sg_pg_conn, PG_MNT, head)
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (3, 'mustard')""")
+    right = commit(sg_pg_conn, PG_MNT)
+
+    # Pull from origin.
+    pull(sg_pg_conn, PG_MNT + '_pull', remote='origin', download_all=False)
+    # Make sure we have the pointers to the three versions of the fruits table + the original vegetables
+    assert len(get_existing_objects(sg_pg_conn, PG_MNT + '_pull')) == 4
+    assert get_existing_objects(sg_pg_conn, PG_MNT + '_pull') == get_existing_objects(sg_pg_conn, PG_MNT)
+    # Also make sure still only have the objects with the original fruits + vegetables tables
+    assert len(get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull')) == 2
+
+    # Check out left commit: since it only depends on the root, we should download just the new version of fruits.
+    checkout(sg_pg_conn, PG_MNT + '_pull', left)
+    assert len(get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull')) == 3 # now have 2 versions of fruits + 1 vegetables
+
+    checkout(sg_pg_conn, PG_MNT + '_pull', right)
+    assert len(get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull')) == 4
+    # Only now we actually have all the objects materialized.
+    assert get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull') == get_existing_objects(sg_pg_conn, PG_MNT)
+
+
 def test_push(sg_pg_conn):
-    # First, pull from ourselves again like in the previous test.
-    pull(sg_pg_conn, '%s:%s@%s:%s/%s' % (PG_USER, PG_PWD, PG_HOST, PG_PORT, PG_DB),
+    # First, clone from ourselves again like in the previous test.
+    clone(sg_pg_conn, '%s:%s@%s:%s/%s' % (PG_USER, PG_PWD, PG_HOST, PG_PORT, PG_DB),
          PG_MNT, PG_MNT + '_pull')
     checkout(sg_pg_conn, PG_MNT + '_pull', get_current_head(sg_pg_conn, PG_MNT))
 

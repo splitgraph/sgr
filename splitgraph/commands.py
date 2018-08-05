@@ -8,7 +8,8 @@ from splitgraph.constants import SPLITGRAPH_META_SCHEMA, SplitGraphException, _l
 from splitgraph.meta_handler import get_tables_at, get_all_foreign_tables, get_current_head, add_new_snap_id, \
     set_head, register_mountpoint, unregister_mountpoint, get_snap_parent, get_canonical_snap_id, \
     get_table, get_all_tables, register_table_object, get_all_snap_parents, register_objects, \
-    get_existing_objects, ensure_metadata_schema, get_table_with_format, deregister_table_object
+    get_existing_objects, ensure_metadata_schema, get_table_with_format, deregister_table_object, get_remote_for, \
+    add_remote, get_downloaded_objects
 # Commands to import a foreign schema locally, with version control.
 # Tables that are created in the local schema:
 # <table>_origin      -- an FDW table that is directly connected to the origin table
@@ -19,7 +20,7 @@ from splitgraph.pg_replication import apply_record_to_staging, stop_replication,
     record_pending_changes, commit_pending_changes, discard_pending_changes, dump_pending_changes
 
 
-def _table_exists(conn, mountpoint, table_name):
+def pg_table_exists(conn, mountpoint, table_name):
     # WTF: postgres quietly truncates all table names to 63 characters
     # at creation and in select statements
     with conn.cursor() as cur:
@@ -61,6 +62,13 @@ def materialize_table(conn, mountpoint, schema_snap, table, destination):
             # We didn't find an actual snapshot for this table -- either it doesn't exist in this
             # version or something went wrong. Skip the table.
             return
+
+        # Make sure all the objects have been downloaded from remote if it exists
+        remote_info = get_remote_for(conn, mountpoint)
+        if remote_info:
+            remote_conn, remote_mountpoint = remote_info
+            download_objects(conn, mountpoint, remote_conn, remote_mountpoint,
+                             objects_to_fetch=to_apply + [object_id])
 
         # Copy the given snap id over to "staging"
         cur.execute("""CREATE TABLE %s AS SELECT * FROM %s""" %
@@ -233,6 +241,7 @@ def mount(conn, server, port, username, password, mountpoint, mount_handler, ext
 
 
 def unmount(conn, mountpoint):
+    ensure_metadata_schema(conn)
     stop_replication(conn)
     with conn.cursor() as cur:
         cur.execute("""DROP SCHEMA IF EXISTS %s CASCADE""" % cur.mogrify(mountpoint))
@@ -287,7 +296,7 @@ def materialized_table(conn, mountpoint, table_name, snap):
 
 
 def _table_exists_at(conn, mountpoint, table_name, image):
-    return _table_exists(conn, mountpoint, table_name) if image is None \
+    return pg_table_exists(conn, mountpoint, table_name) if image is None \
         else bool(get_table(conn, mountpoint, table_name, image))
 
 
@@ -384,7 +393,16 @@ def _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_moun
     return snaps_to_fetch, object_meta
 
 
-def pull(conn, remote_conn, remote_mountpoint, local_mountpoint):
+def pull(conn, mountpoint, remote, download_all=False):
+    remote_info = get_remote_for(conn, mountpoint, remote)
+    if not remote_info:
+        raise SplitGraphException("No remote %s found for mountpoint %s!" % (remote, mountpoint))
+
+    remote_conn_string, remote_mountpoint = remote_info
+    clone(conn, remote_conn_string, remote_mountpoint, mountpoint, download_all)
+
+
+def clone(conn, remote_conn_string, remote_mountpoint, local_mountpoint, download_all=False):
     ensure_metadata_schema(conn)
     # Pulls a schema from the remote, including all of its history.
 
@@ -392,26 +410,49 @@ def pull(conn, remote_conn, remote_mountpoint, local_mountpoint):
         cur.execute("""CREATE SCHEMA IF NOT EXISTS %s""" % cur.mogrify(local_mountpoint))
 
     _log("Connecting to the remote driver...")
-    match = re.match('(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn)
+    match = re.match('(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
     remote_conn = _make_conn(server=match.group(3), port=int(match.group(4)), username=match.group(1),
                              password=match.group(2), dbname=match.group(5))
 
     # Get the remote log and the list of objects we need to fetch.
     _log("Gathering remote metadata...")
 
+    # This also registers the new versions locally.
     snaps_to_fetch, object_meta = _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_mountpoint)
 
     if not snaps_to_fetch:
         _log("Nothing to do.")
         return
 
-    # We might already have some objects prefetched (e.g. if a new version of the table is the same as the old version)
-    _log("Fetching remote objects...")
-    existing_objects = get_existing_objects(conn, local_mountpoint)
-    objects_to_fetch = list(set(o[2] for o in object_meta if o[2] not in existing_objects))
+    # Don't actually download any real objects until the user tries to check out a revision.
+    if download_all:
+        # Check which new objects we need to fetch/preregister.
+        # We might already have some objects prefetched
+        # (e.g. if a new version of the table is the same as the old version)
+        _log("Fetching remote objects...")
+        download_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoint,
+                         objects_to_fetch=list(set(o[2] for o in object_meta)))
+
+    # Map the tables to the actual objects no matter whether or not we're downloading them.
+    register_objects(conn, local_mountpoint, object_meta)
+
+    # Don't check anything out, keep the repo bare.
+    set_head(conn, local_mountpoint, None)
+
+    if get_remote_for(conn, local_mountpoint) is None:
+        add_remote(conn, local_mountpoint, remote_conn_string, remote_mountpoint)
+
+
+def download_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoint, objects_to_fetch):
+    # Fetches the required objects from the remote and stores them locally. Does nothing for objects that already exist.
+    existing_objects = get_downloaded_objects(conn, local_mountpoint)
+    objects_to_fetch = set(o for o in objects_to_fetch if o not in existing_objects)
+    if not objects_to_fetch:
+        return
 
     # Instead of connecting and pushing queries to it from the Python client, we just mount the remote mountpoint
     # into a temporary space (without any checking out) and SELECT the required data into our local tables.
+    match = re.match('(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
     remote_data_mountpoint = 'tmp_remote_data'
     unmount(conn, remote_data_mountpoint)  # Maybe worth making sure we're not stepping on anyone else
     mount_postgres(conn, server=match.group(3), port=int(match.group(4)),
@@ -425,12 +466,6 @@ def pull(conn, remote_conn, remote_mountpoint, local_mountpoint):
                 cur.mogrify('%s.%s' % (local_mountpoint, obj)),
                 cur.mogrify('%s.%s' % (remote_data_mountpoint, obj))))
     unmount(conn, remote_data_mountpoint)
-
-    # Do some extra bookkeeping: register the objects.
-    register_objects(conn, local_mountpoint, object_meta)
-
-    # Don't check anything out, keep the repo bare.
-    set_head(conn, local_mountpoint, None)
 
 
 def push(conn, remote_conn, remote_mountpoint, local_mountpoint):

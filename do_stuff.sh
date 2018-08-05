@@ -55,8 +55,8 @@ sg log output
 echo A tree view seems to be supported, too
 sg log -t output
 
-echo We can pull as well: let\'s pull changes from ourselves
-sg pull clientuser:supersecure@localhost:5432/cachedb output output_pull
+echo We can clone/pull as well: let\'s pull changes from ourselves
+sg clone clientuser:supersecure@localhost:5432/cachedb output output_pull
 sg log -t output_pull
 
 echo Executing the sgfile checks out the final commit on output, but it\'s based on the 00000000 hash, so executing it again will reuse the cache completely.
@@ -78,6 +78,6 @@ sg diff output ffffff -v
 
 # output_pull hasn't changed yet, obviously
 sg log -t output_pull
-sg pull clientuser:supersecure@localhost:5432/cachedb output output_pull
+sg pull output_pull
 sg log -t output_pull
 
