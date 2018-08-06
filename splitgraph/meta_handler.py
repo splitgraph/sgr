@@ -50,19 +50,10 @@ def _create_metadata_schema(conn):
                         PRIMARY KEY (mountpoint, remote_name))"""
                     % (SPLITGRAPH_META_SCHEMA, "remotes"))
 
-        # another table:
-        # Maps objects to their actual remote locations used on materialization (checkout)
-        # an object can be in the local schema or also somewhere else (like on the remote or S3)
-        # object id, location, protocol where protocol is SQL/HTTP? location is LOCAL/(remote name)
-        # but then if we already have it, do we add an extra entry?
-        # but then local, HTTP doesn't make sense
-        # eg OID, LOCAL, SQL
-        #
-        # maybe just check LOCAL by querying the information schema, then don't have to maintain it
-        # so lookup path: check locally, if not, copy over (?) using remote locations
-
-        # _the_ dumbest thing: add object location to tables table (then it's duplicated)
-        # parse the location (eg http/remote) if can't find the object locally.
+        # object id -> location, (protocol)
+        # on pull: copy that table too
+        # on c/o: first see if object is in the table, then try the remote. (serialization?)
+        # on push: depending on the location, first upload the data, then register it.
 
 
 def _create_pending_changes(conn):

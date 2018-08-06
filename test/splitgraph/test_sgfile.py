@@ -1,6 +1,7 @@
 import os
 
-from splitgraph.commands import get_log, checkout, pg_table_exists, commit
+from splitgraph.commands import *
+from splitgraph.commands.misc import pg_table_exists
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler import get_current_head, get_snap_parent
 from splitgraph.sgfile import parse_commands, execute_commands

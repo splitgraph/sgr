@@ -1,6 +1,6 @@
 from hashlib import sha256
 
-from splitgraph.commands import checkout, commit, init, pull
+from splitgraph.commands import init, commit, pull, checkout
 from splitgraph.constants import SplitGraphException
 from splitgraph.meta_handler import get_current_head, get_canonical_snap_id, get_all_snap_parents
 

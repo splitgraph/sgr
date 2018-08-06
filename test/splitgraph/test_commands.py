@@ -4,7 +4,9 @@ from decimal import Decimal
 import pytest
 
 from splitgraph.commandline import _conn
-from splitgraph.commands import mount, unmount, diff, commit, get_log, checkout, pg_table_exists, pull, push, clone
+from splitgraph.commands import *
+from splitgraph.commands import unmount
+from splitgraph.commands.misc import pg_table_exists
 from splitgraph.constants import PG_HOST, PG_PORT, PG_DB, PG_USER, PG_PWD
 from splitgraph.meta_handler import get_current_head, get_table, get_all_snap_parents, get_snap_parent, \
     get_downloaded_objects, get_existing_objects

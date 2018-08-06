@@ -7,12 +7,11 @@ import click
 import psycopg2
 from psycopg2 import ProgrammingError
 
-from splitgraph.commands import mount, unmount, checkout, commit, get_current_head, \
-    get_log, get_parent_children, diff, init, pull, push, clone
+from splitgraph.commands import mount, unmount, commit, checkout, diff, get_log, init, get_parent_children, pull, clone, push
 from splitgraph.constants import POSTGRES_CONNECTION, SplitGraphException
 from splitgraph.drawing import render_tree
 from splitgraph.meta_handler import get_snap_parent, get_canonical_snap_id, get_all_tables, \
-    get_current_mountpoints_hashes, get_all_tags_hashes, set_tag
+    get_current_mountpoints_hashes, get_all_tags_hashes, set_tag, get_current_head
 from splitgraph.sgfile import parse_commands, execute_commands
 
 
