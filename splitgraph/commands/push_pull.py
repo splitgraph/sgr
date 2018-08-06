@@ -8,8 +8,8 @@ from splitgraph.meta_handler import get_all_snap_parents, add_new_snap_id, get_r
 
 
 def _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_mountpoint):
-    local_snap_parents = {snap_id: parent_id for snap_id, parent_id in get_all_snap_parents(conn, local_mountpoint)}
-    remote_snap_parents = {snap_id: parent_id for snap_id, parent_id in
+    local_snap_parents = {snap_id: parent_id for snap_id, parent_id, _ in get_all_snap_parents(conn, local_mountpoint)}
+    remote_snap_parents = {snap_id: (parent_id, created) for snap_id, parent_id, created in
                            get_all_snap_parents(remote_conn, remote_mountpoint)}
 
     # We assume here that none of the remote snapshot IDs have changed (are immutable) since otherwise the remote
@@ -18,7 +18,8 @@ def _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_moun
     object_meta = []
     for snap_id in snaps_to_fetch:
         # This is not batched but there shouldn't be that many entries here anyway.
-        add_new_snap_id(conn, local_mountpoint, remote_snap_parents[snap_id], snap_id)
+        remote_parent, remote_created = remote_snap_parents[snap_id]
+        add_new_snap_id(conn, local_mountpoint, remote_parent, snap_id, remote_created)
         # Get the meta for all objects we'll need to fetch.
         with remote_conn.cursor() as cur:
             cur.execute("""SELECT snap_id, table_name, object_id, format from %s.tables 

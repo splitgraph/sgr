@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from psycopg2.extras import execute_batch
 
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, SplitGraphException, _log
@@ -19,6 +21,7 @@ def _create_metadata_schema(conn):
                         snap_id    VARCHAR NOT NULL,
                         mountpoint VARCHAR NOT NULL,
                         parent_id  VARCHAR,
+                        created    TIMESTAMP,
                         PRIMARY KEY (mountpoint, snap_id))""" % (SPLITGRAPH_META_SCHEMA, "snap_tree"))
         cur.execute("""CREATE TABLE %s.%s (
                         mountpoint VARCHAR NOT NULL,
@@ -180,10 +183,10 @@ def get_all_tags_hashes(conn, mountpoint):
         return cur.fetchall()
 
 
-def add_new_snap_id(conn, mountpoint, parent_id, snap_id):
+def add_new_snap_id(conn, mountpoint, parent_id, snap_id, created=None):
     with conn.cursor() as cur:
-        cur.execute("""INSERT INTO %s.snap_tree (snap_id, mountpoint, parent_id) VALUES (%%s, %%s, %%s)"""
-                    % SPLITGRAPH_META_SCHEMA, (snap_id, mountpoint, parent_id))
+        cur.execute("""INSERT INTO %s.snap_tree (snap_id, mountpoint, parent_id, created) VALUES (%%s, %%s, %%s, %%s)"""
+                    % SPLITGRAPH_META_SCHEMA, (snap_id, mountpoint, parent_id, created or datetime.now()))
 
 
 def set_head(conn, mountpoint, snap_id):
@@ -242,7 +245,8 @@ def get_snap_parent(conn, mountpoint, snap_id):
 
 def get_all_snap_parents(conn, mountpoint):
     with conn.cursor() as cur:
-        cur.execute("""SELECT snap_id, parent_id FROM %s.snap_tree WHERE mountpoint = %%s"""
+        cur.execute("""SELECT snap_id, parent_id, created FROM %s.snap_tree WHERE mountpoint = %%s
+                       ORDER BY created"""
                     % SPLITGRAPH_META_SCHEMA, (mountpoint,))
         return cur.fetchall()
 
