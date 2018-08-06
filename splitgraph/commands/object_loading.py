@@ -108,11 +108,10 @@ def _file_download_objects(conn, local_mountpoint, objects_to_fetch, params):
                 # Insert into the locally checked out schema by default since the dump doesn't have the schema
                 # qualification.
                 cur.execute("""SET search_path TO %s""", (local_mountpoint,))
-                buf = ""
                 for chunk in f.readlines():
                     cur.execute(chunk)
-        # Set the schema to (presumably) the default one.
-        cur.execute("""SET search_path TO public""", (local_mountpoint,))
+                # Set the schema to (presumably) the default one.
+                cur.execute("""SET search_path TO public""", (local_mountpoint,))
 
 
 def _http_download_objects(conn, local_mountpoint, objects_to_fetch, http_params):

@@ -1,6 +1,7 @@
 # Integration tests that assume the whole infrastructure is running
 import tempfile
 from decimal import Decimal
+from shutil import rmtree
 
 import pytest
 
@@ -443,34 +444,43 @@ def test_http_push_pull(sg_pg_conn):
         cur.execute("""INSERT INTO test_pg_mount_pull.fruits VALUES (3, 'mustard')""")
     right = commit(sg_pg_conn, PG_MNT + '_pull')
 
-    tmpdir = tempfile.mkdtemp()
+    try:
+        tmpdir = tempfile.mkdtemp()
 
-    # Push to origin, but this time upload the actual objects instead.
-    push(sg_pg_conn, remote_conn_string, PG_MNT, PG_MNT + '_pull', handler='FILE',
-         handler_options={'path': tmpdir})
+        # Push to origin, but this time upload the actual objects instead.
+        push(sg_pg_conn, remote_conn_string, PG_MNT, PG_MNT + '_pull', handler='FILE',
+             handler_options={'path': tmpdir})
 
-    # Check that the actual objects don't exist on the remote but are instead registered with an URL.
-    assert len(get_downloaded_objects(sg_pg_conn, PG_MNT)) == 2  # just the two original tables on the remote
-    objects = get_existing_objects(sg_pg_conn, PG_MNT)
-    assert len(objects) == 4    # two original tables + two new versions of fruits
-    # Both repos have two non-local objects
-    ext_objects_orig = get_external_object_locations(sg_pg_conn, PG_MNT, list(objects))
-    ext_objects_pull = get_external_object_locations(sg_pg_conn, PG_MNT + '_pull', list(objects))
-    assert len(ext_objects_orig) == 2
-    assert ext_objects_orig == ext_objects_pull
+        # Check that the actual objects don't exist on the remote but are instead registered with an URL.
+        assert len(get_downloaded_objects(sg_pg_conn, PG_MNT)) == 2  # just the two original tables on the remote
+        objects = get_existing_objects(sg_pg_conn, PG_MNT)
+        assert len(objects) == 4    # two original tables + two new versions of fruits
+        # Both repos have two non-local objects
+        ext_objects_orig = get_external_object_locations(sg_pg_conn, PG_MNT, list(objects))
+        ext_objects_pull = get_external_object_locations(sg_pg_conn, PG_MNT + '_pull', list(objects))
+        assert len(ext_objects_orig) == 2
+        assert ext_objects_orig == ext_objects_pull
 
-    # Destroy the pulled mountpoint and recreate it again.
-    unmount(sg_pg_conn, PG_MNT + '_pull')
-    clone(sg_pg_conn, remote_conn_string, PG_MNT, PG_MNT + '_pull', download_all=False)
+        # Destroy the pulled mountpoint and recreate it again.
+        unmount(sg_pg_conn, PG_MNT + '_pull')
+        clone(sg_pg_conn, remote_conn_string, PG_MNT, PG_MNT + '_pull', download_all=False)
 
-    # Proceed as per the lazy checkout tests to make sure we don't download more than required.
-    assert len(get_existing_objects(sg_pg_conn, PG_MNT + '_pull')) == 4
-    assert get_existing_objects(sg_pg_conn, PG_MNT + '_pull') == get_existing_objects(sg_pg_conn, PG_MNT)
-    assert len(get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull')) == 2
+        # Proceed as per the lazy checkout tests to make sure we don't download more than required.
+        checkout(sg_pg_conn, PG_MNT + '_pull', head)
 
-    checkout(sg_pg_conn, PG_MNT + '_pull', left)
-    assert len(get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull')) == 3 # now have 2 versions of fruits + 1 vegetables
+        assert len(get_existing_objects(sg_pg_conn, PG_MNT + '_pull')) == 4
+        assert get_existing_objects(sg_pg_conn, PG_MNT + '_pull') == get_existing_objects(sg_pg_conn, PG_MNT)
+        assert len(get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull')) == 2
 
-    checkout(sg_pg_conn, PG_MNT + '_pull', right)
-    assert len(get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull')) == 4
-    assert get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull') == get_existing_objects(sg_pg_conn, PG_MNT)
+        checkout(sg_pg_conn, PG_MNT + '_pull', left)
+        assert len(get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull')) == 3 # now have 2 versions of fruits + 1 vegetables
+
+        checkout(sg_pg_conn, PG_MNT + '_pull', right)
+        assert len(get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull')) == 4
+        assert get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull') == get_existing_objects(sg_pg_conn, PG_MNT)
+
+        with sg_pg_conn.cursor() as cur:
+            cur.execute("""SELECT * FROM test_mount.fruits""")
+            assert cur.fetchall() == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]
+    finally:
+        rmtree(tmpdir)

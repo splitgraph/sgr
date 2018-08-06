@@ -59,7 +59,7 @@ def _create_metadata_schema(conn):
                         object_id          VARCHAR NOT NULL,
                         location           VARCHAR NOT NULL,
                         protocol           VARCHAR NOT NULL,
-                        PRIMARY KEY (object_id))"""
+                        PRIMARY KEY (mountpoint, object_id))"""
                     % (SPLITGRAPH_META_SCHEMA, "object_locations"))
 
 
@@ -276,7 +276,8 @@ def register_objects(conn, mountpoint, object_meta):
 def register_object_locations(conn, mountpoint, object_locations):
     with conn.cursor() as cur:
         # Don't insert redundant objects here either.
-        cur.execute("""SELECT object_id FROM %s.object_locations""" % SPLITGRAPH_META_SCHEMA)
+        cur.execute("""SELECT object_id FROM %s.object_locations
+                       WHERE mountpoint = %%s""" % SPLITGRAPH_META_SCHEMA, (mountpoint,))
         existing_locations = [c[0] for c in cur.fetchall()]
         object_locations = [(mountpoint,) + o for o in object_locations if o[0] not in existing_locations]
 
