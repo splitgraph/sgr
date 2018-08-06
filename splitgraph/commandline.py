@@ -11,7 +11,7 @@ from splitgraph.commands import mount, unmount, commit, checkout, diff, get_log,
 from splitgraph.constants import POSTGRES_CONNECTION, SplitGraphException
 from splitgraph.drawing import render_tree
 from splitgraph.meta_handler import get_snap_parent, get_canonical_snap_id, get_all_tables, \
-    get_current_mountpoints_hashes, get_all_tags_hashes, set_tag, get_current_head
+    get_current_mountpoints_hashes, get_all_tags_hashes, set_tag, get_current_head, get_remote_for
 from splitgraph.sgfile import parse_commands, execute_commands
 
 
@@ -239,12 +239,17 @@ def clone_c(remote, remote_mountpoint, local_mountpoint, download_all):
 
 
 @click.command(name='push')
-@click.argument('remote') # username:password@server:port/dbname
-@click.argument('remote_mountpoint')
-@click.argument('local_mountpoint')
-def push_c(remote, remote_mountpoint, local_mountpoint):
+@click.argument('mountpoint')
+@click.argument('remote', default='origin')   # name or (if mountpoint set) connection string
+@click.argument('remote_mountpoint', required=False)
+@click.option('-h', '--upload-handler', help='Where to upload objects (FILE or DB for the remote itself)', default='DB')
+@click.option('-o', '--upload-handler-options', help="""For FILE, e.g. '{"path": /mnt/sgobjects}'""")
+def push_c(mountpoint, remote, remote_mountpoint, upload_handler, upload_handler_options):
     conn = _conn()
-    push(conn, remote, remote_mountpoint, local_mountpoint)
+    if not remote_mountpoint:
+        # Get actual connection string and remote mountpoint
+        remote, remote_mountpoint = get_remote_for(conn, mountpoint, remote)
+    push(conn, remote, remote_mountpoint, mountpoint, handler=upload_handler, handler_options=upload_handler_options)
     conn.commit()
 
 

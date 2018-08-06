@@ -13,8 +13,7 @@
       the original source images.
   * Record schema changes in the DIFF table
   * Figure out a better diff format for both the actual table and displaying it from sg diff
-  * Object location indirection: hook into commandline params, actually test HTTP or replace with a different upload
-    mechanism.
+  * Object location indirection: actually test HTTP or replace with a different upload mechanism.
   * Stretch goal: gathering object locations and metadata on pull to see which materialization strategy (copy an image,
     apply some sgfiles or some diffs) is better based on our known remotes.
   * Add logging instead of print statements?
