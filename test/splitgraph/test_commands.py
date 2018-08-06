@@ -1,4 +1,5 @@
 # Integration tests that assume the whole infrastructure is running
+import tempfile
 from decimal import Decimal
 
 import pytest
@@ -9,7 +10,7 @@ from splitgraph.commands import unmount
 from splitgraph.commands.misc import pg_table_exists
 from splitgraph.constants import PG_HOST, PG_PORT, PG_DB, PG_USER, PG_PWD
 from splitgraph.meta_handler import get_current_head, get_table, get_all_snap_parents, get_snap_parent, \
-    get_downloaded_objects, get_existing_objects
+    get_downloaded_objects, get_existing_objects, get_external_object_locations
 from splitgraph.pg_replication import has_pending_changes
 
 PG_MNT = 'test_pg_mount'
@@ -423,3 +424,53 @@ def test_push(sg_pg_conn):
     with sg_pg_conn.cursor() as cur:
         cur.execute("""SELECT * FROM test_pg_mount.fruits""")
         assert list(cur.fetchall()) == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]
+
+
+def test_http_push_pull(sg_pg_conn):
+    # Test pushing/pulling when the objects are uploaded to a remote storage instead of to the actual remote DB.
+    # "Uploading" to a file for now because I can't seem to get uploading on an HTTP fixture working.
+
+    remote_conn_string = '%s:%s@%s:%s/%s' % (PG_USER, PG_PWD, PG_HOST, PG_PORT, PG_DB)
+    clone(sg_pg_conn, remote_conn_string, PG_MNT, PG_MNT + '_pull', download_all=False)
+    # Add a couple of commits, this time on the cloned copy.
+    head = get_current_head(sg_pg_conn, PG_MNT)
+    checkout(sg_pg_conn, PG_MNT + '_pull', head)
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""INSERT INTO test_pg_mount_pull.fruits VALUES (3, 'mayonnaise')""")
+    left = commit(sg_pg_conn, PG_MNT + '_pull')
+    checkout(sg_pg_conn, PG_MNT + '_pull', head)
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""INSERT INTO test_pg_mount_pull.fruits VALUES (3, 'mustard')""")
+    right = commit(sg_pg_conn, PG_MNT + '_pull')
+
+    tmpdir = tempfile.mkdtemp()
+
+    # Push to origin, but this time upload the actual objects instead.
+    push(sg_pg_conn, remote_conn_string, PG_MNT, PG_MNT + '_pull', handler='FILE',
+         handler_options={'path': tmpdir})
+
+    # Check that the actual objects don't exist on the remote but are instead registered with an URL.
+    assert len(get_downloaded_objects(sg_pg_conn, PG_MNT)) == 2  # just the two original tables on the remote
+    objects = get_existing_objects(sg_pg_conn, PG_MNT)
+    assert len(objects) == 4    # two original tables + two new versions of fruits
+    # Both repos have two non-local objects
+    ext_objects_orig = get_external_object_locations(sg_pg_conn, PG_MNT, list(objects))
+    ext_objects_pull = get_external_object_locations(sg_pg_conn, PG_MNT + '_pull', list(objects))
+    assert len(ext_objects_orig) == 2
+    assert ext_objects_orig == ext_objects_pull
+
+    # Destroy the pulled mountpoint and recreate it again.
+    unmount(sg_pg_conn, PG_MNT + '_pull')
+    clone(sg_pg_conn, remote_conn_string, PG_MNT, PG_MNT + '_pull', download_all=False)
+
+    # Proceed as per the lazy checkout tests to make sure we don't download more than required.
+    assert len(get_existing_objects(sg_pg_conn, PG_MNT + '_pull')) == 4
+    assert get_existing_objects(sg_pg_conn, PG_MNT + '_pull') == get_existing_objects(sg_pg_conn, PG_MNT)
+    assert len(get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull')) == 2
+
+    checkout(sg_pg_conn, PG_MNT + '_pull', left)
+    assert len(get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull')) == 3 # now have 2 versions of fruits + 1 vegetables
+
+    checkout(sg_pg_conn, PG_MNT + '_pull', right)
+    assert len(get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull')) == 4
+    assert get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull') == get_existing_objects(sg_pg_conn, PG_MNT)

@@ -50,10 +50,17 @@ def _create_metadata_schema(conn):
                         PRIMARY KEY (mountpoint, remote_name))"""
                     % (SPLITGRAPH_META_SCHEMA, "remotes"))
 
-        # object id -> location, (protocol)
-        # on pull: copy that table too
-        # on c/o: first see if object is in the table, then try the remote. (serialization?)
-        # on push: depending on the location, first upload the data, then register it.
+        # Map objects to their locations for when they don't live on the remote or the local machine but instead
+        # in S3/some FTP/HTTP server/torrent etc.
+        # Lookup path to resolve an object on checkout: local -> this table -> remote (so that we don't bombard
+        # the remote with queries for tables that may have been uploaded to a different place).
+        cur.execute("""CREATE TABLE %s.%s (
+                        mountpoint         VARCHAR NOT NULL,
+                        object_id          VARCHAR NOT NULL,
+                        location           VARCHAR NOT NULL,
+                        protocol           VARCHAR NOT NULL,
+                        PRIMARY KEY (object_id))"""
+                    % (SPLITGRAPH_META_SCHEMA, "object_locations"))
 
 
 def _create_pending_changes(conn):
@@ -221,7 +228,7 @@ def register_mountpoint(conn, mountpoint, snap_id, tables, table_object_ids):
 
 def unregister_mountpoint(conn, mountpoint):
     with conn.cursor() as cur:
-        for meta_table in ["tables", "snap_tags", "snap_tree", "remotes"]:
+        for meta_table in ["tables", "snap_tags", "snap_tree", "remotes", "object_locations"]:
             cur.execute("""DELETE FROM %s.%s WHERE mountpoint = %%s"""
                         % (SPLITGRAPH_META_SCHEMA, meta_table), (mountpoint,))
 
@@ -266,6 +273,18 @@ def register_objects(conn, mountpoint, object_meta):
         execute_batch(cur, query, object_meta, page_size=100)
 
 
+def register_object_locations(conn, mountpoint, object_locations):
+    with conn.cursor() as cur:
+        # Don't insert redundant objects here either.
+        cur.execute("""SELECT object_id FROM %s.object_locations""" % SPLITGRAPH_META_SCHEMA)
+        existing_locations = [c[0] for c in cur.fetchall()]
+        object_locations = [(mountpoint,) + o for o in object_locations if o[0] not in existing_locations]
+
+        query = """INSERT INTO %s.object_locations (mountpoint, object_id, location, protocol)""" % SPLITGRAPH_META_SCHEMA
+        query += """ VALUES (%s, %s, %s, %s)"""
+        execute_batch(cur, query, object_locations, page_size=100)
+
+
 def get_existing_objects(conn, mountpoint):
     with conn.cursor() as cur:
         cur.execute("""SELECT object_id from %s.tables WHERE mountpoint = %%s"""
@@ -305,3 +324,13 @@ def add_remote(conn, mountpoint, remote_conn, remote_mountpoint, remote_name='or
         cur.execute("""INSERT INTO %s.remotes (mountpoint, remote_name, remote_conn_string, remote_mountpoint)
                         VALUES (%%s, %%s, %%s, %%s)"""
                     % SPLITGRAPH_META_SCHEMA, (mountpoint, remote_name, remote_conn, remote_mountpoint))
+
+
+def get_external_object_locations(conn, mountpoint, objects):
+    with conn.cursor() as cur:
+        query = """SELECT object_id, location, protocol from %s.object_locations 
+                       WHERE mountpoint = %%s AND object_id IN (""" % SPLITGRAPH_META_SCHEMA
+        query += ','.join('%s' for _ in objects) + ")"
+        cur.execute(query, [mountpoint] + objects)
+        object_locations = cur.fetchall()
+    return object_locations

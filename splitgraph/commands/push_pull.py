@@ -1,9 +1,10 @@
 import re
 
-from splitgraph.commands.misc import make_conn, unmount, mount_postgres, dump_table_creation
+from splitgraph.commands.misc import make_conn
+from splitgraph.commands.object_loading import download_objects, upload_objects
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, SplitGraphException, _log
 from splitgraph.meta_handler import get_all_snap_parents, add_new_snap_id, get_remote_for, ensure_metadata_schema, \
-    register_objects, set_head, add_remote, get_downloaded_objects, get_existing_objects
+    register_objects, set_head, add_remote, register_object_locations, get_external_object_locations
 
 
 def _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_mountpoint):
@@ -24,7 +25,11 @@ def _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_moun
                            WHERE mountpoint = %%s AND snap_id = %%s"""
                         % SPLITGRAPH_META_SCHEMA, (remote_mountpoint, snap_id))
             object_meta.extend(cur.fetchall())
-    return snaps_to_fetch, object_meta
+
+    distinct_objects = list(set(o[2] for o in object_meta))
+    object_locations = get_external_object_locations(remote_conn, remote_mountpoint, distinct_objects)
+
+    return snaps_to_fetch, object_meta, object_locations
 
 
 def pull(conn, mountpoint, remote, download_all=False):
@@ -52,7 +57,7 @@ def clone(conn, remote_conn_string, remote_mountpoint, local_mountpoint, downloa
     _log("Gathering remote metadata...")
 
     # This also registers the new versions locally.
-    snaps_to_fetch, object_meta = _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_mountpoint)
+    snaps_to_fetch, object_meta, object_locations = _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_mountpoint)
 
     if not snaps_to_fetch:
         _log("Nothing to do.")
@@ -65,10 +70,11 @@ def clone(conn, remote_conn_string, remote_mountpoint, local_mountpoint, downloa
         # (e.g. if a new version of the table is the same as the old version)
         _log("Fetching remote objects...")
         download_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoint,
-                         objects_to_fetch=list(set(o[2] for o in object_meta)))
+                         objects_to_fetch=list(set(o[2] for o in object_meta)), object_locations=object_locations)
 
     # Map the tables to the actual objects no matter whether or not we're downloading them.
     register_objects(conn, local_mountpoint, object_meta)
+    register_object_locations(conn, local_mountpoint, object_locations)
 
     # Don't check anything out, keep the repo bare.
     set_head(conn, local_mountpoint, None)
@@ -77,63 +83,7 @@ def clone(conn, remote_conn_string, remote_mountpoint, local_mountpoint, downloa
         add_remote(conn, local_mountpoint, remote_conn_string, remote_mountpoint)
 
 
-def download_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoint, objects_to_fetch):
-    # Fetches the required objects from the remote and stores them locally. Does nothing for objects that already exist.
-    existing_objects = get_downloaded_objects(conn, local_mountpoint)
-    objects_to_fetch = set(o for o in objects_to_fetch if o not in existing_objects)
-    if not objects_to_fetch:
-        return
-
-    # Instead of connecting and pushing queries to it from the Python client, we just mount the remote mountpoint
-    # into a temporary space (without any checking out) and SELECT the required data into our local tables.
-    match = re.match('(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
-    remote_data_mountpoint = 'tmp_remote_data'
-    unmount(conn, remote_data_mountpoint)  # Maybe worth making sure we're not stepping on anyone else
-    mount_postgres(conn, server=match.group(3), port=int(match.group(4)),
-                   username=match.group(1), password=match.group(2), mountpoint=remote_data_mountpoint,
-                   extra_options={'dbname': match.group(5), 'remote_schema': remote_mountpoint})
-
-    for i, obj in enumerate(objects_to_fetch):
-        _log("(%d/%d) %s..." % (i + 1, len(objects_to_fetch), obj))
-        with conn.cursor() as cur:
-            cur.execute("""CREATE TABLE %s AS SELECT * FROM %s""" % (
-                cur.mogrify('%s.%s' % (local_mountpoint, obj)),
-                cur.mogrify('%s.%s' % (remote_data_mountpoint, obj))))
-    unmount(conn, remote_data_mountpoint)
-
-
-def upload_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoint, objects_to_push):
-    match = re.match('(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
-    remote_conn = make_conn(server=match.group(3), port=int(match.group(4)), username=match.group(1),
-                            password=match.group(2), dbname=match.group(5))
-    existing_objects = get_existing_objects(remote_conn, remote_mountpoint)
-    objects_to_push = list(set(o for o in objects_to_push if o not in existing_objects))
-    _log("Uploading objects...")
-
-    # Difference from pull here: since we can't get remote to mount us, we instead use normal SQL statements
-    # to create new tables remotely, then mount them and write into them from our side.
-    # Is there seriously no better way to do this?
-    with remote_conn.cursor() as cur:
-        cur.execute(dump_table_creation(conn, schema=local_mountpoint,
-                                        tables=objects_to_push, created_schema=remote_mountpoint))
-    # Have to commit the remote connection here since otherwise we won't see the new tables in the
-    # mounted remote.
-    remote_conn.commit()
-    remote_data_mountpoint = 'tmp_remote_data'
-    unmount(conn, remote_data_mountpoint)
-    mount_postgres(conn, server=match.group(3), port=int(match.group(4)),
-                   username=match.group(1), password=match.group(2), mountpoint=remote_data_mountpoint,
-                   extra_options={'dbname': match.group(5), 'remote_schema': remote_mountpoint})
-    for i, obj in enumerate(objects_to_push):
-        _log("(%d/%d) %s..." % (i + 1, len(objects_to_push), obj))
-        with conn.cursor() as cur:
-            cur.execute("""INSERT INTO %s SELECT * FROM %s""" % (
-                cur.mogrify('%s.%s' % (remote_data_mountpoint, obj)),
-                cur.mogrify('%s.%s' % (local_mountpoint, obj))))
-    unmount(conn, remote_data_mountpoint)
-
-
-def push(conn, remote_conn_string, remote_mountpoint, local_mountpoint):
+def push(conn, remote_conn_string, remote_mountpoint, local_mountpoint, handler='DB', handler_options={}):
     ensure_metadata_schema(conn)
     # Inverse of pull: uploads missing pack/snap tables to the remote and updates its index.
     # Could actually be done by flipping the arguments in pull but that assumes the remote SG driver can connect
@@ -147,14 +97,21 @@ def push(conn, remote_conn_string, remote_mountpoint, local_mountpoint):
 
     _log("Gathering remote metadata...")
     # This also registers new commits remotely. Should make explicit and move down later on.
-    snaps_to_push, object_meta = _get_required_snaps_objects(remote_conn, conn, remote_mountpoint, local_mountpoint)
+    snaps_to_push, object_meta, object_locations = _get_required_snaps_objects(remote_conn, conn, remote_mountpoint, local_mountpoint)
 
     if not snaps_to_push:
         _log("Nothing to do.")
         return
 
-    # Different upload handlers go here.
-    upload_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoint, list(set(o[2] for o in object_meta)))
+    new_uploads = upload_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoint, list(set(o[2] for o in object_meta)),
+                                 handler=handler, handler_params=handler_options)
+    # Register the newly uploaded object locations locally and remotely.
     register_objects(remote_conn, remote_mountpoint, object_meta)
+    register_object_locations(remote_conn, remote_mountpoint, object_locations + new_uploads)
     # Kind of have to commit here in any case?
+    # A fun bug here: if remote_conn and conn are pointing to the same database (like in the integration test),
+    # then updating object_location over conn first locks waiting on remote_conn to commit, which then locks waiting on
+    # conn to commit.
     remote_conn.commit()
+
+    register_object_locations(conn, local_mountpoint, new_uploads)

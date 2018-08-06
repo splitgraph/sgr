@@ -142,7 +142,6 @@ def unmount(conn, mountpoint):
 
 
 def dump_table_creation(conn, schema, tables, created_schema=None):
-    created_schema = created_schema or schema
     queries = []
 
     with conn.cursor() as cur:
@@ -151,7 +150,8 @@ def dump_table_creation(conn, schema, tables, created_schema=None):
                            FROM information_schema.columns
                            WHERE table_name = %s AND table_schema = %s""", (t, schema))
             cols = cur.fetchall()
-            query = """CREATE TABLE %s (""" % cur.mogrify("%s.%s" % (created_schema, t)) \
+            target = cur.mogrify("%s.%s" % (created_schema, t)) if created_schema else cur.mogrify(t)
+            query = """CREATE TABLE %s (""" % target \
                     + ",".join("%s %s %s" % (cur.mogrify(cname), ctype, "NOT NULL" if not cnull else "")
                                for cname, ctype, cnull in cols) + ");"
             queries.append(query)

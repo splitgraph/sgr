@@ -6,5 +6,5 @@ setup(
     packages=['splitgraph'],
     entry_points={
         'console_scripts': ['sg=splitgraph.commandline:cli'],
-    }, install_requires=['click', 'psycopg2-binary']
+    }, install_requires=['click', 'psycopg2-binary'],
 )

@@ -1,9 +1,10 @@
 from contextlib import contextmanager
 
-from splitgraph.commands.push_pull import download_objects
+from splitgraph.commands.object_loading import download_objects
 from splitgraph.constants import _log, get_random_object_id
 from splitgraph.meta_handler import get_table_with_format, get_snap_parent, get_remote_for, ensure_metadata_schema, \
-    get_canonical_snap_id, get_tables_at, get_all_tables, set_head, register_table_object, deregister_table_object
+    get_canonical_snap_id, get_tables_at, get_all_tables, set_head, register_table_object, deregister_table_object, \
+    get_external_object_locations
 from splitgraph.pg_replication import apply_record_to_staging, record_pending_changes, stop_replication, \
     discard_pending_changes, start_replication
 
@@ -38,8 +39,9 @@ def materialize_table(conn, mountpoint, schema_snap, table, destination):
         remote_info = get_remote_for(conn, mountpoint)
         if remote_info:
             remote_conn, remote_mountpoint = remote_info
+            object_locations = get_external_object_locations(conn, mountpoint, to_apply + [object_id])
             download_objects(conn, mountpoint, remote_conn, remote_mountpoint,
-                             objects_to_fetch=to_apply + [object_id])
+                             objects_to_fetch=to_apply + [object_id], object_locations=object_locations)
 
         # Copy the given snap id over to "staging"
         cur.execute("""CREATE TABLE %s AS SELECT * FROM %s""" %
