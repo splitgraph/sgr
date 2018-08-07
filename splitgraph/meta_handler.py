@@ -216,8 +216,8 @@ def mountpoint_exists(conn, mountpoint):
 
 def register_mountpoint(conn, mountpoint, snap_id, tables, table_object_ids):
     with conn.cursor() as cur:
-        cur.execute("""INSERT INTO %s.%s (snap_id, mountpoint, parent_id) VALUES (%%s, %%s, NULL)"""
-                    % (SPLITGRAPH_META_SCHEMA, "snap_tree"), (snap_id, mountpoint))
+        cur.execute("""INSERT INTO %s.%s (snap_id, mountpoint, parent_id, created) VALUES (%%s, %%s, NULL, %%s)"""
+                    % (SPLITGRAPH_META_SCHEMA, "snap_tree"), (snap_id, mountpoint, datetime.now()))
         # Strictly speaking this is redundant since the checkout (of the "HEAD" commit) updates the tag table.
         cur.execute("""INSERT INTO %s.%s (mountpoint, snap_id, tag) VALUES (%%s, %%s, 'HEAD')"""
                     % (SPLITGRAPH_META_SCHEMA, "snap_tags"), (mountpoint, snap_id))
