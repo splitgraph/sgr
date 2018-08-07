@@ -1,10 +1,10 @@
 from contextlib import contextmanager
 
 from splitgraph.commands.object_loading import download_objects
-from splitgraph.constants import _log, get_random_object_id
+from splitgraph.constants import _log, get_random_object_id, SplitGraphException
 from splitgraph.meta_handler import get_table_with_format, get_snap_parent, get_remote_for, ensure_metadata_schema, \
     get_canonical_snap_id, get_tables_at, get_all_tables, set_head, register_table_object, deregister_table_object, \
-    get_external_object_locations
+    get_external_object_locations, get_tagged_id
 from splitgraph.pg_replication import apply_record_to_staging, record_pending_changes, stop_replication, \
     discard_pending_changes, start_replication
 
@@ -57,15 +57,25 @@ def materialize_table(conn, mountpoint, schema_snap, table, destination):
             apply_record_to_staging(conn, mountpoint, pack_object, destination)
 
 
-def checkout(conn, mountpoint, schema_snap, tables=[]):
+def checkout(conn, mountpoint, schema_snap=None, tag=None, tables=[]):
     ensure_metadata_schema(conn)
     record_pending_changes(conn)
-
     stop_replication(conn)
     discard_pending_changes(conn, mountpoint)
 
     # Detect the actual schema snap we want to check out
-    schema_snap = get_canonical_snap_id(conn, mountpoint, schema_snap)
+    # TODO this is strange: if the stop_replication/discard_pending_changes lines are moved down
+    # below this block (after getting the actual ID to check out), then the very last sgfile test
+    # (test_sgfile_rebase) fails with an entry being duplicated in a table. Just that test. Wut?
+    if schema_snap:
+        # get_canonical_snap_id called twice if the commandline entry point already called it. How to fix?
+        schema_snap = get_canonical_snap_id(conn, mountpoint, schema_snap)
+    elif tag:
+        schema_snap = get_tagged_id(conn, mountpoint, tag)
+    else:
+        raise SplitGraphException("One of schema_snap or tag must be specified!")
+
+
     tables = tables or get_tables_at(conn, mountpoint, schema_snap)
     with conn.cursor() as cur:
         # Drop all current tables in staging

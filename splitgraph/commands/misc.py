@@ -3,7 +3,8 @@ import psycopg2
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, _log
 from splitgraph.meta_handler import get_table, get_snap_parent, ensure_metadata_schema, register_mountpoint, \
     unregister_mountpoint
-from splitgraph.pg_replication import stop_replication
+from splitgraph.pg_replication import stop_replication, record_pending_changes, discard_pending_changes, \
+    start_replication
 
 
 def pg_table_exists(conn, mountpoint, table_name):
@@ -130,7 +131,12 @@ def mount_mongo(conn, server, port, username, password, mountpoint, extra_option
 
 def unmount(conn, mountpoint):
     ensure_metadata_schema(conn)
+    record_pending_changes(conn)
     stop_replication(conn)
+    discard_pending_changes(conn, mountpoint)
+    # Make sure to consume and discard changes to this mountpoint if they exist, otherwise they might
+    # be applied/recorded if a new mountpoint with the same name appears.
+
     with conn.cursor() as cur:
         cur.execute("""DROP SCHEMA IF EXISTS %s CASCADE""" % cur.mogrify(mountpoint))
         # Drop server too if it exists (could have been a non-foreign mountpoint)
@@ -139,6 +145,7 @@ def unmount(conn, mountpoint):
     # Currently we just discard all history info about the mounted schema
     unregister_mountpoint(conn, mountpoint)
     conn.commit()
+    start_replication(conn)
 
 
 def dump_table_creation(conn, schema, tables, created_schema=None):

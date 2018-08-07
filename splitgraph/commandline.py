@@ -11,7 +11,7 @@ from splitgraph.commands import mount, unmount, commit, checkout, diff, get_log,
 from splitgraph.constants import POSTGRES_CONNECTION, SplitGraphException
 from splitgraph.drawing import render_tree
 from splitgraph.meta_handler import get_snap_parent, get_canonical_snap_id, get_all_tables, \
-    get_current_mountpoints_hashes, get_all_tags_hashes, set_tag, get_current_head, get_remote_for
+    get_current_mountpoints_hashes, get_all_hashes_tags, set_tag, get_current_head, get_remote_for, get_tagged_id
 from splitgraph.sgfile import parse_commands, execute_commands
 
 
@@ -160,9 +160,16 @@ def unmount_c(mountpoint):
 
 @click.command(name='checkout')
 @click.argument('mountpoint')
-@click.argument('snapshot')
-def checkout_c(mountpoint, snapshot):
+@click.argument('snapshot_or_tag')
+def checkout_c(mountpoint, snapshot_or_tag):
     conn = _conn()
+    try:
+        snapshot = get_canonical_snap_id(conn, mountpoint, snapshot_or_tag)
+    except SplitGraphException:
+        try:
+            snapshot = get_tagged_id(conn, mountpoint, snapshot_or_tag)
+        except SplitGraphException:
+            raise SplitGraphException("%s does not refer to either an image commit hash or a tag!" % snapshot_or_tag)
     checkout(conn, mountpoint, snapshot)
     conn.commit()
 
@@ -262,7 +269,7 @@ def tag_c(mountpoint, image, tag, force):
     conn = _conn()
     if tag is None:
         # List all tags
-        all_tags = get_all_tags_hashes(conn, mountpoint)
+        all_tags = get_all_hashes_tags(conn, mountpoint)
         tag_dict = defaultdict(list)
         for img, tag in all_tags:
             tag_dict[img].append(tag)

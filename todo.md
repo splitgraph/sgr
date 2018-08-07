@@ -1,6 +1,5 @@
 # TODO
 
-  * Tags: checkout by tag, refine the UI maybe (like sg tag mountpoint just tags the head)
   * Err on checkout if there are pending changes?
   * diff command: aggregate
   * checkout slowness: investigate

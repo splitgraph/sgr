@@ -177,7 +177,7 @@ def get_tagged_id(conn, mountpoint, tag, raise_on_none=True):
         return result[0]
 
 
-def get_all_tags_hashes(conn, mountpoint):
+def get_all_hashes_tags(conn, mountpoint):
     with conn.cursor() as cur:
         cur.execute("""SELECT snap_id, tag from %s.snap_tags WHERE mountpoint = %%s""" % SPLITGRAPH_META_SCHEMA, (mountpoint,))
         return cur.fetchall()

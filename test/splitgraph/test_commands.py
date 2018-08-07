@@ -11,7 +11,7 @@ from splitgraph.commands import unmount
 from splitgraph.commands.misc import pg_table_exists
 from splitgraph.constants import PG_HOST, PG_PORT, PG_DB, PG_USER, PG_PWD
 from splitgraph.meta_handler import get_current_head, get_table, get_all_snap_parents, get_snap_parent, \
-    get_downloaded_objects, get_existing_objects, get_external_object_locations
+    get_downloaded_objects, get_existing_objects, get_external_object_locations, set_tag, get_all_hashes_tags
 from splitgraph.pg_replication import has_pending_changes
 
 PG_MNT = 'test_pg_mount'
@@ -484,3 +484,29 @@ def test_http_push_pull(sg_pg_conn):
             assert cur.fetchall() == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]
     finally:
         rmtree(tmpdir)
+
+
+def test_tagging(sg_pg_conn):
+    head = get_current_head(sg_pg_conn, PG_MNT)
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise')""")
+    commit(sg_pg_conn, PG_MNT)
+
+    checkout(sg_pg_conn, PG_MNT, head)
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (3, 'mustard')""")
+    right = commit(sg_pg_conn, PG_MNT)
+
+    set_tag(sg_pg_conn, PG_MNT, head, 'base')
+    set_tag(sg_pg_conn, PG_MNT, right, 'right')
+
+    checkout(sg_pg_conn, PG_MNT, tag='base')
+    assert get_current_head(sg_pg_conn, PG_MNT) == head
+
+    checkout(sg_pg_conn, PG_MNT, tag='right')
+    assert get_current_head(sg_pg_conn, PG_MNT) == right
+
+    hashes_tags = get_all_hashes_tags(sg_pg_conn, PG_MNT)
+    assert (head, 'base') in hashes_tags
+    assert (right, 'right') in hashes_tags
+    assert (right, 'HEAD') in hashes_tags
