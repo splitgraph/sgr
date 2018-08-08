@@ -75,7 +75,6 @@ def checkout(conn, mountpoint, schema_snap=None, tag=None, tables=[]):
     else:
         raise SplitGraphException("One of schema_snap or tag must be specified!")
 
-
     tables = tables or get_tables_at(conn, mountpoint, schema_snap)
     with conn.cursor() as cur:
         # Drop all current tables in staging

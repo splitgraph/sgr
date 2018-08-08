@@ -22,6 +22,7 @@ def _create_metadata_schema(conn):
                         mountpoint VARCHAR NOT NULL,
                         parent_id  VARCHAR,
                         created    TIMESTAMP,
+                        comment    VARCHAR,
                         PRIMARY KEY (mountpoint, snap_id))""" % (SPLITGRAPH_META_SCHEMA, "snap_tree"))
         cur.execute("""CREATE TABLE %s.%s (
                         mountpoint VARCHAR NOT NULL,
@@ -183,10 +184,11 @@ def get_all_hashes_tags(conn, mountpoint):
         return cur.fetchall()
 
 
-def add_new_snap_id(conn, mountpoint, parent_id, snap_id, created=None):
+def add_new_snap_id(conn, mountpoint, parent_id, snap_id, created=None, comment=None):
     with conn.cursor() as cur:
-        cur.execute("""INSERT INTO %s.snap_tree (snap_id, mountpoint, parent_id, created) VALUES (%%s, %%s, %%s, %%s)"""
-                    % SPLITGRAPH_META_SCHEMA, (snap_id, mountpoint, parent_id, created or datetime.now()))
+        cur.execute("""INSERT INTO %s.snap_tree (snap_id, mountpoint, parent_id, created, comment)
+                       VALUES (%%s, %%s, %%s, %%s, %%s)"""
+                    % SPLITGRAPH_META_SCHEMA, (snap_id, mountpoint, parent_id, created or datetime.now(), comment))
 
 
 def set_head(conn, mountpoint, snap_id):
@@ -243,9 +245,16 @@ def get_snap_parent(conn, mountpoint, snap_id):
         return cur.fetchone()[0]
 
 
+def get_all_snap_info(conn, mountpoint, snap_id):
+    with conn.cursor() as cur:
+        cur.execute("""SELECT parent_id, created, comment FROM %s.snap_tree WHERE mountpoint = %%s AND snap_id = %%s"""
+                    % SPLITGRAPH_META_SCHEMA, (mountpoint, snap_id))
+        return cur.fetchone()
+
+
 def get_all_snap_parents(conn, mountpoint):
     with conn.cursor() as cur:
-        cur.execute("""SELECT snap_id, parent_id, created FROM %s.snap_tree WHERE mountpoint = %%s
+        cur.execute("""SELECT snap_id, parent_id, created, comment FROM %s.snap_tree WHERE mountpoint = %%s
                        ORDER BY created"""
                     % SPLITGRAPH_META_SCHEMA, (mountpoint,))
         return cur.fetchall()

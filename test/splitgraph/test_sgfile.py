@@ -3,8 +3,8 @@ import os
 from splitgraph.commands import *
 from splitgraph.commands.misc import pg_table_exists
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA
-from splitgraph.meta_handler import get_current_head, get_snap_parent
-from splitgraph.sgfile import parse_commands, execute_commands
+from splitgraph.meta_handler import get_current_head, get_snap_parent, get_all_snap_info
+from splitgraph.sgfile import parse_commands, execute_commands, _canonicalize
 from test.splitgraph.test_commands import PG_MNT, MG_MNT, sg_pg_mg_conn
 
 SGFILE_ROOT = os.path.join(os.path.dirname(__file__), '../resources/')
@@ -45,6 +45,9 @@ def test_basic_sgfile(sg_pg_mg_conn):
     with sg_pg_mg_conn.cursor() as cur:
         cur.execute("""SELECT * FROM output.fruits""")
         assert cur.fetchall() == [(2, 'orange')]
+
+    parent_id, created, comment = get_all_snap_info(sg_pg_mg_conn, 'output', head)
+    assert comment == _canonicalize(BASE_COMMANDS[3][1][0])
 
 
 def test_advanced_sgfile(sg_pg_mg_conn):

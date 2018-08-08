@@ -6,7 +6,7 @@ from splitgraph.pg_replication import record_pending_changes, commit_pending_cha
     start_replication
 
 
-def commit(conn, mountpoint, schema_snap=None, include_snap=False):
+def commit(conn, mountpoint, schema_snap=None, include_snap=False, comment=None):
     ensure_metadata_schema(conn)
     # required here so that the logical replication sees changes made before the commit in this tx
     conn.commit()
@@ -19,7 +19,7 @@ def commit(conn, mountpoint, schema_snap=None, include_snap=False):
         schema_snap = "%0.2x" % getrandbits(256)
 
     # Add the new snap ID to the tree
-    add_new_snap_id(conn, mountpoint, HEAD, schema_snap)
+    add_new_snap_id(conn, mountpoint, HEAD, schema_snap, comment=comment)
 
     commit_pending_changes(conn, mountpoint, HEAD, schema_snap, include_snap=include_snap)
 

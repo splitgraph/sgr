@@ -11,7 +11,8 @@ from splitgraph.commands import unmount
 from splitgraph.commands.misc import pg_table_exists
 from splitgraph.constants import PG_HOST, PG_PORT, PG_DB, PG_USER, PG_PWD
 from splitgraph.meta_handler import get_current_head, get_table, get_all_snap_parents, get_snap_parent, \
-    get_downloaded_objects, get_existing_objects, get_external_object_locations, set_tag, get_all_hashes_tags
+    get_downloaded_objects, get_existing_objects, get_external_object_locations, set_tag, get_all_hashes_tags, \
+    get_all_snap_info
 from splitgraph.pg_replication import has_pending_changes
 
 PG_MNT = 'test_pg_mount'
@@ -45,6 +46,7 @@ def sg_pg_conn():
     yield conn
     unmount(conn, PG_MNT)
     unmount(conn, PG_MNT + '_pull')
+    conn.close()
 
 
 @pytest.fixture
@@ -63,6 +65,7 @@ def sg_pg_mg_conn():
     unmount(conn, PG_MNT)
     unmount(conn, PG_MNT + '_pull')
     unmount(conn, 'output')
+    conn.close()
 
 
 def test_mount_unmount():
@@ -114,11 +117,12 @@ def test_commit_diff(include_snap, sg_pg_conn):
         cur.execute("""UPDATE test_pg_mount.fruits SET name = 'guitar' WHERE fruit_id = 2""")
 
     head = get_current_head(sg_pg_conn, PG_MNT)
-    new_head = commit(sg_pg_conn, PG_MNT, include_snap=include_snap)
+    new_head = commit(sg_pg_conn, PG_MNT, include_snap=include_snap, comment="test commit")
 
     # After commit, we should be switched to the new commit hash and there should be no differences.
     assert get_current_head(sg_pg_conn, PG_MNT) == new_head
     assert diff(sg_pg_conn, PG_MNT, 'fruits', snap_1=new_head, snap_2=None) == []
+    assert get_all_snap_info(sg_pg_conn, PG_MNT, new_head)[2] == "test commit"
 
     # The diff between the old and the new snaps should be the same as in the previous test
     change = diff(sg_pg_conn, PG_MNT, 'fruits', snap_1=head, snap_2=new_head)
@@ -346,7 +350,7 @@ def test_pull(sg_pg_conn, download_all):
     with sg_pg_conn.cursor() as cur:
         cur.execute("""SELECT * FROM test_pg_mount_pull.fruits""")
         assert list(cur.fetchall()) == [(1, 'apple'), (2, 'orange')]
-    assert head_1 not in [snap_id for snap_id, parent_id, created in get_all_snap_parents(sg_pg_conn, PG_MNT + '_pull')]
+    assert head_1 not in [snap_id for snap_id, parent_id, created, comment in get_all_snap_parents(sg_pg_conn, PG_MNT + '_pull')]
 
     # Since the pull procedure initializes a new connection, we have to commit our changes
     # in order to see them.

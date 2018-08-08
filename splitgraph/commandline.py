@@ -11,7 +11,8 @@ from splitgraph.commands import mount, unmount, commit, checkout, diff, get_log,
 from splitgraph.constants import POSTGRES_CONNECTION, SplitGraphException
 from splitgraph.drawing import render_tree
 from splitgraph.meta_handler import get_snap_parent, get_canonical_snap_id, get_all_tables, \
-    get_current_mountpoints_hashes, get_all_hashes_tags, set_tag, get_current_head, get_remote_for, get_tagged_id
+    get_current_mountpoints_hashes, get_all_hashes_tags, set_tag, get_current_head, get_remote_for, get_tagged_id, \
+    get_all_snap_info, get_tables_at, get_table
 from splitgraph.sgfile import parse_commands, execute_commands
 
 
@@ -62,10 +63,8 @@ def log_c(mountpoint, tree):
         head = get_current_head(conn, mountpoint)
         log = get_log(conn, mountpoint, head)
         for entry in log:
-            if entry == head:
-                print "%s <--- HEAD" % entry
-            else:
-                print entry
+            _, created, comment = get_all_snap_info(conn, mountpoint, entry)
+            print "%s %s %s (%s)" % ("H -> " if entry == head else "", entry, comment or "", created)
 
 
 @click.command(name='diff')
@@ -178,14 +177,44 @@ def checkout_c(mountpoint, snapshot_or_tag):
 @click.argument('mountpoint')
 @click.option('-h', '--commit-hash')
 @click.option('-s', '--include-snap', default=False, is_flag=True)
-def commit_c(mountpoint, commit_hash, include_snap):
+@click.option('-m', '--message')
+def commit_c(mountpoint, commit_hash, include_snap, message):
     conn = _conn()
     if commit_hash and (len(commit_hash) != 64 or any([x not in 'abcdef0123456789' for x in set(commit_hash)])):
         print "Commit hash must be of the form [a-f0-9] x 64!"
         return
 
-    commit(conn, mountpoint, commit_hash, include_snap=include_snap)
+    commit(conn, mountpoint, commit_hash, include_snap=include_snap, comment=message)
     conn.commit()
+
+
+@click.command(name='show')
+@click.argument('mountpoint')
+@click.argument('commit_hash')
+@click.option('-v', '--verbose', default=False, is_flag=True)
+def show_c(mountpoint, commit_hash, verbose):
+    conn = _conn()
+    commit_hash = get_canonical_snap_id(conn, mountpoint, commit_hash)
+
+    print "Commit %s" % commit_hash
+    parent, created, comment = get_all_snap_info(conn, mountpoint, commit_hash)
+    print comment or ""
+    print "Created at %s" % created.isoformat()
+    if parent:
+        print "Parent: %s" % parent
+    else:
+        print "No parent (root commit)"
+    if verbose:
+        print
+        print "Tables:"
+        for t in get_tables_at(conn, mountpoint, commit_hash):
+            table_objects = get_table(conn, mountpoint, t, commit_hash)
+            if len(table_objects) == 1:
+                print "  %s: %s (%s)" % (t, table_objects[0][0], table_objects[0][1])
+            else:
+                print "  %s:" % t
+                for obj in table_objects:
+                    print "    %s (%s)" % obj
 
 
 @click.command(name='file')
@@ -296,6 +325,7 @@ cli.add_command(unmount_c)
 cli.add_command(checkout_c)
 cli.add_command(diff_c)
 cli.add_command(commit_c)
+cli.add_command(show_c)
 cli.add_command(file_c)
 cli.add_command(sql_c)
 cli.add_command(init_c)

@@ -119,5 +119,5 @@ def execute_commands(conn, commands):
                 with conn.cursor() as cur:
                     cur.execute(sql_command)
 
-                commit(conn, output, target_hash)
+                commit(conn, output, target_hash, comment=sql_command)
                 conn.commit()
