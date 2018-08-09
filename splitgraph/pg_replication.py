@@ -93,15 +93,22 @@ def has_pending_changes(conn, mountpoint):
         return cur.fetchone() is not None
 
 
-def dump_pending_changes(conn, mountpoint, table):
+def dump_pending_changes(conn, mountpoint, table, aggregate=False):
     # First, make sure we're up to date on changes.
     record_pending_changes(conn)
     with conn.cursor() as cur:
-        cur.execute(SQL("SELECT kind, change FROM {}.{} WHERE mountpoint = %s AND table_name = %s").format(
-            Identifier(SPLITGRAPH_META_SCHEMA),
-            Identifier("pending_changes")),
-            (mountpoint, table))
-        return cur.fetchall()
+        if aggregate:
+            cur.execute(SQL("SELECT kind, count(kind) FROM {}.{} WHERE mountpoint = %s AND table_name = %s GROUP BY kind").format(
+                Identifier(SPLITGRAPH_META_SCHEMA),
+                Identifier("pending_changes")),
+                (mountpoint, table))
+            return cur.fetchall()
+        else:
+            cur.execute(SQL("SELECT kind, change FROM {}.{} WHERE mountpoint = %s AND table_name = %s").format(
+                Identifier(SPLITGRAPH_META_SCHEMA),
+                Identifier("pending_changes")),
+                (mountpoint, table))
+            return cur.fetchall()
 
 
 def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False):
@@ -144,6 +151,11 @@ def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False
                             Identifier(mountpoint), Identifier(object_id),
                             Identifier(mountpoint), Identifier(table)))
                         register_table_object(conn, mountpoint, table, new_image, object_id, object_format='SNAP')
+
+            # Finally, if the table was created (only snap was output), drop all of its WAL changes since we
+            # don't want them incorporated in the next commit.
+            if not table_info:
+                discard_pending_changes(conn, mountpoint)
 
 
 def apply_record_to_staging(conn, mountpoint, object_id, destination):

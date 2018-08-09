@@ -1,7 +1,6 @@
 # TODO
 
   * Err on checkout if there are pending changes?
-  * diff command: aggregate
   * checkout slowness: investigate
     * pks? delete statements? insert statements?
     * make a quick script to insert N rows into the table and do come commits/explains

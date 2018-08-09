@@ -6,8 +6,16 @@ from splitgraph.meta_handler import get_current_head, get_table, get_table_with_
 from splitgraph.pg_replication import dump_pending_changes
 
 
-def diff(conn, mountpoint, table_name, snap_1, snap_2):
-    # Returns a list of changes done to a table if it exists in both images.
+def _changes_to_aggregation(query_result, initial=None):
+    result = list(initial) if initial else [0, 0, 0]
+    for kind, kind_count in query_result:
+        result[kind] += kind_count
+    return tuple(result)
+
+
+def diff(conn, mountpoint, table_name, snap_1, snap_2, aggregate=False):
+    # Returns a list of changes done to a table if it exists in both images (if aggregate=False).
+    # If aggregate=True, returns a triple showing the number of (added, removed, updated) rows.
     # Otherwise, returns True if the table was added and False if it was removed.
     with conn.cursor() as cur:
         # If the table doesn't exist in the first or the second image, short-circuit and
@@ -21,25 +29,35 @@ def diff(conn, mountpoint, table_name, snap_1, snap_2):
         HEAD = get_current_head(conn, mountpoint)
         # TODO do we need to conflate them e.g. if A changed to B and then B changed to C, do we emit A -> C?
         if snap_1 == HEAD and snap_2 is None:
-            return dump_pending_changes(conn, mountpoint, table_name)
+            changes = dump_pending_changes(conn, mountpoint, table_name, aggregate=aggregate)
+            return changes if not aggregate else _changes_to_aggregation(changes)
 
         # If the table is the same in the two images, short circuit as well.
         if set(get_table(conn, mountpoint, table_name, snap_1)) == set(get_table(conn, mountpoint, table_name, snap_2)):
-            return []
+            return [] if not aggregate else (0, 0, 0)
 
         # Otherwise, check if snap_1 is a parent of snap_2, then we can merge all the diffs.
         path = _find_path(conn, mountpoint, snap_1, (snap_2 if snap_2 is not None else HEAD))
         if path is not None:
-            result = []
+            result = [] if not aggregate else (0, 0, 0)
             for image in reversed(path):
                 diff_id = get_table_with_format(conn, mountpoint, table_name, image, 'DIFF')
-                cur.execute(SQL("""SELECT kind, change FROM {}.{}""").format(
-                    Identifier(mountpoint), Identifier(diff_id)))
-                result.extend(cur.fetchall())
+                if not aggregate:
+                    cur.execute(SQL("""SELECT kind, change FROM {}.{}""").format(
+                        Identifier(mountpoint), Identifier(diff_id)))
+                    result.extend(cur.fetchall())
+                else:
+                    cur.execute(SQL("""SELECT kind, count(kind) FROM {}.{} GROUP BY kind""").format(
+                        Identifier(mountpoint), Identifier(diff_id)))
+                    result = _changes_to_aggregation(cur.fetchall(), result)
 
             # If snap_2 is staging, also include all changes that have happened since the last commit.
             if snap_2 is None:
-                result.extend(dump_pending_changes(conn, mountpoint, table_name))
+                changes = dump_pending_changes(conn, mountpoint, table_name, aggregate=aggregate)
+                if aggregate:
+                    result = _changes_to_aggregation(changes, result)
+                else:
+                    result.extend(changes)
             return result
 
         else:
@@ -54,4 +72,7 @@ def diff(conn, mountpoint, table_name, snap_1, snap_2):
                     right = cur.fetchall()
 
             # Mimic the diff format returned by the WAL
-            return [(1, r) for r in left if r not in right] + [(0, r) for r in right if r not in left]
+            if aggregate:
+                return sum(1 for r in right if r not in left), sum(1 for r in left if r not in right), 0
+            else:
+                return [(1, r) for r in left if r not in right] + [(0, r) for r in right if r not in left]

@@ -91,11 +91,11 @@ def diff_c(verbose, table_name, mountpoint, snap_1, snap_2):
         snap_2 = get_canonical_snap_id(conn, mountpoint, snap_2)
 
     if table_name:
-        diffs = {table_name: diff(conn, mountpoint, table_name, snap_1, snap_2)}
+        diffs = {table_name: diff(conn, mountpoint, table_name, snap_1, snap_2, aggregate=not verbose)}
     else:
         all_tables = sorted(get_all_tables(conn, mountpoint))
 
-        diffs = {table_name: diff(conn, mountpoint, table_name, snap_1, snap_2)
+        diffs = {table_name: diff(conn, mountpoint, table_name, snap_1, snap_2, aggregate=not verbose)
                  for table_name in all_tables}
 
     if snap_2 is None:
@@ -106,11 +106,14 @@ def diff_c(verbose, table_name, mountpoint, snap_1, snap_2):
     for table_name, diff_result in diffs.items():
         to_print = "%s: " % table_name
 
-        if isinstance(diff_result, list):
-            change_count = dict(Counter(d[0] for d in diff_result).most_common())
-            added = change_count.get(0, 0)
-            removed = change_count.get(1, 0)
-            updated = change_count.get(2, 0)
+        if isinstance(diff_result, list) or isinstance(diff_result, tuple):
+            if verbose:
+                change_count = dict(Counter(d[0] for d in diff_result).most_common())
+                added = change_count.get(0, 0)
+                removed = change_count.get(1, 0)
+                updated = change_count.get(2, 0)
+            else:
+                added, removed, updated = diff_result
 
             count = []
             if added:

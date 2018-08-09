@@ -127,6 +127,19 @@ def test_commit_diff(include_snap, sg_pg_conn):
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
+def test_commit_on_empty(include_snap, sg_pg_conn):
+    init(sg_pg_conn, "output")
+
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""CREATE TABLE output.test AS SELECT * FROM test_pg_mount.fruits""")
+
+    # Make sure the WAL changes get flushed anyway if we are only committing a snapshot.
+    assert diff(sg_pg_conn, 'output', 'test', snap_1=get_current_head(sg_pg_conn, 'output'), snap_2=None) == True
+    commit(sg_pg_conn, 'output', include_snap=include_snap)
+    assert diff(sg_pg_conn, 'output', 'test', snap_1=get_current_head(sg_pg_conn, 'output'), snap_2=None) == []
+
+
+@pytest.mark.parametrize("include_snap", [True, False])
 def test_multiple_mountpoint_commit_diff(include_snap, sg_pg_mg_conn):
     with sg_pg_mg_conn.cursor() as cur:
         cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise')""")
@@ -213,7 +226,6 @@ def test_diff_across_far_commits(include_snap, sg_pg_conn):
     new_head = commit(sg_pg_conn, PG_MNT, include_snap=include_snap)
 
     change = diff(sg_pg_conn, PG_MNT, 'fruits', head, new_head)
-    print(change)
     assert change == [(0,
                        # Insert mayonnaise
                        '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "columnvalues": [3, "mayonnaise"]}'),
@@ -224,6 +236,8 @@ def test_diff_across_far_commits(include_snap, sg_pg_conn):
                        # Update orange -> guitar
                        '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "columnvalues": [2, "guitar"], "oldkeys": {"keynames": ["fruit_id", "name"], "keytypes": ["integer", "character varying"], "keyvalues": [2, "orange"]}}')]
 
+    change_agg = diff(sg_pg_conn, PG_MNT, 'fruits', head, new_head, aggregate=True)
+    assert change_agg == (1, 1, 1)
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
