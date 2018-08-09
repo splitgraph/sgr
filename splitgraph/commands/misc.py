@@ -131,11 +131,10 @@ def mount_mongo(conn, server, port, username, password, mountpoint, extra_option
 
 def unmount(conn, mountpoint):
     ensure_metadata_schema(conn)
-    record_pending_changes(conn)
-    stop_replication(conn)
-    discard_pending_changes(conn, mountpoint)
     # Make sure to consume and discard changes to this mountpoint if they exist, otherwise they might
     # be applied/recorded if a new mountpoint with the same name appears.
+    record_pending_changes(conn)
+    discard_pending_changes(conn, mountpoint)
 
     with conn.cursor() as cur:
         cur.execute(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(mountpoint)))
@@ -144,8 +143,6 @@ def unmount(conn, mountpoint):
 
     # Currently we just discard all history info about the mounted schema
     unregister_mountpoint(conn, mountpoint)
-    conn.commit()
-    start_replication(conn)
 
 
 def dump_table_creation(conn, schema, tables, created_schema=None):
@@ -157,8 +154,12 @@ def dump_table_creation(conn, schema, tables, created_schema=None):
                            FROM information_schema.columns
                            WHERE table_name = %s AND table_schema = %s""", (t, schema))
             cols = cur.fetchall()
-            target = Identifier(created_schema + '.' + t) if created_schema else Identifier(t)
-            query = SQL("CREATE TABLE {} (").format(target) + ",".join(SQL("{} {} {}").format(Identifier(cname), Identifier(ctype), "NOT NULL" if not cnull else "")
-                               for cname, ctype, cnull in cols) + ");"
+            if created_schema:
+                target = SQL("{}.{}").format(Identifier(created_schema), Identifier(t))
+            else:
+                target = Identifier(t)
+            query = SQL("CREATE TABLE {} (").format(target) +\
+                SQL(','.join("{} %s " % ctype + ("NOT NULL" if not cnull else "") for _, ctype, cnull in cols) + ')').format(
+                    *(Identifier(cname) for cname, _, _ in cols))
             queries.append(query)
-    return ';'.join(queries)
+    return SQL(';').join(queries)

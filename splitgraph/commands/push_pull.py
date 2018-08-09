@@ -96,24 +96,25 @@ def push(conn, remote_conn_string, remote_mountpoint, local_mountpoint, handler=
     match = re.match('(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
     remote_conn = make_conn(server=match.group(3), port=int(match.group(4)), username=match.group(1),
                             password=match.group(2), dbname=match.group(5))
+    try:
+        _log("Gathering remote metadata...")
+        # This also registers new commits remotely. Should make explicit and move down later on.
+        snaps_to_push, object_meta, object_locations = _get_required_snaps_objects(remote_conn, conn, remote_mountpoint, local_mountpoint)
 
-    _log("Gathering remote metadata...")
-    # This also registers new commits remotely. Should make explicit and move down later on.
-    snaps_to_push, object_meta, object_locations = _get_required_snaps_objects(remote_conn, conn, remote_mountpoint, local_mountpoint)
+        if not snaps_to_push:
+            _log("Nothing to do.")
+            return
 
-    if not snaps_to_push:
-        _log("Nothing to do.")
-        return
-
-    new_uploads = upload_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoint, list(set(o[2] for o in object_meta)),
-                                 handler=handler, handler_params=handler_options)
-    # Register the newly uploaded object locations locally and remotely.
-    register_objects(remote_conn, remote_mountpoint, object_meta)
-    register_object_locations(remote_conn, remote_mountpoint, object_locations + new_uploads)
-    # Kind of have to commit here in any case?
-    # A fun bug here: if remote_conn and conn are pointing to the same database (like in the integration test),
-    # then updating object_location over conn first locks waiting on remote_conn to commit, which then locks waiting on
-    # conn to commit.
-    remote_conn.commit()
-
-    register_object_locations(conn, local_mountpoint, new_uploads)
+        new_uploads = upload_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoint, list(set(o[2] for o in object_meta)),
+                                     handler=handler, handler_params=handler_options)
+        # Register the newly uploaded object locations locally and remotely.
+        register_objects(remote_conn, remote_mountpoint, object_meta)
+        register_object_locations(remote_conn, remote_mountpoint, object_locations + new_uploads)
+        # Kind of have to commit here in any case?
+        # A fun bug here: if remote_conn and conn are pointing to the same database (like in the integration test),
+        # then updating object_location over conn first locks waiting on remote_conn to commit, which then locks waiting on
+        # conn to commit.
+        remote_conn.commit()
+        register_object_locations(conn, local_mountpoint, new_uploads)
+    finally:
+        remote_conn.close()

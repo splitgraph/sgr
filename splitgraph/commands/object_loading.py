@@ -57,17 +57,17 @@ def download_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoi
 
 def _table_dump_generator(conn, schema, table):
     # Don't include a schema (mountpoint) qualifier since the dump might be imported into a different place.
-    yield dump_table_creation(conn, schema, [table], created_schema=None) + ';\n'
+    yield (dump_table_creation(conn, schema, [table], created_schema=None) + SQL(';\n')).as_string(conn)
 
     # Use a server-side cursor here so we don't fetch the whole db into memory immediately.
     with conn.cursor(name='sg_table_upload_cursor') as cur:
         cur.itersize = 10000
-        cur.execute(SQL("SELECT * FROM {}""").format(Identifier(schema), Identifier(table)))
+        cur.execute(SQL("SELECT * FROM {}.{}""").format(Identifier(schema), Identifier(table)))
         row = next(cur)
         q = '(' + ','.join('%s' for _ in row) + ')'
-        yield cur.mogrify(SQL("INSERT INTO {} VALUES " + row).format(Identifier(table)))
+        yield cur.mogrify(SQL("INSERT INTO {} VALUES " + q).format(Identifier(table)), row).decode('utf-8')
         for row in cur:
-            yield cur.mogrify(', ' + q + '\n', row)
+            yield cur.mogrify(', ' + q + '\n', row).decode('utf-8')
 
 
 def _http_upload_objects(conn, local_mountpoint, objects_to_push, http_params):
@@ -172,6 +172,7 @@ def upload_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoint
                 cur.execute(SQL("INSERT INTO {}.{} SELECT * FROM {}.{}").format(
                     Identifier(remote_data_mountpoint), Identifier(obj),
                     Identifier(local_mountpoint), Identifier(obj)))
+        conn.commit()
         unmount(conn, remote_data_mountpoint)
 
         # We assume that if the object doesn't have an explicit location, it lives on the remote.

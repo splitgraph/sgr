@@ -174,6 +174,4 @@ def apply_record_to_staging(conn, mountpoint, object_id, destination):
                 query += SQL(" WHERE " + ' AND '.join("{} = %s" for _ in change['oldkeys']['keynames'])).format(
                     *(Identifier(i) for i in change['oldkeys']['keynames']))
                 queries.append(cur.mogrify(query, change['columnvalues'] + change['oldkeys']['keyvalues']))
-
-        print(b';'.join(queries))
         cur.execute(b';'.join(queries))  # maybe some pagination needed here.

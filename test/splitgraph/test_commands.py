@@ -214,7 +214,15 @@ def test_diff_across_far_commits(include_snap, sg_pg_conn):
 
     change = diff(sg_pg_conn, PG_MNT, 'fruits', head, new_head)
     print(change)
-    assert change == [(0, '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "columnvalues": [3, "mayonnaise"]}'), (1, '{"oldkeys": {"keynames": ["fruit_id", "name"], "keytypes": ["integer", "character varying"], "keyvalues": [1, "apple"]}}'), (2, '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "columnvalues": [2, "guitar"], "oldkeys": {"keynames": ["fruit_id", "name"], "keytypes": ["integer", "character varying"], "keyvalues": [2, "orange"]}}')]
+    assert change == [(0,
+                       # Insert mayonnaise
+                       '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "columnvalues": [3, "mayonnaise"]}'),
+                      (1,
+                       # Delete apple
+                       '{"oldkeys": {"keynames": ["fruit_id", "name"], "keytypes": ["integer", "character varying"], "keyvalues": [1, "apple"]}}'),
+                      (2,
+                       # Update orange -> guitar
+                       '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "columnvalues": [2, "guitar"], "oldkeys": {"keynames": ["fruit_id", "name"], "keytypes": ["integer", "character varying"], "keyvalues": [2, "orange"]}}')]
 
 
 
@@ -457,8 +465,8 @@ def test_http_push_pull(sg_pg_conn):
         assert get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull') == get_existing_objects(sg_pg_conn, PG_MNT)
 
         with sg_pg_conn.cursor() as cur:
-            cur.execute("""SELECT * FROM test_mount.fruits""")
-            assert cur.fetchall() == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]
+            cur.execute("""SELECT * FROM %s.fruits""" % (PG_MNT + '_pull'))
+            assert cur.fetchall() == [(1, 'apple'), (2, 'orange'), (3, 'mustard')]
     finally:
         rmtree(tmpdir)
 
