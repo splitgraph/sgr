@@ -114,7 +114,7 @@ def mount_mongo(conn, server, port, username, password, mountpoint, extra_option
 
         # Mongo extra options: a map of
         # {table_name: {db: remote_db_name, coll: remote_collection_name, schema: {col1: type1, col2: type2...}}}
-        for table_name, table_options in extra_options.iteritems():
+        for table_name, table_options in extra_options.items():
             _log("Mounting table %s" % table_name)
             db = table_options['db']
             coll = table_options['coll']
@@ -123,7 +123,7 @@ def mount_mongo(conn, server, port, username, password, mountpoint, extra_option
             if table_options['schema']:
                 query += ',' + ','.join(
                     "%s %s" % (cur.mogrify(cname), cur.mogrify(ctype)) for cname, ctype in
-                    table_options['schema'].iteritems())
+                    iter(table_options['schema'].items()))
             query += ") SERVER %s OPTIONS (database %%s, collection %%s)" % fq_server
 
             cur.execute(query, (db, coll))

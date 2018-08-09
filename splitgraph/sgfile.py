@@ -54,7 +54,7 @@ def execute_commands(conn, commands):
 
     for i, com in enumerate(commands):
         operator, operands = com
-        print "-> %d/%d %s" % (i + 1, len(commands), operator + ' ' + ' '.join(operands))
+        print("-> %d/%d %s" % (i + 1, len(commands), operator + ' ' + ' '.join(operands)))
         if operator == 'PULL':
             conn_string = operands[0]
             remote_mountpoint = operands[1]
@@ -78,11 +78,11 @@ def execute_commands(conn, commands):
                     snap_id = get_canonical_snap_id(conn, mountpoint, operands[1])
             else:
                 snap_id = get_current_head(conn, mountpoint)
-            print "Using source mountpoint %s snapshot %s" % (mountpoint, snap_id)
+            print("Using source mountpoint %s snapshot %s" % (mountpoint, snap_id))
             sources[mountpoint] = snap_id
         elif operator == 'OUTPUT':
             output = operands[0]
-            print "Committing results to mountpoint %s" % output
+            print("Committing results to mountpoint %s" % output)
             try:
                 get_current_head(conn, output)
             except SplitGraphException:
@@ -101,21 +101,21 @@ def execute_commands(conn, commands):
             # It's the xor of all input + output layer hashes as well as the hash of the SQL command itself.
             sql_command = _canonicalize(operands[0])
             output_head = get_current_head(conn, output)
-            target_hash = _combine_hashes(sources.values() + [output_head, sha256(sql_command).hexdigest()])
+            target_hash = _combine_hashes(list(sources.values()) + [output_head, sha256(sql_command).hexdigest()])
 
-            print ', '.join('%s:%s' % (mp, si[:12]) for mp, si in sources.iteritems()) + ', %s:%s' % (output, output_head[:12]) + \
-                ' -> %s:%s' % (output, target_hash[:12])
+            print(', '.join('%s:%s' % (mp, si[:12]) for mp, si in iter(sources.items())) + ', %s:%s' % (output, output_head[:12]) + \
+                ' -> %s:%s' % (output, target_hash[:12]))
 
             # Have we already calculated this hash?
             try:
                 checkout(conn, output, target_hash)
-                print "Using the cache."
+                print("Using the cache.")
             except SplitGraphException:
                 # Check out all the input layers
-                for mountpoint, snap_id in sources.iteritems():
-                    print "Using %s snap %s" % (mountpoint, snap_id[:12])
+                for mountpoint, snap_id in sources.items():
+                    print("Using %s snap %s" % (mountpoint, snap_id[:12]))
                     checkout(conn, mountpoint, snap_id)
-                print "Executing SQL..."
+                print("Executing SQL...")
                 with conn.cursor() as cur:
                     cur.execute(sql_command)
 

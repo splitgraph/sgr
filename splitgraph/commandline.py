@@ -35,21 +35,21 @@ def status_c(mountpoint):
         print ("Currently mounted databases: ")
         for mp_name, mp_hash in mountpoints:
             # Maybe should also show the remote DB address/server
-            print "%s: \t %s" % (mp_name, mp_hash)
-        print "\nUse sg status MOUNTPOINT to get information about a given mountpoint."
+            print("%s: \t %s" % (mp_name, mp_hash))
+        print("\nUse sg status MOUNTPOINT to get information about a given mountpoint.")
     else:
         current_snap = get_current_head(conn, mountpoint, raise_on_none=False)
         if not current_snap:
-            print "%s: nothing checked out." % mountpoint
+            print("%s: nothing checked out." % mountpoint)
             return
         parent, children = get_parent_children(conn, mountpoint, current_snap)
-        print "%s: on snapshot %s." % (mountpoint, current_snap)
+        print("%s: on snapshot %s." % (mountpoint, current_snap))
         if parent is not None:
-            print "Parent: %s" % parent
+            print("Parent: %s" % parent)
         if len(children) > 1:
-            print "Children: " + "\n".join(children)
+            print("Children: " + "\n".join(children))
         elif len(children) == 1:
-            print "Child: %s" % children[0]
+            print("Child: %s" % children[0])
 
 
 @click.command(name='log')
@@ -64,7 +64,7 @@ def log_c(mountpoint, tree):
         log = get_log(conn, mountpoint, head)
         for entry in log:
             _, created, comment = get_all_snap_info(conn, mountpoint, entry)
-            print "%s %s %s (%s)" % ("H -> " if entry == head else "", entry, comment or "", created)
+            print("%s %s %s (%s)" % ("H -> " if entry == head else "", entry, comment or "", created))
 
 
 @click.command(name='diff')
@@ -84,7 +84,7 @@ def diff_c(verbose, table_name, mountpoint, snap_1, snap_2):
         # One parameter: diff from that and its parent.
         snap_2 = get_snap_parent(conn, mountpoint, snap_1)
         if snap_2 is None:
-            print "%s has no parent to compare to!" % snap_1
+            print("%s has no parent to compare to!" % snap_1)
         snap_1, snap_2 = snap_2, snap_1 # snap_1 has to come first
     else:
         snap_1 = get_canonical_snap_id(conn, mountpoint, snap_1)
@@ -99,11 +99,11 @@ def diff_c(verbose, table_name, mountpoint, snap_1, snap_2):
                  for table_name in all_tables}
 
     if snap_2 is None:
-        print ("Between %s and the current working copy: " % snap_1[:12])
+        print(("Between %s and the current working copy: " % snap_1[:12]))
     else:
-        print ("Between %s and %s: " % (snap_1[:12], snap_2[:12]))
+        print(("Between %s and %s: " % (snap_1[:12], snap_2[:12])))
 
-    for table_name, diff_result in diffs.iteritems():
+    for table_name, diff_result in diffs.items():
         to_print = "%s: " % table_name
 
         if isinstance(diff_result, list):
@@ -121,14 +121,14 @@ def diff_c(verbose, table_name, mountpoint, snap_1, snap_2):
                 count.append("updated %d rows" % updated)
             if added + removed + updated == 0:
                 count = ['no changes']
-            print(to_print + ', '.join(count) + '.')
+            print((to_print + ', '.join(count) + '.'))
 
             if verbose:
                 for kind, change in diff_result:
-                    print ['+', '-', 'U'][kind] + " " + change
+                    print(['+', '-', 'U'][kind] + " " + change)
         else:
             # Whole table was either added or removed
-            print to_print + ("table added" if diff_result else "table removed")
+            print(to_print + ("table added" if diff_result else "table removed"))
 
 
 @click.command(name='mount')
@@ -181,7 +181,7 @@ def checkout_c(mountpoint, snapshot_or_tag):
 def commit_c(mountpoint, commit_hash, include_snap, message):
     conn = _conn()
     if commit_hash and (len(commit_hash) != 64 or any([x not in 'abcdef0123456789' for x in set(commit_hash)])):
-        print "Commit hash must be of the form [a-f0-9] x 64!"
+        print("Commit hash must be of the form [a-f0-9] x 64!")
         return
 
     commit(conn, mountpoint, commit_hash, include_snap=include_snap, comment=message)
@@ -196,25 +196,25 @@ def show_c(mountpoint, commit_hash, verbose):
     conn = _conn()
     commit_hash = get_canonical_snap_id(conn, mountpoint, commit_hash)
 
-    print "Commit %s" % commit_hash
+    print("Commit %s" % commit_hash)
     parent, created, comment = get_all_snap_info(conn, mountpoint, commit_hash)
-    print comment or ""
-    print "Created at %s" % created.isoformat()
+    print(comment or "")
+    print("Created at %s" % created.isoformat())
     if parent:
-        print "Parent: %s" % parent
+        print("Parent: %s" % parent)
     else:
-        print "No parent (root commit)"
+        print("No parent (root commit)")
     if verbose:
-        print
-        print "Tables:"
+        print()
+        print("Tables:")
         for t in get_tables_at(conn, mountpoint, commit_hash):
             table_objects = get_table(conn, mountpoint, t, commit_hash)
             if len(table_objects) == 1:
-                print "  %s: %s (%s)" % (t, table_objects[0][0], table_objects[0][1])
+                print("  %s: %s (%s)" % (t, table_objects[0][0], table_objects[0][1]))
             else:
-                print "  %s:" % t
+                print("  %s:" % t)
                 for obj in table_objects:
-                    print "    %s (%s)" % obj
+                    print("    %s (%s)" % obj)
 
 
 @click.command(name='file')
@@ -238,7 +238,7 @@ def sql_c(sql, show_all):
             results = cur.fetchmany(10) if not show_all else cur.fetchall()
             pprint(results)
             if cur.rowcount > 10 and not show_all:
-                print "..."
+                print("...")
         except ProgrammingError:
             pass  # sql wasn't a SELECT statement
     conn.commit()
@@ -249,7 +249,7 @@ def sql_c(sql, show_all):
 def init_c(mountpoint):
     conn = _conn()
     init(conn, mountpoint)
-    print "Initialized empty mountpoint %s" % mountpoint
+    print("Initialized empty mountpoint %s" % mountpoint)
     conn.commit()
 
 
@@ -303,10 +303,10 @@ def tag_c(mountpoint, image, tag, force):
         for img, tag in all_tags:
             tag_dict[img].append(tag)
         if image is None:
-            for img, tags in tag_dict.iteritems():
-                print "%s: %s" % (img[:12], ', '.join(tags))
+            for img, tags in tag_dict.items():
+                print("%s: %s" % (img[:12], ', '.join(tags)))
         else:
-            print ', '.join(tag_dict[image])
+            print(', '.join(tag_dict[image]))
         return
 
     if tag == 'HEAD':
@@ -314,7 +314,7 @@ def tag_c(mountpoint, image, tag, force):
 
     image = get_canonical_snap_id(conn, mountpoint, image)
     set_tag(conn, mountpoint, image, tag, force)
-    print "Tagged %s:%s with %s." % (mountpoint, image, tag)
+    print("Tagged %s:%s with %s." % (mountpoint, image, tag))
     conn.commit()
 
 

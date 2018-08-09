@@ -155,16 +155,16 @@ def apply_record_to_staging(conn, mountpoint, object_id, destination):
                 query = """DELETE FROM %s WHERE """ % fq_staging_name
                 query += ' AND '.join(
                     "%s.%s = %s" % (fq_staging_name, cur.mogrify(c), cur.mogrify('%s', (v,)))
-                    for c, v in zip(change['oldkeys']['keynames'], change['oldkeys']['keyvalues']))
+                    for c, v in list(zip(change['oldkeys']['keynames'], change['oldkeys']['keyvalues'])))
                 queries.append(query)
             elif change_kind == 2:  # Update
                 query = """UPDATE %s SET """ % fq_staging_name
                 query += ', '.join("%s = %s" % (cur.mogrify(c), cur.mogrify('%s', (v,)))
-                                   for c, v in zip(change['oldkeys']['keynames'], change['columnvalues']))
+                                   for c, v in list(zip(change['oldkeys']['keynames'], change['columnvalues'])))
                 query += " WHERE "
                 query += ' AND '.join(
                     "%s = %s" % (cur.mogrify(c), cur.mogrify('%s', (v,)))
-                    for c, v in zip(change['oldkeys']['keynames'], change['oldkeys']['keyvalues']))
+                    for c, v in list(zip(change['oldkeys']['keynames'], change['oldkeys']['keyvalues'])))
                 queries.append(query)
 
         cur.execute(b';'.join(queries))  # maybe some pagination needed here.

@@ -23,8 +23,8 @@ def download_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoi
             non_remote_objects.append(object_id)
 
     if non_remote_objects:
-        print "Fetching external objects..."
-        for method, objects in non_remote_by_method.iteritems():
+        print("Fetching external objects...")
+        for method, objects in non_remote_by_method.items():
             if method == 'HTTP':
                 _http_download_objects(conn, local_mountpoint, objects, {})
             elif method == 'FILE':
@@ -63,7 +63,7 @@ def _table_dump_generator(conn, schema, table):
         cur.itersize = 10000
         cur.execute("""SELECT * FROM %s""" % cur.mogrify('%s.%s' % (schema, table)))
         target = cur.mogrify(table)
-        row = cur.next()
+        row = next(cur)
         q = '(' + ','.join('%s' for _ in row) + ')'
         yield """INSERT INTO %s VALUES """ % target + cur.mogrify(q, row)
         for row in cur:

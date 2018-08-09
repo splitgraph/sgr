@@ -11,7 +11,7 @@ def calc_columns(children, start):
         base = 0
         for child in children[node]:
             child_res = calc_columns(children, child)
-            result.update({cname: ccol + base for cname, ccol in child_res.iteritems()})
+            result.update({cname: ccol + base for cname, ccol in iter(child_res.items())})
             base += max(child_res.values()) + 1
         return result
 
@@ -26,7 +26,7 @@ def render_node(node_id, children, node_cols, max_col, mark_node='', node_width=
     # Finally, render all the edges on the right of the node.
     children_cols = set(node_cols[c] for c in children[node_id])
 
-    for col in xrange(node_cols[node_id] + 1, max_col + 1):
+    for col in range(node_cols[node_id] + 1, max_col + 1):
         # If there's a child in this column, draw an inverse T.
         child_found = False
         for c in children[node_id]:
@@ -44,7 +44,7 @@ def render_node(node_id, children, node_cols, max_col, mark_node='', node_width=
                 line += '│' + " " * (col_width-1)
             else:
                 line += "─" * col_width
-    print line
+    print(line)
 
 
 def render_tree(conn, mountpoint):

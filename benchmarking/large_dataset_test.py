@@ -11,7 +11,7 @@ def create_random_table(conn, mountpoint, table, N=1000):
 
     with conn.cursor() as cur:
         cur.execute("""CREATE TABLE %s (id numeric, value varchar)""" % fq_table)
-        for i in xrange(N):
+        for i in range(N):
             cur.execute("""INSERT INTO %s VALUES (%%s, %%s)""" % fq_table, (i, "%0.2x" % getrandbits(256)))
 
     conn.commit()
@@ -39,9 +39,9 @@ def bench_delete_checkout(N):
     delete_random_rows(conn, MOUNTPOINT, "test", N/5)
     rev = commit(conn, MOUNTPOINT)
 
-    print timeit("checkout(conn, MOUNTPOINT, '%s')" % rev, "from __main__ import *", number=3)
+    print(timeit("checkout(conn, MOUNTPOINT, '%s')" % rev, "from __main__ import *", number=3))
 
 if __name__ == '__main__':
     for N in [10, 100, 1000, 5000, 10000, 20000, 50000, 100000]:
-        print N
+        print(N)
         bench_delete_checkout(N)
