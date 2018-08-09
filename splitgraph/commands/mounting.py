@@ -1,3 +1,4 @@
+from psycopg2.sql import SQL, Identifier
 from random import getrandbits
 
 from splitgraph.commands.checkout import checkout
@@ -33,12 +34,12 @@ def mount(conn, server, port, username, password, mountpoint, mount_handler, ext
             # Create a dummy object ID for each table.
             object_id = get_random_object_id()
             table_object_ids.append(object_id)
-            cur.execute("""ALTER TABLE %s RENAME TO %s""" % (
-                cur.mogrify('%s.%s' % (mountpoint, table)),
-                cur.mogrify('%s_origin' % table)))
-            cur.execute("""CREATE TABLE %s AS SELECT * FROM %s""" % (
-                cur.mogrify('%s.%s' % (mountpoint, object_id)),
-                cur.mogrify('%s.%s_origin' % (mountpoint, table))))
+            cur.execute(SQL("ALTER TABLE {}.{} RENAME TO {}").format(
+                Identifier(mountpoint), Identifier(table),
+                Identifier(table + '_origin')))
+            cur.execute(SQL("CREATE TABLE {}.{} AS SELECT * FROM {}.{}").format(
+                Identifier(mountpoint), Identifier(object_id),
+                Identifier(mountpoint), Identifier(table + '_origin')))
 
     # Finally, register the mountpoint in our metadata store.
     register_mountpoint(conn, mountpoint, schema_snap, tables, table_object_ids)

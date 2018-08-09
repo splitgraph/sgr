@@ -45,7 +45,7 @@ def _canonicalize(sql):
 
 
 def _combine_hashes(hashes):
-    return sha256(''.join(hashes)).hexdigest()
+    return sha256(''.join(hashes).encode('ascii')).hexdigest()
 
 
 def execute_commands(conn, commands):
@@ -101,7 +101,7 @@ def execute_commands(conn, commands):
             # It's the xor of all input + output layer hashes as well as the hash of the SQL command itself.
             sql_command = _canonicalize(operands[0])
             output_head = get_current_head(conn, output)
-            target_hash = _combine_hashes(list(sources.values()) + [output_head, sha256(sql_command).hexdigest()])
+            target_hash = _combine_hashes(list(sources.values()) + [output_head, sha256(sql_command.encode('utf-8')).hexdigest()])
 
             print(', '.join('%s:%s' % (mp, si[:12]) for mp, si in iter(sources.items())) + ', %s:%s' % (output, output_head[:12]) + \
                 ' -> %s:%s' % (output, target_hash[:12]))

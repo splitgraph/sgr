@@ -1,6 +1,7 @@
 import json
 
 from psycopg2.extras import execute_batch
+from psycopg2.sql import SQL, Identifier
 
 from splitgraph.meta_handler import get_current_mountpoints_hashes, get_table_with_format
 
@@ -71,18 +72,24 @@ def record_pending_changes(conn):
             to_insert.append((mountpoint, table, KIND[kind], json.dumps(change)))
 
     with conn.cursor() as cur:
-        execute_batch(cur, """INSERT INTO %s.%s VALUES (%%s, %%s, %%s, %%s)""" % (SPLITGRAPH_META_SCHEMA, "pending_changes"), to_insert)
+        execute_batch(cur, SQL("INSERT INTO {}.{} VALUES (%s, %s, %s, %s)").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                                   Identifier("pending_changes")),
+                      to_insert)
 
 
 def discard_pending_changes(conn, mountpoint):
     with conn.cursor() as cur:
-        cur.execute("""DELETE FROM %s.%s WHERE mountpoint = %%s""" % (SPLITGRAPH_META_SCHEMA, "pending_changes"), (mountpoint,))
+        cur.execute(SQL("DELETE FROM {}.{} WHERE mountpoint = %s").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                          Identifier("pending_changes")),
+                    (mountpoint,))
 
 
 def has_pending_changes(conn, mountpoint):
     record_pending_changes(conn)
     with conn.cursor() as cur:
-        cur.execute("""SELECT 1 FROM %s.%s WHERE mountpoint = %%s""" % (SPLITGRAPH_META_SCHEMA, "pending_changes"), (mountpoint,))
+        cur.execute(SQL("SELECT 1 FROM {}.{} WHERE mountpoint = %s").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                            Identifier("pending_changes")),
+                    (mountpoint,))
         return cur.fetchone() is not None
 
 
@@ -90,16 +97,19 @@ def dump_pending_changes(conn, mountpoint, table):
     # First, make sure we're up to date on changes.
     record_pending_changes(conn)
     with conn.cursor() as cur:
-        cur.execute("""SELECT kind, change FROM %s.%s WHERE mountpoint = %%s AND table_name = %%s"""
-                    % (SPLITGRAPH_META_SCHEMA, "pending_changes"), (mountpoint, table))
+        cur.execute(SQL("SELECT kind, change FROM {}.{} WHERE mountpoint = %s AND table_name = %s").format(
+            Identifier(SPLITGRAPH_META_SCHEMA),
+            Identifier("pending_changes")),
+            (mountpoint, table))
         return cur.fetchall()
 
 
 def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False):
     all_tables = get_all_tables(conn, mountpoint)
     with conn.cursor() as cur:
-        cur.execute("""SELECT DISTINCT(table_name) FROM %s.%s
-                       WHERE mountpoint = %%s""" % (SPLITGRAPH_META_SCHEMA, "pending_changes"), (mountpoint,))
+        cur.execute(SQL("""SELECT DISTINCT(table_name) FROM {}.{}
+                       WHERE mountpoint = %s""").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                        Identifier("pending_changes")), (mountpoint,))
         changed_tables = [c[0] for c in cur.fetchall()]
         for table in all_tables:
             table_info = get_table(conn, mountpoint, table, HEAD)
@@ -108,13 +118,14 @@ def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False
                 with conn.cursor() as cur:
                     if table in changed_tables:
                         object_id = get_random_object_id()
-                        fq_table = cur.mogrify('%s.%s' % (mountpoint, object_id))
+
                         # Move changes from the pending table to the actual object ID
-                        cur.execute("""CREATE TABLE %s AS 
-                                       WITH to_commit AS (DELETE FROM %s.%s WHERE mountpoint = %%s AND table_name = %%s
+                        cur.execute(SQL("""CREATE TABLE {}.{} AS 
+                                       WITH to_commit AS (DELETE FROM {}.{} WHERE mountpoint = %s AND table_name = %s
                                                           RETURNING kind, change)
-                                       SELECT * FROM to_commit""" % (fq_table, SPLITGRAPH_META_SCHEMA, "pending_changes"),
-                                    (mountpoint, table))
+                                       SELECT * FROM to_commit""").format(
+                            Identifier(mountpoint), Identifier(object_id),
+                            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("pending_changes")), (mountpoint, table))
                         register_table_object(conn, mountpoint, table, new_image, object_id, object_format='DIFF')
                     else:
                         # If the table wasn't changed, point the commit to the old table objects (including
@@ -129,42 +140,40 @@ def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False
                 if get_table_with_format(conn, mountpoint, table, HEAD, 'SNAP') is None:
                     with conn.cursor() as cur:
                         object_id = get_random_object_id()
-                        cur.execute("""CREATE TABLE %s AS SELECT * FROM %s""" %
-                                    (cur.mogrify('%s.%s' % (mountpoint, object_id)),
-                                     cur.mogrify('%s.%s' % (mountpoint, table))))
+                        cur.execute(SQL("CREATE TABLE {}.{} AS SELECT * FROM {}.{}").format(
+                            Identifier(mountpoint), Identifier(object_id),
+                            Identifier(mountpoint), Identifier(table)))
                         register_table_object(conn, mountpoint, table, new_image, object_id, object_format='SNAP')
 
 
 def apply_record_to_staging(conn, mountpoint, object_id, destination):
     with conn.cursor() as cur:
-        fq_snap_name = cur.mogrify('%s.%s' % (mountpoint, object_id))
-        fq_staging_name = cur.mogrify('%s.%s' % (mountpoint, destination))
-
-        cur.execute("""SELECT * FROM %s""" % fq_snap_name)
+        cur.execute(SQL("SELECT * FROM {}.{}").format(Identifier(mountpoint), Identifier(object_id)))
         changes = cur.fetchall()
         queries = []
         for change_kind, change in changes:
             change = json.loads(change)
             if change_kind == 0:  # Insert
                 column_names = change['columnnames']
-                query = """INSERT INTO %s (%s) VALUES """ % (fq_staging_name, ','.join(cur.mogrify(c) for c in column_names))
-                query += "(" + ','.join(['%s'] * (len(column_names))) + ")"
+                query = SQL("INSERT INTO {}.{} (").format(Identifier(mountpoint), Identifier(destination))
+                query += SQL(','.join('{}' for _ in column_names)).format(*[Identifier(c) for c in column_names])
+                query += SQL(") VALUES (" + ','.join('%s' for _ in change['columnvalues']) + ')')
                 query = cur.mogrify(query, change['columnvalues'])
                 queries.append(query)
             elif change_kind == 1:  # Delete
-                query = """DELETE FROM %s WHERE """ % fq_staging_name
-                query += ' AND '.join(
-                    "%s.%s = %s" % (fq_staging_name, cur.mogrify(c), cur.mogrify('%s', (v,)))
-                    for c, v in list(zip(change['oldkeys']['keynames'], change['oldkeys']['keyvalues'])))
-                queries.append(query)
-            elif change_kind == 2:  # Update
-                query = """UPDATE %s SET """ % fq_staging_name
-                query += ', '.join("%s = %s" % (cur.mogrify(c), cur.mogrify('%s', (v,)))
-                                   for c, v in list(zip(change['oldkeys']['keynames'], change['columnvalues'])))
-                query += " WHERE "
-                query += ' AND '.join(
-                    "%s = %s" % (cur.mogrify(c), cur.mogrify('%s', (v,)))
-                    for c, v in list(zip(change['oldkeys']['keynames'], change['oldkeys']['keyvalues'])))
-                queries.append(query)
+                query = SQL("DELETE FROM {}.{} WHERE ").format(Identifier(mountpoint), Identifier(destination))
 
+                qual = SQL(' AND '.join("{} = %s" for _ in change['oldkeys']['keynames'])).format(
+                    *(Identifier(i) for i in change['oldkeys']['keynames']))
+
+                queries.append(cur.mogrify(query + qual, change['oldkeys']['keyvalues']))
+            elif change_kind == 2:  # Update
+                query = SQL("UPDATE {}.{} SET ").format(Identifier(mountpoint), Identifier(destination))
+                query += SQL(', '.join("{} = %s" for _ in change['oldkeys']['keynames'])).format(
+                    *(Identifier(i) for i in change['oldkeys']['keynames']))
+                query += SQL(" WHERE " + ' AND '.join("{} = %s" for _ in change['oldkeys']['keynames'])).format(
+                    *(Identifier(i) for i in change['oldkeys']['keynames']))
+                queries.append(cur.mogrify(query, change['columnvalues'] + change['oldkeys']['keyvalues']))
+
+        print(b';'.join(queries))
         cur.execute(b';'.join(queries))  # maybe some pagination needed here.

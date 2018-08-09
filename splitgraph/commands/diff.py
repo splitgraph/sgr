@@ -1,3 +1,5 @@
+from psycopg2.sql import SQL, Identifier
+
 from splitgraph.commands.checkout import materialized_table
 from splitgraph.commands.misc import _table_exists_at, _find_path
 from splitgraph.meta_handler import get_current_head, get_table, get_table_with_format
@@ -31,7 +33,8 @@ def diff(conn, mountpoint, table_name, snap_1, snap_2):
             result = []
             for image in reversed(path):
                 diff_id = get_table_with_format(conn, mountpoint, table_name, image, 'DIFF')
-                cur.execute("""SELECT kind, change FROM %s""" % cur.mogrify('%s.%s' % (mountpoint, diff_id)))
+                cur.execute(SQL("""SELECT kind, change FROM {}.{}""").format(
+                    Identifier(mountpoint), Identifier(diff_id)))
                 result.extend(cur.fetchall())
 
             # If snap_2 is staging, also include all changes that have happened since the last commit.
@@ -45,9 +48,9 @@ def diff(conn, mountpoint, table_name, snap_1, snap_2):
                 with materialized_table(conn, mountpoint, table_name, snap_2) as table_2:
                     # Check both tables out at the same time since then table_2 calculation can be based
                     # on table_1's snapshot.
-                    cur.execute("""SELECT * FROM %s""" % cur.mogrify('%s.%s' % (mountpoint, table_1)))
+                    cur.execute(SQL("SELECT * FROM {}").format(Identifier(mountpoint), Identifier(table_1)))
                     left = cur.fetchall()
-                    cur.execute("""SELECT * FROM %s""" % cur.mogrify('%s.%s' % (mountpoint, table_2)))
+                    cur.execute(SQL("SELECT * FROM {}").format(Identifier(mountpoint), Identifier(table_2)))
                     right = cur.fetchall()
 
             # Mimic the diff format returned by the WAL

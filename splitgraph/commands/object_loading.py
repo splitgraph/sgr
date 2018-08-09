@@ -2,6 +2,7 @@ import re
 from collections import defaultdict
 
 import requests
+from psycopg2.sql import SQL, Identifier
 
 from splitgraph.commands.misc import mount_postgres, make_conn, dump_table_creation, unmount
 from splitgraph.constants import _log, SplitGraphException
@@ -48,9 +49,9 @@ def download_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoi
     for i, obj in enumerate(objects_to_fetch):
         _log("(%d/%d) %s..." % (i + 1, len(objects_to_fetch), obj))
         with conn.cursor() as cur:
-            cur.execute("""CREATE TABLE %s AS SELECT * FROM %s""" % (
-                cur.mogrify('%s.%s' % (local_mountpoint, obj)),
-                cur.mogrify('%s.%s' % (remote_data_mountpoint, obj))))
+            cur.execute(SQL("CREATE TABLE {}.{} AS SELECT * FROM {}.{}").format(
+                Identifier(local_mountpoint), Identifier(obj),
+                Identifier(remote_data_mountpoint), Identifier(obj)))
     unmount(conn, remote_data_mountpoint)
 
 
@@ -61,13 +62,12 @@ def _table_dump_generator(conn, schema, table):
     # Use a server-side cursor here so we don't fetch the whole db into memory immediately.
     with conn.cursor(name='sg_table_upload_cursor') as cur:
         cur.itersize = 10000
-        cur.execute("""SELECT * FROM %s""" % cur.mogrify('%s.%s' % (schema, table)))
-        target = cur.mogrify(table)
+        cur.execute(SQL("SELECT * FROM {}""").format(Identifier(schema), Identifier(table)))
         row = next(cur)
         q = '(' + ','.join('%s' for _ in row) + ')'
-        yield """INSERT INTO %s VALUES """ % target + cur.mogrify(q, row)
+        yield cur.mogrify(SQL("INSERT INTO {} VALUES " + row).format(Identifier(table)))
         for row in cur:
-            yield ',' + cur.mogrify(q, row) + '\n'
+            yield cur.mogrify(', ' + q + '\n', row)
 
 
 def _http_upload_objects(conn, local_mountpoint, objects_to_push, http_params):
@@ -107,11 +107,11 @@ def _file_download_objects(conn, local_mountpoint, objects_to_fetch, params):
             with conn.cursor() as cur:
                 # Insert into the locally checked out schema by default since the dump doesn't have the schema
                 # qualification.
-                cur.execute("""SET search_path TO %s""", (local_mountpoint,))
+                cur.execute("SET search_path TO %s", (local_mountpoint,))
                 for chunk in f.readlines():
                     cur.execute(chunk)
                 # Set the schema to (presumably) the default one.
-                cur.execute("""SET search_path TO public""", (local_mountpoint,))
+                cur.execute("SET search_path TO public")
 
 
 def _http_download_objects(conn, local_mountpoint, objects_to_fetch, http_params):
@@ -126,7 +126,7 @@ def _http_download_objects(conn, local_mountpoint, objects_to_fetch, http_params
         with conn.cursor() as cur:
             # Insert into the locally checked out schema by default since the dump doesn't have the schema
             # qualification.
-            cur.execute("""SET search_path TO %s""", (local_mountpoint,))
+            cur.execute("SET search_path TO %s", (local_mountpoint,))
             buf = ""
             for chunk in r.iter_content(chunk_size=4096):
                 # This is dirty. What we want is to pipe the output of the fetch directly into the DB, but we don't
@@ -139,7 +139,7 @@ def _http_download_objects(conn, local_mountpoint, objects_to_fetch, http_params
                 buf = buf[last_sep+2:]
             cur.execute(buf)
         # Set the schema to (presumably) the default one.
-        cur.execute("""SET search_path TO public""", (local_mountpoint,))
+        cur.execute("SET search_path TO public")
 
 
 def upload_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoint, objects_to_push,
@@ -169,9 +169,9 @@ def upload_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoint
         for i, obj in enumerate(objects_to_push):
             _log("(%d/%d) %s..." % (i + 1, len(objects_to_push), obj))
             with conn.cursor() as cur:
-                cur.execute("""INSERT INTO %s SELECT * FROM %s""" % (
-                    cur.mogrify('%s.%s' % (remote_data_mountpoint, obj)),
-                    cur.mogrify('%s.%s' % (local_mountpoint, obj))))
+                cur.execute(SQL("INSERT INTO {}.{} SELECT * FROM {}.{}").format(
+                    Identifier(remote_data_mountpoint), Identifier(obj),
+                    Identifier(local_mountpoint), Identifier(obj)))
         unmount(conn, remote_data_mountpoint)
 
         # We assume that if the object doesn't have an explicit location, it lives on the remote.

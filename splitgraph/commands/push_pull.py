@@ -1,4 +1,5 @@
 import re
+from psycopg2.sql import SQL, Identifier
 
 from splitgraph.commands.misc import make_conn
 from splitgraph.commands.object_loading import download_objects, upload_objects
@@ -22,9 +23,9 @@ def _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_moun
         add_new_snap_id(conn, local_mountpoint, remote_parent, snap_id, remote_created, remote_comment)
         # Get the meta for all objects we'll need to fetch.
         with remote_conn.cursor() as cur:
-            cur.execute("""SELECT snap_id, table_name, object_id, format from %s.tables 
-                           WHERE mountpoint = %%s AND snap_id = %%s"""
-                        % SPLITGRAPH_META_SCHEMA, (remote_mountpoint, snap_id))
+            cur.execute(SQL("""SELECT snap_id, table_name, object_id, format from {}.tables 
+                           WHERE mountpoint = %s AND snap_id = %s""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                        (remote_mountpoint, snap_id))
             object_meta.extend(cur.fetchall())
 
     distinct_objects = list(set(o[2] for o in object_meta))
@@ -47,7 +48,7 @@ def clone(conn, remote_conn_string, remote_mountpoint, local_mountpoint, downloa
     # Pulls a schema from the remote, including all of its history.
 
     with conn.cursor() as cur:
-        cur.execute("""CREATE SCHEMA IF NOT EXISTS %s""" % cur.mogrify(local_mountpoint))
+        cur.execute(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(local_mountpoint)))
 
     _log("Connecting to the remote driver...")
     match = re.match('(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)

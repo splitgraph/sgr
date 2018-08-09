@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from psycopg2.sql import Identifier, SQL
 
 from splitgraph.commands.object_loading import download_objects
 from splitgraph.constants import _log, get_random_object_id, SplitGraphException
@@ -11,9 +12,7 @@ from splitgraph.pg_replication import apply_record_to_staging, record_pending_ch
 
 def materialize_table(conn, mountpoint, schema_snap, table, destination):
     with conn.cursor() as cur:
-        fq_dest = cur.mogrify('%s.%s' % (mountpoint, destination))
-
-        cur.execute("""DROP TABLE IF EXISTS %s""" % fq_dest)
+        cur.execute(SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(mountpoint), Identifier(destination)))
         # Get the closest snapshot from the table's parents
         # and then apply all deltas consecutively from it.
         to_apply = []
@@ -44,12 +43,13 @@ def materialize_table(conn, mountpoint, schema_snap, table, destination):
                              objects_to_fetch=to_apply + [object_id], object_locations=object_locations)
 
         # Copy the given snap id over to "staging"
-        cur.execute("""CREATE TABLE %s AS SELECT * FROM %s""" %
-                    (fq_dest, cur.mogrify('%s.%s' % (mountpoint, object_id))))
+        cur.execute(SQL("CREATE TABLE {}.{} AS SELECT * FROM {}.{}").format(
+                    Identifier(mountpoint), Identifier(destination),
+                    Identifier(mountpoint), Identifier(object_id)))
         # This is to work around logical replication not reflecting deletions from non-PKd tables. However, this makes
         # it emit all column values in the row, not just the updated ones.
         # FIXME: fiddling with it based on us inspecting the table structure.
-        cur.execute("""ALTER TABLE %s REPLICA IDENTITY FULL""" % fq_dest)
+        cur.execute(SQL("ALTER TABLE {}.{} REPLICA IDENTITY FULL").format(Identifier(mountpoint), Identifier(destination)))
 
         # Apply the deltas sequentially to the checked out table
         for pack_object in reversed(to_apply):
@@ -79,7 +79,7 @@ def checkout(conn, mountpoint, schema_snap=None, tag=None, tables=[]):
     with conn.cursor() as cur:
         # Drop all current tables in staging
         for table in get_all_tables(conn, mountpoint):
-            cur.execute("""DROP TABLE IF EXISTS %s""" % cur.mogrify('%s.%s' % (mountpoint, table)))
+            cur.execute(SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(mountpoint), Identifier(table)))
 
     for table in tables:
         materialize_table(conn, mountpoint, schema_snap, table, table)

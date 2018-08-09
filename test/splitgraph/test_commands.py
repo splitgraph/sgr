@@ -101,12 +101,8 @@ def test_diff_head(sg_pg_conn):
     sg_pg_conn.commit()  # otherwise the WAL writer won't see this.
     head = get_current_head(sg_pg_conn, PG_MNT)
     change = diff(sg_pg_conn, PG_MNT, 'fruits', snap_1=head, snap_2=None)
-    assert change == [(0,
-                       '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "columnvalues": [3, '
-                       '"mayonnaise"]}'),
-                      (1,
-                       '{"oldkeys": {"keytypes": ["integer", "character varying"], "keyvalues": [1, "apple"], '
-                       '"keynames": ["fruit_id", "name"]}}')]
+    assert change == [(0, '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "columnvalues": [3, "mayonnaise"]}'), (1, '{"oldkeys": {"keynames": ["fruit_id", "name"], "keytypes": ["integer", "character varying"], "keyvalues": [1, "apple"]}}')]
+
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
@@ -126,16 +122,7 @@ def test_commit_diff(include_snap, sg_pg_conn):
 
     # The diff between the old and the new snaps should be the same as in the previous test
     change = diff(sg_pg_conn, PG_MNT, 'fruits', snap_1=head, snap_2=new_head)
-    assert change == [(0,
-                       '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], '
-                       '"columnvalues": [3, "mayonnaise"]}'),
-                      (1,
-                       '{"oldkeys": {"keytypes": ["integer", "character varying"], "keyvalues": [1, "apple"], '
-                       '"keynames": ["fruit_id", "name"]}}'),
-                      (2,
-                       '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], '
-                       '"oldkeys": {"keytypes": ["integer", "character varying"], "keyvalues": [2, "orange"], '
-                       '"keynames": ["fruit_id", "name"]}, "columnvalues": [2, "guitar"]}')]
+    assert change == [(0, '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "columnvalues": [3, "mayonnaise"]}'), (1, '{"oldkeys": {"keynames": ["fruit_id", "name"], "keytypes": ["integer", "character varying"], "keyvalues": [1, "apple"]}}'), (2, '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "columnvalues": [2, "guitar"], "oldkeys": {"keynames": ["fruit_id", "name"], "keytypes": ["integer", "character varying"], "keyvalues": [2, "orange"]}}')]
     assert diff(sg_pg_conn, PG_MNT, 'vegetables', snap_1=head, snap_2=new_head) == []
 
 
@@ -156,16 +143,7 @@ def test_multiple_mountpoint_commit_diff(include_snap, sg_pg_mg_conn):
     new_head = commit(sg_pg_mg_conn, PG_MNT, include_snap=include_snap)
 
     change = diff(sg_pg_mg_conn, PG_MNT, 'fruits', snap_1=head, snap_2=new_head)
-    assert change == [(0,
-                       '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], '
-                       '"columnvalues": [3, "mayonnaise"]}'),
-                      (1,
-                       '{"oldkeys": {"keytypes": ["integer", "character varying"], "keyvalues": [1, "apple"], '
-                       '"keynames": ["fruit_id", "name"]}}'),
-                      (2,
-                       '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], '
-                       '"oldkeys": {"keytypes": ["integer", "character varying"], "keyvalues": [2, "orange"], '
-                       '"keynames": ["fruit_id", "name"]}, "columnvalues": [2, "guitar"]}')]
+    assert change == [(0, '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "columnvalues": [3, "mayonnaise"]}'), (1, '{"oldkeys": {"keynames": ["fruit_id", "name"], "keytypes": ["integer", "character varying"], "keyvalues": [1, "apple"]}}'), (2, '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "columnvalues": [2, "guitar"], "oldkeys": {"keynames": ["fruit_id", "name"], "keytypes": ["integer", "character varying"], "keyvalues": [2, "orange"]}}')]
 
     # PG has no pending changes, Mongo does
     assert get_current_head(sg_pg_mg_conn, MG_MNT) == mongo_head
@@ -207,11 +185,11 @@ def test_delete_all_diff(sg_pg_conn):
         cur.execute("""DELETE FROM test_pg_mount.fruits""")
     sg_pg_conn.commit()
     assert has_pending_changes(sg_pg_conn, PG_MNT) is True
-    expected_diff = [(1,
-    '{"oldkeys": {"keytypes": ["integer", "character varying"], "keyvalues": [1, "apple"], "keynames": ["fruit_id", "name"]}}'),
-    (1,
-    '{"oldkeys": {"keytypes": ["integer", "character varying"], "keyvalues": [2, "orange"], "keynames": ["fruit_id", "name"]}}')]
-    assert diff(sg_pg_conn, PG_MNT, 'fruits', get_current_head(sg_pg_conn, PG_MNT), None) == expected_diff
+    expected_diff = [(1, '{"oldkeys": {"keynames": ["fruit_id", "name"], "keytypes": ["integer", "character varying"], "keyvalues": [1, "apple"]}}'), (1, '{"oldkeys": {"keynames": ["fruit_id", "name"], "keytypes": ["integer", "character varying"], "keyvalues": [2, "orange"]}}')]
+
+    actual_diff = diff(sg_pg_conn, PG_MNT, 'fruits', get_current_head(sg_pg_conn, PG_MNT), None)
+    print(actual_diff)
+    assert actual_diff == expected_diff
     new_head = commit(sg_pg_conn, PG_MNT)
     assert has_pending_changes(sg_pg_conn, PG_MNT) is False
     assert diff(sg_pg_conn, PG_MNT, 'fruits', new_head, None) == []
@@ -234,15 +212,10 @@ def test_diff_across_far_commits(include_snap, sg_pg_conn):
         cur.execute("""UPDATE test_pg_mount.fruits SET name = 'guitar' WHERE fruit_id = 2""")
     new_head = commit(sg_pg_conn, PG_MNT, include_snap=include_snap)
 
-    assert diff(sg_pg_conn, PG_MNT, 'fruits', head, new_head) == [
-        (0,  # insert mayonnaise
-         '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "columnvalues": [3, "mayonnaise"]}'),
-        (1,  # delete apple
-         '{"oldkeys": {"keytypes": ["integer", "character varying"], "keyvalues": [1, "apple"], "keynames": ["fruit_id", "name"]}}'),
-        (2,  # replace orange -> guitar
-         '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "oldkeys": {'
-         '"keytypes": ["integer", "character varying"], "keyvalues": [2, "orange"], "keynames": ["fruit_id", '
-         '"name"]}, "columnvalues": [2, "guitar"]}')]
+    change = diff(sg_pg_conn, PG_MNT, 'fruits', head, new_head)
+    print(change)
+    assert change == [(0, '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "columnvalues": [3, "mayonnaise"]}'), (1, '{"oldkeys": {"keynames": ["fruit_id", "name"], "keytypes": ["integer", "character varying"], "keyvalues": [1, "apple"]}}'), (2, '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "columnvalues": [2, "guitar"], "oldkeys": {"keynames": ["fruit_id", "name"], "keytypes": ["integer", "character varying"], "keyvalues": [2, "orange"]}}')]
+
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
