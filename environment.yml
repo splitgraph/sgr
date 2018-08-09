@@ -1,6 +1,7 @@
 name: splitgraph-prototype
 dependencies:
-  - python=2.7
-  - psycopg2-binary
+  - python=3.7
+  - psycopg2
   - click
+  - requests
   - pytest
