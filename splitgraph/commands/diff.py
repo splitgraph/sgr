@@ -3,7 +3,7 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.commands.checkout import materialized_table
 from splitgraph.commands.misc import _table_exists_at, _find_path
 from splitgraph.meta_handler import get_current_head, get_table, get_table_with_format
-from splitgraph.pg_replication import dump_pending_changes
+from splitgraph.pg_replication import dump_pending_changes, record_pending_changes
 
 
 def _changes_to_aggregation(query_result, initial=None):
@@ -14,6 +14,7 @@ def _changes_to_aggregation(query_result, initial=None):
 
 
 def diff(conn, mountpoint, table_name, snap_1, snap_2, aggregate=False):
+    record_pending_changes(conn)
     # Returns a list of changes done to a table if it exists in both images (if aggregate=False).
     # If aggregate=True, returns a triple showing the number of (added, removed, updated) rows.
     # Otherwise, returns True if the table was added and False if it was removed.
@@ -66,9 +67,9 @@ def diff(conn, mountpoint, table_name, snap_1, snap_2, aggregate=False):
                 with materialized_table(conn, mountpoint, table_name, snap_2) as table_2:
                     # Check both tables out at the same time since then table_2 calculation can be based
                     # on table_1's snapshot.
-                    cur.execute(SQL("SELECT * FROM {}").format(Identifier(mountpoint), Identifier(table_1)))
+                    cur.execute(SQL("SELECT * FROM {}.{}").format(Identifier(mountpoint), Identifier(table_1)))
                     left = cur.fetchall()
-                    cur.execute(SQL("SELECT * FROM {}").format(Identifier(mountpoint), Identifier(table_2)))
+                    cur.execute(SQL("SELECT * FROM {}.{}").format(Identifier(mountpoint), Identifier(table_2)))
                     right = cur.fetchall()
 
             # Mimic the diff format returned by the WAL
