@@ -48,7 +48,8 @@ def materialize_table(conn, mountpoint, schema_snap, table, destination):
                     Identifier(mountpoint), Identifier(object_id)))
         # This is to work around logical replication not reflecting deletions from non-PKd tables. However, this makes
         # it emit all column values in the row, not just the updated ones.
-        # FIXME: fiddling with it based on us inspecting the table structure.
+        # TODO: detect primary keys here and if not, do RI full
+
         cur.execute(SQL("ALTER TABLE {}.{} REPLICA IDENTITY FULL").format(Identifier(mountpoint), Identifier(destination)))
 
         # Apply the deltas sequentially to the checked out table

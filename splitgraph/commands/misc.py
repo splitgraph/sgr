@@ -4,8 +4,7 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, _log
 from splitgraph.meta_handler import get_table, get_snap_parent, ensure_metadata_schema, register_mountpoint, \
     unregister_mountpoint
-from splitgraph.pg_replication import stop_replication, record_pending_changes, discard_pending_changes, \
-    start_replication
+from splitgraph.pg_replication import record_pending_changes, discard_pending_changes
 
 
 def pg_table_exists(conn, mountpoint, table_name):
@@ -15,14 +14,6 @@ def pg_table_exists(conn, mountpoint, table_name):
         cur.execute("""SELECT table_name from information_schema.tables
                        WHERE table_schema = %s AND table_name = %s""", (mountpoint, table_name[:63]))
         return cur.fetchone() is not None
-
-
-def _get_column_names(conn, mountpoint, table_name):
-    with conn.cursor() as cur:
-        cur.execute("""SELECT column_name FROM information_schema.columns
-                       WHERE table_schema = %s
-                       AND table_name = %s""", (mountpoint, table_name))
-        return [c[0] for c in cur.fetchall()]
 
 
 def _table_exists_at(conn, mountpoint, table_name, image):

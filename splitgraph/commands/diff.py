@@ -29,6 +29,9 @@ def diff(conn, mountpoint, table_name, snap_1, snap_2, aggregate=False):
         # Special case: if diffing HEAD and staging, then just return the current pending changes.
         HEAD = get_current_head(conn, mountpoint)
         # TODO do we need to conflate them e.g. if A changed to B and then B changed to C, do we emit A -> C?
+        # TODO reinvent the diff combination algo (maybe have a temporary table and apply our "WALs" to it
+        # TODO diff + wal combination for revision -> pending changes.
+
         if snap_1 == HEAD and snap_2 is None:
             changes = dump_pending_changes(conn, mountpoint, table_name, aggregate=aggregate)
             return changes if not aggregate else _changes_to_aggregation(changes)
