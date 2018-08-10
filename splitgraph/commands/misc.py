@@ -4,7 +4,7 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, _log
 from splitgraph.meta_handler import get_table, get_snap_parent, ensure_metadata_schema, register_mountpoint, \
     unregister_mountpoint
-from splitgraph.pg_replication import record_pending_changes, discard_pending_changes
+from splitgraph.pg_replication import record_pending_changes, discard_pending_changes, _get_primary_keys
 
 
 def pg_table_exists(conn, mountpoint, table_name):
@@ -150,7 +150,14 @@ def dump_table_creation(conn, schema, tables, created_schema=None):
             else:
                 target = Identifier(t)
             query = SQL("CREATE TABLE {} (").format(target) +\
-                SQL(','.join("{} %s " % ctype + ("NOT NULL" if not cnull else "") for _, ctype, cnull in cols) + ')').format(
+                SQL(','.join("{} %s " % ctype + ("NOT NULL" if not cnull else "") for _, ctype, cnull in cols)).format(
                     *(Identifier(cname) for cname, _, _ in cols))
+
+            pks = _get_primary_keys(conn, schema, t)
+            if pks:
+                query += SQL(", PRIMARY KEY (") + SQL(',').join(SQL("{}").format(Identifier(c)) for c, _ in pks) + SQL("))")
+            else:
+                query += SQL(")")
+
             queries.append(query)
     return SQL(';').join(queries)

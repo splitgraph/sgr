@@ -7,6 +7,7 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.commands.misc import mount_postgres, make_conn, dump_table_creation, unmount
 from splitgraph.constants import _log, SplitGraphException
 from splitgraph.meta_handler import get_downloaded_objects, get_existing_objects
+from splitgraph.pg_replication import _get_primary_keys
 
 
 def download_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoint, objects_to_fetch, object_locations):
@@ -46,13 +47,26 @@ def download_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoi
                    username=match.group(1), password=match.group(2), mountpoint=remote_data_mountpoint,
                    extra_options={'dbname': match.group(5), 'remote_schema': remote_mountpoint})
 
-    for i, obj in enumerate(objects_to_fetch):
-        _log("(%d/%d) %s..." % (i + 1, len(objects_to_fetch), obj))
-        with conn.cursor() as cur:
-            cur.execute(SQL("CREATE TABLE {}.{} AS SELECT * FROM {}.{}").format(
-                Identifier(local_mountpoint), Identifier(obj),
-                Identifier(remote_data_mountpoint), Identifier(obj)))
-    unmount(conn, remote_data_mountpoint)
+    remote_conn = make_conn(server=match.group(3), port=int(match.group(4)), username=match.group(1),
+                            password=match.group(2), dbname=match.group(5))
+
+    try:
+        for i, obj in enumerate(objects_to_fetch):
+            _log("(%d/%d) %s..." % (i + 1, len(objects_to_fetch), obj))
+            with conn.cursor() as cur:
+                cur.execute(SQL("CREATE TABLE {}.{} AS SELECT * FROM {}.{}").format(
+                    Identifier(local_mountpoint), Identifier(obj),
+                    Identifier(remote_data_mountpoint), Identifier(obj)))
+
+                # Apply the primary key constraint from the remote driver too.
+                source_pks = _get_primary_keys(remote_conn, remote_mountpoint, obj)
+                if source_pks:
+                    cur.execute(SQL("ALTER TABLE {}.{} ADD PRIMARY KEY (").format(
+                        Identifier(local_mountpoint), Identifier(obj))\
+                            + SQL(',').join(SQL("{}").format(Identifier(c)) for c, _ in source_pks) + SQL(")"))
+    finally:
+        remote_conn.close()
+        unmount(conn, remote_data_mountpoint)
 
 
 def _table_dump_generator(conn, schema, table):
@@ -156,6 +170,7 @@ def upload_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoint
         # to create new tables remotely, then mount them and write into them from our side.
         # Is there seriously no better way to do this?
         with remote_conn.cursor() as cur:
+            # This also includes applying our table's FK constraints.
             cur.execute(dump_table_creation(conn, schema=local_mountpoint,
                                             tables=objects_to_push, created_schema=remote_mountpoint))
         # Have to commit the remote connection here since otherwise we won't see the new tables in the

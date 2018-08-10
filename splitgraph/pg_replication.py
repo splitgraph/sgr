@@ -112,17 +112,19 @@ def dump_pending_changes(conn, mountpoint, table, aggregate=False):
             return cur.fetchall()
 
 
-def _get_replica_identity(conn, mountpoint, table):
+def _get_primary_keys(conn, mountpoint, table):
     with conn.cursor() as cur:
-        cur.execute(SQL("""SELECT a.attname, format_type(a.atttypid, a.atttypmod) AS data_type
-                        FROM   pg_index i
-                        JOIN   pg_attribute a ON a.attrelid = i.indrelid
-                            AND a.attnum = ANY(i.indkey)
-                        WHERE  i.indrelid = {}.{}::regclass
-                        AND    i.indisprimary""").format(Identifier(mountpoint), Identifier(table)))
-        pk_cols = [c[0] for c in cur.fetchall()]
-        if not pk_cols:
-            return _get_column_names(conn, mountpoint, table)
+        cur.execute(SQL("""SELECT c.column_name, c.data_type
+                           FROM information_schema.table_constraints tc
+                            JOIN information_schema.constraint_column_usage AS ccu USING (constraint_schema, constraint_name)
+                            JOIN information_schema.columns AS c 
+                            ON c.table_schema = tc.constraint_schema AND tc.table_name = c.table_name AND ccu.column_name = c.column_name
+                           WHERE constraint_type = 'PRIMARY KEY' AND tc.table_schema = %s AND tc.table_name = %s"""), (mountpoint, table))
+        return cur.fetchall()
+
+
+def _get_replica_identity(conn, mountpoint, table):
+    return _get_primary_keys(conn, mountpoint, table) or _get_column_names_types(conn, mountpoint, table)
 
 
 def _create_diff_table(conn, mountpoint, object_id, replica_identity_cols_types):
@@ -131,13 +133,13 @@ def _create_diff_table(conn, mountpoint, object_id, replica_identity_cols_types)
     # sg_action_kind: 0, 1, 2 for insert/delete/update
     # sg_action_data: extra data for insert and update.
     with conn.cursor() as cur:
-        query = SQL("""CREATE TABLE {}.{} (""".format(Identifier(mountpoint), Identifier(object_id)))
+        query = SQL("CREATE TABLE {}.{} (").format(Identifier(mountpoint), Identifier(object_id))
         query += SQL(',').join(SQL("{} %s" % col_type).format(Identifier(col_name))
-                               for col_name, col_type in replica_identity_cols_types + [('sg_action_kind', 'smallint',
-                                                                                         'sg_action_data', 'varchar')])
+                               for col_name, col_type in replica_identity_cols_types + [('sg_action_kind', 'smallint'),
+                                                                                        ('sg_action_data', 'varchar')])
         query += SQL(", PRIMARY KEY (") + SQL(',').join(
             SQL("{}").format(Identifier(c)) for c, _ in replica_identity_cols_types)
-        query += SQL(");")
+        query += SQL("));")
         cur.execute(query)
 
 
@@ -153,7 +155,7 @@ def _generate_where_clause(mountpoint, table, cols, table_2=None):
 
 def _get_wal_change(conn, mountpoint, table, ri_cols, ri_vals):
     with conn.cursor() as cur:
-        cur.execute(SQL("SELECT sg_action_kind, sg_action_data FROM {}.{} ").format(
+        cur.execute(SQL("SELECT sg_action_kind, sg_action_data FROM {}.{} WHERE ").format(
             Identifier(mountpoint), Identifier(table)) + \
                     _generate_where_clause(mountpoint, table, ri_cols), ri_vals)
         return cur.fetchone()
@@ -164,19 +166,19 @@ def _add_wal_change(conn, mountpoint, table, ri_vals, kind, data):
         to_insert = ri_vals + [kind, data]
         cur.execute(SQL("INSERT INTO {}.{} ").format(
             Identifier(mountpoint), Identifier(table)) + \
-                    SQL("VALUES (" + ','.join('%s' for _ in range(len(to_insert)))), to_insert)
+                    SQL("VALUES (" + ','.join('%s' for _ in range(len(to_insert))) + ")"), to_insert)
 
 
 def _update_wal_change(conn, mountpoint, table, ri_cols, ri_vals, new_kind, new_data):
     with conn.cursor() as cur:
-        cur.execute(SQL("UPDATE {}.{} SET sg_action_kind = %s, sg_action_data = %s").format(
+        cur.execute(SQL("UPDATE {}.{} SET sg_action_kind = %s, sg_action_data = %s WHERE ").format(
             Identifier(mountpoint), Identifier(table)) + \
                     _generate_where_clause(mountpoint, table, ri_cols), [new_kind, new_data] + ri_vals)
 
 
 def _delete_wal_change(conn, mountpoint, table, ri_cols, ri_vals):
     with conn.cursor() as cur:
-        cur.execute(SQL("DELETE FROM {}.{}").format(Identifier(mountpoint), Identifier(table)) + \
+        cur.execute(SQL("DELETE FROM {}.{} WHERE ").format(Identifier(mountpoint), Identifier(table)) + \
                     _generate_where_clause(mountpoint, table, ri_cols), ri_vals)
 
 
@@ -272,13 +274,15 @@ def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False
                     ri_cols, ri_types = zip(*repl_id)
                     _create_diff_table(conn, mountpoint, object_id, repl_id)
 
-                    with conn.cursor('sg_commit_cursor') as cur:
+                    with conn.cursor() as cur:
+                        # Can't seem to use a server-side cursor here since it doesn't support DELETE FROM RETURNING
                         cur.execute(
-                            SQL("SELECT kind, change FROM {}.{} WHERE mountpoint = %s AND table_name = %s").format(
+                            SQL("""DELETE FROM {}.{} WHERE mountpoint = %s AND table_name = %s
+                                   RETURNING kind, change """).format(
                                 Identifier(SPLITGRAPH_META_SCHEMA), Identifier("pending_changes")), (mountpoint, table))
 
                         for kind, change in cur:
-                            _pack_wal_change(conn, mountpoint, object_id, kind, change, ri_cols)
+                            _pack_wal_change(conn, mountpoint, object_id, kind, json.loads(change), ri_cols)
 
                     register_table_object(conn, mountpoint, table, new_image, object_id, object_format='DIFF')
             else:
@@ -310,10 +314,16 @@ def apply_record_to_staging(conn, mountpoint, object_id, destination):
     repl_id = _get_replica_identity(conn, mountpoint, object_id)
     ri_cols, ri_types = zip(*repl_id)
 
-    with conn.cursor('sg_apply_cursor') as cur:
+    # Minor hack alert: here we assume that the PK of the object is the PK of the table it refers to, which means
+    # that we are expected to have the PKs applied to the object table no matter how it originated.
+    if sorted(ri_cols) == sorted(_get_column_names(conn, mountpoint, object_id)):
+        raise SplitGraphException("Error determining the replica identity of %s. " % object_id +\
+                                  "Have primary key constrants been applied?")
+
+    with conn.cursor() as cur:
         # Apply deletes
-        cur.execute(SQL("DELETE FROM {}.{} USING {}.{} WHERE sg_action_kind = 1").format(
-            Identifier(mountpoint), Identifier(destination), Identifier(mountpoint), Identifier(object_id)) +\
+        cur.execute(SQL("DELETE FROM {0}.{1} USING {0}.{2} WHERE {0}.{2}.sg_action_kind = 1").format(
+            Identifier(mountpoint), Identifier(destination), Identifier(object_id)) +\
                     SQL(" AND ") + _generate_where_clause(mountpoint, destination, ri_cols, object_id))
 
         # Generate queries for inserts
@@ -322,7 +332,7 @@ def apply_record_to_staging(conn, mountpoint, object_id, destination):
             # Not sure if we can rely on ordering here.
             # Also for the future: if all column names are the same, we can do a big INSERT.
             action_data = json.loads(row[-1])
-            cols_to_insert = ri_cols + action_data['c']
+            cols_to_insert = list(ri_cols) + action_data['c']
             vals_to_insert = list(row[:-2]) + action_data['v']
 
             query = SQL("INSERT INTO {}.{} (").format(Identifier(mountpoint), Identifier(destination))
@@ -353,3 +363,11 @@ def _get_column_names(conn, mountpoint, table_name):
                        WHERE table_schema = %s
                        AND table_name = %s""", (mountpoint, table_name))
         return [c[0] for c in cur.fetchall()]
+
+
+def _get_column_names_types(conn, mountpoint, table_name):
+    with conn.cursor() as cur:
+        cur.execute("""SELECT column_name, data_type FROM information_schema.columns
+                       WHERE table_schema = %s
+                       AND table_name = %s""", (mountpoint, table_name))
+        return cur.fetchall()
