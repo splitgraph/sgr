@@ -1,4 +1,5 @@
 from psycopg2.sql import SQL, Identifier
+import json
 
 from splitgraph.commands.checkout import materialized_table
 from splitgraph.commands.misc import _table_exists_at, _find_path
@@ -28,9 +29,6 @@ def diff(conn, mountpoint, table_name, snap_1, snap_2, aggregate=False):
 
         # Special case: if diffing HEAD and staging, then just return the current pending changes.
         HEAD = get_current_head(conn, mountpoint)
-        # TODO do we need to conflate them e.g. if A changed to B and then B changed to C, do we emit A -> C?
-        # TODO reinvent the diff combination algo (maybe have a temporary table and apply our "WALs" to it
-        # TODO diff + wal combination for revision -> pending changes.
 
         if snap_1 == HEAD and snap_2 is None:
             changes = dump_pending_changes(conn, mountpoint, table_name, aggregate=aggregate)
@@ -47,11 +45,15 @@ def diff(conn, mountpoint, table_name, snap_1, snap_2, aggregate=False):
             for image in reversed(path):
                 diff_id = get_table_with_format(conn, mountpoint, table_name, image, 'DIFF')
                 if not aggregate:
-                    cur.execute(SQL("""SELECT kind, change FROM {}.{}""").format(
+                    cur.execute(SQL("""SELECT * FROM {}.{}""").format(
                         Identifier(mountpoint), Identifier(diff_id)))
-                    result.extend(cur.fetchall())
+                    for row in cur:
+                        pk = row[:-2]
+                        action = row[-2]
+                        action_data = json.loads(row[-1]) if row[-1] else None
+                        result.append((pk, action, action_data))
                 else:
-                    cur.execute(SQL("""SELECT kind, count(kind) FROM {}.{} GROUP BY kind""").format(
+                    cur.execute(SQL("""SELECT sg_action_kind, count(sg_action_kind) FROM {}.{} GROUP BY sg_action_kind""").format(
                         Identifier(mountpoint), Identifier(diff_id)))
                     result = _changes_to_aggregation(cur.fetchall(), result)
 

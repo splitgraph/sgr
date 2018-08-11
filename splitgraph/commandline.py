@@ -64,7 +64,7 @@ def log_c(mountpoint, tree):
         log = get_log(conn, mountpoint, head)
         for entry in log:
             _, created, comment = get_all_snap_info(conn, mountpoint, entry)
-            print("%s %s %s (%s)" % ("H -> " if entry == head else "", entry, comment or "", created))
+            print("%s %s %s %s" % ("H->" if entry == head else "   ", entry, created, comment or ""))
 
 
 @click.command(name='diff')
@@ -108,7 +108,7 @@ def diff_c(verbose, table_name, mountpoint, snap_1, snap_2):
 
         if isinstance(diff_result, list) or isinstance(diff_result, tuple):
             if verbose:
-                change_count = dict(Counter(d[0] for d in diff_result).most_common())
+                change_count = dict(Counter(d[1] for d in diff_result).most_common())
                 added = change_count.get(0, 0)
                 removed = change_count.get(1, 0)
                 updated = change_count.get(2, 0)
@@ -127,8 +127,8 @@ def diff_c(verbose, table_name, mountpoint, snap_1, snap_2):
             print((to_print + ', '.join(count) + '.'))
 
             if verbose:
-                for kind, change in diff_result:
-                    print(['+', '-', 'U'][kind] + " " + change)
+                for pk, kind, change in diff_result:
+                    print("%r: " % (pk,) + ['+', '-', 'U'][kind] + " %r" % change)
         else:
             # Whole table was either added or removed
             print(to_print + ("table added" if diff_result else "table removed"))

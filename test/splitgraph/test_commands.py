@@ -42,10 +42,12 @@ def sg_pg_conn():
     conn = _conn()
     unmount(conn, PG_MNT)
     unmount(conn, PG_MNT + '_pull')
+    unmount(conn, 'output')
     _mount_postgres(conn, PG_MNT)
     yield conn
     unmount(conn, PG_MNT)
     unmount(conn, PG_MNT + '_pull')
+    unmount(conn, 'output')
     conn.close()
 
 
@@ -101,8 +103,9 @@ def test_diff_head(sg_pg_conn):
     sg_pg_conn.commit()  # otherwise the WAL writer won't see this.
     head = get_current_head(sg_pg_conn, PG_MNT)
     change = diff(sg_pg_conn, PG_MNT, 'fruits', snap_1=head, snap_2=None)
-    assert change == [(0, '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "columnvalues": [3, "mayonnaise"]}'), (1, '{"oldkeys": {"keynames": ["fruit_id", "name"], "keytypes": ["integer", "character varying"], "keyvalues": [1, "apple"]}}')]
-
+    # Added (3, mayonnaise); Deleted (1, 'apple')
+    assert change == [((3, 'mayonnaise'), 0, {'c': [], 'v': []}),
+                      ((1, 'apple'), 1, None)]
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
@@ -122,8 +125,53 @@ def test_commit_diff(include_snap, sg_pg_conn):
 
     # The diff between the old and the new snaps should be the same as in the previous test
     change = diff(sg_pg_conn, PG_MNT, 'fruits', snap_1=head, snap_2=new_head)
-    assert change == [(0, '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "columnvalues": [3, "mayonnaise"]}'), (1, '{"oldkeys": {"keynames": ["fruit_id", "name"], "keytypes": ["integer", "character varying"], "keyvalues": [1, "apple"]}}'), (2, '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "columnvalues": [2, "guitar"], "oldkeys": {"keynames": ["fruit_id", "name"], "keytypes": ["integer", "character varying"], "keyvalues": [2, "orange"]}}')]
+
+    # pk (no PK here so the whole row) -- 0 for INS -- extra non-PK cols
+    assert change == [((3, 'mayonnaise'), 0, {"c": [], "v": []}),
+                      # 1, apple deleted
+                      ((1, 'apple'), 1, None),
+                      # 2, orange deleted and 2, guitar added (PK (whole tuple) changed)
+                      ((2, 'orange'), 1, None),
+                      ((2, 'guitar'), 0, {'c': [], 'v': []})]
     assert diff(sg_pg_conn, PG_MNT, 'vegetables', snap_1=head, snap_2=new_head) == []
+
+
+def test_diff_conflation_on_commit(sg_pg_conn):
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise')""")
+        cur.execute("""UPDATE test_pg_mount.fruits SET name = 'mustard' WHERE fruit_id = 3""")
+    sg_pg_conn.commit()
+    head = commit(sg_pg_conn, PG_MNT)
+    # Insert + update changed into a single insert
+    assert diff(sg_pg_conn, PG_MNT, 'fruits', get_snap_parent(sg_pg_conn, PG_MNT, head), head) \
+           == [((3, 'mustard'), 0, {'c': [], 'v': []})]
+
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (4, 'kumquat')""")
+        cur.execute("""UPDATE test_pg_mount.fruits SET name = 'mustard' WHERE fruit_id = 4""")
+        cur.execute("""DELETE FROM test_pg_mount.fruits WHERE fruit_id = 4""")
+    sg_pg_conn.commit()
+    head = commit(sg_pg_conn, PG_MNT)
+    # Insert + update + delete did nothing (todo what about sequences)
+    assert diff(sg_pg_conn, PG_MNT, 'fruits', get_snap_parent(sg_pg_conn, PG_MNT, head), head) \
+           == []
+
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""DELETE FROM test_pg_mount.fruits WHERE fruit_id = 1""")
+        cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (1, 'apple')""")
+    sg_pg_conn.commit()
+    head = commit(sg_pg_conn, PG_MNT)
+    # delete + reinsert same results in nothing
+    assert diff(sg_pg_conn, PG_MNT, 'fruits', get_snap_parent(sg_pg_conn, PG_MNT, head), head) \
+           == []
+
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""UPDATE test_pg_mount.fruits SET name = 'pineapple' WHERE fruit_id = 1""")
+        cur.execute("""UPDATE test_pg_mount.fruits SET name = 'apple' WHERE fruit_id = 1""")
+    sg_pg_conn.commit()
+    head = commit(sg_pg_conn, PG_MNT)
+    # Two updates, but the PK changed back to the original one -- no diff.
+    assert diff(sg_pg_conn, PG_MNT, 'fruits', get_snap_parent(sg_pg_conn, PG_MNT, head), head) == []
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
@@ -156,7 +204,10 @@ def test_multiple_mountpoint_commit_diff(include_snap, sg_pg_mg_conn):
     new_head = commit(sg_pg_mg_conn, PG_MNT, include_snap=include_snap)
 
     change = diff(sg_pg_mg_conn, PG_MNT, 'fruits', snap_1=head, snap_2=new_head)
-    assert change == [(0, '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "columnvalues": [3, "mayonnaise"]}'), (1, '{"oldkeys": {"keynames": ["fruit_id", "name"], "keytypes": ["integer", "character varying"], "keyvalues": [1, "apple"]}}'), (2, '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "columnvalues": [2, "guitar"], "oldkeys": {"keynames": ["fruit_id", "name"], "keytypes": ["integer", "character varying"], "keyvalues": [2, "orange"]}}')]
+    assert change == [((3, 'mayonnaise'), 0, {'c': [], 'v': []}),
+                      ((1, 'apple'), 1, None),
+                      ((2, 'orange'), 1, None),
+                      ((2, 'guitar'), 0, {'c': [], 'v': []})]
 
     # PG has no pending changes, Mongo does
     assert get_current_head(sg_pg_mg_conn, MG_MNT) == mongo_head
@@ -198,7 +249,7 @@ def test_delete_all_diff(sg_pg_conn):
         cur.execute("""DELETE FROM test_pg_mount.fruits""")
     sg_pg_conn.commit()
     assert has_pending_changes(sg_pg_conn, PG_MNT) is True
-    expected_diff = [(1, '{"oldkeys": {"keynames": ["fruit_id", "name"], "keytypes": ["integer", "character varying"], "keyvalues": [1, "apple"]}}'), (1, '{"oldkeys": {"keynames": ["fruit_id", "name"], "keytypes": ["integer", "character varying"], "keyvalues": [2, "orange"]}}')]
+    expected_diff = [((1, 'apple'), 1, None), ((2, 'orange'), 1, None)]
 
     actual_diff = diff(sg_pg_conn, PG_MNT, 'fruits', get_current_head(sg_pg_conn, PG_MNT), None)
     print(actual_diff)
@@ -207,7 +258,6 @@ def test_delete_all_diff(sg_pg_conn):
     assert has_pending_changes(sg_pg_conn, PG_MNT) is False
     assert diff(sg_pg_conn, PG_MNT, 'fruits', new_head, None) == []
     assert diff(sg_pg_conn, PG_MNT, 'fruits', get_snap_parent(sg_pg_conn, PG_MNT, new_head), new_head) == expected_diff
-
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
@@ -226,18 +276,13 @@ def test_diff_across_far_commits(include_snap, sg_pg_conn):
     new_head = commit(sg_pg_conn, PG_MNT, include_snap=include_snap)
 
     change = diff(sg_pg_conn, PG_MNT, 'fruits', head, new_head)
-    assert change == [(0,
-                       # Insert mayonnaise
-                       '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "columnvalues": [3, "mayonnaise"]}'),
-                      (1,
-                       # Delete apple
-                       '{"oldkeys": {"keynames": ["fruit_id", "name"], "keytypes": ["integer", "character varying"], "keyvalues": [1, "apple"]}}'),
-                      (2,
-                       # Update orange -> guitar
-                       '{"columnnames": ["fruit_id", "name"], "columntypes": ["integer", "character varying"], "columnvalues": [2, "guitar"], "oldkeys": {"keynames": ["fruit_id", "name"], "keytypes": ["integer", "character varying"], "keyvalues": [2, "orange"]}}')]
-
+    assert change == [((3, 'mayonnaise'), 0, {'c': [], 'v': []}),
+                      ((1, 'apple'), 1, None),
+                      ((2, 'orange'), 1, None),  # The update is turned into an insert+delete
+                      # since the PK has changed.
+                      ((2, 'guitar'), 0, {'c': [], 'v': []})]
     change_agg = diff(sg_pg_conn, PG_MNT, 'fruits', head, new_head, aggregate=True)
-    assert change_agg == (1, 1, 1)
+    assert change_agg == (2, 2, 0)
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
@@ -327,7 +372,7 @@ def test_pull(sg_pg_conn, download_all):
     # This is going to get awkward: we're going to pull a schema from ourselves since there's only one
     # pgcache for now.
     clone(sg_pg_conn, '%s:%s@%s:%s/%s' % (PG_USER, PG_PWD, PG_HOST, PG_PORT, PG_DB),
-         PG_MNT, PG_MNT + '_pull', download_all=download_all)
+          PG_MNT, PG_MNT + '_pull', download_all=download_all)
     checkout(sg_pg_conn, PG_MNT + '_pull', get_current_head(sg_pg_conn, PG_MNT))
 
     # Do something to fruits
@@ -345,7 +390,8 @@ def test_pull(sg_pg_conn, download_all):
     with sg_pg_conn.cursor() as cur:
         cur.execute("""SELECT * FROM test_pg_mount_pull.fruits""")
         assert list(cur.fetchall()) == [(1, 'apple'), (2, 'orange')]
-    assert head_1 not in [snap_id for snap_id, parent_id, created, comment in get_all_snap_parents(sg_pg_conn, PG_MNT + '_pull')]
+    assert head_1 not in [snap_id for snap_id, parent_id, created, comment in
+                          get_all_snap_parents(sg_pg_conn, PG_MNT + '_pull')]
 
     # Since the pull procedure initializes a new connection, we have to commit our changes
     # in order to see them.
@@ -363,7 +409,7 @@ def test_pull(sg_pg_conn, download_all):
 
 def test_pulls_with_lazy_object_downloads(sg_pg_conn):
     clone(sg_pg_conn, '%s:%s@%s:%s/%s' % (PG_USER, PG_PWD, PG_HOST, PG_PORT, PG_DB),
-         PG_MNT, PG_MNT + '_pull', download_all=False)
+          PG_MNT, PG_MNT + '_pull', download_all=False)
     # Make sure we haven't downloaded anything until checkout
     assert not get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull')
 
@@ -392,7 +438,8 @@ def test_pulls_with_lazy_object_downloads(sg_pg_conn):
 
     # Check out left commit: since it only depends on the root, we should download just the new version of fruits.
     checkout(sg_pg_conn, PG_MNT + '_pull', left)
-    assert len(get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull')) == 3 # now have 2 versions of fruits + 1 vegetables
+    assert len(
+        get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull')) == 3  # now have 2 versions of fruits + 1 vegetables
 
     checkout(sg_pg_conn, PG_MNT + '_pull', right)
     assert len(get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull')) == 4
@@ -403,7 +450,7 @@ def test_pulls_with_lazy_object_downloads(sg_pg_conn):
 def test_push(sg_pg_conn):
     # First, clone from ourselves again like in the previous test.
     clone(sg_pg_conn, '%s:%s@%s:%s/%s' % (PG_USER, PG_PWD, PG_HOST, PG_PORT, PG_DB),
-         PG_MNT, PG_MNT + '_pull')
+          PG_MNT, PG_MNT + '_pull')
     checkout(sg_pg_conn, PG_MNT + '_pull', get_current_head(sg_pg_conn, PG_MNT))
 
     # Then, change our copy and commit.
@@ -453,7 +500,7 @@ def test_http_push_pull(sg_pg_conn):
         # Check that the actual objects don't exist on the remote but are instead registered with an URL.
         assert len(get_downloaded_objects(sg_pg_conn, PG_MNT)) == 2  # just the two original tables on the remote
         objects = get_existing_objects(sg_pg_conn, PG_MNT)
-        assert len(objects) == 4    # two original tables + two new versions of fruits
+        assert len(objects) == 4  # two original tables + two new versions of fruits
         # Both repos have two non-local objects
         ext_objects_orig = get_external_object_locations(sg_pg_conn, PG_MNT, list(objects))
         ext_objects_pull = get_external_object_locations(sg_pg_conn, PG_MNT + '_pull', list(objects))
@@ -472,7 +519,8 @@ def test_http_push_pull(sg_pg_conn):
         assert len(get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull')) == 2
 
         checkout(sg_pg_conn, PG_MNT + '_pull', left)
-        assert len(get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull')) == 3 # now have 2 versions of fruits + 1 vegetables
+        assert len(
+            get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull')) == 3  # now have 2 versions of fruits + 1 vegetables
 
         checkout(sg_pg_conn, PG_MNT + '_pull', right)
         assert len(get_downloaded_objects(sg_pg_conn, PG_MNT + '_pull')) == 4
