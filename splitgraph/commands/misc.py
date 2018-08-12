@@ -4,7 +4,8 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, _log
 from splitgraph.meta_handler import get_table, get_snap_parent, ensure_metadata_schema, register_mountpoint, \
     unregister_mountpoint
-from splitgraph.pg_replication import record_pending_changes, discard_pending_changes, _get_primary_keys
+from splitgraph.pg_replication import record_pending_changes, discard_pending_changes, _get_primary_keys, \
+    stop_replication, start_replication
 
 
 def pg_table_exists(conn, mountpoint, table_name):
@@ -54,12 +55,16 @@ def _find_path(conn, mountpoint, snap_1, snap_2):
 
 
 def init(conn, mountpoint):
+    record_pending_changes(conn)
+    stop_replication(conn)
     ensure_metadata_schema(conn)
     # Initializes an empty repo with an initial commit (hash 0000...)
     with conn.cursor() as cur:
         cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(mountpoint)))
     snap_id = '0' * 64
     register_mountpoint(conn, mountpoint, snap_id, tables=[], table_object_ids=[])
+    conn.commit()
+    start_replication(conn)
 
 
 def mount_postgres(conn, server, port, username, password, mountpoint, extra_options):

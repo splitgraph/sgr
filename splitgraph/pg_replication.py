@@ -1,3 +1,4 @@
+
 import json
 
 from psycopg2.extras import execute_batch
@@ -51,11 +52,15 @@ KIND = {'insert': 0, 'delete': 1, 'update': 2}
 
 
 def record_pending_changes(conn):
+    # Decode the changeset produced by wal2json and save it to the pending_changes table.
     changes = _consume_changes(conn)
     if not changes:
         return
-    # Decode the changeset produced by wal2json and save it to the pending_changes table.
-    mountpoints_tables = {m: get_all_tables(conn, m) for m, _ in get_current_mountpoints_hashes(conn)}
+    # If the table doesn't exist in the current commit, we'll be storing it as a full snapshot,
+    # so there's no point consuming the WAL for it.
+    mountpoints_tables = {m: [t for t in get_all_tables(conn, m) if get_table(conn, m, t, head)]
+                          for m, head in get_current_mountpoints_hashes(conn)}
+
     to_insert = []  # a list of tuples (schema, table, kind, change)
     for changeset in changes:
         changeset = json.loads(changeset[0])['change']
@@ -116,7 +121,7 @@ def dump_pending_changes(conn, mountpoint, table, aggregate=False):
             ri_cols, _ = zip(*repl_id)
             result = []
             for kind, change in cur:
-                result.append(_convert_wal_change(kind, json.loads(change), ri_cols))
+                result.extend(_convert_wal_change(kind, json.loads(change), ri_cols))
             return result
 
 
@@ -166,35 +171,6 @@ def _generate_where_clause(mountpoint, table, cols, table_2=None):
             Identifier(mountpoint), Identifier(table_2), Identifier(c)) for c in cols)
 
 
-def _get_wal_change(conn, mountpoint, table, ri_cols, ri_vals):
-    with conn.cursor() as cur:
-        cur.execute(SQL("SELECT sg_action_kind, sg_action_data FROM {}.{} WHERE ").format(
-            Identifier(mountpoint), Identifier(table)) + \
-                    _generate_where_clause(mountpoint, table, ri_cols), ri_vals)
-        return cur.fetchone()
-
-
-def _add_wal_change(conn, mountpoint, table, ri_vals, kind, data):
-    with conn.cursor() as cur:
-        to_insert = ri_vals + [kind, data]
-        cur.execute(SQL("INSERT INTO {}.{} ").format(
-            Identifier(mountpoint), Identifier(table)) + \
-                    SQL("VALUES (" + ','.join('%s' for _ in range(len(to_insert))) + ")"), to_insert)
-
-
-def _update_wal_change(conn, mountpoint, table, ri_cols, ri_vals, new_kind, new_data):
-    with conn.cursor() as cur:
-        cur.execute(SQL("UPDATE {}.{} SET sg_action_kind = %s, sg_action_data = %s WHERE ").format(
-            Identifier(mountpoint), Identifier(table)) + \
-                    _generate_where_clause(mountpoint, table, ri_cols), [new_kind, new_data] + ri_vals)
-
-
-def _delete_wal_change(conn, mountpoint, table, ri_cols, ri_vals):
-    with conn.cursor() as cur:
-        cur.execute(SQL("DELETE FROM {}.{} WHERE ").format(Identifier(mountpoint), Identifier(table)) + \
-                    _generate_where_clause(mountpoint, table, ri_cols), ri_vals)
-
-
 def _split_ri_cols(kind, change, ri_cols):
     # Returns 3 lists from the wal2json-produced change:
     # * ri_vals: values identifying the replica identity (RI) of a given tuple (matching column names in ri_cols)
@@ -242,103 +218,58 @@ def _recalculate_disjoint_ri_cols(ri_cols, ri_vals, non_ri_cols, non_ri_vals):
     return ri_vals, new_nric, new_nriv
 
 
-def _merge_wal_changes(old_changeset, new_keys, new_values):
-    old_changeset = {k: v for k, v in zip(old_changeset['c'], old_changeset['v'])}
-    old_changeset.update({k: v for k, v in zip(new_keys, new_values)})
-    return {'c': list(old_changeset.keys()), 'v': list(old_changeset.values())}
+def _merge_wal_changes(old_change_data, new_change_data):
+    old_change_data = {k: v for k, v in zip(old_change_data['c'], old_change_data['v'])}
+    old_change_data.update({k: v for k, v in zip(new_change_data['c'], new_change_data['v'])})
+    return {'c': list(old_change_data.keys()), 'v': list(old_change_data.values())}
 
 
 def _convert_wal_change(kind, change, ri_cols):
     # Converts a change written by wal2json into our format:
-    # (pk, kind, extra data)
+    # [(pk, kind, extra data)] (more than 1 change might be emitted from a single WAL entry).
     ri_vals, non_ri_cols, non_ri_vals = _split_ri_cols(kind, change, ri_cols)
-    return tuple(ri_vals), kind, {'c': non_ri_cols, 'v': non_ri_vals} if kind == 0 or kind == 2 else None
+    pk_changed = any(c in ri_cols for c in non_ri_cols)
+    if pk_changed:
+        assert kind == 2
+        # If it's an update that changed the PK (e.g. the table has no replica identity so we treat the whole
+        # tuple as a primary key), then we turn it into a delete old tuple + insert new one.
+        result = [(tuple(ri_vals), 1, None)]
+        # todo: will this work if a part of the primary key + some other column in the tuple has been updated?
+        ri_vals, non_ri_cols, non_ri_vals = _recalculate_disjoint_ri_cols(ri_cols, ri_vals, non_ri_cols, non_ri_vals)
+        result.append((tuple(ri_vals), 0, {'c': non_ri_cols, 'v': non_ri_vals}))
+        return result
+    else:
+        return [(tuple(ri_vals), kind, {'c': non_ri_cols, 'v': non_ri_vals} if kind == 0 or kind == 2 else None)]
 
 
-def _pack_wal_change(conn, mountpoint, object_id, kind, change, ri_cols):
-    ri_vals, non_ri_cols, non_ri_vals = _split_ri_cols(kind, change, ri_cols)
-    old_change = _get_wal_change(conn, mountpoint, object_id, ri_cols, ri_vals)
-
-    if kind == 0:  # Insert
-        if old_change is None:
-            # do we need to explicitly specify column names here?
-            _add_wal_change(conn, mountpoint, object_id, ri_vals, kind=0, data=json.dumps({'c': non_ri_cols,
-                                                                                           'v': non_ri_vals}))
-        elif old_change[0] == 1:  # Insert over delete: change to update
-            if not non_ri_cols and not non_ri_vals:
-                # ...unless the full tuple is the PK, in which case we just pretend nothing has been deleted.
-                _delete_wal_change(conn, mountpoint, object_id, ri_cols, ri_vals)
-            else:
-                _update_wal_change(conn, mountpoint, object_id, ri_cols, ri_vals, new_kind=2, new_data=json.dumps(
-                    {'c': non_ri_cols,
-                     'v': non_ri_vals}))
+def _conflate_changes(changeset, new_changes):
+    # Updates a changeset to incorporate the new changes.
+    # Assumes that the new changes are non-pk changing (e.g. PK-changing updates have been converted into a del + ins).
+    for change_pk, change_kind, change_data in new_changes:
+        old_change = changeset.get(change_pk)
+        if not old_change:
+            changeset[change_pk] = (change_kind, change_data)
         else:
-            raise SplitGraphException("TODO logic error")
-    elif kind == 1:  # Delete
-        if old_change is None:
-            _add_wal_change(conn, mountpoint, object_id, ri_vals, kind=1, data=None)
-        elif old_change[0] == 0 or old_change[0] == 2:
-            # Remove a previous update/insert
-            _delete_wal_change(conn, mountpoint, object_id, ri_cols, ri_vals)
-        else:
-            raise SplitGraphException("TODO logic error")
-    else:  # Update
-        # A bit of a corner case here: if the PK itself has been changed (normally impossible but can happen
-        # if the tuple has no replica identity and so we use the whole of it as the PK), we record
-        # the update as a delete + insert instead.
-        pk_changed = any(c in ri_cols for c in non_ri_cols)
-
-        if old_change is None:
-            if pk_changed:
-                _add_wal_change(conn, mountpoint, object_id, ri_vals, kind=1, data=None)
-                ri_vals, non_ri_cols, non_ri_vals = _recalculate_disjoint_ri_cols(ri_cols, ri_vals, non_ri_cols,
-                                                                                  non_ri_vals)
-                _add_wal_change(conn, mountpoint, object_id, ri_vals, kind=0, data=json.dumps({'c': non_ri_cols,
-                                                                                               'v': non_ri_vals}))
-            else:
-                _add_wal_change(conn, mountpoint, object_id, ri_vals, kind=2, data=json.dumps({'c': non_ri_cols,
-                                                                                               'v': non_ri_vals}))
-        else:
-            if pk_changed:
-                _delete_wal_change(conn, mountpoint, object_id, ri_cols, ri_vals)
-                if old_change[0] == 0:
-                    # If we changed the PK after inserting, it's the same as just inserting the changed item
-                    # with the new PK.
-                    new_data = _merge_wal_changes(json.loads(old_change[1]), non_ri_cols, non_ri_vals)
-                    ri_vals, non_ri_cols, non_ri_vals = _recalculate_disjoint_ri_cols(ri_cols, ri_vals, new_data['c'],
-                                                                                      new_data['v'])
-
-                    # Here, the item we're writing into might already exist in the diff. The only way that doesn't
-                    # violate PK constraints at the point when this change is made is if the item is market as deleted
-                    # by this point.
-                    old_change = _get_wal_change(conn, mountpoint, object_id, ri_cols, ri_vals)
-                    if old_change is not None:
-                        assert old_change[0] == 1
-                        # This code is copied from the insert-over-update case.
-                        if not non_ri_cols and not non_ri_vals:
-                            _delete_wal_change(conn, mountpoint, object_id, ri_cols, ri_vals)
-                        else:
-                            _update_wal_change(conn, mountpoint, object_id, ri_cols, ri_vals, new_kind=2,
-                                               new_data=json.dumps(
-                                                   {'c': non_ri_cols,
-                                                    'v': non_ri_vals}))
+            if change_kind == 0:
+                if old_change[0] == 1:  # Insert over delete: change to update
+                    if change_data == {'c': [], 'v': []}:
+                        del changeset[change_pk]
                     else:
-                        _add_wal_change(conn, mountpoint, object_id, ri_vals, kind=0, data=json.dumps({'c': non_ri_cols,
-                                                                                                       'v': non_ri_vals}))
-                elif old_change[0] == 2:
-                    # A normal update that didn't touch the PK, followed by a pk-touching update.
-                    # Same as deleting the old item and inserting the new, updated item with the changed PK.
-                    _add_wal_change(conn, mountpoint, object_id, ri_vals, kind=1, data=None)
-                    new_data = _merge_wal_changes(json.loads(old_change[1]), non_ri_cols, non_ri_vals)
-                    ri_vals, non_ri_cols, non_ri_vals = _recalculate_disjoint_ri_cols(ri_cols, ri_vals, new_data['c'],
-                                                                                      new_data['v'])
-                    _add_wal_change(conn, mountpoint, object_id, ri_vals, kind=0, data=json.dumps({'c': non_ri_cols,
-                                                                                                   'v': non_ri_vals}))
-            else:
-                # Otherwise, simply update the previous update/insert.
-                _update_wal_change(conn, mountpoint, object_id, ri_cols, ri_vals, new_kind=old_change[0],
-                                   new_data=json.dumps(
-                                       _merge_wal_changes(json.loads(old_change[1]), non_ri_cols, non_ri_vals)))
+                        changeset[change_pk] = (2, change_data)
+                else:
+                    raise SplitGraphException("TODO logic error")
+            elif change_kind == 1:      # Delete over insert/update: remove the old change
+                del changeset[change_pk]
+                if old_change[0] == 2:
+                    # If it was an update, also remove the old row.
+                    changeset[change_pk] = (1, change_data)
+                if old_change[0] == 1:
+                    # Delete over delete: can't happen.
+                    raise SplitGraphException("TODO logic error")
+            elif change_kind == 2:      # Update over insert/update: merge the two changes.
+                if old_change[0] == 0 or old_change[0] == 1:
+                    new_data = _merge_wal_changes(json.loads(old_change[1]), change_data)
+                    changeset[change_pk] = (old_change[0], new_data)
 
 
 def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False):
@@ -365,20 +296,24 @@ def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False
                                    RETURNING kind, change """).format(
                                 Identifier(SPLITGRAPH_META_SCHEMA), Identifier("pending_changes")), (mountpoint, table))
 
+                        # Accumulate the diff in-memory.
+                        changeset = {}
                         for kind, change in cur:
-                            _pack_wal_change(conn, mountpoint, object_id, kind, json.loads(change), ri_cols)
+                            _conflate_changes(changeset, _convert_wal_change(kind, json.loads(change), ri_cols))
 
-                        cur.execute(
-                            SQL("SELECT COUNT(1) FROM {}.{}").format(Identifier(mountpoint), Identifier(object_id)))
-                        if cur.fetchone()[0] == 0:
+                        if changeset:
+                            changeset = [tuple(list(pk) + [kind_data[0], json.dumps(kind_data[1])]) for pk, kind_data in changeset.items()]
+                            query = SQL("INSERT INTO {}.{} ").format(Identifier(mountpoint), Identifier(object_id)) + \
+                                        SQL("VALUES (" + ','.join('%s' for _ in range(len(changeset[0]))) + ")")
+                            execute_batch(cur, query, changeset, page_size=1000)
+                            register_table_object(conn, mountpoint, table, new_image, object_id, object_format='DIFF')
+                        else:
                             # Changes in the WAL cancelled each other out. Delete the diff table and just point
                             # the commit to the old table objects.
                             cur.execute(
                                 SQL("DROP TABLE {}.{}").format(Identifier(mountpoint), Identifier(object_id)))
                             for prev_object_id, prev_format in table_info:
                                 register_table_object(conn, mountpoint, table, new_image, prev_object_id, prev_format)
-                        else:
-                            register_table_object(conn, mountpoint, table, new_image, object_id, object_format='DIFF')
                 else:
                     # If the table wasn't changed, point the commit to the old table objects (including
                     # any of snaps or diffs).
