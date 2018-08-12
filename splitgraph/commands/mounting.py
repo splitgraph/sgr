@@ -2,7 +2,7 @@ from psycopg2.sql import SQL, Identifier
 from random import getrandbits
 
 from splitgraph.commands.checkout import checkout
-from splitgraph.commands.misc import mount_postgres, mount_mongo
+from splitgraph.commands.misc import mount_postgres, mount_mongo, copy_table
 from splitgraph.constants import _log, SplitGraphException, get_random_object_id
 from splitgraph.meta_handler import ensure_metadata_schema, get_all_foreign_tables, register_mountpoint
 
@@ -37,9 +37,7 @@ def mount(conn, server, port, username, password, mountpoint, mount_handler, ext
             cur.execute(SQL("ALTER TABLE {}.{} RENAME TO {}").format(
                 Identifier(mountpoint), Identifier(table),
                 Identifier(table + '_origin')))
-            cur.execute(SQL("CREATE TABLE {}.{} AS SELECT * FROM {}.{}").format(
-                Identifier(mountpoint), Identifier(object_id),
-                Identifier(mountpoint), Identifier(table + '_origin')))
+            copy_table(conn, mountpoint, table + '_origin', mountpoint, object_id)
 
     # Finally, register the mountpoint in our metadata store.
     register_mountpoint(conn, mountpoint, schema_snap, tables, table_object_ids)

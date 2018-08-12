@@ -67,6 +67,22 @@ def init(conn, mountpoint):
     start_replication(conn)
 
 
+def copy_table(conn, source_schema, source_table, target_schema, target_table, with_pk_constraints=True):
+    query = SQL("CREATE TABLE {}.{} AS SELECT * FROM {}.{}").format(
+        Identifier(target_schema), Identifier(target_table),
+        Identifier(source_schema), Identifier(source_table))
+
+    if with_pk_constraints:
+        pks = _get_primary_keys(conn, source_schema, source_table)
+        if pks:
+            query += SQL("ALTER TABLE {}.{} ADD PRIMARY KEY (").format(
+                Identifier(target_schema), Identifier(target_table)) + SQL(',').join(
+                SQL("{}").format(Identifier(c)) for c, _ in pks) + SQL(")")
+
+    with conn.cursor() as cur:
+        cur.execute(query)
+
+
 def mount_postgres(conn, server, port, username, password, mountpoint, extra_options):
     with conn.cursor() as cur:
         dbname = extra_options['dbname']

@@ -4,7 +4,7 @@ from collections import defaultdict
 import requests
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.commands.misc import mount_postgres, make_conn, dump_table_creation, unmount
+from splitgraph.commands.misc import mount_postgres, make_conn, dump_table_creation, unmount, copy_table
 from splitgraph.constants import _log, SplitGraphException
 from splitgraph.meta_handler import get_downloaded_objects, get_existing_objects
 from splitgraph.pg_replication import _get_primary_keys
@@ -53,12 +53,9 @@ def download_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoi
     try:
         for i, obj in enumerate(objects_to_fetch):
             _log("(%d/%d) %s..." % (i + 1, len(objects_to_fetch), obj))
+            # Foreign tables don't have PK constraints so we'll have to apply them manually.
+            copy_table(conn, remote_data_mountpoint, obj, local_mountpoint, obj, with_pk_constraints=False)
             with conn.cursor() as cur:
-                cur.execute(SQL("CREATE TABLE {}.{} AS SELECT * FROM {}.{}").format(
-                    Identifier(local_mountpoint), Identifier(obj),
-                    Identifier(remote_data_mountpoint), Identifier(obj)))
-
-                # Apply the primary key constraint from the remote driver too.
                 source_pks = _get_primary_keys(remote_conn, remote_mountpoint, obj)
                 if source_pks:
                     cur.execute(SQL("ALTER TABLE {}.{} ADD PRIMARY KEY (").format(

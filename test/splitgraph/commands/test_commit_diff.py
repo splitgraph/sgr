@@ -49,44 +49,6 @@ def test_commit_diff(include_snap, sg_pg_conn):
     assert diff(sg_pg_conn, PG_MNT, 'vegetables', snap_1=head, snap_2=new_head) == []
 
 
-def test_diff_conflation_on_commit(sg_pg_conn):
-    with sg_pg_conn.cursor() as cur:
-        cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise')""")
-        cur.execute("""UPDATE test_pg_mount.fruits SET name = 'mustard' WHERE fruit_id = 3""")
-    sg_pg_conn.commit()
-    head = commit(sg_pg_conn, PG_MNT)
-    # Insert + update changed into a single insert
-    assert diff(sg_pg_conn, PG_MNT, 'fruits', get_snap_parent(sg_pg_conn, PG_MNT, head), head) \
-           == [((3, 'mustard'), 0, {'c': [], 'v': []})]
-
-    with sg_pg_conn.cursor() as cur:
-        cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (4, 'kumquat')""")
-        cur.execute("""UPDATE test_pg_mount.fruits SET name = 'mustard' WHERE fruit_id = 4""")
-        cur.execute("""DELETE FROM test_pg_mount.fruits WHERE fruit_id = 4""")
-    sg_pg_conn.commit()
-    head = commit(sg_pg_conn, PG_MNT)
-    # Insert + update + delete did nothing (todo what about sequences)
-    assert diff(sg_pg_conn, PG_MNT, 'fruits', get_snap_parent(sg_pg_conn, PG_MNT, head), head) \
-           == []
-
-    with sg_pg_conn.cursor() as cur:
-        cur.execute("""DELETE FROM test_pg_mount.fruits WHERE fruit_id = 1""")
-        cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (1, 'apple')""")
-    sg_pg_conn.commit()
-    head = commit(sg_pg_conn, PG_MNT)
-    # delete + reinsert same results in nothing
-    assert diff(sg_pg_conn, PG_MNT, 'fruits', get_snap_parent(sg_pg_conn, PG_MNT, head), head) \
-           == []
-
-    with sg_pg_conn.cursor() as cur:
-        cur.execute("""UPDATE test_pg_mount.fruits SET name = 'pineapple' WHERE fruit_id = 1""")
-        cur.execute("""UPDATE test_pg_mount.fruits SET name = 'apple' WHERE fruit_id = 1""")
-    sg_pg_conn.commit()
-    head = commit(sg_pg_conn, PG_MNT)
-    # Two updates, but the PK changed back to the original one -- no diff.
-    assert diff(sg_pg_conn, PG_MNT, 'fruits', get_snap_parent(sg_pg_conn, PG_MNT, head), head) == []
-
-
 @pytest.mark.parametrize("include_snap", [True, False])
 def test_commit_on_empty(include_snap, sg_pg_conn):
     init(sg_pg_conn, "output")

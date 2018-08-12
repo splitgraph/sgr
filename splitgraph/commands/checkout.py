@@ -1,13 +1,14 @@
 from contextlib import contextmanager
 from psycopg2.sql import Identifier, SQL
 
+from splitgraph.commands.misc import copy_table
 from splitgraph.commands.object_loading import download_objects
 from splitgraph.constants import _log, get_random_object_id, SplitGraphException
 from splitgraph.meta_handler import get_table_with_format, get_snap_parent, get_remote_for, ensure_metadata_schema, \
     get_canonical_snap_id, get_tables_at, get_all_tables, set_head, register_table_object, deregister_table_object, \
     get_external_object_locations, get_tagged_id
 from splitgraph.pg_replication import apply_record_to_staging, record_pending_changes, stop_replication, \
-    discard_pending_changes, start_replication
+    discard_pending_changes, start_replication, _get_primary_keys
 
 
 def materialize_table(conn, mountpoint, schema_snap, table, destination):
@@ -43,14 +44,13 @@ def materialize_table(conn, mountpoint, schema_snap, table, destination):
                              objects_to_fetch=to_apply + [object_id], object_locations=object_locations)
 
         # Copy the given snap id over to "staging"
-        cur.execute(SQL("CREATE TABLE {}.{} AS SELECT * FROM {}.{}").format(
-                    Identifier(mountpoint), Identifier(destination),
-                    Identifier(mountpoint), Identifier(object_id)))
+        copy_table(conn, mountpoint, object_id, mountpoint, destination)
         # This is to work around logical replication not reflecting deletions from non-PKd tables. However, this makes
         # it emit all column values in the row, not just the updated ones.
-        # TODO: detect primary keys here and if not, do RI full
-
-        cur.execute(SQL("ALTER TABLE {}.{} REPLICA IDENTITY FULL").format(Identifier(mountpoint), Identifier(destination)))
+        if not _get_primary_keys(conn, mountpoint, destination):
+            _log("WARN: table %s has no primary key. This means that changes will have to be recorded as whole-row." % destination)
+            cur.execute(SQL("ALTER TABLE {}.{} REPLICA IDENTITY FULL").format(Identifier(mountpoint),
+                                                                              Identifier(destination)))
 
         # Apply the deltas sequentially to the checked out table
         for pack_object in reversed(to_apply):
