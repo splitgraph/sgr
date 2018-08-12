@@ -75,6 +75,8 @@ def record_pending_changes(conn):
         execute_batch(cur, SQL("INSERT INTO {}.{} VALUES (%s, %s, %s, %s)").format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                                                    Identifier("pending_changes")),
                       to_insert)
+    conn.commit()  # Slightly eww: a diff() also dumps pending changes, which means that if the diff
+    # doesn't commit, the changes will have been consumed but not saved.
 
 
 def discard_pending_changes(conn, mountpoint):
@@ -82,6 +84,7 @@ def discard_pending_changes(conn, mountpoint):
         cur.execute(SQL("DELETE FROM {}.{} WHERE mountpoint = %s").format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                                           Identifier("pending_changes")),
                     (mountpoint,))
+    conn.commit()
 
 
 def has_pending_changes(conn, mountpoint):
@@ -124,7 +127,8 @@ def _get_primary_keys(conn, mountpoint, table):
                             JOIN information_schema.constraint_column_usage AS ccu USING (constraint_schema, constraint_name)
                             JOIN information_schema.columns AS c 
                             ON c.table_schema = tc.constraint_schema AND tc.table_name = c.table_name AND ccu.column_name = c.column_name
-                           WHERE constraint_type = 'PRIMARY KEY' AND tc.table_schema = %s AND tc.table_name = %s"""), (mountpoint, table))
+                           WHERE constraint_type = 'PRIMARY KEY' AND tc.table_schema = %s AND tc.table_name = %s"""),
+                    (mountpoint, table))
         return cur.fetchall()
 
 
@@ -145,6 +149,10 @@ def _create_diff_table(conn, mountpoint, object_id, replica_identity_cols_types)
         query += SQL(", PRIMARY KEY (") + SQL(',').join(
             SQL("{}").format(Identifier(c)) for c, _ in replica_identity_cols_types)
         query += SQL("));")
+
+        # Also create an index on the replica identity since we'll be querying that to conflate changes.
+        query += SQL("CREATE INDEX ON {}.{} (").format(Identifier(mountpoint), Identifier(object_id)) + \
+                 SQL(',').join(SQL("{}").format(Identifier(c)) for c, _ in replica_identity_cols_types) + SQL(');')
         cur.execute(query)
 
 
@@ -283,7 +291,8 @@ def _pack_wal_change(conn, mountpoint, object_id, kind, change, ri_cols):
         if old_change is None:
             if pk_changed:
                 _add_wal_change(conn, mountpoint, object_id, ri_vals, kind=1, data=None)
-                ri_vals, non_ri_cols, non_ri_vals = _recalculate_disjoint_ri_cols(ri_cols, ri_vals, non_ri_cols, non_ri_vals)
+                ri_vals, non_ri_cols, non_ri_vals = _recalculate_disjoint_ri_cols(ri_cols, ri_vals, non_ri_cols,
+                                                                                  non_ri_vals)
                 _add_wal_change(conn, mountpoint, object_id, ri_vals, kind=0, data=json.dumps({'c': non_ri_cols,
                                                                                                'v': non_ri_vals}))
             else:
@@ -296,7 +305,8 @@ def _pack_wal_change(conn, mountpoint, object_id, kind, change, ri_cols):
                     # If we changed the PK after inserting, it's the same as just inserting the changed item
                     # with the new PK.
                     new_data = _merge_wal_changes(json.loads(old_change[1]), non_ri_cols, non_ri_vals)
-                    ri_vals, non_ri_cols, non_ri_vals = _recalculate_disjoint_ri_cols(ri_cols, ri_vals, new_data['c'], new_data['v'])
+                    ri_vals, non_ri_cols, non_ri_vals = _recalculate_disjoint_ri_cols(ri_cols, ri_vals, new_data['c'],
+                                                                                      new_data['v'])
 
                     # Here, the item we're writing into might already exist in the diff. The only way that doesn't
                     # violate PK constraints at the point when this change is made is if the item is market as deleted
@@ -326,8 +336,9 @@ def _pack_wal_change(conn, mountpoint, object_id, kind, change, ri_cols):
                                                                                                    'v': non_ri_vals}))
             else:
                 # Otherwise, simply update the previous update/insert.
-                _update_wal_change(conn, mountpoint, object_id, ri_cols, ri_vals, new_kind=old_change[0], new_data=json.dumps(
-                    _merge_wal_changes(json.loads(old_change[1]), non_ri_cols, non_ri_vals)))
+                _update_wal_change(conn, mountpoint, object_id, ri_cols, ri_vals, new_kind=old_change[0],
+                                   new_data=json.dumps(
+                                       _merge_wal_changes(json.loads(old_change[1]), non_ri_cols, non_ri_vals)))
 
 
 def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False):
@@ -357,7 +368,8 @@ def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False
                         for kind, change in cur:
                             _pack_wal_change(conn, mountpoint, object_id, kind, json.loads(change), ri_cols)
 
-                        cur.execute(SQL("SELECT COUNT(1) FROM {}.{}").format(Identifier(mountpoint), Identifier(object_id)))
+                        cur.execute(
+                            SQL("SELECT COUNT(1) FROM {}.{}").format(Identifier(mountpoint), Identifier(object_id)))
                         if cur.fetchone()[0] == 0:
                             # Changes in the WAL cancelled each other out. Delete the diff table and just point
                             # the commit to the old table objects.
@@ -399,17 +411,18 @@ def apply_record_to_staging(conn, mountpoint, object_id, destination):
     # Minor hack alert: here we assume that the PK of the object is the PK of the table it refers to, which means
     # that we are expected to have the PKs applied to the object table no matter how it originated.
     if sorted(ri_cols) == sorted(_get_column_names(conn, mountpoint, object_id)):
-        raise SplitGraphException("Error determining the replica identity of %s. " % object_id +\
+        raise SplitGraphException("Error determining the replica identity of %s. " % object_id + \
                                   "Have primary key constrants been applied?")
 
     with conn.cursor() as cur:
         # Apply deletes
         cur.execute(SQL("DELETE FROM {0}.{1} USING {0}.{2} WHERE {0}.{2}.sg_action_kind = 1").format(
-            Identifier(mountpoint), Identifier(destination), Identifier(object_id)) +\
+            Identifier(mountpoint), Identifier(destination), Identifier(object_id)) + \
                     SQL(" AND ") + _generate_where_clause(mountpoint, destination, ri_cols, object_id))
 
         # Generate queries for inserts
-        cur.execute(SQL("SELECT * FROM {}.{} WHERE sg_action_kind = 0").format(Identifier(mountpoint), Identifier(object_id)))
+        cur.execute(
+            SQL("SELECT * FROM {}.{} WHERE sg_action_kind = 0").format(Identifier(mountpoint), Identifier(object_id)))
         for row in cur:
             # Not sure if we can rely on ordering here.
             # Also for the future: if all column names are the same, we can do a big INSERT.
