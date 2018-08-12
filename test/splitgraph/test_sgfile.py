@@ -5,7 +5,7 @@ from splitgraph.commands.misc import pg_table_exists
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler import get_current_head, get_snap_parent, get_all_snap_info
 from splitgraph.sgfile import parse_commands, execute_commands, _canonicalize
-from test.splitgraph.test_commands import PG_MNT, MG_MNT, sg_pg_mg_conn
+from test.splitgraph.conftest import PG_MNT, MG_MNT, sg_pg_mg_conn
 
 SGFILE_ROOT = os.path.join(os.path.dirname(__file__), '../resources/')
 
