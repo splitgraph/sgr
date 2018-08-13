@@ -1,3 +1,4 @@
+from datetime import date, datetime as dt
 from decimal import Decimal
 
 import pytest
@@ -158,6 +159,84 @@ def test_diff_across_far_commits(include_snap, sg_pg_conn):
                       ((2, 'guitar'), 0, {'c': [], 'v': []})]
     change_agg = diff(sg_pg_conn, PG_MNT, 'fruits', head, new_head, aggregate=True)
     assert change_agg == (2, 2, 0)
+
+
+@pytest.mark.parametrize("include_snap", [True, False])
+def test_non_ordered_inserts(include_snap, sg_pg_conn):
+    head = get_current_head(sg_pg_conn, PG_MNT)
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""INSERT INTO test_pg_mount.fruits (name, fruit_id) VALUES ('mayonnaise', 3)""")
+    new_head = commit(sg_pg_conn, PG_MNT, include_snap=include_snap)
+
+    change = diff(sg_pg_conn, PG_MNT, 'fruits', head, new_head)
+    assert change == [((3, 'mayonnaise'), 0, {'c': [], 'v': []})]
+
+
+@pytest.mark.parametrize("include_snap", [True, False])
+def test_non_ordered_inserts_with_pk(include_snap, sg_pg_conn):
+    init(sg_pg_conn, 'output')
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""CREATE TABLE output.test
+        (a int, 
+         b int,
+         c int,
+         d varchar, PRIMARY KEY(a))""")
+    sg_pg_conn.commit()
+    head = commit(sg_pg_conn, 'output')
+
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""INSERT INTO output.test (a, d, b, c) VALUES (1, 'four', 2, 3)""")
+    sg_pg_conn.commit()
+    new_head = commit(sg_pg_conn, 'output', include_snap=include_snap)
+    checkout(sg_pg_conn, 'output', head)
+    checkout(sg_pg_conn, 'output', new_head)
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""SELECT * FROM output.test""")
+        assert cur.fetchall() == [(1, 2, 3, 'four')]
+    change = diff(sg_pg_conn, 'output', 'test', head, new_head)
+    # Looks like wal2json produces diffs in ordinal order -- do we need to keep the actual column names?
+    # Maybe for when not all columns have values on insert?
+    assert change == [((1,), 0, {'c': ['b', 'c', 'd'], 'v': [2, 3, 'four']})]
+
+
+@pytest.mark.parametrize("include_snap", [True, False])
+def test_various_types(include_snap, sg_pg_conn):
+    # Schema/data copied from the wal2json tests
+    init(sg_pg_conn, 'output')
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""CREATE TABLE output.test
+        (a smallserial, 
+         b smallint,
+         c int,
+         d bigint,
+         e numeric(5,3),
+         f real not null,
+         g double precision,
+         h char(10),
+         i varchar(30),
+         j text,
+         k bit varying(20),
+         l timestamp,
+         m date,
+         n boolean not null,
+         o json,
+         p tsvector, PRIMARY KEY(b, c, d));""")
+    sg_pg_conn.commit()
+    head = commit(sg_pg_conn, 'output')
+
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""INSERT INTO output.test (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p)
+            VALUES(1, 2, 3, 3.54, 876.563452345, 1.23, 'test', 'testtesttesttest', 'testtesttesttesttesttesttest',
+            B'001110010101010', '2013-11-02 17:30:52', '2013-02-04', true, '{ "a": 123 }', 'Old Old Parr'::tsvector);""")
+    sg_pg_conn.commit()
+    new_head = commit(sg_pg_conn, 'output', include_snap=include_snap)
+    checkout(sg_pg_conn, 'output', head)
+    checkout(sg_pg_conn, 'output', new_head)
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""SELECT * FROM output.test""")
+        assert cur.fetchall() == [(1, 1, 2, 3, Decimal('3.540'), 876.563, 1.23, 'test      ', 'testtesttesttest',
+                                   'testtesttesttesttesttesttest', '001110010101010', dt(2013, 11, 2, 17, 30, 52),
+                                   date(2013, 2, 4), True, {'a': 123}, "'Old' 'Parr'")]
 
 
 def test_empty_diff_reuses_object(sg_pg_conn):
