@@ -1,9 +1,8 @@
 import pytest
 
 from splitgraph.commands import commit, get_log, checkout, diff
-from splitgraph.commands.misc import pg_table_exists
+from splitgraph.pg_utils import pg_table_exists, _get_primary_keys
 from splitgraph.meta_handler import get_current_head, set_tag, get_all_hashes_tags
-from splitgraph.pg_replication import _get_primary_keys
 from test.splitgraph.conftest import PG_MNT
 
 
@@ -37,19 +36,6 @@ def test_log_checkout(include_snap, sg_pg_conn):
     with sg_pg_conn.cursor() as cur:
         cur.execute("""SELECT * FROM test_pg_mount.fruits""")
         assert list(cur.fetchall()) == [(2, 'orange'), (3, 'mayonnaise')]
-
-
-@pytest.mark.xfail
-def test_pk_preserved_on_checkout(sg_pg_conn):
-    assert list(_get_primary_keys(sg_pg_conn, PG_MNT, 'fruits')) == []
-    with sg_pg_conn.cursor() as cur:
-        cur.execute("""ALTER TABLE test_pg_mount.fruits ADD PRIMARY KEY (fruit_id)""")
-    assert list(_get_primary_keys(sg_pg_conn, PG_MNT, 'fruits')) == [('fruit_id', 'integer')]
-    head = get_current_head(sg_pg_conn, PG_MNT)
-    commit(sg_pg_conn, PG_MNT)
-    assert list(_get_primary_keys(sg_pg_conn, PG_MNT, 'fruits')) == [('fruit_id', 'integer')]
-    checkout(sg_pg_conn, PG_MNT, head)
-    assert list(_get_primary_keys(sg_pg_conn, PG_MNT, 'fruits')) == [('fruit_id', 'integer')]
 
 
 @pytest.mark.parametrize("include_snap", [True, False])

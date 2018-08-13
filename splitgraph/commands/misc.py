@@ -4,17 +4,8 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, _log
 from splitgraph.meta_handler import get_table, get_snap_parent, ensure_metadata_schema, register_mountpoint, \
     unregister_mountpoint
-from splitgraph.pg_replication import record_pending_changes, discard_pending_changes, _get_primary_keys, \
-    stop_replication, start_replication
-
-
-def pg_table_exists(conn, mountpoint, table_name):
-    # WTF: postgres quietly truncates all table names to 63 characters
-    # at creation and in select statements
-    with conn.cursor() as cur:
-        cur.execute("""SELECT table_name from information_schema.tables
-                       WHERE table_schema = %s AND table_name = %s""", (mountpoint, table_name[:63]))
-        return cur.fetchone() is not None
+from splitgraph.pg_replication import record_pending_changes, discard_pending_changes, stop_replication, start_replication
+from splitgraph.pg_utils import pg_table_exists
 
 
 def _table_exists_at(conn, mountpoint, table_name, image):
@@ -65,22 +56,6 @@ def init(conn, mountpoint):
     register_mountpoint(conn, mountpoint, snap_id, tables=[], table_object_ids=[])
     conn.commit()
     start_replication(conn)
-
-
-def copy_table(conn, source_schema, source_table, target_schema, target_table, with_pk_constraints=True):
-    query = SQL("CREATE TABLE {}.{} AS SELECT * FROM {}.{}").format(
-        Identifier(target_schema), Identifier(target_table),
-        Identifier(source_schema), Identifier(source_table))
-
-    if with_pk_constraints:
-        pks = _get_primary_keys(conn, source_schema, source_table)
-        if pks:
-            query += SQL("ALTER TABLE {}.{} ADD PRIMARY KEY (").format(
-                Identifier(target_schema), Identifier(target_table)) + SQL(',').join(
-                SQL("{}").format(Identifier(c)) for c, _ in pks) + SQL(")")
-
-    with conn.cursor() as cur:
-        cur.execute(query)
 
 
 def mount_postgres(conn, server, port, username, password, mountpoint, extra_options):
@@ -155,30 +130,3 @@ def unmount(conn, mountpoint):
 
     # Currently we just discard all history info about the mounted schema
     unregister_mountpoint(conn, mountpoint)
-
-
-def dump_table_creation(conn, schema, tables, created_schema=None):
-    queries = []
-
-    with conn.cursor() as cur:
-        for t in tables:
-            cur.execute("""SELECT column_name, data_type, is_nullable
-                           FROM information_schema.columns
-                           WHERE table_name = %s AND table_schema = %s""", (t, schema))
-            cols = cur.fetchall()
-            if created_schema:
-                target = SQL("{}.{}").format(Identifier(created_schema), Identifier(t))
-            else:
-                target = Identifier(t)
-            query = SQL("CREATE TABLE {} (").format(target) +\
-                SQL(','.join("{} %s " % ctype + ("NOT NULL" if not cnull else "") for _, ctype, cnull in cols)).format(
-                    *(Identifier(cname) for cname, _, _ in cols))
-
-            pks = _get_primary_keys(conn, schema, t)
-            if pks:
-                query += SQL(", PRIMARY KEY (") + SQL(',').join(SQL("{}").format(Identifier(c)) for c, _ in pks) + SQL("))")
-            else:
-                query += SQL(")")
-
-            queries.append(query)
-    return SQL(';').join(queries)

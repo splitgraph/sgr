@@ -2,7 +2,8 @@ from psycopg2.sql import SQL, Identifier
 from random import getrandbits
 
 from splitgraph.commands.checkout import checkout
-from splitgraph.commands.misc import mount_postgres, mount_mongo, copy_table
+from splitgraph.commands.misc import mount_postgres, mount_mongo
+from splitgraph.pg_utils import copy_table
 from splitgraph.constants import _log, SplitGraphException, get_random_object_id
 from splitgraph.meta_handler import ensure_metadata_schema, get_all_foreign_tables, register_mountpoint
 

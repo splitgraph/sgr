@@ -1,10 +1,11 @@
-
 import json
 
 from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.meta_handler import get_current_mountpoints_hashes, get_table_with_format
+from splitgraph.pg_utils import copy_table, _get_primary_keys, _get_column_names, _get_column_names_types, \
+    _get_full_table_schema
+from splitgraph.meta_handler import get_current_mountpoints_hashes, get_table_with_format, get_snap_parent
 
 from splitgraph.constants import get_random_object_id, SPLITGRAPH_META_SCHEMA, SplitGraphException
 
@@ -123,18 +124,6 @@ def dump_pending_changes(conn, mountpoint, table, aggregate=False):
             for kind, change in cur:
                 result.extend(_convert_wal_change(kind, json.loads(change), ri_cols))
             return result
-
-
-def _get_primary_keys(conn, mountpoint, table):
-    with conn.cursor() as cur:
-        cur.execute(SQL("""SELECT c.column_name, c.data_type
-                           FROM information_schema.table_constraints tc
-                            JOIN information_schema.constraint_column_usage AS ccu USING (constraint_schema, constraint_name)
-                            JOIN information_schema.columns AS c 
-                            ON c.table_schema = tc.constraint_schema AND tc.table_name = c.table_name AND ccu.column_name = c.column_name
-                           WHERE constraint_type = 'PRIMARY KEY' AND tc.table_schema = %s AND tc.table_name = %s"""),
-                    (mountpoint, table))
-        return cur.fetchall()
 
 
 def _get_replica_identity(conn, mountpoint, table):
@@ -258,7 +247,7 @@ def _conflate_changes(changeset, new_changes):
                         changeset[change_pk] = (2, change_data)
                 else:
                     raise SplitGraphException("TODO logic error")
-            elif change_kind == 1:      # Delete over insert/update: remove the old change
+            elif change_kind == 1:  # Delete over insert/update: remove the old change
                 del changeset[change_pk]
                 if old_change[0] == 2:
                     # If it was an update, also remove the old row.
@@ -266,7 +255,7 @@ def _conflate_changes(changeset, new_changes):
                 if old_change[0] == 1:
                     # Delete over delete: can't happen.
                     raise SplitGraphException("TODO logic error")
-            elif change_kind == 2:      # Update over insert/update: merge the two changes.
+            elif change_kind == 2:  # Update over insert/update: merge the two changes.
                 if old_change[0] == 0 or old_change[0] == 1:
                     new_data = _merge_wal_changes(json.loads(old_change[1]), change_data)
                     changeset[change_pk] = (old_change[0], new_data)
@@ -280,10 +269,17 @@ def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False
                                                         Identifier("pending_changes")), (mountpoint,))
         changed_tables = [c[0] for c in cur.fetchall()]
         for table in all_tables:
+            # import pdb; pdb.set_trace()
             table_info = get_table(conn, mountpoint, table, HEAD)
             # Table already exists at the current HEAD
             if table_info:
-                if table in changed_tables:
+                schema_changed = table_schema_changed(conn, mountpoint, table, image_1=HEAD, image_2=None)
+                # If there has been a schema change, we currently just snapshot the whole table.
+                # This is obviously wasteful (say if just one column has been added/dropped or we added a PK,
+                # but it's a starting point to support schema changes.
+                if schema_changed:
+                    include_snap = True
+                if table in changed_tables and not schema_changed:
                     object_id = get_random_object_id()
                     repl_id = _get_replica_identity(conn, mountpoint, table)
                     ri_cols, ri_types = zip(*repl_id)
@@ -302,9 +298,10 @@ def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False
                             _conflate_changes(changeset, _convert_wal_change(kind, json.loads(change), ri_cols))
 
                         if changeset:
-                            changeset = [tuple(list(pk) + [kind_data[0], json.dumps(kind_data[1])]) for pk, kind_data in changeset.items()]
+                            changeset = [tuple(list(pk) + [kind_data[0], json.dumps(kind_data[1])]) for pk, kind_data in
+                                         changeset.items()]
                             query = SQL("INSERT INTO {}.{} ").format(Identifier(mountpoint), Identifier(object_id)) + \
-                                        SQL("VALUES (" + ','.join('%s' for _ in range(len(changeset[0]))) + ")")
+                                    SQL("VALUES (" + ','.join('%s' for _ in range(len(changeset[0]))) + ")")
                             execute_batch(cur, query, changeset, page_size=1000)
                             register_table_object(conn, mountpoint, table, new_image, object_id, object_format='DIFF')
                         else:
@@ -315,22 +312,20 @@ def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False
                             for prev_object_id, prev_format in table_info:
                                 register_table_object(conn, mountpoint, table, new_image, prev_object_id, prev_format)
                 else:
-                    # If the table wasn't changed, point the commit to the old table objects (including
-                    # any of snaps or diffs).
-                    # This feels slightly weird: are we denormalized here?
-                    for prev_object_id, prev_format in table_info:
-                        register_table_object(conn, mountpoint, table, new_image, prev_object_id, prev_format)
+                    if not schema_changed:
+                        # If the table wasn't changed, point the commit to the old table objects (including
+                        # any of snaps or diffs).
+                        # This feels slightly weird: are we denormalized here?
+                        for prev_object_id, prev_format in table_info:
+                            register_table_object(conn, mountpoint, table, new_image, prev_object_id, prev_format)
 
             # If table created (or we want to store a snap anyway), copy the whole table over as well.
             if not table_info or include_snap:
                 # Make sure we didn't actually create a snap for this table.
-                if get_table_with_format(conn, mountpoint, table, HEAD, 'SNAP') is None:
-                    with conn.cursor() as cur:
-                        object_id = get_random_object_id()
-                        cur.execute(SQL("CREATE TABLE {}.{} AS SELECT * FROM {}.{}").format(
-                            Identifier(mountpoint), Identifier(object_id),
-                            Identifier(mountpoint), Identifier(table)))
-                        register_table_object(conn, mountpoint, table, new_image, object_id, object_format='SNAP')
+                if get_table_with_format(conn, mountpoint, table, new_image, 'SNAP') is None:
+                    object_id = get_random_object_id()
+                    copy_table(conn, mountpoint, table, mountpoint, object_id, with_pk_constraints=True)
+                    register_table_object(conn, mountpoint, table, new_image, object_id, object_format='SNAP')
 
             # Finally, if the table was created (only snap was output), drop all of its WAL changes since we
             # don't want them incorporated in the next commit.
@@ -388,17 +383,24 @@ def apply_record_to_staging(conn, mountpoint, object_id, destination):
             cur.execute(b';'.join(queries))  # maybe some pagination needed here.
 
 
-def _get_column_names(conn, mountpoint, table_name):
-    with conn.cursor() as cur:
-        cur.execute("""SELECT column_name FROM information_schema.columns
-                       WHERE table_schema = %s
-                       AND table_name = %s""", (mountpoint, table_name))
-        return [c[0] for c in cur.fetchall()]
+def table_schema_changed(conn, mountpoint, table_name, image_1, image_2=None):
+    snap_1 = get_closest_parent_snap_object(conn, mountpoint, table_name, image_1)[0]
+    # image_2 = None here means the current staging area.
+    snap_2 = get_closest_parent_snap_object(conn, mountpoint, table_name, image_2)[0] \
+        if image_2 is not None else table_name
+    return _get_full_table_schema(conn, mountpoint, snap_1) != _get_full_table_schema(conn, mountpoint, snap_2)
 
 
-def _get_column_names_types(conn, mountpoint, table_name):
-    with conn.cursor() as cur:
-        cur.execute("""SELECT column_name, data_type FROM information_schema.columns
-                       WHERE table_schema = %s
-                       AND table_name = %s""", (mountpoint, table_name))
-        return cur.fetchall()
+def get_closest_parent_snap_object(conn, mountpoint, table, image):
+    path = []
+    while image is not None:
+        # Do we have a snapshot of this image?
+        object_id = get_table_with_format(conn, mountpoint, table, image, object_format='SNAP')
+        if object_id is not None:
+            return object_id, path
+        else:
+            # Otherwise, have to reconstruct it manually.
+            path.append(get_table_with_format(conn, mountpoint, table, image, object_format='DIFF'))
+        image = get_snap_parent(conn, mountpoint, image)
+    # We didn't find an actual snapshot for this table -- either it doesn't exist in this
+    # version or something went wrong. Should we raise here?

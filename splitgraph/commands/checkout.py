@@ -1,14 +1,14 @@
 from contextlib import contextmanager
 from psycopg2.sql import Identifier, SQL
 
-from splitgraph.commands.misc import copy_table
+from splitgraph.pg_utils import copy_table, _get_primary_keys
 from splitgraph.commands.object_loading import download_objects
 from splitgraph.constants import _log, get_random_object_id, SplitGraphException
-from splitgraph.meta_handler import get_table_with_format, get_snap_parent, get_remote_for, ensure_metadata_schema, \
+from splitgraph.meta_handler import get_table_with_format, get_remote_for, ensure_metadata_schema, \
     get_canonical_snap_id, get_tables_at, get_all_tables, set_head, register_table_object, deregister_table_object, \
     get_external_object_locations, get_tagged_id
 from splitgraph.pg_replication import apply_record_to_staging, record_pending_changes, stop_replication, \
-    discard_pending_changes, start_replication, _get_primary_keys
+    discard_pending_changes, start_replication, get_closest_parent_snap_object
 
 
 def materialize_table(conn, mountpoint, schema_snap, table, destination):
@@ -16,24 +16,7 @@ def materialize_table(conn, mountpoint, schema_snap, table, destination):
         cur.execute(SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(mountpoint), Identifier(destination)))
         # Get the closest snapshot from the table's parents
         # and then apply all deltas consecutively from it.
-        to_apply = []
-        parent_snap = schema_snap
-        snap_found = False
-        while parent_snap is not None:
-
-            # Do we have a snapshot of this image?
-            object_id = get_table_with_format(conn, mountpoint, table, parent_snap, 'SNAP')
-            if object_id is not None:
-                snap_found = True
-                break
-            else:
-                # Otherwise, have to reconstruct it manually.
-                to_apply.append(get_table_with_format(conn, mountpoint, table, parent_snap, 'DIFF'))
-            parent_snap = get_snap_parent(conn, mountpoint, parent_snap)
-        if not snap_found:
-            # We didn't find an actual snapshot for this table -- either it doesn't exist in this
-            # version or something went wrong. Skip the table.
-            return
+        object_id, to_apply = get_closest_parent_snap_object(conn, mountpoint, table, schema_snap)
 
         # Make sure all the objects have been downloaded from remote if it exists
         remote_info = get_remote_for(conn, mountpoint)
@@ -44,7 +27,7 @@ def materialize_table(conn, mountpoint, schema_snap, table, destination):
                              objects_to_fetch=to_apply + [object_id], object_locations=object_locations)
 
         # Copy the given snap id over to "staging"
-        copy_table(conn, mountpoint, object_id, mountpoint, destination)
+        copy_table(conn, mountpoint, object_id, mountpoint, destination, with_pk_constraints=True)
         # This is to work around logical replication not reflecting deletions from non-PKd tables. However, this makes
         # it emit all column values in the row, not just the updated ones.
         if not _get_primary_keys(conn, mountpoint, destination):

@@ -44,6 +44,11 @@ def diff(conn, mountpoint, table_name, snap_1, snap_2, aggregate=False):
             result = [] if not aggregate else (0, 0, 0)
             for image in reversed(path):
                 diff_id = get_table_with_format(conn, mountpoint, table_name, image, 'DIFF')
+                if diff_id is None:
+                    # TODO This entry on the path between the two nodes is a snapshot -- meaning there
+                    # has been a schema change and we can't just accumulate diffs. For now, we just pretend
+                    # it didn't happen and dump the data changes.
+                    continue
                 if not aggregate:
                     cur.execute(SQL("""SELECT * FROM {}.{}""").format(
                         Identifier(mountpoint), Identifier(diff_id)))

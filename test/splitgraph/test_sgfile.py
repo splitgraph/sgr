@@ -1,7 +1,7 @@
 import os
 
 from splitgraph.commands import *
-from splitgraph.commands.misc import pg_table_exists
+from splitgraph.pg_utils import pg_table_exists
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler import get_current_head, get_snap_parent, get_all_snap_info
 from splitgraph.sgfile import parse_commands, execute_commands, _canonicalize
@@ -32,6 +32,21 @@ BASE_COMMANDS = [('SOURCE', (PG_MNT,)),
                  'CREATE TABLE output.fruits AS SELECT * FROM test_pg_mount.fruits WHERE LENGTH(test_pg_mount.fruits.name) '
                  '> 5',)),
                  ('SQL', ("INSERT INTO output.fruits VALUES (10, 'pikachu')",))]
+
+
+PK_SCHEMA_CHANGE_COMMANDS = BASE_COMMANDS[:3] + [
+    ('SQL', ("""CREATE TABLE output.spirit_fruits AS SELECT test_pg_mount.fruits.fruit_id,
+                                                   test_mg_mount.stuff.name,
+                                                   test_pg_mount.fruits.name AS spirit_fruit 
+                FROM test_pg_mount.fruits JOIN test_mg_mount.stuff
+                ON test_pg_mount.fruits.fruit_id = test_mg_mount.stuff.duration""",)),
+    # Add a new column, set it to be the old id + 10, make it PK and then delete the old ID.
+    # Currently this produces a snap for every action (since it's a schema change).
+    ('SQL', ("""ALTER TABLE output.spirit_fruits ADD COLUMN new_id integer""",)),
+    ('SQL', ("""UPDATE output.spirit_fruits SET new_id = fruit_id + 10""",)),
+    ('SQL', ("""ALTER TABLE output.spirit_fruits ADD PRIMARY KEY (new_id)""",)),
+    ('SQL', ("""ALTER TABLE output.spirit_fruits DROP COLUMN fruit_id""",)),
+]
 
 
 def test_basic_sgfile(sg_pg_mg_conn):
@@ -116,3 +131,26 @@ def test_sgfile_rebase(sg_pg_mg_conn):
     with sg_pg_mg_conn.cursor() as cur:
         cur.execute("""SELECT * FROM output.fruits""")
         assert cur.fetchall() == [(2, 'orange'), (4, 'mayonnaise'), (10, 'pikachu')]
+
+
+def test_sgfile_schema_changes(sg_pg_mg_conn):
+    execute_commands(sg_pg_mg_conn, PK_SCHEMA_CHANGE_COMMANDS)
+    old_output_head = get_current_head(sg_pg_mg_conn, 'output')
+
+    # Then, alter the dataset and rerun the sgfile.
+    with sg_pg_mg_conn.cursor() as cur:
+        cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (12, 'mayonnaise')""")
+    new_input_head = commit(sg_pg_mg_conn, PG_MNT)
+    execute_commands(sg_pg_mg_conn, PK_SCHEMA_CHANGE_COMMANDS)
+    new_output_head = get_current_head(sg_pg_mg_conn, 'output')
+
+    checkout(sg_pg_mg_conn, 'output', old_output_head)
+    with sg_pg_mg_conn.cursor() as cur:
+        cur.execute("""SELECT * FROM output.spirit_fruits""")
+        assert cur.fetchall() == [('James', 'orange', 12)]
+
+    checkout(sg_pg_mg_conn, 'output', new_output_head)
+    with sg_pg_mg_conn.cursor() as cur:
+        cur.execute("""SELECT * FROM output.spirit_fruits""")
+        # Mayonnaise joined with Alex, ID 12 + 10 = 22.
+        assert cur.fetchall() == [('James', 'orange', 12), ('Alex', 'mayonnaise', 22)]
