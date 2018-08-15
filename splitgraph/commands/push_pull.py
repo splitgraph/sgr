@@ -9,7 +9,8 @@ from splitgraph.meta_handler import get_all_snap_parents, add_new_snap_id, get_r
 
 
 def _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_mountpoint):
-    local_snap_parents = {snap_id: parent_id for snap_id, parent_id, _, _ in get_all_snap_parents(conn, local_mountpoint)}
+    local_snap_parents = {snap_id: parent_id for snap_id, parent_id, _, _ in
+                          get_all_snap_parents(conn, local_mountpoint)}
     remote_snap_parents = {snap_id: (parent_id, created, comment) for snap_id, parent_id, created, comment in
                            get_all_snap_parents(remote_conn, remote_mountpoint)}
 
@@ -29,7 +30,7 @@ def _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_moun
             object_meta.extend(cur.fetchall())
 
     distinct_objects = list(set(o[2] for o in object_meta))
-    object_locations = get_external_object_locations(remote_conn, remote_mountpoint, distinct_objects)
+    object_locations = get_external_object_locations(remote_conn, distinct_objects)
 
     return snaps_to_fetch, object_meta, object_locations
 
@@ -59,7 +60,8 @@ def clone(conn, remote_conn_string, remote_mountpoint, local_mountpoint, downloa
     _log("Gathering remote metadata...")
 
     # This also registers the new versions locally.
-    snaps_to_fetch, object_meta, object_locations = _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_mountpoint)
+    snaps_to_fetch, object_meta, object_locations = _get_required_snaps_objects(conn, remote_conn, local_mountpoint,
+                                                                                remote_mountpoint)
 
     if not snaps_to_fetch:
         _log("Nothing to do.")
@@ -71,12 +73,12 @@ def clone(conn, remote_conn_string, remote_mountpoint, local_mountpoint, downloa
         # We might already have some objects prefetched
         # (e.g. if a new version of the table is the same as the old version)
         _log("Fetching remote objects...")
-        download_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoint,
-                         objects_to_fetch=list(set(o[2] for o in object_meta)), object_locations=object_locations)
+        download_objects(conn, remote_conn_string, objects_to_fetch=list(set(o[2] for o in object_meta)),
+                         object_locations=object_locations)
 
     # Map the tables to the actual objects no matter whether or not we're downloading them.
     register_objects(conn, local_mountpoint, object_meta)
-    register_object_locations(conn, local_mountpoint, object_locations)
+    register_object_locations(conn, object_locations)
 
     # Don't check anything out, keep the repo bare.
     set_head(conn, local_mountpoint, None)
@@ -99,22 +101,24 @@ def push(conn, remote_conn_string, remote_mountpoint, local_mountpoint, handler=
     try:
         _log("Gathering remote metadata...")
         # This also registers new commits remotely. Should make explicit and move down later on.
-        snaps_to_push, object_meta, object_locations = _get_required_snaps_objects(remote_conn, conn, remote_mountpoint, local_mountpoint)
+        snaps_to_push, object_meta, object_locations = _get_required_snaps_objects(remote_conn, conn, remote_mountpoint,
+                                                                                   local_mountpoint)
 
         if not snaps_to_push:
             _log("Nothing to do.")
             return
 
-        new_uploads = upload_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoint, list(set(o[2] for o in object_meta)),
+        new_uploads = upload_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoint,
+                                     list(set(o[2] for o in object_meta)),
                                      handler=handler, handler_params=handler_options)
         # Register the newly uploaded object locations locally and remotely.
         register_objects(remote_conn, remote_mountpoint, object_meta)
-        register_object_locations(remote_conn, remote_mountpoint, object_locations + new_uploads)
+        register_object_locations(remote_conn, object_locations + new_uploads)
         # Kind of have to commit here in any case?
         # A fun bug here: if remote_conn and conn are pointing to the same database (like in the integration test),
         # then updating object_location over conn first locks waiting on remote_conn to commit, which then locks waiting on
         # conn to commit.
         remote_conn.commit()
-        register_object_locations(conn, local_mountpoint, new_uploads)
+        register_object_locations(conn, new_uploads)
     finally:
         remote_conn.close()

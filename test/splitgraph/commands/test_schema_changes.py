@@ -1,6 +1,7 @@
 import pytest
 
 from splitgraph.commands import commit, diff, checkout
+from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler import get_snap_parent, get_current_head, get_table, get_table_with_format
 from splitgraph.pg_utils import _get_full_table_schema, _get_primary_keys
 from test.splitgraph.conftest import PG_MNT
@@ -46,7 +47,7 @@ def test_schema_changes(sg_pg_conn, test_case):
     assert get_table_with_format(sg_pg_conn, PG_MNT, 'fruits', new_head, 'DIFF') is None
     new_snap = get_table_with_format(sg_pg_conn, PG_MNT, 'fruits', new_head, 'SNAP')
     assert new_snap is not None
-    assert _get_full_table_schema(sg_pg_conn, PG_MNT, new_snap) == _reassign_ordinals(expected_new_schema)
+    assert _get_full_table_schema(sg_pg_conn, SPLITGRAPH_META_SCHEMA, new_snap) == _reassign_ordinals(expected_new_schema)
 
     checkout(sg_pg_conn, PG_MNT, head)
     assert _get_full_table_schema(sg_pg_conn, PG_MNT, 'fruits') == OLD_SCHEMA

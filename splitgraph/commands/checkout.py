@@ -3,7 +3,7 @@ from psycopg2.sql import Identifier, SQL
 
 from splitgraph.pg_utils import copy_table, _get_primary_keys
 from splitgraph.commands.object_loading import download_objects
-from splitgraph.constants import _log, get_random_object_id, SplitGraphException
+from splitgraph.constants import _log, get_random_object_id, SplitGraphException, SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler import get_table_with_format, get_remote_for, ensure_metadata_schema, \
     get_canonical_snap_id, get_tables_at, get_all_tables, set_head, register_table_object, deregister_table_object, \
     get_external_object_locations, get_tagged_id
@@ -22,12 +22,12 @@ def materialize_table(conn, mountpoint, schema_snap, table, destination):
         remote_info = get_remote_for(conn, mountpoint)
         if remote_info:
             remote_conn, remote_mountpoint = remote_info
-            object_locations = get_external_object_locations(conn, mountpoint, to_apply + [object_id])
-            download_objects(conn, mountpoint, remote_conn, remote_mountpoint,
-                             objects_to_fetch=to_apply + [object_id], object_locations=object_locations)
+            object_locations = get_external_object_locations(conn, to_apply + [object_id])
+            download_objects(conn, remote_conn, objects_to_fetch=to_apply + [object_id],
+                             object_locations=object_locations)
 
         # Copy the given snap id over to "staging"
-        copy_table(conn, mountpoint, object_id, mountpoint, destination, with_pk_constraints=True)
+        copy_table(conn, SPLITGRAPH_META_SCHEMA, object_id, mountpoint, destination, with_pk_constraints=True)
         # This is to work around logical replication not reflecting deletions from non-PKd tables. However, this makes
         # it emit all column values in the row, not just the updated ones.
         if not _get_primary_keys(conn, mountpoint, destination):
@@ -91,7 +91,7 @@ def materialized_table(conn, mountpoint, table_name, snap):
                 register_table_object(conn, mountpoint, table_name, snap, new_id, 'SNAP')
                 yield new_id
                 # Maybe some cache management/expiry strategies here
-                cur.execute("""DROP TABLE IF EXISTS %s""" % cur.mogrify('%s.%s' % (mountpoint, object_id)))
+                cur.execute(SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)))
                 deregister_table_object(conn, mountpoint, object_id)
             else:
                 yield object_id

@@ -6,13 +6,13 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.commands.misc import mount_postgres, make_conn, unmount
 from splitgraph.pg_utils import copy_table, dump_table_creation, _get_primary_keys
-from splitgraph.constants import _log, SplitGraphException
+from splitgraph.constants import _log, SplitGraphException, SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler import get_downloaded_objects, get_existing_objects
 
 
-def download_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoint, objects_to_fetch, object_locations):
+def download_objects(conn, remote_conn_string, objects_to_fetch, object_locations):
     # Fetches the required objects from the remote and stores them locally. Does nothing for objects that already exist.
-    existing_objects = get_downloaded_objects(conn, local_mountpoint)
+    existing_objects = get_downloaded_objects(conn)
     objects_to_fetch = set(o for o in objects_to_fetch if o not in existing_objects)
     if not objects_to_fetch:
         return
@@ -28,9 +28,9 @@ def download_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoi
         print("Fetching external objects...")
         for method, objects in non_remote_by_method.items():
             if method == 'HTTP':
-                _http_download_objects(conn, local_mountpoint, objects, {})
+                _http_download_objects(conn, objects, {})
             elif method == 'FILE':
-                _file_download_objects(conn, local_mountpoint, objects, {})
+                _file_download_objects(conn, objects, {})
             else:
                 raise SplitGraphException("Unable to fetch some objects: unknown protocol %s")
 
@@ -45,7 +45,7 @@ def download_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoi
     unmount(conn, remote_data_mountpoint)  # Maybe worth making sure we're not stepping on anyone else
     mount_postgres(conn, server=match.group(3), port=int(match.group(4)),
                    username=match.group(1), password=match.group(2), mountpoint=remote_data_mountpoint,
-                   extra_options={'dbname': match.group(5), 'remote_schema': remote_mountpoint})
+                   extra_options={'dbname': match.group(5), 'remote_schema': SPLITGRAPH_META_SCHEMA})
 
     remote_conn = make_conn(server=match.group(3), port=int(match.group(4)), username=match.group(1),
                             password=match.group(2), dbname=match.group(5))
@@ -54,12 +54,12 @@ def download_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoi
         for i, obj in enumerate(objects_to_fetch):
             _log("(%d/%d) %s..." % (i + 1, len(objects_to_fetch), obj))
             # Foreign tables don't have PK constraints so we'll have to apply them manually.
-            copy_table(conn, remote_data_mountpoint, obj, local_mountpoint, obj, with_pk_constraints=False)
+            copy_table(conn, remote_data_mountpoint, obj, SPLITGRAPH_META_SCHEMA, obj, with_pk_constraints=False)
             with conn.cursor() as cur:
-                source_pks = _get_primary_keys(remote_conn, remote_mountpoint, obj)
+                source_pks = _get_primary_keys(remote_conn, SPLITGRAPH_META_SCHEMA, obj)
                 if source_pks:
                     cur.execute(SQL("ALTER TABLE {}.{} ADD PRIMARY KEY (").format(
-                        Identifier(local_mountpoint), Identifier(obj))\
+                        Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj))\
                             + SQL(',').join(SQL("{}").format(Identifier(c)) for c, _ in source_pks) + SQL(")"))
     finally:
         remote_conn.close()
@@ -81,7 +81,7 @@ def _table_dump_generator(conn, schema, table):
             yield cur.mogrify(', ' + q + '\n', row).decode('utf-8')
 
 
-def _http_upload_objects(conn, local_mountpoint, objects_to_push, http_params):
+def _http_upload_objects(conn, objects_to_push, http_params):
     url = http_params['url']
     username = http_params.get('username')
     password = http_params.get('password')
@@ -90,13 +90,13 @@ def _http_upload_objects(conn, local_mountpoint, objects_to_push, http_params):
     for object_id in objects_to_push:
         remote_filename = object_id
         # First cut: just push the dump without any compression.
-        r = requests.post(url + '/' + remote_filename, data=_table_dump_generator(conn, local_mountpoint, object_id))
+        r = requests.post(url + '/' + remote_filename, data=_table_dump_generator(conn, SPLITGRAPH_META_SCHEMA, object_id))
         r.raise_for_status()
         uploaded.append(url + '/' + remote_filename)
     return uploaded
 
 
-def _file_upload_objects(conn, local_mountpoint, objects_to_push, params):
+def _file_upload_objects(conn, objects_to_push, params):
     # Mostly for testing purposes: dumps the objects into a file.
     path = params['path']
 
@@ -105,12 +105,12 @@ def _file_upload_objects(conn, local_mountpoint, objects_to_push, params):
         remote_filename = object_id
         # First cut: just push the dump without any compression.
         with open(path + '/' + remote_filename, 'w') as f:
-            f.writelines(_table_dump_generator(conn, local_mountpoint, object_id))
+            f.writelines(_table_dump_generator(conn, SPLITGRAPH_META_SCHEMA, object_id))
         uploaded.append(path + '/' + remote_filename)
     return uploaded
 
 
-def _file_download_objects(conn, local_mountpoint, objects_to_fetch, params):
+def _file_download_objects(conn, objects_to_fetch, params):
     for i, obj in enumerate(objects_to_fetch):
         object_id, object_url = obj
         _log("(%d/%d) %s -> %s" % (i+1, len(objects_to_fetch), object_url, object_id))
@@ -118,14 +118,14 @@ def _file_download_objects(conn, local_mountpoint, objects_to_fetch, params):
             with conn.cursor() as cur:
                 # Insert into the locally checked out schema by default since the dump doesn't have the schema
                 # qualification.
-                cur.execute("SET search_path TO %s", (local_mountpoint,))
+                cur.execute("SET search_path TO %s", (SPLITGRAPH_META_SCHEMA,))
                 for chunk in f.readlines():
                     cur.execute(chunk)
                 # Set the schema to (presumably) the default one.
                 cur.execute("SET search_path TO public")
 
 
-def _http_download_objects(conn, local_mountpoint, objects_to_fetch, http_params):
+def _http_download_objects(conn, objects_to_fetch, http_params):
     username = http_params.get('username')
     password = http_params.get('password')
 
@@ -135,9 +135,10 @@ def _http_download_objects(conn, local_mountpoint, objects_to_fetch, http_params
         # Let's execute arbitrary code from the Internet on our machine!
         r = requests.get(object_url, stream=True)
         with conn.cursor() as cur:
-            # Insert into the locally checked out schema by default since the dump doesn't have the schema
+            # Insert into the splitgraph_meta schema by default since the dump doesn't have the schema
             # qualification.
-            cur.execute("SET search_path TO %s", (local_mountpoint,))
+            # NB can this break system tables in the splitgraph_meta_schema?
+            cur.execute("SET search_path TO %s", (SPLITGRAPH_META_SCHEMA,))
             buf = ""
             for chunk in r.iter_content(chunk_size=4096):
                 # This is dirty. What we want is to pipe the output of the fetch directly into the DB, but we don't
@@ -169,7 +170,7 @@ def upload_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoint
         with remote_conn.cursor() as cur:
             # This also includes applying our table's FK constraints.
             cur.execute(dump_table_creation(conn, schema=local_mountpoint,
-                                            tables=objects_to_push, created_schema=remote_mountpoint))
+                                            tables=objects_to_push, created_schema=SPLITGRAPH_META_SCHEMA))
         # Have to commit the remote connection here since otherwise we won't see the new tables in the
         # mounted remote.
         remote_conn.commit()
@@ -177,23 +178,23 @@ def upload_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoint
         unmount(conn, remote_data_mountpoint)
         mount_postgres(conn, server=match.group(3), port=int(match.group(4)),
                        username=match.group(1), password=match.group(2), mountpoint=remote_data_mountpoint,
-                       extra_options={'dbname': match.group(5), 'remote_schema': remote_mountpoint})
+                       extra_options={'dbname': match.group(5), 'remote_schema': SPLITGRAPH_META_SCHEMA})
         for i, obj in enumerate(objects_to_push):
             _log("(%d/%d) %s..." % (i + 1, len(objects_to_push), obj))
             with conn.cursor() as cur:
                 cur.execute(SQL("INSERT INTO {}.{} SELECT * FROM {}.{}").format(
                     Identifier(remote_data_mountpoint), Identifier(obj),
-                    Identifier(local_mountpoint), Identifier(obj)))
+                    Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj)))
         conn.commit()
         unmount(conn, remote_data_mountpoint)
 
         # We assume that if the object doesn't have an explicit location, it lives on the remote.
         result = []
     elif handler == 'HTTP':
-        uploaded = _http_upload_objects(conn, local_mountpoint, objects_to_push, handler_params)
+        uploaded = _http_upload_objects(conn, objects_to_push, handler_params)
         result = [(oid, url, 'HTTP') for oid, url in zip(objects_to_push, uploaded)]
     elif handler == 'FILE':
-        uploaded = _file_upload_objects(conn, local_mountpoint, objects_to_push, handler_params)
+        uploaded = _file_upload_objects(conn, objects_to_push, handler_params)
         result = [(oid, url, 'FILE') for oid, url in zip(objects_to_push, uploaded)]
 
     remote_conn.close()

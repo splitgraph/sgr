@@ -37,9 +37,7 @@ def test_commit_diff(include_snap, sg_pg_conn):
     assert diff(sg_pg_conn, PG_MNT, 'fruits', snap_1=new_head, snap_2=None) == []
     assert get_all_snap_info(sg_pg_conn, PG_MNT, new_head)[2] == "test commit"
 
-    # The diff between the old and the new snaps should be the same as in the previous test
     change = diff(sg_pg_conn, PG_MNT, 'fruits', snap_1=head, snap_2=new_head)
-
     # pk (no PK here so the whole row) -- 0 for INS -- extra non-PK cols
     assert change == [((3, 'mayonnaise'), 0, {"c": [], "v": []}),
                       # 1, apple deleted

@@ -62,11 +62,10 @@ def _create_metadata_schema(conn):
         # Lookup path to resolve an object on checkout: local -> this table -> remote (so that we don't bombard
         # the remote with queries for tables that may have been uploaded to a different place).
         cur.execute(SQL("""CREATE TABLE {}.{} (
-                        mountpoint         VARCHAR NOT NULL,
                         object_id          VARCHAR NOT NULL,
                         location           VARCHAR NOT NULL,
                         protocol           VARCHAR NOT NULL,
-                        PRIMARY KEY (mountpoint, object_id))""").format(
+                        PRIMARY KEY (object_id))""").format(
                     Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_locations")))
 
 
@@ -237,9 +236,10 @@ def register_mountpoint(conn, mountpoint, snap_id, tables, table_object_ids):
 
 def unregister_mountpoint(conn, mountpoint):
     with conn.cursor() as cur:
-        for meta_table in ["tables", "snap_tags", "snap_tree", "remotes", "object_locations"]:
+        for meta_table in ["tables", "snap_tags", "snap_tree", "remotes"]:
             cur.execute(SQL("DELETE FROM {}.{} WHERE mountpoint = %s").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(meta_table)),
                         (mountpoint,))
+        # TODO "object_locations" isn't cleaned here
 
 
 def get_snap_parent(conn, mountpoint, snap_id):
@@ -290,16 +290,14 @@ def register_objects(conn, mountpoint, object_meta):
         execute_batch(cur, query, object_meta, page_size=100)
 
 
-def register_object_locations(conn, mountpoint, object_locations):
+def register_object_locations(conn, object_locations):
     with conn.cursor() as cur:
         # Don't insert redundant objects here either.
-        cur.execute(SQL("""SELECT object_id FROM {}.object_locations
-                       WHERE mountpoint = %s""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                    (mountpoint,))
+        cur.execute(SQL("""SELECT object_id FROM {}.object_locations""").format(Identifier(SPLITGRAPH_META_SCHEMA)))
         existing_locations = [c[0] for c in cur.fetchall()]
-        object_locations = [(mountpoint,) + o for o in object_locations if o[0] not in existing_locations]
+        object_locations = [o for o in object_locations if o[0] not in existing_locations]
 
-        query = SQL("INSERT INTO {}.object_locations (mountpoint, object_id, location, protocol) VALUES (%s, %s, %s, %s)").format(Identifier(SPLITGRAPH_META_SCHEMA))
+        query = SQL("INSERT INTO {}.object_locations (object_id, location, protocol) VALUES (%s, %s, %s)").format(Identifier(SPLITGRAPH_META_SCHEMA))
         execute_batch(cur, query, object_locations, page_size=100)
 
 
@@ -310,15 +308,14 @@ def get_existing_objects(conn, mountpoint):
         return set(c[0] for c in cur.fetchall())
 
 
-def get_downloaded_objects(conn, mountpoint):
+def get_downloaded_objects(conn):
     # Minor normalization sadness here: this can return duplicate object IDs since
     # we might repeat them if different versions of the same table point to the same object ID.
     with conn.cursor() as cur:
         cur.execute(SQL("""SELECT information_schema.tables.table_name FROM information_schema.tables JOIN {}.tables 
                         ON information_schema.tables.table_name = {}.tables.object_id
-                        AND information_schema.tables.table_schema = mountpoint
-                        WHERE mountpoint = %s""").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(SPLITGRAPH_META_SCHEMA)),
-                    (mountpoint,))
+                        WHERE information_schema.tables.table_schema = %s""").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(SPLITGRAPH_META_SCHEMA)),
+                    (SPLITGRAPH_META_SCHEMA,))
         return set(c[0] for c in cur.fetchall())
 
 
@@ -344,10 +341,10 @@ def add_remote(conn, mountpoint, remote_conn, remote_mountpoint, remote_name='or
                     (mountpoint, remote_name, remote_conn, remote_mountpoint))
 
 
-def get_external_object_locations(conn, mountpoint, objects):
+def get_external_object_locations(conn, objects):
     with conn.cursor() as cur:
         query = SQL("""SELECT object_id, location, protocol from {}.object_locations 
-                       WHERE mountpoint = %s AND object_id IN (""" + ','.join('%s' for _ in objects) + ")").format(Identifier(SPLITGRAPH_META_SCHEMA))
-        cur.execute(query, [mountpoint] + objects)
+                       WHERE object_id IN (""" + ','.join('%s' for _ in objects) + ")").format(Identifier(SPLITGRAPH_META_SCHEMA))
+        cur.execute(query, objects)
         object_locations = cur.fetchall()
     return object_locations

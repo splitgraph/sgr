@@ -136,7 +136,7 @@ def _create_diff_table(conn, mountpoint, object_id, replica_identity_cols_types)
     # sg_action_kind: 0, 1, 2 for insert/delete/update
     # sg_action_data: extra data for insert and update.
     with conn.cursor() as cur:
-        query = SQL("CREATE TABLE {}.{} (").format(Identifier(mountpoint), Identifier(object_id))
+        query = SQL("CREATE TABLE {}.{} (").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id))
         query += SQL(',').join(SQL("{} %s" % col_type).format(Identifier(col_name))
                                for col_name, col_type in replica_identity_cols_types + [('sg_action_kind', 'smallint'),
                                                                                         ('sg_action_data', 'varchar')])
@@ -145,19 +145,19 @@ def _create_diff_table(conn, mountpoint, object_id, replica_identity_cols_types)
         query += SQL("));")
 
         # Also create an index on the replica identity since we'll be querying that to conflate changes.
-        query += SQL("CREATE INDEX ON {}.{} (").format(Identifier(mountpoint), Identifier(object_id)) + \
+        query += SQL("CREATE INDEX ON {}.{} (").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)) + \
                  SQL(',').join(SQL("{}").format(Identifier(c)) for c, _ in replica_identity_cols_types) + SQL(');')
         cur.execute(query)
 
 
-def _generate_where_clause(mountpoint, table, cols, table_2=None):
+def _generate_where_clause(mountpoint, table, cols, table_2=None, mountpoint_2=None):
     if not table_2:
         return SQL(" AND ").join(SQL("{}.{}.{} = %s").format(
             Identifier(mountpoint), Identifier(table), Identifier(c)) for c in cols)
     else:
         return SQL(" AND ").join(SQL("{}.{}.{} = {}.{}.{}").format(
             Identifier(mountpoint), Identifier(table), Identifier(c),
-            Identifier(mountpoint), Identifier(table_2), Identifier(c)) for c in cols)
+            Identifier(mountpoint_2), Identifier(table_2), Identifier(c)) for c in cols)
 
 
 def _split_ri_cols(kind, change, ri_cols):
@@ -269,7 +269,6 @@ def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False
                                                         Identifier("pending_changes")), (mountpoint,))
         changed_tables = [c[0] for c in cur.fetchall()]
         for table in all_tables:
-            # import pdb; pdb.set_trace()
             table_info = get_table(conn, mountpoint, table, HEAD)
             # Table already exists at the current HEAD
             if table_info:
@@ -300,7 +299,7 @@ def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False
                         if changeset:
                             changeset = [tuple(list(pk) + [kind_data[0], json.dumps(kind_data[1])]) for pk, kind_data in
                                          changeset.items()]
-                            query = SQL("INSERT INTO {}.{} ").format(Identifier(mountpoint), Identifier(object_id)) + \
+                            query = SQL("INSERT INTO {}.{} ").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)) + \
                                     SQL("VALUES (" + ','.join('%s' for _ in range(len(changeset[0]))) + ")")
                             execute_batch(cur, query, changeset, page_size=1000)
                             register_table_object(conn, mountpoint, table, new_image, object_id, object_format='DIFF')
@@ -308,7 +307,7 @@ def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False
                             # Changes in the WAL cancelled each other out. Delete the diff table and just point
                             # the commit to the old table objects.
                             cur.execute(
-                                SQL("DROP TABLE {}.{}").format(Identifier(mountpoint), Identifier(object_id)))
+                                SQL("DROP TABLE {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)))
                             for prev_object_id, prev_format in table_info:
                                 register_table_object(conn, mountpoint, table, new_image, prev_object_id, prev_format)
                 else:
@@ -324,18 +323,18 @@ def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False
                 # Make sure we didn't actually create a snap for this table.
                 if get_table_with_format(conn, mountpoint, table, new_image, 'SNAP') is None:
                     object_id = get_random_object_id()
-                    copy_table(conn, mountpoint, table, mountpoint, object_id, with_pk_constraints=True)
+                    copy_table(conn, mountpoint, table, SPLITGRAPH_META_SCHEMA, object_id, with_pk_constraints=True)
                     register_table_object(conn, mountpoint, table, new_image, object_id, object_format='SNAP')
 
-            # Finally, if the table was created (only snap was output), drop all of its WAL changes since we
-            # don't want them incorporated in the next commit.
-            if not table_info:
-                discard_pending_changes(conn, mountpoint)
+    # Make sure that all pending changes have been discarded by this point (e.g. if we created just a snapshot for
+    # some tables and didn't consume the WAL).
+    # NB if we allow partial commits, this will have to be changed (only discard for committed tables).
+    discard_pending_changes(conn, mountpoint)
 
 
 def apply_record_to_staging(conn, mountpoint, object_id, destination):
     queries = []
-    repl_id = _get_replica_identity(conn, mountpoint, object_id)
+    repl_id = _get_replica_identity(conn, SPLITGRAPH_META_SCHEMA, object_id)
     ri_cols, ri_types = zip(*repl_id)
 
     # Minor hack alert: here we assume that the PK of the object is the PK of the table it refers to, which means
@@ -346,13 +345,13 @@ def apply_record_to_staging(conn, mountpoint, object_id, destination):
 
     with conn.cursor() as cur:
         # Apply deletes
-        cur.execute(SQL("DELETE FROM {0}.{1} USING {0}.{2} WHERE {0}.{2}.sg_action_kind = 1").format(
-            Identifier(mountpoint), Identifier(destination), Identifier(object_id)) + \
-                    SQL(" AND ") + _generate_where_clause(mountpoint, destination, ri_cols, object_id))
+        cur.execute(SQL("DELETE FROM {0}.{2} USING {1}.{3} WHERE {1}.{3}.sg_action_kind = 1").format(
+            Identifier(mountpoint), Identifier(SPLITGRAPH_META_SCHEMA), Identifier(destination), Identifier(object_id)) + \
+                    SQL(" AND ") + _generate_where_clause(mountpoint, destination, ri_cols, object_id, SPLITGRAPH_META_SCHEMA))
 
         # Generate queries for inserts
         cur.execute(
-            SQL("SELECT * FROM {}.{} WHERE sg_action_kind = 0").format(Identifier(mountpoint), Identifier(object_id)))
+            SQL("SELECT * FROM {}.{} WHERE sg_action_kind = 0").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)))
         for row in cur:
             # Not sure if we can rely on ordering here.
             # Also for the future: if all column names are the same, we can do a big INSERT.
@@ -367,7 +366,7 @@ def apply_record_to_staging(conn, mountpoint, object_id, destination):
             queries.append(query)
         # ...and updates
         cur.execute(
-            SQL("SELECT * FROM {}.{} WHERE sg_action_kind = 2").format(Identifier(mountpoint), Identifier(object_id)))
+            SQL("SELECT * FROM {}.{} WHERE sg_action_kind = 2").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)))
         for row in cur:
             action_data = json.loads(row[-1])
             ri_vals = list(row[:-2])
@@ -386,9 +385,13 @@ def apply_record_to_staging(conn, mountpoint, object_id, destination):
 def table_schema_changed(conn, mountpoint, table_name, image_1, image_2=None):
     snap_1 = get_closest_parent_snap_object(conn, mountpoint, table_name, image_1)[0]
     # image_2 = None here means the current staging area.
-    snap_2 = get_closest_parent_snap_object(conn, mountpoint, table_name, image_2)[0] \
-        if image_2 is not None else table_name
-    return _get_full_table_schema(conn, mountpoint, snap_1) != _get_full_table_schema(conn, mountpoint, snap_2)
+    if image_2 is not None:
+        snap_2 = get_closest_parent_snap_object(conn, mountpoint, table_name, image_2)[0]
+        return _get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_1) != _get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_2)
+    else:
+        return _get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_1) != _get_full_table_schema(conn,
+                                                                                                      mountpoint,
+                                                                                                      table_name)
 
 
 def get_closest_parent_snap_object(conn, mountpoint, table, image):

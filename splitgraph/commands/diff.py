@@ -3,6 +3,7 @@ import json
 
 from splitgraph.commands.checkout import materialized_table
 from splitgraph.commands.misc import _table_exists_at, _find_path
+from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler import get_current_head, get_table, get_table_with_format
 from splitgraph.pg_replication import dump_pending_changes, record_pending_changes
 
@@ -51,7 +52,7 @@ def diff(conn, mountpoint, table_name, snap_1, snap_2, aggregate=False):
                     continue
                 if not aggregate:
                     cur.execute(SQL("""SELECT * FROM {}.{}""").format(
-                        Identifier(mountpoint), Identifier(diff_id)))
+                        Identifier(SPLITGRAPH_META_SCHEMA), Identifier(diff_id)))
                     for row in cur:
                         pk = row[:-2]
                         action = row[-2]
@@ -59,7 +60,7 @@ def diff(conn, mountpoint, table_name, snap_1, snap_2, aggregate=False):
                         result.append((pk, action, action_data))
                 else:
                     cur.execute(SQL("""SELECT sg_action_kind, count(sg_action_kind) FROM {}.{} GROUP BY sg_action_kind""").format(
-                        Identifier(mountpoint), Identifier(diff_id)))
+                        Identifier(SPLITGRAPH_META_SCHEMA), Identifier(diff_id)))
                     result = _changes_to_aggregation(cur.fetchall(), result)
 
             # If snap_2 is staging, also include all changes that have happened since the last commit.
