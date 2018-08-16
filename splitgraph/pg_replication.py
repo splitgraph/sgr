@@ -3,13 +3,12 @@ import json
 from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph.constants import get_random_object_id, SPLITGRAPH_META_SCHEMA, SplitGraphException
+from splitgraph.meta_handler import get_all_tables, get_table, register_table
+from splitgraph.meta_handler import get_current_mountpoints_hashes, get_table_with_format, register_object, \
+    get_object_parents, get_object_format
 from splitgraph.pg_utils import copy_table, _get_primary_keys, _get_column_names, _get_column_names_types, \
     _get_full_table_schema
-from splitgraph.meta_handler import get_current_mountpoints_hashes, get_table_with_format, get_snap_parent
-
-from splitgraph.constants import get_random_object_id, SPLITGRAPH_META_SCHEMA, SplitGraphException
-
-from splitgraph.meta_handler import get_all_tables, get_table, register_table_object
 
 LOGICAL_DECODER = 'wal2json'
 REPLICATION_SLOT = 'sg_replication'
@@ -302,21 +301,24 @@ def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False
                             query = SQL("INSERT INTO {}.{} ").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)) + \
                                     SQL("VALUES (" + ','.join('%s' for _ in range(len(changeset[0]))) + ")")
                             execute_batch(cur, query, changeset, page_size=1000)
-                            register_table_object(conn, mountpoint, table, new_image, object_id, object_format='DIFF')
+
+                            for parent_id, _ in table_info:
+                                register_object(conn, object_id, object_format='DIFF', parent_object=parent_id)
+                            register_table(conn, mountpoint, table, new_image, object_id)
                         else:
                             # Changes in the WAL cancelled each other out. Delete the diff table and just point
                             # the commit to the old table objects.
                             cur.execute(
                                 SQL("DROP TABLE {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)))
-                            for prev_object_id, prev_format in table_info:
-                                register_table_object(conn, mountpoint, table, new_image, prev_object_id, prev_format)
+                            for prev_object_id, _ in table_info:
+                                register_table(conn, mountpoint, table, new_image, prev_object_id)
                 else:
                     if not schema_changed:
                         # If the table wasn't changed, point the commit to the old table objects (including
                         # any of snaps or diffs).
                         # This feels slightly weird: are we denormalized here?
-                        for prev_object_id, prev_format in table_info:
-                            register_table_object(conn, mountpoint, table, new_image, prev_object_id, prev_format)
+                        for prev_object_id, _ in table_info:
+                            register_table(conn, mountpoint, table, new_image, prev_object_id)
 
             # If table created (or we want to store a snap anyway), copy the whole table over as well.
             if not table_info or include_snap:
@@ -324,7 +326,12 @@ def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False
                 if get_table_with_format(conn, mountpoint, table, new_image, 'SNAP') is None:
                     object_id = get_random_object_id()
                     copy_table(conn, mountpoint, table, SPLITGRAPH_META_SCHEMA, object_id, with_pk_constraints=True)
-                    register_table_object(conn, mountpoint, table, new_image, object_id, object_format='SNAP')
+                    if table_info:
+                        for parent_id, _ in table_info:
+                            register_object(conn, object_id, object_format='SNAP', parent_object=parent_id)
+                    else:
+                        register_object(conn, object_id, object_format='SNAP', parent_object=None)
+                    register_table(conn, mountpoint, table, new_image, object_id)
 
     # Make sure that all pending changes have been discarded by this point (e.g. if we created just a snapshot for
     # some tables and didn't consume the WAL).
@@ -396,14 +403,19 @@ def table_schema_changed(conn, mountpoint, table_name, image_1, image_2=None):
 
 def get_closest_parent_snap_object(conn, mountpoint, table, image):
     path = []
-    while image is not None:
-        # Do we have a snapshot of this image?
-        object_id = get_table_with_format(conn, mountpoint, table, image, object_format='SNAP')
-        if object_id is not None:
-            return object_id, path
-        else:
-            # Otherwise, have to reconstruct it manually.
-            path.append(get_table_with_format(conn, mountpoint, table, image, object_format='DIFF'))
-        image = get_snap_parent(conn, mountpoint, image)
+    object_id = get_table_with_format(conn, mountpoint, table, image, object_format='SNAP')
+    if object_id is not None:
+        return object_id, path
+    else:
+        object_id = get_table_with_format(conn, mountpoint, table, image, object_format='DIFF')
+
+    while object_id is not None:
+        path.append(object_id)
+        parents = get_object_parents(conn, object_id)
+        for object_id in parents:
+            if get_object_format(conn, object_id) == 'SNAP':
+                return object_id, path
+            else:
+                break # Found 1 diff, will be added to the path at the next iteration.
     # We didn't find an actual snapshot for this table -- either it doesn't exist in this
     # version or something went wrong. Should we raise here?

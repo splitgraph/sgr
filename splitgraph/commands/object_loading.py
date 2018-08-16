@@ -154,12 +154,11 @@ def _http_download_objects(conn, objects_to_fetch, http_params):
         cur.execute("SET search_path TO public")
 
 
-def upload_objects(conn, local_mountpoint, remote_conn_string, remote_mountpoint, objects_to_push,
-                   handler='DB', handler_params={}):
+def upload_objects(conn, local_mountpoint, remote_conn_string, objects_to_push, handler='DB', handler_params={}):
     match = re.match('(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
     remote_conn = make_conn(server=match.group(3), port=int(match.group(4)), username=match.group(1),
                             password=match.group(2), dbname=match.group(5))
-    existing_objects = get_existing_objects(remote_conn, remote_mountpoint)
+    existing_objects = get_existing_objects(remote_conn)
     objects_to_push = list(set(o for o in objects_to_push if o not in existing_objects))
     _log("Uploading objects...")
 

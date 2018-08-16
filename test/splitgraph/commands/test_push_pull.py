@@ -7,7 +7,8 @@ from splitgraph.meta_handler import get_current_head, get_all_snap_parents, get_
     get_existing_objects, get_external_object_locations
 from test.splitgraph.conftest import PG_MNT
 
-
+# TODO this still works with all objects stored in splitgraph_meta but is kind of meaningless
+# (the gather process finds out that we already have all the objects and so skips them)
 @pytest.mark.parametrize("download_all", [True, False])
 def test_pull(sg_pg_conn, download_all):
     # This is going to get awkward: we're going to pull a schema from ourselves since there's only one
@@ -58,7 +59,7 @@ def test_pulls_with_lazy_object_downloads(sg_pg_conn):
 
     checkout(sg_pg_conn, PG_MNT + '_pull', get_current_head(sg_pg_conn, PG_MNT))
     assert len(get_downloaded_objects(sg_pg_conn)) == 2  # Original fruits and vegetables tables.
-    assert get_downloaded_objects(sg_pg_conn) == get_existing_objects(sg_pg_conn, PG_MNT)
+    assert get_downloaded_objects(sg_pg_conn) == get_existing_objects(sg_pg_conn)
 
     # In the meantime, make two branches off of origin (a total of 3 commits)
     head = get_current_head(sg_pg_conn, PG_MNT)
@@ -74,8 +75,8 @@ def test_pulls_with_lazy_object_downloads(sg_pg_conn):
     # Pull from origin.
     pull(sg_pg_conn, PG_MNT + '_pull', remote='origin', download_all=False)
     # Make sure we have the pointers to the three versions of the fruits table + the original vegetables
-    assert len(get_existing_objects(sg_pg_conn, PG_MNT + '_pull')) == 4
-    assert get_existing_objects(sg_pg_conn, PG_MNT + '_pull') == get_existing_objects(sg_pg_conn, PG_MNT)
+    assert len(get_existing_objects(sg_pg_conn)) == 4
+    assert get_existing_objects(sg_pg_conn) == get_existing_objects(sg_pg_conn)
     # Also make sure still only have the objects with the original fruits + vegetables tables
     assert len(get_downloaded_objects(sg_pg_conn)) == 2
 
@@ -87,7 +88,7 @@ def test_pulls_with_lazy_object_downloads(sg_pg_conn):
     checkout(sg_pg_conn, PG_MNT + '_pull', right)
     assert len(get_downloaded_objects(sg_pg_conn)) == 4
     # Only now we actually have all the objects materialized.
-    assert get_downloaded_objects(sg_pg_conn) == get_existing_objects(sg_pg_conn, PG_MNT)
+    assert get_downloaded_objects(sg_pg_conn) == get_existing_objects(sg_pg_conn)
 
 
 @pytest.mark.xfail(reason="""Not because we're connecting to ourselves but because when we enumerate existing objects,
@@ -145,7 +146,7 @@ def test_http_push_pull(sg_pg_conn):
 
         # Check that the actual objects don't exist on the remote but are instead registered with an URL.
         assert len(get_downloaded_objects(sg_pg_conn)) == 2  # just the two original tables on the remote
-        objects = get_existing_objects(sg_pg_conn, PG_MNT)
+        objects = get_existing_objects(sg_pg_conn)
         assert len(objects) == 4  # two original tables + two new versions of fruits
         # Both repos have two non-local objects
         ext_objects_orig = get_external_object_locations(sg_pg_conn, list(objects))
@@ -160,8 +161,8 @@ def test_http_push_pull(sg_pg_conn):
         # Proceed as per the lazy checkout tests to make sure we don't download more than required.
         checkout(sg_pg_conn, PG_MNT + '_pull', head)
 
-        assert len(get_existing_objects(sg_pg_conn, PG_MNT + '_pull')) == 4
-        assert get_existing_objects(sg_pg_conn, PG_MNT + '_pull') == get_existing_objects(sg_pg_conn, PG_MNT)
+        assert len(get_existing_objects(sg_pg_conn)) == 4
+        assert get_existing_objects(sg_pg_conn) == get_existing_objects(sg_pg_conn)
         assert len(get_downloaded_objects(sg_pg_conn)) == 2
 
         checkout(sg_pg_conn, PG_MNT + '_pull', left)
@@ -169,7 +170,7 @@ def test_http_push_pull(sg_pg_conn):
 
         checkout(sg_pg_conn, PG_MNT + '_pull', right)
         assert len(get_downloaded_objects(sg_pg_conn)) == 4
-        assert get_downloaded_objects(sg_pg_conn) == get_existing_objects(sg_pg_conn, PG_MNT)
+        assert get_downloaded_objects(sg_pg_conn) == get_existing_objects(sg_pg_conn)
 
         with sg_pg_conn.cursor() as cur:
             cur.execute("""SELECT * FROM %s.fruits""" % (PG_MNT + '_pull'))

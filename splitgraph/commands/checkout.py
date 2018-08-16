@@ -5,7 +5,7 @@ from splitgraph.pg_utils import copy_table, _get_primary_keys
 from splitgraph.commands.object_loading import download_objects
 from splitgraph.constants import _log, get_random_object_id, SplitGraphException, SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler import get_table_with_format, get_remote_for, ensure_metadata_schema, \
-    get_canonical_snap_id, get_tables_at, get_all_tables, set_head, register_table_object, deregister_table_object, \
+    get_canonical_snap_id, get_tables_at, get_all_tables, set_head, register_table, deregister_table_object, \
     get_external_object_locations, get_tagged_id
 from splitgraph.pg_replication import apply_record_to_staging, record_pending_changes, stop_replication, \
     discard_pending_changes, start_replication, get_closest_parent_snap_object
@@ -88,7 +88,7 @@ def materialized_table(conn, mountpoint, table_name, snap):
                 # Materialize the SNAP into a new object
                 new_id = get_random_object_id()
                 materialize_table(conn, mountpoint, snap, table_name, new_id)
-                register_table_object(conn, mountpoint, table_name, snap, new_id, 'SNAP')
+                register_table(conn, mountpoint, table_name, snap, new_id)
                 yield new_id
                 # Maybe some cache management/expiry strategies here
                 cur.execute(SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)))

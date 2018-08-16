@@ -34,6 +34,14 @@ def _create_metadata_schema(conn):
                     Identifier(SPLITGRAPH_META_SCHEMA), Identifier("snap_tags"),
             Identifier(SPLITGRAPH_META_SCHEMA), Identifier("snap_tree")))
 
+        # A tree of object parents. The parent of an object is not necessarily the object linked to
+        # the parent commit that the object belongs to (e.g. if we imported the object from a different commit tree).
+        # One object can have multiple parents (e.g. 1 SNAP and 1 DIFF).
+        cur.execute(SQL("""CREATE TABLE {}.{} (
+                        object_id  VARCHAR NOT NULL,
+                        format     VARCHAR NOT NULL,
+                        parent_id  VARCHAR)""").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_tree")))
+
         # Maps a given table at a given point in time to an "object ID" (either a full snapshot or a
         # delta to a previous table).
         cur.execute(SQL("""CREATE TABLE {}.{} (
@@ -41,8 +49,7 @@ def _create_metadata_schema(conn):
                         snap_id    VARCHAR NOT NULL,
                         table_name VARCHAR NOT NULL,
                         object_id  VARCHAR NOT NULL,
-                        format     VARCHAR NOT NULL,
-                        PRIMARY KEY (mountpoint, snap_id, table_name, format),
+                        PRIMARY KEY (mountpoint, snap_id, table_name, object_id),
                         CONSTRAINT tb_fk FOREIGN KEY (mountpoint, snap_id) REFERENCES {}.{})""").format(
                     Identifier(SPLITGRAPH_META_SCHEMA), Identifier("tables"),
             Identifier(SPLITGRAPH_META_SCHEMA), Identifier("snap_tree")))
@@ -116,8 +123,9 @@ def get_tables_at(conn, mountpoint, snap_id):
 def get_table_with_format(conn, mountpoint, table_name, snap_id, object_format):
     # Returns the object ID of a table at a given time, with a given format.
     with conn.cursor() as cur:
-        cur.execute(SQL("""SELECT object_id from {}.tables 
-                       WHERE mountpoint = %s AND snap_id = %s AND table_name = %s AND format = %s""").format(
+        cur.execute(SQL("""SELECT {0}.tables.object_id FROM {0}.tables JOIN {0}.object_tree
+                            ON {0}.object_tree.object_id = {0}.tables.object_id
+                            WHERE mountpoint = %s AND snap_id = %s AND table_name = %s AND format = %s""").format(
                     Identifier(SPLITGRAPH_META_SCHEMA)), (mountpoint, snap_id, table_name, object_format))
         result = cur.fetchone()
         return None if result is None else result[0]
@@ -126,16 +134,42 @@ def get_table_with_format(conn, mountpoint, table_name, snap_id, object_format):
 def get_table(conn, mountpoint, table_name, snap_id):
     # Returns a list of available[(object_id, object_format)] from the table meta
     with conn.cursor() as cur:
-        cur.execute(SQL("""SELECT object_id, format from {}.tables 
-                       WHERE mountpoint = %s AND snap_id = %s AND table_name = %s""").format(
+        cur.execute(SQL("""SELECT {0}.tables.object_id, format FROM {0}.tables JOIN {0}.object_tree
+                            ON {0}.object_tree.object_id = {0}.tables.object_id
+                            WHERE mountpoint = %s AND snap_id = %s AND table_name = %s""").format(
                     Identifier(SPLITGRAPH_META_SCHEMA)), (mountpoint, snap_id, table_name))
         return cur.fetchall()
 
 
-def register_table_object(conn, mountpoint, table, snap_id, object_id, object_format):
+def get_object_parents(conn, object_id):
     with conn.cursor() as cur:
-        query = SQL("INSERT INTO {}.tables (mountpoint, snap_id, table_name, object_id, format) VALUES (%s, %s, %s, %s, %s)").format(Identifier(SPLITGRAPH_META_SCHEMA))
-        cur.execute(query, (mountpoint, snap_id, table, object_id, object_format))
+        cur.execute(SQL("""SELECT parent_id FROM {0}.object_tree
+                            WHERE object_id = %s""").format(
+                    Identifier(SPLITGRAPH_META_SCHEMA)), (object_id,))
+        return [c[0] for c in cur.fetchall()]
+
+
+def get_object_format(conn, object_id):
+    with conn.cursor() as cur:
+        cur.execute(SQL("""SELECT format FROM {0}.object_tree
+                            WHERE object_id = %s""").format(
+                    Identifier(SPLITGRAPH_META_SCHEMA)), (object_id,))
+        result = cur.fetchone()
+        return None if result is None else result[0]
+
+
+def register_object(conn, object_id, object_format, parent_object=None):
+    if not parent_object and object_format != 'SNAP':
+        raise ValueError("Non-SNAP objects can't have no parent!")
+    with conn.cursor() as cur:
+        query = SQL("INSERT INTO {}.object_tree (object_id, format, parent_id) VALUES (%s, %s, %s)").format(Identifier(SPLITGRAPH_META_SCHEMA))
+        cur.execute(query, (object_id, object_format, parent_object))
+
+
+def register_table(conn, mountpoint, table, snap_id, object_id):
+    with conn.cursor() as cur:
+        query = SQL("INSERT INTO {}.tables (mountpoint, snap_id, table_name, object_id) VALUES (%s, %s, %s, %s)").format(Identifier(SPLITGRAPH_META_SCHEMA))
+        cur.execute(query, (mountpoint, snap_id, table, object_id))
 
 
 def deregister_table_object(conn, mountpoint, object_id):
@@ -229,9 +263,8 @@ def register_mountpoint(conn, mountpoint, snap_id, tables, table_object_ids):
         for t, ti in zip(tables, table_object_ids):
             # Register the tables and the object IDs they were stored under.
             # They're obviously stored as snaps since there's nothing to diff to...
-            cur.execute(SQL("""INSERT INTO {}.{} (mountpoint, snap_id, table_name, object_id, format)
-                           VALUES (%s, %s, %s, %s, 'SNAP')""").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("tables")),
-                        (mountpoint, snap_id, t, ti))
+            register_object(conn, ti, 'SNAP', None)
+            register_table(conn, mountpoint, t, snap_id, ti)
 
 
 def unregister_mountpoint(conn, mountpoint):
@@ -282,12 +315,20 @@ def get_canonical_snap_id(conn, mountpoint, short_snap):
     return candidates[0]
 
 
-def register_objects(conn, mountpoint, object_meta):
-    object_meta = [(mountpoint, ) + o for o in object_meta]
+def register_objects(conn, object_meta):
     with conn.cursor() as cur:
-        query = SQL("INSERT INTO {}.tables (mountpoint, snap_id, table_name, object_id, format) VALUES (%s, %s, %s, %s, %s)").format(
+        query = SQL("INSERT INTO {}.object_tree (object_id, format, parent_id) VALUES (%s, %s, %s)").format(
             Identifier(SPLITGRAPH_META_SCHEMA))
         execute_batch(cur, query, object_meta, page_size=100)
+
+
+def register_tables(conn, mountpoint, table_meta):
+    table_meta = [(mountpoint,) + o for o in table_meta]
+    with conn.cursor() as cur:
+        query = SQL(
+            "INSERT INTO {}.tables (mountpoint, snap_id, table_name, object_id) VALUES (%s, %s, %s, %s)").format(
+            Identifier(SPLITGRAPH_META_SCHEMA))
+        execute_batch(cur, query, table_meta, page_size=100)
 
 
 def register_object_locations(conn, object_locations):
@@ -301,10 +342,9 @@ def register_object_locations(conn, object_locations):
         execute_batch(cur, query, object_locations, page_size=100)
 
 
-def get_existing_objects(conn, mountpoint):
+def get_existing_objects(conn):
     with conn.cursor() as cur:
-        cur.execute(SQL("SELECT object_id from {}.tables WHERE mountpoint = %s").format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                    (mountpoint,))
+        cur.execute(SQL("SELECT object_id from {}.object_tree").format(Identifier(SPLITGRAPH_META_SCHEMA)))
         return set(c[0] for c in cur.fetchall())
 
 
