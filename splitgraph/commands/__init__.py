@@ -1,6 +1,7 @@
 from splitgraph.commands.checkout import checkout
 from splitgraph.commands.mounting import mount
 from splitgraph.commands.commit import commit
+from splitgraph.commands.import_table import import_table
 from splitgraph.commands.diff import diff
 from splitgraph.commands.push_pull import push, pull, clone
 from splitgraph.commands.misc import get_parent_children, get_log, init, unmount

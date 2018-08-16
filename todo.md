@@ -1,5 +1,13 @@
 # TODO
-
+  * Importing:
+    * Importing from yet unmounted/unpulled repositories/databases:
+      * Unmounted DB: mount (no copying), copy + commit, destroy (optional)
+      * Unpulled repo: clone (no checkout), do the current import (materializes the table), destroy (optional)
+    * sgfile command: parsing/execution.
+  * Crawl objects and GC orphaned when repo is unmounted.
+  * Gain access to the snapper and make sure the push/pull integration tests work.
+  * More hardcore push/pull tests (run an sgfile that imports from the snapper, push back to it, destroy
+    the world, pull and make sure we still can materialize everything).
   * Err on checkout if there are pending changes?
   * Somehow (?) record sgfiles in the snap_tree (?) as well (multiple ways to materialize a given image).
     * Is it an issue that an image can now have several parents of different types? Its commit tree parent,

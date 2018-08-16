@@ -11,9 +11,10 @@ from splitgraph.pg_replication import apply_record_to_staging, record_pending_ch
     discard_pending_changes, start_replication, get_closest_parent_snap_object
 
 
-def materialize_table(conn, mountpoint, schema_snap, table, destination):
+def materialize_table(conn, mountpoint, schema_snap, table, destination, destination_mountpoint=None):
+    destination_mountpoint = destination_mountpoint or mountpoint
     with conn.cursor() as cur:
-        cur.execute(SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(mountpoint), Identifier(destination)))
+        cur.execute(SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(destination_mountpoint), Identifier(destination)))
         # Get the closest snapshot from the table's parents
         # and then apply all deltas consecutively from it.
         object_id, to_apply = get_closest_parent_snap_object(conn, mountpoint, table, schema_snap)
@@ -27,18 +28,18 @@ def materialize_table(conn, mountpoint, schema_snap, table, destination):
                              object_locations=object_locations)
 
         # Copy the given snap id over to "staging"
-        copy_table(conn, SPLITGRAPH_META_SCHEMA, object_id, mountpoint, destination, with_pk_constraints=True)
+        copy_table(conn, SPLITGRAPH_META_SCHEMA, object_id, destination_mountpoint, destination, with_pk_constraints=True)
         # This is to work around logical replication not reflecting deletions from non-PKd tables. However, this makes
         # it emit all column values in the row, not just the updated ones.
-        if not _get_primary_keys(conn, mountpoint, destination):
+        if not _get_primary_keys(conn, destination_mountpoint, destination):
             _log("WARN: table %s has no primary key. This means that changes will have to be recorded as whole-row." % destination)
-            cur.execute(SQL("ALTER TABLE {}.{} REPLICA IDENTITY FULL").format(Identifier(mountpoint),
+            cur.execute(SQL("ALTER TABLE {}.{} REPLICA IDENTITY FULL").format(Identifier(destination_mountpoint),
                                                                               Identifier(destination)))
 
         # Apply the deltas sequentially to the checked out table
         for pack_object in reversed(to_apply):
             _log("Applying %s..." % pack_object)
-            apply_record_to_staging(conn, mountpoint, pack_object, destination)
+            apply_record_to_staging(conn, pack_object, destination_mountpoint, destination)
 
 
 def checkout(conn, mountpoint, schema_snap=None, tag=None, tables=[]):

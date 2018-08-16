@@ -339,14 +339,14 @@ def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False
     discard_pending_changes(conn, mountpoint)
 
 
-def apply_record_to_staging(conn, mountpoint, object_id, destination):
+def apply_record_to_staging(conn, object_id, mountpoint, destination):
     queries = []
     repl_id = _get_replica_identity(conn, SPLITGRAPH_META_SCHEMA, object_id)
     ri_cols, ri_types = zip(*repl_id)
 
     # Minor hack alert: here we assume that the PK of the object is the PK of the table it refers to, which means
     # that we are expected to have the PKs applied to the object table no matter how it originated.
-    if sorted(ri_cols) == sorted(_get_column_names(conn, mountpoint, object_id)):
+    if sorted(ri_cols) == sorted(_get_column_names(conn, SPLITGRAPH_META_SCHEMA, object_id)):
         raise SplitGraphException("Error determining the replica identity of %s. " % object_id + \
                                   "Have primary key constrants been applied?")
 

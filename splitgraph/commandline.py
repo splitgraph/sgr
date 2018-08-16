@@ -7,7 +7,8 @@ import click
 import psycopg2
 from psycopg2 import ProgrammingError
 
-from splitgraph.commands import mount, unmount, commit, checkout, diff, get_log, init, get_parent_children, pull, clone, push
+from splitgraph.commands import mount, unmount, commit, checkout, diff, get_log, init, get_parent_children, pull, clone, \
+    push, import_table
 from splitgraph.constants import POSTGRES_CONNECTION, SplitGraphException
 from splitgraph.drawing import render_tree
 from splitgraph.meta_handler import get_snap_parent, get_canonical_snap_id, get_all_tables, \
@@ -321,6 +322,24 @@ def tag_c(mountpoint, image, tag, force):
     conn.commit()
 
 
+@click.command(name='import')
+@click.argument('mountpoint')
+@click.argument('table')
+@click.argument('target_mountpoint')
+@click.argument('target_table')
+@click.argument('image', required=False)
+def import_c(mountpoint, table, target_mountpoint, target_table, image):
+    conn = _conn()
+    if not image:
+        image = get_current_head(conn, mountpoint)
+    else:
+        image = get_canonical_snap_id(conn, mountpoint, image)
+
+    import_table(conn, mountpoint, table, target_mountpoint, target_table, image_hash=image)
+    print("%s:%s has been imported from %s:%s (%s)" % (target_mountpoint, target_table, mountpoint, table, image[:12]))
+    conn.commit()
+
+
 cli.add_command(status_c)
 cli.add_command(log_c)
 cli.add_command(mount_c)
@@ -336,3 +355,4 @@ cli.add_command(clone_c)
 cli.add_command(pull_c)
 cli.add_command(push_c)
 cli.add_command(tag_c)
+cli.add_command(import_c)
