@@ -1,44 +1,34 @@
 from hashlib import sha256
 
-from splitgraph.commands import init, commit, pull, checkout
+from splitgraph.commands import init, commit, pull, checkout, import_tables
 from splitgraph.constants import SplitGraphException
 from splitgraph.meta_handler import get_current_head, get_canonical_snap_id, get_all_snap_parents
 
+from parsimonious.grammar import Grammar
 
-def parse_commands(lines):
-    # obviously not a real parser
-    commands = []
-
-    merged_lines = []
-    break_escaped = False
-    for line in lines:
-        if break_escaped:
-            merged_lines[-1] += line
-        else:
-            merged_lines.append(line)
-        if line.endswith('\\\n'):
-            merged_lines[-1] = merged_lines[-1][:-2]
-            break_escaped = True
-        else:
-            break_escaped = False
-
-    for line in merged_lines:
-        line = line.strip()
-        if line.startswith('#') or not line:
-            continue
-        operator = line[:line.index(' ')]
-        if operator in ('PULL', 'SOURCE', 'OUTPUT'):
-            # PULL URL REMOTE_MOUNTPOINT LOCAL_MOUNTPOINT
-            # SOURCE MOUNTPOINT [HASH]
-            # OUTPUT MOUNTPOINT [HASH]
-            operands = line.split()[1:]
-        elif operator == 'SQL':
-            operands = [line[line.index(' ') + 1:]]
-        else:
-            raise SplitGraphException("Unrecognized operator %s" % operator)
-        commands.append((operator, operands))
-    return commands
-
+SGFILE_GRAMMAR = Grammar(r"""
+    commands = command space (newline space command)*
+    command = comment / output / import_local / import_remote / sql
+    comment = space "#" !newline
+    output = "OUTPUT" space mountpoint space image_hash?
+    import_local = "FROM" space mountpoint space "IMPORT" space tables
+    table = (table_name space "AS" space table_alias) / table_name
+    tables = table space ("," space table)*
+    import_remote = "FROM" space conn_string space "/" space mountpoint space (":" space tag)? space "IMPORT" space tables
+    sql = "SQL" space sql_statement
+    
+    image_hash = ~"[0-9a-f]*"i
+    mountpoint = identifier
+    table_name = identifier
+    table_alias = identifier
+    tag = identifier
+    sql_statement = !newline
+    
+    newline = ~"\n+"
+    conn_string = ~"\S+:\S+@.+:\d+"
+    identifier = ~"[_a-zA-Z0-9\-]*"
+    space = ~"\s*"
+""")
 
 def _canonicalize(sql):
     return ' '.join(sql.lower().split())
@@ -48,40 +38,44 @@ def _combine_hashes(hashes):
     return sha256(''.join(hashes).encode('ascii')).hexdigest()
 
 
+def parse_commands(commands):
+    # Unpacks the parse tree into a list of command nodes.
+    parse_tree = SGFILE_GRAMMAR.parse(commands)
+    commands = []
+    node = parse_tree.children[0]
+    if node.children[0].expr_name != 'comment':
+        commands.append(node.children[0])
+    # Visit the one-or-many node
+    for node in parse_tree.children[2].children:
+        if node.expr_name != 'command':
+            continue
+        if node.children[0].expr_name == 'comment':
+            continue
+        commands.append(node.children[0])
+    return commands
+
+
+def _parse_table_alias(table_node):
+    # Extracts the table name and its alias from the parse tree.
+    actual_node = table_node.children[0].children[0]
+    table_name = actual_node.children[0].match(0)
+    if len(actual_node.children) > 1:
+        table_alias = actual_node.children[-1].match(0)
+        return table_name, table_alias
+    return table_name, table_name
+
+
 def execute_commands(conn, commands):
     sources = {}
     output = None
 
-    for i, com in enumerate(commands):
-        operator, operands = com
-        print("-> %d/%d %s" % (i + 1, len(commands), operator + ' ' + ' '.join(operands)))
-        if operator == 'PULL':
-            conn_string = operands[0]
-            remote_mountpoint = operands[1]
-            local_mountpoint = operands[2]
-            pull(conn, conn_string, remote_mountpoint, local_mountpoint)
-            snap_id = get_all_snap_parents(conn, local_mountpoint)[-1][0]
-            checkout(conn, local_mountpoint, snap_id)
-        if operator == 'SOURCE':
-            mountpoint = operands[0]
+    node_list = parse_commands(commands)
+    for i, node in enumerate(node_list):
 
-            # Check mountpoint actually exists
-            if get_current_head(conn, mountpoint) is None:
-                raise SplitGraphException("%s does not exist. Has it been mounted?" % mountpoint)
-
-            if len(operands) > 1:
-                if operands[1] == 'LATEST':
-                    # Pending there being timestamps in the commits, we're just fetching the last record in the db.
-                    # This might be undefined behaviour, yeah.
-                    snap_id = get_all_snap_parents(conn, mountpoint)[-1][0]
-                else:
-                    snap_id = get_canonical_snap_id(conn, mountpoint, operands[1])
-            else:
-                snap_id = get_current_head(conn, mountpoint)
-            print("Using source mountpoint %s snapshot %s" % (mountpoint, snap_id))
-            sources[mountpoint] = snap_id
-        elif operator == 'OUTPUT':
-            output = operands[0]
+        print("-> %d/%d %s" % (i + 1, len(commands), node.full_text))
+        if node.expr_name == 'output':
+            # Slightly weird tree traversal here
+            output = node.children[2].match.group(0)
             print("Committing results to mountpoint %s" % output)
             try:
                 get_current_head(conn, output)
@@ -90,11 +84,27 @@ def execute_commands(conn, commands):
                 init(conn, output)
 
             # By default, use the current output HEAD. Check if it's overridden.
-            if len(operands) > 1:
-                output_head = get_canonical_snap_id(conn, output, operands[1])
+            if len(node.children) > 2:
+                output_head = get_canonical_snap_id(conn, output, node.children[4].children[0].match.group(0))
                 checkout(conn, output, output_head)
+        elif node.expr_name == 'import_local':
+            mountpoint = node.children[2].match.group(0)
+            tables = node.children[-1]
 
-        elif operator == 'SQL':
+            table_names = []
+            table_aliases = []
+
+            tn, ta = _parse_table_alias(tables.children[0])
+            table_names.append(tn)
+            table_aliases.append(ta)
+            for table_node in tables.children[-1].children:
+                if table_node.expr_name != 'table':
+                    continue
+            import_tables(conn, mountpoint, table_names, output, table_aliases)
+
+        elif node.expr_name == 'import_remote':
+            pass
+        elif node.expr_name == 'sql':
             if output is None:
                 raise SplitGraphException("Error: no OUTPUT specified. OUTPUT mountpoint is snapshot during file execution.")
             # Calculate the hash of the layer we are trying to create.
