@@ -3,6 +3,9 @@ import pytest
 from splitgraph.commandline import _conn
 from splitgraph.commands import *
 from splitgraph.commands import unmount
+from splitgraph.commands.misc import make_conn, cleanup_objects
+from splitgraph.constants import PG_PORT, PG_USER, PG_PWD, PG_DB
+from splitgraph.meta_handler import get_current_mountpoints_hashes
 
 PG_MNT = 'test_pg_mount'
 MG_MNT = 'test_mg_mount'
@@ -59,3 +62,40 @@ def sg_pg_mg_conn():
     conn.close()
 
 
+SNAPPER_HOST = '172.18.0.5'  # temporary until I figure out how to docker
+
+
+@pytest.fixture
+def snapper_conn():
+    # For these, we'll use both the cachedb (original postgres for integration tests) as well as the
+    # snapper (currently the Dockerfile just creates 2 mountpoints: mongoorigin and pgorigin, snapshotting the two
+    # origin databases)
+    # We still create the test_pg_mount and output mountpoints there just so that we don't clash with them.
+    conn = make_conn(SNAPPER_HOST, PG_PORT, PG_USER, PG_PWD, PG_DB)
+    for mountpoint, _ in get_current_mountpoints_hashes(conn):
+        unmount(conn, mountpoint)
+    cleanup_objects(conn)
+    conn.commit()
+    _mount_postgres(conn, PG_MNT)
+    yield conn
+    for mountpoint, _ in get_current_mountpoints_hashes(conn):
+        unmount(conn, mountpoint)
+    cleanup_objects(conn)
+    conn.commit()
+    conn.close()
+
+
+@pytest.fixture
+def empty_pg_conn():
+    # A connection to the pgcache that has nothing mounted on it.
+    conn = _conn()
+    for mountpoint, _ in get_current_mountpoints_hashes(conn):
+        unmount(conn, mountpoint)
+    cleanup_objects(conn)
+    conn.commit()
+    yield conn
+    for mountpoint, _ in get_current_mountpoints_hashes(conn):
+        unmount(conn, mountpoint)
+    cleanup_objects(conn)
+    conn.commit()
+    conn.close()

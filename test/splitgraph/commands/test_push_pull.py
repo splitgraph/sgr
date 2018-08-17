@@ -1,53 +1,13 @@
-import pytest
 import tempfile
 
-from splitgraph.commandline import _conn
+import pytest
+
 from splitgraph.commands import clone, checkout, commit, pull, push, unmount
-from splitgraph.commands.misc import make_conn, cleanup_objects
-from splitgraph.constants import PG_USER, PG_PWD, PG_HOST, PG_PORT, PG_DB
+from splitgraph.commands.misc import cleanup_objects
+from splitgraph.constants import PG_USER, PG_PWD, PG_PORT, PG_DB
 from splitgraph.meta_handler import get_current_head, get_all_snap_parents, get_downloaded_objects, \
     get_existing_objects, get_external_object_locations
-from test.splitgraph.conftest import PG_MNT, _mount_postgres
-
-SNAPPER_HOST = '172.18.0.5'  # temporary until I figure out how to docker
-
-@pytest.fixture
-def snapper_conn():
-    # For these, we'll use both the cachedb (original postgres for integration tests) as well as the
-    # snapper (currently the Dockerfile just creates 2 mountpoints: mongoorigin and pgorigin, snapshotting the two
-    # origin databases)
-    # We still create the test_pg_mount and output mountpoints there just so that we don't clash with them.
-    conn = make_conn(SNAPPER_HOST, PG_PORT, PG_USER, PG_PWD, PG_DB)
-    unmount(conn, PG_MNT)
-    unmount(conn, PG_MNT + '_pull')
-    unmount(conn, 'output')
-    cleanup_objects(conn)
-    _mount_postgres(conn, PG_MNT)
-    yield conn
-    unmount(conn, PG_MNT)
-    unmount(conn, PG_MNT + '_pull')
-    unmount(conn, 'output')
-    cleanup_objects(conn)
-    conn.commit()
-    conn.close()
-
-
-@pytest.fixture
-def empty_pg_conn():
-    # A connection to the pgcache that has nothing mounted on it.
-    conn = _conn()
-    unmount(conn, PG_MNT)
-    unmount(conn, PG_MNT + '_pull')
-    unmount(conn, 'output')
-    cleanup_objects(conn)
-    yield conn
-    unmount(conn, PG_MNT)
-    unmount(conn, PG_MNT + '_pull')
-    unmount(conn, 'output')
-    cleanup_objects(conn)
-    conn.commit()
-    conn.close()
-
+from test.splitgraph.conftest import PG_MNT, SNAPPER_HOST
 
 
 @pytest.mark.parametrize("download_all", [True, False])

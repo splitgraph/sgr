@@ -149,7 +149,7 @@ def cleanup_objects(conn):
     if primary_objects:
         while True:
             new_parents = set(parent_id for _, _, parent_id in get_object_meta(conn, list(primary_objects))
-                              if parent_id not in primary_objects)
+                              if parent_id not in primary_objects and parent_id is not None)
             if not new_parents:
                 break
             else:
