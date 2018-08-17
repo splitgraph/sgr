@@ -1,10 +1,12 @@
 import psycopg2
+from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, _log
 from splitgraph.meta_handler import get_table, get_snap_parent, ensure_metadata_schema, register_mountpoint, \
-    unregister_mountpoint
-from splitgraph.pg_replication import record_pending_changes, discard_pending_changes, stop_replication, start_replication
+    unregister_mountpoint, get_object_meta, META_TABLES
+from splitgraph.pg_replication import record_pending_changes, discard_pending_changes, stop_replication, \
+    start_replication
 from splitgraph.pg_utils import pg_table_exists
 
 
@@ -21,7 +23,8 @@ def get_parent_children(conn, mountpoint, snap_id):
     parent = get_snap_parent(conn, mountpoint, snap_id)
 
     with conn.cursor() as cur:
-        cur.execute(SQL("""SELECT snap_id FROM {}.snap_tree WHERE mountpoint = %s AND parent_id = %s""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
+        cur.execute(SQL("""SELECT snap_id FROM {}.snap_tree WHERE mountpoint = %s AND parent_id = %s""").format(
+            Identifier(SPLITGRAPH_META_SCHEMA)),
                     (mountpoint, snap_id))
         children = [c[0] for c in cur.fetchall()]
     return parent, children
@@ -130,3 +133,45 @@ def unmount(conn, mountpoint):
 
     # Currently we just discard all history info about the mounted schema
     unregister_mountpoint(conn, mountpoint)
+
+
+def cleanup_objects(conn):
+    # Deletes all objects not required by any mountpoint.
+    # There are probably several tiers of this (delete physical objects, delete their URLs from the meta
+    # tables etc, but this does everything.
+
+    # First, get a list of all objects required by a table.
+    with conn.cursor() as cur:
+        cur.execute(SQL("SELECT DISTINCT (object_id) FROM {}.tables").format(Identifier(SPLITGRAPH_META_SCHEMA)))
+        primary_objects = set([c[0] for c in cur.fetchall()])
+
+    # Expand that since each object might have a parent it depends on.
+    if primary_objects:
+        while True:
+            new_parents = set(parent_id for _, _, parent_id in get_object_meta(conn, list(primary_objects))
+                              if parent_id not in primary_objects)
+            if not new_parents:
+                break
+            else:
+                primary_objects.update(new_parents)
+
+    # Go through the tables that aren't mountpoint-dependent and delete entries there.
+    with conn.cursor() as cur:
+        for table_name in ['object_tree', 'object_locations']:
+            query = SQL("DELETE FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table_name))
+            if primary_objects:
+                query += SQL(" WHERE object_id NOT IN (" + ','.join('%s' for _ in range(len(primary_objects))) + ")")
+            cur.execute(query, list(primary_objects))
+
+    # Go through the physical objects and delete them as well
+    with conn.cursor() as cur:
+        cur.execute("""SELECT information_schema.tables.table_name FROM information_schema.tables
+                        WHERE information_schema.tables.table_schema = %s""", (SPLITGRAPH_META_SCHEMA,))
+        # This is slightly dirty, but since the info about the objects was deleted on unmount, we just say that
+        # anything in splitgraph_meta that's not a system table is fair game.
+        tables_in_meta = set(c[0] for c in cur.fetchall() if c[0] not in META_TABLES)
+
+        to_delete = tables_in_meta.difference(primary_objects)
+        if to_delete:
+            cur.execute(SQL(";").join(SQL("DROP TABLE {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                     Identifier(d)) for d in to_delete))

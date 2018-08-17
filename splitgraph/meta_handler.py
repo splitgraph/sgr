@@ -5,6 +5,8 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, SplitGraphException, _log
 
+META_TABLES = ['snap_tree', 'snap_tags', 'object_tree', 'tables', 'remotes', 'object_locations', 'pending_changes']
+
 
 def _create_metadata_schema(conn):
     # Creates the metadata schema splitgraph_meta that stores
@@ -272,7 +274,6 @@ def unregister_mountpoint(conn, mountpoint):
         for meta_table in ["tables", "snap_tags", "snap_tree", "remotes"]:
             cur.execute(SQL("DELETE FROM {}.{} WHERE mountpoint = %s").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(meta_table)),
                         (mountpoint,))
-        # TODO "object_locations" isn't cleaned here
 
 
 def get_snap_parent(conn, mountpoint, snap_id):
@@ -388,3 +389,12 @@ def get_external_object_locations(conn, objects):
         cur.execute(query, objects)
         object_locations = cur.fetchall()
     return object_locations
+
+
+def get_object_meta(conn, objects):
+    with conn.cursor() as cur:
+        cur.execute(SQL("""SELECT object_id, format, parent_id FROM {0}.object_tree
+                       WHERE object_id IN (""" + ','.join('%s' for _ in range(len(objects))) + ")").format(
+            Identifier(SPLITGRAPH_META_SCHEMA)),
+            objects)
+        return cur.fetchall()

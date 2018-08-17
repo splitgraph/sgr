@@ -10,7 +10,7 @@ from splitgraph.constants import _log, SplitGraphException, SPLITGRAPH_META_SCHE
 from splitgraph.meta_handler import get_downloaded_objects, get_existing_objects
 
 
-def download_objects(conn, remote_conn_string, objects_to_fetch, object_locations):
+def download_objects(conn, remote_conn_string, objects_to_fetch, object_locations, remote_conn=None):
     # Fetches the required objects from the remote and stores them locally. Does nothing for objects that already exist.
     existing_objects = get_downloaded_objects(conn)
     objects_to_fetch = set(o for o in objects_to_fetch if o not in existing_objects)
@@ -47,8 +47,8 @@ def download_objects(conn, remote_conn_string, objects_to_fetch, object_location
                    username=match.group(1), password=match.group(2), mountpoint=remote_data_mountpoint,
                    extra_options={'dbname': match.group(5), 'remote_schema': SPLITGRAPH_META_SCHEMA})
 
-    remote_conn = make_conn(server=match.group(3), port=int(match.group(4)), username=match.group(1),
-                            password=match.group(2), dbname=match.group(5))
+    remote_conn = remote_conn or make_conn(server=match.group(3), port=int(match.group(4)), username=match.group(1),
+                                           password=match.group(2), dbname=match.group(5))
 
     try:
         for i, obj in enumerate(objects_to_fetch):
@@ -59,10 +59,9 @@ def download_objects(conn, remote_conn_string, objects_to_fetch, object_location
                 source_pks = _get_primary_keys(remote_conn, SPLITGRAPH_META_SCHEMA, obj)
                 if source_pks:
                     cur.execute(SQL("ALTER TABLE {}.{} ADD PRIMARY KEY (").format(
-                        Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj))\
-                            + SQL(',').join(SQL("{}").format(Identifier(c)) for c, _ in source_pks) + SQL(")"))
+                        Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj)) \
+                                + SQL(',').join(SQL("{}").format(Identifier(c)) for c, _ in source_pks) + SQL(")"))
     finally:
-        remote_conn.close()
         unmount(conn, remote_data_mountpoint)
 
 
@@ -90,7 +89,8 @@ def _http_upload_objects(conn, objects_to_push, http_params):
     for object_id in objects_to_push:
         remote_filename = object_id
         # First cut: just push the dump without any compression.
-        r = requests.post(url + '/' + remote_filename, data=_table_dump_generator(conn, SPLITGRAPH_META_SCHEMA, object_id))
+        r = requests.post(url + '/' + remote_filename,
+                          data=_table_dump_generator(conn, SPLITGRAPH_META_SCHEMA, object_id))
         r.raise_for_status()
         uploaded.append(url + '/' + remote_filename)
     return uploaded
@@ -113,7 +113,7 @@ def _file_upload_objects(conn, objects_to_push, params):
 def _file_download_objects(conn, objects_to_fetch, params):
     for i, obj in enumerate(objects_to_fetch):
         object_id, object_url = obj
-        _log("(%d/%d) %s -> %s" % (i+1, len(objects_to_fetch), object_url, object_id))
+        _log("(%d/%d) %s -> %s" % (i + 1, len(objects_to_fetch), object_url, object_id))
         with open(object_url, 'r') as f:
             with conn.cursor() as cur:
                 # Insert into the locally checked out schema by default since the dump doesn't have the schema
@@ -131,7 +131,7 @@ def _http_download_objects(conn, objects_to_fetch, http_params):
 
     for i, obj in enumerate(objects_to_fetch):
         object_id, object_url = obj
-        _log("(%d/%d) %s -> %s" % (i+1, len(objects_to_fetch), object_url, object_id))
+        _log("(%d/%d) %s -> %s" % (i + 1, len(objects_to_fetch), object_url, object_id))
         # Let's execute arbitrary code from the Internet on our machine!
         r = requests.get(object_url, stream=True)
         with conn.cursor() as cur:
@@ -148,16 +148,14 @@ def _http_download_objects(conn, objects_to_fetch, http_params):
                 buf = buf + chunk
                 last_sep = buf.rfind(';\n')
                 cur.execute(buf[:last_sep])
-                buf = buf[last_sep+2:]
+                buf = buf[last_sep + 2:]
             cur.execute(buf)
         # Set the schema to (presumably) the default one.
         cur.execute("SET search_path TO public")
 
 
-def upload_objects(conn, local_mountpoint, remote_conn_string, objects_to_push, handler='DB', handler_params={}):
+def upload_objects(conn, remote_conn_string, objects_to_push, handler='DB', handler_params={}, remote_conn=None):
     match = re.match('(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
-    remote_conn = make_conn(server=match.group(3), port=int(match.group(4)), username=match.group(1),
-                            password=match.group(2), dbname=match.group(5))
     existing_objects = get_existing_objects(remote_conn)
     objects_to_push = list(set(o for o in objects_to_push if o not in existing_objects))
     _log("Uploading objects...")
@@ -168,8 +166,8 @@ def upload_objects(conn, local_mountpoint, remote_conn_string, objects_to_push, 
         # Is there seriously no better way to do this?
         with remote_conn.cursor() as cur:
             # This also includes applying our table's FK constraints.
-            cur.execute(dump_table_creation(conn, schema=local_mountpoint,
-                                            tables=objects_to_push, created_schema=SPLITGRAPH_META_SCHEMA))
+            cur.execute(dump_table_creation(conn, schema=SPLITGRAPH_META_SCHEMA, tables=objects_to_push,
+                                            created_schema=SPLITGRAPH_META_SCHEMA))
         # Have to commit the remote connection here since otherwise we won't see the new tables in the
         # mounted remote.
         remote_conn.commit()
@@ -196,5 +194,4 @@ def upload_objects(conn, local_mountpoint, remote_conn_string, objects_to_push, 
         uploaded = _file_upload_objects(conn, objects_to_push, handler_params)
         result = [(oid, url, 'FILE') for oid, url in zip(objects_to_push, uploaded)]
 
-    remote_conn.close()
     return result
