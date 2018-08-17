@@ -1,11 +1,10 @@
-from psycopg2.sql import SQL, Identifier
-from random import getrandbits
+from psycopg2.sql import Identifier, SQL
 
-from splitgraph.commands.checkout import checkout
-from splitgraph.commands.misc import mount_postgres, mount_mongo
-from splitgraph.pg_utils import copy_table
-from splitgraph.constants import _log, SplitGraphException, get_random_object_id, SPLITGRAPH_META_SCHEMA
-from splitgraph.meta_handler import ensure_metadata_schema, get_all_foreign_tables, register_mountpoint
+from splitgraph.commands.importing import import_tables
+from splitgraph.commands.misc import mount_postgres, mount_mongo, unmount
+from splitgraph.constants import _log, SplitGraphException
+from splitgraph.meta_handler import ensure_metadata_schema, get_all_foreign_tables
+from splitgraph.pg_replication import start_replication
 
 
 def mount(conn, server, port, username, password, mountpoint, mount_handler, extra_options):
@@ -18,33 +17,22 @@ def mount(conn, server, port, username, password, mountpoint, mount_handler, ext
         raise SplitGraphException("Mount handler %s not supported!" % mount_handler)
 
     _log("Connecting to remote server...")
-    mh_func(conn, server, port, username, password, mountpoint, extra_options)
 
-    with conn.cursor() as cur:
-        # For now we are just assigning a random ID to this schema snap
-        schema_snap = "%0.2x" % getrandbits(256)
+    staging_mountpoint = mountpoint + '_tmp_staging'
+    unmount(conn, staging_mountpoint)
+    try:
+        mh_func(conn, server, port, username, password, staging_mountpoint, extra_options)
 
-        _log("Pulling image %s from remote schema..." % schema_snap[:12])
-
-        # Update tables to list all tables we've actually pulled.
-        tables = get_all_foreign_tables(conn, mountpoint)
-
-        # Rename all foreign tables into tablename_origin and pretend to "pull" the current remote schema HEAD.
-        table_object_ids = []
-        for table in tables:
-            # Create a dummy object ID for each table.
-            object_id = get_random_object_id()
-            table_object_ids.append(object_id)
-            cur.execute(SQL("ALTER TABLE {}.{} RENAME TO {}").format(
-                Identifier(mountpoint), Identifier(table),
-                Identifier(table + '_origin')))
-            copy_table(conn, mountpoint, table + '_origin', SPLITGRAPH_META_SCHEMA, object_id)
-
-    # Finally, register the mountpoint in our metadata store.
-    register_mountpoint(conn, mountpoint, schema_snap, tables, table_object_ids)
-
-    # Also check out the HEAD of the schema
-    checkout(conn, mountpoint, schema_snap)
+        # Mimic the behaviour of the old mount here: create the schema and have a random initial commit in it
+        # wit the imported (snapshotted) foreign tables.
+        with conn.cursor() as cur:
+            cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(mountpoint)))
+        # Import the foreign tables (creates a new commit with a random ID and copies the tables over into
+        # the final mountpoint).
+        new_head = import_tables(conn, staging_mountpoint, get_all_foreign_tables(conn, staging_mountpoint), mountpoint, [],
+                                 foreign_tables=True, do_checkout=True)
+    finally:
+        unmount(conn, staging_mountpoint)
 
     conn.commit()
-    return schema_snap
+    return new_head

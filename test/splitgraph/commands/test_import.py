@@ -1,8 +1,8 @@
-from splitgraph.commands import checkout, commit, pull, init, import_tables
+from splitgraph.commands import checkout, commit, init, import_tables
 from splitgraph.commands.importing import import_table_from_unmounted
 from splitgraph.commands.misc import cleanup_objects
 from splitgraph.constants import PG_PWD, PG_USER, PG_DB, PG_PORT
-from splitgraph.meta_handler import get_current_head, get_all_snap_parents, get_snap_parent, get_downloaded_objects, \
+from splitgraph.meta_handler import get_current_head, get_snap_parent, get_downloaded_objects, \
     get_existing_objects, get_all_tables, get_current_mountpoints_hashes
 from splitgraph.pg_replication import dump_pending_changes
 from splitgraph.pg_utils import pg_table_exists

@@ -1,7 +1,5 @@
 # TODO
   * Importing:
-    * Importing from yet unmounted/unpulled repositories/databases:
-      * Unmounted DB: mount (no copying), copy + commit, destroy (optional)
     * sgfile command: parsing/execution.
   * More hardcore push/pull tests (run an sgfile that imports from the snapper, push back to it, destroy
     the world, pull and make sure we still can materialize everything).

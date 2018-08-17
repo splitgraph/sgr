@@ -13,7 +13,6 @@ def test_diff_head(sg_pg_conn):
     with sg_pg_conn.cursor() as cur:
         cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise')""")
         cur.execute("""DELETE FROM test_pg_mount.fruits WHERE name = 'apple'""")
-
     sg_pg_conn.commit()  # otherwise the WAL writer won't see this.
     head = get_current_head(sg_pg_conn, PG_MNT)
     change = diff(sg_pg_conn, PG_MNT, 'fruits', snap_1=head, snap_2=None)
