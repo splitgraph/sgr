@@ -197,14 +197,25 @@ def get_current_head(conn, mountpoint, raise_on_none=True):
 
 def get_tagged_id(conn, mountpoint, tag, raise_on_none=True):
     ensure_metadata_schema(conn)
+    if not mountpoint_exists(conn, mountpoint):
+        raise SplitGraphException("%s is not mounted." % mountpoint)
+
+    if tag == 'latest':
+        # Special case, return the latest commit from the mountpoint.
+        with conn.cursor() as cur:
+            cur.execute(SQL("SELECT snap_id FROM {}.snap_tree WHERE mountpoint = %s ORDER BY timestamp DESC LIMIT 1").format(
+                Identifier(SPLITGRAPH_META_SCHEMA)), (mountpoint,))
+        result = cur.fetchone()
+        if result is None:
+            raise SplitGraphException("No commits found in %s!")
+        return result[0]
+
     with conn.cursor() as cur:
         cur.execute(SQL("SELECT snap_id FROM {}.snap_tags WHERE mountpoint = %s AND tag = %s").format(
             Identifier(SPLITGRAPH_META_SCHEMA)), (mountpoint, tag))
         result = cur.fetchone()
         if result is None or result == (None,):
-            if not mountpoint_exists(conn, mountpoint):
-                raise SplitGraphException("%s is not mounted." % mountpoint)
-            elif raise_on_none:
+            if raise_on_none:
                 if tag == 'HEAD':
                     raise SplitGraphException("No current checked out revision found for %s. Check one out with \"sg "
                                               "checkout MOUNTPOINT SNAP_ID\"." % mountpoint)

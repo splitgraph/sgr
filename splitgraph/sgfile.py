@@ -1,10 +1,10 @@
 from hashlib import sha256
 
-from splitgraph.commands import init, commit, pull, checkout, import_tables
-from splitgraph.constants import SplitGraphException
-from splitgraph.meta_handler import get_current_head, get_canonical_snap_id, get_all_snap_parents
-
 from parsimonious.grammar import Grammar
+
+from splitgraph.commands import init, commit, checkout, import_tables, clone, unmount
+from splitgraph.constants import SplitGraphException
+from splitgraph.meta_handler import get_current_head, get_canonical_snap_id, get_tagged_id
 
 SGFILE_GRAMMAR = Grammar(r"""
     commands = command space (newline space command)*
@@ -30,6 +30,7 @@ SGFILE_GRAMMAR = Grammar(r"""
     space = ~"\s*"
 """)
 
+
 def _canonicalize(sql):
     return ' '.join(sql.lower().split())
 
@@ -41,32 +42,53 @@ def _combine_hashes(hashes):
 def parse_commands(commands):
     # Unpacks the parse tree into a list of command nodes.
     parse_tree = SGFILE_GRAMMAR.parse(commands)
-    commands = []
-    node = parse_tree.children[0]
-    if node.children[0].expr_name != 'comment':
-        commands.append(node.children[0])
-    # Visit the one-or-many node
-    for node in parse_tree.children[2].children:
-        if node.expr_name != 'command':
-            continue
-        if node.children[0].expr_name == 'comment':
-            continue
-        commands.append(node.children[0])
-    return commands
+    return [n.children[0] for n in _extract_nodes(parse_tree, ['command']) if n.children[0].expr_type != 'command']
+
+
+def _extract_nodes(node, types):
+    # Crawls the parse tree and only extracts nodes of given types.
+    # Doesn't crawl further down if it reaches a required type.
+    if node.expr_type in types:
+        return [node]
+    result = []
+    for child in node.children:
+        result.extend(_extract_nodes(child, types))
+    return result
 
 
 def _parse_table_alias(table_node):
     # Extracts the table name and its alias from the parse tree.
-    actual_node = table_node.children[0].children[0]
-    table_name = actual_node.children[0].match(0)
-    if len(actual_node.children) > 1:
-        table_alias = actual_node.children[-1].match(0)
+    table_name_alias = _extract_nodes(table_node, ['table_name', 'table_alias'])
+
+    table_name = table_name_alias[0].match.group(0)
+    if len(table_name_alias) > 1:
+        table_alias = table_name_alias[1].match.group(0)
         return table_name, table_alias
     return table_name, table_name
 
 
+def _extract_all_table_aliases(node):
+    table_names = []
+    table_aliases = []
+
+    for table in _extract_nodes(node, ['table']):
+        tn, ta = _parse_table_alias(table)
+        table_names.append(tn)
+        table_aliases.append(ta)
+
+    return table_names, table_aliases
+
+
+def _checkout_or_calculate_layer(conn, output, image_hash, calc_func):
+    # Have we already calculated this hash?
+    try:
+        checkout(conn, output, image_hash)
+        print("Using the cache.")
+    except SplitGraphException:
+        calc_func()
+
+
 def execute_commands(conn, commands):
-    sources = {}
     output = None
 
     node_list = parse_commands(commands)
@@ -74,8 +96,9 @@ def execute_commands(conn, commands):
 
         print("-> %d/%d %s" % (i + 1, len(commands), node.full_text))
         if node.expr_name == 'output':
-            # Slightly weird tree traversal here
-            output = node.children[2].match.group(0)
+            interesting_nodes = _extract_nodes(node, ['mountpoint', 'image_hash'])
+
+            output = interesting_nodes[0].match.group(0)
             print("Committing results to mountpoint %s" % output)
             try:
                 get_current_head(conn, output)
@@ -84,50 +107,72 @@ def execute_commands(conn, commands):
                 init(conn, output)
 
             # By default, use the current output HEAD. Check if it's overridden.
-            if len(node.children) > 2:
-                output_head = get_canonical_snap_id(conn, output, node.children[4].children[0].match.group(0))
+            if len(interesting_nodes) > 1:
+                output_head = get_canonical_snap_id(conn, output, interesting_nodes[1].match.group(0))
                 checkout(conn, output, output_head)
         elif node.expr_name == 'import_local':
-            mountpoint = node.children[2].match.group(0)
-            tables = node.children[-1]
+            interesting_nodes = _extract_nodes(node, ['mountpoint', 'tables'])
+            mountpoint = interesting_nodes[0].match.group(0)
+            table_names, table_aliases = _extract_all_table_aliases(interesting_nodes[1])
 
-            table_names = []
-            table_aliases = []
+            # Calculate the hash of the new layer by combining the hash of the previous layer,
+            # the hash of the source and all the table names/aliases getting imported.
+            # This can be made more granular later by using, say, the object IDs of the tables
+            # that are getting imported (so that if there's a new commit with some of the same objects,
+            # we don't invalidate the downstream).
+            source_hash = get_current_head(conn, mountpoint)
+            output_head = get_current_head(conn, output)
+            target_hash = _combine_hashes([output_head, source_hash] + [sha256(n.encode('utf-8')).hexdigest() for n in table_names + table_aliases])
 
-            tn, ta = _parse_table_alias(tables.children[0])
-            table_names.append(tn)
-            table_aliases.append(ta)
-            for table_node in tables.children[-1].children:
-                if table_node.expr_name != 'table':
-                    continue
-            import_tables(conn, mountpoint, table_names, output, table_aliases)
+            def _calc():
+                print("Importing tables %r:%s from %s into %s" % (table_names, source_hash[:12], mountpoint, output))
+                import_tables(conn, mountpoint, table_names, output, table_aliases)
+            _checkout_or_calculate_layer(conn, output, target_hash, _calc)
 
         elif node.expr_name == 'import_remote':
-            pass
+            interesting_nodes = _extract_nodes(node, ['conn_string', 'mountpoint', 'tag', 'tables'])
+            conn_string = interesting_nodes[0].match.group(0)
+            mountpoint = interesting_nodes[1].match.group(0)
+            if len(interesting_nodes) == 4:
+                tag = interesting_nodes[2].match.group(0)
+            else:
+                tag = 'latest'
+            table_names, table_aliases = _extract_all_table_aliases(interesting_nodes[-1])
+
+            # Don't use the actual routine here as we want more control: clone the remote repo in order to turn
+            # the tag into an actual hash
+            tmp_mountpoint = mountpoint + '_clone_tmp'
+            try:
+                clone(conn, conn_string, mountpoint, tmp_mountpoint, download_all=False)
+
+                source_hash = get_tagged_id(conn, tmp_mountpoint, tag)
+                output_head = get_current_head(conn, output)
+                target_hash = _combine_hashes([output_head, source_hash] + [sha256(n.encode('utf-8')).hexdigest() for n in table_names + table_aliases])
+
+                def _calc():
+                    print("Importing tables %r:%s from %s into %s" % (table_names, source_hash[:12], mountpoint, output))
+                    import_tables(conn, tmp_mountpoint, table_names, output, table_aliases)
+                _checkout_or_calculate_layer(conn, output, target_hash, _calc)
+            finally:
+                unmount(conn, tmp_mountpoint)
         elif node.expr_name == 'sql':
             if output is None:
                 raise SplitGraphException("Error: no OUTPUT specified. OUTPUT mountpoint is snapshot during file execution.")
+
             # Calculate the hash of the layer we are trying to create.
-            # It's the xor of all input + output layer hashes as well as the hash of the SQL command itself.
-            sql_command = _canonicalize(operands[0])
+            # Since we handle the "input" hashing in the import step, we don't need to care about the sources here.
+            # Later on, we could enhance the caching and base the hash of the command on the hashes of objects that
+            # definitely go there as sources.
+            sql_command = _canonicalize(_extract_nodes(node, ['sql'])[0])
             output_head = get_current_head(conn, output)
-            target_hash = _combine_hashes(list(sources.values()) + [output_head, sha256(sql_command.encode('utf-8')).hexdigest()])
+            target_hash = _combine_hashes([output_head, sha256(sql_command.encode('utf-8')).hexdigest()])
 
-            print(', '.join('%s:%s' % (mp, si[:12]) for mp, si in iter(sources.items())) + ', %s:%s' % (output, output_head[:12]) + \
-                ' -> %s:%s' % (output, target_hash[:12]))
+            print('%s:%s' % (output, output_head[:12]) + ' -> %s:%s' % (output, target_hash[:12]))
 
-            # Have we already calculated this hash?
-            try:
-                checkout(conn, output, target_hash)
-                print("Using the cache.")
-            except SplitGraphException:
-                # Check out all the input layers
-                for mountpoint, snap_id in sources.items():
-                    print("Using %s snap %s" % (mountpoint, snap_id[:12]))
-                    checkout(conn, mountpoint, snap_id)
+            def _calc():
                 print("Executing SQL...")
                 with conn.cursor() as cur:
                     cur.execute(sql_command)
-
                 commit(conn, output, target_hash, comment=sql_command)
                 conn.commit()
+            _checkout_or_calculate_layer(conn, output, target_hash, _calc)

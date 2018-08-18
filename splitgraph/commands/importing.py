@@ -13,7 +13,7 @@ from splitgraph.pg_utils import copy_table, _get_primary_keys
 
 
 def import_tables(conn, mountpoint, tables, target_mountpoint, target_tables, image_hash=None, foreign_tables=False,
-                  do_checkout=True):
+                  do_checkout=True, target_hash=None):
     record_pending_changes(conn)
     stop_replication(conn)
     # Creates a new commit in target_mountpoint with one or more tables linked to already-existing tables.
@@ -24,7 +24,7 @@ def import_tables(conn, mountpoint, tables, target_mountpoint, target_tables, im
     # foreign_tables=True is for tables that aren't actually SG snapshots but have been mounted via an FDW or
     # just exist in the driver in some other way. Creates a new object/commit as well.
     HEAD = get_current_head(conn, target_mountpoint, raise_on_none=False)
-    target_hash = "%0.2x" % getrandbits(256)
+    target_hash = target_hash or "%0.2x" % getrandbits(256)
 
     if not foreign_tables:
         image_hash = image_hash or get_current_head(conn, mountpoint)
@@ -86,7 +86,7 @@ def import_tables(conn, mountpoint, tables, target_mountpoint, target_tables, im
 
 
 def import_table_from_unmounted(conn, remote_conn_string, remote_mountpoint, remote_tables, remote_image_hash,
-                                target_mountpoint, target_tables):
+                                target_mountpoint, target_tables, target_hash=None):
     # Shorthand for importing one or more tables from a yet-uncloned remote. Here, the remote image hash
     # is required, as otherwise we aren't necessarily able to determine what the remote head is.
 
@@ -97,7 +97,8 @@ def import_table_from_unmounted(conn, remote_conn_string, remote_mountpoint, rem
     tmp_mountpoint = remote_mountpoint + '_clone_tmp'
 
     clone(conn, remote_conn_string, remote_mountpoint, tmp_mountpoint, download_all=False)
-    import_tables(conn, tmp_mountpoint, remote_tables, target_mountpoint, target_tables, image_hash=remote_image_hash)
+    import_tables(conn, tmp_mountpoint, remote_tables, target_mountpoint, target_tables, image_hash=remote_image_hash,
+                  target_hash=target_hash)
 
     unmount(conn, tmp_mountpoint)
     conn.commit()
