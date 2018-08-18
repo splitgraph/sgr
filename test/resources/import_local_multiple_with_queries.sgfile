@@ -1,0 +1,8 @@
+OUTPUT output 00000
+
+FROM test_pg_mount IMPORT fruits AS my_fruits, vegetables
+
+SQL DELETE FROM my_fruits WHERE fruit_id = 1
+
+# Can't get multiline (escaping the \n) to work yet.
+SQL CREATE TABLE join_table AS SELECT fruit_id AS id, my_fruits.name AS fruit, vegetables.name AS vegetable FROM my_fruits JOIN vegetables on fruit_id = vegetable_id

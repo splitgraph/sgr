@@ -62,7 +62,7 @@ def sg_pg_mg_conn():
     conn.close()
 
 
-SNAPPER_HOST = '172.18.0.4'  # temporary until I figure out how to docker (oh god it also changes between executions)
+SNAPPER_HOST = '172.18.0.3'  # temporary until I figure out how to docker (oh god it also changes between executions)
 
 
 @pytest.fixture
