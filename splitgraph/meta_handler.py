@@ -203,12 +203,12 @@ def get_tagged_id(conn, mountpoint, tag, raise_on_none=True):
     if tag == 'latest':
         # Special case, return the latest commit from the mountpoint.
         with conn.cursor() as cur:
-            cur.execute(SQL("SELECT snap_id FROM {}.snap_tree WHERE mountpoint = %s ORDER BY timestamp DESC LIMIT 1").format(
+            cur.execute(SQL("SELECT snap_id FROM {}.snap_tree WHERE mountpoint = %s ORDER BY created DESC LIMIT 1").format(
                 Identifier(SPLITGRAPH_META_SCHEMA)), (mountpoint,))
-        result = cur.fetchone()
-        if result is None:
-            raise SplitGraphException("No commits found in %s!")
-        return result[0]
+            result = cur.fetchone()
+            if result is None:
+                raise SplitGraphException("No commits found in %s!")
+            return result[0]
 
     with conn.cursor() as cur:
         cur.execute(SQL("SELECT snap_id FROM {}.snap_tags WHERE mountpoint = %s AND tag = %s").format(
@@ -230,6 +230,12 @@ def get_all_hashes_tags(conn, mountpoint):
     with conn.cursor() as cur:
         cur.execute(SQL("SELECT snap_id, tag from {}.snap_tags WHERE mountpoint = %s").format(Identifier(SPLITGRAPH_META_SCHEMA)), (mountpoint,))
         return cur.fetchall()
+
+
+def set_tags(conn, mountpoint, tags, force=False):
+    for tag, image_id in tags.items():
+        if tag != 'HEAD':
+            set_tag(conn, mountpoint, image_id, tag, force)
 
 
 def add_new_snap_id(conn, mountpoint, parent_id, snap_id, created=None, comment=None):

@@ -130,3 +130,31 @@ def test_import_from_remote(empty_pg_conn, snapper_conn):
         cur.execute("""SELECT * FROM test_pg_mount.fruits""")
         input = cur.fetchall()
     assert input == output
+
+
+def test_import_and_update(empty_pg_conn, snapper_conn):
+    init(empty_pg_conn, 'output')
+    head = get_current_head(empty_pg_conn, 'output')
+
+    remote_conn_string = '%s:%s@%s:%s/%s' % (PG_USER, PG_PWD, SNAPPER_HOST, PG_PORT, PG_DB)
+    # Import the 'fruits' table from the origin.
+    import_table_from_unmounted(empty_pg_conn, remote_conn_string, PG_MNT, ['fruits'], get_current_head(snapper_conn, PG_MNT),
+                                'output', target_tables=[])
+    new_head = get_current_head(empty_pg_conn, 'output')
+
+    with empty_pg_conn.cursor() as cur:
+        cur.execute("INSERT INTO output.fruits VALUES (3, 'mayonnaise')")
+    new_head_2 = commit(empty_pg_conn, 'output')
+
+    checkout(empty_pg_conn, 'output', head)
+    assert not pg_table_exists(empty_pg_conn, 'output', 'fruits')
+
+    checkout(empty_pg_conn, 'output', new_head)
+    with empty_pg_conn.cursor() as cur:
+        cur.execute("SELECT * FROM output.fruits")
+        assert cur.fetchall() == [(1, 'apple'), (2, 'orange')]
+
+    checkout(empty_pg_conn, 'output', new_head_2)
+    with empty_pg_conn.cursor() as cur:
+        cur.execute("SELECT * FROM output.fruits")
+        assert cur.fetchall() == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]

@@ -1,0 +1,8 @@
+# Stage 2 that runs against the output (pre-pushed to the remote) defined in import_remote_multiple.sgfile
+OUTPUT output_stage_2 00000
+
+FROM clientuser:supersecure@$SNAPPER:5432/cachedb output:latest IMPORT join_table, my_fruits
+FROM clientuser:supersecure@$SNAPPER:5432/cachedb test_mg_mount:latest IMPORT stuff
+
+SQL CREATE TABLE diet AS SELECT id, name, fruit, vegetable FROM join_table JOIN stuff \
+                         ON join_table.id = stuff.duration

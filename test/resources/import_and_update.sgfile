@@ -1,0 +1,8 @@
+OUTPUT output 00000
+
+# We'll probably need some envvar support here.
+FROM clientuser:supersecure@$SNAPPER:5432/cachedb test_pg_mount IMPORT fruits AS my_fruits, vegetables
+
+SQL INSERT INTO my_fruits VALUES (3, 'mayonnaise')
+
+SQL UPDATE vegetables SET name = 'cucumber' WHERE vegetable_id = 1

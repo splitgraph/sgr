@@ -6,7 +6,7 @@ from splitgraph.commands.object_loading import download_objects, upload_objects
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, SplitGraphException, _log
 from splitgraph.meta_handler import get_all_snap_parents, add_new_snap_id, get_remote_for, ensure_metadata_schema, \
     register_objects, set_head, add_remote, register_object_locations, get_external_object_locations, register_tables, \
-    get_existing_objects, get_object_meta
+    get_existing_objects, get_object_meta, get_all_hashes_tags, set_tags
 
 
 def _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_mountpoint):
@@ -30,6 +30,9 @@ def _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_moun
                         (remote_mountpoint, snap_id))
             table_meta.extend(cur.fetchall())
 
+    # Get the tags too
+    tags = {t: s for s, t in get_all_hashes_tags(remote_conn, remote_mountpoint)}
+
     # Since an object can now depend on another object that's not mentioned in the commit tree,
     # we now have to follow the objects' links to their parents until we have gathered all the required object IDs.
     existing_objects = get_existing_objects(conn)
@@ -42,13 +45,14 @@ def _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_moun
             break
         else:
             parents_meta = get_object_meta(remote_conn, new_parents)
-            distinct_objects.update(set(o[2] for o in parents_meta if o[2] is not None and o[2] not in existing_objects))
+            distinct_objects.update(
+                set(o[2] for o in parents_meta if o[2] is not None and o[2] not in existing_objects))
             object_meta.extend(parents_meta)
             known_objects.update(new_parents)
 
     object_locations = get_external_object_locations(remote_conn, list(distinct_objects)) if distinct_objects else []
 
-    return snaps_to_fetch, table_meta, object_locations, object_meta
+    return snaps_to_fetch, table_meta, object_locations, object_meta, tags
 
 
 def pull(conn, mountpoint, remote, download_all=False):
@@ -70,15 +74,15 @@ def clone(conn, remote_conn_string, remote_mountpoint, local_mountpoint, downloa
     _log("Connecting to the remote driver...")
     match = re.match('(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
     remote_conn = remote_conn or make_conn(server=match.group(3), port=int(match.group(4)), username=match.group(1),
-                            password=match.group(2), dbname=match.group(5))
+                                           password=match.group(2), dbname=match.group(5))
 
     # Get the remote log and the list of objects we need to fetch.
     _log("Gathering remote metadata...")
 
     # This also registers the new versions locally.
-    snaps_to_fetch, table_meta, object_locations, object_meta = _get_required_snaps_objects(conn, remote_conn,
-                                                                                            local_mountpoint,
-                                                                                            remote_mountpoint)
+    snaps_to_fetch, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(conn, remote_conn,
+                                                                                                  local_mountpoint,
+                                                                                                  remote_mountpoint)
 
     if not snaps_to_fetch:
         _log("Nothing to do.")
@@ -97,7 +101,7 @@ def clone(conn, remote_conn_string, remote_mountpoint, local_mountpoint, downloa
     register_objects(conn, object_meta)
     register_object_locations(conn, object_locations)
     register_tables(conn, local_mountpoint, table_meta)
-
+    set_tags(conn, local_mountpoint, tags, force=False)
     # Don't check anything out, keep the repo bare.
     set_head(conn, local_mountpoint, None)
 
@@ -119,9 +123,9 @@ def push(conn, remote_conn_string, remote_mountpoint, local_mountpoint, handler=
     try:
         _log("Gathering remote metadata...")
         # This also registers new commits remotely. Should make explicit and move down later on.
-        snaps_to_push, table_meta, object_locations, object_meta = _get_required_snaps_objects(remote_conn, conn,
-                                                                                               remote_mountpoint,
-                                                                                               local_mountpoint)
+        snaps_to_push, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(remote_conn, conn,
+                                                                                                     remote_mountpoint,
+                                                                                                     local_mountpoint)
 
         if not snaps_to_push:
             _log("Nothing to do.")
@@ -133,6 +137,7 @@ def push(conn, remote_conn_string, remote_mountpoint, local_mountpoint, handler=
         register_objects(remote_conn, object_meta)
         register_object_locations(remote_conn, object_locations + new_uploads)
         register_tables(remote_conn, remote_mountpoint, table_meta)
+        set_tags(remote_conn, remote_mountpoint, tags, force=False)
         # Kind of have to commit here in any case?
         remote_conn.commit()
         register_object_locations(conn, new_uploads)

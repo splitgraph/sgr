@@ -28,41 +28,37 @@ def _mount_mongo(conn, mountpoint):
             }}})
 
 
+TEST_MOUNTPOINTS = [PG_MNT, PG_MNT + '_pull', 'output', MG_MNT, 'output_stage_2']
+
+
 @pytest.fixture
 def sg_pg_conn():
     # SG connection with a mounted Postgres db
     conn = _conn()
-    unmount(conn, PG_MNT)
-    unmount(conn, PG_MNT + '_pull')
-    unmount(conn, 'output')
+    for mountpoint in TEST_MOUNTPOINTS:
+        unmount(conn, mountpoint)
     _mount_postgres(conn, PG_MNT)
     yield conn
-    unmount(conn, PG_MNT)
-    unmount(conn, PG_MNT + '_pull')
-    unmount(conn, 'output')
+    for mountpoint in TEST_MOUNTPOINTS:
+        unmount(conn, mountpoint)
     conn.close()
 
 
 @pytest.fixture
 def sg_pg_mg_conn():
     # SG connection with a mounted Mongo + Postgres db
-    # Also, remove the 'output' mountpoint that we'll be using in the sgfile tests
     conn = _conn()
-    unmount(conn, MG_MNT)
-    unmount(conn, PG_MNT)
-    unmount(conn, PG_MNT + '_pull')
-    unmount(conn, 'output')
+    for mountpoint in TEST_MOUNTPOINTS:
+        unmount(conn, mountpoint)
     _mount_postgres(conn, PG_MNT)
     _mount_mongo(conn, MG_MNT)
     yield conn
-    unmount(conn, MG_MNT)
-    unmount(conn, PG_MNT)
-    unmount(conn, PG_MNT + '_pull')
-    unmount(conn, 'output')
+    for mountpoint in TEST_MOUNTPOINTS:
+        unmount(conn, mountpoint)
     conn.close()
 
 
-SNAPPER_HOST = '172.18.0.3'  # temporary until I figure out how to docker (oh god it also changes between executions)
+SNAPPER_HOST = '172.18.0.7'  # temporary until I figure out how to docker (oh god it also changes between executions)
 
 
 @pytest.fixture
@@ -72,13 +68,14 @@ def snapper_conn():
     # origin databases)
     # We still create the test_pg_mount and output mountpoints there just so that we don't clash with them.
     conn = make_conn(SNAPPER_HOST, PG_PORT, PG_USER, PG_PWD, PG_DB)
-    for mountpoint, _ in get_current_mountpoints_hashes(conn):
+    for mountpoint in TEST_MOUNTPOINTS:
         unmount(conn, mountpoint)
     cleanup_objects(conn)
     conn.commit()
     _mount_postgres(conn, PG_MNT)
+    _mount_mongo(conn, MG_MNT)
     yield conn
-    for mountpoint, _ in get_current_mountpoints_hashes(conn):
+    for mountpoint in TEST_MOUNTPOINTS:
         unmount(conn, mountpoint)
     cleanup_objects(conn)
     conn.commit()
@@ -89,12 +86,12 @@ def snapper_conn():
 def empty_pg_conn():
     # A connection to the pgcache that has nothing mounted on it.
     conn = _conn()
-    for mountpoint, _ in get_current_mountpoints_hashes(conn):
+    for mountpoint in TEST_MOUNTPOINTS:
         unmount(conn, mountpoint)
     cleanup_objects(conn)
     conn.commit()
     yield conn
-    for mountpoint, _ in get_current_mountpoints_hashes(conn):
+    for mountpoint in TEST_MOUNTPOINTS:
         unmount(conn, mountpoint)
     cleanup_objects(conn)
     conn.commit()
