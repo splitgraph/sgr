@@ -5,6 +5,7 @@ from splitgraph.commands import *
 from splitgraph.commands import unmount
 from splitgraph.commands.misc import make_conn, cleanup_objects
 from splitgraph.constants import PG_PORT, PG_USER, PG_PWD, PG_DB
+from splitgraph.meta_handler import get_current_mountpoints_hashes
 
 PG_MNT = 'test_pg_mount'
 MG_MNT = 'test_mg_mount'
@@ -86,12 +87,12 @@ def snapper_conn():
 def empty_pg_conn():
     # A connection to the pgcache that has nothing mounted on it.
     conn = _conn()
-    for mountpoint in TEST_MOUNTPOINTS:
+    for mountpoint, _ in get_current_mountpoints_hashes(conn):
         unmount(conn, mountpoint)
     cleanup_objects(conn)
     conn.commit()
     yield conn
-    for mountpoint in TEST_MOUNTPOINTS:
+    for mountpoint, _ in get_current_mountpoints_hashes(conn):
         unmount(conn, mountpoint)
     cleanup_objects(conn)
     conn.commit()
