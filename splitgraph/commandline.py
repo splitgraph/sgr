@@ -9,6 +9,7 @@ from psycopg2 import ProgrammingError
 
 from splitgraph.commands import mount, unmount, commit, checkout, diff, get_log, init, get_parent_children, pull, clone, \
     push, import_tables
+from splitgraph.commands.misc import cleanup_objects
 from splitgraph.constants import POSTGRES_CONNECTION, SplitGraphException
 from splitgraph.drawing import render_tree
 from splitgraph.meta_handler import get_snap_parent, get_canonical_snap_id, get_all_tables, \
@@ -291,13 +292,13 @@ def push_c(mountpoint, remote, remote_mountpoint, upload_handler, upload_handler
     if not remote_mountpoint:
         # Get actual connection string and remote mountpoint
         remote, remote_mountpoint = get_remote_for(conn, mountpoint, remote)
-    push(conn, remote, remote_mountpoint, mountpoint, handler=upload_handler, handler_options=upload_handler_options)
+    push(conn, remote, remote_mountpoint, mountpoint, handler=upload_handler, handler_options=json.loads(upload_handler_options))
     conn.commit()
 
 
 @click.command(name='tag')
 @click.argument('mountpoint')
-@click.argument('image', required=False)
+@click.option('-i', '--image')
 @click.argument('tag', required=False)
 @click.option('-f', '--force', required=False, is_flag=True)
 def tag_c(mountpoint, image, tag, force):
@@ -312,13 +313,16 @@ def tag_c(mountpoint, image, tag, force):
             for img, tags in tag_dict.items():
                 print("%s: %s" % (img[:12], ', '.join(tags)))
         else:
-            print(', '.join(tag_dict[image]))
+            print(', '.join(tag_dict[get_canonical_snap_id(conn, mountpoint, image)]))
         return
 
     if tag == 'HEAD':
         raise SplitGraphException("HEAD is a reserved tag!")
 
-    image = get_canonical_snap_id(conn, mountpoint, image)
+    if image is None:
+        image = get_current_head(conn, mountpoint)
+    else:
+        image = get_canonical_snap_id(conn, mountpoint, image)
     set_tag(conn, mountpoint, image, tag, force)
     print("Tagged %s:%s with %s." % (mountpoint, image, tag))
     conn.commit()
@@ -343,6 +347,14 @@ def import_c(mountpoint, table, target_mountpoint, target_table, image):
     conn.commit()
 
 
+@click.command(name='cleanup')
+def cleanup_c():
+    conn = _conn()
+    cleanup_objects(conn)
+    conn.commit()
+    conn.close()
+
+
 cli.add_command(status_c)
 cli.add_command(log_c)
 cli.add_command(mount_c)
@@ -359,3 +371,4 @@ cli.add_command(pull_c)
 cli.add_command(push_c)
 cli.add_command(tag_c)
 cli.add_command(import_c)
+cli.add_command(cleanup_c)
