@@ -77,7 +77,8 @@ def _table_dump_generator(conn, schema, table):
         q = '(' + ','.join('%s' for _ in row) + ')'
         yield cur.mogrify(SQL("INSERT INTO {} VALUES " + q).format(Identifier(table)), row).decode('utf-8')
         for row in cur:
-            yield cur.mogrify(', ' + q + '\n', row).decode('utf-8')
+            yield cur.mogrify(',' + q, row).decode('utf-8')
+        yield ';\n'
 
 
 def _http_upload_objects(conn, objects_to_push, http_params):
