@@ -53,7 +53,9 @@ def diff(conn, mountpoint, table_name, snap_1, snap_2, aggregate=False):
                 if not aggregate:
                     cur.execute(SQL("""SELECT * FROM {}.{}""").format(
                         Identifier(SPLITGRAPH_META_SCHEMA), Identifier(diff_id)))
-                    for row in cur:
+                    # There's only one action applied to a tuple in a single diff, so the ordering doesn't matter.
+                    image_diff = sorted(cur.fetchall())
+                    for row in image_diff:
                         pk = row[:-2]
                         action = row[-2]
                         action_data = json.loads(row[-1]) if row[-1] else None

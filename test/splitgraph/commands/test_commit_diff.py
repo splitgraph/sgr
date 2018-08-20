@@ -38,12 +38,12 @@ def test_commit_diff(include_snap, sg_pg_conn):
 
     change = diff(sg_pg_conn, PG_MNT, 'fruits', snap_1=head, snap_2=new_head)
     # pk (no PK here so the whole row) -- 0 for INS -- extra non-PK cols
-    assert change == [((3, 'mayonnaise'), 0, {"c": [], "v": []}),
-                      # 1, apple deleted
-                      ((1, 'apple'), 1, None),
-                      # 2, orange deleted and 2, guitar added (PK (whole tuple) changed)
-                      ((2, 'orange'), 1, None),
-                      ((2, 'guitar'), 0, {'c': [], 'v': []})]
+    assert change == [  # 1, apple deleted
+        ((1, 'apple'), 1, None),
+        # 2, orange deleted and 2, guitar added (PK (whole tuple) changed)
+        ((2, 'guitar'), 0, {'c': [], 'v': []}),
+        ((2, 'orange'), 1, None),
+        ((3, 'mayonnaise'), 0, {"c": [], "v": []})]
     assert diff(sg_pg_conn, PG_MNT, 'vegetables', snap_1=head, snap_2=new_head) == []
 
 
@@ -77,10 +77,10 @@ def test_multiple_mountpoint_commit_diff(include_snap, sg_pg_mg_conn):
     new_head = commit(sg_pg_mg_conn, PG_MNT, include_snap=include_snap)
 
     change = diff(sg_pg_mg_conn, PG_MNT, 'fruits', snap_1=head, snap_2=new_head)
-    assert change == [((3, 'mayonnaise'), 0, {'c': [], 'v': []}),
-                      ((1, 'apple'), 1, None),
+    assert change == [((1, 'apple'), 1, None),
+                      ((2, 'guitar'), 0, {'c': [], 'v': []}),
                       ((2, 'orange'), 1, None),
-                      ((2, 'guitar'), 0, {'c': [], 'v': []})]
+                      ((3, 'mayonnaise'), 0, {'c': [], 'v': []})]
 
     # PG has no pending changes, Mongo does
     assert get_current_head(sg_pg_mg_conn, MG_MNT) == mongo_head
@@ -151,9 +151,10 @@ def test_diff_across_far_commits(include_snap, sg_pg_conn):
     change = diff(sg_pg_conn, PG_MNT, 'fruits', head, new_head)
     assert change == [((3, 'mayonnaise'), 0, {'c': [], 'v': []}),
                       ((1, 'apple'), 1, None),
-                      ((2, 'orange'), 1, None),  # The update is turned into an insert+delete
-                      # since the PK has changed.
-                      ((2, 'guitar'), 0, {'c': [], 'v': []})]
+                      # The update is turned into an insert+delete since the PK has changed.
+                      # Diff sorts it so that the insert comes first, but we'll be applying all deletes first anyway.
+                      ((2, 'guitar'), 0, {'c': [], 'v': []}),
+                      ((2, 'orange'), 1, None)]
     change_agg = diff(sg_pg_conn, PG_MNT, 'fruits', head, new_head, aggregate=True)
     assert change_agg == (2, 2, 0)
 
