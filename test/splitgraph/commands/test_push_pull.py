@@ -7,19 +7,17 @@ from splitgraph.commands.misc import cleanup_objects
 from splitgraph.constants import PG_USER, PG_PWD, PG_PORT, PG_DB
 from splitgraph.meta_handler import get_current_head, get_all_snap_parents, get_downloaded_objects, \
     get_existing_objects, get_external_object_locations
-from test.splitgraph.conftest import PG_MNT, SNAPPER_HOST
+from test.splitgraph.conftest import PG_MNT, SNAPPER_HOST, SNAPPER_CONN_STRING
 
 
 @pytest.mark.parametrize("download_all", [True, False])
 def test_pull(sg_pg_conn, snapper_conn, download_all):
     # Pull the schema from the remote
     # Here, it's the pg on cachedb that connects to the snapper, so we can use the actual hostname
-    # (as opposed to the one exposed to us).
-    # However, the clone procedure also uses that connection string to talk to
-    # the remote.
-    # Referring to the snapper by IP seems to be the only way that works on both boxes but is dirty.
-    clone(sg_pg_conn, '%s:%s@%s:%s/%s' % (PG_USER, PG_PWD, SNAPPER_HOST, PG_PORT, PG_DB),
-          PG_MNT, PG_MNT + '_pull', download_all=download_all, remote_conn=snapper_conn)
+    # (as opposed to the one exposed to us). However, the clone procedure also uses that connection string to talk to
+    # the remote. Hence, there's an /etc/hosts indirection on the host mapping the snapper to localhost.
+    clone(sg_pg_conn, SNAPPER_CONN_STRING, PG_MNT, PG_MNT + '_pull', download_all=download_all,
+          remote_conn=snapper_conn)
     checkout(sg_pg_conn, PG_MNT + '_pull', get_current_head(snapper_conn, PG_MNT))
 
     # Do something to fruits on the remote
@@ -55,8 +53,7 @@ def test_pull(sg_pg_conn, snapper_conn, download_all):
 
 
 def test_pulls_with_lazy_object_downloads(empty_pg_conn, snapper_conn):
-    clone(empty_pg_conn, '%s:%s@%s:%s/%s' % (PG_USER, PG_PWD, SNAPPER_HOST, PG_PORT, PG_DB),
-          PG_MNT, PG_MNT + '_pull', download_all=False)
+    clone(empty_pg_conn, SNAPPER_CONN_STRING, PG_MNT, PG_MNT + '_pull', download_all=False)
     # Make sure we haven't downloaded anything until checkout
     assert not get_downloaded_objects(empty_pg_conn)
 
@@ -94,9 +91,8 @@ def test_pulls_with_lazy_object_downloads(empty_pg_conn, snapper_conn):
 
 
 def test_push(empty_pg_conn, snapper_conn):
-    # First, clone from ourselves again like in the previous test.
-    clone(empty_pg_conn, '%s:%s@%s:%s/%s' % (PG_USER, PG_PWD, SNAPPER_HOST, PG_PORT, PG_DB),
-          PG_MNT, PG_MNT + '_pull')
+    # Clone from the snapper like in the previous test.
+    clone(empty_pg_conn, SNAPPER_CONN_STRING, PG_MNT, PG_MNT + '_pull')
     checkout(empty_pg_conn, PG_MNT + '_pull', get_current_head(snapper_conn, PG_MNT))
 
     # Then, change our copy and commit.
@@ -105,8 +101,7 @@ def test_push(empty_pg_conn, snapper_conn):
     head_1 = commit(empty_pg_conn, PG_MNT + '_pull')
 
     # Now, push to remote.
-    push(empty_pg_conn, '%s:%s@%s:%s/%s' % (PG_USER, PG_PWD, SNAPPER_HOST, PG_PORT, PG_DB),
-         PG_MNT, PG_MNT + '_pull')
+    push(empty_pg_conn, SNAPPER_CONN_STRING, PG_MNT, PG_MNT + '_pull')
 
     # See if the original mountpoint got updated.
     checkout(snapper_conn, PG_MNT, head_1)
@@ -119,8 +114,7 @@ def test_http_push_pull(empty_pg_conn, snapper_conn):
     # Test pushing/pulling when the objects are uploaded to a remote storage instead of to the actual remote DB.
     # "Uploading" to a file for now because I can't seem to get uploading on an HTTP fixture working.
 
-    remote_conn_string = '%s:%s@%s:%s/%s' % (PG_USER, PG_PWD, SNAPPER_HOST, PG_PORT, PG_DB)
-    clone(empty_pg_conn, remote_conn_string, PG_MNT, PG_MNT + '_pull', download_all=False)
+    clone(empty_pg_conn, SNAPPER_CONN_STRING, PG_MNT, PG_MNT + '_pull', download_all=False)
     # Add a couple of commits, this time on the cloned copy.
     head = get_current_head(snapper_conn, PG_MNT)
     checkout(empty_pg_conn, PG_MNT + '_pull', head)
@@ -134,7 +128,7 @@ def test_http_push_pull(empty_pg_conn, snapper_conn):
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # Push to origin, but this time upload the actual objects instead.
-        push(empty_pg_conn, remote_conn_string, PG_MNT, PG_MNT + '_pull', handler='FILE',
+        push(empty_pg_conn, SNAPPER_CONN_STRING, PG_MNT, PG_MNT + '_pull', handler='FILE',
              handler_options={'path': tmpdir})
 
         # Check that the actual objects don't exist on the remote but are instead registered with an URL.
@@ -155,7 +149,7 @@ def test_http_push_pull(empty_pg_conn, snapper_conn):
         cleanup_objects(empty_pg_conn)
         assert len(get_downloaded_objects(empty_pg_conn)) == 0
 
-        clone(empty_pg_conn, remote_conn_string, PG_MNT, PG_MNT + '_pull', download_all=False)
+        clone(empty_pg_conn, SNAPPER_CONN_STRING, PG_MNT, PG_MNT + '_pull', download_all=False)
 
         # Proceed as per the lazy checkout tests to make sure we don't download more than required.
         # Make sure we still haven't downloaded anything.

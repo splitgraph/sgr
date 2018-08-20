@@ -3,7 +3,7 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, _log
 from splitgraph.meta_handler import get_table, get_snap_parent, register_mountpoint, \
-    unregister_mountpoint, get_object_meta, META_TABLES
+    unregister_mountpoint, get_object_meta, META_TABLES, ensure_metadata_schema
 from splitgraph.pg_replication import discard_pending_changes, suspend_replication, record_pending_changes
 from splitgraph.pg_utils import pg_table_exists
 
@@ -117,6 +117,7 @@ def mount_mongo(conn, server, port, username, password, mountpoint, extra_option
 def unmount(conn, mountpoint):
     # Make sure to discard changes to this mountpoint if they exist, otherwise they might
     # be applied/recorded if a new mountpoint with the same name appears.
+    ensure_metadata_schema(conn)
     record_pending_changes(conn)
     discard_pending_changes(conn, mountpoint)
 

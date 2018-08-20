@@ -261,16 +261,16 @@ def set_tag(conn, mountpoint, snap_id, tag, force=False):
     with conn.cursor() as cur:
         cur.execute(SQL("SELECT 1 FROM {}.snap_tags WHERE mountpoint = %s AND tag = %s").format(
             Identifier(SPLITGRAPH_META_SCHEMA)),
-                    (mountpoint, tag))
+            (mountpoint, tag))
         if cur.fetchone() is None:
             cur.execute(SQL("INSERT INTO {}.snap_tags (snap_id, mountpoint, tag) VALUES (%s, %s, %s)").format(
                 Identifier(SPLITGRAPH_META_SCHEMA)),
-                        (snap_id, mountpoint, tag))
+                (snap_id, mountpoint, tag))
         else:
             if force:
                 cur.execute(SQL("UPDATE {}.snap_tags SET snap_id = %s WHERE mountpoint = %s AND tag = %s").format(
                     Identifier(SPLITGRAPH_META_SCHEMA)),
-                            (snap_id, mountpoint, tag))
+                    (snap_id, mountpoint, tag))
             else:
                 raise SplitGraphException("Tag %s already exists in mountpoint %s!" % (tag, mountpoint))
 
@@ -309,7 +309,7 @@ def get_snap_parent(conn, mountpoint, snap_id):
     with conn.cursor() as cur:
         cur.execute(SQL("SELECT parent_id FROM {}.snap_tree WHERE mountpoint = %s AND snap_id = %s").format(
             Identifier(SPLITGRAPH_META_SCHEMA)),
-                    (mountpoint, snap_id))
+            (mountpoint, snap_id))
         return cur.fetchone()[0]
 
 
@@ -334,7 +334,7 @@ def get_canonical_snap_id(conn, mountpoint, short_snap):
     with conn.cursor() as cur:
         cur.execute(SQL("""SELECT snap_id FROM {}.snap_tree WHERE mountpoint = %s AND snap_id LIKE %s""").format(
             Identifier(SPLITGRAPH_META_SCHEMA)),
-                    (mountpoint, short_snap.lower() + '%'))
+            (mountpoint, short_snap.lower() + '%'))
         candidates = [c[0] for c in cur.fetchall()]
 
     if len(candidates) == 0:

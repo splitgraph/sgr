@@ -1,12 +1,11 @@
 from splitgraph.commands import checkout, commit, init, import_tables
 from splitgraph.commands.importing import import_table_from_unmounted
 from splitgraph.commands.misc import cleanup_objects
-from splitgraph.constants import PG_PWD, PG_USER, PG_DB, PG_PORT
 from splitgraph.meta_handler import get_current_head, get_snap_parent, get_downloaded_objects, \
     get_existing_objects, get_all_tables, get_current_mountpoints_hashes
 from splitgraph.pg_replication import dump_pending_changes
 from splitgraph.pg_utils import pg_table_exists
-from test.splitgraph.conftest import PG_MNT, SNAPPER_HOST
+from test.splitgraph.conftest import PG_MNT, SNAPPER_CONN_STRING
 
 
 def test_import_basic(sg_pg_conn):
@@ -100,13 +99,12 @@ def test_import_from_remote(empty_pg_conn, snapper_conn):
         cur.execute("""INSERT INTO output.test VALUES (2, 'test2')""")
     head = commit(empty_pg_conn, 'output')
 
-    remote_conn_string = '%s:%s@%s:%s/%s' % (PG_USER, PG_PWD, SNAPPER_HOST, PG_PORT, PG_DB)
     assert len(get_downloaded_objects(empty_pg_conn)) == 2
     assert len(get_existing_objects(empty_pg_conn)) == 2
     assert get_all_tables(empty_pg_conn, 'output') == ['test']
 
     # Import the 'fruits' table from the origin.
-    import_table_from_unmounted(empty_pg_conn, remote_conn_string, PG_MNT, ['fruits'], get_current_head(snapper_conn, PG_MNT),
+    import_table_from_unmounted(empty_pg_conn, SNAPPER_CONN_STRING, PG_MNT, ['fruits'], get_current_head(snapper_conn, PG_MNT),
                                 'output', target_tables=[])
     new_head = get_current_head(empty_pg_conn, 'output')
 
@@ -135,10 +133,8 @@ def test_import_from_remote(empty_pg_conn, snapper_conn):
 def test_import_and_update(empty_pg_conn, snapper_conn):
     init(empty_pg_conn, 'output')
     head = get_current_head(empty_pg_conn, 'output')
-
-    remote_conn_string = '%s:%s@%s:%s/%s' % (PG_USER, PG_PWD, SNAPPER_HOST, PG_PORT, PG_DB)
     # Import the 'fruits' table from the origin.
-    import_table_from_unmounted(empty_pg_conn, remote_conn_string, PG_MNT, ['fruits'], get_current_head(snapper_conn, PG_MNT),
+    import_table_from_unmounted(empty_pg_conn, SNAPPER_CONN_STRING, PG_MNT, ['fruits'], get_current_head(snapper_conn, PG_MNT),
                                 'output', target_tables=[])
     new_head = get_current_head(empty_pg_conn, 'output')
 

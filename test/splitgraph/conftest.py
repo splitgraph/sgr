@@ -57,7 +57,8 @@ def sg_pg_mg_conn():
     conn.close()
 
 
-SNAPPER_HOST = '172.18.0.7'  # temporary until I figure out how to docker (oh god it also changes between executions)
+SNAPPER_HOST = 'snapper'  # On the host, mapped by /etc/hosts into localhost; on the pgcache box works as intended.
+SNAPPER_PORT = 5431
 
 
 @pytest.fixture
@@ -66,7 +67,7 @@ def snapper_conn():
     # snapper (currently the Dockerfile just creates 2 mountpoints: mongoorigin and pgorigin, snapshotting the two
     # origin databases)
     # We still create the test_pg_mount and output mountpoints there just so that we don't clash with them.
-    conn = make_conn(SNAPPER_HOST, PG_PORT, PG_USER, PG_PWD, PG_DB)
+    conn = make_conn(SNAPPER_HOST, SNAPPER_PORT, PG_USER, PG_PWD, PG_DB)
     for mountpoint in TEST_MOUNTPOINTS:
         unmount(conn, mountpoint)
     cleanup_objects(conn)
@@ -95,3 +96,6 @@ def empty_pg_conn():
     cleanup_objects(conn)
     conn.commit()
     conn.close()
+
+
+SNAPPER_CONN_STRING = '%s:%s@%s:%s/%s' % (PG_USER, PG_PWD, SNAPPER_HOST, SNAPPER_PORT, PG_DB)

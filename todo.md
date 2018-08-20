@@ -4,7 +4,6 @@
     (multiple ways to materialize a given image).
     * Advanced hash calculation for IMPORT/SQL layers (only invalidate if the actual table objects the IMPORT
       / SQL layer relies on has changed.
-  * Fix integration tests locating the snapper host.
   * Schema changes: come up with a better method of keeping track than producing a snap
   * Object location indirection: actually test HTTP or replace with a different upload mechanism.
   * Stretch goal: gathering object locations and metadata on pull to see which materialization strategy (copy an image,

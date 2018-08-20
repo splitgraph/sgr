@@ -50,9 +50,9 @@ def preprocess(commands, params={}):
         # possibly-escape character) and the substitution begins with a number (like an IP address),
         # then it gets treated as a match group (say, \11) which fails silently and adds weird gibberish
         # to the result.
-        commands = re.sub(r'([^\\])\$' + re.escape(k), r'\g<1>' + v, commands, flags=re.MULTILINE)
+        commands = re.sub(r'([^\\])\${' + re.escape(k) + '}', r'\g<1>' + str(v), commands, flags=re.MULTILINE)
     # Search for any unreplaced $-parameters
-    unreplaced = set(re.findall(r'[^\\](\$\S+)', commands, flags=re.MULTILINE))
+    unreplaced = set(re.findall(r'[^\\](\${\S+})', commands, flags=re.MULTILINE))
     if unreplaced:
         raise SplitGraphException("Unknown values for parameters " + ', '.join(unreplaced) + '!')
     # Finally, replace the escaped $
