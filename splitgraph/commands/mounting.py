@@ -4,7 +4,6 @@ from splitgraph.commands.importing import import_tables
 from splitgraph.commands.misc import mount_postgres, mount_mongo, unmount
 from splitgraph.constants import _log, SplitGraphException
 from splitgraph.meta_handler import ensure_metadata_schema, get_all_foreign_tables
-from splitgraph.pg_replication import start_replication
 
 
 def mount(conn, server, port, username, password, mountpoint, mount_handler, extra_options):
@@ -29,7 +28,8 @@ def mount(conn, server, port, username, password, mountpoint, mount_handler, ext
             cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(mountpoint)))
         # Import the foreign tables (creates a new commit with a random ID and copies the tables over into
         # the final mountpoint).
-        new_head = import_tables(conn, staging_mountpoint, get_all_foreign_tables(conn, staging_mountpoint), mountpoint, [],
+        new_head = import_tables(conn, staging_mountpoint, get_all_foreign_tables(conn, staging_mountpoint), mountpoint,
+                                 [],
                                  foreign_tables=True, do_checkout=True)
     finally:
         unmount(conn, staging_mountpoint)

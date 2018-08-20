@@ -40,13 +40,15 @@ def dump_table_creation(conn, schema, tables, created_schema=None):
                 target = SQL("{}.{}").format(Identifier(created_schema), Identifier(t))
             else:
                 target = Identifier(t)
-            query = SQL("CREATE TABLE {} (").format(target) +\
-                SQL(','.join("{} %s " % ctype + ("NOT NULL" if not cnull else "") for _, ctype, cnull in cols)).format(
-                    *(Identifier(cname) for cname, _, _ in cols))
+            query = SQL("CREATE TABLE {} (").format(target) + \
+                    SQL(','.join(
+                        "{} %s " % ctype + ("NOT NULL" if not cnull else "") for _, ctype, cnull in cols)).format(
+                        *(Identifier(cname) for cname, _, _ in cols))
 
             pks = _get_primary_keys(conn, schema, t)
             if pks:
-                query += SQL(", PRIMARY KEY (") + SQL(',').join(SQL("{}").format(Identifier(c)) for c, _ in pks) + SQL("))")
+                query += SQL(", PRIMARY KEY (") + SQL(',').join(SQL("{}").format(Identifier(c)) for c, _ in pks) + SQL(
+                    "))")
             else:
                 query += SQL(")")
 

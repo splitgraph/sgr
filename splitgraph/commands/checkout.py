@@ -1,20 +1,22 @@
 from contextlib import contextmanager
+
 from psycopg2.sql import Identifier, SQL
 
-from splitgraph.pg_utils import copy_table, _get_primary_keys
 from splitgraph.commands.object_loading import download_objects
 from splitgraph.constants import _log, get_random_object_id, SplitGraphException, SPLITGRAPH_META_SCHEMA
-from splitgraph.meta_handler import get_table_with_format, get_remote_for, ensure_metadata_schema, \
-    get_canonical_snap_id, get_tables_at, get_all_tables, set_head, register_table, deregister_table_object, \
+from splitgraph.meta_handler import get_table_with_format, get_remote_for, get_canonical_snap_id, get_tables_at, \
+    get_all_tables, set_head, register_table, deregister_table_object, \
     get_external_object_locations, get_tagged_id
-from splitgraph.pg_replication import apply_record_to_staging, record_pending_changes, stop_replication, \
-    discard_pending_changes, start_replication, get_closest_parent_snap_object
+from splitgraph.pg_replication import apply_record_to_staging, discard_pending_changes, get_closest_parent_snap_object, \
+    suspend_replication
+from splitgraph.pg_utils import copy_table, _get_primary_keys
 
 
 def materialize_table(conn, mountpoint, schema_snap, table, destination, destination_mountpoint=None):
     destination_mountpoint = destination_mountpoint or mountpoint
     with conn.cursor() as cur:
-        cur.execute(SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(destination_mountpoint), Identifier(destination)))
+        cur.execute(
+            SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(destination_mountpoint), Identifier(destination)))
         # Get the closest snapshot from the table's parents
         # and then apply all deltas consecutively from it.
         object_id, to_apply = get_closest_parent_snap_object(conn, mountpoint, table, schema_snap)
@@ -28,11 +30,13 @@ def materialize_table(conn, mountpoint, schema_snap, table, destination, destina
                              object_locations=object_locations)
 
         # Copy the given snap id over to "staging"
-        copy_table(conn, SPLITGRAPH_META_SCHEMA, object_id, destination_mountpoint, destination, with_pk_constraints=True)
+        copy_table(conn, SPLITGRAPH_META_SCHEMA, object_id, destination_mountpoint, destination,
+                   with_pk_constraints=True)
         # This is to work around logical replication not reflecting deletions from non-PKd tables. However, this makes
         # it emit all column values in the row, not just the updated ones.
         if not _get_primary_keys(conn, destination_mountpoint, destination):
-            _log("WARN: table %s has no primary key. This means that changes will have to be recorded as whole-row." % destination)
+            _log(
+                "WARN: table %s has no primary key. This means that changes will have to be recorded as whole-row." % destination)
             cur.execute(SQL("ALTER TABLE {}.{} REPLICA IDENTITY FULL").format(Identifier(destination_mountpoint),
                                                                               Identifier(destination)))
 
@@ -42,16 +46,10 @@ def materialize_table(conn, mountpoint, schema_snap, table, destination, destina
             apply_record_to_staging(conn, pack_object, destination_mountpoint, destination)
 
 
+@suspend_replication
 def checkout(conn, mountpoint, schema_snap=None, tag=None, tables=[]):
-    ensure_metadata_schema(conn)
-    record_pending_changes(conn)
-    stop_replication(conn)
     discard_pending_changes(conn, mountpoint)
-
     # Detect the actual schema snap we want to check out
-    # TODO this is strange: if the stop_replication/discard_pending_changes lines are moved down
-    # below this block (after getting the actual ID to check out), then the very last sgfile test
-    # (test_sgfile_rebase) fails with an entry being duplicated in a table. Just that test. Wut?
     if schema_snap:
         # get_canonical_snap_id called twice if the commandline entry point already called it. How to fix?
         schema_snap = get_canonical_snap_id(conn, mountpoint, schema_snap)
@@ -72,10 +70,7 @@ def checkout(conn, mountpoint, schema_snap=None, tag=None, tables=[]):
     # Repoint the current HEAD for this mountpoint to the new snap ID
     set_head(conn, mountpoint, schema_snap)
 
-    # Start recording changes to the mountpoint.
     conn.commit()
-    start_replication(conn)
-
     _log("Checked out %s:%s." % (mountpoint, schema_snap[:12]))
 
 
@@ -92,7 +87,8 @@ def materialized_table(conn, mountpoint, table_name, snap):
                 register_table(conn, mountpoint, table_name, snap, new_id)
                 yield new_id
                 # Maybe some cache management/expiry strategies here
-                cur.execute(SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)))
+                cur.execute(
+                    SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)))
                 deregister_table_object(conn, mountpoint, object_id)
             else:
                 yield object_id

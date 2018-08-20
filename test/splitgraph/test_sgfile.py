@@ -1,37 +1,91 @@
 import os
 import tempfile
 
-from splitgraph.commands import checkout, commit, push, unmount, clone
+import pytest
+
+from splitgraph.commands import checkout, commit, push, unmount, clone, get_log
 from splitgraph.commands.misc import cleanup_objects
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA, PG_USER, PG_PWD, PG_PORT, PG_DB
+from splitgraph.constants import SPLITGRAPH_META_SCHEMA, PG_USER, PG_PWD, PG_PORT, PG_DB, SplitGraphException
 from splitgraph.meta_handler import get_current_head, get_snap_parent, set_tag, get_current_mountpoints_hashes, \
     get_downloaded_objects, get_existing_objects, get_external_object_locations
 from splitgraph.pg_utils import pg_table_exists
-from splitgraph.sgfile import execute_commands
+from splitgraph.sgfile import execute_commands, parse_commands, preprocess
 from test.splitgraph.conftest import SNAPPER_HOST
 
 SGFILE_ROOT = os.path.join(os.path.dirname(__file__), '../resources/')
 
+
 def _load_sgfile(name):
     with open(SGFILE_ROOT + name, 'r') as f:
         return f.read()
-#
-# PK_SCHEMA_CHANGE_COMMANDS = BASE_COMMANDS[:3] + [
-#     ('SQL', ("""CREATE TABLE output.spirit_fruits AS SELECT test_pg_mount.fruits.fruit_id,
-#                                                    test_mg_mount.stuff.name,
-#                                                    test_pg_mount.fruits.name AS spirit_fruit
-#                 FROM test_pg_mount.fruits JOIN test_mg_mount.stuff
-#                 ON test_pg_mount.fruits.fruit_id = test_mg_mount.stuff.duration""",)),
-#     # Add a new column, set it to be the old id + 10, make it PK and then delete the old ID.
-#     # Currently this produces a snap for every action (since it's a schema change).
-#     ('SQL', ("""ALTER TABLE output.spirit_fruits ADD COLUMN new_id integer""",)),
-#     ('SQL', ("""UPDATE output.spirit_fruits SET new_id = fruit_id + 10""",)),
-#     ('SQL', ("""ALTER TABLE output.spirit_fruits ADD PRIMARY KEY (new_id)""",)),
-#     ('SQL', ("""ALTER TABLE output.spirit_fruits DROP COLUMN fruit_id""",)),
-# ]
+
+
+PARSING_TEST_SGFILE = _load_sgfile('import_remote_multiple.sgfile')
+
+
+def test_sgfile_preprocessor_missing_params():
+    with pytest.raises(SplitGraphException) as e:
+        preprocess(PARSING_TEST_SGFILE, params={'SNAPPER': '127.0.0.1'})
+    assert '$TAG' in str(e.value)
+    assert '$SNAPPER' not in str(e.value)
+    assert '$ESCAPED' not in str(e.value)
+
+
+def test_sgfile_preprocessor_escaping():
+    commands = preprocess(PARSING_TEST_SGFILE, params={'SNAPPER': '127.0.0.1', 'TAG': 'tag-v1-whatever'})
+    print(commands)
+    assert '$TAG' not in commands
+    assert '$SNAPPER' not in commands
+    assert '\\$ESCAPED' not in commands
+    assert '$ESCAPED' in commands
+    assert '127.0.0.1' in commands
+    assert 'tag-v1-whatever' in commands
 
 
 def test_basic_sgfile(sg_pg_mg_conn):
+    execute_commands(sg_pg_mg_conn, _load_sgfile('create_table.sgfile'))
+    log = list(reversed(get_log(sg_pg_mg_conn, 'output', get_current_head(sg_pg_mg_conn, 'output'))))
+
+    checkout(sg_pg_mg_conn, 'output', log[1])
+    with sg_pg_mg_conn.cursor() as cur:
+        cur.execute("""SELECT * FROM output.my_fruits""")
+        assert cur.fetchall() == []
+
+    checkout(sg_pg_mg_conn, 'output', log[2])
+    with sg_pg_mg_conn.cursor() as cur:
+        cur.execute("""SELECT * FROM output.my_fruits""")
+        assert cur.fetchall() == [(1, 'pineapple')]
+
+    checkout(sg_pg_mg_conn, 'output', log[3])
+    with sg_pg_mg_conn.cursor() as cur:
+        cur.execute("""SELECT * FROM output.my_fruits""")
+        assert cur.fetchall() == [(1, 'pineapple'), (2, 'banana')]
+
+
+def test_update_without_import_sgfile(sg_pg_mg_conn):
+    # Test that correct commits are produced by executing an sgfile (both against newly created and already
+    # existing tables on an existing mountpoint)
+    execute_commands(sg_pg_mg_conn, _load_sgfile('update_without_import.sgfile'))
+    log = get_log(sg_pg_mg_conn, 'test_pg_mount', get_current_head(sg_pg_mg_conn, 'test_pg_mount'))
+
+    # insert into my_fruits
+    checkout(sg_pg_mg_conn, 'test_pg_mount', log[1])
+    with sg_pg_mg_conn.cursor() as cur:
+        cur.execute("""SELECT * FROM test_pg_mount.my_fruits""")
+        assert cur.fetchall() == [(1, 'pineapple')]
+        cur.execute("""SELECT * FROM test_pg_mount.fruits""")
+        assert cur.fetchall() == [(1, 'apple'), (2, 'orange')]
+
+    # insert into fruits
+    checkout(sg_pg_mg_conn, 'test_pg_mount', log[0])
+    with sg_pg_mg_conn.cursor() as cur:
+        cur.execute("""SELECT * FROM test_pg_mount.my_fruits""")
+        assert cur.fetchall() == [(1, 'pineapple')]
+        cur.execute("""SELECT * FROM test_pg_mount.fruits""")
+        assert cur.fetchall() == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]
+
+
+def test_local_import_sgfile(sg_pg_mg_conn):
     execute_commands(sg_pg_mg_conn, _load_sgfile('import_local.sgfile'))
     head = get_current_head(sg_pg_mg_conn, 'output')
     old_head = get_snap_parent(sg_pg_mg_conn, 'output', head)
@@ -124,7 +178,7 @@ def test_import_updating_sgfile_with_uploading(empty_pg_conn, snapper_conn):
         clone(empty_pg_conn, conn_string, 'output', 'output', download_all=False)
 
         assert not get_downloaded_objects(empty_pg_conn)
-        existing_objects = get_existing_objects(empty_pg_conn)
+        existing_objects = list(get_existing_objects(empty_pg_conn))
         assert len(existing_objects) == 4  # Two original tables + two updates
         # Only 2 objects are stored externally (the other two have been on the remote the whole time)
         assert len(get_external_object_locations(empty_pg_conn, existing_objects)) == 2
@@ -135,7 +189,7 @@ def test_import_updating_sgfile_with_uploading(empty_pg_conn, snapper_conn):
             assert cur.fetchall() == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]
 
             cur.execute("""SELECT vegetable_id, name FROM output.vegetables""")
-            assert cur.fetchall() == [(1, 'cucumber'), (2, 'carrot')]
+            assert sorted(cur.fetchall()) == [(1, 'cucumber'), (2, 'carrot')]
 
 
 def test_sgfile_end_to_end_with_uploading(sg_pg_mg_conn, snapper_conn):
@@ -172,24 +226,24 @@ def test_sgfile_end_to_end_with_uploading(sg_pg_mg_conn, snapper_conn):
             assert cur.fetchall() == [(2, 'James', 'orange', 'carrot')]
 
 
-# def test_sgfile_schema_changes(sg_pg_mg_conn):
-#     execute_commands(sg_pg_mg_conn, PK_SCHEMA_CHANGE_COMMANDS)
-#     old_output_head = get_current_head(sg_pg_mg_conn, 'output')
-#
-#     # Then, alter the dataset and rerun the sgfile.
-#     with sg_pg_mg_conn.cursor() as cur:
-#         cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (12, 'mayonnaise')""")
-#     new_input_head = commit(sg_pg_mg_conn, PG_MNT)
-#     execute_commands(sg_pg_mg_conn, PK_SCHEMA_CHANGE_COMMANDS)
-#     new_output_head = get_current_head(sg_pg_mg_conn, 'output')
-#
-#     checkout(sg_pg_mg_conn, 'output', old_output_head)
-#     with sg_pg_mg_conn.cursor() as cur:
-#         cur.execute("""SELECT * FROM output.spirit_fruits""")
-#         assert cur.fetchall() == [('James', 'orange', 12)]
-#
-#     checkout(sg_pg_mg_conn, 'output', new_output_head)
-#     with sg_pg_mg_conn.cursor() as cur:
-#         cur.execute("""SELECT * FROM output.spirit_fruits""")
-#         # Mayonnaise joined with Alex, ID 12 + 10 = 22.
-#         assert cur.fetchall() == [('James', 'orange', 12), ('Alex', 'mayonnaise', 22)]
+def test_sgfile_schema_changes(sg_pg_mg_conn):
+    execute_commands(sg_pg_mg_conn, _load_sgfile('schema_changes.sgfile'))
+    old_output_head = get_current_head(sg_pg_mg_conn, 'output')
+
+    # Then, alter the dataset and rerun the sgfile.
+    with sg_pg_mg_conn.cursor() as cur:
+        cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (12, 'mayonnaise')""")
+    commit(sg_pg_mg_conn, 'test_pg_mount')
+    execute_commands(sg_pg_mg_conn, _load_sgfile('schema_changes.sgfile'))
+    new_output_head = get_current_head(sg_pg_mg_conn, 'output')
+
+    checkout(sg_pg_mg_conn, 'output', old_output_head)
+    with sg_pg_mg_conn.cursor() as cur:
+        cur.execute("""SELECT * FROM output.spirit_fruits""")
+        assert cur.fetchall() == [('James', 'orange', 12)]
+
+    checkout(sg_pg_mg_conn, 'output', new_output_head)
+    with sg_pg_mg_conn.cursor() as cur:
+        cur.execute("""SELECT * FROM output.spirit_fruits""")
+        # Mayonnaise joined with Alex, ID 12 + 10 = 22.
+        assert cur.fetchall() == [('James', 'orange', 12), ('Alex', 'mayonnaise', 22)]

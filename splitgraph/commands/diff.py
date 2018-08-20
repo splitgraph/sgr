@@ -1,11 +1,12 @@
-from psycopg2.sql import SQL, Identifier
 import json
+
+from psycopg2.sql import SQL, Identifier
 
 from splitgraph.commands.checkout import materialized_table
 from splitgraph.commands.misc import _table_exists_at, _find_path
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler import get_current_head, get_table, get_table_with_format
-from splitgraph.pg_replication import dump_pending_changes, record_pending_changes
+from splitgraph.pg_replication import dump_pending_changes
 
 
 def _changes_to_aggregation(query_result, initial=None):
@@ -16,7 +17,6 @@ def _changes_to_aggregation(query_result, initial=None):
 
 
 def diff(conn, mountpoint, table_name, snap_1, snap_2, aggregate=False):
-    record_pending_changes(conn)
     # Returns a list of changes done to a table if it exists in both images (if aggregate=False).
     # If aggregate=True, returns a triple showing the number of (added, removed, updated) rows.
     # Otherwise, returns True if the table was added and False if it was removed.
@@ -59,7 +59,8 @@ def diff(conn, mountpoint, table_name, snap_1, snap_2, aggregate=False):
                         action_data = json.loads(row[-1]) if row[-1] else None
                         result.append((pk, action, action_data))
                 else:
-                    cur.execute(SQL("""SELECT sg_action_kind, count(sg_action_kind) FROM {}.{} GROUP BY sg_action_kind""").format(
+                    cur.execute(SQL(
+                        """SELECT sg_action_kind, count(sg_action_kind) FROM {}.{} GROUP BY sg_action_kind""").format(
                         Identifier(SPLITGRAPH_META_SCHEMA), Identifier(diff_id)))
                     result = _changes_to_aggregation(cur.fetchall(), result)
 

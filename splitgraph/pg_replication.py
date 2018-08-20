@@ -4,7 +4,7 @@ from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.constants import get_random_object_id, SPLITGRAPH_META_SCHEMA, SplitGraphException
-from splitgraph.meta_handler import get_all_tables, get_table, register_table
+from splitgraph.meta_handler import get_all_tables, get_table, register_table, ensure_metadata_schema
 from splitgraph.meta_handler import get_current_mountpoints_hashes, get_table_with_format, register_object, \
     get_object_parents, get_object_format
 from splitgraph.pg_utils import copy_table, _get_primary_keys, _get_column_names, _get_column_names_types, \
@@ -12,6 +12,23 @@ from splitgraph.pg_utils import copy_table, _get_primary_keys, _get_column_names
 
 LOGICAL_DECODER = 'wal2json'
 REPLICATION_SLOT = 'sg_replication'
+
+
+def suspend_replication(func):
+    # A decorator to be put around various SG commands that performs general admin and replication management
+    # (makes sure the metadata schema exists and suspends replication so that commits/system bookkeeping doesn't get
+    # reflected in the consumed logical replication stream).
+    def wrapped(*args, **kwargs):
+        conn = args[0]
+        try:
+            ensure_metadata_schema(conn)
+            record_pending_changes(conn)
+            stop_replication(conn)
+            func(*args, **kwargs)
+        finally:
+            start_replication(conn)
+
+    return wrapped
 
 
 def _replication_slot_exists(conn):
@@ -189,8 +206,10 @@ def _split_ri_cols(kind, change, ri_cols):
             non_ri_cols.append(cc)
             non_ri_vals.append(cv)
 
+    if len(ri_vals) != len(ri_cols):
+        raise SplitGraphException(
+            "Not all replica identity columns (of %r) were extracted from change %r!" % (ri_cols, change))
     return ri_vals, non_ri_cols, non_ri_vals
-    # todo raise here if not all ri_vals extracted
 
 
 def _recalculate_disjoint_ri_cols(ri_cols, ri_vals, non_ri_cols, non_ri_vals):
@@ -298,7 +317,8 @@ def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False
                         if changeset:
                             changeset = [tuple(list(pk) + [kind_data[0], json.dumps(kind_data[1])]) for pk, kind_data in
                                          changeset.items()]
-                            query = SQL("INSERT INTO {}.{} ").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)) + \
+                            query = SQL("INSERT INTO {}.{} ").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                     Identifier(object_id)) + \
                                     SQL("VALUES (" + ','.join('%s' for _ in range(len(changeset[0]))) + ")")
                             execute_batch(cur, query, changeset, page_size=1000)
 
@@ -309,7 +329,8 @@ def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False
                             # Changes in the WAL cancelled each other out. Delete the diff table and just point
                             # the commit to the old table objects.
                             cur.execute(
-                                SQL("DROP TABLE {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)))
+                                SQL("DROP TABLE {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                               Identifier(object_id)))
                             for prev_object_id, _ in table_info:
                                 register_table(conn, mountpoint, table, new_image, prev_object_id)
                 else:
@@ -353,12 +374,15 @@ def apply_record_to_staging(conn, object_id, mountpoint, destination):
     with conn.cursor() as cur:
         # Apply deletes
         cur.execute(SQL("DELETE FROM {0}.{2} USING {1}.{3} WHERE {1}.{3}.sg_action_kind = 1").format(
-            Identifier(mountpoint), Identifier(SPLITGRAPH_META_SCHEMA), Identifier(destination), Identifier(object_id)) + \
-                    SQL(" AND ") + _generate_where_clause(mountpoint, destination, ri_cols, object_id, SPLITGRAPH_META_SCHEMA))
+            Identifier(mountpoint), Identifier(SPLITGRAPH_META_SCHEMA), Identifier(destination),
+            Identifier(object_id)) + \
+                    SQL(" AND ") + _generate_where_clause(mountpoint, destination, ri_cols, object_id,
+                                                          SPLITGRAPH_META_SCHEMA))
 
         # Generate queries for inserts
         cur.execute(
-            SQL("SELECT * FROM {}.{} WHERE sg_action_kind = 0").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)))
+            SQL("SELECT * FROM {}.{} WHERE sg_action_kind = 0").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                       Identifier(object_id)))
         for row in cur:
             # Not sure if we can rely on ordering here.
             # Also for the future: if all column names are the same, we can do a big INSERT.
@@ -373,7 +397,8 @@ def apply_record_to_staging(conn, object_id, mountpoint, destination):
             queries.append(query)
         # ...and updates
         cur.execute(
-            SQL("SELECT * FROM {}.{} WHERE sg_action_kind = 2").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)))
+            SQL("SELECT * FROM {}.{} WHERE sg_action_kind = 2").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                       Identifier(object_id)))
         for row in cur:
             action_data = json.loads(row[-1])
             ri_vals = list(row[:-2])
@@ -394,7 +419,9 @@ def table_schema_changed(conn, mountpoint, table_name, image_1, image_2=None):
     # image_2 = None here means the current staging area.
     if image_2 is not None:
         snap_2 = get_closest_parent_snap_object(conn, mountpoint, table_name, image_2)[0]
-        return _get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_1) != _get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_2)
+        return _get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_1) != _get_full_table_schema(conn,
+                                                                                                      SPLITGRAPH_META_SCHEMA,
+                                                                                                      snap_2)
     else:
         return _get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_1) != _get_full_table_schema(conn,
                                                                                                       mountpoint,
@@ -416,6 +443,6 @@ def get_closest_parent_snap_object(conn, mountpoint, table, image):
             if get_object_format(conn, object_id) == 'SNAP':
                 return object_id, path
             else:
-                break # Found 1 diff, will be added to the path at the next iteration.
+                break  # Found 1 diff, will be added to the path at the next iteration.
     # We didn't find an actual snapshot for this table -- either it doesn't exist in this
     # version or something went wrong. Should we raise here?

@@ -5,7 +5,6 @@ from splitgraph.commands import *
 from splitgraph.commands import unmount
 from splitgraph.commands.misc import make_conn, cleanup_objects
 from splitgraph.constants import PG_PORT, PG_USER, PG_PWD, PG_DB
-from splitgraph.meta_handler import get_current_mountpoints_hashes
 
 PG_MNT = 'test_pg_mount'
 MG_MNT = 'test_mg_mount'

@@ -5,9 +5,9 @@ import requests
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.commands.misc import mount_postgres, make_conn, unmount
-from splitgraph.pg_utils import copy_table, dump_table_creation, _get_primary_keys
 from splitgraph.constants import _log, SplitGraphException, SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler import get_downloaded_objects, get_existing_objects
+from splitgraph.pg_utils import copy_table, dump_table_creation, _get_primary_keys
 
 
 def download_objects(conn, remote_conn_string, objects_to_fetch, object_locations, remote_conn=None):

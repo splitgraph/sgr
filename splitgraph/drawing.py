@@ -41,7 +41,7 @@ def render_node(node_id, children, node_cols, max_col, mark_node='', node_width=
         if not child_found:
             # Otherwise, pad it with dashes.
             if not children_cols or col >= max(children_cols):
-                line += '│' + " " * (col_width-1)
+                line += '│' + " " * (col_width - 1)
             else:
                 line += "─" * col_width
     print(line)
@@ -68,4 +68,5 @@ def render_tree(conn, mountpoint):
     node_cols = calc_columns(children, base_node)
 
     for snap_id, _, _, _ in reversed(snap_parents):
-        render_node(snap_id, children, node_cols, mark_node=' H' if snap_id == head else '', max_col=max(node_cols.values()))
+        render_node(snap_id, children, node_cols, mark_node=' H' if snap_id == head else '',
+                    max_col=max(node_cols.values()))

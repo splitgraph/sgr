@@ -1,4 +1,5 @@
 import re
+
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.commands.misc import make_conn

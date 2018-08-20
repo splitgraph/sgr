@@ -14,7 +14,7 @@ from splitgraph.drawing import render_tree
 from splitgraph.meta_handler import get_snap_parent, get_canonical_snap_id, get_all_tables, \
     get_current_mountpoints_hashes, get_all_hashes_tags, set_tag, get_current_head, get_remote_for, get_tagged_id, \
     get_all_snap_info, get_tables_at, get_table
-from splitgraph.sgfile import parse_commands, execute_commands
+from splitgraph.sgfile import execute_commands
 
 
 def _conn():
@@ -86,7 +86,7 @@ def diff_c(verbose, table_name, mountpoint, snap_1, snap_2):
         snap_2 = get_snap_parent(conn, mountpoint, snap_1)
         if snap_2 is None:
             print("%s has no parent to compare to!" % snap_1)
-        snap_1, snap_2 = snap_2, snap_1 # snap_1 has to come first
+        snap_1, snap_2 = snap_2, snap_1  # snap_1 has to come first
     else:
         snap_1 = get_canonical_snap_id(conn, mountpoint, snap_1)
         snap_2 = get_canonical_snap_id(conn, mountpoint, snap_2)
@@ -140,9 +140,10 @@ def diff_c(verbose, table_name, mountpoint, snap_1, snap_2):
 @click.option('--connection', '-c', help='Connection string in the form username:password@server:port')
 @click.option('--handler', '-h', help='Mount handler, one of mongo_fdw or postgres_fdw.')
 @click.option('--handler-options', '-o', help='JSON-encoded list of handler options. For postgres_fdw, use '
-                                        '{"dbname": <dbname>, "remote_schema": <remote schema>, '
-                                        '"tables": <tables to mount (optional)>}. For mongo_fdw, use '
-                                        '{"table_name": {"db": <dbname>, "coll": <collection>, "schema": {"col1": "type1"...}}}', default='{}')
+                                              '{"dbname": <dbname>, "remote_schema": <remote schema>, '
+                                              '"tables": <tables to mount (optional)>}. For mongo_fdw, use '
+                                              '{"table_name": {"db": <dbname>, "coll": <collection>, "schema": {"col1": "type1"...}}}',
+              default='{}')
 def mount_c(mountpoint, connection, handler, handler_options):
     # Parse the connection string in some horrible way
     match = re.match('(\S+):(\S+)@(.+):(\d+)', connection)
@@ -223,11 +224,12 @@ def show_c(mountpoint, commit_hash, verbose):
 
 @click.command(name='file')
 @click.argument('sgfile', type=click.File('r'))
-def file_c(sgfile):
-    lines = sgfile.readlines()
+@click.option('-a', '--sgfile-args', multiple=True, type=(str, str))
+def file_c(sgfile, sgfile_args):
     conn = _conn()
-    commands = parse_commands(lines)
-    execute_commands(conn, commands)
+    sgfile_args = {k: v for k, v in sgfile_args}
+    print("Executing SGFile %s with arguments %r" % (sgfile.name, sgfile_args))
+    execute_commands(conn, sgfile.read(), sgfile_args)
     conn.commit()
 
 
@@ -268,7 +270,7 @@ def pull_c(mountpoint, remote, download_all):
 
 
 @click.command(name='clone')
-@click.argument('remote') # username:password@server:port/dbname
+@click.argument('remote')  # username:password@server:port/dbname
 @click.argument('remote_mountpoint')
 @click.argument('local_mountpoint')
 @click.option('-d', '--download-all', help='Download all objects immediately instead on checkout.')
@@ -280,7 +282,7 @@ def clone_c(remote, remote_mountpoint, local_mountpoint, download_all):
 
 @click.command(name='push')
 @click.argument('mountpoint')
-@click.argument('remote', default='origin')   # name or (if mountpoint set) connection string
+@click.argument('remote', default='origin')  # name or (if mountpoint set) connection string
 @click.argument('remote_mountpoint', required=False)
 @click.option('-h', '--upload-handler', help='Where to upload objects (FILE or DB for the remote itself)', default='DB')
 @click.option('-o', '--upload-handler-options', help="""For FILE, e.g. '{"path": /mnt/sgobjects}'""")
@@ -335,7 +337,8 @@ def import_c(mountpoint, table, target_mountpoint, target_table, image):
     else:
         image = get_canonical_snap_id(conn, mountpoint, image)
 
-    import_tables(conn, mountpoint, [table], target_mountpoint, [target_table] if target_table else [], image_hash=image)
+    import_tables(conn, mountpoint, [table], target_mountpoint, [target_table] if target_table else [],
+                  image_hash=image)
     print("%s:%s has been imported from %s:%s (%s)" % (target_mountpoint, target_table, mountpoint, table, image[:12]))
     conn.commit()
 

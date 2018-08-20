@@ -2,20 +2,19 @@ from random import getrandbits
 
 from psycopg2.sql import Identifier, SQL
 
-from splitgraph.commands.push_pull import clone
-from splitgraph.commands.misc import unmount
 from splitgraph.commands.checkout import materialize_table
+from splitgraph.commands.misc import unmount
+from splitgraph.commands.push_pull import clone
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, get_random_object_id, _log
 from splitgraph.meta_handler import get_current_head, add_new_snap_id, register_table, set_head, get_table, \
     get_tables_at, get_all_tables, register_object, get_all_foreign_tables
-from splitgraph.pg_replication import record_pending_changes, stop_replication, start_replication
+from splitgraph.pg_replication import suspend_replication
 from splitgraph.pg_utils import copy_table, _get_primary_keys
 
 
+@suspend_replication
 def import_tables(conn, mountpoint, tables, target_mountpoint, target_tables, image_hash=None, foreign_tables=False,
                   do_checkout=True, target_hash=None):
-    record_pending_changes(conn)
-    stop_replication(conn)
     # Creates a new commit in target_mountpoint with one or more tables linked to already-existing tables.
     # After this operation, the HEAD of the target mountpoint moves to the new commit and the new tables
     # are materialized.
@@ -30,7 +29,7 @@ def import_tables(conn, mountpoint, tables, target_mountpoint, target_tables, im
         image_hash = image_hash or get_current_head(conn, mountpoint)
 
     if not tables:
-        tables = get_tables_at(conn, mountpoint, image_hash) if not foreign_tables\
+        tables = get_tables_at(conn, mountpoint, image_hash) if not foreign_tables \
             else get_all_foreign_tables(conn, mountpoint)
     if not target_tables:
         target_tables = tables
@@ -81,7 +80,6 @@ def import_tables(conn, mountpoint, tables, target_mountpoint, target_tables, im
 
     set_head(conn, target_mountpoint, target_hash)
     conn.commit()
-    start_replication(conn)
     return target_hash
 
 

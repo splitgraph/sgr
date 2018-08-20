@@ -1,3 +1,4 @@
+import re
 from hashlib import sha256
 
 from parsimonious.grammar import Grammar
@@ -5,7 +6,7 @@ from parsimonious.grammar import Grammar
 from splitgraph.commands import init, commit, checkout, import_tables, clone, unmount
 from splitgraph.constants import SplitGraphException
 from splitgraph.meta_handler import get_current_head, get_canonical_snap_id, get_tagged_id
-from splitgraph.pg_replication import _replication_slot_exists, dump_pending_changes
+from splitgraph.pg_replication import _replication_slot_exists
 
 SGFILE_GRAMMAR = Grammar(r"""
     commands = space command space (newline space command space)*
@@ -41,12 +42,26 @@ def _combine_hashes(hashes):
     return sha256(''.join(hashes).encode('ascii')).hexdigest()
 
 
-def parse_commands(commands, params={}):
-    # Unpacks the parse tree into a list of command nodes.
+def preprocess(commands, params={}):
     # Also replaces all $PARAM in the sgfile text with the params in the dictionary.
     commands = commands.replace("\\\n", "")
     for k, v in params.items():
-        commands = commands.replace("$" + k, v)
+        # Regex fun: if the replacement is '\1' + substitution (so that we put back the previously-consumed
+        # possibly-escape character) and the substitution begins with a number (like an IP address),
+        # then it gets treated as a match group (say, \11) which fails silently and adds weird gibberish
+        # to the result.
+        commands = re.sub(r'([^\\])\$' + re.escape(k), r'\g<1>' + v, commands, flags=re.MULTILINE)
+    # Search for any unreplaced $-parameters
+    unreplaced = set(re.findall(r'[^\\](\$\S+)', commands, flags=re.MULTILINE))
+    if unreplaced:
+        raise SplitGraphException("Unknown values for parameters " + ', '.join(unreplaced) + '!')
+    # Finally, replace the escaped $
+    return commands.replace('\\$', '$')
+
+
+def parse_commands(commands, params={}):
+    # Unpacks the parse tree into a list of command nodes.
+    commands = preprocess(commands, params)
     parse_tree = SGFILE_GRAMMAR.parse(commands)
     return [n.children[0] for n in _extract_nodes(parse_tree, ['command']) if n.children[0].expr_name != 'comment']
 
@@ -99,7 +114,7 @@ def execute_commands(conn, commands, params={}):
 
     node_list = parse_commands(commands, params=params)
     for i, node in enumerate(node_list):
-        print("-> %d/%d %s" % (i + 1, len(node_list), node.text))
+        print("\n-> %d/%d %s" % (i + 1, len(node_list), node.text))
         if node.expr_name == 'output':
             interesting_nodes = _extract_nodes(node, ['identifier', 'image_hash'])
 
@@ -179,6 +194,8 @@ def execute_commands(conn, commands, params={}):
             def _calc():
                 print("Executing SQL...")
                 with conn.cursor() as cur:
+                    # Make sure we'll record the actual change.
+                    assert _replication_slot_exists(conn)
                     # Execute all queries against the output by default.
                     cur.execute("SET search_path TO %s", (output,))
                     cur.execute(sql_command)

@@ -1,0 +1,6 @@
+OUTPUT test_pg_mount
+
+SQL CREATE TABLE my_fruits (id integer, name varchar)
+
+SQL INSERT INTO my_fruits VALUES (1, 'pineapple')
+SQL INSERT INTO fruits VALUES (3, 'mayonnaise')

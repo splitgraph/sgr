@@ -1,12 +1,10 @@
 import psycopg2
-from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, _log
-from splitgraph.meta_handler import get_table, get_snap_parent, ensure_metadata_schema, register_mountpoint, \
+from splitgraph.meta_handler import get_table, get_snap_parent, register_mountpoint, \
     unregister_mountpoint, get_object_meta, META_TABLES
-from splitgraph.pg_replication import record_pending_changes, discard_pending_changes, stop_replication, \
-    start_replication
+from splitgraph.pg_replication import discard_pending_changes, suspend_replication, record_pending_changes
 from splitgraph.pg_utils import pg_table_exists
 
 
@@ -25,7 +23,7 @@ def get_parent_children(conn, mountpoint, snap_id):
     with conn.cursor() as cur:
         cur.execute(SQL("""SELECT snap_id FROM {}.snap_tree WHERE mountpoint = %s AND parent_id = %s""").format(
             Identifier(SPLITGRAPH_META_SCHEMA)),
-                    (mountpoint, snap_id))
+            (mountpoint, snap_id))
         children = [c[0] for c in cur.fetchall()]
     return parent, children
 
@@ -48,17 +46,14 @@ def _find_path(conn, mountpoint, snap_1, snap_2):
             return path
 
 
+@suspend_replication
 def init(conn, mountpoint):
-    record_pending_changes(conn)
-    stop_replication(conn)
-    ensure_metadata_schema(conn)
     # Initializes an empty repo with an initial commit (hash 0000...)
     with conn.cursor() as cur:
         cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(mountpoint)))
     snap_id = '0' * 64
     register_mountpoint(conn, mountpoint, snap_id, tables=[], table_object_ids=[])
     conn.commit()
-    start_replication(conn)
 
 
 def mount_postgres(conn, server, port, username, password, mountpoint, extra_options):
@@ -120,8 +115,7 @@ def mount_mongo(conn, server, port, username, password, mountpoint, extra_option
 
 
 def unmount(conn, mountpoint):
-    ensure_metadata_schema(conn)
-    # Make sure to consume and discard changes to this mountpoint if they exist, otherwise they might
+    # Make sure to discard changes to this mountpoint if they exist, otherwise they might
     # be applied/recorded if a new mountpoint with the same name appears.
     record_pending_changes(conn)
     discard_pending_changes(conn, mountpoint)
