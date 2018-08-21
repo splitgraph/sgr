@@ -25,8 +25,8 @@ Here's an overview:
     HEAD is a special tag: it points out to the currently checked-out local image.
   * `object_locations`: If a given object is not stored in the remote, this table specifies where to find it (protocol
     and location). More on this later.
-  * `pending_changes`: Changes to tracked mountpoints and tables are consumed from the WAL and stored here during
-    certain SG commands.
+  * `pending_changes`: Changes to tracked mountpoints and tables are consumed from the WAL and stored here when certain
+    SG commands are run.
 
 ## Operations and implementation overview
 
@@ -37,10 +37,10 @@ Here's an overview:
 Creates a new commit hash (currently picked at random, unless explicitly specified by the SGFile executor or the user)
 and records all changes to the tables in a given mountpoint:
 
-  * If the table's schema (or primary keys) have changed (or the table has been created), copies the table into a
+  * If the table's schema (or primary keys) has changed (or the table has been created), copies the table into a
     new SNAP object (currently, the IDs of all objects are also picked at random). This kind of sidesteps the problem
     of storing column names and types in a DIFF object.
-  * If the table hasn't changed at all, links the table (by adding entries to `splitgraph_meta.tables` to all objects
+  * If the table hasn't changed at all, links the table (by adding entries to `splitgraph_meta.tables`) to all objects
     pointed to by the parent of this table.
   * Otherwise, goes through the `pending_changes` to conflate the changes and create a new DIFF object.
     * Replica identity is PG terminology for something identifying the exact tuple for the purposes of logical
@@ -139,7 +139,7 @@ physical objects.
     `splitgraph_meta`. See `splitgraph.commands.push_pull._get_required_snaps_objects`.
   * As part of that, it also crawls the remote `object_tree` to make sure it actually has the list of all required
     objects and their dependencies.
-  * Optionally, it downloads the new objects and stores them in `splitgraph_meta`: otherwise,
+  * Optionally, it downloads the new objects and stores them in `splitgraph_meta`.
   * Finally, it writes the new metadata locally. Currently, it doesn't check for clashes or conflicts, instead
     letting the constraints on `splitgraph_meta` handle that. In particular:
     * Existing commits/objects aren't gathered at all by `_get_required_snaps_objects`, hence the remote can't rewrite 
@@ -188,8 +188,8 @@ There are currently only 3 commands supported by the interpreter:
 
 ### `OUTPUT mountpoint [hash]`
 
-Sets the PG default schema search path to a given mountpoint, checks out the hash new hash calculations / image commits
-off of it.
+Sets the PG default schema search path to a given mountpoint, checks out the hash in order to base new hash calculations
+ / image commits off of it.
 
 As discussed, we'll probably be replacing it with an explicit parameter passed to the executor. However, this
 currently allows for pseudo-multistage builds by changing the OUTPUT midway through the file and doing an `IMPORT`
