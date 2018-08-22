@@ -9,6 +9,7 @@ install_requirements = [
 
 tests_requirements = [
     'pytest',
+    'pyfakefs'
 ]
 
 setup_requirements = [
