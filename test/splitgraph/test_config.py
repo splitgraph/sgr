@@ -83,6 +83,9 @@ def test_arg_flag_supercedes_config_file(fs):
         'SG_NAMESPACE=namespace-from-config-file'
     ])
 
+    config = create_config_dict()
+    assert config['SG_NAMESPACE'] == 'namespace-from-config-file'
+
     with patch.object(sys, 'argv', mock_argv):
         config = create_config_dict()
         assert config['SG_NAMESPACE'] == 'namespace-from-arg'
@@ -102,3 +105,20 @@ def test_arg_flag_supercedes_env_var(fs):
             config = create_config_dict()
 
             assert config['SG_NAMESPACE'] == 'namespace-from-arg'
+
+def test_env_var_supercedes_config_file(fs):
+    _write_config_file(fs, [
+        '[defaults]',
+        'SG_NAMESPACE=namespace-from-config-file'
+    ])
+
+    config = create_config_dict()
+    assert config['SG_NAMESPACE'] == 'namespace-from-config-file'
+
+    mock_environ = {
+        'SG_NAMESPACE': 'pass-env-namespace-test'
+    }
+
+    with patch.object(os, 'environ', mock_environ):
+        config = create_config_dict()
+        assert config['SG_NAMESPACE'] == 'pass-env-namespace-test'

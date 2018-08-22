@@ -11,8 +11,8 @@ import os
     Priority (highest to lowest):
 
         1. Command line argument values
-        2. Config file values in [defaults] section
-        3. Environment variable values
+        2. Environment variable values
+        3. Config file values in [defaults] section
         4. DEFAULTS (see keys.py)
 
 '''
