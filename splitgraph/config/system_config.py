@@ -43,7 +43,7 @@ def SG_CONFIG_FILE(default_return=None):
 
     matching_files = []
     for _dir in valid_dirs:
-        matching_files = matching_files + [os.path.join(_dir, name) for name in valid_names if file_exists(_dir, name)]
+        matching_files.extend([os.path.join(_dir, name) for name in valid_names if file_exists(_dir, name)])
 
     num_matching_files = len(matching_files)
 

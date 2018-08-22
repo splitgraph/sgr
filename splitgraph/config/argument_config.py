@@ -12,7 +12,7 @@ def get_arg_tuples():
 
     SYS_ARGS = sys.argv[1:]
 
-    return [(arg, SYS_ARGS[i + 1]) for (i, arg) in enumerate(SYS_ARGS) if arg in ARG_KEYS and i < len(SYS_ARGS) + 1]
+    return [(a1, a2) for a1, a2 in zip(SYS_ARGS, SYS_ARGS[1:]) if a1 in ARG_KEYS]
 
 def get_argument_config_value(key, default_return=None):
 
