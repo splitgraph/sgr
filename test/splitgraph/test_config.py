@@ -26,6 +26,11 @@ def _write_config_file(fs, lines):
     fake_cwd = os.getcwd()
     fake_config_file = os.path.join(fake_cwd, '.sgconfig')
 
+    # If running tests in docker, SG_CONFIG_FILE is already set and would
+    # override our fake_config_file. In that case explicitly set SG_CONFIG_FILE
+    if os.environ.get('SG_CONFIG_FILE', None) is not None:
+        os.environ['SG_CONFIG_FILE'] = fake_config_file
+
     with open(fake_config_file, 'w') as f:
         for line in lines:
             f.write('%s\n' % line)
@@ -56,7 +61,7 @@ def test_config_file_accumulation(fs):
 
 # Hardcoded default key to check that it's passed hrough
 def test_default_key(fs):
-    assert CONFIG['SG_DRIVER_DB_NAME'] == 'sg-default-ns'
+    assert CONFIG['SG_DRIVER_DB_NAME'] == 'cachedb'
 
 def test_key_set_in_arg_flag():
     # --namespace mapped to SG_NAMESPACE in config/keys.py
