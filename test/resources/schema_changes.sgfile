@@ -1,5 +1,3 @@
-OUTPUT output 00000
-
 FROM test_pg_mount IMPORT fruits
 FROM test_mg_mount IMPORT stuff
 

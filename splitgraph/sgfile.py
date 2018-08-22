@@ -7,15 +7,16 @@ from parsimonious.grammar import Grammar
 
 from splitgraph.commands import init, commit, checkout, import_tables, clone, unmount
 from splitgraph.commands.mounting import get_mount_handler
+from splitgraph.commands.push_pull import local_clone
 from splitgraph.constants import SplitGraphException
-from splitgraph.meta_handler import get_current_head, get_canonical_snap_id, get_tagged_id
+from splitgraph.meta_handler import get_current_head, get_tagged_id, mountpoint_exists
 from splitgraph.pg_replication import _replication_slot_exists
 
 SGFILE_GRAMMAR = Grammar(r"""
     commands = space command space (newline space command space)*
-    command = comment / output / import / sql
+    command = comment / import / from / sql 
     comment = space "#" non_newline
-    output = "OUTPUT" space mountpoint space image_hash?
+    from = "FROM" space ("EMPTY" / repo_source) (space "AS" space mountpoint)?
     import = "FROM" space source space "IMPORT" space tables
     sql = "SQL" space sql_statement
     
@@ -28,6 +29,10 @@ SGFILE_GRAMMAR = Grammar(r"""
     mount_source = "MOUNT" space handler space no_db_conn_string space handler_options
     
     image_hash = ~"[0-9a-f]*"i
+    
+    # TBH these ones that map to "identifier" aren't realy necessary since parsimonious calls those nodes
+    # "identifier" anyway. This is so that the grammar is slightly more readable. 
+    
     handler = identifier
     mountpoint = identifier
     table_name = identifier
@@ -96,6 +101,13 @@ def _extract_nodes(node, types):
     return result
 
 
+def _get_first_or_none(node_list, node_type):
+    # Gets the first node of type node_type from node_list, returns None if it doesn't exist.
+    for n in node_list:
+        if n.expr_name == node_type:
+            return n
+
+
 def _parse_table_alias(table_node):
     # Extracts the table name (or a query forming the table) and its alias from the parse tree
     table_name_alias = _extract_nodes(table_node, ['identifier', 'non_curly_brace'])
@@ -127,54 +139,73 @@ def _checkout_or_calculate_layer(conn, output, image_hash, calc_func):
         calc_func()
 
 
-def execute_commands(conn, commands, params={}):
-    output = None
+def execute_commands(conn, commands, params={}, output=None, output_base='0'*32):
+    if output and mountpoint_exists(conn, output) and output_base is not None:
+        checkout(conn, output, output_base)
+    # Use a random target schema if unspecified.
+    output = output or "output_%0.2x" % getrandbits(16)
+    # Don't initialize the output until a command writing to it asks us to
+    # (otherwise we might have a FROM ... AS output_name change it).
+
+    def _initialize_output(output):
+        if not mountpoint_exists(conn, output):
+            init(conn, output)
 
     node_list = parse_commands(commands, params=params)
     for i, node in enumerate(node_list):
         print("\n-> %d/%d %s" % (i + 1, len(node_list), node.text))
-        if node.expr_name == 'output':
-            interesting_nodes = _extract_nodes(node, ['identifier', 'image_hash'])
+        if node.expr_name == 'from':
+            interesting_nodes = _extract_nodes(node, ['repo_source', 'identifier'])
+            repo_source = _get_first_or_none(interesting_nodes, 'repo_source')
+            output_node = _get_first_or_none(interesting_nodes, 'identifier')
 
-            output = interesting_nodes[0].match.group(0)
-            print("Committing results to mountpoint %s" % output)
-            try:
-                get_current_head(conn, output)
-            except SplitGraphException:
-                # Output doesn't exist, create it.
-                init(conn, output)
+            if output_node:
+                # AS (output) detected, change the current output mountpoint to it.
+                output = output_node.match.group(0)
+                print("Changed output mountpoint to %s" % output)
 
-            # By default, use the current output HEAD. Check if it's overridden.
-            if len(interesting_nodes) > 1:
-                output_head = get_canonical_snap_id(conn, output, interesting_nodes[1].match.group(0))
-                checkout(conn, output, output_head)
+                # NB this destroys all data in the case where we ran some commands in the sgfile and then
+                # did FROM (...) without AS mountpoint_name
+                if mountpoint_exists(conn, output):
+                    print("Clearing all output from %s" % output)
+                    unmount(conn, output)
+                    init(conn, output)
+
+            _initialize_output(output)
+
+            if repo_source:
+                conn_string, mountpoint, tag = _parse_repo_source(repo_source)
+                if conn_string:
+                    # At some point here we'll also actually search for the image hash locally and not clone it?
+                    clone(conn, conn_string, mountpoint, output, download_all=False)
+                    checkout(conn, output, tag=tag)
+                else:
+                    # Get the target snap ID from the source repo: otherwise, if the tag is, say, 'latest' and
+                    # the output has just had the base commit (000...) created in it, that commit will be the latest.
+                    to_checkout = get_tagged_id(conn, mountpoint, tag)
+                    print("Cloning %s into %s..." % (mountpoint, output))
+                    local_clone(conn, mountpoint, output)
+                    checkout(conn, output, to_checkout)
+            else:
+                # FROM EMPTY AS mountpoint -- initializes an empty mountpoint (say to create a table or import
+                # the results of a previous stage in a multistage build.
+                # In this case, if AS mountpoint has been specified, it's already been initialized. If not, this command
+                # literally does nothing
+                if not output_node:
+                    raise SplitGraphException("FROM EMPTY without AS (mountpoint) does nothing!")
+
         elif node.expr_name == 'import':
             interesting_nodes = _extract_nodes(node, ['repo_source', 'mount_source', 'tables'])
             table_names, table_aliases, table_queries = _extract_all_table_aliases(interesting_nodes[-1])
-
+            _initialize_output(output)
             if interesting_nodes[0].expr_name == 'repo_source':
                 # Import from a repository (local or remote)
-                repo_nodes = _extract_nodes(interesting_nodes[0], ['conn_string', 'identifier'])
-                if repo_nodes[0].expr_name == 'conn_string':
-                    is_remote = True
-                    conn_string = repo_nodes[0].match.group(0)
-                    mountpoint = repo_nodes[1].match.group(0)
-                else:
-                    is_remote = False
-                    mountpoint = repo_nodes[0].match.group(0)
-
-                # See if we got given a tag
-                if len(repo_nodes) == 3:
-                    tag = repo_nodes[2].match.group(0)
-                else:
-                    tag = 'latest'
+                conn_string, mountpoint, tag = _parse_repo_source(interesting_nodes[0])
 
                 # Don't use the actual routine here as we want more control: clone the remote repo in order to turn
                 # the tag into an actual hash
                 tmp_mountpoint = mountpoint + '_clone_tmp'
                 try:
-                    if is_remote:
-                        clone(conn, conn_string, mountpoint, tmp_mountpoint, download_all=False)
                     # Calculate the hash of the new layer by combining the hash of the previous layer,
                     # the hash of the source and all the table names/aliases getting imported.
                     # This can be made more granular later by using, say, the object IDs of the tables
@@ -183,7 +214,8 @@ def execute_commands(conn, commands, params={}):
                     # If table_names actually contains queries that generate data from tables, we can still use
                     # it for hashing: we assume that the queries are deterministic, so if the query is changed,
                     # the whole layer is invalidated.
-                    if is_remote:
+                    if conn_string:
+                        clone(conn, conn_string, mountpoint, tmp_mountpoint, download_all=False)
                         source_hash = get_tagged_id(conn, tmp_mountpoint, tag)
                     else:
                         source_hash = get_tagged_id(conn, mountpoint, tag)
@@ -197,7 +229,7 @@ def execute_commands(conn, commands, params={}):
                     def _calc():
                         print("Importing tables %r:%s from %s into %s" % (
                             table_names, source_hash[:12], mountpoint, output))
-                        import_tables(conn, tmp_mountpoint if is_remote else mountpoint, table_names, output,
+                        import_tables(conn, tmp_mountpoint if conn_string else mountpoint, table_names, output,
                                       table_aliases,
                                       image_hash=source_hash, target_hash=target_hash, table_queries=table_queries)
 
@@ -233,9 +265,7 @@ def execute_commands(conn, commands, params={}):
                     unmount(conn, tmp_mountpoint)
 
         elif node.expr_name == 'sql':
-            if output is None:
-                raise SplitGraphException(
-                    "Error: no OUTPUT specified. OUTPUT mountpoint is snapshot during file execution.")
+            _initialize_output(output)
             # Calculate the hash of the layer we are trying to create.
             # Since we handle the "input" hashing in the import step, we don't need to care about the sources here.
             # Later on, we could enhance the caching and base the hash of the command on the hashes of objects that
@@ -258,3 +288,19 @@ def execute_commands(conn, commands, params={}):
                 commit(conn, output, target_hash, comment=sql_command)
 
             _checkout_or_calculate_layer(conn, output, target_hash, _calc)
+
+
+def _parse_repo_source(remote_repo_node):
+    repo_nodes = _extract_nodes(remote_repo_node, ['conn_string', 'identifier'])
+    if repo_nodes[0].expr_name == 'conn_string':
+        conn_string = repo_nodes[0].match.group(0)
+        mountpoint = repo_nodes[1].match.group(0)
+    else:
+        conn_string = None
+        mountpoint = repo_nodes[0].match.group(0)
+    # See if we got given a tag
+    if len(repo_nodes) == 3:
+        tag = repo_nodes[2].match.group(0)
+    else:
+        tag = 'latest'
+    return conn_string, mountpoint, tag

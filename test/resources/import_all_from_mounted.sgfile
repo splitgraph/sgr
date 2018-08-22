@@ -1,4 +1,2 @@
-OUTPUT output 00000
-
 FROM MOUNT postgres_fdw originro:originpass@pgorigin:5432 '{"dbname": "origindb", "remote_schema": "public"}'
      IMPORT ALL

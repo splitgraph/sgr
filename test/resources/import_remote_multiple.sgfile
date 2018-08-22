@@ -1,5 +1,3 @@
-OUTPUT output 00000
-
 # The preprocessor replaces $ + {...} with params passed to it from via args or from the commandline (currently
 # everywhere, even in the comments).
 # Escaping $ works too: \${ESCAPED} doesn't get changed.

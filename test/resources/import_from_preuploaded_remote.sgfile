@@ -1,5 +1,4 @@
 # Stage 2 that runs against the output (pre-pushed to the remote) defined in import_remote_multiple.sgfile
-OUTPUT output_stage_2 00000
 
 FROM clientuser:supersecure@${SNAPPER}:${SNAPPER_PORT}/cachedb output:latest IMPORT join_table, my_fruits
 FROM clientuser:supersecure@${SNAPPER}:${SNAPPER_PORT}/cachedb test_mg_mount:latest IMPORT stuff

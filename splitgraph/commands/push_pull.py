@@ -106,8 +106,30 @@ def clone(conn, remote_conn_string, remote_mountpoint, local_mountpoint, downloa
     # Don't check anything out, keep the repo bare.
     set_head(conn, local_mountpoint, None)
 
+    _log("Fetched metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta),
+                                                                                    len(table_meta),
+                                                                                    len([t for t in tags if t != 'HEAD'])))
+
     if get_remote_for(conn, local_mountpoint) is None:
         add_remote(conn, local_mountpoint, remote_conn_string, remote_mountpoint)
+
+
+def local_clone(conn, source, destination):
+    # Clones one local mountpoint into another, copying all of its commit history over.
+    # Doesn't do any checking out or materialization.
+    ensure_metadata_schema(conn)
+
+    snaps_to_fetch, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(conn, conn,
+                                                                                                  destination,
+                                                                                                  source)
+
+    # Map the tables to the actual objects no matter whether or not we're downloading them.
+    register_objects(conn, object_meta)
+    register_object_locations(conn, object_locations)
+    register_tables(conn, destination, table_meta)
+    set_tags(conn, destination, tags, force=False)
+    # Don't check anything out, keep the repo bare.
+    set_head(conn, destination, None)
 
 
 def push(conn, remote_conn_string, remote_mountpoint, local_mountpoint, handler='DB', handler_options={}):
@@ -142,5 +164,10 @@ def push(conn, remote_conn_string, remote_mountpoint, local_mountpoint, handler=
         # Kind of have to commit here in any case?
         remote_conn.commit()
         register_object_locations(conn, new_uploads)
+
+        _log("Uploaded metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta),
+                                                                                         len(table_meta),
+                                                                                         len([t for t in tags if
+                                                                                              t != 'HEAD'])))
     finally:
         remote_conn.close()

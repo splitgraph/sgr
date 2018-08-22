@@ -1,9 +1,4 @@
 # TODO
-  * Mountpoint specification:
-    * Remove OUTPUT completely, output mountpoint specified via commandline
-    * If unspecified, just put into a random one.
-    * FROM mountpoint/repo etc:hash AS output now specifies which mountpoint to pull data from/put into
-    * multistage builds implemented by using several FROM statements.
   * more generally, allow to use tags/hashes interchangeably.
   * Err on checkout if there are pending changes?
   * Somehow (?) record sgfiles/image hashes things were imported from in the snap_tree (?) as well

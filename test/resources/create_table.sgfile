@@ -1,5 +1,3 @@
-OUTPUT output 00000
-
 SQL CREATE TABLE my_fruits (id integer, name varchar)
 
 SQL INSERT INTO my_fruits VALUES (1, 'pineapple')

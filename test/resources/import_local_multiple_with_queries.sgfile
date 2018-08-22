@@ -1,5 +1,3 @@
-OUTPUT output 00000
-
 FROM test_pg_mount IMPORT fruits AS my_fruits, vegetables
 
 SQL DELETE FROM my_fruits WHERE fruit_id = 1

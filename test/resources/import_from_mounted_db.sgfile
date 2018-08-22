@@ -1,5 +1,3 @@
-OUTPUT output 00000
-
 FROM MOUNT postgres_fdw originro:originpass@pgorigin:5432 '{"dbname": "origindb", "remote_schema": "public"}'
      IMPORT {SELECT * FROM fruits WHERE name = 'orange'} AS my_fruits,
             {SELECT * FROM vegetables WHERE name LIKE '%o'} AS o_vegetables,

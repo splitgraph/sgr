@@ -1,5 +1,3 @@
-OUTPUT output 00000
-
 FROM test_pg_mount IMPORT {SELECT * FROM fruits WHERE name = 'orange'} AS my_fruits,
                           {SELECT * FROM vegetables WHERE name LIKE '%o'} AS o_vegetables,
                           vegetables,

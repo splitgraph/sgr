@@ -1,5 +1,2 @@
-# Output to an empty schema that will be created
-OUTPUT output 00000
-
 # We don't allow SOURCE any more -- all tables have to be imported.
 FROM test_pg_mount IMPORT fruits AS my_fruits
