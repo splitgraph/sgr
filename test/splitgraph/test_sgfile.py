@@ -7,7 +7,7 @@ from splitgraph.commands import checkout, commit, push, unmount, clone, get_log
 from splitgraph.commands.misc import cleanup_objects
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, PG_USER, PG_PWD, PG_DB, SplitGraphException
 from splitgraph.meta_handler import get_current_head, get_snap_parent, set_tag, get_current_mountpoints_hashes, \
-    get_downloaded_objects, get_existing_objects, get_external_object_locations
+    get_downloaded_objects, get_existing_objects, get_external_object_locations, get_table_with_format
 from splitgraph.pg_utils import pg_table_exists
 from splitgraph.sgfile import execute_commands, preprocess
 from test.splitgraph.conftest import SNAPPER_HOST, SNAPPER_PORT
@@ -254,3 +254,84 @@ def test_sgfile_schema_changes(sg_pg_mg_conn):
         cur.execute("""SELECT * FROM output.spirit_fruits""")
         # Mayonnaise joined with Alex, ID 12 + 10 = 22.
         assert cur.fetchall() == [('James', 'orange', 12), ('Alex', 'mayonnaise', 22)]
+
+
+def test_import_with_custom_query(sg_pg_mg_conn):
+    # Mostly a lazy way for the test to distinguish between the importer storing the results of a query as a snap
+    # and pointing the commit history to the diff for unchanged objects.
+    with sg_pg_mg_conn.cursor() as cur:
+        cur.execute("INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise')")
+        cur.execute("INSERT INTO test_pg_mount.vegetables VALUES (3, 'oregano')")
+    commit(sg_pg_mg_conn, 'test_pg_mount')
+
+    execute_commands(sg_pg_mg_conn, _load_sgfile('import_with_custom_query.sgfile'))
+    head = get_current_head(sg_pg_mg_conn, 'output')
+    old_head = get_snap_parent(sg_pg_mg_conn, 'output', head)
+
+    # First two tables imported as snaps since they had a custom query, the other two are diffs (basically a commit
+    # pointing to the same object as test_pg_mount has).
+    tables = ['my_fruits', 'o_vegetables', 'vegetables', 'all_fruits']
+    contents = [[(2, 'orange')], [(1, 'potato'), (3, 'oregano')],
+                [(1, 'potato'), (2, 'carrot'), (3, 'oregano')], [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]]
+
+    checkout(sg_pg_mg_conn, 'output', old_head)
+    for t in tables:
+        assert not pg_table_exists(sg_pg_mg_conn, 'output', t)
+
+    checkout(sg_pg_mg_conn, 'output', head)
+    with sg_pg_mg_conn.cursor() as cur:
+        for t, c in zip(tables, contents):
+            cur.execute("""SELECT * FROM output.%s""" % t)
+            assert cur.fetchall() == c
+
+    for t in tables:
+        # Tables with queries stored as snaps, actually imported tables share objects with test_pg_mount.
+        if t in ['my_fruits', 'o_vegetables']:
+            assert get_table_with_format(sg_pg_mg_conn, 'output', t, head, 'SNAP') is not None
+            assert get_table_with_format(sg_pg_mg_conn, 'output', t, head, 'DIFF') is None
+        else:
+            assert get_table_with_format(sg_pg_mg_conn, 'output', t, head, 'SNAP') is None
+            assert get_table_with_format(sg_pg_mg_conn, 'output', t, head, 'DIFF') is not None
+
+
+def test_import_mount(empty_pg_conn):
+    execute_commands(empty_pg_conn, _load_sgfile('import_from_mounted_db.sgfile'))
+
+    head = get_current_head(empty_pg_conn, 'output')
+    old_head = get_snap_parent(empty_pg_conn, 'output', head)
+
+    checkout(empty_pg_conn, 'output', old_head)
+    tables = ['my_fruits', 'o_vegetables', 'vegetables', 'all_fruits']
+    contents = [[(2, 'orange')], [(1, 'potato')], [(1, 'potato'), (2, 'carrot')], [(1, 'apple'), (2, 'orange')]]
+    for t in tables:
+        assert not pg_table_exists(empty_pg_conn, 'output', t)
+
+    checkout(empty_pg_conn, 'output', head)
+    with empty_pg_conn.cursor() as cur:
+        for t, c in zip(tables, contents):
+            cur.execute("""SELECT * FROM output.%s""" % t)
+            assert cur.fetchall() == c
+
+    # All imported tables stored as snapshots
+    for t in tables:
+        assert get_table_with_format(empty_pg_conn, 'output', t, head, 'SNAP') is not None
+        assert get_table_with_format(empty_pg_conn, 'output', t, head, 'DIFF') is None
+
+
+def test_import_all(empty_pg_conn):
+    execute_commands(empty_pg_conn, _load_sgfile('import_all_from_mounted.sgfile'))
+
+    head = get_current_head(empty_pg_conn, 'output')
+    old_head = get_snap_parent(empty_pg_conn, 'output', head)
+
+    checkout(empty_pg_conn, 'output', old_head)
+    tables = ['vegetables', 'fruits']
+    contents = [[(1, 'potato'), (2, 'carrot')], [(1, 'apple'), (2, 'orange')]]
+    for t in tables:
+        assert not pg_table_exists(empty_pg_conn, 'output', t)
+
+    checkout(empty_pg_conn, 'output', head)
+    with empty_pg_conn.cursor() as cur:
+        for t, c in zip(tables, contents):
+            cur.execute("""SELECT * FROM output.%s""" % t)
+            assert cur.fetchall() == c

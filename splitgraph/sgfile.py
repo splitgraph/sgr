@@ -1,9 +1,12 @@
+import json
 import re
 from hashlib import sha256
+from random import getrandbits
 
 from parsimonious.grammar import Grammar
 
 from splitgraph.commands import init, commit, checkout, import_tables, clone, unmount
+from splitgraph.commands.mounting import get_mount_handler
 from splitgraph.constants import SplitGraphException
 from splitgraph.meta_handler import get_current_head, get_canonical_snap_id, get_tagged_id
 from splitgraph.pg_replication import _replication_slot_exists
@@ -13,23 +16,39 @@ SGFILE_GRAMMAR = Grammar(r"""
     command = comment / output / import / sql
     comment = space "#" non_newline
     output = "OUTPUT" space mountpoint space image_hash?
-    import = "FROM" space (conn_string space)? mountpoint (":" tag)? space "IMPORT" space tables
+    import = "FROM" space source space "IMPORT" space tables
     sql = "SQL" space sql_statement
     
-    table = (table_name space "AS" space table_alias) / table_name
-    tables = table space ("," space table)*
+    table = ((table_name / table_query) space "AS" space table_alias) / table_name
+    
+    table_query = "{" non_curly_brace "}"
+    tables = "ALL" / (table space ("," space table)*)
+    source = mount_source / repo_source
+    repo_source = (conn_string space)? mountpoint (":" tag)?
+    mount_source = "MOUNT" space handler space no_db_conn_string space handler_options
     
     image_hash = ~"[0-9a-f]*"i
+    handler = identifier
     mountpoint = identifier
     table_name = identifier
     table_alias = identifier
     tag = identifier
+    handler_options = "'" non_single_quote "'"
     sql_statement = non_newline
     
     newline = ~"\n*"
     non_newline = ~"[^\n]*"
+    
+    # I've no idea why we need so many slashes here. The purpose of this regex is to consume anything
+    # that's not a closing curly brace or \} (an escaped curly brace).
+    non_curly_brace = ~"(\\\\}|[^}])*"
+    
+    # Yeah, six slashes should be about enough to capture \'
+    non_single_quote = ~"(\\\\\\'|[^'])*"
+    
     conn_string = ~"\S+:\S+@.+:\d+\/\S+"
-    identifier = ~"[_a-zA-Z0-9\-]*"
+    no_db_conn_string = ~"(\S+):(\S+)@(.+):(\d+)"
+    identifier = ~"[_a-zA-Z0-9\-]+"
     space = ~"\s*"
 """)
 
@@ -78,26 +97,25 @@ def _extract_nodes(node, types):
 
 
 def _parse_table_alias(table_node):
-    # Extracts the table name and its alias from the parse tree.
-    table_name_alias = _extract_nodes(table_node, ['identifier'])
-
+    # Extracts the table name (or a query forming the table) and its alias from the parse tree
+    table_name_alias = _extract_nodes(table_node, ['identifier', 'non_curly_brace'])
     table_name = table_name_alias[0].match.group(0)
+    table_is_query = table_name_alias[0].expr_name == 'non_curly_brace'
+    if table_is_query:
+        # Unescape the closing curly brace that marked the end of the query
+        table_name = table_name.replace('\\}', '}')
     if len(table_name_alias) > 1:
         table_alias = table_name_alias[1].match.group(0)
-        return table_name, table_alias
-    return table_name, table_name
+        return table_name, table_alias, table_is_query
+    return table_name, table_name, table_is_query
 
 
 def _extract_all_table_aliases(node):
-    table_names = []
-    table_aliases = []
-
-    for table in _extract_nodes(node, ['table']):
-        tn, ta = _parse_table_alias(table)
-        table_names.append(tn)
-        table_aliases.append(ta)
-
-    return table_names, table_aliases
+    tables = _extract_nodes(node, ['table'])
+    if not tables:
+        # No tables specified (imports all tables from the mounted db / repo)
+        return [], [], []
+    return zip(*[_parse_table_alias(table) for table in tables])
 
 
 def _checkout_or_calculate_layer(conn, output, image_hash, calc_func):
@@ -131,52 +149,89 @@ def execute_commands(conn, commands, params={}):
                 output_head = get_canonical_snap_id(conn, output, interesting_nodes[1].match.group(0))
                 checkout(conn, output, output_head)
         elif node.expr_name == 'import':
-            interesting_nodes = _extract_nodes(node, ['conn_string', 'identifier', 'tables'])
-            if interesting_nodes[0].expr_name == 'conn_string':
-                is_remote = True
-                conn_string = interesting_nodes[0].match.group(0)
-                mountpoint = interesting_nodes[1].match.group(0)
-            else:
-                is_remote = False
-                mountpoint = interesting_nodes[0].match.group(0)
+            interesting_nodes = _extract_nodes(node, ['repo_source', 'mount_source', 'tables'])
+            table_names, table_aliases, table_queries = _extract_all_table_aliases(interesting_nodes[-1])
 
-            if len(interesting_nodes) == 4:
-                tag = interesting_nodes[-2].match.group(0)
-            else:
-                tag = 'latest'
-
-            table_names, table_aliases = _extract_all_table_aliases(interesting_nodes[-1])
-            # Don't use the actual routine here as we want more control: clone the remote repo in order to turn
-            # the tag into an actual hash
-            tmp_mountpoint = mountpoint + '_clone_tmp'
-            try:
-                if is_remote:
-                    clone(conn, conn_string, mountpoint, tmp_mountpoint, download_all=False)
-                # Calculate the hash of the new layer by combining the hash of the previous layer,
-                # the hash of the source and all the table names/aliases getting imported.
-                # This can be made more granular later by using, say, the object IDs of the tables
-                # that are getting imported (so that if there's a new commit with some of the same objects,
-                # we don't invalidate the downstream).
-                if is_remote:
-                    source_hash = get_tagged_id(conn, tmp_mountpoint, tag)
+            if interesting_nodes[0].expr_name == 'repo_source':
+                # Import from a repository (local or remote)
+                repo_nodes = _extract_nodes(interesting_nodes[0], ['conn_string', 'identifier'])
+                if repo_nodes[0].expr_name == 'conn_string':
+                    is_remote = True
+                    conn_string = repo_nodes[0].match.group(0)
+                    mountpoint = repo_nodes[1].match.group(0)
                 else:
-                    source_hash = get_tagged_id(conn, mountpoint, tag)
-                output_head = get_current_head(conn, output)
-                target_hash = _combine_hashes(
-                    [output_head, source_hash] + [sha256(n.encode('utf-8')).hexdigest() for n in
-                                                  table_names + table_aliases])
+                    is_remote = False
+                    mountpoint = repo_nodes[0].match.group(0)
 
-                print('%s:%s -> %s' % (output, output_head[:12], target_hash[:12]))
+                # See if we got given a tag
+                if len(repo_nodes) == 3:
+                    tag = repo_nodes[2].match.group(0)
+                else:
+                    tag = 'latest'
 
-                def _calc():
-                    print("Importing tables %r:%s from %s into %s" % (
-                        table_names, source_hash[:12], mountpoint, output))
-                    import_tables(conn, tmp_mountpoint if is_remote else mountpoint, table_names, output, table_aliases,
-                                  image_hash=source_hash, target_hash=target_hash)
+                # Don't use the actual routine here as we want more control: clone the remote repo in order to turn
+                # the tag into an actual hash
+                tmp_mountpoint = mountpoint + '_clone_tmp'
+                try:
+                    if is_remote:
+                        clone(conn, conn_string, mountpoint, tmp_mountpoint, download_all=False)
+                    # Calculate the hash of the new layer by combining the hash of the previous layer,
+                    # the hash of the source and all the table names/aliases getting imported.
+                    # This can be made more granular later by using, say, the object IDs of the tables
+                    # that are getting imported (so that if there's a new commit with some of the same objects,
+                    # we don't invalidate the downstream).
+                    # If table_names actually contains queries that generate data from tables, we can still use
+                    # it for hashing: we assume that the queries are deterministic, so if the query is changed,
+                    # the whole layer is invalidated.
+                    if is_remote:
+                        source_hash = get_tagged_id(conn, tmp_mountpoint, tag)
+                    else:
+                        source_hash = get_tagged_id(conn, mountpoint, tag)
+                    output_head = get_current_head(conn, output)
+                    target_hash = _combine_hashes(
+                        [output_head, source_hash] + [sha256(n.encode('utf-8')).hexdigest() for n in
+                                                      table_names + table_aliases])
 
-                _checkout_or_calculate_layer(conn, output, target_hash, _calc)
-            finally:
+                    print('%s:%s -> %s' % (output, output_head[:12], target_hash[:12]))
+
+                    def _calc():
+                        print("Importing tables %r:%s from %s into %s" % (
+                            table_names, source_hash[:12], mountpoint, output))
+                        import_tables(conn, tmp_mountpoint if is_remote else mountpoint, table_names, output,
+                                      table_aliases,
+                                      image_hash=source_hash, target_hash=target_hash, table_queries=table_queries)
+
+                    _checkout_or_calculate_layer(conn, output, target_hash, _calc)
+                finally:
+                    unmount(conn, tmp_mountpoint)
+            else:
+                # Extract the identifier (FDW name), the connection string and the FDW params (JSON-encoded, everything
+                # between the single quotes).
+                mount_nodes = _extract_nodes(interesting_nodes[0],
+                                             ['identifier', 'no_db_conn_string', 'non_single_quote'])
+                fdw_name = mount_nodes[0].match.group(0)
+                conn_string = mount_nodes[1].match
+                fdw_params = mount_nodes[2].match.group(0).replace("\\'", "'")  # Unescape the single quote
+
+                mount_handler = get_mount_handler(fdw_name)
+                tmp_mountpoint = fdw_name + '_tmp_staging'
                 unmount(conn, tmp_mountpoint)
+                try:
+                    mount_handler(conn, server=conn_string.group(3), port=int(conn_string.group(4)),
+                                  username=conn_string.group(1),
+                                  password=conn_string.group(2),
+                                  mountpoint=tmp_mountpoint, extra_options=json.loads(fdw_params))
+                    # The foreign database is a moving target, so the new image hash is random.
+                    # Maybe in the future, when the object hash is a function of its contents, we can be smarter here...
+                    output_head = get_current_head(conn, output)
+                    target_hash = "%0.2x" % getrandbits(256)
+                    print('%s:%s -> %s' % (output, output_head[:12], target_hash[:12]))
+
+                    import_tables(conn, tmp_mountpoint, table_names, output, table_aliases, image_hash=target_hash,
+                                  foreign_tables=True, table_queries=table_queries)
+                finally:
+                    unmount(conn, tmp_mountpoint)
+
         elif node.expr_name == 'sql':
             if output is None:
                 raise SplitGraphException(

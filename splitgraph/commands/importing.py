@@ -14,7 +14,7 @@ from splitgraph.pg_utils import copy_table, _get_primary_keys
 
 @suspend_replication
 def import_tables(conn, mountpoint, tables, target_mountpoint, target_tables, image_hash=None, foreign_tables=False,
-                  do_checkout=True, target_hash=None):
+                  do_checkout=True, target_hash=None, table_queries=[]):
     # Creates a new commit in target_mountpoint with one or more tables linked to already-existing tables.
     # After this operation, the HEAD of the target mountpoint moves to the new commit and the new tables
     # are materialized.
@@ -22,6 +22,10 @@ def import_tables(conn, mountpoint, tables, target_mountpoint, target_tables, im
     # If target_tables = [], the target tables will have the same names as the original tables.
     # foreign_tables=True is for tables that aren't actually SG snapshots but have been mounted via an FDW or
     # just exist in the driver in some other way. Creates a new object/commit as well.
+    # If table_queries is not [], it's treated as a Boolean mask showing which entries in the tabls list are instead
+    # SELECT SQL queries that form the target table.
+    # The queries have to be non-schema qualified and work only against tables in the source mountpoint.
+    # Each target table created is the result of the respective SQL query. This is committed as a new snapshot.
     HEAD = get_current_head(conn, target_mountpoint, raise_on_none=False)
     target_hash = target_hash or "%0.2x" % getrandbits(256)
 
@@ -32,9 +36,13 @@ def import_tables(conn, mountpoint, tables, target_mountpoint, target_tables, im
         tables = get_tables_at(conn, mountpoint, image_hash) if not foreign_tables \
             else get_all_foreign_tables(conn, mountpoint)
     if not target_tables:
+        if table_queries:
+            raise ValueError("target_tables has to be defined if table_queries is True!")
         target_tables = tables
-    if len(tables) != len(target_tables):
-        raise ValueError("tables and target_tables have mismatching lengths!")
+    if not table_queries:
+        table_queries = [False] * len(tables)
+    if len(tables) != len(target_tables) or len(tables) != len(table_queries):
+        raise ValueError("tables, target_tables and table_queries have mismatching lengths!")
 
     existing_tables = get_all_tables(conn, target_mountpoint)
     clashing = [t for t in target_tables if t in existing_tables]
@@ -45,11 +53,22 @@ def import_tables(conn, mountpoint, tables, target_mountpoint, target_tables, im
     add_new_snap_id(conn, target_mountpoint, HEAD, target_hash, comment="Importing %s from %s" % (tables, mountpoint))
 
     # Materialize the actual tables in the target mountpoint and register them.
-    for table, target_table in zip(tables, target_tables):
-        if foreign_tables:
-            # For foreign tables, we define a new object/table instead.
+    for table, target_table, is_query in zip(tables, target_tables, table_queries):
+        if foreign_tables or is_query:
+            # For foreign tables/SELECT queries, we define a new object/table instead.
             object_id = get_random_object_id()
-            copy_table(conn, mountpoint, table, SPLITGRAPH_META_SCHEMA, object_id)
+            if is_query:
+                # is_query precedes foreign_tables: if we're importing using a query, we don't care if it's a
+                # foreign table or not since we're storing it as a full snapshot.
+                with conn.cursor() as cur:
+                    # Execute the actual query against the original mountpoint.
+                    cur.execute("SET search_path TO %s", (mountpoint,))
+                    cur.execute(SQL("CREATE TABLE {}.{} AS ").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                     Identifier(object_id)) + SQL(table))
+                    cur.execute("SET search_path TO public")
+            elif foreign_tables:
+                copy_table(conn, mountpoint, table, SPLITGRAPH_META_SCHEMA, object_id)
+
             # Might not be necessary if we don't actually want to materialize the snapshot (wastes space).
             register_object(conn, object_id, 'SNAP', parent_object=None)
             register_table(conn, target_mountpoint, target_table, target_hash, object_id)

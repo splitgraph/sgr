@@ -1,8 +1,10 @@
 # TODO
-  * sgfile: importing from mountpoints (snapshots)
-  * importing from mountpoints: allow a custom query
-  * sgfile: remove OUTPUT completely, push into commandline instead
-  * sgfile: maybe also add FROM mountpoint (implying just check it out and mess with it)
+  * Mountpoint specification:
+    * Remove OUTPUT completely, output mountpoint specified via commandline
+    * If unspecified, just put into a random one.
+    * FROM mountpoint/repo etc:hash AS output now specifies which mountpoint to pull data from/put into
+    * multistage builds implemented by using several FROM statements.
+  * more generally, allow to use tags/hashes interchangeably.
   * Err on checkout if there are pending changes?
   * Somehow (?) record sgfiles/image hashes things were imported from in the snap_tree (?) as well
     (multiple ways to materialize a given image).

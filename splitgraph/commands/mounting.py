@@ -6,15 +6,18 @@ from splitgraph.constants import _log, SplitGraphException
 from splitgraph.meta_handler import ensure_metadata_schema, get_all_foreign_tables
 
 
-def mount(conn, server, port, username, password, mountpoint, mount_handler, extra_options):
-    ensure_metadata_schema(conn)
+def get_mount_handler(mount_handler):
     if mount_handler == 'postgres_fdw':
-        mh_func = mount_postgres
+        return mount_postgres
     elif mount_handler == 'mongo_fdw':
-        mh_func = mount_mongo
+        return mount_mongo
     else:
         raise SplitGraphException("Mount handler %s not supported!" % mount_handler)
 
+
+def mount(conn, server, port, username, password, mountpoint, mount_handler, extra_options):
+    ensure_metadata_schema(conn)
+    mh_func = get_mount_handler(mount_handler)
     _log("Connecting to remote server...")
 
     staging_mountpoint = mountpoint + '_tmp_staging'
