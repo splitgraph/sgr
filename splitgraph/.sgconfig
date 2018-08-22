@@ -1,0 +1,40 @@
+; sample .sgconfig file
+
+[defaults]
+SG_NAMESPACE=something-else
+SG_DRIVER_HOST=pgcache
+SG_DRIVER_PORT=5432
+SG_DRIVER_DB_NAME=${SG_NAMESPACE}
+SG_DRIVER_USER=clientuser
+SG_DRIVER_PWD=insecure
+SG_DRIVER_CONNECTION_STRING=host=${SG_DRIVER_HOST} port=${SG_DRIVER_PORT} dbname=${SG_DRIVER_DB_NAME} user=${SG_DRIVER_USER} password=${SG_DRIVER_PWD}
+SG_DRIVER_ADMIN_USER=clientuser
+SG_DRIVER_ADMIN_PWD=insecure
+SG_DRIVER_POSTGRES_DB_NAME=postgres
+SG_META_SCHEMA=splitgraph_meta
+
+; I'm undecided if we should treat the "local" driver as a remote,
+; keep its config in the [defaults] section, or put it in a new section
+;
+[remote: local]
+SG_DRIVER_HOST=${defaults:SG_DRIVER_HOST}
+SG_DRIVER_PORT=${defaults:SG_DRIVER_PORT}
+SG_DRIVER_DB_NAME=${defaults:SG_DRIVER_DB_NAME}
+SG_DRIVER_USER=${defaults:SG_DRIVER_USER}
+SG_DRIVER_PWD=${defaults:SG_DRIVER_PWD}
+SG_DRIVER_CONNECTION_STRING=host=${SG_DRIVER_HOST} port=${SG_DRIVER_PORT} dbname=${SG_DRIVER_DB_NAME} user=${SG_DRIVER_USER} password=${SG_DRIVER_PWD}
+SG_DRIVER_ADMIN_USER=${defaults:SG_DRIVER_ADMIN_USER}
+SG_DRIVER_ADMIN_PWD=${defaults:SG_DRIVER_ADMIN_PWD}
+SG_DRIVER_POSTGRES_DB_NAME=${defaults:SG_DRIVER_POSTGRES_DB_NAME}
+SG_META_SCHEMA=${defaults:SG_META_SCHEMA}
+
+[remote: remote1]
+SG_DRIVER_PORT=1232
+
+; These will get rolled up into a list called "origins"
+;
+[origin: origin1]
+SG_DRIVER_PORT=3333
+
+[origin: origin2]
+SG_DRIVER_PORT=4444
