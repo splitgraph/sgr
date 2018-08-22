@@ -1,15 +1,15 @@
 ; sample .sgconfig file
 
 [defaults]
-SG_NAMESPACE=something-else
-SG_DRIVER_HOST=pgcache
+SG_NAMESPACE=cachedb
+SG_DRIVER_HOST=localhost
 SG_DRIVER_PORT=5432
 SG_DRIVER_DB_NAME=${SG_NAMESPACE}
 SG_DRIVER_USER=clientuser
-SG_DRIVER_PWD=insecure
+SG_DRIVER_PWD=supersecure
 SG_DRIVER_CONNECTION_STRING=host=${SG_DRIVER_HOST} port=${SG_DRIVER_PORT} dbname=${SG_DRIVER_DB_NAME} user=${SG_DRIVER_USER} password=${SG_DRIVER_PWD}
 SG_DRIVER_ADMIN_USER=clientuser
-SG_DRIVER_ADMIN_PWD=insecure
+SG_DRIVER_ADMIN_PWD=supersecure
 SG_DRIVER_POSTGRES_DB_NAME=postgres
 SG_META_SCHEMA=splitgraph_meta
 
