@@ -1,13 +1,15 @@
 import os
 from random import getrandbits
 
-PG_HOST = os.getenv('PGHOST', 'localhost')
-PG_PORT = os.getenv('PGPORT', '5432')
-PG_DB = os.getenv('PGDATABASE', 'cachedb')
-PG_USER = os.getenv('PGUSER', 'clientuser')
-PG_PWD = os.getenv('PGPASSWORD', 'supersecure')
-POSTGRES_CONNECTION = "host=%s port=%s dbname=%s user=%s password=%s" % (PG_HOST, PG_PORT, PG_DB, PG_USER, PG_PWD)
-SPLITGRAPH_META_SCHEMA = "splitgraph_meta"
+from splitgraph.config import CONFIG
+
+PG_HOST = CONFIG["SG_DRIVER_HOST"]
+PG_PORT = CONFIG["SG_DRIVER_PORT"]
+PG_DB = CONFIG["SG_DRIVER_DB_NAME"]
+PG_USER = CONFIG["SG_DRIVER_USER"]
+PG_PWD = CONFIG["SG_DRIVER_PWD"]
+POSTGRES_CONNECTION = CONFIG["SG_DRIVER_CONNECTION_STRING"]
+SPLITGRAPH_META_SCHEMA = CONFIG["SG_META_SCHEMA"]
 
 
 class SplitGraphException(Exception):
