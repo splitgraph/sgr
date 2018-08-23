@@ -14,10 +14,11 @@ from splitgraph.pg_replication import _replication_slot_exists
 
 SGFILE_GRAMMAR = Grammar(r"""
     commands = space command space (newline space command space)*
-    command = comment / import / from / sql 
+    command = comment / import / from / sql_file / sql 
     comment = space "#" non_newline
     from = "FROM" space ("EMPTY" / repo_source) (space "AS" space mountpoint)?
     import = "FROM" space source space "IMPORT" space tables
+    sql_file = "SQL" space "FILE" space non_newline
     sql = "SQL" space sql_statement
     
     table = ((table_name / table_query) space "AS" space table_alias) / table_name
@@ -264,13 +265,22 @@ def execute_commands(conn, commands, params={}, output=None, output_base='0'*32)
                 finally:
                     unmount(conn, tmp_mountpoint)
 
-        elif node.expr_name == 'sql':
+        elif node.expr_name == 'sql' or node.expr_name == 'sql_file':
             _initialize_output(output)
             # Calculate the hash of the layer we are trying to create.
             # Since we handle the "input" hashing in the import step, we don't need to care about the sources here.
             # Later on, we could enhance the caching and base the hash of the command on the hashes of objects that
             # definitely go there as sources.
-            sql_command = _canonicalize(_extract_nodes(node, ['non_newline'])[0].text)
+            node_contents = _extract_nodes(node, ['non_newline'])[0].text
+            if node.expr_name == 'sql_file':
+                print("Loading the SQL commands from %s" % node_contents)
+                with open(node_contents, 'r') as f:
+                    # Possibly use a different method to calculate the image hash for commands originating from
+                    # SQL files instead?
+                    # Don't "canonicalize" it here to get rid of whitespace, just hash the whole file.
+                    sql_command = f.read()
+            else:
+                sql_command = _canonicalize(node_contents)
             output_head = get_current_head(conn, output)
             target_hash = _combine_hashes([output_head, sha256(sql_command.encode('utf-8')).hexdigest()])
 

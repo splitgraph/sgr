@@ -33,7 +33,8 @@ def test_sgfile_preprocessor_missing_params():
 
 
 def test_sgfile_preprocessor_escaping():
-    commands = preprocess(PARSING_TEST_SGFILE, params={'SNAPPER': '127.0.0.1', 'SNAPPER_PORT': 5678, 'TAG': 'tag-v1-whatever'})
+    commands = preprocess(PARSING_TEST_SGFILE,
+                          params={'SNAPPER': '127.0.0.1', 'SNAPPER_PORT': 5678, 'TAG': 'tag-v1-whatever'})
     print(commands)
     assert '${TAG}' not in commands
     assert '${SNAPPER}' not in commands
@@ -147,7 +148,8 @@ def test_sgfile_remote(sg_pg_mg_conn, snapper_conn):
     # We use the v1 tag when importing from the remote, so fruit_id = 1 still exists there.
     execute_commands(sg_pg_mg_conn, _load_sgfile('import_remote_multiple.sgfile'), params={'SNAPPER': SNAPPER_HOST,
                                                                                            'SNAPPER_PORT': SNAPPER_PORT,
-                                                                                           'TAG': 'v1'}, output='output')
+                                                                                           'TAG': 'v1'},
+                     output='output')
     with sg_pg_mg_conn.cursor() as cur:
         cur.execute("""SELECT id, fruit, vegetable FROM output.join_table""")
         assert cur.fetchall() == [(1, 'apple', 'potato'), (2, 'orange', 'carrot')]
@@ -155,7 +157,8 @@ def test_sgfile_remote(sg_pg_mg_conn, snapper_conn):
     # Now run the commands against v2 and make sure the fruit_id = 1 has disappeared from the output.
     execute_commands(sg_pg_mg_conn, _load_sgfile('import_remote_multiple.sgfile'), params={'SNAPPER': SNAPPER_HOST,
                                                                                            'SNAPPER_PORT': SNAPPER_PORT,
-                                                                                           'TAG': 'v2'}, output='output')
+                                                                                           'TAG': 'v2'},
+                     output='output')
     with sg_pg_mg_conn.cursor() as cur:
         cur.execute("""SELECT id, fruit, vegetable FROM output.join_table""")
         assert cur.fetchall() == [(2, 'orange', 'carrot')]
@@ -163,7 +166,8 @@ def test_sgfile_remote(sg_pg_mg_conn, snapper_conn):
 
 def test_import_updating_sgfile_with_uploading(empty_pg_conn, snapper_conn):
     execute_commands(empty_pg_conn, _load_sgfile('import_and_update.sgfile'), params={'SNAPPER': SNAPPER_HOST,
-                                                                                      'SNAPPER_PORT': SNAPPER_PORT}, output='output')
+                                                                                      'SNAPPER_PORT': SNAPPER_PORT},
+                     output='output')
     head = get_current_head(empty_pg_conn, 'output')
 
     assert len(get_existing_objects(empty_pg_conn)) == 4  # Two original tables + two updates
@@ -207,7 +211,8 @@ def test_sgfile_end_to_end_with_uploading(sg_pg_mg_conn, snapper_conn):
     new_head = _add_multitag_dataset_to_snapper(snapper_conn)
     execute_commands(sg_pg_mg_conn, _load_sgfile('import_remote_multiple.sgfile'), params={'SNAPPER': SNAPPER_HOST,
                                                                                            'TAG': 'v1',
-                                                                                           'SNAPPER_PORT': SNAPPER_PORT}, output='output')
+                                                                                           'SNAPPER_PORT': SNAPPER_PORT},
+                     output='output')
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # Push with upload
@@ -218,8 +223,9 @@ def test_sgfile_end_to_end_with_uploading(sg_pg_mg_conn, snapper_conn):
             unmount(sg_pg_mg_conn, mountpoint)
         cleanup_objects(sg_pg_mg_conn)
 
-        execute_commands(sg_pg_mg_conn, _load_sgfile('import_from_preuploaded_remote.sgfile'), params={'SNAPPER': SNAPPER_HOST,
-                                                                                                       'SNAPPER_PORT': SNAPPER_PORT}, output='output_stage_2')
+        execute_commands(sg_pg_mg_conn, _load_sgfile('import_from_preuploaded_remote.sgfile'),
+                         params={'SNAPPER': SNAPPER_HOST,
+                                 'SNAPPER_PORT': SNAPPER_PORT}, output='output_stage_2')
 
         with sg_pg_mg_conn.cursor() as cur:
             cur.execute("""SELECT id, name, fruit, vegetable FROM output_stage_2.diet""")
@@ -333,9 +339,10 @@ def test_import_all(empty_pg_conn):
 def test_from_remote(empty_pg_conn, snapper_conn):
     _add_multitag_dataset_to_snapper(snapper_conn)
     # Test running commands that base new datasets on a remote repository.
-    execute_commands(empty_pg_conn, _load_sgfile('from_remote.sgfile'), output='output', params={'SNAPPER': SNAPPER_HOST,
-                                                                                           'SNAPPER_PORT': SNAPPER_PORT,
-                                                                                           'TAG': 'v1'})
+    execute_commands(empty_pg_conn, _load_sgfile('from_remote.sgfile'), output='output',
+                     params={'SNAPPER': SNAPPER_HOST,
+                             'SNAPPER_PORT': SNAPPER_PORT,
+                             'TAG': 'v1'})
 
     new_head = get_current_head(empty_pg_conn, 'output')
     # Go back to the parent: the two source tables should exist there
@@ -355,14 +362,15 @@ def test_from_remote(empty_pg_conn, snapper_conn):
     # First, remove the output mountpoint (the executor tries to fetch the commit 0000 from it otherwise which
     # doesn't exist).
     unmount(empty_pg_conn, 'output')
-    execute_commands(empty_pg_conn, _load_sgfile('from_remote.sgfile'), output='output', params={'SNAPPER': SNAPPER_HOST,
-                                                                                           'SNAPPER_PORT': SNAPPER_PORT,
-                                                                                           'TAG': 'v2'})
+    execute_commands(empty_pg_conn, _load_sgfile('from_remote.sgfile'), output='output',
+                     params={'SNAPPER': SNAPPER_HOST,
+                             'SNAPPER_PORT': SNAPPER_PORT,
+                             'TAG': 'v2'})
 
     with empty_pg_conn.cursor() as cur:
         cur.execute("SELECT * FROM output.join_table")
         assert cur.fetchall() == [(2, 'orange', 'carrot')]
-        
+
 
 def test_from_multistage(empty_pg_conn, snapper_conn):
     _add_multitag_dataset_to_snapper(snapper_conn)
@@ -401,4 +409,16 @@ def test_from_local(sg_pg_mg_conn):
     assert pg_table_exists(sg_pg_mg_conn, 'output', 'vegetables')
     with sg_pg_mg_conn.cursor() as cur:
         cur.execute("SELECT * FROM output.join_table")
+        assert cur.fetchall() == [(1, 'apple', 'potato'), (2, 'orange', 'carrot')]
+
+
+def test_sgfile_with_external_sql(sg_pg_mg_conn, snapper_conn):
+    # Tests are running from root so we pass in the path to the SQL manually to the sgfile.
+    execute_commands(sg_pg_mg_conn, _load_sgfile('external_sql.sgfile'),
+                     params={'SNAPPER': SNAPPER_HOST,
+                             'SNAPPER_PORT': SNAPPER_PORT,
+                             'EXTERNAL_SQL_FILE': SGFILE_ROOT + 'external_sql.sql'},
+                     output='output')
+    with sg_pg_mg_conn.cursor() as cur:
+        cur.execute("""SELECT id, fruit, vegetable FROM output.join_table""")
         assert cur.fetchall() == [(1, 'apple', 'potato'), (2, 'orange', 'carrot')]
