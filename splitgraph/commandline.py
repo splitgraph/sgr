@@ -227,11 +227,11 @@ def show_c(mountpoint, commit_hash, verbose):
 @click.argument('sgfile', type=click.File('r'))
 @click.option('-a', '--sgfile-args', multiple=True, type=(str, str))
 @click.option('-o', '--output-mountpoint', help='Mountpoint to store the result in.')
-def file_c(sgfile, sgfile_args):
+def file_c(sgfile, sgfile_args, output_mountpoint):
     conn = _conn()
     sgfile_args = {k: v for k, v in sgfile_args}
     print("Executing SGFile %s with arguments %r" % (sgfile.name, sgfile_args))
-    execute_commands(conn, sgfile.read(), sgfile_args)
+    execute_commands(conn, sgfile.read(), sgfile_args, output=output_mountpoint)
     conn.commit()
 
 

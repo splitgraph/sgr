@@ -1,5 +1,6 @@
 # TODO
-  * more generally, allow to use tags/hashes interchangeably.
+  * Docstrings in the code, linter, run code coverage?
+  * Allow to use tags/hashes interchangeably.
   * Err on checkout if there are pending changes?
   * Somehow (?) record sgfiles/image hashes things were imported from in the snap_tree (?) as well
     (multiple ways to materialize a given image).

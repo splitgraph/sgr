@@ -170,3 +170,5 @@ def cleanup_objects(conn):
         if to_delete:
             cur.execute(SQL(";").join(SQL("DROP TABLE {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                                      Identifier(d)) for d in to_delete))
+
+        _log("Deleted %d physical object(s)" % len(to_delete))
