@@ -10,7 +10,9 @@ DEFAULTS = {
     "SG_DRIVER_ADMIN_PWD": None,
     "SG_DRIVER_POSTGRES_DB_NAME": "postgres",
     "SG_CONFIG_FILE": None,
-    "SG_META_SCHEMA": "splitgraph_meta"
+    "SG_META_SCHEMA": "splitgraph_meta",
+    "SG_CONFIG_DIRS": None,
+    "SG_CONFIG_DIR": None
 }
 
 KEYS = list(DEFAULTS.keys())
@@ -30,7 +32,9 @@ ARGUMENT_KEY_MAP = {
     "--driver-admin-pwd": "SG_DRIVER_ADMIN_PWD",
     "--driver-postgres-db-name": "SG_DRIVER_POSTGRES_DB_NAME",
     "--config-file": "SG_CONFIG_FILE",
-    "--meta-schema": "SG_META_SCHEMA"
+    "--meta-schema": "SG_META_SCHEMA",
+    "--config-dirs": "SG_CONFIG_DIRS",
+    "--config-dir": "SG_CONFIG_DIR"
 }
 
 ARG_KEYS = list(ARGUMENT_KEY_MAP.keys())
