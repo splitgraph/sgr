@@ -3,7 +3,7 @@ import pytest
 from splitgraph.commands import commit, diff, checkout
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler import get_snap_parent, get_current_head, get_table, get_table_with_format
-from splitgraph.pg_utils import _get_full_table_schema, _get_primary_keys
+from splitgraph.pg_utils import _get_full_table_schema, get_primary_keys
 from test.splitgraph.conftest import PG_MNT
 
 TEST_CASES = [
@@ -57,15 +57,15 @@ def test_schema_changes(sg_pg_conn, test_case):
 
 
 def test_pk_preserved_on_checkout(sg_pg_conn):
-    assert list(_get_primary_keys(sg_pg_conn, PG_MNT, 'fruits')) == []
+    assert list(get_primary_keys(sg_pg_conn, PG_MNT, 'fruits')) == []
     with sg_pg_conn.cursor() as cur:
         cur.execute("""ALTER TABLE test_pg_mount.fruits ADD PRIMARY KEY (fruit_id)""")
-    assert list(_get_primary_keys(sg_pg_conn, PG_MNT, 'fruits')) == [('fruit_id', 'integer')]
+    assert list(get_primary_keys(sg_pg_conn, PG_MNT, 'fruits')) == [('fruit_id', 'integer')]
     head = get_current_head(sg_pg_conn, PG_MNT)
     new_head = commit(sg_pg_conn, PG_MNT)
-    assert list(_get_primary_keys(sg_pg_conn, PG_MNT, 'fruits')) == [('fruit_id', 'integer')]
+    assert list(get_primary_keys(sg_pg_conn, PG_MNT, 'fruits')) == [('fruit_id', 'integer')]
 
     checkout(sg_pg_conn, PG_MNT, head)
-    assert list(_get_primary_keys(sg_pg_conn, PG_MNT, 'fruits')) == []
+    assert list(get_primary_keys(sg_pg_conn, PG_MNT, 'fruits')) == []
     checkout(sg_pg_conn, PG_MNT, new_head)
-    assert list(_get_primary_keys(sg_pg_conn, PG_MNT, 'fruits')) == [('fruit_id', 'integer')]
+    assert list(get_primary_keys(sg_pg_conn, PG_MNT, 'fruits')) == [('fruit_id', 'integer')]

@@ -7,7 +7,7 @@ from splitgraph.constants import get_random_object_id, SPLITGRAPH_META_SCHEMA, S
 from splitgraph.meta_handler import get_all_tables, get_table, register_table, ensure_metadata_schema
 from splitgraph.meta_handler import get_current_mountpoints_hashes, get_table_with_format, register_object, \
     get_object_parents, get_object_format
-from splitgraph.pg_utils import copy_table, _get_primary_keys, _get_column_names, _get_column_names_types, \
+from splitgraph.pg_utils import copy_table, get_primary_keys, _get_column_names, _get_column_names_types, \
     _get_full_table_schema
 
 LOGICAL_DECODER = 'wal2json'
@@ -31,7 +31,7 @@ def suspend_replication(func):
     return wrapped
 
 
-def _replication_slot_exists(conn):
+def replication_slot_exists(conn):
     with conn.cursor() as cur:
         cur.execute("""SELECT 1 FROM pg_replication_slots WHERE slot_name = %s""", (REPLICATION_SLOT,))
         return cur.fetchone() is not None
@@ -44,7 +44,7 @@ def start_replication(conn):
 
 
 def stop_replication(conn):
-    if _replication_slot_exists(conn):
+    if replication_slot_exists(conn):
         with conn.cursor() as cur:
             cur.execute("""SELECT 'stop' FROM pg_drop_replication_slot(%s)""", (REPLICATION_SLOT,))
 
@@ -52,7 +52,7 @@ def stop_replication(conn):
 def _consume_changes(conn):
     # Consuming changes means they won't be returned again from this slot. Perhaps worth doing peeking first
     # in case we crash after consumption but before recording changes.
-    if not _replication_slot_exists(conn):
+    if not replication_slot_exists(conn):
         return []
 
     all_mountpoints = [m[0] for m in get_current_mountpoints_hashes(conn)]
@@ -143,12 +143,16 @@ def dump_pending_changes(conn, mountpoint, table, aggregate=False):
 
 
 def _get_replica_identity(conn, mountpoint, table):
-    return _get_primary_keys(conn, mountpoint, table) or _get_column_names_types(conn, mountpoint, table)
+    return get_primary_keys(conn, mountpoint, table) or _get_column_names_types(conn, mountpoint, table)
 
 
-def _create_diff_table(conn, mountpoint, object_id, replica_identity_cols_types):
-    # Create a diff table into which we'll pack the conflated WAL actions:
-    # replica identity -- multiple columns forming the table's PK (or all rows), PKd.
+def _create_diff_table(conn, object_id, replica_identity_cols_types):
+    """
+    Create a diff table into which we'll pack the conflated WAL actions.
+    :param conn: psycopg connection object
+    :param object_id: table name to create
+    :param replica_identity_cols_types: multiple columns forming the table's PK (or all rows), PKd.
+    """
     # sg_action_kind: 0, 1, 2 for insert/delete/update
     # sg_action_data: extra data for insert and update.
     with conn.cursor() as cur:
@@ -177,10 +181,12 @@ def _generate_where_clause(mountpoint, table, cols, table_2=None, mountpoint_2=N
 
 
 def _split_ri_cols(kind, change, ri_cols):
-    # Returns 3 lists from the wal2json-produced change:
-    # * ri_vals: values identifying the replica identity (RI) of a given tuple (matching column names in ri_cols)
-    # * non_ri_cols: column names not in the RI that have been changed/updated
-    # * non_ri_vals: column values not in the RI that have been changed/updated (matching colnames in non_ri_cols)
+    """
+    :return: `(ri_vals, non_ri_cols, non_ri_vals)`: a tuple of 3 lists:
+        * `ri_vals`: values identifying the replica identity (RI) of a given tuple (matching column names in `ri_cols`)
+        * `non_ri_cols`: column names not in the RI that have been changed/updated
+        * `non_ri_vals`: column values not in the RI that have been changed/updated (matching colnames in `non_ri_cols`)
+    """
     non_ri_cols = []
     non_ri_vals = []
     ri_vals = []
@@ -232,8 +238,10 @@ def _merge_wal_changes(old_change_data, new_change_data):
 
 
 def _convert_wal_change(kind, change, ri_cols):
-    # Converts a change written by wal2json into our format:
-    # [(pk, kind, extra data)] (more than 1 change might be emitted from a single WAL entry).
+    """
+    Converts a change written by wal2json into our internal format:
+    :returns: [(pk, kind, extra data)] (more than 1 change might be emitted from a single WAL entry).
+    """
     ri_vals, non_ri_cols, non_ri_vals = _split_ri_cols(kind, change, ri_cols)
     pk_changed = any(c in ri_cols for c in non_ri_cols)
     if pk_changed:
@@ -250,8 +258,10 @@ def _convert_wal_change(kind, change, ri_cols):
 
 
 def _conflate_changes(changeset, new_changes):
-    # Updates a changeset to incorporate the new changes.
-    # Assumes that the new changes are non-pk changing (e.g. PK-changing updates have been converted into a del + ins).
+    """
+    Updates a changeset to incorporate the new changes. Assumes that the new changes are non-pk changing
+    (e.g. PK-changing updates have been converted into a del + ins).
+    """
     for change_pk, change_kind, change_data in new_changes:
         old_change = changeset.get(change_pk)
         if not old_change:
@@ -279,7 +289,20 @@ def _conflate_changes(changeset, new_changes):
                     changeset[change_pk] = (old_change[0], new_data)
 
 
-def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False):
+def commit_pending_changes(conn, mountpoint, current_head, image_hash, include_snap=False):
+    """
+    Reads the recorded pending changes to all tables in a given mountpoint, conflates them and possibly stores them
+    as new object(s) as follows:
+        * If a table has been created or there has been a schema change, it's only stored as a SNAP (full snapshot).
+        * If a table hasn't changed since the last revision, no new objects are created and it's linked to the previous
+          objects belonging to the last revision.
+        * Otherwise, the table is stored as a conflated (1 change per PK) DIFF object and an optional SNAP.
+    :param conn: psycopg connection object.
+    :param mountpoint: Mountpoint to commit.
+    :param current_head: Current HEAD pointer to base the commit on.
+    :param image_hash: Hash of the image to commit changes under.
+    :param include_snap: If True, also stores the table as a SNAP.
+    """
     all_tables = get_all_tables(conn, mountpoint)
     with conn.cursor() as cur:
         cur.execute(SQL("""SELECT DISTINCT(table_name) FROM {}.{}
@@ -287,10 +310,10 @@ def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False
                                                         Identifier("pending_changes")), (mountpoint,))
         changed_tables = [c[0] for c in cur.fetchall()]
         for table in all_tables:
-            table_info = get_table(conn, mountpoint, table, HEAD)
+            table_info = get_table(conn, mountpoint, table, current_head)
             # Table already exists at the current HEAD
             if table_info:
-                schema_changed = table_schema_changed(conn, mountpoint, table, image_1=HEAD, image_2=None)
+                schema_changed = table_schema_changed(conn, mountpoint, table, image_1=current_head, image_2=None)
                 # If there has been a schema change, we currently just snapshot the whole table.
                 # This is obviously wasteful (say if just one column has been added/dropped or we added a PK,
                 # but it's a starting point to support schema changes.
@@ -300,7 +323,7 @@ def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False
                     object_id = get_random_object_id()
                     repl_id = _get_replica_identity(conn, mountpoint, table)
                     ri_cols, ri_types = zip(*repl_id)
-                    _create_diff_table(conn, mountpoint, object_id, repl_id)
+                    _create_diff_table(conn, object_id, repl_id)
 
                     with conn.cursor() as cur:
                         # Can't seem to use a server-side cursor here since it doesn't support DELETE FROM RETURNING
@@ -324,7 +347,7 @@ def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False
 
                             for parent_id, _ in table_info:
                                 register_object(conn, object_id, object_format='DIFF', parent_object=parent_id)
-                            register_table(conn, mountpoint, table, new_image, object_id)
+                            register_table(conn, mountpoint, table, image_hash, object_id)
                         else:
                             # Changes in the WAL cancelled each other out. Delete the diff table and just point
                             # the commit to the old table objects.
@@ -332,19 +355,19 @@ def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False
                                 SQL("DROP TABLE {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                                Identifier(object_id)))
                             for prev_object_id, _ in table_info:
-                                register_table(conn, mountpoint, table, new_image, prev_object_id)
+                                register_table(conn, mountpoint, table, image_hash, prev_object_id)
                 else:
                     if not schema_changed:
                         # If the table wasn't changed, point the commit to the old table objects (including
                         # any of snaps or diffs).
                         # This feels slightly weird: are we denormalized here?
                         for prev_object_id, _ in table_info:
-                            register_table(conn, mountpoint, table, new_image, prev_object_id)
+                            register_table(conn, mountpoint, table, image_hash, prev_object_id)
 
             # If table created (or we want to store a snap anyway), copy the whole table over as well.
             if not table_info or include_snap:
                 # Make sure we didn't actually create a snap for this table.
-                if get_table_with_format(conn, mountpoint, table, new_image, 'SNAP') is None:
+                if get_table_with_format(conn, mountpoint, table, image_hash, 'SNAP') is None:
                     object_id = get_random_object_id()
                     copy_table(conn, mountpoint, table, SPLITGRAPH_META_SCHEMA, object_id, with_pk_constraints=True)
                     if table_info:
@@ -352,7 +375,7 @@ def commit_pending_changes(conn, mountpoint, HEAD, new_image, include_snap=False
                             register_object(conn, object_id, object_format='SNAP', parent_object=parent_id)
                     else:
                         register_object(conn, object_id, object_format='SNAP', parent_object=None)
-                    register_table(conn, mountpoint, table, new_image, object_id)
+                    register_table(conn, mountpoint, table, image_hash, object_id)
 
     # Make sure that all pending changes have been discarded by this point (e.g. if we created just a snapshot for
     # some tables and didn't consume the WAL).
@@ -368,16 +391,15 @@ def apply_record_to_staging(conn, object_id, mountpoint, destination):
     # Minor hack alert: here we assume that the PK of the object is the PK of the table it refers to, which means
     # that we are expected to have the PKs applied to the object table no matter how it originated.
     if sorted(ri_cols) == sorted(_get_column_names(conn, SPLITGRAPH_META_SCHEMA, object_id)):
-        raise SplitGraphException("Error determining the replica identity of %s. " % object_id + \
+        raise SplitGraphException("Error determining the replica identity of %s. " % object_id +
                                   "Have primary key constrants been applied?")
 
     with conn.cursor() as cur:
         # Apply deletes
         cur.execute(SQL("DELETE FROM {0}.{2} USING {1}.{3} WHERE {1}.{3}.sg_action_kind = 1").format(
             Identifier(mountpoint), Identifier(SPLITGRAPH_META_SCHEMA), Identifier(destination),
-            Identifier(object_id)) + \
-                    SQL(" AND ") + _generate_where_clause(mountpoint, destination, ri_cols, object_id,
-                                                          SPLITGRAPH_META_SCHEMA))
+            Identifier(object_id)) + SQL(" AND ") + _generate_where_clause(mountpoint, destination, ri_cols, object_id,
+                                                                           SPLITGRAPH_META_SCHEMA))
 
         # Generate queries for inserts
         cur.execute(
@@ -419,13 +441,11 @@ def table_schema_changed(conn, mountpoint, table_name, image_1, image_2=None):
     # image_2 = None here means the current staging area.
     if image_2 is not None:
         snap_2 = get_closest_parent_snap_object(conn, mountpoint, table_name, image_2)[0]
-        return _get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_1) != _get_full_table_schema(conn,
-                                                                                                      SPLITGRAPH_META_SCHEMA,
-                                                                                                      snap_2)
+        return _get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_1) != \
+               _get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_2)
     else:
-        return _get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_1) != _get_full_table_schema(conn,
-                                                                                                      mountpoint,
-                                                                                                      table_name)
+        return _get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_1) != \
+               _get_full_table_schema(conn, mountpoint, table_name)
 
 
 def get_closest_parent_snap_object(conn, mountpoint, table, image):

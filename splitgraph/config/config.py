@@ -1,11 +1,12 @@
 # driver params
 
-from .keys import KEYS
 from .argument_config import get_argument_config_value
-from .environment_config import get_environment_config_value
-from .system_config import get_system_config_value
-from .default_config import get_default_config_value
 from .config_file_config import get_config_dict_from_config_file
+from .default_config import get_default_config_value
+from .environment_config import get_environment_config_value
+from .keys import KEYS
+from .system_config import get_system_config_value
+
 
 def lazy_get_config_value(key, default_return=None):
     '''
@@ -14,12 +15,13 @@ def lazy_get_config_value(key, default_return=None):
     '''
 
     return (
-        get_argument_config_value(key, None)
-        or get_environment_config_value(key, None)
-        or get_system_config_value(key, None)
-        or get_default_config_value(key, None)
-        or default_return
+            get_argument_config_value(key, None)
+            or get_environment_config_value(key, None)
+            or get_system_config_value(key, None)
+            or get_default_config_value(key, None)
+            or default_return
     )
+
 
 def update_config_dict_from_arguments(config_dict):
     '''
@@ -29,9 +31,11 @@ def update_config_dict_from_arguments(config_dict):
         Return updated copy of config_dict.
     '''
     new_config_dict = config_dict.copy()
-    argument_config_dict = {k: get_argument_config_value(k, None) for k in KEYS if get_argument_config_value(k) is not None}
+    argument_config_dict = {k: get_argument_config_value(k, None) for k in KEYS if
+                            get_argument_config_value(k) is not None}
     new_config_dict.update(argument_config_dict)
     return new_config_dict
+
 
 def update_config_dict_from_env_vars(config_dict):
     '''
@@ -42,10 +46,12 @@ def update_config_dict_from_env_vars(config_dict):
     '''
 
     new_config_dict = config_dict.copy()
-    argument_config_dict = {k: get_environment_config_value(k, None) for k in KEYS if get_environment_config_value(k) is not None}
+    argument_config_dict = {k: get_environment_config_value(k, None) for k in KEYS if
+                            get_environment_config_value(k) is not None}
     new_config_dict.update(argument_config_dict)
 
     return new_config_dict
+
 
 def update_config_dict_from_file(config_dict, sg_config_file):
     '''
@@ -60,6 +66,7 @@ def update_config_dict_from_file(config_dict, sg_config_file):
     new_config_dict.update(config_file_dict)
 
     return new_config_dict
+
 
 def create_config_dict():
     '''

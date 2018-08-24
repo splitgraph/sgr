@@ -15,7 +15,7 @@ def test_diff_head(sg_pg_conn):
         cur.execute("""DELETE FROM test_pg_mount.fruits WHERE name = 'apple'""")
     sg_pg_conn.commit()  # otherwise the WAL writer won't see this.
     head = get_current_head(sg_pg_conn, PG_MNT)
-    change = diff(sg_pg_conn, PG_MNT, 'fruits', snap_1=head, snap_2=None)
+    change = diff(sg_pg_conn, PG_MNT, 'fruits', image_1=head, image_2=None)
     # Added (3, mayonnaise); Deleted (1, 'apple')
     assert change == [((3, 'mayonnaise'), 0, {'c': [], 'v': []}),
                       ((1, 'apple'), 1, None)]
@@ -33,10 +33,10 @@ def test_commit_diff(include_snap, sg_pg_conn):
 
     # After commit, we should be switched to the new commit hash and there should be no differences.
     assert get_current_head(sg_pg_conn, PG_MNT) == new_head
-    assert diff(sg_pg_conn, PG_MNT, 'fruits', snap_1=new_head, snap_2=None) == []
+    assert diff(sg_pg_conn, PG_MNT, 'fruits', image_1=new_head, image_2=None) == []
     assert get_all_snap_info(sg_pg_conn, PG_MNT, new_head)[2] == "test commit"
 
-    change = diff(sg_pg_conn, PG_MNT, 'fruits', snap_1=head, snap_2=new_head)
+    change = diff(sg_pg_conn, PG_MNT, 'fruits', image_1=head, image_2=new_head)
     # pk (no PK here so the whole row) -- 0 for INS -- extra non-PK cols
     assert change == [  # 1, apple deleted
         ((1, 'apple'), 1, None),
@@ -44,7 +44,7 @@ def test_commit_diff(include_snap, sg_pg_conn):
         ((2, 'guitar'), 0, {'c': [], 'v': []}),
         ((2, 'orange'), 1, None),
         ((3, 'mayonnaise'), 0, {"c": [], "v": []})]
-    assert diff(sg_pg_conn, PG_MNT, 'vegetables', snap_1=head, snap_2=new_head) == []
+    assert diff(sg_pg_conn, PG_MNT, 'vegetables', image_1=head, image_2=new_head) == []
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
@@ -55,9 +55,9 @@ def test_commit_on_empty(include_snap, sg_pg_conn):
         cur.execute("""CREATE TABLE output.test AS SELECT * FROM test_pg_mount.fruits""")
 
     # Make sure the WAL changes get flushed anyway if we are only committing a snapshot.
-    assert diff(sg_pg_conn, 'output', 'test', snap_1=get_current_head(sg_pg_conn, 'output'), snap_2=None) == True
+    assert diff(sg_pg_conn, 'output', 'test', image_1=get_current_head(sg_pg_conn, 'output'), image_2=None) == True
     commit(sg_pg_conn, 'output', include_snap=include_snap)
-    assert diff(sg_pg_conn, 'output', 'test', snap_1=get_current_head(sg_pg_conn, 'output'), snap_2=None) == []
+    assert diff(sg_pg_conn, 'output', 'test', image_1=get_current_head(sg_pg_conn, 'output'), image_2=None) == []
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
@@ -76,7 +76,7 @@ def test_multiple_mountpoint_commit_diff(include_snap, sg_pg_mg_conn):
     mongo_head = get_current_head(sg_pg_mg_conn, MG_MNT)
     new_head = commit(sg_pg_mg_conn, PG_MNT, include_snap=include_snap)
 
-    change = diff(sg_pg_mg_conn, PG_MNT, 'fruits', snap_1=head, snap_2=new_head)
+    change = diff(sg_pg_mg_conn, PG_MNT, 'fruits', image_1=head, image_2=new_head)
     assert change == [((1, 'apple'), 1, None),
                       ((2, 'guitar'), 0, {'c': [], 'v': []}),
                       ((2, 'orange'), 1, None),

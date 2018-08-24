@@ -1,11 +1,10 @@
-# Various PG-specific functions that don't have any reference to SG
+"""Various PG-specific functions that don't have any reference to SG"""
 
 from psycopg2.sql import SQL, Identifier
 
 
 def pg_table_exists(conn, mountpoint, table_name):
-    # WTF: postgres quietly truncates all table names to 63 characters
-    # at creation and in select statements
+    # WTF: postgres quietly truncates all table names to 63 characters at creation and in select statements
     with conn.cursor() as cur:
         cur.execute("""SELECT table_name from information_schema.tables
                        WHERE table_schema = %s AND table_name = %s""", (mountpoint, table_name[:63]))
@@ -13,11 +12,14 @@ def pg_table_exists(conn, mountpoint, table_name):
 
 
 def copy_table(conn, source_schema, source_table, target_schema, target_table, with_pk_constraints=True):
+    """
+    Copies a table in the same Postgres instance, optionally applying primary key constraints as well.
+    """
     query = SQL("CREATE TABLE {}.{} AS SELECT * FROM {}.{};").format(
         Identifier(target_schema), Identifier(target_table),
         Identifier(source_schema), Identifier(source_table))
     if with_pk_constraints:
-        pks = _get_primary_keys(conn, source_schema, source_table)
+        pks = get_primary_keys(conn, source_schema, source_table)
         if pks:
             query += SQL("ALTER TABLE {}.{} ADD PRIMARY KEY (").format(
                 Identifier(target_schema), Identifier(target_table)) + SQL(',').join(
@@ -28,6 +30,14 @@ def copy_table(conn, source_schema, source_table, target_schema, target_table, w
 
 
 def dump_table_creation(conn, schema, tables, created_schema=None):
+    """
+    Dumps the basic table schema (column names, data types, is_nullable) for one or more tables into SQL statements.
+    :param conn: psycopg connection object
+    :param schema: Schema to dump tables from
+    :param tables: Tables to dump
+    :param created_schema: If not None, specifies the new schema that the tables will be created under.
+    :return: An SQL statement that reconstructs the schema for the given tables.
+    """
     queries = []
 
     with conn.cursor() as cur:
@@ -45,7 +55,7 @@ def dump_table_creation(conn, schema, tables, created_schema=None):
                         "{} %s " % ctype + ("NOT NULL" if not cnull else "") for _, ctype, cnull in cols)).format(
                         *(Identifier(cname) for cname, _, _ in cols))
 
-            pks = _get_primary_keys(conn, schema, t)
+            pks = get_primary_keys(conn, schema, t)
             if pks:
                 query += SQL(", PRIMARY KEY (") + SQL(',').join(SQL("{}").format(Identifier(c)) for c, _ in pks) + SQL(
                     "))")
@@ -56,14 +66,20 @@ def dump_table_creation(conn, schema, tables, created_schema=None):
     return SQL(';').join(queries)
 
 
-def _get_primary_keys(conn, mountpoint, table):
+def get_primary_keys(conn, mountpoint, table):
+    """Inspects the Postgres information_schema to get the primary keys for a given table."""
     with conn.cursor() as cur:
         cur.execute(SQL("""SELECT c.column_name, c.data_type
                            FROM information_schema.table_constraints tc
-                            JOIN information_schema.constraint_column_usage AS ccu USING (constraint_schema, constraint_name)
+                            JOIN information_schema.constraint_column_usage 
+                                AS ccu USING (constraint_schema, constraint_name)
                             JOIN information_schema.columns AS c 
-                            ON c.table_schema = tc.constraint_schema AND tc.table_name = c.table_name AND ccu.column_name = c.column_name
-                           WHERE constraint_type = 'PRIMARY KEY' AND tc.table_schema = %s AND tc.table_name = %s"""),
+                            ON c.table_schema = tc.constraint_schema
+                                AND tc.table_name = c.table_name
+                                AND ccu.column_name = c.column_name
+                           WHERE constraint_type = 'PRIMARY KEY'
+                                AND tc.table_schema = %s
+                                AND tc.table_name = %s"""),
                     (mountpoint, table))
         return cur.fetchall()
 
@@ -95,5 +111,5 @@ def _get_full_table_schema(conn, mountpoint, table_name):
         results = cur.fetchall()
 
     # Do we need to make sure the PK has the same type + ordinal position here?
-    pks = [pk for pk, _ in _get_primary_keys(conn, mountpoint, table_name)]
+    pks = [pk for pk, _ in get_primary_keys(conn, mountpoint, table_name)]
     return [(o, n, dt, (n in pks)) for o, n, dt in results]

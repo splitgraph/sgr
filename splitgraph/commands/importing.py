@@ -5,28 +5,38 @@ from psycopg2.sql import Identifier, SQL
 from splitgraph.commands.checkout import materialize_table
 from splitgraph.commands.misc import unmount
 from splitgraph.commands.push_pull import clone
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA, get_random_object_id, _log
+from splitgraph.constants import SPLITGRAPH_META_SCHEMA, get_random_object_id, log
 from splitgraph.meta_handler import get_current_head, add_new_snap_id, register_table, set_head, get_table, \
     get_tables_at, get_all_tables, register_object, get_all_foreign_tables
 from splitgraph.pg_replication import suspend_replication
-from splitgraph.pg_utils import copy_table, _get_primary_keys
+from splitgraph.pg_utils import copy_table, get_primary_keys
 
 
 @suspend_replication
 def import_tables(conn, mountpoint, tables, target_mountpoint, target_tables, image_hash=None, foreign_tables=False,
                   do_checkout=True, target_hash=None, table_queries=[]):
-    # Creates a new commit in target_mountpoint with one or more tables linked to already-existing tables.
-    # After this operation, the HEAD of the target mountpoint moves to the new commit and the new tables
-    # are materialized.
-    # If tables = [], all tables are imported.
-    # If target_tables = [], the target tables will have the same names as the original tables.
-    # foreign_tables=True is for tables that aren't actually SG snapshots but have been mounted via an FDW or
-    # just exist in the driver in some other way. Creates a new object/commit as well.
-    # If table_queries is not [], it's treated as a Boolean mask showing which entries in the tabls list are instead
-    # SELECT SQL queries that form the target table.
-    # The queries have to be non-schema qualified and work only against tables in the source mountpoint.
-    # Each target table created is the result of the respective SQL query. This is committed as a new snapshot.
-    HEAD = get_current_head(conn, target_mountpoint, raise_on_none=False)
+    """
+    Creates a new commit in target_mountpoint with one or more tables linked to already-existing tables.
+    After this operation, the HEAD of the target mountpoint moves to the new commit and the new tables are materialized.
+    :param conn: psycopg connection object
+    :param mountpoint: Mountpoint to get the source table(s) from.
+    :param tables: List of tables to import. If empty, imports all tables.
+    :param target_mountpoint: Mountpoint to import tables into.
+    :param target_tables: If not empty, must be the list of the same length as `tables` specifying names to store them
+        under in the target mountpoint.
+    :param image_hash: Commit hash on the source mountpoint to import tables from.
+        Uses the current source HEAD by default.
+    :param foreign_tables: If True, copies all source tables to create a series of new SNAP objects instead of treating
+        them as SplitGraph-versioned tables.
+    :param do_checkout: If False, doesn't materialize the tables in the target mountpoint.
+    :param target_hash: Hash of the new image that tables is recorded under. If None, gets chosen at random.
+    :param table_queries: If not [], it's treated as a Boolean mask showing which entries in the `tables` list are
+        instead SELECT SQL queries that form the target table. The queries have to be non-schema qualified and work only
+        against tables in the source mountpoint. Each target table created is the result of the respective SQL query.
+        This is committed as a new snapshot.
+    :return: Hash that the new image was stored under.
+    """
+    head = get_current_head(conn, target_mountpoint, raise_on_none=False)
     target_hash = target_hash or "%0.2x" % getrandbits(256)
 
     if not foreign_tables:
@@ -50,7 +60,7 @@ def import_tables(conn, mountpoint, tables, target_mountpoint, target_tables, im
         raise ValueError("Table(s) %r already exist(s) at %s!" % (clashing, target_mountpoint))
 
     # Add the new snap ID to the tree
-    add_new_snap_id(conn, target_mountpoint, HEAD, target_hash, comment="Importing %s from %s" % (tables, mountpoint))
+    add_new_snap_id(conn, target_mountpoint, head, target_hash, comment="Importing %s from %s" % (tables, mountpoint))
 
     # Materialize the actual tables in the target mountpoint and register them.
     for table, target_table, is_query in zip(tables, target_tables, table_queries):
@@ -74,8 +84,8 @@ def import_tables(conn, mountpoint, tables, target_mountpoint, target_tables, im
             register_table(conn, target_mountpoint, target_table, target_hash, object_id)
             if do_checkout:
                 copy_table(conn, SPLITGRAPH_META_SCHEMA, object_id, target_mountpoint, target_table)
-                if not _get_primary_keys(conn, target_mountpoint, target_table):
-                    _log(
+                if not get_primary_keys(conn, target_mountpoint, target_table):
+                    log(
                         "WARN: table %s has no primary key. This means that changes will have to be recorded as "
                         "whole-row." % target_table)
                     with conn.cursor() as cur:
@@ -90,12 +100,12 @@ def import_tables(conn, mountpoint, tables, target_mountpoint, target_tables, im
                                   destination_mountpoint=target_mountpoint)
 
     # Register the existing tables at the new commit as well.
-    if HEAD is not None:
+    if head is not None:
         with conn.cursor() as cur:
             cur.execute(SQL("""INSERT INTO {0}.tables (mountpoint, snap_id, table_name, object_id)
                 (SELECT %s, %s, table_name, object_id FROM {0}.tables
                 WHERE mountpoint = %s AND snap_id = %s)""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                        (target_mountpoint, target_hash, target_mountpoint, HEAD))
+                        (target_mountpoint, target_hash, target_mountpoint, head))
 
     set_head(conn, target_mountpoint, target_hash)
     conn.commit()

@@ -1,7 +1,7 @@
 import pytest
 
 from splitgraph.commands import commit, get_log, checkout, diff
-from splitgraph.pg_utils import pg_table_exists, _get_primary_keys
+from splitgraph.pg_utils import pg_table_exists, get_primary_keys
 from splitgraph.meta_handler import get_current_head, set_tag, get_all_hashes_tags
 from test.splitgraph.conftest import PG_MNT
 
@@ -45,7 +45,7 @@ def test_table_changes(include_snap, sg_pg_conn):
 
     head = get_current_head(sg_pg_conn, PG_MNT)
     # Check that table addition has been detected
-    assert diff(sg_pg_conn, PG_MNT, 'fruits_copy', snap_1=head, snap_2=None) is True
+    assert diff(sg_pg_conn, PG_MNT, 'fruits_copy', image_1=head, image_2=None) is True
 
     head_1 = commit(sg_pg_conn, PG_MNT, include_snap=include_snap)
     # Checkout the old head and make sure the table doesn't exist in it
@@ -53,7 +53,7 @@ def test_table_changes(include_snap, sg_pg_conn):
     assert not pg_table_exists(sg_pg_conn, PG_MNT, 'fruits_copy')
 
     # Make sure the table is reflected in the diff even if we're on a different commit
-    assert diff(sg_pg_conn, PG_MNT, 'fruits_copy', snap_1=head, snap_2=head_1) is True
+    assert diff(sg_pg_conn, PG_MNT, 'fruits_copy', image_1=head, image_2=head_1) is True
 
     # Go back and now delete a table
     checkout(sg_pg_conn, PG_MNT, head_1)
@@ -63,7 +63,7 @@ def test_table_changes(include_snap, sg_pg_conn):
     assert not pg_table_exists(sg_pg_conn, PG_MNT, 'fruits')
 
     # Make sure the diff shows it's been removed and commit it
-    assert diff(sg_pg_conn, PG_MNT, 'fruits', snap_1=head_1, snap_2=None) is False
+    assert diff(sg_pg_conn, PG_MNT, 'fruits', image_1=head_1, image_2=None) is False
     head_2 = commit(sg_pg_conn, PG_MNT, include_snap=include_snap)
 
     # Go through the 3 commits and ensure the table existence is maintained

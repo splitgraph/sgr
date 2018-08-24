@@ -3,7 +3,7 @@ import json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.commands.checkout import materialized_table
-from splitgraph.commands.misc import _table_exists_at, _find_path
+from splitgraph.commands.misc import table_exists_at, find_path
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler import get_current_head, get_table, get_table_with_format
 from splitgraph.pg_replication import dump_pending_changes
@@ -16,31 +16,49 @@ def _changes_to_aggregation(query_result, initial=None):
     return tuple(result)
 
 
-def diff(conn, mountpoint, table_name, snap_1, snap_2, aggregate=False):
-    # Returns a list of changes done to a table if it exists in both images (if aggregate=False).
-    # If aggregate=True, returns a triple showing the number of (added, removed, updated) rows.
-    # Otherwise, returns True if the table was added and False if it was removed.
+def diff(conn, mountpoint, table_name, image_1, image_2, aggregate=False):
+    """
+    Compares the state of the table in different images. If the two images are on the same path in the commit tree,
+    it doesn't need to materialize any of the tables and simply aggregates their DIFF objects to produce a complete
+    changelog. Otherwise, it materializes both tables into a temporary space and compares them row-to-row.
+    :param conn: psycopg connection
+    :param mountpoint: Mounpoint where the table exists.
+    :param table_name: Name of the table.
+    :param image_1: First image. If None, uses the state of the current staging area.
+    :param image_2: Second image. If None, uses the state of the current staging area.
+    :param aggregate: If True, returns a tuple of integers denoting added, removed and updated rows between
+        the two images.
+    :return: If the table doesn't exist in one of the images, returns True if it was added and False if it was removed.
+        If `aggregate` is True, returns the aggregation of changes as specified before.
+        Otherwise, returns a list of changes where each change is of the format (primary key, action_type, action_data):
+            * `action_type == 0` is Insert and the `action_data` contains a dictionary of non-PK columns and values
+              inserted.
+            * `action_type == 1`: Delete, `action_data` is None.
+            * `action_type == 2`: Update, `action_data` is a dictionary of non-PK columns and their new values for that
+              particular row.
+    """
+
     with conn.cursor() as cur:
         # If the table doesn't exist in the first or the second image, short-circuit and
         # return the bool.
-        if not _table_exists_at(conn, mountpoint, table_name, snap_1):
+        if not table_exists_at(conn, mountpoint, table_name, image_1):
             return True
-        if not _table_exists_at(conn, mountpoint, table_name, snap_2):
+        if not table_exists_at(conn, mountpoint, table_name, image_2):
             return False
 
         # Special case: if diffing HEAD and staging, then just return the current pending changes.
         HEAD = get_current_head(conn, mountpoint)
 
-        if snap_1 == HEAD and snap_2 is None:
+        if image_1 == HEAD and image_2 is None:
             changes = dump_pending_changes(conn, mountpoint, table_name, aggregate=aggregate)
             return changes if not aggregate else _changes_to_aggregation(changes)
 
         # If the table is the same in the two images, short circuit as well.
-        if set(get_table(conn, mountpoint, table_name, snap_1)) == set(get_table(conn, mountpoint, table_name, snap_2)):
+        if set(get_table(conn, mountpoint, table_name, image_1)) == set(get_table(conn, mountpoint, table_name, image_2)):
             return [] if not aggregate else (0, 0, 0)
 
         # Otherwise, check if snap_1 is a parent of snap_2, then we can merge all the diffs.
-        path = _find_path(conn, mountpoint, snap_1, (snap_2 if snap_2 is not None else HEAD))
+        path = find_path(conn, mountpoint, image_1, (image_2 if image_2 is not None else HEAD))
         if path is not None:
             result = [] if not aggregate else (0, 0, 0)
             for image in reversed(path):
@@ -67,7 +85,7 @@ def diff(conn, mountpoint, table_name, snap_1, snap_2, aggregate=False):
                     result = _changes_to_aggregation(cur.fetchall(), result)
 
             # If snap_2 is staging, also include all changes that have happened since the last commit.
-            if snap_2 is None:
+            if image_2 is None:
                 changes = dump_pending_changes(conn, mountpoint, table_name, aggregate=aggregate)
                 if aggregate:
                     result = _changes_to_aggregation(changes, result)
@@ -77,8 +95,8 @@ def diff(conn, mountpoint, table_name, snap_1, snap_2, aggregate=False):
 
         else:
             # Finally, resort to manual diffing (images on different branches or reverse comparison order).
-            with materialized_table(conn, mountpoint, table_name, snap_1) as table_1:
-                with materialized_table(conn, mountpoint, table_name, snap_2) as table_2:
+            with materialized_table(conn, mountpoint, table_name, image_1) as table_1:
+                with materialized_table(conn, mountpoint, table_name, image_2) as table_2:
                     # Check both tables out at the same time since then table_2 calculation can be based
                     # on table_1's snapshot.
                     cur.execute(SQL("SELECT * FROM {}.{}").format(Identifier(mountpoint), Identifier(table_1)))

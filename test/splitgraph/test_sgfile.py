@@ -9,7 +9,8 @@ from splitgraph.constants import SPLITGRAPH_META_SCHEMA, PG_USER, PG_PWD, PG_DB,
 from splitgraph.meta_handler import get_current_head, get_snap_parent, set_tag, get_current_mountpoints_hashes, \
     get_downloaded_objects, get_existing_objects, get_external_object_locations, get_table_with_format, get_tables_at
 from splitgraph.pg_utils import pg_table_exists
-from splitgraph.sgfile import execute_commands, preprocess
+from splitgraph.sgfile.execution import execute_commands
+from splitgraph.sgfile.parsing import preprocess
 from test.splitgraph.conftest import SNAPPER_HOST, SNAPPER_PORT
 
 SGFILE_ROOT = os.path.join(os.path.dirname(__file__), '../resources/')

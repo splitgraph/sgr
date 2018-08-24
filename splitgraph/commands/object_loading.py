@@ -5,13 +5,24 @@ import requests
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.commands.misc import mount_postgres, make_conn, unmount
-from splitgraph.constants import _log, SplitGraphException, SPLITGRAPH_META_SCHEMA
+from splitgraph.constants import log, SplitGraphException, SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler import get_downloaded_objects, get_existing_objects
-from splitgraph.pg_utils import copy_table, dump_table_creation, _get_primary_keys
+from splitgraph.pg_utils import copy_table, dump_table_creation, get_primary_keys
 
 
 def download_objects(conn, remote_conn_string, objects_to_fetch, object_locations, remote_conn=None):
-    # Fetches the required objects from the remote and stores them locally. Does nothing for objects that already exist.
+    """
+    Fetches the required objects from the remote and stores them locally. Does nothing for objects that already exist.
+    :param conn: psycopg connection object
+    :param remote_conn_string: Connection string to the remote SG driver of the form
+        username:password@hostname:port/database.
+    :param objects_to_fetch: List of object IDs to download.
+    :param object_locations: List of custom object locations, encoded as tuples (object_id, object_url, protocol).
+    :param remote_conn: If not None, must be a psycopg connection object used by the client to connect to the remote
+        driver. The local driver will still use the parameters specified in `remote_conn_string` to download the
+        actual objects from the remote.
+    :return:
+    """
     existing_objects = get_downloaded_objects(conn)
     objects_to_fetch = set(o for o in objects_to_fetch if o not in existing_objects)
     if not objects_to_fetch:
@@ -26,6 +37,7 @@ def download_objects(conn, remote_conn_string, objects_to_fetch, object_location
 
     if non_remote_objects:
         print("Fetching external objects...")
+        # Future: maybe have a series of hooks that let people register their own object handlers.
         for method, objects in non_remote_by_method.items():
             if method == 'HTTP':
                 _http_download_objects(conn, objects, {})
@@ -52,11 +64,11 @@ def download_objects(conn, remote_conn_string, objects_to_fetch, object_location
 
     try:
         for i, obj in enumerate(objects_to_fetch):
-            _log("(%d/%d) %s..." % (i + 1, len(objects_to_fetch), obj))
+            log("(%d/%d) %s..." % (i + 1, len(objects_to_fetch), obj))
             # Foreign tables don't have PK constraints so we'll have to apply them manually.
             copy_table(conn, remote_data_mountpoint, obj, SPLITGRAPH_META_SCHEMA, obj, with_pk_constraints=False)
             with conn.cursor() as cur:
-                source_pks = _get_primary_keys(remote_conn, SPLITGRAPH_META_SCHEMA, obj)
+                source_pks = get_primary_keys(remote_conn, SPLITGRAPH_META_SCHEMA, obj)
                 if source_pks:
                     cur.execute(SQL("ALTER TABLE {}.{} ADD PRIMARY KEY (").format(
                         Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj)) \
@@ -114,7 +126,7 @@ def _file_upload_objects(conn, objects_to_push, params):
 def _file_download_objects(conn, objects_to_fetch, params):
     for i, obj in enumerate(objects_to_fetch):
         object_id, object_url = obj
-        _log("(%d/%d) %s -> %s" % (i + 1, len(objects_to_fetch), object_url, object_id))
+        log("(%d/%d) %s -> %s" % (i + 1, len(objects_to_fetch), object_url, object_id))
         with open(object_url, 'r') as f:
             with conn.cursor() as cur:
                 # Insert into the locally checked out schema by default since the dump doesn't have the schema
@@ -132,7 +144,7 @@ def _http_download_objects(conn, objects_to_fetch, http_params):
 
     for i, obj in enumerate(objects_to_fetch):
         object_id, object_url = obj
-        _log("(%d/%d) %s -> %s" % (i + 1, len(objects_to_fetch), object_url, object_id))
+        log("(%d/%d) %s -> %s" % (i + 1, len(objects_to_fetch), object_url, object_id))
         # Let's execute arbitrary code from the Internet on our machine!
         r = requests.get(object_url, stream=True)
         with conn.cursor() as cur:
@@ -156,10 +168,26 @@ def _http_download_objects(conn, objects_to_fetch, http_params):
 
 
 def upload_objects(conn, remote_conn_string, objects_to_push, handler='DB', handler_params={}, remote_conn=None):
+    """
+    Uploads physical objects to the remote or some other external location.
+    :param conn: psycopg connection object
+    :param remote_conn_string: Connection string to the remote SG driver of the form
+        username:password@hostname:port/database.
+    :param objects_to_push: List of object IDs to upload.
+    :param handler: Name of the handler to use to upload objects. Use `DB` to push them to the remote, `FILE`
+        to store them in a directory that can be accessed from the client and `HTTP` to upload them to HTTP.
+    :param handler_params: For `HTTP`, a dictionary `{"username": username, "password", password}`. For `FILE`,
+        a dictionary `{"path": path}` specifying the directory where the objects shall be saved.
+    :param remote_conn: If not None, must be a psycopg connection object used by the client to connect to the remote
+        driver. The local driver will still use the parameters specified in `remote_conn_string` to download the
+        actual objects from the remote.
+    :return: A list of (object_id, url, handler) that specifies all objects were uploaded (skipping objects that
+        already exist on the remote).
+    """
     match = re.match('(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
     existing_objects = get_existing_objects(remote_conn)
     objects_to_push = list(set(o for o in objects_to_push if o not in existing_objects))
-    _log("Uploading objects...")
+    log("Uploading objects...")
 
     if handler == 'DB':
         # Difference from pull here: since we can't get remote to mount us, we instead use normal SQL statements
@@ -178,7 +206,7 @@ def upload_objects(conn, remote_conn_string, objects_to_push, handler='DB', hand
                        username=match.group(1), password=match.group(2), mountpoint=remote_data_mountpoint,
                        extra_options={'dbname': match.group(5), 'remote_schema': SPLITGRAPH_META_SCHEMA})
         for i, obj in enumerate(objects_to_push):
-            _log("(%d/%d) %s..." % (i + 1, len(objects_to_push), obj))
+            log("(%d/%d) %s..." % (i + 1, len(objects_to_push), obj))
             with conn.cursor() as cur:
                 cur.execute(SQL("INSERT INTO {}.{} SELECT * FROM {}.{}").format(
                     Identifier(remote_data_mountpoint), Identifier(obj),

@@ -73,7 +73,8 @@ def accumulate_lists(config_dict):
 
     accumulated = {}
 
-    def key_matches(k): return k.split(':')[0] in accumulatable_keys
+    def key_matches(k):
+        return k.split(':')[0] in accumulatable_keys
 
     matching_keys = [k for k in new_dict.keys() if key_matches(k)]
 
@@ -103,6 +104,7 @@ def accumulate_lists(config_dict):
 
     return new_dict
 
+
 def transform_config_dict(config_dict, **kwargs):
     '''
         Apply transformations to the raw ConfigParser.config object
@@ -116,6 +118,7 @@ def transform_config_dict(config_dict, **kwargs):
     config_dict = hoist_section(config_dict, **kwargs)
     config_dict = accumulate_lists(config_dict, **kwargs)
     return config_dict
+
 
 def get_config_dict_from_file(sg_file, **kwargs):
     config = SafeConfigParser(interpolation=ExtendedInterpolation())

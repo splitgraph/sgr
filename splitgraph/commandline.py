@@ -15,7 +15,7 @@ from splitgraph.drawing import render_tree
 from splitgraph.meta_handler import get_snap_parent, get_canonical_snap_id, get_all_tables, \
     get_current_mountpoints_hashes, get_all_hashes_tags, set_tag, get_current_head, get_remote_for, get_tagged_id, \
     get_all_snap_info, get_tables_at, get_table
-from splitgraph.sgfile import execute_commands
+from splitgraph.sgfile.execution import execute_commands
 
 
 def _conn():
@@ -293,7 +293,8 @@ def push_c(mountpoint, remote, remote_mountpoint, upload_handler, upload_handler
     if not remote_mountpoint:
         # Get actual connection string and remote mountpoint
         remote, remote_mountpoint = get_remote_for(conn, mountpoint, remote)
-    push(conn, remote, remote_mountpoint, mountpoint, handler=upload_handler, handler_options=json.loads(upload_handler_options))
+    push(conn, remote, remote_mountpoint, mountpoint, handler=upload_handler,
+         handler_options=json.loads(upload_handler_options))
     conn.commit()
 
 

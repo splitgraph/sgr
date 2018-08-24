@@ -9,13 +9,14 @@ META_TABLES = ['snap_tree', 'snap_tags', 'object_tree', 'tables', 'remotes', 'ob
 
 
 def _create_metadata_schema(conn):
-    # Creates the metadata schema splitgraph_meta that stores
-    # the hash tree of schema snaps and the current tags.
-    # This means we can't mount anything under the schema splitgraph_meta
-    # -- much like we can't have a folder ".git" under Git version control...
+    """
+    Creates the metadata schema splitgraph_meta that stores the hash tree of schema snaps and the current tags.
+    This means we can't mount anything under the schema splitgraph_meta -- much like we can't have a folder
+    ".git" under Git version control...
 
-    # This all should probably be moved into some sort of a setup function that runs when the
-    # whole driver is set up for the first time.
+    This all should probably be moved into some sort of a routine that runs when the whole driver is set up
+    for the first time.
+    """
 
     with conn.cursor() as cur:
         cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(SPLITGRAPH_META_SCHEMA)))
@@ -180,16 +181,16 @@ def register_table(conn, mountpoint, table, snap_id, object_id):
         cur.execute(query, (mountpoint, snap_id, table, object_id))
 
 
-def deregister_table_object(conn, mountpoint, object_id):
+def deregister_table_object(conn, object_id):
     with conn.cursor() as cur:
         query = SQL("DELETE FROM {}.tables WHERE object_id = %s").format(Identifier(SPLITGRAPH_META_SCHEMA))
         cur.execute(query, (object_id,))
 
 
 def get_all_foreign_tables(conn, mountpoint):
-    # Inspects the information_schema to see which foreign tables we have in a given mountpoint.
-    # Used in the beginning to populate the metadata since if we did IMPORT FOREIGN SCHEMA we've no idea what tables
-    # we actually fetched from the remote postgres.
+    """Inspects the information_schema to see which foreign tables we have in a given mountpoint.
+    Used by `mount` to populate the metadata since if we did IMPORT FOREIGN SCHEMA we've no idea what tables we actually
+    fetched from the remote postgres."""
     with conn.cursor() as cur:
         cur.execute(
             "SELECT table_name FROM information_schema.tables WHERE table_schema = %s and table_type = 'FOREIGN TABLE'",

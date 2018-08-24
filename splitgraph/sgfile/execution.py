@@ -1,62 +1,15 @@
 import json
-import re
 from hashlib import sha256
 from random import getrandbits
 
-from parsimonious.grammar import Grammar
-
-from splitgraph.commands import init, commit, checkout, import_tables, clone, unmount
+from splitgraph.commands import checkout, init, unmount, clone, import_tables, commit
 from splitgraph.commands.mounting import get_mount_handler
 from splitgraph.commands.push_pull import local_clone
 from splitgraph.constants import SplitGraphException
-from splitgraph.meta_handler import get_current_head, get_tagged_id, mountpoint_exists
-from splitgraph.pg_replication import _replication_slot_exists
-
-SGFILE_GRAMMAR = Grammar(r"""
-    commands = space command space (newline space command space)*
-    command = comment / import / from / sql_file / sql 
-    comment = space "#" non_newline
-    from = "FROM" space ("EMPTY" / repo_source) (space "AS" space mountpoint)?
-    import = "FROM" space source space "IMPORT" space tables
-    sql_file = "SQL" space "FILE" space non_newline
-    sql = "SQL" space sql_statement
-    
-    table = ((table_name / table_query) space "AS" space table_alias) / table_name
-    
-    table_query = "{" non_curly_brace "}"
-    tables = "ALL" / (table space ("," space table)*)
-    source = mount_source / repo_source
-    repo_source = (conn_string space)? mountpoint (":" tag)?
-    mount_source = "MOUNT" space handler space no_db_conn_string space handler_options
-    
-    image_hash = ~"[0-9a-f]*"i
-    
-    # TBH these ones that map to "identifier" aren't realy necessary since parsimonious calls those nodes
-    # "identifier" anyway. This is so that the grammar is slightly more readable. 
-    
-    handler = identifier
-    mountpoint = identifier
-    table_name = identifier
-    table_alias = identifier
-    tag = identifier
-    handler_options = "'" non_single_quote "'"
-    sql_statement = non_newline
-    
-    newline = ~"\n*"
-    non_newline = ~"[^\n]*"
-    
-    # I've no idea why we need so many slashes here. The purpose of this regex is to consume anything
-    # that's not a closing curly brace or \} (an escaped curly brace).
-    non_curly_brace = ~"(\\\\}|[^}])*"
-    
-    # Yeah, six slashes should be about enough to capture \'
-    non_single_quote = ~"(\\\\\\'|[^'])*"
-    
-    conn_string = ~"\S+:\S+@.+:\d+\/\S+"
-    no_db_conn_string = ~"(\S+):(\S+)@(.+):(\d+)"
-    identifier = ~"[_a-zA-Z0-9\-]+"
-    space = ~"\s*"
-""")
+from splitgraph.meta_handler import mountpoint_exists, get_tagged_id, get_current_head
+from splitgraph.pg_replication import replication_slot_exists
+from splitgraph.sgfile.parsing import parse_commands, extract_nodes, get_first_or_none, parse_repo_source, \
+    extract_all_table_aliases
 
 
 def _canonicalize(sql):
@@ -65,70 +18,6 @@ def _canonicalize(sql):
 
 def _combine_hashes(hashes):
     return sha256(''.join(hashes).encode('ascii')).hexdigest()
-
-
-def preprocess(commands, params={}):
-    # Also replaces all $PARAM in the sgfile text with the params in the dictionary.
-    commands = commands.replace("\\\n", "")
-    for k, v in params.items():
-        # Regex fun: if the replacement is '\1' + substitution (so that we put back the previously-consumed
-        # possibly-escape character) and the substitution begins with a number (like an IP address),
-        # then it gets treated as a match group (say, \11) which fails silently and adds weird gibberish
-        # to the result.
-        commands = re.sub(r'([^\\])\${' + re.escape(k) + '}', r'\g<1>' + str(v), commands, flags=re.MULTILINE)
-    # Search for any unreplaced $-parameters
-    unreplaced = set(re.findall(r'[^\\](\${\S+})', commands, flags=re.MULTILINE))
-    if unreplaced:
-        raise SplitGraphException("Unknown values for parameters " + ', '.join(unreplaced) + '!')
-    # Finally, replace the escaped $
-    return commands.replace('\\$', '$')
-
-
-def parse_commands(commands, params={}):
-    # Unpacks the parse tree into a list of command nodes.
-    commands = preprocess(commands, params)
-    parse_tree = SGFILE_GRAMMAR.parse(commands)
-    return [n.children[0] for n in _extract_nodes(parse_tree, ['command']) if n.children[0].expr_name != 'comment']
-
-
-def _extract_nodes(node, types):
-    # Crawls the parse tree and only extracts nodes of given types.
-    # Doesn't crawl further down if it reaches a required type.
-    if node.expr_name in types:
-        return [node]
-    result = []
-    for child in node.children:
-        result.extend(_extract_nodes(child, types))
-    return result
-
-
-def _get_first_or_none(node_list, node_type):
-    # Gets the first node of type node_type from node_list, returns None if it doesn't exist.
-    for n in node_list:
-        if n.expr_name == node_type:
-            return n
-
-
-def _parse_table_alias(table_node):
-    # Extracts the table name (or a query forming the table) and its alias from the parse tree
-    table_name_alias = _extract_nodes(table_node, ['identifier', 'non_curly_brace'])
-    table_name = table_name_alias[0].match.group(0)
-    table_is_query = table_name_alias[0].expr_name == 'non_curly_brace'
-    if table_is_query:
-        # Unescape the closing curly brace that marked the end of the query
-        table_name = table_name.replace('\\}', '}')
-    if len(table_name_alias) > 1:
-        table_alias = table_name_alias[1].match.group(0)
-        return table_name, table_alias, table_is_query
-    return table_name, table_name, table_is_query
-
-
-def _extract_all_table_aliases(node):
-    tables = _extract_nodes(node, ['table'])
-    if not tables:
-        # No tables specified (imports all tables from the mounted db / repo)
-        return [], [], []
-    return zip(*[_parse_table_alias(table) for table in tables])
 
 
 def _checkout_or_calculate_layer(conn, output, image_hash, calc_func):
@@ -140,11 +29,22 @@ def _checkout_or_calculate_layer(conn, output, image_hash, calc_func):
         calc_func()
 
 
-def execute_commands(conn, commands, params={}, output=None, output_base='0'*32):
+def execute_commands(conn, commands, params={}, output=None, output_base='0' * 32):
+    """
+    Executes a series of SGFile commands.
+    :param conn: psycopg connection object
+    :param commands: A string with the raw SGFile.
+    :param params: A dictionary of parameters to be applied to the SGFile (`${PARAM}` is replaced with the specified
+        parameter value).
+    :param output: Output mountpoint to execute the SGFile against.
+    :param output_base: If not None, a revision that gets checked out for all SGFile actions to be committed
+        on top of it.
+    """
     if output and mountpoint_exists(conn, output) and output_base is not None:
         checkout(conn, output, output_base)
     # Use a random target schema if unspecified.
     output = output or "output_%0.2x" % getrandbits(16)
+
     # Don't initialize the output until a command writing to it asks us to
     # (otherwise we might have a FROM ... AS output_name change it).
 
@@ -156,9 +56,9 @@ def execute_commands(conn, commands, params={}, output=None, output_base='0'*32)
     for i, node in enumerate(node_list):
         print("\n-> %d/%d %s" % (i + 1, len(node_list), node.text))
         if node.expr_name == 'from':
-            interesting_nodes = _extract_nodes(node, ['repo_source', 'identifier'])
-            repo_source = _get_first_or_none(interesting_nodes, 'repo_source')
-            output_node = _get_first_or_none(interesting_nodes, 'identifier')
+            interesting_nodes = extract_nodes(node, ['repo_source', 'identifier'])
+            repo_source = get_first_or_none(interesting_nodes, 'repo_source')
+            output_node = get_first_or_none(interesting_nodes, 'identifier')
 
             if output_node:
                 # AS (output) detected, change the current output mountpoint to it.
@@ -175,7 +75,7 @@ def execute_commands(conn, commands, params={}, output=None, output_base='0'*32)
             _initialize_output(output)
 
             if repo_source:
-                conn_string, mountpoint, tag = _parse_repo_source(repo_source)
+                conn_string, mountpoint, tag = parse_repo_source(repo_source)
                 if conn_string:
                     # At some point here we'll also actually search for the image hash locally and not clone it?
                     clone(conn, conn_string, mountpoint, output, download_all=False)
@@ -196,12 +96,12 @@ def execute_commands(conn, commands, params={}, output=None, output_base='0'*32)
                     raise SplitGraphException("FROM EMPTY without AS (mountpoint) does nothing!")
 
         elif node.expr_name == 'import':
-            interesting_nodes = _extract_nodes(node, ['repo_source', 'mount_source', 'tables'])
-            table_names, table_aliases, table_queries = _extract_all_table_aliases(interesting_nodes[-1])
+            interesting_nodes = extract_nodes(node, ['repo_source', 'mount_source', 'tables'])
+            table_names, table_aliases, table_queries = extract_all_table_aliases(interesting_nodes[-1])
             _initialize_output(output)
             if interesting_nodes[0].expr_name == 'repo_source':
                 # Import from a repository (local or remote)
-                conn_string, mountpoint, tag = _parse_repo_source(interesting_nodes[0])
+                conn_string, mountpoint, tag = parse_repo_source(interesting_nodes[0])
 
                 # Don't use the actual routine here as we want more control: clone the remote repo in order to turn
                 # the tag into an actual hash
@@ -240,8 +140,8 @@ def execute_commands(conn, commands, params={}, output=None, output_base='0'*32)
             else:
                 # Extract the identifier (FDW name), the connection string and the FDW params (JSON-encoded, everything
                 # between the single quotes).
-                mount_nodes = _extract_nodes(interesting_nodes[0],
-                                             ['identifier', 'no_db_conn_string', 'non_single_quote'])
+                mount_nodes = extract_nodes(interesting_nodes[0],
+                                            ['identifier', 'no_db_conn_string', 'non_single_quote'])
                 fdw_name = mount_nodes[0].match.group(0)
                 conn_string = mount_nodes[1].match
                 fdw_params = mount_nodes[2].match.group(0).replace("\\'", "'")  # Unescape the single quote
@@ -271,7 +171,7 @@ def execute_commands(conn, commands, params={}, output=None, output_base='0'*32)
             # Since we handle the "input" hashing in the import step, we don't need to care about the sources here.
             # Later on, we could enhance the caching and base the hash of the command on the hashes of objects that
             # definitely go there as sources.
-            node_contents = _extract_nodes(node, ['non_newline'])[0].text
+            node_contents = extract_nodes(node, ['non_newline'])[0].text
             if node.expr_name == 'sql_file':
                 print("Loading the SQL commands from %s" % node_contents)
                 with open(node_contents, 'r') as f:
@@ -290,7 +190,7 @@ def execute_commands(conn, commands, params={}, output=None, output_base='0'*32)
                 print("Executing SQL...")
                 with conn.cursor() as cur:
                     # Make sure we'll record the actual change.
-                    assert _replication_slot_exists(conn)
+                    assert replication_slot_exists(conn)
                     # Execute all queries against the output by default.
                     cur.execute("SET search_path TO %s", (output,))
                     cur.execute(sql_command)
@@ -298,19 +198,3 @@ def execute_commands(conn, commands, params={}, output=None, output_base='0'*32)
                 commit(conn, output, target_hash, comment=sql_command)
 
             _checkout_or_calculate_layer(conn, output, target_hash, _calc)
-
-
-def _parse_repo_source(remote_repo_node):
-    repo_nodes = _extract_nodes(remote_repo_node, ['conn_string', 'identifier'])
-    if repo_nodes[0].expr_name == 'conn_string':
-        conn_string = repo_nodes[0].match.group(0)
-        mountpoint = repo_nodes[1].match.group(0)
-    else:
-        conn_string = None
-        mountpoint = repo_nodes[0].match.group(0)
-    # See if we got given a tag
-    if len(repo_nodes) == 3:
-        tag = repo_nodes[2].match.group(0)
-    else:
-        tag = 'latest'
-    return conn_string, mountpoint, tag

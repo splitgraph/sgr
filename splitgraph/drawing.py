@@ -5,12 +5,12 @@ from splitgraph.constants import SplitGraphException
 from splitgraph.meta_handler import get_all_snap_parents, get_current_head, ensure_metadata_schema
 
 
-def calc_columns(children, start):
+def _calc_columns(children, start):
     def dfs(node):
         result = {node: 0}
         base = 0
         for child in children[node]:
-            child_res = calc_columns(children, child)
+            child_res = _calc_columns(children, child)
             result.update({cname: ccol + base for cname, ccol in iter(child_res.items())})
             base += max(child_res.values()) + 1
         return result
@@ -18,7 +18,7 @@ def calc_columns(children, start):
     return dfs(start)
 
 
-def render_node(node_id, children, node_cols, max_col, mark_node='', node_width=8, col_width=12):
+def _render_node(node_id, children, node_cols, max_col, mark_node='', node_width=8, col_width=12):
     # First, render all the edges that come before the node
     line = ("│" + " " * (col_width - 1)) * node_cols[node_id]
     # Then, render the node itself.
@@ -65,8 +65,8 @@ def render_tree(conn, mountpoint):
         raise SplitGraphException("Something is seriously wrong with the index.")
 
     # Calculate the column in which each node should be displayed.
-    node_cols = calc_columns(children, base_node)
+    node_cols = _calc_columns(children, base_node)
 
     for snap_id, _, _, _ in reversed(snap_parents):
-        render_node(snap_id, children, node_cols, mark_node=' H' if snap_id == head else '',
-                    max_col=max(node_cols.values()))
+        _render_node(snap_id, children, node_cols, mark_node=' H' if snap_id == head else '',
+                     max_col=max(node_cols.values()))

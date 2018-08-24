@@ -1,7 +1,5 @@
 from .config import create_config_dict
 
-import os
-
 ''' The CONFIG object is created and exported once __at import time__
     Calling CONFIG["KEY"] directly should be sufficient in most cases,
     except when a config value has changed since importing CONFIG.

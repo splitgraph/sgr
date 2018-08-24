@@ -40,6 +40,6 @@ ARGUMENT_KEY_MAP = {
 ARG_KEYS = list(ARGUMENT_KEY_MAP.keys())
 
 # Reverse of ARGUMENT_KEY_MAP
-KEY_ARGUMENT_MAP = { v: k for k, v in ARGUMENT_KEY_MAP.items() }
+KEY_ARGUMENT_MAP = {v: k for k, v in ARGUMENT_KEY_MAP.items()}
 
 # ini keys that override environment keys must be same (including SG_)

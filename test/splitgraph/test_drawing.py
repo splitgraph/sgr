@@ -1,5 +1,5 @@
 from splitgraph.drawing import render_tree
-from splitgraph.sgfile import execute_commands
+from splitgraph.sgfile.execution import execute_commands
 from test.splitgraph.test_sgfile import _load_sgfile
 
 

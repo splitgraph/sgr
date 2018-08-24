@@ -1,5 +1,7 @@
 import sys
+
 from .keys import ARG_KEYS, ARGUMENT_KEY_MAP
+
 
 def get_arg_tuples():
     '''
@@ -14,8 +16,8 @@ def get_arg_tuples():
 
     return [(a1, a2) for a1, a2 in zip(SYS_ARGS, SYS_ARGS[1:]) if a1 in ARG_KEYS]
 
-def get_argument_config_value(key, default_return=None):
 
+def get_argument_config_value(key, default_return=None):
     '''
         Get get the value of an argument, where value is the argument
         immediately following the argument matching a key in ARG_KEYS, e.g.:

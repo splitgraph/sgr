@@ -19,14 +19,17 @@ VALID_CONFIG_FILE_NAMES = [
 
 HOME_SUB_DIR = '.splitgraph'
 
+
 def is_file(filename):
     return os.path.isfile(filename)
+
 
 def file_exists(_dir, fn):
     return is_file(os.path.join(_dir, fn))
 
+
 def get_explicit_config_file_location():
-    ''' Get the explicitly defined location of config file, if defined.
+    """ Get the explicitly defined location of config file, if defined.
 
         The location will either be defined in:
 
@@ -41,13 +44,13 @@ def get_explicit_config_file_location():
         Otherwise return None
 
         Print a warning if location is set but points to non-existing file.
-    '''
+    """
 
     key = 'SG_CONFIG_FILE'
 
     explicit_location = (
-        get_argument_config_value(key, None)
-     or get_environment_config_value(key, None)
+            get_argument_config_value(key, None)
+            or get_environment_config_value(key, None)
     )
 
     if explicit_location and is_file(explicit_location):
@@ -57,8 +60,9 @@ def get_explicit_config_file_location():
 
     return None
 
+
 def get_explicit_config_file_dirs():
-    ''' Get any explicitly defined config file directories,
+    """ Get any explicitly defined config file directories,
         which are directories where we should search for files from
         VALID_CONFIG_FILE_NAMES.
 
@@ -78,19 +82,19 @@ def get_explicit_config_file_dirs():
         Return a list of valid paths that are set, or an empty list.
 
         Print a warning if any paths to not exist.
-    '''
+    """
 
     plural_key = 'SG_CONFIG_DIRS'
     single_key = 'SG_CONFIG_DIR'
 
     explicit_plural_string = (
-        get_argument_config_value(plural_key, None)
-     or get_environment_config_value(plural_key, None)
+            get_argument_config_value(plural_key, None)
+            or get_environment_config_value(plural_key, None)
     )
 
     explicit_single_string = (
-        get_argument_config_value(single_key, None)
-     or get_environment_config_value(single_key, None)
+            get_argument_config_value(single_key, None)
+            or get_environment_config_value(single_key, None)
     )
 
     explicit_plural_list = explicit_plural_string.split(':') if explicit_plural_string else []
@@ -103,7 +107,7 @@ def get_explicit_config_file_dirs():
 
         sys.stderr.write(
             'Warning: %d duplicate SG_CONFIG_DIRS values found.\n'
-            % (num_duplicates)
+            % num_duplicates
         )
 
     existing_unique_dir_list = [d for d in unique_explicit_dir_list if os.path.isdir(d)]
@@ -113,20 +117,20 @@ def get_explicit_config_file_dirs():
 
         sys.stderr.write(
             'Warning: %d non-existing SG_CONFIG_DIRS values found.\n'
-            % (num_non_existing)
+            % num_non_existing
         )
 
     return existing_unique_dir_list
 
 
 def SG_CONFIG_FILE(default_return=None):
-    '''
+    """
         Get the location of an existing SG_CONFIG_FILE on the system with
         a valid name. Do not attempt to parse the config file, just return
         its location.
 
         Otherwise, return default_return
-    '''
+    """
     explicit_location = get_explicit_config_file_location()
 
     if explicit_location:
@@ -167,6 +171,7 @@ def SG_CONFIG_FILE(default_return=None):
 
 # Don't forget to do this for each method you want in the object
 SystemConfigGetters["SG_CONFIG_FILE"] = SG_CONFIG_FILE
+
 
 def get_system_config_value(key, default_return=None):
     return SystemConfigGetters.get(key, lambda: default_return)()

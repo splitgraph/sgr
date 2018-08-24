@@ -4,7 +4,7 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.commands.misc import make_conn
 from splitgraph.commands.object_loading import download_objects, upload_objects
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA, SplitGraphException, _log
+from splitgraph.constants import SPLITGRAPH_META_SCHEMA, SplitGraphException, log
 from splitgraph.meta_handler import get_all_snap_parents, add_new_snap_id, get_remote_for, ensure_metadata_schema, \
     register_objects, set_head, add_remote, register_object_locations, get_external_object_locations, register_tables, \
     get_existing_objects, get_object_meta, get_all_hashes_tags, set_tags
@@ -57,6 +57,16 @@ def _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_moun
 
 
 def pull(conn, mountpoint, remote, download_all=False):
+    """
+    Synchronizes the state of the local SplitGraph repository with the remote one, optionally downloading all new
+    objects created on the remote.
+    :param conn: psycopg connection objects
+    :param mountpoint: Mountpoint to pull changes from.
+    :param remote: Name of the upstream to pull changes from.
+    :param download_all: If True, downloads all objects and stores them locally. Otherwise, will only download required
+        objects when a table is checked out.
+    :return:
+    """
     remote_info = get_remote_for(conn, mountpoint, remote)
     if not remote_info:
         raise SplitGraphException("No remote %s found for mountpoint %s!" % (remote, mountpoint))
@@ -66,19 +76,32 @@ def pull(conn, mountpoint, remote, download_all=False):
 
 
 def clone(conn, remote_conn_string, remote_mountpoint, local_mountpoint, download_all=False, remote_conn=None):
+    """
+    Clones a remote SplitGraph repository or synchronizes remote changes with the local ones.
+    :param conn: psycopg connection object.
+    :param remote_conn_string: Connection string to the remote SG driver of the form
+        username:password@hostname:port/database.
+    :param remote_mountpoint: Remote mountpoint to clone.
+    :param local_mountpoint: Local mountpoint to clone into.
+    :param download_all: If True, downloads all objects and stores them locally. Otherwise, will only download required
+        objects when a table is checked out.
+    :param remote_conn: If not None, must be a psycopg connection object used by the client to connect to the remote
+        driver. The local driver will still use the parameters specified in `remote_conn_string` to download the
+        actual objects from the remote.
+    """
     ensure_metadata_schema(conn)
     # Pulls a schema from the remote, including all of its history.
 
     with conn.cursor() as cur:
         cur.execute(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(local_mountpoint)))
 
-    _log("Connecting to the remote driver...")
+    log("Connecting to the remote driver...")
     match = re.match('(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
     remote_conn = remote_conn or make_conn(server=match.group(3), port=int(match.group(4)), username=match.group(1),
                                            password=match.group(2), dbname=match.group(5))
 
     # Get the remote log and the list of objects we need to fetch.
-    _log("Gathering remote metadata...")
+    log("Gathering remote metadata...")
 
     # This also registers the new versions locally.
     snaps_to_fetch, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(conn, remote_conn,
@@ -86,7 +109,7 @@ def clone(conn, remote_conn_string, remote_mountpoint, local_mountpoint, downloa
                                                                                                   remote_mountpoint)
 
     if not snaps_to_fetch:
-        _log("Nothing to do.")
+        log("Nothing to do.")
         return
 
     # Don't actually download any real objects until the user tries to check out a revision.
@@ -94,7 +117,7 @@ def clone(conn, remote_conn_string, remote_mountpoint, local_mountpoint, downloa
         # Check which new objects we need to fetch/preregister.
         # We might already have some objects prefetched
         # (e.g. if a new version of the table is the same as the old version)
-        _log("Fetching remote objects...")
+        log("Fetching remote objects...")
         download_objects(conn, remote_conn_string, objects_to_fetch=list(set(o[0] for o in object_meta)),
                          object_locations=object_locations, remote_conn=remote_conn)
 
@@ -106,17 +129,18 @@ def clone(conn, remote_conn_string, remote_mountpoint, local_mountpoint, downloa
     # Don't check anything out, keep the repo bare.
     set_head(conn, local_mountpoint, None)
 
-    _log("Fetched metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta),
-                                                                                    len(table_meta),
-                                                                                    len([t for t in tags if t != 'HEAD'])))
+    log("Fetched metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta),
+                                                                                   len(table_meta),
+                                                                                   len([t for t in tags if
+                                                                                        t != 'HEAD'])))
 
     if get_remote_for(conn, local_mountpoint) is None:
         add_remote(conn, local_mountpoint, remote_conn_string, remote_mountpoint)
 
 
 def local_clone(conn, source, destination):
-    # Clones one local mountpoint into another, copying all of its commit history over.
-    # Doesn't do any checking out or materialization.
+    """Clones one local mountpoint into another, copying all of its commit history over. Doesn't do any checking out
+        or materialization."""
     ensure_metadata_schema(conn)
 
     snaps_to_fetch, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(conn, conn,
@@ -133,25 +157,35 @@ def local_clone(conn, source, destination):
 
 
 def push(conn, remote_conn_string, remote_mountpoint, local_mountpoint, handler='DB', handler_options={}):
+    """
+    Inverse of `pull`: Pushes all local changes to the remote and uploads new objects.
+    :param conn: psycopg connection object
+    :param remote_conn_string: Connection string to the remote SG driver of the form
+        username:password@hostname:port/database.
+    :param remote_mountpoint: Remote mountpoint to push changes to.
+    :param local_mountpoint: Local mountpoint to push changes from.
+    :param handler: Name of the handler to use to upload objects. Use `DB` to push them to the remote, `FILE`
+        to store them in a directory that can be accessed from the client and `HTTP` to upload them to HTTP.
+    :param handler_options: For `HTTP`, a dictionary `{"username": username, "password", password}`. For `FILE`,
+        a dictionary `{"path": path}` specifying the directory where the objects shall be saved.
+    """
     ensure_metadata_schema(conn)
-    # Inverse of pull: uploads missing pack/snap tables to the remote and updates its index.
-    # Could actually be done by flipping the arguments in pull but that assumes the remote SG driver can connect
-    # to us directly, which might not be the case. Although tunnels?
 
-    # Still, a lot of code here similar to pull.
-    _log("Connecting to the remote driver...")
+    # Could actually be done by flipping the arguments in pull but that assumes the remote SG driver can connect
+    # to us directly, which might not be the case. Although tunnels? Still, a lot of code here similar to pull.
+    log("Connecting to the remote driver...")
     match = re.match('(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
     remote_conn = make_conn(server=match.group(3), port=int(match.group(4)), username=match.group(1),
                             password=match.group(2), dbname=match.group(5))
     try:
-        _log("Gathering remote metadata...")
+        log("Gathering remote metadata...")
         # This also registers new commits remotely. Should make explicit and move down later on.
         snaps_to_push, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(remote_conn, conn,
                                                                                                      remote_mountpoint,
                                                                                                      local_mountpoint)
 
         if not snaps_to_push:
-            _log("Nothing to do.")
+            log("Nothing to do.")
             return
 
         new_uploads = upload_objects(conn, remote_conn_string, list(set(o[0] for o in object_meta)), handler=handler,
@@ -165,9 +199,9 @@ def push(conn, remote_conn_string, remote_mountpoint, local_mountpoint, handler=
         remote_conn.commit()
         register_object_locations(conn, new_uploads)
 
-        _log("Uploaded metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta),
-                                                                                         len(table_meta),
-                                                                                         len([t for t in tags if
-                                                                                              t != 'HEAD'])))
+        log("Uploaded metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta),
+                                                                                        len(table_meta),
+                                                                                        len([t for t in tags if
+                                                                                             t != 'HEAD'])))
     finally:
         remote_conn.close()

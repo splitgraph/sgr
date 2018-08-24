@@ -1,35 +1,36 @@
 import psycopg2
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA, _log
+from splitgraph.constants import SPLITGRAPH_META_SCHEMA, log
 from splitgraph.meta_handler import get_table, get_snap_parent, register_mountpoint, \
     unregister_mountpoint, get_object_meta, META_TABLES, ensure_metadata_schema
 from splitgraph.pg_replication import discard_pending_changes, suspend_replication, record_pending_changes
 from splitgraph.pg_utils import pg_table_exists
 
 
-def _table_exists_at(conn, mountpoint, table_name, image):
-    return pg_table_exists(conn, mountpoint, table_name) if image is None \
-        else bool(get_table(conn, mountpoint, table_name, image))
+def table_exists_at(conn, mountpoint, table_name, image_hash):
+    return pg_table_exists(conn, mountpoint, table_name) if image_hash is None \
+        else bool(get_table(conn, mountpoint, table_name, image_hash))
 
 
 def make_conn(server, port, username, password, dbname):
     return psycopg2.connect(host=server, port=port, user=username, password=password, dbname=dbname)
 
 
-def get_parent_children(conn, mountpoint, snap_id):
-    parent = get_snap_parent(conn, mountpoint, snap_id)
+def get_parent_children(conn, mountpoint, image_hash):
+    """Gets the parent and a list of children of a given image."""
+    parent = get_snap_parent(conn, mountpoint, image_hash)
 
     with conn.cursor() as cur:
         cur.execute(SQL("""SELECT snap_id FROM {}.snap_tree WHERE mountpoint = %s AND parent_id = %s""").format(
             Identifier(SPLITGRAPH_META_SCHEMA)),
-            (mountpoint, snap_id))
+            (mountpoint, image_hash))
         children = [c[0] for c in cur.fetchall()]
     return parent, children
 
 
 def get_log(conn, mountpoint, start_snap):
-    # Repeatedly gets the parent of a given snapshot until it reaches the bottom.
+    """Repeatedly gets the parent of a given snapshot until it reaches the bottom."""
     result = []
     while start_snap is not None:
         result.append(start_snap)
@@ -37,18 +38,23 @@ def get_log(conn, mountpoint, start_snap):
     return result
 
 
-def _find_path(conn, mountpoint, snap_1, snap_2):
+def find_path(conn, mountpoint, hash_1, hash_2):
+    """If the two images are on the same path in the commit tree, returns that path."""
     path = []
-    while snap_2 is not None:
-        path.append(snap_2)
-        snap_2 = get_snap_parent(conn, mountpoint, snap_2)
-        if snap_2 == snap_1:
+    while hash_2 is not None:
+        path.append(hash_2)
+        hash_2 = get_snap_parent(conn, mountpoint, hash_2)
+        if hash_2 == hash_1:
             return path
 
 
 @suspend_replication
 def init(conn, mountpoint):
-    # Initializes an empty repo with an initial commit (hash 0000...)
+    """
+    Initializes an empty repo with an initial commit (hash 0000...)
+    :param conn: psycopg connection object.
+    :param mountpoint: Mountpoint to create the repository in. Must not exist.
+    """
     with conn.cursor() as cur:
         cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(mountpoint)))
     snap_id = '0' * 64
@@ -60,7 +66,7 @@ def mount_postgres(conn, server, port, username, password, mountpoint, extra_opt
     with conn.cursor() as cur:
         dbname = extra_options['dbname']
 
-        _log("postgres_fdw: importing foreign schema...")
+        log("postgres_fdw: importing foreign schema...")
 
         server_id = Identifier(mountpoint + '_server')
 
@@ -86,7 +92,7 @@ def mount_postgres(conn, server, port, username, password, mountpoint, extra_opt
 
 def mount_mongo(conn, server, port, username, password, mountpoint, extra_options):
     with conn.cursor() as cur:
-        _log("mongo_fdw: mounting foreign tables...")
+        log("mongo_fdw: mounting foreign tables...")
 
         server_id = Identifier(mountpoint + '_server')
 
@@ -102,7 +108,7 @@ def mount_mongo(conn, server, port, username, password, mountpoint, extra_option
         # Mongo extra options: a map of
         # {table_name: {db: remote_db_name, coll: remote_collection_name, schema: {col1: type1, col2: type2...}}}
         for table_name, table_options in extra_options.items():
-            _log("Mounting table %s" % table_name)
+            log("Mounting table %s" % table_name)
             db = table_options['db']
             coll = table_options['coll']
 
@@ -115,6 +121,13 @@ def mount_mongo(conn, server, port, username, password, mountpoint, extra_option
 
 
 def unmount(conn, mountpoint):
+    """
+    Discards all changes to a given mountpoint and all of its history, deleting the physical Postgres schema.
+    Doesn't delete any cached physical objects.
+    :param conn: psycopg connection object
+    :param mountpoint: Mountpoint to unmount.
+    :return:
+    """
     # Make sure to discard changes to this mountpoint if they exist, otherwise they might
     # be applied/recorded if a new mountpoint with the same name appears.
     ensure_metadata_schema(conn)
@@ -131,10 +144,11 @@ def unmount(conn, mountpoint):
 
 
 def cleanup_objects(conn):
-    # Deletes all objects not required by any mountpoint.
-    # There are probably several tiers of this (delete physical objects, delete their URLs from the meta
-    # tables etc, but this does everything.
-
+    """
+    Deletes all local objects not required by any current mountpoint, including their dependencies, their remote
+    locations and their cached local copies.
+    :param conn: psycopg connection object.
+    """
     # First, get a list of all objects required by a table.
     with conn.cursor() as cur:
         cur.execute(SQL("SELECT DISTINCT (object_id) FROM {}.tables").format(Identifier(SPLITGRAPH_META_SCHEMA)))
@@ -171,4 +185,4 @@ def cleanup_objects(conn):
             cur.execute(SQL(";").join(SQL("DROP TABLE {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                                      Identifier(d)) for d in to_delete))
 
-        _log("Deleted %d physical object(s)" % len(to_delete))
+        log("Deleted %d physical object(s)" % len(to_delete))
