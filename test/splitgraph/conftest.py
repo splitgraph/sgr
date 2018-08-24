@@ -50,11 +50,13 @@ def sg_pg_mg_conn():
     conn = _conn()
     for mountpoint in TEST_MOUNTPOINTS:
         unmount(conn, mountpoint)
+    cleanup_objects(conn)
     _mount_postgres(conn, PG_MNT)
     _mount_mongo(conn, MG_MNT)
     yield conn
     for mountpoint in TEST_MOUNTPOINTS:
         unmount(conn, mountpoint)
+    cleanup_objects(conn)
     conn.close()
 
 

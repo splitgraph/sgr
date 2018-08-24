@@ -141,6 +141,7 @@ def unmount(conn, mountpoint):
 
     # Currently we just discard all history info about the mounted schema
     unregister_mountpoint(conn, mountpoint)
+    conn.commit()
 
 
 def cleanup_objects(conn):

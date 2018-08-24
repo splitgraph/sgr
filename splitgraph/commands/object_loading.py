@@ -187,6 +187,9 @@ def upload_objects(conn, remote_conn_string, objects_to_push, handler='DB', hand
     match = re.match('(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
     existing_objects = get_existing_objects(remote_conn)
     objects_to_push = list(set(o for o in objects_to_push if o not in existing_objects))
+    if not objects_to_push:
+        log("Nothing to upload.")
+        return []
     log("Uploading objects...")
 
     if handler == 'DB':

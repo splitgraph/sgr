@@ -1,6 +1,6 @@
 from psycopg2.extras import execute_batch
 from random import getrandbits, sample
-from splitgraph.pg_replication import dump_pending_changes, _replication_slot_exists, has_pending_changes
+from splitgraph.pg_replication import dump_pending_changes, replication_slot_exists, has_pending_changes
 from timeit import timeit
 
 from splitgraph.commands import *

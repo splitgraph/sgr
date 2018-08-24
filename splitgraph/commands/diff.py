@@ -99,9 +99,9 @@ def diff(conn, mountpoint, table_name, image_1, image_2, aggregate=False):
                 with materialized_table(conn, mountpoint, table_name, image_2) as table_2:
                     # Check both tables out at the same time since then table_2 calculation can be based
                     # on table_1's snapshot.
-                    cur.execute(SQL("SELECT * FROM {}.{}").format(Identifier(mountpoint), Identifier(table_1)))
+                    cur.execute(SQL("SELECT * FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table_1)))
                     left = cur.fetchall()
-                    cur.execute(SQL("SELECT * FROM {}.{}").format(Identifier(mountpoint), Identifier(table_2)))
+                    cur.execute(SQL("SELECT * FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table_2)))
                     right = cur.fetchall()
 
             # Mimic the diff format returned by the WAL

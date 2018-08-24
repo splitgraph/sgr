@@ -233,6 +233,7 @@ def file_c(sgfile, sgfile_args, output_mountpoint):
     print("Executing SGFile %s with arguments %r" % (sgfile.name, sgfile_args))
     execute_commands(conn, sgfile.read(), sgfile_args, output=output_mountpoint)
     conn.commit()
+    conn.close()
 
 
 @click.command(name='sql')
@@ -287,7 +288,7 @@ def clone_c(remote, remote_mountpoint, local_mountpoint, download_all):
 @click.argument('remote', default='origin')  # name or (if mountpoint set) connection string
 @click.argument('remote_mountpoint', required=False)
 @click.option('-h', '--upload-handler', help='Where to upload objects (FILE or DB for the remote itself)', default='DB')
-@click.option('-o', '--upload-handler-options', help="""For FILE, e.g. '{"path": /mnt/sgobjects}'""")
+@click.option('-o', '--upload-handler-options', help="""For FILE, e.g. '{"path": /mnt/sgobjects}'""", default="{}")
 def push_c(mountpoint, remote, remote_mountpoint, upload_handler, upload_handler_options):
     conn = _conn()
     if not remote_mountpoint:
