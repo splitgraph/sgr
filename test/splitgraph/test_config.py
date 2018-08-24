@@ -57,6 +57,19 @@ def test_get_argument_config_value():
         non_val = get_argument_config_value('DOESNOTEXISTSKJKJ', None)
         assert non_val is None
 
+def test_get_argument_config_value_duplicate():
+    mock_argv = [
+        'sg',
+        '--namespace', 'namespace-1-from-arg',
+        '--namespace', 'namespace-2-from-arg'
+    ]
+
+    with patch.object(sys, 'argv', mock_argv):
+        namespace_val = get_argument_config_value('SG_NAMESPACE')
+        assert namespace_val == 'namespace-1-from-arg'
+
+        non_val = get_argument_config_value('DOESNOTEXISTSKJKJ', None)
+        assert non_val is None
 
 def test_get_environment_config_value():
     mock_environ = {

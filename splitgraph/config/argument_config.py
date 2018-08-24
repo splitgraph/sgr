@@ -34,6 +34,6 @@ def get_argument_config_value(key, default_return=None):
         return default_return
     elif num_matching_values > 1:
         sys.stderr.write('Warning: multiple values specified for %s \n' % key)
-        sys.stderr.write('Using %s \n', matching_values[0])
+        sys.stderr.write('Using %s \n' % matching_values[0])
 
     return matching_values[0]
