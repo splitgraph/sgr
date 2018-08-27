@@ -3,7 +3,7 @@ from hashlib import sha256
 from random import getrandbits
 
 from splitgraph.commands import checkout, init, unmount, clone, import_tables, commit
-from splitgraph.commands.mounting import get_mount_handler
+from splitgraph.commands.mount_handlers import get_mount_handler
 from splitgraph.commands.push_pull import local_clone
 from splitgraph.constants import SplitGraphException
 from splitgraph.meta_handler import mountpoint_exists, get_current_head, tag_or_hash_to_actual_hash

@@ -1,11 +1,12 @@
 import re
 from collections import defaultdict
 
-import requests
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.commands.misc import mount_postgres, make_conn, unmount
-from splitgraph.constants import log, SplitGraphException, SPLITGRAPH_META_SCHEMA
+from splitgraph.commands.external_object_handlers import get_upload_download_handler
+from splitgraph.commands.misc import make_conn, unmount
+from splitgraph.commands.mount_handlers import mount_postgres
+from splitgraph.constants import log, SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler import get_downloaded_objects, get_existing_objects
 from splitgraph.pg_utils import copy_table, dump_table_creation, get_primary_keys
 
@@ -57,7 +58,7 @@ def _fetch_remote_objects(conn, objects_to_fetch, remote_conn_string, remote_con
                 source_pks = get_primary_keys(remote_conn, SPLITGRAPH_META_SCHEMA, obj)
                 if source_pks:
                     cur.execute(SQL("ALTER TABLE {}.{} ADD PRIMARY KEY (").format(
-                        Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj)) \
+                        Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj))
                                 + SQL(',').join(SQL("{}").format(Identifier(c)) for c, _ in source_pks) + SQL(")"))
     finally:
         unmount(conn, remote_data_mountpoint)
@@ -72,107 +73,13 @@ def _fetch_external_objects(conn, object_locations, objects_to_fetch):
             non_remote_objects.append(object_id)
     if non_remote_objects:
         print("Fetching external objects...")
-        # Future: maybe have a series of hooks that let people register their own object handlers.
         for method, objects in non_remote_by_method.items():
-            if method == 'HTTP':
-                _http_download_objects(conn, objects, {})
-            elif method == 'FILE':
-                _file_download_objects(conn, objects, {})
-            else:
-                raise SplitGraphException("Unable to fetch some objects: unknown protocol %s")
+            _, handler = get_upload_download_handler(method)
+            handler(conn, objects, {})
     return non_remote_objects
 
 
-def _table_dump_generator(conn, schema, table):
-    # Don't include a schema (mountpoint) qualifier since the dump might be imported into a different place.
-    yield (dump_table_creation(conn, schema, [table], created_schema=None) + SQL(';\n')).as_string(conn)
-
-    # Use a server-side cursor here so we don't fetch the whole db into memory immediately.
-    with conn.cursor(name='sg_table_upload_cursor') as cur:
-        cur.itersize = 10000
-        cur.execute(SQL("SELECT * FROM {}.{}""").format(Identifier(schema), Identifier(table)))
-        row = next(cur)
-        q = '(' + ','.join('%s' for _ in row) + ')'
-        yield cur.mogrify(SQL("INSERT INTO {} VALUES " + q).format(Identifier(table)), row).decode('utf-8')
-        for row in cur:
-            yield cur.mogrify(',' + q, row).decode('utf-8')
-        yield ';\n'
-    return
-
-
-def _http_upload_objects(conn, objects_to_push, http_params):
-    url = http_params['url']
-
-    uploaded = []
-    for object_id in objects_to_push:
-        remote_filename = object_id
-        # First cut: just push the dump without any compression.
-        r = requests.post(url + '/' + remote_filename,
-                          data=_table_dump_generator(conn, SPLITGRAPH_META_SCHEMA, object_id))
-        r.raise_for_status()
-        uploaded.append(url + '/' + remote_filename)
-    return uploaded
-
-
-def _file_upload_objects(conn, objects_to_push, params):
-    # Mostly for testing purposes: dumps the objects into a file.
-    path = params['path']
-
-    uploaded = []
-    for object_id in objects_to_push:
-        remote_filename = object_id
-        # First cut: just push the dump without any compression.
-        with open(path + '/' + remote_filename, 'w') as f:
-            f.writelines(_table_dump_generator(conn, SPLITGRAPH_META_SCHEMA, object_id))
-        uploaded.append(path + '/' + remote_filename)
-    return uploaded
-
-
-def _file_download_objects(conn, objects_to_fetch, params):
-    for i, obj in enumerate(objects_to_fetch):
-        object_id, object_url = obj
-        log("(%d/%d) %s -> %s" % (i + 1, len(objects_to_fetch), object_url, object_id))
-        with open(object_url, 'r') as f:
-            with conn.cursor() as cur:
-                # Insert into the locally checked out schema by default since the dump doesn't have the schema
-                # qualification.
-                cur.execute("SET search_path TO %s", (SPLITGRAPH_META_SCHEMA,))
-                for chunk in f.readlines():
-                    cur.execute(chunk)
-                # Set the schema to (presumably) the default one.
-                cur.execute("SET search_path TO public")
-
-
-def _http_download_objects(conn, objects_to_fetch, http_params):
-    username = http_params.get('username')
-    password = http_params.get('password')
-
-    for i, obj in enumerate(objects_to_fetch):
-        object_id, object_url = obj
-        log("(%d/%d) %s -> %s" % (i + 1, len(objects_to_fetch), object_url, object_id))
-        # Let's execute arbitrary code from the Internet on our machine!
-        r = requests.get(object_url, stream=True)
-        with conn.cursor() as cur:
-            # Insert into the splitgraph_meta schema by default since the dump doesn't have the schema
-            # qualification.
-            # NB can this break system tables in the splitgraph_meta_schema?
-            cur.execute("SET search_path TO %s", (SPLITGRAPH_META_SCHEMA,))
-            buf = ""
-            for chunk in r.iter_content(chunk_size=4096):
-                # This is dirty. What we want is to pipe the output of the fetch directly into the DB, but we don't
-                # actually know when a SQL statement has terminated so we can ship it off: in particular, the
-                # semicolon might have been escaped etc. Hence this horror which might/will break on
-                # convoluted data.
-                buf = buf + chunk
-                last_sep = buf.rfind(';\n')
-                cur.execute(buf[:last_sep])
-                buf = buf[last_sep + 2:]
-            cur.execute(buf)
-        # Set the schema to (presumably) the default one.
-        cur.execute("SET search_path TO public")
-
-
-def upload_objects(conn, remote_conn_string, objects_to_push, handler='DB', handler_params={}, remote_conn=None):
+def upload_objects(conn, remote_conn_string, objects_to_push, handler='DB', handler_params=None, remote_conn=None):
     """
     Uploads physical objects to the remote or some other external location.
     :param conn: psycopg connection object
@@ -189,6 +96,8 @@ def upload_objects(conn, remote_conn_string, objects_to_push, handler='DB', hand
     :return: A list of (object_id, url, handler) that specifies all objects were uploaded (skipping objects that
         already exist on the remote).
     """
+    if handler_params is None:
+        handler_params = {}
     match = re.match(r'(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
     existing_objects = get_existing_objects(remote_conn)
     objects_to_push = list(set(o for o in objects_to_push if o not in existing_objects))
@@ -221,12 +130,8 @@ def upload_objects(conn, remote_conn_string, objects_to_push, handler='DB', hand
         unmount(conn, remote_data_mountpoint)
 
         # We assume that if the object doesn't have an explicit location, it lives on the remote.
-        result = []
-    elif handler == 'HTTP':
-        uploaded = _http_upload_objects(conn, objects_to_push, handler_params)
-        result = [(oid, url, 'HTTP') for oid, url in zip(objects_to_push, uploaded)]
-    elif handler == 'FILE':
-        uploaded = _file_upload_objects(conn, objects_to_push, handler_params)
-        result = [(oid, url, 'FILE') for oid, url in zip(objects_to_push, uploaded)]
+        return []
 
-    return result
+    upload_handler, _ = get_upload_download_handler(handler)
+    uploaded = upload_handler(conn, objects_to_push, handler_params)
+    return [(oid, url, handler) for oid, url in zip(objects_to_push, uploaded)]

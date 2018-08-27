@@ -119,3 +119,21 @@ def _get_full_table_schema(conn, mountpoint, table_name):
     # Do we need to make sure the PK has the same type + ordinal position here?
     pks = [pk for pk, _ in get_primary_keys(conn, mountpoint, table_name)]
     return [(o, n, dt, (n in pks)) for o, n, dt in results]
+
+
+def table_dump_generator(conn, schema, table):
+    """Returns an iterator that generates a SQL table dump, non-schema qualified."""
+    # Don't include a schema (mountpoint) qualifier since the dump might be imported into a different place.
+    yield (dump_table_creation(conn, schema, [table], created_schema=None) + SQL(';\n')).as_string(conn)
+
+    # Use a server-side cursor here so we don't fetch the whole db into memory immediately.
+    with conn.cursor(name='sg_table_upload_cursor') as cur:
+        cur.itersize = 10000
+        cur.execute(SQL("SELECT * FROM {}.{}""").format(Identifier(schema), Identifier(table)))
+        row = next(cur)
+        q = '(' + ','.join('%s' for _ in row) + ')'
+        yield cur.mogrify(SQL("INSERT INTO {} VALUES " + q).format(Identifier(table)), row).decode('utf-8')
+        for row in cur:
+            yield cur.mogrify(',' + q, row).decode('utf-8')
+        yield ';\n'
+    return

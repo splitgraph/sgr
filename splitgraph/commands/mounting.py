@@ -1,19 +1,10 @@
 from psycopg2.sql import Identifier, SQL
 
 from splitgraph.commands.importing import import_tables
-from splitgraph.commands.misc import mount_postgres, mount_mongo, unmount
-from splitgraph.constants import log, SplitGraphException
+from splitgraph.commands.misc import unmount
+from splitgraph.commands.mount_handlers import get_mount_handler
+from splitgraph.constants import log
 from splitgraph.meta_handler import ensure_metadata_schema, get_all_foreign_tables
-
-
-def get_mount_handler(mount_handler):
-    """Returns a mount function for a given handler.
-    The mount function has a signature (conn, hostname, port, username, password, handler_options)."""
-    if mount_handler == 'postgres_fdw':
-        return mount_postgres
-    elif mount_handler == 'mongo_fdw':
-        return mount_mongo
-    raise SplitGraphException("Mount handler %s not supported!" % mount_handler)
 
 
 def mount(conn, server, port, username, password, mountpoint, mount_handler, extra_options):
@@ -28,9 +19,6 @@ def mount(conn, server, port, username, password, mountpoint, mount_handler, ext
     :param mountpoint: Mountpoint to import the new tables into.
     :param mount_handler: The type of the mounted database. Must be one of `postgres_fdw` or `mongo_fdw`.
     :param extra_options: Dictionary of options to pass to the mount handler specifying the structure of the new tables.
-        For `mongo_fdw`, use `{"table_name": {"db": <dbname>, "coll": <collection>, "schema": {"col1": "type1"...}}}`.
-        For `postgres_fdw`, use ```{"dbname": <dbname>, "remote_schema": <remote schema>,
-                                    "tables": <tables to mount (optional)>}```.
     :return: Image hash that the new tables were committed under.
     """
     ensure_metadata_schema(conn)
