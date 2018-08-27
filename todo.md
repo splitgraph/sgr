@@ -1,8 +1,6 @@
 # TODO
-  * Allow to use tags/hashes interchangeably.
   * consider a command that re-derives a dataset based on its sgfile tree?
   * think hard about the repo lookup paths so we don't need to store origin details in sgfiles.
-  * Docstrings in the code, linter, run code coverage?
   * Err on checkout if there are pending changes?
   * Somehow (?) record sgfiles/image hashes things were imported from in the snap_tree (?) as well
     (multiple ways to materialize a given image).

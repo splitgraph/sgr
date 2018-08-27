@@ -93,7 +93,8 @@ def test_pulls_with_lazy_object_downloads(empty_pg_conn, snapper_conn):
 def test_push(empty_pg_conn, snapper_conn):
     # Clone from the snapper like in the previous test.
     clone(empty_pg_conn, SNAPPER_CONN_STRING, PG_MNT, PG_MNT + '_pull')
-    checkout(empty_pg_conn, PG_MNT + '_pull', get_current_head(snapper_conn, PG_MNT))
+    head = get_current_head(snapper_conn, PG_MNT)
+    checkout(empty_pg_conn, PG_MNT + '_pull', head)
 
     # Then, change our copy and commit.
     with empty_pg_conn.cursor() as cur:

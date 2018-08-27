@@ -129,17 +129,17 @@ def dump_pending_changes(conn, mountpoint, table, aggregate=False):
                 Identifier("pending_changes")),
                 (mountpoint, table))
             return cur.fetchall()
-        else:
-            cur.execute(SQL("SELECT kind, change FROM {}.{} WHERE mountpoint = %s AND table_name = %s").format(
-                Identifier(SPLITGRAPH_META_SCHEMA),
-                Identifier("pending_changes")),
-                (mountpoint, table))
-            repl_id = _get_replica_identity(conn, mountpoint, table)
-            ri_cols, _ = zip(*repl_id)
-            result = []
-            for kind, change in cur:
-                result.extend(_convert_wal_change(kind, json.loads(change), ri_cols))
-            return result
+
+        cur.execute(SQL("SELECT kind, change FROM {}.{} WHERE mountpoint = %s AND table_name = %s").format(
+            Identifier(SPLITGRAPH_META_SCHEMA),
+            Identifier("pending_changes")),
+            (mountpoint, table))
+        repl_id = _get_replica_identity(conn, mountpoint, table)
+        ri_cols, _ = zip(*repl_id)
+        result = []
+        for kind, change in cur:
+            result.extend(_convert_wal_change(kind, json.loads(change), ri_cols))
+        return result
 
 
 def _get_replica_identity(conn, mountpoint, table):
@@ -174,10 +174,9 @@ def _generate_where_clause(mountpoint, table, cols, table_2=None, mountpoint_2=N
     if not table_2:
         return SQL(" AND ").join(SQL("{}.{}.{} = %s").format(
             Identifier(mountpoint), Identifier(table), Identifier(c)) for c in cols)
-    else:
-        return SQL(" AND ").join(SQL("{}.{}.{} = {}.{}.{}").format(
-            Identifier(mountpoint), Identifier(table), Identifier(c),
-            Identifier(mountpoint_2), Identifier(table_2), Identifier(c)) for c in cols)
+    return SQL(" AND ").join(SQL("{}.{}.{} = {}.{}.{}").format(
+        Identifier(mountpoint), Identifier(table), Identifier(c),
+        Identifier(mountpoint_2), Identifier(table_2), Identifier(c)) for c in cols)
 
 
 def _split_ri_cols(kind, change, ri_cols):
@@ -253,8 +252,7 @@ def _convert_wal_change(kind, change, ri_cols):
         ri_vals, non_ri_cols, non_ri_vals = _recalculate_disjoint_ri_cols(ri_cols, ri_vals, non_ri_cols, non_ri_vals)
         result.append((tuple(ri_vals), 0, {'c': non_ri_cols, 'v': non_ri_vals}))
         return result
-    else:
-        return [(tuple(ri_vals), kind, {'c': non_ri_cols, 'v': non_ri_vals} if kind == 0 or kind == 2 else None)]
+    return [(tuple(ri_vals), kind, {'c': non_ri_cols, 'v': non_ri_vals} if kind in (0, 2) else None)]
 
 
 def _conflate_changes(changeset, new_changes):
@@ -322,40 +320,9 @@ def commit_pending_changes(conn, mountpoint, current_head, image_hash, include_s
                 if table in changed_tables and not schema_changed:
                     object_id = get_random_object_id()
                     repl_id = _get_replica_identity(conn, mountpoint, table)
-                    ri_cols, ri_types = zip(*repl_id)
+                    ri_cols, _ = zip(*repl_id)
                     _create_diff_table(conn, object_id, repl_id)
-
-                    with conn.cursor() as cur:
-                        # Can't seem to use a server-side cursor here since it doesn't support DELETE FROM RETURNING
-                        cur.execute(
-                            SQL("""DELETE FROM {}.{} WHERE mountpoint = %s AND table_name = %s
-                                   RETURNING kind, change """).format(
-                                Identifier(SPLITGRAPH_META_SCHEMA), Identifier("pending_changes")), (mountpoint, table))
-
-                        # Accumulate the diff in-memory.
-                        changeset = {}
-                        for kind, change in cur:
-                            _conflate_changes(changeset, _convert_wal_change(kind, json.loads(change), ri_cols))
-
-                        if changeset:
-                            changeset = [tuple(list(pk) + [kind_data[0], json.dumps(kind_data[1])]) for pk, kind_data in
-                                         changeset.items()]
-                            query = SQL("INSERT INTO {}.{} ").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                     Identifier(object_id)) + \
-                                    SQL("VALUES (" + ','.join('%s' for _ in range(len(changeset[0]))) + ")")
-                            execute_batch(cur, query, changeset, page_size=1000)
-
-                            for parent_id, _ in table_info:
-                                register_object(conn, object_id, object_format='DIFF', parent_object=parent_id)
-                            register_table(conn, mountpoint, table, image_hash, object_id)
-                        else:
-                            # Changes in the WAL cancelled each other out. Delete the diff table and just point
-                            # the commit to the old table objects.
-                            cur.execute(
-                                SQL("DROP TABLE {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                               Identifier(object_id)))
-                            for prev_object_id, _ in table_info:
-                                register_table(conn, mountpoint, table, image_hash, prev_object_id)
+                    _conflate_and_record_table(conn, mountpoint, object_id, image_hash, ri_cols, table, table_info)
                 else:
                     if not schema_changed:
                         # If the table wasn't changed, point the commit to the old table objects (including
@@ -383,10 +350,44 @@ def commit_pending_changes(conn, mountpoint, current_head, image_hash, include_s
     discard_pending_changes(conn, mountpoint)
 
 
+def _conflate_and_record_table(conn, mountpoint, object_id, image_hash, ri_cols, table, table_info):
+    with conn.cursor() as cur:
+        # Can't seem to use a server-side cursor here since it doesn't support DELETE FROM RETURNING
+        cur.execute(
+            SQL("""DELETE FROM {}.{} WHERE mountpoint = %s AND table_name = %s
+                                   RETURNING kind, change """).format(
+                Identifier(SPLITGRAPH_META_SCHEMA), Identifier("pending_changes")), (mountpoint, table))
+
+        # Accumulate the diff in-memory.
+        changeset = {}
+        for kind, change in cur:
+            _conflate_changes(changeset, _convert_wal_change(kind, json.loads(change), ri_cols))
+
+        if changeset:
+            changeset = [tuple(list(pk) + [kind_data[0], json.dumps(kind_data[1])]) for pk, kind_data in
+                         changeset.items()]
+            query = SQL("INSERT INTO {}.{} ").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                     Identifier(object_id)) + \
+                    SQL("VALUES (" + ','.join('%s' for _ in range(len(changeset[0]))) + ")")
+            execute_batch(cur, query, changeset, page_size=1000)
+
+            for parent_id, _ in table_info:
+                register_object(conn, object_id, object_format='DIFF', parent_object=parent_id)
+            register_table(conn, mountpoint, table, image_hash, object_id)
+        else:
+            # Changes in the WAL cancelled each other out. Delete the diff table and just point
+            # the commit to the old table objects.
+            cur.execute(
+                SQL("DROP TABLE {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                               Identifier(object_id)))
+            for prev_object_id, _ in table_info:
+                register_table(conn, mountpoint, table, image_hash, prev_object_id)
+
+
 def apply_record_to_staging(conn, object_id, mountpoint, destination):
     queries = []
     repl_id = _get_replica_identity(conn, SPLITGRAPH_META_SCHEMA, object_id)
-    ri_cols, ri_types = zip(*repl_id)
+    ri_cols, _ = zip(*repl_id)
 
     # Minor hack alert: here we assume that the PK of the object is the PK of the table it refers to, which means
     # that we are expected to have the PKs applied to the object table no matter how it originated.
@@ -443,9 +444,8 @@ def table_schema_changed(conn, mountpoint, table_name, image_1, image_2=None):
         snap_2 = get_closest_parent_snap_object(conn, mountpoint, table_name, image_2)[0]
         return _get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_1) != \
                _get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_2)
-    else:
-        return _get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_1) != \
-               _get_full_table_schema(conn, mountpoint, table_name)
+    return _get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_1) != \
+           _get_full_table_schema(conn, mountpoint, table_name)
 
 
 def get_closest_parent_snap_object(conn, mountpoint, table, image):
@@ -453,16 +453,15 @@ def get_closest_parent_snap_object(conn, mountpoint, table, image):
     object_id = get_table_with_format(conn, mountpoint, table, image, object_format='SNAP')
     if object_id is not None:
         return object_id, path
-    else:
-        object_id = get_table_with_format(conn, mountpoint, table, image, object_format='DIFF')
 
+    object_id = get_table_with_format(conn, mountpoint, table, image, object_format='DIFF')
     while object_id is not None:
         path.append(object_id)
         parents = get_object_parents(conn, object_id)
         for object_id in parents:
             if get_object_format(conn, object_id) == 'SNAP':
                 return object_id, path
-            else:
-                break  # Found 1 diff, will be added to the path at the next iteration.
+            break  # Found 1 diff, will be added to the path at the next iteration.
+
     # We didn't find an actual snapshot for this table -- either it doesn't exist in this
     # version or something went wrong. Should we raise here?

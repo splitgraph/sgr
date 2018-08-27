@@ -7,12 +7,13 @@ from splitgraph.meta_handler import ensure_metadata_schema, get_all_foreign_tabl
 
 
 def get_mount_handler(mount_handler):
+    """Returns a mount function for a given handler.
+    The mount function has a signature (conn, hostname, port, username, password, handler_options)."""
     if mount_handler == 'postgres_fdw':
         return mount_postgres
     elif mount_handler == 'mongo_fdw':
         return mount_mongo
-    else:
-        raise SplitGraphException("Mount handler %s not supported!" % mount_handler)
+    raise SplitGraphException("Mount handler %s not supported!" % mount_handler)
 
 
 def mount(conn, server, port, username, password, mountpoint, mount_handler, extra_options):

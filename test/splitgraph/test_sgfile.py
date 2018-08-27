@@ -165,6 +165,17 @@ def test_sgfile_remote(sg_pg_mg_conn, snapper_conn):
         assert cur.fetchall() == [(2, 'orange', 'carrot')]
 
 
+def test_sgfile_remote_hash(sg_pg_mg_conn, snapper_conn):
+    head = get_current_head(snapper_conn, 'test_pg_mount')
+    execute_commands(sg_pg_mg_conn, _load_sgfile('import_remote_multiple.sgfile'), params={'SNAPPER': SNAPPER_HOST,
+                                                                                           'SNAPPER_PORT': SNAPPER_PORT,
+                                                                                           'TAG': head[:10]},
+                     output='output')
+    with sg_pg_mg_conn.cursor() as cur:
+        cur.execute("""SELECT id, fruit, vegetable FROM output.join_table""")
+        assert cur.fetchall() == [(1, 'apple', 'potato'), (2, 'orange', 'carrot')]
+
+
 def test_import_updating_sgfile_with_uploading(empty_pg_conn, snapper_conn):
     execute_commands(empty_pg_conn, _load_sgfile('import_and_update.sgfile'), params={'SNAPPER': SNAPPER_HOST,
                                                                                       'SNAPPER_PORT': SNAPPER_PORT},
@@ -371,6 +382,21 @@ def test_from_remote(empty_pg_conn, snapper_conn):
     with empty_pg_conn.cursor() as cur:
         cur.execute("SELECT * FROM output.join_table")
         assert cur.fetchall() == [(2, 'orange', 'carrot')]
+
+
+def test_from_remote_hash(empty_pg_conn, snapper_conn):
+    head = get_current_head(snapper_conn, 'test_pg_mount')
+    # Test running commands that base new datasets on a remote repository.
+    execute_commands(empty_pg_conn, _load_sgfile('from_remote.sgfile'), output='output',
+                     params={'SNAPPER': SNAPPER_HOST,
+                             'SNAPPER_PORT': SNAPPER_PORT,
+                             'TAG': head[:10]})
+
+    assert pg_table_exists(empty_pg_conn, 'output', 'fruits')
+    assert pg_table_exists(empty_pg_conn, 'output', 'vegetables')
+    with empty_pg_conn.cursor() as cur:
+        cur.execute("SELECT * FROM output.join_table")
+        assert cur.fetchall() == [(1, 'apple', 'potato'), (2, 'orange', 'carrot')]
 
 
 def test_from_multistage(empty_pg_conn, snapper_conn):

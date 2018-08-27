@@ -18,7 +18,7 @@ SGFILE_GRAMMAR = Grammar(r"""
     table_query = "{" non_curly_brace "}"
     tables = "ALL" / (table space ("," space table)*)
     source = mount_source / repo_source
-    repo_source = (conn_string space)? mountpoint (":" tag)?
+    repo_source = (conn_string space)? mountpoint (":" tag_or_hash)?
     mount_source = "MOUNT" space handler space no_db_conn_string space handler_options
     
     image_hash = ~"[0-9a-f]*"i
@@ -30,7 +30,7 @@ SGFILE_GRAMMAR = Grammar(r"""
     mountpoint = identifier
     table_name = identifier
     table_alias = identifier
-    tag = identifier
+    tag_or_hash = identifier
     handler_options = "'" non_single_quote "'"
     sql_statement = non_newline
     
@@ -51,8 +51,10 @@ SGFILE_GRAMMAR = Grammar(r"""
 """)
 
 
-def preprocess(commands, params={}):
+def preprocess(commands, params=None):
     # Also replaces all $PARAM in the sgfile text with the params in the dictionary.
+    if params is None:
+        params = {}
     commands = commands.replace("\\\n", "")
     for k, v in params.items():
         # Regex fun: if the replacement is '\1' + substitution (so that we put back the previously-consumed
@@ -68,8 +70,10 @@ def preprocess(commands, params={}):
     return commands.replace('\\$', '$')
 
 
-def parse_commands(commands, params={}):
+def parse_commands(commands, params=None):
     # Unpacks the parse tree into a list of command nodes.
+    if params is None:
+        params = {}
     commands = preprocess(commands, params)
     parse_tree = SGFILE_GRAMMAR.parse(commands)
     return [n.children[0] for n in extract_nodes(parse_tree, ['command']) if n.children[0].expr_name != 'comment']
@@ -91,6 +95,7 @@ def get_first_or_none(node_list, node_type):
     for n in node_list:
         if n.expr_name == node_type:
             return n
+    return None
 
 
 def _parse_table_alias(table_node):
@@ -108,19 +113,19 @@ def _parse_table_alias(table_node):
 
 
 def parse_repo_source(remote_repo_node):
-    repo_nodes = extract_nodes(remote_repo_node, ['conn_string', 'identifier'])
+    repo_nodes = extract_nodes(remote_repo_node, ['conn_string', 'identifier', 'image_hash'])
     if repo_nodes[0].expr_name == 'conn_string':
         conn_string = repo_nodes[0].match.group(0)
         mountpoint = repo_nodes[1].match.group(0)
     else:
         conn_string = None
         mountpoint = repo_nodes[0].match.group(0)
-    # See if we got given a tag
+    # See if we got given a tag / hash (the executor will try to interpret it as both).
     if len(repo_nodes) == 3:
-        tag = repo_nodes[2].match.group(0)
+        tag_or_hash = repo_nodes[2].match.group(0)
     else:
-        tag = 'latest'
-    return conn_string, mountpoint, tag
+        tag_or_hash = 'latest'
+    return conn_string, mountpoint, tag_or_hash
 
 
 def extract_all_table_aliases(node):

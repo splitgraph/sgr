@@ -34,8 +34,16 @@ def _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_moun
     # Get the tags too
     tags = {t: s for s, t in get_all_hashes_tags(remote_conn, remote_mountpoint)}
 
-    # Since an object can now depend on another object that's not mentioned in the commit tree,
-    # we now have to follow the objects' links to their parents until we have gathered all the required object IDs.
+    # Crawl the object tree to get the IDs and other metadata for all required objects.
+    distinct_objects, object_meta = _extract_recursive_object_meta(conn, remote_conn, table_meta)
+    object_locations = get_external_object_locations(remote_conn, list(distinct_objects)) if distinct_objects else []
+
+    return snaps_to_fetch, table_meta, object_locations, object_meta, tags
+
+
+def _extract_recursive_object_meta(conn, remote_conn, table_meta):
+    """Since an object can now depend on another object that's not mentioned in the commit tree,
+    we now have to follow the objects' links to their parents until we have gathered all the required object IDs."""
     existing_objects = get_existing_objects(conn)
     distinct_objects = set(o[2] for o in table_meta if o[2] not in existing_objects)
     known_objects = set()
@@ -50,10 +58,7 @@ def _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_moun
                 set(o[2] for o in parents_meta if o[2] is not None and o[2] not in existing_objects))
             object_meta.extend(parents_meta)
             known_objects.update(new_parents)
-
-    object_locations = get_external_object_locations(remote_conn, list(distinct_objects)) if distinct_objects else []
-
-    return snaps_to_fetch, table_meta, object_locations, object_meta, tags
+    return distinct_objects, object_meta
 
 
 def pull(conn, mountpoint, remote, download_all=False):
@@ -96,7 +101,7 @@ def clone(conn, remote_conn_string, remote_mountpoint, local_mountpoint, downloa
         cur.execute(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(local_mountpoint)))
 
     log("Connecting to the remote driver...")
-    match = re.match('(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
+    match = re.match(r'(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
     remote_conn = remote_conn or make_conn(server=match.group(3), port=int(match.group(4)), username=match.group(1),
                                            password=match.group(2), dbname=match.group(5))
 
@@ -143,9 +148,9 @@ def local_clone(conn, source, destination):
         or materialization."""
     ensure_metadata_schema(conn)
 
-    snaps_to_fetch, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(conn, conn,
-                                                                                                  destination,
-                                                                                                  source)
+    _, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(conn, conn,
+                                                                                     destination,
+                                                                                     source)
 
     # Map the tables to the actual objects no matter whether or not we're downloading them.
     register_objects(conn, object_meta)
@@ -156,7 +161,7 @@ def local_clone(conn, source, destination):
     set_head(conn, destination, None)
 
 
-def push(conn, remote_conn_string, remote_mountpoint, local_mountpoint, handler='DB', handler_options={}):
+def push(conn, remote_conn_string, remote_mountpoint, local_mountpoint, handler='DB', handler_options=None):
     """
     Inverse of `pull`: Pushes all local changes to the remote and uploads new objects.
     :param conn: psycopg connection object
@@ -169,12 +174,14 @@ def push(conn, remote_conn_string, remote_mountpoint, local_mountpoint, handler=
     :param handler_options: For `HTTP`, a dictionary `{"username": username, "password", password}`. For `FILE`,
         a dictionary `{"path": path}` specifying the directory where the objects shall be saved.
     """
+    if handler_options is None:
+        handler_options = {}
     ensure_metadata_schema(conn)
 
     # Could actually be done by flipping the arguments in pull but that assumes the remote SG driver can connect
     # to us directly, which might not be the case. Although tunnels? Still, a lot of code here similar to pull.
     log("Connecting to the remote driver...")
-    match = re.match('(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
+    match = re.match(r'(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
     remote_conn = make_conn(server=match.group(3), port=int(match.group(4)), username=match.group(1),
                             password=match.group(2), dbname=match.group(5))
     try:

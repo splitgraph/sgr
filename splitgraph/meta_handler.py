@@ -108,7 +108,7 @@ def get_all_tables(conn, mountpoint):
         cur.execute(
             """SELECT table_name FROM information_schema.tables
                 WHERE table_schema = %s and table_type = 'BASE TABLE'""", (mountpoint,))
-        all_table_names = set([c[0] for c in cur.fetchall()])
+        all_table_names = {c[0] for c in cur.fetchall()}
 
         # Exclude all snapshots/packed tables
         cur.execute(SQL("SELECT object_id FROM {}.tables WHERE mountpoint = %s").format(
@@ -338,13 +338,11 @@ def get_canonical_snap_id(conn, mountpoint, short_snap):
             (mountpoint, short_snap.lower() + '%'))
         candidates = [c[0] for c in cur.fetchall()]
 
-    if len(candidates) == 0:
+    if not candidates:
         raise SplitGraphException("No snapshots beginning with %s found for mountpoint %s!" % (short_snap, mountpoint))
 
     if len(candidates) > 1:
-        result = "Multiple suitable candidates found: \n"
-        for c in candidates:
-            result += " * %s\n" % c
+        result = "Multiple suitable candidates found: \n * " + "\n * ".join(candidates)
         raise SplitGraphException(result)
 
     return candidates[0]
@@ -388,7 +386,7 @@ def get_downloaded_objects(conn):
     # Minor normalization sadness here: this can return duplicate object IDs since
     # we might repeat them if different versions of the same table point to the same object ID.
     with conn.cursor() as cur:
-        cur.execute(SQL("""SELECT information_schema.tables.table_name FROM information_schema.tables JOIN {}.tables 
+        cur.execute(SQL("""SELECT information_schema.tables.table_name FROM information_schema.tables JOIN {}.tables
                         ON information_schema.tables.table_name = {}.tables.object_id
                         WHERE information_schema.tables.table_schema = %s""").format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                                                      Identifier(
@@ -422,7 +420,7 @@ def add_remote(conn, mountpoint, remote_conn, remote_mountpoint, remote_name='or
 
 def get_external_object_locations(conn, objects):
     with conn.cursor() as cur:
-        query = SQL("""SELECT object_id, location, protocol from {}.object_locations 
+        query = SQL("""SELECT object_id, location, protocol from {}.object_locations
                        WHERE object_id IN (""" + ','.join('%s' for _ in objects) + ")").format(
             Identifier(SPLITGRAPH_META_SCHEMA))
         cur.execute(query, objects)
@@ -437,3 +435,14 @@ def get_object_meta(conn, objects):
             Identifier(SPLITGRAPH_META_SCHEMA)),
             objects)
         return cur.fetchall()
+
+
+def tag_or_hash_to_actual_hash(conn, mountpoint, tag_or_hash):
+    """Converts a tag or shortened hash to a full image hash that exists in the mountpoint."""
+    try:
+        return get_canonical_snap_id(conn, mountpoint, tag_or_hash)
+    except SplitGraphException:
+        try:
+            return get_tagged_id(conn, mountpoint, tag_or_hash)
+        except SplitGraphException:
+            raise SplitGraphException("%s does not refer to either an image commit hash or a tag!" % tag_or_hash)

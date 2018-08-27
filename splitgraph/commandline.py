@@ -7,14 +7,14 @@ import click
 import psycopg2
 from psycopg2 import ProgrammingError
 
-from splitgraph.commands import mount, unmount, commit, checkout, diff, get_log, init, get_parent_children, pull, clone, \
-    push, import_tables
+from splitgraph.commands import mount, unmount, commit, checkout, diff, get_log, init, get_parent_children, pull, \
+    clone, push, import_tables
 from splitgraph.commands.misc import cleanup_objects
 from splitgraph.constants import POSTGRES_CONNECTION, SplitGraphException
 from splitgraph.drawing import render_tree
 from splitgraph.meta_handler import get_snap_parent, get_canonical_snap_id, get_all_tables, \
-    get_current_mountpoints_hashes, get_all_hashes_tags, set_tag, get_current_head, get_remote_for, get_tagged_id, \
-    get_all_snap_info, get_tables_at, get_table
+    get_current_mountpoints_hashes, get_all_hashes_tags, set_tag, get_current_head, get_remote_for, get_all_snap_info, \
+    get_tables_at, get_table, tag_or_hash_to_actual_hash
 from splitgraph.sgfile.execution import execute_commands
 
 
@@ -34,7 +34,7 @@ def status_c(mountpoint):
     conn = _conn()
     if mountpoint is None:
         mountpoints = get_current_mountpoints_hashes(conn)
-        print ("Currently mounted databases: ")
+        print("Currently mounted databases: ")
         for mp_name, mp_hash in mountpoints:
             # Maybe should also show the remote DB address/server
             print("%s: \t %s" % (mp_name, mp_hash))
@@ -73,67 +73,69 @@ def log_c(mountpoint, tree):
 @click.option('-v', '--verbose', default=False, is_flag=True)
 @click.option('-t', '--table-name')
 @click.argument('mountpoint')
-@click.argument('snap_1', required=False)
-@click.argument('snap_2', required=False)
-def diff_c(verbose, table_name, mountpoint, snap_1, snap_2):
+@click.argument('image_1', required=False)
+@click.argument('image_2', required=False)
+def diff_c(verbose, table_name, mountpoint, image_1, image_2):
     conn = _conn()
+    image_1, image_2 = _get_actual_hashes(conn, mountpoint, image_1, image_2)
 
-    if snap_1 is None and snap_2 is None:
-        # Comparing current working copy against the last commit
-        snap_1 = get_current_head(conn, mountpoint)
-    elif snap_2 is None:
-        snap_1 = get_canonical_snap_id(conn, mountpoint, snap_1)
-        # One parameter: diff from that and its parent.
-        snap_2 = get_snap_parent(conn, mountpoint, snap_1)
-        if snap_2 is None:
-            print("%s has no parent to compare to!" % snap_1)
-        snap_1, snap_2 = snap_2, snap_1  # snap_1 has to come first
+    diffs = {table_name: diff(conn, mountpoint, table_name, image_1, image_2, aggregate=not verbose)
+             for table_name in ([table_name] if table_name else sorted(get_all_tables(conn, mountpoint)))}
+
+    if image_2 is None:
+        print("Between %s and the current working copy: " % image_1[:12])
     else:
-        snap_1 = get_canonical_snap_id(conn, mountpoint, snap_1)
-        snap_2 = get_canonical_snap_id(conn, mountpoint, snap_2)
+        print("Between %s and %s: " % (image_1[:12], image_2[:12]))
 
-    if table_name:
-        diffs = {table_name: diff(conn, mountpoint, table_name, snap_1, snap_2, aggregate=not verbose)}
-    else:
-        all_tables = sorted(get_all_tables(conn, mountpoint))
+    for table, diff_result in diffs.items():
+        _emit_table_diff(table, diff_result, verbose)
 
-        diffs = {table_name: diff(conn, mountpoint, table_name, snap_1, snap_2, aggregate=not verbose)
-                 for table_name in all_tables}
 
-    if snap_2 is None:
-        print(("Between %s and the current working copy: " % snap_1[:12]))
-    else:
-        print(("Between %s and %s: " % (snap_1[:12], snap_2[:12])))
-
-    for table_name, diff_result in diffs.items():
-        to_print = "%s: " % table_name
-
-        if isinstance(diff_result, list) or isinstance(diff_result, tuple):
-            if verbose:
-                change_count = dict(Counter(d[1] for d in diff_result).most_common())
-                added = change_count.get(0, 0)
-                removed = change_count.get(1, 0)
-                updated = change_count.get(2, 0)
-            else:
-                added, removed, updated = diff_result
-
-            count = []
-            if added:
-                count.append("added %d rows" % added)
-            if removed:
-                count.append("removed %d rows" % removed)
-            if updated:
-                count.append("updated %d rows" % updated)
-            if added + removed + updated == 0:
-                count = ['no changes']
-            print((to_print + ', '.join(count) + '.'))
-
-            if verbose:
-                for pk, kind, change in diff_result:
-                    print("%r: " % (pk,) + ['+', '-', 'U'][kind] + " %r" % change)
+def _emit_table_diff(table_name, diff_result, verbose):
+    to_print = "%s: " % table_name
+    if isinstance(diff_result, (list, tuple)):
+        if verbose:
+            change_count = dict(Counter(d[1] for d in diff_result).most_common())
+            added = change_count.get(0, 0)
+            removed = change_count.get(1, 0)
+            updated = change_count.get(2, 0)
         else:
-            # Whole table was either added or removed
-            print(to_print + ("table added" if diff_result else "table removed"))
+            added, removed, updated = diff_result
+
+        count = []
+        if added:
+            count.append("added %d rows" % added)
+        if removed:
+            count.append("removed %d rows" % removed)
+        if updated:
+            count.append("updated %d rows" % updated)
+        if added + removed + updated == 0:
+            count = ['no changes']
+        print(to_print + ', '.join(count) + '.')
+
+        if verbose:
+            for pk, kind, change in diff_result:
+                print("%r: " % (pk,) + ['+', '-', 'U'][kind] + " %r" % change)
+    else:
+        # Whole table was either added or removed
+        print(to_print + ("table added" if diff_result else "table removed"))
+
+
+def _get_actual_hashes(conn, mountpoint, image_1, image_2):
+    if image_1 is None and image_2 is None:
+        # Comparing current working copy against the last commit
+        image_1 = get_current_head(conn, mountpoint)
+    elif image_2 is None:
+        image_1 = get_canonical_snap_id(conn, mountpoint, image_1)
+        # One parameter: diff from that and its parent.
+        image_2 = get_snap_parent(conn, mountpoint, image_1)
+        if image_2 is None:
+            print("%s has no parent to compare to!" % image_1)
+        image_1, image_2 = image_2, image_1  # snap_1 has to come first
+    else:
+        image_1 = get_canonical_snap_id(conn, mountpoint, image_1)
+        image_2 = get_canonical_snap_id(conn, mountpoint, image_2)
+    return image_1, image_2
 
 
 @click.command(name='mount')
@@ -143,11 +145,12 @@ def diff_c(verbose, table_name, mountpoint, snap_1, snap_2):
 @click.option('--handler-options', '-o', help='JSON-encoded list of handler options. For postgres_fdw, use '
                                               '{"dbname": <dbname>, "remote_schema": <remote schema>, '
                                               '"tables": <tables to mount (optional)>}. For mongo_fdw, use '
-                                              '{"table_name": {"db": <dbname>, "coll": <collection>, "schema": {"col1": "type1"...}}}',
+                                              '{"table_name": {"db": <dbname>, "coll": <collection>, "schema": '
+                                              '{"col1": "type1"...}}}',
               default='{}')
 def mount_c(mountpoint, connection, handler, handler_options):
-    # Parse the connection string in some horrible way
-    match = re.match('(\S+):(\S+)@(.+):(\d+)', connection)
+    # Parse the connection string
+    match = re.match(r'(\S+):(\S+)@(.+):(\d+)', connection)
     conn = _conn()
     mount(conn, server=match.group(3), port=int(match.group(4)), username=match.group(1), password=match.group(2),
           mountpoint=mountpoint, mount_handler=handler, extra_options=json.loads(handler_options))
@@ -168,13 +171,7 @@ def unmount_c(mountpoint):
 @click.argument('snapshot_or_tag')
 def checkout_c(mountpoint, snapshot_or_tag):
     conn = _conn()
-    try:
-        snapshot = get_canonical_snap_id(conn, mountpoint, snapshot_or_tag)
-    except SplitGraphException:
-        try:
-            snapshot = get_tagged_id(conn, mountpoint, snapshot_or_tag)
-        except SplitGraphException:
-            raise SplitGraphException("%s does not refer to either an image commit hash or a tag!" % snapshot_or_tag)
+    snapshot = tag_or_hash_to_actual_hash(conn, mountpoint, snapshot_or_tag)
     checkout(conn, mountpoint, snapshot)
     conn.commit()
 
@@ -308,10 +305,9 @@ def tag_c(mountpoint, image, tag, force):
     conn = _conn()
     if tag is None:
         # List all tags
-        all_tags = get_all_hashes_tags(conn, mountpoint)
         tag_dict = defaultdict(list)
-        for img, tag in all_tags:
-            tag_dict[img].append(tag)
+        for img, img_tag in get_all_hashes_tags(conn, mountpoint):
+            tag_dict[img].append(img_tag)
         if image is None:
             for img, tags in tag_dict.items():
                 print("%s: %s" % (img[:12], ', '.join(tags)))

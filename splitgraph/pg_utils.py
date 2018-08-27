@@ -11,13 +11,19 @@ def pg_table_exists(conn, mountpoint, table_name):
         return cur.fetchone() is not None
 
 
-def copy_table(conn, source_schema, source_table, target_schema, target_table, with_pk_constraints=True):
+def copy_table(conn, source_schema, source_table, target_schema, target_table, with_pk_constraints=True,
+               table_exists=False):
     """
     Copies a table in the same Postgres instance, optionally applying primary key constraints as well.
     """
-    query = SQL("CREATE TABLE {}.{} AS SELECT * FROM {}.{};").format(
-        Identifier(target_schema), Identifier(target_table),
-        Identifier(source_schema), Identifier(source_table))
+    if not table_exists:
+        query = SQL("CREATE TABLE {}.{} AS SELECT * FROM {}.{};").format(
+            Identifier(target_schema), Identifier(target_table),
+            Identifier(source_schema), Identifier(source_table))
+    else:
+        query = SQL("INSERT INTO {}.{} SELECT * FROM {}.{};").format(
+            Identifier(target_schema), Identifier(target_table),
+            Identifier(source_schema), Identifier(source_table))
     if with_pk_constraints:
         pks = get_primary_keys(conn, source_schema, source_table)
         if pks:
@@ -41,21 +47,21 @@ def dump_table_creation(conn, schema, tables, created_schema=None):
     queries = []
 
     with conn.cursor() as cur:
-        for t in tables:
+        for table in tables:
             cur.execute("""SELECT column_name, data_type, is_nullable
                            FROM information_schema.columns
-                           WHERE table_name = %s AND table_schema = %s""", (t, schema))
+                           WHERE table_name = %s AND table_schema = %s""", (table, schema))
             cols = cur.fetchall()
             if created_schema:
-                target = SQL("{}.{}").format(Identifier(created_schema), Identifier(t))
+                target = SQL("{}.{}").format(Identifier(created_schema), Identifier(table))
             else:
-                target = Identifier(t)
+                target = Identifier(table)
             query = SQL("CREATE TABLE {} (").format(target) + \
                     SQL(','.join(
                         "{} %s " % ctype + ("NOT NULL" if not cnull else "") for _, ctype, cnull in cols)).format(
                         *(Identifier(cname) for cname, _, _ in cols))
 
-            pks = get_primary_keys(conn, schema, t)
+            pks = get_primary_keys(conn, schema, table)
             if pks:
                 query += SQL(", PRIMARY KEY (") + SQL(',').join(SQL("{}").format(Identifier(c)) for c, _ in pks) + SQL(
                     "))")

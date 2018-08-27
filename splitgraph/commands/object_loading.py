@@ -28,40 +28,26 @@ def download_objects(conn, remote_conn_string, objects_to_fetch, object_location
     if not objects_to_fetch:
         return
 
-    non_remote_objects = []
-    non_remote_by_method = defaultdict(list)
-    for object_id, object_url, protocol in object_locations:
-        if object_id in objects_to_fetch:
-            non_remote_by_method[protocol].append((object_id, object_url))
-            non_remote_objects.append(object_id)
+    external_objects = _fetch_external_objects(conn, object_locations, objects_to_fetch)
 
-    if non_remote_objects:
-        print("Fetching external objects...")
-        # Future: maybe have a series of hooks that let people register their own object handlers.
-        for method, objects in non_remote_by_method.items():
-            if method == 'HTTP':
-                _http_download_objects(conn, objects, {})
-            elif method == 'FILE':
-                _file_download_objects(conn, objects, {})
-            else:
-                raise SplitGraphException("Unable to fetch some objects: unknown protocol %s")
-
-    objects_to_fetch = [o for o in objects_to_fetch if o not in non_remote_objects]
+    objects_to_fetch = [o for o in objects_to_fetch if o not in external_objects]
     if not objects_to_fetch:
         return
 
+    _fetch_remote_objects(conn, objects_to_fetch, remote_conn_string, remote_conn)
+
+
+def _fetch_remote_objects(conn, objects_to_fetch, remote_conn_string, remote_conn=None):
     # Instead of connecting and pushing queries to it from the Python client, we just mount the remote mountpoint
     # into a temporary space (without any checking out) and SELECT the required data into our local tables.
-    match = re.match('(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
+    match = re.match(r'(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
     remote_data_mountpoint = 'tmp_remote_data'
     unmount(conn, remote_data_mountpoint)  # Maybe worth making sure we're not stepping on anyone else
     mount_postgres(conn, server=match.group(3), port=int(match.group(4)),
                    username=match.group(1), password=match.group(2), mountpoint=remote_data_mountpoint,
                    extra_options={'dbname': match.group(5), 'remote_schema': SPLITGRAPH_META_SCHEMA})
-
     remote_conn = remote_conn or make_conn(server=match.group(3), port=int(match.group(4)), username=match.group(1),
                                            password=match.group(2), dbname=match.group(5))
-
     try:
         for i, obj in enumerate(objects_to_fetch):
             log("(%d/%d) %s..." % (i + 1, len(objects_to_fetch), obj))
@@ -75,6 +61,26 @@ def download_objects(conn, remote_conn_string, objects_to_fetch, object_location
                                 + SQL(',').join(SQL("{}").format(Identifier(c)) for c, _ in source_pks) + SQL(")"))
     finally:
         unmount(conn, remote_data_mountpoint)
+
+
+def _fetch_external_objects(conn, object_locations, objects_to_fetch):
+    non_remote_objects = []
+    non_remote_by_method = defaultdict(list)
+    for object_id, object_url, protocol in object_locations:
+        if object_id in objects_to_fetch:
+            non_remote_by_method[protocol].append((object_id, object_url))
+            non_remote_objects.append(object_id)
+    if non_remote_objects:
+        print("Fetching external objects...")
+        # Future: maybe have a series of hooks that let people register their own object handlers.
+        for method, objects in non_remote_by_method.items():
+            if method == 'HTTP':
+                _http_download_objects(conn, objects, {})
+            elif method == 'FILE':
+                _file_download_objects(conn, objects, {})
+            else:
+                raise SplitGraphException("Unable to fetch some objects: unknown protocol %s")
+    return non_remote_objects
 
 
 def _table_dump_generator(conn, schema, table):
@@ -91,12 +97,11 @@ def _table_dump_generator(conn, schema, table):
         for row in cur:
             yield cur.mogrify(',' + q, row).decode('utf-8')
         yield ';\n'
+    return
 
 
 def _http_upload_objects(conn, objects_to_push, http_params):
     url = http_params['url']
-    username = http_params.get('username')
-    password = http_params.get('password')
 
     uploaded = []
     for object_id in objects_to_push:
@@ -184,7 +189,7 @@ def upload_objects(conn, remote_conn_string, objects_to_push, handler='DB', hand
     :return: A list of (object_id, url, handler) that specifies all objects were uploaded (skipping objects that
         already exist on the remote).
     """
-    match = re.match('(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
+    match = re.match(r'(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
     existing_objects = get_existing_objects(remote_conn)
     objects_to_push = list(set(o for o in objects_to_push if o not in existing_objects))
     if not objects_to_push:
@@ -210,10 +215,8 @@ def upload_objects(conn, remote_conn_string, objects_to_push, handler='DB', hand
                        extra_options={'dbname': match.group(5), 'remote_schema': SPLITGRAPH_META_SCHEMA})
         for i, obj in enumerate(objects_to_push):
             log("(%d/%d) %s..." % (i + 1, len(objects_to_push), obj))
-            with conn.cursor() as cur:
-                cur.execute(SQL("INSERT INTO {}.{} SELECT * FROM {}.{}").format(
-                    Identifier(remote_data_mountpoint), Identifier(obj),
-                    Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj)))
+            copy_table(conn, SPLITGRAPH_META_SCHEMA, obj, remote_data_mountpoint, obj, with_pk_constraints=False,
+                       table_exists=True)
         conn.commit()
         unmount(conn, remote_data_mountpoint)
 

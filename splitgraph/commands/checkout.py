@@ -7,8 +7,8 @@ from splitgraph.constants import log, get_random_object_id, SplitGraphException,
 from splitgraph.meta_handler import get_table_with_format, get_remote_for, get_canonical_snap_id, get_tables_at, \
     get_all_tables, set_head, register_table, deregister_table_object, \
     get_external_object_locations, get_tagged_id
-from splitgraph.pg_replication import apply_record_to_staging, discard_pending_changes, get_closest_parent_snap_object, \
-    suspend_replication
+from splitgraph.pg_replication import apply_record_to_staging, discard_pending_changes,\
+    get_closest_parent_snap_object, suspend_replication
 from splitgraph.pg_utils import copy_table, get_primary_keys
 
 
@@ -34,7 +34,7 @@ def materialize_table(conn, mountpoint, image_hash, table, destination, destinat
         # Make sure all the objects have been downloaded from remote if it exists
         remote_info = get_remote_for(conn, mountpoint)
         if remote_info:
-            remote_conn, remote_mountpoint = remote_info
+            remote_conn, _ = remote_info
             object_locations = get_external_object_locations(conn, to_apply + [object_id])
             download_objects(conn, remote_conn, objects_to_fetch=to_apply + [object_id],
                              object_locations=object_locations)
@@ -45,8 +45,8 @@ def materialize_table(conn, mountpoint, image_hash, table, destination, destinat
         # This is to work around logical replication not reflecting deletions from non-PKd tables. However, this makes
         # it emit all column values in the row, not just the updated ones.
         if not get_primary_keys(conn, destination_mountpoint, destination):
-            log(
-                "WARN: table %s has no primary key. This means that changes will have to be recorded as whole-row." % destination)
+            log("WARN: table %s has no primary key. "
+                "This means that changes will have to be recorded as whole-row." % destination)
             cur.execute(SQL("ALTER TABLE {}.{} REPLICA IDENTITY FULL").format(Identifier(destination_mountpoint),
                                                                               Identifier(destination)))
 
@@ -57,7 +57,7 @@ def materialize_table(conn, mountpoint, image_hash, table, destination, destinat
 
 
 @suspend_replication
-def checkout(conn, mountpoint, image_hash=None, tag=None, tables=[]):
+def checkout(conn, mountpoint, image_hash=None, tag=None, tables=None):
     """
     Discards all pending changes in the current mountpoint and checks out an image, changing the current HEAD pointer.
     :param conn: psycopg connection object
@@ -66,6 +66,8 @@ def checkout(conn, mountpoint, image_hash=None, tag=None, tables=[]):
     :param tag: Tag of the image to check out. One of `image_hash` or `tag` must be specified.
     :param tables: List of tables to materialize in the mountpoint.
     """
+    if tables is None:
+        tables = []
     discard_pending_changes(conn, mountpoint)
     # Detect the actual schema snap we want to check out
     if image_hash:
@@ -94,6 +96,9 @@ def checkout(conn, mountpoint, image_hash=None, tag=None, tables=[]):
 
 @contextmanager
 def materialized_table(conn, mountpoint, table_name, snap):
+    """A context manager that returns a pointer to a read-only materialized table. If the table is already stored
+    as a SNAP, this doesn't use any extra space. Otherwise, the table is materialized and deleted on exit from the
+    context manager."""
     if snap is not None:
         with conn.cursor() as cur:
             # See if the table snapshot already exists, otherwise reconstruct it

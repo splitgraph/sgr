@@ -23,15 +23,15 @@ def commit(conn, mountpoint, image_hash=None, include_snap=False, comment=None):
     record_pending_changes(conn)
     log("Committing...")
 
-    HEAD = get_current_head(conn, mountpoint)
+    head = get_current_head(conn, mountpoint)
 
     if image_hash is None:
         image_hash = "%0.2x" % getrandbits(256)
 
     # Add the new snap ID to the tree
-    add_new_snap_id(conn, mountpoint, HEAD, image_hash, comment=comment)
+    add_new_snap_id(conn, mountpoint, head, image_hash, comment=comment)
 
-    commit_pending_changes(conn, mountpoint, HEAD, image_hash, include_snap=include_snap)
+    commit_pending_changes(conn, mountpoint, head, image_hash, include_snap=include_snap)
 
     stop_replication(conn)
     set_head(conn, mountpoint, image_hash)

@@ -48,6 +48,7 @@ def _render_node(node_id, children, node_cols, max_col, mark_node='', node_width
 
 
 def render_tree(conn, mountpoint):
+    """Draws the mountpoint's commit graph as a Git-like tree."""
     ensure_metadata_schema(conn)
     # Prepare the tree structure by loading the index from the db and flipping it
     children = defaultdict(list)

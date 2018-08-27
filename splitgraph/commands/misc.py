@@ -9,6 +9,8 @@ from splitgraph.pg_utils import pg_table_exists
 
 
 def table_exists_at(conn, mountpoint, table_name, image_hash):
+    """Determines whether a given table exists in a SplitGraph image without checking it out. If `image_hash` is None,
+    determines whether the table exists in the current staging area."""
     return pg_table_exists(conn, mountpoint, table_name) if image_hash is None \
         else bool(get_table(conn, mountpoint, table_name, image_hash))
 
@@ -63,6 +65,17 @@ def init(conn, mountpoint):
 
 
 def mount_postgres(conn, server, port, username, password, mountpoint, extra_options):
+    """
+    Mounts a schema on a remote Postgres database as a set of foreign tables locally.
+    :param conn: Psycopg connection object.
+    :param server: Database hostname.
+    :param port: Port the Postgres server is running on.
+    :param username: A read-only user that the database will be accessed as.
+    :param password: Password for the read-only user.
+    :param mountpoint: Schema to mount the remote into.
+    :param extra_options: A dictionary of form {"dbname": <dbname>, "remote_schema": <remote schema>,
+                                                "tables": <tables to mount (optional)>}
+    """
     with conn.cursor() as cur:
         dbname = extra_options['dbname']
 
@@ -91,6 +104,17 @@ def mount_postgres(conn, server, port, username, password, mountpoint, extra_opt
 
 
 def mount_mongo(conn, server, port, username, password, mountpoint, extra_options):
+    """
+    Mounts one or more collections on a remote Mongo database as a set of foreign tables locally.
+    :param conn: Psycopg connection object.
+    :param server: Database hostname.
+    :param port: Port the Mongo server is running on.
+    :param username: A read-only user that the database will be accessed as.
+    :param password: Password for the read-only user.
+    :param mountpoint: Schema to mount the remote into.
+    :param extra_options: A dictionary of form {"table_name": {"db": <dbname>, "coll": <collection>,
+                                                               "schema": {"col1": "type1"...}}}.
+    """
     with conn.cursor() as cur:
         log("mongo_fdw: mounting foreign tables...")
 
@@ -153,7 +177,7 @@ def cleanup_objects(conn):
     # First, get a list of all objects required by a table.
     with conn.cursor() as cur:
         cur.execute(SQL("SELECT DISTINCT (object_id) FROM {}.tables").format(Identifier(SPLITGRAPH_META_SCHEMA)))
-        primary_objects = set([c[0] for c in cur.fetchall()])
+        primary_objects = {c[0] for c in cur.fetchall()}
 
     # Expand that since each object might have a parent it depends on.
     if primary_objects:
