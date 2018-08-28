@@ -8,6 +8,7 @@ from splitgraph.commands.push_pull import local_clone
 from splitgraph.constants import SplitGraphException
 from splitgraph.meta_handler import mountpoint_exists, get_current_head, tag_or_hash_to_actual_hash
 from splitgraph.pg_replication import replication_slot_exists
+from splitgraph.pg_utils import execute_sql_in
 from splitgraph.sgfile.parsing import parse_commands, extract_nodes, get_first_or_none, parse_repo_source, \
     extract_all_table_aliases
 
@@ -58,7 +59,7 @@ def execute_commands(conn, commands, params=None, output=None, output_base='0' *
     for i, node in enumerate(node_list):
         print("\n-> %d/%d %s" % (i + 1, len(node_list), node.text))
         if node.expr_name == 'from':
-            output = _execute_from(_initialize_output, conn, node, output)
+            output = _execute_from(conn, node, output)
 
         elif node.expr_name == 'import':
             _initialize_output(output)
@@ -90,19 +91,15 @@ def _execute_sql(conn, node, output):
 
     def _calc():
         print("Executing SQL...")
-        with conn.cursor() as cur:
-            # Make sure we'll record the actual change.
-            assert replication_slot_exists(conn)
-            # Execute all queries against the output by default.
-            cur.execute("SET search_path TO %s", (output,))
-            cur.execute(sql_command)
-            cur.execute("SET search_path TO public")
+        # Make sure we'll record the actual change.
+        assert replication_slot_exists(conn)
+        execute_sql_in(conn, output, sql_command)
         commit(conn, output, target_hash, comment=sql_command)
 
     _checkout_or_calculate_layer(conn, output, target_hash, _calc)
 
 
-def _execute_from(_initialize_output, conn, node, output):
+def _execute_from(conn, node, output):
     interesting_nodes = extract_nodes(node, ['repo_source', 'identifier'])
     repo_source = get_first_or_none(interesting_nodes, 'repo_source')
     output_node = get_first_or_none(interesting_nodes, 'identifier')
@@ -116,8 +113,8 @@ def _execute_from(_initialize_output, conn, node, output):
         if mountpoint_exists(conn, output):
             print("Clearing all output from %s" % output)
             unmount(conn, output)
-            init(conn, output)
-    _initialize_output(output)
+    if not mountpoint_exists(conn, output):
+        init(conn, output)
     if repo_source:
         conn_string, mountpoint, tag_or_hash = parse_repo_source(repo_source)
         if conn_string:

@@ -9,7 +9,7 @@ from splitgraph.constants import SPLITGRAPH_META_SCHEMA, get_random_object_id, l
 from splitgraph.meta_handler import get_current_head, add_new_snap_id, register_table, set_head, get_table, \
     get_tables_at, get_all_tables, register_object, get_all_foreign_tables
 from splitgraph.pg_replication import suspend_replication
-from splitgraph.pg_utils import copy_table, get_primary_keys
+from splitgraph.pg_utils import copy_table, get_primary_keys, execute_sql_in
 
 
 @suspend_replication
@@ -36,7 +36,7 @@ def import_tables(conn, mountpoint, tables, target_mountpoint, target_tables, im
         This is committed as a new snapshot.
     :return: Hash that the new image was stored under.
     """
-    head = get_current_head(conn, target_mountpoint, raise_on_none=False)
+    # Sanitize/validate the parameters and call the internal function.
     target_hash = target_hash or "%0.2x" % getrandbits(256)
 
     if not foreign_tables:
@@ -59,9 +59,15 @@ def import_tables(conn, mountpoint, tables, target_mountpoint, target_tables, im
     if clashing:
         raise ValueError("Table(s) %r already exist(s) at %s!" % (clashing, target_mountpoint))
 
+    return _import_tables(conn, mountpoint, image_hash, tables, target_mountpoint, target_hash, target_tables,
+                          do_checkout, table_queries, foreign_tables)
+
+
+def _import_tables(conn, mountpoint, image_hash, tables, target_mountpoint, target_hash, target_tables, do_checkout,
+                   table_queries, foreign_tables):
+    head = get_current_head(conn, target_mountpoint, raise_on_none=False)
     # Add the new snap ID to the tree
     add_new_snap_id(conn, target_mountpoint, head, target_hash, comment="Importing %s from %s" % (tables, mountpoint))
-
     # Materialize the actual tables in the target mountpoint and register them.
     for table, target_table, is_query in zip(tables, target_tables, table_queries):
         if foreign_tables or is_query:
@@ -70,35 +76,19 @@ def import_tables(conn, mountpoint, tables, target_mountpoint, target_tables, im
             if is_query:
                 # is_query precedes foreign_tables: if we're importing using a query, we don't care if it's a
                 # foreign table or not since we're storing it as a full snapshot.
-                with conn.cursor() as cur:
-                    # Execute the actual query against the original mountpoint.
-                    cur.execute("SET search_path TO %s", (mountpoint,))
-                    cur.execute(SQL("CREATE TABLE {}.{} AS ").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                     Identifier(object_id)) + SQL(table))
-                    cur.execute("SET search_path TO public")
+                execute_sql_in(conn, mountpoint,
+                               SQL("CREATE TABLE {}.{} AS ").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                    Identifier(object_id)) + SQL(table))
             elif foreign_tables:
                 copy_table(conn, mountpoint, table, SPLITGRAPH_META_SCHEMA, object_id)
 
-            # Might not be necessary if we don't actually want to materialize the snapshot (wastes space).
-            register_object(conn, object_id, 'SNAP', parent_object=None)
-            register_table(conn, target_mountpoint, target_table, target_hash, object_id)
-            if do_checkout:
-                copy_table(conn, SPLITGRAPH_META_SCHEMA, object_id, target_mountpoint, target_table)
-                if not get_primary_keys(conn, target_mountpoint, target_table):
-                    log(
-                        "WARN: table %s has no primary key. This means that changes will have to be recorded as "
-                        "whole-row." % target_table)
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            SQL("ALTER TABLE {}.{} REPLICA IDENTITY FULL").format(Identifier(target_mountpoint),
-                                                                                  Identifier(target_table)))
+            _register_and_checkout_new_table(conn, do_checkout, object_id, target_hash, target_mountpoint, target_table)
         else:
             for object_id, _ in get_table(conn, mountpoint, table, image_hash):
                 register_table(conn, target_mountpoint, target_table, target_hash, object_id)
             if do_checkout:
                 materialize_table(conn, mountpoint, image_hash, table, target_table,
                                   destination_mountpoint=target_mountpoint)
-
     # Register the existing tables at the new commit as well.
     if head is not None:
         with conn.cursor() as cur:
@@ -106,10 +96,25 @@ def import_tables(conn, mountpoint, tables, target_mountpoint, target_tables, im
                 (SELECT %s, %s, table_name, object_id FROM {0}.tables
                 WHERE mountpoint = %s AND snap_id = %s)""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
                         (target_mountpoint, target_hash, target_mountpoint, head))
-
     set_head(conn, target_mountpoint, target_hash)
     conn.commit()
     return target_hash
+
+
+def _register_and_checkout_new_table(conn, do_checkout, object_id, target_hash, target_mountpoint, target_table):
+    # Might not be necessary if we don't actually want to materialize the snapshot (wastes space).
+    register_object(conn, object_id, 'SNAP', parent_object=None)
+    register_table(conn, target_mountpoint, target_table, target_hash, object_id)
+    if do_checkout:
+        copy_table(conn, SPLITGRAPH_META_SCHEMA, object_id, target_mountpoint, target_table)
+        if not get_primary_keys(conn, target_mountpoint, target_table):
+            log(
+                "WARN: table %s has no primary key. This means that changes will have to be recorded as "
+                "whole-row." % target_table)
+            with conn.cursor() as cur:
+                cur.execute(
+                    SQL("ALTER TABLE {}.{} REPLICA IDENTITY FULL").format(Identifier(target_mountpoint),
+                                                                          Identifier(target_table)))
 
 
 def import_table_from_unmounted(conn, remote_conn_string, remote_mountpoint, remote_tables, remote_image_hash,

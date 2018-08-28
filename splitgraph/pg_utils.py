@@ -137,3 +137,17 @@ def table_dump_generator(conn, schema, table):
             yield cur.mogrify(',' + q, row).decode('utf-8')
         yield ';\n'
     return
+
+
+def execute_sql_in(conn, mountpoint, sql):
+    """
+    Executes a non-schema-qualified query against a specific schema, using PG's search_path.
+    :param conn: psycopg connection object
+    :param mountpoint: Schema to run the query in
+    :param sql: Query
+    """
+    with conn.cursor() as cur:
+        # Execute the actual query against the original mountpoint.
+        cur.execute("SET search_path TO %s", (mountpoint,))
+        cur.execute(sql)
+        cur.execute("SET search_path TO public")

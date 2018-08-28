@@ -301,48 +301,34 @@ def commit_pending_changes(conn, mountpoint, current_head, image_hash, include_s
     :param image_hash: Hash of the image to commit changes under.
     :param include_snap: If True, also stores the table as a SNAP.
     """
-    all_tables = get_all_tables(conn, mountpoint)
     with conn.cursor() as cur:
         cur.execute(SQL("""SELECT DISTINCT(table_name) FROM {}.{}
                        WHERE mountpoint = %s""").format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                         Identifier("pending_changes")), (mountpoint,))
         changed_tables = [c[0] for c in cur.fetchall()]
-        for table in all_tables:
-            table_info = get_table(conn, mountpoint, table, current_head)
-            # Table already exists at the current HEAD
-            if table_info:
-                schema_changed = table_schema_changed(conn, mountpoint, table, image_1=current_head, image_2=None)
-                # If there has been a schema change, we currently just snapshot the whole table.
-                # This is obviously wasteful (say if just one column has been added/dropped or we added a PK,
-                # but it's a starting point to support schema changes.
-                if schema_changed:
-                    include_snap = True
-                if table in changed_tables and not schema_changed:
-                    object_id = get_random_object_id()
-                    repl_id = _get_replica_identity(conn, mountpoint, table)
-                    ri_cols, _ = zip(*repl_id)
-                    _create_diff_table(conn, object_id, repl_id)
-                    _conflate_and_record_table(conn, mountpoint, object_id, image_hash, ri_cols, table, table_info)
-                else:
-                    if not schema_changed:
-                        # If the table wasn't changed, point the commit to the old table objects (including
-                        # any of snaps or diffs).
-                        # This feels slightly weird: are we denormalized here?
-                        for prev_object_id, _ in table_info:
-                            register_table(conn, mountpoint, table, image_hash, prev_object_id)
+    for table in get_all_tables(conn, mountpoint):
+        table_info = get_table(conn, mountpoint, table, current_head)
+        # Table already exists at the current HEAD
+        if table_info:
+            # If there has been a schema change, we currently just snapshot the whole table.
+            # This is obviously wasteful (say if just one column has been added/dropped or we added a PK,
+            # but it's a starting point to support schema changes.
+            if table_schema_changed(conn, mountpoint, table, image_1=current_head, image_2=None):
+                _record_table_as_snap(conn, mountpoint, image_hash, table, table_info)
+                continue
 
-            # If table created (or we want to store a snap anyway), copy the whole table over as well.
-            if not table_info or include_snap:
-                # Make sure we didn't actually create a snap for this table.
-                if get_table_with_format(conn, mountpoint, table, image_hash, 'SNAP') is None:
-                    object_id = get_random_object_id()
-                    copy_table(conn, mountpoint, table, SPLITGRAPH_META_SCHEMA, object_id, with_pk_constraints=True)
-                    if table_info:
-                        for parent_id, _ in table_info:
-                            register_object(conn, object_id, object_format='SNAP', parent_object=parent_id)
-                    else:
-                        register_object(conn, object_id, object_format='SNAP', parent_object=None)
-                    register_table(conn, mountpoint, table, image_hash, object_id)
+            if table in changed_tables:
+                _record_table_as_diff(conn, mountpoint, image_hash, table, table_info)
+            else:
+                # If the table wasn't changed, point the commit to the old table objects (including
+                # any of snaps or diffs).
+                # This feels slightly weird: are we denormalized here?
+                for prev_object_id, _ in table_info:
+                    register_table(conn, mountpoint, table, image_hash, prev_object_id)
+
+        # If table created (or we want to store a snap anyway), copy the whole table over as well.
+        if not table_info or include_snap:
+            _record_table_as_snap(conn, mountpoint, image_hash, table, table_info)
 
     # Make sure that all pending changes have been discarded by this point (e.g. if we created just a snapshot for
     # some tables and didn't consume the WAL).
@@ -350,7 +336,24 @@ def commit_pending_changes(conn, mountpoint, current_head, image_hash, include_s
     discard_pending_changes(conn, mountpoint)
 
 
-def _conflate_and_record_table(conn, mountpoint, object_id, image_hash, ri_cols, table, table_info):
+def _record_table_as_snap(conn, mountpoint, image_hash, table, table_info):
+    # Make sure we didn't actually create a snap for this table.
+    if get_table_with_format(conn, mountpoint, table, image_hash, 'SNAP') is None:
+        object_id = get_random_object_id()
+        copy_table(conn, mountpoint, table, SPLITGRAPH_META_SCHEMA, object_id, with_pk_constraints=True)
+        if table_info:
+            for parent_id, _ in table_info:
+                register_object(conn, object_id, object_format='SNAP', parent_object=parent_id)
+        else:
+            register_object(conn, object_id, object_format='SNAP', parent_object=None)
+        register_table(conn, mountpoint, table, image_hash, object_id)
+
+
+def _record_table_as_diff(conn, mountpoint, image_hash, table, table_info):
+    object_id = get_random_object_id()
+    repl_id = _get_replica_identity(conn, mountpoint, table)
+    ri_cols, _ = zip(*repl_id)
+    _create_diff_table(conn, object_id, repl_id)
     with conn.cursor() as cur:
         # Can't seem to use a server-side cursor here since it doesn't support DELETE FROM RETURNING
         cur.execute(
@@ -385,6 +388,13 @@ def _conflate_and_record_table(conn, mountpoint, object_id, image_hash, ri_cols,
 
 
 def apply_record_to_staging(conn, object_id, mountpoint, destination):
+    """
+    Applies a DIFF table stored in `object_id` to destination.
+    :param conn: psycopg connection object.
+    :param object_id: Object ID of the DIFF table.
+    :param mountpoint: Schema where the destination table is located.
+    :param destination: Target table.
+    """
     queries = []
     repl_id = _get_replica_identity(conn, SPLITGRAPH_META_SCHEMA, object_id)
     ri_cols, _ = zip(*repl_id)
