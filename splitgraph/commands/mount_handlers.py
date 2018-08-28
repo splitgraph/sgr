@@ -1,4 +1,5 @@
 from psycopg2.sql import Identifier, SQL
+
 from splitgraph.constants import SplitGraphException, log
 
 MOUNT_HANDLERS = {}
@@ -6,7 +7,7 @@ MOUNT_HANDLERS = {}
 
 def get_mount_handler(mount_handler):
     """Returns a mount function for a given handler.
-    The mount function has a signature (conn, hostname, port, username, password, handler_options)."""
+        The mount function has a signature (conn, mountpoint, handler_kwargs)."""
     try:
         return MOUNT_HANDLERS[mount_handler]
     except KeyError:
@@ -14,29 +15,27 @@ def get_mount_handler(mount_handler):
 
 
 def register_mount_handler(name, mount_function):
-    """Returns a mount function under a given name.
-        The mount function has a signature (conn, hostname, port, username, password, handler_options)."""
+    """Returns a mount function under a given name. See `get_mount_handler` for the mount handler spec."""
     global MOUNT_HANDLERS
     if name in MOUNT_HANDLERS:
         raise SplitGraphException("Cannot register a mount handler %s as it already exists!" % name)
     MOUNT_HANDLERS[name] = mount_function
 
 
-def mount_postgres(conn, server, port, username, password, mountpoint, extra_options):
+def mount_postgres(conn, mountpoint, server, port, username, password, dbname, remote_schema, tables=[]):
     """
     Mounts a schema on a remote Postgres database as a set of foreign tables locally.
     :param conn: Psycopg connection object.
+    :param mountpoint: Schema to mount the remote into.
     :param server: Database hostname.
     :param port: Port the Postgres server is running on.
     :param username: A read-only user that the database will be accessed as.
     :param password: Password for the read-only user.
-    :param mountpoint: Schema to mount the remote into.
-    :param extra_options: A dictionary of form {"dbname": <dbname>, "remote_schema": <remote schema>,
-                                                "tables": <tables to mount (optional)>}
+    :param dbname: Remote database name.
+    :param remote_schema: Remote schema name.
+    :param tables: Tables to mount (default all).
     """
     with conn.cursor() as cur:
-        dbname = extra_options['dbname']
-
         log("postgres_fdw: importing foreign schema...")
 
         server_id = Identifier(mountpoint + '_server')
@@ -48,9 +47,6 @@ def mount_postgres(conn, server, port, username, password, mountpoint, extra_opt
                         SERVER {}
                         OPTIONS (user %s, password %s)""").format(server_id), (username, password))
 
-        tables = extra_options.get('tables', [])
-        remote_schema = extra_options['remote_schema']
-
         cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(mountpoint)))
 
         # Construct a query: import schema limit to (%s, %s, ...) from server mountpoint_server into mountpoint
@@ -61,16 +57,16 @@ def mount_postgres(conn, server, port, username, password, mountpoint, extra_opt
         cur.execute(SQL(query).format(Identifier(remote_schema), server_id, Identifier(mountpoint)), tables)
 
 
-def mount_mongo(conn, server, port, username, password, mountpoint, extra_options):
+def mount_mongo(conn, mountpoint, server, port, username, password, **table_spec):
     """
     Mounts one or more collections on a remote Mongo database as a set of foreign tables locally.
     :param conn: Psycopg connection object.
+    :param mountpoint: Schema to mount the remote into.
     :param server: Database hostname.
     :param port: Port the Mongo server is running on.
     :param username: A read-only user that the database will be accessed as.
     :param password: Password for the read-only user.
-    :param mountpoint: Schema to mount the remote into.
-    :param extra_options: A dictionary of form {"table_name": {"db": <dbname>, "coll": <collection>,
+    :param table_spec: A dictionary of form {"table_name": {"db": <dbname>, "coll": <collection>,
                                                                "schema": {"col1": "type1"...}}}.
     """
     with conn.cursor() as cur:
@@ -87,9 +83,9 @@ def mount_mongo(conn, server, port, username, password, mountpoint, extra_option
 
         cur.execute(SQL("""CREATE SCHEMA {}""").format(Identifier(mountpoint)))
 
-        # Mongo extra options: a map of
+        # Parse the table spec
         # {table_name: {db: remote_db_name, coll: remote_collection_name, schema: {col1: type1, col2: type2...}}}
-        for table_name, table_options in extra_options.items():
+        for table_name, table_options in table_spec.items():
             log("Mounting table %s" % table_name)
             db = table_options['db']
             coll = table_options['coll']

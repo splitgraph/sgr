@@ -1,8 +1,8 @@
 import os
 import sys
 
-from .environment_config import get_environment_config_value
 from .argument_config import get_argument_config_value
+from .environment_config import get_environment_config_value
 
 ''' "Export" an object of SystemConfigGetters, for getting config values that
     require operations with the system, like checking if files exist.

@@ -168,10 +168,11 @@ def _execute_db_import(conn, conn_string, fdw_name, fdw_params, table_names, tar
     tmp_mountpoint = fdw_name + '_tmp_staging'
     unmount(conn, tmp_mountpoint)
     try:
-        mount_handler(conn, server=conn_string.group(3), port=int(conn_string.group(4)),
-                      username=conn_string.group(1),
-                      password=conn_string.group(2),
-                      mountpoint=tmp_mountpoint, extra_options=json.loads(fdw_params))
+        handler_kwargs = json.loads(fdw_params)
+        handler_kwargs.update(dict(server=conn_string.group(3), port=int(conn_string.group(4)),
+                                   username=conn_string.group(1),
+                                   password=conn_string.group(2)))
+        mount_handler(conn, tmp_mountpoint, **handler_kwargs)
         # The foreign database is a moving target, so the new image hash is random.
         # Maybe in the future, when the object hash is a function of its contents, we can be smarter here...
         output_head = get_current_head(conn, target_mountpoint)

@@ -1,7 +1,7 @@
 import requests
 
-from splitgraph.pg_utils import table_dump_generator
 from splitgraph.constants import SplitGraphException, log, SPLITGRAPH_META_SCHEMA
+from splitgraph.pg_utils import table_dump_generator
 
 EXTERNAL_OBJECT_HANDLERS = {}
 

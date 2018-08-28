@@ -7,18 +7,14 @@ from splitgraph.constants import log
 from splitgraph.meta_handler import ensure_metadata_schema, get_all_foreign_tables
 
 
-def mount(conn, server, port, username, password, mountpoint, mount_handler, extra_options):
+def mount(conn, mountpoint, mount_handler, handler_kwargs):
     """
     Mounts a foreign database via Postgres FDW and copies all of its tables over, registering them as new SplitGraph
     objects.
     :param conn: psycopg connection object
-    :param server: Hostname of the source database.
-    :param port: Port of the source database.
-    :param username: Username to use to connect to the source database.
-    :param password: Password to use to connect to the source database.
     :param mountpoint: Mountpoint to import the new tables into.
     :param mount_handler: The type of the mounted database. Must be one of `postgres_fdw` or `mongo_fdw`.
-    :param extra_options: Dictionary of options to pass to the mount handler specifying the structure of the new tables.
+    :param handler_kwargs: Dictionary of options to pass to the mount handler.
     :return: Image hash that the new tables were committed under.
     """
     ensure_metadata_schema(conn)
@@ -28,7 +24,7 @@ def mount(conn, server, port, username, password, mountpoint, mount_handler, ext
     staging_mountpoint = mountpoint + '_tmp_staging'
     unmount(conn, staging_mountpoint)
     try:
-        mh_func(conn, server, port, username, password, staging_mountpoint, extra_options)
+        mh_func(conn, staging_mountpoint, **handler_kwargs)
 
         # Mimic the behaviour of the old mount here: create the schema and have a random initial commit in it
         # wit the imported (snapshotted) foreign tables.

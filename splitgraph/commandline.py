@@ -152,9 +152,10 @@ def mount_c(mountpoint, connection, handler, handler_options):
     # Parse the connection string
     match = re.match(r'(\S+):(\S+)@(.+):(\d+)', connection)
     conn = _conn()
-    mount(conn, server=match.group(3), port=int(match.group(4)), username=match.group(1), password=match.group(2),
-          mountpoint=mountpoint, mount_handler=handler, extra_options=json.loads(handler_options))
-
+    handler_options = json.loads(handler_options)
+    handler_options.update(dict(server=match.group(3), port=int(match.group(4)),
+                                username=match.group(1), password=match.group(2)))
+    mount(conn, mountpoint, mount_handler=handler, handler_kwargs=handler_options)
     conn.commit()
 
 

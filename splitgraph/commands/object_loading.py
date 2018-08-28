@@ -46,7 +46,7 @@ def _fetch_remote_objects(conn, objects_to_fetch, remote_conn_string, remote_con
     unmount(conn, remote_data_mountpoint)  # Maybe worth making sure we're not stepping on anyone else
     mount_postgres(conn, server=match.group(3), port=int(match.group(4)),
                    username=match.group(1), password=match.group(2), mountpoint=remote_data_mountpoint,
-                   extra_options={'dbname': match.group(5), 'remote_schema': SPLITGRAPH_META_SCHEMA})
+                   dbname=match.group(5), remote_schema=SPLITGRAPH_META_SCHEMA)
     remote_conn = remote_conn or make_conn(server=match.group(3), port=int(match.group(4)), username=match.group(1),
                                            password=match.group(2), dbname=match.group(5))
     try:
@@ -121,7 +121,7 @@ def upload_objects(conn, remote_conn_string, objects_to_push, handler='DB', hand
         unmount(conn, remote_data_mountpoint)
         mount_postgres(conn, server=match.group(3), port=int(match.group(4)),
                        username=match.group(1), password=match.group(2), mountpoint=remote_data_mountpoint,
-                       extra_options={'dbname': match.group(5), 'remote_schema': SPLITGRAPH_META_SCHEMA})
+                       dbname=match.group(5), remote_schema=SPLITGRAPH_META_SCHEMA)
         for i, obj in enumerate(objects_to_push):
             log("(%d/%d) %s..." % (i + 1, len(objects_to_push), obj))
             copy_table(conn, SPLITGRAPH_META_SCHEMA, obj, remote_data_mountpoint, obj, with_pk_constraints=False,

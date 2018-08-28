@@ -12,20 +12,22 @@ MG_MNT = 'test_mg_mount'
 
 
 def _mount_postgres(conn, mountpoint):
-    mount(conn, server='pgorigin', port=5432, username='originro', password='originpass', mountpoint=mountpoint,
-          mount_handler='postgres_fdw', extra_options={"dbname": "origindb", "remote_schema": "public"})
+    mount(conn, mountpoint, "postgres_fdw",
+          dict(server='pgorigin', port=5432, username='originro', password='originpass', dbname="origindb",
+               remote_schema="public"))
 
 
 def _mount_mongo(conn, mountpoint):
-    mount(conn, server='mongoorigin', port=27017, username='originro', password='originpass', mountpoint=mountpoint,
-          mount_handler='mongo_fdw', extra_options={"stuff": {
-            "db": "origindb",
-            "coll": "stuff",
-            "schema": {
-                "name": "text",
-                "duration": "numeric",
-                "happy": "boolean"
-            }}})
+    mount(conn, mountpoint, "mongo_fdw", dict(server='mongoorigin', port=27017,
+                                              username='originro', password='originpass',
+                                              stuff={
+                                                  "db": "origindb",
+                                                  "coll": "stuff",
+                                                  "schema": {
+                                                      "name": "text",
+                                                      "duration": "numeric",
+                                                      "happy": "boolean"
+                                                  }}))
 
 
 TEST_MOUNTPOINTS = [PG_MNT, PG_MNT + '_pull', 'output', MG_MNT, 'output_stage_2']

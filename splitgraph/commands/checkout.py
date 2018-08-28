@@ -7,7 +7,7 @@ from splitgraph.constants import log, get_random_object_id, SplitGraphException,
 from splitgraph.meta_handler import get_table_with_format, get_remote_for, get_canonical_snap_id, get_tables_at, \
     get_all_tables, set_head, register_table, deregister_table_object, \
     get_external_object_locations, get_tagged_id
-from splitgraph.pg_replication import apply_record_to_staging, discard_pending_changes,\
+from splitgraph.pg_replication import apply_record_to_staging, discard_pending_changes, \
     get_closest_parent_snap_object, suspend_replication
 from splitgraph.pg_utils import copy_table, get_primary_keys
 
