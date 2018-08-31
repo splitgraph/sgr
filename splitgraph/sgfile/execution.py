@@ -84,7 +84,7 @@ def _execute_sql(conn, node, output):
             # Don't "canonicalize" it here to get rid of whitespace, just hash the whole file.
             sql_command = f.read()
     else:
-        sql_command = _canonicalize(node_contents)
+        sql_command = node_contents
     output_head = get_current_head(conn, output)
     target_hash = _combine_hashes([output_head, sha256(sql_command.encode('utf-8')).hexdigest()])
     print('%s:%s -> %s' % (output, output_head[:12], target_hash[:12]))
@@ -206,7 +206,8 @@ def _execute_repo_import(conn, conn_string, mountpoint, table_names, tag_or_hash
             [output_head, source_hash] + [sha256(n.encode('utf-8')).hexdigest() for n in
                                           table_names + table_aliases])
 
-        print('%s:%s -> %s' % (target_mountpoint, output_head[:12], target_hash[:12]))
+        print('%s:%s, %s:%s -> %s' % (mountpoint, source_hash[:12],
+                                      target_mountpoint, output_head[:12], target_hash[:12]))
 
         def _calc():
             print("Importing tables %r:%s from %s into %s" % (

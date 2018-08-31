@@ -117,12 +117,13 @@ def parse_repo_source(remote_repo_node):
     if repo_nodes[0].expr_name == 'conn_string':
         conn_string = repo_nodes[0].match.group(0)
         mountpoint = repo_nodes[1].match.group(0)
+        repo_nodes = repo_nodes[1:]
     else:
         conn_string = None
         mountpoint = repo_nodes[0].match.group(0)
     # See if we got given a tag / hash (the executor will try to interpret it as both).
-    if len(repo_nodes) == 3:
-        tag_or_hash = repo_nodes[2].match.group(0)
+    if len(repo_nodes) == 2:
+        tag_or_hash = repo_nodes[1].match.group(0)
     else:
         tag_or_hash = 'latest'
     return conn_string, mountpoint, tag_or_hash
