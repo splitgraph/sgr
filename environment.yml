@@ -5,4 +5,5 @@ dependencies:
   - click
   - requests
   - pytest
-  - parsimonious
+  - pip:
+    - parsimonious
