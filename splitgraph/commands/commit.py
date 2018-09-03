@@ -1,6 +1,6 @@
+import logging
 from random import getrandbits
 
-from splitgraph.constants import log
 from splitgraph.meta_handler import ensure_metadata_schema, get_current_head, add_new_snap_id, set_head
 from splitgraph.pg_replication import record_pending_changes, commit_pending_changes, stop_replication, \
     start_replication
@@ -21,7 +21,7 @@ def commit(conn, mountpoint, image_hash=None, include_snap=False, comment=None):
     # required here so that the logical replication sees changes made before the commit in this tx
     conn.commit()
     record_pending_changes(conn)
-    log("Committing...")
+    logging.info("Committing %s...", mountpoint)
 
     head = get_current_head(conn, mountpoint)
 
@@ -37,5 +37,4 @@ def commit(conn, mountpoint, image_hash=None, include_snap=False, comment=None):
     set_head(conn, mountpoint, image_hash)
     conn.commit()  # need to commit before starting replication
     start_replication(conn)
-    log("Committed as %s" % image_hash[:12])
     return image_hash

@@ -1,3 +1,4 @@
+import logging
 from random import getrandbits
 
 from psycopg2.sql import Identifier, SQL
@@ -5,7 +6,7 @@ from psycopg2.sql import Identifier, SQL
 from splitgraph.commands.checkout import materialize_table
 from splitgraph.commands.misc import unmount
 from splitgraph.commands.push_pull import clone
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA, get_random_object_id, log
+from splitgraph.constants import SPLITGRAPH_META_SCHEMA, get_random_object_id
 from splitgraph.meta_handler import get_current_head, add_new_snap_id, register_table, set_head, get_table, \
     get_tables_at, get_all_tables, register_object, get_all_foreign_tables
 from splitgraph.pg_replication import suspend_replication
@@ -108,9 +109,9 @@ def _register_and_checkout_new_table(conn, do_checkout, object_id, target_hash, 
     if do_checkout:
         copy_table(conn, SPLITGRAPH_META_SCHEMA, object_id, target_mountpoint, target_table)
         if not get_primary_keys(conn, target_mountpoint, target_table):
-            log(
-                "WARN: table %s has no primary key. This means that changes will have to be recorded as "
-                "whole-row." % target_table)
+            logging.warn(
+                "Table %s has no primary key. This means that changes will have to be recorded as "
+                "whole-row.", target_table)
             with conn.cursor() as cur:
                 cur.execute(
                     SQL("ALTER TABLE {}.{} REPLICA IDENTITY FULL").format(Identifier(target_mountpoint),

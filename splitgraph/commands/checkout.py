@@ -1,9 +1,10 @@
+import logging
 from contextlib import contextmanager
 
 from psycopg2.sql import Identifier, SQL
 
 from splitgraph.commands.object_loading import download_objects
-from splitgraph.constants import log, get_random_object_id, SplitGraphException, SPLITGRAPH_META_SCHEMA
+from splitgraph.constants import get_random_object_id, SplitGraphException, SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler import get_table_with_format, get_remote_for, get_canonical_snap_id, get_tables_at, \
     get_all_tables, set_head, register_table, deregister_table_object, \
     get_external_object_locations, get_tagged_id
@@ -45,14 +46,14 @@ def materialize_table(conn, mountpoint, image_hash, table, destination, destinat
         # This is to work around logical replication not reflecting deletions from non-PKd tables. However, this makes
         # it emit all column values in the row, not just the updated ones.
         if not get_primary_keys(conn, destination_mountpoint, destination):
-            log("WARN: table %s has no primary key. "
-                "This means that changes will have to be recorded as whole-row." % destination)
+            logging.warn("Table %s has no primary key. This means that changes will have to be recorded as whole-row.",
+                         destination)
             cur.execute(SQL("ALTER TABLE {}.{} REPLICA IDENTITY FULL").format(Identifier(destination_mountpoint),
                                                                               Identifier(destination)))
 
         # Apply the deltas sequentially to the checked out table
         for pack_object in reversed(to_apply):
-            log("Applying %s..." % pack_object)
+            logging.info("Applying %s...", pack_object)
             apply_record_to_staging(conn, pack_object, destination_mountpoint, destination)
 
 
@@ -91,7 +92,7 @@ def checkout(conn, mountpoint, image_hash=None, tag=None, tables=None):
     set_head(conn, mountpoint, image_hash)
 
     conn.commit()
-    log("Checked out %s:%s." % (mountpoint, image_hash[:12]))
+    logging.info("Checked out %s:%s.", mountpoint, image_hash[:12])
 
 
 @contextmanager

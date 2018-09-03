@@ -1,3 +1,4 @@
+import logging
 import re
 from collections import defaultdict
 
@@ -6,7 +7,7 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.commands.external_object_handlers import get_upload_download_handler
 from splitgraph.commands.misc import make_conn, unmount
 from splitgraph.commands.mount_handlers import mount_postgres
-from splitgraph.constants import log, SPLITGRAPH_META_SCHEMA
+from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler import get_downloaded_objects, get_existing_objects
 from splitgraph.pg_utils import copy_table, dump_table_creation, get_primary_keys
 
@@ -51,7 +52,7 @@ def _fetch_remote_objects(conn, objects_to_fetch, remote_conn_string, remote_con
                                            password=match.group(2), dbname=match.group(5))
     try:
         for i, obj in enumerate(objects_to_fetch):
-            log("(%d/%d) %s..." % (i + 1, len(objects_to_fetch), obj))
+            print("(%d/%d) %s..." % (i + 1, len(objects_to_fetch), obj))
             # Foreign tables don't have PK constraints so we'll have to apply them manually.
             copy_table(conn, remote_data_mountpoint, obj, SPLITGRAPH_META_SCHEMA, obj, with_pk_constraints=False)
             with conn.cursor() as cur:
@@ -72,7 +73,7 @@ def _fetch_external_objects(conn, object_locations, objects_to_fetch):
             non_remote_by_method[protocol].append((object_id, object_url))
             non_remote_objects.append(object_id)
     if non_remote_objects:
-        print("Fetching external objects...")
+        logging.info("Fetching external objects...")
         for method, objects in non_remote_by_method.items():
             _, handler = get_upload_download_handler(method)
             handler(conn, objects, {})
@@ -102,9 +103,9 @@ def upload_objects(conn, remote_conn_string, objects_to_push, handler='DB', hand
     existing_objects = get_existing_objects(remote_conn)
     objects_to_push = list(set(o for o in objects_to_push if o not in existing_objects))
     if not objects_to_push:
-        log("Nothing to upload.")
+        logging.info("Nothing to upload.")
         return []
-    log("Uploading objects...")
+    logging.info("Uploading %d object(s)...", len(objects_to_push))
 
     if handler == 'DB':
         # Difference from pull here: since we can't get remote to mount us, we instead use normal SQL statements
@@ -123,7 +124,7 @@ def upload_objects(conn, remote_conn_string, objects_to_push, handler='DB', hand
                        username=match.group(1), password=match.group(2), mountpoint=remote_data_mountpoint,
                        dbname=match.group(5), remote_schema=SPLITGRAPH_META_SCHEMA)
         for i, obj in enumerate(objects_to_push):
-            log("(%d/%d) %s..." % (i + 1, len(objects_to_push), obj))
+            print("(%d/%d) %s..." % (i + 1, len(objects_to_push), obj))
             copy_table(conn, SPLITGRAPH_META_SCHEMA, obj, remote_data_mountpoint, obj, with_pk_constraints=False,
                        table_exists=True)
         conn.commit()

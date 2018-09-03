@@ -1,7 +1,9 @@
+import logging
+
 import psycopg2
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA, log
+from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler import get_table, get_snap_parent, register_mountpoint, \
     unregister_mountpoint, get_object_meta, META_TABLES, ensure_metadata_schema
 from splitgraph.pg_replication import discard_pending_changes, suspend_replication, record_pending_changes
@@ -129,5 +131,4 @@ def cleanup_objects(conn):
         if to_delete:
             cur.execute(SQL(";").join(SQL("DROP TABLE {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                                      Identifier(d)) for d in to_delete))
-
-        log("Deleted %d physical object(s)" % len(to_delete))
+    return to_delete

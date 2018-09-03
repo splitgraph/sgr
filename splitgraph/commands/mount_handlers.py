@@ -1,6 +1,8 @@
+import logging
+
 from psycopg2.sql import Identifier, SQL
 
-from splitgraph.constants import SplitGraphException, log
+from splitgraph.constants import SplitGraphException
 
 MOUNT_HANDLERS = {}
 
@@ -36,8 +38,7 @@ def mount_postgres(conn, mountpoint, server, port, username, password, dbname, r
     :param tables: Tables to mount (default all).
     """
     with conn.cursor() as cur:
-        log("postgres_fdw: importing foreign schema...")
-
+        logging.info("Importing foreign Postgres schema...")
         server_id = Identifier(mountpoint + '_server')
 
         cur.execute(SQL("""CREATE SERVER {}
@@ -70,8 +71,6 @@ def mount_mongo(conn, mountpoint, server, port, username, password, **table_spec
                                                                "schema": {"col1": "type1"...}}}.
     """
     with conn.cursor() as cur:
-        log("mongo_fdw: mounting foreign tables...")
-
         server_id = Identifier(mountpoint + '_server')
 
         cur.execute(SQL("""CREATE SERVER {}
@@ -86,7 +85,7 @@ def mount_mongo(conn, mountpoint, server, port, username, password, **table_spec
         # Parse the table spec
         # {table_name: {db: remote_db_name, coll: remote_collection_name, schema: {col1: type1, col2: type2...}}}
         for table_name, table_options in table_spec.items():
-            log("Mounting table %s" % table_name)
+            logging.info("Mounting table %s", table_name)
             db = table_options['db']
             coll = table_options['coll']
 

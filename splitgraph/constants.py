@@ -1,6 +1,9 @@
+import logging
 from random import getrandbits
 
 from splitgraph.config import CONFIG
+logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=logging.INFO)
+
 
 PG_HOST = CONFIG["SG_DRIVER_HOST"]
 PG_PORT = CONFIG["SG_DRIVER_PORT"]
@@ -13,10 +16,6 @@ SPLITGRAPH_META_SCHEMA = CONFIG["SG_META_SCHEMA"]
 
 class SplitGraphException(Exception):
     pass
-
-
-def log(text):
-    print(text)
 
 
 def get_random_object_id():

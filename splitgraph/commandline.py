@@ -188,7 +188,8 @@ def commit_c(mountpoint, commit_hash, include_snap, message):
         print("Commit hash must be of the form [a-f0-9] x 64!")
         return
 
-    commit(conn, mountpoint, commit_hash, include_snap=include_snap, comment=message)
+    new_hash = commit(conn, mountpoint, commit_hash, include_snap=include_snap, comment=message)
+    print("Committed %s as %s." % (mountpoint, new_hash[:12]))
     conn.commit()
 
 
@@ -350,7 +351,8 @@ def import_c(mountpoint, table, target_mountpoint, target_table, image):
 @click.command(name='cleanup')
 def cleanup_c():
     conn = _conn()
-    cleanup_objects(conn)
+    deleted = cleanup_objects(conn)
+    print("Deleted %d physical object(s)" % len(deleted))
     conn.commit()
     conn.close()
 

@@ -1,10 +1,11 @@
+import logging
 import re
 
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.commands.misc import make_conn
 from splitgraph.commands.object_loading import download_objects, upload_objects
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA, SplitGraphException, log
+from splitgraph.constants import SPLITGRAPH_META_SCHEMA, SplitGraphException
 from splitgraph.meta_handler import get_all_snap_parents, add_new_snap_id, get_remote_for, ensure_metadata_schema, \
     register_objects, set_head, add_remote, register_object_locations, get_external_object_locations, register_tables, \
     get_existing_objects, get_object_meta, get_all_hashes_tags, set_tags
@@ -100,13 +101,13 @@ def clone(conn, remote_conn_string, remote_mountpoint, local_mountpoint, downloa
     with conn.cursor() as cur:
         cur.execute(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(local_mountpoint)))
 
-    log("Connecting to the remote driver...")
+    logging.info("Connecting to the remote driver...")
     match = re.match(r'(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
     remote_conn = remote_conn or make_conn(server=match.group(3), port=int(match.group(4)), username=match.group(1),
                                            password=match.group(2), dbname=match.group(5))
 
     # Get the remote log and the list of objects we need to fetch.
-    log("Gathering remote metadata...")
+    logging.info("Gathering remote metadata...")
 
     # This also registers the new versions locally.
     snaps_to_fetch, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(conn, remote_conn,
@@ -114,7 +115,7 @@ def clone(conn, remote_conn_string, remote_mountpoint, local_mountpoint, downloa
                                                                                                   remote_mountpoint)
 
     if not snaps_to_fetch:
-        log("Nothing to do.")
+        logging.info("Nothing to do.")
         return
 
     # Don't actually download any real objects until the user tries to check out a revision.
@@ -122,7 +123,7 @@ def clone(conn, remote_conn_string, remote_mountpoint, local_mountpoint, downloa
         # Check which new objects we need to fetch/preregister.
         # We might already have some objects prefetched
         # (e.g. if a new version of the table is the same as the old version)
-        log("Fetching remote objects...")
+        logging.info("Fetching remote objects...")
         download_objects(conn, remote_conn_string, objects_to_fetch=list(set(o[0] for o in object_meta)),
                          object_locations=object_locations, remote_conn=remote_conn)
 
@@ -134,10 +135,10 @@ def clone(conn, remote_conn_string, remote_mountpoint, local_mountpoint, downloa
     # Don't check anything out, keep the repo bare.
     set_head(conn, local_mountpoint, None)
 
-    log("Fetched metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta),
-                                                                                   len(table_meta),
-                                                                                   len([t for t in tags if
-                                                                                        t != 'HEAD'])))
+    logging.info("Fetched metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta),
+                                                                                            len(table_meta),
+                                                                                            len([t for t in tags if
+                                                                                                 t != 'HEAD'])))
 
     if get_remote_for(conn, local_mountpoint) is None:
         add_remote(conn, local_mountpoint, remote_conn_string, remote_mountpoint)
@@ -180,19 +181,19 @@ def push(conn, remote_conn_string, remote_mountpoint, local_mountpoint, handler=
 
     # Could actually be done by flipping the arguments in pull but that assumes the remote SG driver can connect
     # to us directly, which might not be the case. Although tunnels? Still, a lot of code here similar to pull.
-    log("Connecting to the remote driver...")
+    logging.info("Connecting to the remote driver...")
     match = re.match(r'(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
     remote_conn = make_conn(server=match.group(3), port=int(match.group(4)), username=match.group(1),
                             password=match.group(2), dbname=match.group(5))
     try:
-        log("Gathering remote metadata...")
+        logging.info("Gathering remote metadata...")
         # This also registers new commits remotely. Should make explicit and move down later on.
         snaps_to_push, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(remote_conn, conn,
                                                                                                      remote_mountpoint,
                                                                                                      local_mountpoint)
 
         if not snaps_to_push:
-            log("Nothing to do.")
+            logging.info("Nothing to do.")
             return
 
         new_uploads = upload_objects(conn, remote_conn_string, list(set(o[0] for o in object_meta)), handler=handler,
@@ -206,9 +207,9 @@ def push(conn, remote_conn_string, remote_mountpoint, local_mountpoint, handler=
         remote_conn.commit()
         register_object_locations(conn, new_uploads)
 
-        log("Uploaded metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta),
-                                                                                        len(table_meta),
-                                                                                        len([t for t in tags if
-                                                                                             t != 'HEAD'])))
+        logging.info("Uploaded metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta),
+                                                                                                 len(table_meta),
+                                                                                                 len([t for t in tags if
+                                                                                                      t != 'HEAD'])))
     finally:
         remote_conn.close()

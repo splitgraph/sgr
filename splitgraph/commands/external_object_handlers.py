@@ -1,6 +1,6 @@
 import requests
 
-from splitgraph.constants import SplitGraphException, log, SPLITGRAPH_META_SCHEMA
+from splitgraph.constants import SplitGraphException, SPLITGRAPH_META_SCHEMA
 from splitgraph.pg_utils import table_dump_generator
 
 EXTERNAL_OBJECT_HANDLERS = {}
@@ -61,7 +61,7 @@ def _file_upload_objects(conn, objects_to_push, params):
 def _file_download_objects(conn, objects_to_fetch, params):
     for i, obj in enumerate(objects_to_fetch):
         object_id, object_url = obj
-        log("(%d/%d) %s -> %s" % (i + 1, len(objects_to_fetch), object_url, object_id))
+        print("(%d/%d) %s -> %s" % (i + 1, len(objects_to_fetch), object_url, object_id))
         with open(object_url, 'r') as f:
             with conn.cursor() as cur:
                 # Insert into the locally checked out schema by default since the dump doesn't have the schema
@@ -79,7 +79,7 @@ def _http_download_objects(conn, objects_to_fetch, http_params):
 
     for i, obj in enumerate(objects_to_fetch):
         object_id, object_url = obj
-        log("(%d/%d) %s -> %s" % (i + 1, len(objects_to_fetch), object_url, object_id))
+        print("(%d/%d) %s -> %s" % (i + 1, len(objects_to_fetch), object_url, object_id))
         # Let's execute arbitrary code from the Internet on our machine!
         r = requests.get(object_url, stream=True)
         with conn.cursor() as cur:

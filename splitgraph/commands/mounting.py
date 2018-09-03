@@ -1,9 +1,10 @@
+import logging
+
 from psycopg2.sql import Identifier, SQL
 
 from splitgraph.commands.importing import import_tables
 from splitgraph.commands.misc import unmount
 from splitgraph.commands.mount_handlers import get_mount_handler
-from splitgraph.constants import log
 from splitgraph.meta_handler import ensure_metadata_schema, get_all_foreign_tables
 
 
@@ -19,7 +20,7 @@ def mount(conn, mountpoint, mount_handler, handler_kwargs):
     """
     ensure_metadata_schema(conn)
     mh_func = get_mount_handler(mount_handler)
-    log("Connecting to remote server...")
+    logging.info("Connecting to remote server...")
 
     staging_mountpoint = mountpoint + '_tmp_staging'
     unmount(conn, staging_mountpoint)
