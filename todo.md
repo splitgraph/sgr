@@ -17,10 +17,6 @@
     * There can be two types of rebases: logical (reapplies the sgfile derivation to a different set of source datasets)
       and physical (reapplies the DIFF objects to a different parent. Not doable if we don't have a chain of DIFFS
       that we can apply (e.g. there are SNAP objects in the path)).
-  * There's a possibility we don't need to actually store the downloaded objects locally once we've materialized them,
-    since if we're deriving something based on that we're never checking out that version again.
-      * If we store diffs so that we can reverse them, it's easier since then we can just travel the diff tree
-        up and down by applying/unapplying diffs.
   * Advanced hash calculation for IMPORT/SQL layers (only invalidate if the actual table objects the IMPORT
       / SQL layer relies on have changed).
   * Schema changes: come up with a better method of keeping track than producing a snap

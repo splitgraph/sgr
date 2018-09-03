@@ -247,6 +247,9 @@ def _convert_wal_change(kind, change, ri_cols):
         assert kind == 2
         # If it's an update that changed the PK (e.g. the table has no replica identity so we treat the whole
         # tuple as a primary key), then we turn it into a delete old tuple + insert new one.
+        # This might happen with updates in any case, since the WAL seems to output the old and the new values for the
+        # PK no matter what the replica identity settings are. However, the resulting delete + insert
+        # gets conflated back into an update in any case if the PK is the same between the two.
         result = [(tuple(ri_vals), 1, None)]
         # todo: will this work if a part of the primary key + some other column in the tuple has been updated?
         ri_vals, non_ri_cols, non_ri_vals = _recalculate_disjoint_ri_cols(ri_cols, ri_vals, non_ri_cols, non_ri_vals)
@@ -282,7 +285,7 @@ def _conflate_changes(changeset, new_changes):
                     # Delete over delete: can't happen.
                     raise SplitGraphException("TODO logic error")
             elif change_kind == 2:  # Update over insert/update: merge the two changes.
-                if old_change[0] == 0 or old_change[0] == 1:
+                if old_change[0] == 0 or old_change[0] == 2:
                     new_data = _merge_wal_changes(json.loads(old_change[1]), change_data)
                     changeset[change_pk] = (old_change[0], new_data)
 

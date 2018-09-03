@@ -52,14 +52,20 @@ def test_pull(sg_pg_conn, snapper_conn, download_all):
     assert get_current_head(sg_pg_conn, PG_MNT + '_pull') == head_1
 
 
-def test_pulls_with_lazy_object_downloads(empty_pg_conn, snapper_conn):
+@pytest.mark.parametrize("keep_downloaded", [True, False])
+def test_pulls_with_lazy_object_downloads(empty_pg_conn, snapper_conn, keep_downloaded):
     clone(empty_pg_conn, SNAPPER_CONN_STRING, PG_MNT, PG_MNT + '_pull', download_all=False)
     # Make sure we haven't downloaded anything until checkout
     assert not get_downloaded_objects(empty_pg_conn)
 
-    checkout(empty_pg_conn, PG_MNT + '_pull', get_current_head(snapper_conn, PG_MNT))
-    assert len(get_downloaded_objects(empty_pg_conn)) == 2  # Original fruits and vegetables tables.
-    assert get_downloaded_objects(empty_pg_conn) == get_existing_objects(empty_pg_conn)
+    checkout(empty_pg_conn, PG_MNT + '_pull', get_current_head(snapper_conn, PG_MNT),
+             keep_downloaded_objects=keep_downloaded)
+    if keep_downloaded:
+        assert len(get_downloaded_objects(empty_pg_conn)) == 2  # Original fruits and vegetables tables.
+        assert get_downloaded_objects(empty_pg_conn) == get_existing_objects(empty_pg_conn)
+    else:
+        # If we're deleting remote objects after checkout, there shouldn't be any left.
+        assert not get_downloaded_objects(empty_pg_conn)
 
     # In the meantime, make two branches off of origin (a total of 3 commits)
     head = get_current_head(snapper_conn, PG_MNT)
@@ -76,18 +82,25 @@ def test_pulls_with_lazy_object_downloads(empty_pg_conn, snapper_conn):
     pull(empty_pg_conn, PG_MNT + '_pull', remote='origin', download_all=False)
     # Make sure we have the pointers to the three versions of the fruits table + the original vegetables
     assert len(get_existing_objects(empty_pg_conn)) == 4
-    # Also make sure still only have the objects with the original fruits + vegetables tables
-    assert len(get_downloaded_objects(empty_pg_conn)) == 2
+
+    if keep_downloaded:
+        # Also make sure still only have the objects with the original fruits + vegetables tables
+        assert len(get_downloaded_objects(empty_pg_conn)) == 2
 
     # Check out left commit: since it only depends on the root, we should download just the new version of fruits.
-    checkout(empty_pg_conn, PG_MNT + '_pull', left)
-    assert len(
-        get_downloaded_objects(empty_pg_conn)) == 3  # now have 2 versions of fruits + 1 vegetables
+    checkout(empty_pg_conn, PG_MNT + '_pull', left, keep_downloaded_objects=keep_downloaded)
 
-    checkout(empty_pg_conn, PG_MNT + '_pull', right)
-    assert len(get_downloaded_objects(empty_pg_conn)) == 4
-    # Only now we actually have all the objects materialized.
-    assert get_downloaded_objects(empty_pg_conn) == get_existing_objects(empty_pg_conn)
+    if keep_downloaded:
+        assert len(get_downloaded_objects(empty_pg_conn)) == 3  # now have 2 versions of fruits + 1 vegetables
+    else:
+        assert not get_downloaded_objects(empty_pg_conn)
+
+    checkout(empty_pg_conn, PG_MNT + '_pull', right, keep_downloaded_objects=keep_downloaded)
+    if keep_downloaded:
+        assert len(get_downloaded_objects(empty_pg_conn)) == 4  # now have 2 versions of fruits + 1 vegetables
+        assert get_downloaded_objects(empty_pg_conn) == get_existing_objects(empty_pg_conn)
+    else:
+        assert not get_downloaded_objects(empty_pg_conn)
 
 
 def test_push(empty_pg_conn, snapper_conn):

@@ -3,6 +3,7 @@ from contextlib import contextmanager
 
 from psycopg2.sql import Identifier, SQL
 
+from splitgraph.commands.misc import delete_objects
 from splitgraph.commands.object_loading import download_objects
 from splitgraph.constants import get_random_object_id, SplitGraphException, SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler import get_table_with_format, get_remote_for, get_canonical_snap_id, get_tables_at, \
@@ -23,6 +24,7 @@ def materialize_table(conn, mountpoint, image_hash, table, destination, destinat
     :param table: Name of the table.
     :param destination: Name of the destination table.
     :param destination_mountpoint: Name of the destination schema.
+    :returns A set of IDs of downloaded objects used to construct the table.
     """
     destination_mountpoint = destination_mountpoint or mountpoint
     with conn.cursor() as cur:
@@ -37,8 +39,8 @@ def materialize_table(conn, mountpoint, image_hash, table, destination, destinat
         if remote_info:
             remote_conn, _ = remote_info
             object_locations = get_external_object_locations(conn, to_apply + [object_id])
-            download_objects(conn, remote_conn, objects_to_fetch=to_apply + [object_id],
-                             object_locations=object_locations)
+            fetched_objects = download_objects(conn, remote_conn, objects_to_fetch=to_apply + [object_id],
+                                               object_locations=object_locations)
 
         # Copy the given snap id over to "staging"
         copy_table(conn, SPLITGRAPH_META_SCHEMA, object_id, destination_mountpoint, destination,
@@ -46,19 +48,24 @@ def materialize_table(conn, mountpoint, image_hash, table, destination, destinat
         # This is to work around logical replication not reflecting deletions from non-PKd tables. However, this makes
         # it emit all column values in the row, not just the updated ones.
         if not get_primary_keys(conn, destination_mountpoint, destination):
-            logging.warn("Table %s has no primary key. This means that changes will have to be recorded as whole-row.",
-                         destination)
+            logging.warning("Table %s has no primary key. "
+                            "This means that changes will have to be recorded as whole-row.", destination)
             cur.execute(SQL("ALTER TABLE {}.{} REPLICA IDENTITY FULL").format(Identifier(destination_mountpoint),
                                                                               Identifier(destination)))
+        else:
+            cur.execute(SQL("ALTER TABLE {}.{} REPLICA IDENTITY DEFAULT").format(Identifier(destination_mountpoint),
+                                                                                 Identifier(destination)))
 
         # Apply the deltas sequentially to the checked out table
         for pack_object in reversed(to_apply):
             logging.info("Applying %s...", pack_object)
             apply_record_to_staging(conn, pack_object, destination_mountpoint, destination)
 
+        return fetched_objects if remote_info else set()
+
 
 @suspend_replication
-def checkout(conn, mountpoint, image_hash=None, tag=None, tables=None):
+def checkout(conn, mountpoint, image_hash=None, tag=None, tables=None, keep_downloaded_objects=True):
     """
     Discards all pending changes in the current mountpoint and checks out an image, changing the current HEAD pointer.
     :param conn: psycopg connection object
@@ -66,6 +73,7 @@ def checkout(conn, mountpoint, image_hash=None, tag=None, tables=None):
     :param image_hash: Hash of the image to check out.
     :param tag: Tag of the image to check out. One of `image_hash` or `tag` must be specified.
     :param tables: List of tables to materialize in the mountpoint.
+    :param keep_downloaded_objects: If False, deletes externally downloaded objects after they've been used.
     """
     if tables is None:
         tables = []
@@ -85,11 +93,16 @@ def checkout(conn, mountpoint, image_hash=None, tag=None, tables=None):
         for table in get_all_tables(conn, mountpoint):
             cur.execute(SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(mountpoint), Identifier(table)))
 
+    downloaded_object_ids = set()
     for table in tables:
-        materialize_table(conn, mountpoint, image_hash, table, table)
+        downloaded_object_ids |= materialize_table(conn, mountpoint, image_hash, table, table)
 
     # Repoint the current HEAD for this mountpoint to the new snap ID
     set_head(conn, mountpoint, image_hash)
+
+    if not keep_downloaded_objects:
+        logging.info("Removing %d downloaded objects from cache..." % len(downloaded_object_ids))
+        delete_objects(conn, downloaded_object_ids)
 
     conn.commit()
     logging.info("Checked out %s:%s.", mountpoint, image_hash[:12])

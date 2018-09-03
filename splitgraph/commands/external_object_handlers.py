@@ -30,20 +30,6 @@ def register_upload_download_handler(name, upload_handler, download_handler):
     EXTERNAL_OBJECT_HANDLERS[name] = (upload_handler, download_handler)
 
 
-def _http_upload_objects(conn, objects_to_push, http_params):
-    url = http_params['url']
-
-    uploaded = []
-    for object_id in objects_to_push:
-        remote_filename = object_id
-        # First cut: just push the dump without any compression.
-        r = requests.post(url + '/' + remote_filename,
-                          data=table_dump_generator(conn, SPLITGRAPH_META_SCHEMA, object_id))
-        r.raise_for_status()
-        uploaded.append(url + '/' + remote_filename)
-    return uploaded
-
-
 def _file_upload_objects(conn, objects_to_push, params):
     # Mostly for testing purposes: dumps the objects into a file.
     path = params['path']
@@ -73,36 +59,6 @@ def _file_download_objects(conn, objects_to_fetch, params):
                 cur.execute("SET search_path TO public")
 
 
-def _http_download_objects(conn, objects_to_fetch, http_params):
-    username = http_params.get('username')
-    password = http_params.get('password')
-
-    for i, obj in enumerate(objects_to_fetch):
-        object_id, object_url = obj
-        print("(%d/%d) %s -> %s" % (i + 1, len(objects_to_fetch), object_url, object_id))
-        # Let's execute arbitrary code from the Internet on our machine!
-        r = requests.get(object_url, stream=True)
-        with conn.cursor() as cur:
-            # Insert into the splitgraph_meta schema by default since the dump doesn't have the schema
-            # qualification.
-            # NB can this break system tables in the splitgraph_meta_schema?
-            cur.execute("SET search_path TO %s", (SPLITGRAPH_META_SCHEMA,))
-            buf = ""
-            for chunk in r.iter_content(chunk_size=4096):
-                # This is dirty. What we want is to pipe the output of the fetch directly into the DB, but we don't
-                # actually know when a SQL statement has terminated so we can ship it off: in particular, the
-                # semicolon might have been escaped etc. Hence this horror which might/will break on
-                # convoluted data.
-                buf = buf + chunk
-                last_sep = buf.rfind(';\n')
-                cur.execute(buf[:last_sep])
-                buf = buf[last_sep + 2:]
-            cur.execute(buf)
-        # Set the schema to (presumably) the default one.
-        cur.execute("SET search_path TO public")
-
-
 # Register the default object handlers. Just like for the mount handlers, we'll probably expose this via a config
 # or allow the user to run their own bit of Python before sg gets invoked.
 register_upload_download_handler('FILE', upload_handler=_file_upload_objects, download_handler=_file_download_objects)
-register_upload_download_handler('HTTP', upload_handler=_http_upload_objects, download_handler=_http_download_objects)

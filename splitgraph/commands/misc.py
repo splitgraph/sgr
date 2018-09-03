@@ -90,11 +90,13 @@ def unmount(conn, mountpoint):
     conn.commit()
 
 
-def cleanup_objects(conn):
+def cleanup_objects(conn, include_external=False):
     """
     Deletes all local objects not required by any current mountpoint, including their dependencies, their remote
     locations and their cached local copies.
     :param conn: psycopg connection object.
+    :param include_external: If True, deletes all external objects cached locally and redownloads them when they're
+        needed.
     """
     # First, get a list of all objects required by a table.
     with conn.cursor() as cur:
@@ -128,7 +130,26 @@ def cleanup_objects(conn):
         tables_in_meta = set(c[0] for c in cur.fetchall() if c[0] not in META_TABLES)
 
         to_delete = tables_in_meta.difference(primary_objects)
-        if to_delete:
-            cur.execute(SQL(";").join(SQL("DROP TABLE {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                     Identifier(d)) for d in to_delete))
+
+        # All objects in `object_locations` are assumed to exist externally (so we can redownload them if need be).
+        # This can be improved on by, on materialization, downloading all SNAPs directly into the target schema and
+        # applying the DIFFs to it (instead of downloading them into a staging area), but that requires us to change
+        # the object downloader interface.
+        if include_external:
+            cur.execute(SQL("SELECT object_id FROM {}.object_locations").format(Identifier(SPLITGRAPH_META_SCHEMA)))
+            to_delete += set(c[0] for c in cur.fetchall())
+
+    delete_objects(conn, to_delete)
     return to_delete
+
+
+def delete_objects(conn, objects):
+    """
+    Deletes objects from the Splitgraph cache
+    :param conn: Psycopg connection object
+    :param objects: A sequence of objects to be deleted
+    """
+    if objects:
+        with conn.cursor() as cur:
+            cur.execute(SQL(";").join(SQL("DROP TABLE {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                     Identifier(d)) for d in objects))

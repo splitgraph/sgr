@@ -23,20 +23,21 @@ def download_objects(conn, remote_conn_string, objects_to_fetch, object_location
     :param remote_conn: If not None, must be a psycopg connection object used by the client to connect to the remote
         driver. The local driver will still use the parameters specified in `remote_conn_string` to download the
         actual objects from the remote.
-    :return:
+    :return: Set of object IDs that were fetched.
     """
     existing_objects = get_downloaded_objects(conn)
     objects_to_fetch = set(o for o in objects_to_fetch if o not in existing_objects)
     if not objects_to_fetch:
-        return
+        return objects_to_fetch
 
     external_objects = _fetch_external_objects(conn, object_locations, objects_to_fetch)
 
-    objects_to_fetch = [o for o in objects_to_fetch if o not in external_objects]
-    if not objects_to_fetch:
-        return
+    remaining_objects_to_fetch = [o for o in objects_to_fetch if o not in external_objects]
+    if not remaining_objects_to_fetch:
+        return objects_to_fetch
 
-    _fetch_remote_objects(conn, objects_to_fetch, remote_conn_string, remote_conn)
+    _fetch_remote_objects(conn, remaining_objects_to_fetch, remote_conn_string, remote_conn)
+    return objects_to_fetch
 
 
 def _fetch_remote_objects(conn, objects_to_fetch, remote_conn_string, remote_conn=None):
