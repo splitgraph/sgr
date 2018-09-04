@@ -1,11 +1,12 @@
 import logging
-import re
 
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.commands.misc import make_conn
 from splitgraph.commands.object_loading import download_objects, upload_objects
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA, SplitGraphException
+from splitgraph.config.repo_lookups import lookup_repo
+from splitgraph.constants import SPLITGRAPH_META_SCHEMA, SplitGraphException, serialize_connection_string, \
+    parse_connection_string
 from splitgraph.meta_handler import get_all_snap_parents, add_new_snap_id, get_remote_for, ensure_metadata_schema, \
     register_objects, set_head, add_remote, register_object_locations, get_external_object_locations, register_tables, \
     get_existing_objects, get_object_meta, get_all_hashes_tags, set_tags
@@ -78,17 +79,18 @@ def pull(conn, mountpoint, remote, download_all=False):
         raise SplitGraphException("No remote %s found for mountpoint %s!" % (remote, mountpoint))
 
     remote_conn_string, remote_mountpoint = remote_info
-    clone(conn, remote_conn_string, remote_mountpoint, mountpoint, download_all)
+    clone(conn, remote_conn_string=remote_conn_string, remote_mountpoint=remote_mountpoint,
+          local_mountpoint=mountpoint, download_all=download_all)
 
 
-def clone(conn, remote_conn_string, remote_mountpoint, local_mountpoint, download_all=False, remote_conn=None):
+def clone(conn, remote_mountpoint, remote_conn_string=None,
+          local_mountpoint=None, download_all=False, remote_conn=None):
     """
     Clones a remote SplitGraph repository or synchronizes remote changes with the local ones.
     :param conn: psycopg connection object.
-    :param remote_conn_string: Connection string to the remote SG driver of the form
-        username:password@hostname:port/database.
-    :param remote_mountpoint: Remote mountpoint to clone.
-    :param local_mountpoint: Local mountpoint to clone into.
+    :param remote_mountpoint: Repository to clone.
+    :param remote_conn_string: If set, overrides the default remote for this repository.
+    :param local_mountpoint: Local mountpoint to clone into. If None, uses the same name.
     :param download_all: If True, downloads all objects and stores them locally. Otherwise, will only download required
         objects when a table is checked out.
     :param remote_conn: If not None, must be a psycopg connection object used by the client to connect to the remote
@@ -96,15 +98,15 @@ def clone(conn, remote_conn_string, remote_mountpoint, local_mountpoint, downloa
         actual objects from the remote.
     """
     ensure_metadata_schema(conn)
-    # Pulls a schema from the remote, including all of its history.
 
+    local_mountpoint = local_mountpoint or remote_mountpoint
     with conn.cursor() as cur:
         cur.execute(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(local_mountpoint)))
 
+    conn_params = lookup_repo(conn, remote_mountpoint) if not remote_conn_string \
+        else parse_connection_string(remote_conn_string)
     logging.info("Connecting to the remote driver...")
-    match = re.match(r'(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
-    remote_conn = remote_conn or make_conn(server=match.group(3), port=int(match.group(4)), username=match.group(1),
-                                           password=match.group(2), dbname=match.group(5))
+    remote_conn = remote_conn or make_conn(*conn_params)
 
     # Get the remote log and the list of objects we need to fetch.
     logging.info("Gathering remote metadata...")
@@ -124,7 +126,8 @@ def clone(conn, remote_conn_string, remote_mountpoint, local_mountpoint, downloa
         # We might already have some objects prefetched
         # (e.g. if a new version of the table is the same as the old version)
         logging.info("Fetching remote objects...")
-        download_objects(conn, remote_conn_string, objects_to_fetch=list(set(o[0] for o in object_meta)),
+        download_objects(conn, serialize_connection_string(*conn_params),
+                         objects_to_fetch=list(set(o[0] for o in object_meta)),
                          object_locations=object_locations, remote_conn=remote_conn)
 
     # Map the tables to the actual objects no matter whether or not we're downloading them.
@@ -141,7 +144,7 @@ def clone(conn, remote_conn_string, remote_mountpoint, local_mountpoint, downloa
                                                                                                  t != 'HEAD'])))
 
     if get_remote_for(conn, local_mountpoint) is None:
-        add_remote(conn, local_mountpoint, remote_conn_string, remote_mountpoint)
+        add_remote(conn, local_mountpoint, serialize_connection_string(*conn_params), remote_mountpoint)
 
 
 def local_clone(conn, source, destination):
@@ -162,7 +165,7 @@ def local_clone(conn, source, destination):
     set_head(conn, destination, None)
 
 
-def push(conn, remote_conn_string, remote_mountpoint, local_mountpoint, handler='DB', handler_options=None):
+def push(conn, local_mountpoint, remote_conn_string=None, remote_mountpoint=None, handler='DB', handler_options=None):
     """
     Inverse of `pull`: Pushes all local changes to the remote and uploads new objects.
     :param conn: psycopg connection object
@@ -179,12 +182,14 @@ def push(conn, remote_conn_string, remote_mountpoint, local_mountpoint, handler=
         handler_options = {}
     ensure_metadata_schema(conn)
 
+    remote_mountpoint = remote_mountpoint or local_mountpoint
+
     # Could actually be done by flipping the arguments in pull but that assumes the remote SG driver can connect
     # to us directly, which might not be the case. Although tunnels? Still, a lot of code here similar to pull.
     logging.info("Connecting to the remote driver...")
-    match = re.match(r'(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
-    remote_conn = make_conn(server=match.group(3), port=int(match.group(4)), username=match.group(1),
-                            password=match.group(2), dbname=match.group(5))
+    conn_params = lookup_repo(conn, remote_mountpoint) if not remote_conn_string \
+        else parse_connection_string(remote_conn_string)
+    remote_conn = make_conn(*conn_params)
     try:
         logging.info("Gathering remote metadata...")
         # This also registers new commits remotely. Should make explicit and move down later on.
@@ -196,7 +201,8 @@ def push(conn, remote_conn_string, remote_mountpoint, local_mountpoint, handler=
             logging.info("Nothing to do.")
             return
 
-        new_uploads = upload_objects(conn, remote_conn_string, list(set(o[0] for o in object_meta)), handler=handler,
+        new_uploads = upload_objects(conn, serialize_connection_string(*conn_params),
+                                     list(set(o[0] for o in object_meta)), handler=handler,
                                      handler_params=handler_options, remote_conn=remote_conn)
         # Register the newly uploaded object locations locally and remotely.
         register_objects(remote_conn, object_meta)

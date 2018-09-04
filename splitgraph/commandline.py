@@ -272,13 +272,12 @@ def pull_c(mountpoint, remote, download_all):
 
 
 @click.command(name='clone')
-@click.argument('remote')  # username:password@server:port/dbname
-@click.argument('remote_mountpoint')
-@click.argument('local_mountpoint')
+@click.argument('remote_repository')
+@click.argument('local_repository', required=False)
 @click.option('-d', '--download-all', help='Download all objects immediately instead on checkout.')
-def clone_c(remote, remote_mountpoint, local_mountpoint, download_all):
+def clone_c(remote_repository, local_repository, download_all):
     conn = _conn()
-    clone(conn, remote, remote_mountpoint, local_mountpoint, download_all)
+    clone(conn, remote_repository, local_mountpoint=local_repository, download_all=download_all)
     conn.commit()
 
 
@@ -293,7 +292,7 @@ def push_c(mountpoint, remote, remote_mountpoint, upload_handler, upload_handler
     if not remote_mountpoint:
         # Get actual connection string and remote mountpoint
         remote, remote_mountpoint = get_remote_for(conn, mountpoint, remote)
-    push(conn, remote, remote_mountpoint, mountpoint, handler=upload_handler,
+    push(conn, mountpoint, remote, remote_mountpoint, handler=upload_handler,
          handler_options=json.loads(upload_handler_options))
     conn.commit()
 

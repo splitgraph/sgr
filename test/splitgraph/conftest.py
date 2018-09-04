@@ -4,7 +4,7 @@ from splitgraph.commandline import _conn
 from splitgraph.commands import *
 from splitgraph.commands import unmount
 from splitgraph.commands.misc import make_conn, cleanup_objects
-from splitgraph.constants import PG_USER, PG_PWD, PG_DB
+from splitgraph.constants import PG_USER, PG_PWD, PG_DB, serialize_connection_string
 from splitgraph.meta_handler import get_current_mountpoints_hashes
 
 PG_MNT = 'test_pg_mount'
@@ -103,4 +103,4 @@ def empty_pg_conn():
     conn.close()
 
 
-SNAPPER_CONN_STRING = '%s:%s@%s:%s/%s' % (PG_USER, PG_PWD, SNAPPER_HOST, SNAPPER_PORT, PG_DB)
+SNAPPER_CONN_STRING = serialize_connection_string(SNAPPER_HOST, SNAPPER_PORT, PG_USER, PG_PWD, PG_DB)

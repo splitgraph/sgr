@@ -13,6 +13,9 @@ SG_DRIVER_ADMIN_PWD=supersecure
 SG_DRIVER_POSTGRES_DB_NAME=postgres
 SG_META_SCHEMA=splitgraph_meta
 
+; todo reference the "origins" list here instead? default remote lookups for push/pull/sgfile tests to the snapper
+SG_REPO_LOOKUP=clientuser:supersecure@snapper:5431/cachedb
+
 ; I'm undecided if we should treat the "local" driver as a remote,
 ; keep its config in the [defaults] section, or put it in a new section
 ;

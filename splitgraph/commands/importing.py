@@ -129,7 +129,8 @@ def import_table_from_unmounted(conn, remote_conn_string, remote_mountpoint, rem
     # do the import into the target and destroy the temporary mp.
     tmp_mountpoint = remote_mountpoint + '_clone_tmp'
 
-    clone(conn, remote_conn_string, remote_mountpoint, tmp_mountpoint, download_all=False)
+    clone(conn, remote_mountpoint, remote_conn_string=remote_conn_string,
+          local_mountpoint=tmp_mountpoint, download_all=False)
     import_tables(conn, tmp_mountpoint, remote_tables, target_mountpoint, target_tables, image_hash=remote_image_hash,
                   target_hash=target_hash)
 

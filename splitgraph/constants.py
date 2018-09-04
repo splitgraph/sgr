@@ -1,4 +1,5 @@
 import logging
+import re
 from random import getrandbits
 
 from splitgraph.config import CONFIG
@@ -23,3 +24,16 @@ def get_random_object_id():
     so the IDs shall be 248-bit strings, hex-encoded, + a letter prefix since Postgres doesn't seem to support table
     names starting with a digit."""
     return "o%0.2x" % getrandbits(248)
+
+
+def parse_connection_string(conn_string):
+    """
+    :return: a tuple (server, port, username, password, dbname)
+    """
+
+    match = re.match(r'(\S+):(\S+)@(.+):(\d+)/(\S+)', conn_string)
+    return match.group(3), int(match.group(4)), match.group(1), match.group(2), match.group(5)
+
+
+def serialize_connection_string(server, port, username, password, dbname):
+    return '%s:%s@%s:%s/%s' % (username, password, server, port, dbname)

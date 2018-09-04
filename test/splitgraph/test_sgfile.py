@@ -11,7 +11,7 @@ from splitgraph.meta_handler import get_current_head, get_snap_parent, set_tag, 
 from splitgraph.pg_utils import pg_table_exists
 from splitgraph.sgfile.execution import execute_commands
 from splitgraph.sgfile.parsing import preprocess
-from test.splitgraph.conftest import SNAPPER_HOST, SNAPPER_PORT
+from test.splitgraph.conftest import SNAPPER_HOST, SNAPPER_PORT, SNAPPER_CONN_STRING
 
 SGFILE_ROOT = os.path.join(os.path.dirname(__file__), '../resources/')
 
@@ -185,16 +185,15 @@ def test_import_updating_sgfile_with_uploading(empty_pg_conn, snapper_conn):
     assert len(get_existing_objects(empty_pg_conn)) == 4  # Two original tables + two updates
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Push with upload
-        conn_string = '%s:%s@%s:%s/%s' % (PG_USER, PG_PWD, SNAPPER_HOST, SNAPPER_PORT, PG_DB)
-        push(empty_pg_conn, conn_string, 'output', 'output',
-             handler='FILE', handler_options={'path': tmpdir})
+        # Push with upload. Have to specify the remote connection string since we are pushing a new repository.
+        push(empty_pg_conn, 'output', remote_conn_string=SNAPPER_CONN_STRING, handler='FILE',
+             handler_options={'path': tmpdir})
         # Unmount everything locally and cleanup
         unmount(empty_pg_conn, 'output')
         cleanup_objects(empty_pg_conn)
         assert not get_existing_objects(empty_pg_conn)
 
-        clone(empty_pg_conn, conn_string, 'output', 'output', download_all=False)
+        clone(empty_pg_conn, 'output', download_all=False)
 
         assert not get_downloaded_objects(empty_pg_conn)
         existing_objects = list(get_existing_objects(empty_pg_conn))
@@ -228,8 +227,8 @@ def test_sgfile_end_to_end_with_uploading(sg_pg_mg_conn, snapper_conn):
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # Push with upload
-        push(sg_pg_mg_conn, '%s:%s@%s:%s/%s' % (PG_USER, PG_PWD, SNAPPER_HOST, SNAPPER_PORT, PG_DB), 'output', 'output',
-             handler='FILE', handler_options={'path': tmpdir})
+        push(sg_pg_mg_conn, 'output', remote_conn_string=SNAPPER_CONN_STRING, handler='FILE',
+             handler_options={'path': tmpdir})
         # Unmount everything locally and cleanup
         for mountpoint, _ in get_current_mountpoints_hashes(sg_pg_mg_conn):
             unmount(sg_pg_mg_conn, mountpoint)

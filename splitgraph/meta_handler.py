@@ -224,7 +224,7 @@ def get_current_head(conn, mountpoint, raise_on_none=True):
 
 def get_tagged_id(conn, mountpoint, tag, raise_on_none=True):
     ensure_metadata_schema(conn)
-    if not mountpoint_exists(conn, mountpoint):
+    if not mountpoint_exists(conn, mountpoint) and raise_on_none:
         raise SplitGraphException("%s is not mounted." % mountpoint)
 
     if tag == 'latest':
@@ -291,8 +291,8 @@ def set_tag(conn, mountpoint, snap_id, tag, force=False):
 
 def mountpoint_exists(conn, mountpoint):
     with conn.cursor() as cur:
-        # Check if the metadata schema actually exists.
-        cur.execute("SELECT 1 FROM information_schema.schemata WHERE schema_name = %s", (mountpoint,))
+        cur.execute(SQL("SELECT 1 FROM {}.snap_tree WHERE mountpoint = %s").format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                    (mountpoint,))
         return cur.fetchone() is not None
 
 

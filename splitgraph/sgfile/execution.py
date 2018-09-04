@@ -119,7 +119,8 @@ def _execute_from(conn, node, output):
         conn_string, mountpoint, tag_or_hash = parse_repo_source(repo_source)
         if conn_string:
             # At some point here we'll also actually search for the image hash locally and not clone it?
-            clone(conn, conn_string, mountpoint, output, download_all=False)
+            # conn-string not used here now
+            clone(conn, mountpoint, local_mountpoint=output, download_all=False)
             checkout(conn, output, tag_or_hash_to_actual_hash(conn, output, tag_or_hash))
         else:
             # Get the target snap ID from the source repo: otherwise, if the tag is, say, 'latest' and
@@ -197,7 +198,7 @@ def _execute_repo_import(conn, conn_string, mountpoint, table_names, tag_or_hash
         # it for hashing: we assume that the queries are deterministic, so if the query is changed,
         # the whole layer is invalidated.
         if conn_string:
-            clone(conn, conn_string, mountpoint, tmp_mountpoint, download_all=False)
+            clone(conn, mountpoint, local_mountpoint=tmp_mountpoint, download_all=False)
             source_hash = tag_or_hash_to_actual_hash(conn, tmp_mountpoint, tag_or_hash)
         else:
             source_hash = tag_or_hash_to_actual_hash(conn, mountpoint, tag_or_hash)

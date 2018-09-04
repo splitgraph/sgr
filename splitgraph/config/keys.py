@@ -12,7 +12,9 @@ DEFAULTS = {
     "SG_CONFIG_FILE": None,
     "SG_META_SCHEMA": "splitgraph_meta",
     "SG_CONFIG_DIRS": None,
-    "SG_CONFIG_DIR": None
+    "SG_CONFIG_DIR": None,
+    "SG_REPO_LOOKUP": "",
+    "SG_REPO_LOOKUP_OVERRIDE": "",
 }
 
 KEYS = list(DEFAULTS.keys())
@@ -34,7 +36,9 @@ ARGUMENT_KEY_MAP = {
     "--config-file": "SG_CONFIG_FILE",
     "--meta-schema": "SG_META_SCHEMA",
     "--config-dirs": "SG_CONFIG_DIRS",
-    "--config-dir": "SG_CONFIG_DIR"
+    "--config-dir": "SG_CONFIG_DIR",
+    "--repo-lookup-path": "SG_REPO_LOOKUP",
+    "--repo-lookup-override": "SG_REPO_LOOKUP_OVERRIDE"
 }
 
 ARG_KEYS = list(ARGUMENT_KEY_MAP.keys())

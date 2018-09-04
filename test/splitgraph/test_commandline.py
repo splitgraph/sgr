@@ -212,7 +212,7 @@ def test_import(sg_pg_mg_conn):
 def test_pull_push(empty_pg_conn, snapper_conn):
     runner = CliRunner()
 
-    result = runner.invoke(clone_c, [SNAPPER_CONN_STRING, PG_MNT, PG_MNT])
+    result = runner.invoke(clone_c, [PG_MNT])
     assert result.exit_code == 0
     assert mountpoint_exists(empty_pg_conn, PG_MNT)
 

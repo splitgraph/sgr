@@ -6,6 +6,7 @@ from splitgraph.config.argument_config import get_arg_tuples, get_argument_confi
 from splitgraph.config.config_file_config import hoist_section
 from splitgraph.config.environment_config import get_environment_config_value
 from splitgraph.config import keys
+from splitgraph.config.repo_lookups import _parse_paths_overrides
 from splitgraph.config.system_config import (
     get_explicit_config_file_location,
     get_explicit_config_file_dirs,
@@ -554,3 +555,12 @@ def test_env_var_supercedes_config_file(fs):
     with patch.object(os, 'environ', mock_environ):
         config = create_config_dict()
         assert config['SG_NAMESPACE'] == 'pass-env-namespace-test'
+
+
+def test_lookup_override_parser():
+    assert _parse_paths_overrides(lookup_path="aaa:bbb@ccc.com:1234/db1,bla:bla@bla.com:5678/db2",
+                                  override_path="override_repo_1:user:pass@bla.com:5678/db2,"
+                                                "override_repo_2:bla:user:pass@bla.com:5678/db2")\
+        == ([('ccc.com', 1234, 'aaa', 'bbb', 'db1'), ('bla.com', 5678, 'bla', 'bla', 'db2')],
+            {'override_repo_1': ('bla.com', 5678, 'user', 'pass', 'db2'),
+             'override_repo_2': ('bla.com', 5678, 'bla:user', 'pass', 'db2')})
