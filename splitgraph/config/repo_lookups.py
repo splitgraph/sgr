@@ -7,8 +7,7 @@ from splitgraph.meta_handler import mountpoint_exists
 # Parse and set these on import. If we ever need to be able to reread the config on the fly, these have to be
 # recalculated.
 def _parse_paths_overrides(lookup_path, override_path):
-    return ([parse_connection_string(p) for p in lookup_path.split(',')],
-
+    return ([parse_connection_string(p) for p in lookup_path.split(',')] if lookup_path else [],
             ({p[:p.index(':')]: parse_connection_string(p[p.index(':') + 1:])
               for p in override_path.split(',')} if override_path else {}))
 

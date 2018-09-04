@@ -186,7 +186,7 @@ it's interpreted:
 
 There are currently only 3 commands supported by the interpreter:
 
-### `FROM [remote URL] mountpoint[:tag] [AS alias]`
+### `FROM mountpoint[:tag] [AS alias]`
 
 Bases the output of the sgfile on a certain revision of the remote/local repository. If `AS alias` is specified, the
 repository is cloned into `alias` and the current contents of `alias` destroyed. Otherwise, the current output
@@ -202,7 +202,7 @@ FROM EMPTY AS stage_2
 FROM stage_1 IMPORT {SELECT * FROM visible_staff} AS visible_staff
 ```
 
-### `FROM ([remote URL] mountpoint[:tag])/(MOUNT handler conn_string handler_options) IMPORT table1/{query1} [AS table1_alias], [table2/{query2}...]`
+### `FROM (mountpoint[:tag])/(MOUNT handler conn_string handler_options) IMPORT table1/{query1} [AS table1_alias], [table2/{query2}...]`
 
 Uses the `sg import` command to import one or more tables from either a local mountpoint, a remote one, or an
 FDW-mounted database.
@@ -223,6 +223,18 @@ This is crude, but means that the layer is invalidated if there's a change on th
 table/name it differently/use a different query to create a table.  We can improve on this by perhaps only considering
 the objects and table aliases that are actually imported (as opposed to the source image hash: maybe the tables
 we're importing haven't changed even if other parts of the mountpoint have).
+
+#### Repository lookups
+
+Currently, a repository name (mountpoint) is converted to a connection string as follows:
+
+  * See if it exists locally (in the case of the sgfile executor). If it does, try to pull it (to update) and
+    use it for `FROM`/`IMPORT` commands.
+  * If not, see if it's specified in the `SG_REPO_LOOKUP_OVERRIDE` parameter which has the format
+    `repo_1:user:pwd@host:port/db,repo_2:user:pwd@host:port/db...`. Return the matching connection string directly
+    without testing to see that the repository exists there.
+  * If not, scan the `SG_REPO_LOOKUP` parameter which has the format `user:pwd@host:port/db,user:pwd@host:port/db...`,
+    stopping at the first remote that has it.
 
 ### `SQL command`
 

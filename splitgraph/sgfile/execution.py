@@ -4,8 +4,9 @@ from random import getrandbits
 
 from splitgraph.commands import checkout, init, unmount, clone, import_tables, commit
 from splitgraph.commands.mount_handlers import get_mount_handler
-from splitgraph.commands.push_pull import local_clone
-from splitgraph.constants import SplitGraphException
+from splitgraph.commands.push_pull import local_clone, pull
+from splitgraph.config.repo_lookups import lookup_repo
+from splitgraph.constants import SplitGraphException, serialize_connection_string
 from splitgraph.meta_handler import mountpoint_exists, get_current_head, tag_or_hash_to_actual_hash
 from splitgraph.pg_replication import replication_slot_exists
 from splitgraph.pg_utils import execute_sql_in
@@ -100,9 +101,9 @@ def _execute_sql(conn, node, output):
 
 
 def _execute_from(conn, node, output):
-    interesting_nodes = extract_nodes(node, ['repo_source', 'identifier'])
+    interesting_nodes = extract_nodes(node, ['repo_source', 'mountpoint'])
     repo_source = get_first_or_none(interesting_nodes, 'repo_source')
-    output_node = get_first_or_none(interesting_nodes, 'identifier')
+    output_node = get_first_or_none(interesting_nodes, 'mountpoint')
     if output_node:
         # AS (output) detected, change the current output mountpoint to it.
         output = output_node.match.group(0)
@@ -116,13 +117,20 @@ def _execute_from(conn, node, output):
     if not mountpoint_exists(conn, output):
         init(conn, output)
     if repo_source:
-        conn_string, mountpoint, tag_or_hash = parse_repo_source(repo_source)
-        if conn_string:
-            # At some point here we'll also actually search for the image hash locally and not clone it?
-            # conn-string not used here now
-            clone(conn, mountpoint, local_mountpoint=output, download_all=False)
+        mountpoint, tag_or_hash = parse_repo_source(repo_source)
+        print("Resolving repository %s" % mountpoint)
+        location = lookup_repo(conn, mountpoint, include_local=True)
+
+        if location != 'LOCAL':
+            clone(conn, mountpoint, remote_conn_string=serialize_connection_string(*location),
+                  local_mountpoint=output, download_all=False)
             checkout(conn, output, tag_or_hash_to_actual_hash(conn, output, tag_or_hash))
         else:
+            # For local repositories, first try to pull them to see if they are clones of a remote.
+            try:
+                pull(conn, mountpoint, remote='origin')
+            except SplitGraphException:
+                pass
             # Get the target snap ID from the source repo: otherwise, if the tag is, say, 'latest' and
             # the output has just had the base commit (000...) created in it, that commit will be the latest.
             to_checkout = tag_or_hash_to_actual_hash(conn, mountpoint, tag_or_hash)
@@ -144,10 +152,9 @@ def _execute_import(conn, node, output):
     table_names, table_aliases, table_queries = extract_all_table_aliases(interesting_nodes[-1])
     if interesting_nodes[0].expr_name == 'repo_source':
         # Import from a repository (local or remote)
-        conn_string, mountpoint, tag_or_hash = parse_repo_source(interesting_nodes[0])
+        mountpoint, tag_or_hash = parse_repo_source(interesting_nodes[0])
 
-        _execute_repo_import(conn, conn_string, mountpoint, table_names, tag_or_hash, output, table_aliases,
-                             table_queries)
+        _execute_repo_import(conn, mountpoint, table_names, tag_or_hash, output, table_aliases, table_queries)
     else:
         # Extract the identifier (FDW name), the connection string and the FDW params (JSON-encoded, everything
         # between the single quotes).
@@ -183,7 +190,7 @@ def _execute_db_import(conn, conn_string, fdw_name, fdw_params, table_names, tar
         unmount(conn, tmp_mountpoint)
 
 
-def _execute_repo_import(conn, conn_string, mountpoint, table_names, tag_or_hash, target_mountpoint, table_aliases,
+def _execute_repo_import(conn, mountpoint, table_names, tag_or_hash, target_mountpoint, table_aliases,
                          table_queries):
     # Don't use the actual routine here as we want more control: clone the remote repo in order to turn
     # the tag into an actual hash
@@ -197,11 +204,22 @@ def _execute_repo_import(conn, conn_string, mountpoint, table_names, tag_or_hash
         # If table_names actually contains queries that generate data from tables, we can still use
         # it for hashing: we assume that the queries are deterministic, so if the query is changed,
         # the whole layer is invalidated.
-        if conn_string:
-            clone(conn, mountpoint, local_mountpoint=tmp_mountpoint, download_all=False)
+        print("Resolving repository %s" % mountpoint)
+        location = lookup_repo(conn, mountpoint, include_local=True)
+
+        if location != 'LOCAL':
+            clone(conn, mountpoint, remote_conn_string=serialize_connection_string(*location),
+                  local_mountpoint=tmp_mountpoint, download_all=False)
             source_hash = tag_or_hash_to_actual_hash(conn, tmp_mountpoint, tag_or_hash)
+            source_mountpoint = tmp_mountpoint
         else:
+            # For local repositories, first try to pull them to see if they are clones of a remote.
+            try:
+                pull(conn, mountpoint, remote='origin')
+            except SplitGraphException:
+                pass
             source_hash = tag_or_hash_to_actual_hash(conn, mountpoint, tag_or_hash)
+            source_mountpoint = mountpoint
         output_head = get_current_head(conn, target_mountpoint)
         target_hash = _combine_hashes(
             [output_head, source_hash] + [sha256(n.encode('utf-8')).hexdigest() for n in
@@ -213,8 +231,7 @@ def _execute_repo_import(conn, conn_string, mountpoint, table_names, tag_or_hash
         def _calc():
             print("Importing tables %r:%s from %s into %s" % (
                 table_names, source_hash[:12], mountpoint, target_mountpoint))
-            import_tables(conn, tmp_mountpoint if conn_string else mountpoint, table_names, target_mountpoint,
-                          table_aliases,
+            import_tables(conn, source_mountpoint, table_names, target_mountpoint, table_aliases,
                           image_hash=source_hash, target_hash=target_hash, table_queries=table_queries)
 
         _checkout_or_calculate_layer(conn, target_mountpoint, target_hash, _calc)

@@ -18,7 +18,7 @@ SGFILE_GRAMMAR = Grammar(r"""
     table_query = "{" non_curly_brace "}"
     tables = "ALL" / (table space ("," space table)*)
     source = mount_source / repo_source
-    repo_source = (conn_string space)? mountpoint (":" tag_or_hash)?
+    repo_source = mountpoint (":" tag_or_hash)?
     mount_source = "MOUNT" space handler space no_db_conn_string space handler_options
     
     image_hash = ~"[0-9a-f]*"i
@@ -27,7 +27,7 @@ SGFILE_GRAMMAR = Grammar(r"""
     # "identifier" anyway. This is so that the grammar is slightly more readable. 
     
     handler = identifier
-    mountpoint = identifier
+    mountpoint = ~"[_a-zA-Z0-9\-/]+"
     table_name = identifier
     table_alias = identifier
     tag_or_hash = identifier
@@ -44,7 +44,6 @@ SGFILE_GRAMMAR = Grammar(r"""
     # Yeah, six slashes should be about enough to capture \'
     non_single_quote = ~"(\\\\\\'|[^'])*"
     
-    conn_string = ~"\S+:\S+@.+:\d+\/\S+"
     no_db_conn_string = ~"(\S+):(\S+)@(.+):(\d+)"
     identifier = ~"[_a-zA-Z0-9\-]+"
     space = ~"\s*"
@@ -113,20 +112,14 @@ def _parse_table_alias(table_node):
 
 
 def parse_repo_source(remote_repo_node):
-    repo_nodes = extract_nodes(remote_repo_node, ['conn_string', 'identifier', 'image_hash'])
-    if repo_nodes[0].expr_name == 'conn_string':
-        conn_string = repo_nodes[0].match.group(0)
-        mountpoint = repo_nodes[1].match.group(0)
-        repo_nodes = repo_nodes[1:]
-    else:
-        conn_string = None
-        mountpoint = repo_nodes[0].match.group(0)
+    repo_nodes = extract_nodes(remote_repo_node, ['mountpoint', 'identifier', 'image_hash'])
+    mountpoint = repo_nodes[0].match.group(0)
     # See if we got given a tag / hash (the executor will try to interpret it as both).
     if len(repo_nodes) == 2:
         tag_or_hash = repo_nodes[1].match.group(0)
     else:
         tag_or_hash = 'latest'
-    return conn_string, mountpoint, tag_or_hash
+    return mountpoint, tag_or_hash
 
 
 def extract_all_table_aliases(node):

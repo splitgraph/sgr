@@ -1,4 +1,4 @@
-FROM clientuser:supersecure@${SNAPPER}:${SNAPPER_PORT}/cachedb test_pg_mount IMPORT fruits AS my_fruits, vegetables
+FROM test_pg_mount IMPORT fruits AS my_fruits, vegetables
 
 SQL INSERT INTO my_fruits VALUES (3, 'mayonnaise')
 
