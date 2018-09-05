@@ -57,7 +57,7 @@ def render_tree(conn, mountpoint):
 
     # Get all commits in ascending time order
     snap_parents = get_all_snap_parents(conn, mountpoint)
-    for snap_id, parent_id, _, _ in snap_parents:
+    for snap_id, parent_id, _, _, _, _ in snap_parents:
         if parent_id is None:
             base_node = snap_id
         children[parent_id].append(snap_id)
@@ -68,6 +68,6 @@ def render_tree(conn, mountpoint):
     # Calculate the column in which each node should be displayed.
     node_cols = _calc_columns(children, base_node)
 
-    for snap_id, _, _, _ in reversed(snap_parents):
+    for snap_id, _, _, _, _, _ in reversed(snap_parents):
         _render_node(snap_id, children, node_cols, mark_node=' H' if snap_id == head else '',
                      max_col=max(node_cols.values()))

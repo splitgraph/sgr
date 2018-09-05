@@ -32,7 +32,7 @@ def test_pull(sg_pg_conn, snapper_conn, download_all):
     with sg_pg_conn.cursor() as cur:
         cur.execute("""SELECT * FROM test_pg_mount_pull.fruits""")
         assert list(cur.fetchall()) == [(1, 'apple'), (2, 'orange')]
-    assert head_1 not in [snap_id for snap_id, parent_id, created, comment in
+    assert head_1 not in [snapdata[0] for snapdata in
                           get_all_snap_parents(sg_pg_conn, PG_MNT + '_pull')]
 
     # Since the pull procedure initializes a new connection, we have to commit our changes

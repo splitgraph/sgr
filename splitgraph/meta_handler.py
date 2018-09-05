@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 
 from psycopg2.extras import execute_batch
@@ -22,11 +23,13 @@ def _create_metadata_schema(conn):
         cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(SPLITGRAPH_META_SCHEMA)))
         # maybe FK parent_id on snap_id. NULL there means this is the repo root.
         cur.execute(SQL("""CREATE TABLE {}.{} (
-                        snap_id    VARCHAR NOT NULL,
-                        mountpoint VARCHAR NOT NULL,
-                        parent_id  VARCHAR,
-                        created    TIMESTAMP,
-                        comment    VARCHAR,
+                        snap_id         VARCHAR NOT NULL,
+                        mountpoint      VARCHAR NOT NULL,
+                        parent_id       VARCHAR,
+                        created         TIMESTAMP,
+                        comment         VARCHAR,
+                        provenance_type VARCHAR,
+                        provenance_data VARCHAR,
                         PRIMARY KEY (mountpoint, snap_id))""").format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                                       Identifier("snap_tree")))
         cur.execute(SQL("""CREATE TABLE {}.{} (
@@ -264,10 +267,13 @@ def set_tags(conn, mountpoint, tags, force=False):
             set_tag(conn, mountpoint, image_id, tag, force)
 
 
-def add_new_snap_id(conn, mountpoint, parent_id, snap_id, created=None, comment=None):
+def add_new_snap_id(conn, mountpoint, parent_id, snap_id, created=None, comment=None,
+                    provenance_type=None, provenance_data=None):
     with conn.cursor() as cur:
-        cur.execute(_insert("snap_tree", ("snap_id", "mountpoint", "parent_id", "created", "comment")),
-                    (snap_id, mountpoint, parent_id, created or datetime.now(), comment))
+        cur.execute(_insert("snap_tree", ("snap_id", "mountpoint", "parent_id", "created", "comment",
+                                          "provenance_type", "provenance_data")),
+                    (snap_id, mountpoint, parent_id, created or datetime.now(), comment,
+                     provenance_type, provenance_data))
 
 
 def set_head(conn, mountpoint, snap_id):
@@ -324,6 +330,13 @@ def get_snap_parent(conn, mountpoint, snap_id):
         return cur.fetchone()[0]
 
 
+def get_snap_parent_provenance(conn, mountpoint, snap_id):
+    with conn.cursor() as cur:
+        cur.execute(_select("snap_tree", "parent_id, provenance_type, provenance_data",
+                            "mountpoint = %s AND snap_id = %s"), (mountpoint, snap_id))
+        return cur.fetchone()
+
+
 def get_all_snap_info(conn, mountpoint, snap_id):
     with conn.cursor() as cur:
         cur.execute(_select("snap_tree", "parent_id, created, comment", "mountpoint = %s AND snap_id = %s"),
@@ -333,7 +346,8 @@ def get_all_snap_info(conn, mountpoint, snap_id):
 
 def get_all_snap_parents(conn, mountpoint):
     with conn.cursor() as cur:
-        cur.execute(_select("snap_tree", "snap_id, parent_id, created, comment", "mountpoint = %s") +
+        cur.execute(_select("snap_tree", "snap_id, parent_id, created, comment, provenance_type, provenance_data",
+                            "mountpoint = %s") +
                     SQL(" ORDER BY created"),
                     (mountpoint,))
         return cur.fetchall()
@@ -442,3 +456,39 @@ def tag_or_hash_to_actual_hash(conn, mountpoint, tag_or_hash):
             return get_tagged_id(conn, mountpoint, tag_or_hash)
         except SplitGraphException:
             raise SplitGraphException("%s does not refer to either an image commit hash or a tag!" % tag_or_hash)
+
+
+def store_import_provenance(conn, mountpoint, image_hash, source_mountpoint, source_hash, tables,
+                            table_aliases, table_queries):
+    with conn.cursor() as cur:
+        cur.execute(SQL("""UPDATE {}.snap_tree SET provenance_type = %s, provenance_data = %s WHERE
+                            mountpoint = %s AND snap_id = %s""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                    ("IMPORT", json.dumps({
+                        'source': source_mountpoint,
+                        'source_hash': source_hash,
+                        'tables': tables,
+                        'table_aliases': table_aliases,
+                        'table_queries': table_queries}), mountpoint, image_hash))
+
+
+def store_sql_provenance(conn, mountpoint, image_hash, sql):
+    with conn.cursor() as cur:
+        cur.execute(SQL("""UPDATE {}.snap_tree SET provenance_type = %s, provenance_data = %s WHERE
+                            mountpoint = %s AND snap_id = %s""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                    ('SQL', sql, mountpoint, image_hash))
+
+
+def store_mount_provenance(conn, mountpoint, image_hash):
+    # We don't store the details of images that come from an sg MOUNT command since those are assumed to be based
+    # on an inaccessible db
+    with conn.cursor() as cur:
+        cur.execute(SQL("""UPDATE {}.snap_tree SET provenance_type = %s, provenance_data = %s WHERE
+                            mountpoint = %s AND snap_id = %s""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                    ('MOUNT', None, mountpoint, image_hash))
+
+
+def store_from_provenance(conn, mountpoint, image_hash, source):
+    with conn.cursor() as cur:
+        cur.execute(SQL("""UPDATE {}.snap_tree SET provenance_type = %s, provenance_data = %s WHERE
+                            mountpoint = %s AND snap_id = %s""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                    ('FROM', source, mountpoint, image_hash))

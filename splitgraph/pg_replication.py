@@ -12,6 +12,9 @@ from splitgraph.pg_utils import copy_table, get_primary_keys, _get_column_names,
 
 LOGICAL_DECODER = 'wal2json'
 REPLICATION_SLOT = 'sg_replication'
+# Make sure we don't flip replication off-on when a function with the decorator calls another one with the same
+# decorator.
+DECORATOR_ACTIVE = False
 
 
 def suspend_replication(func):
@@ -20,13 +23,19 @@ def suspend_replication(func):
     # reflected in the consumed logical replication stream).
     def wrapped(*args, **kwargs):
         conn = args[0]
-        try:
-            ensure_metadata_schema(conn)
-            record_pending_changes(conn)
-            stop_replication(conn)
+        global DECORATOR_ACTIVE
+        if not DECORATOR_ACTIVE:
+            DECORATOR_ACTIVE = True
+            try:
+                ensure_metadata_schema(conn)
+                record_pending_changes(conn)
+                stop_replication(conn)
+                func(*args, **kwargs)
+            finally:
+                start_replication(conn)
+                DECORATOR_ACTIVE = False
+        else:
             func(*args, **kwargs)
-        finally:
-            start_replication(conn)
 
     return wrapped
 

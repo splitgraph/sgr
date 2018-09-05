@@ -3,7 +3,7 @@ from random import getrandbits
 
 from psycopg2.sql import Identifier, SQL
 
-from splitgraph.commands.checkout import materialize_table
+from splitgraph.commands.checkout import materialize_table, checkout
 from splitgraph.commands.misc import unmount
 from splitgraph.commands.push_pull import clone
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, get_random_object_id
@@ -69,6 +69,11 @@ def _import_tables(conn, mountpoint, image_hash, tables, target_mountpoint, targ
     head = get_current_head(conn, target_mountpoint, raise_on_none=False)
     # Add the new snap ID to the tree
     add_new_snap_id(conn, target_mountpoint, head, target_hash, comment="Importing %s from %s" % (tables, mountpoint))
+
+    if any(table_queries) and not foreign_tables:
+        # If we want to run some queries against the source mountpoint to create the new tables,
+        # we have to materialize it fully.
+        checkout(conn, mountpoint, image_hash)
     # Materialize the actual tables in the target mountpoint and register them.
     for table, target_table, is_query in zip(tables, target_tables, table_queries):
         if foreign_tables or is_query:

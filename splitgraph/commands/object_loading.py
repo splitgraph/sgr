@@ -7,7 +7,7 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.commands.external_object_handlers import get_upload_download_handler
 from splitgraph.commands.misc import make_conn, unmount
 from splitgraph.commands.mount_handlers import mount_postgres
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA
+from splitgraph.constants import SPLITGRAPH_META_SCHEMA, parse_connection_string
 from splitgraph.meta_handler import get_downloaded_objects, get_existing_objects
 from splitgraph.pg_utils import copy_table, dump_table_creation, get_primary_keys
 
@@ -43,14 +43,13 @@ def download_objects(conn, remote_conn_string, objects_to_fetch, object_location
 def _fetch_remote_objects(conn, objects_to_fetch, remote_conn_string, remote_conn=None):
     # Instead of connecting and pushing queries to it from the Python client, we just mount the remote mountpoint
     # into a temporary space (without any checking out) and SELECT the required data into our local tables.
-    match = re.match(r'(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
+
+    server, port, user, pwd, dbname = parse_connection_string(remote_conn_string)
     remote_data_mountpoint = 'tmp_remote_data'
     unmount(conn, remote_data_mountpoint)  # Maybe worth making sure we're not stepping on anyone else
-    mount_postgres(conn, server=match.group(3), port=int(match.group(4)),
-                   username=match.group(1), password=match.group(2), mountpoint=remote_data_mountpoint,
-                   dbname=match.group(5), remote_schema=SPLITGRAPH_META_SCHEMA)
-    remote_conn = remote_conn or make_conn(server=match.group(3), port=int(match.group(4)), username=match.group(1),
-                                           password=match.group(2), dbname=match.group(5))
+    mount_postgres(conn, server=server, port=port, username=user, password=pwd, mountpoint=remote_data_mountpoint,
+                   dbname=dbname, remote_schema=SPLITGRAPH_META_SCHEMA)
+    remote_conn = remote_conn or make_conn(server, port, user, pwd, dbname)
     try:
         for i, obj in enumerate(objects_to_fetch):
             print("(%d/%d) %s..." % (i + 1, len(objects_to_fetch), obj))
@@ -100,7 +99,8 @@ def upload_objects(conn, remote_conn_string, objects_to_push, handler='DB', hand
     """
     if handler_params is None:
         handler_params = {}
-    match = re.match(r'(\S+):(\S+)@(.+):(\d+)/(\S+)', remote_conn_string)
+    conn_args = parse_connection_string(remote_conn_string)
+    remote_conn = remote_conn or make_conn(*conn_args)
     existing_objects = get_existing_objects(remote_conn)
     objects_to_push = list(set(o for o in objects_to_push if o not in existing_objects))
     if not objects_to_push:
@@ -121,9 +121,8 @@ def upload_objects(conn, remote_conn_string, objects_to_push, handler='DB', hand
         remote_conn.commit()
         remote_data_mountpoint = 'tmp_remote_data'
         unmount(conn, remote_data_mountpoint)
-        mount_postgres(conn, server=match.group(3), port=int(match.group(4)),
-                       username=match.group(1), password=match.group(2), mountpoint=remote_data_mountpoint,
-                       dbname=match.group(5), remote_schema=SPLITGRAPH_META_SCHEMA)
+        mount_postgres(conn, server=conn_args[0], port=conn_args[1], username=conn_args[2], password=conn_args[3],
+                       mountpoint=remote_data_mountpoint, dbname=conn_args[4], remote_schema=SPLITGRAPH_META_SCHEMA)
         for i, obj in enumerate(objects_to_push):
             print("(%d/%d) %s..." % (i + 1, len(objects_to_push), obj))
             copy_table(conn, SPLITGRAPH_META_SCHEMA, obj, remote_data_mountpoint, obj, with_pk_constraints=False,

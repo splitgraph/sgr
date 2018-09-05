@@ -7,7 +7,8 @@ from splitgraph.commands.mount_handlers import get_mount_handler
 from splitgraph.commands.push_pull import local_clone, pull
 from splitgraph.config.repo_lookups import lookup_repo
 from splitgraph.constants import SplitGraphException, serialize_connection_string
-from splitgraph.meta_handler import mountpoint_exists, get_current_head, tag_or_hash_to_actual_hash
+from splitgraph.meta_handler import mountpoint_exists, get_current_head, tag_or_hash_to_actual_hash, \
+    store_import_provenance, store_mount_provenance, store_sql_provenance, store_from_provenance
 from splitgraph.pg_replication import replication_slot_exists
 from splitgraph.pg_utils import execute_sql_in
 from splitgraph.sgfile.parsing import parse_commands, extract_nodes, get_first_or_none, parse_repo_source, \
@@ -96,6 +97,7 @@ def _execute_sql(conn, node, output):
         assert replication_slot_exists(conn)
         execute_sql_in(conn, output, sql_command)
         commit(conn, output, target_hash, comment=sql_command)
+        store_sql_provenance(conn, output, target_hash, sql_command)
 
     _checkout_or_calculate_layer(conn, output, target_hash, _calc)
 
@@ -137,6 +139,7 @@ def _execute_from(conn, node, output):
             print("Cloning %s into %s..." % (mountpoint, output))
             local_clone(conn, mountpoint, output)
             checkout(conn, output, to_checkout)
+        store_from_provenance(conn, output, get_current_head(conn, output), mountpoint)
     else:
         # FROM EMPTY AS mountpoint -- initializes an empty mountpoint (say to create a table or import
         # the results of a previous stage in a multistage build.
@@ -153,7 +156,6 @@ def _execute_import(conn, node, output):
     if interesting_nodes[0].expr_name == 'repo_source':
         # Import from a repository (local or remote)
         mountpoint, tag_or_hash = parse_repo_source(interesting_nodes[0])
-
         _execute_repo_import(conn, mountpoint, table_names, tag_or_hash, output, table_aliases, table_queries)
     else:
         # Extract the identifier (FDW name), the connection string and the FDW params (JSON-encoded, everything
@@ -186,6 +188,7 @@ def _execute_db_import(conn, conn_string, fdw_name, fdw_params, table_names, tar
 
         import_tables(conn, tmp_mountpoint, table_names, target_mountpoint, table_aliases, image_hash=target_hash,
                       foreign_tables=True, table_queries=table_queries)
+        store_mount_provenance(conn, target_mountpoint, target_hash)
     finally:
         unmount(conn, tmp_mountpoint)
 
@@ -233,6 +236,8 @@ def _execute_repo_import(conn, mountpoint, table_names, tag_or_hash, target_moun
                 table_names, source_hash[:12], mountpoint, target_mountpoint))
             import_tables(conn, source_mountpoint, table_names, target_mountpoint, table_aliases,
                           image_hash=source_hash, target_hash=target_hash, table_queries=table_queries)
+            store_import_provenance(conn, target_mountpoint, target_hash, mountpoint, source_hash, table_names,
+                                    table_aliases, table_queries)
 
         _checkout_or_calculate_layer(conn, target_mountpoint, target_hash, _calc)
     finally:

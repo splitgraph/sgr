@@ -4,7 +4,7 @@ from decimal import Decimal
 from click.testing import CliRunner
 
 from splitgraph.commandline import status_c, sql_c, diff_c, commit_c, log_c, show_c, tag_c, checkout_c, unmount_c, \
-    cleanup_c, init_c, mount_c, import_c, clone_c, pull_c, push_c, file_c
+    cleanup_c, init_c, mount_c, import_c, clone_c, pull_c, push_c, file_c, provenance_c
 from splitgraph.commands import commit, checkout
 from splitgraph.commands.misc import table_exists_at
 from splitgraph.meta_handler import get_current_head, get_snap_parent, get_table, get_tagged_id, mountpoint_exists
@@ -238,9 +238,17 @@ def test_sgfile(empty_pg_conn, snapper_conn):
     runner = CliRunner()
 
     result = runner.invoke(file_c, [SGFILE_ROOT + 'import_remote_multiple.sgfile',
-                                    '-a', 'SNAPPER', SNAPPER_HOST, '-a', 'SNAPPER_PORT', SNAPPER_PORT,
                                     '-a', 'TAG', 'latest', '-o', 'output'])
     assert result.exit_code == 0
     with empty_pg_conn.cursor() as cur:
         cur.execute("""SELECT id, fruit, vegetable FROM output.join_table""")
         assert cur.fetchall() == [(1, 'apple', 'potato'), (2, 'orange', 'carrot')]
+
+    # Test the sg provenance command. First, just list the dependencies of the new image.
+    result = runner.invoke(provenance_c, ['output', 'latest'])
+    assert 'test_pg_mount:%s' % get_tagged_id(snapper_conn, 'test_pg_mount', 'latest') in result.output
+
+    # Second, output the full sgfile (-f)
+    result = runner.invoke(provenance_c, ['output', 'latest', '-f'])
+    assert 'FROM test_pg_mount:%s IMPORT' % get_tagged_id(snapper_conn, 'test_pg_mount', 'latest') in result.output
+    assert 'SQL CREATE TABLE join_table AS SELECT' in result.output

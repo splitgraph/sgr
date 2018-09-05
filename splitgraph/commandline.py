@@ -10,6 +10,7 @@ from psycopg2 import ProgrammingError
 from splitgraph.commands import mount, unmount, commit, checkout, diff, get_log, init, get_parent_children, pull, \
     clone, push, import_tables
 from splitgraph.commands.misc import cleanup_objects
+from splitgraph.commands.provenance import provenance, image_hash_to_sgfile
 from splitgraph.constants import POSTGRES_CONNECTION, SplitGraphException
 from splitgraph.drawing import render_tree
 from splitgraph.meta_handler import get_snap_parent, get_canonical_snap_id, get_all_tables, \
@@ -356,6 +357,29 @@ def cleanup_c():
     conn.close()
 
 
+@click.command(name='provenance')
+@click.argument('mountpoint')
+@click.argument('snapshot_or_tag')
+@click.option('-f', '--full', required=False, is_flag=True, help='Recreate the sgfile used to create this image')
+@click.option('-e', '--error-on-end', required=False, default=True, is_flag=True,
+              help='If False, bases the recreated sgfile on the last image where the provenance chain breaks')
+def provenance_c(mountpoint, snapshot_or_tag, full, error_on_end):
+    conn = _conn()
+    snapshot = tag_or_hash_to_actual_hash(conn, mountpoint, snapshot_or_tag)
+
+    if full:
+        sgfile_commands = image_hash_to_sgfile(conn, mountpoint, snapshot, error_on_end)
+        print("# sgfile commands used to recreate %s:%s" % (mountpoint, snapshot))
+        print('\n'.join(sgfile_commands))
+    else:
+        result = provenance(conn, mountpoint, snapshot)
+        print("%s:%s depends on:" % (mountpoint, snapshot))
+        print('\n'.join("%s:%s" % rs for rs in result))
+    conn.close()
+
+
+
+
 cli.add_command(status_c)
 cli.add_command(log_c)
 cli.add_command(mount_c)
@@ -373,3 +397,4 @@ cli.add_command(push_c)
 cli.add_command(tag_c)
 cli.add_command(import_c)
 cli.add_command(cleanup_c)
+cli.add_command(provenance_c)
