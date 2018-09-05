@@ -16,7 +16,7 @@ from splitgraph.drawing import render_tree
 from splitgraph.meta_handler import get_snap_parent, get_canonical_snap_id, get_all_tables, \
     get_current_mountpoints_hashes, get_all_hashes_tags, set_tag, get_current_head, get_remote_for, get_all_snap_info, \
     get_tables_at, get_table, tag_or_hash_to_actual_hash
-from splitgraph.sgfile.execution import execute_commands
+from splitgraph.sgfile.execution import execute_commands, rerun_image_with_replacement
 
 
 def _conn():
@@ -378,6 +378,30 @@ def provenance_c(mountpoint, snapshot_or_tag, full, error_on_end):
     conn.close()
 
 
+@click.command(name='rerun')
+@click.argument('mountpoint')
+@click.argument('snapshot_or_tag')
+@click.option('-u', '--update', is_flag=True, help='Rederive the image against the latest version of all dependencies.')
+@click.option('-i', '--repo-image', multiple=True, type=(str, str))
+def rerun_c(mountpoint, snapshot_or_tag, update, repo_image):
+    conn = _conn()
+    snapshot = tag_or_hash_to_actual_hash(conn, mountpoint, snapshot_or_tag)
+
+    # Replace the sources used to construct the image with either the latest ones or the images specified by the user.
+    # This doesn't require us at this point to have pulled all the dependencies: the sgfile executor will do it
+    # after we feed in the reconstructed and patched sgfile.
+    deps = {k: v for k, v in provenance(conn, mountpoint, snapshot)}
+    new_images = {repo: image for repo, image in repo_image} if not update \
+        else {repo: 'latest' for repo, _ in deps.items()}
+    deps.update(new_images)
+
+    print("Rerunning %s:%s against:" % (mountpoint, snapshot))
+    print('\n'.join("%s:%s" % rs for rs in new_images.items()))
+
+    rerun_image_with_replacement(conn, mountpoint, snapshot, new_images)
+
+    conn.commit()
+    conn.close()
 
 
 cli.add_command(status_c)
@@ -398,3 +422,4 @@ cli.add_command(tag_c)
 cli.add_command(import_c)
 cli.add_command(cleanup_c)
 cli.add_command(provenance_c)
+cli.add_command(rerun_c)

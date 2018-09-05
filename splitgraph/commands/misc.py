@@ -1,5 +1,3 @@
-import logging
-
 import psycopg2
 from psycopg2.sql import SQL, Identifier
 

@@ -1,1 +1,1 @@
-from splitgraph.sgfile.execution import execute_commands
+from splitgraph.sgfile.execution import execute_commands, rerun_image_with_replacement

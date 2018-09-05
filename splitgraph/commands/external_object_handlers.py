@@ -1,5 +1,3 @@
-import requests
-
 from splitgraph.constants import SplitGraphException, SPLITGRAPH_META_SCHEMA
 from splitgraph.pg_utils import table_dump_generator
 

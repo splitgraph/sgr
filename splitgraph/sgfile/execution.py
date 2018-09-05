@@ -2,7 +2,7 @@ import json
 from hashlib import sha256
 from random import getrandbits
 
-from splitgraph.commands import checkout, init, unmount, clone, import_tables, commit
+from splitgraph.commands import checkout, init, unmount, clone, import_tables, commit, image_hash_to_sgfile
 from splitgraph.commands.mount_handlers import get_mount_handler
 from splitgraph.commands.push_pull import local_clone, pull
 from splitgraph.config.repo_lookups import lookup_repo
@@ -242,3 +242,19 @@ def _execute_repo_import(conn, mountpoint, table_names, tag_or_hash, target_moun
         _checkout_or_calculate_layer(conn, target_mountpoint, target_hash, _calc)
     finally:
         unmount(conn, tmp_mountpoint)
+
+
+def rerun_image_with_replacement(conn, mountpoint, image_hash, source_replacement):
+    """
+    Recreates the sgfile used to create a given image and reruns it, replacing its dependencies with a different
+    set of versions.
+    :param conn: Psycopg connection object.
+    :param mountpoint: Local repository where the image is located.
+    :param image_hash: Hash of the image to rerun
+    :param source_replacement: A map that specifies replacement images/tags for repositories that the image depends on
+    :return:
+    """
+    sgfile_commands = image_hash_to_sgfile(conn, mountpoint, image_hash, err_on_end=False,
+                                           source_replacement=source_replacement)
+    # Params are supposed to be stored in the commands already (baked in) -- what if there's sensitive data there?
+    execute_commands(conn, '\n'.join(sgfile_commands), output=mountpoint)

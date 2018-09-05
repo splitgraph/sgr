@@ -1,9 +1,6 @@
 # TODO
-  * Store provenance in snap_tree:
-    * Allows us to have a command that rederives one dataset (rerunning all of the sgfile commands) based on the
-      newest/tagged version of the things it depends on.
-      * only store import provenance from mountpoints that are accessible publicly
-    * Physical rebase (apply the DIFF objects to a different branch)?
+  * Sanitize provenance on push to registries that aren't aware of the repos we depend on?
+  * Physical rebase (apply the DIFF objects to a different branch)
   * Advanced hash calculation for IMPORT/SQL layers (only invalidate if the actual table objects the IMPORT
       / SQL layer relies on have changed).
   * Schema changes: come up with a better method of keeping track than producing a snap

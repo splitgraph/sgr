@@ -1,5 +1,4 @@
 import logging
-import re
 from collections import defaultdict
 
 from psycopg2.sql import SQL, Identifier

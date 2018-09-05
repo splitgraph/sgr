@@ -4,12 +4,14 @@ from decimal import Decimal
 from click.testing import CliRunner
 
 from splitgraph.commandline import status_c, sql_c, diff_c, commit_c, log_c, show_c, tag_c, checkout_c, unmount_c, \
-    cleanup_c, init_c, mount_c, import_c, clone_c, pull_c, push_c, file_c, provenance_c
+    cleanup_c, init_c, mount_c, import_c, clone_c, pull_c, push_c, file_c, provenance_c, rerun_c
 from splitgraph.commands import commit, checkout
 from splitgraph.commands.misc import table_exists_at
-from splitgraph.meta_handler import get_current_head, get_snap_parent, get_table, get_tagged_id, mountpoint_exists
+from splitgraph.commands.provenance import provenance
+from splitgraph.meta_handler import get_current_head, get_snap_parent, get_table, get_tagged_id, mountpoint_exists, \
+    get_all_snap_parents
 from test.splitgraph.conftest import PG_MNT, MG_MNT, SNAPPER_CONN_STRING, SNAPPER_HOST, SNAPPER_PORT
-from test.splitgraph.test_sgfile import SGFILE_ROOT
+from test.splitgraph.test_sgfile import SGFILE_ROOT, _add_multitag_dataset_to_snapper
 
 
 def test_commandline_basics(sg_pg_mg_conn):
@@ -252,3 +254,28 @@ def test_sgfile(empty_pg_conn, snapper_conn):
     result = runner.invoke(provenance_c, ['output', 'latest', '-f'])
     assert 'FROM test_pg_mount:%s IMPORT' % get_tagged_id(snapper_conn, 'test_pg_mount', 'latest') in result.output
     assert 'SQL CREATE TABLE join_table AS SELECT' in result.output
+
+
+def test_sgfile_rerun_update(empty_pg_conn, snapper_conn):
+    _add_multitag_dataset_to_snapper(snapper_conn)
+    runner = CliRunner()
+
+    result = runner.invoke(file_c, [SGFILE_ROOT + 'import_remote_multiple.sgfile',
+                                    '-a', 'TAG', 'v1', '-o', 'output'])
+    assert result.exit_code == 0
+
+    # Rerun the output:latest against v2 of the test_pg_mount
+    result = runner.invoke(rerun_c, ['output', 'latest', '-i', 'test_pg_mount', 'v2'])
+    output_v2 = get_current_head(empty_pg_conn, 'output')
+    assert result.exit_code == 0
+    assert provenance(empty_pg_conn, 'output', output_v2) == \
+        [('test_pg_mount', get_tagged_id(snapper_conn, 'test_pg_mount', 'v2'))]
+
+    # Now rerun the output:latest against the latest version of everything.
+    # In this case, this should all resolve to the same version of test_pg_mount (v2) and not produce
+    # any extra commits.
+    curr_commits = get_all_snap_parents(empty_pg_conn, 'output')
+    result = runner.invoke(rerun_c, ['output', 'latest', '-u'])
+    assert result.exit_code == 0
+    assert output_v2 == get_current_head(empty_pg_conn, 'output')
+    assert get_all_snap_parents(empty_pg_conn, 'output') == curr_commits

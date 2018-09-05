@@ -3,8 +3,8 @@ import re
 from random import getrandbits
 
 from splitgraph.config import CONFIG
-logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=logging.INFO)
 
+logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=logging.INFO)
 
 PG_HOST = CONFIG["SG_DRIVER_HOST"]
 PG_PORT = CONFIG["SG_DRIVER_PORT"]
