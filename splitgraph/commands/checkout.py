@@ -10,7 +10,7 @@ from splitgraph.meta_handler import get_table_with_format, get_remote_for, get_c
     get_all_tables, set_head, register_table, deregister_table_object, \
     get_external_object_locations, get_tagged_id
 from splitgraph.pg_replication import apply_record_to_staging, discard_pending_changes, \
-    get_closest_parent_snap_object, suspend_replication
+    get_closest_parent_snap_object, suspend_replication, has_pending_changes
 from splitgraph.pg_utils import copy_table, get_primary_keys
 
 
@@ -77,6 +77,8 @@ def checkout(conn, mountpoint, image_hash=None, tag=None, tables=None, keep_down
     """
     if tables is None:
         tables = []
+    if has_pending_changes(conn, mountpoint):
+        logging.warning("%s has pending changes, discarding...", mountpoint)
     discard_pending_changes(conn, mountpoint)
     # Detect the actual schema snap we want to check out
     if image_hash:

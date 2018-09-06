@@ -10,8 +10,9 @@ and details on commits, tags, objects etc. The full schema is in `splitgraph.met
 Here's an overview:
 
   * `snap_tree`: should really be called `image_tree`. Describes all image hashes and their parents, as well as extra
-    data about a given commit (the creation timestamp and the commit message). PKd on the mountpoint and the image hash,
-    so the same image can exist in multiple schemas at the same time.
+    data about a given commit (the creation timestamp, the commit message and the details of the sgfile command that
+    generated this image). PKd on the mountpoint and the image hash, so the same image can exist in multiple schemas
+    at the same time.
   * `tables`: an image consists of multiple tables. Each table in a given version is represented by one or more objects.
     An object can be one of two types: SNAP (a snapshot, a full copy of the table) and a DIFF (list of changes to a parent
     object). This is also mountpoint-specific.
@@ -249,3 +250,25 @@ returned by the command would still have the same hash.
 
 In the future, it might be worth basing the new hash on the hash of the objects that the query actually interacts with
 (as inputs or outputs), but this will require actually parsing the query.
+
+### Provenance tracking
+
+Every sgfile command is recorded in the image metadata so that it's possible to track which datasets an image depends
+on, as well as how it can be recreated. Images that are created by `MOUNT` commands (data import from a mounted
+database) aren't currently supported, as it's assumed that those databases aren't publicly accessible.
+
+`sg provenance MOUNTPOINT IMAGE_OR_TAG` inspects the image's parents and outputs a list of datasets and their versions
+that were used to create this image (via `IMPORT` or `FROM` commands). If the `-f (--full)` flag is passed, then the
+command will try to reconstruct the full sgfile used to create the image, raising an error if there's a break in the
+provenance chain (e.g. the `MOUNT` command or a SQL query outside of the sgfile interpreter was used somewhere
+in the history of the image). If the `-e` flag is passed, the command will instead stop at the first break in the chain
+and base the resulting sgfile before the break (using the `FROM` command).
+
+`sg rerun MOUNTPOINT IMAGE_OR_TAG -i DATASET1 IMAGE_OR_TAG1 -i ...` recreates the sgfile used to derive a given image
+and reruns it, replacing its dependencies as specified by the `-i` options. If the `-u` flag is passed, the image
+is rederived based on the `latest` tag of all its dependencies.
+
+For example, if `pgderiv:v1` was created with `pgorigin:v1` and `pgorigin` has been updated on the remote to tag `v2`,
+then both `sg rerun pgderiv v1 -i pgorigin v2` and `sg rerun -u pgderiv v1` will have the same effect of rerunning
+the sgfile used to create `pgderiv` based on the latest version of `pgorigin`.
+  

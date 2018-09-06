@@ -312,7 +312,9 @@ def tag_c(mountpoint, image, tag, force):
             tag_dict[img].append(img_tag)
         if image is None:
             for img, tags in tag_dict.items():
-                print("%s: %s" % (img[:12], ', '.join(tags)))
+                # Sometimes HEAD is none (if we've just cloned the repo)
+                if img:
+                    print("%s: %s" % (img[:12], ', '.join(tags)))
         else:
             print(', '.join(tag_dict[get_canonical_snap_id(conn, mountpoint, image)]))
         return
