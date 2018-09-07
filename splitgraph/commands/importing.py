@@ -103,7 +103,6 @@ def _import_tables(conn, mountpoint, image_hash, tables, target_mountpoint, targ
                 WHERE mountpoint = %s AND snap_id = %s)""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
                         (target_mountpoint, target_hash, target_mountpoint, head))
     set_head(conn, target_mountpoint, target_hash)
-    conn.commit()
     return target_hash
 
 

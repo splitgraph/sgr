@@ -85,7 +85,8 @@ def get_primary_keys(conn, mountpoint, table):
                                 AND ccu.column_name = c.column_name
                            WHERE constraint_type = 'PRIMARY KEY'
                                 AND tc.table_schema = %s
-                                AND tc.table_name = %s"""),
+                                AND tc.table_name = %s
+                           ORDER BY c.ordinal_position"""),
                     (mountpoint, table))
         return cur.fetchall()
 
@@ -94,7 +95,8 @@ def _get_column_names(conn, mountpoint, table_name):
     with conn.cursor() as cur:
         cur.execute("""SELECT column_name FROM information_schema.columns
                        WHERE table_schema = %s
-                       AND table_name = %s""", (mountpoint, table_name))
+                       AND table_name = %s
+                       ORDER BY ordinal_position""", (mountpoint, table_name))
         return [c[0] for c in cur.fetchall()]
 
 

@@ -61,7 +61,6 @@ def init(conn, mountpoint):
         cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(mountpoint)))
     snap_id = '0' * 64
     register_mountpoint(conn, mountpoint, snap_id, tables=[], table_object_ids=[])
-    conn.commit()
 
 
 def unmount(conn, mountpoint):
