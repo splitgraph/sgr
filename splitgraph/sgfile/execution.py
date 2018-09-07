@@ -70,6 +70,7 @@ def execute_commands(conn, commands, params=None, output=None, output_base='0' *
         elif node.expr_name == 'sql' or node.expr_name == 'sql_file':
             _initialize_output(output)
             _execute_sql(conn, node, output)
+    conn.commit()
 
 
 def _execute_sql(conn, node, output):

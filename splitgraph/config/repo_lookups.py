@@ -1,15 +1,21 @@
 from splitgraph.commands.misc import make_conn
 from splitgraph.config import CONFIG
-from splitgraph.constants import parse_connection_string, SplitGraphException
+from splitgraph.constants import SplitGraphException
 from splitgraph.meta_handler import mountpoint_exists
 
 
 # Parse and set these on import. If we ever need to be able to reread the config on the fly, these have to be
 # recalculated.
 def _parse_paths_overrides(lookup_path, override_path):
-    return ([parse_connection_string(p) for p in lookup_path.split(',')] if lookup_path else [],
-            ({p[:p.index(':')]: parse_connection_string(p[p.index(':') + 1:])
-              for p in override_path.split(',')} if override_path else {}))
+    return ([get_remote_connection_params(r) for r in lookup_path.split(',')] if lookup_path else [],
+            ({r[:r.index(':')]: get_remote_connection_params(r[r.index(':') + 1:])
+              for r in override_path.split(',')} if override_path else {}))
+
+
+def get_remote_connection_params(remote_name):
+    pdict = CONFIG['remotes'][remote_name]
+    return (pdict['SG_DRIVER_HOST'], int(pdict['SG_DRIVER_PORT']), pdict['SG_DRIVER_USER'],
+            pdict['SG_DRIVER_PWD'], pdict['SG_DRIVER_DB_NAME'])
 
 
 LOOKUP_PATH, LOOKUP_PATH_OVERRIDE = _parse_paths_overrides(CONFIG['SG_REPO_LOOKUP'], CONFIG['SG_REPO_LOOKUP_OVERRIDE'])

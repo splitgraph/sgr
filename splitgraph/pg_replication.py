@@ -32,6 +32,7 @@ def suspend_replication(func):
                 stop_replication(conn)
                 func(*args, **kwargs)
             finally:
+                conn.commit()
                 start_replication(conn)
                 DECORATOR_ACTIVE = False
         else:

@@ -558,9 +558,7 @@ def test_env_var_supercedes_config_file(fs):
 
 
 def test_lookup_override_parser():
-    assert _parse_paths_overrides(lookup_path="aaa:bbb@ccc.com:1234/db1,bla:bla@bla.com:5678/db2",
-                                  override_path="override_repo_1:user:pass@bla.com:5678/db2,"
-                                                "override_repo_2:bla:user:pass@bla.com:5678/db2")\
-        == ([('ccc.com', 1234, 'aaa', 'bbb', 'db1'), ('bla.com', 5678, 'bla', 'bla', 'db2')],
-            {'override_repo_1': ('bla.com', 5678, 'user', 'pass', 'db2'),
-             'override_repo_2': ('bla.com', 5678, 'bla:user', 'pass', 'db2')})
+    assert _parse_paths_overrides(lookup_path="snapper",
+                                  override_path="override_repo_1:local")\
+        == ([('snapper', 5431, 'clientuser', 'supersecure', 'cachedb')],
+            {'override_repo_1': ('localhost', 5432, 'clientuser', 'supersecure', 'cachedb')})
