@@ -75,19 +75,11 @@ def dump_table_creation(conn, schema, tables, created_schema=None):
 def get_primary_keys(conn, mountpoint, table):
     """Inspects the Postgres information_schema to get the primary keys for a given table."""
     with conn.cursor() as cur:
-        cur.execute(SQL("""SELECT c.column_name, c.data_type
-                           FROM information_schema.table_constraints tc
-                            JOIN information_schema.constraint_column_usage 
-                                AS ccu USING (constraint_schema, constraint_name)
-                            JOIN information_schema.columns AS c 
-                            ON c.table_schema = tc.constraint_schema
-                                AND tc.table_name = c.table_name
-                                AND ccu.column_name = c.column_name
-                           WHERE constraint_type = 'PRIMARY KEY'
-                                AND tc.table_schema = %s
-                                AND tc.table_name = %s
-                           ORDER BY c.ordinal_position"""),
-                    (mountpoint, table))
+        cur.execute(SQL("""SELECT a.attname, format_type(a.atttypid, a.atttypmod)
+                           FROM pg_index i JOIN pg_attribute a ON a.attrelid = i.indrelid
+                                                                  AND a.attnum = ANY(i.indkey)
+                           WHERE i.indrelid = '{}.{}'::regclass AND i.indisprimary""").format(
+            Identifier(mountpoint), Identifier(table)))
         return cur.fetchall()
 
 
