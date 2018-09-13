@@ -11,6 +11,7 @@ from splitgraph.commands import mount, unmount, commit, checkout, diff, get_log,
     clone, push, import_tables
 from splitgraph.commands.misc import cleanup_objects
 from splitgraph.commands.provenance import provenance, image_hash_to_sgfile
+from splitgraph.commands.publish import publish
 from splitgraph.constants import POSTGRES_CONNECTION, SplitGraphException
 from splitgraph.drawing import render_tree
 from splitgraph.meta_handler import get_snap_parent, get_canonical_snap_id, get_all_tables, \
@@ -406,6 +407,21 @@ def rerun_c(mountpoint, snapshot_or_tag, update, repo_image):
     conn.close()
 
 
+@click.command(name='publish')
+@click.argument('repository')
+@click.argument('tag')
+@click.option('-r', '--readme', type=click.File('r'))
+def publish_c(repository, tag, readme):
+    conn = _conn()
+    if readme:
+        readme = readme.read()
+    else:
+        readme = ""
+    publish(conn, repository, tag, readme)
+    conn.commit()
+    conn.close()
+
+
 cli.add_command(status_c)
 cli.add_command(log_c)
 cli.add_command(mount_c)
@@ -425,3 +441,4 @@ cli.add_command(import_c)
 cli.add_command(cleanup_c)
 cli.add_command(provenance_c)
 cli.add_command(rerun_c)
+cli.add_command(publish_c)

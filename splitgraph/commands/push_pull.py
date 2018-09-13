@@ -37,7 +37,8 @@ def _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_moun
             table_meta.extend(cur.fetchall())
 
     # Get the tags too
-    tags = {t: s for s, t in get_all_hashes_tags(remote_conn, remote_mountpoint)}
+    existing_tags = [t for s, t in get_all_hashes_tags(conn, local_mountpoint)]
+    tags = {t: s for s, t in get_all_hashes_tags(remote_conn, remote_mountpoint) if t not in existing_tags}
 
     # Crawl the object tree to get the IDs and other metadata for all required objects.
     distinct_objects, object_meta = _extract_recursive_object_meta(conn, remote_conn, table_meta)
@@ -216,6 +217,9 @@ def push(conn, local_mountpoint, remote_conn_string=None, remote_mountpoint=None
         # Kind of have to commit here in any case?
         remote_conn.commit()
         register_object_locations(conn, new_uploads)
+
+        if not get_remote_for(conn, local_mountpoint, 'origin'):
+            add_remote(conn, local_mountpoint, serialize_connection_string(*conn_params), remote_mountpoint)
 
         logging.info("Uploaded metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta),
                                                                                                  len(table_meta),

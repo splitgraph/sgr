@@ -6,6 +6,7 @@ from splitgraph.commands import unmount
 from splitgraph.commands.misc import make_conn, cleanup_objects
 from splitgraph.constants import PG_USER, PG_PWD, PG_DB, serialize_connection_string
 from splitgraph.meta_handler import get_current_mountpoints_hashes
+from splitgraph.registry_meta_handler import ensure_registry_schema, unpublish_repository
 
 PG_MNT = 'test_pg_mount'
 MG_MNT = 'test_mg_mount'
@@ -73,6 +74,8 @@ def snapper_conn():
     # origin databases)
     # We still create the test_pg_mount and output mountpoints there just so that we don't clash with them.
     conn = make_conn(SNAPPER_HOST, SNAPPER_PORT, PG_USER, PG_PWD, PG_DB)
+    ensure_registry_schema(conn)
+    unpublish_repository(conn, 'output')
     for mountpoint in TEST_MOUNTPOINTS:
         unmount(conn, mountpoint)
     cleanup_objects(conn)

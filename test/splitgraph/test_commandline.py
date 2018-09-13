@@ -4,13 +4,14 @@ from decimal import Decimal
 from click.testing import CliRunner
 
 from splitgraph.commandline import status_c, sql_c, diff_c, commit_c, log_c, show_c, tag_c, checkout_c, unmount_c, \
-    cleanup_c, init_c, mount_c, import_c, clone_c, pull_c, push_c, file_c, provenance_c, rerun_c
+    cleanup_c, init_c, mount_c, import_c, clone_c, pull_c, push_c, file_c, provenance_c, rerun_c, publish_c
 from splitgraph.commands import commit, checkout
 from splitgraph.commands.misc import table_exists_at
 from splitgraph.commands.provenance import provenance
 from splitgraph.meta_handler import get_current_head, get_snap_parent, get_table, get_tagged_id, mountpoint_exists, \
-    get_all_snap_parents
-from test.splitgraph.conftest import PG_MNT, MG_MNT, SNAPPER_CONN_STRING, SNAPPER_HOST, SNAPPER_PORT
+    get_all_snap_parents, set_tag
+from splitgraph.registry_meta_handler import get_published_info
+from test.splitgraph.conftest import PG_MNT, MG_MNT
 from test.splitgraph.test_sgfile import SGFILE_ROOT, _add_multitag_dataset_to_snapper
 
 
@@ -234,6 +235,15 @@ def test_pull_push(empty_pg_conn, snapper_conn):
     result = runner.invoke(push_c, [PG_MNT, 'origin', '-h', 'DB'])
     assert result.exit_code == 0
     assert table_exists_at(snapper_conn, PG_MNT, 'fruits', local_head)
+
+    set_tag(empty_pg_conn, PG_MNT, local_head, 'v1')
+    empty_pg_conn.commit()
+    result = runner.invoke(publish_c, [PG_MNT, 'v1', '-r', SGFILE_ROOT + 'README.md'])
+    assert result.exit_code == 0
+    image_hash, published_dt, provenance, readme = get_published_info(snapper_conn, PG_MNT, 'v1')
+    assert image_hash == local_head
+    assert provenance == []
+    assert readme == "Test readme for a test dataset."
 
 
 def test_sgfile(empty_pg_conn, snapper_conn):
