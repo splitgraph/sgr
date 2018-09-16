@@ -59,18 +59,21 @@ def stop_replication(conn):
             cur.execute("""SELECT 'stop' FROM pg_drop_replication_slot(%s)""", (REPLICATION_SLOT,))
 
 
-def _consume_changes(conn):
+def _consume_changes(conn, upto_nchanges=None, filter_tables=None):
     # Consuming changes means they won't be returned again from this slot. Perhaps worth doing peeking first
     # in case we crash after consumption but before recording changes.
     if not replication_slot_exists(conn):
         return []
 
-    all_mountpoints = [m[0] for m in get_current_mountpoints_hashes(conn)]
-    table_filter_param = ','.join('%s.*' % m for m in all_mountpoints)
+    if not filter_tables:
+        all_mountpoints = [m[0] for m in get_current_mountpoints_hashes(conn)]
+        table_filter_param = ','.join('%s.*' % m for m in all_mountpoints)
+    else:
+        table_filter_param = ','.join('%s.%s' % (m, t) for m, ts in filter_tables.items() for t in ts)
 
     with conn.cursor() as cur:
-        cur.execute("""SELECT data FROM pg_logical_slot_get_changes(%s, NULL, NULL, 'add-tables', %s)""",
-                    (REPLICATION_SLOT, table_filter_param))
+        cur.execute("""SELECT data FROM pg_logical_slot_get_changes(%s, NULL, %s, 'add-tables', %s)""",
+                    (REPLICATION_SLOT, upto_nchanges, table_filter_param))
 
         return cur.fetchall()
 
@@ -80,35 +83,36 @@ KIND = {'insert': 0, 'delete': 1, 'update': 2}
 
 def record_pending_changes(conn):
     # Decode the changeset produced by wal2json and save it to the pending_changes table.
-    changes = _consume_changes(conn)
-    if not changes:
-        return
     # If the table doesn't exist in the current commit, we'll be storing it as a full snapshot,
     # so there's no point consuming the WAL for it.
     mountpoints_tables = {m: [t for t in get_all_tables(conn, m) if get_table(conn, m, t, head)]
                           for m, head in get_current_mountpoints_hashes(conn)}
+    while True:
+        # Consume the changes and record them in chunks.
+        changes = _consume_changes(conn, upto_nchanges=100000, filter_tables=mountpoints_tables)
+        if not changes:
+            return
+        to_insert = []  # a list of tuples (schema, table, kind, change)
+        for changeset in changes:
+            changeset = json.loads(changeset[0])['change']
+            for change in changeset:
+                # kind: 0 is added, 1 is removed, 2 is updated.
+                # change: json
+                kind = change.pop('kind')
+                mountpoint = change.pop('schema')
+                table = change.pop('table')
 
-    to_insert = []  # a list of tuples (schema, table, kind, change)
-    for changeset in changes:
-        changeset = json.loads(changeset[0])['change']
-        for change in changeset:
-            # kind: 0 is added, 1 is removed, 2 is updated.
-            # change: json
-            kind = change.pop('kind')
-            mountpoint = change.pop('schema')
-            table = change.pop('table')
+                if mountpoint not in mountpoints_tables or table not in mountpoints_tables[mountpoint]:
+                    continue
 
-            if mountpoint not in mountpoints_tables or table not in mountpoints_tables[mountpoint]:
-                continue
+                to_insert.append((mountpoint, table, KIND[kind], json.dumps(change)))
 
-            to_insert.append((mountpoint, table, KIND[kind], json.dumps(change)))
-
-    with conn.cursor() as cur:
-        execute_batch(cur, SQL("INSERT INTO {}.{} VALUES (%s, %s, %s, %s)").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                                   Identifier("pending_changes")),
-                      to_insert)
-    conn.commit()  # Slightly eww: a diff() also dumps pending changes, which means that if the diff
-    # doesn't commit, the changes will have been consumed but not saved.
+        with conn.cursor() as cur:
+            execute_batch(cur, SQL("INSERT INTO {}.{} VALUES (%s, %s, %s, %s)").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                                       Identifier("pending_changes")),
+                          to_insert)
+        conn.commit()  # Slightly eww: a diff() also dumps pending changes, which means that if the diff
+        # doesn't commit, the changes will have been consumed but not saved.
 
 
 def discard_pending_changes(conn, mountpoint):

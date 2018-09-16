@@ -10,7 +10,7 @@ from splitgraph.meta_handler import get_table_with_format, get_remote_for, get_c
     get_all_tables, set_head, register_table, deregister_table_object, \
     get_external_object_locations, get_tagged_id
 from splitgraph.pg_replication import apply_record_to_staging, discard_pending_changes, \
-    get_closest_parent_snap_object, suspend_replication, has_pending_changes
+    get_closest_parent_snap_object, suspend_replication, has_pending_changes, replication_slot_exists
 from splitgraph.pg_utils import copy_table, get_primary_keys
 
 

@@ -76,6 +76,7 @@ def snapper_conn():
     conn = make_conn(SNAPPER_HOST, SNAPPER_PORT, PG_USER, PG_PWD, PG_DB)
     ensure_registry_schema(conn)
     unpublish_repository(conn, 'output')
+    unpublish_repository(conn, 'test_pg_mount')
     for mountpoint in TEST_MOUNTPOINTS:
         unmount(conn, mountpoint)
     cleanup_objects(conn)
