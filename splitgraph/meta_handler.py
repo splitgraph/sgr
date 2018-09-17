@@ -1,7 +1,6 @@
-import json
 from datetime import datetime
 
-from psycopg2.extras import execute_batch
+from psycopg2.extras import execute_batch, Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, SplitGraphException
@@ -29,7 +28,7 @@ def _create_metadata_schema(conn):
                         created         TIMESTAMP,
                         comment         VARCHAR,
                         provenance_type VARCHAR,
-                        provenance_data VARCHAR,
+                        provenance_data JSON,
                         PRIMARY KEY (mountpoint, snap_id))""").format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                                       Identifier("snap_tree")))
         cur.execute(SQL("""CREATE TABLE {}.{} (
@@ -273,7 +272,7 @@ def add_new_snap_id(conn, mountpoint, parent_id, snap_id, created=None, comment=
         cur.execute(_insert("snap_tree", ("snap_id", "mountpoint", "parent_id", "created", "comment",
                                           "provenance_type", "provenance_data")),
                     (snap_id, mountpoint, parent_id, created or datetime.now(), comment,
-                     provenance_type, provenance_data))
+                     provenance_type, Json(provenance_data)))
 
 
 def set_head(conn, mountpoint, snap_id):
@@ -463,7 +462,7 @@ def store_import_provenance(conn, mountpoint, image_hash, source_mountpoint, sou
     with conn.cursor() as cur:
         cur.execute(SQL("""UPDATE {}.snap_tree SET provenance_type = %s, provenance_data = %s WHERE
                             mountpoint = %s AND snap_id = %s""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                    ("IMPORT", json.dumps({
+                    ("IMPORT", Json({
                         'source': source_mountpoint,
                         'source_hash': source_hash,
                         'tables': tables,
@@ -475,7 +474,7 @@ def store_sql_provenance(conn, mountpoint, image_hash, sql):
     with conn.cursor() as cur:
         cur.execute(SQL("""UPDATE {}.snap_tree SET provenance_type = %s, provenance_data = %s WHERE
                             mountpoint = %s AND snap_id = %s""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                    ('SQL', sql, mountpoint, image_hash))
+                    ('SQL', Json(sql), mountpoint, image_hash))
 
 
 def store_mount_provenance(conn, mountpoint, image_hash):
@@ -491,4 +490,4 @@ def store_from_provenance(conn, mountpoint, image_hash, source):
     with conn.cursor() as cur:
         cur.execute(SQL("""UPDATE {}.snap_tree SET provenance_type = %s, provenance_data = %s WHERE
                             mountpoint = %s AND snap_id = %s""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                    ('FROM', source, mountpoint, image_hash))
+                    ('FROM', Json(source), mountpoint, image_hash))

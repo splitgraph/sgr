@@ -240,10 +240,16 @@ def test_pull_push(empty_pg_conn, snapper_conn):
     empty_pg_conn.commit()
     result = runner.invoke(publish_c, [PG_MNT, 'v1', '-r', SGFILE_ROOT + 'README.md'])
     assert result.exit_code == 0
-    image_hash, published_dt, provenance, readme = get_published_info(snapper_conn, PG_MNT, 'v1')
+    image_hash, published_dt, deps, readme, schemata, previews = get_published_info(snapper_conn, PG_MNT, 'v1')
     assert image_hash == local_head
-    assert provenance == []
+    assert deps == []
     assert readme == "Test readme for a test dataset."
+    assert schemata == {'fruits': [['fruit_id', 'integer', False],
+                                   ['name', 'character varying', False]],
+                        'vegetables': [['vegetable_id', 'integer', False],
+                                       ['name', 'character varying', False]]}
+    assert previews == {'fruits': [[1, 'apple'], [2, 'orange'], [3, 'mayonnaise'], [4, 'mustard']],
+                        'vegetables': [[1, 'potato'], [2, 'carrot']]}
 
 
 def test_sgfile(empty_pg_conn, snapper_conn):
@@ -279,7 +285,7 @@ def test_sgfile_rerun_update(empty_pg_conn, snapper_conn):
     output_v2 = get_current_head(empty_pg_conn, 'output')
     assert result.exit_code == 0
     assert provenance(empty_pg_conn, 'output', output_v2) == \
-        [('test_pg_mount', get_tagged_id(snapper_conn, 'test_pg_mount', 'v2'))]
+           [('test_pg_mount', get_tagged_id(snapper_conn, 'test_pg_mount', 'v2'))]
 
     # Now rerun the output:latest against the latest version of everything.
     # In this case, this should all resolve to the same version of test_pg_mount (v2) and not produce

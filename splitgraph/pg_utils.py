@@ -100,7 +100,7 @@ def _get_column_names_types(conn, mountpoint, table_name):
         return cur.fetchall()
 
 
-def _get_full_table_schema(conn, mountpoint, table_name):
+def get_full_table_schema(conn, mountpoint, table_name):
     # Generates a list of (column ordinal, name, data type, is_pk), used to detect
     # schema changes like columns being dropped/added/renamed or type changes.
     with conn.cursor() as cur:

@@ -3,7 +3,7 @@ import pytest
 from splitgraph.commands import commit, diff, checkout
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler import get_snap_parent, get_current_head, get_table, get_table_with_format
-from splitgraph.pg_utils import _get_full_table_schema, get_primary_keys
+from splitgraph.pg_utils import get_full_table_schema, get_primary_keys
 from test.splitgraph.conftest import PG_MNT
 
 TEST_CASES = [
@@ -34,11 +34,11 @@ def _reassign_ordinals(schema):
 def test_schema_changes(sg_pg_conn, test_case):
     action, expected_new_schema = test_case
 
-    assert _get_full_table_schema(sg_pg_conn, PG_MNT, 'fruits') == OLD_SCHEMA
+    assert get_full_table_schema(sg_pg_conn, PG_MNT, 'fruits') == OLD_SCHEMA
     with sg_pg_conn.cursor() as cur:
         cur.execute(action)
     sg_pg_conn.commit()
-    assert _get_full_table_schema(sg_pg_conn, PG_MNT, 'fruits') == expected_new_schema
+    assert get_full_table_schema(sg_pg_conn, PG_MNT, 'fruits') == expected_new_schema
 
     head = get_current_head(sg_pg_conn, PG_MNT)
     new_head = commit(sg_pg_conn, PG_MNT)
@@ -47,13 +47,13 @@ def test_schema_changes(sg_pg_conn, test_case):
     assert get_table_with_format(sg_pg_conn, PG_MNT, 'fruits', new_head, 'DIFF') is None
     new_snap = get_table_with_format(sg_pg_conn, PG_MNT, 'fruits', new_head, 'SNAP')
     assert new_snap is not None
-    assert _get_full_table_schema(sg_pg_conn, SPLITGRAPH_META_SCHEMA, new_snap) == _reassign_ordinals(expected_new_schema)
+    assert get_full_table_schema(sg_pg_conn, SPLITGRAPH_META_SCHEMA, new_snap) == _reassign_ordinals(expected_new_schema)
 
     checkout(sg_pg_conn, PG_MNT, head)
-    assert _get_full_table_schema(sg_pg_conn, PG_MNT, 'fruits') == OLD_SCHEMA
+    assert get_full_table_schema(sg_pg_conn, PG_MNT, 'fruits') == OLD_SCHEMA
     checkout(sg_pg_conn, PG_MNT, new_head)
 
-    assert _get_full_table_schema(sg_pg_conn, PG_MNT, 'fruits') == _reassign_ordinals(expected_new_schema)
+    assert get_full_table_schema(sg_pg_conn, PG_MNT, 'fruits') == _reassign_ordinals(expected_new_schema)
 
 
 def test_pk_preserved_on_checkout(sg_pg_conn):

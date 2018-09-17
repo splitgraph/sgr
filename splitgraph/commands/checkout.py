@@ -110,26 +110,29 @@ def checkout(conn, mountpoint, image_hash=None, tag=None, tables=None, keep_down
 
 
 @contextmanager
-def materialized_table(conn, mountpoint, table_name, snap):
-    """A context manager that returns a pointer to a read-only materialized table. If the table is already stored
-    as a SNAP, this doesn't use any extra space. Otherwise, the table is materialized and deleted on exit from the
-    context manager."""
-    if snap is not None:
-        with conn.cursor() as cur:
-            # See if the table snapshot already exists, otherwise reconstruct it
-            object_id = get_table_with_format(conn, mountpoint, table_name, snap, 'SNAP')
-            if object_id is None:
-                # Materialize the SNAP into a new object
-                new_id = get_random_object_id()
-                materialize_table(conn, mountpoint, snap, table_name, new_id)
-                register_table(conn, mountpoint, table_name, snap, new_id)
-                yield new_id
-                # Maybe some cache management/expiry strategies here
-                cur.execute(
-                    SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)))
-                deregister_table_object(conn, object_id)
-            else:
-                yield object_id
-    else:
+def materialized_table(conn, mountpoint, table_name, image_hash):
+    """A context manager that returns a pointer to a read-only materialized table in a given image.
+    If the table is already stored as a SNAP, this doesn't use any extra space.
+    Otherwise, the table is materialized and deleted on exit from the context manager.
+    :param conn: Psycopg connection object
+    :param mountpoint: Mounpoint that the table belongs to
+    :param table_name: Name of the table
+    :param image_hash: Image hash to materialize
+    :return: (mountpoint, table_name) where the materialized table is located.
+    The table must not be changed, as it might be a pointer to a real SG SNAP object.
+    """
+    if image_hash is None:
         # No snapshot -- just return the current staging table.
-        yield table_name
+        yield mountpoint, table_name
+    # See if the table snapshot already exists, otherwise reconstruct it
+    object_id = get_table_with_format(conn, mountpoint, table_name, image_hash, 'SNAP')
+    if object_id is None:
+        # Materialize the SNAP into a new object
+        new_id = get_random_object_id()
+        materialize_table(conn, mountpoint, image_hash, table_name, new_id,
+                          destination_mountpoint=SPLITGRAPH_META_SCHEMA)
+        yield SPLITGRAPH_META_SCHEMA, new_id
+        # Maybe some cache management/expiry strategies here
+        delete_objects(conn, [new_id])
+    else:
+        yield SPLITGRAPH_META_SCHEMA, object_id

@@ -1,5 +1,4 @@
-import json
-
+from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.constants import REGISTRY_META_SCHEMA
@@ -18,8 +17,10 @@ def _create_registry_schema(conn):
                         tag        VARCHAR NOT NULL,
                         image_hash VARCHAR NOT NULL,
                         published  TIMESTAMP,
-                        provenance VARCHAR,
-                        readme     VARCHAR NOT NULL,
+                        provenance JSON,
+                        readme     VARCHAR,
+                        schemata   JSON,
+                        previews   JSON,
                         PRIMARY KEY (repository, tag))""").format(Identifier(REGISTRY_META_SCHEMA),
                                                                   Identifier("images")))
 
@@ -31,22 +32,35 @@ def ensure_registry_schema(conn):
             _create_registry_schema(conn)
 
 
-def publish_tag(conn, repository, tag, image_hash, published, provenance, readme):
+def publish_tag(conn, repository, tag, image_hash, published, provenance, readme, schemata, previews):
+    """
+    Publishes a given tag in the remote catalog. Should't be called directly.
+    Use splitgraph.commands.publish instead.
+    :param conn: Psycopg connection object
+    :param repository: Repository name
+    :param tag: Tag to publish
+    :param image_hash: Image hash corresponding to the given tag.
+    :param published: Publish time (datetime)
+    :param provenance: A list of tuples (repo_name, image_hash) showing what the image was created from
+    :param readme: An optional README for the repo
+    :param schemata: Dict mapping table name to a list of (column name, column type)
+    :param previews: Dict mapping table name to a list of tuples with a preview
+    """
     with conn.cursor() as cur:
         cur.execute(_insert("images",
-                            ['repository', 'tag', 'image_hash', 'published', 'provenance', 'readme'],
-                            REGISTRY_META_SCHEMA), (repository, tag, image_hash, published, json.dumps(provenance),
-                                                    readme))
+                            ['repository', 'tag', 'image_hash', 'published',
+                             'provenance', 'readme', 'schemata', 'previews'],
+                            REGISTRY_META_SCHEMA), (repository, tag, image_hash, published, Json(provenance),
+                                                    readme, Json(schemata), Json(previews)))
 
 
 def get_published_info(conn, repository, tag):
     with conn.cursor() as cur:
         cur.execute(_select("images",
-                            'image_hash,published,provenance,readme',
+                            'image_hash,published,provenance,readme,schemata,previews',
                             "repository = %s AND tag = %s",
                             REGISTRY_META_SCHEMA), (repository, tag))
-        image_hash, published, provenance, readme = cur.fetchone()
-        return image_hash, published, json.loads(provenance), readme
+        return cur.fetchone()
 
 
 def unpublish_repository(conn, repository):

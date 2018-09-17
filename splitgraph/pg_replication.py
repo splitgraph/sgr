@@ -8,7 +8,7 @@ from splitgraph.meta_handler import get_all_tables, get_table, register_table, e
 from splitgraph.meta_handler import get_current_mountpoints_hashes, get_table_with_format, register_object, \
     get_object_parents, get_object_format
 from splitgraph.pg_utils import copy_table, get_primary_keys, _get_column_names, _get_column_names_types, \
-    _get_full_table_schema
+    get_full_table_schema
 
 LOGICAL_DECODER = 'wal2json'
 REPLICATION_SLOT = 'sg_replication'
@@ -87,6 +87,8 @@ def record_pending_changes(conn):
     # so there's no point consuming the WAL for it.
     mountpoints_tables = {m: [t for t in get_all_tables(conn, m) if get_table(conn, m, t, head)]
                           for m, head in get_current_mountpoints_hashes(conn)}
+    if not mountpoints_tables:
+        return
     while True:
         # Consume the changes and record them in chunks.
         changes = _consume_changes(conn, upto_nchanges=100000, filter_tables=mountpoints_tables)
@@ -469,10 +471,15 @@ def table_schema_changed(conn, mountpoint, table_name, image_1, image_2=None):
     # image_2 = None here means the current staging area.
     if image_2 is not None:
         snap_2 = get_closest_parent_snap_object(conn, mountpoint, table_name, image_2)[0]
-        return _get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_1) != \
-               _get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_2)
-    return _get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_1) != \
-           _get_full_table_schema(conn, mountpoint, table_name)
+        return get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_1) != \
+               get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_2)
+    return get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_1) != \
+           get_full_table_schema(conn, mountpoint, table_name)
+
+
+def get_schema_at(conn, mountpoint, table_name, image_hash):
+    snap_1 = get_closest_parent_snap_object(conn, mountpoint, table_name, image_hash)[0]
+    return get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_1)
 
 
 def get_closest_parent_snap_object(conn, mountpoint, table, image):

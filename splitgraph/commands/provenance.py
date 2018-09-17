@@ -1,4 +1,3 @@
-import json
 import logging
 
 from splitgraph.constants import SplitGraphException
@@ -18,7 +17,6 @@ def provenance(conn, mountpoint, image_hash):
     while image_hash:
         parent, prov_type, prov_data = get_snap_parent_provenance(conn, mountpoint, image_hash)
         if prov_type == 'IMPORT':
-            prov_data = json.loads(prov_data)
             result.add((prov_data['source'], prov_data['source_hash']))
         elif prov_type == 'FROM':
             # If we reached "FROM", then that's the first statement in the image build process (as it bases the build
@@ -46,7 +44,6 @@ def prov_command_to_sgfile(prov_type, prov_data, image_hash, source_replacement)
     :return: String with the sgfile command.
     """
     if prov_type == "IMPORT":
-        prov_data = json.loads(prov_data)
         repo, image = prov_data['source'], prov_data['source_hash']
         result = "FROM %s:%s IMPORT " % (repo, source_replacement.get(repo, image))
         result += ", ".join("%s AS %s" % (tn if not q else "{" + tn.replace("}", "\\}") + "}", ta) for tn, ta, q

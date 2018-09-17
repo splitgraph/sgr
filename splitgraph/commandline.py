@@ -414,13 +414,16 @@ def rerun_c(mountpoint, snapshot_or_tag, update, repo_image):
 @click.argument('repository')
 @click.argument('tag')
 @click.option('-r', '--readme', type=click.File('r'))
-def publish_c(repository, tag, readme):
+@click.option('--skip-provenance', is_flag=True, help='Don''t include provenance in the published information.')
+@click.option('--skip-previews', is_flag=True, help='Don''t include table previews in the published information.')
+def publish_c(repository, tag, readme, skip_provenance, skip_previews):
     conn = _conn()
     if readme:
         readme = readme.read()
     else:
         readme = ""
-    publish(conn, repository, tag, readme)
+    publish(conn, repository, tag, readme, include_provenance=not skip_provenance,
+            include_table_previews=not skip_previews)
     conn.commit()
     conn.close()
 

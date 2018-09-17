@@ -95,14 +95,14 @@ def diff(conn, mountpoint, table_name, image_1, image_2, aggregate=False):
             return result
 
         # Finally, resort to manual diffing (images on different branches or reverse comparison order).
-        with materialized_table(conn, mountpoint, table_name, image_1) as table_1:
-            with materialized_table(conn, mountpoint, table_name, image_2) as table_2:
+        with materialized_table(conn, mountpoint, table_name, image_1) as (mp_1, table_1):
+            with materialized_table(conn, mountpoint, table_name, image_2) as (mp_2, table_2):
                 # Check both tables out at the same time since then table_2 calculation can be based
                 # on table_1's snapshot.
-                cur.execute(SQL("SELECT * FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                cur.execute(SQL("SELECT * FROM {}.{}").format(Identifier(mp_1),
                                                               Identifier(table_1)))
                 left = cur.fetchall()
-                cur.execute(SQL("SELECT * FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                cur.execute(SQL("SELECT * FROM {}.{}").format(Identifier(mp_2),
                                                               Identifier(table_2)))
                 right = cur.fetchall()
 
