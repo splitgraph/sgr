@@ -1,5 +1,5 @@
-from configparser import SafeConfigParser, ExtendedInterpolation
-
+from configparser import ConfigParser, ExtendedInterpolation
+import os
 
 def hoist_section(config_dict, hoist_section='defaults'):
     '''
@@ -119,9 +119,20 @@ def transform_config_dict(config_dict, **kwargs):
     config_dict = accumulate_lists(config_dict, **kwargs)
     return config_dict
 
+# TODO: Get this cleaned up for parsing environment variables as default
+#
+# class EnvInterpolation(ExtendedInterpolation):
+#     def before_get(self, parser, section, option, value, defaults):
+#         return os.path.expandvars(value)
+#         # if expanded == value:
+#         #     return super(ExtendedInterpolation, self).before_get(parser, section, option, value, defaults)
+#         # else:
+#         #     return expanded
 
 def get_config_dict_from_file(sg_file, **kwargs):
-    config = SafeConfigParser(interpolation=ExtendedInterpolation())
+    # TODO
+    # config = ConfigParser(interpolation=EnvInterpolation())
+    config = ConfigParser(interpolation=ExtendedInterpolation())
 
     # Convert all keys to uppercase
     config.optionxform = lambda option: option.upper()
