@@ -444,12 +444,18 @@ def _write_config_file(fs, lines):
 
     # If running tests in docker, SG_CONFIG_FILE is already set and would
     # override our fake_config_file. In that case explicitly set SG_CONFIG_FILE
+    pivot_sg_config_file = None
     if os.environ.get('SG_CONFIG_FILE', None) is not None:
+        pivot_sg_config_file = os.environ['SG_CONFIG_FILE']
         os.environ['SG_CONFIG_FILE'] = fake_config_file
 
     with open(fake_config_file, 'w') as f:
         for line in lines:
             f.write('%s\n' % line)
+
+    # Restore old value to avoid messing up other tests
+    if pivot_sg_config_file is not None:
+        os.environ['SG_CONFIG_FILE'] = os.environ['SG_CONFIG_FILE']
 
 def test_key_set_in_config_file(fs):
 
@@ -558,7 +564,8 @@ def test_env_var_supercedes_config_file(fs):
 
 
 def test_lookup_override_parser():
+
     assert _parse_paths_overrides(lookup_path="snapper",
                                   override_path="override_repo_1:local")\
         == ([('snapper', 5431, 'clientuser', 'supersecure', 'cachedb')],
-            {'override_repo_1': ('localhost', 5432, 'clientuser', 'supersecure', 'cachedb')})
+            {'override_repo_1': ('pgcache', 5432, 'clientuser', 'supersecure', 'cachedb')})
