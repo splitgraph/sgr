@@ -6,7 +6,7 @@ from splitgraph.config.argument_config import get_arg_tuples, get_argument_confi
 from splitgraph.config.config_file_config import hoist_section
 from splitgraph.config.environment_config import get_environment_config_value
 from splitgraph.config import keys
-from splitgraph.config.repo_lookups import _parse_paths_overrides
+from splitgraph.config.repo_lookups import _parse_paths_overrides, get_remote_connection_params
 from splitgraph.config.system_config import (
     get_explicit_config_file_location,
     get_explicit_config_file_dirs,
@@ -545,6 +545,7 @@ def test_arg_flag_supercedes_env_var(fs):
 
             assert config['SG_NAMESPACE'] == 'namespace-from-arg'
 
+
 def test_env_var_supercedes_config_file(fs):
     _write_config_file(fs, [
         '[defaults]',
@@ -564,8 +565,7 @@ def test_env_var_supercedes_config_file(fs):
 
 
 def test_lookup_override_parser():
-
     assert _parse_paths_overrides(lookup_path="snapper",
                                   override_path="override_repo_1:local")\
         == ([('snapper', 5431, 'clientuser', 'supersecure', 'cachedb')],
-            {'override_repo_1': ('pgcache', 5432, 'clientuser', 'supersecure', 'cachedb')})
+            {'override_repo_1': get_remote_connection_params('local')})

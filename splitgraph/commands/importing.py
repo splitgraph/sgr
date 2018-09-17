@@ -113,7 +113,7 @@ def _register_and_checkout_new_table(conn, do_checkout, object_id, target_hash, 
     if do_checkout:
         copy_table(conn, SPLITGRAPH_META_SCHEMA, object_id, target_mountpoint, target_table)
         if not get_primary_keys(conn, target_mountpoint, target_table):
-            logging.warn(
+            logging.warning(
                 "Table %s has no primary key. This means that changes will have to be recorded as "
                 "whole-row.", target_table)
             with conn.cursor() as cur:
