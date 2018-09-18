@@ -1,3 +1,4 @@
+from datetime import datetime
 from random import getrandbits, randrange
 from timeit import timeit
 
@@ -38,27 +39,50 @@ def alter_random_row(conn, mountpoint, table, table_size, update_size):
 def bench_commit_chain_checkout(commits, table_size, update_size):
     unmount(conn, MOUNTPOINT)
     init(conn, MOUNTPOINT)
+    print("START")
+    print(datetime.now())
     create_random_table(conn, MOUNTPOINT, "test", table_size)
+    print("SNAP CREATED")
+    print(datetime.now())
     for i in range(commits):
         alter_random_row(conn, MOUNTPOINT, "test", table_size, update_size)
+    print("COMMITS MADE")
+    print(datetime.now())
     rev = get_current_head(conn, MOUNTPOINT)
     #print(timeit("checkout(conn, MOUNTPOINT, '%s')" % rev, "from __main__ import conn, MOUNTPOINT, checkout", number=3))
 
 if __name__ == '__main__':
-    for N in [10, 100, 1000, 5000, 10000, 20000]:
-        print(N)
-        bench_commit_chain_checkout(N)
-    bench_commit_chain_checkout(commits=10, table_size=10000000, update_size=10000)
-    # N = 1000
-    # unmount(conn, MOUNTPOINT)
-    # init(conn, MOUNTPOINT)
-    # create_random_table(conn, MOUNTPOINT, "test", N)
-    # commit(conn, MOUNTPOINT)
-    #
-    #
-    # import cProfile
-    # import pstats
-    # cProfile.run("checkout(conn, MOUNTPOINT, '8792466ac755ac65a384563db889aa6e616f48cddb1f35b3e216ca0bad786fe1')", 'checkout_fast.cprofile')
-    #
-    # ps = pstats.Stats('checkout_fast.cprofile')
-    # ps_2 = pstats.Stats('checkout.cprofile')
+    for _ in range(3):
+        table_size = 100000
+        update_size = 1000
+        commits = 100
+
+
+        unmount(conn, MOUNTPOINT)
+        init(conn, MOUNTPOINT)
+        print("START")
+        print(datetime.now())
+        create_random_table(conn, MOUNTPOINT, "test", table_size)
+        print("SNAP CREATED")
+        print(datetime.now())
+        for i in range(commits):
+            alter_random_row(conn, MOUNTPOINT, "test", table_size, update_size)
+        print("COMMITS MADE")
+        print(datetime.now())
+        rev = get_current_head(conn, MOUNTPOINT)
+        #print(timeit("checkout(conn, MOUNTPOINT, '%s')" % rev, "from __main__ import conn, MOUNTPOINT, checkout", number=3))
+
+
+        # N = 1000
+        # unmount(conn, MOUNTPOINT)
+        # init(conn, MOUNTPOINT)
+        # create_random_table(conn, MOUNTPOINT, "test", N)
+        # commit(conn, MOUNTPOINT)
+        #
+        #
+        # import cProfile
+        # import pstats
+        # cProfile.run("checkout(conn, MOUNTPOINT, '8792466ac755ac65a384563db889aa6e616f48cddb1f35b3e216ca0bad786fe1')", 'checkout_fast.cprofile')
+        #
+        # ps = pstats.Stats('checkout_fast.cprofile')
+        # ps_2 = pstats.Stats('checkout.cprofile')

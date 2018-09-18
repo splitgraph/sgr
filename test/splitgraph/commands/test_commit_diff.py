@@ -192,9 +192,10 @@ def test_non_ordered_inserts_with_pk(include_snap, sg_pg_conn):
         cur.execute("""SELECT * FROM output.test""")
         assert cur.fetchall() == [(1, 2, 3, 'four')]
     change = diff(sg_pg_conn, 'output', 'test', head, new_head)
-    # Looks like wal2json produces diffs in ordinal order -- do we need to keep the actual column names?
-    # Maybe for when not all columns have values on insert?
-    assert change == [((1,), 0, {'c': ['b', 'c', 'd'], 'v': [2, 3, 'four']})]
+    assert len(change) == 1
+    assert change[0][0] == (1,)
+    assert change[0][1] == 0
+    assert sorted(zip(change[0][2]['c'], change[0][2]['v'])) == [('b', 2), ('c', 3), ('d', 'four')]
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
