@@ -1,10 +1,12 @@
-from psycopg2.extras import execute_batch
 from random import getrandbits, sample
-from splitgraph.pg_replication import dump_pending_changes, replication_slot_exists, has_pending_changes
 from timeit import timeit
 
-from splitgraph.commands import *
+from psycopg2.extras import execute_batch
+
 from splitgraph.commandline import _conn
+from splitgraph.commands import *
+from splitgraph.pg_replication import dump_pending_changes
+
 conn = _conn()
 MOUNTPOINT = "splitgraph_benchmark"
 

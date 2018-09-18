@@ -1,160 +1,59 @@
 import json
 
-from psycopg2.extras import execute_batch
+from psycopg2.extras import execute_batch, Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.constants import get_random_object_id, SPLITGRAPH_META_SCHEMA, SplitGraphException
 from splitgraph.meta_handler import get_all_tables, get_table, register_table, ensure_metadata_schema
-from splitgraph.meta_handler import get_current_mountpoints_hashes, get_table_with_format, register_object, \
+from splitgraph.meta_handler import get_table_with_format, register_object, \
     get_object_parents, get_object_format
+from splitgraph.pg_audit import manage_audit_triggers, discard_pending_changes
 from splitgraph.pg_utils import copy_table, get_primary_keys, _get_column_names, _get_column_names_types, \
     get_full_table_schema
 
-LOGICAL_DECODER = 'wal2json'
-REPLICATION_SLOT = 'sg_replication'
-# Make sure we don't flip replication off-on when a function with the decorator calls another one with the same
-# decorator.
-DECORATOR_ACTIVE = False
 
-
-def suspend_replication(func):
-    # A decorator to be put around various SG commands that performs general admin and replication management
-    # (makes sure the metadata schema exists and suspends replication so that commits/system bookkeeping doesn't get
-    # reflected in the consumed logical replication stream).
+def manage_audit(func):
+    # A decorator to be put around various SG commands that performs general admin and auditing management
+    # (makes sure the metadata schema exists and delete/add required audit triggers)
     def wrapped(*args, **kwargs):
         conn = args[0]
-        global DECORATOR_ACTIVE
-        if not DECORATOR_ACTIVE:
-            DECORATOR_ACTIVE = True
-            try:
-                ensure_metadata_schema(conn)
-                record_pending_changes(conn)
-                stop_replication(conn)
-                func(*args, **kwargs)
-            finally:
-                conn.commit()
-                start_replication(conn)
-                DECORATOR_ACTIVE = False
-        else:
+        try:
+            ensure_metadata_schema(conn)
+            manage_audit_triggers(conn)
             func(*args, **kwargs)
+        finally:
+            conn.commit()
+            manage_audit_triggers(conn)
 
     return wrapped
 
 
-def replication_slot_exists(conn):
-    with conn.cursor() as cur:
-        cur.execute("""SELECT 1 FROM pg_replication_slots WHERE slot_name = %s""", (REPLICATION_SLOT,))
-        return cur.fetchone() is not None
-
-
-def start_replication(conn):
-    with conn.cursor() as cur:
-        cur.execute("""SELECT 'init' FROM pg_create_logical_replication_slot(%s, %s)""",
-                    (REPLICATION_SLOT, LOGICAL_DECODER))
-
-
-def stop_replication(conn):
-    if replication_slot_exists(conn):
-        with conn.cursor() as cur:
-            cur.execute("""SELECT 'stop' FROM pg_drop_replication_slot(%s)""", (REPLICATION_SLOT,))
-
-
-def _consume_changes(conn, upto_nchanges=None, filter_tables=None):
-    # Consuming changes means they won't be returned again from this slot. Perhaps worth doing peeking first
-    # in case we crash after consumption but before recording changes.
-    if not replication_slot_exists(conn):
-        return []
-
-    if not filter_tables:
-        all_mountpoints = [m[0] for m in get_current_mountpoints_hashes(conn)]
-        table_filter_param = ','.join('%s.*' % m for m in all_mountpoints)
-    else:
-        table_filter_param = ','.join('%s.%s' % (m, t) for m, ts in filter_tables.items() for t in ts)
-
-    with conn.cursor() as cur:
-        cur.execute("""SELECT data FROM pg_logical_slot_get_changes(%s, NULL, %s, 'add-tables', %s)""",
-                    (REPLICATION_SLOT, upto_nchanges, table_filter_param))
-
-        return cur.fetchall()
-
-
+# "Truncate" kind is missing
 KIND = {'insert': 0, 'delete': 1, 'update': 2}
-
-
-def record_pending_changes(conn):
-    # Decode the changeset produced by wal2json and save it to the pending_changes table.
-    # If the table doesn't exist in the current commit, we'll be storing it as a full snapshot,
-    # so there's no point consuming the WAL for it.
-    mountpoints_tables = {m: [t for t in get_all_tables(conn, m) if get_table(conn, m, t, head)]
-                          for m, head in get_current_mountpoints_hashes(conn)}
-    if not mountpoints_tables:
-        return
-    while True:
-        # Consume the changes and record them in chunks.
-        changes = _consume_changes(conn, upto_nchanges=100000, filter_tables=mountpoints_tables)
-        if not changes:
-            return
-        to_insert = []  # a list of tuples (schema, table, kind, change)
-        for changeset in changes:
-            changeset = json.loads(changeset[0])['change']
-            for change in changeset:
-                # kind: 0 is added, 1 is removed, 2 is updated.
-                # change: json
-                kind = change.pop('kind')
-                mountpoint = change.pop('schema')
-                table = change.pop('table')
-
-                if mountpoint not in mountpoints_tables or table not in mountpoints_tables[mountpoint]:
-                    continue
-
-                to_insert.append((mountpoint, table, KIND[kind], json.dumps(change)))
-
-        with conn.cursor() as cur:
-            execute_batch(cur, SQL("INSERT INTO {}.{} VALUES (%s, %s, %s, %s)").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                                       Identifier("pending_changes")),
-                          to_insert)
-        conn.commit()  # Slightly eww: a diff() also dumps pending changes, which means that if the diff
-        # doesn't commit, the changes will have been consumed but not saved.
-
-
-def discard_pending_changes(conn, mountpoint):
-    with conn.cursor() as cur:
-        cur.execute(SQL("DELETE FROM {}.{} WHERE mountpoint = %s").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                          Identifier("pending_changes")),
-                    (mountpoint,))
-    conn.commit()
-
-
-def has_pending_changes(conn, mountpoint):
-    record_pending_changes(conn)
-    with conn.cursor() as cur:
-        cur.execute(SQL("SELECT 1 FROM {}.{} WHERE mountpoint = %s").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                            Identifier("pending_changes")),
-                    (mountpoint,))
-        return cur.fetchone() is not None
+AUDIT_KIND = {'I': 0, 'D': 1, 'U': 2}
 
 
 def dump_pending_changes(conn, mountpoint, table, aggregate=False):
     # First, make sure we're up to date on changes.
-    record_pending_changes(conn)
     with conn.cursor() as cur:
         if aggregate:
             cur.execute(SQL(
-                "SELECT kind, count(kind) FROM {}.{} WHERE mountpoint = %s AND table_name = %s GROUP BY kind").format(
-                Identifier(SPLITGRAPH_META_SCHEMA),
-                Identifier("pending_changes")),
-                (mountpoint, table))
-            return cur.fetchall()
+                "SELECT action, count(action) FROM {}.{} "
+                "WHERE schema_name = %s AND table_name = %s GROUP BY action").format(Identifier("audit"),
+                                                                                     Identifier("logged_actions")),
+                        (mountpoint, table))
+            return [(AUDIT_KIND[k], c) for k, c in cur.fetchall()]
 
-        cur.execute(SQL("SELECT kind, change FROM {}.{} WHERE mountpoint = %s AND table_name = %s").format(
-            Identifier(SPLITGRAPH_META_SCHEMA),
-            Identifier("pending_changes")),
-            (mountpoint, table))
+        cur.execute(SQL(
+            "SELECT action, row_data, changed_fields FROM {}.{} "
+            "WHERE schema_name = %s AND table_name = %s").format(Identifier("audit"),
+                                                                 Identifier("logged_actions")),
+                    (mountpoint, table))
         repl_id = _get_replica_identity(conn, mountpoint, table)
         ri_cols, _ = zip(*repl_id)
         result = []
-        for kind, change in cur:
-            result.extend(_convert_wal_change(kind, json.loads(change), ri_cols))
+        for action, row_data, changed_fields in cur:
+            result.extend(_convert_audit_change(action, row_data, changed_fields, ri_cols))
         return result
 
 
@@ -179,11 +78,8 @@ def _create_diff_table(conn, object_id, replica_identity_cols_types):
         query += SQL(", PRIMARY KEY (") + SQL(',').join(
             SQL("{}").format(Identifier(c)) for c, _ in replica_identity_cols_types)
         query += SQL("));")
-
-        # Also create an index on the replica identity since we'll be querying that to conflate changes.
-        query += SQL("CREATE INDEX ON {}.{} (").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)) + \
-                 SQL(',').join(SQL("{}").format(Identifier(c)) for c, _ in replica_identity_cols_types) + SQL(');')
         cur.execute(query)
+        # RI is PK anyway, so has an index by default
 
 
 def _generate_where_clause(mountpoint, table, cols, table_2=None, mountpoint_2=None):
@@ -195,7 +91,7 @@ def _generate_where_clause(mountpoint, table, cols, table_2=None, mountpoint_2=N
         Identifier(mountpoint_2), Identifier(table_2), Identifier(c)) for c in cols)
 
 
-def _split_ri_cols(kind, change, ri_cols):
+def _split_ri_cols(action, row_data, changed_fields, ri_cols):
     """
     :return: `(ri_vals, non_ri_cols, non_ri_vals)`: a tuple of 3 lists:
         * `ri_vals`: values identifying the replica identity (RI) of a given tuple (matching column names in `ri_cols`)
@@ -204,32 +100,29 @@ def _split_ri_cols(kind, change, ri_cols):
     """
     non_ri_cols = []
     non_ri_vals = []
-    ri_vals = []
+    ri_vals = [None] * len(ri_cols)
 
-    if kind == 0:
-        for cc, cv in zip(change['columnnames'], change['columnvalues']):
+    if action == 'I':
+        for cc, cv in row_data.items():
             if cc in ri_cols:
-                ri_vals.append(cv)
+                ri_vals[ri_cols.index(cc)] = cv
             else:
                 non_ri_cols.append(cc)
                 non_ri_vals.append(cv)
-    elif kind == 1:
-        for cc, cv in zip(change['oldkeys']['keynames'], change['oldkeys']['keyvalues']):
+    elif action == 'D':
+        for cc, cv in row_data.items():
             if cc in ri_cols:
-                ri_vals.append(cv)
-    elif kind == 2:
-        for cc, cv in zip(change['oldkeys']['keynames'], change['oldkeys']['keyvalues']):
+                ri_vals[ri_cols.index(cc)] = cv
+    elif action == 'U':
+        for cc, cv in row_data.items():
             if cc in ri_cols:
-                ri_vals.append(cv)
-        for cc, cv in zip(change['columnnames'], change['columnvalues']):
+                ri_vals[ri_cols.index(cc)] = cv
+        for cc, cv in changed_fields.items():
             # Hmm: these might intersect with the RI values (e.g. when the whole tuple is the replica identity and
             # we're updating some of it)
             non_ri_cols.append(cc)
             non_ri_vals.append(cv)
 
-    if len(ri_vals) != len(ri_cols):
-        raise SplitGraphException(
-            "Not all replica identity columns (of %r) were extracted from change %r!" % (ri_cols, change))
     return ri_vals, non_ri_cols, non_ri_vals
 
 
@@ -246,21 +139,21 @@ def _recalculate_disjoint_ri_cols(ri_cols, ri_vals, non_ri_cols, non_ri_vals):
     return ri_vals, new_nric, new_nriv
 
 
-def _merge_wal_changes(old_change_data, new_change_data):
+def merge_changes(old_change_data, new_change_data):
     old_change_data = {k: v for k, v in zip(old_change_data['c'], old_change_data['v'])}
     old_change_data.update({k: v for k, v in zip(new_change_data['c'], new_change_data['v'])})
     return {'c': list(old_change_data.keys()), 'v': list(old_change_data.values())}
 
 
-def _convert_wal_change(kind, change, ri_cols):
+def _convert_audit_change(action, row_data, changed_fields, ri_cols):
     """
-    Converts a change written by wal2json into our internal format:
-    :returns: [(pk, kind, extra data)] (more than 1 change might be emitted from a single WAL entry).
+    Converts the audit log entry into our internal format.
+    :returns: [(pk, kind, extra data)] (more than 1 change might be emitted from a single audit entry).
     """
-    ri_vals, non_ri_cols, non_ri_vals = _split_ri_cols(kind, change, ri_cols)
+    ri_vals, non_ri_cols, non_ri_vals = _split_ri_cols(action, row_data, changed_fields, ri_cols)
     pk_changed = any(c in ri_cols for c in non_ri_cols)
     if pk_changed:
-        assert kind == 2
+        assert action == 'U'
         # If it's an update that changed the PK (e.g. the table has no replica identity so we treat the whole
         # tuple as a primary key), then we turn it into a delete old tuple + insert new one.
         # This might happen with updates in any case, since the WAL seems to output the old and the new values for the
@@ -271,7 +164,8 @@ def _convert_wal_change(kind, change, ri_cols):
         ri_vals, non_ri_cols, non_ri_vals = _recalculate_disjoint_ri_cols(ri_cols, ri_vals, non_ri_cols, non_ri_vals)
         result.append((tuple(ri_vals), 0, {'c': non_ri_cols, 'v': non_ri_vals}))
         return result
-    return [(tuple(ri_vals), kind, {'c': non_ri_cols, 'v': non_ri_vals} if kind in (0, 2) else None)]
+    return [(tuple(ri_vals), AUDIT_KIND[action],
+             {'c': non_ri_cols, 'v': non_ri_vals} if action in ('I', 'U') else None)]
 
 
 def _conflate_changes(changeset, new_changes):
@@ -302,7 +196,7 @@ def _conflate_changes(changeset, new_changes):
                     raise SplitGraphException("TODO logic error")
             elif change_kind == 2:  # Update over insert/update: merge the two changes.
                 if old_change[0] == 0 or old_change[0] == 2:
-                    new_data = _merge_wal_changes(json.loads(old_change[1]), change_data)
+                    new_data = merge_changes(old_change[1], change_data)
                     changeset[change_pk] = (old_change[0], new_data)
 
 
@@ -322,8 +216,8 @@ def commit_pending_changes(conn, mountpoint, current_head, image_hash, include_s
     """
     with conn.cursor() as cur:
         cur.execute(SQL("""SELECT DISTINCT(table_name) FROM {}.{}
-                       WHERE mountpoint = %s""").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                        Identifier("pending_changes")), (mountpoint,))
+                       WHERE schema_name = %s""").format(Identifier("audit"),
+                                                         Identifier("logged_actions")), (mountpoint,))
         changed_tables = [c[0] for c in cur.fetchall()]
     for table in get_all_tables(conn, mountpoint):
         table_info = get_table(conn, mountpoint, table, current_head)
@@ -376,14 +270,13 @@ def _record_table_as_diff(conn, mountpoint, image_hash, table, table_info):
     with conn.cursor() as cur:
         # Can't seem to use a server-side cursor here since it doesn't support DELETE FROM RETURNING
         cur.execute(
-            SQL("""DELETE FROM {}.{} WHERE mountpoint = %s AND table_name = %s
-                                   RETURNING kind, change """).format(
-                Identifier(SPLITGRAPH_META_SCHEMA), Identifier("pending_changes")), (mountpoint, table))
-
+            SQL("""DELETE FROM {}.{} WHERE schema_name = %s AND table_name = %s
+                                   RETURNING action, row_data, changed_fields""").format(
+                Identifier("audit"), Identifier("logged_actions")), (mountpoint, table))
         # Accumulate the diff in-memory.
         changeset = {}
-        for kind, change in cur:
-            _conflate_changes(changeset, _convert_wal_change(kind, json.loads(change), ri_cols))
+        for action, row_data, changed_fields in cur:
+            _conflate_changes(changeset, _convert_audit_change(action, row_data, changed_fields, ri_cols))
 
         if changeset:
             changeset = [tuple(list(pk) + [kind_data[0], json.dumps(kind_data[1])]) for pk, kind_data in
@@ -406,6 +299,16 @@ def _record_table_as_diff(conn, mountpoint, image_hash, table, table_info):
                 register_table(conn, mountpoint, table, image_hash, prev_object_id)
 
 
+def _convert_vals(vals):
+    """Psycopg returns jsonb objects as dicts but doesn't actually accept them directly
+    as a query param. Hence, we have to wrap them in the Json datatype when applying a DIFF
+    to a table."""
+    # This might become a bottleneck since we call this for every row in the diff + function
+    # calls are expensive in Python -- maybe there's a better way (e.g. tell psycopg to not convert
+    # things to dicts or apply diffs in-driver).
+    return [v if not isinstance(v, dict) else Json(v) for v in vals]
+
+
 def apply_record_to_staging(conn, object_id, mountpoint, destination):
     """
     Applies a DIFF table stored in `object_id` to destination.
@@ -422,7 +325,7 @@ def apply_record_to_staging(conn, object_id, mountpoint, destination):
     # that we are expected to have the PKs applied to the object table no matter how it originated.
     if sorted(ri_cols) == sorted(_get_column_names(conn, SPLITGRAPH_META_SCHEMA, object_id)):
         raise SplitGraphException("Error determining the replica identity of %s. " % object_id +
-                                  "Have primary key constrants been applied?")
+                                  "Have primary key constraints been applied?")
 
     with conn.cursor() as cur:
         # Apply deletes
@@ -440,7 +343,7 @@ def apply_record_to_staging(conn, object_id, mountpoint, destination):
             # Also for the future: if all column names are the same, we can do a big INSERT.
             action_data = json.loads(row[-1])
             cols_to_insert = list(ri_cols) + action_data['c']
-            vals_to_insert = list(row[:-2]) + action_data['v']
+            vals_to_insert = _convert_vals(list(row[:-2]) + action_data['v'])
 
             query = SQL("INSERT INTO {}.{} (").format(Identifier(mountpoint), Identifier(destination))
             query += SQL(','.join('{}' for _ in cols_to_insert)).format(*[Identifier(c) for c in cols_to_insert])

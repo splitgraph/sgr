@@ -10,7 +10,7 @@ from splitgraph.constants import SPLITGRAPH_META_SCHEMA, SplitGraphException, se
 from splitgraph.meta_handler import get_all_snap_parents, add_new_snap_id, get_remote_for, ensure_metadata_schema, \
     register_objects, set_head, add_remote, register_object_locations, get_external_object_locations, register_tables, \
     get_existing_objects, get_object_meta, get_all_hashes_tags, set_tags
-from splitgraph.pg_replication import suspend_replication
+from splitgraph.pg_replication import manage_audit
 
 
 def _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_mountpoint):
@@ -87,7 +87,7 @@ def pull(conn, mountpoint, remote, download_all=False):
           local_mountpoint=mountpoint, download_all=download_all)
 
 
-@suspend_replication
+@manage_audit
 def clone(conn, remote_mountpoint, remote_conn_string=None,
           local_mountpoint=None, download_all=False, remote_conn=None):
     """

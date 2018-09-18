@@ -9,11 +9,11 @@ from splitgraph.commands.push_pull import clone
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, get_random_object_id
 from splitgraph.meta_handler import get_current_head, add_new_snap_id, register_table, set_head, get_table, \
     get_tables_at, get_all_tables, register_object, get_all_foreign_tables
-from splitgraph.pg_replication import suspend_replication
+from splitgraph.pg_replication import manage_audit
 from splitgraph.pg_utils import copy_table, get_primary_keys, execute_sql_in
 
 
-@suspend_replication
+@manage_audit
 def import_tables(conn, mountpoint, tables, target_mountpoint, target_tables, image_hash=None, foreign_tables=False,
                   do_checkout=True, target_hash=None, table_queries=[]):
     """

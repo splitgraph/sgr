@@ -2,8 +2,8 @@ import logging
 from random import getrandbits
 
 from splitgraph.meta_handler import ensure_metadata_schema, get_current_head, add_new_snap_id, set_head
-from splitgraph.pg_replication import record_pending_changes, commit_pending_changes, stop_replication, \
-    start_replication
+from splitgraph.pg_audit import manage_audit_triggers
+from splitgraph.pg_replication import commit_pending_changes
 
 
 def commit(conn, mountpoint, image_hash=None, include_snap=False, comment=None):
@@ -18,9 +18,9 @@ def commit(conn, mountpoint, image_hash=None, include_snap=False, comment=None):
     :return: The image hash the current state of the mountpoint was committed under.
     """
     ensure_metadata_schema(conn)
-    # required here so that the logical replication sees changes made before the commit in this tx
     conn.commit()
-    record_pending_changes(conn)
+    manage_audit_triggers(conn)
+
     logging.info("Committing %s...", mountpoint)
 
     head = get_current_head(conn, mountpoint)
@@ -33,8 +33,7 @@ def commit(conn, mountpoint, image_hash=None, include_snap=False, comment=None):
 
     commit_pending_changes(conn, mountpoint, head, image_hash, include_snap=include_snap)
 
-    stop_replication(conn)
     set_head(conn, mountpoint, image_hash)
-    conn.commit()  # need to commit before starting replication
-    start_replication(conn)
+    conn.commit()
+    manage_audit_triggers(conn)
     return image_hash

@@ -5,7 +5,7 @@ import pytest
 
 from splitgraph.commands import diff, commit, init, checkout
 from splitgraph.meta_handler import get_current_head, get_all_snap_info, get_snap_parent, get_table
-from splitgraph.pg_replication import has_pending_changes
+from splitgraph.pg_audit import has_pending_changes
 from test.splitgraph.conftest import PG_MNT, MG_MNT
 
 

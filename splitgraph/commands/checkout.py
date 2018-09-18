@@ -7,10 +7,10 @@ from splitgraph.commands.misc import delete_objects
 from splitgraph.commands.object_loading import download_objects
 from splitgraph.constants import get_random_object_id, SplitGraphException, SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler import get_table_with_format, get_remote_for, get_canonical_snap_id, get_tables_at, \
-    get_all_tables, set_head, register_table, deregister_table_object, \
-    get_external_object_locations, get_tagged_id
+    get_all_tables, set_head, get_external_object_locations, get_tagged_id
+from splitgraph.pg_audit import has_pending_changes
 from splitgraph.pg_replication import apply_record_to_staging, discard_pending_changes, \
-    get_closest_parent_snap_object, suspend_replication, has_pending_changes, replication_slot_exists
+    get_closest_parent_snap_object, manage_audit
 from splitgraph.pg_utils import copy_table, get_primary_keys
 
 
@@ -64,7 +64,7 @@ def materialize_table(conn, mountpoint, image_hash, table, destination, destinat
         return fetched_objects if remote_info else set()
 
 
-@suspend_replication
+@manage_audit
 def checkout(conn, mountpoint, image_hash=None, tag=None, tables=None, keep_downloaded_objects=True):
     """
     Discards all pending changes in the current mountpoint and checks out an image, changing the current HEAD pointer.

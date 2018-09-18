@@ -9,7 +9,6 @@ from splitgraph.config.repo_lookups import lookup_repo
 from splitgraph.constants import SplitGraphException, serialize_connection_string
 from splitgraph.meta_handler import mountpoint_exists, get_current_head, tag_or_hash_to_actual_hash, \
     store_import_provenance, store_mount_provenance, store_sql_provenance, store_from_provenance
-from splitgraph.pg_replication import replication_slot_exists
 from splitgraph.pg_utils import execute_sql_in
 from splitgraph.sgfile.parsing import parse_commands, extract_nodes, get_first_or_none, parse_repo_source, \
     extract_all_table_aliases
@@ -94,8 +93,6 @@ def _execute_sql(conn, node, output):
 
     def _calc():
         print("Executing SQL...")
-        # Make sure we'll record the actual change.
-        assert replication_slot_exists(conn)
         execute_sql_in(conn, output, sql_command)
         commit(conn, output, target_hash, comment=sql_command)
         store_sql_provenance(conn, output, target_hash, sql_command)
