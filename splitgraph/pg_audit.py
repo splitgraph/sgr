@@ -37,8 +37,8 @@ def manage_audit_triggers(conn):
                           triggers_to_remove)
         if triggers_to_add:
             # Create triggers for untracked tables
-            # Call to the procedure: target_table, audit_rows, audit_query_text
-            execute_batch(cur, "SELECT audit.audit_table(%s, 't', 'f')", [(s + '.' + t,) for s, t in triggers_to_add])
+            # Call to the procedure: target_table, audit_rows (default True), audit_query_text (default False)
+            execute_batch(cur, "SELECT audit.audit_table(%s)", [(s + '.' + t,) for s, t in triggers_to_add])
     conn.commit()
 
 
