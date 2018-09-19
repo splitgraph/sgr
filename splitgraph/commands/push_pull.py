@@ -3,22 +3,25 @@ import logging
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.commands.misc import make_conn
-from splitgraph.commands.object_loading import download_objects, upload_objects
 from splitgraph.config.repo_lookups import lookup_repo
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, SplitGraphException, serialize_connection_string, \
     parse_connection_string
-from splitgraph.meta_handler import get_all_snap_parents, add_new_snap_id, get_remote_for, ensure_metadata_schema, \
-    register_objects, set_head, add_remote, register_object_locations, get_external_object_locations, register_tables, \
-    get_existing_objects, get_object_meta, get_all_hashes_tags, set_tags
-from splitgraph.pg_replication import manage_audit
+from splitgraph.meta_handler.common import ensure_metadata_schema
+from splitgraph.meta_handler.images import get_all_images_parents, add_new_image
+from splitgraph.meta_handler.misc import get_remote_for, add_remote
+from splitgraph.meta_handler.objects import register_objects, register_tables, register_object_locations, \
+    get_existing_objects, get_external_object_locations, get_object_meta
+from splitgraph.meta_handler.tags import get_all_hashes_tags, set_tags, set_head
+from splitgraph.objects.loading import download_objects, upload_objects
+from splitgraph.pg_audit import manage_audit
 
 
 def _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_mountpoint):
     local_snap_parents = {snap_id: parent_id for snap_id, parent_id, _, _, _, _ in
-                          get_all_snap_parents(conn, local_mountpoint)}
+                          get_all_images_parents(conn, local_mountpoint)}
     remote_snap_parents = {snap_id: (parent_id, created, comment, prov_type, prov_data)
                            for snap_id, parent_id, created, comment, prov_type, prov_data in
-                           get_all_snap_parents(remote_conn, remote_mountpoint)}
+                           get_all_images_parents(remote_conn, remote_mountpoint)}
 
     # We assume here that none of the remote snapshot IDs have changed (are immutable) since otherwise the remote
     # would have created a new snapshot.
@@ -27,8 +30,8 @@ def _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_moun
     for snap_id in snaps_to_fetch:
         # This is not batched but there shouldn't be that many entries here anyway.
         remote_parent, remote_created, remote_comment, remote_prov, remote_provdata = remote_snap_parents[snap_id]
-        add_new_snap_id(conn, local_mountpoint, remote_parent, snap_id, remote_created, remote_comment,
-                        remote_prov, remote_provdata)
+        add_new_image(conn, local_mountpoint, remote_parent, snap_id, remote_created, remote_comment, remote_prov,
+                      remote_provdata)
         # Get the meta for all objects we'll need to fetch.
         with remote_conn.cursor() as cur:
             cur.execute(SQL("""SELECT snap_id, table_name, object_id FROM {0}.tables

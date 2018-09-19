@@ -5,7 +5,7 @@ from psycopg2.extras import execute_batch
 
 from splitgraph.commandline import _conn
 from splitgraph.commands import *
-from splitgraph.pg_replication import dump_pending_changes
+from splitgraph.commands.diff import dump_pending_changes
 
 conn = _conn()
 MOUNTPOINT = "splitgraph_benchmark"

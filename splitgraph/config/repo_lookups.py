@@ -1,7 +1,7 @@
 from splitgraph.commands.misc import make_conn
 from splitgraph.config import CONFIG
 from splitgraph.constants import SplitGraphException
-from splitgraph.meta_handler import mountpoint_exists
+from splitgraph.meta_handler.misc import mountpoint_exists
 
 
 # Parse and set these on import. If we ever need to be able to reread the config on the fly, these have to be

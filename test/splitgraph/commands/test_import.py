@@ -1,9 +1,12 @@
 from splitgraph.commands import checkout, commit, init, import_tables
+from splitgraph.commands.diff import dump_pending_changes
 from splitgraph.commands.importing import import_table_from_unmounted
 from splitgraph.commands.misc import cleanup_objects
-from splitgraph.meta_handler import get_current_head, get_snap_parent, get_downloaded_objects, \
-    get_existing_objects, get_all_tables, get_current_mountpoints_hashes
-from splitgraph.pg_replication import dump_pending_changes
+from splitgraph.meta_handler.images import get_image_parent
+from splitgraph.meta_handler.misc import get_current_mountpoints_hashes
+from splitgraph.meta_handler.objects import get_existing_objects, get_downloaded_objects
+from splitgraph.meta_handler.tables import get_all_tables
+from splitgraph.meta_handler.tags import get_current_head
 from splitgraph.pg_utils import pg_table_exists
 from test.splitgraph.conftest import PG_MNT, SNAPPER_CONN_STRING
 
@@ -24,7 +27,7 @@ def test_import_basic(sg_pg_conn):
     new_head = get_current_head(sg_pg_conn, 'output')
 
     assert new_head != head
-    assert get_snap_parent(sg_pg_conn, 'output', new_head) == head
+    assert get_image_parent(sg_pg_conn, 'output', new_head) == head
 
 
 def test_import_preserves_existing_tables(sg_pg_conn):
@@ -66,7 +69,7 @@ def test_import_preserves_pending_changes(sg_pg_conn):
                   target_tables=['imported_fruits'])
     new_head = get_current_head(sg_pg_conn, 'output')
 
-    assert get_snap_parent(sg_pg_conn, 'output', new_head) == head
+    assert get_image_parent(sg_pg_conn, 'output', new_head) == head
     assert changes == dump_pending_changes(sg_pg_conn, 'output', 'test')
 
 
@@ -85,7 +88,7 @@ def test_import_multiple_tables(sg_pg_conn):
 
     new_head = get_current_head(sg_pg_conn, 'output')
     assert new_head != head
-    assert get_snap_parent(sg_pg_conn, 'output', new_head) == head
+    assert get_image_parent(sg_pg_conn, 'output', new_head) == head
 
 
 def test_import_from_remote(empty_pg_conn, snapper_conn):

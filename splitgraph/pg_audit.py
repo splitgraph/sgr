@@ -1,7 +1,8 @@
 from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.meta_handler import get_all_tables, get_table, get_current_mountpoints_hashes
+from splitgraph.meta_handler.misc import ensure_metadata_schema, get_current_mountpoints_hashes
+from splitgraph.meta_handler.tables import get_all_tables, get_table
 
 ROW_TRIGGER_NAME = "audit_trigger_row"
 STM_TRIGGER_NAME = "audit_trigger_stm"
@@ -56,3 +57,19 @@ def has_pending_changes(conn, mountpoint):
                                                                             Identifier("logged_actions")),
                     (mountpoint,))
         return cur.fetchone() is not None
+
+
+def manage_audit(func):
+    # A decorator to be put around various SG commands that performs general admin and auditing management
+    # (makes sure the metadata schema exists and delete/add required audit triggers)
+    def wrapped(*args, **kwargs):
+        conn = args[0]
+        try:
+            ensure_metadata_schema(conn)
+            manage_audit_triggers(conn)
+            func(*args, **kwargs)
+        finally:
+            conn.commit()
+            manage_audit_triggers(conn)
+
+    return wrapped

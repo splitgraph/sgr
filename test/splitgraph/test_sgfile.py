@@ -6,8 +6,11 @@ import pytest
 from splitgraph.commands import checkout, commit, push, unmount, clone, get_log
 from splitgraph.commands.misc import cleanup_objects
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, SplitGraphException
-from splitgraph.meta_handler import get_current_head, get_snap_parent, set_tag, get_current_mountpoints_hashes, \
-    get_downloaded_objects, get_existing_objects, get_external_object_locations, get_table_with_format, get_tables_at
+from splitgraph.meta_handler.images import get_image_parent
+from splitgraph.meta_handler.misc import get_current_mountpoints_hashes
+from splitgraph.meta_handler.objects import get_existing_objects, get_downloaded_objects, get_external_object_locations
+from splitgraph.meta_handler.tables import get_tables_at, get_table_with_format
+from splitgraph.meta_handler.tags import get_current_head, set_tag
 from splitgraph.pg_utils import pg_table_exists
 from splitgraph.sgfile.execution import execute_commands
 from splitgraph.sgfile.parsing import preprocess
@@ -81,7 +84,7 @@ def test_update_without_import_sgfile(sg_pg_mg_conn):
 def test_local_import_sgfile(sg_pg_mg_conn):
     execute_commands(sg_pg_mg_conn, _load_sgfile('import_local.sgfile'), output='output')
     head = get_current_head(sg_pg_mg_conn, 'output')
-    old_head = get_snap_parent(sg_pg_mg_conn, 'output', head)
+    old_head = get_image_parent(sg_pg_mg_conn, 'output', head)
 
     checkout(sg_pg_mg_conn, 'output', old_head)
     assert not pg_table_exists(sg_pg_mg_conn, 'output', 'my_fruits')
@@ -101,7 +104,7 @@ def test_advanced_sgfile(sg_pg_mg_conn):
     assert not pg_table_exists(sg_pg_mg_conn, 'output', 'fruits')
     assert pg_table_exists(sg_pg_mg_conn, 'output', 'join_table')
 
-    old_head = get_snap_parent(sg_pg_mg_conn, 'output', head)
+    old_head = get_image_parent(sg_pg_mg_conn, 'output', head)
     checkout(sg_pg_mg_conn, 'output', old_head)
     assert not pg_table_exists(sg_pg_mg_conn, 'output', 'join_table')
     checkout(sg_pg_mg_conn, 'output', head)
@@ -260,7 +263,7 @@ def test_import_with_custom_query(sg_pg_mg_conn):
 
     execute_commands(sg_pg_mg_conn, _load_sgfile('import_with_custom_query.sgfile'), output='output')
     head = get_current_head(sg_pg_mg_conn, 'output')
-    old_head = get_snap_parent(sg_pg_mg_conn, 'output', head)
+    old_head = get_image_parent(sg_pg_mg_conn, 'output', head)
 
     # First two tables imported as snaps since they had a custom query, the other two are diffs (basically a commit
     # pointing to the same object as test_pg_mount has).
@@ -292,7 +295,7 @@ def test_import_mount(empty_pg_conn):
     execute_commands(empty_pg_conn, _load_sgfile('import_from_mounted_db.sgfile'), output='output')
 
     head = get_current_head(empty_pg_conn, 'output')
-    old_head = get_snap_parent(empty_pg_conn, 'output', head)
+    old_head = get_image_parent(empty_pg_conn, 'output', head)
 
     checkout(empty_pg_conn, 'output', old_head)
     tables = ['my_fruits', 'o_vegetables', 'vegetables', 'all_fruits']
@@ -316,7 +319,7 @@ def test_import_all(empty_pg_conn):
     execute_commands(empty_pg_conn, _load_sgfile('import_all_from_mounted.sgfile'), output='output')
 
     head = get_current_head(empty_pg_conn, 'output')
-    old_head = get_snap_parent(empty_pg_conn, 'output', head)
+    old_head = get_image_parent(empty_pg_conn, 'output', head)
 
     checkout(empty_pg_conn, 'output', old_head)
     tables = ['vegetables', 'fruits']
@@ -339,7 +342,7 @@ def test_from_remote(empty_pg_conn, snapper_conn):
 
     new_head = get_current_head(empty_pg_conn, 'output')
     # Go back to the parent: the two source tables should exist there
-    checkout(empty_pg_conn, 'output', get_snap_parent(empty_pg_conn, 'output', new_head))
+    checkout(empty_pg_conn, 'output', get_image_parent(empty_pg_conn, 'output', new_head))
     assert pg_table_exists(empty_pg_conn, 'output', 'fruits')
     assert pg_table_exists(empty_pg_conn, 'output', 'vegetables')
     assert not pg_table_exists(empty_pg_conn, 'output', 'join_table')
@@ -387,7 +390,7 @@ def test_from_multistage(empty_pg_conn, snapper_conn):
         assert cur.fetchall() == [(1, 'apple', 'potato'), (2, 'orange', 'carrot')]
     head = get_current_head(empty_pg_conn, 'output_stage_2')
     # Check the commit is based on the original empty image.
-    assert get_snap_parent(empty_pg_conn, 'output_stage_2', head) == '0' * 64
+    assert get_image_parent(empty_pg_conn, 'output_stage_2', head) == '0' * 64
     assert get_tables_at(empty_pg_conn, 'output_stage_2', head) == ['balanced_diet']
     assert get_table_with_format(empty_pg_conn, 'output_stage_2', 'balanced_diet', head, 'SNAP') is not None
     assert get_table_with_format(empty_pg_conn, 'output_stage_2', 'balanced_diet', head, 'DIFF') is None
@@ -398,7 +401,7 @@ def test_from_local(sg_pg_mg_conn):
 
     new_head = get_current_head(sg_pg_mg_conn, 'output')
     # Go back to the parent: the two source tables should exist there
-    checkout(sg_pg_mg_conn, 'output', get_snap_parent(sg_pg_mg_conn, 'output', new_head))
+    checkout(sg_pg_mg_conn, 'output', get_image_parent(sg_pg_mg_conn, 'output', new_head))
     assert pg_table_exists(sg_pg_mg_conn, 'output', 'fruits')
     assert pg_table_exists(sg_pg_mg_conn, 'output', 'vegetables')
     assert not pg_table_exists(sg_pg_mg_conn, 'output', 'join_table')

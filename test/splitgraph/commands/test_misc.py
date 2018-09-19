@@ -1,8 +1,8 @@
 import pytest
 
 from splitgraph.commands import commit, get_log, checkout, diff
-from splitgraph.pg_utils import pg_table_exists, get_primary_keys
-from splitgraph.meta_handler import get_current_head, set_tag, get_all_hashes_tags
+from splitgraph.meta_handler.tags import get_current_head, get_all_hashes_tags, set_tag
+from splitgraph.pg_utils import pg_table_exists
 from test.splitgraph.conftest import PG_MNT
 
 

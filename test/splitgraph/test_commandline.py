@@ -8,8 +8,10 @@ from splitgraph.commandline import status_c, sql_c, diff_c, commit_c, log_c, sho
 from splitgraph.commands import commit, checkout
 from splitgraph.commands.misc import table_exists_at
 from splitgraph.commands.provenance import provenance
-from splitgraph.meta_handler import get_current_head, get_snap_parent, get_table, get_tagged_id, mountpoint_exists, \
-    get_all_snap_parents, set_tag
+from splitgraph.meta_handler.images import get_image_parent, get_all_images_parents
+from splitgraph.meta_handler.misc import mountpoint_exists
+from splitgraph.meta_handler.tables import get_table
+from splitgraph.meta_handler.tags import get_current_head, get_tagged_id, set_tag
 from splitgraph.registry_meta_handler import get_published_info
 from test.splitgraph.conftest import PG_MNT, MG_MNT
 from test.splitgraph.test_sgfile import SGFILE_ROOT, _add_multitag_dataset_to_snapper
@@ -51,7 +53,7 @@ def test_commandline_basics(sg_pg_mg_conn):
     result = runner.invoke(commit_c, [PG_MNT, '-m', 'Test commit', '-s'])
     new_head = get_current_head(sg_pg_mg_conn, PG_MNT)
     assert new_head != old_head
-    assert get_snap_parent(sg_pg_mg_conn, PG_MNT, new_head) == old_head
+    assert get_image_parent(sg_pg_mg_conn, PG_MNT, new_head) == old_head
     assert new_head[:10] in result.output
 
     # sg diff, old head -> new head (2-param), truncated hashes
@@ -290,8 +292,8 @@ def test_sgfile_rerun_update(empty_pg_conn, snapper_conn):
     # Now rerun the output:latest against the latest version of everything.
     # In this case, this should all resolve to the same version of test_pg_mount (v2) and not produce
     # any extra commits.
-    curr_commits = get_all_snap_parents(empty_pg_conn, 'output')
+    curr_commits = get_all_images_parents(empty_pg_conn, 'output')
     result = runner.invoke(rerun_c, ['output', 'latest', '-u'])
     assert result.exit_code == 0
     assert output_v2 == get_current_head(empty_pg_conn, 'output')
-    assert get_all_snap_parents(empty_pg_conn, 'output') == curr_commits
+    assert get_all_images_parents(empty_pg_conn, 'output') == curr_commits

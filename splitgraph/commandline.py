@@ -15,9 +15,10 @@ from splitgraph.commands.publish import publish
 from splitgraph.config.repo_lookups import get_remote_connection_params
 from splitgraph.constants import POSTGRES_CONNECTION, SplitGraphException, serialize_connection_string
 from splitgraph.drawing import render_tree
-from splitgraph.meta_handler import get_snap_parent, get_canonical_snap_id, get_all_tables, \
-    get_current_mountpoints_hashes, get_all_hashes_tags, set_tag, get_current_head, get_remote_for, get_all_snap_info, \
-    get_tables_at, get_table, tag_or_hash_to_actual_hash
+from splitgraph.meta_handler.images import get_image_parent, get_all_image_info, get_canonical_image_id
+from splitgraph.meta_handler.misc import get_current_mountpoints_hashes, get_remote_for
+from splitgraph.meta_handler.tables import get_all_tables, get_tables_at, get_table
+from splitgraph.meta_handler.tags import get_current_head, get_all_hashes_tags, set_tag, tag_or_hash_to_actual_hash
 from splitgraph.sgfile.execution import execute_commands, rerun_image_with_replacement
 
 
@@ -68,7 +69,7 @@ def log_c(mountpoint, tree):
         head = get_current_head(conn, mountpoint)
         log = get_log(conn, mountpoint, head)
         for entry in log:
-            _, created, comment = get_all_snap_info(conn, mountpoint, entry)
+            _, created, comment = get_all_image_info(conn, mountpoint, entry)
             print("%s %s %s %s" % ("H->" if entry == head else "   ", entry, created, comment or ""))
 
 
@@ -129,15 +130,15 @@ def _get_actual_hashes(conn, mountpoint, image_1, image_2):
         # Comparing current working copy against the last commit
         image_1 = get_current_head(conn, mountpoint)
     elif image_2 is None:
-        image_1 = get_canonical_snap_id(conn, mountpoint, image_1)
+        image_1 = get_canonical_image_id(conn, mountpoint, image_1)
         # One parameter: diff from that and its parent.
-        image_2 = get_snap_parent(conn, mountpoint, image_1)
+        image_2 = get_image_parent(conn, mountpoint, image_1)
         if image_2 is None:
             print("%s has no parent to compare to!" % image_1)
         image_1, image_2 = image_2, image_1  # snap_1 has to come first
     else:
-        image_1 = get_canonical_snap_id(conn, mountpoint, image_1)
-        image_2 = get_canonical_snap_id(conn, mountpoint, image_2)
+        image_1 = get_canonical_image_id(conn, mountpoint, image_1)
+        image_2 = get_canonical_image_id(conn, mountpoint, image_2)
     return image_1, image_2
 
 
@@ -202,10 +203,10 @@ def commit_c(mountpoint, commit_hash, include_snap, message):
 @click.option('-v', '--verbose', default=False, is_flag=True)
 def show_c(mountpoint, commit_hash, verbose):
     conn = _conn()
-    commit_hash = get_canonical_snap_id(conn, mountpoint, commit_hash)
+    commit_hash = get_canonical_image_id(conn, mountpoint, commit_hash)
 
     print("Commit %s" % commit_hash)
-    parent, created, comment = get_all_snap_info(conn, mountpoint, commit_hash)
+    parent, created, comment = get_all_image_info(conn, mountpoint, commit_hash)
     print(comment or "")
     print("Created at %s" % created.isoformat())
     if parent:
@@ -320,7 +321,7 @@ def tag_c(mountpoint, image, tag, force):
                 if img:
                     print("%s: %s" % (img[:12], ', '.join(tags)))
         else:
-            print(', '.join(tag_dict[get_canonical_snap_id(conn, mountpoint, image)]))
+            print(', '.join(tag_dict[get_canonical_image_id(conn, mountpoint, image)]))
         return
 
     if tag == 'HEAD':
@@ -329,7 +330,7 @@ def tag_c(mountpoint, image, tag, force):
     if image is None:
         image = get_current_head(conn, mountpoint)
     else:
-        image = get_canonical_snap_id(conn, mountpoint, image)
+        image = get_canonical_image_id(conn, mountpoint, image)
     set_tag(conn, mountpoint, image, tag, force)
     print("Tagged %s:%s with %s." % (mountpoint, image, tag))
     conn.commit()
@@ -346,7 +347,7 @@ def import_c(mountpoint, table, target_mountpoint, target_table, image):
     if not image:
         image = get_current_head(conn, mountpoint)
     else:
-        image = get_canonical_snap_id(conn, mountpoint, image)
+        image = get_canonical_image_id(conn, mountpoint, image)
 
     import_tables(conn, mountpoint, [table], target_mountpoint, [target_table] if target_table else [],
                   image_hash=image)

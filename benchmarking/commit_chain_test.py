@@ -1,12 +1,11 @@
 from datetime import datetime
 from random import getrandbits, randrange
-from timeit import timeit
 
 from psycopg2.extras import execute_batch
 
 from splitgraph.commandline import _conn
 from splitgraph.commands import *
-from splitgraph.meta_handler import get_current_head
+from splitgraph.meta_handler.tags import get_current_head
 
 conn = _conn()
 MOUNTPOINT = "splitgraph_benchmark"

@@ -5,7 +5,8 @@ from psycopg2.sql import Identifier, SQL
 from splitgraph.commands.importing import import_tables
 from splitgraph.commands.misc import unmount
 from splitgraph.commands.mount_handlers import get_mount_handler
-from splitgraph.meta_handler import ensure_metadata_schema, get_all_foreign_tables
+from splitgraph.meta_handler.common import ensure_metadata_schema
+from splitgraph.meta_handler.misc import get_all_foreign_tables
 
 
 def mount(conn, mountpoint, mount_handler, handler_kwargs):

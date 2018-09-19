@@ -1,7 +1,7 @@
 import logging
 
 from splitgraph.constants import SplitGraphException
-from splitgraph.meta_handler import get_snap_parent_provenance
+from splitgraph.meta_handler.images import get_image_parent_provenance
 
 
 def provenance(conn, mountpoint, image_hash):
@@ -15,7 +15,7 @@ def provenance(conn, mountpoint, image_hash):
     """
     result = set()
     while image_hash:
-        parent, prov_type, prov_data = get_snap_parent_provenance(conn, mountpoint, image_hash)
+        parent, prov_type, prov_data = get_image_parent_provenance(conn, mountpoint, image_hash)
         if prov_type == 'IMPORT':
             result.add((prov_data['source'], prov_data['source_hash']))
         elif prov_type == 'FROM':
@@ -73,7 +73,7 @@ def image_hash_to_sgfile(conn, mountpoint, image_hash, err_on_end=True, source_r
         source_replacement = {}
     sgfile_commands = []
     while image_hash:
-        parent, prov_type, prov_data = get_snap_parent_provenance(conn, mountpoint, image_hash)
+        parent, prov_type, prov_data = get_image_parent_provenance(conn, mountpoint, image_hash)
         if prov_type in ('IMPORT', 'SQL', 'FROM'):
             sgfile_commands.append(prov_command_to_sgfile(prov_type, prov_data, image_hash, source_replacement))
             if prov_type == 'FROM':

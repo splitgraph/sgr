@@ -2,9 +2,12 @@ import psycopg2
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA
-from splitgraph.meta_handler import get_table, get_snap_parent, register_mountpoint, \
-    unregister_mountpoint, get_object_meta, META_TABLES, ensure_metadata_schema
-from splitgraph.pg_replication import discard_pending_changes, manage_audit
+from splitgraph.meta_handler.common import META_TABLES, ensure_metadata_schema
+from splitgraph.meta_handler.images import get_image_parent
+from splitgraph.meta_handler.misc import register_mountpoint, unregister_mountpoint
+from splitgraph.meta_handler.objects import get_object_meta
+from splitgraph.meta_handler.tables import get_table
+from splitgraph.pg_audit import manage_audit, discard_pending_changes
 from splitgraph.pg_utils import pg_table_exists
 
 
@@ -21,7 +24,7 @@ def make_conn(server, port, username, password, dbname):
 
 def get_parent_children(conn, mountpoint, image_hash):
     """Gets the parent and a list of children of a given image."""
-    parent = get_snap_parent(conn, mountpoint, image_hash)
+    parent = get_image_parent(conn, mountpoint, image_hash)
 
     with conn.cursor() as cur:
         cur.execute(SQL("""SELECT snap_id FROM {}.snap_tree WHERE mountpoint = %s AND parent_id = %s""").format(
@@ -36,7 +39,7 @@ def get_log(conn, mountpoint, start_snap):
     result = []
     while start_snap is not None:
         result.append(start_snap)
-        start_snap = get_snap_parent(conn, mountpoint, start_snap)
+        start_snap = get_image_parent(conn, mountpoint, start_snap)
     return result
 
 
@@ -45,7 +48,7 @@ def find_path(conn, mountpoint, hash_1, hash_2):
     path = []
     while hash_2 is not None:
         path.append(hash_2)
-        hash_2 = get_snap_parent(conn, mountpoint, hash_2)
+        hash_2 = get_image_parent(conn, mountpoint, hash_2)
         if hash_2 == hash_1:
             return path
 

@@ -4,7 +4,9 @@ from decimal import Decimal
 import pytest
 
 from splitgraph.commands import diff, commit, init, checkout
-from splitgraph.meta_handler import get_current_head, get_all_snap_info, get_snap_parent, get_table
+from splitgraph.meta_handler.images import get_image_parent, get_all_image_info
+from splitgraph.meta_handler.tables import get_table
+from splitgraph.meta_handler.tags import get_current_head
 from splitgraph.pg_audit import has_pending_changes
 from test.splitgraph.conftest import PG_MNT, MG_MNT
 
@@ -34,7 +36,7 @@ def test_commit_diff(include_snap, sg_pg_conn):
     # After commit, we should be switched to the new commit hash and there should be no differences.
     assert get_current_head(sg_pg_conn, PG_MNT) == new_head
     assert diff(sg_pg_conn, PG_MNT, 'fruits', image_1=new_head, image_2=None) == []
-    assert get_all_snap_info(sg_pg_conn, PG_MNT, new_head)[2] == "test commit"
+    assert get_all_image_info(sg_pg_conn, PG_MNT, new_head)[2] == "test commit"
 
     change = diff(sg_pg_conn, PG_MNT, 'fruits', image_1=head, image_2=new_head)
     # pk (no PK here so the whole row) -- 0 for INS -- extra non-PK cols
@@ -130,7 +132,7 @@ def test_delete_all_diff(sg_pg_conn):
     new_head = commit(sg_pg_conn, PG_MNT)
     assert has_pending_changes(sg_pg_conn, PG_MNT) is False
     assert diff(sg_pg_conn, PG_MNT, 'fruits', new_head, None) == []
-    assert diff(sg_pg_conn, PG_MNT, 'fruits', get_snap_parent(sg_pg_conn, PG_MNT, new_head), new_head) == expected_diff
+    assert diff(sg_pg_conn, PG_MNT, 'fruits', get_image_parent(sg_pg_conn, PG_MNT, new_head), new_head) == expected_diff
 
 
 @pytest.mark.parametrize("include_snap", [True, False])

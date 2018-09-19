@@ -5,8 +5,9 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.commands.checkout import materialized_table
 from splitgraph.commands.misc import table_exists_at, find_path
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA
-from splitgraph.meta_handler import get_current_head, get_table, get_table_with_format
-from splitgraph.pg_replication import dump_pending_changes
+from splitgraph.meta_handler.tables import get_table_with_format, get_table
+from splitgraph.meta_handler.tags import get_current_head
+from splitgraph.objects.utils import get_replica_identity, convert_audit_change, KIND
 
 
 def _changes_to_aggregation(query_result, initial=None):
@@ -110,3 +111,27 @@ def diff(conn, mountpoint, table_name, image_1, image_2, aggregate=False):
         if aggregate:
             return sum(1 for r in right if r not in left), sum(1 for r in left if r not in right), 0
         return [(1, r) for r in left if r not in right] + [(0, r) for r in right if r not in left]
+
+
+def dump_pending_changes(conn, mountpoint, table, aggregate=False):
+    # First, make sure we're up to date on changes.
+    with conn.cursor() as cur:
+        if aggregate:
+            cur.execute(SQL(
+                "SELECT action, count(action) FROM {}.{} "
+                "WHERE schema_name = %s AND table_name = %s GROUP BY action").format(Identifier("audit"),
+                                                                                     Identifier("logged_actions")),
+                        (mountpoint, table))
+            return [(KIND[k], c) for k, c in cur.fetchall()]
+
+        cur.execute(SQL(
+            "SELECT action, row_data, changed_fields FROM {}.{} "
+            "WHERE schema_name = %s AND table_name = %s").format(Identifier("audit"),
+                                                                 Identifier("logged_actions")),
+                    (mountpoint, table))
+        repl_id = get_replica_identity(conn, mountpoint, table)
+        ri_cols, _ = zip(*repl_id)
+        result = []
+        for action, row_data, changed_fields in cur:
+            result.extend(convert_audit_change(action, row_data, changed_fields, ri_cols))
+        return result

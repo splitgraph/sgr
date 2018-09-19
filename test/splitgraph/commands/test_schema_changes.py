@@ -1,8 +1,9 @@
 import pytest
 
-from splitgraph.commands import commit, diff, checkout
+from splitgraph.commands import commit, checkout
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA
-from splitgraph.meta_handler import get_snap_parent, get_current_head, get_table, get_table_with_format
+from splitgraph.meta_handler.tables import get_table_with_format
+from splitgraph.meta_handler.tags import get_current_head
 from splitgraph.pg_utils import get_full_table_schema, get_primary_keys
 from test.splitgraph.conftest import PG_MNT
 

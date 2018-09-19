@@ -7,9 +7,12 @@ from splitgraph.commands.checkout import materialize_table, checkout
 from splitgraph.commands.misc import unmount
 from splitgraph.commands.push_pull import clone
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, get_random_object_id
-from splitgraph.meta_handler import get_current_head, add_new_snap_id, register_table, set_head, get_table, \
-    get_tables_at, get_all_tables, register_object, get_all_foreign_tables
-from splitgraph.pg_replication import manage_audit
+from splitgraph.meta_handler.images import add_new_image
+from splitgraph.meta_handler.misc import get_all_foreign_tables
+from splitgraph.meta_handler.objects import register_table, register_object
+from splitgraph.meta_handler.tables import get_all_tables, get_tables_at, get_table
+from splitgraph.meta_handler.tags import get_current_head, set_head
+from splitgraph.pg_audit import manage_audit
 from splitgraph.pg_utils import copy_table, get_primary_keys, execute_sql_in
 
 
@@ -68,7 +71,7 @@ def _import_tables(conn, mountpoint, image_hash, tables, target_mountpoint, targ
                    table_queries, foreign_tables):
     head = get_current_head(conn, target_mountpoint, raise_on_none=False)
     # Add the new snap ID to the tree
-    add_new_snap_id(conn, target_mountpoint, head, target_hash, comment="Importing %s from %s" % (tables, mountpoint))
+    add_new_image(conn, target_mountpoint, head, target_hash, comment="Importing %s from %s" % (tables, mountpoint))
 
     if any(table_queries) and not foreign_tables:
         # If we want to run some queries against the source mountpoint to create the new tables,

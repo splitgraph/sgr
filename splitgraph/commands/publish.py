@@ -7,11 +7,11 @@ from splitgraph.commands import provenance
 from splitgraph.commands.checkout import materialized_table
 from splitgraph.commands.misc import make_conn
 from splitgraph.constants import SplitGraphException, parse_connection_string
-from splitgraph.meta_handler import get_remote_for, get_tagged_id, get_tables_at
-from splitgraph.pg_replication import get_schema_at
+from splitgraph.meta_handler.misc import get_remote_for, get_schema_at
+from splitgraph.meta_handler.tables import get_tables_at
+from splitgraph.meta_handler.tags import get_tagged_id
 from splitgraph.pg_utils import get_full_table_schema
 from splitgraph.registry_meta_handler import publish_tag
-
 
 PREVIEW_SIZE = 100
 

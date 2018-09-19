@@ -1,8 +1,8 @@
 from splitgraph.commands import get_log
 from splitgraph.commands.provenance import provenance, image_hash_to_sgfile
-from splitgraph.sgfile.execution import rerun_image_with_replacement
-from splitgraph.meta_handler import get_current_head, get_tagged_id
+from splitgraph.meta_handler.tags import get_current_head, get_tagged_id
 from splitgraph.sgfile import execute_commands
+from splitgraph.sgfile.execution import rerun_image_with_replacement
 from test.splitgraph.test_sgfile import _load_sgfile, _add_multitag_dataset_to_snapper
 
 

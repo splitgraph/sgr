@@ -2,7 +2,7 @@ import pytest
 
 from splitgraph.commands import push
 from splitgraph.commands.publish import publish
-from splitgraph.meta_handler import set_tag, get_current_head, get_tagged_id
+from splitgraph.meta_handler.tags import get_current_head, get_tagged_id, set_tag
 from splitgraph.registry_meta_handler import get_published_info
 from splitgraph.sgfile import execute_commands
 from test.splitgraph.conftest import SNAPPER_CONN_STRING

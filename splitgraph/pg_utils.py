@@ -92,7 +92,7 @@ def _get_column_names(conn, mountpoint, table_name):
         return [c[0] for c in cur.fetchall()]
 
 
-def _get_column_names_types(conn, mountpoint, table_name):
+def get_column_names_types(conn, mountpoint, table_name):
     with conn.cursor() as cur:
         cur.execute("""SELECT column_name, data_type FROM information_schema.columns
                        WHERE table_schema = %s

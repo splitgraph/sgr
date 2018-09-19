@@ -2,7 +2,9 @@
 from collections import defaultdict
 
 from splitgraph.constants import SplitGraphException
-from splitgraph.meta_handler import get_all_snap_parents, get_current_head, ensure_metadata_schema
+from splitgraph.meta_handler.common import ensure_metadata_schema
+from splitgraph.meta_handler.images import get_all_images_parents
+from splitgraph.meta_handler.tags import get_current_head
 
 
 def _calc_columns(children, start):
@@ -56,7 +58,7 @@ def render_tree(conn, mountpoint):
     head = get_current_head(conn, mountpoint, raise_on_none=False)
 
     # Get all commits in ascending time order
-    snap_parents = get_all_snap_parents(conn, mountpoint)
+    snap_parents = get_all_images_parents(conn, mountpoint)
     for snap_id, parent_id, _, _, _, _ in snap_parents:
         if parent_id is None:
             base_node = snap_id

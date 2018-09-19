@@ -2,7 +2,7 @@ from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.constants import REGISTRY_META_SCHEMA
-from splitgraph.meta_handler import _insert, _select
+from splitgraph.meta_handler.common import insert, select
 
 
 def _create_registry_schema(conn):
@@ -47,19 +47,19 @@ def publish_tag(conn, repository, tag, image_hash, published, provenance, readme
     :param previews: Dict mapping table name to a list of tuples with a preview
     """
     with conn.cursor() as cur:
-        cur.execute(_insert("images",
-                            ['repository', 'tag', 'image_hash', 'published',
+        cur.execute(insert("images",
+                           ['repository', 'tag', 'image_hash', 'published',
                              'provenance', 'readme', 'schemata', 'previews'],
-                            REGISTRY_META_SCHEMA), (repository, tag, image_hash, published, Json(provenance),
-                                                    readme, Json(schemata), Json(previews)))
+                           REGISTRY_META_SCHEMA), (repository, tag, image_hash, published, Json(provenance),
+                                                   readme, Json(schemata), Json(previews)))
 
 
 def get_published_info(conn, repository, tag):
     with conn.cursor() as cur:
-        cur.execute(_select("images",
+        cur.execute(select("images",
                             'image_hash,published,provenance,readme,schemata,previews',
                             "repository = %s AND tag = %s",
-                            REGISTRY_META_SCHEMA), (repository, tag))
+                           REGISTRY_META_SCHEMA), (repository, tag))
         return cur.fetchone()
 
 

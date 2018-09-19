@@ -4,9 +4,10 @@ import pytest
 
 from splitgraph.commands import clone, checkout, commit, pull, push, unmount
 from splitgraph.commands.misc import cleanup_objects
-from splitgraph.meta_handler import get_current_head, get_all_snap_parents, get_downloaded_objects, \
-    get_existing_objects, get_external_object_locations
-from test.splitgraph.conftest import PG_MNT, SNAPPER_CONN_STRING
+from splitgraph.meta_handler.images import get_all_images_parents
+from splitgraph.meta_handler.objects import get_existing_objects, get_downloaded_objects, get_external_object_locations
+from splitgraph.meta_handler.tags import get_current_head
+from test.splitgraph.conftest import PG_MNT
 
 
 @pytest.mark.parametrize("download_all", [True, False])
@@ -33,7 +34,7 @@ def test_pull(sg_pg_conn, snapper_conn, download_all):
         cur.execute("""SELECT * FROM test_pg_mount_pull.fruits""")
         assert list(cur.fetchall()) == [(1, 'apple'), (2, 'orange')]
     assert head_1 not in [snapdata[0] for snapdata in
-                          get_all_snap_parents(sg_pg_conn, PG_MNT + '_pull')]
+                          get_all_images_parents(sg_pg_conn, PG_MNT + '_pull')]
 
     # Since the pull procedure initializes a new connection, we have to commit our changes
     # in order to see them.

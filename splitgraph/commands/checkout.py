@@ -4,13 +4,15 @@ from contextlib import contextmanager
 from psycopg2.sql import Identifier, SQL
 
 from splitgraph.commands.misc import delete_objects
-from splitgraph.commands.object_loading import download_objects
 from splitgraph.constants import get_random_object_id, SplitGraphException, SPLITGRAPH_META_SCHEMA
-from splitgraph.meta_handler import get_table_with_format, get_remote_for, get_canonical_snap_id, get_tables_at, \
-    get_all_tables, set_head, get_external_object_locations, get_tagged_id
-from splitgraph.pg_audit import has_pending_changes
-from splitgraph.pg_replication import apply_record_to_staging, discard_pending_changes, \
-    get_closest_parent_snap_object, manage_audit
+from splitgraph.meta_handler.images import get_canonical_image_id, get_closest_parent_image_object
+from splitgraph.meta_handler.misc import get_remote_for
+from splitgraph.meta_handler.objects import get_external_object_locations
+from splitgraph.meta_handler.tables import get_all_tables, get_tables_at, get_table_with_format
+from splitgraph.meta_handler.tags import get_tagged_id, set_head
+from splitgraph.objects.applying import apply_record_to_staging
+from splitgraph.objects.loading import download_objects
+from splitgraph.pg_audit import has_pending_changes, manage_audit, discard_pending_changes
 from splitgraph.pg_utils import copy_table, get_primary_keys
 
 
@@ -32,7 +34,7 @@ def materialize_table(conn, mountpoint, image_hash, table, destination, destinat
             SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(destination_mountpoint), Identifier(destination)))
         # Get the closest snapshot from the table's parents
         # and then apply all deltas consecutively from it.
-        object_id, to_apply = get_closest_parent_snap_object(conn, mountpoint, table, image_hash)
+        object_id, to_apply = get_closest_parent_image_object(conn, mountpoint, table, image_hash)
 
         # Make sure all the objects have been downloaded from remote if it exists
         remote_info = get_remote_for(conn, mountpoint)
@@ -83,7 +85,7 @@ def checkout(conn, mountpoint, image_hash=None, tag=None, tables=None, keep_down
     # Detect the actual schema snap we want to check out
     if image_hash:
         # get_canonical_snap_id called twice if the commandline entry point already called it. How to fix?
-        image_hash = get_canonical_snap_id(conn, mountpoint, image_hash)
+        image_hash = get_canonical_image_id(conn, mountpoint, image_hash)
     elif tag:
         image_hash = get_tagged_id(conn, mountpoint, tag)
     else:

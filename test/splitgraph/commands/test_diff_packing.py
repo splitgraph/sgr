@@ -1,7 +1,7 @@
 import pytest
 
 from splitgraph.commands import commit, diff
-from splitgraph.meta_handler import get_snap_parent
+from splitgraph.meta_handler.images import get_image_parent
 from test.splitgraph.conftest import PG_MNT
 
 # Test cases: ops are a list of operations (with commit after each set);
@@ -61,4 +61,4 @@ def test_diff_conflation_on_commit(sg_pg_conn, test_case):
             cur.execute(operation)
         sg_pg_conn.commit()
         head = commit(sg_pg_conn, PG_MNT)
-        assert diff(sg_pg_conn, PG_MNT, 'fruits', get_snap_parent(sg_pg_conn, PG_MNT, head), head) == expected_diff
+        assert diff(sg_pg_conn, PG_MNT, 'fruits', get_image_parent(sg_pg_conn, PG_MNT, head), head) == expected_diff
