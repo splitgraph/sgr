@@ -8,6 +8,7 @@ def provenance(conn, mountpoint, image_hash):
     """
     Inspects the parent chain of an sgfile-generated image to come up with a set of repositories and their hashes
     that it was created from.
+
     :param conn: Psycopg connection object
     :param mountpoint: Mountpoint that contains the image
     :param image_hash: Image hash to inspect
@@ -37,6 +38,7 @@ def prov_command_to_sgfile(prov_type, prov_data, image_hash, source_replacement)
     """
     Converts the image's provenance data stored by the sgfile executor back to an sgfile used to
     reconstruct it.
+
     :param prov_type: Provenance type (one of 'IMPORT' or 'SQL'). Any other provenances can't be reconstructed.
     :param prov_data: Provenance data as stored in the database.
     :param image_hash: Hash of the image
@@ -59,6 +61,7 @@ def prov_command_to_sgfile(prov_type, prov_data, image_hash, source_replacement)
 def image_hash_to_sgfile(conn, mountpoint, image_hash, err_on_end=True, source_replacement=None):
     """
     Crawls the image's parent chain to recreates an sgfile that can be used to reconstruct it.
+
     :param conn: Psycopg connection object
     :param mountpoint: Mountpoint where the image is located.
     :param image_hash: Image hash to reconstruct.

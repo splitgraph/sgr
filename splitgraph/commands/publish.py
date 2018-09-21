@@ -19,6 +19,7 @@ PREVIEW_SIZE = 100
 def publish(conn, repository, tag, readme="", include_provenance=True, include_table_previews=True):
     """
     Summarizes the data on a previously-pushed repository and makes it available in the catalog.
+
     :param conn: Psycopg connection object.
     :param repository: Repository to be published. The repository must exist on the remote.
     :param tag: Image tag to be published.

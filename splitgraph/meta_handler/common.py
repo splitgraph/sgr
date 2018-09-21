@@ -79,23 +79,11 @@ def _create_metadata_schema(conn):
             Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_locations")))
 
 
-def _create_pending_changes(conn):
-    # We consume changes from the WAL for the tables that interest us into this schema so that
-    # postgres can flush parts of the WAL that it doesn't needs.
-    # Used on checkout/commit to keep track of changes that happened to a schema
-    with conn.cursor() as cur:
-        cur.execute(SQL("""CREATE TABLE {}.{} (
-                        mountpoint VARCHAR NOT NULL,
-                        table_name VARCHAR NOT NULL,
-                        kind       SMALLINT,
-                        change     VARCHAR NOT NULL)""").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                Identifier("pending_changes")))
-
-
 def select(table, columns='*', where='', schema=SPLITGRAPH_META_SCHEMA):
     """
     A generic SQL SELECT constructor to simplify metadata access queries so that we don't have to repeat the same
     identifiers everywhere.
+
     :param table: Table to select from.
     :param columns: Columns to select as a string. WARN: concatenated directly without any formatting.
     :param where: If specified, added to the query with a "WHERE" keyword. WARN also concatenated directly.
@@ -112,6 +100,7 @@ def insert(table, columns, schema=SPLITGRAPH_META_SCHEMA):
     """
     A generic SQL SELECT constructor to simplify metadata access queries so that we don't have to repeat the same
     identifiers everywhere.
+
     :param table: Table to select from.
     :param columns: Columns to insert as a list of strings.
     :return: A psycopg2.sql.SQL object with the query (parameterized)
@@ -128,4 +117,3 @@ def ensure_metadata_schema(conn):
         cur.execute("SELECT 1 FROM information_schema.schemata WHERE schema_name = %s", (SPLITGRAPH_META_SCHEMA,))
         if cur.fetchone() is None:
             _create_metadata_schema(conn)
-            _create_pending_changes(conn)

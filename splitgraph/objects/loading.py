@@ -14,6 +14,7 @@ from splitgraph.pg_utils import copy_table, dump_table_creation, get_primary_key
 def download_objects(conn, remote_conn_string, objects_to_fetch, object_locations, remote_conn=None):
     """
     Fetches the required objects from the remote and stores them locally. Does nothing for objects that already exist.
+
     :param conn: psycopg connection object
     :param remote_conn_string: Connection string to the remote SG driver of the form
         username:password@hostname:port/database.
@@ -82,6 +83,7 @@ def _fetch_external_objects(conn, object_locations, objects_to_fetch):
 def upload_objects(conn, remote_conn_string, objects_to_push, handler='DB', handler_params=None, remote_conn=None):
     """
     Uploads physical objects to the remote or some other external location.
+    
     :param conn: psycopg connection object
     :param remote_conn_string: Connection string to the remote SG driver of the form
         username:password@hostname:port/database.

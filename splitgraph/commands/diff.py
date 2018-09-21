@@ -22,6 +22,7 @@ def diff(conn, mountpoint, table_name, image_1, image_2, aggregate=False):
     Compares the state of the table in different images. If the two images are on the same path in the commit tree,
     it doesn't need to materialize any of the tables and simply aggregates their DIFF objects to produce a complete
     changelog. Otherwise, it materializes both tables into a temporary space and compares them row-to-row.
+
     :param conn: psycopg connection
     :param mountpoint: Mounpoint where the table exists.
     :param table_name: Name of the table.
@@ -32,6 +33,7 @@ def diff(conn, mountpoint, table_name, image_1, image_2, aggregate=False):
     :return: If the table doesn't exist in one of the images, returns True if it was added and False if it was removed.
         If `aggregate` is True, returns the aggregation of changes as specified before.
         Otherwise, returns a list of changes where each change is of the format (primary key, action_type, action_data):
+
             * `action_type == 0` is Insert and the `action_data` contains a dictionary of non-PK columns and values
               inserted.
             * `action_type == 1`: Delete, `action_data` is None.

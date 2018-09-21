@@ -74,6 +74,7 @@ def pull(conn, mountpoint, remote, download_all=False):
     """
     Synchronizes the state of the local SplitGraph repository with the remote one, optionally downloading all new
     objects created on the remote.
+
     :param conn: psycopg connection objects
     :param mountpoint: Mountpoint to pull changes from.
     :param remote: Name of the upstream to pull changes from.
@@ -95,6 +96,7 @@ def clone(conn, remote_mountpoint, remote_conn_string=None,
           local_mountpoint=None, download_all=False, remote_conn=None):
     """
     Clones a remote SplitGraph repository or synchronizes remote changes with the local ones.
+
     :param conn: psycopg connection object.
     :param remote_mountpoint: Repository to clone.
     :param remote_conn_string: If set, overrides the default remote for this repository.
@@ -157,7 +159,7 @@ def clone(conn, remote_mountpoint, remote_conn_string=None,
 
 def local_clone(conn, source, destination):
     """Clones one local mountpoint into another, copying all of its commit history over. Doesn't do any checking out
-        or materialization."""
+    or materialization."""
     ensure_metadata_schema(conn)
 
     _, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(conn, conn,
@@ -176,9 +178,10 @@ def local_clone(conn, source, destination):
 def push(conn, local_mountpoint, remote_conn_string=None, remote_mountpoint=None, handler='DB', handler_options=None):
     """
     Inverse of `pull`: Pushes all local changes to the remote and uploads new objects.
+
     :param conn: psycopg connection object
     :param remote_conn_string: Connection string to the remote SG driver of the form
-        username:password@hostname:port/database.
+        `username:password@hostname:port/database.`
     :param remote_mountpoint: Remote mountpoint to push changes to.
     :param local_mountpoint: Local mountpoint to push changes from.
     :param handler: Name of the handler to use to upload objects. Use `DB` to push them to the remote, `FILE`

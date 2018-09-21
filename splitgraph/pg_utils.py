@@ -38,6 +38,7 @@ def copy_table(conn, source_schema, source_table, target_schema, target_table, w
 def dump_table_creation(conn, schema, tables, created_schema=None):
     """
     Dumps the basic table schema (column names, data types, is_nullable) for one or more tables into SQL statements.
+
     :param conn: psycopg connection object
     :param schema: Schema to dump tables from
     :param tables: Tables to dump
@@ -136,6 +137,7 @@ def table_dump_generator(conn, schema, table):
 def execute_sql_in(conn, mountpoint, sql):
     """
     Executes a non-schema-qualified query against a specific schema, using PG's search_path.
+
     :param conn: psycopg connection object
     :param mountpoint: Schema to run the query in
     :param sql: Query

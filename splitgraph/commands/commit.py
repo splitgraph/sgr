@@ -16,6 +16,7 @@ from splitgraph.pg_audit import manage_audit_triggers, discard_pending_changes
 def commit(conn, mountpoint, image_hash=None, include_snap=False, comment=None):
     """
     Commits all pending changes to a given mountpoint, creating a new image.
+
     :param conn: psycopg connection object.
     :param mountpoint: Mountpoint to commit.
     :param image_hash: Hash of the commit. Chosen by random if unspecified.
@@ -50,10 +51,12 @@ def commit_pending_changes(conn, mountpoint, current_head, image_hash, include_s
     """
     Reads the recorded pending changes to all tables in a given mountpoint, conflates them and possibly stores them
     as new object(s) as follows:
+
         * If a table has been created or there has been a schema change, it's only stored as a SNAP (full snapshot).
         * If a table hasn't changed since the last revision, no new objects are created and it's linked to the previous
           objects belonging to the last revision.
         * Otherwise, the table is stored as a conflated (1 change per PK) DIFF object and an optional SNAP.
+
     :param conn: psycopg connection object.
     :param mountpoint: Mountpoint to commit.
     :param current_head: Current HEAD pointer to base the commit on.
