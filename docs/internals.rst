@@ -1,26 +1,51 @@
-====================================
-Image management and version control
-====================================
+====================
+Splitgraph internals
+====================
 
-Creating images and committing
-==============================
+This chapter contains various implementation details of Splitgraph that are not required for its operation if you're
+a data scientist or a casual user. However, if you wish to fine tune your Splitgraph installation, contribute to
+the source code or are just curious, read on!
 
-See :mod:`splitgraph.commands.commit`
+The `splitgraph_meta` schema
+============================
 
-`sg commit` creates a new commit hash (currently picked at random, unless explicitly specified by the SGFile executor or the user)
-and records all changes to the tables in a given schema.
+Most of the metadata related to Splitgraph is stored in the `splitgraph_meta` schema on the driver, including
+version and tag information, relationships between images and downloaded tables.
 
-Implementation
---------------
+Here's an overview of the tables in this schema:
 
-  * If the table's schema (or primary keys) has changed (or the table has been created), copies the table into a
+  * `snap_tree`: should really be called `image_tree`. Describes all image hashes and their parents, as well as extra
+    data about a given commit (the creation timestamp, the commit message and the details of the sgfile command that
+    generated this image). PKd on the mountpoint and the image hash, so the same image can exist in multiple schemas
+    at the same time.
+  * `tables`: an image consists of multiple tables. Each table in a given version is represented by one or more objects.
+    An object can be one of two types: SNAP (a snapshot, a full copy of the table) and a DIFF (list of changes to a parent
+    object). This is also mountpoint-specific.
+  * `object_tree`: Lists the type and the parent of every object. A SNAP object doesn't have a parent and a DIFF object
+    might have multiple parents (for example, the SNAP and the DIFF of a previous commit). This is not necessarily
+    the object linked to the parent commit of a given object: if we're importing a table from a different repository,
+    we would pull in its chain of DIFF objects without tying them to commits those objects were created in.
+  * `remotes`: Currently, stores the connection string for the upstream repository a given repository was cloned from.
+  * `snap_tags`: maps images and their mountpoints to one or more tags. Tags (apart from HEAD) are pushed and pulled
+    to/from upstream repositories and are immutable (this is weakly enforced by the push/pull code).
+    HEAD is a special tag: it points out to the currently checked-out local image.
+  * `object_locations`: If a given object is not stored in the remote, this table specifies where to find it (protocol
+    and location). More on this later.
+
+Implementation of various Splitgraph commands
+=============================================
+
+`commit`
+--------
+
+  * If the table's schema (or primary keys) has changed (or the table has been created), copy the table into a
     new SNAP object (currently, the IDs of all objects are also picked at random). This kind of sidesteps the problem
     of storing column names and types in a DIFF object.
-  * If the table hasn't changed at all, links the table (by adding entries to `splitgraph_meta.tables`) to all objects
+  * If the table hasn't changed at all, link the table (by adding entries to `splitgraph_meta.tables`) to all objects
     pointed to by the parent of this table.
-  * Otherwise, goes through the `pending_changes` to conflate the changes and create a new DIFF object.
+  * Otherwise, goe through the `pending_changes` to conflate the changes and create a new DIFF object.
 
-    * Replica identity is PG terminology for something identifying the exact tuple for the purposes of logical
+    * *Replica identity* is PG terminology for something identifying the exact tuple for the purposes of logical
       replication. In this case, the RI is either the PK of the tuple (if it exists) or the whole tuple.
     * Currently, DIFF objects are of the format `(the whole RI, change kind, change data)`:
 
@@ -35,18 +60,8 @@ Implementation
     `tables` (to link tables in the new commit to existing/new objects), `snap_tree` (to register the new commit) and
     `snap_tags` (to move the HEAD pointer to the new commit).
 
-Checking out commits and downloading objects
-============================================
-
-See :mod:`splitgraph.commands.checkout` for the detailed documentation.
-
-`sg checkout` checks out a given commit into the schema, first deleting any uncommitted chances. Then,
-every table in the given Splitgraph image is materialized (copied into the mountpoint as an actual table).
-
-As a part of this process, extra physical objects that are required to materialize the image can be downloaded.
-
-Implementation
---------------
+`checkout`
+----------
 
   * The `tables` table is inspected to find out which object is required to start materializing the table.
   * Then, `object_tree` is crawled to find a chain of DIFF objects that ends with a SNAP
@@ -62,64 +77,18 @@ Implementation
       * Download the object from the upstream (by inspecting the `remotes` table).
   * `snap_tags` is changed to update the HEAD pointer.
 
-Inspecting the status of a repository
-=====================================
+`clone/push/pull`
+-----------------
 
-There are various (commandline and API) commands that can be used to inspect the status of a repository.
+`sg clone` is implemented as follows:
 
-The commandline commands are listed here, together with their API counterparts. :mod:`splitgraph.meta_handler` contains
-more low-level commands that fetch data directly from the metadata tables without processing it.
-
-`sg show MOUNTPOINT IMAGE_HASH`
-    Outputs the information about a given image. The verbose mode (`-v`) also lists all the actual objects
-    the image depends on.
-
-`sg diff MOUNTPOINT IMAGE_HASH_1 [IMAGE_HASH_2]`
-    Also see: :mod:`splitgraph.commands.diff`
-
-    Shows the difference between two images in a mountpoint. If the two images are on the same path in `snap_tree`, it
-    concatenates their DIFFs and displays that (or the aggregation of total inserts/deletes/updates).
-    Note this might give wrong results if there's been a schema change.
-
-    If the images are on different branches), it temporarily materializes both revisions and compares them row-by-row.
-
-`sg log MOUNTPOINT`
-    Also see: :func:`splitgraph.commands.misc.get_log`
-
-    Returns the log of changes to a given mountpoint, starting from the current HEAD revision and crawling down.
-    If `--tree` (`-t`) is passed, outputs the full image tree of the schema.
-    Otherwise, and if nothing in the mountpoint is checked out, raises an error.
-
-`sg status`
-    Lists the currently mounted schemata and their checked out images (if any).
-
-Fetching and pushing repositories
-=================================
-
-Also see :mod:`splitgraph.commands.push_pull`
-
-`sg pull` is currently a shorthand for `clone` that uses the remote name specified in `splitgraph_meta.remotes` instead of
-a full connection string.
-
-`sg clone` brings the metadata for the local mountpoint up to date with a remote one, optionally downloading the actual
-physical objects.
-
-`sg push` does the opposite.
-
-`sg publish` TODO
-
-Implementation
---------------
-
-The `sg clone` command is implemented as follows:
-
-  * First, it connects to the remote and inspects its `splitgraph_meta` table to gather the commits, tags and objects
+  * First, it connect to the remote and inspect its `splitgraph_meta` table to gather the commits, tags and objects
     (`snap_tree`, `snap_tags`, `object_tree`, `tables` and `object_locations`) that don't exist in the local
     `splitgraph_meta`. See `splitgraph.commands.push_pull._get_required_snaps_objects`.
-  * As part of that, it also crawls the remote `object_tree` to make sure it actually has the list of all required
-    objects and their dependencies.
-  * Optionally, it downloads the new objects and stores them in `splitgraph_meta`.
-  * Finally, it writes the new metadata locally. Currently, it doesn't check for clashes or conflicts, instead
+  * As part of that, also crawl the remote `object_tree` to gather the list of all required objects
+    and their dependencies.
+  * Optionally, download the new objects and store them in `splitgraph_meta`.
+  * Finally, write the new metadata locally. Currently, this command doesn't check for clashes or conflicts, instead
     letting the constraints on `splitgraph_meta` handle that. In particular:
 
     * Existing commits/objects aren't gathered at all by `_get_required_snaps_objects`, hence the remote can't rewrite
@@ -142,3 +111,12 @@ connection to create the tables that will house the objects remotely, then mount
 then use the driver-to-driver `SELECT` queries to send the object contents over. In the case of externally stored
 objects, the client first uploads them to an external location and only then registers the new metadata (commits,
 tags, objects and their locations) on the remote.
+
+`import`
+---------
+
+  * Add the new commit into `snap_tree`
+  * Copy the required rows from `tables` linking the required objects to the new commit (both the tables in the
+    current HEAD and the newly imported tables).
+  * Change the HEAD pointer to point to the new commit and optionally materialize the new tables (which might involve
+    actual object downloads).

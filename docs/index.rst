@@ -5,9 +5,11 @@ Welcome to Splitgraph's documentation!
    :maxdepth: 2
    :caption: Contents:
 
-   images
-   creating_images
+   introduction
+   quickstart
+   commands
    sgfile
+   internals
    API reference <api/modules>
 
 
