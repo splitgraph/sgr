@@ -5,13 +5,8 @@ Welcome to Splitgraph's documentation!
    :maxdepth: 2
    :caption: Contents:
 
-   commands/commit
-   commands/checkout
-   commands/status_diff
-   commands/importing
-   commands/mounting
-   commands/push_pull
-   commands/provenance
+   images
+   creating_images
    sgfile
    API reference <api/modules>
 
