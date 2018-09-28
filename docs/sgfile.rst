@@ -21,9 +21,10 @@ The following commands are supported by the interpreter:
 Basing an image on another image
 --------------------------------
 
-`FROM mountpoint[:tag] [AS alias]` bases the output of the sgfile on a certain revision of the remote/local repository.
-If `AS alias` is specified, the repository is cloned into `alias` and the current contents of `alias` destroyed.
-Otherwise, the current output mountpoint (passed to the executor) is used.
+`FROM mountpoint[:tag] [AS alias]`
+    Bases the output of the sgfile on a certain revision of the remote/local repository.
+    If `AS alias` is specified, the repository is cloned into `alias` and the current contents of `alias` destroyed.
+    Otherwise, the current output mountpoint (passed to the executor) is used.
 
 `FROM` can also be used to perform Docker-like multistage builds.
 
@@ -39,21 +40,19 @@ Importing tables from another image
 -----------------------------------
 
 `FROM (mountpoint[:tag])/(MOUNT handler conn_string handler_options) IMPORT table1/{query1} [AS table1_alias], [table2/{query2}...]`
-
-Uses the `sg import` command to import one or more tables from either a local mountpoint, a remote one, or an
-FDW-mounted database.
+    Uses the `sg import` command to import one or more tables from either a local mountpoint, a remote one, or an
+    FDW-mounted database.
 
 Optionally, the table name can be replaced with a SELECT query in curly braces that will get executed against the
 source mountpoint in order to create a table. This will be stored as a snapshot. For example:
 
 `FROM internal_data:latest IMPORT {SELECT name, age FROM staff WHERE is_restricted = FALSE} AS visible_staff`
+    Will create a new table that contains non-restricted staff names and ages in `internal_data.staff` without including
+    any other entries in the table history.
 
-will create a new table that contains non-restricted staff names and ages in `internal_data.staff` without including
-any other entries in the table history.
-
-In the case of imports from FDW, the commit hash produced by this command is random. Otherwise, the commit hash will be
-a combination of the current `OUTPUT` hash, the hash of the source mountpoint and the hashes of the names
-(or source SQL queries) and aliases of all imported tables.
+    In the case of imports from FDW, the commit hash produced by this command is random. Otherwise, the commit hash will be
+    a combination of the current `OUTPUT` hash, the hash of the source mountpoint and the hashes of the names
+    (or source SQL queries) and aliases of all imported tables.
 
 This is crude, but means that the layer is invalidated if there's a change on the remote or we import a different
 table/name it differently/use a different query to create a table.  We can improve on this by perhaps only considering
@@ -77,9 +76,10 @@ Currently, a repository name (mountpoint) is converted to a connection string as
 Running SQL statements
 ----------------------
 
-`SQL command` runs a (potentially arbitrary) SQL statement. Doesn't enforce any constraints on the SQL yet,
-but the spirit of this command is performing actions on tables in the current `OUTPUT` mountpoint (the command is
-executed with the `OUTPUT` schema being the default one) and not changing/reading data from any other schemas.
+`SQL command`
+    Runs a (potentially arbitrary) SQL statement. Doesn't enforce any constraints on the SQL yet,
+    but the spirit of this command is performing actions on tables in the current `OUTPUT` mountpoint (the command is
+    executed with the `OUTPUT` schema being the default one) and not changing/reading data from any other schemas.
 
 The image hash produced by this command is a combination of the current `OUTPUT` hash and the hash of the
 "canonicalized" SQL statement (all lowercase with excess whitespace removed). This might cause issues with us not

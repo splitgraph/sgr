@@ -15,6 +15,8 @@ database: it can interact with it by querying tables and writing to them as usua
 Installation and quick demo
 ===========================
 
+**NB this doesn't work yet** -- see :ref:`introduction` / other docs for the vision/overview
+
 First, pull and start the driver::
 
     docker run splitgraph
