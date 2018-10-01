@@ -77,19 +77,19 @@ def log_c(mountpoint, tree):
 @click.option('-v', '--verbose', default=False, is_flag=True)
 @click.option('-t', '--table-name')
 @click.argument('mountpoint')
-@click.argument('image_1', required=False)
-@click.argument('image_2', required=False)
-def diff_c(verbose, table_name, mountpoint, image_1, image_2):
+@click.argument('tag_or_hash_1', required=False)
+@click.argument('tag_or_hash_2', required=False)
+def diff_c(verbose, table_name, mountpoint, tag_or_hash_1, tag_or_hash_2):
     conn = _conn()
-    image_1, image_2 = _get_actual_hashes(conn, mountpoint, image_1, image_2)
+    tag_or_hash_1, tag_or_hash_2 = _get_actual_hashes(conn, mountpoint, tag_or_hash_1, tag_or_hash_2)
 
-    diffs = {table_name: diff(conn, mountpoint, table_name, image_1, image_2, aggregate=not verbose)
+    diffs = {table_name: diff(conn, mountpoint, table_name, tag_or_hash_1, tag_or_hash_2, aggregate=not verbose)
              for table_name in ([table_name] if table_name else sorted(get_all_tables(conn, mountpoint)))}
 
-    if image_2 is None:
-        print("Between %s and the current working copy: " % image_1[:12])
+    if tag_or_hash_2 is None:
+        print("Between %s and the current working copy: " % tag_or_hash_1[:12])
     else:
-        print("Between %s and %s: " % (image_1[:12], image_2[:12]))
+        print("Between %s and %s: " % (tag_or_hash_1[:12], tag_or_hash_2[:12]))
 
     for table, diff_result in diffs.items():
         _emit_table_diff(table, diff_result, verbose)
@@ -130,15 +130,15 @@ def _get_actual_hashes(conn, mountpoint, image_1, image_2):
         # Comparing current working copy against the last commit
         image_1 = get_current_head(conn, mountpoint)
     elif image_2 is None:
-        image_1 = get_canonical_image_id(conn, mountpoint, image_1)
+        image_1 = tag_or_hash_to_actual_hash(conn, mountpoint, image_1)
         # One parameter: diff from that and its parent.
         image_2 = get_image_parent(conn, mountpoint, image_1)
         if image_2 is None:
             print("%s has no parent to compare to!" % image_1)
         image_1, image_2 = image_2, image_1  # snap_1 has to come first
     else:
-        image_1 = get_canonical_image_id(conn, mountpoint, image_1)
-        image_2 = get_canonical_image_id(conn, mountpoint, image_2)
+        image_1 = tag_or_hash_to_actual_hash(conn, mountpoint, image_1)
+        image_2 = tag_or_hash_to_actual_hash(conn, mountpoint, image_2)
     return image_1, image_2
 
 
@@ -199,14 +199,14 @@ def commit_c(mountpoint, commit_hash, include_snap, message):
 
 @click.command(name='show')
 @click.argument('mountpoint')
-@click.argument('commit_hash')
+@click.argument('commit_tag_or_hash')
 @click.option('-v', '--verbose', default=False, is_flag=True)
-def show_c(mountpoint, commit_hash, verbose):
+def show_c(mountpoint, commit_tag_or_hash, verbose):
     conn = _conn()
-    commit_hash = get_canonical_image_id(conn, mountpoint, commit_hash)
+    commit_tag_or_hash = tag_or_hash_to_actual_hash(conn, mountpoint, commit_tag_or_hash)
 
-    print("Commit %s" % commit_hash)
-    parent, created, comment = get_all_image_info(conn, mountpoint, commit_hash)
+    print("Commit %s" % commit_tag_or_hash)
+    parent, created, comment = get_all_image_info(conn, mountpoint, commit_tag_or_hash)
     print(comment or "")
     print("Created at %s" % created.isoformat())
     if parent:
@@ -216,8 +216,8 @@ def show_c(mountpoint, commit_hash, verbose):
     if verbose:
         print()
         print("Tables:")
-        for t in get_tables_at(conn, mountpoint, commit_hash):
-            table_objects = get_table(conn, mountpoint, t, commit_hash)
+        for t in get_tables_at(conn, mountpoint, commit_tag_or_hash):
+            table_objects = get_table(conn, mountpoint, t, commit_tag_or_hash)
             if len(table_objects) == 1:
                 print("  %s: %s (%s)" % (t, table_objects[0][0], table_objects[0][1]))
             else:
