@@ -6,7 +6,7 @@ from splitgraph.commands import checkout, init, unmount, clone, import_tables, c
 from splitgraph.commands.mount_handlers import get_mount_handler
 from splitgraph.commands.push_pull import local_clone, pull
 from splitgraph.config.repo_lookups import lookup_repo
-from splitgraph.constants import SplitGraphException, serialize_connection_string
+from splitgraph.constants import SplitGraphException, serialize_connection_string, Color
 from splitgraph.meta_handler.misc import mountpoint_exists
 from splitgraph.meta_handler.provenance import store_import_provenance, store_sql_provenance, store_mount_provenance, \
     store_from_provenance
@@ -31,6 +31,10 @@ def _checkout_or_calculate_layer(conn, output, image_hash, calc_func):
         print("Using the cache.")
     except SplitGraphException:
         calc_func()
+
+
+def truncate_line(line, length=80):
+    return line if len(line) <= length else line[:length] + '...'
 
 
 def execute_commands(conn, commands, params=None, output=None, output_base='0' * 32):
@@ -60,7 +64,7 @@ def execute_commands(conn, commands, params=None, output=None, output_base='0' *
 
     node_list = parse_commands(commands, params=params)
     for i, node in enumerate(node_list):
-        print("\n-> %d/%d %s" % (i + 1, len(node_list), node.text))
+        print(Color.BOLD + "\n-> %d/%d %s" % (i + 1, len(node_list), truncate_line(node.text)) + Color.END)
         if node.expr_name == 'from':
             output = _execute_from(conn, node, output)
 
