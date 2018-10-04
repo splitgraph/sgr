@@ -30,7 +30,7 @@ Finally, pull some data::
     sg pull noaa/monthly
     sg checkout noaa/monthly 201801
 
-The `noaa/monthly` schema on the driver now contains the January 2018 of the NOAA monthly climate data, queryable
+The `noaa/monthly` schema on the driver now contains the January 2018 version of the NOAA monthly climate data, queryable
 by any tool that understands SQL. You can also run an ad hoc query yourself::
 
     sg sql "SELECT temperature FROM noaa/monthly.state_temperature WHERE state = 'AZ'"
