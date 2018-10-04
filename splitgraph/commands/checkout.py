@@ -108,8 +108,6 @@ def checkout(conn, mountpoint, image_hash=None, tag=None, tables=None, keep_down
         logging.info("Removing %d downloaded objects from cache..." % len(downloaded_object_ids))
         delete_objects(conn, downloaded_object_ids)
 
-    logging.info("Checked out %s:%s.", mountpoint, image_hash[:12])
-
 
 @contextmanager
 def materialized_table(conn, mountpoint, table_name, image_hash):

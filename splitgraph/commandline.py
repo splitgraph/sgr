@@ -178,6 +178,7 @@ def checkout_c(mountpoint, snapshot_or_tag):
     conn = _conn()
     snapshot = tag_or_hash_to_actual_hash(conn, mountpoint, snapshot_or_tag)
     checkout(conn, mountpoint, snapshot)
+    print("Checked out %s:%s." % (mountpoint, snapshot[:12]))
     conn.commit()
 
 
