@@ -31,7 +31,7 @@ def get_tagged_id(conn, mountpoint, tag, raise_on_none=True):
         if result is None or result == (None,):
             if raise_on_none:
                 if tag == 'HEAD':
-                    raise SplitGraphException("No current checked out revision found for %s. Check one out with \"sg "
+                    raise SplitGraphException("No current checked out revision found for %s. Check one out with \"sgr "
                                               "checkout MOUNTPOINT SNAP_ID\"." % mountpoint)
                 else:
                     raise SplitGraphException("Tag %s not found in mountpoint %s" % (tag, mountpoint))

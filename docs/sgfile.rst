@@ -13,7 +13,7 @@ it's interpreted:
 
   * Newlines can be escaped to make a command multiline (`"\\n"` gets replaced with `""`)
   * Parameters are supported (`${PARAM}` is replaced with the value of the parameter that's either passed
-    to the `execute_commands` as a dict or to the commandline `sg file` as a series of arguments
+    to the `execute_commands` as a dict or to the commandline `sgr file` as a series of arguments
     (`-a key1 val1 -a key2 val2...`)).
 
 The following commands are supported by the interpreter:
@@ -40,7 +40,7 @@ Importing tables from another image
 -----------------------------------
 
 `FROM (mountpoint[:tag])/(MOUNT handler conn_string handler_options) IMPORT table1/{query1} [AS table1_alias], [table2/{query2}...]`
-    Uses the `sg import` command to import one or more tables from either a local mountpoint, a remote one, or an
+    Uses the `sgr import` command to import one or more tables from either a local mountpoint, a remote one, or an
     FDW-mounted database.
 
 Optionally, the table name can be replaced with a SELECT query in curly braces that will get executed against the

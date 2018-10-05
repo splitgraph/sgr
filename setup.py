@@ -22,7 +22,7 @@ setup(
     version="0.0",
     packages=['splitgraph'],
     entry_points={
-        'console_scripts': ['sg=splitgraph.commandline:cli'],
+        'console_scripts': ['sgr=splitgraph.commandline:cli'],
     },
     install_requires=install_requirements + tests_requirements,
     tests_require=tests_requirements,

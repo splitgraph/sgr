@@ -25,7 +25,7 @@ def store_sql_provenance(conn, mountpoint, image_hash, sql):
 
 
 def store_mount_provenance(conn, mountpoint, image_hash):
-    # We don't store the details of images that come from an sg MOUNT command since those are assumed to be based
+    # We don't store the details of images that come from an sgr MOUNT command since those are assumed to be based
     # on an inaccessible db
     with conn.cursor() as cur:
         cur.execute(SQL("""UPDATE {}.snap_tree SET provenance_type = %s, provenance_data = %s WHERE

@@ -27,17 +27,17 @@ Then, install the Splitgraph client::
 
 Finally, pull some data::
 
-    sg pull noaa/monthly
-    sg checkout noaa/monthly 201801
+    sgr pull noaa/monthly
+    sgr checkout noaa/monthly 201801
 
 The `noaa/monthly` schema on the driver now contains the January 2018 version of the NOAA monthly climate data, queryable
 by any tool that understands SQL. You can also run an ad hoc query yourself::
 
-    sg sql "SELECT temperature FROM noaa/monthly.state_temperature WHERE state = 'AZ'"
+    sgr sql "SELECT temperature FROM noaa/monthly.state_temperature WHERE state = 'AZ'"
 
 Why January 2018? We have no idea. Let's update your copy of the data::
 
-    sg checkout noaa/monthly latest
+    sgr checkout noaa/monthly latest
 
 This downloads just the parts of this dataset that were changed, so keeping your data up to date is easy.
 

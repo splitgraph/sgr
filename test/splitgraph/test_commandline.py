@@ -2,7 +2,6 @@ import json
 from decimal import Decimal
 
 from click.testing import CliRunner
-
 from splitgraph.commandline import status_c, sql_c, diff_c, commit_c, log_c, show_c, tag_c, checkout_c, unmount_c, \
     cleanup_c, init_c, mount_c, import_c, clone_c, pull_c, push_c, file_c, provenance_c, rerun_c, publish_c
 from splitgraph.commands import commit, checkout
@@ -20,14 +19,14 @@ from test.splitgraph.test_sgfile import SGFILE_ROOT, _add_multitag_dataset_to_sn
 def test_commandline_basics(sg_pg_mg_conn):
     runner = CliRunner()
 
-    # sg status
+    # sgr status
     result = runner.invoke(status_c, [])
     assert PG_MNT in result.output
     assert MG_MNT in result.output
     old_head = get_current_head(sg_pg_mg_conn, PG_MNT)
     assert old_head in result.output
 
-    # sg sql
+    # sgr sql
     runner.invoke(sql_c, ["INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise')"])
     runner.invoke(sql_c, ["CREATE TABLE test_pg_mount.mushrooms (mushroom_id integer, name varchar)"])
     runner.invoke(sql_c, ["DROP TABLE test_pg_mount.vegetables"])
@@ -46,48 +45,48 @@ def test_commandline_basics(sg_pg_mg_conn):
         assert "(3, 'mayonnaise'): +" in result.output
         assert "(1, 'apple'): -" in result.output
 
-    # sg diff, HEAD -> current staging (0-param)
+    # sgr diff, HEAD -> current staging (0-param)
     check_diff([PG_MNT])
 
-    # sg commit (with an extra snapshot
+    # sgr commit (with an extra snapshot
     result = runner.invoke(commit_c, [PG_MNT, '-m', 'Test commit', '-s'])
     new_head = get_current_head(sg_pg_mg_conn, PG_MNT)
     assert new_head != old_head
     assert get_image_parent(sg_pg_mg_conn, PG_MNT, new_head) == old_head
     assert new_head[:10] in result.output
 
-    # sg diff, old head -> new head (2-param), truncated hashes
+    # sgr diff, old head -> new head (2-param), truncated hashes
     # technically these two hashes have a 2^(-20*4) = a 8e-25 chance of clashing but let's not dwell on that
     check_diff([PG_MNT, old_head[:20], new_head[:20]])
 
-    # sg diff, just the new head -- assumes the diff on top of the old head.
+    # sgr diff, just the new head -- assumes the diff on top of the old head.
     check_diff([PG_MNT, new_head[:20]])
 
-    # sg diff, just the new head -- assumes the diff on top of the old head.
+    # sgr diff, just the new head -- assumes the diff on top of the old head.
     check_diff([PG_MNT, new_head[:20]])
     #
-    # # sg diff, reverse order -- actually checks the two tables out and materializes them since there isn't a
+    # # sgr diff, reverse order -- actually checks the two tables out and materializes them since there isn't a
     # # path of DIFF objects between them.
     # check_diff([PG_MNT, new_head[:20], old_head[:20]])
 
-    # sg status with the new commit
+    # sgr status with the new commit
     result = runner.invoke(status_c, [PG_MNT])
     assert 'test_pg_mount' in result.output
     assert 'Parent: ' + old_head in result.output
     assert new_head in result.output
 
-    # sg log
+    # sgr log
     result = runner.invoke(log_c, [PG_MNT])
     assert old_head in result.output
     assert new_head in result.output
     assert "Test commit" in result.output
 
-    # sg log (tree)
+    # sgr log (tree)
     result = runner.invoke(log_c, [PG_MNT, '-t'])
     assert old_head[:5] in result.output
     assert new_head[:5] in result.output
 
-    # sg show the new commit
+    # sgr show the new commit
     result = runner.invoke(show_c, [PG_MNT, new_head[:20], '-v'])
     assert "Test commit" in result.output
     assert "Parent: " + old_head in result.output
@@ -111,15 +110,15 @@ def test_commandline_tag_checkout(sg_pg_mg_conn):
     runner.invoke(commit_c, [PG_MNT, '-m', 'Test commit'])
     new_head = get_current_head(sg_pg_mg_conn, PG_MNT)
 
-    # sg tag <mountpoint> <tag>: tags the current HEAD
+    # sgr tag <mountpoint> <tag>: tags the current HEAD
     runner.invoke(tag_c, [PG_MNT, 'v2'])
     assert get_tagged_id(sg_pg_mg_conn, PG_MNT, 'v2') == new_head
 
-    # sg tag <mountpoint> <tag> -i (imagehash):
+    # sgr tag <mountpoint> <tag> -i (imagehash):
     runner.invoke(tag_c, [PG_MNT, 'v1', '-i', old_head[:10]])
     assert get_tagged_id(sg_pg_mg_conn, PG_MNT, 'v1') == old_head
 
-    # sg tag <mountpoint> with the same tag -- expect an error
+    # sgr tag <mountpoint> with the same tag -- expect an error
     result = runner.invoke(tag_c, [PG_MNT, 'v1'])
     assert result.exit_code != 0
     assert 'Tag v1 already exists' in str(result.exc_info)
@@ -150,21 +149,21 @@ def test_misc_mountpoint_management(sg_pg_mg_conn):
     assert PG_MNT in result.output
     assert MG_MNT in result.output
 
-    # sg unmount
+    # sgr unmount
     result = runner.invoke(unmount_c, [MG_MNT])
     assert result.exit_code == 0
     assert not mountpoint_exists(sg_pg_mg_conn, MG_MNT)
 
-    # sg cleanup
+    # sgr cleanup
     result = runner.invoke(cleanup_c)
     assert "Deleted 1 physical object(s)" in result.output
 
-    # sg init
+    # sgr init
     result = runner.invoke(init_c, ['output'])
     assert "Initialized empty mountpoint output" in result.output
     assert mountpoint_exists(sg_pg_mg_conn, 'output')
 
-    # sg mount
+    # sgr mount
     result = runner.invoke(mount_c, [MG_MNT, '-c', 'originro:originpass@mongoorigin:27017',
                                      '-h', 'mongo_fdw', '-o', json.dumps({"stuff": {
             "db": "origindb",
@@ -185,21 +184,21 @@ def test_import(sg_pg_mg_conn):
     runner = CliRunner()
     head = get_current_head(sg_pg_mg_conn, PG_MNT)
 
-    # sg import mountpoint, table, target_mountpoint (3-arg)
+    # sgr import mountpoint, table, target_mountpoint (3-arg)
     result = runner.invoke(import_c, [MG_MNT, 'stuff', PG_MNT])
     assert result.exit_code == 0
     new_head = get_current_head(sg_pg_mg_conn, PG_MNT)
     assert table_exists_at(sg_pg_mg_conn, PG_MNT, 'stuff', new_head)
     assert not table_exists_at(sg_pg_mg_conn, PG_MNT, 'stuff', head)
 
-    # sg import with alias
+    # sgr import with alias
     result = runner.invoke(import_c, [MG_MNT, 'stuff', PG_MNT, 'stuff_copy'])
     assert result.exit_code == 0
     new_new_head = get_current_head(sg_pg_mg_conn, PG_MNT)
     assert table_exists_at(sg_pg_mg_conn, PG_MNT, 'stuff_copy', new_new_head)
     assert not table_exists_at(sg_pg_mg_conn, PG_MNT, 'stuff_copy', new_head)
 
-    # sg import with alias and custom image hash
+    # sgr import with alias and custom image hash
     with sg_pg_mg_conn.cursor() as cur:
         cur.execute("DELETE FROM test_mg_mount.stuff")
     new_mg_head = commit(sg_pg_mg_conn, MG_MNT)
@@ -264,7 +263,7 @@ def test_sgfile(empty_pg_conn, snapper_conn):
         cur.execute("""SELECT id, fruit, vegetable FROM output.join_table""")
         assert cur.fetchall() == [(1, 'apple', 'potato'), (2, 'orange', 'carrot')]
 
-    # Test the sg provenance command. First, just list the dependencies of the new image.
+    # Test the sgr provenance command. First, just list the dependencies of the new image.
     result = runner.invoke(provenance_c, ['output', 'latest'])
     assert 'test_pg_mount:%s' % get_tagged_id(snapper_conn, 'test_pg_mount', 'latest') in result.output
 

@@ -6,7 +6,6 @@ from pprint import pprint
 import click
 import psycopg2
 from psycopg2 import ProgrammingError
-
 from splitgraph.commands import mount, unmount, commit, checkout, diff, get_log, init, get_parent_children, pull, \
     clone, push, import_tables
 from splitgraph.commands.misc import cleanup_objects
@@ -28,7 +27,7 @@ def _conn():
 
 @click.group()
 def cli():
-    # Toplevel click command group to allow us to invoke e.g. "sg checkout" / "sg commit" etc.
+    # Toplevel click command group to allow us to invoke e.g. "sgr checkout" / "sgr commit" etc.
     pass
 
 
@@ -42,7 +41,7 @@ def status_c(mountpoint):
         for mp_name, mp_hash in mountpoints:
             # Maybe should also show the remote DB address/server
             print("%s: \t %s" % (mp_name, mp_hash))
-        print("\nUse sg status MOUNTPOINT to get information about a given mountpoint.")
+        print("\nUse sgr status MOUNTPOINT to get information about a given mountpoint.")
     else:
         current_snap = get_current_head(conn, mountpoint, raise_on_none=False)
         if not current_snap:

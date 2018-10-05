@@ -80,7 +80,7 @@ Implementation of various Splitgraph commands
 `clone/push/pull`
 -----------------
 
-`sg clone` is implemented as follows:
+`sgr clone` is implemented as follows:
 
   * First, it connect to the remote and inspect its `splitgraph_meta` table to gather the commits, tags and objects
     (`snap_tree`, `snap_tags`, `object_tree`, `tables` and `object_locations`) that don't exist in the local
