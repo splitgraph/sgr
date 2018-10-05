@@ -2,7 +2,7 @@ from setuptools import setup
 
 install_requirements = [
     'click',
-    'psycopg2',
+    'psycopg2-binary',
     'requests',
     'parsimonious'
 ]
