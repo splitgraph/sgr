@@ -9,7 +9,7 @@ MOUNT_HANDLERS = {}
 
 def get_mount_handler(mount_handler):
     """Returns a mount function for a given handler.
-        The mount function has a signature (conn, mountpoint, handler_kwargs)."""
+    The mount function has a signature (conn, mountpoint, handler_kwargs)."""
     try:
         return MOUNT_HANDLERS[mount_handler]
     except KeyError:
@@ -27,6 +27,7 @@ def register_mount_handler(name, mount_function):
 def mount_postgres(conn, mountpoint, server, port, username, password, dbname, remote_schema, tables=[]):
     """
     Mounts a schema on a remote Postgres database as a set of foreign tables locally.
+
     :param conn: Psycopg connection object.
     :param mountpoint: Schema to mount the remote into.
     :param server: Database hostname.
@@ -61,6 +62,7 @@ def mount_postgres(conn, mountpoint, server, port, username, password, dbname, r
 def mount_mongo(conn, mountpoint, server, port, username, password, **table_spec):
     """
     Mounts one or more collections on a remote Mongo database as a set of foreign tables locally.
+
     :param conn: Psycopg connection object.
     :param mountpoint: Schema to mount the remote into.
     :param server: Database hostname.

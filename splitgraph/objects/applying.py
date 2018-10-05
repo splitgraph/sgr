@@ -11,6 +11,7 @@ from splitgraph.pg_utils import _get_column_names
 def apply_record_to_staging(conn, object_id, mountpoint, destination):
     """
     Applies a DIFF table stored in `object_id` to destination.
+
     :param conn: psycopg connection object.
     :param object_id: Object ID of the DIFF table.
     :param mountpoint: Schema where the destination table is located.

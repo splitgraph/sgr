@@ -40,6 +40,7 @@ def truncate_line(line, length=80):
 def execute_commands(conn, commands, params=None, output=None, output_base='0' * 32):
     """
     Executes a series of SGFile commands.
+
     :param conn: psycopg connection object
     :param commands: A string with the raw SGFile.
     :param params: A dictionary of parameters to be applied to the SGFile (`${PARAM}` is replaced with the specified
@@ -252,6 +253,7 @@ def rerun_image_with_replacement(conn, mountpoint, image_hash, source_replacemen
     """
     Recreates the sgfile used to create a given image and reruns it, replacing its dependencies with a different
     set of versions.
+
     :param conn: Psycopg connection object.
     :param mountpoint: Local repository where the image is located.
     :param image_hash: Hash of the image to rerun

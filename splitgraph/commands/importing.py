@@ -22,6 +22,7 @@ def import_tables(conn, mountpoint, tables, target_mountpoint, target_tables, im
     """
     Creates a new commit in target_mountpoint with one or more tables linked to already-existing tables.
     After this operation, the HEAD of the target mountpoint moves to the new commit and the new tables are materialized.
+
     :param conn: psycopg connection object
     :param mountpoint: Mountpoint to get the source table(s) from.
     :param tables: List of tables to import. If empty, imports all tables.
@@ -31,7 +32,8 @@ def import_tables(conn, mountpoint, tables, target_mountpoint, target_tables, im
     :param image_hash: Commit hash on the source mountpoint to import tables from.
         Uses the current source HEAD by default.
     :param foreign_tables: If True, copies all source tables to create a series of new SNAP objects instead of treating
-        them as SplitGraph-versioned tables.
+    them as SplitGraph-versioned tables. This is useful for adding brand new tables
+        (for example, from an FDW-mounted table).
     :param do_checkout: If False, doesn't materialize the tables in the target mountpoint.
     :param target_hash: Hash of the new image that tables is recorded under. If None, gets chosen at random.
     :param table_queries: If not [], it's treated as a Boolean mask showing which entries in the `tables` list are

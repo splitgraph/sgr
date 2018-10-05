@@ -57,6 +57,7 @@ def find_path(conn, mountpoint, hash_1, hash_2):
 def init(conn, mountpoint):
     """
     Initializes an empty repo with an initial commit (hash 0000...)
+
     :param conn: psycopg connection object.
     :param mountpoint: Mountpoint to create the repository in. Must not exist.
     """
@@ -70,6 +71,7 @@ def unmount(conn, mountpoint):
     """
     Discards all changes to a given mountpoint and all of its history, deleting the physical Postgres schema.
     Doesn't delete any cached physical objects.
+
     :param conn: psycopg connection object
     :param mountpoint: Mountpoint to unmount.
     :return:
@@ -93,6 +95,7 @@ def cleanup_objects(conn, include_external=False):
     """
     Deletes all local objects not required by any current mountpoint, including their dependencies, their remote
     locations and their cached local copies.
+
     :param conn: psycopg connection object.
     :param include_external: If True, deletes all external objects cached locally and redownloads them when they're
         needed.
@@ -145,6 +148,7 @@ def cleanup_objects(conn, include_external=False):
 def delete_objects(conn, objects):
     """
     Deletes objects from the Splitgraph cache
+
     :param conn: Psycopg connection object
     :param objects: A sequence of objects to be deleted
     """

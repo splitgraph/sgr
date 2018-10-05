@@ -9,11 +9,13 @@ STM_TRIGGER_NAME = "audit_trigger_stm"
 
 
 def manage_audit_triggers(conn):
-    # Does bookkeeping on audit triggers / audit table:
-    # * Detect tables that are being audited that don't need to be any more
-    #   (e.g. they've been unmounted)
-    # * Drop audit triggers for those and delete all audit info for them
-    # * Set up audit triggers for new tables
+    """Does bookkeeping on audit triggers / audit table:
+
+        * Detect tables that are being audited that don't need to be any more
+          (e.g. they've been unmounted)
+        * Drop audit triggers for those and delete all audit info for them
+        * Set up audit triggers for new tables
+    """
     mountpoints_tables = [(m, t) for m, head in get_current_mountpoints_hashes(conn)
                           for t in get_all_tables(conn, m) if get_table(conn, m, t, head)]
 

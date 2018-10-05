@@ -13,6 +13,7 @@ def mount(conn, mountpoint, mount_handler, handler_kwargs):
     """
     Mounts a foreign database via Postgres FDW and copies all of its tables over, registering them as new SplitGraph
     objects.
+
     :param conn: psycopg connection object
     :param mountpoint: Mountpoint to import the new tables into.
     :param mount_handler: The type of the mounted database. Must be one of `postgres_fdw` or `mongo_fdw`.

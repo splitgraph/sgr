@@ -12,7 +12,8 @@ from splitgraph.pg_utils import copy_table
 
 def _create_diff_table(conn, object_id, replica_identity_cols_types):
     """
-    Create a diff table into which we'll pack the conflated WAL actions.
+    Create a diff table into which we'll pack the conflated audit log actions.
+
     :param conn: psycopg connection object
     :param object_id: table name to create
     :param replica_identity_cols_types: multiple columns forming the table's PK (or all rows), PKd.

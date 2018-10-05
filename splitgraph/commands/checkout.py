@@ -20,13 +20,14 @@ def materialize_table(conn, mountpoint, image_hash, table, destination, destinat
     """
     Materializes a SplitGraph table in the target schema as a normal Postgres table, potentially downloading all
     required objects and using them to reconstruct the table.
+
     :param conn: psycopg connection object
     :param mountpoint: Target mountpoint to materialize the table in.
     :param image_hash: Hash of the commit to get the table from.
     :param table: Name of the table.
     :param destination: Name of the destination table.
     :param destination_mountpoint: Name of the destination schema.
-    :returns A set of IDs of downloaded objects used to construct the table.
+    :return: A set of IDs of downloaded objects used to construct the table.
     """
     destination_mountpoint = destination_mountpoint or mountpoint
     with conn.cursor() as cur:
@@ -70,6 +71,7 @@ def materialize_table(conn, mountpoint, image_hash, table, destination, destinat
 def checkout(conn, mountpoint, image_hash=None, tag=None, tables=None, keep_downloaded_objects=True):
     """
     Discards all pending changes in the current mountpoint and checks out an image, changing the current HEAD pointer.
+
     :param conn: psycopg connection object
     :param mountpoint: Mountpoint to check out.
     :param image_hash: Hash of the image to check out.
@@ -114,12 +116,13 @@ def materialized_table(conn, mountpoint, table_name, image_hash):
     """A context manager that returns a pointer to a read-only materialized table in a given image.
     If the table is already stored as a SNAP, this doesn't use any extra space.
     Otherwise, the table is materialized and deleted on exit from the context manager.
+
     :param conn: Psycopg connection object
     :param mountpoint: Mounpoint that the table belongs to
     :param table_name: Name of the table
     :param image_hash: Image hash to materialize
     :return: (mountpoint, table_name) where the materialized table is located.
-    The table must not be changed, as it might be a pointer to a real SG SNAP object.
+        The table must not be changed, as it might be a pointer to a real SG SNAP object.
     """
     if image_hash is None:
         # No snapshot -- just return the current staging table.
