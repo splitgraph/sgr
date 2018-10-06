@@ -2,7 +2,6 @@ import logging
 from collections import defaultdict
 
 from psycopg2.sql import SQL, Identifier
-
 from splitgraph.commands.misc import make_conn, unmount
 from splitgraph.commands.mount_handlers import mount_postgres
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, parse_connection_string
@@ -36,6 +35,7 @@ def download_objects(conn, remote_conn_string, objects_to_fetch, object_location
     if not remaining_objects_to_fetch:
         return objects_to_fetch
 
+    print("Fetching remote objects...")
     _fetch_remote_objects(conn, remaining_objects_to_fetch, remote_conn_string, remote_conn)
     return objects_to_fetch
 

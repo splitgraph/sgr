@@ -1,7 +1,6 @@
 import logging
 
 from psycopg2.sql import SQL, Identifier
-
 from splitgraph.commands.misc import make_conn
 from splitgraph.config.repo_lookups import lookup_repo
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, SplitGraphException, serialize_connection_string, \
@@ -148,10 +147,10 @@ def clone(conn, remote_mountpoint, remote_conn_string=None,
     # Don't check anything out, keep the repo bare.
     set_head(conn, local_mountpoint, None)
 
-    logging.info("Fetched metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta),
-                                                                                            len(table_meta),
-                                                                                            len([t for t in tags if
-                                                                                                 t != 'HEAD'])))
+    print("Fetched metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta),
+                                                                                     len(table_meta),
+                                                                                     len([t for t in tags if
+                                                                                          t != 'HEAD'])))
 
     if get_remote_for(conn, local_mountpoint) is None:
         add_remote(conn, local_mountpoint, serialize_connection_string(*conn_params), remote_mountpoint)
