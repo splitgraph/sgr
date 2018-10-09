@@ -28,13 +28,14 @@ def _checkout_or_calculate_layer(conn, output, image_hash, calc_func):
     # Have we already calculated this hash?
     try:
         checkout(conn, output, image_hash)
-        print("Using the cache.")
+        print(" ---> Using cache")
     except SplitGraphException:
         calc_func()
+    print(" ---> %s" % image_hash[:12])
 
 
 def truncate_line(line, length=80):
-    return line if len(line) <= length else line[:length] + '...'
+    return (line if len(line) <= length else line[:length] + '...').replace('\n', '')
 
 
 def execute_commands(conn, commands, params=None, output=None, output_base='0' * 32):
@@ -65,7 +66,7 @@ def execute_commands(conn, commands, params=None, output=None, output_base='0' *
 
     node_list = parse_commands(commands, params=params)
     for i, node in enumerate(node_list):
-        print(Color.BOLD + "\n-> %d/%d %s" % (i + 1, len(node_list), truncate_line(node.text)) + Color.END)
+        print(Color.BOLD + "\nStep %d/%d : %s" % (i + 1, len(node_list), truncate_line(node.text)) + Color.END)
         if node.expr_name == 'from':
             output = _execute_from(conn, node, output)
 
@@ -96,7 +97,6 @@ def _execute_sql(conn, node, output):
         sql_command = node_contents
     output_head = get_current_head(conn, output)
     target_hash = _combine_hashes([output_head, sha256(sql_command.encode('utf-8')).hexdigest()])
-    print('%s:%s -> %s' % (output, output_head[:12], target_hash[:12]))
 
     def _calc():
         print("Executing SQL...")
@@ -125,7 +125,6 @@ def _execute_from(conn, node, output):
         init(conn, output)
     if repo_source:
         mountpoint, tag_or_hash = parse_repo_source(repo_source)
-        print("Resolving repository %s" % mountpoint)
         location = lookup_repo(conn, mountpoint, include_local=True)
 
         if location != 'LOCAL':
@@ -187,9 +186,7 @@ def _execute_db_import(conn, conn_string, fdw_name, fdw_params, table_names, tar
         mount_handler(conn, tmp_mountpoint, **handler_kwargs)
         # The foreign database is a moving target, so the new image hash is random.
         # Maybe in the future, when the object hash is a function of its contents, we can be smarter here...
-        output_head = get_current_head(conn, target_mountpoint)
         target_hash = "%0.2x" % getrandbits(256)
-        print('%s:%s -> %s' % (target_mountpoint, output_head[:12], target_hash[:12]))
 
         import_tables(conn, tmp_mountpoint, table_names, target_mountpoint, table_aliases, image_hash=target_hash,
                       foreign_tables=True, table_queries=table_queries)
@@ -232,9 +229,6 @@ def _execute_repo_import(conn, mountpoint, table_names, tag_or_hash, target_moun
         target_hash = _combine_hashes(
             [output_head, source_hash] + [sha256(n.encode('utf-8')).hexdigest() for n in
                                           table_names + table_aliases])
-
-        print('%s:%s, %s:%s -> %s' % (mountpoint, source_hash[:12],
-                                      target_mountpoint, output_head[:12], target_hash[:12]))
 
         def _calc():
             print("Importing tables %r:%s from %s into %s" % (
