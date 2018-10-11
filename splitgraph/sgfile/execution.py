@@ -66,7 +66,7 @@ def execute_commands(conn, commands, params=None, output=None, output_base='0' *
 
     node_list = parse_commands(commands, params=params)
     for i, node in enumerate(node_list):
-        print(Color.BOLD + "\nStep %d/%d : %s" % (i + 1, len(node_list), truncate_line(node.text)) + Color.END)
+        print(Color.BOLD + "\nStep %d/%d : %s" % (i + 1, len(node_list), truncate_line(node.text, length=60)) + Color.END)
         if node.expr_name == 'from':
             output = _execute_from(conn, node, output)
 
