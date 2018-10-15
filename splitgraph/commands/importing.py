@@ -2,7 +2,6 @@ import logging
 from random import getrandbits
 
 from psycopg2.sql import Identifier, SQL
-
 from splitgraph.commands.checkout import materialize_table, checkout
 from splitgraph.commands.misc import unmount
 from splitgraph.commands.push_pull import clone
@@ -71,6 +70,9 @@ def import_tables(conn, mountpoint, tables, target_mountpoint, target_tables, im
 
 def _import_tables(conn, mountpoint, image_hash, tables, target_mountpoint, target_hash, target_tables, do_checkout,
                    table_queries, foreign_tables):
+    with conn.cursor() as cur:
+        cur.execute(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(target_mountpoint)))
+
     head = get_current_head(conn, target_mountpoint, raise_on_none=False)
     # Add the new snap ID to the tree
     add_new_image(conn, target_mountpoint, head, target_hash, comment="Importing %s from %s" % (tables, mountpoint))

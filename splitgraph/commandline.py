@@ -1,5 +1,6 @@
 import json
 import re
+import sys
 from collections import Counter, defaultdict
 from pprint import pprint
 
@@ -338,20 +339,31 @@ def tag_c(mountpoint, image, tag, force):
 
 @click.command(name='import')
 @click.argument('mountpoint')
-@click.argument('table')
+@click.argument('table_or_query')
 @click.argument('target_mountpoint')
 @click.argument('target_table', required=False)
 @click.argument('image', required=False)
-def import_c(mountpoint, table, target_mountpoint, target_table, image):
-    conn = _conn()
-    if not image:
-        image = get_current_head(conn, mountpoint)
-    else:
-        image = get_canonical_image_id(conn, mountpoint, image)
+@click.option('-q', 'is_query', is_flag=True, default=False)
+@click.option('-f', 'foreign_tables', is_flag=True, default=False)
+def import_c(mountpoint, table_or_query, target_mountpoint, target_table, image, is_query, foreign_tables):
+    if is_query and not target_table:
+        print("TARGET_TABLE is required when is_query is True!")
+        sys.exit(1)
 
-    import_tables(conn, mountpoint, [table], target_mountpoint, [target_table] if target_table else [],
-                  image_hash=image)
-    print("%s:%s has been imported from %s:%s (%s)" % (target_mountpoint, target_table, mountpoint, table, image[:12]))
+    conn = _conn()
+    if not foreign_tables:
+        if not image:
+            image = get_current_head(conn, mountpoint)
+        else:
+            image = get_canonical_image_id(conn, mountpoint, image)
+    else:
+        image = None
+    import_tables(conn, mountpoint, [table_or_query], target_mountpoint, [target_table] if target_table else [],
+                  image_hash=image, table_queries=[] if not is_query else [True], foreign_tables=foreign_tables)
+
+    print("%s:%s has been imported from %s:%s%s" % (target_mountpoint, target_table, mountpoint, table_or_query,
+                                                    (' (%s)' % image[:12] if image else '')))
+
     conn.commit()
 
 

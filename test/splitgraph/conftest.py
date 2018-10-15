@@ -5,7 +5,7 @@ from splitgraph.commands import *
 from splitgraph.commands import unmount
 from splitgraph.commands.misc import make_conn, cleanup_objects
 from splitgraph.constants import PG_USER, PG_PWD, PG_DB, serialize_connection_string
-from splitgraph.meta_handler.misc import get_current_mountpoints_hashes
+from splitgraph.meta_handler.misc import get_current_mountpoints_hashes, get_all_foreign_tables
 from splitgraph.registry_meta_handler import ensure_registry_schema, unpublish_repository
 
 PG_MNT = 'test_pg_mount'
@@ -13,23 +13,28 @@ MG_MNT = 'test_mg_mount'
 
 
 def _mount_postgres(conn, mountpoint):
-    mount(conn, mountpoint, "postgres_fdw",
+    mount(conn, 'tmp', "postgres_fdw",
           dict(server='pgorigin', port=5432, username='originro', password='originpass', dbname="origindb",
                remote_schema="public"))
+    import_tables(conn, 'tmp', get_all_foreign_tables(conn, 'tmp'), mountpoint,
+                  [], foreign_tables=True, do_checkout=True)
+    unmount(conn, 'tmp')
 
 
 def _mount_mongo(conn, mountpoint):
-    mount(conn, mountpoint, "mongo_fdw", dict(server='mongoorigin', port=27017,
-                                              username='originro', password='originpass',
-                                              stuff={
-                                                  "db": "origindb",
-                                                  "coll": "stuff",
-                                                  "schema": {
-                                                      "name": "text",
-                                                      "duration": "numeric",
-                                                      "happy": "boolean"
-                                                  }}))
-
+    mount(conn, 'tmp', "mongo_fdw", dict(server='mongoorigin', port=27017,
+                                         username='originro', password='originpass',
+                                         stuff={
+                                             "db": "origindb",
+                                             "coll": "stuff",
+                                             "schema": {
+                                                 "name": "text",
+                                                 "duration": "numeric",
+                                                 "happy": "boolean"
+                                             }}))
+    import_tables(conn, 'tmp', get_all_foreign_tables(conn, 'tmp'), mountpoint,
+                  [], foreign_tables=True, do_checkout=True)
+    unmount(conn, 'tmp')
 
 TEST_MOUNTPOINTS = [PG_MNT, PG_MNT + '_pull', 'output', MG_MNT, 'output_stage_2']
 

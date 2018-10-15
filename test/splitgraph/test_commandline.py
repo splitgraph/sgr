@@ -5,7 +5,7 @@ from click.testing import CliRunner
 from splitgraph.commandline import status_c, sql_c, diff_c, commit_c, log_c, show_c, tag_c, checkout_c, unmount_c, \
     cleanup_c, init_c, mount_c, import_c, clone_c, pull_c, push_c, file_c, provenance_c, rerun_c, publish_c
 from splitgraph.commands import commit, checkout
-from splitgraph.commands.misc import table_exists_at
+from splitgraph.commands.misc import table_exists_at, unmount
 from splitgraph.commands.provenance import provenance
 from splitgraph.meta_handler.images import get_image_parent, get_all_images_parents
 from splitgraph.meta_handler.misc import mountpoint_exists
@@ -174,7 +174,6 @@ def test_misc_mountpoint_management(sg_pg_mg_conn):
                 "happy": "boolean"
             }}})])
     assert result.exit_code == 0
-    assert mountpoint_exists(sg_pg_mg_conn, MG_MNT)
     with sg_pg_mg_conn.cursor() as cur:
         cur.execute("""SELECT duration from test_mg_mount.stuff WHERE name = 'James'""")
         assert cur.fetchall() == [(Decimal(2),)]
@@ -296,3 +295,30 @@ def test_sgfile_rerun_update(empty_pg_conn, snapper_conn):
     assert result.exit_code == 0
     assert output_v2 == get_current_head(empty_pg_conn, 'output')
     assert get_all_images_parents(empty_pg_conn, 'output') == curr_commits
+
+
+def test_mount_and_import(empty_pg_conn):
+    runner = CliRunner()
+    try:
+        # sgr mount
+        result = runner.invoke(mount_c, ['tmp', '-c', 'originro:originpass@mongoorigin:27017',
+                                         '-h', 'mongo_fdw', '-o', json.dumps({"stuff": {
+                "db": "origindb",
+                "coll": "stuff",
+                "schema": {
+                    "name": "text",
+                    "duration": "numeric",
+                    "happy": "boolean"
+                }}})])
+        assert result.exit_code == 0
+
+        result = runner.invoke(import_c, ['tmp', 'stuff', MG_MNT, '-f'])
+        assert result.exit_code == 0
+        assert table_exists_at(empty_pg_conn, MG_MNT, 'stuff', get_current_head(empty_pg_conn, MG_MNT))
+
+        result = runner.invoke(import_c, ['tmp', 'SELECT * FROM stuff WHERE duration > 10', MG_MNT,
+                                          'stuff_query', '-f', '-q'])
+        assert result.exit_code == 0
+        assert table_exists_at(empty_pg_conn, MG_MNT, 'stuff_query', get_current_head(empty_pg_conn, MG_MNT))
+    finally:
+        unmount(empty_pg_conn, 'tmp')
