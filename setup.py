@@ -10,7 +10,8 @@ install_requirements = [
 tests_requirements = [
     'pytest',
     'pyfakefs',
-    'pytest-cov'
+    'pytest-cov',
+    'pytest-env'
 ]
 
 setup_requirements = [

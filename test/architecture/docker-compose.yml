@@ -1,0 +1,47 @@
+version: "3"
+services:
+  pgorigin:
+    build: ./src/pgorigin
+    environment:
+      - ORIGIN_USER=originro
+      - ORIGIN_PASS=originpass
+      - ORIGIN_PG_DB=origindb
+    expose:
+      - 5432
+    volumes:
+      - ./data/pgorigin:/src
+  local_driver:
+    image: splitgraph/driver
+    ports:
+      - "0.0.0.0:5432:5432"
+    environment:
+      - POSTGRES_USER=clientuser
+      - POSTGRES_PASSWORD=supersecure
+      - POSTGRES_DB=cachedb
+    expose:
+      - 5432
+  remote_driver:
+    build:
+      context:  ./src/
+      dockerfile: remote_driver/Dockerfile
+    ports:
+      - "0.0.0.0:5431:5431"
+    environment:
+      - POSTGRES_USER=clientuser
+      - POSTGRES_PASSWORD=supersecure
+      - POSTGRES_DB=cachedb
+      - PGPORT=5431
+    expose:
+      - 5431
+  mongoorigin:
+    build: ./src/mongoorigin
+    ports:
+      - "0.0.0.0:27017:27017"
+    environment:
+      - ORIGIN_USER=originro
+      - ORIGIN_PASS=originpass
+      - ORIGIN_MONGO_DB=origindb
+    expose:
+      - 27017
+    volumes:
+      - ./data/mongoorigin:/src
