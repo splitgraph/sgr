@@ -9,7 +9,7 @@ The basic idea is to run the driver with specific credentials and db name
 (see below) and to make sure the client is configured with those same credentials.
 
 The published docker image can be found on Docker hub at
-[splitgraph/driver](https://hub.docker.com/splitgraph/driver/)
+[splitgraph/driver](https://hub.docker.com/r/splitgraph/driver/)
 
 ## What's Inside
 
@@ -152,6 +152,6 @@ And then `docker-compose up -d driver`
 
 ### More help
 
-- Read the [Splitgraph documentation](https://splitgraph.com/docs/)
+- Read the [Splitgraph documentation](https://www.splitgraph.com/docs/)
 - Read the [docker postgres documentation](https://hub.docker.com/_/postgres/)
 - Submit an issue
