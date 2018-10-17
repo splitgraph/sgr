@@ -11,7 +11,7 @@ services:
     volumes:
       - ./data/pgorigin:/src
   mongoorigin:
-    image: splitgraphci/pgorigin
+    image: splitgraphci/mongoorigin
     ports:
       - "0.0.0.0:27017:27017"
     environment:
