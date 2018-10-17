@@ -1,7 +1,7 @@
 version: "3"
 services:
   pgorigin:
-    build: ./src/pgorigin
+    image: splitgraphci/pgorigin
     environment:
       - ORIGIN_USER=originro
       - ORIGIN_PASS=originpass
@@ -10,6 +10,18 @@ services:
       - 5432
     volumes:
       - ./data/pgorigin:/src
+  mongoorigin:
+    image: splitgraphci/mongoorigin
+    ports:
+      - "0.0.0.0:27017:27017"
+    environment:
+      - ORIGIN_USER=originro
+      - ORIGIN_PASS=originpass
+      - ORIGIN_MONGO_DB=origindb
+    expose:
+      - 27017
+    volumes:
+      - ./data/mongoorigin:/src
   local_driver:
     image: splitgraph/driver
     ports:
@@ -33,15 +45,9 @@ services:
       - PGPORT=5431
     expose:
       - 5431
-  mongoorigin:
+  ci_pgorigin:
+    image: splitgraphci/pgorigin
+    build: ./src/pgorigin
+  ci_mongoorigin:
+    image: splitgraphci/mongoorigin
     build: ./src/mongoorigin
-    ports:
-      - "0.0.0.0:27017:27017"
-    environment:
-      - ORIGIN_USER=originro
-      - ORIGIN_PASS=originpass
-      - ORIGIN_MONGO_DB=origindb
-    expose:
-      - 27017
-    volumes:
-      - ./data/mongoorigin:/src
