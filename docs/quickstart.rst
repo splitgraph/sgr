@@ -17,11 +17,16 @@ Installation and quick demo
 
 **NB this doesn't work yet** -- see :ref:`introduction` / other docs for the vision/overview
 
-First, pull and start the driver::
+First, pull and start the `driver
+<https://hub.docker.com/r/splitgraph/driver/>`_::
 
-    docker run splitgraph
+    docker run -d \
+    -e POSTGRES_PASSWORD=supersecure \
+    -p 5432:5432 \
+    splitgraph/driver
 
-Then, install the Splitgraph client::
+Then, install the Splitgraph `client
+<https://github.com/splitgraph/splitgraph/>`_::
 
     pip install splitgraph
 
