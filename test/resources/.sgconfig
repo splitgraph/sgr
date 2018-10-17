@@ -1,4 +1,4 @@
-; sample .sgconfig file
+; .sgconfig file used for testing
 
 [defaults]
 SG_NAMESPACE=cachedb
@@ -13,12 +13,9 @@ SG_DRIVER_ADMIN_PWD=supersecure
 SG_DRIVER_POSTGRES_DB_NAME=postgres
 SG_META_SCHEMA=splitgraph_meta
 
-; References the "snapper" remote
-SG_REPO_LOOKUP=snapper
+; Look up repositories on the test remote driver.
+SG_REPO_LOOKUP=remote_driver
 
-; I'm undecided if we should treat the "local" driver as a remote,
-; keep its config in the [defaults] section, or put it in a new section
-;
 [remote: local]
 SG_DRIVER_HOST=${defaults:SG_DRIVER_HOST}
 SG_DRIVER_PORT=${defaults:SG_DRIVER_PORT}
@@ -31,11 +28,8 @@ SG_DRIVER_ADMIN_PWD=${defaults:SG_DRIVER_ADMIN_PWD}
 SG_DRIVER_POSTGRES_DB_NAME=${defaults:SG_DRIVER_POSTGRES_DB_NAME}
 SG_META_SCHEMA=${defaults:SG_META_SCHEMA}
 
-[remote: remote1]
-SG_DRIVER_PORT=1232
-
-[remote: snapper]
-SG_DRIVER_HOST=snapper
+[remote: remote_driver]
+SG_DRIVER_HOST=remote_driver
 SG_DRIVER_PORT=5431
 SG_DRIVER_DB_NAME=${defaults:SG_DRIVER_DB_NAME}
 SG_DRIVER_USER=${defaults:SG_DRIVER_USER}
@@ -45,11 +39,3 @@ SG_DRIVER_ADMIN_USER=${defaults:SG_DRIVER_ADMIN_USER}
 SG_DRIVER_ADMIN_PWD=${defaults:SG_DRIVER_ADMIN_PWD}
 SG_DRIVER_POSTGRES_DB_NAME=${defaults:SG_DRIVER_POSTGRES_DB_NAME}
 SG_META_SCHEMA=${defaults:SG_META_SCHEMA}
-
-; These will get rolled up into a list called "origins"
-;
-[origin: origin1]
-SG_DRIVER_PORT=3333
-
-[origin: origin2]
-SG_DRIVER_PORT=4444

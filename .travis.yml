@@ -1,0 +1,34 @@
+language: python
+install: true
+sudo: required
+python:
+  - "3.6"
+install:
+  - python setup.py develop
+script:
+  - pytest
+
+services:
+  - docker
+
+addons:
+  hosts:
+    # We need both the host and the local driver to be able to refer to the remote driver
+    # using the same connection string, hence we map remote_driver on the host to localhost
+    # (Docker networking takes care of wiring it up in the case of the container)
+    - remote_driver
+
+env:
+  COMPOSE_VERSION: 1.21.2
+
+before_install:
+  - curl -L https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-`uname -s`-`uname -m` > docker-compose
+  - chmod +x docker-compose
+  - sudo mv docker-compose /usr/local/bin
+
+before_script:
+  # Stop the PG that ships with Travis and run our own integration test
+  # SG driver/remote architecture instead.
+  - sudo /etc/init.d/postgresql stop
+  - sudo docker-compose --file test/architecture/docker-compose.yml up -d
+  - sleep 30

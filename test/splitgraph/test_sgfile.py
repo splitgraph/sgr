@@ -14,7 +14,7 @@ from splitgraph.meta_handler.tags import get_current_head, set_tag
 from splitgraph.pg_utils import pg_table_exists
 from splitgraph.sgfile.execution import execute_commands
 from splitgraph.sgfile.parsing import preprocess
-from test.splitgraph.conftest import SNAPPER_CONN_STRING
+from test.splitgraph.conftest import REMOTE_CONN_STRING
 
 SGFILE_ROOT = os.path.join(os.path.dirname(__file__), '../resources/')
 
@@ -131,18 +131,18 @@ def test_sgfile_cached(sg_pg_mg_conn):
     assert new_commits == commits
 
 
-def _add_multitag_dataset_to_snapper(snapper_conn):
-    set_tag(snapper_conn, 'test_pg_mount', get_current_head(snapper_conn, 'test_pg_mount'), 'v1')
-    with snapper_conn.cursor() as cur:
+def _add_multitag_dataset_to_remote_driver(remote_driver_conn):
+    set_tag(remote_driver_conn, 'test_pg_mount', get_current_head(remote_driver_conn, 'test_pg_mount'), 'v1')
+    with remote_driver_conn.cursor() as cur:
         cur.execute("DELETE FROM test_pg_mount.fruits WHERE fruit_id = 1")
-    new_head = commit(snapper_conn, 'test_pg_mount')
-    set_tag(snapper_conn, 'test_pg_mount', new_head, 'v2')
-    snapper_conn.commit()
+    new_head = commit(remote_driver_conn, 'test_pg_mount')
+    set_tag(remote_driver_conn, 'test_pg_mount', new_head, 'v2')
+    remote_driver_conn.commit()
     return new_head
 
 
-def test_sgfile_remote(empty_pg_conn, snapper_conn):
-    new_head = _add_multitag_dataset_to_snapper(snapper_conn)
+def test_sgfile_remote(empty_pg_conn, remote_driver_conn):
+    new_head = _add_multitag_dataset_to_remote_driver(remote_driver_conn)
 
     # We use the v1 tag when importing from the remote, so fruit_id = 1 still exists there.
     execute_commands(empty_pg_conn, _load_sgfile('import_remote_multiple.sgfile'), params={'TAG': 'v1'},
@@ -159,8 +159,8 @@ def test_sgfile_remote(empty_pg_conn, snapper_conn):
         assert cur.fetchall() == [(2, 'orange', 'carrot')]
 
 
-def test_sgfile_remote_hash(empty_pg_conn, snapper_conn):
-    head = get_current_head(snapper_conn, 'test_pg_mount')
+def test_sgfile_remote_hash(empty_pg_conn, remote_driver_conn):
+    head = get_current_head(remote_driver_conn, 'test_pg_mount')
     execute_commands(empty_pg_conn, _load_sgfile('import_remote_multiple.sgfile'), params={'TAG': head[:10]},
                      output='output')
     with empty_pg_conn.cursor() as cur:
@@ -168,7 +168,7 @@ def test_sgfile_remote_hash(empty_pg_conn, snapper_conn):
         assert cur.fetchall() == [(1, 'apple', 'potato'), (2, 'orange', 'carrot')]
 
 
-def test_import_updating_sgfile_with_uploading(empty_pg_conn, snapper_conn):
+def test_import_updating_sgfile_with_uploading(empty_pg_conn, remote_driver_conn):
     execute_commands(empty_pg_conn, _load_sgfile('import_and_update.sgfile'), output='output')
     head = get_current_head(empty_pg_conn, 'output')
 
@@ -176,7 +176,7 @@ def test_import_updating_sgfile_with_uploading(empty_pg_conn, snapper_conn):
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # Push with upload. Have to specify the remote connection string since we are pushing a new repository.
-        push(empty_pg_conn, 'output', remote_conn_string=SNAPPER_CONN_STRING, handler='FILE',
+        push(empty_pg_conn, 'output', remote_conn_string=REMOTE_CONN_STRING, handler='FILE',
              handler_options={'path': tmpdir})
         # Unmount everything locally and cleanup
         unmount(empty_pg_conn, 'output')
@@ -200,22 +200,22 @@ def test_import_updating_sgfile_with_uploading(empty_pg_conn, snapper_conn):
             assert sorted(cur.fetchall()) == [(1, 'cucumber'), (2, 'carrot')]
 
 
-def test_sgfile_end_to_end_with_uploading(empty_pg_conn, snapper_conn):
+def test_sgfile_end_to_end_with_uploading(empty_pg_conn, remote_driver_conn):
     # An end-to-end test:
-    #   * Create a derived dataset from some tables imported from the snapper
-    #   * Push it back to the snapper, uploading all objects to "HTTP" (instead of the snapper itself)
+    #   * Create a derived dataset from some tables imported from the remote driver
+    #   * Push it back to the remote driver, uploading all objects to "HTTP" (instead of the remote driver itself)
     #   * Delete everything from pgcache
     #   * Run another sgfile that depends on the just-pushed dataset (and does lazy checkouts to
     #     get the required tables).
 
     # Do the same setting up first and run the sgfile against the remote data.
-    new_head = _add_multitag_dataset_to_snapper(snapper_conn)
+    new_head = _add_multitag_dataset_to_remote_driver(remote_driver_conn)
     execute_commands(empty_pg_conn, _load_sgfile('import_remote_multiple.sgfile'), params={'TAG': 'v1'},
                      output='output')
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # Push with upload
-        push(empty_pg_conn, 'output', remote_conn_string=SNAPPER_CONN_STRING, handler='FILE',
+        push(empty_pg_conn, 'output', remote_conn_string=REMOTE_CONN_STRING, handler='FILE',
              handler_options={'path': tmpdir})
         # Unmount everything locally and cleanup
         for mountpoint, _ in get_current_mountpoints_hashes(empty_pg_conn):
@@ -334,8 +334,8 @@ def test_import_all(empty_pg_conn):
             assert cur.fetchall() == c
 
 
-def test_from_remote(empty_pg_conn, snapper_conn):
-    _add_multitag_dataset_to_snapper(snapper_conn)
+def test_from_remote(empty_pg_conn, remote_driver_conn):
+    _add_multitag_dataset_to_remote_driver(remote_driver_conn)
     # Test running commands that base new datasets on a remote repository.
     execute_commands(empty_pg_conn, _load_sgfile('from_remote.sgfile'), output='output',
                      params={'TAG': 'v1'})
@@ -365,8 +365,8 @@ def test_from_remote(empty_pg_conn, snapper_conn):
         assert cur.fetchall() == [(2, 'orange', 'carrot')]
 
 
-def test_from_remote_hash(empty_pg_conn, snapper_conn):
-    head = get_current_head(snapper_conn, 'test_pg_mount')
+def test_from_remote_hash(empty_pg_conn, remote_driver_conn):
+    head = get_current_head(remote_driver_conn, 'test_pg_mount')
     # Test running commands that base new datasets on a remote repository.
     execute_commands(empty_pg_conn, _load_sgfile('from_remote.sgfile'), output='output', params={'TAG': head[:10]})
 
@@ -377,8 +377,8 @@ def test_from_remote_hash(empty_pg_conn, snapper_conn):
         assert cur.fetchall() == [(1, 'apple', 'potato'), (2, 'orange', 'carrot')]
 
 
-def test_from_multistage(empty_pg_conn, snapper_conn):
-    _add_multitag_dataset_to_snapper(snapper_conn)
+def test_from_multistage(empty_pg_conn, remote_driver_conn):
+    _add_multitag_dataset_to_remote_driver(remote_driver_conn)
 
     # Produces two mountpoints: output and output_stage_2
     execute_commands(empty_pg_conn, _load_sgfile('from_remote_multistage.sgfile'), params={'TAG': 'v1'})
@@ -414,7 +414,7 @@ def test_from_local(sg_pg_mg_conn):
         assert cur.fetchall() == [(1, 'apple', 'potato'), (2, 'orange', 'carrot')]
 
 
-def test_sgfile_with_external_sql(sg_pg_mg_conn, snapper_conn):
+def test_sgfile_with_external_sql(sg_pg_mg_conn, remote_driver_conn):
     # Tests are running from root so we pass in the path to the SQL manually to the sgfile.
     execute_commands(sg_pg_mg_conn, _load_sgfile('external_sql.sgfile'),
                      params={'EXTERNAL_SQL_FILE': SGFILE_ROOT + 'external_sql.sql'}, output='output')

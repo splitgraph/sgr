@@ -13,7 +13,7 @@ from splitgraph.meta_handler.tables import get_table
 from splitgraph.meta_handler.tags import get_current_head, get_tagged_id, set_tag
 from splitgraph.registry_meta_handler import get_published_info
 from test.splitgraph.conftest import PG_MNT, MG_MNT
-from test.splitgraph.test_sgfile import SGFILE_ROOT, _add_multitag_dataset_to_snapper
+from test.splitgraph.test_sgfile import SGFILE_ROOT, _add_multitag_dataset_to_remote_driver
 
 
 def test_commandline_basics(sg_pg_mg_conn):
@@ -212,35 +212,35 @@ def test_import(sg_pg_mg_conn):
         assert cur.fetchall() == []
 
 
-def test_pull_push(empty_pg_conn, snapper_conn):
+def test_pull_push(empty_pg_conn, remote_driver_conn):
     runner = CliRunner()
 
     result = runner.invoke(clone_c, [PG_MNT])
     assert result.exit_code == 0
     assert mountpoint_exists(empty_pg_conn, PG_MNT)
 
-    with snapper_conn.cursor() as cur:
+    with remote_driver_conn.cursor() as cur:
         cur.execute("INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise')")
-    snapper_head = commit(snapper_conn, PG_MNT)
+    remote_driver_head = commit(remote_driver_conn, PG_MNT)
 
     result = runner.invoke(pull_c, [PG_MNT, 'origin'])
     assert result.exit_code == 0
-    checkout(empty_pg_conn, PG_MNT, snapper_head)
+    checkout(empty_pg_conn, PG_MNT, remote_driver_head)
 
     with empty_pg_conn.cursor() as cur:
         cur.execute("INSERT INTO test_pg_mount.fruits VALUES (4, 'mustard')")
     local_head = commit(empty_pg_conn, PG_MNT)
 
-    assert not table_exists_at(snapper_conn, PG_MNT, 'fruits', local_head)
+    assert not table_exists_at(remote_driver_conn, PG_MNT, 'fruits', local_head)
     result = runner.invoke(push_c, [PG_MNT, 'origin', '-h', 'DB'])
     assert result.exit_code == 0
-    assert table_exists_at(snapper_conn, PG_MNT, 'fruits', local_head)
+    assert table_exists_at(remote_driver_conn, PG_MNT, 'fruits', local_head)
 
     set_tag(empty_pg_conn, PG_MNT, local_head, 'v1')
     empty_pg_conn.commit()
     result = runner.invoke(publish_c, [PG_MNT, 'v1', '-r', SGFILE_ROOT + 'README.md'])
     assert result.exit_code == 0
-    image_hash, published_dt, deps, readme, schemata, previews = get_published_info(snapper_conn, PG_MNT, 'v1')
+    image_hash, published_dt, deps, readme, schemata, previews = get_published_info(remote_driver_conn, PG_MNT, 'v1')
     assert image_hash == local_head
     assert deps == []
     assert readme == "Test readme for a test dataset."
@@ -252,7 +252,7 @@ def test_pull_push(empty_pg_conn, snapper_conn):
                         'vegetables': [[1, 'potato'], [2, 'carrot']]}
 
 
-def test_sgfile(empty_pg_conn, snapper_conn):
+def test_sgfile(empty_pg_conn, remote_driver_conn):
     runner = CliRunner()
 
     result = runner.invoke(file_c, [SGFILE_ROOT + 'import_remote_multiple.sgfile',
@@ -264,16 +264,16 @@ def test_sgfile(empty_pg_conn, snapper_conn):
 
     # Test the sgr provenance command. First, just list the dependencies of the new image.
     result = runner.invoke(provenance_c, ['output', 'latest'])
-    assert 'test_pg_mount:%s' % get_tagged_id(snapper_conn, 'test_pg_mount', 'latest') in result.output
+    assert 'test_pg_mount:%s' % get_tagged_id(remote_driver_conn, 'test_pg_mount', 'latest') in result.output
 
     # Second, output the full sgfile (-f)
     result = runner.invoke(provenance_c, ['output', 'latest', '-f'])
-    assert 'FROM test_pg_mount:%s IMPORT' % get_tagged_id(snapper_conn, 'test_pg_mount', 'latest') in result.output
+    assert 'FROM test_pg_mount:%s IMPORT' % get_tagged_id(remote_driver_conn, 'test_pg_mount', 'latest') in result.output
     assert 'SQL CREATE TABLE join_table AS SELECT' in result.output
 
 
-def test_sgfile_rerun_update(empty_pg_conn, snapper_conn):
-    _add_multitag_dataset_to_snapper(snapper_conn)
+def test_sgfile_rerun_update(empty_pg_conn, remote_driver_conn):
+    _add_multitag_dataset_to_remote_driver(remote_driver_conn)
     runner = CliRunner()
 
     result = runner.invoke(file_c, [SGFILE_ROOT + 'import_remote_multiple.sgfile',
@@ -285,7 +285,7 @@ def test_sgfile_rerun_update(empty_pg_conn, snapper_conn):
     output_v2 = get_current_head(empty_pg_conn, 'output')
     assert result.exit_code == 0
     assert provenance(empty_pg_conn, 'output', output_v2) == \
-           [('test_pg_mount', get_tagged_id(snapper_conn, 'test_pg_mount', 'v2'))]
+           [('test_pg_mount', get_tagged_id(remote_driver_conn, 'test_pg_mount', 'v2'))]
 
     # Now rerun the output:latest against the latest version of everything.
     # In this case, this should all resolve to the same version of test_pg_mount (v2) and not produce

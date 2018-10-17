@@ -7,7 +7,6 @@ from splitgraph.commandline import _conn
 from splitgraph.commands import *
 from splitgraph.meta_handler.tags import get_current_head
 
-conn = _conn()
 MOUNTPOINT = "splitgraph_benchmark"
 
 
@@ -51,6 +50,7 @@ def bench_commit_chain_checkout(commits, table_size, update_size):
     #print(timeit("checkout(conn, MOUNTPOINT, '%s')" % rev, "from __main__ import conn, MOUNTPOINT, checkout", number=3))
 
 if __name__ == '__main__':
+    conn = _conn()
     for _ in range(3):
         table_size = 100000
         update_size = 1000

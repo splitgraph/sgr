@@ -68,17 +68,15 @@ def sg_pg_mg_conn():
     conn.close()
 
 
-SNAPPER_HOST = 'snapper'  # On the host, mapped by /etc/hosts into localhost; on the pgcache box works as intended.
-SNAPPER_PORT = 5431
+REMOTE_HOST = 'remote_driver'  # On the host, mapped into localhost; on the local driver works as intended.
+REMOTE_PORT = 5431
 
 
 @pytest.fixture
-def snapper_conn():
-    # For these, we'll use both the cachedb (original postgres for integration tests) as well as the
-    # snapper (currently the Dockerfile just creates 2 mountpoints: mongoorigin and pgorigin, snapshotting the two
-    # origin databases)
-    # We still create the test_pg_mount and output mountpoints there just so that we don't clash with them.
-    conn = make_conn(SNAPPER_HOST, SNAPPER_PORT, PG_USER, PG_PWD, PG_DB)
+def remote_driver_conn():
+    # For these, we'll use both the cachedb (original postgres for integration tests) as well as the remote_driver.
+    # Mount and snapshot the two origin DBs (mongo/pg) with the test data.
+    conn = make_conn(REMOTE_HOST, REMOTE_PORT, PG_USER, PG_PWD, PG_DB)
     ensure_registry_schema(conn)
     unpublish_repository(conn, 'output')
     unpublish_repository(conn, 'test_pg_mount')
@@ -98,7 +96,7 @@ def snapper_conn():
 
 @pytest.fixture
 def empty_pg_conn():
-    # A connection to the pgcache that has nothing mounted on it.
+    # A connection to the local driver that has nothing mounted on it.
     conn = _conn()
     for mountpoint, _ in get_current_mountpoints_hashes(conn):
         unmount(conn, mountpoint)
@@ -112,4 +110,4 @@ def empty_pg_conn():
     conn.close()
 
 
-SNAPPER_CONN_STRING = serialize_connection_string(SNAPPER_HOST, SNAPPER_PORT, PG_USER, PG_PWD, PG_DB)
+REMOTE_CONN_STRING = serialize_connection_string(REMOTE_HOST, REMOTE_PORT, PG_USER, PG_PWD, PG_DB)

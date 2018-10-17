@@ -7,7 +7,6 @@ from splitgraph.commandline import _conn
 from splitgraph.commands import *
 from splitgraph.commands.diff import dump_pending_changes
 
-conn = _conn()
 MOUNTPOINT = "splitgraph_benchmark"
 
 
@@ -57,6 +56,7 @@ def bench_delete_checkout(N):
     print(timeit("checkout(conn, MOUNTPOINT, '%s')" % rev, "from __main__ import conn, MOUNTPOINT, checkout", number=3))
 
 if __name__ == '__main__':
+    conn = _conn()
     # for N in [10, 100, 1000, 5000, 10000, 20000]:
     #     print(N)
     #     bench_delete_checkout(N)
