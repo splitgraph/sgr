@@ -90,7 +90,7 @@ that builds an image based on `splitgraph/driver`), or at run time by mounting
 a volume in  `/docker-entrypoint-initdb.d/`.
 
 **Important Note:** No matter which method you use (extending the image or
-mounting a vlume), Postgres will only run these init scripts on the *first run*
+mounting a volume), Postgres will only run these init scripts on the *first run*
 of the container, so if you want to add new scripts you will need to `docker rm`
 the container to force the initialization to run again.
 
