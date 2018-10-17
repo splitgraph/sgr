@@ -36,6 +36,7 @@ def publish_tag(conn, repository, tag, image_hash, published, provenance, readme
     """
     Publishes a given tag in the remote catalog. Should't be called directly.
     Use splitgraph.commands.publish instead.
+
     :param conn: Psycopg connection object
     :param repository: Repository name
     :param tag: Tag to publish
