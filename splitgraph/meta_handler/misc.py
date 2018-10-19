@@ -22,17 +22,17 @@ def get_all_foreign_tables(conn, mountpoint):
 
 def mountpoint_exists(conn, mountpoint):
     with conn.cursor() as cur:
-        cur.execute(SQL("SELECT 1 FROM {}.snap_tree WHERE mountpoint = %s").format(Identifier(SPLITGRAPH_META_SCHEMA)),
+        cur.execute(SQL("SELECT 1 FROM {}.images WHERE mountpoint = %s").format(Identifier(SPLITGRAPH_META_SCHEMA)),
                     (mountpoint,))
         return cur.fetchone() is not None
 
 
 def register_mountpoint(conn, mountpoint, initial_image, tables, table_object_ids):
     with conn.cursor() as cur:
-        cur.execute(insert("snap_tree", ("snap_id", "mountpoint", "parent_id", "created")),
+        cur.execute(insert("images", ("image_hash", "mountpoint", "parent_id", "created")),
                     (initial_image, mountpoint, None, datetime.now()))
         # Strictly speaking this is redundant since the checkout (of the "HEAD" commit) updates the tag table.
-        cur.execute(insert("snap_tags", ("mountpoint", "snap_id", "tag")),
+        cur.execute(insert("snap_tags", ("mountpoint", "image_hash", "tag")),
                     (mountpoint, initial_image, "HEAD"))
         for t, ti in zip(tables, table_object_ids):
             # Register the tables and the object IDs they were stored under.
@@ -43,7 +43,7 @@ def register_mountpoint(conn, mountpoint, initial_image, tables, table_object_id
 
 def unregister_mountpoint(conn, mountpoint):
     with conn.cursor() as cur:
-        for meta_table in ["tables", "snap_tags", "snap_tree", "remotes"]:
+        for meta_table in ["tables", "snap_tags", "images", "remotes"]:
             cur.execute(SQL("DELETE FROM {}.{} WHERE mountpoint = %s").format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                                               Identifier(meta_table)),
                         (mountpoint,))
@@ -52,7 +52,7 @@ def unregister_mountpoint(conn, mountpoint):
 def get_current_mountpoints_hashes(conn):
     ensure_metadata_schema(conn)
     with conn.cursor() as cur:
-        cur.execute(select("snap_tags", "mountpoint, snap_id", "tag = 'HEAD'"))
+        cur.execute(select("snap_tags", "mountpoint, image_hash", "tag = 'HEAD'"))
         return cur.fetchall()
 
 

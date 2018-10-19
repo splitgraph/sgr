@@ -27,7 +27,7 @@ def get_parent_children(conn, mountpoint, image_hash):
     parent = get_image_parent(conn, mountpoint, image_hash)
 
     with conn.cursor() as cur:
-        cur.execute(SQL("""SELECT snap_id FROM {}.snap_tree WHERE mountpoint = %s AND parent_id = %s""").format(
+        cur.execute(SQL("""SELECT image_hash FROM {}.images WHERE mountpoint = %s AND parent_id = %s""").format(
             Identifier(SPLITGRAPH_META_SCHEMA)),
             (mountpoint, image_hash))
         children = [c[0] for c in cur.fetchall()]
@@ -63,8 +63,8 @@ def init(conn, mountpoint):
     """
     with conn.cursor() as cur:
         cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(mountpoint)))
-    snap_id = '0' * 64
-    register_mountpoint(conn, mountpoint, snap_id, tables=[], table_object_ids=[])
+    image_hash = '0' * 64
+    register_mountpoint(conn, mountpoint, image_hash, tables=[], table_object_ids=[])
 
 
 def unmount(conn, mountpoint):
@@ -117,7 +117,7 @@ def cleanup_objects(conn, include_external=False):
 
     # Go through the tables that aren't mountpoint-dependent and delete entries there.
     with conn.cursor() as cur:
-        for table_name in ['object_tree', 'object_locations']:
+        for table_name in ['objects', 'object_locations']:
             query = SQL("DELETE FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table_name))
             if primary_objects:
                 query += SQL(" WHERE object_id NOT IN (" + ','.join('%s' for _ in range(len(primary_objects))) + ")")

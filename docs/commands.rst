@@ -38,7 +38,7 @@ tables without processing it.
 `sgr diff MOUNTPOINT IMAGE_HASH_1 [IMAGE_HASH_2]`
     Also see: :mod:`splitgraph.commands.diff`
 
-    Shows the difference between two images in a mountpoint. If the two images are on the same path in `snap_tree`, it
+    Shows the difference between two images in a mountpoint. If the two images are on the same path in `images`, it
     concatenates their DIFFs and displays that (or the aggregation of total inserts/deletes/updates).
     Note this might give wrong results if there's been a schema change.
 
@@ -99,9 +99,9 @@ See also :mod:`splitgraph.commands.mounting`.
 
 `sgr unmount`
     Destroys the local copy of a repository and all the metadata related to it in
-    `snap_tree`, `tables`, `remotes` and `snap_tags`. This command doesn't delete the actual physical objects in
+    `images`, `tables`, `remotes` and `snap_tags`. This command doesn't delete the actual physical objects in
     `splitgraph_meta` or references to them in
-    `object_tree` / `object_locations`. There's a separate function, `sgr cleanup`
+    `objects` / `object_locations`. There's a separate function, `sgr cleanup`
     (or :func:`splitgraph.commands.misc.cleanup_objects`) that crawls the `splitgraph_meta` for objects not required
     by a current mountpoint and does that.
 

@@ -105,9 +105,9 @@ def _import_tables(conn, mountpoint, image_hash, tables, target_mountpoint, targ
     # Register the existing tables at the new commit as well.
     if head is not None:
         with conn.cursor() as cur:
-            cur.execute(SQL("""INSERT INTO {0}.tables (mountpoint, snap_id, table_name, object_id)
+            cur.execute(SQL("""INSERT INTO {0}.tables (mountpoint, image_hash, table_name, object_id)
                 (SELECT %s, %s, table_name, object_id FROM {0}.tables
-                WHERE mountpoint = %s AND snap_id = %s)""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                WHERE mountpoint = %s AND image_hash = %s)""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
                         (target_mountpoint, target_hash, target_mountpoint, head))
     set_head(conn, target_mountpoint, target_hash)
     return target_hash

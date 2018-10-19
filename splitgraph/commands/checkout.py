@@ -86,7 +86,7 @@ def checkout(conn, mountpoint, image_hash=None, tag=None, tables=None, keep_down
     discard_pending_changes(conn, mountpoint)
     # Detect the actual schema snap we want to check out
     if image_hash:
-        # get_canonical_snap_id called twice if the commandline entry point already called it. How to fix?
+        # get_canonical_image_hash called twice if the commandline entry point already called it. How to fix?
         image_hash = get_canonical_image_id(conn, mountpoint, image_hash)
     elif tag:
         image_hash = get_tagged_id(conn, mountpoint, tag)

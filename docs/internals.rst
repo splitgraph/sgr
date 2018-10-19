@@ -14,14 +14,14 @@ version and tag information, relationships between images and downloaded tables.
 
 Here's an overview of the tables in this schema:
 
-  * `snap_tree`: should really be called `image_tree`. Describes all image hashes and their parents, as well as extra
+  * `images`: Describes all image hashes and their parents, as well as extra
     data about a given commit (the creation timestamp, the commit message and the details of the sgfile command that
     generated this image). PKd on the mountpoint and the image hash, so the same image can exist in multiple schemas
     at the same time.
   * `tables`: an image consists of multiple tables. Each table in a given version is represented by one or more objects.
     An object can be one of two types: SNAP (a snapshot, a full copy of the table) and a DIFF (list of changes to a parent
     object). This is also mountpoint-specific.
-  * `object_tree`: Lists the type and the parent of every object. A SNAP object doesn't have a parent and a DIFF object
+  * `objects`: Lists the type and the parent of every object. A SNAP object doesn't have a parent and a DIFF object
     might have multiple parents (for example, the SNAP and the DIFF of a previous commit). This is not necessarily
     the object linked to the parent commit of a given object: if we're importing a table from a different repository,
     we would pull in its chain of DIFF objects without tying them to commits those objects were created in.
@@ -56,15 +56,15 @@ Implementation of various Splitgraph commands
     * If there is an update in the audit log that changes the RI (user suspended constraint checking or the tuple had no
       PK and was updated), the update is changed into an insert + delete.
     * All changes are conflated using a straightforward algorithm in `splitgraph.objects.utils.conflate_changes`.
-  * The meta tables this touches are `object_tree` (to register the new objects and link them to their parents),
-    `tables` (to link tables in the new commit to existing/new objects), `snap_tree` (to register the new commit) and
+  * The meta tables this touches are `objects` (to register the new objects and link them to their parents),
+    `tables` (to link tables in the new commit to existing/new objects), `images` (to register the new commit) and
     `snap_tags` (to move the HEAD pointer to the new commit).
 
 `checkout`
 ----------
 
   * The `tables` table is inspected to find out which object is required to start materializing the table.
-  * Then, `object_tree` is crawled to find a chain of DIFF objects that ends with a SNAP
+  * Then, `objects` is crawled to find a chain of DIFF objects that ends with a SNAP
     (`splitgraph.pg_replication.get_closest_parent_snap_object`).
   * The SNAP is copied into the mountpoint and the DIFFs applied to it. Checkouts/repository clones are
     lazy by default, so an object might not even exist locally. The lookup path for a physical object is:
@@ -83,9 +83,9 @@ Implementation of various Splitgraph commands
 `sgr clone` is implemented as follows:
 
   * First, it connect to the remote and inspect its `splitgraph_meta` table to gather the commits, tags and objects
-    (`snap_tree`, `snap_tags`, `object_tree`, `tables` and `object_locations`) that don't exist in the local
+    (`images`, `snap_tags`, `objects`, `tables` and `object_locations`) that don't exist in the local
     `splitgraph_meta`. See `splitgraph.commands.push_pull._get_required_snaps_objects`.
-  * As part of that, also crawl the remote `object_tree` to gather the list of all required objects
+  * As part of that, also crawl the remote `objects` to gather the list of all required objects
     and their dependencies.
   * Optionally, download the new objects and store them in `splitgraph_meta`.
   * Finally, write the new metadata locally. Currently, this command doesn't check for clashes or conflicts, instead
@@ -115,7 +115,7 @@ tags, objects and their locations) on the remote.
 `import`
 ---------
 
-  * Add the new commit into `snap_tree`
+  * Add the new commit into `images`
   * Copy the required rows from `tables` linking the required objects to the new commit (both the tables in the
     current HEAD and the newly imported tables).
   * Change the HEAD pointer to point to the new commit and optionally materialize the new tables (which might involve

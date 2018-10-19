@@ -2,7 +2,7 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 
-META_TABLES = ['snap_tree', 'snap_tags', 'object_tree', 'tables', 'remotes', 'object_locations', 'pending_changes']
+META_TABLES = ['images', 'snap_tags', 'objects', 'tables', 'remotes', 'object_locations']
 
 
 def _create_metadata_schema(conn):
@@ -17,25 +17,25 @@ def _create_metadata_schema(conn):
 
     with conn.cursor() as cur:
         cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(SPLITGRAPH_META_SCHEMA)))
-        # maybe FK parent_id on snap_id. NULL there means this is the repo root.
+        # maybe FK parent_id on image_hash. NULL there means this is the repo root.
         cur.execute(SQL("""CREATE TABLE {}.{} (
-                        snap_id         VARCHAR NOT NULL,
+                        image_hash      VARCHAR NOT NULL,
                         mountpoint      VARCHAR NOT NULL,
                         parent_id       VARCHAR,
                         created         TIMESTAMP,
                         comment         VARCHAR,
                         provenance_type VARCHAR,
                         provenance_data JSON,
-                        PRIMARY KEY (mountpoint, snap_id))""").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                      Identifier("snap_tree")))
+                        PRIMARY KEY (mountpoint, image_hash))""").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                         Identifier("images")))
         cur.execute(SQL("""CREATE TABLE {}.{} (
                         mountpoint VARCHAR NOT NULL,
-                        snap_id    VARCHAR,
+                        image_hash VARCHAR,
                         tag        VARCHAR,
                         PRIMARY KEY (mountpoint, tag),
-                        CONSTRAINT sh_fk FOREIGN KEY (mountpoint, snap_id) REFERENCES {}.{})""").format(
+                        CONSTRAINT sh_fk FOREIGN KEY (mountpoint, image_hash) REFERENCES {}.{})""").format(
             Identifier(SPLITGRAPH_META_SCHEMA), Identifier("snap_tags"),
-            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("snap_tree")))
+            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("images")))
 
         # A tree of object parents. The parent of an object is not necessarily the object linked to
         # the parent commit that the object belongs to (e.g. if we imported the object from a different commit tree).
@@ -43,19 +43,19 @@ def _create_metadata_schema(conn):
         cur.execute(SQL("""CREATE TABLE {}.{} (
                         object_id  VARCHAR NOT NULL,
                         format     VARCHAR NOT NULL,
-                        parent_id  VARCHAR)""").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_tree")))
+                        parent_id  VARCHAR)""").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")))
 
         # Maps a given table at a given point in time to an "object ID" (either a full snapshot or a
         # delta to a previous table).
         cur.execute(SQL("""CREATE TABLE {}.{} (
                         mountpoint VARCHAR NOT NULL,
-                        snap_id    VARCHAR NOT NULL,
+                        image_hash VARCHAR NOT NULL,
                         table_name VARCHAR NOT NULL,
                         object_id  VARCHAR NOT NULL,
-                        PRIMARY KEY (mountpoint, snap_id, table_name, object_id),
-                        CONSTRAINT tb_fk FOREIGN KEY (mountpoint, snap_id) REFERENCES {}.{})""").format(
+                        PRIMARY KEY (mountpoint, image_hash, table_name, object_id),
+                        CONSTRAINT tb_fk FOREIGN KEY (mountpoint, image_hash) REFERENCES {}.{})""").format(
             Identifier(SPLITGRAPH_META_SCHEMA), Identifier("tables"),
-            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("snap_tree")))
+            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("images")))
 
         # Keep track of what the remotes for a given mountpoint are (by default, we create an "origin" remote
         # on initial pull)
@@ -117,3 +117,23 @@ def ensure_metadata_schema(conn):
         cur.execute("SELECT 1 FROM information_schema.schemata WHERE schema_name = %s", (SPLITGRAPH_META_SCHEMA,))
         if cur.fetchone() is None:
             _create_metadata_schema(conn)
+
+
+def setup_registry_mode(conn):
+    """
+    Drops tables in splitgraph_meta that aren't pertinent to the registry + sets up access policies/RLS:
+
+    * Normal users aren't allowed to create tables/schemata (can't do checkouts inside of a registry or
+      upload SG objects directly to it)
+    * images/tables/tags meta tables: can only create/update/delete records where the namespace = user ID
+    * objects/object_location tables: same. An object (piece of data) becomes owned by the user that creates
+      it and still remains so even if someone else's image starts using it. Hence, the original owner can delete
+      or change it (since they control the external location they've uploaded it to anyway).
+    * remotes table is dropped.
+
+    :param conn: Psycopg admin connection object.
+    """
+
+    with conn.cursor() as cur:
+        cur.execute(SQL("DROP TABLE {}.remotes").format(Identifier(SPLITGRAPH_META_SCHEMA)))
+

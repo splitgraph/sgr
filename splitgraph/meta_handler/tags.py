@@ -18,7 +18,7 @@ def get_tagged_id(conn, mountpoint, tag, raise_on_none=True):
     if tag == 'latest':
         # Special case, return the latest commit from the mountpoint.
         with conn.cursor() as cur:
-            cur.execute(select("snap_tree", "snap_id", "mountpoint = %s")
+            cur.execute(select("images", "image_hash", "mountpoint = %s")
                         + SQL(" ORDER BY created DESC LIMIT 1"), (mountpoint,))
             result = cur.fetchone()
             if result is None:
@@ -26,13 +26,13 @@ def get_tagged_id(conn, mountpoint, tag, raise_on_none=True):
             return result[0]
 
     with conn.cursor() as cur:
-        cur.execute(select("snap_tags", "snap_id", "mountpoint = %s AND tag = %s"), (mountpoint, tag))
+        cur.execute(select("snap_tags", "image_hash", "mountpoint = %s AND tag = %s"), (mountpoint, tag))
         result = cur.fetchone()
         if result is None or result == (None,):
             if raise_on_none:
                 if tag == 'HEAD':
                     raise SplitGraphException("No current checked out revision found for %s. Check one out with \"sgr "
-                                              "checkout MOUNTPOINT SNAP_ID\"." % mountpoint)
+                                              "checkout MOUNTPOINT image_hash\"." % mountpoint)
                 else:
                     raise SplitGraphException("Tag %s not found in mountpoint %s" % (tag, mountpoint))
             else:
@@ -42,7 +42,7 @@ def get_tagged_id(conn, mountpoint, tag, raise_on_none=True):
 
 def get_all_hashes_tags(conn, mountpoint):
     with conn.cursor() as cur:
-        cur.execute(select("snap_tags", "snap_id, tag", "mountpoint = %s"), (mountpoint,))
+        cur.execute(select("snap_tags", "image_hash, tag", "mountpoint = %s"), (mountpoint,))
         return cur.fetchall()
 
 
@@ -60,11 +60,11 @@ def set_tag(conn, mountpoint, image, tag, force=False):
     with conn.cursor() as cur:
         cur.execute(select("snap_tags", "1", "mountpoint = %s AND tag = %s"), (mountpoint, tag))
         if cur.fetchone() is None:
-            cur.execute(insert("snap_tags", ("snap_id", "mountpoint", "tag")),
+            cur.execute(insert("snap_tags", ("image_hash", "mountpoint", "tag")),
                         (image, mountpoint, tag))
         else:
             if force:
-                cur.execute(SQL("UPDATE {}.snap_tags SET snap_id = %s WHERE mountpoint = %s AND tag = %s").format(
+                cur.execute(SQL("UPDATE {}.snap_tags SET image_hash = %s WHERE mountpoint = %s AND tag = %s").format(
                     Identifier(SPLITGRAPH_META_SCHEMA)),
                     (image, mountpoint, tag))
             else:

@@ -11,27 +11,27 @@ from splitgraph.meta_handler.tables import get_table_with_format
 
 def get_image_parent(conn, mountpoint, image):
     with conn.cursor() as cur:
-        cur.execute(select("snap_tree", "parent_id", "mountpoint = %s AND snap_id = %s"), (mountpoint, image))
+        cur.execute(select("images", "parent_id", "mountpoint = %s AND image_hash = %s"), (mountpoint, image))
         return cur.fetchone()[0]
 
 
 def get_image_parent_provenance(conn, mountpoint, image):
     with conn.cursor() as cur:
-        cur.execute(select("snap_tree", "parent_id, provenance_type, provenance_data",
-                           "mountpoint = %s AND snap_id = %s"), (mountpoint, image))
+        cur.execute(select("images", "parent_id, provenance_type, provenance_data",
+                           "mountpoint = %s AND image_hash = %s"), (mountpoint, image))
         return cur.fetchone()
 
 
 def get_all_image_info(conn, mountpoint, image):
     with conn.cursor() as cur:
-        cur.execute(select("snap_tree", "parent_id, created, comment", "mountpoint = %s AND snap_id = %s"),
+        cur.execute(select("images", "parent_id, created, comment", "mountpoint = %s AND image_hash = %s"),
                     (mountpoint, image))
         return cur.fetchone()
 
 
 def get_all_images_parents(conn, mountpoint):
     with conn.cursor() as cur:
-        cur.execute(select("snap_tree", "snap_id, parent_id, created, comment, provenance_type, provenance_data",
+        cur.execute(select("images", "image_hash, parent_id, created, comment, provenance_type, provenance_data",
                            "mountpoint = %s") +
                     SQL(" ORDER BY created"),
                     (mountpoint,))
@@ -40,7 +40,7 @@ def get_all_images_parents(conn, mountpoint):
 
 def get_canonical_image_id(conn, mountpoint, short_image):
     with conn.cursor() as cur:
-        cur.execute(select("snap_tree", "snap_id", "mountpoint = %s AND snap_id LIKE %s"),
+        cur.execute(select("images", "image_hash", "mountpoint = %s AND image_hash LIKE %s"),
                     (mountpoint, short_image.lower() + '%'))
         candidates = [c[0] for c in cur.fetchall()]
 
@@ -76,7 +76,7 @@ def get_closest_parent_image_object(conn, mountpoint, table, image):
 def add_new_image(conn, mountpoint, parent_id, image, created=None, comment=None, provenance_type=None,
                   provenance_data=None):
     with conn.cursor() as cur:
-        cur.execute(insert("snap_tree", ("snap_id", "mountpoint", "parent_id", "created", "comment",
+        cur.execute(insert("images", ("image_hash", "mountpoint", "parent_id", "created", "comment",
                                          "provenance_type", "provenance_data")),
                     (image, mountpoint, parent_id, created or datetime.now(), comment,
                      provenance_type, Json(provenance_data)))

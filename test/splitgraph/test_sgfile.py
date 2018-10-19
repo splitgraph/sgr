@@ -120,13 +120,13 @@ def test_sgfile_cached(sg_pg_mg_conn):
     # Check that no new commits/snaps are created if we rerun the same sgfile
     execute_commands(sg_pg_mg_conn, _load_sgfile('import_local_multiple_with_queries.sgfile'), output='output')
     with sg_pg_mg_conn.cursor() as cur:
-        cur.execute("""SELECT snap_id FROM %s.snap_tree WHERE mountpoint = 'output'""" % SPLITGRAPH_META_SCHEMA)
+        cur.execute("""SELECT image_hash FROM %s.images WHERE mountpoint = 'output'""" % SPLITGRAPH_META_SCHEMA)
         commits = [c[0] for c in cur.fetchall()]
     assert len(commits) == 4
 
     execute_commands(sg_pg_mg_conn, _load_sgfile('import_local_multiple_with_queries.sgfile'), output='output')
     with sg_pg_mg_conn.cursor() as cur:
-        cur.execute("""SELECT snap_id FROM %s.snap_tree WHERE mountpoint = 'output'""" % SPLITGRAPH_META_SCHEMA)
+        cur.execute("""SELECT image_hash FROM %s.images WHERE mountpoint = 'output'""" % SPLITGRAPH_META_SCHEMA)
         new_commits = [c[0] for c in cur.fetchall()]
     assert new_commits == commits
 

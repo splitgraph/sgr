@@ -16,26 +16,26 @@ from splitgraph.pg_audit import manage_audit
 
 
 def _get_required_snaps_objects(conn, remote_conn, local_mountpoint, remote_mountpoint):
-    local_snap_parents = {snap_id: parent_id for snap_id, parent_id, _, _, _, _ in
+    local_snap_parents = {image_hash: parent_id for image_hash, parent_id, _, _, _, _ in
                           get_all_images_parents(conn, local_mountpoint)}
-    remote_snap_parents = {snap_id: (parent_id, created, comment, prov_type, prov_data)
-                           for snap_id, parent_id, created, comment, prov_type, prov_data in
+    remote_snap_parents = {image_hash: (parent_id, created, comment, prov_type, prov_data)
+                           for image_hash, parent_id, created, comment, prov_type, prov_data in
                            get_all_images_parents(remote_conn, remote_mountpoint)}
 
     # We assume here that none of the remote snapshot IDs have changed (are immutable) since otherwise the remote
     # would have created a new snapshot.
     snaps_to_fetch = [s for s in remote_snap_parents if s not in local_snap_parents]
     table_meta = []
-    for snap_id in snaps_to_fetch:
+    for image_hash in snaps_to_fetch:
         # This is not batched but there shouldn't be that many entries here anyway.
-        remote_parent, remote_created, remote_comment, remote_prov, remote_provdata = remote_snap_parents[snap_id]
-        add_new_image(conn, local_mountpoint, remote_parent, snap_id, remote_created, remote_comment, remote_prov,
+        remote_parent, remote_created, remote_comment, remote_prov, remote_provdata = remote_snap_parents[image_hash]
+        add_new_image(conn, local_mountpoint, remote_parent, image_hash, remote_created, remote_comment, remote_prov,
                       remote_provdata)
         # Get the meta for all objects we'll need to fetch.
         with remote_conn.cursor() as cur:
-            cur.execute(SQL("""SELECT snap_id, table_name, object_id FROM {0}.tables
-                           WHERE mountpoint = %s AND snap_id = %s""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                        (remote_mountpoint, snap_id))
+            cur.execute(SQL("""SELECT image_hash, table_name, object_id FROM {0}.tables
+                           WHERE mountpoint = %s AND image_hash = %s""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                        (remote_mountpoint, image_hash))
             table_meta.extend(cur.fetchall())
 
     # Get the tags too
