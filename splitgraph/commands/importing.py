@@ -7,12 +7,11 @@ from splitgraph.commands.misc import unmount
 from splitgraph.commands.push_pull import clone
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, get_random_object_id
 from splitgraph.meta_handler.images import add_new_image
-from splitgraph.meta_handler.misc import get_all_foreign_tables
 from splitgraph.meta_handler.objects import register_table, register_object
-from splitgraph.meta_handler.tables import get_all_tables, get_tables_at, get_table
+from splitgraph.meta_handler.tables import get_tables_at, get_table
 from splitgraph.meta_handler.tags import get_current_head, set_head
 from splitgraph.pg_audit import manage_audit
-from splitgraph.pg_utils import copy_table, get_primary_keys, execute_sql_in
+from splitgraph.pg_utils import copy_table, get_primary_keys, execute_sql_in, get_all_tables, get_all_foreign_tables
 
 
 @manage_audit
@@ -101,7 +100,7 @@ def _import_tables(conn, mountpoint, image_hash, tables, target_mountpoint, targ
                 register_table(conn, target_mountpoint, target_table, target_hash, object_id)
             if do_checkout:
                 materialize_table(conn, mountpoint, image_hash, table, target_table,
-                                  destination_mountpoint=target_mountpoint)
+                                  destination_schema=target_mountpoint)
     # Register the existing tables at the new commit as well.
     if head is not None:
         with conn.cursor() as cur:

@@ -1,7 +1,7 @@
 from splitgraph.commands.misc import make_conn
 from splitgraph.config import CONFIG
 from splitgraph.constants import SplitGraphException
-from splitgraph.meta_handler.misc import mountpoint_exists
+from splitgraph.meta_handler.misc import repository_exists
 
 
 # Parse and set these on import. If we ever need to be able to reread the config on the fly, these have to be
@@ -35,12 +35,12 @@ def lookup_repo(conn, repo_name, include_local=False):
         return LOOKUP_PATH_OVERRIDE[repo_name]
 
     # Currently just check if the schema with that name exists on the remote.
-    if include_local and mountpoint_exists(conn, repo_name):
+    if include_local and repository_exists(conn, repo_name):
         return "LOCAL"
 
     for candidate in LOOKUP_PATH:
         remote_conn = make_conn(*candidate)
-        if mountpoint_exists(remote_conn, repo_name):
+        if repository_exists(remote_conn, repo_name):
             remote_conn.close()
             return candidate
         remote_conn.close()

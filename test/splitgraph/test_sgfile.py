@@ -7,9 +7,9 @@ from splitgraph.commands import checkout, commit, push, unmount, clone, get_log
 from splitgraph.commands.misc import cleanup_objects
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, SplitGraphException
 from splitgraph.meta_handler.images import get_image_parent
-from splitgraph.meta_handler.misc import get_current_mountpoints_hashes
+from splitgraph.meta_handler.misc import get_current_repositories
 from splitgraph.meta_handler.objects import get_existing_objects, get_downloaded_objects, get_external_object_locations
-from splitgraph.meta_handler.tables import get_tables_at, get_table_with_format
+from splitgraph.meta_handler.tables import get_tables_at, get_object_for_table
 from splitgraph.meta_handler.tags import get_current_head, set_tag
 from splitgraph.pg_utils import pg_table_exists
 from splitgraph.sgfile.execution import execute_commands
@@ -218,7 +218,7 @@ def test_sgfile_end_to_end_with_uploading(empty_pg_conn, remote_driver_conn):
         push(empty_pg_conn, 'output', remote_conn_string=REMOTE_CONN_STRING, handler='FILE',
              handler_options={'path': tmpdir})
         # Unmount everything locally and cleanup
-        for mountpoint, _ in get_current_mountpoints_hashes(empty_pg_conn):
+        for mountpoint, _ in get_current_repositories(empty_pg_conn):
             unmount(empty_pg_conn, mountpoint)
         cleanup_objects(empty_pg_conn)
 
@@ -284,11 +284,11 @@ def test_import_with_custom_query(sg_pg_mg_conn):
     for t in tables:
         # Tables with queries stored as snaps, actually imported tables share objects with test_pg_mount.
         if t in ['my_fruits', 'o_vegetables']:
-            assert get_table_with_format(sg_pg_mg_conn, 'output', t, head, 'SNAP') is not None
-            assert get_table_with_format(sg_pg_mg_conn, 'output', t, head, 'DIFF') is None
+            assert get_object_for_table(sg_pg_mg_conn, 'output', t, head, 'SNAP', '') is not None
+            assert get_object_for_table(sg_pg_mg_conn, 'output', t, head, 'DIFF', '') is None
         else:
-            assert get_table_with_format(sg_pg_mg_conn, 'output', t, head, 'SNAP') is None
-            assert get_table_with_format(sg_pg_mg_conn, 'output', t, head, 'DIFF') is not None
+            assert get_object_for_table(sg_pg_mg_conn, 'output', t, head, 'SNAP', '') is None
+            assert get_object_for_table(sg_pg_mg_conn, 'output', t, head, 'DIFF', '') is not None
 
 
 def test_import_mount(empty_pg_conn):
@@ -311,8 +311,8 @@ def test_import_mount(empty_pg_conn):
 
     # All imported tables stored as snapshots
     for t in tables:
-        assert get_table_with_format(empty_pg_conn, 'output', t, head, 'SNAP') is not None
-        assert get_table_with_format(empty_pg_conn, 'output', t, head, 'DIFF') is None
+        assert get_object_for_table(empty_pg_conn, 'output', t, head, 'SNAP', '') is not None
+        assert get_object_for_table(empty_pg_conn, 'output', t, head, 'DIFF', '') is None
 
 
 def test_import_all(empty_pg_conn):
@@ -392,8 +392,8 @@ def test_from_multistage(empty_pg_conn, remote_driver_conn):
     # Check the commit is based on the original empty image.
     assert get_image_parent(empty_pg_conn, 'output_stage_2', head) == '0' * 64
     assert get_tables_at(empty_pg_conn, 'output_stage_2', head) == ['balanced_diet']
-    assert get_table_with_format(empty_pg_conn, 'output_stage_2', 'balanced_diet', head, 'SNAP') is not None
-    assert get_table_with_format(empty_pg_conn, 'output_stage_2', 'balanced_diet', head, 'DIFF') is None
+    assert get_object_for_table(empty_pg_conn, 'output_stage_2', 'balanced_diet', head, 'SNAP', '') is not None
+    assert get_object_for_table(empty_pg_conn, 'output_stage_2', 'balanced_diet', head, 'DIFF', '') is None
 
 
 def test_from_local(sg_pg_mg_conn):

@@ -2,12 +2,14 @@
 
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph.meta_handler.common import select
 
-def pg_table_exists(conn, mountpoint, table_name):
+
+def pg_table_exists(conn, schema, table_name):
     # WTF: postgres quietly truncates all table names to 63 characters at creation and in select statements
     with conn.cursor() as cur:
         cur.execute("""SELECT table_name from information_schema.tables
-                       WHERE table_schema = %s AND table_name = %s""", (mountpoint, table_name[:63]))
+                       WHERE table_schema = %s AND table_name = %s""", (schema, table_name[:63]))
         return cur.fetchone() is not None
 
 
@@ -73,52 +75,52 @@ def dump_table_creation(conn, schema, tables, created_schema=None):
     return SQL(';').join(queries)
 
 
-def get_primary_keys(conn, mountpoint, table):
+def get_primary_keys(conn, schema, table):
     """Inspects the Postgres information_schema to get the primary keys for a given table."""
     with conn.cursor() as cur:
         cur.execute(SQL("""SELECT a.attname, format_type(a.atttypid, a.atttypmod)
                            FROM pg_index i JOIN pg_attribute a ON a.attrelid = i.indrelid
                                                                   AND a.attnum = ANY(i.indkey)
                            WHERE i.indrelid = '{}.{}'::regclass AND i.indisprimary""").format(
-            Identifier(mountpoint), Identifier(table)))
+            Identifier(schema), Identifier(table)))
         return cur.fetchall()
 
 
-def _get_column_names(conn, mountpoint, table_name):
+def _get_column_names(conn, schema, table_name):
     with conn.cursor() as cur:
         cur.execute("""SELECT column_name FROM information_schema.columns
                        WHERE table_schema = %s
                        AND table_name = %s
-                       ORDER BY ordinal_position""", (mountpoint, table_name))
+                       ORDER BY ordinal_position""", (schema, table_name))
         return [c[0] for c in cur.fetchall()]
 
 
-def get_column_names_types(conn, mountpoint, table_name):
+def get_column_names_types(conn, schema, table_name):
     with conn.cursor() as cur:
         cur.execute("""SELECT column_name, data_type FROM information_schema.columns
                        WHERE table_schema = %s
-                       AND table_name = %s""", (mountpoint, table_name))
+                       AND table_name = %s""", (schema, table_name))
         return cur.fetchall()
 
 
-def get_full_table_schema(conn, mountpoint, table_name):
+def get_full_table_schema(conn, schema, table_name):
     # Generates a list of (column ordinal, name, data type, is_pk), used to detect
     # schema changes like columns being dropped/added/renamed or type changes.
     with conn.cursor() as cur:
         cur.execute("""SELECT ordinal_position, column_name, data_type FROM information_schema.columns
                        WHERE table_schema = %s
                        AND table_name = %s
-                       ORDER BY ordinal_position""", (mountpoint, table_name))
+                       ORDER BY ordinal_position""", (schema, table_name))
         results = cur.fetchall()
 
     # Do we need to make sure the PK has the same type + ordinal position here?
-    pks = [pk for pk, _ in get_primary_keys(conn, mountpoint, table_name)]
+    pks = [pk for pk, _ in get_primary_keys(conn, schema, table_name)]
     return [(o, n, dt, (n in pks)) for o, n, dt in results]
 
 
 def table_dump_generator(conn, schema, table):
     """Returns an iterator that generates a SQL table dump, non-schema qualified."""
-    # Don't include a schema (mountpoint) qualifier since the dump might be imported into a different place.
+    # Don't include a schema qualifier since the dump might be imported into a different place.
     yield (dump_table_creation(conn, schema, [table], created_schema=None) + SQL(';\n')).as_string(conn)
 
     # Use a server-side cursor here so we don't fetch the whole db into memory immediately.
@@ -134,16 +136,36 @@ def table_dump_generator(conn, schema, table):
     return
 
 
-def execute_sql_in(conn, mountpoint, sql):
+def execute_sql_in(conn, schema, sql):
     """
     Executes a non-schema-qualified query against a specific schema, using PG's search_path.
 
     :param conn: psycopg connection object
-    :param mountpoint: Schema to run the query in
+    :param schema: Schema to run the query in
     :param sql: Query
     """
     with conn.cursor() as cur:
-        # Execute the actual query against the original mountpoint.
-        cur.execute("SET search_path TO %s", (mountpoint,))
+        # Execute the actual query against the original schema.
+        cur.execute("SET search_path TO %s", (schema,))
         cur.execute(sql)
         cur.execute("SET search_path TO public")
+
+
+def get_all_tables(conn, schema):
+    # Gets all user tables in a schema (tracked or untracked)
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT table_name FROM information_schema.tables
+                WHERE table_schema = %s and table_type = 'BASE TABLE'""", (schema,))
+        return [c[0] for c in cur.fetchall()]
+
+
+def get_all_foreign_tables(conn, schema):
+    """Inspects the information_schema to see which foreign tables we have in a given schema.
+    Used by `mount` to populate the metadata since if we did IMPORT FOREIGN SCHEMA we've no idea what tables we actually
+    fetched from the remote postgres."""
+    with conn.cursor() as cur:
+        cur.execute(
+            select("tables", "table_name", "table_schema = %s and table_type = 'FOREIGN TABLE'", "information_schema"),
+            (schema,))
+        return [c[0] for c in cur.fetchall()]

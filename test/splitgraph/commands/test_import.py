@@ -3,11 +3,10 @@ from splitgraph.commands.diff import dump_pending_changes
 from splitgraph.commands.importing import import_table_from_unmounted
 from splitgraph.commands.misc import cleanup_objects
 from splitgraph.meta_handler.images import get_image_parent
-from splitgraph.meta_handler.misc import get_current_mountpoints_hashes
+from splitgraph.meta_handler.misc import get_current_repositories
 from splitgraph.meta_handler.objects import get_existing_objects, get_downloaded_objects
-from splitgraph.meta_handler.tables import get_all_tables
 from splitgraph.meta_handler.tags import get_current_head
-from splitgraph.pg_utils import pg_table_exists
+from splitgraph.pg_utils import pg_table_exists, get_all_tables
 from test.splitgraph.conftest import PG_MNT, REMOTE_CONN_STRING
 
 
@@ -107,7 +106,8 @@ def test_import_from_remote(empty_pg_conn, remote_driver_conn):
     assert get_all_tables(empty_pg_conn, 'output') == ['test']
 
     # Import the 'fruits' table from the origin.
-    import_table_from_unmounted(empty_pg_conn, REMOTE_CONN_STRING, PG_MNT, ['fruits'], get_current_head(remote_driver_conn, PG_MNT),
+    import_table_from_unmounted(empty_pg_conn, REMOTE_CONN_STRING, PG_MNT, ['fruits'],
+                                get_current_head(remote_driver_conn, PG_MNT),
                                 'output', target_tables=[])
     new_head = get_current_head(empty_pg_conn, 'output')
 
@@ -115,7 +115,7 @@ def test_import_from_remote(empty_pg_conn, remote_driver_conn):
     # Also clean up the unused objects to make sure that the newly cloned table is still recorded.
     assert sorted(get_all_tables(empty_pg_conn, 'output')) == ['fruits', 'test']
     cleanup_objects(empty_pg_conn)
-    assert len(get_current_mountpoints_hashes(empty_pg_conn)) == 1
+    assert len(get_current_repositories(empty_pg_conn)) == 1
     checkout(empty_pg_conn, 'output', head)
     assert pg_table_exists(empty_pg_conn, 'output', 'test')
     assert not pg_table_exists(empty_pg_conn, 'output', 'fruits')
@@ -137,7 +137,8 @@ def test_import_and_update(empty_pg_conn, remote_driver_conn):
     init(empty_pg_conn, 'output')
     head = get_current_head(empty_pg_conn, 'output')
     # Import the 'fruits' table from the origin.
-    import_table_from_unmounted(empty_pg_conn, REMOTE_CONN_STRING, PG_MNT, ['fruits'], get_current_head(remote_driver_conn, PG_MNT),
+    import_table_from_unmounted(empty_pg_conn, REMOTE_CONN_STRING, PG_MNT, ['fruits'],
+                                get_current_head(remote_driver_conn, PG_MNT),
                                 'output', target_tables=[])
     new_head = get_current_head(empty_pg_conn, 'output')
 

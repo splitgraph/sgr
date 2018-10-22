@@ -7,7 +7,7 @@ from splitgraph.commands.mount_handlers import get_mount_handler
 from splitgraph.commands.push_pull import local_clone, pull
 from splitgraph.config.repo_lookups import lookup_repo
 from splitgraph.constants import SplitGraphException, serialize_connection_string, Color
-from splitgraph.meta_handler.misc import mountpoint_exists
+from splitgraph.meta_handler.misc import repository_exists
 from splitgraph.meta_handler.provenance import store_import_provenance, store_sql_provenance, store_mount_provenance, \
     store_from_provenance
 from splitgraph.meta_handler.tags import get_current_head, tag_or_hash_to_actual_hash
@@ -52,7 +52,7 @@ def execute_commands(conn, commands, params=None, output=None, output_base='0' *
     """
     if params is None:
         params = {}
-    if output and mountpoint_exists(conn, output) and output_base is not None:
+    if output and repository_exists(conn, output) and output_base is not None:
         checkout(conn, output, output_base)
     # Use a random target schema if unspecified.
     output = output or "output_%0.2x" % getrandbits(16)
@@ -61,7 +61,7 @@ def execute_commands(conn, commands, params=None, output=None, output_base='0' *
     # (otherwise we might have a FROM ... AS output_name change it).
 
     def _initialize_output(output):
-        if not mountpoint_exists(conn, output):
+        if not repository_exists(conn, output):
             init(conn, output)
 
     node_list = parse_commands(commands, params=params)
@@ -102,7 +102,7 @@ def _execute_sql(conn, node, output):
         print("Executing SQL...")
         execute_sql_in(conn, output, sql_command)
         commit(conn, output, target_hash, comment=sql_command)
-        store_sql_provenance(conn, output, target_hash, sql_command)
+        store_sql_provenance(conn, '', output, target_hash, sql_command)
 
     _checkout_or_calculate_layer(conn, output, target_hash, _calc)
 
@@ -118,10 +118,10 @@ def _execute_from(conn, node, output):
 
         # NB this destroys all data in the case where we ran some commands in the sgfile and then
         # did FROM (...) without AS mountpoint_name
-        if mountpoint_exists(conn, output):
+        if repository_exists(conn, output):
             print("Clearing all output from %s" % output)
             unmount(conn, output)
-    if not mountpoint_exists(conn, output):
+    if not repository_exists(conn, output):
         init(conn, output)
     if repo_source:
         mountpoint, tag_or_hash = parse_repo_source(repo_source)
@@ -143,7 +143,7 @@ def _execute_from(conn, node, output):
             print("Cloning %s into %s..." % (mountpoint, output))
             local_clone(conn, mountpoint, output)
             checkout(conn, output, to_checkout)
-        store_from_provenance(conn, output, get_current_head(conn, output), mountpoint)
+        store_from_provenance(conn, '', output, get_current_head(conn, output), mountpoint)
     else:
         # FROM EMPTY AS mountpoint -- initializes an empty mountpoint (say to create a table or import
         # the results of a previous stage in a multistage build.
@@ -190,7 +190,7 @@ def _execute_db_import(conn, conn_string, fdw_name, fdw_params, table_names, tar
 
         import_tables(conn, tmp_mountpoint, table_names, target_mountpoint, table_aliases, image_hash=target_hash,
                       foreign_tables=True, table_queries=table_queries)
-        store_mount_provenance(conn, target_mountpoint, target_hash)
+        store_mount_provenance(conn, '', target_mountpoint, target_hash)
     finally:
         unmount(conn, tmp_mountpoint)
 
@@ -235,7 +235,7 @@ def _execute_repo_import(conn, mountpoint, table_names, tag_or_hash, target_moun
                 table_names, source_hash[:12], mountpoint, target_mountpoint))
             import_tables(conn, source_mountpoint, table_names, target_mountpoint, table_aliases,
                           image_hash=source_hash, target_hash=target_hash, table_queries=table_queries)
-            store_import_provenance(conn, target_mountpoint, target_hash, mountpoint, source_hash, table_names,
+            store_import_provenance(conn, '', target_mountpoint, target_hash, '', mountpoint, source_hash, table_names,
                                     table_aliases, table_queries)
 
         _checkout_or_calculate_layer(conn, target_mountpoint, target_hash, _calc)

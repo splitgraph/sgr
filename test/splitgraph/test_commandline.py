@@ -8,7 +8,7 @@ from splitgraph.commands import commit, checkout
 from splitgraph.commands.misc import table_exists_at, unmount
 from splitgraph.commands.provenance import provenance
 from splitgraph.meta_handler.images import get_image_parent, get_all_images_parents
-from splitgraph.meta_handler.misc import mountpoint_exists
+from splitgraph.meta_handler.misc import repository_exists
 from splitgraph.meta_handler.tables import get_table
 from splitgraph.meta_handler.tags import get_current_head, get_tagged_id, set_tag
 from splitgraph.registry_meta_handler import get_published_info
@@ -152,7 +152,7 @@ def test_misc_mountpoint_management(sg_pg_mg_conn):
     # sgr unmount
     result = runner.invoke(unmount_c, [MG_MNT])
     assert result.exit_code == 0
-    assert not mountpoint_exists(sg_pg_mg_conn, MG_MNT)
+    assert not repository_exists(sg_pg_mg_conn, MG_MNT)
 
     # sgr cleanup
     result = runner.invoke(cleanup_c)
@@ -161,7 +161,7 @@ def test_misc_mountpoint_management(sg_pg_mg_conn):
     # sgr init
     result = runner.invoke(init_c, ['output'])
     assert "Initialized empty mountpoint output" in result.output
-    assert mountpoint_exists(sg_pg_mg_conn, 'output')
+    assert repository_exists(sg_pg_mg_conn, 'output')
 
     # sgr mount
     result = runner.invoke(mount_c, [MG_MNT, '-c', 'originro:originpass@mongoorigin:27017',
@@ -217,7 +217,7 @@ def test_pull_push(empty_pg_conn, remote_driver_conn):
 
     result = runner.invoke(clone_c, [PG_MNT])
     assert result.exit_code == 0
-    assert mountpoint_exists(empty_pg_conn, PG_MNT)
+    assert repository_exists(empty_pg_conn, PG_MNT)
 
     with remote_driver_conn.cursor() as cur:
         cur.execute("INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise')")

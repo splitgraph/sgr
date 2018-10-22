@@ -1,21 +1,22 @@
 import psycopg2
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA
+from splitgraph.constants import SPLITGRAPH_META_SCHEMA, to_mountpoint
 from splitgraph.meta_handler.common import META_TABLES, ensure_metadata_schema
 from splitgraph.meta_handler.images import get_image_parent
-from splitgraph.meta_handler.misc import register_mountpoint, unregister_mountpoint
+from splitgraph.meta_handler.misc import register_repository, unregister_repository
 from splitgraph.meta_handler.objects import get_object_meta
 from splitgraph.meta_handler.tables import get_table
 from splitgraph.pg_audit import manage_audit, discard_pending_changes
 from splitgraph.pg_utils import pg_table_exists
 
 
-def table_exists_at(conn, mountpoint, table_name, image_hash):
+def table_exists_at(conn, repository, table_name, image_hash, namespace=''):
     """Determines whether a given table exists in a SplitGraph image without checking it out. If `image_hash` is None,
-    determines whether the table exists in the current staging area."""
-    return pg_table_exists(conn, mountpoint, table_name) if image_hash is None \
-        else bool(get_table(conn, mountpoint, table_name, image_hash))
+    determines whether the table exists in the current staging area.
+    :param namespace: """
+    return pg_table_exists(conn, to_mountpoint(namespace, repository), table_name) if image_hash is None \
+        else bool(get_table(conn, repository, table_name, image_hash, namespace))
 
 
 def make_conn(server, port, username, password, dbname):
@@ -34,21 +35,25 @@ def get_parent_children(conn, mountpoint, image_hash):
     return parent, children
 
 
-def get_log(conn, mountpoint, start_snap):
-    """Repeatedly gets the parent of a given snapshot until it reaches the bottom."""
+def get_log(conn, repository, start_snap, namespace=''):
+    """Repeatedly gets the parent of a given snapshot until it reaches the bottom.
+    :param namespace:
+    """
     result = []
     while start_snap is not None:
         result.append(start_snap)
-        start_snap = get_image_parent(conn, mountpoint, start_snap)
+        start_snap = get_image_parent(conn, repository, start_snap, namespace='')
     return result
 
 
-def find_path(conn, mountpoint, hash_1, hash_2):
-    """If the two images are on the same path in the commit tree, returns that path."""
+def find_path(conn, repository, hash_1, hash_2, namespace=''):
+    """If the two images are on the same path in the commit tree, returns that path.
+    :param namespace:
+    """
     path = []
     while hash_2 is not None:
         path.append(hash_2)
-        hash_2 = get_image_parent(conn, mountpoint, hash_2)
+        hash_2 = get_image_parent(conn, repository, hash_2, namespace)
         if hash_2 == hash_1:
             return path
 
@@ -64,7 +69,7 @@ def init(conn, mountpoint):
     with conn.cursor() as cur:
         cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(mountpoint)))
     image_hash = '0' * 64
-    register_mountpoint(conn, mountpoint, image_hash, tables=[], table_object_ids=[])
+    register_repository(conn, mountpoint, image_hash, tables=[], table_object_ids=[])
 
 
 def unmount(conn, mountpoint):
@@ -87,7 +92,7 @@ def unmount(conn, mountpoint):
         cur.execute(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(mountpoint + '_server')))
 
     # Currently we just discard all history info about the mounted schema
-    unregister_mountpoint(conn, mountpoint)
+    unregister_repository(conn, mountpoint)
     conn.commit()
 
 

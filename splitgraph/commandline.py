@@ -15,9 +15,10 @@ from splitgraph.commands.publish import publish
 from splitgraph.config.repo_lookups import get_remote_connection_params
 from splitgraph.constants import POSTGRES_CONNECTION, SplitGraphException, serialize_connection_string
 from splitgraph.drawing import render_tree
-from splitgraph.meta_handler.images import get_image_parent, get_all_image_info, get_canonical_image_id
-from splitgraph.meta_handler.misc import get_current_mountpoints_hashes, get_remote_for
-from splitgraph.meta_handler.tables import get_all_tables, get_tables_at, get_table
+from splitgraph.meta_handler.images import get_canonical_image_id
+from splitgraph.meta_handler.misc import get_current_repositories, get_remote_for
+from splitgraph.meta_handler.tables import get_tables_at, get_table
+from splitgraph.pg_utils import get_all_tables
 from splitgraph.meta_handler.tags import get_current_head, get_all_hashes_tags, set_tag, tag_or_hash_to_actual_hash
 from splitgraph.sgfile.execution import execute_commands, rerun_image_with_replacement
 
@@ -37,7 +38,7 @@ def cli():
 def status_c(mountpoint):
     conn = _conn()
     if mountpoint is None:
-        mountpoints = get_current_mountpoints_hashes(conn)
+        mountpoints = get_current_repositories(conn)
         print("Currently mounted databases: ")
         for mp_name, mp_hash in mountpoints:
             # Maybe should also show the remote DB address/server

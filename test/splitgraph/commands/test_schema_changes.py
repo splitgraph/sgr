@@ -2,7 +2,7 @@ import pytest
 
 from splitgraph.commands import commit, checkout
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA
-from splitgraph.meta_handler.tables import get_table_with_format
+from splitgraph.meta_handler.tables import get_object_for_table
 from splitgraph.meta_handler.tags import get_current_head
 from splitgraph.pg_utils import get_full_table_schema, get_primary_keys
 from test.splitgraph.conftest import PG_MNT
@@ -45,8 +45,8 @@ def test_schema_changes(sg_pg_conn, test_case):
     new_head = commit(sg_pg_conn, PG_MNT)
 
     # Test that the new image only has a snap and the object storing the snap has the expected new schema
-    assert get_table_with_format(sg_pg_conn, PG_MNT, 'fruits', new_head, 'DIFF') is None
-    new_snap = get_table_with_format(sg_pg_conn, PG_MNT, 'fruits', new_head, 'SNAP')
+    assert get_object_for_table(sg_pg_conn, PG_MNT, 'fruits', new_head, 'DIFF', '') is None
+    new_snap = get_object_for_table(sg_pg_conn, PG_MNT, 'fruits', new_head, 'SNAP', '')
     assert new_snap is not None
     assert get_full_table_schema(sg_pg_conn, SPLITGRAPH_META_SCHEMA, new_snap) == _reassign_ordinals(expected_new_schema)
 

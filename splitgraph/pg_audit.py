@@ -1,8 +1,10 @@
 from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.meta_handler.misc import ensure_metadata_schema, get_current_mountpoints_hashes
-from splitgraph.meta_handler.tables import get_all_tables, get_table
+from splitgraph.constants import to_mountpoint
+from splitgraph.meta_handler.misc import ensure_metadata_schema, get_current_repositories
+from splitgraph.meta_handler.tables import get_table
+from splitgraph.pg_utils import get_all_tables
 
 ROW_TRIGGER_NAME = "audit_trigger_row"
 STM_TRIGGER_NAME = "audit_trigger_stm"
@@ -16,8 +18,8 @@ def manage_audit_triggers(conn):
         * Drop audit triggers for those and delete all audit info for them
         * Set up audit triggers for new tables
     """
-    mountpoints_tables = [(m, t) for m, head in get_current_mountpoints_hashes(conn)
-                          for t in get_all_tables(conn, m) if get_table(conn, m, t, head)]
+    repos_tables = [(to_mountpoint(n, m), t) for n, m, head in get_current_repositories(conn)
+                    for t in get_all_tables(conn, m) if get_table(conn, m, t, head, n)]
 
     with conn.cursor() as cur:
         cur.execute("SELECT event_object_schema, event_object_table "
@@ -25,8 +27,8 @@ def manage_audit_triggers(conn):
                     (ROW_TRIGGER_NAME, STM_TRIGGER_NAME))
         existing_triggers = cur.fetchall()
 
-    triggers_to_remove = [t for t in existing_triggers if t not in mountpoints_tables]
-    triggers_to_add = [t for t in mountpoints_tables if t not in existing_triggers]
+    triggers_to_remove = [t for t in existing_triggers if t not in repos_tables]
+    triggers_to_add = [t for t in repos_tables if t not in existing_triggers]
 
     with conn.cursor() as cur:
         if triggers_to_remove:
@@ -45,19 +47,19 @@ def manage_audit_triggers(conn):
     conn.commit()
 
 
-def discard_pending_changes(conn, mountpoint):
+def discard_pending_changes(conn, schema):
     with conn.cursor() as cur:
         cur.execute(SQL("DELETE FROM {}.{} WHERE schema_name = %s").format(Identifier("audit"),
                                                                            Identifier("logged_actions")),
-                    (mountpoint,))
+                    (schema,))
     conn.commit()
 
 
-def has_pending_changes(conn, mountpoint):
+def has_pending_changes(conn, schema):
     with conn.cursor() as cur:
         cur.execute(SQL("SELECT 1 FROM {}.{} WHERE schema_name= %s").format(Identifier("audit"),
                                                                             Identifier("logged_actions")),
-                    (mountpoint,))
+                    (schema,))
         return cur.fetchone() is not None
 
 

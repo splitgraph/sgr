@@ -5,7 +5,8 @@ from splitgraph.commands import *
 from splitgraph.commands import unmount
 from splitgraph.commands.misc import make_conn, cleanup_objects
 from splitgraph.constants import PG_USER, PG_PWD, PG_DB, serialize_connection_string
-from splitgraph.meta_handler.misc import get_current_mountpoints_hashes, get_all_foreign_tables
+from splitgraph.meta_handler.misc import get_current_repositories
+from splitgraph.pg_utils import get_all_foreign_tables
 from splitgraph.registry_meta_handler import ensure_registry_schema, unpublish_repository
 
 PG_MNT = 'test_pg_mount'
@@ -119,12 +120,12 @@ def remote_driver_conn():
 def empty_pg_conn():
     # A connection to the local driver that has nothing mounted on it.
     conn = _conn()
-    for mountpoint, _ in get_current_mountpoints_hashes(conn):
+    for mountpoint, _ in get_current_repositories(conn):
         unmount(conn, mountpoint)
     cleanup_objects(conn)
     conn.commit()
     yield conn
-    for mountpoint, _ in get_current_mountpoints_hashes(conn):
+    for mountpoint, _ in get_current_repositories(conn):
         unmount(conn, mountpoint)
     cleanup_objects(conn)
     conn.commit()

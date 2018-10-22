@@ -19,21 +19,23 @@ def _create_metadata_schema(conn):
         cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(SPLITGRAPH_META_SCHEMA)))
         # maybe FK parent_id on image_hash. NULL there means this is the repo root.
         cur.execute(SQL("""CREATE TABLE {}.{} (
+                        namespace       VARCHAR NOT NULL,
+                        repository      VARCHAR NOT NULL,
                         image_hash      VARCHAR NOT NULL,
-                        mountpoint      VARCHAR NOT NULL,
                         parent_id       VARCHAR,
                         created         TIMESTAMP,
                         comment         VARCHAR,
                         provenance_type VARCHAR,
                         provenance_data JSON,
-                        PRIMARY KEY (mountpoint, image_hash))""").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                         Identifier("images")))
+                        PRIMARY KEY (namespace, repository, image_hash))""").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                                    Identifier("images")))
         cur.execute(SQL("""CREATE TABLE {}.{} (
-                        mountpoint VARCHAR NOT NULL,
+                        namespace       VARCHAR NOT NULL,
+                        repository      VARCHAR NOT NULL,
                         image_hash VARCHAR,
                         tag        VARCHAR,
                         PRIMARY KEY (mountpoint, tag),
-                        CONSTRAINT sh_fk FOREIGN KEY (mountpoint, image_hash) REFERENCES {}.{})""").format(
+                        CONSTRAINT sh_fk FOREIGN KEY (namespace, repository, image_hash) REFERENCES {}.{})""").format(
             Identifier(SPLITGRAPH_META_SCHEMA), Identifier("snap_tags"),
             Identifier(SPLITGRAPH_META_SCHEMA), Identifier("images")))
 
@@ -42,29 +44,33 @@ def _create_metadata_schema(conn):
         # One object can have multiple parents (e.g. 1 SNAP and 1 DIFF).
         cur.execute(SQL("""CREATE TABLE {}.{} (
                         object_id  VARCHAR NOT NULL,
+                        original_namespace VARCHAR NOT NULL,
                         format     VARCHAR NOT NULL,
                         parent_id  VARCHAR)""").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")))
 
         # Maps a given table at a given point in time to an "object ID" (either a full snapshot or a
         # delta to a previous table).
         cur.execute(SQL("""CREATE TABLE {}.{} (
-                        mountpoint VARCHAR NOT NULL,
+                        namespace  VARCHAR NOT NULL,
+                        repository VARCHAR NOT NULL
                         image_hash VARCHAR NOT NULL,
                         table_name VARCHAR NOT NULL,
                         object_id  VARCHAR NOT NULL,
                         PRIMARY KEY (mountpoint, image_hash, table_name, object_id),
-                        CONSTRAINT tb_fk FOREIGN KEY (mountpoint, image_hash) REFERENCES {}.{})""").format(
+                        CONSTRAINT tb_fk FOREIGN KEY (namespace, repository, image_hash) REFERENCES {}.{})""").format(
             Identifier(SPLITGRAPH_META_SCHEMA), Identifier("tables"),
             Identifier(SPLITGRAPH_META_SCHEMA), Identifier("images")))
 
         # Keep track of what the remotes for a given mountpoint are (by default, we create an "origin" remote
         # on initial pull)
         cur.execute(SQL("""CREATE TABLE {}.{} (
-                        mountpoint         VARCHAR NOT NULL,
+                        namespace          VARCHAR NOT NULL,
+                        repository         VARCHAR NOT NULL,
                         remote_name        VARCHAR NOT NULL,
                         remote_conn_string VARCHAR NOT NULL,
-                        remote_mountpoint  VARCHAR NOT NULL,
-                        PRIMARY KEY (mountpoint, remote_name))""").format(
+                        remote_namespace   VARCHAR NOT NULL,
+                        remote_repository  VARCHAR NOT NULL,
+                        PRIMARY KEY (namespace, repository, remote_name))""").format(
             Identifier(SPLITGRAPH_META_SCHEMA), Identifier("remotes")))
 
         # Map objects to their locations for when they don't live on the remote or the local machine but instead

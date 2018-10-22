@@ -39,6 +39,15 @@ def serialize_connection_string(server, port, username, password, dbname):
     return '%s:%s@%s:%s/%s' % (username, password, server, port, dbname)
 
 
+def to_mountpoint(namespace, repository):
+    return repository if not namespace else namespace + '/' + repository
+
+
+def to_ns_repo(schema):
+    # temporary until we figure out a mapping
+    return schema if '/' not in schema else tuple(schema.split('/'))
+
+
 class Color:
     PURPLE = '\033[95m'
     CYAN = '\033[96m'

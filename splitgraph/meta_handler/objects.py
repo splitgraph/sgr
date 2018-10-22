@@ -37,10 +37,10 @@ def register_objects(conn, object_meta):
         execute_batch(cur, insert("objects", ("object_id", "format", "parent_id")), object_meta, page_size=100)
 
 
-def register_tables(conn, mountpoint, table_meta):
-    table_meta = [(mountpoint,) + o for o in table_meta]
+def register_tables(conn, repository, table_meta, namespace=''):
+    table_meta = [(namespace, repository) + o for o in table_meta]
     with conn.cursor() as cur:
-        execute_batch(cur, insert("tables", ("mountpoint", "image_hash", "table_name", "object_id")),
+        execute_batch(cur, insert("tables", ("namespace", "repository", "image_hash", "table_name", "object_id")),
                       table_meta, page_size=100)
 
 
@@ -90,7 +90,7 @@ def get_object_meta(conn, objects):
         return cur.fetchall()
 
 
-def register_table(conn, mountpoint, table, image, object_id):
+def register_table(conn, repository, table, image, object_id, namespace=''):
     with conn.cursor() as cur:
-        cur.execute(insert("tables", ("mountpoint", "image_hash", "table_name", "object_id")),
-                    (mountpoint, image, table, object_id))
+        cur.execute(insert("tables", ("namespace", "repository", "image_hash", "table_name", "object_id")),
+                    (namespace, repository, image, table, object_id))
