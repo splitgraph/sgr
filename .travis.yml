@@ -32,3 +32,6 @@ before_script:
   - sudo /etc/init.d/postgresql stop
   - sudo docker-compose --file test/architecture/docker-compose.yml up -d pgorigin mongoorigin local_driver remote_driver
   - sleep 30
+
+after_success:
+  - coveralls
