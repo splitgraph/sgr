@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from psycopg2.sql import Identifier, SQL
 
 from splitgraph.commands.misc import delete_objects
-from splitgraph.constants import get_random_object_id, SplitGraphException, SPLITGRAPH_META_SCHEMA, to_mountpoint
+from splitgraph.constants import get_random_object_id, SplitGraphException, SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler.images import get_canonical_image_id, get_closest_parent_image_object
 from splitgraph.meta_handler.misc import get_remote_for
 from splitgraph.meta_handler.objects import get_external_object_locations
@@ -16,7 +16,7 @@ from splitgraph.pg_audit import has_pending_changes, manage_audit, discard_pendi
 from splitgraph.pg_utils import copy_table, get_primary_keys, get_all_tables
 
 
-def materialize_table(conn, repository, image_hash, table, destination, destination_schema=None, namespace=''):
+def materialize_table(conn, repository, image_hash, table, destination, destination_schema=None):
     """
     Materializes a SplitGraph table in the target schema as a normal Postgres table, potentially downloading all
     required objects and using them to reconstruct the table.
@@ -27,19 +27,18 @@ def materialize_table(conn, repository, image_hash, table, destination, destinat
     :param table: Name of the table.
     :param destination: Name of the destination table.
     :param destination_schema: Name of the destination schema.
-    :param namespace: Namespace that the repository belongs to
     :return: A set of IDs of downloaded objects used to construct the table.
     """
-    destination_schema = destination_schema or to_mountpoint(namespace, repository)
+    destination_schema = destination_schema or repository.to_schema()
     with conn.cursor() as cur:
         cur.execute(
             SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(destination_schema), Identifier(destination)))
         # Get the closest snapshot from the table's parents
         # and then apply all deltas consecutively from it.
-        object_id, to_apply = get_closest_parent_image_object(conn, repository, table, image_hash, namespace=namespace)
+        object_id, to_apply = get_closest_parent_image_object(conn, repository, table, image_hash)
 
         # Make sure all the objects have been downloaded from remote if it exists
-        remote_info = get_remote_for(conn, repository, namespace=namespace)
+        remote_info = get_remote_for(conn, repository)
         if remote_info:
             remote_conn, _ = remote_info
             object_locations = get_external_object_locations(conn, to_apply + [object_id])
@@ -69,11 +68,10 @@ def materialize_table(conn, repository, image_hash, table, destination, destinat
 
 
 @manage_audit
-def checkout(conn, repository, image_hash=None, tag=None, tables=None, keep_downloaded_objects=True, namespace=''):
+def checkout(conn, repository, image_hash=None, tag=None, tables=None, keep_downloaded_objects=True):
     """
     Discards all pending changes in the current mountpoint and checks out an image, changing the current HEAD pointer.
 
-    :param namespace:
     :param conn: psycopg connection object
     :param repository: Mountpoint to check out.
     :param image_hash: Hash of the image to check out.
@@ -82,22 +80,22 @@ def checkout(conn, repository, image_hash=None, tag=None, tables=None, keep_down
     :param keep_downloaded_objects: If False, deletes externally downloaded objects after they've been used.
     :param namespace: Namespace
     """
-    target_schema = to_mountpoint(namespace, repository)
+    target_schema = repository.to_schema()
     if tables is None:
         tables = []
-    if has_pending_changes(conn, target_schema):
-        logging.warning("%s has pending changes, discarding...", target_schema)
+    if has_pending_changes(conn, repository):
+        logging.warning("%s has pending changes, discarding...", repository)
     discard_pending_changes(conn, target_schema)
     # Detect the actual schema snap we want to check out
     if image_hash:
         # get_canonical_image_hash called twice if the commandline entry point already called it. How to fix?
-        image_hash = get_canonical_image_id(conn, repository, image_hash, namespace=namespace)
+        image_hash = get_canonical_image_id(conn, repository, image_hash)
     elif tag:
-        image_hash = get_tagged_id(conn, repository, tag, namespace=namespace)
+        image_hash = get_tagged_id(conn, repository, tag)
     else:
         raise SplitGraphException("One of schema_snap or tag must be specified!")
 
-    tables = tables or get_tables_at(conn, repository, image_hash, namespace=namespace)
+    tables = tables or get_tables_at(conn, repository, image_hash)
     with conn.cursor() as cur:
         # Drop all current tables in staging
         for table in get_all_tables(conn, target_schema):
@@ -105,10 +103,10 @@ def checkout(conn, repository, image_hash=None, tag=None, tables=None, keep_down
 
     downloaded_object_ids = set()
     for table in tables:
-        downloaded_object_ids |= materialize_table(conn, repository, image_hash, table, table, namespace=namespace)
+        downloaded_object_ids |= materialize_table(conn, repository, image_hash, table, table)
 
     # Repoint the current HEAD for this mountpoint to the new snap ID
-    set_head(conn, repository, image_hash, namespace=namespace)
+    set_head(conn, repository, image_hash)
 
     if not keep_downloaded_objects:
         logging.info("Removing %d downloaded objects from cache..." % len(downloaded_object_ids))
@@ -116,14 +114,13 @@ def checkout(conn, repository, image_hash=None, tag=None, tables=None, keep_down
 
 
 @contextmanager
-def materialized_table(conn, repository, table_name, image_hash, namespace=''):
+def materialized_table(conn, repository, table_name, image_hash):
     """A context manager that returns a pointer to a read-only materialized table in a given image.
     If the table is already stored as a SNAP, this doesn't use any extra space.
     Otherwise, the table is materialized and deleted on exit from the context manager.
 
-    :param namespace: Namespace
     :param conn: Psycopg connection object
-    :param repository: Mounpoint that the table belongs to
+    :param repository: Repository that the table belongs to
     :param table_name: Name of the table
     :param image_hash: Image hash to materialize
     :return: (schema, table_name) where the materialized table is located.
@@ -131,9 +128,9 @@ def materialized_table(conn, repository, table_name, image_hash, namespace=''):
     """
     if image_hash is None:
         # No snapshot -- just return the current staging table.
-        yield to_mountpoint(namespace, repository), table_name
+        yield repository.to_schema(), table_name
     # See if the table snapshot already exists, otherwise reconstruct it
-    object_id = get_object_for_table(conn, repository, table_name, image_hash, 'SNAP', namespace=namespace)
+    object_id = get_object_for_table(conn, repository, table_name, image_hash, 'SNAP')
     if object_id is None:
         # Materialize the SNAP into a new object
         new_id = get_random_object_id()

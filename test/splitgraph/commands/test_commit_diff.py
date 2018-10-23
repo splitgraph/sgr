@@ -4,11 +4,11 @@ from decimal import Decimal
 import pytest
 
 from splitgraph.commands import diff, commit, init, checkout
-from splitgraph.meta_handler.images import get_image_parent, get_all_image_info
+from splitgraph.meta_handler.images import get_image
 from splitgraph.meta_handler.tables import get_table
 from splitgraph.meta_handler.tags import get_current_head
 from splitgraph.pg_audit import has_pending_changes
-from test.splitgraph.conftest import PG_MNT, MG_MNT
+from test.splitgraph.conftest import PG_MNT, MG_MNT, OUTPUT
 
 
 def test_diff_head(sg_pg_conn):
@@ -36,7 +36,7 @@ def test_commit_diff(include_snap, sg_pg_conn):
     # After commit, we should be switched to the new commit hash and there should be no differences.
     assert get_current_head(sg_pg_conn, PG_MNT) == new_head
     assert diff(sg_pg_conn, PG_MNT, 'fruits', image_1=new_head, image_2=None) == []
-    assert get_all_image_info(sg_pg_conn, PG_MNT, new_head)[2] == "test commit"
+    assert get_image(sg_pg_conn, PG_MNT, new_head).comment == "test commit"
 
     change = diff(sg_pg_conn, PG_MNT, 'fruits', image_1=head, image_2=new_head)
     # pk (no PK here so the whole row) -- 0 for INS -- extra non-PK cols
@@ -51,15 +51,15 @@ def test_commit_diff(include_snap, sg_pg_conn):
 
 @pytest.mark.parametrize("include_snap", [True, False])
 def test_commit_on_empty(include_snap, sg_pg_conn):
-    init(sg_pg_conn, "output")
+    init(sg_pg_conn, OUTPUT)
 
     with sg_pg_conn.cursor() as cur:
         cur.execute("""CREATE TABLE output.test AS SELECT * FROM test_pg_mount.fruits""")
 
     # Make sure the WAL changes get flushed anyway if we are only committing a snapshot.
-    assert diff(sg_pg_conn, 'output', 'test', image_1=get_current_head(sg_pg_conn, 'output'), image_2=None) == True
-    commit(sg_pg_conn, 'output', include_snap=include_snap)
-    assert diff(sg_pg_conn, 'output', 'test', image_1=get_current_head(sg_pg_conn, 'output'), image_2=None) == []
+    assert diff(sg_pg_conn, OUTPUT, 'test', image_1=get_current_head(sg_pg_conn, OUTPUT), image_2=None) == True
+    commit(sg_pg_conn, OUTPUT, include_snap=include_snap)
+    assert diff(sg_pg_conn, OUTPUT, 'test', image_1=get_current_head(sg_pg_conn, OUTPUT), image_2=None) == []
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
@@ -132,7 +132,7 @@ def test_delete_all_diff(sg_pg_conn):
     new_head = commit(sg_pg_conn, PG_MNT)
     assert has_pending_changes(sg_pg_conn, PG_MNT) is False
     assert diff(sg_pg_conn, PG_MNT, 'fruits', new_head, None) == []
-    assert diff(sg_pg_conn, PG_MNT, 'fruits', get_image_parent(sg_pg_conn, PG_MNT, new_head), new_head) == expected_diff
+    assert diff(sg_pg_conn, PG_MNT, 'fruits', get_image(sg_pg_conn, PG_MNT, new_head).parent_id, new_head) == expected_diff
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
@@ -174,7 +174,7 @@ def test_non_ordered_inserts(include_snap, sg_pg_conn):
 
 @pytest.mark.parametrize("include_snap", [True, False])
 def test_non_ordered_inserts_with_pk(include_snap, sg_pg_conn):
-    init(sg_pg_conn, 'output')
+    init(sg_pg_conn, OUTPUT)
     with sg_pg_conn.cursor() as cur:
         cur.execute("""CREATE TABLE output.test
         (a int, 
@@ -182,18 +182,18 @@ def test_non_ordered_inserts_with_pk(include_snap, sg_pg_conn):
          c int,
          d varchar, PRIMARY KEY(a))""")
     sg_pg_conn.commit()
-    head = commit(sg_pg_conn, 'output')
+    head = commit(sg_pg_conn, OUTPUT)
 
     with sg_pg_conn.cursor() as cur:
         cur.execute("""INSERT INTO output.test (a, d, b, c) VALUES (1, 'four', 2, 3)""")
     sg_pg_conn.commit()
-    new_head = commit(sg_pg_conn, 'output', include_snap=include_snap)
-    checkout(sg_pg_conn, 'output', head)
-    checkout(sg_pg_conn, 'output', new_head)
+    new_head = commit(sg_pg_conn, OUTPUT, include_snap=include_snap)
+    checkout(sg_pg_conn, OUTPUT, head)
+    checkout(sg_pg_conn, OUTPUT, new_head)
     with sg_pg_conn.cursor() as cur:
         cur.execute("""SELECT * FROM output.test""")
         assert cur.fetchall() == [(1, 2, 3, 'four')]
-    change = diff(sg_pg_conn, 'output', 'test', head, new_head)
+    change = diff(sg_pg_conn, OUTPUT, 'test', head, new_head)
     assert len(change) == 1
     assert change[0][0] == (1,)
     assert change[0][1] == 0
@@ -203,7 +203,7 @@ def test_non_ordered_inserts_with_pk(include_snap, sg_pg_conn):
 @pytest.mark.parametrize("include_snap", [True, False])
 def test_various_types(include_snap, sg_pg_conn):
     # Schema/data copied from the wal2json tests
-    init(sg_pg_conn, 'output')
+    init(sg_pg_conn, OUTPUT)
     with sg_pg_conn.cursor() as cur:
         cur.execute("""CREATE TABLE output.test
         (a smallserial, 
@@ -223,16 +223,16 @@ def test_various_types(include_snap, sg_pg_conn):
          o json,
          p tsvector, PRIMARY KEY(b, c, d));""")
     sg_pg_conn.commit()
-    head = commit(sg_pg_conn, 'output')
+    head = commit(sg_pg_conn, OUTPUT)
 
     with sg_pg_conn.cursor() as cur:
         cur.execute("""INSERT INTO output.test (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p)
             VALUES(1, 2, 3, 3.54, 876.563452345, 1.23, 'test', 'testtesttesttest', 'testtesttesttesttesttesttest',
             B'001110010101010', '2013-11-02 17:30:52', '2013-02-04', true, '{ "a": 123 }', 'Old Old Parr'::tsvector);""")
     sg_pg_conn.commit()
-    new_head = commit(sg_pg_conn, 'output', include_snap=include_snap)
-    checkout(sg_pg_conn, 'output', head)
-    checkout(sg_pg_conn, 'output', new_head)
+    new_head = commit(sg_pg_conn, OUTPUT, include_snap=include_snap)
+    checkout(sg_pg_conn, OUTPUT, head)
+    checkout(sg_pg_conn, OUTPUT, new_head)
     with sg_pg_conn.cursor() as cur:
         cur.execute("""SELECT * FROM output.test""")
         assert cur.fetchall() == [(1, 1, 2, 3, Decimal('3.540'), 876.563, 1.23, 'test      ', 'testtesttesttest',

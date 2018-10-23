@@ -1,7 +1,6 @@
 from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.constants import to_mountpoint
 from splitgraph.meta_handler.misc import ensure_metadata_schema, get_current_repositories
 from splitgraph.meta_handler.tables import get_table
 from splitgraph.pg_utils import get_all_tables
@@ -18,8 +17,8 @@ def manage_audit_triggers(conn):
         * Drop audit triggers for those and delete all audit info for them
         * Set up audit triggers for new tables
     """
-    repos_tables = [(to_mountpoint(n, m), t) for n, m, head in get_current_repositories(conn)
-                    for t in get_all_tables(conn, m) if get_table(conn, m, t, head, n)]
+    repos_tables = [(r.to_schema(), t) for r, head in get_current_repositories(conn)
+                    for t in get_all_tables(conn, r.to_schema()) if get_table(conn, r, t, head)]
 
     with conn.cursor() as cur:
         cur.execute("SELECT event_object_schema, event_object_table "
@@ -55,11 +54,11 @@ def discard_pending_changes(conn, schema):
     conn.commit()
 
 
-def has_pending_changes(conn, schema):
+def has_pending_changes(conn, repository):
     with conn.cursor() as cur:
-        cur.execute(SQL("SELECT 1 FROM {}.{} WHERE schema_name= %s").format(Identifier("audit"),
+        cur.execute(SQL("SELECT 1 FROM {}.{} WHERE schema_name = %s").format(Identifier("audit"),
                                                                             Identifier("logged_actions")),
-                    (schema,))
+                    (repository.to_schema(),))
         return cur.fetchone() is not None
 
 

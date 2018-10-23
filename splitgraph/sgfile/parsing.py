@@ -2,13 +2,13 @@ import re
 
 from parsimonious import Grammar
 
-from splitgraph.constants import SplitGraphException
+from splitgraph.constants import SplitGraphException, to_repository
 
 SGFILE_GRAMMAR = Grammar(r"""
     commands = space command space (newline space command space)*
     command = comment / import / from / sql_file / sql 
     comment = space "#" non_newline
-    from = "FROM" space ("EMPTY" / repo_source) (space "AS" space mountpoint)?
+    from = "FROM" space ("EMPTY" / repo_source) (space "AS" space repository)?
     import = "FROM" space source space "IMPORT" space tables
     sql_file = "SQL" space "FILE" space non_newline
     sql = "SQL" space sql_statement
@@ -18,7 +18,7 @@ SGFILE_GRAMMAR = Grammar(r"""
     table_query = "{" non_curly_brace "}"
     tables = "ALL" / (table space ("," space table)*)
     source = mount_source / repo_source
-    repo_source = mountpoint (":" tag_or_hash)?
+    repo_source = repository (":" tag_or_hash)?
     mount_source = "MOUNT" space handler space no_db_conn_string space handler_options
     
     image_hash = ~"[0-9a-f]*"i
@@ -27,7 +27,7 @@ SGFILE_GRAMMAR = Grammar(r"""
     # "identifier" anyway. This is so that the grammar is slightly more readable. 
     
     handler = identifier
-    mountpoint = ~"[_a-zA-Z0-9\-/]+"
+    repository = ~"[_a-zA-Z0-9\-/]+"
     table_name = identifier
     table_alias = identifier
     tag_or_hash = identifier
@@ -112,14 +112,14 @@ def _parse_table_alias(table_node):
 
 
 def parse_repo_source(remote_repo_node):
-    repo_nodes = extract_nodes(remote_repo_node, ['mountpoint', 'identifier', 'image_hash'])
-    mountpoint = repo_nodes[0].match.group(0)
+    repo_nodes = extract_nodes(remote_repo_node, ['repository', 'identifier', 'image_hash'])
+    repository = to_repository(repo_nodes[0].match.group(0))
     # See if we got given a tag / hash (the executor will try to interpret it as both).
     if len(repo_nodes) == 2:
         tag_or_hash = repo_nodes[1].match.group(0)
     else:
         tag_or_hash = 'latest'
-    return mountpoint, tag_or_hash
+    return repository, tag_or_hash
 
 
 def extract_all_table_aliases(node):

@@ -283,7 +283,7 @@ def pull_c(mountpoint, remote, download_all):
 @click.option('-d', '--download-all', help='Download all objects immediately instead on checkout.')
 def clone_c(remote_repository, local_repository, download_all):
     conn = _conn()
-    clone(conn, remote_repository, local_mountpoint=local_repository, download_all=download_all)
+    clone(conn, remote_repository, local_repository=local_repository, download_all=download_all)
     conn.commit()
 
 
@@ -360,7 +360,7 @@ def import_c(mountpoint, table_or_query, target_mountpoint, target_table, image,
     else:
         image = None
     import_tables(conn, mountpoint, [table_or_query], target_mountpoint, [target_table] if target_table else [],
-                  image_hash=image, table_queries=[] if not is_query else [True], foreign_tables=foreign_tables)
+                  image_hash=image, foreign_tables=foreign_tables, table_queries=[] if not is_query else [True])
 
     print("%s:%s has been imported from %s:%s%s" % (target_mountpoint, target_table, mountpoint, table_or_query,
                                                     (' (%s)' % image[:12] if image else '')))

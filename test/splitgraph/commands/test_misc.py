@@ -50,17 +50,17 @@ def test_table_changes(include_snap, sg_pg_conn):
     head_1 = commit(sg_pg_conn, PG_MNT, include_snap=include_snap)
     # Checkout the old head and make sure the table doesn't exist in it
     checkout(sg_pg_conn, PG_MNT, head)
-    assert not pg_table_exists(sg_pg_conn, PG_MNT, 'fruits_copy')
+    assert not pg_table_exists(sg_pg_conn, PG_MNT.to_schema(), 'fruits_copy')
 
     # Make sure the table is reflected in the diff even if we're on a different commit
     assert diff(sg_pg_conn, PG_MNT, 'fruits_copy', image_1=head, image_2=head_1) is True
 
     # Go back and now delete a table
     checkout(sg_pg_conn, PG_MNT, head_1)
-    assert pg_table_exists(sg_pg_conn, PG_MNT, 'fruits_copy')
+    assert pg_table_exists(sg_pg_conn, PG_MNT.to_schema(), 'fruits_copy')
     with sg_pg_conn.cursor() as cur:
         cur.execute("""DROP TABLE test_pg_mount.fruits""")
-    assert not pg_table_exists(sg_pg_conn, PG_MNT, 'fruits')
+    assert not pg_table_exists(sg_pg_conn, PG_MNT.to_schema(), 'fruits')
 
     # Make sure the diff shows it's been removed and commit it
     assert diff(sg_pg_conn, PG_MNT, 'fruits', image_1=head_1, image_2=None) is False
@@ -68,11 +68,11 @@ def test_table_changes(include_snap, sg_pg_conn):
 
     # Go through the 3 commits and ensure the table existence is maintained
     checkout(sg_pg_conn, PG_MNT, head)
-    assert pg_table_exists(sg_pg_conn, PG_MNT, 'fruits')
+    assert pg_table_exists(sg_pg_conn, PG_MNT.to_schema(), 'fruits')
     checkout(sg_pg_conn, PG_MNT, head_1)
-    assert pg_table_exists(sg_pg_conn, PG_MNT, 'fruits')
+    assert pg_table_exists(sg_pg_conn, PG_MNT.to_schema(), 'fruits')
     checkout(sg_pg_conn, PG_MNT, head_2)
-    assert not pg_table_exists(sg_pg_conn, PG_MNT, 'fruits')
+    assert not pg_table_exists(sg_pg_conn, PG_MNT.to_schema(), 'fruits')
 
 
 def test_tagging(sg_pg_conn):

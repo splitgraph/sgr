@@ -13,7 +13,7 @@ def test_mount_unmount():
         assert (1, 'apple') in list(cur.fetchall())
     unmount(conn, PG_MNT)
     with conn.cursor() as cur:
-        cur.execute("""SELECT * FROM information_schema.schemata where schema_name = '%s'""" % PG_MNT)
+        cur.execute("""SELECT * FROM information_schema.schemata where schema_name = '%s'""" % PG_MNT.to_schema())
         assert cur.fetchone() is None
 
 

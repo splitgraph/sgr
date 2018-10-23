@@ -4,7 +4,7 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.commands.checkout import materialized_table
 from splitgraph.commands.misc import table_exists_at, find_path
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA, to_mountpoint
+from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler.tables import get_object_for_table, get_table
 from splitgraph.meta_handler.tags import get_current_head
 from splitgraph.objects.utils import get_replica_identity, convert_audit_change, KIND
@@ -17,13 +17,12 @@ def _changes_to_aggregation(query_result, initial=None):
     return tuple(result)
 
 
-def diff(conn, repository, table_name, image_1, image_2, aggregate=False, namespace=''):
+def diff(conn, repository, table_name, image_1, image_2, aggregate=False):
     """
     Compares the state of the table in different images. If the two images are on the same path in the commit tree,
     it doesn't need to materialize any of the tables and simply aggregates their DIFF objects to produce a complete
     changelog. Otherwise, it materializes both tables into a temporary space and compares them row-to-row.
 
-    :param namespace:
     :param conn: psycopg connection
     :param repository: Mounpoint where the table exists.
     :param table_name: Name of the table.
@@ -45,21 +44,21 @@ def diff(conn, repository, table_name, image_1, image_2, aggregate=False, namesp
     with conn.cursor() as cur:
         # If the table doesn't exist in the first or the second image, short-circuit and
         # return the bool.
-        if not table_exists_at(conn, repository, table_name, image_1, namespace):
+        if not table_exists_at(conn, repository, table_name, image_1):
             return True
-        if not table_exists_at(conn, repository, table_name, image_2, namespace):
+        if not table_exists_at(conn, repository, table_name, image_2):
             return False
 
         # Special case: if diffing HEAD and staging, then just return the current pending changes.
-        head = get_current_head(conn, repository, namespace)
+        head = get_current_head(conn, repository)
 
         if image_1 == head and image_2 is None:
-            changes = dump_pending_changes(conn, to_mountpoint(namespace, repository), table_name, aggregate=aggregate)
+            changes = dump_pending_changes(conn, repository.to_schema(), table_name, aggregate=aggregate)
             return changes if not aggregate else _changes_to_aggregation(changes)
 
         # If the table is the same in the two images, short circuit as well.
-        if set(get_table(conn, repository, table_name, image_1, namespace)) == \
-                set(get_table(conn, repository, table_name, image_2, namespace)):
+        if set(get_table(conn, repository, table_name, image_1)) == \
+                set(get_table(conn, repository, table_name, image_2)):
             return [] if not aggregate else (0, 0, 0)
 
         # Otherwise, check if snap_1 is a parent of snap_2, then we can merge all the diffs.
@@ -67,7 +66,7 @@ def diff(conn, repository, table_name, image_1, image_2, aggregate=False, namesp
         if path is not None:
             result = [] if not aggregate else (0, 0, 0)
             for image in reversed(path):
-                diff_id = get_object_for_table(conn, repository, table_name, image, 'DIFF', '')
+                diff_id = get_object_for_table(conn, repository, table_name, image, 'DIFF')
                 if diff_id is None:
                     # TODO This entry on the path between the two nodes is a snapshot -- meaning there
                     # has been a schema change and we can't just accumulate diffs. For now, we just pretend

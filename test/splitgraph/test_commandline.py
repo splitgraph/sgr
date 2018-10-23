@@ -7,7 +7,7 @@ from splitgraph.commandline import status_c, sql_c, diff_c, commit_c, log_c, sho
 from splitgraph.commands import commit, checkout
 from splitgraph.commands.misc import table_exists_at, unmount
 from splitgraph.commands.provenance import provenance
-from splitgraph.meta_handler.images import get_image_parent, get_all_images_parents
+from splitgraph.meta_handler.images import get_all_images_parents, get_image
 from splitgraph.meta_handler.misc import repository_exists
 from splitgraph.meta_handler.tables import get_table
 from splitgraph.meta_handler.tags import get_current_head, get_tagged_id, set_tag
@@ -21,8 +21,8 @@ def test_commandline_basics(sg_pg_mg_conn):
 
     # sgr status
     result = runner.invoke(status_c, [])
-    assert PG_MNT in result.output
-    assert MG_MNT in result.output
+    assert PG_MNT.to_schema() in result.output
+    assert MG_MNT.to_schema() in result.output
     old_head = get_current_head(sg_pg_mg_conn, PG_MNT)
     assert old_head in result.output
 
@@ -52,7 +52,7 @@ def test_commandline_basics(sg_pg_mg_conn):
     result = runner.invoke(commit_c, [PG_MNT, '-m', 'Test commit', '-s'])
     new_head = get_current_head(sg_pg_mg_conn, PG_MNT)
     assert new_head != old_head
-    assert get_image_parent(sg_pg_mg_conn, PG_MNT, new_head) == old_head
+    assert get_image(sg_pg_mg_conn, PG_MNT, new_head).parent == old_head
     assert new_head[:10] in result.output
 
     # sgr diff, old head -> new head (2-param), truncated hashes

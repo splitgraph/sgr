@@ -33,7 +33,7 @@ def ensure_registry_schema(conn):
             _create_registry_schema(conn)
 
 
-def publish_tag(conn, repository, tag, image_hash, published, provenance, readme, schemata, previews, namespace=''):
+def publish_tag(conn, repository, tag, image_hash, published, provenance, readme, schemata, previews):
     """
     Publishes a given tag in the remote catalog. Should't be called directly.
     Use splitgraph.commands.publish instead.
@@ -43,30 +43,30 @@ def publish_tag(conn, repository, tag, image_hash, published, provenance, readme
     :param tag: Tag to publish
     :param image_hash: Image hash corresponding to the given tag.
     :param published: Publish time (datetime)
-    :param provenance: A list of tuples (repo_name, image_hash) showing what the image was created from
+    :param provenance: A list of tuples (repository, image_hash) showing what the image was created from
     :param readme: An optional README for the repo
     :param schemata: Dict mapping table name to a list of (column name, column type)
     :param previews: Dict mapping table name to a list of tuples with a preview
-    :param namespace: Namespace (username or organisation) to publish the repository to.
     """
     with conn.cursor() as cur:
         cur.execute(insert("images",
                            ['namespace', 'repository', 'tag', 'image_hash', 'published',
                              'provenance', 'readme', 'schemata', 'previews'],
-                           REGISTRY_META_SCHEMA), (namespace, repository, tag, image_hash, published, Json(provenance),
-                                                   readme, Json(schemata), Json(previews)))
+                           REGISTRY_META_SCHEMA), (repository.namespace, repository.repository, tag, image_hash,
+                                                   published, Json(provenance), readme, Json(schemata), Json(previews)))
 
 
-def get_published_info(conn, repository, tag, namespace=''):
+def get_published_info(conn, repository, tag):
     with conn.cursor() as cur:
         cur.execute(select("images",
                             'image_hash,published,provenance,readme,schemata,previews',
                             "namespace = %s AND repository = %s AND tag = %s",
-                           REGISTRY_META_SCHEMA), (namespace, repository, tag))
+                           REGISTRY_META_SCHEMA), (repository.namespace, repository.repository, tag))
         return cur.fetchone()
 
 
-def unpublish_repository(conn, repository, namespace=''):
+def unpublish_repository(conn, repository):
     with conn.cursor() as cur:
-        cur.execute(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s").format(Identifier(REGISTRY_META_SCHEMA),
-                                                                          Identifier("images")), (namespace, repository))
+        cur.execute(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s")
+                    .format(Identifier(REGISTRY_META_SCHEMA), Identifier("images")),
+                    (repository.namespace, repository.repository))

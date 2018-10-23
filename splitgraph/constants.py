@@ -1,5 +1,6 @@
 import logging
 import re
+from collections import namedtuple
 from random import getrandbits
 
 from splitgraph.config import CONFIG
@@ -39,15 +40,6 @@ def serialize_connection_string(server, port, username, password, dbname):
     return '%s:%s@%s:%s/%s' % (username, password, server, port, dbname)
 
 
-def to_mountpoint(namespace, repository):
-    return repository if not namespace else namespace + '/' + repository
-
-
-def to_ns_repo(schema):
-    # temporary until we figure out a mapping
-    return schema if '/' not in schema else tuple(schema.split('/'))
-
-
 class Color:
     PURPLE = '\033[95m'
     CYAN = '\033[96m'
@@ -59,3 +51,19 @@ class Color:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
     END = '\033[0m'
+
+
+class Repository(namedtuple('Repository', ['namespace', 'repository'])):
+    def to_schema(self):
+        return self.repository if not self.namespace else self.namespace + '/' + self.repository
+
+    __repr__ = to_schema
+    __str__ = to_schema
+
+
+def to_repository(schema):
+    if '/' in schema:
+        namespace, repository = schema.split('/')
+        return Repository(namespace, repository)
+    else:
+        return Repository('', schema)

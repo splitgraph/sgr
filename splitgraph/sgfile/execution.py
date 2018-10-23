@@ -6,7 +6,7 @@ from splitgraph.commands import checkout, init, unmount, clone, import_tables, c
 from splitgraph.commands.mount_handlers import get_mount_handler
 from splitgraph.commands.push_pull import local_clone, pull
 from splitgraph.config.repo_lookups import lookup_repo
-from splitgraph.constants import SplitGraphException, serialize_connection_string, Color
+from splitgraph.constants import SplitGraphException, serialize_connection_string, Color, to_repository
 from splitgraph.meta_handler.misc import repository_exists
 from splitgraph.meta_handler.provenance import store_import_provenance, store_sql_provenance, store_mount_provenance, \
     store_from_provenance
@@ -46,7 +46,7 @@ def execute_commands(conn, commands, params=None, output=None, output_base='0' *
     :param commands: A string with the raw SGFile.
     :param params: A dictionary of parameters to be applied to the SGFile (`${PARAM}` is replaced with the specified
         parameter value).
-    :param output: Output mountpoint to execute the SGFile against.
+    :param output: Output repository to execute the SGFile against.
     :param output_base: If not None, a revision that gets checked out for all SGFile actions to be committed
         on top of it.
     """
@@ -66,7 +66,8 @@ def execute_commands(conn, commands, params=None, output=None, output_base='0' *
 
     node_list = parse_commands(commands, params=params)
     for i, node in enumerate(node_list):
-        print(Color.BOLD + "\nStep %d/%d : %s" % (i + 1, len(node_list), truncate_line(node.text, length=60)) + Color.END)
+        print(Color.BOLD + "\nStep %d/%d : %s" % (i + 1, len(node_list), truncate_line(node.text, length=60))
+              + Color.END)
         if node.expr_name == 'from':
             output = _execute_from(conn, node, output)
 
@@ -100,57 +101,57 @@ def _execute_sql(conn, node, output):
 
     def _calc():
         print("Executing SQL...")
-        execute_sql_in(conn, output, sql_command)
+        execute_sql_in(conn, output.to_schema(), sql_command)
         commit(conn, output, target_hash, comment=sql_command)
-        store_sql_provenance(conn, '', output, target_hash, sql_command)
+        store_sql_provenance(conn, output, target_hash, sql_command)
 
     _checkout_or_calculate_layer(conn, output, target_hash, _calc)
 
 
 def _execute_from(conn, node, output):
-    interesting_nodes = extract_nodes(node, ['repo_source', 'mountpoint'])
+    interesting_nodes = extract_nodes(node, ['repo_source', 'repository'])
     repo_source = get_first_or_none(interesting_nodes, 'repo_source')
-    output_node = get_first_or_none(interesting_nodes, 'mountpoint')
+    output_node = get_first_or_none(interesting_nodes, 'repository')
     if output_node:
-        # AS (output) detected, change the current output mountpoint to it.
-        output = output_node.match.group(0)
-        print("Changed output mountpoint to %s" % output)
+        # AS (output) detected, change the current output repository to it.
+        output = to_repository(output_node.match.group(0))
+        print("Changed output repository to %s" % str(output))
 
         # NB this destroys all data in the case where we ran some commands in the sgfile and then
-        # did FROM (...) without AS mountpoint_name
+        # did FROM (...) without AS repository
         if repository_exists(conn, output):
-            print("Clearing all output from %s" % output)
+            print("Clearing all output from %s" % str(output))
             unmount(conn, output)
     if not repository_exists(conn, output):
         init(conn, output)
     if repo_source:
-        mountpoint, tag_or_hash = parse_repo_source(repo_source)
-        location = lookup_repo(conn, mountpoint, include_local=True)
+        repository, tag_or_hash = parse_repo_source(repo_source)
+        location = lookup_repo(conn, repository, include_local=True)
 
         if location != 'LOCAL':
-            clone(conn, mountpoint, remote_conn_string=serialize_connection_string(*location),
-                  local_mountpoint=output, download_all=False)
+            clone(conn, repository, remote_conn_string=serialize_connection_string(*location), local_repository=output,
+                  download_all=False)
             checkout(conn, output, tag_or_hash_to_actual_hash(conn, output, tag_or_hash))
         else:
             # For local repositories, first try to pull them to see if they are clones of a remote.
             try:
-                pull(conn, mountpoint, remote='origin')
+                pull(conn, repository, remote='origin')
             except SplitGraphException:
                 pass
             # Get the target snap ID from the source repo: otherwise, if the tag is, say, 'latest' and
             # the output has just had the base commit (000...) created in it, that commit will be the latest.
-            to_checkout = tag_or_hash_to_actual_hash(conn, mountpoint, tag_or_hash)
-            print("Cloning %s into %s..." % (mountpoint, output))
-            local_clone(conn, mountpoint, output)
+            to_checkout = tag_or_hash_to_actual_hash(conn, repository, tag_or_hash)
+            print("Cloning %s into %s..." % (repository, output))
+            local_clone(conn, repository, output)
             checkout(conn, output, to_checkout)
-        store_from_provenance(conn, '', output, get_current_head(conn, output), mountpoint)
+        store_from_provenance(conn, output, get_current_head(conn, output), repository)
     else:
-        # FROM EMPTY AS mountpoint -- initializes an empty mountpoint (say to create a table or import
+        # FROM EMPTY AS repository -- initializes an empty repository (say to create a table or import
         # the results of a previous stage in a multistage build.
-        # In this case, if AS mountpoint has been specified, it's already been initialized. If not, this command
+        # In this case, if AS repository has been specified, it's already been initialized. If not, this command
         # literally does nothing
         if not output_node:
-            raise SplitGraphException("FROM EMPTY without AS (mountpoint) does nothing!")
+            raise SplitGraphException("FROM EMPTY without AS (repository) does nothing!")
     return output
 
 
@@ -159,8 +160,8 @@ def _execute_import(conn, node, output):
     table_names, table_aliases, table_queries = extract_all_table_aliases(interesting_nodes[-1])
     if interesting_nodes[0].expr_name == 'repo_source':
         # Import from a repository (local or remote)
-        mountpoint, tag_or_hash = parse_repo_source(interesting_nodes[0])
-        _execute_repo_import(conn, mountpoint, table_names, tag_or_hash, output, table_aliases, table_queries)
+        repository, tag_or_hash = parse_repo_source(interesting_nodes[0])
+        _execute_repo_import(conn, repository, table_names, tag_or_hash, output, table_aliases, table_queries)
     else:
         # Extract the identifier (FDW name), the connection string and the FDW params (JSON-encoded, everything
         # between the single quotes).
@@ -176,30 +177,29 @@ def _execute_import(conn, node, output):
 def _execute_db_import(conn, conn_string, fdw_name, fdw_params, table_names, target_mountpoint, table_aliases,
                        table_queries):
     mount_handler = get_mount_handler(fdw_name)
-    tmp_mountpoint = fdw_name + '_tmp_staging'
+    tmp_mountpoint = to_repository(fdw_name + '_tmp_staging')
     unmount(conn, tmp_mountpoint)
     try:
         handler_kwargs = json.loads(fdw_params)
         handler_kwargs.update(dict(server=conn_string.group(3), port=int(conn_string.group(4)),
                                    username=conn_string.group(1),
                                    password=conn_string.group(2)))
-        mount_handler(conn, tmp_mountpoint, **handler_kwargs)
+        mount_handler(conn, tmp_mountpoint.to_schema(), **handler_kwargs)
         # The foreign database is a moving target, so the new image hash is random.
         # Maybe in the future, when the object hash is a function of its contents, we can be smarter here...
         target_hash = "%0.2x" % getrandbits(256)
 
         import_tables(conn, tmp_mountpoint, table_names, target_mountpoint, table_aliases, image_hash=target_hash,
                       foreign_tables=True, table_queries=table_queries)
-        store_mount_provenance(conn, '', target_mountpoint, target_hash)
+        store_mount_provenance(conn, target_mountpoint, target_hash)
     finally:
         unmount(conn, tmp_mountpoint)
 
 
-def _execute_repo_import(conn, mountpoint, table_names, tag_or_hash, target_mountpoint, table_aliases,
-                         table_queries):
+def _execute_repo_import(conn, repository, table_names, tag_or_hash, target_repository, table_aliases, table_queries):
     # Don't use the actual routine here as we want more control: clone the remote repo in order to turn
     # the tag into an actual hash
-    tmp_mountpoint = mountpoint + '_clone_tmp'
+    tmp_repo = to_repository(repository.repository + '_clone_tmp')
     try:
         # Calculate the hash of the new layer by combining the hash of the previous layer,
         # the hash of the source and all the table names/aliases getting imported.
@@ -209,38 +209,38 @@ def _execute_repo_import(conn, mountpoint, table_names, tag_or_hash, target_moun
         # If table_names actually contains queries that generate data from tables, we can still use
         # it for hashing: we assume that the queries are deterministic, so if the query is changed,
         # the whole layer is invalidated.
-        print("Resolving repository %s" % mountpoint)
-        location = lookup_repo(conn, mountpoint, include_local=True)
+        print("Resolving repository %s" % str(repository))
+        location = lookup_repo(conn, repository, include_local=True)
 
         if location != 'LOCAL':
-            clone(conn, mountpoint, remote_conn_string=serialize_connection_string(*location),
-                  local_mountpoint=tmp_mountpoint, download_all=False)
-            source_hash = tag_or_hash_to_actual_hash(conn, tmp_mountpoint, tag_or_hash)
-            source_mountpoint = tmp_mountpoint
+            clone(conn, repository, remote_conn_string=serialize_connection_string(*location),
+                  local_repository=tmp_repo, download_all=False)
+            source_hash = tag_or_hash_to_actual_hash(conn, tmp_repo, tag_or_hash)
+            source_mountpoint = tmp_repo
         else:
             # For local repositories, first try to pull them to see if they are clones of a remote.
             try:
-                pull(conn, mountpoint, remote='origin')
+                pull(conn, repository, remote='origin')
             except SplitGraphException:
                 pass
-            source_hash = tag_or_hash_to_actual_hash(conn, mountpoint, tag_or_hash)
-            source_mountpoint = mountpoint
-        output_head = get_current_head(conn, target_mountpoint)
+            source_hash = tag_or_hash_to_actual_hash(conn, repository, tag_or_hash)
+            source_mountpoint = repository
+        output_head = get_current_head(conn, target_repository)
         target_hash = _combine_hashes(
             [output_head, source_hash] + [sha256(n.encode('utf-8')).hexdigest() for n in
                                           table_names + table_aliases])
 
         def _calc():
             print("Importing tables %r:%s from %s into %s" % (
-                table_names, source_hash[:12], mountpoint, target_mountpoint))
-            import_tables(conn, source_mountpoint, table_names, target_mountpoint, table_aliases,
+                table_names, source_hash[:12], str(repository), str(target_repository)))
+            import_tables(conn, source_mountpoint, table_names, target_repository, table_aliases,
                           image_hash=source_hash, target_hash=target_hash, table_queries=table_queries)
-            store_import_provenance(conn, '', target_mountpoint, target_hash, '', mountpoint, source_hash, table_names,
+            store_import_provenance(conn, target_repository, target_hash, repository, source_hash, table_names,
                                     table_aliases, table_queries)
 
-        _checkout_or_calculate_layer(conn, target_mountpoint, target_hash, _calc)
+        _checkout_or_calculate_layer(conn, target_repository, target_hash, _calc)
     finally:
-        unmount(conn, tmp_mountpoint)
+        unmount(conn, tmp_repo)
 
 
 def rerun_image_with_replacement(conn, mountpoint, image_hash, source_replacement):

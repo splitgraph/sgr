@@ -1,9 +1,9 @@
 import psycopg2
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA, to_mountpoint
+from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler.common import META_TABLES, ensure_metadata_schema
-from splitgraph.meta_handler.images import get_image_parent
+from splitgraph.meta_handler.images import get_image
 from splitgraph.meta_handler.misc import register_repository, unregister_repository
 from splitgraph.meta_handler.objects import get_object_meta
 from splitgraph.meta_handler.tables import get_table
@@ -11,88 +11,84 @@ from splitgraph.pg_audit import manage_audit, discard_pending_changes
 from splitgraph.pg_utils import pg_table_exists
 
 
-def table_exists_at(conn, repository, table_name, image_hash, namespace=''):
+def table_exists_at(conn, repository, table_name, image_hash):
     """Determines whether a given table exists in a SplitGraph image without checking it out. If `image_hash` is None,
     determines whether the table exists in the current staging area.
     :param namespace: """
-    return pg_table_exists(conn, to_mountpoint(namespace, repository), table_name) if image_hash is None \
-        else bool(get_table(conn, repository, table_name, image_hash, namespace))
+    return pg_table_exists(conn, repository.to_schema(), table_name) if image_hash is None \
+        else bool(get_table(conn, repository, table_name, image_hash))
 
 
 def make_conn(server, port, username, password, dbname):
     return psycopg2.connect(host=server, port=port, user=username, password=password, dbname=dbname)
 
 
-def get_parent_children(conn, mountpoint, image_hash):
+def get_parent_children(conn, repository, image_hash):
     """Gets the parent and a list of children of a given image."""
-    parent = get_image_parent(conn, mountpoint, image_hash)
+    parent = get_image(conn, repository, image_hash).parent_id
 
     with conn.cursor() as cur:
         cur.execute(SQL("""SELECT image_hash FROM {}.images WHERE mountpoint = %s AND parent_id = %s""").format(
             Identifier(SPLITGRAPH_META_SCHEMA)),
-            (mountpoint, image_hash))
+            (repository, image_hash))
         children = [c[0] for c in cur.fetchall()]
     return parent, children
 
 
-def get_log(conn, repository, start_snap, namespace=''):
-    """Repeatedly gets the parent of a given snapshot until it reaches the bottom.
-    :param namespace:
-    """
+def get_log(conn, repository, start_image):
+    """Repeatedly gets the parent of a given snapshot until it reaches the bottom."""
     result = []
-    while start_snap is not None:
-        result.append(start_snap)
-        start_snap = get_image_parent(conn, repository, start_snap, namespace='')
+    while start_image is not None:
+        result.append(start_image)
+        start_image = get_image(conn, repository, start_image).parent_id
     return result
 
 
-def find_path(conn, repository, hash_1, hash_2, namespace=''):
-    """If the two images are on the same path in the commit tree, returns that path.
-    :param namespace:
-    """
+def find_path(conn, repository, hash_1, hash_2):
+    """If the two images are on the same path in the commit tree, returns that path."""
     path = []
     while hash_2 is not None:
         path.append(hash_2)
-        hash_2 = get_image_parent(conn, repository, hash_2, namespace)
+        hash_2 = get_image(conn, repository, hash_2).parent_id
         if hash_2 == hash_1:
             return path
 
 
 @manage_audit
-def init(conn, mountpoint):
+def init(conn, repository):
     """
     Initializes an empty repo with an initial commit (hash 0000...)
 
     :param conn: psycopg connection object.
-    :param mountpoint: Mountpoint to create the repository in. Must not exist.
+    :param repository: Repository to create. Must not exist locally.
     """
     with conn.cursor() as cur:
-        cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(mountpoint)))
+        cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(repository.to_schema())))
     image_hash = '0' * 64
-    register_repository(conn, mountpoint, image_hash, tables=[], table_object_ids=[])
+    register_repository(conn, repository, image_hash, tables=[], table_object_ids=[])
 
 
-def unmount(conn, mountpoint):
+def unmount(conn, repository):
     """
-    Discards all changes to a given mountpoint and all of its history, deleting the physical Postgres schema.
+    Discards all changes to a given repository and all of its history, deleting the physical Postgres schema.
     Doesn't delete any cached physical objects.
 
     :param conn: psycopg connection object
-    :param mountpoint: Mountpoint to unmount.
+    :param repository: Repository to unmount.
     :return:
     """
-    # Make sure to discard changes to this mountpoint if they exist, otherwise they might
-    # be applied/recorded if a new mountpoint with the same name appears.
+    # Make sure to discard changes to this repository if they exist, otherwise they might
+    # be applied/recorded if a new repository with the same name appears.
     ensure_metadata_schema(conn)
-    discard_pending_changes(conn, mountpoint)
+    discard_pending_changes(conn, repository.to_schema())
 
     with conn.cursor() as cur:
-        cur.execute(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(mountpoint)))
-        # Drop server too if it exists (could have been a non-foreign mountpoint)
-        cur.execute(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(mountpoint + '_server')))
+        cur.execute(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(repository.to_schema())))
+        # Drop server too if it exists (could have been a non-foreign repository)
+        cur.execute(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(repository.to_schema() + '_server')))
 
     # Currently we just discard all history info about the mounted schema
-    unregister_repository(conn, mountpoint)
+    unregister_repository(conn, repository)
     conn.commit()
 
 
@@ -113,7 +109,7 @@ def cleanup_objects(conn, include_external=False):
     # Expand that since each object might have a parent it depends on.
     if primary_objects:
         while True:
-            new_parents = set(parent_id for _, _, parent_id in get_object_meta(conn, list(primary_objects))
+            new_parents = set(parent_id for _, _, parent_id, _ in get_object_meta(conn, list(primary_objects))
                               if parent_id not in primary_objects and parent_id is not None)
             if not new_parents:
                 break

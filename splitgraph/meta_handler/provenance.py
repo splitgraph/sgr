@@ -8,31 +8,32 @@ _QUERY = SQL("""UPDATE {}.images SET provenance_type = %s, provenance_data = %s 
     .format(Identifier(SPLITGRAPH_META_SCHEMA))
 
 
-def store_import_provenance(conn, namespace, repository, image_hash, source_namespace, source_repository, source_hash,
+def store_import_provenance(conn, repository, image_hash, source_repository, source_hash,
                             tables, table_aliases, table_queries):
     with conn.cursor() as cur:
         cur.execute(_QUERY,
                     ("IMPORT", Json({
-                        'source': source_repository,
-                        'source_namespace': source_namespace,
+                        'source': source_repository.repository,
+                        'source_namespace': source_repository.namespace,
                         'source_hash': source_hash,
                         'tables': tables,
                         'table_aliases': table_aliases,
-                        'table_queries': table_queries}), namespace, repository, image_hash))
+                        'table_queries': table_queries}), repository.namespace, repository.repository, image_hash))
 
 
-def store_sql_provenance(conn, namespace, repository, image_hash, sql):
+def store_sql_provenance(conn, repository, image_hash, sql):
     with conn.cursor() as cur:
-        cur.execute(_QUERY, ('SQL', Json(sql), namespace, repository, image_hash))
+        cur.execute(_QUERY, ('SQL', Json(sql), repository.namespace, repository.repository, image_hash))
 
 
-def store_mount_provenance(conn, namespace, repository, image_hash):
+def store_mount_provenance(conn, repository, image_hash):
     # We don't store the details of images that come from an sgr MOUNT command since those are assumed to be based
     # on an inaccessible db
     with conn.cursor() as cur:
-        cur.execute(_QUERY, ('MOUNT', None, namespace, repository, image_hash))
+        cur.execute(_QUERY, ('MOUNT', None, repository.namespace, repository.repository, image_hash))
 
 
-def store_from_provenance(conn, namespace, repository, image_hash, source):
+def store_from_provenance(conn, repository, image_hash, source):
     with conn.cursor() as cur:
-        cur.execute(_QUERY, ('FROM', Json(source), namespace, repository, image_hash))
+        cur.execute(_QUERY, ('FROM', Json({'source': source.repository, 'source_namespace': source.namespace}),
+                             repository.namespace, repository.repository, image_hash))

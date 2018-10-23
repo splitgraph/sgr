@@ -4,7 +4,7 @@ from collections import defaultdict
 from psycopg2.sql import SQL, Identifier
 from splitgraph.commands.misc import make_conn, unmount
 from splitgraph.commands.mount_handlers import mount_postgres
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA, parse_connection_string
+from splitgraph.constants import SPLITGRAPH_META_SCHEMA, parse_connection_string, to_repository
 from splitgraph.meta_handler.objects import get_existing_objects, get_downloaded_objects
 from splitgraph.objects.external import get_upload_download_handler
 from splitgraph.pg_utils import copy_table, dump_table_creation, get_primary_keys
@@ -45,16 +45,16 @@ def _fetch_remote_objects(conn, objects_to_fetch, remote_conn_string, remote_con
     # into a temporary space (without any checking out) and SELECT the required data into our local tables.
 
     server, port, user, pwd, dbname = parse_connection_string(remote_conn_string)
-    remote_data_mountpoint = 'tmp_remote_data'
+    remote_data_mountpoint = to_repository('tmp_remote_data')
     unmount(conn, remote_data_mountpoint)  # Maybe worth making sure we're not stepping on anyone else
-    mount_postgres(conn, server=server, port=port, username=user, password=pwd, mountpoint=remote_data_mountpoint,
+    mount_postgres(conn, server=server, port=port, username=user, password=pwd, mountpoint='tmp_remote_data',
                    dbname=dbname, remote_schema=SPLITGRAPH_META_SCHEMA)
     remote_conn = remote_conn or make_conn(server, port, user, pwd, dbname)
     try:
         for i, obj in enumerate(objects_to_fetch):
             print("(%d/%d) %s..." % (i + 1, len(objects_to_fetch), obj))
             # Foreign tables don't have PK constraints so we'll have to apply them manually.
-            copy_table(conn, remote_data_mountpoint, obj, SPLITGRAPH_META_SCHEMA, obj, with_pk_constraints=False)
+            copy_table(conn, remote_data_mountpoint.to_schema(), obj, SPLITGRAPH_META_SCHEMA, obj, with_pk_constraints=False)
             with conn.cursor() as cur:
                 source_pks = get_primary_keys(remote_conn, SPLITGRAPH_META_SCHEMA, obj)
                 if source_pks:
@@ -120,13 +120,13 @@ def upload_objects(conn, remote_conn_string, objects_to_push, handler='DB', hand
         # Have to commit the remote connection here since otherwise we won't see the new tables in the
         # mounted remote.
         remote_conn.commit()
-        remote_data_mountpoint = 'tmp_remote_data'
+        remote_data_mountpoint = to_repository('tmp_remote_data')
         unmount(conn, remote_data_mountpoint)
         mount_postgres(conn, server=conn_args[0], port=conn_args[1], username=conn_args[2], password=conn_args[3],
-                       mountpoint=remote_data_mountpoint, dbname=conn_args[4], remote_schema=SPLITGRAPH_META_SCHEMA)
+                       mountpoint='tmp_remote_data', dbname=conn_args[4], remote_schema=SPLITGRAPH_META_SCHEMA)
         for i, obj in enumerate(objects_to_push):
             print("(%d/%d) %s..." % (i + 1, len(objects_to_push), obj))
-            copy_table(conn, SPLITGRAPH_META_SCHEMA, obj, remote_data_mountpoint, obj, with_pk_constraints=False,
+            copy_table(conn, SPLITGRAPH_META_SCHEMA, obj, 'tmp_remote_data', obj, with_pk_constraints=False,
                        table_exists=True)
         conn.commit()
         unmount(conn, remote_data_mountpoint)

@@ -34,7 +34,7 @@ def _create_metadata_schema(conn):
                         repository      VARCHAR NOT NULL,
                         image_hash VARCHAR,
                         tag        VARCHAR,
-                        PRIMARY KEY (mountpoint, tag),
+                        PRIMARY KEY (namespace, repository, tag),
                         CONSTRAINT sh_fk FOREIGN KEY (namespace, repository, image_hash) REFERENCES {}.{})""").format(
             Identifier(SPLITGRAPH_META_SCHEMA), Identifier("snap_tags"),
             Identifier(SPLITGRAPH_META_SCHEMA), Identifier("images")))
@@ -52,16 +52,16 @@ def _create_metadata_schema(conn):
         # delta to a previous table).
         cur.execute(SQL("""CREATE TABLE {}.{} (
                         namespace  VARCHAR NOT NULL,
-                        repository VARCHAR NOT NULL
+                        repository VARCHAR NOT NULL,
                         image_hash VARCHAR NOT NULL,
                         table_name VARCHAR NOT NULL,
                         object_id  VARCHAR NOT NULL,
-                        PRIMARY KEY (mountpoint, image_hash, table_name, object_id),
+                        PRIMARY KEY (namespace, repository, image_hash, table_name, object_id),
                         CONSTRAINT tb_fk FOREIGN KEY (namespace, repository, image_hash) REFERENCES {}.{})""").format(
             Identifier(SPLITGRAPH_META_SCHEMA), Identifier("tables"),
             Identifier(SPLITGRAPH_META_SCHEMA), Identifier("images")))
 
-        # Keep track of what the remotes for a given mountpoint are (by default, we create an "origin" remote
+        # Keep track of what the remotes for a given repository are (by default, we create an "origin" remote
         # on initial pull)
         cur.execute(SQL("""CREATE TABLE {}.{} (
                         namespace          VARCHAR NOT NULL,
