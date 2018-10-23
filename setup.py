@@ -20,7 +20,7 @@ setup_requirements = [
 ]
 
 setup(
-    name="splitgraph-prototype",
+    name="splitgraph",
     version="0.0",
     packages=['splitgraph'],
     entry_points={

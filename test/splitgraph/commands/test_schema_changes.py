@@ -8,17 +8,17 @@ from splitgraph.pg_utils import get_full_table_schema, get_primary_keys
 from test.splitgraph.conftest import PG_MNT
 
 TEST_CASES = [
-    ("ALTER TABLE test_pg_mount.fruits DROP COLUMN name",
+    ("ALTER TABLE \"test/pg_mount\".fruits DROP COLUMN name",
      [(1, 'fruit_id', 'integer', False)]),
-    ("ALTER TABLE test_pg_mount.fruits ADD COLUMN test varchar",
+    ("ALTER TABLE \"test/pg_mount\".fruits ADD COLUMN test varchar",
      [(1, 'fruit_id', 'integer', False), (2, 'name', 'character varying', False),
       (3, 'test', 'character varying', False)]),
-    ("ALTER TABLE test_pg_mount.fruits ADD PRIMARY KEY (fruit_id)",
+    ("ALTER TABLE \"test/pg_mount\".fruits ADD PRIMARY KEY (fruit_id)",
      [(1, 'fruit_id', 'integer', True), (2, 'name', 'character varying', False)]),
 
-    ("""ALTER TABLE test_pg_mount.fruits ADD COLUMN test_1 varchar, ADD COLUMN test_2 integer,
+    ("""ALTER TABLE "test/pg_mount".fruits ADD COLUMN test_1 varchar, ADD COLUMN test_2 integer,
                                          DROP COLUMN name;
-        ALTER TABLE test_pg_mount.fruits ADD PRIMARY KEY (fruit_id)""",
+        ALTER TABLE "test/pg_mount".fruits ADD PRIMARY KEY (fruit_id)""",
      [(1, 'fruit_id', 'integer', True), (3, 'test_1', 'character varying', False),
       (4, 'test_2', 'integer', False)]),
 ]
@@ -60,7 +60,7 @@ def test_schema_changes(sg_pg_conn, test_case):
 def test_pk_preserved_on_checkout(sg_pg_conn):
     assert list(get_primary_keys(sg_pg_conn, PG_MNT.to_schema(), 'fruits')) == []
     with sg_pg_conn.cursor() as cur:
-        cur.execute("""ALTER TABLE test_pg_mount.fruits ADD PRIMARY KEY (fruit_id)""")
+        cur.execute("""ALTER TABLE "test/pg_mount".fruits ADD PRIMARY KEY (fruit_id)""")
     assert list(get_primary_keys(sg_pg_conn, PG_MNT.to_schema(), 'fruits')) == [('fruit_id', 'integer')]
     head = get_current_head(sg_pg_conn, PG_MNT)
     new_head = commit(sg_pg_conn, PG_MNT)

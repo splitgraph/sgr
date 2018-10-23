@@ -130,7 +130,7 @@ def test_sgfile_cached(sg_pg_mg_conn):
 def _add_multitag_dataset_to_remote_driver(remote_driver_conn):
     set_tag(remote_driver_conn, PG_MNT, get_current_head(remote_driver_conn, PG_MNT), 'v1')
     with remote_driver_conn.cursor() as cur:
-        cur.execute("DELETE FROM test_pg_mount.fruits WHERE fruit_id = 1")
+        cur.execute("DELETE FROM \"test/pg_mount\".fruits WHERE fruit_id = 1")
     new_head = commit(remote_driver_conn, PG_MNT)
     set_tag(remote_driver_conn, PG_MNT, new_head, 'v2')
     remote_driver_conn.commit()
@@ -232,7 +232,7 @@ def test_sgfile_schema_changes(sg_pg_mg_conn):
 
     # Then, alter the dataset and rerun the sgfile.
     with sg_pg_mg_conn.cursor() as cur:
-        cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (12, 'mayonnaise')""")
+        cur.execute("""INSERT INTO "test/pg_mount".fruits VALUES (12, 'mayonnaise')""")
     commit(sg_pg_mg_conn, PG_MNT)
     execute_commands(sg_pg_mg_conn, _load_sgfile('schema_changes.sgfile'), output=OUTPUT)
     new_output_head = get_current_head(sg_pg_mg_conn, OUTPUT)
@@ -253,8 +253,8 @@ def test_import_with_custom_query(sg_pg_mg_conn):
     # Mostly a lazy way for the test to distinguish between the importer storing the results of a query as a snap
     # and pointing the commit history to the diff for unchanged objects.
     with sg_pg_mg_conn.cursor() as cur:
-        cur.execute("INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise')")
-        cur.execute("INSERT INTO test_pg_mount.vegetables VALUES (3, 'oregano')")
+        cur.execute("INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mayonnaise')")
+        cur.execute("INSERT INTO \"test/pg_mount\".vegetables VALUES (3, 'oregano')")
     commit(sg_pg_mg_conn, PG_MNT)
 
     execute_commands(sg_pg_mg_conn, _load_sgfile('import_with_custom_query.sgfile'), output=OUTPUT)
@@ -262,7 +262,7 @@ def test_import_with_custom_query(sg_pg_mg_conn):
     old_head = get_image(sg_pg_mg_conn, OUTPUT, head).parent_id
 
     # First two tables imported as snaps since they had a custom query, the other two are diffs (basically a commit
-    # pointing to the same object as test_pg_mount has).
+    # pointing to the same object as test/pg_mount has).
     tables = ['my_fruits', 'o_vegetables', 'vegetables', 'all_fruits']
     contents = [[(2, 'orange')], [(1, 'potato'), (3, 'oregano')],
                 [(1, 'potato'), (2, 'carrot'), (3, 'oregano')], [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]]
@@ -278,7 +278,7 @@ def test_import_with_custom_query(sg_pg_mg_conn):
             assert cur.fetchall() == c
 
     for t in tables:
-        # Tables with queries stored as snaps, actually imported tables share objects with test_pg_mount.
+        # Tables with queries stored as snaps, actually imported tables share objects with test/pg_mount.
         if t in ['my_fruits', 'o_vegetables']:
             assert get_object_for_table(sg_pg_mg_conn, OUTPUT, t, head, 'SNAP') is not None
             assert get_object_for_table(sg_pg_mg_conn, OUTPUT, t, head, 'DIFF') is None

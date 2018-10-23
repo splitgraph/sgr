@@ -13,8 +13,8 @@ from test.splitgraph.conftest import PG_MNT, MG_MNT, OUTPUT
 
 def test_diff_head(sg_pg_conn):
     with sg_pg_conn.cursor() as cur:
-        cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise')""")
-        cur.execute("""DELETE FROM test_pg_mount.fruits WHERE name = 'apple'""")
+        cur.execute("""INSERT INTO "test/pg_mount".fruits VALUES (3, 'mayonnaise')""")
+        cur.execute("""DELETE FROM "test/pg_mount".fruits WHERE name = 'apple'""")
     sg_pg_conn.commit()  # otherwise the WAL writer won't see this.
     head = get_current_head(sg_pg_conn, PG_MNT)
     change = diff(sg_pg_conn, PG_MNT, 'fruits', image_1=head, image_2=None)
@@ -26,9 +26,9 @@ def test_diff_head(sg_pg_conn):
 @pytest.mark.parametrize("include_snap", [True, False])
 def test_commit_diff(include_snap, sg_pg_conn):
     with sg_pg_conn.cursor() as cur:
-        cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise')""")
-        cur.execute("""DELETE FROM test_pg_mount.fruits WHERE name = 'apple'""")
-        cur.execute("""UPDATE test_pg_mount.fruits SET name = 'guitar' WHERE fruit_id = 2""")
+        cur.execute("""INSERT INTO "test/pg_mount".fruits VALUES (3, 'mayonnaise')""")
+        cur.execute("""DELETE FROM "test/pg_mount".fruits WHERE name = 'apple'""")
+        cur.execute("""UPDATE "test/pg_mount".fruits SET name = 'guitar' WHERE fruit_id = 2""")
 
     head = get_current_head(sg_pg_conn, PG_MNT)
     new_head = commit(sg_pg_conn, PG_MNT, include_snap=include_snap, comment="test commit")
@@ -54,7 +54,7 @@ def test_commit_on_empty(include_snap, sg_pg_conn):
     init(sg_pg_conn, OUTPUT)
 
     with sg_pg_conn.cursor() as cur:
-        cur.execute("""CREATE TABLE output.test AS SELECT * FROM test_pg_mount.fruits""")
+        cur.execute("""CREATE TABLE output.test AS SELECT * FROM "test/pg_mount".fruits""")
 
     # Make sure the WAL changes get flushed anyway if we are only committing a snapshot.
     assert diff(sg_pg_conn, OUTPUT, 'test', image_1=get_current_head(sg_pg_conn, OUTPUT), image_2=None) == True
@@ -65,9 +65,9 @@ def test_commit_on_empty(include_snap, sg_pg_conn):
 @pytest.mark.parametrize("include_snap", [True, False])
 def test_multiple_mountpoint_commit_diff(include_snap, sg_pg_mg_conn):
     with sg_pg_mg_conn.cursor() as cur:
-        cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise')""")
-        cur.execute("""DELETE FROM test_pg_mount.fruits WHERE name = 'apple'""")
-        cur.execute("""UPDATE test_pg_mount.fruits SET name = 'guitar' WHERE fruit_id = 2""")
+        cur.execute("""INSERT INTO "test/pg_mount".fruits VALUES (3, 'mayonnaise')""")
+        cur.execute("""DELETE FROM "test/pg_mount".fruits WHERE name = 'apple'""")
+        cur.execute("""UPDATE "test/pg_mount".fruits SET name = 'guitar' WHERE fruit_id = 2""")
         cur.execute("""UPDATE test_mg_mount.stuff SET duration = 11 WHERE name = 'James'""")
     # Both mountpoints have pending changes if we commit the PG connection.
     sg_pg_mg_conn.commit()
@@ -121,7 +121,7 @@ def test_multiple_mountpoint_commit_diff(include_snap, sg_pg_mg_conn):
 
 def test_delete_all_diff(sg_pg_conn):
     with sg_pg_conn.cursor() as cur:
-        cur.execute("""DELETE FROM test_pg_mount.fruits""")
+        cur.execute("""DELETE FROM "test/pg_mount".fruits""")
     sg_pg_conn.commit()
     assert has_pending_changes(sg_pg_conn, PG_MNT) is True
     expected_diff = [((1, 'apple'), 1, None), ((2, 'orange'), 1, None)]
@@ -139,15 +139,15 @@ def test_delete_all_diff(sg_pg_conn):
 def test_diff_across_far_commits(include_snap, sg_pg_conn):
     head = get_current_head(sg_pg_conn, PG_MNT)
     with sg_pg_conn.cursor() as cur:
-        cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise')""")
+        cur.execute("""INSERT INTO "test/pg_mount".fruits VALUES (3, 'mayonnaise')""")
     commit(sg_pg_conn, PG_MNT, include_snap=include_snap)
 
     with sg_pg_conn.cursor() as cur:
-        cur.execute("""DELETE FROM test_pg_mount.fruits WHERE name = 'apple'""")
+        cur.execute("""DELETE FROM "test/pg_mount".fruits WHERE name = 'apple'""")
     commit(sg_pg_conn, PG_MNT, include_snap=include_snap)
 
     with sg_pg_conn.cursor() as cur:
-        cur.execute("""UPDATE test_pg_mount.fruits SET name = 'guitar' WHERE fruit_id = 2""")
+        cur.execute("""UPDATE "test/pg_mount".fruits SET name = 'guitar' WHERE fruit_id = 2""")
     new_head = commit(sg_pg_conn, PG_MNT, include_snap=include_snap)
 
     change = diff(sg_pg_conn, PG_MNT, 'fruits', head, new_head)
@@ -165,7 +165,7 @@ def test_diff_across_far_commits(include_snap, sg_pg_conn):
 def test_non_ordered_inserts(include_snap, sg_pg_conn):
     head = get_current_head(sg_pg_conn, PG_MNT)
     with sg_pg_conn.cursor() as cur:
-        cur.execute("""INSERT INTO test_pg_mount.fruits (name, fruit_id) VALUES ('mayonnaise', 3)""")
+        cur.execute("""INSERT INTO "test/pg_mount".fruits (name, fruit_id) VALUES ('mayonnaise', 3)""")
     new_head = commit(sg_pg_conn, PG_MNT, include_snap=include_snap)
 
     change = diff(sg_pg_conn, PG_MNT, 'fruits', head, new_head)

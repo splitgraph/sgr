@@ -9,8 +9,10 @@ from splitgraph.meta_handler.misc import get_current_repositories
 from splitgraph.pg_utils import get_all_foreign_tables
 from splitgraph.registry_meta_handler import ensure_registry_schema, unpublish_repository
 
-PG_MNT = R('test_pg_mount')
+PG_MNT = R('test/pg_mount')
+PG_MNT_PULL = R('test_pg_mount_pull')
 MG_MNT = R('test_mg_mount')
+OUTPUT = R('output')
 
 
 def _mount_postgres(conn, repository):
@@ -38,7 +40,7 @@ def _mount_mongo(conn, repository):
     unmount(conn, R('tmp'))
 
 
-TEST_MOUNTPOINTS = [PG_MNT, R('test_pg_mount_pull'), R('output'), MG_MNT, R('output_stage_2')]
+TEST_MOUNTPOINTS = [PG_MNT, PG_MNT_PULL, OUTPUT, MG_MNT, R('output_stage_2')]
 
 
 def healthcheck():
@@ -100,8 +102,8 @@ def remote_driver_conn():
     # Mount and snapshot the two origin DBs (mongo/pg) with the test data.
     conn = make_conn(REMOTE_HOST, REMOTE_PORT, PG_USER, PG_PWD, PG_DB)
     ensure_registry_schema(conn)
-    unpublish_repository(conn, R('output'))
-    unpublish_repository(conn, R('test_pg_mount'))
+    unpublish_repository(conn, OUTPUT)
+    unpublish_repository(conn, PG_MNT)
     for mountpoint in TEST_MOUNTPOINTS:
         unmount(conn, mountpoint)
     cleanup_objects(conn)
@@ -133,4 +135,3 @@ def empty_pg_conn():
 
 
 REMOTE_CONN_STRING = serialize_connection_string(REMOTE_HOST, REMOTE_PORT, PG_USER, PG_PWD, PG_DB)
-OUTPUT = R('output')

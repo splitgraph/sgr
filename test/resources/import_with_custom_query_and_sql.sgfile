@@ -1,4 +1,4 @@
-FROM test_pg_mount:${TAG} IMPORT {SELECT * FROM fruits WHERE name = 'orange'} AS my_fruits,
+FROM test/pg_mount:${TAG} IMPORT {SELECT * FROM fruits WHERE name = 'orange'} AS my_fruits,
                           {SELECT * FROM vegetables WHERE name LIKE '%o'} AS o_vegetables,
                           vegetables,
                           fruits AS all_fruits

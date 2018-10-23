@@ -20,7 +20,7 @@ def test_import_basic(sg_pg_conn):
     with sg_pg_conn.cursor() as cur:
         cur.execute("""SELECT * FROM output.imported_fruits""")
         output = cur.fetchall()
-        cur.execute("""SELECT * FROM test_pg_mount.fruits""")
+        cur.execute("""SELECT * FROM "test/pg_mount".fruits""")
         input = cur.fetchall()
         assert input == output
     new_head = get_current_head(sg_pg_conn, OUTPUT)
@@ -81,7 +81,7 @@ def test_import_multiple_tables(sg_pg_conn):
         with sg_pg_conn.cursor() as cur:
             cur.execute("""SELECT * FROM output.%s""" % table_name)
             output = cur.fetchall()
-            cur.execute("""SELECT * FROM test_pg_mount.%s""" % table_name)
+            cur.execute("""SELECT * FROM "test/pg_mount".%s""" % table_name)
             input = cur.fetchall()
             assert input == output
 
@@ -127,7 +127,7 @@ def test_import_from_remote(empty_pg_conn, remote_driver_conn):
         cur.execute("""SELECT * FROM output.fruits""")
         output = cur.fetchall()
     with remote_driver_conn.cursor() as cur:
-        cur.execute("""SELECT * FROM test_pg_mount.fruits""")
+        cur.execute("""SELECT * FROM "test/pg_mount".fruits""")
         input = cur.fetchall()
     assert input == output
 

@@ -31,7 +31,7 @@ def test_sgfile_recreate(empty_pg_conn, remote_driver_conn):
     recreated_commands = image_hash_to_sgfile(empty_pg_conn, OUTPUT, get_current_head(empty_pg_conn, OUTPUT),
                                               err_on_end=False)
 
-    assert recreated_commands == ["FROM test_pg_mount:%s IMPORT {SELECT * FROM fruits WHERE name = 'orange'} AS " \
+    assert recreated_commands == ["FROM test/pg_mount:%s IMPORT {SELECT * FROM fruits WHERE name = 'orange'} AS " \
                                   % get_tagged_id(remote_driver_conn, PG_MNT, 'v1') +
                                   "my_fruits, {SELECT * FROM vegetables WHERE name LIKE '%o'} AS o_vegetables, "
                                   "vegetables AS vegetables, fruits AS all_fruits",
@@ -45,7 +45,7 @@ def test_sgfile_recreate_custom_from(empty_pg_conn, remote_driver_conn):
                                               err_on_end=False)
 
     # Parser strips newlines in sql but not the whitespace, so we have to reproduce the query here verbatim.
-    assert recreated_commands == ["FROM test_pg_mount:%s" % get_tagged_id(remote_driver_conn, PG_MNT, 'v1'),
+    assert recreated_commands == ["FROM test/pg_mount:%s" % get_tagged_id(remote_driver_conn, PG_MNT, 'v1'),
                                   "SQL CREATE TABLE join_table AS SELECT fruit_id AS id, fruits.name AS fruit, "
                                   "vegetables.name AS vegetable                                 FROM fruits "
                                   "JOIN vegetables                                ON fruit_id = vegetable_id"]
@@ -90,7 +90,7 @@ def test_rerun_with_new_version(empty_pg_conn, remote_driver_conn):
     ov2_log = get_log(empty_pg_conn, OUTPUT, output_v2)
 
     # ov1_log: CREATE TABLE commit, then FROM v1
-    # ov2_log: CREATE TABLE commit, then FROM v2 which is based on FROM v1 (since we cloned both from test_pg_mount),
+    # ov2_log: CREATE TABLE commit, then FROM v2 which is based on FROM v1 (since we cloned both from test/pg_mount),
     # then as previously.
     assert ov1_log[1:] == ov2_log[2:]
 

@@ -20,7 +20,7 @@ def test_publish(empty_pg_conn, remote_driver_conn, extra_info):
     publish(empty_pg_conn, OUTPUT, 'v1', readme="A test repo.",
             include_provenance=extra_info, include_table_previews=extra_info)
 
-    # Base the derivation on v2 of test_pg_mount and publish that too.
+    # Base the derivation on v2 of test/pg_mount and publish that too.
     execute_commands(empty_pg_conn, _load_sgfile('import_remote_multiple.sgfile'), params={'TAG': 'v2'},
                      output=OUTPUT)
     set_tag(empty_pg_conn, OUTPUT, get_current_head(empty_pg_conn, OUTPUT), 'v2')
@@ -41,7 +41,7 @@ def test_publish(empty_pg_conn, remote_driver_conn, extra_info):
 
     assert schemata == expected_schemata
     if extra_info:
-        assert provenance == [[['', 'test_pg_mount'], get_tagged_id(remote_driver_conn, PG_MNT, 'v1')]]
+        assert provenance == [[['test', 'pg_mount'], get_tagged_id(remote_driver_conn, PG_MNT, 'v1')]]
         assert previews == {'join_table': [[1, 'apple', 'potato'], [2, 'orange', 'carrot']],
                             'my_fruits': [[1, 'apple'], [2, 'orange']],
                             'vegetables': [[1, 'potato'], [2, 'carrot']]}
@@ -55,7 +55,7 @@ def test_publish(empty_pg_conn, remote_driver_conn, extra_info):
     assert readme == "Based on v2."
     assert schemata == expected_schemata
     if extra_info:
-        assert provenance == [[['', 'test_pg_mount'], get_tagged_id(remote_driver_conn, PG_MNT, 'v2')]]
+        assert provenance == [[['test', 'pg_mount'], get_tagged_id(remote_driver_conn, PG_MNT, 'v2')]]
         assert previews == {'join_table': [[2, 'orange', 'carrot']],
                             'my_fruits': [[2, 'orange']],
                             'vegetables': [[1, 'potato'], [2, 'carrot']]}

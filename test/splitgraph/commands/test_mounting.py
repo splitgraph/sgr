@@ -9,7 +9,7 @@ def test_mount_unmount():
     unmount(conn, PG_MNT)
     _mount_postgres(conn, PG_MNT)
     with conn.cursor() as cur:
-        cur.execute("""SELECT * FROM test_pg_mount.fruits""")
+        cur.execute("""SELECT * FROM "test/pg_mount".fruits""")
         assert (1, 'apple') in list(cur.fetchall())
     unmount(conn, PG_MNT)
     with conn.cursor() as cur:
@@ -19,10 +19,10 @@ def test_mount_unmount():
 
 def test_cross_joins(sg_pg_mg_conn):
     with sg_pg_mg_conn.cursor() as cur:
-        cur.execute("""SELECT test_pg_mount.fruits.fruit_id,
+        cur.execute("""SELECT "test/pg_mount".fruits.fruit_id,
                              test_mg_mount.stuff.name,
-                             test_pg_mount.fruits.name as spirit_fruit
-                      FROM test_pg_mount.fruits 
+                             "test/pg_mount".fruits.name as spirit_fruit
+                      FROM "test/pg_mount".fruits 
                              JOIN test_mg_mount.stuff 
-                             ON test_pg_mount.fruits.fruit_id = test_mg_mount.stuff.duration""")
+                             ON "test/pg_mount".fruits.fruit_id = test_mg_mount.stuff.duration""")
         assert cur.fetchall() == [(2, 'James', 'orange')]

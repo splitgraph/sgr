@@ -9,43 +9,43 @@ from test.splitgraph.conftest import PG_MNT
 
 CASES = [
     [  # Insert + update changed into a single insert
-        ("""INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise');
-        UPDATE test_pg_mount.fruits SET name = 'mustard' WHERE fruit_id = 3""",
+        ("""INSERT INTO "test/pg_mount".fruits VALUES (3, 'mayonnaise');
+        UPDATE "test/pg_mount".fruits SET name = 'mustard' WHERE fruit_id = 3""",
          [((3, 'mustard'), 0, {'c': [], 'v': []})]),
         # Insert + update + delete did nothing (todo what about sequences)
-        ("""INSERT INTO test_pg_mount.fruits VALUES (4, 'kumquat');
-        UPDATE test_pg_mount.fruits SET name = 'mustard' WHERE fruit_id = 4;
-        DELETE FROM test_pg_mount.fruits WHERE fruit_id = 4""",
+        ("""INSERT INTO "test/pg_mount".fruits VALUES (4, 'kumquat');
+        UPDATE "test/pg_mount".fruits SET name = 'mustard' WHERE fruit_id = 4;
+        DELETE FROM "test/pg_mount".fruits WHERE fruit_id = 4""",
          []),
         # delete + reinsert same results in nothing
-        ("""DELETE FROM test_pg_mount.fruits WHERE fruit_id = 1;
-        INSERT INTO test_pg_mount.fruits VALUES (1, 'apple')""",
+        ("""DELETE FROM "test/pg_mount".fruits WHERE fruit_id = 1;
+        INSERT INTO "test/pg_mount".fruits VALUES (1, 'apple')""",
          []),
         # Two updates, but the PK changed back to the original one -- no diff.
-        ("""UPDATE test_pg_mount.fruits SET name = 'pineapple' WHERE fruit_id = 1;
-        UPDATE test_pg_mount.fruits SET name = 'apple' WHERE fruit_id = 1""",
+        ("""UPDATE "test/pg_mount".fruits SET name = 'pineapple' WHERE fruit_id = 1;
+        UPDATE "test/pg_mount".fruits SET name = 'apple' WHERE fruit_id = 1""",
          [])
     ],
     [# Now test this whole thing works with primary keys
-        ("""ALTER TABLE test_pg_mount.fruits ADD PRIMARY KEY (fruit_id)""",
+        ("""ALTER TABLE "test/pg_mount".fruits ADD PRIMARY KEY (fruit_id)""",
          []),
         # Insert + update changed into a single insert (same pk, different value)
-        ("""INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise');
-            UPDATE test_pg_mount.fruits SET name = 'mustard' WHERE fruit_id = 3""",
+        ("""INSERT INTO "test/pg_mount".fruits VALUES (3, 'mayonnaise');
+            UPDATE "test/pg_mount".fruits SET name = 'mustard' WHERE fruit_id = 3""",
             [((3,), 0, {'c': ['name'], 'v': ['mustard']})]),
         # Insert + update + delete did nothing
-        ("""INSERT INTO test_pg_mount.fruits VALUES (4, 'kumquat');
-            UPDATE test_pg_mount.fruits SET name = 'mustard' WHERE fruit_id = 4;
-            DELETE FROM test_pg_mount.fruits WHERE fruit_id = 4""",
+        ("""INSERT INTO "test/pg_mount".fruits VALUES (4, 'kumquat');
+            UPDATE "test/pg_mount".fruits SET name = 'mustard' WHERE fruit_id = 4;
+            DELETE FROM "test/pg_mount".fruits WHERE fruit_id = 4""",
          []),
         # delete + reinsert same
-        ("""DELETE FROM test_pg_mount.fruits WHERE fruit_id = 1;
-            INSERT INTO test_pg_mount.fruits VALUES (1, 'apple')""",
+        ("""DELETE FROM "test/pg_mount".fruits WHERE fruit_id = 1;
+            INSERT INTO "test/pg_mount".fruits VALUES (1, 'apple')""",
          # Currently the packer isn't aware that we rewrote the same value
          [((1,), 2, {'c': ['name'], 'v': ['apple']})]),
         # Two updates
-        ("""UPDATE test_pg_mount.fruits SET name = 'pineapple' WHERE fruit_id = 1;
-            UPDATE test_pg_mount.fruits SET name = 'apple' WHERE fruit_id = 1""",
+        ("""UPDATE "test/pg_mount".fruits SET name = 'pineapple' WHERE fruit_id = 1;
+            UPDATE "test/pg_mount".fruits SET name = 'apple' WHERE fruit_id = 1""",
          # Same here
          [((1,), 2, {'c': ['name'], 'v': ['apple']})])
     ]

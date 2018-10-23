@@ -4,13 +4,10 @@ import pytest
 
 from splitgraph.commands import clone, checkout, commit, pull, push, unmount
 from splitgraph.commands.misc import cleanup_objects
-from splitgraph.constants import Repository
 from splitgraph.meta_handler.images import get_all_images_parents
 from splitgraph.meta_handler.objects import get_existing_objects, get_downloaded_objects, get_external_object_locations
 from splitgraph.meta_handler.tags import get_current_head
-from test.splitgraph.conftest import PG_MNT
-
-PG_MNT_PULL = Repository(PG_MNT.namespace, PG_MNT.repository + '_pull')
+from test.splitgraph.conftest import PG_MNT, PG_MNT_PULL
 
 
 @pytest.mark.parametrize("download_all", [True, False])
@@ -24,12 +21,12 @@ def test_pull(sg_pg_conn, remote_driver_conn, download_all):
 
     # Do something to fruits on the remote
     with remote_driver_conn.cursor() as cur:
-        cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise')""")
+        cur.execute("""INSERT INTO "test/pg_mount".fruits VALUES (3, 'mayonnaise')""")
     head_1 = commit(remote_driver_conn, PG_MNT)
 
     # Check that the fruits table changed on the original mount
     with remote_driver_conn.cursor() as cur:
-        cur.execute("""SELECT * FROM test_pg_mount.fruits""")
+        cur.execute("""SELECT * FROM "test/pg_mount".fruits""")
         assert list(cur.fetchall()) == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]
 
     # ...and check it's unchanged on the pulled one.
@@ -72,12 +69,12 @@ def test_pulls_with_lazy_object_downloads(empty_pg_conn, remote_driver_conn, kee
     # In the meantime, make two branches off of origin (a total of 3 commits)
     head = get_current_head(remote_driver_conn, PG_MNT)
     with remote_driver_conn.cursor() as cur:
-        cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (3, 'mayonnaise')""")
+        cur.execute("""INSERT INTO "test/pg_mount".fruits VALUES (3, 'mayonnaise')""")
     left = commit(remote_driver_conn, PG_MNT)
 
     checkout(remote_driver_conn, PG_MNT, head)
     with remote_driver_conn.cursor() as cur:
-        cur.execute("""INSERT INTO test_pg_mount.fruits VALUES (3, 'mustard')""")
+        cur.execute("""INSERT INTO "test/pg_mount".fruits VALUES (3, 'mustard')""")
     right = commit(remote_driver_conn, PG_MNT)
 
     # Pull from origin.
@@ -122,7 +119,7 @@ def test_push(empty_pg_conn, remote_driver_conn):
     # See if the original mountpoint got updated.
     checkout(remote_driver_conn, PG_MNT, head_1)
     with remote_driver_conn.cursor() as cur:
-        cur.execute("""SELECT * FROM test_pg_mount.fruits""")
+        cur.execute("""SELECT * FROM "test/pg_mount".fruits""")
         assert list(cur.fetchall()) == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]
 
 

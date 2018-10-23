@@ -6,7 +6,7 @@ from splitgraph.commands import checkout, init, unmount, clone, import_tables, c
 from splitgraph.commands.mount_handlers import get_mount_handler
 from splitgraph.commands.push_pull import local_clone, pull
 from splitgraph.config.repo_lookups import lookup_repo
-from splitgraph.constants import SplitGraphException, serialize_connection_string, Color, to_repository
+from splitgraph.constants import SplitGraphException, serialize_connection_string, Color, to_repository, Repository
 from splitgraph.meta_handler.misc import repository_exists
 from splitgraph.meta_handler.provenance import store_import_provenance, store_sql_provenance, store_mount_provenance, \
     store_from_provenance
@@ -199,7 +199,7 @@ def _execute_db_import(conn, conn_string, fdw_name, fdw_params, table_names, tar
 def _execute_repo_import(conn, repository, table_names, tag_or_hash, target_repository, table_aliases, table_queries):
     # Don't use the actual routine here as we want more control: clone the remote repo in order to turn
     # the tag into an actual hash
-    tmp_repo = to_repository(repository.repository + '_clone_tmp')
+    tmp_repo = Repository(repository.namespace, repository.repository + '_clone_tmp')
     try:
         # Calculate the hash of the new layer by combining the hash of the previous layer,
         # the hash of the source and all the table names/aliases getting imported.

@@ -1,4 +1,4 @@
-FROM test_pg_mount IMPORT fruits AS my_fruits, vegetables
+FROM test/pg_mount IMPORT fruits AS my_fruits, vegetables
 
 SQL DELETE FROM my_fruits WHERE fruit_id = 1
 
