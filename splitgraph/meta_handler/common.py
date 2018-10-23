@@ -139,7 +139,4 @@ def setup_registry_mode(conn):
 
     :param conn: Psycopg admin connection object.
     """
-
-    with conn.cursor() as cur:
-        cur.execute(SQL("DROP TABLE {}.remotes").format(Identifier(SPLITGRAPH_META_SCHEMA)))
-
+    pass

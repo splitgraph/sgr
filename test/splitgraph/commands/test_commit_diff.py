@@ -251,3 +251,24 @@ def test_empty_diff_reuses_object(sg_pg_conn):
     assert len(table_meta_2) == 1  # Only SNAP stored even if we didn't ask for it, since this is just a pointer
     # to the previous version (which is a mount).
     assert table_meta_1[0][1] == 'SNAP'
+
+
+def test_update_packing_applying(sg_pg_conn):
+    # Set fruit_id to be the PK first so that an UPDATE operation is stored in the DIFF.
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""ALTER TABLE "test/pg_mount".fruits ADD PRIMARY KEY (fruit_id)""")
+    old_head = commit(sg_pg_conn, PG_MNT)
+
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""UPDATE "test/pg_mount".fruits SET name = 'pineapple' WHERE fruit_id = 1""")
+    new_head = commit(sg_pg_conn, PG_MNT)
+
+    checkout(sg_pg_conn, PG_MNT, old_head)
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""SELECT * FROM "test/pg_mount".fruits WHERE fruit_id = 1""")
+        assert cur.fetchall() == [(1, 'apple')]
+
+    checkout(sg_pg_conn, PG_MNT, new_head)
+    with sg_pg_conn.cursor() as cur:
+        cur.execute("""SELECT * FROM "test/pg_mount".fruits WHERE fruit_id = 1""")
+        assert cur.fetchall() == [(1, 'pineapple')]
