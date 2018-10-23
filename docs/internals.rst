@@ -16,17 +16,17 @@ Here's an overview of the tables in this schema:
 
   * `images`: Describes all image hashes and their parents, as well as extra
     data about a given commit (the creation timestamp, the commit message and the details of the sgfile command that
-    generated this image). PKd on the mountpoint and the image hash, so the same image can exist in multiple schemas
+    generated this image). PKd on the repository and the image hash, so the same image can exist in multiple schemas
     at the same time.
   * `tables`: an image consists of multiple tables. Each table in a given version is represented by one or more objects.
     An object can be one of two types: SNAP (a snapshot, a full copy of the table) and a DIFF (list of changes to a parent
-    object). This is also mountpoint-specific.
+    object). This is also repository-specific.
   * `objects`: Lists the type and the parent of every object. A SNAP object doesn't have a parent and a DIFF object
     might have multiple parents (for example, the SNAP and the DIFF of a previous commit). This is not necessarily
     the object linked to the parent commit of a given object: if we're importing a table from a different repository,
     we would pull in its chain of DIFF objects without tying them to commits those objects were created in.
   * `remotes`: Currently, stores the connection string for the upstream repository a given repository was cloned from.
-  * `snap_tags`: maps images and their mountpoints to one or more tags. Tags (apart from HEAD) are pushed and pulled
+  * `snap_tags`: maps images and their repositories to one or more tags. Tags (apart from HEAD) are pushed and pulled
     to/from upstream repositories and are immutable (this is weakly enforced by the push/pull code).
     HEAD is a special tag: it points out to the currently checked-out local image.
   * `object_locations`: If a given object is not stored in the remote, this table specifies where to find it (protocol
@@ -66,7 +66,7 @@ Implementation of various Splitgraph commands
   * The `tables` table is inspected to find out which object is required to start materializing the table.
   * Then, `objects` is crawled to find a chain of DIFF objects that ends with a SNAP
     (`splitgraph.pg_replication.get_closest_parent_snap_object`).
-  * The SNAP is copied into the mountpoint and the DIFFs applied to it. Checkouts/repository clones are
+  * The SNAP is copied into the schema and the DIFFs applied to it. Checkouts/repository clones are
     lazy by default, so an object might not even exist locally. The lookup path for a physical object is:
 
       * Search locally in the `splitgraph_meta` schema for a cached/predownloaded object.
