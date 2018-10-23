@@ -28,9 +28,10 @@ def get_parent_children(conn, repository, image_hash):
     parent = get_image(conn, repository, image_hash).parent_id
 
     with conn.cursor() as cur:
-        cur.execute(SQL("""SELECT image_hash FROM {}.images WHERE mountpoint = %s AND parent_id = %s""").format(
+        cur.execute(SQL("""SELECT image_hash FROM {}.images
+            WHERE namespace = %s AND repository = %s AND parent_id = %s""").format(
             Identifier(SPLITGRAPH_META_SCHEMA)),
-            (repository, image_hash))
+            (repository.namespace, repository.repository, image_hash))
         children = [c[0] for c in cur.fetchall()]
     return parent, children
 
