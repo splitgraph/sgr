@@ -54,7 +54,7 @@ def healthcheck():
     _mount_postgres(conn, PG_MNT)
     _mount_mongo(conn, MG_MNT)
     with conn.cursor() as cur:
-        cur.execute('SELECT COUNT(*) FROM "test_pg_mount".fruits')
+        cur.execute('SELECT COUNT(*) FROM "test/pg_mount".fruits')
         assert cur.fetchone()[0] > 0
         cur.execute('SELECT COUNT(*) FROM "test_mg_mount".stuff')
         assert cur.fetchone()[0] > 0
