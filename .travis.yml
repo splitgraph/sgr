@@ -31,7 +31,7 @@ before_script:
   # SG driver/remote architecture instead.
   - sudo /etc/init.d/postgresql stop
   - sudo docker-compose --file test/architecture/docker-compose.yml up -d pgorigin mongoorigin local_driver remote_driver
-  - sleep 30
+  - ./wait-for-test-architecture.sh
 
 after_success:
   - coveralls

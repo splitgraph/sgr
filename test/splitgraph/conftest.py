@@ -36,7 +36,28 @@ def _mount_mongo(conn, mountpoint):
                   [], foreign_tables=True, do_checkout=True)
     unmount(conn, 'tmp')
 
+
 TEST_MOUNTPOINTS = [PG_MNT, PG_MNT + '_pull', 'output', MG_MNT, 'output_stage_2']
+
+
+def healthcheck():
+    # A pre-flight check before we run the tests to make sure the test architecture has been brought up:
+    # the local_driver and the two origins (tested by mounting). There's still an implicit race condition
+    # here since we don't touch the remote_driver but we don't run any tests against it until later on,
+    # so it should have enough time to start up.
+    conn = _conn()
+    for mountpoint in [PG_MNT, MG_MNT]:
+        unmount(conn, mountpoint)
+    _mount_postgres(conn, PG_MNT)
+    _mount_mongo(conn, MG_MNT)
+    with conn.cursor() as cur:
+        cur.execute('SELECT COUNT(*) FROM "test_pg_mount".fruits')
+        assert cur.fetchone()[0] > 0
+        cur.execute('SELECT COUNT(*) FROM "test_mg_mount".stuff')
+        assert cur.fetchone()[0] > 0
+    for mountpoint in [PG_MNT, MG_MNT]:
+        unmount(conn, mountpoint)
+    conn.close()
 
 
 @pytest.fixture
