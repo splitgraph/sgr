@@ -25,8 +25,6 @@ before_install:
   - curl -L https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-`uname -s`-`uname -m` > docker-compose
   - chmod +x docker-compose
   - sudo mv docker-compose /usr/local/bin
-  # Load cached docker images -- thanks https://github.com/travis-ci/travis-ci/issues/5358#issuecomment-248915326
-  - if [[ -d $HOME/docker ]]; then ls $HOME/docker/*.tar.gz | xargs -I {file} sh -c "zcat {file} | docker load"; fi
 
 before_script:
   # Stop the PG that ships with Travis and run our own integration test
@@ -37,16 +35,3 @@ before_script:
 
 after_success:
   - coveralls
-
-# Define a cache for the driver/origin Docker images
-cache:
-  bundler: true
-  directories:
-    - $HOME/docker
-
-before_cache:
-  # Save tagged docker images
-  - >
-    mkdir -p $HOME/docker && docker images -a --filter='dangling=false' --format '{{.Repository}}:{{.Tag}} {{.ID}}'
-    | xargs -n 2 -t sh -c 'test -e $HOME/docker/$1.tar.gz || docker save $0 | gzip -2 > $HOME/docker/$1.tar.gz'
-
