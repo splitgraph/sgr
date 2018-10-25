@@ -298,7 +298,10 @@ def push_c(repository, remote, remote_repository, upload_handler, upload_handler
     conn = _conn()
     if not remote_repository:
         # Get actual connection string and remote repository
-        remote, remote_repository = get_remote_for(conn, repository, remote)
+        remote_info = get_remote_for(conn, repository, remote)
+        if not remote_info:
+            raise SplitGraphException("No remote found for %s!" % str(repository))
+        remote, remote_repository = remote_info
     else:
         remote = serialize_connection_string(*get_remote_connection_params(remote))
     push(conn, repository, remote, remote_repository, handler=upload_handler,
@@ -345,8 +348,8 @@ def tag_c(repository, image, tag, force):
 @click.argument('target_repository', type=to_repository)
 @click.argument('target_table', required=False)
 @click.argument('image', required=False)
-@click.option('-q', 'is_query', is_flag=True, default=False)
-@click.option('-f', 'foreign_tables', is_flag=True, default=False)
+@click.option('-q', '--is-query', is_flag=True, default=False)
+@click.option('-f', '--foreign-tables', is_flag=True, default=False)
 def import_c(repository, table_or_query, target_repository, target_table, image, is_query, foreign_tables):
     if is_query and not target_table:
         print("TARGET_TABLE is required when is_query is True!")

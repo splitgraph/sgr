@@ -225,9 +225,9 @@ def push(conn, local_repository, remote_conn_string=None, remote_repository=None
         if not get_remote_for(conn, local_repository, 'origin'):
             add_remote(conn, local_repository, serialize_connection_string(*conn_params), remote_repository)
 
-        logging.info("Uploaded metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta),
-                                                                                                 len(table_meta),
-                                                                                                 len([t for t in tags if
-                                                                                                      t != 'HEAD'])))
+        print("Uploaded metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta),
+                                                                                          len(table_meta),
+                                                                                          len([t for t in tags if
+                                                                                               t != 'HEAD'])))
     finally:
         remote_conn.close()

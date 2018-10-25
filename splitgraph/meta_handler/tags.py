@@ -13,7 +13,7 @@ def get_current_head(conn, repository, raise_on_none=True):
 def get_tagged_id(conn, repository, tag, raise_on_none=True):
     ensure_metadata_schema(conn)
     if not repository_exists(conn, repository) and raise_on_none:
-        raise SplitGraphException("%s is not mounted." % repository)
+        raise SplitGraphException("%s is not mounted." % str(repository))
 
     if tag == 'latest':
         # Special case, return the latest commit from the repository.
