@@ -7,23 +7,23 @@ from splitgraph.meta_handler.common import select, insert
 
 def get_object_parents(conn, object_id):
     with conn.cursor() as cur:
-        cur.execute(select("object_tree", "parent_id", "object_id = %s"), (object_id,))
+        cur.execute(select("objects", "parent_id", "object_id = %s"), (object_id,))
         return [c[0] for c in cur.fetchall()]
 
 
 def get_object_format(conn, object_id):
     with conn.cursor() as cur:
-        cur.execute(select("object_tree", "format", "object_id = %s"), (object_id,))
+        cur.execute(select("objects", "format", "object_id = %s"), (object_id,))
         result = cur.fetchone()
         return None if result is None else result[0]
 
 
-def register_object(conn, object_id, object_format, parent_object=None):
+def register_object(conn, object_id, object_format, original_namespace, parent_object=None):
     if not parent_object and object_format != 'SNAP':
         raise ValueError("Non-SNAP objects can't have no parent!")
     with conn.cursor() as cur:
-        cur.execute(insert("object_tree", ("object_id", "format", "parent_id")),
-                    (object_id, object_format, parent_object))
+        cur.execute(insert("objects", ("object_id", "format", "parent_id", "original_namespace")),
+                    (object_id, object_format, parent_object, original_namespace))
 
 
 def deregister_table_object(conn, object_id):
@@ -34,13 +34,14 @@ def deregister_table_object(conn, object_id):
 
 def register_objects(conn, object_meta):
     with conn.cursor() as cur:
-        execute_batch(cur, insert("object_tree", ("object_id", "format", "parent_id")), object_meta, page_size=100)
+        execute_batch(cur, insert("objects", ("object_id", "format", "parent_id", "original_namespace")),
+                      object_meta, page_size=100)
 
 
-def register_tables(conn, mountpoint, table_meta):
-    table_meta = [(mountpoint,) + o for o in table_meta]
+def register_tables(conn, repository, table_meta):
+    table_meta = [(repository.namespace, repository.repository) + o for o in table_meta]
     with conn.cursor() as cur:
-        execute_batch(cur, insert("tables", ("mountpoint", "snap_id", "table_name", "object_id")),
+        execute_batch(cur, insert("tables", ("namespace", "repository", "image_hash", "table_name", "object_id")),
                       table_meta, page_size=100)
 
 
@@ -57,7 +58,7 @@ def register_object_locations(conn, object_locations):
 
 def get_existing_objects(conn):
     with conn.cursor() as cur:
-        cur.execute(select("object_tree", "object_id"))
+        cur.execute(select("objects", "object_id"))
         return set(c[0] for c in cur.fetchall())
 
 
@@ -85,12 +86,12 @@ def get_external_object_locations(conn, objects):
 
 def get_object_meta(conn, objects):
     with conn.cursor() as cur:
-        cur.execute(select("object_tree", "object_id, format, parent_id",
+        cur.execute(select("objects", "object_id, format, parent_id, original_namespace",
                            "object_id IN (" + ','.join('%s' for _ in objects) + ")"), objects)
         return cur.fetchall()
 
 
-def register_table(conn, mountpoint, table, image, object_id):
+def register_table(conn, repository, table, image, object_id):
     with conn.cursor() as cur:
-        cur.execute(insert("tables", ("mountpoint", "snap_id", "table_name", "object_id")),
-                    (mountpoint, image, table, object_id))
+        cur.execute(insert("tables", ("namespace", "repository", "image_hash", "table_name", "object_id")),
+                    (repository.namespace, repository.repository, image, table, object_id))

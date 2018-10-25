@@ -1,4 +1,4 @@
-FROM test_pg_mount IMPORT fruits
+FROM test/pg_mount IMPORT fruits
 FROM test_mg_mount IMPORT stuff
 
 SQL CREATE TABLE spirit_fruits AS SELECT fruits.fruit_id, stuff.name, fruits.name AS spirit_fruit\

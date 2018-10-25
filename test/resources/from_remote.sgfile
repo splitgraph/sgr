@@ -1,5 +1,5 @@
-FROM test_pg_mount:${TAG}
-# This is supposed to import the remote test_pg_mount repo locally as output and base derivations off of it.
+FROM test/pg_mount:${TAG}
+# This is supposed to import the remote test/pg_mount repo locally as output and base derivations off of it.
 
 SQL CREATE TABLE join_table AS SELECT fruit_id AS id, fruits.name AS fruit, vegetables.name AS vegetable \
                                 FROM fruits JOIN vegetables\

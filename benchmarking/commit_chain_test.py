@@ -56,7 +56,6 @@ if __name__ == '__main__':
         update_size = 1000
         commits = 100
 
-
         unmount(conn, MOUNTPOINT)
         init(conn, MOUNTPOINT)
         print("START")

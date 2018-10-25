@@ -4,17 +4,17 @@ from splitgraph.constants import SplitGraphException
 from splitgraph.pg_utils import get_primary_keys, get_column_names_types
 
 
-def get_replica_identity(conn, mountpoint, table):
-    return get_primary_keys(conn, mountpoint, table) or get_column_names_types(conn, mountpoint, table)
+def get_replica_identity(conn, schema, table):
+    return get_primary_keys(conn, schema, table) or get_column_names_types(conn, schema, table)
 
 
-def _generate_where_clause(mountpoint, table, cols, table_2=None, mountpoint_2=None):
+def _generate_where_clause(schema, table, cols, table_2=None, schema_2=None):
     if not table_2:
         return SQL(" AND ").join(SQL("{}.{}.{} = %s").format(
-            Identifier(mountpoint), Identifier(table), Identifier(c)) for c in cols)
+            Identifier(schema), Identifier(table), Identifier(c)) for c in cols)
     return SQL(" AND ").join(SQL("{}.{}.{} = {}.{}.{}").format(
-        Identifier(mountpoint), Identifier(table), Identifier(c),
-        Identifier(mountpoint_2), Identifier(table_2), Identifier(c)) for c in cols)
+        Identifier(schema), Identifier(table), Identifier(c),
+        Identifier(schema_2), Identifier(table_2), Identifier(c)) for c in cols)
 
 
 def _split_ri_cols(action, row_data, changed_fields, ri_cols):

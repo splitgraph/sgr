@@ -1,5 +1,6 @@
 import logging
 import re
+from collections import namedtuple
 from random import getrandbits
 
 from splitgraph.config import CONFIG
@@ -50,3 +51,19 @@ class Color:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
     END = '\033[0m'
+
+
+class Repository(namedtuple('Repository', ['namespace', 'repository'])):
+    def to_schema(self):
+        return self.repository if not self.namespace else self.namespace + '/' + self.repository
+
+    __repr__ = to_schema
+    __str__ = to_schema
+
+
+def to_repository(schema):
+    if '/' in schema:
+        namespace, repository = schema.split('/')
+        return Repository(namespace, repository)
+    else:
+        return Repository('', schema)

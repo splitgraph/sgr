@@ -49,20 +49,20 @@ def _render_node(node_id, children, node_cols, max_col, mark_node='', node_width
     print(line)
 
 
-def render_tree(conn, mountpoint):
-    """Draws the mountpoint's commit graph as a Git-like tree."""
+def render_tree(conn, repository):
+    """Draws the repository's commit graph as a Git-like tree."""
     ensure_metadata_schema(conn)
     # Prepare the tree structure by loading the index from the db and flipping it
     children = defaultdict(list)
     base_node = None
-    head = get_current_head(conn, mountpoint, raise_on_none=False)
+    head = get_current_head(conn, repository, raise_on_none=False)
 
     # Get all commits in ascending time order
-    snap_parents = get_all_images_parents(conn, mountpoint)
-    for snap_id, parent_id, _, _, _, _ in snap_parents:
+    snap_parents = get_all_images_parents(conn, repository)
+    for image_hash, parent_id, _, _, _, _ in snap_parents:
         if parent_id is None:
-            base_node = snap_id
-        children[parent_id].append(snap_id)
+            base_node = image_hash
+        children[parent_id].append(image_hash)
 
     if base_node is None:
         raise SplitGraphException("Something is seriously wrong with the index.")
@@ -70,6 +70,6 @@ def render_tree(conn, mountpoint):
     # Calculate the column in which each node should be displayed.
     node_cols = _calc_columns(children, base_node)
 
-    for snap_id, _, _, _, _, _ in reversed(snap_parents):
-        _render_node(snap_id, children, node_cols, mark_node=' H' if snap_id == head else '',
+    for image_hash, _, _, _, _, _ in reversed(snap_parents):
+        _render_node(image_hash, children, node_cols, mark_node=' H' if image_hash == head else '',
                      max_col=max(node_cols.values()))

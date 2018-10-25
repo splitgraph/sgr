@@ -17,7 +17,7 @@ Managing images
 
 `sgr checkout`
     checks out a given commit into the schema, first deleting any uncommitted chances. Then,
-    every table in the given Splitgraph image is materialized (copied into the mountpoint as an actual table).
+    every table in the given Splitgraph image is materialized (copied into the repository as an actual table).
 
     As a part of this process, extra physical objects that are required to materialize the image can be downloaded.
 
@@ -31,25 +31,25 @@ There are various (commandline and API) commands that can be used to inspect the
 :mod:`splitgraph.meta_handler` contains more low-level commands that fetch data directly from the metadata
 tables without processing it.
 
-`sgr show MOUNTPOINT IMAGE_HASH`
+`sgr show REPOSITORY IMAGE_HASH`
     Outputs the information about a given image. The verbose mode (`-v`) also lists all the actual objects
     the image depends on.
 
-`sgr diff MOUNTPOINT IMAGE_HASH_1 [IMAGE_HASH_2]`
+`sgr diff REPOSITORY IMAGE_HASH_1 [IMAGE_HASH_2]`
     Also see: :mod:`splitgraph.commands.diff`
 
-    Shows the difference between two images in a mountpoint. If the two images are on the same path in `snap_tree`, it
+    Shows the difference between two images in a repository. If the two images are on the same path in `images`, it
     concatenates their DIFFs and displays that (or the aggregation of total inserts/deletes/updates).
     Note this might give wrong results if there's been a schema change.
 
     If the images are on different branches), it temporarily materializes both revisions and compares them row-by-row.
 
-`sgr log MOUNTPOINT`
+`sgr log REPOSITORY`
     Also see: :func:`splitgraph.commands.misc.get_log`
 
-    Returns the log of changes to a given mountpoint, starting from the current HEAD revision and crawling down.
+    Returns the log of changes to a given repository, starting from the current HEAD revision and crawling down.
     If `--tree` (`-t`) is passed, outputs the full image tree of the schema.
-    Otherwise, and if nothing in the mountpoint is checked out, raises an error.
+    Otherwise, and if nothing in the repository is checked out, raises an error.
 
 `sgr status`
     Lists the currently mounted schemata and their checked out images (if any).
@@ -64,7 +64,7 @@ Also see :mod:`splitgraph.commands.push_pull`
     a full connection string.
 
 `sgr clone`
-    Brings the metadata for the local mountpoint up to date with a remote one, optionally downloading the actual
+    Brings the metadata for the local repository up to date with a remote one, optionally downloading the actual
     physical objects.
 
 `sgr push`
@@ -77,8 +77,8 @@ Also see :mod:`splitgraph.commands.push_pull`
 Importing tables across repositories
 ====================================
 
-`sgr import SOURCE_MOUNTPOINT SOURCE_TABLE TARGET_MOUNTPOINT [TARGET_TABLE] [SOURCE_IMAGE_OR_TAG]`
-    Grafts one or more tables from one mountpoint into another, creating a new single commit on top of the current HEAD.
+`sgr import SOURCE_REPOSITORY SOURCE_TABLE TARGET_REPOSITORY [TARGET_TABLE] [SOURCE_IMAGE_OR_TAG]`
+    Grafts one or more tables from one repository into another, creating a new single commit on top of the current HEAD.
     This doesn't explicitly preserve the imported tables' history. If the new table(s) isn't/aren't materialized, this
     doesn't consume extra space apart from the new entries in the metadata tables. It also doesn't discard any pending
     changes.
@@ -95,15 +95,15 @@ See also :mod:`splitgraph.commands.mounting`.
 
 `sgr mount`
     Uses the Postgres FDW to mount a foreign Postgres/Mongo database as a set of tables into a temporary location
-    and then imports those tables into the target mountpoint as a new Splitgraph image.
+    and then imports those tables into the target repository as a new Splitgraph image.
 
 `sgr unmount`
     Destroys the local copy of a repository and all the metadata related to it in
-    `snap_tree`, `tables`, `remotes` and `snap_tags`. This command doesn't delete the actual physical objects in
+    `images`, `tables`, `remotes` and `snap_tags`. This command doesn't delete the actual physical objects in
     `splitgraph_meta` or references to them in
-    `object_tree` / `object_locations`. There's a separate function, `sgr cleanup`
+    `objects` / `object_locations`. There's a separate function, `sgr cleanup`
     (or :func:`splitgraph.commands.misc.cleanup_objects`) that crawls the `splitgraph_meta` for objects not required
-    by a current mountpoint and does that.
+    by a current repository and does that.
 
 `sgr init`
     Creates an empty repository with one single initial commit (hash `000000...`).
@@ -130,7 +130,7 @@ aren't publicly accessible.
 Provenance tracking allows Splitgraph to recreate the SGFile the image was made with, as well as rebase the image to
 use a different version of the datasets it was made from.
 
-`sgr provenance MOUNTPOINT IMAGE_OR_TAG`
+`sgr provenance REPOSITORY IMAGE_OR_TAG`
     Inspects the image's parents and outputs a list of datasets and their versions
     that were used to create this image (via `IMPORT` or `FROM` commands). If the `-f (--full)` flag is passed, then the
     command will try to reconstruct the full sgfile used to create the image, raising an error if there's a break in the
@@ -138,7 +138,7 @@ use a different version of the datasets it was made from.
     in the history of the image). If the `-e` flag is passed, the command will instead stop at the first break in the chain
     and base the resulting sgfile before the break (using the `FROM` command).
 
-`sgr rerun MOUNTPOINT IMAGE_OR_TAG -i DATASET1 IMAGE_OR_TAG1 -i ...`
+`sgr rerun REPOSITORY IMAGE_OR_TAG -i DATASET1 IMAGE_OR_TAG1 -i ...`
     Recreates the SGFile used to derive a given image
     and reruns it, replacing its dependencies as specified by the `-i` options. If the `-u` flag is passed, the image
     is rederived based on the `latest` tag of all its dependencies.

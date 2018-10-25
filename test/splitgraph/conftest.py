@@ -4,24 +4,27 @@ from splitgraph.commandline import _conn
 from splitgraph.commands import *
 from splitgraph.commands import unmount
 from splitgraph.commands.misc import make_conn, cleanup_objects
-from splitgraph.constants import PG_USER, PG_PWD, PG_DB, serialize_connection_string
-from splitgraph.meta_handler.misc import get_current_mountpoints_hashes, get_all_foreign_tables
+from splitgraph.constants import PG_USER, PG_PWD, PG_DB, serialize_connection_string, to_repository as R
+from splitgraph.meta_handler.misc import get_current_repositories
+from splitgraph.pg_utils import get_all_foreign_tables
 from splitgraph.registry_meta_handler import ensure_registry_schema, unpublish_repository
 
-PG_MNT = 'test_pg_mount'
-MG_MNT = 'test_mg_mount'
+PG_MNT = R('test/pg_mount')
+PG_MNT_PULL = R('test_pg_mount_pull')
+MG_MNT = R('test_mg_mount')
+OUTPUT = R('output')
 
 
-def _mount_postgres(conn, mountpoint):
+def _mount_postgres(conn, repository):
     mount(conn, 'tmp', "postgres_fdw",
           dict(server='pgorigin', port=5432, username='originro', password='originpass', dbname="origindb",
                remote_schema="public"))
-    import_tables(conn, 'tmp', get_all_foreign_tables(conn, 'tmp'), mountpoint,
-                  [], foreign_tables=True, do_checkout=True)
-    unmount(conn, 'tmp')
+    import_tables(conn, R('tmp'), get_all_foreign_tables(conn, 'tmp'), repository, [], foreign_tables=True,
+                  do_checkout=True)
+    unmount(conn, R('tmp'))
 
 
-def _mount_mongo(conn, mountpoint):
+def _mount_mongo(conn, repository):
     mount(conn, 'tmp', "mongo_fdw", dict(server='mongoorigin', port=27017,
                                          username='originro', password='originpass',
                                          stuff={
@@ -32,12 +35,12 @@ def _mount_mongo(conn, mountpoint):
                                                  "duration": "numeric",
                                                  "happy": "boolean"
                                              }}))
-    import_tables(conn, 'tmp', get_all_foreign_tables(conn, 'tmp'), mountpoint,
-                  [], foreign_tables=True, do_checkout=True)
-    unmount(conn, 'tmp')
+    import_tables(conn, R('tmp'), get_all_foreign_tables(conn, 'tmp'), repository, [], foreign_tables=True,
+                  do_checkout=True)
+    unmount(conn, R('tmp'))
 
 
-TEST_MOUNTPOINTS = [PG_MNT, PG_MNT + '_pull', 'output', MG_MNT, 'output_stage_2']
+TEST_MOUNTPOINTS = [PG_MNT, PG_MNT_PULL, OUTPUT, MG_MNT, R('output_stage_2')]
 
 
 def healthcheck():
@@ -51,7 +54,7 @@ def healthcheck():
     _mount_postgres(conn, PG_MNT)
     _mount_mongo(conn, MG_MNT)
     with conn.cursor() as cur:
-        cur.execute('SELECT COUNT(*) FROM "test_pg_mount".fruits')
+        cur.execute('SELECT COUNT(*) FROM "test/pg_mount".fruits')
         assert cur.fetchone()[0] > 0
         cur.execute('SELECT COUNT(*) FROM "test_mg_mount".stuff')
         assert cur.fetchone()[0] > 0
@@ -99,8 +102,8 @@ def remote_driver_conn():
     # Mount and snapshot the two origin DBs (mongo/pg) with the test data.
     conn = make_conn(REMOTE_HOST, REMOTE_PORT, PG_USER, PG_PWD, PG_DB)
     ensure_registry_schema(conn)
-    unpublish_repository(conn, 'output')
-    unpublish_repository(conn, 'test_pg_mount')
+    unpublish_repository(conn, OUTPUT)
+    unpublish_repository(conn, PG_MNT)
     for mountpoint in TEST_MOUNTPOINTS:
         unmount(conn, mountpoint)
     cleanup_objects(conn)
@@ -119,12 +122,12 @@ def remote_driver_conn():
 def empty_pg_conn():
     # A connection to the local driver that has nothing mounted on it.
     conn = _conn()
-    for mountpoint, _ in get_current_mountpoints_hashes(conn):
+    for mountpoint, _ in get_current_repositories(conn):
         unmount(conn, mountpoint)
     cleanup_objects(conn)
     conn.commit()
     yield conn
-    for mountpoint, _ in get_current_mountpoints_hashes(conn):
+    for mountpoint, _ in get_current_repositories(conn):
         unmount(conn, mountpoint)
     cleanup_objects(conn)
     conn.commit()

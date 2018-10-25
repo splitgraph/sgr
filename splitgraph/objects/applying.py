@@ -8,14 +8,14 @@ from splitgraph.objects.utils import get_replica_identity, _generate_where_claus
 from splitgraph.pg_utils import _get_column_names
 
 
-def apply_record_to_staging(conn, object_id, mountpoint, destination):
+def apply_record_to_staging(conn, object_id, dest_schema, dest_table):
     """
     Applies a DIFF table stored in `object_id` to destination.
 
     :param conn: psycopg connection object.
     :param object_id: Object ID of the DIFF table.
-    :param mountpoint: Schema where the destination table is located.
-    :param destination: Target table.
+    :param dest_schema: Schema where the destination table is located.
+    :param dest_table: Target table.
     """
     queries = []
     repl_id = get_replica_identity(conn, SPLITGRAPH_META_SCHEMA, object_id)
@@ -30,8 +30,8 @@ def apply_record_to_staging(conn, object_id, mountpoint, destination):
     with conn.cursor() as cur:
         # Apply deletes
         cur.execute(SQL("DELETE FROM {0}.{2} USING {1}.{3} WHERE {1}.{3}.sg_action_kind = 1").format(
-            Identifier(mountpoint), Identifier(SPLITGRAPH_META_SCHEMA), Identifier(destination),
-            Identifier(object_id)) + SQL(" AND ") + _generate_where_clause(mountpoint, destination, ri_cols, object_id,
+            Identifier(dest_schema), Identifier(SPLITGRAPH_META_SCHEMA), Identifier(dest_table),
+            Identifier(object_id)) + SQL(" AND ") + _generate_where_clause(dest_schema, dest_table, ri_cols, object_id,
                                                                            SPLITGRAPH_META_SCHEMA))
 
         # Generate queries for inserts
@@ -45,7 +45,7 @@ def apply_record_to_staging(conn, object_id, mountpoint, destination):
             cols_to_insert = list(ri_cols) + action_data['c']
             vals_to_insert = _convert_vals(list(row[:-2]) + action_data['v'])
 
-            query = SQL("INSERT INTO {}.{} (").format(Identifier(mountpoint), Identifier(destination))
+            query = SQL("INSERT INTO {}.{} (").format(Identifier(dest_schema), Identifier(dest_table))
             query += SQL(','.join('{}' for _ in cols_to_insert)).format(*[Identifier(c) for c in cols_to_insert])
             query += SQL(") VALUES (" + ','.join('%s' for _ in vals_to_insert) + ')')
             query = cur.mogrify(query, vals_to_insert)
@@ -60,9 +60,9 @@ def apply_record_to_staging(conn, object_id, mountpoint, destination):
             cols_to_insert = action_data['c']
             vals_to_insert = action_data['v']
 
-            query = SQL("UPDATE {}.{} SET ").format(Identifier(mountpoint), Identifier(destination))
+            query = SQL("UPDATE {}.{} SET ").format(Identifier(dest_schema), Identifier(dest_table))
             query += SQL(', '.join("{} = %s" for _ in cols_to_insert)).format(*(Identifier(i) for i in cols_to_insert))
-            query += SQL(" WHERE ") + _generate_where_clause(mountpoint, destination, ri_cols)
+            query += SQL(" WHERE ") + _generate_where_clause(dest_schema, dest_table, ri_cols)
             queries.append(cur.mogrify(query, vals_to_insert + ri_vals))
         # Apply the insert/update queries (might not exist if the diff was all deletes)
         if queries:

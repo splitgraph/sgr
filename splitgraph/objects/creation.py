@@ -5,7 +5,7 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, get_random_object_id
 from splitgraph.meta_handler.objects import register_table, register_object
-from splitgraph.meta_handler.tables import get_table_with_format
+from splitgraph.meta_handler.tables import get_object_for_table
 from splitgraph.objects.utils import get_replica_identity, conflate_changes, convert_audit_change
 from splitgraph.pg_utils import copy_table
 
@@ -32,9 +32,9 @@ def _create_diff_table(conn, object_id, replica_identity_cols_types):
         # RI is PK anyway, so has an index by default
 
 
-def record_table_as_diff(conn, mountpoint, image_hash, table, table_info):
+def record_table_as_diff(conn, repository, image_hash, table, table_info):
     object_id = get_random_object_id()
-    repl_id = get_replica_identity(conn, mountpoint, table)
+    repl_id = get_replica_identity(conn, repository.to_schema(), table)
     ri_cols, _ = zip(*repl_id)
     _create_diff_table(conn, object_id, repl_id)
     with conn.cursor() as cur:
@@ -42,7 +42,7 @@ def record_table_as_diff(conn, mountpoint, image_hash, table, table_info):
         cur.execute(
             SQL("""DELETE FROM {}.{} WHERE schema_name = %s AND table_name = %s
                                    RETURNING action, row_data, changed_fields""").format(
-                Identifier("audit"), Identifier("logged_actions")), (mountpoint, table))
+                Identifier("audit"), Identifier("logged_actions")), (repository.to_schema(), table))
         # Accumulate the diff in-memory.
         changeset = {}
         for action, row_data, changed_fields in cur:
@@ -57,16 +57,18 @@ def record_table_as_diff(conn, mountpoint, image_hash, table, table_info):
             execute_batch(cur, query, changeset, page_size=1000)
 
             for parent_id, _ in table_info:
-                register_object(conn, object_id, object_format='DIFF', parent_object=parent_id)
-            register_table(conn, mountpoint, table, image_hash, object_id)
+                register_object(conn, object_id, object_format='DIFF', parent_object=parent_id,
+                                original_namespace=repository.namespace)
+
+            register_table(conn, repository, table, image_hash, object_id)
         else:
-            # Changes in the WAL cancelled each other out. Delete the diff table and just point
+            # Changes in the audit log cancelled each other out. Delete the diff table and just point
             # the commit to the old table objects.
             cur.execute(
                 SQL("DROP TABLE {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                Identifier(object_id)))
             for prev_object_id, _ in table_info:
-                register_table(conn, mountpoint, table, image_hash, prev_object_id)
+                register_table(conn, repository, table, image_hash, prev_object_id)
 
 
 def _convert_vals(vals):
@@ -79,14 +81,17 @@ def _convert_vals(vals):
     return [v if not isinstance(v, dict) else Json(v) for v in vals]
 
 
-def record_table_as_snap(conn, mountpoint, image_hash, table, table_info):
+def record_table_as_snap(conn, repository, image_hash, table, table_info):
     # Make sure we didn't actually create a snap for this table.
-    if get_table_with_format(conn, mountpoint, table, image_hash, 'SNAP') is None:
+
+    if get_object_for_table(conn, repository, table, image_hash, 'SNAP') is None:
         object_id = get_random_object_id()
-        copy_table(conn, mountpoint, table, SPLITGRAPH_META_SCHEMA, object_id, with_pk_constraints=True)
+        copy_table(conn, repository.to_schema(), table, SPLITGRAPH_META_SCHEMA, object_id, with_pk_constraints=True)
         if table_info:
             for parent_id, _ in table_info:
-                register_object(conn, object_id, object_format='SNAP', parent_object=parent_id)
+                register_object(conn, object_id, object_format='SNAP', parent_object=parent_id,
+                                original_namespace=repository.namespace)
         else:
-            register_object(conn, object_id, object_format='SNAP', parent_object=None)
-        register_table(conn, mountpoint, table, image_hash, object_id)
+            register_object(conn, object_id, object_format='SNAP', parent_object=None,
+                            original_namespace=repository.namespace)
+        register_table(conn, repository, table, image_hash, object_id)
