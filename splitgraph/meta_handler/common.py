@@ -200,16 +200,17 @@ def setup_registry_mode(conn):
         # whose location we're changing.
         cur.execute(SQL("ALTER TABLE {}.{} ENABLE ROW LEVEL SECURITY").format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                                               Identifier('object_locations')))
-        test_query = SQL("""(SELECT true FROM {0}.object_locations
+        test_query = SQL("""((SELECT true as bool FROM {0}.object_locations
                             JOIN {0}.objects ON {0}.object_locations.object_id = {0}.objects.object_id
-                            WHERE {0}.objects.namespace = current_user)""".format(Identifier(SPLITGRAPH_META_SCHEMA)))
+                            WHERE {0}.objects.namespace = current_user) = true)""").format(
+            Identifier(SPLITGRAPH_META_SCHEMA))
 
         cur.execute(SQL("""CREATE POLICY object_locations_S ON {}.object_locations FOR SELECT USING (true)""")
                     .format(Identifier(SPLITGRAPH_META_SCHEMA)))
         cur.execute(SQL("""CREATE POLICY object_locations_I ON {}.object_locations FOR INSERT
                            WITH CHECK """).format(Identifier(SPLITGRAPH_META_SCHEMA)) + test_query)
         cur.execute(SQL("CREATE POLICY object_locations_U ON {}.object_locations FOR UPDATE USING ")
-                    .format(Identifier(SPLITGRAPH_META_SCHEMA)) + test_query + SQL(" CHECK ") + test_query)
+                    .format(Identifier(SPLITGRAPH_META_SCHEMA)) + test_query + SQL(" WITH CHECK ") + test_query)
         cur.execute(SQL("""CREATE POLICY object_locations_D ON {}.object_locations FOR DELETE
                            USING """).format(Identifier(SPLITGRAPH_META_SCHEMA)) + test_query)
 

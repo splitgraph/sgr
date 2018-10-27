@@ -9,6 +9,9 @@ from splitgraph.constants import Repository, serialize_connection_string
 from splitgraph.meta_handler.common import toggle_registry_rls
 from splitgraph.meta_handler.images import get_all_images_parents
 from splitgraph.meta_handler.misc import unregister_repository
+from splitgraph.meta_handler.objects import register_object_locations
+from splitgraph.meta_handler.tables import get_object_for_table, get_table
+from splitgraph.meta_handler.tags import get_tagged_id
 from test.splitgraph.conftest import PG_MNT
 from test.splitgraph.test_sgfile import _add_multitag_dataset_to_remote_driver
 
@@ -33,7 +36,8 @@ def unprivileged_remote_conn(remote_driver_conn):
             cur.execute("SET ROLE TO testuser;")
         yield remote_driver_conn
     finally:
-        # Reset the role back to admin so that the teardown doesn't break
+        # Reset the role back to admin so that the teardown doesn't break + rollback any failed txns
+        remote_driver_conn.rollback()
         with remote_driver_conn.cursor() as cur:
             cur.execute("SET ROLE TO clientuser;")
 
@@ -98,3 +102,14 @@ def test_rls_push_own_with_uploading(empty_pg_conn, unprivileged_conn_string):
              remote_repository=target_repo,
              handler_options={'path': tmpdir})
 
+
+def test_rls_impersonate_external_object(unprivileged_remote_conn):
+    latest = get_tagged_id(unprivileged_remote_conn, PG_MNT, 'latest')
+    sample_object = get_table(unprivileged_remote_conn, PG_MNT, 'fruits', latest)[0][0]
+    assert sample_object is not None
+
+    # Try to impersonate the owner of the "test" namespace and add a different external link to
+    # an object that they own.
+    with pytest.raises(ProgrammingError) as e:
+        register_object_locations(unprivileged_remote_conn, [(sample_object, 'fake_location', 'FILE')])
+    assert 'new row violates row-level security policy for table "object_locations"' in str(e.value)
