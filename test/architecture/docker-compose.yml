@@ -43,6 +43,8 @@ services:
       - POSTGRES_PASSWORD=supersecure
       - POSTGRES_DB=cachedb
       - PGPORT=5431
+    volumes:
+      - ./data/remote_driver/setup.sql:/docker-entrypoint-initdb.d/setup.sql
     expose:
       - 5431
   ci_pgorigin:

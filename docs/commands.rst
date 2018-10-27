@@ -99,7 +99,7 @@ See also :mod:`splitgraph.commands.mounting`.
 
 `sgr unmount`
     Destroys the local copy of a repository and all the metadata related to it in
-    `images`, `tables`, `remotes` and `snap_tags`. This command doesn't delete the actual physical objects in
+    `images`, `tables`, `remotes` and `tags`. This command doesn't delete the actual physical objects in
     `splitgraph_meta` or references to them in
     `objects` / `object_locations`. There's a separate function, `sgr cleanup`
     (or :func:`splitgraph.commands.misc.cleanup_objects`) that crawls the `splitgraph_meta` for objects not required

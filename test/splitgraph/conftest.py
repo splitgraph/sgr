@@ -5,6 +5,7 @@ from splitgraph.commands import *
 from splitgraph.commands import unmount
 from splitgraph.commands.misc import make_conn, cleanup_objects
 from splitgraph.constants import PG_USER, PG_PWD, PG_DB, serialize_connection_string, to_repository as R
+from splitgraph.meta_handler.common import setup_registry_mode, ensure_metadata_schema, toggle_registry_rls
 from splitgraph.meta_handler.misc import get_current_repositories
 from splitgraph.pg_utils import get_all_foreign_tables
 from splitgraph.registry_meta_handler import ensure_registry_schema, unpublish_repository
@@ -40,7 +41,7 @@ def _mount_mongo(conn, repository):
     unmount(conn, R('tmp'))
 
 
-TEST_MOUNTPOINTS = [PG_MNT, PG_MNT_PULL, OUTPUT, MG_MNT, R('output_stage_2')]
+TEST_MOUNTPOINTS = [PG_MNT, PG_MNT_PULL, OUTPUT, MG_MNT, R('output_stage_2'), R('testuser/pg_mount')]
 
 
 def healthcheck():
@@ -101,7 +102,10 @@ def remote_driver_conn():
     # For these, we'll use both the cachedb (original postgres for integration tests) as well as the remote_driver.
     # Mount and snapshot the two origin DBs (mongo/pg) with the test data.
     conn = make_conn(REMOTE_HOST, REMOTE_PORT, PG_USER, PG_PWD, PG_DB)
+    ensure_metadata_schema(conn)
     ensure_registry_schema(conn)
+    setup_registry_mode(conn)
+    toggle_registry_rls(conn, 'DISABLE')
     unpublish_repository(conn, OUTPUT)
     unpublish_repository(conn, PG_MNT)
     for mountpoint in TEST_MOUNTPOINTS:

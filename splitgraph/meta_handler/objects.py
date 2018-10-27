@@ -18,12 +18,12 @@ def get_object_format(conn, object_id):
         return None if result is None else result[0]
 
 
-def register_object(conn, object_id, object_format, original_namespace, parent_object=None):
+def register_object(conn, object_id, object_format, namespace, parent_object=None):
     if not parent_object and object_format != 'SNAP':
         raise ValueError("Non-SNAP objects can't have no parent!")
     with conn.cursor() as cur:
-        cur.execute(insert("objects", ("object_id", "format", "parent_id", "original_namespace")),
-                    (object_id, object_format, parent_object, original_namespace))
+        cur.execute(insert("objects", ("object_id", "format", "parent_id", "namespace")),
+                    (object_id, object_format, parent_object, namespace))
 
 
 def deregister_table_object(conn, object_id):
@@ -34,7 +34,7 @@ def deregister_table_object(conn, object_id):
 
 def register_objects(conn, object_meta):
     with conn.cursor() as cur:
-        execute_batch(cur, insert("objects", ("object_id", "format", "parent_id", "original_namespace")),
+        execute_batch(cur, insert("objects", ("object_id", "format", "parent_id", "namespace")),
                       object_meta, page_size=100)
 
 
@@ -86,7 +86,7 @@ def get_external_object_locations(conn, objects):
 
 def get_object_meta(conn, objects):
     with conn.cursor() as cur:
-        cur.execute(select("objects", "object_id, format, parent_id, original_namespace",
+        cur.execute(select("objects", "object_id, format, parent_id, namespace",
                            "object_id IN (" + ','.join('%s' for _ in objects) + ")"), objects)
         return cur.fetchall()
 

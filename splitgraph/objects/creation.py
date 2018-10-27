@@ -58,7 +58,7 @@ def record_table_as_diff(conn, repository, image_hash, table, table_info):
 
             for parent_id, _ in table_info:
                 register_object(conn, object_id, object_format='DIFF', parent_object=parent_id,
-                                original_namespace=repository.namespace)
+                                namespace=repository.namespace)
 
             register_table(conn, repository, table, image_hash, object_id)
         else:
@@ -90,8 +90,8 @@ def record_table_as_snap(conn, repository, image_hash, table, table_info):
         if table_info:
             for parent_id, _ in table_info:
                 register_object(conn, object_id, object_format='SNAP', parent_object=parent_id,
-                                original_namespace=repository.namespace)
+                                namespace=repository.namespace)
         else:
             register_object(conn, object_id, object_format='SNAP', parent_object=None,
-                            original_namespace=repository.namespace)
+                            namespace=repository.namespace)
         register_table(conn, repository, table, image_hash, object_id)
