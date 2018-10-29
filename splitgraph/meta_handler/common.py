@@ -1,6 +1,6 @@
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA
+from splitgraph.constants import SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA
 
 META_TABLES = ['images', 'tags', 'objects', 'tables', 'remotes', 'object_locations', 'info']
 
@@ -183,38 +183,36 @@ def setup_registry_mode(conn):
                     .format(Identifier(SPLITGRAPH_META_SCHEMA)))
 
         for t in _RLS_TABLES:
-            cur.execute(SQL("ALTER TABLE {}.{} ENABLE ROW LEVEL SECURITY").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                                  Identifier(t)))
-            cur.execute(SQL("""CREATE POLICY {2} ON {0}.{1} FOR SELECT USING (true)""")
-                        .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(t), Identifier(t + '_S')))
-            cur.execute(SQL("""CREATE POLICY {2} ON {0}.{1} FOR INSERT WITH CHECK ({0}.{1}.namespace = current_user)""")
-                        .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(t), Identifier(t + '_I')))
-            cur.execute(SQL("""CREATE POLICY {2} ON {0}.{1} FOR UPDATE USING (
-                    {0}.{1}.namespace = current_user) WITH CHECK ({0}.{1}.namespace = current_user)""")
-                        .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(t), Identifier(t + '_U')))
-            cur.execute(SQL("""CREATE POLICY {2} ON {0}.{1} FOR DELETE USING (
-                    {0}.{1}.namespace = current_user)""")
-                        .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(t), Identifier(t + '_D')))
+            _setup_rls_policies(cur, t)
 
         # Object_locations is different, since we have to refer to the objects table for the namespace of the object
         # whose location we're changing.
-        cur.execute(SQL("ALTER TABLE {}.{} ENABLE ROW LEVEL SECURITY").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                              Identifier('object_locations')))
-        test_query = SQL("""((SELECT true as bool FROM {0}.object_locations
-                            JOIN {0}.objects ON {0}.object_locations.object_id = {0}.objects.object_id
-                            WHERE {0}.objects.namespace = current_user) = true)""").format(
-            Identifier(SPLITGRAPH_META_SCHEMA))
-
-        cur.execute(SQL("""CREATE POLICY object_locations_S ON {}.object_locations FOR SELECT USING (true)""")
-                    .format(Identifier(SPLITGRAPH_META_SCHEMA)))
-        cur.execute(SQL("""CREATE POLICY object_locations_I ON {}.object_locations FOR INSERT
-                           WITH CHECK """).format(Identifier(SPLITGRAPH_META_SCHEMA)) + test_query)
-        cur.execute(SQL("CREATE POLICY object_locations_U ON {}.object_locations FOR UPDATE USING ")
-                    .format(Identifier(SPLITGRAPH_META_SCHEMA)) + test_query + SQL(" WITH CHECK ") + test_query)
-        cur.execute(SQL("""CREATE POLICY object_locations_D ON {}.object_locations FOR DELETE
-                           USING """).format(Identifier(SPLITGRAPH_META_SCHEMA)) + test_query)
+        test_query = """((SELECT true as bool FROM {0}.{1}
+                            JOIN {0}.objects ON {0}.{1}.object_id = {0}.objects.object_id
+                            WHERE {0}.objects.namespace = current_user) = true)"""
+        _setup_rls_policies(cur, "object_locations", condition=test_query)
+        _setup_rls_policies(cur, "images", schema=REGISTRY_META_SCHEMA)
 
         set_info_key(conn, "registry_mode", "true")
+
+
+def _setup_rls_policies(cursor, table, schema=SPLITGRAPH_META_SCHEMA, condition=None):
+    condition = condition or "({0}.{1}.namespace = current_user)"
+    
+    cursor.execute(SQL("ALTER TABLE {}.{} ENABLE ROW LEVEL SECURITY").format(Identifier(schema),
+                                                                             Identifier(table)))
+    cursor.execute(SQL("""CREATE POLICY {2} ON {0}.{1} FOR SELECT USING (true)""")
+                   .format(Identifier(schema), Identifier(table), Identifier(table + '_S')))
+    cursor.execute(SQL("""CREATE POLICY {2} ON {0}.{1} FOR INSERT WITH CHECK """)
+                   .format(Identifier(schema), Identifier(table), Identifier(table + '_I'))
+                   + SQL(condition).format(Identifier(schema), Identifier(table)))
+    cursor.execute(SQL("CREATE POLICY {2} ON {0}.{1} FOR UPDATE USING ")
+                       .format(Identifier(schema), Identifier(table), Identifier(table + '_U'))
+                   + SQL(condition).format(Identifier(schema), Identifier(table))
+                   + SQL(" WITH CHECK ") + SQL(condition).format(Identifier(schema), Identifier(table)))
+    cursor.execute(SQL("CREATE POLICY {2} ON {0}.{1} FOR DELETE USING ")
+                   .format(Identifier(schema), Identifier(table), Identifier(table + '_D'))
+                   + SQL(condition).format(Identifier(schema), Identifier(table)))
 
 
 def toggle_registry_rls(conn, mode='ENABLE'):
