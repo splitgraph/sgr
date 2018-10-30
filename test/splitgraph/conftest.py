@@ -4,7 +4,7 @@ from splitgraph.commandline import _conn
 from splitgraph.commands import *
 from splitgraph.commands import unmount
 from splitgraph.commands.misc import make_conn, cleanup_objects
-from splitgraph.constants import PG_USER, PG_PWD, PG_DB, serialize_connection_string, to_repository as R
+from splitgraph.constants import PG_USER, PG_PWD, PG_DB, serialize_connection_string, to_repository as R, Repository
 from splitgraph.meta_handler.common import setup_registry_mode, ensure_metadata_schema, toggle_registry_rls
 from splitgraph.meta_handler.misc import get_current_repositories
 from splitgraph.pg_utils import get_all_foreign_tables
@@ -108,6 +108,7 @@ def remote_driver_conn():
     toggle_registry_rls(conn, 'DISABLE')
     unpublish_repository(conn, OUTPUT)
     unpublish_repository(conn, PG_MNT)
+    unpublish_repository(conn, Repository('testuser', 'pg_mount'))
     for mountpoint in TEST_MOUNTPOINTS:
         unmount(conn, mountpoint)
     cleanup_objects(conn)
@@ -115,6 +116,7 @@ def remote_driver_conn():
     _mount_postgres(conn, PG_MNT)
     _mount_mongo(conn, MG_MNT)
     yield conn
+    conn.rollback()
     for mountpoint in TEST_MOUNTPOINTS:
         unmount(conn, mountpoint)
     cleanup_objects(conn)
@@ -131,6 +133,7 @@ def empty_pg_conn():
     cleanup_objects(conn)
     conn.commit()
     yield conn
+    conn.rollback()
     for mountpoint, _ in get_current_repositories(conn):
         unmount(conn, mountpoint)
     cleanup_objects(conn)

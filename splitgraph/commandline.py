@@ -1,11 +1,11 @@
-import json
-import re
 import sys
 from collections import Counter, defaultdict
-from pprint import pprint
 
 import click
+import json
 import psycopg2
+import re
+from pprint import pprint
 from psycopg2 import ProgrammingError
 from splitgraph.commands import mount, unmount, commit, checkout, diff, get_log, init, get_parent_children, pull, \
     clone, push, import_tables
@@ -18,8 +18,8 @@ from splitgraph.drawing import render_tree
 from splitgraph.meta_handler.images import get_canonical_image_id, get_image
 from splitgraph.meta_handler.misc import get_current_repositories, get_remote_for
 from splitgraph.meta_handler.tables import get_tables_at, get_table
-from splitgraph.pg_utils import get_all_tables
 from splitgraph.meta_handler.tags import get_current_head, get_all_hashes_tags, set_tag, tag_or_hash_to_actual_hash
+from splitgraph.pg_utils import get_all_tables
 from splitgraph.sgfile.execution import execute_commands, rerun_image_with_replacement
 
 
@@ -440,7 +440,7 @@ def publish_c(repository, tag, readme, skip_provenance, skip_previews):
         readme = readme.read()
     else:
         readme = ""
-    publish(conn, repository, tag, readme, include_provenance=not skip_provenance,
+    publish(conn, repository, tag, readme=readme, include_provenance=not skip_provenance,
             include_table_previews=not skip_previews)
     conn.commit()
     conn.close()

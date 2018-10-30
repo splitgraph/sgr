@@ -148,7 +148,7 @@ def set_info_key(conn, key, value):
                     .format(Identifier(SPLITGRAPH_META_SCHEMA)), (key, value, value, key))
 
 
-_RLS_TABLES = ['images', 'tags', 'objects', 'tables']  # , 'object_locations', 'info']
+_RLS_TABLES = ['images', 'tags', 'objects', 'tables']
 
 
 def setup_registry_mode(conn):
@@ -169,14 +169,15 @@ def setup_registry_mode(conn):
         return
 
     with conn.cursor() as cur:
-        cur.execute(SQL("REVOKE CREATE ON SCHEMA {} FROM PUBLIC").format(Identifier(SPLITGRAPH_META_SCHEMA)))
-        cur.execute(SQL("GRANT USAGE ON SCHEMA {} TO PUBLIC").format(Identifier(SPLITGRAPH_META_SCHEMA)))
+        for schema in (SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA):
+            cur.execute(SQL("REVOKE CREATE ON SCHEMA {} FROM PUBLIC").format(Identifier(schema)))
+            cur.execute(SQL("GRANT USAGE ON SCHEMA {} TO PUBLIC").format(Identifier(schema)))
+            # Grant everything by default -- RLS will supersede these.
+            cur.execute(SQL("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA {} TO PUBLIC")
+                        .format(Identifier(schema)))
+
         cur.execute(SQL("REVOKE INSERT, DELETE, UPDATE ON TABLE {}.info FROM PUBLIC").format(
             Identifier(SPLITGRAPH_META_SCHEMA)))
-
-        # Grant everything by default -- RLS will supersede these.
-        cur.execute(SQL("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA {} TO PUBLIC")
-                    .format(Identifier(SPLITGRAPH_META_SCHEMA)))
 
         # Allow everyone to read objects that have been uploaded
         cur.execute(SQL("ALTER DEFAULT PRIVILEGES IN SCHEMA {} GRANT SELECT ON TABLES TO PUBLIC")
@@ -227,3 +228,7 @@ def toggle_registry_rls(conn, mode='ENABLE'):
         for t in _RLS_TABLES:
             cur.execute(SQL("ALTER TABLE {}.{} %s ROW LEVEL SECURITY" % mode).format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                                                      Identifier(t)))
+        cur.execute(SQL("ALTER TABLE {}.{} %s ROW LEVEL SECURITY" % mode).format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                                 Identifier("object_locations")))
+        cur.execute(SQL("ALTER TABLE {}.{} %s ROW LEVEL SECURITY" % mode).format(Identifier(REGISTRY_META_SCHEMA),
+                                                                                 Identifier("images")))
