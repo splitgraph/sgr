@@ -26,7 +26,7 @@ Here's an overview of the tables in this schema:
     the object linked to the parent commit of a given object: if we're importing a table from a different repository,
     we would pull in its chain of DIFF objects without tying them to commits those objects were created in.
   * `remotes`: Currently, stores the connection string for the upstream repository a given repository was cloned from.
-  * `snap_tags`: maps images and their repositories to one or more tags. Tags (apart from HEAD) are pushed and pulled
+  * `tags`: maps images and their repositories to one or more tags. Tags (apart from HEAD) are pushed and pulled
     to/from upstream repositories and are immutable (this is weakly enforced by the push/pull code).
     HEAD is a special tag: it points out to the currently checked-out local image.
   * `object_locations`: If a given object is not stored in the remote, this table specifies where to find it (protocol
@@ -58,7 +58,7 @@ Implementation of various Splitgraph commands
     * All changes are conflated using a straightforward algorithm in `splitgraph.objects.utils.conflate_changes`.
   * The meta tables this touches are `objects` (to register the new objects and link them to their parents),
     `tables` (to link tables in the new commit to existing/new objects), `images` (to register the new commit) and
-    `snap_tags` (to move the HEAD pointer to the new commit).
+    `tags` (to move the HEAD pointer to the new commit).
 
 `checkout`
 ----------
@@ -75,7 +75,7 @@ Implementation of various Splitgraph commands
         * Currently, only `FILE` is supported: the object is dumped into a user-specified directory as an uncompressed
           SQL file.
       * Download the object from the upstream (by inspecting the `remotes` table).
-  * `snap_tags` is changed to update the HEAD pointer.
+  * `tags` is changed to update the HEAD pointer.
 
 `clone/push/pull`
 -----------------
@@ -83,7 +83,7 @@ Implementation of various Splitgraph commands
 `sgr clone` is implemented as follows:
 
   * First, it connect to the remote and inspect its `splitgraph_meta` table to gather the commits, tags and objects
-    (`images`, `snap_tags`, `objects`, `tables` and `object_locations`) that don't exist in the local
+    (`images`, `tags`, `objects`, `tables` and `object_locations`) that don't exist in the local
     `splitgraph_meta`. See `splitgraph.commands.push_pull._get_required_snaps_objects`.
   * As part of that, also crawl the remote `objects` to gather the list of all required objects
     and their dependencies.

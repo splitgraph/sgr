@@ -13,7 +13,7 @@ from splitgraph.meta_handler.tags import get_tagged_id, set_head
 from splitgraph.objects.applying import apply_record_to_staging
 from splitgraph.objects.loading import download_objects
 from splitgraph.pg_audit import has_pending_changes, manage_audit, discard_pending_changes
-from splitgraph.pg_utils import copy_table, get_primary_keys, get_all_tables
+from splitgraph.pg_utils import copy_table, get_primary_keys, get_all_tables, pg_table_exists
 
 
 def materialize_table(conn, repository, image_hash, table, destination, destination_schema=None):
@@ -139,4 +139,19 @@ def materialized_table(conn, repository, table_name, image_hash):
         # Maybe some cache management/expiry strategies here
         delete_objects(conn, [new_id])
     else:
-        yield SPLITGRAPH_META_SCHEMA, object_id
+        if pg_table_exists(conn, SPLITGRAPH_META_SCHEMA, object_id):
+            yield SPLITGRAPH_META_SCHEMA, object_id
+        else:
+            # The SNAP object doesn't actually exist remotely, so we have to download it.
+            # An optimisation here: we could open an RO connection to the remote instead if the object
+            # does live there.
+            remote_info = get_remote_for(conn, repository)
+            if not remote_info:
+                raise SplitGraphException("SNAP %s from %s doesn't exist locally and no remote was found for it!"
+                                          % (object_id, str(repository)))
+            remote_conn, _ = remote_info
+            object_locations = get_external_object_locations(conn, [object_id])
+            download_objects(conn, remote_conn, objects_to_fetch=[object_id], object_locations=object_locations)
+            yield SPLITGRAPH_META_SCHEMA, object_id
+
+            delete_objects(conn, [object_id])

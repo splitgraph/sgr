@@ -1,8 +1,8 @@
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA
+from splitgraph.constants import SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA
 
-META_TABLES = ['images', 'snap_tags', 'objects', 'tables', 'remotes', 'object_locations']
+META_TABLES = ['images', 'tags', 'objects', 'tables', 'remotes', 'object_locations', 'info']
 
 
 def _create_metadata_schema(conn):
@@ -36,7 +36,7 @@ def _create_metadata_schema(conn):
                         tag        VARCHAR,
                         PRIMARY KEY (namespace, repository, tag),
                         CONSTRAINT sh_fk FOREIGN KEY (namespace, repository, image_hash) REFERENCES {}.{})""").format(
-            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("snap_tags"),
+            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("tags"),
             Identifier(SPLITGRAPH_META_SCHEMA), Identifier("images")))
 
         # A tree of object parents. The parent of an object is not necessarily the object linked to
@@ -44,7 +44,7 @@ def _create_metadata_schema(conn):
         # One object can have multiple parents (e.g. 1 SNAP and 1 DIFF).
         cur.execute(SQL("""CREATE TABLE {}.{} (
                         object_id  VARCHAR NOT NULL,
-                        original_namespace VARCHAR NOT NULL,
+                        namespace  VARCHAR NOT NULL,
                         format     VARCHAR NOT NULL,
                         parent_id  VARCHAR)""").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")))
 
@@ -83,6 +83,13 @@ def _create_metadata_schema(conn):
                         protocol           VARCHAR NOT NULL,
                         PRIMARY KEY (object_id))""").format(
             Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_locations")))
+
+        # Miscellaneous key-value information for this driver (e.g. whether uploading objects is permitted etc).
+        cur.execute(SQL("""CREATE TABLE {}.{} (
+                        key   VARCHAR NOT NULL,
+                        value VARCHAR NOT NULL,
+                        PRIMARY KEY (key))""").format(
+            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("info")))
 
 
 def select(table, columns='*', where='', schema=SPLITGRAPH_META_SCHEMA):
@@ -125,6 +132,25 @@ def ensure_metadata_schema(conn):
             _create_metadata_schema(conn)
 
 
+def get_info_key(conn, key):
+    with conn.cursor() as cur:
+        cur.execute(SQL("SELECT value FROM {}.info WHERE key = %s").format(Identifier(SPLITGRAPH_META_SCHEMA)), (key,))
+        result = cur.fetchone()
+        if result is None:
+            return None
+        return result[0]
+
+
+def set_info_key(conn, key, value):
+    with conn.cursor() as cur:
+        cur.execute(SQL("INSERT INTO {0}.info (key, value) VALUES (%s, %s)"
+                        " ON CONFLICT (key) DO UPDATE SET value = %s WHERE info.key = %s")
+                    .format(Identifier(SPLITGRAPH_META_SCHEMA)), (key, value, value, key))
+
+
+_RLS_TABLES = ['images', 'tags', 'objects', 'tables']
+
+
 def setup_registry_mode(conn):
     """
     Drops tables in splitgraph_meta that aren't pertinent to the registry + sets up access policies/RLS:
@@ -135,8 +161,74 @@ def setup_registry_mode(conn):
     * objects/object_location tables: same. An object (piece of data) becomes owned by the user that creates
       it and still remains so even if someone else's image starts using it. Hence, the original owner can delete
       or change it (since they control the external location they've uploaded it to anyway).
-    * remotes table is dropped.
 
     :param conn: Psycopg admin connection object.
     """
-    pass
+
+    if get_info_key(conn, "registry_mode") == 'true':
+        return
+
+    with conn.cursor() as cur:
+        for schema in (SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA):
+            cur.execute(SQL("REVOKE CREATE ON SCHEMA {} FROM PUBLIC").format(Identifier(schema)))
+            cur.execute(SQL("GRANT USAGE ON SCHEMA {} TO PUBLIC").format(Identifier(schema)))
+            # Grant everything by default -- RLS will supersede these.
+            cur.execute(SQL("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA {} TO PUBLIC")
+                        .format(Identifier(schema)))
+
+        cur.execute(SQL("REVOKE INSERT, DELETE, UPDATE ON TABLE {}.info FROM PUBLIC").format(
+            Identifier(SPLITGRAPH_META_SCHEMA)))
+
+        # Allow everyone to read objects that have been uploaded
+        cur.execute(SQL("ALTER DEFAULT PRIVILEGES IN SCHEMA {} GRANT SELECT ON TABLES TO PUBLIC")
+                    .format(Identifier(SPLITGRAPH_META_SCHEMA)))
+
+        for t in _RLS_TABLES:
+            _setup_rls_policies(cur, t)
+
+        # Object_locations is different, since we have to refer to the objects table for the namespace of the object
+        # whose location we're changing.
+        test_query = """((SELECT true as bool FROM {0}.{1}
+                            JOIN {0}.objects ON {0}.{1}.object_id = {0}.objects.object_id
+                            WHERE {0}.objects.namespace = current_user) = true)"""
+        _setup_rls_policies(cur, "object_locations", condition=test_query)
+        _setup_rls_policies(cur, "images", schema=REGISTRY_META_SCHEMA)
+
+        set_info_key(conn, "registry_mode", "true")
+
+
+def _setup_rls_policies(cursor, table, schema=SPLITGRAPH_META_SCHEMA, condition=None):
+    condition = condition or "({0}.{1}.namespace = current_user)"
+    
+    cursor.execute(SQL("ALTER TABLE {}.{} ENABLE ROW LEVEL SECURITY").format(Identifier(schema),
+                                                                             Identifier(table)))
+    cursor.execute(SQL("""CREATE POLICY {2} ON {0}.{1} FOR SELECT USING (true)""")
+                   .format(Identifier(schema), Identifier(table), Identifier(table + '_S')))
+    cursor.execute(SQL("""CREATE POLICY {2} ON {0}.{1} FOR INSERT WITH CHECK """)
+                   .format(Identifier(schema), Identifier(table), Identifier(table + '_I'))
+                   + SQL(condition).format(Identifier(schema), Identifier(table)))
+    cursor.execute(SQL("CREATE POLICY {2} ON {0}.{1} FOR UPDATE USING ")
+                       .format(Identifier(schema), Identifier(table), Identifier(table + '_U'))
+                   + SQL(condition).format(Identifier(schema), Identifier(table))
+                   + SQL(" WITH CHECK ") + SQL(condition).format(Identifier(schema), Identifier(table)))
+    cursor.execute(SQL("CREATE POLICY {2} ON {0}.{1} FOR DELETE USING ")
+                   .format(Identifier(schema), Identifier(table), Identifier(table + '_D'))
+                   + SQL(condition).format(Identifier(schema), Identifier(table)))
+
+
+def toggle_registry_rls(conn, mode='ENABLE'):
+    # For testing purposes: switch RLS off so that we can add test data that we then won't be able to alter when
+    # switching it on.
+    # Modes: ENABLE is same as FORCE, but doesn't apply to the table owner.
+
+    if mode not in ('ENABLE', 'DISABLE', 'FORCE'):
+        raise ValueError()
+
+    with conn.cursor() as cur:
+        for t in _RLS_TABLES:
+            cur.execute(SQL("ALTER TABLE {}.{} %s ROW LEVEL SECURITY" % mode).format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                                     Identifier(t)))
+        cur.execute(SQL("ALTER TABLE {}.{} %s ROW LEVEL SECURITY" % mode).format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                                 Identifier("object_locations")))
+        cur.execute(SQL("ALTER TABLE {}.{} %s ROW LEVEL SECURITY" % mode).format(Identifier(REGISTRY_META_SCHEMA),
+                                                                                 Identifier("images")))

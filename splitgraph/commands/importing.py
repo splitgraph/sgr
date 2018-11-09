@@ -116,7 +116,7 @@ def _import_tables(conn, repository, image_hash, tables, target_repository, targ
 
 def _register_and_checkout_new_table(conn, do_checkout, object_id, target_hash, target_repository, target_table):
     # Might not be necessary if we don't actually want to materialize the snapshot (wastes space).
-    register_object(conn, object_id, 'SNAP', parent_object=None, original_namespace=target_repository.namespace)
+    register_object(conn, object_id, 'SNAP', parent_object=None, namespace=target_repository.namespace)
     register_table(conn, target_repository, target_table, target_hash, object_id)
     if do_checkout:
         copy_table(conn, SPLITGRAPH_META_SCHEMA, object_id, target_repository.to_schema(), target_table)

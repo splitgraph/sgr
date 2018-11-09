@@ -26,7 +26,7 @@ def get_tagged_id(conn, repository, tag, raise_on_none=True):
             return result[0]
 
     with conn.cursor() as cur:
-        cur.execute(select("snap_tags", "image_hash", "namespace = %s AND repository = %s AND tag = %s"),
+        cur.execute(select("tags", "image_hash", "namespace = %s AND repository = %s AND tag = %s"),
                     (repository.namespace, repository.repository, tag))
         result = cur.fetchone()
         if result is None or result == (None,):
@@ -44,7 +44,7 @@ def get_tagged_id(conn, repository, tag, raise_on_none=True):
 
 def get_all_hashes_tags(conn, repository):
     with conn.cursor() as cur:
-        cur.execute(select("snap_tags", "image_hash, tag", "namespace = %s AND repository = %s"),
+        cur.execute(select("tags", "image_hash, tag", "namespace = %s AND repository = %s"),
                     (repository.namespace, repository.repository,))
         return cur.fetchall()
 
@@ -61,14 +61,14 @@ def set_head(conn, repository, image):
 
 def set_tag(conn, repository, image, tag, force=False):
     with conn.cursor() as cur:
-        cur.execute(select("snap_tags", "1", "namespace = %s AND repository = %s AND tag = %s"),
+        cur.execute(select("tags", "1", "namespace = %s AND repository = %s AND tag = %s"),
                     (repository.namespace, repository.repository, tag))
         if cur.fetchone() is None:
-            cur.execute(insert("snap_tags", ("image_hash", "namespace", "repository", "tag")),
+            cur.execute(insert("tags", ("image_hash", "namespace", "repository", "tag")),
                         (image, repository.namespace, repository.repository, tag))
         else:
             if force:
-                cur.execute(SQL("UPDATE {}.snap_tags SET image_hash = %s "
+                cur.execute(SQL("UPDATE {}.tags SET image_hash = %s "
                                 "WHERE namespace = %s AND repository = %s AND tag = %s").format(
                     Identifier(SPLITGRAPH_META_SCHEMA)),
                     (image, repository.namespace, repository.repository, tag))

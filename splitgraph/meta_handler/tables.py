@@ -16,7 +16,7 @@ def get_object_for_table(conn, repository, table_name, image, object_format):
     with conn.cursor() as cur:
         cur.execute(SQL("""SELECT {0}.tables.object_id FROM {0}.tables JOIN {0}.objects
                             ON {0}.objects.object_id = {0}.tables.object_id
-                            WHERE namespace = %s AND repository = %s AND image_hash = %s
+                            WHERE {0}.tables.namespace = %s AND repository = %s AND image_hash = %s
                             AND table_name = %s AND format = %s""").format(
             Identifier(SPLITGRAPH_META_SCHEMA)), (repository.namespace, repository.repository,
                                                   image, table_name, object_format))
@@ -29,6 +29,7 @@ def get_table(conn, repository, table_name, image):
     with conn.cursor() as cur:
         cur.execute(SQL("""SELECT {0}.tables.object_id, format FROM {0}.tables JOIN {0}.objects
                             ON {0}.objects.object_id = {0}.tables.object_id
-                            WHERE namespace = %s AND repository = %s AND image_hash = %s AND table_name = %s""").format(
+                            WHERE {0}.tables.namespace = %s AND repository = %s AND image_hash = %s
+                            AND table_name = %s""").format(
             Identifier(SPLITGRAPH_META_SCHEMA)), (repository.namespace, repository.repository, image, table_name))
         return cur.fetchall()

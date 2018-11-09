@@ -22,7 +22,7 @@ def register_repository(conn, repository, initial_image, tables, table_object_id
         cur.execute(insert("images", ("image_hash", "namespace", "repository", "parent_id", "created")),
                     (initial_image, repository.namespace, repository.repository, None, datetime.now()))
         # Strictly speaking this is redundant since the checkout (of the "HEAD" commit) updates the tag table.
-        cur.execute(insert("snap_tags", ("namespace", "repository", "image_hash", "tag")),
+        cur.execute(insert("tags", ("namespace", "repository", "image_hash", "tag")),
                     (repository.namespace, repository.repository, initial_image, "HEAD"))
         for t, ti in zip(tables, table_object_ids):
             # Register the tables and the object IDs they were stored under.
@@ -31,9 +31,13 @@ def register_repository(conn, repository, initial_image, tables, table_object_id
             register_table(conn, repository, t, initial_image, ti)
 
 
-def unregister_repository(conn, repository):
+def unregister_repository(conn, repository, is_remote=False):
+    # If is_remote is true, we treat conn as a connection to a remote that doesn't have the "remotes" table.
     with conn.cursor() as cur:
-        for meta_table in ["tables", "snap_tags", "images", "remotes"]:
+        meta_tables = ["tables", "tags", "images"]
+        if not is_remote:
+            meta_tables.append("remotes")
+        for meta_table in meta_tables:
             cur.execute(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s")
                         .format(Identifier(SPLITGRAPH_META_SCHEMA),
                                 Identifier(meta_table)),
@@ -43,7 +47,7 @@ def unregister_repository(conn, repository):
 def get_current_repositories(conn):
     ensure_metadata_schema(conn)
     with conn.cursor() as cur:
-        cur.execute(select("snap_tags", "namespace, repository, image_hash", "tag = 'HEAD'"))
+        cur.execute(select("tags", "namespace, repository, image_hash", "tag = 'HEAD'"))
         return [(Repository(n, r), i) for n, r, i in cur.fetchall()]
 
 

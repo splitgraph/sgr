@@ -16,22 +16,30 @@ from splitgraph.registry_meta_handler import publish_tag
 PREVIEW_SIZE = 100
 
 
-def publish(conn, repository, tag, readme="", include_provenance=True, include_table_previews=True):
+def publish(conn, repository, tag, remote_conn_string=None, remote_repository=None,
+            readme="", include_provenance=True, include_table_previews=True):
     """
     Summarizes the data on a previously-pushed repository and makes it available in the catalog.
 
     :param conn: Psycopg connection object.
     :param repository: Repository to be published. The repository must exist on the remote.
     :param tag: Image tag to be published.
+    :param remote_conn_string: Connection string to the remote
+    :param remote_repository: Remote repository name
     :param readme: Optional README for the repository.
     :param include_provenance: If False, doesn't include the dependencies of the image
     :param include_table_previews: Whether to include data previews for every table in the image.
     :return:
     """
-    remote_info = get_remote_for(conn, repository, 'origin')
+    remote_repository = remote_repository or repository
+
+    remote_info = get_remote_for(conn, repository, 'origin') if not remote_conn_string or not remote_repository\
+        else (remote_conn_string, remote_repository)
     if not remote_info:
         raise SplitGraphException("No remote found for repository %s. Has it been pushed?" % repository)
-    remote_conn_string, remote_mountpoint = remote_info
+
+    logging.info("REMOTE INFO: " + str(remote_info))
+    remote_conn_string, remote_repository = remote_info
     image_hash = get_tagged_id(conn, repository, tag)
     logging.info("Publishing %s:%s (%s)" % (repository, image_hash, tag))
 
@@ -55,7 +63,7 @@ def publish(conn, repository, tag, readme="", include_provenance=True, include_t
 
     remote_conn = make_conn(*parse_connection_string(remote_conn_string))
     try:
-        publish_tag(remote_conn, remote_mountpoint, tag, image_hash, datetime.now(), dependencies, readme,
+        publish_tag(remote_conn, remote_repository, tag, image_hash, datetime.now(), dependencies, readme,
                     schemata=schemata, previews=previews if include_table_previews else None)
         remote_conn.commit()
     finally:
