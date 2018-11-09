@@ -13,9 +13,10 @@ def _cleanup_minio():
                    access_key=S3_ACCESS_KEY,
                    secret_key=S3_SECRET_KEY,
                    secure=False)
-    objects = [o.object_name for o in client.list_objects(bucket_name=S3_ACCESS_KEY)]
-    # remove_objects is an iterator, so we force evaluate it
-    list(client.remove_objects(bucket_name=S3_ACCESS_KEY, objects_iter=objects))
+    if client.bucket_exists(S3_ACCESS_KEY):
+        objects = [o.object_name for o in client.list_objects(bucket_name=S3_ACCESS_KEY)]
+        # remove_objects is an iterator, so we force evaluate it
+        list(client.remove_objects(bucket_name=S3_ACCESS_KEY, objects_iter=objects))
 
 
 @pytest.fixture

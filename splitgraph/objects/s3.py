@@ -15,8 +15,6 @@ def _ensure_bucket(client, bucket):
         pass
     except BucketAlreadyExists:
         pass
-    except ResponseError:
-        raise
 
 
 def _s3_upload_objects(conn, objects_to_push, params):
