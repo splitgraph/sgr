@@ -4,7 +4,8 @@ install_requirements = [
     'click',
     'psycopg2-binary',
     'requests',
-    'parsimonious'
+    'parsimonious',
+    'minio',
 ]
 
 tests_requirements = [

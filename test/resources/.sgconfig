@@ -13,6 +13,9 @@ SG_DRIVER_ADMIN_PWD=supersecure
 SG_DRIVER_POSTGRES_DB_NAME=postgres
 SG_META_SCHEMA=splitgraph_meta
 
+SG_S3_KEY=clientuser
+SG_S3_PWD=supersecure
+
 ; Look up repositories on the test remote driver.
 SG_REPO_LOOKUP=remote_driver
 

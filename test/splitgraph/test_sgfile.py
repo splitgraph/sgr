@@ -1,8 +1,6 @@
 import os
-import tempfile
 
 import pytest
-
 from splitgraph.commands import checkout, commit, push, unmount, clone, get_log
 from splitgraph.commands.misc import cleanup_objects
 from splitgraph.constants import SplitGraphException, to_repository as R
@@ -170,36 +168,34 @@ def test_import_updating_sgfile_with_uploading(empty_pg_conn, remote_driver_conn
 
     assert len(get_existing_objects(empty_pg_conn)) == 4  # Two original tables + two updates
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Push with upload. Have to specify the remote connection string since we are pushing a new repository.
-        push(empty_pg_conn, OUTPUT, remote_conn_string=REMOTE_CONN_STRING, handler='FILE',
-             handler_options={'path': tmpdir})
-        # Unmount everything locally and cleanup
-        unmount(empty_pg_conn, OUTPUT)
-        cleanup_objects(empty_pg_conn)
-        assert not get_existing_objects(empty_pg_conn)
+    # Push with upload. Have to specify the remote connection string since we are pushing a new repository.
+    push(empty_pg_conn, OUTPUT, remote_conn_string=REMOTE_CONN_STRING, handler='S3', handler_options={})
+    # Unmount everything locally and cleanup
+    unmount(empty_pg_conn, OUTPUT)
+    cleanup_objects(empty_pg_conn)
+    assert not get_existing_objects(empty_pg_conn)
 
-        clone(empty_pg_conn, OUTPUT, download_all=False)
+    clone(empty_pg_conn, OUTPUT, download_all=False)
 
-        assert not get_downloaded_objects(empty_pg_conn)
-        existing_objects = list(get_existing_objects(empty_pg_conn))
-        assert len(existing_objects) == 4  # Two original tables + two updates
-        # Only 2 objects are stored externally (the other two have been on the remote the whole time)
-        assert len(get_external_object_locations(empty_pg_conn, existing_objects)) == 2
+    assert not get_downloaded_objects(empty_pg_conn)
+    existing_objects = list(get_existing_objects(empty_pg_conn))
+    assert len(existing_objects) == 4  # Two original tables + two updates
+    # Only 2 objects are stored externally (the other two have been on the remote the whole time)
+    assert len(get_external_object_locations(empty_pg_conn, existing_objects)) == 2
 
-        checkout(empty_pg_conn, OUTPUT, head)
-        with empty_pg_conn.cursor() as cur:
-            cur.execute("""SELECT fruit_id, name FROM output.my_fruits""")
-            assert cur.fetchall() == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]
+    checkout(empty_pg_conn, OUTPUT, head)
+    with empty_pg_conn.cursor() as cur:
+        cur.execute("""SELECT fruit_id, name FROM output.my_fruits""")
+        assert cur.fetchall() == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]
 
-            cur.execute("""SELECT vegetable_id, name FROM output.vegetables""")
-            assert sorted(cur.fetchall()) == [(1, 'cucumber'), (2, 'carrot')]
+        cur.execute("""SELECT vegetable_id, name FROM output.vegetables""")
+        assert sorted(cur.fetchall()) == [(1, 'cucumber'), (2, 'carrot')]
 
 
 def test_sgfile_end_to_end_with_uploading(empty_pg_conn, remote_driver_conn):
     # An end-to-end test:
     #   * Create a derived dataset from some tables imported from the remote driver
-    #   * Push it back to the remote driver, uploading all objects to "HTTP" (instead of the remote driver itself)
+    #   * Push it back to the remote driver, uploading all objects to S3 (instead of the remote driver itself)
     #   * Delete everything from pgcache
     #   * Run another sgfile that depends on the just-pushed dataset (and does lazy checkouts to
     #     get the required tables).
@@ -209,21 +205,20 @@ def test_sgfile_end_to_end_with_uploading(empty_pg_conn, remote_driver_conn):
     execute_commands(empty_pg_conn, _load_sgfile('import_remote_multiple.sgfile'), params={'TAG': 'v1'},
                      output=OUTPUT)
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Push with upload
-        push(empty_pg_conn, OUTPUT, remote_conn_string=REMOTE_CONN_STRING, handler='FILE',
-             handler_options={'path': tmpdir})
-        # Unmount everything locally and cleanup
-        for mountpoint, _ in get_current_repositories(empty_pg_conn):
-            unmount(empty_pg_conn, mountpoint)
-        cleanup_objects(empty_pg_conn)
+    # Push with upload
+    push(empty_pg_conn, OUTPUT, remote_conn_string=REMOTE_CONN_STRING, handler='S3',
+         handler_options={})
+    # Unmount everything locally and cleanup
+    for mountpoint, _ in get_current_repositories(empty_pg_conn):
+        unmount(empty_pg_conn, mountpoint)
+    cleanup_objects(empty_pg_conn)
 
-        execute_commands(empty_pg_conn, _load_sgfile('import_from_preuploaded_remote.sgfile'),
-                         output=R('output_stage_2'))
+    execute_commands(empty_pg_conn, _load_sgfile('import_from_preuploaded_remote.sgfile'),
+                     output=R('output_stage_2'))
 
-        with empty_pg_conn.cursor() as cur:
-            cur.execute("""SELECT id, name, fruit, vegetable FROM output_stage_2.diet""")
-            assert cur.fetchall() == [(2, 'James', 'orange', 'carrot')]
+    with empty_pg_conn.cursor() as cur:
+        cur.execute("""SELECT id, name, fruit, vegetable FROM output_stage_2.diet""")
+        assert cur.fetchall() == [(2, 'James', 'orange', 'carrot')]
 
 
 def test_sgfile_schema_changes(sg_pg_mg_conn):

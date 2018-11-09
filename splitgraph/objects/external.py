@@ -1,5 +1,5 @@
-from splitgraph.constants import SplitGraphException, SPLITGRAPH_META_SCHEMA
-from splitgraph.pg_utils import table_dump_generator
+from splitgraph.constants import SplitGraphException
+from splitgraph.objects.s3 import _s3_upload_objects, _s3_download_objects
 
 EXTERNAL_OBJECT_HANDLERS = {}
 
@@ -28,35 +28,6 @@ def register_upload_download_handler(name, upload_handler, download_handler):
     EXTERNAL_OBJECT_HANDLERS[name] = (upload_handler, download_handler)
 
 
-def _file_upload_objects(conn, objects_to_push, params):
-    # Mostly for testing purposes: dumps the objects into a file.
-    path = params['path']
-
-    uploaded = []
-    for object_id in objects_to_push:
-        remote_filename = object_id
-        # First cut: just push the dump without any compression.
-        with open(path + '/' + remote_filename, 'w') as f:
-            f.writelines(table_dump_generator(conn, SPLITGRAPH_META_SCHEMA, object_id))
-        uploaded.append(path + '/' + remote_filename)
-    return uploaded
-
-
-def _file_download_objects(conn, objects_to_fetch, params):
-    for i, obj in enumerate(objects_to_fetch):
-        object_id, object_url = obj
-        print("(%d/%d) %s -> %s" % (i + 1, len(objects_to_fetch), object_url, object_id))
-        with open(object_url, 'r') as f:
-            with conn.cursor() as cur:
-                # Insert into the locally checked out schema by default since the dump doesn't have the schema
-                # qualification.
-                cur.execute("SET search_path TO %s", (SPLITGRAPH_META_SCHEMA,))
-                for chunk in f.readlines():
-                    cur.execute(chunk)
-                # Set the schema to (presumably) the default one.
-                cur.execute("SET search_path TO public")
-
-
 # Register the default object handlers. Just like for the mount handlers, we'll probably expose this via a config
 # or allow the user to run their own bit of Python before sg gets invoked.
-register_upload_download_handler('FILE', upload_handler=_file_upload_objects, download_handler=_file_download_objects)
+register_upload_download_handler('S3', upload_handler=_s3_upload_objects, download_handler=_s3_download_objects)
