@@ -47,6 +47,15 @@ services:
       - ./data/remote_driver/setup.sql:/docker-entrypoint-initdb.d/setup.sql
     expose:
       - 5431
+  object_storage:
+    image: minio/minio
+    ports:
+     - "0.0.0.0:9000:9000"
+    environment:
+      MINIO_ACCESS_KEY: clientuser
+      MINIO_SECRET_KEY: supersecure
+    # Run against a temporary throwaway space
+    command: server /tmp
   ci_pgorigin:
     image: splitgraphci/pgorigin
     build: ./src/pgorigin

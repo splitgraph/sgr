@@ -15,6 +15,11 @@ DEFAULTS = {
     "SG_CONFIG_DIR": None,
     "SG_REPO_LOOKUP": "",
     "SG_REPO_LOOKUP_OVERRIDE": "",
+    "SG_S3_HOST": "localhost",
+    "SG_S3_PORT": "9000",
+    # Anonymous access by default
+    "SG_S3_KEY": None,
+    "SG_S3_PWD": None,
 }
 
 KEYS = list(DEFAULTS.keys())
@@ -38,7 +43,11 @@ ARGUMENT_KEY_MAP = {
     "--config-dirs": "SG_CONFIG_DIRS",
     "--config-dir": "SG_CONFIG_DIR",
     "--repo-lookup-path": "SG_REPO_LOOKUP",
-    "--repo-lookup-override": "SG_REPO_LOOKUP_OVERRIDE"
+    "--repo-lookup-override": "SG_REPO_LOOKUP_OVERRIDE",
+    "--s3-host": "SG_S3_HOST",
+    "--s3-port": "SG_S3_PORT",
+    "--s3-access-key": "SG_S3_KEY",
+    "--s3-secret-key": "SG_S3_PWD"
 }
 
 ARG_KEYS = list(ARGUMENT_KEY_MAP.keys())
