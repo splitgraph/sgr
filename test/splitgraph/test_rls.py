@@ -1,5 +1,6 @@
-import pytest
 import tempfile
+
+import pytest
 from psycopg2._psycopg import ProgrammingError
 from splitgraph.commands import clone, push, commit, checkout
 from splitgraph.commands.publish import publish
@@ -13,7 +14,7 @@ from splitgraph.meta_handler.tables import get_table
 from splitgraph.meta_handler.tags import get_tagged_id, set_tag
 from splitgraph.registry_meta_handler import get_published_info, unpublish_repository
 from test.splitgraph.conftest import PG_MNT
-from test.splitgraph.test_sgfile import _add_multitag_dataset_to_remote_driver
+from test.splitgraph.sgfile.test_execution import _add_multitag_dataset_to_remote_driver
 
 
 def _init_rls_test(remote_driver_conn):

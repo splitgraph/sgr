@@ -1,17 +1,18 @@
 import re
+import shlex
 
 from parsimonious import Grammar
-
 from splitgraph.constants import SplitGraphException, to_repository
 
 SGFILE_GRAMMAR = Grammar(r"""
     commands = space command space (newline space command space)*
-    command = comment / import / from / sql_file / sql 
+    command = comment / import / from / sql_file / sql / custom 
     comment = space "#" non_newline
     from = "FROM" space ("EMPTY" / repo_source) (space "AS" space repository)?
     import = "FROM" space source space "IMPORT" space tables
     sql_file = "SQL" space "FILE" space non_newline
     sql = "SQL" space sql_statement
+    custom = identifier space non_newline
     
     table = ((table_name / table_query) space "AS" space table_alias) / table_name
     
@@ -128,3 +129,11 @@ def extract_all_table_aliases(node):
         # No tables specified (imports all tables from the mounted db / repo)
         return [], [], []
     return zip(*[_parse_table_alias(table) for table in tables])
+
+
+def parse_custom_command(node):
+    """Splits the parse tree node (CMD arg1 --arg2 "arg 3") into a tuple (command, args)."""
+    repo_nodes = extract_nodes(node, ['identifier', 'non_newline'])
+    command = repo_nodes[0].match.group(0)
+    # Use the sh-like lexer to split args up so that e.g. 'arg1 --arg2 "arg 3"' turns into ['arg1', '--arg2', 'arg 3']
+    return command, shlex.split(repo_nodes[1].match.group(0))

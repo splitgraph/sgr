@@ -1,10 +1,12 @@
 import json
 from hashlib import sha256
+from importlib import import_module
 from random import getrandbits
 
 from splitgraph.commands import checkout, init, unmount, clone, import_tables, commit, image_hash_to_sgfile
 from splitgraph.commands.mount_handlers import get_mount_handler
 from splitgraph.commands.push_pull import local_clone, pull
+from splitgraph.config import CONFIG
 from splitgraph.config.repo_lookups import lookup_repo
 from splitgraph.constants import SplitGraphException, serialize_connection_string, Color, to_repository, Repository
 from splitgraph.meta_handler.misc import repository_exists
@@ -13,11 +15,7 @@ from splitgraph.meta_handler.provenance import store_import_provenance, store_sq
 from splitgraph.meta_handler.tags import get_current_head, tag_or_hash_to_actual_hash
 from splitgraph.pg_utils import execute_sql_in
 from splitgraph.sgfile.parsing import parse_commands, extract_nodes, get_first_or_none, parse_repo_source, \
-    extract_all_table_aliases
-
-
-def _canonicalize(sql):
-    return ' '.join(sql.lower().split())
+    extract_all_table_aliases, parse_custom_command
 
 
 def _combine_hashes(hashes):
@@ -25,6 +23,9 @@ def _combine_hashes(hashes):
 
 
 def _checkout_or_calculate_layer(conn, output, image_hash, calc_func):
+    # Future Optimization here: don't actually check the layer out if it exists -- only do it at sgfile execution
+    # end or when a command needs it.
+
     # Have we already calculated this hash?
     try:
         checkout(conn, output, image_hash)
@@ -78,6 +79,11 @@ def execute_commands(conn, commands, params=None, output=None, output_base='0' *
         elif node.expr_name == 'sql' or node.expr_name == 'sql_file':
             _initialize_output(output)
             _execute_sql(conn, node, output)
+
+        elif node.expr_name == 'custom':
+            _initialize_output(output)
+            _execute_custom(conn, node, output)
+
     conn.commit()
 
 
@@ -241,6 +247,56 @@ def _execute_repo_import(conn, repository, table_names, tag_or_hash, target_repo
         _checkout_or_calculate_layer(conn, target_repository, target_hash, _calc)
     finally:
         unmount(conn, tmp_repo)
+
+
+def _execute_custom(conn, node, output):
+    command, args = parse_custom_command(node)
+
+    # Locate the command in the config file and instantiate it.
+    cmd_fq_class = CONFIG.get('commands', {}).get(command)
+    if not cmd_fq_class:
+        raise SplitGraphException("Custom command {0} not found in the config! Make sure you add an entry to your"
+                                  " config like so:\n  [commands]  \n{0}=path.to.command.Class".format(command))
+
+    ix = cmd_fq_class.rindex('.')
+    try:
+        cmd_class = getattr(import_module(cmd_fq_class[:ix]), cmd_fq_class[ix + 1:])
+    except AttributeError as e:
+        raise SplitGraphException("Error loading custom command {0}".format(command), e)
+    except ImportError as e:
+        raise SplitGraphException("Error loading custom command {0}".format(command), e)
+
+    with conn.cursor() as cur:
+        cur.execute("SET search_path TO %s", (output.to_schema(),))
+    command = cmd_class(conn)
+
+    # Pre-flight check: get the new command hash and see if we can short-circuit and just check the image out.
+    command_hash = command.calc_hash(repository=output, args=args)
+    output_head = get_current_head(conn, output)
+
+    if command_hash is not None:
+        image_hash = _combine_hashes([output_head, command_hash])
+        try:
+            checkout(conn, output, image_hash)
+            print(" ---> Using cache")
+            return
+        except SplitGraphException:
+            pass
+
+    print(" Executing custom command...")
+    exec_hash = command.execute(repository=output, args=args)
+    command_hash = command_hash or exec_hash or "%0.2x" % getrandbits(256)
+
+    image_hash = _combine_hashes([output_head, command_hash])
+    print(" ---> %s" % image_hash[:12])
+
+    # Check just in case if the new hash produced by the command already exists.
+    try:
+        checkout(conn, output, image_hash)
+    except SplitGraphException:
+        # Full command as a commit comment
+        commit(conn, output, image_hash, comment=node.text)
+        # Worth storing provenance here anyway?
 
 
 def rerun_image_with_replacement(conn, mountpoint, image_hash, source_replacement):

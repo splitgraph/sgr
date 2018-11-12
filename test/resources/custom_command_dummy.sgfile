@@ -1,0 +1,4 @@
+FROM test/pg_mount IMPORT fruits
+
+# Doesn't do anything but returns None -- duplicates the previous image (no changes, random hash)
+DUMMY arg1 --arg2 "argument three"
