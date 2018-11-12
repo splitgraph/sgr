@@ -4,13 +4,13 @@ from .keys import ARG_KEYS, ARGUMENT_KEY_MAP
 
 
 def get_arg_tuples():
-    '''
+    """
         Get the raw (argN, argN+1) tuples from sys.argv
 
         We could also use click to parse the flags ahead of time, and then pass
         the parsed flag object into SystemConfigGetters. But this way, we avoid
         having to pass down variables from click just to get config values.
-    '''
+    """
 
     SYS_ARGS = sys.argv[1:]
 
@@ -18,7 +18,7 @@ def get_arg_tuples():
 
 
 def get_argument_config_value(key, default_return=None):
-    '''
+    """
         Get get the value of an argument, where value is the argument
         immediately following the argument matching a key in ARG_KEYS, e.g.:
 
@@ -26,7 +26,7 @@ def get_argument_config_value(key, default_return=None):
             --> return "foo"
 
         Otherwise, return default_return
-    '''
+    """
 
     arg_tuples = get_arg_tuples()
     matching_values = [v for k, v in arg_tuples if ARGUMENT_KEY_MAP[k] == key]

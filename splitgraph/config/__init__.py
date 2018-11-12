@@ -1,6 +1,6 @@
 from .config import create_config_dict
 
-''' The CONFIG object is created and exported once __at import time__
+""" The CONFIG object is created and exported once __at import time__
     Calling CONFIG["KEY"] directly should be sufficient in most cases,
     except when a config value has changed since importing CONFIG.
     In that case, create_config_dict() can provide an updated config dict
@@ -13,5 +13,5 @@ from .config import create_config_dict
         3. Config file values in [defaults] section
         4. DEFAULTS (see keys.py)
 
-'''
+"""
 CONFIG = create_config_dict()

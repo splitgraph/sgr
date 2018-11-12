@@ -24,9 +24,9 @@ DEFAULTS = {
 
 KEYS = list(DEFAULTS.keys())
 
-''' Warning: Every key in DEFAULTS must have a key in ARGUMENT_KEY_MAP
+""" Warning: Every key in DEFAULTS must have a key in ARGUMENT_KEY_MAP
     If you add/remove keys from DEFAULTS, make sure to do so here too.
-'''
+"""
 ARGUMENT_KEY_MAP = {
     "--namespace": "SG_NAMESPACE",
     "--driver-connection-string": "SG_DRIVER_CONNECTION_STRING",

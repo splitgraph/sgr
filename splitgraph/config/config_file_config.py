@@ -1,8 +1,8 @@
 from configparser import ConfigParser, ExtendedInterpolation
-import os
+
 
 def hoist_section(config_dict, hoist_section='defaults'):
-    '''
+    """
         If a section exists called <hoist_section>, hoist it to the top level
         This is useful for overriding default configs from within a config file
 
@@ -11,7 +11,7 @@ def hoist_section(config_dict, hoist_section='defaults'):
         when the name of the section matches `hoist_section`.
 
         Return a new, updated copy of `config_dict`.
-    '''
+    """
 
     if hoist_section not in config_dict.keys():
         return config_dict
@@ -29,7 +29,7 @@ def hoist_section(config_dict, hoist_section='defaults'):
 
 
 def accumulate_lists(config_dict):
-    '''
+    """
         Transform a `config_dict` to "accumulate" objects "nested" via key name
 
         Because  ConfigParser does not support nesting, we implement our own
@@ -60,7 +60,7 @@ def accumulate_lists(config_dict):
                               ----->
 
         Return a new, updated copy of `config_dict`
-    '''
+    """
 
     new_dict = config_dict.copy()
 
@@ -106,18 +106,19 @@ def accumulate_lists(config_dict):
 
 
 def transform_config_dict(config_dict, **kwargs):
-    '''
+    """
         Apply transformations to the raw ConfigParser.config object
 
             1) hoist_section
             2) accumulate_lists
 
         Return the a new, updated copy of `config_dict`.
-    '''
+    """
 
     config_dict = hoist_section(config_dict, **kwargs)
     config_dict = accumulate_lists(config_dict, **kwargs)
     return config_dict
+
 
 # TODO: Get this cleaned up for parsing environment variables as default
 #
@@ -146,11 +147,11 @@ def get_config_dict_from_file(sg_file, **kwargs):
 
 
 def get_config_dict_from_config_file(sg_file, **kwargs):
-    '''
+    """
         Create a dict from ConfigParser, apply transformations to it.
 
         Return parsed and transformed `config_dict`.
-    '''
+    """
 
     config_dict = get_config_dict_from_file(sg_file, **kwargs)
     config_dict = transform_config_dict(config_dict, **kwargs)
