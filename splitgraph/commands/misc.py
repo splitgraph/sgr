@@ -141,7 +141,7 @@ def cleanup_objects(conn, include_external=False):
         # the object downloader interface.
         if include_external:
             cur.execute(SQL("SELECT object_id FROM {}.object_locations").format(Identifier(SPLITGRAPH_META_SCHEMA)))
-            to_delete += set(c[0] for c in cur.fetchall())
+            to_delete = to_delete.union(set(c[0] for c in cur.fetchall()))
 
     delete_objects(conn, to_delete)
     return to_delete

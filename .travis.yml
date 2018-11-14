@@ -17,6 +17,10 @@ addons:
     # using the same connection string, hence we map remote_driver on the host to localhost
     # (Docker networking takes care of wiring it up in the case of the container)
     - remote_driver
+  apt:
+    packages:
+      # external object tests use pg_dump/restore that is supposed to be able to talk to pg10
+      - postgresql-client-10
 
 env:
   COMPOSE_VERSION: 1.21.2
