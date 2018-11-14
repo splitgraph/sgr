@@ -14,7 +14,7 @@ from splitgraph.meta_handler.tables import get_table
 from splitgraph.meta_handler.tags import get_current_head, get_tagged_id, set_tag
 from splitgraph.registry_meta_handler import get_published_info
 from test.splitgraph.conftest import PG_MNT, MG_MNT, OUTPUT
-from test.splitgraph.test_sgfile import SGFILE_ROOT, _add_multitag_dataset_to_remote_driver
+from test.splitgraph.sgfile.test_execution import SGFILE_ROOT, _add_multitag_dataset_to_remote_driver
 
 
 def test_commandline_basics(sg_pg_mg_conn):

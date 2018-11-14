@@ -9,10 +9,10 @@ from .system_config import get_system_config_value
 
 
 def lazy_get_config_value(key, default_return=None):
-    '''
+    """
         Get the config value for a key in the following precedence
         Otherwise return default_return
-    '''
+    """
 
     return (
             get_argument_config_value(key, None)
@@ -24,12 +24,12 @@ def lazy_get_config_value(key, default_return=None):
 
 
 def update_config_dict_from_arguments(config_dict):
-    '''
+    """
         Given an existing config_dict, update after reading sys.argv
         and overwriting any keys.
 
         Return updated copy of config_dict.
-    '''
+    """
     new_config_dict = config_dict.copy()
     argument_config_dict = {k: get_argument_config_value(k, None) for k in KEYS if
                             get_argument_config_value(k) is not None}
@@ -38,12 +38,12 @@ def update_config_dict_from_arguments(config_dict):
 
 
 def update_config_dict_from_env_vars(config_dict):
-    '''
+    """
         Given an existing config_dict, update after reading os.environ
         and overwriting any keys.
 
         Return updated copy of config_dict.
-    '''
+    """
 
     new_config_dict = config_dict.copy()
     argument_config_dict = {k: get_environment_config_value(k, None) for k in KEYS if
@@ -54,12 +54,12 @@ def update_config_dict_from_env_vars(config_dict):
 
 
 def update_config_dict_from_file(config_dict, sg_config_file):
-    '''
+    """
         Given an existing config_dict, update after reading sg_config_file
         and overwriting any keys according to the rules in config_file_config
 
         Return updated copy of config_dict.
-    '''
+    """
 
     new_config_dict = config_dict.copy()
     config_file_dict = get_config_dict_from_config_file(sg_config_file)
@@ -69,9 +69,9 @@ def update_config_dict_from_file(config_dict, sg_config_file):
 
 
 def create_config_dict():
-    '''
+    """
         Create and return a dict of all known config values
-    '''
+    """
 
     config_dict = {k: lazy_get_config_value(k) for k in KEYS}
 

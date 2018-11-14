@@ -4,11 +4,11 @@ import sys
 from .argument_config import get_argument_config_value
 from .environment_config import get_environment_config_value
 
-''' "Export" an object of SystemConfigGetters, for getting config values that
+""" "Export" an object of SystemConfigGetters, for getting config values that
     require operations with the system, like checking if files exist.
 
     Don't forget to add each method definiton to the object after defining it.
-'''
+"""
 SystemConfigGetters = {}
 
 VALID_CONFIG_FILE_NAMES = [

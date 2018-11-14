@@ -6,7 +6,7 @@ from splitgraph.meta_handler.tags import get_current_head, get_tagged_id, set_ta
 from splitgraph.registry_meta_handler import get_published_info
 from splitgraph.sgfile import execute_commands
 from test.splitgraph.conftest import REMOTE_CONN_STRING, OUTPUT, PG_MNT
-from test.splitgraph.test_sgfile import _add_multitag_dataset_to_remote_driver, _load_sgfile
+from test.splitgraph.sgfile.test_execution import _add_multitag_dataset_to_remote_driver, _load_sgfile
 
 
 @pytest.mark.parametrize('extra_info', [True, False])

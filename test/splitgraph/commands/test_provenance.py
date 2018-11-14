@@ -4,7 +4,7 @@ from splitgraph.meta_handler.tags import get_current_head, get_tagged_id
 from splitgraph.sgfile import execute_commands
 from splitgraph.sgfile.execution import rerun_image_with_replacement
 from test.splitgraph.conftest import OUTPUT, PG_MNT
-from test.splitgraph.test_sgfile import _load_sgfile, _add_multitag_dataset_to_remote_driver
+from test.splitgraph.sgfile.test_execution import _load_sgfile, _add_multitag_dataset_to_remote_driver
 
 
 def test_provenance(empty_pg_conn, remote_driver_conn):

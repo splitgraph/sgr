@@ -14,7 +14,7 @@ from splitgraph.sgfile.execution import execute_commands
 from splitgraph.sgfile.parsing import preprocess
 from test.splitgraph.conftest import REMOTE_CONN_STRING, OUTPUT, PG_MNT
 
-SGFILE_ROOT = os.path.join(os.path.dirname(__file__), '../resources/')
+SGFILE_ROOT = os.path.join(os.path.dirname(__file__), '../../resources/')
 
 
 def _load_sgfile(name):

@@ -1,7 +1,7 @@
 from splitgraph.drawing import render_tree
 from splitgraph.sgfile.execution import execute_commands
 from test.splitgraph.conftest import OUTPUT
-from test.splitgraph.test_sgfile import _load_sgfile
+from test.splitgraph.sgfile.test_execution import _load_sgfile
 
 
 def test_drawing(sg_pg_mg_conn):
