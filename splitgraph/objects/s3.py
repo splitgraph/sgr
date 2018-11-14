@@ -32,11 +32,11 @@ def _s3_upload_objects(conn, objects_to_push, params):
     with tempfile.TemporaryDirectory() as tmpdir:
         for object_id in objects_to_push:
             # First cut: dump the object to file and then upload it using Minio
-            tmp_path = tmpdir + '/' + object_id + '.gz'
-            dump_object_to_file(conn, object_id, tmp_path)
-            client.fput_object(bucket, object_id + '.gz', tmp_path)
+            tmp_path = tmpdir + '/' + object_id
+            dump_object_to_file(object_id, tmp_path)
+            client.fput_object(bucket, object_id, tmp_path)
 
-            urls.append('%s/%s/%s' % (endpoint, bucket, object_id + '.gz'))
+            urls.append('%s/%s/%s' % (endpoint, bucket, object_id))
     return urls
 
 
@@ -58,4 +58,4 @@ def _s3_download_objects(conn, objects_to_fetch, params):
 
             local_path = tmpdir + '/' + remote_object
             client.fget_object(bucket, remote_object, local_path)
-            load_object_from_file(conn, local_path)
+            load_object_from_file(local_path)

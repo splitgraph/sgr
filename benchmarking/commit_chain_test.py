@@ -1,17 +1,40 @@
+import os
+os.environ['SG_CONFIG_FILE'] = 'test/resources/.sgconfig'
+
+from minio import Minio
+from splitgraph.commands.misc import cleanup_objects, make_conn
+from splitgraph.config.repo_lookups import get_remote_connection_params
+
+
 from datetime import datetime
 from random import getrandbits, randrange
 
 from psycopg2.extras import execute_batch
 
+
 from splitgraph.commandline import _conn
 from splitgraph.commands import *
+from splitgraph.constants import to_repository, serialize_connection_string, S3_HOST, S3_PORT, S3_ACCESS_KEY, \
+    S3_SECRET_KEY
 from splitgraph.meta_handler.tags import get_current_head
 
-MOUNTPOINT = "splitgraph_benchmark"
+MOUNTPOINT = to_repository("splitgraph_benchmark")
+PG_MNT = to_repository('test/pg_mount')
+
+
+def _cleanup_minio():
+    client = Minio('%s:%s' % (S3_HOST, S3_PORT),
+                   access_key=S3_ACCESS_KEY,
+                   secret_key=S3_SECRET_KEY,
+                   secure=False)
+    if client.bucket_exists(S3_ACCESS_KEY):
+        objects = [o.object_name for o in client.list_objects(bucket_name=S3_ACCESS_KEY)]
+        # remove_objects is an iterator, so we force evaluate it
+        list(client.remove_objects(bucket_name=S3_ACCESS_KEY, objects_iter=objects))
 
 
 def create_random_table(conn, mountpoint, table, N=1000):
-    fq_table = mountpoint + '.' + table
+    fq_table = mountpoint.to_schema() + '.' + table
 
     with conn.cursor() as cur:
         cur.execute("""CREATE TABLE %s (id numeric, value varchar, primary key (id))""" % fq_table)
@@ -23,7 +46,7 @@ def create_random_table(conn, mountpoint, table, N=1000):
 
 
 def alter_random_row(conn, mountpoint, table, table_size, update_size):
-    fq_table = mountpoint + '.' + table
+    fq_table = mountpoint.to_schema() + '.' + table
     with conn.cursor() as cur:
         to_update = []
         for _ in range(update_size):
@@ -51,10 +74,10 @@ def bench_commit_chain_checkout(commits, table_size, update_size):
 
 if __name__ == '__main__':
     conn = _conn()
-    for _ in range(3):
-        table_size = 100000
+    for _ in range(1):
+        table_size = 1000000
         update_size = 1000
-        commits = 100
+        commits = 10
 
         unmount(conn, MOUNTPOINT)
         init(conn, MOUNTPOINT)
@@ -84,3 +107,31 @@ if __name__ == '__main__':
         #
         # ps = pstats.Stats('checkout_fast.cprofile')
         # ps_2 = pstats.Stats('checkout.cprofile')
+
+    _cleanup_minio()
+    remote_conn = make_conn(*get_remote_connection_params('remote_driver'))
+    unmount(remote_conn, PG_MNT)
+    cleanup_objects(remote_conn, include_external=True)
+    remote_conn.commit()
+    remote_conn.close()
+
+    print(datetime.now())
+    push(conn, MOUNTPOINT, remote_repository=PG_MNT, handler='S3',
+         handler_options={},
+         remote_conn_string=serialize_connection_string(*get_remote_connection_params('remote_driver')))
+    print("UPLOADED")
+    print(datetime.now())
+
+    unmount(conn, MOUNTPOINT)
+    cleanup_objects(conn)
+
+    print(datetime.now())
+    print("STARTING CLONE + DOWNLOAD")
+    clone(conn, PG_MNT, local_repository=MOUNTPOINT, download_all=True)
+    print(datetime.now())
+    print("STARTING CHECKOUT")
+    checkout(conn, MOUNTPOINT, tag='latest')
+    print("CHECKOUT DONE")
+    print(datetime.now())
+
+
