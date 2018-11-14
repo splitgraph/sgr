@@ -118,24 +118,6 @@ def get_full_table_schema(conn, schema, table_name):
     return [(o, n, dt, (n in pks)) for o, n, dt in results]
 
 
-def table_dump_generator(conn, schema, table):
-    """Returns an iterator that generates a SQL table dump, non-schema qualified."""
-    # Don't include a schema qualifier since the dump might be imported into a different place.
-    yield (dump_table_creation(conn, schema, [table], created_schema=None) + SQL(';\n')).as_string(conn).encode('utf-8')
-
-    # Use a server-side cursor here so we don't fetch the whole db into memory immediately.
-    with conn.cursor(name='sg_table_upload_cursor') as cur:
-        cur.itersize = 10000
-        cur.execute(SQL("SELECT * FROM {}.{}""").format(Identifier(schema), Identifier(table)))
-        row = next(cur)
-        q = '(' + ','.join('%s' for _ in row) + ')'
-        yield cur.mogrify(SQL("INSERT INTO {} VALUES " + q).format(Identifier(table)), row)
-        for row in cur:
-            yield cur.mogrify(',' + q, row)
-        yield ';\n'.encode('utf-8')
-    return
-
-
 def execute_sql_in(conn, schema, sql):
     """
     Executes a non-schema-qualified query against a specific schema, using PG's search_path.
