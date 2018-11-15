@@ -1,7 +1,6 @@
 import logging
 
 from psycopg2.sql import Identifier, SQL
-
 from splitgraph.constants import SplitGraphException
 
 MOUNT_HANDLERS = {}
@@ -99,6 +98,41 @@ def mount_mongo(conn, mountpoint, server, port, username, password, **table_spec
             cur.execute(query, (db, coll))
 
 
+def mount_mysql(conn, mountpoint, server, port, username, password, remote_schema, tables=[]):
+    """
+    Mounts a schema on a remote MySQL database as a set of foreign tables locally.
+
+    :param conn: Psycopg connection object.
+    :param mountpoint: Schema to mount the remote into.
+    :param server: Database hostname.
+    :param port: Database port
+    :param username: A read-only user that the database will be accessed as.
+    :param password: Password for the read-only user.
+    :param dbname: Remote database name.
+    :param remote_schema: Remote schema name.
+    :param tables: Tables to mount (default all).
+    """
+    with conn.cursor() as cur:
+        logging.info("Mounting foreign MySQL database...")
+        server_id = Identifier(mountpoint + '_server')
+
+        cur.execute(SQL("""CREATE SERVER {}
+                        FOREIGN DATA WRAPPER mysql_fdw
+                        OPTIONS (host %s, port %s)""").format(server_id), (server, str(port)))
+        cur.execute(SQL("""CREATE USER MAPPING FOR clientuser
+                        SERVER {}
+                        OPTIONS (username %s, password %s)""").format(server_id), (username, password))
+
+        cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(mountpoint)))
+
+        query = "IMPORT FOREIGN SCHEMA {} "
+        if tables:
+            query += "LIMIT TO (" + ",".join("%s" for _ in tables) + ") "
+        query += "FROM SERVER {} INTO {}"
+        cur.execute(SQL(query).format(Identifier(remote_schema), server_id, Identifier(mountpoint)), tables)
+
+
 # Register the default mount handlers. Maybe in the future we can put this into the config instead.
 register_mount_handler("postgres_fdw", mount_postgres)
 register_mount_handler("mongo_fdw", mount_mongo)
+register_mount_handler("mysql_fdw", mount_mysql)
