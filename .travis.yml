@@ -31,10 +31,11 @@ before_install:
   - sudo mv docker-compose /usr/local/bin
 
 before_script:
-  # Stop the PG that ships with Travis and run our own integration test
+  # Stop the PG/MySQL that ship with Travis and run our own integration test
   # SG driver/remote architecture instead.
   - sudo /etc/init.d/postgresql stop
-  - sudo docker-compose --file test/architecture/docker-compose.yml up -d pgorigin mongoorigin local_driver remote_driver object_storage
+  - sudo /etc/init.d/mysql stop
+  - sudo docker-compose --file test/architecture/docker-compose.yml up -d pgorigin mongoorigin mysqlorigin local_driver remote_driver object_storage
   - ./wait-for-test-architecture.sh
 
 after_success:

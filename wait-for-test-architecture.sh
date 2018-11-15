@@ -7,7 +7,7 @@ for i in `seq 10` ; do
     echo "Test architecture ready, let's roll!" >&2
     exit 0
   fi
-  sleep 1
+  sleep 5
 done
 echo "Timeout bringing up the architecture" >&2
 exit 1
