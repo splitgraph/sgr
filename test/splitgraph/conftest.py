@@ -13,6 +13,7 @@ from splitgraph.registry_meta_handler import ensure_registry_schema, unpublish_r
 PG_MNT = R('test/pg_mount')
 PG_MNT_PULL = R('test_pg_mount_pull')
 MG_MNT = R('test_mg_mount')
+MYSQL_MNT = R('test/mysql_mount')
 OUTPUT = R('output')
 
 
@@ -41,7 +42,15 @@ def _mount_mongo(conn, repository):
     unmount(conn, R('tmp'))
 
 
-TEST_MOUNTPOINTS = [PG_MNT, PG_MNT_PULL, OUTPUT, MG_MNT, R('output_stage_2'), R('testuser/pg_mount')]
+def _mount_mysql(conn, repository):
+    # We don't use this one in tests beyond basic mounting, so no point importing it.
+    mount(conn, repository.to_schema(), "mysql_fdw", dict(
+        dict(server='mysqlorigin', port=3306, username='originuser', password='originpass',
+             remote_schema="mysqlschema")))
+
+
+TEST_MOUNTPOINTS = [PG_MNT, PG_MNT_PULL, OUTPUT, MG_MNT,
+                    R('output_stage_2'), R('testuser/pg_mount'), MYSQL_MNT]
 
 
 def healthcheck():
@@ -50,18 +59,23 @@ def healthcheck():
     # here since we don't touch the remote_driver but we don't run any tests against it until later on,
     # so it should have enough time to start up.
     conn = _conn()
-    for mountpoint in [PG_MNT, MG_MNT]:
+    for mountpoint in [PG_MNT, MG_MNT, MYSQL_MNT]:
         unmount(conn, mountpoint)
     _mount_postgres(conn, PG_MNT)
     _mount_mongo(conn, MG_MNT)
-    with conn.cursor() as cur:
-        cur.execute('SELECT COUNT(*) FROM "test/pg_mount".fruits')
-        assert cur.fetchone()[0] > 0
-        cur.execute('SELECT COUNT(*) FROM "test_mg_mount".stuff')
-        assert cur.fetchone()[0] > 0
-    for mountpoint in [PG_MNT, MG_MNT]:
-        unmount(conn, mountpoint)
-    conn.close()
+    _mount_mysql(conn, MYSQL_MNT)
+    try:
+        with conn.cursor() as cur:
+            cur.execute('SELECT COUNT(*) FROM "test/pg_mount".fruits')
+            assert cur.fetchone()[0] > 0
+            cur.execute('SELECT COUNT(*) FROM "test_mg_mount".stuff')
+            assert cur.fetchone()[0] > 0
+            cur.execute('SELECT COUNT(*) FROM "test/mysql_mount".mushrooms')
+            assert cur.fetchone()[0] > 0
+    finally:
+        for mountpoint in [PG_MNT, MG_MNT, MYSQL_MNT]:
+            unmount(conn, mountpoint)
+        conn.close()
 
 
 @pytest.fixture
