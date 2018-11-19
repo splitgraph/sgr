@@ -20,8 +20,8 @@ sys.path.insert(0, os.path.abspath('..'))
 # -- Project information -----------------------------------------------------
 
 project = 'Splitgraph'
-copyright = '2018, Splitgraph, Inc'
-author = 'Splitgraph, Inc'
+copyright = '2018, Splitgraph Limited'
+author = 'Splitgraph Limited'
 
 # The short X.Y version
 version = ''
@@ -130,7 +130,7 @@ latex_elements = {
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
     (master_doc, 'Splitgraph.tex', 'Splitgraph Documentation',
-     'Splitgraph, Inc', 'manual'),
+     'Splitgraph Limited', 'manual'),
 ]
 
 # -- Options for manual page output ------------------------------------------

@@ -20,6 +20,14 @@ splitgraph.sgfile.parsing module
     :undoc-members:
     :show-inheritance:
 
+splitgraph.sgfile.plugins module
+--------------------------------
+
+.. automodule:: splitgraph.sgfile.plugins
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
 
 Module contents
 ---------------

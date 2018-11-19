@@ -182,10 +182,9 @@ def push(conn, local_repository, remote_conn_string=None, remote_repository=None
         `username:password@hostname:port/database.`
     :param remote_repository: Remote repository to push changes to.
     :param local_repository: Local repository to push changes from.
-    :param handler: Name of the handler to use to upload objects. Use `DB` to push them to the remote, `FILE`
-        to store them in a directory that can be accessed from the client and `HTTP` to upload them to HTTP.
-    :param handler_options: For `HTTP`, a dictionary `{"username": username, "password", password}`. For `FILE`,
-        a dictionary `{"path": path}` specifying the directory where the objects shall be saved.
+    :param handler: Name of the handler to use to upload objects. Use `DB` to push them to the remote or `S3`
+        to store them in an S3 bucket.
+    :param handler_options: For `S3`, a dictionary `{"username": username, "password", password}`.
     """
     if handler_options is None:
         handler_options = {}

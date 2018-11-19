@@ -59,7 +59,7 @@ def accumulate_lists(config_dict):
                                 |
                               ----->
 
-        Return a new, updated copy of `config_dict`
+        :return a new, updated copy of `config_dict`
     """
 
     new_dict = config_dict.copy()
