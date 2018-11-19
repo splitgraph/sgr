@@ -59,7 +59,11 @@ class Color:
 
 
 class Repository(namedtuple('Repository', ['namespace', 'repository'])):
+    """
+    A repository object that encapsulates the namespace and the actual repository name.
+    """
     def to_schema(self):
+        """Converts the object to a Postgres schema."""
         return self.repository if not self.namespace else self.namespace + '/' + self.repository
 
     __repr__ = to_schema
@@ -67,6 +71,7 @@ class Repository(namedtuple('Repository', ['namespace', 'repository'])):
 
 
 def to_repository(schema):
+    """Converts a Postgres schema name of the format `namespace/repository` to a Splitgraph repository object."""
     if '/' in schema:
         namespace, repository = schema.split('/')
         return Repository(namespace, repository)

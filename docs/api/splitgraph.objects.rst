@@ -20,6 +20,14 @@ splitgraph.objects.creation module
     :undoc-members:
     :show-inheritance:
 
+splitgraph.objects.dumping module
+---------------------------------
+
+.. automodule:: splitgraph.objects.dumping
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
 splitgraph.objects.external module
 ----------------------------------
 
@@ -32,6 +40,14 @@ splitgraph.objects.loading module
 ---------------------------------
 
 .. automodule:: splitgraph.objects.loading
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+splitgraph.objects.s3 module
+----------------------------
+
+.. automodule:: splitgraph.objects.s3
     :members:
     :undoc-members:
     :show-inheritance:

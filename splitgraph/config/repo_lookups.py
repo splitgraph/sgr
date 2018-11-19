@@ -27,6 +27,7 @@ def lookup_repo(conn, repo_name, include_local=False):
     :param conn: Psycopg connection object
     :param repo_name: Repository name
     :param include_local: If True, also queries the local driver
+
     :return: A tuple of (server, port, username, password, dbname) to the remote repo or "LOCAL" if the
         local driver has the repository.
     """

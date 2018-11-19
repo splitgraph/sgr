@@ -88,3 +88,19 @@ returned by the command would still have the same hash.
 
 In the future, it might be worth basing the new hash on the hash of the objects that the query actually interacts with
 (as inputs or outputs), but this will require actually parsing the query.
+
+Custom command plugins
+----------------------
+
+It is possible to define custom SGFile commands that follow the normal SGFile execution semantics (cache invalidation
+and idempotency), allowing you to write your own transformation or data import stages.
+
+The basic idea is that a custom command extends `PluginCommand` and implements at least one method, `execute()` that
+runs the command and returns the command context hash which is combined with the hash of the previous image to
+create the hash of the new image. Additionally, the custom command can also implement `calc_hash()` if it's able to
+calculate the command context hash without actually running the command.
+
+For example, for a simple data importer that loads a file from HTTP, `calc_hash()` could return the hash of the file's
+last modified timestamp and `execute()` would perform the actual computation-heavy data import.
+
+See :mod:`splitgraph.sgfile.plugins` for the implementation details.

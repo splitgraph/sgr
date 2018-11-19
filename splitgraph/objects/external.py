@@ -1,5 +1,5 @@
 from splitgraph.constants import SplitGraphException
-from splitgraph.objects.s3 import _s3_upload_objects, _s3_download_objects
+from splitgraph.objects.s3 import s3_upload_objects, s3_download_objects
 
 EXTERNAL_OBJECT_HANDLERS = {}
 
@@ -30,4 +30,4 @@ def register_upload_download_handler(name, upload_handler, download_handler):
 
 # Register the default object handlers. Just like for the mount handlers, we'll probably expose this via a config
 # or allow the user to run their own bit of Python before sg gets invoked.
-register_upload_download_handler('S3', upload_handler=_s3_upload_objects, download_handler=_s3_download_objects)
+register_upload_download_handler('S3', upload_handler=s3_upload_objects, download_handler=s3_download_objects)

@@ -17,8 +17,18 @@ def _ensure_bucket(client, bucket):
         pass
 
 
-def _s3_upload_objects(conn, objects_to_push, params):
-    """Uploads the objects to S3/S3-compatible host using the Minio client."""
+def s3_upload_objects(conn, objects_to_push, params):
+    """Uploads the objects to S3/S3-compatible host using the Minio client.
+
+    :param objects_to_push: List of object IDs to upload
+    :param params: A dictionary of parameters overriding the .sgconfig:
+
+        * host: default SG_S3_HOST
+        * port: default SG_S3_PORT
+        * access_key: default SG_S3_KEY
+        * bucket: default same as access_key
+        * secret_key: default SG_S3_PWD
+    """
     access_key = params.get('access_key', S3_ACCESS_KEY)
     endpoint = '%s:%s' % (params.get('host', S3_HOST), params.get('port', S3_PORT))
     bucket = params.get('bucket', access_key)
@@ -40,7 +50,7 @@ def _s3_upload_objects(conn, objects_to_push, params):
     return urls
 
 
-def _s3_download_objects(conn, objects_to_fetch, params):
+def s3_download_objects(conn, objects_to_fetch, params):
     # Maybe here we have to set these to None (anonymous) if the S3 host name doesn't match our own one.
     access_key = params.get('access_key', S3_ACCESS_KEY)
     secret_key = params.get('secret_key', S3_SECRET_KEY)
