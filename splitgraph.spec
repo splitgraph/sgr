@@ -1,6 +1,8 @@
 # -*- mode: python -*-
-# Running: pyinstaller -F splitgraph.spec produces a single sgr binary in the dist/ folder
-# with libc being the only dynamic dependency (python interpreter included)
+# Running:
+# * pyinstaller -F splitgraph.spec produces a single sgr binary in the dist/ folder
+#   with libc being the only dynamic dependency (python interpreter included)
+# * can also do poetry install && poetry run -F splitgraph.spec to build the binary inside of the poetry's venv.
 
 block_cipher = None
 
