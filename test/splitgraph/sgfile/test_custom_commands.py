@@ -1,5 +1,8 @@
 import pytest
-from mock import patch
+try:
+    from unittest.mock import patch
+except ImportError:
+    from mock import patch
 from psycopg2.sql import Identifier, SQL
 from splitgraph.commands import get_log, commit
 from splitgraph.constants import SplitGraphException
