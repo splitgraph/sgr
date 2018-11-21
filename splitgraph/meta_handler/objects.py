@@ -5,6 +5,12 @@ from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler.common import select, insert
 
 
+def get_full_object_tree(conn):
+    with conn.cursor() as cur:
+        cur.execute(select("objects", "object_id,parent_id,format"))
+        return cur.fetchall()
+
+
 def get_object_parents(conn, object_id):
     with conn.cursor() as cur:
         cur.execute(select("objects", "parent_id", "object_id = %s"), (object_id,))
