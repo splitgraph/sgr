@@ -1,11 +1,11 @@
+from collections import defaultdict
 from datetime import datetime
 
 from psycopg2.extras import Json, NamedTupleCursor
 from psycopg2.sql import SQL
-
 from splitgraph.constants import SplitGraphException
 from splitgraph.meta_handler.common import select, insert
-from splitgraph.meta_handler.objects import get_object_format, get_object_parents
+from splitgraph.meta_handler.objects import get_full_object_tree
 from splitgraph.meta_handler.tables import get_object_for_table
 
 IMAGE_COLS = "image_hash, parent_id, created, comment, provenance_type, provenance_data"
@@ -50,13 +50,24 @@ def get_closest_parent_image_object(conn, repository, table, image):
         return object_id, path
 
     object_id = get_object_for_table(conn, repository, table, image, object_format='DIFF')
+
+    # Here, we have to follow the object tree up until we encounter a parent of type SNAP -- firing a query
+    # for every object is a massive bottleneck.
+    # This could be done with a recursive PG query in the future, but currently we just load the whole tree
+    # and crawl it in memory.
+    object_tree = defaultdict(list)
+    for oid, pid, object_format in get_full_object_tree(conn):
+        object_tree[oid].append((pid, object_format))
+
     while object_id is not None:
         path.append(object_id)
-        parents = get_object_parents(conn, object_id)
-        for object_id in parents:
-            if get_object_format(conn, object_id) == 'SNAP':
-                return object_id, path
-            break  # Found 1 diff, will be added to the path at the next iteration.
+        for parent_id, object_format in object_tree[object_id]:
+            # Check the _parent_'s format -- if it's a SNAP, we're done
+            if object_tree[parent_id][0][1] == 'SNAP':
+                return parent_id, path
+            else:
+                object_id = parent_id
+                break  # Found 1 diff, will be added to the path at the next iteration.
 
     # We didn't find an actual snapshot for this table -- something's wrong with the object tree.
     raise SplitGraphException("Couldn't find a SNAP object for %s (malformed object tree)" % table)
