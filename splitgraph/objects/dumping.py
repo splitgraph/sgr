@@ -1,3 +1,4 @@
+import gzip
 import json
 import logging
 
@@ -13,7 +14,7 @@ from splitgraph.pg_utils import get_full_table_schema, create_table
 # out of/into postgres as fast as possible.
 
 def dump_object_to_file(conn, object_id, path):
-    with open(path, 'wb') as f:
+    with gzip.open(path, 'wb') as f:
         schema = json.dumps(get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, object_id))
         f.write(schema.encode('utf-8') + b'\0')
         with conn.cursor() as cur:
@@ -23,7 +24,7 @@ def dump_object_to_file(conn, object_id, path):
 
 def load_object_from_file(conn, object_id, path):
     logging.info("Loading %s from %s", object_id, path)
-    with open(path, 'rb') as f:
+    with gzip.open(path, 'rb') as f:
         chars = b''
         # Read until the delimiter separating a JSON schema from the Postgres copy_to dump.
         # Surely this is buffered?
