@@ -1,11 +1,11 @@
+import json
+import re
 import sys
 from collections import Counter, defaultdict
+from pprint import pprint
 
 import click
-import json
 import psycopg2
-import re
-from pprint import pprint
 from psycopg2 import ProgrammingError
 from splitgraph.commands import mount, unmount, commit, checkout, diff, get_log, init, get_parent_children, pull, \
     clone, push, import_tables
@@ -281,7 +281,8 @@ def pull_c(repository, remote, download_all):
 @click.command(name='clone')
 @click.argument('remote_repository', type=to_repository)
 @click.argument('local_repository', required=False, type=to_repository)
-@click.option('-d', '--download-all', help='Download all objects immediately instead on checkout.')
+@click.option('-d', '--download-all', help='Download all objects immediately instead on checkout.',
+              default=False, is_flag=True)
 def clone_c(remote_repository, local_repository, download_all):
     conn = _conn()
     clone(conn, remote_repository, local_repository=local_repository, download_all=download_all)

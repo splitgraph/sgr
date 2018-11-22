@@ -1,7 +1,7 @@
 import tempfile
 
 from minio import Minio
-from minio.error import (ResponseError, BucketAlreadyOwnedByYou,
+from minio.error import (BucketAlreadyOwnedByYou,
                          BucketAlreadyExists)
 from splitgraph.constants import S3_ACCESS_KEY, S3_SECRET_KEY, S3_PORT, S3_HOST
 from splitgraph.objects.dumping import dump_object_to_file, load_object_from_file
@@ -43,7 +43,7 @@ def s3_upload_objects(conn, objects_to_push, params):
         for object_id in objects_to_push:
             # First cut: dump the object to file and then upload it using Minio
             tmp_path = tmpdir + '/' + object_id
-            dump_object_to_file(object_id, tmp_path)
+            dump_object_to_file(conn, object_id, tmp_path)
             client.fput_object(bucket, object_id, tmp_path)
 
             urls.append('%s/%s/%s' % (endpoint, bucket, object_id))
@@ -68,4 +68,4 @@ def s3_download_objects(conn, objects_to_fetch, params):
 
             local_path = tmpdir + '/' + remote_object
             client.fget_object(bucket, remote_object, local_path)
-            load_object_from_file(local_path)
+            load_object_from_file(conn, object_id, local_path)

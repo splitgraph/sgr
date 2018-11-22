@@ -75,6 +75,34 @@ def dump_table_creation(conn, schema, tables, created_schema=None):
     return SQL(';').join(queries)
 
 
+def create_table(conn, schema, table, schema_spec):
+    """
+    Creates a table using a previously-dumped table schema spec
+
+    :param conn: psycopg connection object
+    :param schema: Schema to create the table in
+    :param table: Table name to create
+    :param schema_spec: A list of (ordinal_position, column_name, data_type, is_pk) specifying the table schema
+    """
+
+    schema_spec = sorted(schema_spec)
+
+    with conn.cursor() as cur:
+        target = SQL("{}.{}").format(Identifier(schema), Identifier(table))
+        query = SQL("CREATE TABLE {} (").format(target) + \
+                SQL(','.join(
+                    "{} %s " % ctype for _, _, ctype, _ in schema_spec)).format(
+                    *(Identifier(cname) for _, cname, _, _ in schema_spec))
+
+        pk_cols = [cname for _, cname, _, is_pk in schema_spec if is_pk]
+        if pk_cols:
+            query += SQL(", PRIMARY KEY (") + SQL(',').join(SQL("{}").format(Identifier(c)) for c in pk_cols) + SQL(
+                "))")
+        else:
+            query += SQL(")")
+        cur.execute(query)
+
+
 def get_primary_keys(conn, schema, table):
     """Inspects the Postgres information_schema to get the primary keys for a given table."""
     with conn.cursor() as cur:
