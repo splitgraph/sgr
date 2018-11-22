@@ -1,9 +1,0 @@
-name: splitgraph-prototype
-dependencies:
-  - python=3.7
-  - psycopg2-binary
-  - click
-  - requests
-  - pytest
-  - pip:
-    - parsimonious

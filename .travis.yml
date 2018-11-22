@@ -4,9 +4,9 @@ sudo: required
 python:
   - "3.6"
 install:
-  - python setup.py develop
+  - poetry install
 script:
-  - pytest
+  - poetry run pytest
 
 services:
   - docker
@@ -29,6 +29,7 @@ before_install:
   - curl -L https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-`uname -s`-`uname -m` > docker-compose
   - chmod +x docker-compose
   - sudo mv docker-compose /usr/local/bin
+  - pip install poetry
 
 before_script:
   # Stop the PG/MySQL that ship with Travis and run our own integration test
@@ -39,4 +40,4 @@ before_script:
   - ./wait-for-test-architecture.sh
 
 after_success:
-  - coveralls
+  - poetry run coveralls
