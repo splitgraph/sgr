@@ -1,10 +1,13 @@
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
 
 from minio import Minio
-from minio.error import (ResponseError, BucketAlreadyOwnedByYou,
+from minio.error import (BucketAlreadyOwnedByYou,
                          BucketAlreadyExists)
+
+from splitgraph.objects.dumping import dump_object, load_object
 from splitgraph.constants import S3_ACCESS_KEY, S3_SECRET_KEY, S3_PORT, S3_HOST
-from splitgraph.objects.dumping import dump_object_to_file, load_object_from_file
 
 
 def _ensure_bucket(client, bucket):
@@ -28,25 +31,40 @@ def s3_upload_objects(conn, objects_to_push, params):
         * access_key: default SG_S3_KEY
         * bucket: default same as access_key
         * secret_key: default SG_S3_PWD
+
+        You can also specify the number of worker threads (`threads`) used to upload the
+        objects.
     """
     access_key = params.get('access_key', S3_ACCESS_KEY)
     endpoint = '%s:%s' % (params.get('host', S3_HOST), params.get('port', S3_PORT))
     bucket = params.get('bucket', access_key)
+    worker_threads = params.get('threads', 4)
     client = Minio(endpoint,
                    access_key=access_key,
                    secret_key=params.get('secret_key', S3_SECRET_KEY),
                    secure=False)
     _ensure_bucket(client, bucket)
 
-    urls = []
+    # Psycopg connection objects are not threadsafe -- make sure two threads can't use it at the same time.
+    # In the future, we should replace this with a pg connection pool instead
+    pg_conn_lock = Lock()
+
     with tempfile.TemporaryDirectory() as tmpdir:
-        for object_id in objects_to_push:
+        def _do_upload(object_id):
             # First cut: dump the object to file and then upload it using Minio
             tmp_path = tmpdir + '/' + object_id
-            dump_object_to_file(object_id, tmp_path)
+
+            with pg_conn_lock:
+                with open(tmp_path, 'wb') as f:
+                    dump_object(conn, object_id, f)
+            # Minio pushes can happen concurrently
             client.fput_object(bucket, object_id, tmp_path)
 
-            urls.append('%s/%s/%s' % (endpoint, bucket, object_id))
+            return '%s/%s/%s' % (endpoint, bucket, object_id)
+
+        with ThreadPoolExecutor(max_workers=worker_threads) as tpe:
+            urls = tpe.map(_do_upload, objects_to_push)
+
     return urls
 
 
@@ -54,12 +72,13 @@ def s3_download_objects(conn, objects_to_fetch, params):
     # Maybe here we have to set these to None (anonymous) if the S3 host name doesn't match our own one.
     access_key = params.get('access_key', S3_ACCESS_KEY)
     secret_key = params.get('secret_key', S3_SECRET_KEY)
+    worker_threads = params.get('threads', 4)
+
+    pg_conn_lock = Lock()
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Again, first download the objects and then import them (maybe can do streaming later)
-        for i, obj in enumerate(objects_to_fetch):
-            object_id, object_url = obj
-            print("(%d/%d) %s -> %s" % (i + 1, len(objects_to_fetch), object_url, object_id))
+        def _do_download(obj_id_url):
+            object_id, object_url = obj_id_url
             endpoint, bucket, remote_object = object_url.split('/')
             client = Minio(endpoint,
                            access_key=access_key,
@@ -68,4 +87,11 @@ def s3_download_objects(conn, objects_to_fetch, params):
 
             local_path = tmpdir + '/' + remote_object
             client.fget_object(bucket, remote_object, local_path)
-            load_object_from_file(local_path)
+
+            with pg_conn_lock:
+                with open(local_path, 'rb') as f:
+                    load_object(conn, object_id, f)
+
+        # Again, first download the objects and then import them (maybe can do streaming later)
+        with ThreadPoolExecutor(max_workers=worker_threads) as tpe:
+            tpe.map(_do_download, objects_to_fetch)

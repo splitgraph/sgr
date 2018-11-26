@@ -156,5 +156,5 @@ def delete_objects(conn, objects):
     """
     if objects:
         with conn.cursor() as cur:
-            cur.execute(SQL(";").join(SQL("DROP TABLE {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                     Identifier(d)) for d in objects))
+            cur.execute(SQL(";").join(SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                               Identifier(d)) for d in objects))
