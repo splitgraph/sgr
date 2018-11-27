@@ -1,11 +1,12 @@
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph.connection import get_connection
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA
 
 META_TABLES = ['images', 'tags', 'objects', 'tables', 'remotes', 'object_locations', 'info']
 
 
-def _create_metadata_schema(conn):
+def _create_metadata_schema():
     """
     Creates the metadata schema splitgraph_meta that stores the hash tree of schema snaps and the current tags.
     This means we can't mount anything under the schema splitgraph_meta -- much like we can't have a folder
@@ -15,7 +16,7 @@ def _create_metadata_schema(conn):
     for the first time.
     """
 
-    with conn.cursor() as cur:
+    with get_connection().cursor() as cur:
         cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(SPLITGRAPH_META_SCHEMA)))
         # maybe FK parent_id on image_hash. NULL there means this is the repo root.
         cur.execute(SQL("""CREATE TABLE {}.{} (
@@ -124,16 +125,16 @@ def insert(table, columns, schema=SPLITGRAPH_META_SCHEMA):
     return query
 
 
-def ensure_metadata_schema(conn):
+def ensure_metadata_schema():
     # Check if the metadata schema actually exists.
-    with conn.cursor() as cur:
+    with get_connection().cursor() as cur:
         cur.execute("SELECT 1 FROM information_schema.schemata WHERE schema_name = %s", (SPLITGRAPH_META_SCHEMA,))
         if cur.fetchone() is None:
-            _create_metadata_schema(conn)
+            _create_metadata_schema()
 
 
-def get_info_key(conn, key):
-    with conn.cursor() as cur:
+def get_info_key(key):
+    with get_connection().cursor() as cur:
         cur.execute(SQL("SELECT value FROM {}.info WHERE key = %s").format(Identifier(SPLITGRAPH_META_SCHEMA)), (key,))
         result = cur.fetchone()
         if result is None:
@@ -141,8 +142,8 @@ def get_info_key(conn, key):
         return result[0]
 
 
-def set_info_key(conn, key, value):
-    with conn.cursor() as cur:
+def set_info_key(key, value):
+    with get_connection().cursor() as cur:
         cur.execute(SQL("INSERT INTO {0}.info (key, value) VALUES (%s, %s)"
                         " ON CONFLICT (key) DO UPDATE SET value = %s WHERE info.key = %s")
                     .format(Identifier(SPLITGRAPH_META_SCHEMA)), (key, value, value, key))
@@ -151,7 +152,7 @@ def set_info_key(conn, key, value):
 _RLS_TABLES = ['images', 'tags', 'objects', 'tables']
 
 
-def setup_registry_mode(conn):
+def setup_registry_mode():
     """
     Drops tables in splitgraph_meta that aren't pertinent to the registry + sets up access policies/RLS:
 
@@ -162,13 +163,12 @@ def setup_registry_mode(conn):
       it and still remains so even if someone else's image starts using it. Hence, the original owner can delete
       or change it (since they control the external location they've uploaded it to anyway).
 
-    :param conn: Psycopg admin connection object.
     """
 
-    if get_info_key(conn, "registry_mode") == 'true':
+    if get_info_key("registry_mode") == 'true':
         return
 
-    with conn.cursor() as cur:
+    with get_connection().cursor() as cur:
         for schema in (SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA):
             cur.execute(SQL("REVOKE CREATE ON SCHEMA {} FROM PUBLIC").format(Identifier(schema)))
             cur.execute(SQL("GRANT USAGE ON SCHEMA {} TO PUBLIC").format(Identifier(schema)))
@@ -194,7 +194,7 @@ def setup_registry_mode(conn):
         _setup_rls_policies(cur, "object_locations", condition=test_query)
         _setup_rls_policies(cur, "images", schema=REGISTRY_META_SCHEMA)
 
-        set_info_key(conn, "registry_mode", "true")
+        set_info_key("registry_mode", "true")
 
 
 def _setup_rls_policies(cursor, table, schema=SPLITGRAPH_META_SCHEMA, condition=None):
@@ -216,7 +216,7 @@ def _setup_rls_policies(cursor, table, schema=SPLITGRAPH_META_SCHEMA, condition=
                    + SQL(condition).format(Identifier(schema), Identifier(table)))
 
 
-def toggle_registry_rls(conn, mode='ENABLE'):
+def toggle_registry_rls(mode='ENABLE'):
     # For testing purposes: switch RLS off so that we can add test data that we then won't be able to alter when
     # switching it on.
     # Modes: ENABLE is same as FORCE, but doesn't apply to the table owner.
@@ -224,7 +224,7 @@ def toggle_registry_rls(conn, mode='ENABLE'):
     if mode not in ('ENABLE', 'DISABLE', 'FORCE'):
         raise ValueError()
 
-    with conn.cursor() as cur:
+    with get_connection().cursor() as cur:
         for t in _RLS_TABLES:
             cur.execute(SQL("ALTER TABLE {}.{} %s ROW LEVEL SECURITY" % mode).format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                                                      Identifier(t)))

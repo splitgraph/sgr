@@ -7,8 +7,7 @@ class PluginCommand(object):
           [commands]
           RUN=splitgraph.plugins.Run
 
-      * The command class must extend this class. It's initialized at every invocation time
-        with the psycopg connection object.
+      * The command class must extend this class, initialized at every invocation time.
       * The command's `calc_hash()` method is run. The resultant command context hash is combined with the current
         image hash to produce the new image hash: if it already exists, then the image is simply checked out.
       * Otherwise (or if calc_hash is undefined or returns None), `execute()`, where the actual command should be
@@ -17,8 +16,8 @@ class PluginCommand(object):
         new image.
     """
 
-    def __init__(self, conn):
-        self.conn = conn
+    def __init__(self):
+        pass
 
     def calc_hash(self, repository, args):
         """
@@ -47,7 +46,7 @@ class PluginCommand(object):
         Execute the custom command against the target schema, optionally returning the new image hash. The contract
         for the command is as follows (though it is not currently enforced by the runtime):
 
-          * Has to use self.conn for any interaction with the database.
+          * Has to use the connection returned by splitgraph.connection.get_connection() to interact with the driver.
           * Can only write to the schema with the checked-out repository (conn is already assumed to have its
             search_path set to the correct schema).
           * Can inspect splitgraph_meta (e.g. to find the current HEAD) for the repository.

@@ -1,22 +1,21 @@
 import logging
 
-from splitgraph.constants import SplitGraphException, to_repository, Repository
+from splitgraph.constants import SplitGraphException, Repository
 from splitgraph.meta_handler.images import get_image
 
 
-def provenance(conn, repository, image_hash):
+def provenance(repository, image_hash):
     """
     Inspects the parent chain of an sgfile-generated image to come up with a set of repositories and their hashes
     that it was created from.
 
-    :param conn: Psycopg connection object
     :param repository: Mountpoint that contains the image
     :param image_hash: Image hash to inspect
     :return: List of (repository, image_hash)
     """
     result = set()
     while image_hash:
-        image = get_image(conn, repository, image_hash)
+        image = get_image(repository, image_hash)
         parent, prov_type, prov_data = image.parent_id, image.provenance_type, image.provenance_data
         if prov_type == 'IMPORT':
             result.add((Repository(prov_data['source_namespace'], prov_data['source']), prov_data['source_hash']))
@@ -60,11 +59,10 @@ def prov_command_to_sgfile(prov_type, prov_data, image_hash, source_replacement)
     raise SplitGraphException("Cannot reconstruct provenance %s!" % prov_type)
 
 
-def image_hash_to_sgfile(conn, repository, image_hash, err_on_end=True, source_replacement=None):
+def image_hash_to_sgfile(repository, image_hash, err_on_end=True, source_replacement=None):
     """
     Crawls the image's parent chain to recreates an sgfile that can be used to reconstruct it.
 
-    :param conn: Psycopg connection object
     :param repository: Repository where the image is located.
     :param image_hash: Image hash to reconstruct.
     :param err_on_end: If False, when an image with no provenance is reached and it still has a parent, then instead of
@@ -78,7 +76,7 @@ def image_hash_to_sgfile(conn, repository, image_hash, err_on_end=True, source_r
         source_replacement = {}
     sgfile_commands = []
     while image_hash:
-        image = get_image(conn, repository, image_hash)
+        image = get_image(repository, image_hash)
         parent, prov_type, prov_data = image.parent_id, image.provenance_type, image.provenance_data
         if prov_type in ('IMPORT', 'SQL', 'FROM'):
             sgfile_commands.append(prov_command_to_sgfile(prov_type, prov_data, image_hash, source_replacement))

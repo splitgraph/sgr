@@ -2,19 +2,20 @@ import logging
 from collections import defaultdict
 
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.commands.misc import make_conn, unmount
 from splitgraph.commands.mount_handlers import mount_postgres
+from splitgraph.connection import get_connection, override_driver_connection
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, parse_connection_string, to_repository
 from splitgraph.meta_handler.objects import get_existing_objects, get_downloaded_objects
 from splitgraph.objects.external import get_upload_download_handler
 from splitgraph.pg_utils import copy_table, dump_table_creation, get_primary_keys
 
 
-def download_objects(conn, remote_conn_string, objects_to_fetch, object_locations, remote_conn=None):
+def download_objects(remote_conn_string, objects_to_fetch, object_locations, remote_conn=None):
     """
     Fetches the required objects from the remote and stores them locally. Does nothing for objects that already exist.
 
-    :param conn: psycopg connection object
     :param remote_conn_string: Connection string to the remote SG driver of the form
         username:password@hostname:port/database.
     :param objects_to_fetch: List of object IDs to download.
@@ -24,31 +25,33 @@ def download_objects(conn, remote_conn_string, objects_to_fetch, object_location
         actual objects from the remote.
     :return: Set of object IDs that were fetched.
     """
-    existing_objects = get_downloaded_objects(conn)
+
+    existing_objects = get_downloaded_objects()
     objects_to_fetch = set(o for o in objects_to_fetch if o not in existing_objects)
     if not objects_to_fetch:
         return objects_to_fetch
 
-    external_objects = _fetch_external_objects(conn, object_locations, objects_to_fetch)
+    external_objects = _fetch_external_objects(object_locations, objects_to_fetch)
 
     remaining_objects_to_fetch = [o for o in objects_to_fetch if o not in external_objects]
     if not remaining_objects_to_fetch:
         return objects_to_fetch
 
     print("Fetching remote objects...")
-    _fetch_remote_objects(conn, remaining_objects_to_fetch, remote_conn_string, remote_conn)
+    _fetch_remote_objects(remaining_objects_to_fetch, remote_conn_string, remote_conn)
     return objects_to_fetch
 
 
-def _fetch_remote_objects(conn, objects_to_fetch, remote_conn_string, remote_conn=None):
+def _fetch_remote_objects(objects_to_fetch, remote_conn_string, remote_conn=None):
     # Instead of connecting and pushing queries to it from the Python client, we just mount the remote mountpoint
     # into a temporary space (without any checking out) and SELECT the required data into our local tables.
 
     server, port, user, pwd, dbname = parse_connection_string(remote_conn_string)
     remote_data_mountpoint = to_repository('tmp_remote_data')
-    unmount(conn, remote_data_mountpoint)  # Maybe worth making sure we're not stepping on anyone else
-    mount_postgres(conn, server=server, port=port, username=user, password=pwd, mountpoint='tmp_remote_data',
-                   dbname=dbname, remote_schema=SPLITGRAPH_META_SCHEMA)
+    unmount(remote_data_mountpoint)  # Maybe worth making sure we're not stepping on anyone else
+    conn = get_connection()
+    mount_postgres(mountpoint='tmp_remote_data', server=server, port=port, username=user, password=pwd, dbname=dbname,
+                   remote_schema=SPLITGRAPH_META_SCHEMA)
     remote_conn = remote_conn or make_conn(server, port, user, pwd, dbname)
     try:
         for i, obj in enumerate(objects_to_fetch):
@@ -62,10 +65,10 @@ def _fetch_remote_objects(conn, objects_to_fetch, remote_conn_string, remote_con
                         Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj))
                                 + SQL(',').join(SQL("{}").format(Identifier(c)) for c, _ in source_pks) + SQL(")"))
     finally:
-        unmount(conn, remote_data_mountpoint)
+        unmount(remote_data_mountpoint)
 
 
-def _fetch_external_objects(conn, object_locations, objects_to_fetch):
+def _fetch_external_objects(object_locations, objects_to_fetch):
     non_remote_objects = []
     non_remote_by_method = defaultdict(list)
     for object_id, object_url, protocol in object_locations:
@@ -76,15 +79,14 @@ def _fetch_external_objects(conn, object_locations, objects_to_fetch):
         logging.info("Fetching external objects...")
         for method, objects in non_remote_by_method.items():
             _, handler = get_upload_download_handler(method)
-            handler(conn, objects, {})
+            handler(objects, {})
     return non_remote_objects
 
 
-def upload_objects(conn, remote_conn_string, objects_to_push, handler='DB', handler_params=None, remote_conn=None):
+def upload_objects(remote_conn_string, objects_to_push, handler='DB', handler_params=None, remote_conn=None):
     """
     Uploads physical objects to the remote or some other external location.
     
-    :param conn: psycopg connection object
     :param remote_conn_string: Connection string to the remote SG driver of the form
         username:password@hostname:port/database.
     :param objects_to_push: List of object IDs to upload.
@@ -98,11 +100,17 @@ def upload_objects(conn, remote_conn_string, objects_to_push, handler='DB', hand
     :return: A list of (object_id, url, handler) that specifies all objects were uploaded (skipping objects that
         already exist on the remote).
     """
+    conn = get_connection()
+
     if handler_params is None:
         handler_params = {}
     conn_args = parse_connection_string(remote_conn_string)
     remote_conn = remote_conn or make_conn(*conn_args)
-    existing_objects = get_existing_objects(remote_conn)
+
+    # Get objects that exist on the remote driver
+    with override_driver_connection(remote_conn):
+        existing_objects = get_existing_objects()
+
     objects_to_push = list(set(o for o in objects_to_push if o not in existing_objects))
     if not objects_to_push:
         logging.info("Nothing to upload.")
@@ -121,19 +129,19 @@ def upload_objects(conn, remote_conn_string, objects_to_push, handler='DB', hand
         # mounted remote.
         remote_conn.commit()
         remote_data_mountpoint = to_repository('tmp_remote_data')
-        unmount(conn, remote_data_mountpoint)
-        mount_postgres(conn, server=conn_args[0], port=conn_args[1], username=conn_args[2], password=conn_args[3],
-                       mountpoint='tmp_remote_data', dbname=conn_args[4], remote_schema=SPLITGRAPH_META_SCHEMA)
+        unmount(remote_data_mountpoint)
+        mount_postgres(mountpoint='tmp_remote_data', server=conn_args[0], port=conn_args[1], username=conn_args[2],
+                       password=conn_args[3], dbname=conn_args[4], remote_schema=SPLITGRAPH_META_SCHEMA)
         for i, obj in enumerate(objects_to_push):
             print("(%d/%d) %s..." % (i + 1, len(objects_to_push), obj))
             copy_table(conn, SPLITGRAPH_META_SCHEMA, obj, 'tmp_remote_data', obj, with_pk_constraints=False,
                        table_exists=True)
         conn.commit()
-        unmount(conn, remote_data_mountpoint)
+        unmount(remote_data_mountpoint)
 
         # We assume that if the object doesn't have an explicit location, it lives on the remote.
         return []
 
     upload_handler, _ = get_upload_download_handler(handler)
-    uploaded = upload_handler(conn, objects_to_push, handler_params)
+    uploaded = upload_handler(objects_to_push, handler_params)
     return [(oid, url, handler) for oid, url in zip(objects_to_push, uploaded)]

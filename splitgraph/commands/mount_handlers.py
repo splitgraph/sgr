@@ -1,6 +1,8 @@
 import logging
 
 from psycopg2.sql import Identifier, SQL
+
+from splitgraph.connection import get_connection
 from splitgraph.constants import SplitGraphException
 
 MOUNT_HANDLERS = {}
@@ -23,11 +25,10 @@ def register_mount_handler(name, mount_function):
     MOUNT_HANDLERS[name] = mount_function
 
 
-def mount_postgres(conn, mountpoint, server, port, username, password, dbname, remote_schema, tables=[]):
+def mount_postgres(mountpoint, server, port, username, password, dbname, remote_schema, tables=[]):
     """
     Mounts a schema on a remote Postgres database as a set of foreign tables locally.
 
-    :param conn: Psycopg connection object.
     :param mountpoint: Schema to mount the remote into.
     :param server: Database hostname.
     :param port: Port the Postgres server is running on.
@@ -37,7 +38,7 @@ def mount_postgres(conn, mountpoint, server, port, username, password, dbname, r
     :param remote_schema: Remote schema name.
     :param tables: Tables to mount (default all).
     """
-    with conn.cursor() as cur:
+    with get_connection().cursor() as cur:
         logging.info("Importing foreign Postgres schema...")
         server_id = Identifier(mountpoint + '_server')
 
@@ -58,11 +59,10 @@ def mount_postgres(conn, mountpoint, server, port, username, password, dbname, r
         cur.execute(SQL(query).format(Identifier(remote_schema), server_id, Identifier(mountpoint)), tables)
 
 
-def mount_mongo(conn, mountpoint, server, port, username, password, **table_spec):
+def mount_mongo(mountpoint, server, port, username, password, **table_spec):
     """
     Mounts one or more collections on a remote Mongo database as a set of foreign tables locally.
 
-    :param conn: Psycopg connection object.
     :param mountpoint: Schema to mount the remote into.
     :param server: Database hostname.
     :param port: Port the Mongo server is running on.
@@ -71,7 +71,7 @@ def mount_mongo(conn, mountpoint, server, port, username, password, **table_spec
     :param table_spec: A dictionary of form {"table_name": {"db": <dbname>, "coll": <collection>,
                                                                "schema": {"col1": "type1"...}}}.
     """
-    with conn.cursor() as cur:
+    with get_connection().cursor() as cur:
         server_id = Identifier(mountpoint + '_server')
 
         cur.execute(SQL("""CREATE SERVER {}
@@ -98,11 +98,10 @@ def mount_mongo(conn, mountpoint, server, port, username, password, **table_spec
             cur.execute(query, (db, coll))
 
 
-def mount_mysql(conn, mountpoint, server, port, username, password, remote_schema, tables=[]):
+def mount_mysql(mountpoint, server, port, username, password, remote_schema, tables=[]):
     """
     Mounts a schema on a remote MySQL database as a set of foreign tables locally.
 
-    :param conn: Psycopg connection object.
     :param mountpoint: Schema to mount the remote into.
     :param server: Database hostname.
     :param port: Database port
@@ -112,7 +111,7 @@ def mount_mysql(conn, mountpoint, server, port, username, password, remote_schem
     :param remote_schema: Remote schema name.
     :param tables: Tables to mount (default all).
     """
-    with conn.cursor() as cur:
+    with get_connection().cursor() as cur:
         logging.info("Mounting foreign MySQL database...")
         server_id = Identifier(mountpoint + '_server')
 

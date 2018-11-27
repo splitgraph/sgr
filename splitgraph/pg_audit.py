@@ -1,6 +1,7 @@
 from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph.connection import get_connection
 from splitgraph.meta_handler.misc import ensure_metadata_schema, get_current_repositories
 from splitgraph.meta_handler.tables import get_table
 from splitgraph.pg_utils import get_all_tables
@@ -9,7 +10,7 @@ ROW_TRIGGER_NAME = "audit_trigger_row"
 STM_TRIGGER_NAME = "audit_trigger_stm"
 
 
-def manage_audit_triggers(conn):
+def manage_audit_triggers():
     """Does bookkeeping on audit triggers / audit table:
 
         * Detect tables that are being audited that don't need to be any more
@@ -17,8 +18,9 @@ def manage_audit_triggers(conn):
         * Drop audit triggers for those and delete all audit info for them
         * Set up audit triggers for new tables
     """
-    repos_tables = [(r.to_schema(), t) for r, head in get_current_repositories(conn)
-                    for t in get_all_tables(conn, r.to_schema()) if get_table(conn, r, t, head)]
+    conn = get_connection()
+    repos_tables = [(r.to_schema(), t) for r, head in get_current_repositories()
+                    for t in get_all_tables(conn, r.to_schema()) if get_table(r, t, head)]
 
     with conn.cursor() as cur:
         cur.execute("SELECT event_object_schema, event_object_table "
@@ -46,7 +48,8 @@ def manage_audit_triggers(conn):
     conn.commit()
 
 
-def discard_pending_changes(conn, schema):
+def discard_pending_changes(schema):
+    conn = get_connection()
     with conn.cursor() as cur:
         cur.execute(SQL("DELETE FROM {}.{} WHERE schema_name = %s").format(Identifier("audit"),
                                                                            Identifier("logged_actions")),
@@ -54,10 +57,11 @@ def discard_pending_changes(conn, schema):
     conn.commit()
 
 
-def has_pending_changes(conn, repository):
+def has_pending_changes(repository):
+    conn = get_connection()
     with conn.cursor() as cur:
         cur.execute(SQL("SELECT 1 FROM {}.{} WHERE schema_name = %s").format(Identifier("audit"),
-                                                                            Identifier("logged_actions")),
+                                                                             Identifier("logged_actions")),
                     (repository.to_schema(),))
         return cur.fetchone() is not None
 
@@ -66,13 +70,12 @@ def manage_audit(func):
     # A decorator to be put around various SG commands that performs general admin and auditing management
     # (makes sure the metadata schema exists and delete/add required audit triggers)
     def wrapped(*args, **kwargs):
-        conn = args[0]
         try:
-            ensure_metadata_schema(conn)
-            manage_audit_triggers(conn)
+            ensure_metadata_schema()
+            manage_audit_triggers()
             func(*args, **kwargs)
         finally:
-            conn.commit()
-            manage_audit_triggers(conn)
+            get_connection().commit()
+            manage_audit_triggers()
 
     return wrapped

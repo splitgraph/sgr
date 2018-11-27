@@ -1,10 +1,12 @@
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph.connection import get_connection
 from splitgraph.constants import SplitGraphException
 from splitgraph.pg_utils import get_primary_keys, get_column_names_types
 
 
-def get_replica_identity(conn, schema, table):
+def get_replica_identity(schema, table):
+    conn = get_connection()
     return get_primary_keys(conn, schema, table) or get_column_names_types(conn, schema, table)
 
 

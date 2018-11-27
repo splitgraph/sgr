@@ -6,8 +6,8 @@ from minio import Minio
 from minio.error import (BucketAlreadyOwnedByYou,
                          BucketAlreadyExists)
 
-from splitgraph.objects.dumping import dump_object, load_object
 from splitgraph.constants import S3_ACCESS_KEY, S3_SECRET_KEY, S3_PORT, S3_HOST
+from splitgraph.objects.dumping import dump_object, load_object
 
 
 def _ensure_bucket(client, bucket):
@@ -20,7 +20,7 @@ def _ensure_bucket(client, bucket):
         pass
 
 
-def s3_upload_objects(conn, objects_to_push, params):
+def s3_upload_objects(objects_to_push, params):
     """Uploads the objects to S3/S3-compatible host using the Minio client.
 
     :param objects_to_push: List of object IDs to upload
@@ -56,7 +56,7 @@ def s3_upload_objects(conn, objects_to_push, params):
 
             with pg_conn_lock:
                 with open(tmp_path, 'wb') as f:
-                    dump_object(conn, object_id, f)
+                    dump_object(object_id, f)
             # Minio pushes can happen concurrently
             client.fput_object(bucket, object_id, tmp_path)
 
@@ -68,7 +68,7 @@ def s3_upload_objects(conn, objects_to_push, params):
     return urls
 
 
-def s3_download_objects(conn, objects_to_fetch, params):
+def s3_download_objects(objects_to_fetch, params):
     # Maybe here we have to set these to None (anonymous) if the S3 host name doesn't match our own one.
     access_key = params.get('access_key', S3_ACCESS_KEY)
     secret_key = params.get('secret_key', S3_SECRET_KEY)
@@ -90,7 +90,7 @@ def s3_download_objects(conn, objects_to_fetch, params):
 
             with pg_conn_lock:
                 with open(local_path, 'rb') as f:
-                    load_object(conn, object_id, f)
+                    load_object(object_id, f)
 
         # Again, first download the objects and then import them (maybe can do streaming later)
         with ThreadPoolExecutor(max_workers=worker_threads) as tpe:

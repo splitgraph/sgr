@@ -1,23 +1,24 @@
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph.connection import get_connection
 from splitgraph.constants import SplitGraphException, SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler.common import ensure_metadata_schema, select, insert
 from splitgraph.meta_handler.images import get_canonical_image_id
 from splitgraph.meta_handler.misc import repository_exists
 
 
-def get_current_head(conn, repository, raise_on_none=True):
-    return get_tagged_id(conn, repository, 'HEAD', raise_on_none)
+def get_current_head(repository, raise_on_none=True):
+    return get_tagged_id(repository, 'HEAD', raise_on_none)
 
 
-def get_tagged_id(conn, repository, tag, raise_on_none=True):
-    ensure_metadata_schema(conn)
-    if not repository_exists(conn, repository) and raise_on_none:
+def get_tagged_id(repository, tag, raise_on_none=True):
+    ensure_metadata_schema()
+    if not repository_exists(repository) and raise_on_none:
         raise SplitGraphException("%s is not mounted." % str(repository))
 
     if tag == 'latest':
         # Special case, return the latest commit from the repository.
-        with conn.cursor() as cur:
+        with get_connection().cursor() as cur:
             cur.execute(select("images", "image_hash", "namespace = %s AND repository = %s")
                         + SQL(" ORDER BY created DESC LIMIT 1"), (repository.namespace, repository.repository,))
             result = cur.fetchone()
@@ -25,7 +26,7 @@ def get_tagged_id(conn, repository, tag, raise_on_none=True):
                 raise SplitGraphException("No commits found in %s!")
             return result[0]
 
-    with conn.cursor() as cur:
+    with get_connection().cursor() as cur:
         cur.execute(select("tags", "image_hash", "namespace = %s AND repository = %s AND tag = %s"),
                     (repository.namespace, repository.repository, tag))
         result = cur.fetchone()
@@ -42,25 +43,25 @@ def get_tagged_id(conn, repository, tag, raise_on_none=True):
         return result[0]
 
 
-def get_all_hashes_tags(conn, repository):
-    with conn.cursor() as cur:
+def get_all_hashes_tags(repository):
+    with get_connection().cursor() as cur:
         cur.execute(select("tags", "image_hash, tag", "namespace = %s AND repository = %s"),
                     (repository.namespace, repository.repository,))
         return cur.fetchall()
 
 
-def set_tags(conn, repository, tags, force=False):
+def set_tags(repository, tags, force=False):
     for tag, image_id in tags.items():
         if tag != 'HEAD':
-            set_tag(conn, repository, image_id, tag, force)
+            set_tag(repository, image_id, tag, force)
 
 
-def set_head(conn, repository, image):
-    set_tag(conn, repository, image, 'HEAD', force=True)
+def set_head(repository, image):
+    set_tag(repository, image, 'HEAD', force=True)
 
 
-def set_tag(conn, repository, image, tag, force=False):
-    with conn.cursor() as cur:
+def set_tag(repository, image, tag, force=False):
+    with get_connection().cursor() as cur:
         cur.execute(select("tags", "1", "namespace = %s AND repository = %s AND tag = %s"),
                     (repository.namespace, repository.repository, tag))
         if cur.fetchone() is None:
@@ -76,13 +77,13 @@ def set_tag(conn, repository, image, tag, force=False):
                 raise SplitGraphException("Tag %s already exists in %s!" % (tag, repository.to_schema()))
 
 
-def tag_or_hash_to_actual_hash(conn, repository, tag_or_hash):
+def tag_or_hash_to_actual_hash(repository, tag_or_hash):
     """Converts a tag or shortened hash to a full image hash that exists in the repository.
     """
     try:
-        return get_canonical_image_id(conn, repository, tag_or_hash)
+        return get_canonical_image_id(repository, tag_or_hash)
     except SplitGraphException:
         try:
-            return get_tagged_id(conn, repository, tag_or_hash)
+            return get_tagged_id(repository, tag_or_hash)
         except SplitGraphException:
             raise SplitGraphException("%s does not refer to either an image commit hash or a tag!" % tag_or_hash)

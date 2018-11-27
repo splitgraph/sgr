@@ -60,5 +60,5 @@ def test_diff_conflation_on_commit(sg_pg_conn, test_case):
         with sg_pg_conn.cursor() as cur:
             cur.execute(operation)
         sg_pg_conn.commit()
-        head = commit(sg_pg_conn, PG_MNT)
-        assert diff(sg_pg_conn, PG_MNT, 'fruits', get_image(sg_pg_conn, PG_MNT, head).parent_id, head) == expected_diff
+        head = commit(PG_MNT)
+        assert diff(PG_MNT, 'fruits', get_image(PG_MNT, head).parent_id, head) == expected_diff

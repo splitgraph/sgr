@@ -3,6 +3,7 @@ import json
 from psycopg2.extras import execute_batch, Json
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph.connection import get_connection
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA, get_random_object_id
 from splitgraph.meta_handler.objects import register_table, register_object
 from splitgraph.meta_handler.tables import get_object_for_table
@@ -10,17 +11,16 @@ from splitgraph.objects.utils import get_replica_identity, conflate_changes, con
 from splitgraph.pg_utils import copy_table
 
 
-def _create_diff_table(conn, object_id, replica_identity_cols_types):
+def _create_diff_table(object_id, replica_identity_cols_types):
     """
     Create a diff table into which we'll pack the conflated audit log actions.
 
-    :param conn: psycopg connection object
     :param object_id: table name to create
     :param replica_identity_cols_types: multiple columns forming the table's PK (or all rows), PKd.
     """
     # sg_action_kind: 0, 1, 2 for insert/delete/update
     # sg_action_data: extra data for insert and update.
-    with conn.cursor() as cur:
+    with get_connection().cursor() as cur:
         query = SQL("CREATE TABLE {}.{} (").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id))
         query += SQL(',').join(SQL("{} %s" % col_type).format(Identifier(col_name))
                                for col_name, col_type in replica_identity_cols_types + [('sg_action_kind', 'smallint'),
@@ -32,12 +32,12 @@ def _create_diff_table(conn, object_id, replica_identity_cols_types):
         # RI is PK anyway, so has an index by default
 
 
-def record_table_as_diff(conn, repository, image_hash, table, table_info):
+def record_table_as_diff(repository, image_hash, table, table_info):
     object_id = get_random_object_id()
-    repl_id = get_replica_identity(conn, repository.to_schema(), table)
+    repl_id = get_replica_identity(repository.to_schema(), table)
     ri_cols, _ = zip(*repl_id)
-    _create_diff_table(conn, object_id, repl_id)
-    with conn.cursor() as cur:
+    _create_diff_table(object_id, repl_id)
+    with get_connection().cursor() as cur:
         # Can't seem to use a server-side cursor here since it doesn't support DELETE FROM RETURNING
         cur.execute(
             SQL("""DELETE FROM {}.{} WHERE schema_name = %s AND table_name = %s
@@ -57,10 +57,10 @@ def record_table_as_diff(conn, repository, image_hash, table, table_info):
             execute_batch(cur, query, changeset, page_size=1000)
 
             for parent_id, _ in table_info:
-                register_object(conn, object_id, object_format='DIFF', parent_object=parent_id,
-                                namespace=repository.namespace)
+                register_object(object_id, object_format='DIFF', namespace=repository.namespace,
+                                parent_object=parent_id)
 
-            register_table(conn, repository, table, image_hash, object_id)
+            register_table(repository, table, image_hash, object_id)
         else:
             # Changes in the audit log cancelled each other out. Delete the diff table and just point
             # the commit to the old table objects.
@@ -68,7 +68,7 @@ def record_table_as_diff(conn, repository, image_hash, table, table_info):
                 SQL("DROP TABLE {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                Identifier(object_id)))
             for prev_object_id, _ in table_info:
-                register_table(conn, repository, table, image_hash, prev_object_id)
+                register_table(repository, table, image_hash, prev_object_id)
 
 
 def _convert_vals(vals):
@@ -81,17 +81,17 @@ def _convert_vals(vals):
     return [v if not isinstance(v, dict) else Json(v) for v in vals]
 
 
-def record_table_as_snap(conn, repository, image_hash, table, table_info):
+def record_table_as_snap(repository, image_hash, table, table_info):
     # Make sure we didn't actually create a snap for this table.
 
-    if get_object_for_table(conn, repository, table, image_hash, 'SNAP') is None:
+    if get_object_for_table(repository, table, image_hash, 'SNAP') is None:
         object_id = get_random_object_id()
-        copy_table(conn, repository.to_schema(), table, SPLITGRAPH_META_SCHEMA, object_id, with_pk_constraints=True)
+        copy_table(get_connection(), repository.to_schema(), table, SPLITGRAPH_META_SCHEMA, object_id,
+                   with_pk_constraints=True)
         if table_info:
             for parent_id, _ in table_info:
-                register_object(conn, object_id, object_format='SNAP', parent_object=parent_id,
-                                namespace=repository.namespace)
+                register_object(object_id, object_format='SNAP', namespace=repository.namespace,
+                                parent_object=parent_id)
         else:
-            register_object(conn, object_id, object_format='SNAP', parent_object=None,
-                            namespace=repository.namespace)
-        register_table(conn, repository, table, image_hash, object_id)
+            register_object(object_id, object_format='SNAP', namespace=repository.namespace, parent_object=None)
+        register_table(repository, table, image_hash, object_id)

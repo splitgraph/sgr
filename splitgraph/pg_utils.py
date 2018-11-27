@@ -114,7 +114,7 @@ def get_primary_keys(conn, schema, table):
         return cur.fetchall()
 
 
-def _get_column_names(conn, schema, table_name):
+def get_column_names(conn, schema, table_name):
     with conn.cursor() as cur:
         cur.execute("""SELECT column_name FROM information_schema.columns
                        WHERE table_schema = %s

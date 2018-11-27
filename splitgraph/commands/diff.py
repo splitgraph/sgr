@@ -4,6 +4,7 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.commands.checkout import materialized_table
 from splitgraph.commands.misc import table_exists_at, find_path
+from splitgraph.connection import get_connection
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler.tables import get_object_for_table, get_table
 from splitgraph.meta_handler.tags import get_current_head
@@ -17,13 +18,12 @@ def _changes_to_aggregation(query_result, initial=None):
     return tuple(result)
 
 
-def diff(conn, repository, table_name, image_1, image_2, aggregate=False):
+def diff(repository, table_name, image_1, image_2, aggregate=False):
     """
     Compares the state of the table in different images. If the two images are on the same path in the commit tree,
     it doesn't need to materialize any of the tables and simply aggregates their DIFF objects to produce a complete
     changelog. Otherwise, it materializes both tables into a temporary space and compares them row-to-row.
 
-    :param conn: psycopg connection
     :param repository: Mounpoint where the table exists.
     :param table_name: Name of the table.
     :param image_1: First image. If None, uses the state of the current staging area.
@@ -41,32 +41,32 @@ def diff(conn, repository, table_name, image_1, image_2, aggregate=False):
               particular row.
     """
 
-    with conn.cursor() as cur:
-        # If the table doesn't exist in the first or the second image, short-circuit and
-        # return the bool.
-        if not table_exists_at(conn, repository, table_name, image_1):
-            return True
-        if not table_exists_at(conn, repository, table_name, image_2):
-            return False
+    # If the table doesn't exist in the first or the second image, short-circuit and
+    # return the bool.
+    if not table_exists_at(repository, table_name, image_1):
+        return True
+    if not table_exists_at(repository, table_name, image_2):
+        return False
 
-        # Special case: if diffing HEAD and staging, then just return the current pending changes.
-        head = get_current_head(conn, repository)
+    # Special case: if diffing HEAD and staging, then just return the current pending changes.
+    head = get_current_head(repository)
 
-        if image_1 == head and image_2 is None:
-            changes = dump_pending_changes(conn, repository.to_schema(), table_name, aggregate=aggregate)
-            return changes if not aggregate else _changes_to_aggregation(changes)
+    if image_1 == head and image_2 is None:
+        changes = dump_pending_changes(repository.to_schema(), table_name, aggregate=aggregate)
+        return changes if not aggregate else _changes_to_aggregation(changes)
 
-        # If the table is the same in the two images, short circuit as well.
-        if set(get_table(conn, repository, table_name, image_1)) == \
-                set(get_table(conn, repository, table_name, image_2)):
-            return [] if not aggregate else (0, 0, 0)
+    # If the table is the same in the two images, short circuit as well.
+    if set(get_table(repository, table_name, image_1)) == \
+            set(get_table(repository, table_name, image_2)):
+        return [] if not aggregate else (0, 0, 0)
 
-        # Otherwise, check if snap_1 is a parent of snap_2, then we can merge all the diffs.
-        path = find_path(conn, repository, image_1, (image_2 if image_2 is not None else head))
-        if path is not None:
+    # Otherwise, check if snap_1 is a parent of snap_2, then we can merge all the diffs.
+    path = find_path(repository, image_1, (image_2 if image_2 is not None else head))
+    if path is not None:
+        with get_connection().cursor() as cur:
             result = [] if not aggregate else (0, 0, 0)
             for image in reversed(path):
-                diff_id = get_object_for_table(conn, repository, table_name, image, 'DIFF')
+                diff_id = get_object_for_table(repository, table_name, image, 'DIFF')
                 if diff_id is None:
                     # TODO This entry on the path between the two nodes is a snapshot -- meaning there
                     # has been a schema change and we can't just accumulate diffs. For now, we just pretend
@@ -88,35 +88,35 @@ def diff(conn, repository, table_name, image_1, image_2, aggregate=False):
                         Identifier(SPLITGRAPH_META_SCHEMA), Identifier(diff_id)))
                     result = _changes_to_aggregation(cur.fetchall(), result)
 
-            # If snap_2 is staging, also include all changes that have happened since the last commit.
-            if image_2 is None:
-                changes = dump_pending_changes(conn, repository, table_name, aggregate=aggregate)
-                if aggregate:
-                    result = _changes_to_aggregation(changes, result)
-                else:
-                    result.extend(changes)
-            return result
+        # If snap_2 is staging, also include all changes that have happened since the last commit.
+        if image_2 is None:
+            changes = dump_pending_changes(repository, table_name, aggregate=aggregate)
+            if aggregate:
+                result = _changes_to_aggregation(changes, result)
+            else:
+                result.extend(changes)
+        return result
 
-        # Finally, resort to manual diffing (images on different branches or reverse comparison order).
-        with materialized_table(conn, repository, table_name, image_1) as (mp_1, table_1):
-            with materialized_table(conn, repository, table_name, image_2) as (mp_2, table_2):
-                # Check both tables out at the same time since then table_2 calculation can be based
-                # on table_1's snapshot.
-                cur.execute(SQL("SELECT * FROM {}.{}").format(Identifier(mp_1),
-                                                              Identifier(table_1)))
-                left = cur.fetchall()
-                cur.execute(SQL("SELECT * FROM {}.{}").format(Identifier(mp_2),
-                                                              Identifier(table_2)))
-                right = cur.fetchall()
+    # Finally, resort to manual diffing (images on different branches or reverse comparison order).
+    with materialized_table(repository, table_name, image_1) as (mp_1, table_1):
+        with materialized_table(repository, table_name, image_2) as (mp_2, table_2):
+            # Check both tables out at the same time since then table_2 calculation can be based
+            # on table_1's snapshot.
+            cur.execute(SQL("SELECT * FROM {}.{}").format(Identifier(mp_1),
+                                                          Identifier(table_1)))
+            left = cur.fetchall()
+            cur.execute(SQL("SELECT * FROM {}.{}").format(Identifier(mp_2),
+                                                          Identifier(table_2)))
+            right = cur.fetchall()
 
-        # Mimic the diff format returned by the WAL
-        if aggregate:
-            return sum(1 for r in right if r not in left), sum(1 for r in left if r not in right), 0
-        return [(1, r) for r in left if r not in right] + [(0, r) for r in right if r not in left]
+    # Mimic the diff format returned by the WAL
+    if aggregate:
+        return sum(1 for r in right if r not in left), sum(1 for r in left if r not in right), 0
+    return [(1, r) for r in left if r not in right] + [(0, r) for r in right if r not in left]
 
 
-def dump_pending_changes(conn, schema, table, aggregate=False):
-    with conn.cursor() as cur:
+def dump_pending_changes(schema, table, aggregate=False):
+    with get_connection().cursor() as cur:
         if aggregate:
             cur.execute(SQL(
                 "SELECT action, count(action) FROM {}.{} "
@@ -130,7 +130,7 @@ def dump_pending_changes(conn, schema, table, aggregate=False):
             "WHERE schema_name = %s AND table_name = %s").format(Identifier("audit"),
                                                                  Identifier("logged_actions")),
                     (schema, table))
-        repl_id = get_replica_identity(conn, schema, table)
+        repl_id = get_replica_identity(schema, table)
         ri_cols, _ = zip(*repl_id)
         result = []
         for action, row_data, changed_fields in cur:

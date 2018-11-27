@@ -5,17 +5,19 @@ from collections import Counter, defaultdict
 from pprint import pprint
 
 import click
-import psycopg2
 from psycopg2 import ProgrammingError
-from splitgraph.commands import mount, unmount, commit, checkout, diff, get_log, init, get_parent_children, pull, \
+
+from splitgraph.commands import mount, unmount, commit, checkout, diff, get_log, init, pull, \
     clone, push, import_tables
 from splitgraph.commands.misc import cleanup_objects
 from splitgraph.commands.provenance import provenance, image_hash_to_sgfile
 from splitgraph.commands.publish import publish
 from splitgraph.config.repo_lookups import get_remote_connection_params
-from splitgraph.constants import POSTGRES_CONNECTION, SplitGraphException, serialize_connection_string, to_repository
+from splitgraph.connection import get_connection
+from splitgraph.constants import SplitGraphException, serialize_connection_string, to_repository
 from splitgraph.drawing import render_tree
 from splitgraph.meta_handler.images import get_canonical_image_id, get_image
+from splitgraph.meta_handler.images import get_parent_children
 from splitgraph.meta_handler.misc import get_current_repositories, get_remote_for
 from splitgraph.meta_handler.tables import get_tables_at, get_table
 from splitgraph.meta_handler.tags import get_current_head, get_all_hashes_tags, set_tag, tag_or_hash_to_actual_hash
@@ -23,11 +25,15 @@ from splitgraph.pg_utils import get_all_tables
 from splitgraph.sgfile.execution import execute_commands, rerun_image_with_replacement
 
 
-def _conn():
-    return psycopg2.connect(POSTGRES_CONNECTION)
+def _commit_connection(result):
+    """Commit and close the PG connection when the application finishes."""
+    conn = get_connection()
+    if conn:
+        conn.commit()
+        conn.close()
 
 
-@click.group()
+@click.group(result_callback=_commit_connection)
 def cli():
     # Toplevel click command group to allow us to invoke e.g. "sgr checkout" / "sgr commit" etc.
     pass
@@ -36,20 +42,19 @@ def cli():
 @click.command(name='status')
 @click.argument('repository', required=False, type=to_repository)
 def status_c(repository):
-    conn = _conn()
     if repository is None:
-        repositories = get_current_repositories(conn)
+        repositories = get_current_repositories()
         print("Currently mounted databases: ")
         for mp_name, mp_hash in repositories:
             # Maybe should also show the remote DB address/server
             print("%s: \t %s" % (mp_name, mp_hash))
         print("\nUse sgr status repository to get information about a given repository.")
     else:
-        current_snap = get_current_head(conn, repository, raise_on_none=False)
+        current_snap = get_current_head(repository, raise_on_none=False)
         if not current_snap:
             print("%s: nothing checked out." % str(repository))
             return
-        parent, children = get_parent_children(conn, repository, current_snap)
+        parent, children = get_parent_children(repository, current_snap)
         print("%s: on snapshot %s." % (str(repository), current_snap))
         if parent is not None:
             print("Parent: %s" % parent)
@@ -63,14 +68,13 @@ def status_c(repository):
 @click.argument('repository', type=to_repository)
 @click.option('-t', '--tree', is_flag=True)
 def log_c(repository, tree):
-    conn = _conn()
     if tree:
-        render_tree(conn, repository)
+        render_tree(repository)
     else:
-        head = get_current_head(conn, repository)
-        log = get_log(conn, repository, head)
+        head = get_current_head(repository)
+        log = get_log(repository, head)
         for entry in log:
-            image_info = get_image(conn, repository, entry)
+            image_info = get_image(repository, entry)
             print("%s %s %s %s" % ("H->" if entry == head else "   ", entry, image_info.created,
                                    image_info.comment or ""))
 
@@ -82,11 +86,11 @@ def log_c(repository, tree):
 @click.argument('tag_or_hash_1', required=False)
 @click.argument('tag_or_hash_2', required=False)
 def diff_c(verbose, table_name, repository, tag_or_hash_1, tag_or_hash_2):
-    conn = _conn()
-    tag_or_hash_1, tag_or_hash_2 = _get_actual_hashes(conn, repository, tag_or_hash_1, tag_or_hash_2)
+    tag_or_hash_1, tag_or_hash_2 = _get_actual_hashes(repository, tag_or_hash_1, tag_or_hash_2)
 
-    diffs = {table_name: diff(conn, repository, table_name, tag_or_hash_1, tag_or_hash_2, aggregate=not verbose)
-             for table_name in ([table_name] if table_name else sorted(get_all_tables(conn, repository.to_schema())))}
+    diffs = {table_name: diff(repository, table_name, tag_or_hash_1, tag_or_hash_2, aggregate=not verbose)
+             for table_name in
+             ([table_name] if table_name else sorted(get_all_tables(get_connection(), repository.to_schema())))}
 
     if tag_or_hash_2 is None:
         print("Between %s and the current working copy: " % tag_or_hash_1[:12])
@@ -127,20 +131,20 @@ def _emit_table_diff(table_name, diff_result, verbose):
         print(to_print + ("table added" if diff_result else "table removed"))
 
 
-def _get_actual_hashes(conn, repository, image_1, image_2):
+def _get_actual_hashes(repository, image_1, image_2):
     if image_1 is None and image_2 is None:
         # Comparing current working copy against the last commit
-        image_1 = get_current_head(conn, repository)
+        image_1 = get_current_head(repository)
     elif image_2 is None:
-        image_1 = tag_or_hash_to_actual_hash(conn, repository, image_1)
+        image_1 = tag_or_hash_to_actual_hash(repository, image_1)
         # One parameter: diff from that and its parent.
-        image_2 = get_image(conn, repository, image_1).parent_id
+        image_2 = get_image(repository, image_1).parent_id
         if image_2 is None:
             print("%s has no parent to compare to!" % image_1)
         image_1, image_2 = image_2, image_1  # snap_1 has to come first
     else:
-        image_1 = tag_or_hash_to_actual_hash(conn, repository, image_1)
-        image_2 = tag_or_hash_to_actual_hash(conn, repository, image_2)
+        image_1 = tag_or_hash_to_actual_hash(repository, image_1)
+        image_2 = tag_or_hash_to_actual_hash(repository, image_2)
     return image_1, image_2
 
 
@@ -157,31 +161,25 @@ def _get_actual_hashes(conn, repository, image_1, image_2):
 def mount_c(schema, connection, handler, handler_options):
     # Parse the connection string
     match = re.match(r'(\S+):(\S+)@(.+):(\d+)', connection)
-    conn = _conn()
     handler_options = json.loads(handler_options)
     handler_options.update(dict(server=match.group(3), port=int(match.group(4)),
                                 username=match.group(1), password=match.group(2)))
-    mount(conn, schema, mount_handler=handler, handler_kwargs=handler_options)
-    conn.commit()
+    mount(schema, mount_handler=handler, handler_kwargs=handler_options)
 
 
 @click.command(name='unmount')
 @click.argument('repository', type=to_repository)
 def unmount_c(repository):
-    conn = _conn()
-    unmount(conn, repository)
-    conn.commit()
+    unmount(repository)
 
 
 @click.command(name='checkout')
 @click.argument('repository', type=to_repository)
 @click.argument('snapshot_or_tag')
 def checkout_c(repository, snapshot_or_tag):
-    conn = _conn()
-    snapshot = tag_or_hash_to_actual_hash(conn, repository, snapshot_or_tag)
-    checkout(conn, repository, snapshot)
+    snapshot = tag_or_hash_to_actual_hash(repository, snapshot_or_tag)
+    checkout(repository, snapshot)
     print("Checked out %s:%s." % (str(repository), snapshot[:12]))
-    conn.commit()
 
 
 @click.command(name='commit')
@@ -190,14 +188,12 @@ def checkout_c(repository, snapshot_or_tag):
 @click.option('-s', '--include-snap', default=False, is_flag=True)
 @click.option('-m', '--message')
 def commit_c(repository, commit_hash, include_snap, message):
-    conn = _conn()
     if commit_hash and (len(commit_hash) != 64 or any([x not in 'abcdef0123456789' for x in set(commit_hash)])):
         print("Commit hash must be of the form [a-f0-9] x 64!")
         return
 
-    new_hash = commit(conn, repository, commit_hash, include_snap=include_snap, comment=message)
+    new_hash = commit(repository, commit_hash, include_snap=include_snap, comment=message)
     print("Committed %s as %s." % (str(repository), new_hash[:12]))
-    conn.commit()
 
 
 @click.command(name='show')
@@ -205,11 +201,10 @@ def commit_c(repository, commit_hash, include_snap, message):
 @click.argument('commit_tag_or_hash')
 @click.option('-v', '--verbose', default=False, is_flag=True)
 def show_c(repository, commit_tag_or_hash, verbose):
-    conn = _conn()
-    commit_tag_or_hash = tag_or_hash_to_actual_hash(conn, repository, commit_tag_or_hash)
+    commit_tag_or_hash = tag_or_hash_to_actual_hash(repository, commit_tag_or_hash)
 
     print("Commit %s" % commit_tag_or_hash)
-    image_info = get_image(conn, repository, commit_tag_or_hash)
+    image_info = get_image(repository, commit_tag_or_hash)
     print(image_info.comment or "")
     print("Created at %s" % image_info.created.isoformat())
     if image_info.parent_id:
@@ -219,8 +214,8 @@ def show_c(repository, commit_tag_or_hash, verbose):
     if verbose:
         print()
         print("Tables:")
-        for t in get_tables_at(conn, repository, commit_tag_or_hash):
-            table_objects = get_table(conn, repository, t, commit_tag_or_hash)
+        for t in get_tables_at(repository, commit_tag_or_hash):
+            table_objects = get_table(repository, t, commit_tag_or_hash)
             if len(table_objects) == 1:
                 print("  %s: %s (%s)" % (t, table_objects[0][0], table_objects[0][1]))
             else:
@@ -234,20 +229,16 @@ def show_c(repository, commit_tag_or_hash, verbose):
 @click.option('-a', '--sgfile-args', multiple=True, type=(str, str))
 @click.option('-o', '--output-repository', help='Repository to store the result in.', type=to_repository)
 def file_c(sgfile, sgfile_args, output_repository):
-    conn = _conn()
     sgfile_args = {k: v for k, v in sgfile_args}
     print("Executing SGFile %s with arguments %r" % (sgfile.name, sgfile_args))
-    execute_commands(conn, sgfile.read(), sgfile_args, output=output_repository)
-    conn.commit()
-    conn.close()
+    execute_commands(sgfile.read(), sgfile_args, output=output_repository)
 
 
 @click.command(name='sql')
 @click.argument('sql')
 @click.option('-a', '--show-all', is_flag=True)
 def sql_c(sql, show_all):
-    conn = _conn()
-    with conn.cursor() as cur:
+    with get_connection().cursor() as cur:
         cur.execute(sql)
         try:
             results = cur.fetchmany(10) if not show_all else cur.fetchall()
@@ -256,16 +247,13 @@ def sql_c(sql, show_all):
                 print("...")
         except ProgrammingError:
             pass  # sql wasn't a SELECT statement
-    conn.commit()
 
 
 @click.command(name='init')
 @click.argument('repository', type=to_repository)
 def init_c(repository):
-    conn = _conn()
-    init(conn, repository)
+    init(repository)
     print("Initialized empty repository %s" % str(repository))
-    conn.commit()
 
 
 @click.command(name='pull')
@@ -273,9 +261,7 @@ def init_c(repository):
 @click.argument('remote', default='origin')
 @click.option('-d', '--download-all', help='Download all objects immediately instead on checkout.')
 def pull_c(repository, remote, download_all):
-    conn = _conn()
-    pull(conn, repository, remote, download_all)
-    conn.commit()
+    pull(repository, remote, download_all)
 
 
 @click.command(name='clone')
@@ -284,9 +270,7 @@ def pull_c(repository, remote, download_all):
 @click.option('-d', '--download-all', help='Download all objects immediately instead on checkout.',
               default=False, is_flag=True)
 def clone_c(remote_repository, local_repository, download_all):
-    conn = _conn()
-    clone(conn, remote_repository, local_repository=local_repository, download_all=download_all)
-    conn.commit()
+    clone(remote_repository, local_repository=local_repository, download_all=download_all)
 
 
 @click.command(name='push')
@@ -296,18 +280,16 @@ def clone_c(remote_repository, local_repository, download_all):
 @click.option('-h', '--upload-handler', help='Where to upload objects (FILE or DB for the remote itself)', default='DB')
 @click.option('-o', '--upload-handler-options', help="""For FILE, e.g. '{"path": /mnt/sgobjects}'""", default="{}")
 def push_c(repository, remote, remote_repository, upload_handler, upload_handler_options):
-    conn = _conn()
     if not remote_repository:
         # Get actual connection string and remote repository
-        remote_info = get_remote_for(conn, repository, remote)
+        remote_info = get_remote_for(repository, remote)
         if not remote_info:
             raise SplitGraphException("No remote found for %s!" % str(repository))
         remote, remote_repository = remote_info
     else:
         remote = serialize_connection_string(*get_remote_connection_params(remote))
-    push(conn, repository, remote, remote_repository, handler=upload_handler,
+    push(repository, remote, remote_repository, handler=upload_handler,
          handler_options=json.loads(upload_handler_options))
-    conn.commit()
 
 
 @click.command(name='tag')
@@ -316,11 +298,10 @@ def push_c(repository, remote, remote_repository, upload_handler, upload_handler
 @click.argument('tag', required=False)
 @click.option('-f', '--force', required=False, is_flag=True)
 def tag_c(repository, image, tag, force):
-    conn = _conn()
     if tag is None:
         # List all tags
         tag_dict = defaultdict(list)
-        for img, img_tag in get_all_hashes_tags(conn, repository):
+        for img, img_tag in get_all_hashes_tags(repository):
             tag_dict[img].append(img_tag)
         if image is None:
             for img, tags in tag_dict.items():
@@ -328,19 +309,18 @@ def tag_c(repository, image, tag, force):
                 if img:
                     print("%s: %s" % (img[:12], ', '.join(tags)))
         else:
-            print(', '.join(tag_dict[get_canonical_image_id(conn, repository, image)]))
+            print(', '.join(tag_dict[get_canonical_image_id(repository, image)]))
         return
 
     if tag == 'HEAD':
         raise SplitGraphException("HEAD is a reserved tag!")
 
     if image is None:
-        image = get_current_head(conn, repository)
+        image = get_current_head(repository)
     else:
-        image = get_canonical_image_id(conn, repository, image)
-    set_tag(conn, repository, image, tag, force)
+        image = get_canonical_image_id(repository, image)
+    set_tag(repository, image, tag, force)
     print("Tagged %s:%s with %s." % (str(repository), image, tag))
-    conn.commit()
 
 
 @click.command(name='import')
@@ -356,30 +336,24 @@ def import_c(repository, table_or_query, target_repository, target_table, image,
         print("TARGET_TABLE is required when is_query is True!")
         sys.exit(1)
 
-    conn = _conn()
     if not foreign_tables:
         if not image:
-            image = get_current_head(conn, repository)
+            image = get_current_head(repository)
         else:
-            image = get_canonical_image_id(conn, repository, image)
+            image = get_canonical_image_id(repository, image)
     else:
         image = None
-    import_tables(conn, repository, [table_or_query], target_repository, [target_table] if target_table else [],
+    import_tables(repository, [table_or_query], target_repository, [target_table] if target_table else [],
                   image_hash=image, foreign_tables=foreign_tables, table_queries=[] if not is_query else [True])
 
     print("%s:%s has been imported from %s:%s%s" % (str(target_repository), target_table, str(repository),
                                                     table_or_query, (' (%s)' % image[:12] if image else '')))
 
-    conn.commit()
-
 
 @click.command(name='cleanup')
 def cleanup_c():
-    conn = _conn()
-    deleted = cleanup_objects(conn)
+    deleted = cleanup_objects()
     print("Deleted %d physical object(s)" % len(deleted))
-    conn.commit()
-    conn.close()
 
 
 @click.command(name='provenance')
@@ -389,18 +363,16 @@ def cleanup_c():
 @click.option('-e', '--error-on-end', required=False, default=True, is_flag=True,
               help='If False, bases the recreated sgfile on the last image where the provenance chain breaks')
 def provenance_c(repository, snapshot_or_tag, full, error_on_end):
-    conn = _conn()
-    snapshot = tag_or_hash_to_actual_hash(conn, repository, snapshot_or_tag)
+    snapshot = tag_or_hash_to_actual_hash(repository, snapshot_or_tag)
 
     if full:
-        sgfile_commands = image_hash_to_sgfile(conn, repository, snapshot, error_on_end)
+        sgfile_commands = image_hash_to_sgfile(repository, snapshot, error_on_end)
         print("# sgfile commands used to recreate %s:%s" % (str(repository), snapshot))
         print('\n'.join(sgfile_commands))
     else:
-        result = provenance(conn, repository, snapshot)
+        result = provenance(repository, snapshot)
         print("%s:%s depends on:" % (str(repository), snapshot))
         print('\n'.join("%s:%s" % rs for rs in result))
-    conn.close()
 
 
 @click.command(name='rerun')
@@ -409,13 +381,12 @@ def provenance_c(repository, snapshot_or_tag, full, error_on_end):
 @click.option('-u', '--update', is_flag=True, help='Rederive the image against the latest version of all dependencies.')
 @click.option('-i', '--repo-image', multiple=True, type=(to_repository, str))
 def rerun_c(repository, snapshot_or_tag, update, repo_image):
-    conn = _conn()
-    snapshot = tag_or_hash_to_actual_hash(conn, repository, snapshot_or_tag)
+    snapshot = tag_or_hash_to_actual_hash(repository, snapshot_or_tag)
 
     # Replace the sources used to construct the image with either the latest ones or the images specified by the user.
     # This doesn't require us at this point to have pulled all the dependencies: the sgfile executor will do it
     # after we feed in the reconstructed and patched sgfile.
-    deps = {k: v for k, v in provenance(conn, repository, snapshot)}
+    deps = {k: v for k, v in provenance(repository, snapshot)}
     new_images = {repo: image for repo, image in repo_image} if not update \
         else {repo: 'latest' for repo, _ in deps.items()}
     deps.update(new_images)
@@ -423,10 +394,7 @@ def rerun_c(repository, snapshot_or_tag, update, repo_image):
     print("Rerunning %s:%s against:" % (str(repository), snapshot))
     print('\n'.join("%s:%s" % rs for rs in new_images.items()))
 
-    rerun_image_with_replacement(conn, repository, snapshot, new_images)
-
-    conn.commit()
-    conn.close()
+    rerun_image_with_replacement(repository, snapshot, new_images)
 
 
 @click.command(name='publish')
@@ -436,15 +404,12 @@ def rerun_c(repository, snapshot_or_tag, update, repo_image):
 @click.option('--skip-provenance', is_flag=True, help='Don''t include provenance in the published information.')
 @click.option('--skip-previews', is_flag=True, help='Don''t include table previews in the published information.')
 def publish_c(repository, tag, readme, skip_provenance, skip_previews):
-    conn = _conn()
     if readme:
         readme = readme.read()
     else:
         readme = ""
-    publish(conn, repository, tag, readme=readme, include_provenance=not skip_provenance,
+    publish(repository, tag, readme=readme, include_provenance=not skip_provenance,
             include_table_previews=not skip_previews)
-    conn.commit()
-    conn.close()
 
 
 cli.add_command(status_c)

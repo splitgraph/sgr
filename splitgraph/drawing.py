@@ -49,16 +49,16 @@ def _render_node(node_id, children, node_cols, max_col, mark_node='', node_width
     print(line)
 
 
-def render_tree(conn, repository):
+def render_tree(repository):
     """Draws the repository's commit graph as a Git-like tree."""
-    ensure_metadata_schema(conn)
+    ensure_metadata_schema()
     # Prepare the tree structure by loading the index from the db and flipping it
     children = defaultdict(list)
     base_node = None
-    head = get_current_head(conn, repository, raise_on_none=False)
+    head = get_current_head(repository, raise_on_none=False)
 
     # Get all commits in ascending time order
-    snap_parents = get_all_images_parents(conn, repository)
+    snap_parents = get_all_images_parents(repository)
     for image_hash, parent_id, _, _, _, _ in snap_parents:
         if parent_id is None:
             base_node = image_hash
