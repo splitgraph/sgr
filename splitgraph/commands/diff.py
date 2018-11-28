@@ -4,11 +4,11 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.commands.checkout import materialized_table
 from splitgraph.commands.misc import table_exists_at, find_path
+from splitgraph.commands.objects.utils import get_replica_identity, convert_audit_change, KIND
 from splitgraph.connection import get_connection
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler.tables import get_object_for_table, get_table
 from splitgraph.meta_handler.tags import get_current_head
-from splitgraph.objects.utils import get_replica_identity, convert_audit_change, KIND
 
 
 def _changes_to_aggregation(query_result, initial=None):

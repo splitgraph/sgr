@@ -1,13 +1,14 @@
 import json
 
-from psycopg2.extras import execute_batch, Json
+from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph.commands.objects.utils import get_replica_identity, conflate_changes, convert_audit_change, \
+    get_random_object_id
 from splitgraph.connection import get_connection
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA, get_random_object_id
+from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler.objects import register_table, register_object
 from splitgraph.meta_handler.tables import get_object_for_table
-from splitgraph.objects.utils import get_replica_identity, conflate_changes, convert_audit_change
 from splitgraph.pg_utils import copy_table
 
 
@@ -69,16 +70,6 @@ def record_table_as_diff(repository, image_hash, table, table_info):
                                                Identifier(object_id)))
             for prev_object_id, _ in table_info:
                 register_table(repository, table, image_hash, prev_object_id)
-
-
-def _convert_vals(vals):
-    """Psycopg returns jsonb objects as dicts but doesn't actually accept them directly
-    as a query param. Hence, we have to wrap them in the Json datatype when applying a DIFF
-    to a table."""
-    # This might become a bottleneck since we call this for every row in the diff + function
-    # calls are expensive in Python -- maybe there's a better way (e.g. tell psycopg to not convert
-    # things to dicts or apply diffs in-driver).
-    return [v if not isinstance(v, dict) else Json(v) for v in vals]
 
 
 def record_table_as_snap(repository, image_hash, table, table_info):

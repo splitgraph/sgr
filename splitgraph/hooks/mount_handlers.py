@@ -3,7 +3,7 @@ import logging
 from psycopg2.sql import Identifier, SQL
 
 from splitgraph.connection import get_connection
-from splitgraph.constants import SplitGraphException
+from splitgraph.exceptions import SplitGraphException
 
 MOUNT_HANDLERS = {}
 

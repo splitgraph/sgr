@@ -3,12 +3,12 @@ from collections import defaultdict
 
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.commands.misc import make_conn, unmount
-from splitgraph.commands.mount_handlers import mount_postgres
-from splitgraph.connection import get_connection, override_driver_connection
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA, parse_connection_string, to_repository
+from splitgraph.commands.misc import unmount
+from splitgraph.connection import get_connection, override_driver_connection, parse_connection_string, make_conn
+from splitgraph.constants import SPLITGRAPH_META_SCHEMA, to_repository
+from splitgraph.hooks.external_objects import get_upload_download_handler
+from splitgraph.hooks.mount_handlers import mount_postgres
 from splitgraph.meta_handler.objects import get_existing_objects, get_downloaded_objects
-from splitgraph.objects.external import get_upload_download_handler
 from splitgraph.pg_utils import copy_table, dump_table_creation, get_primary_keys
 
 

@@ -4,15 +4,16 @@ from psycopg2.sql import Identifier, SQL
 
 from splitgraph.commands.checkout import materialize_table, checkout
 from splitgraph.commands.misc import unmount
+from splitgraph.commands.objects.utils import get_random_object_id
 from splitgraph.commands.push_pull import clone
 from splitgraph.connection import get_connection
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA, get_random_object_id, Repository
+from splitgraph.constants import SPLITGRAPH_META_SCHEMA, Repository
 from splitgraph.meta_handler.images import add_new_image
 from splitgraph.meta_handler.objects import register_table, register_object
 from splitgraph.meta_handler.tables import get_tables_at, get_table
 from splitgraph.meta_handler.tags import get_current_head, set_head
-from splitgraph.pg_audit import manage_audit
 from splitgraph.pg_utils import copy_table, execute_sql_in, get_all_tables, get_all_foreign_tables
+from ._pg_audit import manage_audit
 
 
 @manage_audit

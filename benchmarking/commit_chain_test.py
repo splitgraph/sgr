@@ -1,9 +1,9 @@
 import os
 os.environ['SG_CONFIG_FILE'] = 'test/resources/.sgconfig'
 
-from splitgraph.connection import get_connection
+from splitgraph.connection import get_connection, serialize_connection_string, make_conn
 from minio import Minio
-from splitgraph.commands.misc import cleanup_objects, make_conn
+from splitgraph.commands.misc import cleanup_objects
 from splitgraph.config.repo_lookups import get_remote_connection_params
 
 
@@ -13,7 +13,7 @@ from random import getrandbits, randrange
 from psycopg2.extras import execute_batch
 
 from splitgraph.commands import *
-from splitgraph.constants import to_repository, serialize_connection_string, S3_HOST, S3_PORT, S3_ACCESS_KEY, \
+from splitgraph.constants import to_repository, S3_HOST, S3_PORT, S3_ACCESS_KEY, \
     S3_SECRET_KEY
 from splitgraph.meta_handler.tags import get_current_head
 

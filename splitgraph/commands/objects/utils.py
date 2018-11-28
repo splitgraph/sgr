@@ -1,22 +1,13 @@
-from psycopg2.sql import SQL, Identifier
+from random import getrandbits
 
 from splitgraph.connection import get_connection
-from splitgraph.constants import SplitGraphException
+from splitgraph.exceptions import SplitGraphException
 from splitgraph.pg_utils import get_primary_keys, get_column_names_types
 
 
 def get_replica_identity(schema, table):
     conn = get_connection()
     return get_primary_keys(conn, schema, table) or get_column_names_types(conn, schema, table)
-
-
-def _generate_where_clause(schema, table, cols, table_2=None, schema_2=None):
-    if not table_2:
-        return SQL(" AND ").join(SQL("{}.{}.{} = %s").format(
-            Identifier(schema), Identifier(table), Identifier(c)) for c in cols)
-    return SQL(" AND ").join(SQL("{}.{}.{} = {}.{}.{}").format(
-        Identifier(schema), Identifier(table), Identifier(c),
-        Identifier(schema_2), Identifier(table_2), Identifier(c)) for c in cols)
 
 
 def _split_ri_cols(action, row_data, changed_fields, ri_cols):
@@ -130,3 +121,10 @@ def conflate_changes(changeset, new_changes):
 
 # "Truncate" kind is missing
 KIND = {'I': 0, 'D': 1, 'U': 2}
+
+
+def get_random_object_id():
+    """Assign each table a random ID that it will be stored as. Note that postgres limits table names to 63 characters,
+    so the IDs shall be 248-bit strings, hex-encoded, + a letter prefix since Postgres doesn't seem to support table
+    names starting with a digit."""
+    return "o%0.2x" % getrandbits(248)

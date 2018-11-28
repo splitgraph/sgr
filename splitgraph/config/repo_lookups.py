@@ -1,7 +1,6 @@
-from splitgraph.commands.misc import make_conn
 from splitgraph.config import CONFIG
-from splitgraph.connection import override_driver_connection
-from splitgraph.constants import SplitGraphException
+from splitgraph.connection import override_driver_connection, make_conn
+from splitgraph.exceptions import SplitGraphException
 from splitgraph.meta_handler.misc import repository_exists
 
 

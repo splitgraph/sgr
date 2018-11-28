@@ -4,10 +4,10 @@ from decimal import Decimal
 import pytest
 
 from splitgraph.commands import diff, commit, init, checkout
+from splitgraph.commands._pg_audit import has_pending_changes
 from splitgraph.meta_handler.images import get_image
 from splitgraph.meta_handler.tables import get_table
 from splitgraph.meta_handler.tags import get_current_head
-from splitgraph.pg_audit import has_pending_changes
 from test.splitgraph.conftest import PG_MNT, MG_MNT, OUTPUT
 
 

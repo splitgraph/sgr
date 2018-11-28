@@ -1,0 +1,2 @@
+class SplitGraphException(Exception):
+    pass

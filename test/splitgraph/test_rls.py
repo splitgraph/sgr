@@ -6,8 +6,8 @@ from psycopg2._psycopg import ProgrammingError
 from splitgraph.commands import clone, push, commit, checkout
 from splitgraph.commands.publish import publish
 from splitgraph.config.repo_lookups import get_remote_connection_params
-from splitgraph.connection import override_driver_connection
-from splitgraph.constants import Repository, serialize_connection_string
+from splitgraph.connection import override_driver_connection, serialize_connection_string
+from splitgraph.constants import Repository
 from splitgraph.meta_handler.common import toggle_registry_rls
 from splitgraph.meta_handler.images import get_all_images_parents
 from splitgraph.meta_handler.misc import unregister_repository

@@ -13,9 +13,10 @@ from splitgraph.commands.misc import cleanup_objects
 from splitgraph.commands.provenance import provenance, image_hash_to_sgfile
 from splitgraph.commands.publish import publish
 from splitgraph.config.repo_lookups import get_remote_connection_params
-from splitgraph.connection import get_connection
-from splitgraph.constants import SplitGraphException, serialize_connection_string, to_repository
+from splitgraph.connection import get_connection, serialize_connection_string
+from splitgraph.constants import to_repository
 from splitgraph.drawing import render_tree
+from splitgraph.exceptions import SplitGraphException
 from splitgraph.meta_handler.images import get_canonical_image_id, get_image
 from splitgraph.meta_handler.images import get_parent_children
 from splitgraph.meta_handler.misc import get_current_repositories, get_remote_for

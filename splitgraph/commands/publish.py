@@ -5,9 +5,8 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.commands import provenance
 from splitgraph.commands.checkout import materialized_table
-from splitgraph.commands.misc import make_conn
-from splitgraph.connection import get_connection, override_driver_connection
-from splitgraph.constants import SplitGraphException, parse_connection_string
+from splitgraph.connection import get_connection, override_driver_connection, parse_connection_string, make_conn
+from splitgraph.exceptions import SplitGraphException
 from splitgraph.meta_handler.misc import get_remote_for, get_schema_at
 from splitgraph.meta_handler.tables import get_tables_at
 from splitgraph.meta_handler.tags import get_tagged_id

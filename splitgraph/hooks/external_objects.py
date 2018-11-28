@@ -1,5 +1,5 @@
-from splitgraph.constants import SplitGraphException
-from splitgraph.objects.s3 import s3_upload_objects, s3_download_objects
+from splitgraph.exceptions import SplitGraphException
+from splitgraph.hooks.s3 import s3_upload_objects, s3_download_objects
 
 EXTERNAL_OBJECT_HANDLERS = {}
 

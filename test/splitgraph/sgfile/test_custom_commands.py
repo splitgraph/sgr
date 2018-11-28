@@ -8,13 +8,13 @@ except ImportError:
     from mock import patch
 from psycopg2.sql import Identifier, SQL
 from splitgraph.commands import get_log, commit
-from splitgraph.constants import SplitGraphException
+from splitgraph.exceptions import SplitGraphException
 from splitgraph.meta_handler.images import get_image
 from splitgraph.meta_handler.tables import get_tables_at
 from splitgraph.meta_handler.tags import get_current_head
 from splitgraph.sgfile import execute_commands
 from splitgraph.sgfile.execution import _combine_hashes
-from splitgraph.sgfile.plugins import PluginCommand
+from splitgraph.hooks.sgfile_commands import PluginCommand
 from test.splitgraph.conftest import OUTPUT, PG_MNT, load_sgfile
 
 

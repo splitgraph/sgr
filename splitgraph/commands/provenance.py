@@ -1,6 +1,7 @@
 import logging
 
-from splitgraph.constants import SplitGraphException, Repository
+from splitgraph.constants import Repository
+from splitgraph.exceptions import SplitGraphException
 from splitgraph.meta_handler.images import get_image
 
 

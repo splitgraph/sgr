@@ -2,7 +2,9 @@ import re
 import shlex
 
 from parsimonious import Grammar
-from splitgraph.constants import SplitGraphException, to_repository
+
+from splitgraph.constants import to_repository
+from splitgraph.exceptions import SplitGraphException
 
 SGFILE_GRAMMAR = Grammar(r"""
     commands = space command space (newline space command space)*

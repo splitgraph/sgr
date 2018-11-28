@@ -1,7 +1,8 @@
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.connection import get_connection
-from splitgraph.constants import SplitGraphException, SPLITGRAPH_META_SCHEMA
+from splitgraph.constants import SPLITGRAPH_META_SCHEMA
+from splitgraph.exceptions import SplitGraphException
 from splitgraph.meta_handler.common import ensure_metadata_schema, select, insert
 from splitgraph.meta_handler.images import get_canonical_image_id
 from splitgraph.meta_handler.misc import repository_exists

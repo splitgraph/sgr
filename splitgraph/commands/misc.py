@@ -1,4 +1,3 @@
-import psycopg2
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.connection import get_connection
@@ -8,8 +7,8 @@ from splitgraph.meta_handler.images import get_image
 from splitgraph.meta_handler.misc import register_repository, unregister_repository
 from splitgraph.meta_handler.objects import get_object_meta
 from splitgraph.meta_handler.tables import get_table
-from splitgraph.pg_audit import manage_audit, discard_pending_changes
 from splitgraph.pg_utils import pg_table_exists
+from ._pg_audit import manage_audit, discard_pending_changes
 
 
 def table_exists_at(repository, table_name, image_hash):
@@ -18,10 +17,6 @@ def table_exists_at(repository, table_name, image_hash):
     :param namespace: """
     return pg_table_exists(get_connection(), repository.to_schema(), table_name) if image_hash is None \
         else bool(get_table(repository, table_name, image_hash))
-
-
-def make_conn(server, port, username, password, dbname):
-    return psycopg2.connect(host=server, port=port, user=username, password=password, dbname=dbname)
 
 
 def get_log(repository, start_image):

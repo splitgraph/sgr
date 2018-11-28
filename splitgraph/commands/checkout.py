@@ -5,16 +5,18 @@ from psycopg2.sql import Identifier, SQL
 
 from splitgraph.commands.misc import delete_objects
 from splitgraph.connection import get_connection
-from splitgraph.constants import get_random_object_id, SplitGraphException, SPLITGRAPH_META_SCHEMA
+from splitgraph.constants import SPLITGRAPH_META_SCHEMA
+from splitgraph.exceptions import SplitGraphException
 from splitgraph.meta_handler.images import get_canonical_image_id, get_closest_parent_image_object
 from splitgraph.meta_handler.misc import get_remote_for
 from splitgraph.meta_handler.objects import get_external_object_locations
 from splitgraph.meta_handler.tables import get_tables_at, get_object_for_table
 from splitgraph.meta_handler.tags import get_tagged_id, set_head
-from splitgraph.objects.applying import apply_record_to_staging
-from splitgraph.objects.loading import download_objects
-from splitgraph.pg_audit import has_pending_changes, manage_audit, discard_pending_changes
 from splitgraph.pg_utils import copy_table, get_all_tables, pg_table_exists
+from ._pg_audit import has_pending_changes, manage_audit, discard_pending_changes
+from .objects.applying import apply_record_to_staging
+from .objects.loading import download_objects
+from .objects.utils import get_random_object_id
 
 
 def materialize_table(repository, image_hash, table, destination, destination_schema=None):

@@ -1,12 +1,13 @@
 import json
 
+from psycopg2._json import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.connection import get_connection
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA, SplitGraphException
-from splitgraph.objects.creation import _convert_vals
-from splitgraph.objects.utils import get_replica_identity, _generate_where_clause
+from splitgraph.constants import SPLITGRAPH_META_SCHEMA
+from splitgraph.exceptions import SplitGraphException
 from splitgraph.pg_utils import get_column_names
+from .utils import get_replica_identity
 
 
 def apply_record_to_staging(object_id, dest_schema, dest_table):
@@ -67,3 +68,22 @@ def apply_record_to_staging(object_id, dest_schema, dest_table):
         # Apply the insert/update queries (might not exist if the diff was all deletes)
         if queries:
             cur.execute(b';'.join(queries))  # maybe some pagination needed here.
+
+
+def _convert_vals(vals):
+    """Psycopg returns jsonb objects as dicts but doesn't actually accept them directly
+    as a query param. Hence, we have to wrap them in the Json datatype when applying a DIFF
+    to a table."""
+    # This might become a bottleneck since we call this for every row in the diff + function
+    # calls are expensive in Python -- maybe there's a better way (e.g. tell psycopg to not convert
+    # things to dicts or apply diffs in-driver).
+    return [v if not isinstance(v, dict) else Json(v) for v in vals]
+
+
+def _generate_where_clause(schema, table, cols, table_2=None, schema_2=None):
+    if not table_2:
+        return SQL(" AND ").join(SQL("{}.{}.{} = %s").format(
+            Identifier(schema), Identifier(table), Identifier(c)) for c in cols)
+    return SQL(" AND ").join(SQL("{}.{}.{} = {}.{}.{}").format(
+        Identifier(schema), Identifier(table), Identifier(c),
+        Identifier(schema_2), Identifier(table_2), Identifier(c)) for c in cols)

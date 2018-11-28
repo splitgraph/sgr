@@ -4,18 +4,20 @@ from importlib import import_module
 from random import getrandbits
 
 from splitgraph.commands import checkout, init, unmount, clone, import_tables, commit, image_hash_to_sgfile
-from splitgraph.commands.mount_handlers import get_mount_handler
 from splitgraph.commands.push_pull import local_clone, pull
 from splitgraph.config import CONFIG
 from splitgraph.config.repo_lookups import lookup_repo
-from splitgraph.connection import get_connection
-from splitgraph.constants import SplitGraphException, serialize_connection_string, Color, to_repository, Repository
+from splitgraph.connection import get_connection, serialize_connection_string
+from splitgraph.console import Color, truncate_line
+from splitgraph.constants import to_repository, Repository
+from splitgraph.exceptions import SplitGraphException
+from splitgraph.hooks.mount_handlers import get_mount_handler
 from splitgraph.meta_handler.misc import repository_exists
 from splitgraph.meta_handler.provenance import store_import_provenance, store_sql_provenance, store_mount_provenance, \
     store_from_provenance
 from splitgraph.meta_handler.tags import get_current_head, tag_or_hash_to_actual_hash
 from splitgraph.pg_utils import execute_sql_in
-from splitgraph.sgfile.parsing import parse_commands, extract_nodes, get_first_or_none, parse_repo_source, \
+from ._parsing import parse_commands, extract_nodes, get_first_or_none, parse_repo_source, \
     extract_all_table_aliases, parse_custom_command
 
 
@@ -34,10 +36,6 @@ def _checkout_or_calculate_layer(output, image_hash, calc_func):
     except SplitGraphException:
         calc_func()
     print(" ---> %s" % image_hash[:12])
-
-
-def truncate_line(line, length=80):
-    return (line if len(line) <= length else line[:length] + '...').replace('\n', '')
 
 
 def execute_commands(commands, params=None, output=None, output_base='0' * 32):
