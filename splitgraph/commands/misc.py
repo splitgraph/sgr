@@ -1,12 +1,11 @@
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph.commands.info import get_image, get_table
 from splitgraph.connection import get_connection
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 from splitgraph.meta_handler.common import META_TABLES, ensure_metadata_schema
-from splitgraph.meta_handler.images import get_image
 from splitgraph.meta_handler.misc import register_repository, unregister_repository
 from splitgraph.meta_handler.objects import get_object_meta
-from splitgraph.meta_handler.tables import get_table
 from splitgraph.pg_utils import pg_table_exists
 from ._pg_audit import manage_audit, discard_pending_changes
 

@@ -1,7 +1,7 @@
 from splitgraph.commands import get_log
 from splitgraph.commands.provenance import provenance, image_hash_to_sgfile
+from splitgraph.commands.tagging import get_current_head, get_tagged_id
 from splitgraph.connection import override_driver_connection
-from splitgraph.meta_handler.tags import get_current_head, get_tagged_id
 from splitgraph.sgfile import execute_commands
 from splitgraph.sgfile.execution import rerun_image_with_replacement
 from test.splitgraph.conftest import OUTPUT, PG_MNT, add_multitag_dataset_to_remote_driver, load_sgfile

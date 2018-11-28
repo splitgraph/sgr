@@ -1,10 +1,10 @@
 # coding=utf-8
 from collections import defaultdict
 
+from splitgraph.commands.tagging import get_current_head
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.meta_handler.common import ensure_metadata_schema
 from splitgraph.meta_handler.images import get_all_images_parents
-from splitgraph.meta_handler.tags import get_current_head
 
 
 def _calc_columns(children, start):

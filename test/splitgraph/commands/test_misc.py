@@ -1,7 +1,7 @@
 import pytest
 
 from splitgraph.commands import commit, get_log, checkout, diff
-from splitgraph.meta_handler.tags import get_current_head, get_all_hashes_tags, set_tag
+from splitgraph.commands.tagging import get_current_head, get_all_hashes_tags, set_tag
 from splitgraph.pg_utils import pg_table_exists
 from test.splitgraph.conftest import PG_MNT
 

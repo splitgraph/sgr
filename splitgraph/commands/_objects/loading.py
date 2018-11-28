@@ -57,7 +57,8 @@ def _fetch_remote_objects(objects_to_fetch, remote_conn_string, remote_conn=None
         for i, obj in enumerate(objects_to_fetch):
             print("(%d/%d) %s..." % (i + 1, len(objects_to_fetch), obj))
             # Foreign tables don't have PK constraints so we'll have to apply them manually.
-            copy_table(conn, remote_data_mountpoint.to_schema(), obj, SPLITGRAPH_META_SCHEMA, obj, with_pk_constraints=False)
+            copy_table(conn, remote_data_mountpoint.to_schema(), obj, SPLITGRAPH_META_SCHEMA, obj,
+                       with_pk_constraints=False)
             with conn.cursor() as cur:
                 source_pks = get_primary_keys(remote_conn, SPLITGRAPH_META_SCHEMA, obj)
                 if source_pks:

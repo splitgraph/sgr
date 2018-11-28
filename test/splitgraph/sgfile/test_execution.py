@@ -1,15 +1,16 @@
 import pytest
 
 from splitgraph.commands import checkout, commit, push, unmount, clone, get_log
+from splitgraph.commands.info import get_image, get_tables_at
 from splitgraph.commands.misc import cleanup_objects
+from splitgraph.commands.tagging import get_current_head
 from splitgraph.connection import override_driver_connection
 from splitgraph.constants import to_repository as R
 from splitgraph.exceptions import SplitGraphException
-from splitgraph.meta_handler.images import get_image, get_all_images_parents
+from splitgraph.meta_handler.images import get_all_images_parents
 from splitgraph.meta_handler.misc import get_current_repositories
-from splitgraph.meta_handler.objects import get_existing_objects, get_downloaded_objects, get_external_object_locations
-from splitgraph.meta_handler.tables import get_tables_at, get_object_for_table
-from splitgraph.meta_handler.tags import get_current_head
+from splitgraph.meta_handler.objects import get_existing_objects, get_downloaded_objects, get_external_object_locations, \
+    get_object_for_table
 from splitgraph.pg_utils import pg_table_exists
 from splitgraph.sgfile._parsing import preprocess
 from splitgraph.sgfile.execution import execute_commands

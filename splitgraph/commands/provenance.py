@@ -1,8 +1,8 @@
 import logging
 
+from splitgraph.commands.info import get_image
 from splitgraph.constants import Repository
 from splitgraph.exceptions import SplitGraphException
-from splitgraph.meta_handler.images import get_image
 
 
 def provenance(repository, image_hash):

@@ -102,3 +102,16 @@ def register_table(repository, table, image, object_id):
     with get_connection().cursor() as cur:
         cur.execute(insert("tables", ("namespace", "repository", "image_hash", "table_name", "object_id")),
                     (repository.namespace, repository.repository, image, table, object_id))
+
+
+def get_object_for_table(repository, table_name, image, object_format):
+    # Returns the object ID of a table at a given time, with a given format.
+    with get_connection().cursor() as cur:
+        cur.execute(SQL("""SELECT {0}.tables.object_id FROM {0}.tables JOIN {0}.objects
+                            ON {0}.objects.object_id = {0}.tables.object_id
+                            WHERE {0}.tables.namespace = %s AND repository = %s AND image_hash = %s
+                            AND table_name = %s AND format = %s""").format(
+            Identifier(SPLITGRAPH_META_SCHEMA)), (repository.namespace, repository.repository,
+                                                  image, table_name, object_format))
+        result = cur.fetchone()
+        return None if result is None else result[0]

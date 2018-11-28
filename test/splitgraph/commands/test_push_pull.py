@@ -1,10 +1,10 @@
 import pytest
 
 from splitgraph.commands import clone, checkout, commit, pull, push
+from splitgraph.commands.tagging import get_current_head
 from splitgraph.connection import override_driver_connection
 from splitgraph.meta_handler.images import get_all_images_parents
 from splitgraph.meta_handler.objects import get_existing_objects, get_downloaded_objects
-from splitgraph.meta_handler.tags import get_current_head
 from test.splitgraph.conftest import PG_MNT, PG_MNT_PULL
 
 

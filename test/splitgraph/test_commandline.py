@@ -6,14 +6,14 @@ from click.testing import CliRunner
 from splitgraph.commandline import status_c, sql_c, diff_c, commit_c, log_c, show_c, tag_c, checkout_c, unmount_c, \
     cleanup_c, init_c, mount_c, import_c, clone_c, pull_c, push_c, file_c, provenance_c, rerun_c, publish_c
 from splitgraph.commands import commit, checkout
+from splitgraph.commands.info import get_image, get_table
 from splitgraph.commands.misc import table_exists_at, unmount
 from splitgraph.commands.provenance import provenance
+from splitgraph.commands.tagging import get_current_head, get_tagged_id, set_tag
 from splitgraph.connection import override_driver_connection
 from splitgraph.constants import to_repository
-from splitgraph.meta_handler.images import get_all_images_parents, get_image
+from splitgraph.meta_handler.images import get_all_images_parents
 from splitgraph.meta_handler.misc import repository_exists
-from splitgraph.meta_handler.tables import get_table
-from splitgraph.meta_handler.tags import get_current_head, get_tagged_id, set_tag
 from splitgraph.registry_meta_handler import get_published_info
 from test.splitgraph.conftest import PG_MNT, MG_MNT, OUTPUT, add_multitag_dataset_to_remote_driver, SGFILE_ROOT
 

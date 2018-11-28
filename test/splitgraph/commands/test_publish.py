@@ -2,8 +2,8 @@ import pytest
 
 from splitgraph.commands import push
 from splitgraph.commands.publish import publish
+from splitgraph.commands.tagging import get_current_head, get_tagged_id, set_tag
 from splitgraph.connection import override_driver_connection
-from splitgraph.meta_handler.tags import get_current_head, get_tagged_id, set_tag
 from splitgraph.registry_meta_handler import get_published_info
 from splitgraph.sgfile import execute_commands
 from test.splitgraph.conftest import REMOTE_CONN_STRING, OUTPUT, PG_MNT, add_multitag_dataset_to_remote_driver, \

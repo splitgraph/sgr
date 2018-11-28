@@ -1,10 +1,10 @@
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph.commands.info import get_canonical_image_id
 from splitgraph.connection import get_connection
 from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.meta_handler.common import ensure_metadata_schema, select, insert
-from splitgraph.meta_handler.images import get_canonical_image_id
 from splitgraph.meta_handler.misc import repository_exists
 
 
@@ -55,10 +55,6 @@ def set_tags(repository, tags, force=False):
     for tag, image_id in tags.items():
         if tag != 'HEAD':
             set_tag(repository, image_id, tag, force)
-
-
-def set_head(repository, image):
-    set_tag(repository, image, 'HEAD', force=True)
 
 
 def set_tag(repository, image, tag, force=False):

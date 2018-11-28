@@ -3,10 +3,10 @@ from minio import Minio
 
 from splitgraph.commands import clone, checkout, commit, push, unmount
 from splitgraph.commands.misc import cleanup_objects
+from splitgraph.commands.tagging import get_tagged_id
 from splitgraph.connection import override_driver_connection
 from splitgraph.constants import S3_HOST, S3_PORT, S3_SECRET_KEY, S3_ACCESS_KEY
 from splitgraph.meta_handler.objects import get_existing_objects, get_external_object_locations, get_downloaded_objects
-from splitgraph.meta_handler.tags import get_tagged_id
 from test.splitgraph.conftest import PG_MNT, PG_MNT_PULL
 
 

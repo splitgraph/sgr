@@ -1,9 +1,9 @@
 from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph.commands.info import get_table
 from splitgraph.connection import get_connection
 from splitgraph.meta_handler.misc import ensure_metadata_schema, get_current_repositories
-from splitgraph.meta_handler.tables import get_table
 from splitgraph.pg_utils import get_all_tables
 
 ROW_TRIGGER_NAME = "audit_trigger_row"

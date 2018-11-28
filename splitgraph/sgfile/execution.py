@@ -5,6 +5,7 @@ from random import getrandbits
 
 from splitgraph.commands import checkout, init, unmount, clone, import_tables, commit, image_hash_to_sgfile
 from splitgraph.commands.push_pull import local_clone, pull
+from splitgraph.commands.tagging import get_current_head, tag_or_hash_to_actual_hash
 from splitgraph.config import CONFIG
 from splitgraph.config.repo_lookups import lookup_repo
 from splitgraph.connection import get_connection, serialize_connection_string
@@ -15,7 +16,6 @@ from splitgraph.hooks.mount_handlers import get_mount_handler
 from splitgraph.meta_handler.misc import repository_exists
 from splitgraph.meta_handler.provenance import store_import_provenance, store_sql_provenance, store_mount_provenance, \
     store_from_provenance
-from splitgraph.meta_handler.tags import get_current_head, tag_or_hash_to_actual_hash
 from splitgraph.pg_utils import execute_sql_in
 from ._parsing import parse_commands, extract_nodes, get_first_or_none, parse_repo_source, \
     extract_all_table_aliases, parse_custom_command

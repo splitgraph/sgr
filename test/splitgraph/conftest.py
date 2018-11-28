@@ -5,11 +5,11 @@ import pytest
 from splitgraph.commands import *
 from splitgraph.commands import unmount, commit
 from splitgraph.commands.misc import cleanup_objects
+from splitgraph.commands.tagging import get_current_head, set_tag
 from splitgraph.connection import get_connection, override_driver_connection, serialize_connection_string, make_conn
 from splitgraph.constants import PG_USER, PG_PWD, PG_DB, to_repository as R, Repository
 from splitgraph.meta_handler.common import setup_registry_mode, ensure_metadata_schema, toggle_registry_rls
 from splitgraph.meta_handler.misc import get_current_repositories
-from splitgraph.meta_handler.tags import set_tag, get_current_head
 from splitgraph.pg_utils import get_all_foreign_tables
 from splitgraph.registry_meta_handler import ensure_registry_schema, unpublish_repository
 

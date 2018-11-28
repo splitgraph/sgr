@@ -1,7 +1,7 @@
 import pytest
 
 from splitgraph.commands import commit, diff
-from splitgraph.meta_handler.images import get_image
+from splitgraph.commands.info import get_image
 from test.splitgraph.conftest import PG_MNT
 
 # Test cases: ops are a list of operations (with commit after each set);

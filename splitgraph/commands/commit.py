@@ -3,15 +3,16 @@ from random import getrandbits
 
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.commands.objects.creation import record_table_as_diff, record_table_as_snap
+from splitgraph.commands._objects.creation import record_table_as_diff, record_table_as_snap
+from splitgraph.commands.info import get_table
+from splitgraph.commands.tagging import get_current_head
 from splitgraph.connection import get_connection
 from splitgraph.meta_handler.common import ensure_metadata_schema
 from splitgraph.meta_handler.images import add_new_image
 from splitgraph.meta_handler.misc import table_schema_changed
 from splitgraph.meta_handler.objects import register_table
-from splitgraph.meta_handler.tables import get_table
-from splitgraph.meta_handler.tags import get_current_head, set_head
 from splitgraph.pg_utils import get_all_tables
+from ._common import set_head
 from ._pg_audit import manage_audit_triggers, discard_pending_changes
 
 

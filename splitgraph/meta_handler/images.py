@@ -1,25 +1,15 @@
 from collections import defaultdict
 from datetime import datetime
 
-from psycopg2.extras import Json, NamedTupleCursor
-from psycopg2.sql import SQL, Identifier
+from psycopg2.extras import Json
+from psycopg2.sql import SQL
 
 from splitgraph.connection import get_connection
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.meta_handler.common import select, insert
-from splitgraph.meta_handler.objects import get_full_object_tree
-from splitgraph.meta_handler.tables import get_object_for_table
+from splitgraph.meta_handler.objects import get_full_object_tree, get_object_for_table
 
 IMAGE_COLS = "image_hash, parent_id, created, comment, provenance_type, provenance_data"
-
-
-def get_image(repository, image):
-    with get_connection().cursor(cursor_factory=NamedTupleCursor) as cur:
-        cur.execute(select("images", IMAGE_COLS,
-                           "repository = %s AND image_hash = %s AND namespace = %s"), (repository.repository,
-                                                                                       image, repository.namespace))
-        return cur.fetchone()
 
 
 def get_all_images_parents(repository):
@@ -27,23 +17,6 @@ def get_all_images_parents(repository):
         cur.execute(select("images", IMAGE_COLS, "repository = %s AND namespace = %s") +
                     SQL(" ORDER BY created"), (repository.repository, repository.namespace))
         return cur.fetchall()
-
-
-def get_canonical_image_id(repository, short_image):
-    with get_connection().cursor() as cur:
-        cur.execute(select("images", "image_hash", "namespace = %s AND repository = %s AND image_hash LIKE %s"),
-                    (repository.namespace, repository.repository, short_image.lower() + '%'))
-        candidates = [c[0] for c in cur.fetchall()]
-
-    if not candidates:
-        raise SplitGraphException("No snapshots beginning with %s found for mountpoint %s!" % (short_image,
-                                                                                               repository.to_schema()))
-
-    if len(candidates) > 1:
-        result = "Multiple suitable candidates found: \n * " + "\n * ".join(candidates)
-        raise SplitGraphException(result)
-
-    return candidates[0]
 
 
 def get_closest_parent_image_object(repository, table, image):
@@ -84,14 +57,3 @@ def add_new_image(repository, parent_id, image, created=None, comment=None, prov
                      provenance_type, Json(provenance_data)))
 
 
-def get_parent_children(repository, image_hash):
-    """Gets the parent and a list of children of a given image."""
-    parent = get_image(repository, image_hash).parent_id
-
-    with get_connection().cursor() as cur:
-        cur.execute(SQL("""SELECT image_hash FROM {}.images
-            WHERE namespace = %s AND repository = %s AND parent_id = %s""").format(
-            Identifier(SPLITGRAPH_META_SCHEMA)),
-            (repository.namespace, repository.repository, image_hash))
-        children = [c[0] for c in cur.fetchall()]
-    return parent, children
