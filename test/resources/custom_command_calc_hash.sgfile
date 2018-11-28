@@ -1,3 +1,0 @@
-FROM test/pg_mount IMPORT fruits
-
-BOBBYTABLES fruits

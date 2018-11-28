@@ -2,7 +2,7 @@
 
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.meta_handler.common import select
+from splitgraph._data.common import select
 
 
 def pg_table_exists(conn, schema, table_name):

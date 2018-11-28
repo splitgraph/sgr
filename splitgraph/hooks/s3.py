@@ -8,9 +8,15 @@ from minio.error import (BucketAlreadyOwnedByYou,
                          BucketAlreadyExists)
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph import CONFIG
+from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import get_connection
-from splitgraph.constants import S3_ACCESS_KEY, S3_SECRET_KEY, S3_PORT, S3_HOST, SPLITGRAPH_META_SCHEMA
 from splitgraph.pg_utils import get_full_table_schema, create_table
+
+S3_HOST = CONFIG["SG_S3_HOST"]
+S3_PORT = CONFIG["SG_S3_PORT"]
+S3_ACCESS_KEY = CONFIG["SG_S3_KEY"]
+S3_SECRET_KEY = CONFIG["SG_S3_PWD"]
 
 
 def _ensure_bucket(client, bucket):

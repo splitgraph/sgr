@@ -4,7 +4,7 @@ from splitgraph.hooks.s3 import s3_upload_objects, s3_download_objects
 EXTERNAL_OBJECT_HANDLERS = {}
 
 
-# TODO refactor this (and the mount handlers) so that it matches the custom sgfile command structure
+# TODO refactor this (and the mount handlers) so that it matches the custom Splitfile command structure
 # (extends a base class, extra object handlers added via a config)
 
 

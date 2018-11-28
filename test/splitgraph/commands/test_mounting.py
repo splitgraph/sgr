@@ -1,6 +1,6 @@
 from datetime import datetime as dt
 
-from splitgraph.commands import unmount
+from splitgraph import unmount
 from splitgraph.connection import get_connection
 from test.splitgraph.conftest import PG_MNT, _mount_postgres, _mount_mysql, MYSQL_MNT
 

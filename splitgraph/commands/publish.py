@@ -3,13 +3,13 @@ from datetime import datetime
 
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph._data.misc import get_remote_for, get_schema_at
 from splitgraph.commands import provenance
 from splitgraph.commands.checkout import materialized_table
 from splitgraph.commands.info import get_tables_at
 from splitgraph.commands.tagging import get_tagged_id
 from splitgraph.connection import get_connection, override_driver_connection, parse_connection_string, make_conn
 from splitgraph.exceptions import SplitGraphException
-from splitgraph.meta_handler.misc import get_remote_for, get_schema_at
 from splitgraph.pg_utils import get_full_table_schema
 from splitgraph.registry_meta_handler import publish_tag
 

@@ -8,6 +8,7 @@ import click
 from psycopg2 import ProgrammingError
 
 import splitgraph as sg
+import splitgraph.commands.repository
 
 
 def _commit_connection(result):
@@ -25,7 +26,7 @@ def cli():
 
 
 @click.command(name='status')
-@click.argument('repository', required=False, type=sg.to_repository)
+@click.argument('repository', required=False, type=splitgraph.commands.repository.to_repository)
 def status_c(repository):
     if repository is None:
         repositories = sg.get_current_repositories()
@@ -50,7 +51,7 @@ def status_c(repository):
 
 
 @click.command(name='log')
-@click.argument('repository', type=sg.to_repository)
+@click.argument('repository', type=splitgraph.commands.repository.to_repository)
 @click.option('-t', '--tree', is_flag=True)
 def log_c(repository, tree):
     if tree:
@@ -67,7 +68,7 @@ def log_c(repository, tree):
 @click.command(name='diff')
 @click.option('-v', '--verbose', default=False, is_flag=True)
 @click.option('-t', '--table-name')
-@click.argument('repository', type=sg.to_repository)
+@click.argument('repository', type=splitgraph.commands.repository.to_repository)
 @click.argument('tag_or_hash_1', required=False)
 @click.argument('tag_or_hash_2', required=False)
 def diff_c(verbose, table_name, repository, tag_or_hash_1, tag_or_hash_2):
@@ -153,13 +154,13 @@ def mount_c(schema, connection, handler, handler_options):
 
 
 @click.command(name='unmount')
-@click.argument('repository', type=sg.to_repository)
+@click.argument('repository', type=splitgraph.commands.repository.to_repository)
 def unmount_c(repository):
-    sg.unmount(repository)
+    splitgraph.commands.repository.unmount(repository)
 
 
 @click.command(name='checkout')
-@click.argument('repository', type=sg.to_repository)
+@click.argument('repository', type=splitgraph.commands.repository.to_repository)
 @click.argument('snapshot_or_tag')
 def checkout_c(repository, snapshot_or_tag):
     snapshot = sg.tag_or_hash_to_actual_hash(repository, snapshot_or_tag)
@@ -168,7 +169,7 @@ def checkout_c(repository, snapshot_or_tag):
 
 
 @click.command(name='commit')
-@click.argument('repository', type=sg.to_repository)
+@click.argument('repository', type=splitgraph.commands.repository.to_repository)
 @click.option('-h', '--commit-hash')
 @click.option('-s', '--include-snap', default=False, is_flag=True)
 @click.option('-m', '--message')
@@ -182,7 +183,7 @@ def commit_c(repository, commit_hash, include_snap, message):
 
 
 @click.command(name='show')
-@click.argument('repository', type=sg.to_repository)
+@click.argument('repository', type=splitgraph.commands.repository.to_repository)
 @click.argument('commit_tag_or_hash')
 @click.option('-v', '--verbose', default=False, is_flag=True)
 def show_c(repository, commit_tag_or_hash, verbose):
@@ -210,13 +211,14 @@ def show_c(repository, commit_tag_or_hash, verbose):
 
 
 @click.command(name='file')
-@click.argument('sgfile', type=click.File('r'))
-@click.option('-a', '--sgfile-args', multiple=True, type=(str, str))
-@click.option('-o', '--output-repository', help='Repository to store the result in.', type=sg.to_repository)
-def file_c(sgfile, sgfile_args, output_repository):
-    sgfile_args = {k: v for k, v in sgfile_args}
-    print("Executing SGFile %s with arguments %r" % (sgfile.name, sgfile_args))
-    sg.execute_commands(sgfile.read(), sgfile_args, output=output_repository)
+@click.argument('splitfile', type=click.File('r'))
+@click.option('-a', '--splitfile-args', multiple=True, type=(str, str))
+@click.option('-o', '--output-repository', help='Repository to store the result in.',
+              type=splitgraph.commands.repository.to_repository)
+def file_c(splitfile, splitfile_args, output_repository):
+    splitfile_args = {k: v for k, v in splitfile_args}
+    print("Executing Splitfile %s with arguments %r" % (splitfile.name, splitfile_args))
+    sg.execute_commands(splitfile.read(), splitfile_args, output=output_repository)
 
 
 @click.command(name='sql')
@@ -235,14 +237,14 @@ def sql_c(sql, show_all):
 
 
 @click.command(name='init')
-@click.argument('repository', type=sg.to_repository)
+@click.argument('repository', type=splitgraph.commands.repository.to_repository)
 def init_c(repository):
-    sg.init(repository)
+    splitgraph.commands.repository.init(repository)
     print("Initialized empty repository %s" % str(repository))
 
 
 @click.command(name='pull')
-@click.argument('repository', type=sg.to_repository)
+@click.argument('repository', type=splitgraph.commands.repository.to_repository)
 @click.argument('remote', default='origin')
 @click.option('-d', '--download-all', help='Download all objects immediately instead on checkout.')
 def pull_c(repository, remote, download_all):
@@ -250,8 +252,8 @@ def pull_c(repository, remote, download_all):
 
 
 @click.command(name='clone')
-@click.argument('remote_repository', type=sg.to_repository)
-@click.argument('local_repository', required=False, type=sg.to_repository)
+@click.argument('remote_repository', type=splitgraph.commands.repository.to_repository)
+@click.argument('local_repository', required=False, type=splitgraph.commands.repository.to_repository)
 @click.option('-d', '--download-all', help='Download all objects immediately instead on checkout.',
               default=False, is_flag=True)
 def clone_c(remote_repository, local_repository, download_all):
@@ -259,9 +261,9 @@ def clone_c(remote_repository, local_repository, download_all):
 
 
 @click.command(name='push')
-@click.argument('repository', type=sg.to_repository)
+@click.argument('repository', type=splitgraph.commands.repository.to_repository)
 @click.argument('remote', default='origin')  # origin (must be specified in the config or remembered by the repo)
-@click.argument('remote_repository', required=False, type=sg.to_repository)
+@click.argument('remote_repository', required=False, type=splitgraph.commands.repository.to_repository)
 @click.option('-h', '--upload-handler', help='Where to upload objects (FILE or DB for the remote itself)', default='DB')
 @click.option('-o', '--upload-handler-options', help="""For FILE, e.g. '{"path": /mnt/sgobjects}'""", default="{}")
 def push_c(repository, remote, remote_repository, upload_handler, upload_handler_options):
@@ -278,7 +280,7 @@ def push_c(repository, remote, remote_repository, upload_handler, upload_handler
 
 
 @click.command(name='tag')
-@click.argument('repository', type=sg.to_repository)
+@click.argument('repository', type=splitgraph.commands.repository.to_repository)
 @click.option('-i', '--image')
 @click.argument('tag', required=False)
 @click.option('-f', '--force', required=False, is_flag=True)
@@ -309,9 +311,9 @@ def tag_c(repository, image, tag, force):
 
 
 @click.command(name='import')
-@click.argument('repository', type=sg.to_repository)
+@click.argument('repository', type=splitgraph.commands.repository.to_repository)
 @click.argument('table_or_query')
-@click.argument('target_repository', type=sg.to_repository)
+@click.argument('target_repository', type=splitgraph.commands.repository.to_repository)
 @click.argument('target_table', required=False)
 @click.argument('image', required=False)
 @click.option('-q', '--is-query', is_flag=True, default=False)
@@ -342,18 +344,18 @@ def cleanup_c():
 
 
 @click.command(name='provenance')
-@click.argument('repository', type=sg.to_repository)
+@click.argument('repository', type=splitgraph.commands.repository.to_repository)
 @click.argument('snapshot_or_tag')
-@click.option('-f', '--full', required=False, is_flag=True, help='Recreate the sgfile used to create this image')
+@click.option('-f', '--full', required=False, is_flag=True, help='Recreate the Splitfile used to create this image')
 @click.option('-e', '--error-on-end', required=False, default=True, is_flag=True,
-              help='If False, bases the recreated sgfile on the last image where the provenance chain breaks')
+              help='If False, bases the recreated Splitfile on the last image where the provenance chain breaks')
 def provenance_c(repository, snapshot_or_tag, full, error_on_end):
     snapshot = sg.tag_or_hash_to_actual_hash(repository, snapshot_or_tag)
 
     if full:
-        sgfile_commands = sg.image_hash_to_sgfile(repository, snapshot, error_on_end)
-        print("# sgfile commands used to recreate %s:%s" % (str(repository), snapshot))
-        print('\n'.join(sgfile_commands))
+        splitfile_commands = sg.image_hash_to_splitfile(repository, snapshot, error_on_end)
+        print("# Splitfile commands used to recreate %s:%s" % (str(repository), snapshot))
+        print('\n'.join(splitfile_commands))
     else:
         result = sg.provenance(repository, snapshot)
         print("%s:%s depends on:" % (str(repository), snapshot))
@@ -361,16 +363,16 @@ def provenance_c(repository, snapshot_or_tag, full, error_on_end):
 
 
 @click.command(name='rerun')
-@click.argument('repository', type=sg.to_repository)
+@click.argument('repository', type=splitgraph.commands.repository.to_repository)
 @click.argument('snapshot_or_tag')
 @click.option('-u', '--update', is_flag=True, help='Rederive the image against the latest version of all dependencies.')
-@click.option('-i', '--repo-image', multiple=True, type=(sg.to_repository, str))
+@click.option('-i', '--repo-image', multiple=True, type=(splitgraph.commands.repository.to_repository, str))
 def rerun_c(repository, snapshot_or_tag, update, repo_image):
     snapshot = sg.tag_or_hash_to_actual_hash(repository, snapshot_or_tag)
 
     # Replace the sources used to construct the image with either the latest ones or the images specified by the user.
-    # This doesn't require us at this point to have pulled all the dependencies: the sgfile executor will do it
-    # after we feed in the reconstructed and patched sgfile.
+    # This doesn't require us at this point to have pulled all the dependencies: the Splitfile executor will do it
+    # after we feed in the reconstructed and patched Splitfile.
     deps = {k: v for k, v in sg.provenance(repository, snapshot)}
     new_images = {repo: image for repo, image in repo_image} if not update \
         else {repo: 'latest' for repo, _ in deps.items()}
@@ -383,7 +385,7 @@ def rerun_c(repository, snapshot_or_tag, update, repo_image):
 
 
 @click.command(name='publish')
-@click.argument('repository', type=sg.to_repository)
+@click.argument('repository', type=splitgraph.commands.repository.to_repository)
 @click.argument('tag')
 @click.option('-r', '--readme', type=click.File('r'))
 @click.option('--skip-provenance', is_flag=True, help='Don''t include provenance in the published information.')

@@ -3,19 +3,20 @@ from hashlib import sha256
 from importlib import import_module
 from random import getrandbits
 
-from splitgraph.commands import checkout, init, unmount, clone, import_tables, commit, image_hash_to_sgfile
+from splitgraph import to_repository, init, unmount
+from splitgraph._data.misc import repository_exists
+from splitgraph._data.provenance import store_import_provenance, store_sql_provenance, store_mount_provenance, \
+    store_from_provenance
+from splitgraph.commands import checkout, clone, import_tables, commit, image_hash_to_splitfile
 from splitgraph.commands.push_pull import local_clone, pull
+from splitgraph.commands.repository import Repository
 from splitgraph.commands.tagging import get_current_head, tag_or_hash_to_actual_hash
 from splitgraph.config import CONFIG
 from splitgraph.config.repo_lookups import lookup_repo
 from splitgraph.connection import get_connection, serialize_connection_string
 from splitgraph.console import Color, truncate_line
-from splitgraph.constants import to_repository, Repository
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.mount_handlers import get_mount_handler
-from splitgraph.meta_handler.misc import repository_exists
-from splitgraph.meta_handler.provenance import store_import_provenance, store_sql_provenance, store_mount_provenance, \
-    store_from_provenance
 from splitgraph.pg_utils import execute_sql_in
 from ._parsing import parse_commands, extract_nodes, get_first_or_none, parse_repo_source, \
     extract_all_table_aliases, parse_custom_command
@@ -26,7 +27,7 @@ def _combine_hashes(hashes):
 
 
 def _checkout_or_calculate_layer(output, image_hash, calc_func):
-    # Future Optimization here: don't actually check the layer out if it exists -- only do it at sgfile execution
+    # Future Optimization here: don't actually check the layer out if it exists -- only do it at Splitfile execution
     # end or when a command needs it.
 
     # Have we already calculated this hash?
@@ -40,13 +41,13 @@ def _checkout_or_calculate_layer(output, image_hash, calc_func):
 
 def execute_commands(commands, params=None, output=None, output_base='0' * 32):
     """
-    Executes a series of SGFile commands.
+    Executes a series of Splitfile commands.
 
-    :param commands: A string with the raw SGFile.
-    :param params: A dictionary of parameters to be applied to the SGFile (`${PARAM}` is replaced with the specified
+    :param commands: A string with the raw Splitfile.
+    :param params: A dictionary of parameters to be applied to the Splitfile (`${PARAM}` is replaced with the specified
         parameter value).
-    :param output: Output repository to execute the SGFile against.
-    :param output_base: If not None, a revision that gets checked out for all SGFile actions to be committed
+    :param output: Output repository to execute the Splitfile against.
+    :param output_base: If not None, a revision that gets checked out for all Splitfile actions to be committed
         on top of it.
     """
     if params is None:
@@ -121,7 +122,7 @@ def _execute_from(node, output):
         output = to_repository(output_node.match.group(0))
         print("Changed output repository to %s" % str(output))
 
-        # NB this destroys all data in the case where we ran some commands in the sgfile and then
+        # NB this destroys all data in the case where we ran some commands in the Splitfile and then
         # did FROM (...) without AS repository
         if repository_exists(output):
             print("Clearing all output from %s" % str(output))
@@ -298,7 +299,7 @@ def _execute_custom(node, output):
 
 def rerun_image_with_replacement(mountpoint, image_hash, source_replacement):
     """
-    Recreates the sgfile used to create a given image and reruns it, replacing its dependencies with a different
+    Recreates the Splitfile used to create a given image and reruns it, replacing its dependencies with a different
     set of versions.
 
     :param mountpoint: Local repository where the image is located.
@@ -306,7 +307,7 @@ def rerun_image_with_replacement(mountpoint, image_hash, source_replacement):
     :param source_replacement: A map that specifies replacement images/tags for repositories that the image depends on
     :return:
     """
-    sgfile_commands = image_hash_to_sgfile(mountpoint, image_hash, err_on_end=False,
-                                           source_replacement=source_replacement)
+    splitfile_commands = image_hash_to_splitfile(mountpoint, image_hash, err_on_end=False,
+                                                 source_replacement=source_replacement)
     # Params are supposed to be stored in the commands already (baked in) -- what if there's sensitive data there?
-    execute_commands('\n'.join(sgfile_commands), output=mountpoint)
+    execute_commands('\n'.join(splitfile_commands), output=mountpoint)

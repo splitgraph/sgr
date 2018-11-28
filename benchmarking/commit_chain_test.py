@@ -12,8 +12,8 @@ from random import getrandbits, randrange
 from psycopg2.extras import execute_batch
 
 from splitgraph.commands import *
-from splitgraph.constants import to_repository, S3_HOST, S3_PORT, S3_ACCESS_KEY, \
-    S3_SECRET_KEY
+from splitgraph import to_repository, init, unmount
+from hooks.s3 import S3_HOST, S3_PORT, S3_ACCESS_KEY, S3_SECRET_KEY
 from splitgraph.commands.tagging import get_current_head
 
 MOUNTPOINT = to_repository("splitgraph_benchmark")

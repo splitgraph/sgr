@@ -1,8 +1,8 @@
 class PluginCommand(object):
     """
-    A framework for custom sgfile commands. The execution flow is as follows:
+    A framework for custom Splitfile commands. The execution flow is as follows:
 
-      * When the sgfile executor finds an unknown command, it looks for an entry in the config file::
+      * When the Splitfile executor finds an unknown command, it looks for an entry in the config file::
 
           [commands]
           RUN=splitgraph.plugins.Run

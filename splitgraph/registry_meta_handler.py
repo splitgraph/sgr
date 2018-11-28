@@ -1,9 +1,9 @@
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph._data.common import insert, select
+from splitgraph.config import REGISTRY_META_SCHEMA
 from splitgraph.connection import get_connection
-from splitgraph.constants import REGISTRY_META_SCHEMA
-from splitgraph.meta_handler.common import insert, select
 
 
 def _create_registry_schema():

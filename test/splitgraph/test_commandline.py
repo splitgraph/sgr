@@ -3,19 +3,19 @@ from decimal import Decimal
 
 from click.testing import CliRunner
 
+from splitgraph import to_repository, unmount
+from splitgraph._data.images import get_all_images_parents
+from splitgraph._data.misc import repository_exists
 from splitgraph.commandline import status_c, sql_c, diff_c, commit_c, log_c, show_c, tag_c, checkout_c, unmount_c, \
     cleanup_c, init_c, mount_c, import_c, clone_c, pull_c, push_c, file_c, provenance_c, rerun_c, publish_c
 from splitgraph.commands import commit, checkout
 from splitgraph.commands.info import get_image, get_table
-from splitgraph.commands.misc import table_exists_at, unmount
+from splitgraph.commands.misc import table_exists_at
 from splitgraph.commands.provenance import provenance
 from splitgraph.commands.tagging import get_current_head, get_tagged_id, set_tag
 from splitgraph.connection import override_driver_connection
-from splitgraph.constants import to_repository
-from splitgraph.meta_handler.images import get_all_images_parents
-from splitgraph.meta_handler.misc import repository_exists
 from splitgraph.registry_meta_handler import get_published_info
-from test.splitgraph.conftest import PG_MNT, MG_MNT, OUTPUT, add_multitag_dataset_to_remote_driver, SGFILE_ROOT
+from test.splitgraph.conftest import PG_MNT, MG_MNT, OUTPUT, add_multitag_dataset_to_remote_driver, SPLITFILE_ROOT
 
 
 def test_commandline_basics(sg_pg_mg_conn):
@@ -242,7 +242,7 @@ def test_pull_push(empty_pg_conn, remote_driver_conn):
 
     set_tag(PG_MNT, local_head, 'v1')
     empty_pg_conn.commit()
-    result = runner.invoke(publish_c, [str(PG_MNT), 'v1', '-r', SGFILE_ROOT + 'README.md'])
+    result = runner.invoke(publish_c, [str(PG_MNT), 'v1', '-r', SPLITFILE_ROOT + 'README.md'])
     assert result.exit_code == 0
     with override_driver_connection(remote_driver_conn):
         image_hash, published_dt, deps, readme, schemata, previews = get_published_info(PG_MNT, 'v1')
@@ -257,10 +257,10 @@ def test_pull_push(empty_pg_conn, remote_driver_conn):
                         'vegetables': [[1, 'potato'], [2, 'carrot']]}
 
 
-def test_sgfile(empty_pg_conn, remote_driver_conn):
+def test_splitfile(empty_pg_conn, remote_driver_conn):
     runner = CliRunner()
 
-    result = runner.invoke(file_c, [SGFILE_ROOT + 'import_remote_multiple.sgfile',
+    result = runner.invoke(file_c, [SPLITFILE_ROOT + 'import_remote_multiple.splitfile',
                                     '-a', 'TAG', 'latest', '-o', 'output'])
     assert result.exit_code == 0
     with empty_pg_conn.cursor() as cur:
@@ -272,18 +272,18 @@ def test_sgfile(empty_pg_conn, remote_driver_conn):
     with override_driver_connection(remote_driver_conn):
         assert 'test/pg_mount:%s' % get_tagged_id(PG_MNT, 'latest') in result.output
 
-    # Second, output the full sgfile (-f)
+    # Second, output the full splitfile (-f)
     result = runner.invoke(provenance_c, ['output', 'latest', '-f'])
     with override_driver_connection(remote_driver_conn):
         assert 'FROM test/pg_mount:%s IMPORT' % get_tagged_id(PG_MNT, 'latest') in result.output
     assert 'SQL CREATE TABLE join_table AS SELECT' in result.output
 
 
-def test_sgfile_rerun_update(empty_pg_conn, remote_driver_conn):
+def test_splitfile_rerun_update(empty_pg_conn, remote_driver_conn):
     add_multitag_dataset_to_remote_driver(remote_driver_conn)
     runner = CliRunner()
 
-    result = runner.invoke(file_c, [SGFILE_ROOT + 'import_remote_multiple.sgfile',
+    result = runner.invoke(file_c, [SPLITFILE_ROOT + 'import_remote_multiple.splitfile',
                                     '-a', 'TAG', 'v1', '-o', 'output'])
     assert result.exit_code == 0
 

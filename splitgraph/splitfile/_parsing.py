@@ -3,10 +3,10 @@ import shlex
 
 from parsimonious import Grammar
 
-from splitgraph.constants import to_repository
+from splitgraph import to_repository
 from splitgraph.exceptions import SplitGraphException
 
-SGFILE_GRAMMAR = Grammar(r"""
+SPLITFILE_GRAMMAR = Grammar(r"""
     commands = space command space (newline space command space)*
     command = comment / import / from / sql_file / sql / custom 
     comment = space "#" non_newline
@@ -54,7 +54,7 @@ SGFILE_GRAMMAR = Grammar(r"""
 
 
 def preprocess(commands, params=None):
-    # Also replaces all $PARAM in the sgfile text with the params in the dictionary.
+    # Also replaces all $PARAM in the splitfile text with the params in the dictionary.
     if params is None:
         params = {}
     commands = commands.replace("\\\n", "")
@@ -77,7 +77,7 @@ def parse_commands(commands, params=None):
     if params is None:
         params = {}
     commands = preprocess(commands, params)
-    parse_tree = SGFILE_GRAMMAR.parse(commands)
+    parse_tree = SPLITFILE_GRAMMAR.parse(commands)
     return [n.children[0] for n in extract_nodes(parse_tree, ['command']) if n.children[0].expr_name != 'comment']
 
 

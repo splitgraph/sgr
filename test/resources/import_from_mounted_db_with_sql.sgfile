@@ -1,7 +1,0 @@
-FROM MOUNT postgres_fdw originro:originpass@pgorigin:5432 '{"dbname": "origindb", "remote_schema": "public"}'
-     IMPORT {SELECT * FROM fruits WHERE name = 'orange'} AS my_fruits,
-            {SELECT * FROM vegetables WHERE name LIKE '%o'} AS o_vegetables,
-            vegetables,
-            fruits AS all_fruits
-
-SQL CREATE TABLE new_table AS SELECT * FROM all_fruits

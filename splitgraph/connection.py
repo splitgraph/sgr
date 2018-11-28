@@ -3,7 +3,7 @@ from contextlib import contextmanager
 
 import psycopg2
 
-from splitgraph.constants import POSTGRES_CONNECTION
+from splitgraph.config import POSTGRES_CONNECTION
 
 _PSYCOPG_CONN = None
 

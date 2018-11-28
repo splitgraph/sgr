@@ -1,11 +1,11 @@
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph._data.common import ensure_metadata_schema, select, insert
+from splitgraph._data.misc import repository_exists
 from splitgraph.commands.info import get_canonical_image_id
+from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import get_connection
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 from splitgraph.exceptions import SplitGraphException
-from splitgraph.meta_handler.common import ensure_metadata_schema, select, insert
-from splitgraph.meta_handler.misc import repository_exists
 
 
 def get_current_head(repository, raise_on_none=True):

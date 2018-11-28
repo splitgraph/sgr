@@ -3,17 +3,17 @@ import tempfile
 import pytest
 from psycopg2._psycopg import ProgrammingError
 
+from splitgraph import Repository
+from splitgraph._data.common import toggle_registry_rls
+from splitgraph._data.images import get_all_images_parents
+from splitgraph._data.misc import unregister_repository
+from splitgraph._data.objects import register_object_locations
 from splitgraph.commands import clone, push, commit, checkout
 from splitgraph.commands.info import get_table
 from splitgraph.commands.publish import publish
 from splitgraph.commands.tagging import get_tagged_id, set_tag
 from splitgraph.config.repo_lookups import get_remote_connection_params
 from splitgraph.connection import override_driver_connection, serialize_connection_string
-from splitgraph.constants import Repository
-from splitgraph.meta_handler.common import toggle_registry_rls
-from splitgraph.meta_handler.images import get_all_images_parents
-from splitgraph.meta_handler.misc import unregister_repository
-from splitgraph.meta_handler.objects import register_object_locations
 from splitgraph.registry_meta_handler import get_published_info, unpublish_repository
 from test.splitgraph.conftest import PG_MNT, add_multitag_dataset_to_remote_driver
 

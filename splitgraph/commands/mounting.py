@@ -1,10 +1,9 @@
 import logging
 
-from splitgraph.commands.misc import unmount
+from splitgraph import to_repository, unmount
+from splitgraph._data.common import ensure_metadata_schema
 from splitgraph.connection import get_connection
-from splitgraph.constants import to_repository
 from splitgraph.hooks.mount_handlers import get_mount_handler
-from splitgraph.meta_handler.common import ensure_metadata_schema
 
 
 def mount(mountpoint, mount_handler, handler_kwargs):

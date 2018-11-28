@@ -3,7 +3,8 @@ from decimal import Decimal
 
 import pytest
 
-from splitgraph.commands import diff, commit, init, checkout
+from splitgraph import init
+from splitgraph.commands import diff, commit, checkout
 from splitgraph.commands._pg_audit import has_pending_changes
 from splitgraph.commands.info import get_image, get_table
 from splitgraph.commands.tagging import get_current_head

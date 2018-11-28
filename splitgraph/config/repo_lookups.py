@@ -1,7 +1,7 @@
+from splitgraph._data.misc import repository_exists
 from splitgraph.config import CONFIG
 from splitgraph.connection import override_driver_connection, make_conn
 from splitgraph.exceptions import SplitGraphException
-from splitgraph.meta_handler.misc import repository_exists
 
 
 # Parse and set these on import. If we ever need to be able to reread the config on the fly, these have to be

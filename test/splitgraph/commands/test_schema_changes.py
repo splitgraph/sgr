@@ -1,9 +1,9 @@
 import pytest
 
+from splitgraph._data.objects import get_object_for_table
 from splitgraph.commands import commit, checkout
 from splitgraph.commands.tagging import get_current_head
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA
-from splitgraph.meta_handler.objects import get_object_for_table
+from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.pg_utils import get_full_table_schema, get_primary_keys
 from test.splitgraph.conftest import PG_MNT
 

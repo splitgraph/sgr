@@ -2,19 +2,19 @@ import logging
 
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph._data.common import ensure_metadata_schema
+from splitgraph._data.images import get_all_images_parents, add_new_image
+from splitgraph._data.misc import get_remote_for, add_remote
+from splitgraph._data.objects import register_objects, register_tables, register_object_locations, \
+    get_existing_objects, get_external_object_locations, get_object_meta
 from splitgraph.commands._common import set_head
 from splitgraph.commands._objects.loading import download_objects, upload_objects
 from splitgraph.commands.tagging import get_all_hashes_tags, set_tags
+from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.config.repo_lookups import lookup_repo
 from splitgraph.connection import override_driver_connection, get_connection, parse_connection_string, \
     serialize_connection_string, make_conn
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 from splitgraph.exceptions import SplitGraphException
-from splitgraph.meta_handler.common import ensure_metadata_schema
-from splitgraph.meta_handler.images import get_all_images_parents, add_new_image
-from splitgraph.meta_handler.misc import get_remote_for, add_remote
-from splitgraph.meta_handler.objects import register_objects, register_tables, register_object_locations, \
-    get_existing_objects, get_external_object_locations, get_object_meta
 from ._pg_audit import manage_audit
 
 

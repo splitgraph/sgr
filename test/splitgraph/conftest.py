@@ -2,14 +2,12 @@ import os
 
 import pytest
 
+from splitgraph import to_repository as R
+from splitgraph._data.common import setup_registry_mode, ensure_metadata_schema, toggle_registry_rls
+from splitgraph._data.misc import get_current_repositories
 from splitgraph.commands import *
-from splitgraph.commands import unmount, commit
-from splitgraph.commands.misc import cleanup_objects
-from splitgraph.commands.tagging import get_current_head, set_tag
+from splitgraph.config import PG_DB, PG_USER, PG_PWD
 from splitgraph.connection import get_connection, override_driver_connection, serialize_connection_string, make_conn
-from splitgraph.constants import PG_USER, PG_PWD, PG_DB, to_repository as R, Repository
-from splitgraph.meta_handler.common import setup_registry_mode, ensure_metadata_schema, toggle_registry_rls
-from splitgraph.meta_handler.misc import get_current_repositories
 from splitgraph.pg_utils import get_all_foreign_tables
 from splitgraph.registry_meta_handler import ensure_registry_schema, unpublish_repository
 
@@ -171,9 +169,9 @@ def add_multitag_dataset_to_remote_driver(remote_driver_conn):
         return new_head
 
 
-SGFILE_ROOT = os.path.join(os.path.dirname(__file__), '../resources/')
+SPLITFILE_ROOT = os.path.join(os.path.dirname(__file__), '../resources/')
 
 
-def load_sgfile(name):
-    with open(SGFILE_ROOT + name, 'r') as f:
+def load_splitfile(name):
+    with open(SPLITFILE_ROOT + name, 'r') as f:
         return f.read()

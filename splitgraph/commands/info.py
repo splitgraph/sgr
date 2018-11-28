@@ -1,11 +1,11 @@
 from psycopg2.extras import NamedTupleCursor
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph._data.common import select
+from splitgraph._data.images import IMAGE_COLS
+from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import get_connection
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 from splitgraph.exceptions import SplitGraphException
-from splitgraph.meta_handler.common import select
-from splitgraph.meta_handler.images import IMAGE_COLS
 
 
 def get_image(repository, image):

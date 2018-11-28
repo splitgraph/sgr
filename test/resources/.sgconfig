@@ -44,7 +44,7 @@ SG_DRIVER_POSTGRES_DB_NAME=${defaults:SG_DRIVER_POSTGRES_DB_NAME}
 SG_META_SCHEMA=${defaults:SG_META_SCHEMA}
 
 [commands]
-DUMMY=test.splitgraph.sgfile.test_custom_commands.DummyCommand
-BOBBYTABLES=test.splitgraph.sgfile.test_custom_commands.CalcHashTestCommand
+DUMMY=test.splitgraph.splitfile.test_custom_commands.DummyCommand
+BOBBYTABLES=test.splitgraph.splitfile.test_custom_commands.CalcHashTestCommand
 BROKEN1=some.module.that.definitely.doesnt.Exist
-BROKEN2=test.splitgraph.sgfile.test_custom_commands.NonexistentCommand
+BROKEN2=test.splitgraph.splitfile.test_custom_commands.NonexistentCommand

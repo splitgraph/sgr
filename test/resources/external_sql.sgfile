@@ -1,3 +1,0 @@
-FROM test/pg_mount:latest IMPORT fruits AS my_fruits, vegetables
-
-SQL FILE ${EXTERNAL_SQL_FILE}

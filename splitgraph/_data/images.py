@@ -4,10 +4,10 @@ from datetime import datetime
 from psycopg2.extras import Json
 from psycopg2.sql import SQL
 
+from splitgraph._data.common import select, insert
+from splitgraph._data.objects import get_full_object_tree, get_object_for_table
 from splitgraph.connection import get_connection
 from splitgraph.exceptions import SplitGraphException
-from splitgraph.meta_handler.common import select, insert
-from splitgraph.meta_handler.objects import get_full_object_tree, get_object_for_table
 
 IMAGE_COLS = "image_hash, parent_id, created, comment, provenance_type, provenance_data"
 

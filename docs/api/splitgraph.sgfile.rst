@@ -1,29 +1,29 @@
-splitgraph.sgfile package
+splitgraph.splitfile package
 =========================
 
 Submodules
 ----------
 
-splitgraph.sgfile.execution module
+splitgraph.splitfile.execution module
 ----------------------------------
 
-.. automodule:: splitgraph.sgfile.execution
+.. automodule:: splitgraph.splitfile.execution
     :members:
     :undoc-members:
     :show-inheritance:
 
-splitgraph.sgfile.parsing module
+splitgraph.splitfile.parsing module
 --------------------------------
 
-.. automodule:: splitgraph.sgfile.parsing
+.. automodule:: splitgraph.splitfile.parsing
     :members:
     :undoc-members:
     :show-inheritance:
 
-splitgraph.sgfile.plugins module
+splitgraph.splitfile.plugins module
 --------------------------------
 
-.. automodule:: splitgraph.sgfile.plugins
+.. automodule:: splitgraph.splitfile.plugins
     :members:
     :undoc-members:
     :show-inheritance:
@@ -32,7 +32,7 @@ splitgraph.sgfile.plugins module
 Module contents
 ---------------
 
-.. automodule:: splitgraph.sgfile
+.. automodule:: splitgraph.splitfile
     :members:
     :undoc-members:
     :show-inheritance:

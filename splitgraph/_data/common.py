@@ -1,7 +1,7 @@
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA
 from splitgraph.connection import get_connection
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA
 
 META_TABLES = ['images', 'tags', 'objects', 'tables', 'remotes', 'object_locations', 'info']
 

@@ -1,8 +1,8 @@
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import get_connection
-from splitgraph.constants import SPLITGRAPH_META_SCHEMA
 
 _QUERY = SQL("""UPDATE {}.images SET provenance_type = %s, provenance_data = %s WHERE
                             namespace = %s AND repository = %s AND image_hash = %s""")\
