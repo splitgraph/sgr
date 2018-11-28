@@ -14,7 +14,7 @@ from splitgraph.meta_handler.tags import get_tagged_id, set_head
 from splitgraph.objects.applying import apply_record_to_staging
 from splitgraph.objects.loading import download_objects
 from splitgraph.pg_audit import has_pending_changes, manage_audit, discard_pending_changes
-from splitgraph.pg_utils import copy_table, get_primary_keys, get_all_tables, pg_table_exists
+from splitgraph.pg_utils import copy_table, get_all_tables, pg_table_exists
 
 
 def materialize_table(repository, image_hash, table, destination, destination_schema=None):
@@ -46,21 +46,9 @@ def materialize_table(repository, image_hash, table, destination, destination_sc
             fetched_objects = download_objects(remote_conn, objects_to_fetch=to_apply + [object_id],
                                                object_locations=object_locations)
 
-        # Copy the given snap id over to "staging"
+        # Copy the given snap id over to "staging" and apply the DIFFS
         copy_table(conn, SPLITGRAPH_META_SCHEMA, object_id, destination_schema, destination,
                    with_pk_constraints=True)
-        # This is to work around logical replication not reflecting deletions from non-PKd tables. However, this makes
-        # it emit all column values in the row, not just the updated ones.
-        if not get_primary_keys(conn, destination_schema, destination):
-            logging.warning("Table %s has no primary key. "
-                            "This means that changes will have to be recorded as whole-row.", destination)
-            cur.execute(SQL("ALTER TABLE {}.{} REPLICA IDENTITY FULL").format(Identifier(destination_schema),
-                                                                              Identifier(destination)))
-        else:
-            cur.execute(SQL("ALTER TABLE {}.{} REPLICA IDENTITY DEFAULT").format(Identifier(destination_schema),
-                                                                                 Identifier(destination)))
-
-        # Apply the deltas sequentially to the checked out table
         for pack_object in reversed(to_apply):
             logging.info("Applying %s...", pack_object)
             apply_record_to_staging(pack_object, destination_schema, destination)
@@ -78,7 +66,6 @@ def checkout(repository, image_hash=None, tag=None, tables=None, keep_downloaded
     :param tag: Tag of the image to check out. One of `image_hash` or `tag` must be specified.
     :param tables: List of tables to materialize in the mountpoint.
     :param keep_downloaded_objects: If False, deletes externally downloaded objects after they've been used.
-    :param namespace: Namespace
     """
     target_schema = repository.to_schema()
     conn = get_connection()
@@ -110,7 +97,7 @@ def checkout(repository, image_hash=None, tag=None, tables=None, keep_downloaded
     set_head(repository, image_hash)
 
     if not keep_downloaded_objects:
-        logging.info("Removing %d downloaded objects from cache..." % len(downloaded_object_ids))
+        logging.info("Removing %d downloaded objects from cache...", downloaded_object_ids)
         delete_objects(downloaded_object_ids)
 
 

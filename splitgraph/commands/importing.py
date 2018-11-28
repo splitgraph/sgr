@@ -1,4 +1,3 @@
-import logging
 from random import getrandbits
 
 from psycopg2.sql import Identifier, SQL
@@ -13,12 +12,12 @@ from splitgraph.meta_handler.objects import register_table, register_object
 from splitgraph.meta_handler.tables import get_tables_at, get_table
 from splitgraph.meta_handler.tags import get_current_head, set_head
 from splitgraph.pg_audit import manage_audit
-from splitgraph.pg_utils import copy_table, get_primary_keys, execute_sql_in, get_all_tables, get_all_foreign_tables
+from splitgraph.pg_utils import copy_table, execute_sql_in, get_all_tables, get_all_foreign_tables
 
 
 @manage_audit
 def import_tables(repository, tables, target_repository, target_tables, image_hash=None, foreign_tables=False,
-                  do_checkout=True, target_hash=None, table_queries=[]):
+                  do_checkout=True, target_hash=None, table_queries=None):
     """
     Creates a new commit in target_mountpoint with one or more tables linked to already-existing tables.
     After this operation, the HEAD of the target mountpoint moves to the new commit and the new tables are materialized.
@@ -42,6 +41,8 @@ def import_tables(repository, tables, target_repository, target_tables, image_ha
     :return: Hash that the new image was stored under.
     """
     # Sanitize/validate the parameters and call the internal function.
+    if table_queries is None:
+        table_queries = []
     target_hash = target_hash or "%0.2x" % getrandbits(256)
     conn = get_connection()
 
@@ -122,16 +123,7 @@ def _register_and_checkout_new_table(do_checkout, object_id, target_hash, target
     register_object(object_id, 'SNAP', namespace=target_repository.namespace, parent_object=None)
     register_table(target_repository, target_table, target_hash, object_id)
     if do_checkout:
-        conn = get_connection()
-        copy_table(conn, SPLITGRAPH_META_SCHEMA, object_id, target_repository.to_schema(), target_table)
-        if not get_primary_keys(conn, target_repository.to_schema(), target_table):
-            logging.warning(
-                "Table %s has no primary key. This means that changes will have to be recorded as "
-                "whole-row.", target_table)
-            with conn.cursor() as cur:
-                cur.execute(
-                    SQL("ALTER TABLE {}.{} REPLICA IDENTITY FULL").format(Identifier(target_repository.to_schema()),
-                                                                          Identifier(target_table)))
+        copy_table(get_connection(), SPLITGRAPH_META_SCHEMA, object_id, target_repository.to_schema(), target_table)
 
 
 def import_table_from_remote(remote_conn_string, remote_repository, remote_tables, remote_image_hash, target_repository,
