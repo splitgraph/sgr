@@ -1,0 +1,6 @@
+FROM test/pg_mount:latest
+# Same idea as from_remote but here we clone the _local_ repo into the output and create the join table.
+
+SQL CREATE TABLE join_table AS SELECT fruit_id AS id, fruits.name AS fruit, vegetables.name AS vegetable \
+                                FROM fruits JOIN vegetables\
+                                ON fruit_id = vegetable_id

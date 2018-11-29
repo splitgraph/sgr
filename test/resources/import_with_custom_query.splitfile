@@ -1,0 +1,4 @@
+FROM test/pg_mount IMPORT {SELECT * FROM fruits WHERE name = 'orange'} AS my_fruits,
+                          {SELECT * FROM vegetables WHERE name LIKE '%o'} AS o_vegetables,
+                          vegetables,
+                          fruits AS all_fruits

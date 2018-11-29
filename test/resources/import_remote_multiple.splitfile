@@ -1,0 +1,9 @@
+# The preprocessor replaces $ + {...} with params passed to it from via args or from the commandline (currently
+# everywhere, even in the comments).
+# Escaping $ works too: \${ESCAPED} doesn't get changed.
+
+FROM test/pg_mount:${TAG} IMPORT fruits AS my_fruits, vegetables
+
+SQL CREATE TABLE join_table AS SELECT fruit_id AS id, my_fruits.name AS fruit, vegetables.name AS vegetable \
+                                FROM my_fruits JOIN vegetables\
+                                ON fruit_id = vegetable_id
