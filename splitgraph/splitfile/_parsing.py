@@ -18,20 +18,20 @@ SPLITFILE_GRAMMAR = Grammar(r"""
     sql_file = "SQL" space "FILE" space non_newline
     sql = "SQL" space sql_statement
     custom = identifier space non_newline
-    
+
     table = ((table_name / table_query) space "AS" space table_alias) / table_name
-    
+
     table_query = "{" non_curly_brace "}"
     tables = "ALL" / (table space ("," space table)*)
     source = mount_source / repo_source
     repo_source = repository (":" tag_or_hash)?
     mount_source = "MOUNT" space handler space no_db_conn_string space handler_options
-    
+
     image_hash = ~"[0-9a-f]*"i
-    
+
     # TBH these ones that map to "identifier" aren't realy necessary since parsimonious calls those nodes
     # "identifier" anyway. This is so that the grammar is slightly more readable. 
-    
+
     handler = identifier
     repository = ~"[_a-zA-Z0-9\-/]+"
     table_name = identifier
@@ -39,17 +39,17 @@ SPLITFILE_GRAMMAR = Grammar(r"""
     tag_or_hash = identifier
     handler_options = "'" non_single_quote "'"
     sql_statement = non_newline
-    
+
     newline = ~"\n*"
     non_newline = ~"[^\n]*"
-    
+
     # I've no idea why we need so many slashes here. The purpose of this regex is to consume anything
     # that's not a closing curly brace or \} (an escaped curly brace).
     non_curly_brace = ~"(\\\\}|[^}])*"
-    
+
     # Yeah, six slashes should be about enough to capture \'
     non_single_quote = ~"(\\\\\\'|[^'])*"
-    
+
     no_db_conn_string = ~"(\S+):(\S+)@(.+):(\d+)"
     identifier = ~"[_a-zA-Z0-9\-]+"
     space = ~"\s*"

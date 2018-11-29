@@ -7,7 +7,7 @@ from splitgraph import to_repository, unmount, repository_exists
 from splitgraph._data.images import get_all_image_info
 from splitgraph._data.registry import get_published_info
 from splitgraph.commandline import status_c, sql_c, diff_c, commit_c, log_c, show_c, tag_c, checkout_c, unmount_c, \
-    cleanup_c, init_c, mount_c, import_c, clone_c, pull_c, push_c, file_c, provenance_c, rerun_c, publish_c
+    cleanup_c, init_c, mount_c, import_c, clone_c, pull_c, push_c, build_c, provenance_c, rebuild_c, publish_c
 from splitgraph.commands import commit, checkout
 from splitgraph.commands.info import get_image, get_table
 from splitgraph.commands.misc import table_exists_at
@@ -259,7 +259,7 @@ def test_pull_push(empty_pg_conn, remote_driver_conn):
 def test_splitfile(empty_pg_conn, remote_driver_conn):
     runner = CliRunner()
 
-    result = runner.invoke(file_c, [SPLITFILE_ROOT + 'import_remote_multiple.splitfile',
+    result = runner.invoke(build_c, [SPLITFILE_ROOT + 'import_remote_multiple.splitfile',
                                     '-a', 'TAG', 'latest', '-o', 'output'])
     assert result.exit_code == 0
     with empty_pg_conn.cursor() as cur:
@@ -282,12 +282,12 @@ def test_splitfile_rerun_update(empty_pg_conn, remote_driver_conn):
     add_multitag_dataset_to_remote_driver(remote_driver_conn)
     runner = CliRunner()
 
-    result = runner.invoke(file_c, [SPLITFILE_ROOT + 'import_remote_multiple.splitfile',
+    result = runner.invoke(build_c, [SPLITFILE_ROOT + 'import_remote_multiple.splitfile',
                                     '-a', 'TAG', 'v1', '-o', 'output'])
     assert result.exit_code == 0
 
     # Rerun the output:latest against v2 of the test/pg_mount
-    result = runner.invoke(rerun_c, ['output', 'latest', '-i', 'test/pg_mount', 'v2'])
+    result = runner.invoke(rebuild_c, ['output', 'latest', '-i', 'test/pg_mount', 'v2'])
     output_v2 = get_current_head(OUTPUT)
     assert result.exit_code == 0
     with override_driver_connection(remote_driver_conn):
@@ -298,7 +298,7 @@ def test_splitfile_rerun_update(empty_pg_conn, remote_driver_conn):
     # In this case, this should all resolve to the same version of test/pg_mount (v2) and not produce
     # any extra commits.
     curr_commits = get_all_image_info(OUTPUT)
-    result = runner.invoke(rerun_c, ['output', 'latest', '-u'])
+    result = runner.invoke(rebuild_c, ['output', 'latest', '-u'])
     assert result.exit_code == 0
     assert output_v2 == get_current_head(OUTPUT)
     assert get_all_image_info(OUTPUT) == curr_commits

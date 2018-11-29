@@ -10,13 +10,13 @@ from random import getrandbits
 from splitgraph import to_repository, init, unmount
 from splitgraph._data.provenance import store_import_provenance, store_sql_provenance, store_mount_provenance, \
     store_from_provenance
+from splitgraph.commandline.console import Color, truncate_line
 from splitgraph.commands import checkout, clone, import_tables, commit, image_hash_to_splitfile
 from splitgraph.commands.push_pull import local_clone, pull
 from splitgraph.commands.repository import Repository, repository_exists, lookup_repo
 from splitgraph.commands.tagging import get_current_head, resolve_image
 from splitgraph.config import CONFIG
 from splitgraph.connection import get_connection, serialize_connection_string
-from splitgraph.console import Color, truncate_line
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.mount_handlers import get_mount_handler
 from splitgraph.pg_utils import execute_sql_in
