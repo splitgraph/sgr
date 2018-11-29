@@ -1,7 +1,8 @@
 import pytest
 
+from splitgraph import SplitGraphException
 from splitgraph.commands import commit, get_log, checkout, diff
-from splitgraph.commands.tagging import get_current_head, get_all_hashes_tags, set_tag
+from splitgraph.commands.tagging import get_current_head, get_all_hashes_tags, set_tag, resolve_image
 from splitgraph.pg_utils import pg_table_exists
 from test.splitgraph.conftest import PG_MNT
 
@@ -99,3 +100,13 @@ def test_tagging(sg_pg_conn):
     assert (head, 'base') in hashes_tags
     assert (right, 'right') in hashes_tags
     assert (right, 'HEAD') in hashes_tags
+
+
+def test_image_resolution(sg_pg_conn):
+    head = get_current_head(PG_MNT)
+    assert resolve_image(PG_MNT, head[:10]) == head
+    assert resolve_image(PG_MNT, 'latest') == head
+    with pytest.raises(SplitGraphException):
+        resolve_image(PG_MNT, 'abcdef1234567890abcdef')
+    with pytest.raises(SplitGraphException):
+        resolve_image(PG_MNT, 'some_weird_tag')
