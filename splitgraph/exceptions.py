@@ -7,4 +7,3 @@ class SplitGraphException(Exception):
     """
     A generic Splitgraph exception
     """
-    pass

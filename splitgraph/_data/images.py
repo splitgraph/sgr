@@ -59,9 +59,8 @@ def get_image_object_path(repository, table, image):
             # Check the _parent_'s format -- if it's a SNAP, we're done
             if object_tree[parent_id][0][1] == 'SNAP':
                 return parent_id, path
-            else:
-                object_id = parent_id
-                break  # Found 1 diff, will be added to the path at the next iteration.
+            object_id = parent_id
+            break  # Found 1 diff, will be added to the path at the next iteration.
 
     # We didn't find an actual snapshot for this table -- something's wrong with the object tree.
     raise SplitGraphException("Couldn't find a SNAP object for %s (malformed object tree)" % table)

@@ -1,3 +1,7 @@
+"""
+Public API for importing tables across Splitgraph images
+"""
+
 from random import getrandbits
 
 from psycopg2.sql import Identifier, SQL
@@ -131,15 +135,26 @@ def _register_and_checkout_new_table(do_checkout, object_id, target_hash, target
 
 def import_table_from_remote(remote_conn_string, remote_repository, remote_tables, remote_image_hash, target_repository,
                              target_tables, target_hash=None):
-    # Shorthand for importing one or more tables from a yet-uncloned remote. Here, the remote image hash
-    # is required, as otherwise we aren't necessarily able to determine what the remote head is.
+    """
+    Shorthand for importing one or more tables from a yet-uncloned remote. Here, the remote image hash is required,
+    as otherwise we aren't necessarily able to determine what the remote head is.
+    :param remote_conn_string: Connection string to the remote driver
+    :param remote_repository: Remote repository
+    :param remote_tables: List of remote tables to import
+    :param remote_image_hash: Image hash to import the tables from
+    :param target_repository: Target repository to import the tables to
+    :param target_tables: Target table aliases
+    :param target_hash: Hash of the image that's created with the import. Default random.
+    :return:
+    """
 
     # In the future, we could do some vaguely intelligent interrogation of the remote to directly copy the required
     # metadata (object locations and relationships) into the local mountpoint. However, since the metadata is fairly
     # lightweight (we never download unneeded objects), we just clone it into a temporary mountpoint,
     # do the import into the target and destroy the temporary mp.
-    tmp_mountpoint = Repository(namespace=remote_repository.namespace, repository=remote_repository.repository +
-                                                                                  '_clone_tmp')
+    tmp_mountpoint = Repository(namespace=remote_repository.namespace,
+                                repository=remote_repository.repository +
+                                           '_clone_tmp')
 
     clone(remote_repository, remote_conn_string=remote_conn_string, local_repository=tmp_mountpoint, download_all=False)
     import_tables(tmp_mountpoint, remote_tables, target_repository, target_tables, image_hash=remote_image_hash,

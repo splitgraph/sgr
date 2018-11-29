@@ -1,3 +1,7 @@
+"""
+Functions to manage Splitgraph repositories
+"""
+
 from collections.__init__ import namedtuple
 from datetime import datetime
 
@@ -7,13 +11,16 @@ from splitgraph.config import CONFIG
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import make_conn, override_driver_connection, get_connection
 from splitgraph.exceptions import SplitGraphException
-from splitgraph.pg_utils import get_full_table_schema
 from .._data.common import ensure_metadata_schema, insert, select
-from .._data.images import get_image_object_path
 from .._data.objects import register_object, register_table
 
 
 def get_remote_connection_params(remote_name):
+    """
+    Gets connection parameters for a Splitgraph remote.
+    :param remote_name: Name of the remote. Must be specified in the config file.
+    :return: A tuple of (hostname, port, username, password, database)
+    """
     pdict = CONFIG['remotes'][remote_name]
     return (pdict['SG_DRIVER_HOST'], int(pdict['SG_DRIVER_PORT']), pdict['SG_DRIVER_USER'],
             pdict['SG_DRIVER_PWD'], pdict['SG_DRIVER_DB_NAME'])
@@ -53,6 +60,10 @@ def to_repository(schema):
 
 
 def repository_exists(repository):
+    """
+    Checks if a repository exists on the driver. Can be used with `override_driver_connection`
+    :param repository: Repository object
+    """
     with get_connection().cursor() as cur:
         cur.execute(SQL("SELECT 1 FROM {}.images WHERE namespace = %s AND repository = %s")
                     .format(Identifier(SPLITGRAPH_META_SCHEMA)),
@@ -61,6 +72,13 @@ def repository_exists(repository):
 
 
 def register_repository(repository, initial_image, tables, table_object_ids):
+    """
+    Registers a new repository on the driver. Internal function, use `splitgraph.init` instead.
+    :param repository: Repository object
+    :param initial_image: Hash of the initial image
+    :param tables: Table names in the initial image
+    :param table_object_ids: Object IDs that the initial tables map to.
+    """
     with get_connection().cursor() as cur:
         cur.execute(insert("images", ("image_hash", "namespace", "repository", "parent_id", "created")),
                     (initial_image, repository.namespace, repository.repository, None, datetime.now()))
@@ -75,7 +93,11 @@ def register_repository(repository, initial_image, tables, table_object_ids):
 
 
 def unregister_repository(repository, is_remote=False):
-    # If is_remote is true, we treat conn as a connection to a remote that doesn't have the "remotes" table.
+    """
+    Deregisters the repository. Internal function/
+    :param repository: Repository object
+    :param is_remote: Specifies whether the driver is a remote that doesn't have the "remotes" table.
+    """
     with get_connection().cursor() as cur:
         meta_tables = ["tables", "tags", "images"]
         if not is_remote:
@@ -88,13 +110,26 @@ def unregister_repository(repository, is_remote=False):
 
 
 def get_current_repositories():
+    """
+    Lists all repositories currently in the driver.
+    :return: List of (Repository object, current HEAD image)
+    """
     ensure_metadata_schema()
     with get_connection().cursor() as cur:
         cur.execute(select("tags", "namespace, repository, image_hash", "tag = 'HEAD'"))
         return [(Repository(n, r), i) for n, r, i in cur.fetchall()]
 
 
+# TODO these remotes are different from the remote drivers -- here remotes map a locally cloned repository
+# to the remote connection string + remote repository so that we can do "sgr push/pull" without any context.
+
 def get_remote_for(repository, remote_name='origin'):
+    """
+    Gets the current remote (connection string and repository) that a local repository tracks
+    :param repository: Local repository
+    :param remote_name: Alias for the remote, default 'origin'
+    :return: Tuple of (connection string, remote Repository object)
+    """
     with get_connection().cursor() as cur:
         cur.execute(select("remotes", "remote_conn_string, remote_namespace, remote_repository",
                            "namespace = %s AND repository = %s AND remote_name = %s"),
@@ -107,28 +142,18 @@ def get_remote_for(repository, remote_name='origin'):
 
 
 def add_remote(repository, remote_conn, remote_repository, remote_name='origin'):
+    """
+    Adds a remote that a local repository tracks.
+    :param repository: Local repository
+    :param remote_conn: Remote connection string
+    :param remote_repository: Remote Repository object
+    :param remote_name: Alias to give this remote
+    """
     with get_connection().cursor() as cur:
         cur.execute(insert("remotes", ("namespace", "repository", "remote_name", "remote_conn_string",
                                        "remote_namespace", "remote_repository")),
                     (repository.namespace, repository.repository, remote_name,
                      remote_conn, remote_repository.namespace, remote_repository.repository))
-
-
-def table_schema_changed(repository, table_name, image_1, image_2=None):
-    snap_1 = get_image_object_path(repository, table_name, image_1)[0]
-    conn = get_connection()
-    # image_2 = None here means the current staging area.
-    if image_2 is not None:
-        snap_2 = get_image_object_path(repository, table_name, image_2)[0]
-        return get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_1) != \
-               get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_2)
-    return get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_1) != \
-           get_full_table_schema(conn, repository.to_schema(), table_name)
-
-
-def get_schema_at(repository, table_name, image_hash):
-    snap_1 = get_image_object_path(repository, table_name, image_hash)[0]
-    return get_full_table_schema(get_connection(), SPLITGRAPH_META_SCHEMA, snap_1)
 
 
 def lookup_repo(repo_name, include_local=False):

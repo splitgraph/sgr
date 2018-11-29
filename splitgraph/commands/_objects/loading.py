@@ -1,3 +1,7 @@
+"""
+Internal functions for downloading/uploading Splitgraph objects to remote drivers/external locations.
+"""
+
 import logging
 from collections import defaultdict
 
@@ -88,7 +92,7 @@ def _fetch_external_objects(object_locations, objects_to_fetch):
 def upload_objects(remote_conn_string, objects_to_push, handler='DB', handler_params=None, remote_conn=None):
     """
     Uploads physical objects to the remote or some other external location.
-    
+
     :param remote_conn_string: Connection string to the remote SG driver of the form
         username:password@hostname:port/database.
     :param objects_to_push: List of object IDs to upload.

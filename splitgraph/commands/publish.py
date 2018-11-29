@@ -9,9 +9,9 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph._data.registry import publish_tag
 from splitgraph.commands.checkout import materialized_table
-from splitgraph.commands.info import get_tables_at
+from splitgraph.commands.info import get_tables_at, get_schema_at
 from splitgraph.commands.provenance import provenance
-from splitgraph.commands.repository import get_remote_for, get_schema_at
+from splitgraph.commands.repository import get_remote_for
 from splitgraph.commands.tagging import get_tagged_id
 from splitgraph.connection import get_connection, override_driver_connection, parse_connection_string, make_conn
 from splitgraph.exceptions import SplitGraphException
@@ -43,7 +43,7 @@ def publish(repository, tag, remote_conn_string=None, remote_repository=None, re
 
     remote_conn_string, remote_repository = remote_info
     image_hash = get_tagged_id(repository, tag)
-    logging.info("Publishing %s:%s (%s)" % (repository, image_hash, tag))
+    logging.info("Publishing %s:%s (%s)", repository, image_hash, tag)
 
     dependencies = provenance(repository, image_hash) if include_provenance else None
 

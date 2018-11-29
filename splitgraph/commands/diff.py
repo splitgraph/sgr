@@ -1,9 +1,13 @@
+"""
+Public API for calculating differences between two Splitgraph images.
+"""
+
 import json
 
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph._data.objects import get_object_for_table
-from splitgraph.commands._objects.utils import get_replica_identity, convert_audit_change, KIND
+from splitgraph.commands._pg_audit import dump_pending_changes
 from splitgraph.commands.checkout import materialized_table
 from splitgraph.commands.info import get_table
 from splitgraph.commands.misc import table_exists_at, find_path
@@ -64,30 +68,7 @@ def diff(repository, table_name, image_1, image_2, aggregate=False):
     # Otherwise, check if snap_1 is a parent of snap_2, then we can merge all the diffs.
     path = find_path(repository, image_1, (image_2 if image_2 is not None else head))
     if path is not None:
-        with get_connection().cursor() as cur:
-            result = [] if not aggregate else (0, 0, 0)
-            for image in reversed(path):
-                diff_id = get_object_for_table(repository, table_name, image, 'DIFF')
-                if diff_id is None:
-                    # TODO This entry on the path between the two nodes is a snapshot -- meaning there
-                    # has been a schema change and we can't just accumulate diffs. For now, we just pretend
-                    # it didn't happen and dump the data changes.
-                    continue
-                if not aggregate:
-                    cur.execute(SQL("""SELECT * FROM {}.{}""").format(
-                        Identifier(SPLITGRAPH_META_SCHEMA), Identifier(diff_id)))
-                    # There's only one action applied to a tuple in a single diff, so the ordering doesn't matter.
-                    image_diff = sorted(cur.fetchall())
-                    for row in image_diff:
-                        pk = row[:-2]
-                        action = row[-2]
-                        action_data = json.loads(row[-1]) if row[-1] else None
-                        result.append((pk, action, action_data))
-                else:
-                    cur.execute(SQL(
-                        """SELECT sg_action_kind, count(sg_action_kind) FROM {}.{} GROUP BY sg_action_kind""").format(
-                        Identifier(SPLITGRAPH_META_SCHEMA), Identifier(diff_id)))
-                    result = _changes_to_aggregation(cur.fetchall(), result)
+        result = _calculate_merged_diff(repository, table_name, path, aggregate)
 
         # If snap_2 is staging, also include all changes that have happened since the last commit.
         if image_2 is None:
@@ -99,41 +80,50 @@ def diff(repository, table_name, image_1, image_2, aggregate=False):
         return result
 
     # Finally, resort to manual diffing (images on different branches or reverse comparison order).
-    with materialized_table(repository, table_name, image_1) as (mp_1, table_1):
-        with materialized_table(repository, table_name, image_2) as (mp_2, table_2):
-            # Check both tables out at the same time since then table_2 calculation can be based
-            # on table_1's snapshot.
-            cur.execute(SQL("SELECT * FROM {}.{}").format(Identifier(mp_1),
-                                                          Identifier(table_1)))
-            left = cur.fetchall()
-            cur.execute(SQL("SELECT * FROM {}.{}").format(Identifier(mp_2),
-                                                          Identifier(table_2)))
-            right = cur.fetchall()
-
-    # Mimic the diff format returned by the WAL
-    if aggregate:
-        return sum(1 for r in right if r not in left), sum(1 for r in left if r not in right), 0
-    return [(1, r) for r in left if r not in right] + [(0, r) for r in right if r not in left]
+    return _side_by_side_diff(repository, table_name, image_1, image_2, aggregate)
 
 
-def dump_pending_changes(schema, table, aggregate=False):
+def _calculate_merged_diff(repository, table_name, path, aggregate):
     with get_connection().cursor() as cur:
-        if aggregate:
-            cur.execute(SQL(
-                "SELECT action, count(action) FROM {}.{} "
-                "WHERE schema_name = %s AND table_name = %s GROUP BY action").format(Identifier("audit"),
-                                                                                     Identifier("logged_actions")),
-                        (schema, table))
-            return [(KIND[k], c) for k, c in cur.fetchall()]
+        result = [] if not aggregate else (0, 0, 0)
+        for image in reversed(path):
+            diff_id = get_object_for_table(repository, table_name, image, 'DIFF')
+            if diff_id is None:
+                # TODO This entry on the path between the two nodes is a snapshot -- meaning there
+                # has been a schema change and we can't just accumulate diffs. For now, we just pretend
+                # it didn't happen and dump the data changes.
+                continue
+            if not aggregate:
+                cur.execute(SQL("""SELECT * FROM {}.{}""").format(
+                    Identifier(SPLITGRAPH_META_SCHEMA), Identifier(diff_id)))
+                # There's only one action applied to a tuple in a single diff, so the ordering doesn't matter.
+                image_diff = sorted(cur.fetchall())
+                for row in image_diff:
+                    pk = row[:-2]
+                    action = row[-2]
+                    action_data = json.loads(row[-1]) if row[-1] else None
+                    result.append((pk, action, action_data))
+            else:
+                cur.execute(SQL(
+                    """SELECT sg_action_kind, count(sg_action_kind) FROM {}.{} GROUP BY sg_action_kind""")
+                            .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(diff_id)))
+                result = _changes_to_aggregation(cur.fetchall(), result)
+    return result
 
-        cur.execute(SQL(
-            "SELECT action, row_data, changed_fields FROM {}.{} "
-            "WHERE schema_name = %s AND table_name = %s").format(Identifier("audit"),
-                                                                 Identifier("logged_actions")),
-                    (schema, table))
-        repl_id = get_replica_identity(schema, table)
-        ri_cols, _ = zip(*repl_id)
-        result = []
-        for action, row_data, changed_fields in cur:
-            result.extend(convert_audit_change(action, row_data, changed_fields, ri_cols))
-        return result
+
+def _side_by_side_diff(repository, table_name, image_1, image_2, aggregate):
+    with get_connection().cursor() as cur:
+        with materialized_table(repository, table_name, image_1) as (mp_1, table_1):
+            with materialized_table(repository, table_name, image_2) as (mp_2, table_2):
+                # Check both tables out at the same time since then table_2 calculation can be based
+                # on table_1's snapshot.
+                cur.execute(SQL("SELECT * FROM {}.{}").format(Identifier(mp_1),
+                                                              Identifier(table_1)))
+                left = cur.fetchall()
+                cur.execute(SQL("SELECT * FROM {}.{}").format(Identifier(mp_2),
+                                                              Identifier(table_2)))
+                right = cur.fetchall()
+
+        if aggregate:
+            return sum(1 for r in right if r not in left), sum(1 for r in left if r not in right), 0
+        return [(1, r) for r in left if r not in right] + [(0, r) for r in right if r not in left]

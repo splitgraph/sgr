@@ -11,8 +11,7 @@ from splitgraph._data.common import ensure_metadata_schema
 from splitgraph._data.images import add_new_image
 from splitgraph._data.objects import register_table
 from splitgraph.commands._objects.creation import record_table_as_diff, record_table_as_snap
-from splitgraph.commands.info import get_table
-from splitgraph.commands.repository import table_schema_changed
+from splitgraph.commands.info import get_table, table_schema_changed
 from splitgraph.commands.tagging import get_current_head
 from splitgraph.connection import get_connection
 from splitgraph.pg_utils import get_all_tables

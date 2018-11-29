@@ -54,7 +54,7 @@ def get_explicit_config_file_location():
 
     if explicit_location and is_file(explicit_location):
         return explicit_location
-    elif explicit_location and not is_file(explicit_location):
+    if explicit_location and not is_file(explicit_location):
         sys.stderr.write('Warning: %s = %s is not a file' % (key, explicit_location))
 
     return None
@@ -164,8 +164,7 @@ def SG_CONFIG_FILE(default_return=None):
 
         return first_matching_file
 
-    else:
-        return default_return
+    return default_return
 
 
 # Don't forget to do this for each method you want in the object

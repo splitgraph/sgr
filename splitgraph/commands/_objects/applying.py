@@ -1,3 +1,7 @@
+"""
+Internal functions for materializing Splitgraph objects into tables
+"""
+
 import json
 
 from psycopg2._json import Json

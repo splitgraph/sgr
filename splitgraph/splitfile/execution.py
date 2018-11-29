@@ -1,3 +1,7 @@
+"""
+Functions for executing Splitfiles.
+"""
+
 import json
 from hashlib import sha256
 from importlib import import_module
@@ -25,7 +29,7 @@ def _combine_hashes(hashes):
 
 
 def _checkout_or_calculate_layer(output, image_hash, calc_func):
-    # Future Optimization here: don't actually check the layer out if it exists -- only do it at Splitfile execution
+    # Future optimization here: don't actually check the layer out if it exists -- only do it at Splitfile execution
     # end or when a command needs it.
 
     # Have we already calculated this hash?

@@ -5,6 +5,7 @@ Functions to manage the Postgres audit stored procedures on the driver to detect
 from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph.commands._objects.utils import KIND, get_replica_identity, convert_audit_change
 from splitgraph.commands.info import get_table
 from splitgraph.commands.repository import get_current_repositories
 from splitgraph.connection import get_connection
@@ -96,3 +97,33 @@ def manage_audit(func):
             manage_audit_triggers()
 
     return wrapped
+
+
+def dump_pending_changes(schema, table, aggregate=False):
+    """
+    Dumps pending changes from the audit table
+    :param schema: Schema to dump changes for
+    :param table: Table to dump changes for
+    :param aggregate: If True, returns a tuple (added_rows, removed_rows, updated_rows).
+        If False, returns a list of changes (primary_key, change_type, change_data).
+    """
+    with get_connection().cursor() as cur:
+        if aggregate:
+            cur.execute(SQL(
+                "SELECT action, count(action) FROM {}.{} "
+                "WHERE schema_name = %s AND table_name = %s GROUP BY action").format(Identifier("audit"),
+                                                                                     Identifier("logged_actions")),
+                        (schema, table))
+            return [(KIND[k], c) for k, c in cur.fetchall()]
+
+        cur.execute(SQL(
+            "SELECT action, row_data, changed_fields FROM {}.{} "
+            "WHERE schema_name = %s AND table_name = %s").format(Identifier("audit"),
+                                                                 Identifier("logged_actions")),
+                    (schema, table))
+        repl_id = get_replica_identity(schema, table)
+        ri_cols, _ = zip(*repl_id)
+        result = []
+        for action, row_data, changed_fields in cur:
+            result.extend(convert_audit_change(action, row_data, changed_fields, ri_cols))
+        return result

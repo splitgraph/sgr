@@ -91,6 +91,14 @@ def unpublish_repository(repository):
 
 
 def get_info_key(key):
+    """
+    Gets a configuration key from the remote registry, used to notify the client of the registry's capabilities.
+
+    Should be called with the driver connection switching context manager (`override_driver_connection`).
+
+    :param key: Key to get
+    :return:
+    """
     with get_connection().cursor() as cur:
         cur.execute(SQL("SELECT value FROM {}.info WHERE key = %s").format(Identifier(SPLITGRAPH_META_SCHEMA)), (key,))
         result = cur.fetchone()
@@ -100,6 +108,15 @@ def get_info_key(key):
 
 
 def set_info_key(key, value):
+    """
+    Sets a configuration value on the remote registry.
+
+    Should be called with the driver connection switching context manager (`override_driver_connection`).
+
+    :param key: Key to set
+    :param value: New value for the key
+    :return:
+    """
     with get_connection().cursor() as cur:
         cur.execute(SQL("INSERT INTO {0}.info (key, value) VALUES (%s, %s)"
                         " ON CONFLICT (key) DO UPDATE SET value = %s WHERE info.key = %s")
@@ -174,9 +191,13 @@ def _setup_rls_policies(cursor, table, schema=SPLITGRAPH_META_SCHEMA, condition=
 
 
 def toggle_registry_rls(mode='ENABLE'):
-    # For testing purposes: switch RLS off so that we can add test data that we then won't be able to alter when
-    # switching it on.
-    # Modes: ENABLE is same as FORCE, but doesn't apply to the table owner.
+    """
+    Switches row-level security on the registry, restricting write access to metadata tables
+    to owners of relevant repositories/objects.
+
+    :param mode: ENABLE, DISABLE or FORCE (enable for superusers/table owners)
+    :return:
+    """
 
     if mode not in ('ENABLE', 'DISABLE', 'FORCE'):
         raise ValueError()

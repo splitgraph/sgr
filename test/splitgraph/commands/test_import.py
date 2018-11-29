@@ -1,7 +1,7 @@
 from splitgraph import init
 from splitgraph._data.objects import get_existing_objects, get_downloaded_objects
 from splitgraph.commands import checkout, commit, import_tables
-from splitgraph.commands.diff import dump_pending_changes
+from splitgraph.commands._pg_audit import dump_pending_changes
 from splitgraph.commands.importing import import_table_from_remote
 from splitgraph.commands.info import get_image
 from splitgraph.commands.misc import cleanup_objects

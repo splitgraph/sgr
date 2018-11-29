@@ -1,3 +1,7 @@
+"""
+Internal helper functions for packaging changes recorded by the audit trigger into Splitgraph objects.
+"""
+
 from random import getrandbits
 
 from splitgraph.connection import get_connection
@@ -6,6 +10,10 @@ from splitgraph.pg_utils import get_primary_keys, get_column_names_types
 
 
 def get_replica_identity(schema, table):
+    """
+    Get the PK we're storing changes as. If the table has no PK, we treat the whole row as the primary key,
+    meaning that we don't support
+    """
     conn = get_connection()
     return get_primary_keys(conn, schema, table) or get_column_names_types(conn, schema, table)
 
@@ -58,7 +66,7 @@ def _recalculate_disjoint_ri_cols(ri_cols, ri_vals, non_ri_cols, non_ri_vals):
     return ri_vals, new_nric, new_nriv
 
 
-def merge_changes(old_change_data, new_change_data):
+def _merge_changes(old_change_data, new_change_data):
     old_change_data = {k: v for k, v in zip(old_change_data['c'], old_change_data['v'])}
     old_change_data.update({k: v for k, v in zip(new_change_data['c'], new_change_data['v'])})
     return {'c': list(old_change_data.keys()), 'v': list(old_change_data.values())}
@@ -66,7 +74,7 @@ def merge_changes(old_change_data, new_change_data):
 
 def convert_audit_change(action, row_data, changed_fields, ri_cols):
     """
-    Converts the audit log entry into our internal format.
+    Converts the audit log entry into Splitgraph's internal format.
     :returns: [(pk, kind, extra data)] (more than 1 change might be emitted from a single audit entry).
     """
     ri_vals, non_ri_cols, non_ri_vals = _split_ri_cols(action, row_data, changed_fields, ri_cols)
@@ -115,7 +123,7 @@ def conflate_changes(changeset, new_changes):
                     raise SplitGraphException("TODO logic error")
             elif change_kind == 2:  # Update over insert/update: merge the two changes.
                 if old_change[0] == 0 or old_change[0] == 2:
-                    new_data = merge_changes(old_change[1], change_data)
+                    new_data = _merge_changes(old_change[1], change_data)
                     changeset[change_pk] = (old_change[0], new_data)
 
 

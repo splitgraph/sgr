@@ -88,10 +88,9 @@ def create_table(conn, schema, table, schema_spec):
 
     with conn.cursor() as cur:
         target = SQL("{}.{}").format(Identifier(schema), Identifier(table))
-        query = SQL("CREATE TABLE {} (").format(target) + \
-                SQL(','.join(
-                    "{} %s " % ctype for _, _, ctype, _ in schema_spec)).format(
-                    *(Identifier(cname) for _, cname, _, _ in schema_spec))
+        query = SQL("CREATE TABLE {} (").format(target) \
+                + SQL(','.join("{} %s " % ctype for _, _, ctype, _ in schema_spec)) \
+                    .format(*(Identifier(cname) for _, cname, _, _ in schema_spec))
 
         pk_cols = [cname for _, cname, _, is_pk in schema_spec if is_pk]
         if pk_cols:

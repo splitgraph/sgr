@@ -1,9 +1,12 @@
+"""
+Internal functions for parsing Splitfiles.
+"""
+
 import re
 import shlex
 
 from parsimonious import Grammar
 
-from splitgraph import to_repository
 from splitgraph.exceptions import SplitGraphException
 
 SPLITFILE_GRAMMAR = Grammar(r"""
@@ -54,6 +57,15 @@ SPLITFILE_GRAMMAR = Grammar(r"""
 
 
 def preprocess(commands, params=None):
+    """
+    Preprocesses a Splitfile, performing parameter substitution (`${PARAM}` gets replaced with `params['PARAM']`).
+    Also removes escaped newlines.
+    Raises an error if not all parameters are specified.
+
+    :param commands: A string with the raw Splitfile
+    :param params: Dictionary of parameters to substitute
+    :returns The preprocessed Splitfile.
+    """
     # Also replaces all $PARAM in the splitfile text with the params in the dictionary.
     if params is None:
         params = {}
@@ -73,7 +85,7 @@ def preprocess(commands, params=None):
 
 
 def parse_commands(commands, params=None):
-    # Unpacks the parse tree into a list of command nodes.
+    """Unpacks the parse tree into a list of command nodes."""
     if params is None:
         params = {}
     commands = preprocess(commands, params)
@@ -115,7 +127,14 @@ def _parse_table_alias(table_node):
 
 
 def parse_repo_source(remote_repo_node):
+    """
+    Extracts the image specification (e.g. noaa/climate:abcdef123 -> Repository('noaa', 'climate'), 'abcdef123')
+    :param remote_repo_node: Parse node with the specification
+    :return: Tuple of (repository object, tag or hash)
+    """
     repo_nodes = extract_nodes(remote_repo_node, ['repository', 'identifier', 'image_hash'])
+    # Avoid cyclic imports
+    from splitgraph.commands.repository import to_repository
     repository = to_repository(repo_nodes[0].match.group(0))
     # See if we got given a tag / hash (the executor will try to interpret it as both).
     if len(repo_nodes) == 2:
@@ -126,6 +145,12 @@ def parse_repo_source(remote_repo_node):
 
 
 def extract_all_table_aliases(node):
+    """
+    Extracts table names and aliases in a format suitable for passing to the `import_tables` function
+    :param node: Parse node
+    :return: Three lists: table names, table aliases (can be the same as table names), whether table names are
+        actually SQL queries defining data to insert.
+    """
     tables = extract_nodes(node, ['table'])
     if not tables:
         # No tables specified (imports all tables from the mounted db / repo)

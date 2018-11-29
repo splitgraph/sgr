@@ -24,7 +24,7 @@ def provenance(repository, image_hash):
         parent, prov_type, prov_data = image.parent_id, image.provenance_type, image.provenance_data
         if prov_type == 'IMPORT':
             result.add((Repository(prov_data['source_namespace'], prov_data['source']), prov_data['source_hash']))
-        elif prov_type == 'FROM':
+        if prov_type == 'FROM':
             # If we reached "FROM", then that's the first statement in the image build process (as it bases the build
             # on a completely different base image). Otherwise, let's say we have several versions of the source
             # repo and base some Splitfile builds on each of them sequentially. In that case, the newest build will
@@ -32,7 +32,7 @@ def provenance(repository, image_hash):
             # and then add the FROM ... provenance data into it).
             result.add((Repository(prov_data['source_namespace'], prov_data['source']), image_hash))
             break
-        elif prov_type in (None, 'MOUNT'):
+        if prov_type in (None, 'MOUNT'):
             logging.warning("Image %s has provenance type %s, which means it might not be rederiveable.",
                             image_hash[:12], prov_type)
         image_hash = parent
@@ -56,10 +56,10 @@ def _prov_command_to_splitfile(prov_type, prov_data, image_hash, source_replacem
         result += ", ".join("%s AS %s" % (tn if not q else "{" + tn.replace("}", "\\}") + "}", ta) for tn, ta, q
                             in zip(prov_data['tables'], prov_data['table_aliases'], prov_data['table_queries']))
         return result
-    elif prov_type == "FROM":
+    if prov_type == "FROM":
         repo = Repository(prov_data['source_namespace'], prov_data['source'])
         return "FROM %s:%s" % (str(repo), source_replacement.get(repo, image_hash))
-    elif prov_type == "SQL":
+    if prov_type == "SQL":
         return "SQL " + prov_data.replace("\n", "\\\n")
     raise SplitGraphException("Cannot reconstruct provenance %s!" % prov_type)
 
@@ -91,8 +91,7 @@ def image_hash_to_splitfile(repository, image_hash, err_on_end=True, source_repl
             if err_on_end:
                 raise SplitGraphException("Image %s is linked to its parent with provenance %s"
                                           " that can't be reproduced!" % (image_hash, prov_type))
-            else:
-                splitfile_commands.append("FROM %s:%s" % (repository, image_hash))
-                break
+            splitfile_commands.append("FROM %s:%s" % (repository, image_hash))
+            break
         image_hash = parent
     return list(reversed(splitfile_commands))
