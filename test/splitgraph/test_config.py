@@ -24,6 +24,7 @@ try:
 except ImportError:
     from mock import patch
 
+
 def test_every_key_has_matching_arg_key():
     KEYS = keys.KEYS
     ARGUMENT_KEY_MAP = keys.ARGUMENT_KEY_MAP
@@ -31,6 +32,7 @@ def test_every_key_has_matching_arg_key():
 
     for arg_key in ARG_KEYS:
         assert ARGUMENT_KEY_MAP[arg_key] in KEYS
+
 
 def test_get_arg_tuples():
     mock_argv = [
@@ -47,6 +49,7 @@ def test_get_arg_tuples():
         assert arg_tuples[0] == ('--namespace', 'namespace-from-arg')
         assert arg_tuples[1] == ('--meta-schema', 'bar')
 
+
 def test_get_argument_config_value():
     mock_argv = ['sg', '--namespace', 'namespace-from-arg']
 
@@ -56,6 +59,7 @@ def test_get_argument_config_value():
 
         non_val = get_argument_config_value('DOESNOTEXISTSKJKJ', None)
         assert non_val is None
+
 
 def test_get_argument_config_value_duplicate():
     mock_argv = [
@@ -70,6 +74,7 @@ def test_get_argument_config_value_duplicate():
 
         non_val = get_argument_config_value('DOESNOTEXISTSKJKJ', None)
         assert non_val is None
+
 
 def test_get_environment_config_value():
     mock_environ = {
@@ -90,11 +95,13 @@ def test_get_environment_config_value():
         non_val = get_environment_config_value('doesnotexist', 'xxx')
         assert non_val == 'xxx'
 
+
 def test_config_exports_dict():
     ''' The CONFIG object exported from config should be the same
         as the result of calling create_config_dict()
     '''
     assert json.dumps(CONFIG) == json.dumps(create_config_dict())
+
 
 def test_sanity_pyfakefs_is_working(fs):
     ''' Sanity check that fs is provided magically by pyfakefs
@@ -102,6 +109,7 @@ def test_sanity_pyfakefs_is_working(fs):
     '''
     fs.create_file('/var/bogus/directory/bogus_file.txt')
     assert os.path.exists('/var/bogus/directory/bogus_file.txt')
+
 
 def test_get_explicit_config_file_location_from_env_existing_file(fs):
     ''' get_explicit_config_file_location()
@@ -121,6 +129,7 @@ def test_get_explicit_config_file_location_from_env_existing_file(fs):
         loc = get_explicit_config_file_location()
 
         assert loc == '/var/mock/foo_bar.cfg'
+
 
 def test_get_explicit_config_file_location_from_env_nonexisting_file(fs):
     ''' get_explicit_config_file_location()
@@ -157,6 +166,7 @@ def test_get_explicit_config_file_location_from_arg_existing_file(fs):
 
         assert loc == '/var/mock/foo_bar.cfg'
 
+
 def test_get_explicit_config_file_location_from_arg_nonexisting_file(fs):
     ''' get_explicit_config_file_location()
         from arg flag when file does NOT exist should return None
@@ -171,6 +181,7 @@ def test_get_explicit_config_file_location_from_arg_nonexisting_file(fs):
         loc = get_explicit_config_file_location()
 
         assert loc is None
+
 
 def test_get_explicit_config_file_existing_dirs_via_env(fs):
     exists_dir_1 = '/var/some-dir-to-look-for-configs'
@@ -257,6 +268,7 @@ def test_get_explicit_config_file_existing_single_and_plural_dir_via_env(fs):
         assert exists_dir_2 in dirs
         assert exists_dir_3 in dirs
 
+
 def test_get_explicit_config_file_non_existing_dirs_via_env(fs):
     non_exist_dir_1 = '/var/some-non-existing-dir-to-look-for-configs'
     non_exist_dir_2 = '/var/another-non-existing-dir-to-look-for-configs'
@@ -273,6 +285,7 @@ def test_get_explicit_config_file_non_existing_dirs_via_env(fs):
         dirs = get_explicit_config_file_dirs()
 
         assert len(dirs) == 0
+
 
 ##
 
@@ -359,6 +372,7 @@ def test_get_explicit_config_file_existing_single_and_plural_dir_via_arg(fs):
         assert exists_dir_2 in dirs
         assert exists_dir_3 in dirs
 
+
 def test_get_explicit_config_file_non_existing_dirs_via_arg(fs):
     non_exist_dir_1 = '/var/some-non-existing-dir-to-look-for-configs'
     non_exist_dir_2 = '/var/another-non-existing-dir-to-look-for-configs'
@@ -375,13 +389,13 @@ def test_get_explicit_config_file_non_existing_dirs_via_arg(fs):
 
         assert len(dirs) == 0
 
+
 def test_SG_CONFIG_FILE_none_exists(fs):
     assert SG_CONFIG_FILE() == None
 
 
 @pytest.mark.parametrize('config_file_name', VALID_CONFIG_FILE_NAMES)
 def test_SG_CONFIG_FILE_valid_names_home_sub_dir(fs, config_file_name):
-
     mock_environ = {
         'HOME': '/fake/home/dir'
     }
@@ -400,9 +414,9 @@ def test_SG_CONFIG_FILE_valid_names_home_sub_dir(fs, config_file_name):
 
         assert SG_CONFIG_FILE() == config_file
 
+
 @pytest.mark.parametrize('config_file_name', VALID_CONFIG_FILE_NAMES)
 def test_SG_CONFIG_FILE_valid_names_cwd(fs, config_file_name):
-
     fake_cwd = os.getcwd()
     fake_config_file = os.path.join(fake_cwd, config_file_name)
 
@@ -413,7 +427,6 @@ def test_SG_CONFIG_FILE_valid_names_cwd(fs, config_file_name):
 
 @pytest.mark.parametrize('config_file_name', VALID_CONFIG_FILE_NAMES)
 def test_SG_CONFIG_FILE_explicit_dir_supercedes_valid_names_cwd(fs, config_file_name):
-
     fake_cwd = os.getcwd()
     fake_config_file = os.path.join(fake_cwd, config_file_name)
 
@@ -437,6 +450,7 @@ def test_SG_CONFIG_FILE_explicit_dir_supercedes_valid_names_cwd(fs, config_file_
     with patch.object(sys, 'argv', mock_sysargv):
         assert SG_CONFIG_FILE() == explicit_config_file
 
+
 def _write_config_file(fs, lines):
     fake_cwd = os.getcwd()
     fake_config_file = os.path.join(fake_cwd, '.sgconfig')
@@ -456,8 +470,8 @@ def _write_config_file(fs, lines):
     if pivot_sg_config_file is not None:
         os.environ['SG_CONFIG_FILE'] = os.environ['SG_CONFIG_FILE']
 
-def test_key_set_in_config_file(fs):
 
+def test_key_set_in_config_file(fs):
     _write_config_file(fs, [
         '[defaults]',
         'SG_NAMESPACE=pass-the-test'
@@ -466,6 +480,7 @@ def test_key_set_in_config_file(fs):
     config = create_config_dict()
 
     assert config['SG_NAMESPACE'] == 'pass-the-test'
+
 
 def test_hoist_section():
     orig_config_dict = {
@@ -478,6 +493,7 @@ def test_hoist_section():
 
     assert new_config_dict['OVERRIDE_THIS_ARBITRARY_KEY'] == 'foo'
     assert 'hoistableSection' not in new_config_dict.keys()
+
 
 def test_config_file_accumulation(fs):
     _write_config_file(fs, [
@@ -492,9 +508,11 @@ def test_config_file_accumulation(fs):
     assert config['remotes']['blah']['SG_DRIVER_HOST'] == 'pass-the-test'
     assert config['remotes']['foo']['SG_DRIVER_HOST'] == 'foo-pass'
 
+
 # Hardcoded default key to check that it's passed hrough
 def test_default_key(fs):
     assert CONFIG['SG_DRIVER_DB_NAME'] == 'cachedb'
+
 
 def test_key_set_in_arg_flag():
     # --namespace mapped to SG_NAMESPACE in config/keys.py
@@ -504,6 +522,7 @@ def test_key_set_in_arg_flag():
         config = create_config_dict()
         assert config['SG_NAMESPACE'] == 'pass-namespace-test'
 
+
 def test_key_set_in_env_var():
     mock_environ = {
         'SG_NAMESPACE': 'pass-env-namespace-test'
@@ -512,6 +531,7 @@ def test_key_set_in_env_var():
     with patch.object(os, 'environ', mock_environ):
         config = create_config_dict()
         assert config['SG_NAMESPACE'] == 'pass-env-namespace-test'
+
 
 def test_arg_flag_supercedes_config_file(fs):
     mock_argv = ['sg', '--namespace', 'namespace-from-arg']
@@ -527,6 +547,7 @@ def test_arg_flag_supercedes_config_file(fs):
     with patch.object(sys, 'argv', mock_argv):
         config = create_config_dict()
         assert config['SG_NAMESPACE'] == 'namespace-from-arg'
+
 
 def test_arg_flag_supercedes_env_var(fs):
     mock_environ = {
@@ -565,6 +586,6 @@ def test_env_var_supercedes_config_file(fs):
 
 def test_lookup_override_parser():
     assert _parse_paths_overrides(lookup_path="remote_driver",
-                                  override_path="override_repo_1:local")\
-        == ([('remote_driver', 5431, 'clientuser', 'supersecure', 'cachedb')],
-            {'override_repo_1': get_remote_connection_params('local')})
+                                  override_path="override_repo_1:local") \
+           == ([('remote_driver', 5431, 'clientuser', 'supersecure', 'cachedb')],
+               {'override_repo_1': get_remote_connection_params('local')})

@@ -1,5 +1,3 @@
-from .config import create_config_dict
-
 """ The CONFIG object is created and exported once __at import time__
     Calling CONFIG["KEY"] directly should be sufficient in most cases,
     except when a config value has changed since importing CONFIG.
@@ -14,6 +12,8 @@ from .config import create_config_dict
         4. DEFAULTS (see keys.py)
 
 """
+from .config import create_config_dict
+
 CONFIG = create_config_dict()
 
 PG_HOST = CONFIG["SG_DRIVER_HOST"]

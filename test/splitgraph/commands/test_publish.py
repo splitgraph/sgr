@@ -1,10 +1,10 @@
 import pytest
 
+from splitgraph._data.registry import get_published_info
 from splitgraph.commands import push
 from splitgraph.commands.publish import publish
 from splitgraph.commands.tagging import get_current_head, get_tagged_id, set_tag
 from splitgraph.connection import override_driver_connection
-from splitgraph.registry_meta_handler import get_published_info
 from splitgraph.splitfile import execute_commands
 from test.splitgraph.conftest import REMOTE_CONN_STRING, OUTPUT, PG_MNT, add_multitag_dataset_to_remote_driver, \
     load_splitfile

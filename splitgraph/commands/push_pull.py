@@ -1,9 +1,13 @@
+"""
+Public API for pushing/pulling repositories to/from remote Splitgraph instances.
+"""
+
 import logging
 
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph._data.common import ensure_metadata_schema
-from splitgraph._data.images import get_all_images_parents, add_new_image
+from splitgraph._data.images import get_all_image_info, add_new_image
 from splitgraph._data.objects import register_objects, register_tables, register_object_locations, \
     get_existing_objects, get_external_object_locations, get_object_meta
 from splitgraph.commands._common import set_head
@@ -18,20 +22,29 @@ from ._pg_audit import manage_audit
 
 
 def _get_required_snaps_objects(remote_conn, local_repository, remote_repository):
-    local_snap_parents = {image_hash: parent_id for image_hash, parent_id, _, _, _, _ in
-                          get_all_images_parents(local_repository)}
-    with override_driver_connection(remote_conn):
-        remote_snap_parents = {image_hash: (parent_id, created, comment, prov_type, prov_data)
-                               for image_hash, parent_id, created, comment, prov_type, prov_data in
-                               get_all_images_parents(remote_repository)}
+    """
+    Inspects the remote Splitgraph driver and gathers metadata missing on the local one required
+    for a pull, registering new images locally. Internal function.
 
-    # We assume here that none of the remote snapshot IDs have changed (are immutable) since otherwise the remote
-    # would have created a new snapshot.
-    snaps_to_fetch = [s for s in remote_snap_parents if s not in local_snap_parents]
+    :param remote_conn: Connection to the remote Splitgraph driver
+    :param local_repository: Local Repository object
+    :param remote_repository: Remote Repository object
+    :return:
+    """
+    local_images = {image_hash: parent_id for image_hash, parent_id, _, _, _, _ in
+                    get_all_image_info(local_repository)}
+    with override_driver_connection(remote_conn):
+        remote_images = {image_hash: (parent_id, created, comment, prov_type, prov_data)
+                         for image_hash, parent_id, created, comment, prov_type, prov_data in
+                         get_all_image_info(remote_repository)}
+
+    # We assume here that none of the remote image hashes have changed (are immutable) since otherwise the remote
+    # would have created a new image.
     table_meta = []
-    for image_hash in snaps_to_fetch:
+    new_images = [i for i in remote_images if i not in local_images]
+    for image_hash in new_images:
         # This is not batched but there shouldn't be that many entries here anyway.
-        remote_parent, remote_created, remote_comment, remote_prov, remote_provdata = remote_snap_parents[image_hash]
+        remote_parent, remote_created, remote_comment, remote_prov, remote_provdata = remote_images[image_hash]
         add_new_image(local_repository, remote_parent, image_hash, remote_created, remote_comment, remote_prov,
                       remote_provdata)
         # Get the meta for all objects we'll need to fetch.
@@ -53,7 +66,7 @@ def _get_required_snaps_objects(remote_conn, local_repository, remote_repository
     with override_driver_connection(remote_conn):
         object_locations = get_external_object_locations(list(distinct_objects)) if distinct_objects else []
 
-    return snaps_to_fetch, table_meta, object_locations, object_meta, tags
+    return new_images, table_meta, object_locations, object_meta, tags
 
 
 def _extract_recursive_object_meta(remote_conn, table_meta):

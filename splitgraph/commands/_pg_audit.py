@@ -1,3 +1,7 @@
+"""
+Functions to manage the Postgres audit stored procedures on the driver to detect changes to tables.
+"""
+
 from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
 
@@ -50,6 +54,10 @@ def manage_audit_triggers():
 
 
 def discard_pending_changes(schema):
+    """
+    Discards all recorded pending (uncommitted) changes to a Postgres schema from the audit table.
+    Doesn't discard the actual changes.
+    """
     conn = get_connection()
     with conn.cursor() as cur:
         cur.execute(SQL("DELETE FROM {}.{} WHERE schema_name = %s").format(Identifier("audit"),
@@ -59,6 +67,12 @@ def discard_pending_changes(schema):
 
 
 def has_pending_changes(repository):
+    """
+    Checks if a checked-out Splitgraph repository has any changes to its tracked tables. Doesn't detect
+    table creations, deletions or schema changes.
+    :param repository: Repository object
+    :return:
+    """
     conn = get_connection()
     with conn.cursor() as cur:
         cur.execute(SQL("SELECT 1 FROM {}.{} WHERE schema_name = %s").format(Identifier("audit"),
@@ -68,8 +82,10 @@ def has_pending_changes(repository):
 
 
 def manage_audit(func):
-    # A decorator to be put around various SG commands that performs general admin and auditing management
-    # (makes sure the metadata schema exists and delete/add required audit triggers)
+    """A decorator to be put around various Splitgraph commands that performs general admin and auditing management
+    (makes sure the metadata schema exists and delete/add required audit triggers)
+    """
+
     def wrapped(*args, **kwargs):
         try:
             ensure_metadata_schema()

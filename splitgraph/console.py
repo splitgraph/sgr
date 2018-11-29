@@ -1,3 +1,8 @@
+"""
+Utility functions for console output
+"""
+
+
 class Color:
     PURPLE = '\033[95m'
     CYAN = '\033[96m'
@@ -12,4 +17,5 @@ class Color:
 
 
 def truncate_line(line, length=80):
-    return (line if len(line) <= length else line[:length] + '...').replace('\n', '')
+    """Truncates a line to a given length, replacing the remainder with ..."""
+    return (line if len(line) <= length else line[:length - 3] + '...').replace('\n', '')

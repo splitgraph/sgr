@@ -28,7 +28,7 @@ OLD_SCHEMA = [(1, 'fruit_id', 'integer', False), (2, 'name', 'character varying'
 
 def _reassign_ordinals(schema):
     # When a table is created anew, its ordinals are made consecutive again.
-    return [(i+1, col[1], col[2], col[3]) for i, col in enumerate(schema)]
+    return [(i + 1, col[1], col[2], col[3]) for i, col in enumerate(schema)]
 
 
 @pytest.mark.parametrize("test_case", TEST_CASES)
@@ -48,7 +48,8 @@ def test_schema_changes(sg_pg_conn, test_case):
     assert get_object_for_table(PG_MNT, 'fruits', new_head, 'DIFF') is None
     new_snap = get_object_for_table(PG_MNT, 'fruits', new_head, 'SNAP')
     assert new_snap is not None
-    assert get_full_table_schema(sg_pg_conn, SPLITGRAPH_META_SCHEMA, new_snap) == _reassign_ordinals(expected_new_schema)
+    assert get_full_table_schema(sg_pg_conn, SPLITGRAPH_META_SCHEMA, new_snap) == _reassign_ordinals(
+        expected_new_schema)
 
     checkout(PG_MNT, head)
     assert get_full_table_schema(sg_pg_conn, PG_MNT.to_schema(), 'fruits') == OLD_SCHEMA

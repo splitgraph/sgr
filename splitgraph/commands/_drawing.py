@@ -1,8 +1,11 @@
 # coding=utf-8
+"""
+Routines for rendering a Splitgraph repository as a tree of images
+"""
 from collections import defaultdict
 
 from splitgraph._data.common import ensure_metadata_schema
-from splitgraph._data.images import get_all_images_parents
+from splitgraph._data.images import get_all_image_info
 from splitgraph.commands.tagging import get_current_head
 from splitgraph.exceptions import SplitGraphException
 
@@ -58,7 +61,7 @@ def render_tree(repository):
     head = get_current_head(repository, raise_on_none=False)
 
     # Get all commits in ascending time order
-    snap_parents = get_all_images_parents(repository)
+    snap_parents = get_all_image_info(repository)
     for image_hash, parent_id, _, _, _, _ in snap_parents:
         if parent_id is None:
             base_node = image_hash

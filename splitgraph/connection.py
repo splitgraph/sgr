@@ -1,3 +1,7 @@
+"""
+Routines for managing the connections to local and remote Splitgraph drivers.
+"""
+
 import re
 from contextlib import contextmanager
 
@@ -13,6 +17,8 @@ def override_driver_connection(conn):
     """
     Override the default psycopg connection to the driver. The old value will be restored
     on exit from the manager.
+
+    :param conn: Psycopg connection object.
     """
     global _PSYCOPG_CONN
     # Keep track of the old value (so that if we have several context manager calls in the call stack,
@@ -26,6 +32,10 @@ def override_driver_connection(conn):
 
 
 def get_connection():
+    """
+    Get a connection to the current local Splitgraph driver.
+    :return: Psycopg connection object
+    """
     global _PSYCOPG_CONN
     if not _PSYCOPG_CONN:
         _PSYCOPG_CONN = psycopg2.connect(POSTGRES_CONNECTION)
@@ -41,8 +51,15 @@ def parse_connection_string(conn_string):
 
 
 def serialize_connection_string(server, port, username, password, dbname):
+    """
+    Serializes a tuple into a Splitgraph driver connection string.
+    """
     return '%s:%s@%s:%s/%s' % (username, password, server, port, dbname)
 
 
 def make_conn(server, port, username, password, dbname):
+    """
+    Initializes a connection to the Splitgraph driver.
+    :return: Psycopg connection object
+    """
     return psycopg2.connect(host=server, port=port, user=username, password=password, dbname=dbname)

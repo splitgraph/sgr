@@ -26,13 +26,13 @@ CASES = [
         UPDATE "test/pg_mount".fruits SET name = 'apple' WHERE fruit_id = 1""",
          [])
     ],
-    [# Now test this whole thing works with primary keys
+    [  # Now test this whole thing works with primary keys
         ("""ALTER TABLE "test/pg_mount".fruits ADD PRIMARY KEY (fruit_id)""",
          []),
         # Insert + update changed into a single insert (same pk, different value)
         ("""INSERT INTO "test/pg_mount".fruits VALUES (3, 'mayonnaise');
             UPDATE "test/pg_mount".fruits SET name = 'mustard' WHERE fruit_id = 3""",
-            [((3,), 0, {'c': ['name'], 'v': ['mustard']})]),
+         [((3,), 0, {'c': ['name'], 'v': ['mustard']})]),
         # Insert + update + delete did nothing
         ("""INSERT INTO "test/pg_mount".fruits VALUES (4, 'kumquat');
             UPDATE "test/pg_mount".fruits SET name = 'mustard' WHERE fruit_id = 4;

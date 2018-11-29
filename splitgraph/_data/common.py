@@ -1,6 +1,10 @@
+"""
+Common internal metadata access functions
+"""
+
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA
+from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import get_connection
 
 META_TABLES = ['images', 'tags', 'objects', 'tables', 'remotes', 'object_locations', 'info']
@@ -36,9 +40,9 @@ def _create_metadata_schema():
                         image_hash VARCHAR,
                         tag        VARCHAR,
                         PRIMARY KEY (namespace, repository, tag),
-                        CONSTRAINT sh_fk FOREIGN KEY (namespace, repository, image_hash) REFERENCES {}.{})""").format(
-            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("tags"),
-            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("images")))
+                        CONSTRAINT sh_fk FOREIGN KEY (namespace, repository, image_hash) REFERENCES {}.{})""")
+                    .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("tags"),
+                            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("images")))
 
         # A tree of object parents. The parent of an object is not necessarily the object linked to
         # the parent commit that the object belongs to (e.g. if we imported the object from a different commit tree).
@@ -58,9 +62,9 @@ def _create_metadata_schema():
                         table_name VARCHAR NOT NULL,
                         object_id  VARCHAR NOT NULL,
                         PRIMARY KEY (namespace, repository, image_hash, table_name, object_id),
-                        CONSTRAINT tb_fk FOREIGN KEY (namespace, repository, image_hash) REFERENCES {}.{})""").format(
-            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("tables"),
-            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("images")))
+                        CONSTRAINT tb_fk FOREIGN KEY (namespace, repository, image_hash) REFERENCES {}.{})""")
+                    .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("tables"),
+                            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("images")))
 
         # Keep track of what the remotes for a given repository are (by default, we create an "origin" remote
         # on initial pull)
@@ -71,8 +75,8 @@ def _create_metadata_schema():
                         remote_conn_string VARCHAR NOT NULL,
                         remote_namespace   VARCHAR NOT NULL,
                         remote_repository  VARCHAR NOT NULL,
-                        PRIMARY KEY (namespace, repository, remote_name))""").format(
-            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("remotes")))
+                        PRIMARY KEY (namespace, repository, remote_name))""").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                                     Identifier("remotes")))
 
         # Map objects to their locations for when they don't live on the remote or the local machine but instead
         # in S3/some FTP/HTTP server/torrent etc.
@@ -82,15 +86,15 @@ def _create_metadata_schema():
                         object_id          VARCHAR NOT NULL,
                         location           VARCHAR NOT NULL,
                         protocol           VARCHAR NOT NULL,
-                        PRIMARY KEY (object_id))""").format(
-            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_locations")))
+                        PRIMARY KEY (object_id))""").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                            Identifier("object_locations")))
 
         # Miscellaneous key-value information for this driver (e.g. whether uploading objects is permitted etc).
         cur.execute(SQL("""CREATE TABLE {}.{} (
                         key   VARCHAR NOT NULL,
                         value VARCHAR NOT NULL,
-                        PRIMARY KEY (key))""").format(
-            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("info")))
+                        PRIMARY KEY (key))""").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                      Identifier("info")))
 
 
 def select(table, columns='*', where='', schema=SPLITGRAPH_META_SCHEMA):
@@ -126,109 +130,8 @@ def insert(table, columns, schema=SPLITGRAPH_META_SCHEMA):
 
 
 def ensure_metadata_schema():
-    # Check if the metadata schema actually exists.
+    """Create the metadata schema if it doesn't exist"""
     with get_connection().cursor() as cur:
         cur.execute("SELECT 1 FROM information_schema.schemata WHERE schema_name = %s", (SPLITGRAPH_META_SCHEMA,))
         if cur.fetchone() is None:
             _create_metadata_schema()
-
-
-def get_info_key(key):
-    with get_connection().cursor() as cur:
-        cur.execute(SQL("SELECT value FROM {}.info WHERE key = %s").format(Identifier(SPLITGRAPH_META_SCHEMA)), (key,))
-        result = cur.fetchone()
-        if result is None:
-            return None
-        return result[0]
-
-
-def set_info_key(key, value):
-    with get_connection().cursor() as cur:
-        cur.execute(SQL("INSERT INTO {0}.info (key, value) VALUES (%s, %s)"
-                        " ON CONFLICT (key) DO UPDATE SET value = %s WHERE info.key = %s")
-                    .format(Identifier(SPLITGRAPH_META_SCHEMA)), (key, value, value, key))
-
-
-_RLS_TABLES = ['images', 'tags', 'objects', 'tables']
-
-
-def setup_registry_mode():
-    """
-    Drops tables in splitgraph_meta that aren't pertinent to the registry + sets up access policies/RLS:
-
-    * Normal users aren't allowed to create tables/schemata (can't do checkouts inside of a registry or
-      upload SG objects directly to it)
-    * images/tables/tags meta tables: can only create/update/delete records where the namespace = user ID
-    * objects/object_location tables: same. An object (piece of data) becomes owned by the user that creates
-      it and still remains so even if someone else's image starts using it. Hence, the original owner can delete
-      or change it (since they control the external location they've uploaded it to anyway).
-
-    """
-
-    if get_info_key("registry_mode") == 'true':
-        return
-
-    with get_connection().cursor() as cur:
-        for schema in (SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA):
-            cur.execute(SQL("REVOKE CREATE ON SCHEMA {} FROM PUBLIC").format(Identifier(schema)))
-            cur.execute(SQL("GRANT USAGE ON SCHEMA {} TO PUBLIC").format(Identifier(schema)))
-            # Grant everything by default -- RLS will supersede these.
-            cur.execute(SQL("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA {} TO PUBLIC")
-                        .format(Identifier(schema)))
-
-        cur.execute(SQL("REVOKE INSERT, DELETE, UPDATE ON TABLE {}.info FROM PUBLIC").format(
-            Identifier(SPLITGRAPH_META_SCHEMA)))
-
-        # Allow everyone to read objects that have been uploaded
-        cur.execute(SQL("ALTER DEFAULT PRIVILEGES IN SCHEMA {} GRANT SELECT ON TABLES TO PUBLIC")
-                    .format(Identifier(SPLITGRAPH_META_SCHEMA)))
-
-        for t in _RLS_TABLES:
-            _setup_rls_policies(cur, t)
-
-        # Object_locations is different, since we have to refer to the objects table for the namespace of the object
-        # whose location we're changing.
-        test_query = """((SELECT true as bool FROM {0}.{1}
-                            JOIN {0}.objects ON {0}.{1}.object_id = {0}.objects.object_id
-                            WHERE {0}.objects.namespace = current_user) = true)"""
-        _setup_rls_policies(cur, "object_locations", condition=test_query)
-        _setup_rls_policies(cur, "images", schema=REGISTRY_META_SCHEMA)
-
-        set_info_key("registry_mode", "true")
-
-
-def _setup_rls_policies(cursor, table, schema=SPLITGRAPH_META_SCHEMA, condition=None):
-    condition = condition or "({0}.{1}.namespace = current_user)"
-    
-    cursor.execute(SQL("ALTER TABLE {}.{} ENABLE ROW LEVEL SECURITY").format(Identifier(schema),
-                                                                             Identifier(table)))
-    cursor.execute(SQL("""CREATE POLICY {2} ON {0}.{1} FOR SELECT USING (true)""")
-                   .format(Identifier(schema), Identifier(table), Identifier(table + '_S')))
-    cursor.execute(SQL("""CREATE POLICY {2} ON {0}.{1} FOR INSERT WITH CHECK """)
-                   .format(Identifier(schema), Identifier(table), Identifier(table + '_I'))
-                   + SQL(condition).format(Identifier(schema), Identifier(table)))
-    cursor.execute(SQL("CREATE POLICY {2} ON {0}.{1} FOR UPDATE USING ")
-                       .format(Identifier(schema), Identifier(table), Identifier(table + '_U'))
-                   + SQL(condition).format(Identifier(schema), Identifier(table))
-                   + SQL(" WITH CHECK ") + SQL(condition).format(Identifier(schema), Identifier(table)))
-    cursor.execute(SQL("CREATE POLICY {2} ON {0}.{1} FOR DELETE USING ")
-                   .format(Identifier(schema), Identifier(table), Identifier(table + '_D'))
-                   + SQL(condition).format(Identifier(schema), Identifier(table)))
-
-
-def toggle_registry_rls(mode='ENABLE'):
-    # For testing purposes: switch RLS off so that we can add test data that we then won't be able to alter when
-    # switching it on.
-    # Modes: ENABLE is same as FORCE, but doesn't apply to the table owner.
-
-    if mode not in ('ENABLE', 'DISABLE', 'FORCE'):
-        raise ValueError()
-
-    with get_connection().cursor() as cur:
-        for t in _RLS_TABLES:
-            cur.execute(SQL("ALTER TABLE {}.{} %s ROW LEVEL SECURITY" % mode).format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                                     Identifier(t)))
-        cur.execute(SQL("ALTER TABLE {}.{} %s ROW LEVEL SECURITY" % mode).format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                                 Identifier("object_locations")))
-        cur.execute(SQL("ALTER TABLE {}.{} %s ROW LEVEL SECURITY" % mode).format(Identifier(REGISTRY_META_SCHEMA),
-                                                                                 Identifier("images")))

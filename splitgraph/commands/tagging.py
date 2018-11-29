@@ -1,3 +1,7 @@
+"""
+API functions for tagging images/getting tag information
+"""
+
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
@@ -9,10 +13,23 @@ from .._data.common import ensure_metadata_schema, select, insert
 
 
 def get_current_head(repository, raise_on_none=True):
+    """
+    Gets the currently checked out image hash for a given repository.
+    :param repository: Repository
+    :param raise_on_none: Whether to raise an error or return None if the repository isn't checked out.
+    :return:
+    """
     return get_tagged_id(repository, 'HEAD', raise_on_none)
 
 
 def get_tagged_id(repository, tag, raise_on_none=True):
+    """
+    Returns the image hash with a given tag in a given repository.
+    :param repository: Repository
+    :param tag: Tag. 'latest' is a special case: it returns the most recent image in the repository.
+    :param raise_on_none: Whether to raise an error or return None if the repository isn't checked out.
+    :return:
+    """
     ensure_metadata_schema()
     if not repository_exists(repository) and raise_on_none:
         raise SplitGraphException("%s is not mounted." % str(repository))
@@ -45,6 +62,11 @@ def get_tagged_id(repository, tag, raise_on_none=True):
 
 
 def get_all_hashes_tags(repository):
+    """
+    Gets all tagged images and their hashes in a given repository.
+    :param repository: Repository
+    :return: List of (image_hash, tag)
+    """
     with get_connection().cursor() as cur:
         cur.execute(select("tags", "image_hash, tag", "namespace = %s AND repository = %s"),
                     (repository.namespace, repository.repository,))
@@ -52,12 +74,28 @@ def get_all_hashes_tags(repository):
 
 
 def set_tags(repository, tags, force=False):
+    """
+    Sets tags for multiple images.
+    :param repository: Repository
+    :param tags: List of (image_hash, tag)
+    :param force: Whether to remove the old tag if an image with this tag already exists.
+    :return:
+    """
     for tag, image_id in tags.items():
         if tag != 'HEAD':
             set_tag(repository, image_id, tag, force)
 
 
 def set_tag(repository, image, tag, force=False):
+    """
+    Tags a given image. All tags are unique inside of a repository.
+
+    :param repository: Repository that the image belongs to
+    :param image: Image hash
+    :param tag: Tag to set. 'latest' and 'HEAD' are reserved tags.
+    :param force: Whether to remove the old tag if an image with this tag already exists.
+    :return:
+    """
     with get_connection().cursor() as cur:
         cur.execute(select("tags", "1", "namespace = %s AND repository = %s AND tag = %s"),
                     (repository.namespace, repository.repository, tag))
@@ -67,16 +105,15 @@ def set_tag(repository, image, tag, force=False):
         else:
             if force:
                 cur.execute(SQL("UPDATE {}.tags SET image_hash = %s "
-                                "WHERE namespace = %s AND repository = %s AND tag = %s").format(
-                    Identifier(SPLITGRAPH_META_SCHEMA)),
-                    (image, repository.namespace, repository.repository, tag))
+                                "WHERE namespace = %s AND repository = %s AND tag = %s")
+                            .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                            (image, repository.namespace, repository.repository, tag))
             else:
                 raise SplitGraphException("Tag %s already exists in %s!" % (tag, repository.to_schema()))
 
 
-def tag_or_hash_to_actual_hash(repository, tag_or_hash):
-    """Converts a tag or shortened hash to a full image hash that exists in the repository.
-    """
+def resolve_image(repository, tag_or_hash):
+    """Converts a tag or shortened hash to a full image hash that exists in the repository."""
     try:
         return get_canonical_image_id(repository, tag_or_hash)
     except SplitGraphException:

@@ -1,3 +1,7 @@
+"""
+Internal functions for accessing image metadata
+"""
+
 from collections import defaultdict
 from datetime import datetime
 
@@ -12,14 +16,28 @@ from splitgraph.exceptions import SplitGraphException
 IMAGE_COLS = "image_hash, parent_id, created, comment, provenance_type, provenance_data"
 
 
-def get_all_images_parents(repository):
+def get_all_image_info(repository):
+    """
+    Gets all information about all images in a repository.
+
+    :param repository: Repository
+    :return: List of (image_hash, parent_id, creation time, comment, provenance type, provenance data) for all images.
+    """
     with get_connection().cursor() as cur:
         cur.execute(select("images", IMAGE_COLS, "repository = %s AND namespace = %s") +
                     SQL(" ORDER BY created"), (repository.repository, repository.namespace))
         return cur.fetchall()
 
 
-def get_closest_parent_image_object(repository, table, image):
+def get_image_object_path(repository, table, image):
+    """
+    Calculates a list of objects SNAP, DIFF, ... , DIFF that are used to reconstruct a table.
+
+    :param repository: Repository the table belongs to
+    :param table: Name of the table
+    :param image: Image hash the table is stored in.
+    :return: A tuple of (SNAP object, list of DIFF objects in reverse order (latest object first))
+    """
     path = []
     object_id = get_object_for_table(repository, table, image, object_format='SNAP')
     if object_id is not None:
@@ -50,10 +68,20 @@ def get_closest_parent_image_object(repository, table, image):
 
 
 def add_new_image(repository, parent_id, image, created=None, comment=None, provenance_type=None, provenance_data=None):
+    """
+    Registers a new image in the Splitgraph image tree.
+
+    :param repository: Repository the image belongs to
+    :param parent_id: Parent of the image
+    :param image: Image hash
+    :param created: Creation time (defaults to current timestamp)
+    :param comment: Comment (defaults to empty)
+    :param provenance_type: Image provenance that can be used to rebuild the image
+        (one of None, FROM, MOUNT, IMPORT, SQL)
+    :param provenance_data: Extra provenance data (dictionary).
+    """
     with get_connection().cursor() as cur:
         cur.execute(insert("images", ("image_hash", "namespace", "repository", "parent_id", "created", "comment",
-                                         "provenance_type", "provenance_data")),
+                                      "provenance_type", "provenance_data")),
                     (image, repository.namespace, repository.repository, parent_id, created or datetime.now(), comment,
                      provenance_type, Json(provenance_data)))
-
-

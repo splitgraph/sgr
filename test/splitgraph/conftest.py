@@ -3,12 +3,13 @@ import os
 import pytest
 
 from splitgraph import to_repository as R
-from splitgraph._data.common import setup_registry_mode, ensure_metadata_schema, toggle_registry_rls
+from splitgraph._data.common import ensure_metadata_schema
+from splitgraph._data.registry import _ensure_registry_schema, unpublish_repository, setup_registry_mode, \
+    toggle_registry_rls
 from splitgraph.commands import *
 from splitgraph.config import PG_DB, PG_USER, PG_PWD
 from splitgraph.connection import get_connection, override_driver_connection, serialize_connection_string, make_conn
 from splitgraph.pg_utils import get_all_foreign_tables
-from splitgraph.registry_meta_handler import ensure_registry_schema, unpublish_repository
 
 PG_MNT = R('test/pg_mount')
 PG_MNT_PULL = R('test_pg_mount_pull')
@@ -82,9 +83,12 @@ def sg_pg_conn():
     for mountpoint in TEST_MOUNTPOINTS:
         unmount(mountpoint)
     _mount_postgres(PG_MNT)
-    yield get_connection()
-    for mountpoint in TEST_MOUNTPOINTS:
-        unmount(mountpoint)
+    try:
+        yield get_connection()
+    finally:
+        get_connection().rollback()
+        for mountpoint in TEST_MOUNTPOINTS:
+            unmount(mountpoint)
 
 
 @pytest.fixture
@@ -95,11 +99,13 @@ def sg_pg_mg_conn():
     cleanup_objects()
     _mount_postgres(PG_MNT)
     _mount_mongo(MG_MNT)
-    yield get_connection()
-    get_connection().rollback()
-    for mountpoint in TEST_MOUNTPOINTS:
-        unmount(mountpoint)
-    cleanup_objects()
+    try:
+        yield get_connection()
+    finally:
+        get_connection().rollback()
+        for mountpoint in TEST_MOUNTPOINTS:
+            unmount(mountpoint)
+        cleanup_objects()
 
 
 REMOTE_HOST = 'remote_driver'  # On the host, mapped into localhost; on the local driver works as intended.
@@ -113,7 +119,7 @@ def remote_driver_conn():
     conn = make_conn(REMOTE_HOST, REMOTE_PORT, PG_USER, PG_PWD, PG_DB)
     with override_driver_connection(conn):
         ensure_metadata_schema()
-        ensure_registry_schema()
+        _ensure_registry_schema()
         setup_registry_mode()
         toggle_registry_rls('DISABLE')
         unpublish_repository(OUTPUT)
@@ -134,6 +140,7 @@ def remote_driver_conn():
                 unmount(mountpoint)
             cleanup_objects()
         conn.commit()
+        conn.close()
 
 
 @pytest.fixture

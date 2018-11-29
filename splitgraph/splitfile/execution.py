@@ -9,7 +9,7 @@ from splitgraph._data.provenance import store_import_provenance, store_sql_prove
 from splitgraph.commands import checkout, clone, import_tables, commit, image_hash_to_splitfile
 from splitgraph.commands.push_pull import local_clone, pull
 from splitgraph.commands.repository import Repository, repository_exists, lookup_repo
-from splitgraph.commands.tagging import get_current_head, tag_or_hash_to_actual_hash
+from splitgraph.commands.tagging import get_current_head, resolve_image
 from splitgraph.config import CONFIG
 from splitgraph.connection import get_connection, serialize_connection_string
 from splitgraph.console import Color, truncate_line
@@ -134,7 +134,7 @@ def _execute_from(node, output):
         if location != 'LOCAL':
             clone(repository, remote_conn_string=serialize_connection_string(*location), local_repository=output,
                   download_all=False)
-            checkout(output, tag_or_hash_to_actual_hash(output, tag_or_hash))
+            checkout(output, resolve_image(output, tag_or_hash))
         else:
             # For local repositories, first try to pull them to see if they are clones of a remote.
             try:
@@ -143,7 +143,7 @@ def _execute_from(node, output):
                 pass
             # Get the target snap ID from the source repo: otherwise, if the tag is, say, 'latest' and
             # the output has just had the base commit (000...) created in it, that commit will be the latest.
-            to_checkout = tag_or_hash_to_actual_hash(repository, tag_or_hash)
+            to_checkout = resolve_image(repository, tag_or_hash)
             print("Cloning %s into %s..." % (repository, output))
             local_clone(repository, output)
             checkout(output, to_checkout)
@@ -217,7 +217,7 @@ def _execute_repo_import(repository, table_names, tag_or_hash, target_repository
         if location != 'LOCAL':
             clone(repository, remote_conn_string=serialize_connection_string(*location), local_repository=tmp_repo,
                   download_all=False)
-            source_hash = tag_or_hash_to_actual_hash(tmp_repo, tag_or_hash)
+            source_hash = resolve_image(tmp_repo, tag_or_hash)
             source_mountpoint = tmp_repo
         else:
             # For local repositories, first try to pull them to see if they are clones of a remote.
@@ -225,7 +225,7 @@ def _execute_repo_import(repository, table_names, tag_or_hash, target_repository
                 pull(repository, remote='origin')
             except SplitGraphException:
                 pass
-            source_hash = tag_or_hash_to_actual_hash(repository, tag_or_hash)
+            source_hash = resolve_image(repository, tag_or_hash)
             source_mountpoint = repository
         output_head = get_current_head(target_repository)
         target_hash = _combine_hashes(

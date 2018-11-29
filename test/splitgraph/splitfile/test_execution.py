@@ -1,7 +1,7 @@
 import pytest
 
 from splitgraph import to_repository as R, unmount
-from splitgraph._data.images import get_all_images_parents
+from splitgraph._data.images import get_all_image_info
 from splitgraph._data.objects import get_existing_objects, get_downloaded_objects, get_external_object_locations, \
     get_object_for_table
 from splitgraph.commands import checkout, commit, push, clone, get_log
@@ -112,11 +112,11 @@ def test_advanced_splitfile(sg_pg_mg_conn):
 def test_splitfile_cached(sg_pg_mg_conn):
     # Check that no new commits/snaps are created if we rerun the same splitfile
     execute_commands(load_splitfile('import_local_multiple_with_queries.splitfile'), output=OUTPUT)
-    images = get_all_images_parents(OUTPUT)
+    images = get_all_image_info(OUTPUT)
     assert len(images) == 4
 
     execute_commands(load_splitfile('import_local_multiple_with_queries.splitfile'), output=OUTPUT)
-    new_images = get_all_images_parents(OUTPUT)
+    new_images = get_all_image_info(OUTPUT)
     assert new_images == images
 
 

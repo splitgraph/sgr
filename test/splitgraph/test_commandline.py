@@ -4,7 +4,8 @@ from decimal import Decimal
 from click.testing import CliRunner
 
 from splitgraph import to_repository, unmount, repository_exists
-from splitgraph._data.images import get_all_images_parents
+from splitgraph._data.images import get_all_image_info
+from splitgraph._data.registry import get_published_info
 from splitgraph.commandline import status_c, sql_c, diff_c, commit_c, log_c, show_c, tag_c, checkout_c, unmount_c, \
     cleanup_c, init_c, mount_c, import_c, clone_c, pull_c, push_c, file_c, provenance_c, rerun_c, publish_c
 from splitgraph.commands import commit, checkout
@@ -13,7 +14,6 @@ from splitgraph.commands.misc import table_exists_at
 from splitgraph.commands.provenance import provenance
 from splitgraph.commands.tagging import get_current_head, get_tagged_id, set_tag
 from splitgraph.connection import override_driver_connection
-from splitgraph.registry_meta_handler import get_published_info
 from test.splitgraph.conftest import PG_MNT, MG_MNT, OUTPUT, add_multitag_dataset_to_remote_driver, SPLITFILE_ROOT
 
 
@@ -297,11 +297,11 @@ def test_splitfile_rerun_update(empty_pg_conn, remote_driver_conn):
     # Now rerun the output:latest against the latest version of everything.
     # In this case, this should all resolve to the same version of test/pg_mount (v2) and not produce
     # any extra commits.
-    curr_commits = get_all_images_parents(OUTPUT)
+    curr_commits = get_all_image_info(OUTPUT)
     result = runner.invoke(rerun_c, ['output', 'latest', '-u'])
     assert result.exit_code == 0
     assert output_v2 == get_current_head(OUTPUT)
-    assert get_all_images_parents(OUTPUT) == curr_commits
+    assert get_all_image_info(OUTPUT) == curr_commits
 
 
 def test_mount_and_import(empty_pg_conn):

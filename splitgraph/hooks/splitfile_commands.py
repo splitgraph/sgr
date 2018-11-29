@@ -1,5 +1,4 @@
-class PluginCommand(object):
-    """
+"""
     A framework for custom Splitfile commands. The execution flow is as follows:
 
       * When the Splitfile executor finds an unknown command, it looks for an entry in the config file::
@@ -14,10 +13,11 @@ class PluginCommand(object):
         implemented, is run. If it returns a hash, this hash is used for the new image. If this hash already exists,
         the existing image is checked out instead. If the command returns None, a random hash is generated for the
         new image.
-    """
+"""
 
-    def __init__(self):
-        pass
+
+class PluginCommand():
+    """Base class for custom Splitfile commands."""
 
     def calc_hash(self, repository, args):
         """
@@ -39,7 +39,6 @@ class PluginCommand(object):
 
         :return: Command context hash (a string of 64 hexadecimal digits)
         """
-        pass
 
     def execute(self, repository, args):
         """
@@ -60,4 +59,3 @@ class PluginCommand(object):
             a hash, this hash is ignored. If both this command and calc_hash() return None, the hash is randomly
             generated.
         """
-        pass

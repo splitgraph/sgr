@@ -1,3 +1,8 @@
+"""
+Hooks for additional handlers used to mount other databases via FDW. These handlers become available
+in the command line tool (via sgr mount) and in the Splitfile interpreter (via FROM MOUNT).
+"""
+
 import logging
 
 from psycopg2.sql import Identifier, SQL
@@ -5,24 +10,24 @@ from psycopg2.sql import Identifier, SQL
 from splitgraph.connection import get_connection
 from splitgraph.exceptions import SplitGraphException
 
-MOUNT_HANDLERS = {}
+_MOUNT_HANDLERS = {}
 
 
 def get_mount_handler(mount_handler):
     """Returns a mount function for a given handler.
     The mount function has a signature (conn, mountpoint, handler_kwargs)."""
     try:
-        return MOUNT_HANDLERS[mount_handler]
+        return _MOUNT_HANDLERS[mount_handler]
     except KeyError:
         raise SplitGraphException("Mount handler %s not supported!" % mount_handler)
 
 
 def register_mount_handler(name, mount_function):
     """Returns a mount function under a given name. See `get_mount_handler` for the mount handler spec."""
-    global MOUNT_HANDLERS
-    if name in MOUNT_HANDLERS:
+    global _MOUNT_HANDLERS
+    if name in _MOUNT_HANDLERS:
         raise SplitGraphException("Cannot register a mount handler %s as it already exists!" % name)
-    MOUNT_HANDLERS[name] = mount_function
+    _MOUNT_HANDLERS[name] = mount_function
 
 
 def mount_postgres(mountpoint, server, port, username, password, dbname, remote_schema, tables=[]):

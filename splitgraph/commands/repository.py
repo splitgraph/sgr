@@ -9,7 +9,7 @@ from splitgraph.connection import make_conn, override_driver_connection, get_con
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.pg_utils import get_full_table_schema
 from .._data.common import ensure_metadata_schema, insert, select
-from .._data.images import get_closest_parent_image_object
+from .._data.images import get_image_object_path
 from .._data.objects import register_object, register_table
 
 
@@ -60,7 +60,7 @@ def repository_exists(repository):
         return cur.fetchone() is not None
 
 
-def _register_repository(repository, initial_image, tables, table_object_ids):
+def register_repository(repository, initial_image, tables, table_object_ids):
     with get_connection().cursor() as cur:
         cur.execute(insert("images", ("image_hash", "namespace", "repository", "parent_id", "created")),
                     (initial_image, repository.namespace, repository.repository, None, datetime.now()))
@@ -74,7 +74,7 @@ def _register_repository(repository, initial_image, tables, table_object_ids):
             register_table(repository, t, initial_image, ti)
 
 
-def _unregister_repository(repository, is_remote=False):
+def unregister_repository(repository, is_remote=False):
     # If is_remote is true, we treat conn as a connection to a remote that doesn't have the "remotes" table.
     with get_connection().cursor() as cur:
         meta_tables = ["tables", "tags", "images"]
@@ -115,11 +115,11 @@ def add_remote(repository, remote_conn, remote_repository, remote_name='origin')
 
 
 def table_schema_changed(repository, table_name, image_1, image_2=None):
-    snap_1 = get_closest_parent_image_object(repository, table_name, image_1)[0]
+    snap_1 = get_image_object_path(repository, table_name, image_1)[0]
     conn = get_connection()
     # image_2 = None here means the current staging area.
     if image_2 is not None:
-        snap_2 = get_closest_parent_image_object(repository, table_name, image_2)[0]
+        snap_2 = get_image_object_path(repository, table_name, image_2)[0]
         return get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_1) != \
                get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_2)
     return get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_1) != \
@@ -127,7 +127,7 @@ def table_schema_changed(repository, table_name, image_1, image_2=None):
 
 
 def get_schema_at(repository, table_name, image_hash):
-    snap_1 = get_closest_parent_image_object(repository, table_name, image_hash)[0]
+    snap_1 = get_image_object_path(repository, table_name, image_hash)[0]
     return get_full_table_schema(get_connection(), SPLITGRAPH_META_SCHEMA, snap_1)
 
 

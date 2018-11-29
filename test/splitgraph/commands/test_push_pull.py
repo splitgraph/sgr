@@ -1,6 +1,6 @@
 import pytest
 
-from splitgraph._data.images import get_all_images_parents
+from splitgraph._data.images import get_all_image_info
 from splitgraph._data.objects import get_existing_objects, get_downloaded_objects
 from splitgraph.commands import clone, checkout, commit, pull, push
 from splitgraph.commands.tagging import get_current_head
@@ -36,7 +36,7 @@ def test_pull(sg_pg_conn, remote_driver_conn, download_all):
         cur.execute("""SELECT * FROM test_pg_mount_pull.fruits""")
         assert list(cur.fetchall()) == [(1, 'apple'), (2, 'orange')]
     assert head_1 not in [snapdata[0] for snapdata in
-                          get_all_images_parents(PG_MNT_PULL)]
+                          get_all_image_info(PG_MNT_PULL)]
 
     # Since the pull procedure initializes a new connection, we have to commit our changes
     # in order to see them.
@@ -128,5 +128,3 @@ def test_push(empty_pg_conn, remote_driver_conn):
     with remote_driver_conn.cursor() as cur:
         cur.execute("""SELECT * FROM "test/pg_mount".fruits""")
         assert list(cur.fetchall()) == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]
-
-

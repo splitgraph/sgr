@@ -15,17 +15,17 @@ def hoist_section(config_dict, hoist_section='defaults'):
 
     if hoist_section not in config_dict.keys():
         return config_dict
-    else:
-        hoisted_config_dict = config_dict.copy()
 
-        section_dict = config_dict[hoist_section].copy()
+    hoisted_config_dict = config_dict.copy()
 
-        del hoisted_config_dict[hoist_section]
+    section_dict = config_dict[hoist_section].copy()
 
-        for k, v in section_dict.items():
-            hoisted_config_dict.update({k.upper(): v})
+    del hoisted_config_dict[hoist_section]
 
-        return hoisted_config_dict
+    for k, v in section_dict.items():
+        hoisted_config_dict.update({k.upper(): v})
+
+    return hoisted_config_dict
 
 
 def accumulate_lists(config_dict):

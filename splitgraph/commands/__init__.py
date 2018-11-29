@@ -1,3 +1,8 @@
+"""
+Splitgraph public command API
+"""
+
+from splitgraph.commands._drawing import render_tree
 from splitgraph.commands.checkout import checkout
 from splitgraph.commands.commit import commit
 from splitgraph.commands.diff import diff
@@ -10,4 +15,4 @@ from splitgraph.commands.publish import publish
 from splitgraph.commands.push_pull import push, pull, clone
 from splitgraph.commands.repository import Repository, to_repository, repository_exists, \
     get_remote_connection_params, get_remote_for, get_current_repositories
-from splitgraph.commands.tagging import get_current_head, get_all_hashes_tags, set_tag, tag_or_hash_to_actual_hash
+from splitgraph.commands.tagging import get_current_head, get_all_hashes_tags, set_tag, resolve_image

@@ -1,4 +1,5 @@
 import os
+
 os.environ['SG_CONFIG_FILE'] = 'test/resources/.sgconfig'
 
 from splitgraph.connection import get_connection, serialize_connection_string, make_conn
@@ -67,7 +68,8 @@ def bench_commit_chain_checkout(commits, table_size, update_size):
     print("COMMITS MADE")
     print(datetime.now())
     rev = get_current_head(MOUNTPOINT)
-    #print(timeit("checkout(conn, MOUNTPOINT, '%s')" % rev, "from __main__ import conn, MOUNTPOINT, checkout", number=3))
+    # print(timeit("checkout(conn, MOUNTPOINT, '%s')" % rev, "from __main__ import conn, MOUNTPOINT, checkout", number=3))
+
 
 if __name__ == '__main__':
     for _ in range(1):
@@ -87,8 +89,7 @@ if __name__ == '__main__':
         print("COMMITS MADE")
         print(datetime.now())
         rev = get_current_head(MOUNTPOINT)
-        #print(timeit("checkout(conn, MOUNTPOINT, '%s')" % rev, "from __main__ import conn, MOUNTPOINT, checkout", number=3))
-
+        # print(timeit("checkout(conn, MOUNTPOINT, '%s')" % rev, "from __main__ import conn, MOUNTPOINT, checkout", number=3))
 
         # N = 1000
         # unmount(conn, MOUNTPOINT)
@@ -128,5 +129,3 @@ if __name__ == '__main__':
     checkout(MOUNTPOINT, tag='latest')
     print("CHECKOUT DONE")
     print(datetime.now())
-
-

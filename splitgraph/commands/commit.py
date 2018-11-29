@@ -1,3 +1,7 @@
+"""
+Public API for packaging changes to a Splitgraph-versioned schema into a new image.
+"""
+
 import logging
 from random import getrandbits
 
@@ -44,7 +48,7 @@ def commit(repository, image_hash=None, include_snap=False, comment=None):
     # Add the new snap ID to the tree
     add_new_image(repository, head, image_hash, comment=comment)
 
-    commit_pending_changes(repository, head, image_hash, include_snap=include_snap)
+    _commit(repository, head, image_hash, include_snap=include_snap)
 
     set_head(repository, image_hash)
     conn.commit()
@@ -52,7 +56,7 @@ def commit(repository, image_hash=None, include_snap=False, comment=None):
     return image_hash
 
 
-def commit_pending_changes(repository, current_head, image_hash, include_snap=False):
+def _commit(repository, current_head, image_hash, include_snap=False):
     """
     Reads the recorded pending changes to all tables in a given mountpoint, conflates them and possibly stores them
     as new object(s) as follows:

@@ -1,10 +1,14 @@
+"""
+Miscellaneous commands for Splitgraph repository management
+"""
+
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph._data.common import META_TABLES, ensure_metadata_schema
 from splitgraph._data.objects import get_object_meta
 from splitgraph.commands._pg_audit import manage_audit, discard_pending_changes
 from splitgraph.commands.info import get_image, get_table
-from splitgraph.commands.repository import _register_repository, _unregister_repository
+from splitgraph.commands.repository import register_repository, unregister_repository
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import get_connection
 from splitgraph.pg_utils import pg_table_exists
@@ -113,7 +117,7 @@ def init(repository):
     with get_connection().cursor() as cur:
         cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(repository.to_schema())))
     image_hash = '0' * 64
-    _register_repository(repository, image_hash, tables=[], table_object_ids=[])
+    register_repository(repository, image_hash, tables=[], table_object_ids=[])
 
 
 def unmount(repository):
@@ -136,5 +140,5 @@ def unmount(repository):
         cur.execute(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(repository.to_schema() + '_server')))
 
     # Currently we just discard all history info about the mounted schema
-    _unregister_repository(repository)
+    unregister_repository(repository)
     conn.commit()

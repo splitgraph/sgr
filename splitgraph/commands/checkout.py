@@ -1,3 +1,7 @@
+"""
+Commands for checking out Splitgraph images
+"""
+
 import logging
 from contextlib import contextmanager
 
@@ -13,7 +17,7 @@ from ._pg_audit import has_pending_changes, manage_audit, discard_pending_change
 from .info import get_canonical_image_id, get_tables_at
 from .misc import delete_objects
 from .tagging import get_tagged_id
-from .._data.images import get_closest_parent_image_object
+from .._data.images import get_image_object_path
 from .._data.objects import get_external_object_locations, get_object_for_table
 from ..connection import get_connection
 from ..exceptions import SplitGraphException
@@ -39,7 +43,7 @@ def materialize_table(repository, image_hash, table, destination, destination_sc
             SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(destination_schema), Identifier(destination)))
         # Get the closest snapshot from the table's parents
         # and then apply all deltas consecutively from it.
-        object_id, to_apply = get_closest_parent_image_object(repository, table, image_hash)
+        object_id, to_apply = get_image_object_path(repository, table, image_hash)
 
         # Make sure all the objects have been downloaded from remote if it exists
         remote_info = get_remote_for(repository)

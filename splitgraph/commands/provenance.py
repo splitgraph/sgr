@@ -1,3 +1,7 @@
+"""
+API for getting provenance of a Splitgraph image.
+"""
+
 import logging
 
 from splitgraph.commands.info import get_image
@@ -10,7 +14,7 @@ def provenance(repository, image_hash):
     Inspects the parent chain of an Splitfile-generated image to come up with a set of repositories and their hashes
     that it was created from.
 
-    :param repository: Mountpoint that contains the image
+    :param repository: Repository that contains the image
     :param image_hash: Image hash to inspect
     :return: List of (repository, image_hash)
     """
@@ -35,7 +39,7 @@ def provenance(repository, image_hash):
     return list(result)
 
 
-def prov_command_to_splitfile(prov_type, prov_data, image_hash, source_replacement):
+def _prov_command_to_splitfile(prov_type, prov_data, image_hash, source_replacement):
     """
     Converts the image's provenance data stored by the Splitfile executor back to an Splitfile used to
     reconstruct it.
@@ -80,7 +84,7 @@ def image_hash_to_splitfile(repository, image_hash, err_on_end=True, source_repl
         image = get_image(repository, image_hash)
         parent, prov_type, prov_data = image.parent_id, image.provenance_type, image.provenance_data
         if prov_type in ('IMPORT', 'SQL', 'FROM'):
-            splitfile_commands.append(prov_command_to_splitfile(prov_type, prov_data, image_hash, source_replacement))
+            splitfile_commands.append(_prov_command_to_splitfile(prov_type, prov_data, image_hash, source_replacement))
             if prov_type == 'FROM':
                 break
         elif prov_type in (None, 'MOUNT') and parent:

@@ -4,16 +4,15 @@ import pytest
 from psycopg2._psycopg import ProgrammingError
 
 from splitgraph import Repository, get_remote_connection_params
-from splitgraph._data.common import toggle_registry_rls
-from splitgraph._data.images import get_all_images_parents
+from splitgraph._data.images import get_all_image_info
 from splitgraph._data.objects import register_object_locations
+from splitgraph._data.registry import get_published_info, unpublish_repository, toggle_registry_rls
 from splitgraph.commands import clone, push, commit, checkout
 from splitgraph.commands.info import get_table
 from splitgraph.commands.publish import publish
-from splitgraph.commands.repository import _unregister_repository
+from splitgraph.commands.repository import unregister_repository
 from splitgraph.commands.tagging import get_tagged_id, set_tag
 from splitgraph.connection import override_driver_connection, serialize_connection_string
-from splitgraph.registry_meta_handler import get_published_info, unpublish_repository
 from test.splitgraph.conftest import PG_MNT, add_multitag_dataset_to_remote_driver
 
 
@@ -63,8 +62,8 @@ def test_rls_push_own_delete_own(empty_pg_conn, unprivileged_conn_string, unpriv
 
     # Test we can delete our own repo once we've pushed it
     with override_driver_connection(unprivileged_remote_conn):
-        _unregister_repository(target_repo, is_remote=True)
-    assert len(get_all_images_parents(target_repo)) == 0
+        unregister_repository(target_repo, is_remote=True)
+    assert len(get_all_image_info(target_repo)) == 0
 
 
 def test_rls_push_others(empty_pg_conn, unprivileged_conn_string):
@@ -84,9 +83,9 @@ def test_rls_delete_others(unprivileged_remote_conn):
     # RLS doesn't actually raise an error for this, since it just appends the policy qualifier to the query.
     # Hence in this case this simply does nothing (the rows in "test" namespace aren't available for deletion).
     with override_driver_connection(unprivileged_remote_conn):
-        _unregister_repository(PG_MNT, is_remote=True)
+        unregister_repository(PG_MNT, is_remote=True)
         # Check that the policy worked by verifying that the repository still exists on the remote.
-        assert len(get_all_images_parents(PG_MNT)) > 0
+        assert len(get_all_image_info(PG_MNT)) > 0
 
 
 def test_rls_push_own_with_uploading(empty_pg_conn, unprivileged_conn_string):

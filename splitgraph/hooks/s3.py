@@ -1,3 +1,7 @@
+"""
+Plugin for uploading Splitgraph objects from the cache to an external S3-like object store
+"""
+
 import json
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
@@ -77,6 +81,18 @@ def s3_upload_objects(objects_to_push, params):
 
 
 def s3_download_objects(objects_to_fetch, params):
+    """
+    Downloads objects from
+    :param objects_to_fetch: List of (object ID, object URL of form <endpoint>/<bucket>/<key>)
+    :param params: A dictionary of parameters overriding the .sgconfig:
+
+        * access_key: default SG_S3_KEY
+        * secret_key: default SG_S3_PWD
+
+        You can also specify the number of worker threads (`threads`) used to upload the
+        objects.
+    :return:
+    """
     # Maybe here we have to set these to None (anonymous) if the S3 host name doesn't match our own one.
     access_key = params.get('access_key', S3_ACCESS_KEY)
     secret_key = params.get('secret_key', S3_SECRET_KEY)

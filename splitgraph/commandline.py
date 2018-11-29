@@ -1,3 +1,8 @@
+"""
+Splitgraph command line client
+
+Hooks into the API to allow management of Splitgraph repositories and images using `sgr`.
+"""
 import json
 import re
 import sys
@@ -18,9 +23,12 @@ def _commit_connection(result):
         conn.close()
 
 
+# pragma pylint disable=missing-docstring
+
+
 @click.group(result_callback=_commit_connection)
 def cli():
-    # Toplevel click command group to allow us to invoke e.g. "sgr checkout" / "sgr commit" etc.
+    """Toplevel click command group to allow us to invoke e.g. "sgr checkout" / "sgr commit" etc."""
     pass
 
 
@@ -121,15 +129,15 @@ def _get_actual_hashes(repository, image_1, image_2):
         # Comparing current working copy against the last commit
         image_1 = sg.get_current_head(repository)
     elif image_2 is None:
-        image_1 = sg.tag_or_hash_to_actual_hash(repository, image_1)
+        image_1 = sg.resolve_image(repository, image_1)
         # One parameter: diff from that and its parent.
         image_2 = sg.get_image(repository, image_1).parent_id
         if image_2 is None:
             print("%s has no parent to compare to!" % image_1)
         image_1, image_2 = image_2, image_1  # snap_1 has to come first
     else:
-        image_1 = sg.tag_or_hash_to_actual_hash(repository, image_1)
-        image_2 = sg.tag_or_hash_to_actual_hash(repository, image_2)
+        image_1 = sg.resolve_image(repository, image_1)
+        image_2 = sg.resolve_image(repository, image_2)
     return image_1, image_2
 
 
@@ -162,7 +170,7 @@ def unmount_c(repository):
 @click.argument('repository', type=sg.to_repository)
 @click.argument('snapshot_or_tag')
 def checkout_c(repository, snapshot_or_tag):
-    snapshot = sg.tag_or_hash_to_actual_hash(repository, snapshot_or_tag)
+    snapshot = sg.resolve_image(repository, snapshot_or_tag)
     sg.checkout(repository, snapshot)
     print("Checked out %s:%s." % (str(repository), snapshot[:12]))
 
@@ -186,7 +194,7 @@ def commit_c(repository, commit_hash, include_snap, message):
 @click.argument('commit_tag_or_hash')
 @click.option('-v', '--verbose', default=False, is_flag=True)
 def show_c(repository, commit_tag_or_hash, verbose):
-    commit_tag_or_hash = sg.tag_or_hash_to_actual_hash(repository, commit_tag_or_hash)
+    commit_tag_or_hash = sg.resolve_image(repository, commit_tag_or_hash)
 
     print("Commit %s" % commit_tag_or_hash)
     image_info = sg.get_image(repository, commit_tag_or_hash)
@@ -349,7 +357,7 @@ def cleanup_c():
 @click.option('-e', '--error-on-end', required=False, default=True, is_flag=True,
               help='If False, bases the recreated Splitfile on the last image where the provenance chain breaks')
 def provenance_c(repository, snapshot_or_tag, full, error_on_end):
-    snapshot = sg.tag_or_hash_to_actual_hash(repository, snapshot_or_tag)
+    snapshot = sg.resolve_image(repository, snapshot_or_tag)
 
     if full:
         splitfile_commands = sg.image_hash_to_splitfile(repository, snapshot, error_on_end)
@@ -367,7 +375,7 @@ def provenance_c(repository, snapshot_or_tag, full, error_on_end):
 @click.option('-u', '--update', is_flag=True, help='Rederive the image against the latest version of all dependencies.')
 @click.option('-i', '--repo-image', multiple=True, type=(sg.to_repository, str))
 def rerun_c(repository, snapshot_or_tag, update, repo_image):
-    snapshot = sg.tag_or_hash_to_actual_hash(repository, snapshot_or_tag)
+    snapshot = sg.resolve_image(repository, snapshot_or_tag)
 
     # Replace the sources used to construct the image with either the latest ones or the images specified by the user.
     # This doesn't require us at this point to have pulled all the dependencies: the Splitfile executor will do it
@@ -396,6 +404,9 @@ def publish_c(repository, tag, readme, skip_provenance, skip_previews):
         readme = ""
     sg.publish(repository, tag, readme=readme, include_provenance=not skip_provenance,
                include_table_previews=not skip_previews)
+
+
+# pragma pylint enable=missing-docstring
 
 
 cli.add_command(status_c)

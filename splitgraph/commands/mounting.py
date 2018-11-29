@@ -1,3 +1,7 @@
+"""
+Commands for mounting other databases locally via Postgres FDW.
+"""
+
 import logging
 
 from splitgraph._data.common import ensure_metadata_schema

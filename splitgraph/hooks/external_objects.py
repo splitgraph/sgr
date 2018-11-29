@@ -1,7 +1,11 @@
+"""
+Hooks for registering handlers to upload/download objects from external locations into Splitgraph's cache.
+"""
+
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.s3 import s3_upload_objects, s3_download_objects
 
-EXTERNAL_OBJECT_HANDLERS = {}
+_EXTERNAL_OBJECT_HANDLERS = {}
 
 
 # TODO refactor this (and the mount handlers) so that it matches the custom Splitfile command structure
@@ -18,7 +22,7 @@ def get_upload_download_handler(name):
     cache.
     """
     try:
-        return EXTERNAL_OBJECT_HANDLERS[name]
+        return _EXTERNAL_OBJECT_HANDLERS[name]
     except KeyError:
         raise SplitGraphException("Protocol %s is not supported!" % name)
 
@@ -26,12 +30,12 @@ def get_upload_download_handler(name):
 def register_upload_download_handler(name, upload_handler, download_handler):
     """Register an external protocol handler. See the docstring for `get_upload_download_handler` for the required
     signatures of the handler functions."""
-    global EXTERNAL_OBJECT_HANDLERS
-    if name in EXTERNAL_OBJECT_HANDLERS:
+    global _EXTERNAL_OBJECT_HANDLERS
+    if name in _EXTERNAL_OBJECT_HANDLERS:
         raise SplitGraphException("Cannot register a protocol handler %s as it already exists!" % name)
-    EXTERNAL_OBJECT_HANDLERS[name] = (upload_handler, download_handler)
+    _EXTERNAL_OBJECT_HANDLERS[name] = (upload_handler, download_handler)
 
 
 # Register the default object handlers. Just like for the mount handlers, we'll probably expose this via a config
-# or allow the user to run their own bit of Python before sg gets invoked.
+# or allow the user to run their own bit of Python before sgr gets invoked.
 register_upload_download_handler('S3', upload_handler=s3_upload_objects, download_handler=s3_download_objects)

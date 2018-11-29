@@ -12,9 +12,9 @@ def get_arg_tuples():
         having to pass down variables from click just to get config values.
     """
 
-    SYS_ARGS = sys.argv[1:]
+    sys_args = sys.argv[1:]
 
-    return [(a1, a2) for a1, a2 in zip(SYS_ARGS, SYS_ARGS[1:]) if a1 in ARG_KEYS]
+    return [(a1, a2) for a1, a2 in zip(sys_args, sys_args[1:]) if a1 in ARG_KEYS]
 
 
 def get_argument_config_value(key, default_return=None):
@@ -34,8 +34,7 @@ def get_argument_config_value(key, default_return=None):
 
     if num_matching_values == 0:
         return default_return
-    elif num_matching_values > 1:
-        sys.stderr.write('Warning: multiple values specified for %s \n' % key)
-        sys.stderr.write('Using %s \n' % matching_values[0])
 
+    sys.stderr.write('Warning: multiple values specified for %s \n' % key)
+    sys.stderr.write('Using %s \n' % matching_values[0])
     return matching_values[0]
