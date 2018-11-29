@@ -1,23 +1,22 @@
+import json
+import os
+import sys
+
 import pytest
 
+from splitgraph import get_remote_connection_params
+from splitgraph.commands.repository import _parse_paths_overrides
 from splitgraph.config import CONFIG, create_config_dict
-
+from splitgraph.config import keys
 from splitgraph.config.argument_config import get_arg_tuples, get_argument_config_value
 from splitgraph.config.config_file_config import hoist_section
 from splitgraph.config.environment_config import get_environment_config_value
-from splitgraph.config import keys
-from splitgraph.config.repo_lookups import _parse_paths_overrides, get_remote_connection_params
 from splitgraph.config.system_config import (
     get_explicit_config_file_location,
     get_explicit_config_file_dirs,
     SG_CONFIG_FILE,
     VALID_CONFIG_FILE_NAMES
 )
-
-import os
-import sys
-
-import json
 
 try:
     # python 3.4+ should use builtin unittest.mock not mock package

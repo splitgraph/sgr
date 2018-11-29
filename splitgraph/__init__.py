@@ -6,7 +6,6 @@ import logging
 logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=logging.INFO)
 
 # Still not sure how to split these up.
-from .config.repo_lookups import get_remote_connection_params
 from .connection import get_connection, serialize_connection_string
 from .exceptions import SplitGraphException
 from .commands import *

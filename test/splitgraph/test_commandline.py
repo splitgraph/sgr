@@ -3,9 +3,8 @@ from decimal import Decimal
 
 from click.testing import CliRunner
 
-from splitgraph import to_repository, unmount
+from splitgraph import to_repository, unmount, repository_exists
 from splitgraph._data.images import get_all_images_parents
-from splitgraph._data.misc import repository_exists
 from splitgraph.commandline import status_c, sql_c, diff_c, commit_c, log_c, show_c, tag_c, checkout_c, unmount_c, \
     cleanup_c, init_c, mount_c, import_c, clone_c, pull_c, push_c, file_c, provenance_c, rerun_c, publish_c
 from splitgraph.commands import commit, checkout

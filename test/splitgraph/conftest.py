@@ -4,7 +4,6 @@ import pytest
 
 from splitgraph import to_repository as R
 from splitgraph._data.common import setup_registry_mode, ensure_metadata_schema, toggle_registry_rls
-from splitgraph._data.misc import get_current_repositories
 from splitgraph.commands import *
 from splitgraph.config import PG_DB, PG_USER, PG_PWD
 from splitgraph.connection import get_connection, override_driver_connection, serialize_connection_string, make_conn

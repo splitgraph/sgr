@@ -4,15 +4,13 @@ from importlib import import_module
 from random import getrandbits
 
 from splitgraph import to_repository, init, unmount
-from splitgraph._data.misc import repository_exists
 from splitgraph._data.provenance import store_import_provenance, store_sql_provenance, store_mount_provenance, \
     store_from_provenance
 from splitgraph.commands import checkout, clone, import_tables, commit, image_hash_to_splitfile
 from splitgraph.commands.push_pull import local_clone, pull
-from splitgraph.commands.repository import Repository
+from splitgraph.commands.repository import Repository, repository_exists, lookup_repo
 from splitgraph.commands.tagging import get_current_head, tag_or_hash_to_actual_hash
 from splitgraph.config import CONFIG
-from splitgraph.config.repo_lookups import lookup_repo
 from splitgraph.connection import get_connection, serialize_connection_string
 from splitgraph.console import Color, truncate_line
 from splitgraph.exceptions import SplitGraphException

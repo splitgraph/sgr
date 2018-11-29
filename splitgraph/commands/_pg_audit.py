@@ -1,10 +1,11 @@
 from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph._data.misc import ensure_metadata_schema, get_current_repositories
 from splitgraph.commands.info import get_table
+from splitgraph.commands.repository import get_current_repositories
 from splitgraph.connection import get_connection
 from splitgraph.pg_utils import get_all_tables
+from .._data.common import ensure_metadata_schema
 
 ROW_TRIGGER_NAME = "audit_trigger_row"
 STM_TRIGGER_NAME = "audit_trigger_stm"

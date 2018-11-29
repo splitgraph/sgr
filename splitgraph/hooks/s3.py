@@ -8,8 +8,7 @@ from minio.error import (BucketAlreadyOwnedByYou,
                          BucketAlreadyExists)
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph import CONFIG
-from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.connection import get_connection
 from splitgraph.pg_utils import get_full_table_schema, create_table
 

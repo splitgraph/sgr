@@ -1,11 +1,11 @@
 from splitgraph import init
-from splitgraph._data.misc import get_current_repositories
 from splitgraph._data.objects import get_existing_objects, get_downloaded_objects
 from splitgraph.commands import checkout, commit, import_tables
 from splitgraph.commands.diff import dump_pending_changes
 from splitgraph.commands.importing import import_table_from_remote
 from splitgraph.commands.info import get_image
 from splitgraph.commands.misc import cleanup_objects
+from splitgraph.commands.repository import get_current_repositories
 from splitgraph.commands.tagging import get_current_head
 from splitgraph.connection import override_driver_connection
 from splitgraph.pg_utils import pg_table_exists, get_all_tables

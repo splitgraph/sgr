@@ -1,5 +1,4 @@
 import pytest
-from hooks.s3 import S3_HOST, S3_PORT, S3_ACCESS_KEY, S3_SECRET_KEY
 from minio import Minio
 
 from splitgraph import unmount
@@ -8,6 +7,7 @@ from splitgraph.commands import clone, checkout, commit, push
 from splitgraph.commands.misc import cleanup_objects
 from splitgraph.commands.tagging import get_tagged_id
 from splitgraph.connection import override_driver_connection
+from splitgraph.hooks.s3 import S3_HOST, S3_PORT, S3_ACCESS_KEY, S3_SECRET_KEY
 from test.splitgraph.conftest import PG_MNT, PG_MNT_PULL
 
 

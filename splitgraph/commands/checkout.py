@@ -3,6 +3,7 @@ from contextlib import contextmanager
 
 from psycopg2.sql import Identifier, SQL
 
+from splitgraph.commands.repository import get_remote_for
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from ._common import set_head
 from ._objects.applying import apply_record_to_staging
@@ -13,7 +14,6 @@ from .info import get_canonical_image_id, get_tables_at
 from .misc import delete_objects
 from .tagging import get_tagged_id
 from .._data.images import get_closest_parent_image_object
-from .._data.misc import get_remote_for
 from .._data.objects import get_external_object_locations, get_object_for_table
 from ..connection import get_connection
 from ..exceptions import SplitGraphException

@@ -3,14 +3,14 @@ from collections import defaultdict
 
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph._data.misc import to_repository
 from splitgraph._data.objects import get_existing_objects, get_downloaded_objects
-from splitgraph.commands.repository import unmount
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import get_connection, override_driver_connection, parse_connection_string, make_conn
 from splitgraph.hooks.external_objects import get_upload_download_handler
 from splitgraph.hooks.mount_handlers import mount_postgres
 from splitgraph.pg_utils import copy_table, dump_table_creation, get_primary_keys
+from ..misc import unmount
+from ..repository import to_repository
 
 
 def download_objects(remote_conn_string, objects_to_fetch, object_locations, remote_conn=None):
