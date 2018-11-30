@@ -7,6 +7,7 @@ from contextlib import contextmanager
 
 import psycopg2
 
+from splitgraph import get_remote_connection_params
 from splitgraph.config import POSTGRES_CONNECTION
 
 _PSYCOPG_CONN = None
@@ -63,3 +64,12 @@ def make_conn(server, port, username, password, dbname):
     :return: Psycopg connection object
     """
     return psycopg2.connect(host=server, port=port, user=username, password=password, dbname=dbname)
+
+
+def make_driver_connection(remote_name):
+    """
+    Creates a connection to a remote driver.
+    :param remote_name: Name of the remote driver as specified in the config file
+    :return: Psycopg connection object
+    """
+    return make_driver_connection(*get_remote_connection_params(remote_name))

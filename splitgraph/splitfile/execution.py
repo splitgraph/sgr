@@ -142,7 +142,7 @@ def _execute_from(node, output):
         else:
             # For local repositories, first try to pull them to see if they are clones of a remote.
             try:
-                pull(repository, remote='origin')
+                pull(repository)
             except SplitGraphException:
                 pass
             # Get the target snap ID from the source repo: otherwise, if the tag is, say, 'latest' and
@@ -226,7 +226,7 @@ def _execute_repo_import(repository, table_names, tag_or_hash, target_repository
         else:
             # For local repositories, first try to pull them to see if they are clones of a remote.
             try:
-                pull(repository, remote='origin')
+                pull(repository)
             except SplitGraphException:
                 pass
             source_hash = resolve_image(repository, tag_or_hash)

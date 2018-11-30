@@ -7,10 +7,9 @@ import splitgraph as sg
 
 @click.command(name='pull')
 @click.argument('repository', type=sg.to_repository)
-@click.argument('remote', default='origin')
 @click.option('-d', '--download-all', help='Download all objects immediately instead on checkout.')
-def pull_c(repository, remote, download_all):  # pylint disable=missing-docstring
-    sg.pull(repository, remote, download_all)
+def pull_c(repository, download_all):  # pylint disable=missing-docstring
+    sg.pull(repository, download_all)
 
 
 @click.command(name='clone')
@@ -32,7 +31,7 @@ def push_c(repository, remote, remote_repository,
            upload_handler, upload_handler_options):  # pylint disable=missing-docstring
     if not remote_repository:
         # Get actual connection string and remote repository
-        remote_info = sg.get_remote_for(repository, remote)
+        remote_info = sg.get_upstream(repository, remote)
         if not remote_info:
             raise sg.SplitGraphException("No remote found for %s!" % str(repository))
         remote, remote_repository = remote_info

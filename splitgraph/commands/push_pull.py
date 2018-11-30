@@ -12,11 +12,11 @@ from splitgraph._data.objects import register_objects, register_tables, register
     get_existing_objects, get_external_object_locations, get_object_meta
 from splitgraph.commands._common import set_head
 from splitgraph.commands._objects.loading import download_objects, upload_objects
-from splitgraph.commands.repository import get_remote_for, add_remote, lookup_repo
+from splitgraph.commands.repository import get_upstream, set_upstream, lookup_repo
 from splitgraph.commands.tagging import get_all_hashes_tags, set_tags
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.connection import override_driver_connection, get_connection, parse_connection_string, \
-    serialize_connection_string, make_conn
+from splitgraph.connection import override_driver_connection, get_connection, serialize_connection_string, \
+    make_driver_connection
 from splitgraph.exceptions import SplitGraphException
 from ._pg_audit import manage_audit
 
@@ -91,20 +91,19 @@ def _extract_recursive_object_meta(remote_conn, table_meta):
     return distinct_objects, object_meta
 
 
-def pull(repository, remote, download_all=False):
+def pull(repository, download_all=False):
     """
-    Synchronizes the state of the local SplitGraph repository with the remote one, optionally downloading all new
+    Synchronizes the state of the local SplitGraph repository with its upstream, optionally downloading all new
     objects created on the remote.
 
     :param repository: Repository to pull changes from.
-    :param remote: Name of the upstream to pull changes from.
     :param download_all: If True, downloads all objects and stores them locally. Otherwise, will only download required
         objects when a table is checked out.
     :return:
     """
-    remote_info = get_remote_for(repository, remote)
+    remote_info = get_upstream(repository)
     if not remote_info:
-        raise SplitGraphException("No remote %s found for repository %s!" % (remote, repository))
+        raise SplitGraphException("No upstream found for repository %s!" % repository.to_schema())
 
     remote_conn_string, remote_repository = remote_info
     clone(remote_repository=remote_repository, remote_conn_string=remote_conn_string, local_repository=repository,
@@ -112,18 +111,15 @@ def pull(repository, remote, download_all=False):
 
 
 @manage_audit
-def clone(remote_repository, remote_conn_string=None, local_repository=None, download_all=False, remote_conn=None):
+def clone(remote_repository, remote_driver=None, local_repository=None, download_all=False):
     """
     Clones a remote SplitGraph repository or synchronizes remote changes with the local ones.
 
     :param remote_repository: Repository to clone.
-    :param remote_conn_string: If set, overrides the default remote for this repository.
+    :param remote_driver:
     :param local_repository: Local repository to clone into. If None, uses the same name.
     :param download_all: If True, downloads all objects and stores them locally. Otherwise, will only download required
         objects when a table is checked out.
-    :param remote_conn: If not None, must be a psycopg connection object used by the client to connect to the remote
-        driver. The local driver will still use the parameters specified in `remote_conn_string` to download the
-        actual objects from the remote.
     """
     ensure_metadata_schema()
 
@@ -131,10 +127,18 @@ def clone(remote_repository, remote_conn_string=None, local_repository=None, dow
     with get_connection().cursor() as cur:
         cur.execute(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(local_repository.to_schema())))
 
-    conn_params = lookup_repo(remote_repository) if not remote_conn_string \
-        else parse_connection_string(remote_conn_string)
+    # WIP WIP WIP WIP
+    # Priority: remote_driver specified in the arguments ->
+    upstream = get_upstream(local_repository)
+    if upstream:
+        remote_driver = remote_driver or upstream[0]
+        remote_repository = remote_repository or upstream[1]
+
+    if not remote_driver:
+        remote_driver = lookup_repo(remote_repository)
+
     logging.info("Connecting to the remote driver...")
-    remote_conn = remote_conn or make_conn(*conn_params)
+
 
     # Get the remote log and the list of objects we need to fetch.
     logging.info("Gathering remote metadata...")
@@ -171,8 +175,8 @@ def clone(remote_repository, remote_conn_string=None, local_repository=None, dow
                                                                                      len([t for t in tags if
                                                                                           t != 'HEAD'])))
 
-    if get_remote_for(local_repository) is None:
-        add_remote(local_repository, serialize_connection_string(*conn_params), remote_repository)
+    if get_upstream(local_repository) is None and remote_driver:
+        set_upstream(local_repository, remote_driver, remote_repository)
 
 
 def local_clone(source, destination):
@@ -192,29 +196,34 @@ def local_clone(source, destination):
     set_head(destination, None)
 
 
-def push(local_repository, remote_conn_string=None, remote_repository=None, handler='DB', handler_options=None):
+def push(local_repository, remote_driver=None, remote_repository=None, handler='DB', handler_options=None):
     """
     Inverse of `pull`: Pushes all local changes to the remote and uploads new objects.
 
-    :param remote_conn_string: Connection string to the remote SG driver of the form
-        `username:password@hostname:port/database.`
-    :param remote_repository: Remote repository to push changes to.
     :param local_repository: Local repository to push changes from.
+    :param remote_driver: The name of the remote driver that must exist in the configuration. If not specified,
+        the current upstream driver is used.
+    :param remote_repository: Remote repository to push changes to. If not specified, the local repository is used.
     :param handler: Name of the handler to use to upload objects. Use `DB` to push them to the remote or `S3`
         to store them in an S3 bucket.
     :param handler_options: For `S3`, a dictionary `{"username": username, "password", password}`.
     """
+
     if handler_options is None:
         handler_options = {}
     ensure_metadata_schema()
 
-    remote_repository = remote_repository or local_repository
     conn = get_connection()
-
+    upstream = get_upstream(local_repository)
+    if upstream:
+        remote_driver = remote_driver or upstream[0]
+        remote_repository = remote_repository or upstream[1]
+    remote_repository = remote_repository or local_repository
+    if not remote_driver:
+        raise SplitGraphException("No upstream found for repository %s and no driver specified!" %
+                                  local_repository.to_schema())
     logging.info("Connecting to the remote driver...")
-    conn_params = lookup_repo(remote_repository) if not remote_conn_string \
-        else parse_connection_string(remote_conn_string)
-    remote_conn = make_conn(*conn_params)
+    remote_conn = make_driver_connection(remote_driver)
     try:
         logging.info("Gathering remote metadata...")
         # Flip the two connections here: pretend the remote driver is local and download metadata from the local
@@ -228,7 +237,7 @@ def push(local_repository, remote_conn_string=None, remote_repository=None, hand
             logging.info("Nothing to do.")
             return
 
-        new_uploads = upload_objects(serialize_connection_string(*conn_params), list(set(o[0] for o in object_meta)),
+        new_uploads = upload_objects(remote_driver, list(set(o[0] for o in object_meta)),
                                      handler=handler, handler_params=handler_options, remote_conn=remote_conn)
 
         # Register the newly uploaded object locations locally and remotely.
@@ -240,8 +249,8 @@ def push(local_repository, remote_conn_string=None, remote_repository=None, hand
 
         register_object_locations(new_uploads)
 
-        if not get_remote_for(local_repository, 'origin'):
-            add_remote(local_repository, serialize_connection_string(*conn_params), remote_repository)
+        if get_upstream(local_repository) is None and remote_driver:
+            set_upstream(local_repository, remote_driver, remote_repository)
 
         remote_conn.commit()
         print("Uploaded metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta),

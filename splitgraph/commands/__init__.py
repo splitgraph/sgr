@@ -14,5 +14,5 @@ from splitgraph.commands.provenance import provenance, image_hash_to_splitfile
 from splitgraph.commands.publish import publish
 from splitgraph.commands.push_pull import push, pull, clone
 from splitgraph.commands.repository import Repository, to_repository, repository_exists, \
-    get_remote_connection_params, get_remote_for, get_current_repositories
+    get_remote_connection_params, get_upstream, get_current_repositories
 from splitgraph.commands.tagging import get_current_head, get_all_hashes_tags, set_tag, resolve_image

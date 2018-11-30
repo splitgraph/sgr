@@ -119,8 +119,8 @@ def set_info_key(key, value):
     """
     with get_connection().cursor() as cur:
         cur.execute(SQL("INSERT INTO {0}.info (key, value) VALUES (%s, %s)"
-                        " ON CONFLICT (key) DO UPDATE SET value = %s WHERE info.key = %s")
-                    .format(Identifier(SPLITGRAPH_META_SCHEMA)), (key, value, value, key))
+                        " ON CONFLICT (key) DO UPDATE SET value = excluded.value WHERE info.key = excluded.key")
+                    .format(Identifier(SPLITGRAPH_META_SCHEMA)), (key, value))
 
 
 _RLS_TABLES = ['images', 'tags', 'objects', 'tables']
@@ -176,6 +176,9 @@ def _setup_rls_policies(cursor, table, schema=SPLITGRAPH_META_SCHEMA, condition=
 
     cursor.execute(SQL("ALTER TABLE {}.{} ENABLE ROW LEVEL SECURITY").format(Identifier(schema),
                                                                              Identifier(table)))
+    for flavour in 'SIUD':
+        cursor.execute(SQL("DROP POLICY IF EXISTS {2} ON {0}.{1}")
+                       .format(Identifier(schema), Identifier(table), Identifier(table + '_' + flavour)))
     cursor.execute(SQL("""CREATE POLICY {2} ON {0}.{1} FOR SELECT USING (true)""")
                    .format(Identifier(schema), Identifier(table), Identifier(table + '_S')))
     cursor.execute(SQL("""CREATE POLICY {2} ON {0}.{1} FOR INSERT WITH CHECK """)

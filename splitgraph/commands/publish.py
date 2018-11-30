@@ -11,7 +11,7 @@ from splitgraph._data.registry import publish_tag
 from splitgraph.commands.checkout import materialized_table
 from splitgraph.commands.info import get_tables_at, get_schema_at
 from splitgraph.commands.provenance import provenance
-from splitgraph.commands.repository import get_remote_for
+from splitgraph.commands.repository import get_upstream
 from splitgraph.commands.tagging import get_tagged_id
 from splitgraph.connection import get_connection, override_driver_connection, parse_connection_string, make_conn
 from splitgraph.exceptions import SplitGraphException
@@ -36,7 +36,7 @@ def publish(repository, tag, remote_conn_string=None, remote_repository=None, re
     """
     remote_repository = remote_repository or repository
 
-    remote_info = get_remote_for(repository, 'origin') if not remote_conn_string or not remote_repository \
+    remote_info = get_upstream(repository, 'origin') if not remote_conn_string or not remote_repository \
         else (remote_conn_string, remote_repository)
     if not remote_info:
         raise SplitGraphException("No remote found for repository %s. Has it been pushed?" % repository)

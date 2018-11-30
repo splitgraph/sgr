@@ -9,7 +9,8 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import CONFIG
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.connection import make_conn, override_driver_connection, get_connection
+from splitgraph.connection import override_driver_connection, get_connection, serialize_connection_string, \
+    make_driver_connection
 from splitgraph.exceptions import SplitGraphException
 from .._data.common import ensure_metadata_schema, insert, select
 from .._data.objects import register_object, register_table
@@ -27,9 +28,9 @@ def get_remote_connection_params(remote_name):
 
 
 def _parse_paths_overrides(lookup_path, override_path):
-    return ([get_remote_connection_params(r) for r in lookup_path.split(',')] if lookup_path else [],
-            ({r[:r.index(':')]: get_remote_connection_params(r[r.index(':') + 1:])
-              for r in override_path.split(',')} if override_path else {}))
+    return (lookup_path.split(',') if lookup_path else [],
+            {r[:r.index(':')]: r[r.index(':') + 1:]
+             for r in override_path.split(',')} if override_path else {})
 
 
 # Parse and set these on import. If we ever need to be able to reread the config on the fly, these have to be
@@ -94,14 +95,14 @@ def register_repository(repository, initial_image, tables, table_object_ids):
 
 def unregister_repository(repository, is_remote=False):
     """
-    Deregisters the repository. Internal function/
+    Deregisters the repository. Internal function, use splitgraph.rm to delete a repository.
     :param repository: Repository object
-    :param is_remote: Specifies whether the driver is a remote that doesn't have the "remotes" table.
+    :param is_remote: Specifies whether the driver is a remote that doesn't have the "upstream" table.
     """
     with get_connection().cursor() as cur:
         meta_tables = ["tables", "tags", "images"]
         if not is_remote:
-            meta_tables.append("remotes")
+            meta_tables.append("upstream")
         for meta_table in meta_tables:
             cur.execute(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s")
                         .format(Identifier(SPLITGRAPH_META_SCHEMA),
@@ -120,40 +121,40 @@ def get_current_repositories():
         return [(Repository(n, r), i) for n, r, i in cur.fetchall()]
 
 
-# TODO these remotes are different from the remote drivers -- here remotes map a locally cloned repository
-# to the remote connection string + remote repository so that we can do "sgr push/pull" without any context.
-
-def get_remote_for(repository, remote_name='origin'):
+def get_upstream(repository):
     """
-    Gets the current remote (connection string and repository) that a local repository tracks
+    Gets the current upstream (connection string and repository) that a local repository tracks
     :param repository: Local repository
-    :param remote_name: Alias for the remote, default 'origin'
     :return: Tuple of (connection string, remote Repository object)
     """
     with get_connection().cursor() as cur:
-        cur.execute(select("remotes", "remote_conn_string, remote_namespace, remote_repository",
-                           "namespace = %s AND repository = %s AND remote_name = %s"),
-                    (repository.namespace, repository.repository, remote_name))
+        cur.execute(select("upstream", "remote_name, remote_namespace, remote_repository",
+                           "namespace = %s AND repository = %s"),
+                    (repository.namespace, repository.repository))
         result = cur.fetchone()
         if result is None:
             return result
-        cs, ns, re = result
-        return cs, Repository(ns, re)
+
+        return serialize_connection_string(*get_remote_connection_params(result[0])), Repository(result[1], result[2])
 
 
-def add_remote(repository, remote_conn, remote_repository, remote_name='origin'):
+def set_upstream(repository, remote_name, remote_repository):
     """
-    Adds a remote that a local repository tracks.
+    Sets the upstream remote + repository that this repository tracks.
     :param repository: Local repository
-    :param remote_conn: Remote connection string
+    :param remote_name: Name of the remote as specified in the Splitgraph config.
     :param remote_repository: Remote Repository object
-    :param remote_name: Alias to give this remote
     """
     with get_connection().cursor() as cur:
-        cur.execute(insert("remotes", ("namespace", "repository", "remote_name", "remote_conn_string",
-                                       "remote_namespace", "remote_repository")),
-                    (repository.namespace, repository.repository, remote_name,
-                     remote_conn, remote_repository.namespace, remote_repository.repository))
+        cur.execute(SQL("INSERT INTO {0}.upstream (namespace, repository, "
+                        "remote_name, remote_namespace, remote_repository) VALUES (%s, %s, %s, %s, %s)"
+                        " ON CONFLICT (namespace, repository) DO UPDATE SET "
+                        "remote_name = excluded.remote_name, remote_namespace = excluded.remote_namespace, "
+                        "remote_repository = excluded.remote_repository WHERE upstream.namespace = excluded.namespace "
+                        "AND upstream.repository = excluded.repository")
+                    .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                    (repository.namespace, repository.repository, remote_name, remote_repository.namespace,
+                     remote_repository.repository))
 
 
 def lookup_repo(repo_name, include_local=False):
@@ -162,8 +163,8 @@ def lookup_repo(repo_name, include_local=False):
     :param repo_name: Repository name
     :param include_local: If True, also queries the local driver
 
-    :return: A tuple of (server, port, username, password, dbname) to the remote repo or "LOCAL" if the
-        local driver has the repository.
+    :return: The name of the remote driver that has the repository (as specified in the config)
+        or "LOCAL" if the local driver has the repository.
     """
 
     if repo_name in _LOOKUP_PATH_OVERRIDE:
@@ -174,7 +175,7 @@ def lookup_repo(repo_name, include_local=False):
         return "LOCAL"
 
     for candidate in _LOOKUP_PATH:
-        remote_conn = make_conn(*candidate)
+        remote_conn = make_driver_connection(candidate)
         with override_driver_connection(remote_conn):
             if repository_exists(repo_name):
                 remote_conn.close()

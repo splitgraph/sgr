@@ -7,7 +7,7 @@ from contextlib import contextmanager
 
 from psycopg2.sql import Identifier, SQL
 
-from splitgraph.commands.repository import get_remote_for
+from splitgraph.commands.repository import get_upstream
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from ._common import set_head
 from ._objects.applying import apply_record_to_staging
@@ -46,7 +46,7 @@ def materialize_table(repository, image_hash, table, destination, destination_sc
         object_id, to_apply = get_image_object_path(repository, table, image_hash)
 
         # Make sure all the objects have been downloaded from remote if it exists
-        remote_info = get_remote_for(repository)
+        remote_info = get_upstream(repository)
         if remote_info:
             remote_conn, _ = remote_info
             object_locations = get_external_object_locations(to_apply + [object_id])
@@ -88,7 +88,7 @@ def checkout(repository, image_hash=None, tag=None, tables=None, keep_downloaded
     elif tag:
         image_hash = get_tagged_id(repository, tag)
     else:
-        raise SplitGraphException("One of schema_snap or tag must be specified!")
+        raise SplitGraphException("One of image_hash or tag must be specified!")
 
     tables = tables or get_tables_at(repository, image_hash)
     with conn.cursor() as cur:
@@ -121,7 +121,7 @@ def materialized_table(repository, table_name, image_hash):
         The table must not be changed, as it might be a pointer to a real SG SNAP object.
     """
     if image_hash is None:
-        # No snapshot -- just return the current staging table.
+        # No image hash -- just return the current staging table.
         yield repository.to_schema(), table_name
     # See if the table snapshot already exists, otherwise reconstruct it
     object_id = get_object_for_table(repository, table_name, image_hash, 'SNAP')
@@ -139,7 +139,7 @@ def materialized_table(repository, table_name, image_hash):
             # The SNAP object doesn't actually exist remotely, so we have to download it.
             # An optimisation here: we could open an RO connection to the remote instead if the object
             # does live there.
-            remote_info = get_remote_for(repository)
+            remote_info = get_upstream(repository)
             if not remote_info:
                 raise SplitGraphException("SNAP %s from %s doesn't exist locally and no remote was found for it!"
                                           % (object_id, str(repository)))

@@ -2,6 +2,7 @@ from collections import Counter
 from pprint import pprint
 
 import click
+from psycopg2 import ProgrammingError
 
 import splitgraph as sg
 from splitgraph.commandline.common import parse_image_spec, pluralise

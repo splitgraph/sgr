@@ -42,7 +42,7 @@ def test_pull(sg_pg_conn, remote_driver_conn, download_all):
     # in order to see them.
     remote_driver_conn.commit()
 
-    pull(PG_MNT_PULL, remote='origin')
+    pull(PG_MNT_PULL)
 
     # Check out the newly-pulled commit and verify it has the same data.
     checkout(PG_MNT_PULL, head_1)
@@ -81,8 +81,8 @@ def test_pulls_with_lazy_object_downloads(empty_pg_conn, remote_driver_conn, kee
             cur.execute("""INSERT INTO "test/pg_mount".fruits VALUES (3, 'mustard')""")
         right = commit(PG_MNT)
 
-    # Pull from origin.
-    pull(PG_MNT_PULL, remote='origin', download_all=False)
+    # Pull from upstream.
+    pull(PG_MNT_PULL, download_all=False)
     # Make sure we have the pointers to the three versions of the fruits table + the original vegetables
     assert len(get_existing_objects()) == 4
 

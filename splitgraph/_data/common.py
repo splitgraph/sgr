@@ -7,7 +7,7 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import get_connection
 
-META_TABLES = ['images', 'tags', 'objects', 'tables', 'remotes', 'object_locations', 'info']
+META_TABLES = ['images', 'tags', 'objects', 'tables', 'upstream', 'object_locations', 'info']
 
 
 def _create_metadata_schema():
@@ -72,11 +72,10 @@ def _create_metadata_schema():
                         namespace          VARCHAR NOT NULL,
                         repository         VARCHAR NOT NULL,
                         remote_name        VARCHAR NOT NULL,
-                        remote_conn_string VARCHAR NOT NULL,
                         remote_namespace   VARCHAR NOT NULL,
                         remote_repository  VARCHAR NOT NULL,
-                        PRIMARY KEY (namespace, repository, remote_name))""").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                                     Identifier("remotes")))
+                        PRIMARY KEY (namespace, repository))""").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                        Identifier("upstream")))
 
         # Map objects to their locations for when they don't live on the remote or the local machine but instead
         # in S3/some FTP/HTTP server/torrent etc.

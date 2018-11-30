@@ -14,7 +14,7 @@ from splitgraph.hooks.external_objects import get_upload_download_handler
 from splitgraph.hooks.mount_handlers import mount_postgres
 from splitgraph.pg_utils import copy_table, dump_table_creation, get_primary_keys
 from ..misc import rm
-from ..repository import to_repository
+from ..repository import to_repository, get_remote_connection_params
 
 
 def download_objects(remote_conn_string, objects_to_fetch, object_locations, remote_conn=None):
@@ -89,12 +89,11 @@ def _fetch_external_objects(object_locations, objects_to_fetch):
     return non_remote_objects
 
 
-def upload_objects(remote_conn_string, objects_to_push, handler='DB', handler_params=None, remote_conn=None):
+def upload_objects(remote_driver, objects_to_push, handler='DB', handler_params=None, remote_conn=None):
     """
     Uploads physical objects to the remote or some other external location.
 
-    :param remote_conn_string: Connection string to the remote SG driver of the form
-        username:password@hostname:port/database.
+    :param remote_driver: Name of the remote Splitgraph driver as specified in the config
     :param objects_to_push: List of object IDs to upload.
     :param handler: Name of the handler to use to upload objects. Use `DB` to push them to the remote, `FILE`
         to store them in a directory that can be accessed from the client and `HTTP` to upload them to HTTP.
@@ -110,7 +109,7 @@ def upload_objects(remote_conn_string, objects_to_push, handler='DB', handler_pa
 
     if handler_params is None:
         handler_params = {}
-    conn_args = parse_connection_string(remote_conn_string)
+    conn_args = get_remote_connection_params(remote_driver)
     remote_conn = remote_conn or make_conn(*conn_args)
 
     # Get objects that exist on the remote driver
