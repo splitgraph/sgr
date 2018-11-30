@@ -8,7 +8,7 @@ from splitgraph.commands.commit import commit
 from splitgraph.commands.diff import diff
 from splitgraph.commands.importing import import_tables
 from splitgraph.commands.info import get_image, get_canonical_image_id, get_parent_children, get_tables_at, get_table
-from splitgraph.commands.misc import get_log, cleanup_objects, init, unmount
+from splitgraph.commands.misc import get_log, cleanup_objects, init, rm
 from splitgraph.commands.mounting import mount
 from splitgraph.commands.provenance import provenance, image_hash_to_splitfile
 from splitgraph.commands.publish import publish

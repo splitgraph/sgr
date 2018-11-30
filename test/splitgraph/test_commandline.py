@@ -3,11 +3,12 @@ from decimal import Decimal
 
 from click.testing import CliRunner
 
-from splitgraph import to_repository, unmount, repository_exists
+from splitgraph import to_repository, rm, repository_exists, Repository
 from splitgraph._data.images import get_all_image_info
 from splitgraph._data.registry import get_published_info
-from splitgraph.commandline import status_c, sql_c, diff_c, commit_c, log_c, show_c, tag_c, checkout_c, unmount_c, \
+from splitgraph.commandline import status_c, sql_c, diff_c, commit_c, log_c, show_c, tag_c, checkout_c, rm_c, \
     cleanup_c, init_c, mount_c, import_c, clone_c, pull_c, push_c, build_c, provenance_c, rebuild_c, publish_c
+from splitgraph.commandline.common import parse_image_spec
 from splitgraph.commands import commit, checkout
 from splitgraph.commands.info import get_image, get_table
 from splitgraph.commands.misc import table_exists_at
@@ -15,6 +16,13 @@ from splitgraph.commands.provenance import provenance
 from splitgraph.commands.tagging import get_current_head, get_tagged_id, set_tag
 from splitgraph.connection import override_driver_connection
 from test.splitgraph.conftest import PG_MNT, MG_MNT, OUTPUT, add_multitag_dataset_to_remote_driver, SPLITFILE_ROOT
+
+
+def test_image_spec_parsing():
+    assert parse_image_spec('test/pg_mount') == (Repository('test', 'pg_mount'), 'latest')
+    assert parse_image_spec('test/pg_mount:some_tag') == (Repository('test', 'pg_mount'), 'some_tag')
+    assert parse_image_spec('pg_mount') == (Repository('', 'pg_mount'), 'latest')
+    assert parse_image_spec('pg_mount:some_tag') == (Repository('', 'pg_mount'), 'some_tag')
 
 
 def test_commandline_basics(sg_pg_mg_conn):
@@ -38,8 +46,8 @@ def test_commandline_basics(sg_pg_mg_conn):
 
     def check_diff(args):
         result = runner.invoke(diff_c, [str(a) for a in args])
-        assert "added 1 rows" in result.output
-        assert "removed 1 rows" in result.output
+        assert "added 1 row" in result.output
+        assert "removed 1 row" in result.output
         assert "vegetables: table removed"
         assert "mushrooms: table added"
         result = runner.invoke(diff_c, [str(a) for a in args] + ['-v'])
@@ -51,6 +59,7 @@ def test_commandline_basics(sg_pg_mg_conn):
 
     # sgr commit (with an extra snapshot
     result = runner.invoke(commit_c, [str(PG_MNT), '-m', 'Test commit', '-s'])
+    assert result.exit_code == 0
     new_head = get_current_head(PG_MNT)
     assert new_head != old_head
     assert get_image(PG_MNT, new_head).parent_id == old_head
@@ -88,7 +97,7 @@ def test_commandline_basics(sg_pg_mg_conn):
     assert new_head[:5] in result.output
 
     # sgr show the new commit
-    result = runner.invoke(show_c, [str(PG_MNT), new_head[:20], '-v'])
+    result = runner.invoke(show_c, [str(PG_MNT) + ':' + new_head[:20], '-v'])
     assert "Test commit" in result.output
     assert "Parent: " + old_head in result.output
     fruit_objs = get_table(PG_MNT, 'fruits', new_head[:20])
@@ -108,7 +117,9 @@ def test_commandline_tag_checkout(sg_pg_mg_conn):
     runner.invoke(sql_c, ["DROP TABLE \"test/pg_mount\".vegetables"])
     runner.invoke(sql_c, ["DELETE FROM \"test/pg_mount\".fruits WHERE fruit_id = 1"])
     runner.invoke(sql_c, ["SELECT * FROM \"test/pg_mount\".fruits"])
-    runner.invoke(commit_c, [str(PG_MNT), '-m', 'Test commit'])
+    result = runner.invoke(commit_c, [str(PG_MNT), '-m', 'Test commit'])
+    assert result.exit_code == 0
+
     new_head = get_current_head(PG_MNT)
 
     # sgr tag <mountpoint> <tag>: tags the current HEAD
@@ -135,11 +146,11 @@ def test_commandline_tag_checkout(sg_pg_mg_conn):
     assert 'HEAD, v2' not in result.output
 
     # Checkout by tag
-    runner.invoke(checkout_c, [str(PG_MNT), 'v1'])
+    runner.invoke(checkout_c, [str(PG_MNT) + ':v1'])
     assert get_current_head(PG_MNT) == old_head
 
     # Checkout by hash
-    runner.invoke(checkout_c, [str(PG_MNT), new_head[:20]])
+    runner.invoke(checkout_c, [str(PG_MNT) + ':' + new_head[:20]])
     assert get_current_head(PG_MNT) == new_head
 
 
@@ -151,7 +162,7 @@ def test_misc_mountpoint_management(sg_pg_mg_conn):
     assert str(MG_MNT) in result.output
 
     # sgr unmount
-    result = runner.invoke(unmount_c, [str(MG_MNT)])
+    result = runner.invoke(rm_c, [str(MG_MNT)])
     assert result.exit_code == 0
     assert not repository_exists(MG_MNT)
 
@@ -267,18 +278,18 @@ def test_splitfile(empty_pg_conn, remote_driver_conn):
         assert cur.fetchall() == [(1, 'apple', 'potato'), (2, 'orange', 'carrot')]
 
     # Test the sgr provenance command. First, just list the dependencies of the new image.
-    result = runner.invoke(provenance_c, ['output', 'latest'])
+    result = runner.invoke(provenance_c, ['output:latest'])
     with override_driver_connection(remote_driver_conn):
         assert 'test/pg_mount:%s' % get_tagged_id(PG_MNT, 'latest') in result.output
 
     # Second, output the full splitfile (-f)
-    result = runner.invoke(provenance_c, ['output', 'latest', '-f'])
+    result = runner.invoke(provenance_c, ['output:latest', '-f'])
     with override_driver_connection(remote_driver_conn):
         assert 'FROM test/pg_mount:%s IMPORT' % get_tagged_id(PG_MNT, 'latest') in result.output
     assert 'SQL CREATE TABLE join_table AS SELECT' in result.output
 
 
-def test_splitfile_rerun_update(empty_pg_conn, remote_driver_conn):
+def test_splitfile_rebuild_update(empty_pg_conn, remote_driver_conn):
     add_multitag_dataset_to_remote_driver(remote_driver_conn)
     runner = CliRunner()
 
@@ -287,7 +298,7 @@ def test_splitfile_rerun_update(empty_pg_conn, remote_driver_conn):
     assert result.exit_code == 0
 
     # Rerun the output:latest against v2 of the test/pg_mount
-    result = runner.invoke(rebuild_c, ['output', 'latest', '-i', 'test/pg_mount', 'v2'])
+    result = runner.invoke(rebuild_c, ['output:latest', '--against', 'test/pg_mount:v2'])
     output_v2 = get_current_head(OUTPUT)
     assert result.exit_code == 0
     with override_driver_connection(remote_driver_conn):
@@ -298,7 +309,7 @@ def test_splitfile_rerun_update(empty_pg_conn, remote_driver_conn):
     # In this case, this should all resolve to the same version of test/pg_mount (v2) and not produce
     # any extra commits.
     curr_commits = get_all_image_info(OUTPUT)
-    result = runner.invoke(rebuild_c, ['output', 'latest', '-u'])
+    result = runner.invoke(rebuild_c, ['output:latest', '-u'])
     assert result.exit_code == 0
     assert output_v2 == get_current_head(OUTPUT)
     assert get_all_image_info(OUTPUT) == curr_commits
@@ -328,4 +339,4 @@ def test_mount_and_import(empty_pg_conn):
         assert result.exit_code == 0
         assert table_exists_at(MG_MNT, 'stuff_query', get_current_head(MG_MNT))
     finally:
-        unmount(to_repository('tmp'))
+        rm(to_repository('tmp'))

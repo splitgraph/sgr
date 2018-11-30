@@ -1,7 +1,7 @@
 import pytest
 from minio import Minio
 
-from splitgraph import unmount
+from splitgraph import rm
 from splitgraph._data.objects import get_existing_objects, get_external_object_locations, get_downloaded_objects
 from splitgraph.commands import clone, checkout, commit, push
 from splitgraph.commands.misc import cleanup_objects
@@ -64,7 +64,7 @@ def test_s3_push_pull(empty_pg_conn, remote_driver_conn, clean_minio):
 
     # Destroy the pulled mountpoint and recreate it again.
     assert len(get_downloaded_objects()) == 4
-    unmount(PG_MNT_PULL)
+    rm(PG_MNT_PULL)
     # Make sure we don't have any leftover physical objects.
     cleanup_objects()
     assert len(get_downloaded_objects()) == 0

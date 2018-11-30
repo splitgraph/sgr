@@ -11,7 +11,7 @@ from random import getrandbits, randrange
 from psycopg2.extras import execute_batch
 
 from splitgraph.commands import *
-from splitgraph import to_repository, init, unmount, get_remote_connection_params
+from splitgraph import to_repository, init, rm, get_remote_connection_params
 from splitgraph.hooks.s3 import S3_HOST, S3_PORT, S3_ACCESS_KEY, S3_SECRET_KEY
 from splitgraph.commands.tagging import get_current_head
 
@@ -56,7 +56,7 @@ def alter_random_row(mountpoint, table, table_size, update_size):
 
 
 def bench_commit_chain_checkout(commits, table_size, update_size):
-    unmount(MOUNTPOINT)
+    rm(MOUNTPOINT)
     init(MOUNTPOINT)
     print("START")
     print(datetime.now())
@@ -77,7 +77,7 @@ if __name__ == '__main__':
         update_size = 1000
         commits = 10
 
-        unmount(MOUNTPOINT)
+        rm(MOUNTPOINT)
         init(MOUNTPOINT)
         print("START")
         print(datetime.now())
@@ -107,7 +107,7 @@ if __name__ == '__main__':
 
     _cleanup_minio()
     remote_conn = make_conn(*get_remote_connection_params('remote_driver'))
-    unmount(PG_MNT)
+    rm(PG_MNT)
     cleanup_objects(include_external=True)
     remote_conn.commit()
     remote_conn.close()
@@ -118,7 +118,7 @@ if __name__ == '__main__':
     print("UPLOADED")
     print(datetime.now())
 
-    unmount(MOUNTPOINT)
+    rm(MOUNTPOINT)
     cleanup_objects()
 
     print(datetime.now())

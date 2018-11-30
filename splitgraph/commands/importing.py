@@ -11,7 +11,7 @@ from splitgraph._data.objects import register_table, register_object
 from splitgraph.commands._objects.utils import get_random_object_id
 from splitgraph.commands.checkout import materialize_table, checkout
 from splitgraph.commands.info import get_tables_at, get_table
-from splitgraph.commands.misc import unmount
+from splitgraph.commands.misc import rm
 from splitgraph.commands.push_pull import clone
 from splitgraph.commands.repository import Repository
 from splitgraph.commands.tagging import get_current_head
@@ -160,5 +160,5 @@ def import_table_from_remote(remote_conn_string, remote_repository, remote_table
     import_tables(tmp_mountpoint, remote_tables, target_repository, target_tables, image_hash=remote_image_hash,
                   target_hash=target_hash)
 
-    unmount(tmp_mountpoint)
+    rm(tmp_mountpoint)
     get_connection().commit()

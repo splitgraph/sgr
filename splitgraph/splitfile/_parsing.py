@@ -126,7 +126,7 @@ def _parse_table_alias(table_node):
     return table_name, table_name, table_is_query
 
 
-def parse_repo_source(remote_repo_node):
+def parse_image_spec(remote_repo_node):
     """
     Extracts the image specification (e.g. noaa/climate:abcdef123 -> Repository('noaa', 'climate'), 'abcdef123')
     :param remote_repo_node: Parse node with the specification

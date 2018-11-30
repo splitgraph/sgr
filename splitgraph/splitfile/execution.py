@@ -7,10 +7,10 @@ from hashlib import sha256
 from importlib import import_module
 from random import getrandbits
 
-from splitgraph import to_repository, init, unmount
+from splitgraph import to_repository, init, rm
 from splitgraph._data.provenance import store_import_provenance, store_sql_provenance, store_mount_provenance, \
     store_from_provenance
-from splitgraph.commandline.console import Color, truncate_line
+from splitgraph.commandline.common import Color, truncate_line
 from splitgraph.commands import checkout, clone, import_tables, commit, image_hash_to_splitfile
 from splitgraph.commands.push_pull import local_clone, pull
 from splitgraph.commands.repository import Repository, repository_exists, lookup_repo
@@ -20,7 +20,7 @@ from splitgraph.connection import get_connection, serialize_connection_string
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.mount_handlers import get_mount_handler
 from splitgraph.pg_utils import execute_sql_in
-from ._parsing import parse_commands, extract_nodes, get_first_or_none, parse_repo_source, \
+from ._parsing import parse_commands, extract_nodes, get_first_or_none, parse_image_spec, \
     extract_all_table_aliases, parse_custom_command
 
 
@@ -128,11 +128,11 @@ def _execute_from(node, output):
         # did FROM (...) without AS repository
         if repository_exists(output):
             print("Clearing all output from %s" % str(output))
-            unmount(output)
+            rm(output)
     if not repository_exists(output):
         init(output)
     if repo_source:
-        repository, tag_or_hash = parse_repo_source(repo_source)
+        repository, tag_or_hash = parse_image_spec(repo_source)
         location = lookup_repo(repository, include_local=True)
 
         if location != 'LOCAL':
@@ -167,7 +167,7 @@ def _execute_import(node, output):
     table_names, table_aliases, table_queries = extract_all_table_aliases(interesting_nodes[-1])
     if interesting_nodes[0].expr_name == 'repo_source':
         # Import from a repository (local or remote)
-        repository, tag_or_hash = parse_repo_source(interesting_nodes[0])
+        repository, tag_or_hash = parse_image_spec(interesting_nodes[0])
         _execute_repo_import(repository, table_names, tag_or_hash, output, table_aliases, table_queries)
     else:
         # Extract the identifier (FDW name), the connection string and the FDW params (JSON-encoded, everything
@@ -184,7 +184,7 @@ def _execute_import(node, output):
 def _execute_db_import(conn_string, fdw_name, fdw_params, table_names, target_mountpoint, table_aliases, table_queries):
     mount_handler = get_mount_handler(fdw_name)
     tmp_mountpoint = to_repository(fdw_name + '_tmp_staging')
-    unmount(tmp_mountpoint)
+    rm(tmp_mountpoint)
     try:
         handler_kwargs = json.loads(fdw_params)
         handler_kwargs.update(dict(server=conn_string.group(3), port=int(conn_string.group(4)),
@@ -199,7 +199,7 @@ def _execute_db_import(conn_string, fdw_name, fdw_params, table_names, target_mo
                       foreign_tables=True, table_queries=table_queries)
         store_mount_provenance(target_mountpoint, target_hash)
     finally:
-        unmount(tmp_mountpoint)
+        rm(tmp_mountpoint)
 
 
 def _execute_repo_import(repository, table_names, tag_or_hash, target_repository, table_aliases, table_queries):
@@ -246,7 +246,7 @@ def _execute_repo_import(repository, table_names, tag_or_hash, target_repository
 
         _checkout_or_calculate_layer(target_repository, target_hash, _calc)
     finally:
-        unmount(tmp_repo)
+        rm(tmp_repo)
 
 
 def _execute_custom(node, output):

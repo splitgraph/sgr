@@ -1,6 +1,6 @@
 import pytest
 
-from splitgraph import to_repository as R, unmount
+from splitgraph import to_repository as R, rm
 from splitgraph._data.images import get_all_image_info
 from splitgraph._data.objects import get_existing_objects, get_downloaded_objects, get_external_object_locations, \
     get_object_for_table
@@ -154,7 +154,7 @@ def test_import_updating_splitfile_with_uploading(empty_pg_conn, remote_driver_c
     # Push with upload. Have to specify the remote connection string since we are pushing a new repository.
     push(OUTPUT, remote_conn_string=REMOTE_CONN_STRING, handler='S3', handler_options={})
     # Unmount everything locally and cleanup
-    unmount(OUTPUT)
+    rm(OUTPUT)
     cleanup_objects()
     assert not get_existing_objects()
 
@@ -191,7 +191,7 @@ def test_splitfile_end_to_end_with_uploading(empty_pg_conn, remote_driver_conn):
     push(OUTPUT, remote_conn_string=REMOTE_CONN_STRING, handler='S3', handler_options={})
     # Unmount everything locally and cleanup
     for mountpoint, _ in get_current_repositories():
-        unmount(mountpoint)
+        rm(mountpoint)
     cleanup_objects()
 
     execute_commands(load_splitfile('import_from_preuploaded_remote.splitfile'), output=R('output_stage_2'))
@@ -327,7 +327,7 @@ def test_from_remote(empty_pg_conn, remote_driver_conn):
     # Now run the same splitfile but from the v2 of the remote (where row 1 has been removed from the fruits table)
     # First, remove the output mountpoint (the executor tries to fetch the commit 0000 from it otherwise which
     # doesn't exist).
-    unmount(OUTPUT)
+    rm(OUTPUT)
     execute_commands(load_splitfile('from_remote.splitfile'), params={'TAG': 'v2'}, output=OUTPUT)
 
     with empty_pg_conn.cursor() as cur:

@@ -24,7 +24,7 @@ def _mount_postgres(repository):
                remote_schema="public"))
     import_tables(R('tmp'), get_all_foreign_tables(get_connection(), 'tmp'),
                   repository, [], foreign_tables=True, do_checkout=True)
-    unmount(R('tmp'))
+    rm(R('tmp'))
 
 
 def _mount_mongo(repository):
@@ -40,7 +40,7 @@ def _mount_mongo(repository):
                                        }}))
     import_tables(R('tmp'), get_all_foreign_tables(get_connection(), 'tmp'),
                   repository, [], foreign_tables=True, do_checkout=True)
-    unmount(R('tmp'))
+    rm(R('tmp'))
 
 
 def _mount_mysql(repository):
@@ -60,7 +60,7 @@ def healthcheck():
     # here since we don't touch the remote_driver but we don't run any tests against it until later on,
     # so it should have enough time to start up.
     for mountpoint in [PG_MNT, MG_MNT, MYSQL_MNT]:
-        unmount(mountpoint)
+        rm(mountpoint)
     _mount_postgres(PG_MNT)
     _mount_mongo(MG_MNT)
     _mount_mysql(MYSQL_MNT)
@@ -74,28 +74,28 @@ def healthcheck():
             assert cur.fetchone()[0] > 0
     finally:
         for mountpoint in [PG_MNT, MG_MNT, MYSQL_MNT]:
-            unmount(mountpoint)
+            rm(mountpoint)
 
 
 @pytest.fixture
 def sg_pg_conn():
     # SG connection with a mounted Postgres db
     for mountpoint in TEST_MOUNTPOINTS:
-        unmount(mountpoint)
+        rm(mountpoint)
     _mount_postgres(PG_MNT)
     try:
         yield get_connection()
     finally:
         get_connection().rollback()
         for mountpoint in TEST_MOUNTPOINTS:
-            unmount(mountpoint)
+            rm(mountpoint)
 
 
 @pytest.fixture
 def sg_pg_mg_conn():
     # SG connection with a mounted Mongo + Postgres db
     for mountpoint in TEST_MOUNTPOINTS:
-        unmount(mountpoint)
+        rm(mountpoint)
     cleanup_objects()
     _mount_postgres(PG_MNT)
     _mount_mongo(MG_MNT)
@@ -104,7 +104,7 @@ def sg_pg_mg_conn():
     finally:
         get_connection().rollback()
         for mountpoint in TEST_MOUNTPOINTS:
-            unmount(mountpoint)
+            rm(mountpoint)
         cleanup_objects()
 
 
@@ -126,7 +126,7 @@ def remote_driver_conn():
         unpublish_repository(PG_MNT)
         unpublish_repository(Repository('testuser', 'pg_mount'))
         for mountpoint in TEST_MOUNTPOINTS:
-            unmount(mountpoint)
+            rm(mountpoint)
         cleanup_objects()
         conn.commit()
         _mount_postgres(PG_MNT)
@@ -137,7 +137,7 @@ def remote_driver_conn():
         conn.rollback()
         with override_driver_connection(conn):
             for mountpoint in TEST_MOUNTPOINTS:
-                unmount(mountpoint)
+                rm(mountpoint)
             cleanup_objects()
         conn.commit()
         conn.close()
@@ -148,7 +148,7 @@ def empty_pg_conn():
     # A connection to the local driver that has nothing mounted on it.
     conn = get_connection()
     for mountpoint, _ in get_current_repositories():
-        unmount(mountpoint)
+        rm(mountpoint)
     cleanup_objects()
     conn.commit()
     try:
@@ -156,7 +156,7 @@ def empty_pg_conn():
     finally:
         conn.rollback()
         for mountpoint, _ in get_current_repositories():
-            unmount(mountpoint)
+            rm(mountpoint)
         cleanup_objects()
         conn.commit()
 

@@ -13,7 +13,7 @@ from splitgraph.connection import get_connection, override_driver_connection, pa
 from splitgraph.hooks.external_objects import get_upload_download_handler
 from splitgraph.hooks.mount_handlers import mount_postgres
 from splitgraph.pg_utils import copy_table, dump_table_creation, get_primary_keys
-from ..misc import unmount
+from ..misc import rm
 from ..repository import to_repository
 
 
@@ -53,7 +53,7 @@ def _fetch_remote_objects(objects_to_fetch, remote_conn_string, remote_conn=None
 
     server, port, user, pwd, dbname = parse_connection_string(remote_conn_string)
     remote_data_mountpoint = to_repository('tmp_remote_data')
-    unmount(remote_data_mountpoint)  # Maybe worth making sure we're not stepping on anyone else
+    rm(remote_data_mountpoint)  # Maybe worth making sure we're not stepping on anyone else
     conn = get_connection()
     mount_postgres(mountpoint='tmp_remote_data', server=server, port=port, username=user, password=pwd, dbname=dbname,
                    remote_schema=SPLITGRAPH_META_SCHEMA)
@@ -71,7 +71,7 @@ def _fetch_remote_objects(objects_to_fetch, remote_conn_string, remote_conn=None
                         Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj))
                                 + SQL(',').join(SQL("{}").format(Identifier(c)) for c, _ in source_pks) + SQL(")"))
     finally:
-        unmount(remote_data_mountpoint)
+        rm(remote_data_mountpoint)
 
 
 def _fetch_external_objects(object_locations, objects_to_fetch):
@@ -135,7 +135,7 @@ def upload_objects(remote_conn_string, objects_to_push, handler='DB', handler_pa
         # mounted remote.
         remote_conn.commit()
         remote_data_mountpoint = to_repository('tmp_remote_data')
-        unmount(remote_data_mountpoint)
+        rm(remote_data_mountpoint)
         mount_postgres(mountpoint='tmp_remote_data', server=conn_args[0], port=conn_args[1], username=conn_args[2],
                        password=conn_args[3], dbname=conn_args[4], remote_schema=SPLITGRAPH_META_SCHEMA)
         for i, obj in enumerate(objects_to_push):
@@ -143,7 +143,7 @@ def upload_objects(remote_conn_string, objects_to_push, handler='DB', handler_pa
             copy_table(conn, SPLITGRAPH_META_SCHEMA, obj, 'tmp_remote_data', obj, with_pk_constraints=False,
                        table_exists=True)
         conn.commit()
-        unmount(remote_data_mountpoint)
+        rm(remote_data_mountpoint)
 
         # We assume that if the object doesn't have an explicit location, it lives on the remote.
         return []

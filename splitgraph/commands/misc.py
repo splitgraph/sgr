@@ -120,7 +120,7 @@ def init(repository):
     register_repository(repository, image_hash, tables=[], table_object_ids=[])
 
 
-def unmount(repository):
+def rm(repository):
     """
     Discards all changes to a given repository and all of its history, deleting the physical Postgres schema.
     Doesn't delete any cached physical objects.

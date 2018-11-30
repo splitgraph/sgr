@@ -25,11 +25,11 @@ def _changes_to_aggregation(query_result, initial=None):
 
 def diff(repository, table_name, image_1, image_2, aggregate=False):
     """
-    Compares the state of the table in different images. If the two images are on the same path in the commit tree,
+    Compares the state of a table in different images. If the two images are on the same path in the commit tree,
     it doesn't need to materialize any of the tables and simply aggregates their DIFF objects to produce a complete
     changelog. Otherwise, it materializes both tables into a temporary space and compares them row-to-row.
 
-    :param repository: Mounpoint where the table exists.
+    :param repository: Repository where the table exists.
     :param table_name: Name of the table.
     :param image_1: First image. If None, uses the state of the current staging area.
     :param image_2: Second image. If None, uses the state of the current staging area.

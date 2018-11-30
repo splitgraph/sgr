@@ -4,28 +4,36 @@ from collections import defaultdict
 import click
 
 import splitgraph as sg
+from splitgraph.commandline.common import parse_image_spec
 
 
 @click.command(name='checkout')
-@click.argument('repository', type=sg.to_repository)
-@click.argument('snapshot_or_tag')
-def checkout_c(repository, snapshot_or_tag):  # pylint disable=missing-docstring
-    snapshot = sg.resolve_image(repository, snapshot_or_tag)
-    sg.checkout(repository, snapshot)
-    print("Checked out %s:%s." % (str(repository), snapshot[:12]))
+@click.argument('image_spec', type=parse_image_spec)
+def checkout_c(image_spec):
+    """
+    Checks out a Splitgraph image into a Postgres schema, discarding all pending changes, downloading the required
+    objects and materializing all tables.
+
+    Image spec must be of the format [NAMESPACE/]REPOSITORY[:HASH_OR_TAG]. Note that currently, the schema that the
+    image is checked out into has to have the same name as the repository.
+    """
+    repository, image = image_spec
+    image = sg.resolve_image(repository, image)
+    sg.checkout(repository, image)
+    print("Checked out %s:%s." % (str(repository), image[:12]))
 
 
 @click.command(name='commit')
 @click.argument('repository', type=sg.to_repository)
-@click.option('-h', '--commit-hash')
-@click.option('-s', '--include-snap', default=False, is_flag=True)
-@click.option('-m', '--message')
-def commit_c(repository, commit_hash, include_snap, message):  # pylint disable=missing-docstring
-    if commit_hash and (len(commit_hash) != 64 or any([x not in 'abcdef0123456789' for x in set(commit_hash)])):
-        print("Commit hash must be of the form [a-f0-9] x 64!")
-        return
-
-    new_hash = sg.commit(repository, commit_hash, include_snap=include_snap, comment=message)
+@click.option('-s', '--include-snap', default=False, is_flag=True,
+              help='Include the full image snapshot. This consumes more space, '
+                   'but makes checkouts faster.')
+@click.option('-m', '--message', help='Optional commit message')
+def commit_c(repository, include_snap, message):
+    """
+    Commits all changes to a checked-out Splitgraph repository, producing a new image.
+    """
+    new_hash = sg.commit(repository, include_snap=include_snap, comment=message)
     print("Committed %s as %s." % (str(repository), new_hash[:12]))
 
 
@@ -60,6 +68,8 @@ def tag_c(repository, image, tag, force):  # pylint disable=missing-docstring
     print("Tagged %s:%s with %s." % (str(repository), image, tag))
 
 
+# TODO we can detect foreign tables ourselves -- in the case where we treated something as an SG image and instead
+# would like to treat it as a full table, we can just do SELECT *.
 @click.command(name='import')
 @click.argument('repository', type=sg.to_repository)
 @click.argument('table_or_query')

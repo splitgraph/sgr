@@ -38,7 +38,7 @@ def delete_random_rows(mountpoint, table, N=200):
 
 
 def bench_delete_checkout(N):
-    unmount(MOUNTPOINT)
+    rm(MOUNTPOINT)
     init(MOUNTPOINT)
     create_random_table(MOUNTPOINT, "test", N)
     commit(MOUNTPOINT)
@@ -54,7 +54,7 @@ if __name__ == '__main__':
     #     print(N)
     #     bench_delete_checkout(N)
     N = 1000000
-    unmount(MOUNTPOINT)
+    rm(MOUNTPOINT)
     init(MOUNTPOINT)
     create_random_table(MOUNTPOINT, "test", N)
     commit(MOUNTPOINT)

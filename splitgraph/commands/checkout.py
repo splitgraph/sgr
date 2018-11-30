@@ -66,9 +66,9 @@ def materialize_table(repository, image_hash, table, destination, destination_sc
 @manage_audit
 def checkout(repository, image_hash=None, tag=None, tables=None, keep_downloaded_objects=True):
     """
-    Discards all pending changes in the current mountpoint and checks out an image, changing the current HEAD pointer.
+    Discards all pending changes in the current repository and checks out an image, changing the current HEAD pointer.
 
-    :param repository: Mountpoint to check out.
+    :param repository: Repository to check out.
     :param image_hash: Hash of the image to check out.
     :param tag: Tag of the image to check out. One of `image_hash` or `tag` must be specified.
     :param tables: List of tables to materialize in the mountpoint.
