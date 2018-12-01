@@ -9,24 +9,23 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph._data.objects import get_existing_objects, get_downloaded_objects
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.connection import get_connection, override_driver_connection, parse_connection_string, make_conn
+from splitgraph.connection import get_connection, override_driver_connection, make_conn
 from splitgraph.hooks.external_objects import get_upload_download_handler
 from splitgraph.hooks.mount_handlers import mount_postgres
 from splitgraph.pg_utils import copy_table, dump_table_creation, get_primary_keys
 from ..misc import rm
-from ..repository import to_repository, get_remote_connection_params
+from ..repository import to_repository
 
 
-def download_objects(remote_conn_string, objects_to_fetch, object_locations, remote_conn=None):
+def download_objects(conn_params, objects_to_fetch, object_locations, remote_conn=None):
     """
     Fetches the required objects from the remote and stores them locally. Does nothing for objects that already exist.
 
-    :param remote_conn_string: Connection string to the remote SG driver of the form
-        username:password@hostname:port/database.
+    :param conn_params: Tuple of connection parameters (server, port, username, password, database)
     :param objects_to_fetch: List of object IDs to download.
     :param object_locations: List of custom object locations, encoded as tuples (object_id, object_url, protocol).
     :param remote_conn: If not None, must be a psycopg connection object used by the client to connect to the remote
-        driver. The local driver will still use the parameters specified in `remote_conn_string` to download the
+        driver. The local driver will still use the parameters specified in `conn_params` to download the
         actual objects from the remote.
     :return: Set of object IDs that were fetched.
     """
@@ -43,15 +42,15 @@ def download_objects(remote_conn_string, objects_to_fetch, object_locations, rem
         return objects_to_fetch
 
     print("Fetching remote objects...")
-    _fetch_remote_objects(remaining_objects_to_fetch, remote_conn_string, remote_conn)
+    _fetch_remote_objects(remaining_objects_to_fetch, conn_params, remote_conn)
     return objects_to_fetch
 
 
-def _fetch_remote_objects(objects_to_fetch, remote_conn_string, remote_conn=None):
+def _fetch_remote_objects(objects_to_fetch, conn_params, remote_conn=None):
     # Instead of connecting and pushing queries to it from the Python client, we just mount the remote mountpoint
     # into a temporary space (without any checking out) and SELECT the required data into our local tables.
 
-    server, port, user, pwd, dbname = parse_connection_string(remote_conn_string)
+    server, port, user, pwd, dbname = conn_params
     remote_data_mountpoint = to_repository('tmp_remote_data')
     rm(remote_data_mountpoint)  # Maybe worth making sure we're not stepping on anyone else
     conn = get_connection()
@@ -89,18 +88,18 @@ def _fetch_external_objects(object_locations, objects_to_fetch):
     return non_remote_objects
 
 
-def upload_objects(remote_driver, objects_to_push, handler='DB', handler_params=None, remote_conn=None):
+def upload_objects(conn_params, objects_to_push, handler='DB', handler_params=None, remote_conn=None):
     """
     Uploads physical objects to the remote or some other external location.
 
-    :param remote_driver: Name of the remote Splitgraph driver as specified in the config
+    :param conn_params: Connection params to the remote Splitgraph driver
     :param objects_to_push: List of object IDs to upload.
     :param handler: Name of the handler to use to upload objects. Use `DB` to push them to the remote, `FILE`
         to store them in a directory that can be accessed from the client and `HTTP` to upload them to HTTP.
     :param handler_params: For `HTTP`, a dictionary `{"username": username, "password", password}`. For `FILE`,
         a dictionary `{"path": path}` specifying the directory where the objects shall be saved.
     :param remote_conn: If not None, must be a psycopg connection object used by the client to connect to the remote
-        driver. The local driver will still use the parameters specified in `remote_conn_string` to download the
+        driver. The local driver will still use the parameters specified in `conn_params` to download the
         actual objects from the remote.
     :return: A list of (object_id, url, handler) that specifies all objects were uploaded (skipping objects that
         already exist on the remote).
@@ -109,8 +108,7 @@ def upload_objects(remote_driver, objects_to_push, handler='DB', handler_params=
 
     if handler_params is None:
         handler_params = {}
-    conn_args = get_remote_connection_params(remote_driver)
-    remote_conn = remote_conn or make_conn(*conn_args)
+    remote_conn = remote_conn or make_conn(*conn_params)
 
     # Get objects that exist on the remote driver
     with override_driver_connection(remote_conn):
@@ -135,8 +133,9 @@ def upload_objects(remote_driver, objects_to_push, handler='DB', handler_params=
         remote_conn.commit()
         remote_data_mountpoint = to_repository('tmp_remote_data')
         rm(remote_data_mountpoint)
-        mount_postgres(mountpoint='tmp_remote_data', server=conn_args[0], port=conn_args[1], username=conn_args[2],
-                       password=conn_args[3], dbname=conn_args[4], remote_schema=SPLITGRAPH_META_SCHEMA)
+        mount_postgres(mountpoint='tmp_remote_data', server=conn_params[0], port=conn_params[1],
+                       username=conn_params[2],
+                       password=conn_params[3], dbname=conn_params[4], remote_schema=SPLITGRAPH_META_SCHEMA)
         for i, obj in enumerate(objects_to_push):
             print("(%d/%d) %s..." % (i + 1, len(objects_to_push), obj))
             copy_table(conn, SPLITGRAPH_META_SCHEMA, obj, 'tmp_remote_data', obj, with_pk_constraints=False,

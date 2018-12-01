@@ -9,22 +9,10 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import CONFIG
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.connection import override_driver_connection, get_connection, serialize_connection_string, \
-    make_driver_connection
+from splitgraph.connection import override_driver_connection, get_connection, make_driver_connection
 from splitgraph.exceptions import SplitGraphException
 from .._data.common import ensure_metadata_schema, insert, select
 from .._data.objects import register_object, register_table
-
-
-def get_remote_connection_params(remote_name):
-    """
-    Gets connection parameters for a Splitgraph remote.
-    :param remote_name: Name of the remote. Must be specified in the config file.
-    :return: A tuple of (hostname, port, username, password, database)
-    """
-    pdict = CONFIG['remotes'][remote_name]
-    return (pdict['SG_DRIVER_HOST'], int(pdict['SG_DRIVER_PORT']), pdict['SG_DRIVER_USER'],
-            pdict['SG_DRIVER_PWD'], pdict['SG_DRIVER_DB_NAME'])
 
 
 def _parse_paths_overrides(lookup_path, override_path):
@@ -125,7 +113,7 @@ def get_upstream(repository):
     """
     Gets the current upstream (connection string and repository) that a local repository tracks
     :param repository: Local repository
-    :return: Tuple of (connection string, remote Repository object)
+    :return: Tuple of (remote driver, remote Repository object)
     """
     with get_connection().cursor() as cur:
         cur.execute(select("upstream", "remote_name, remote_namespace, remote_repository",
@@ -135,7 +123,7 @@ def get_upstream(repository):
         if result is None:
             return result
 
-        return serialize_connection_string(*get_remote_connection_params(result[0])), Repository(result[1], result[2])
+        return result[0], Repository(result[1], result[2])
 
 
 def set_upstream(repository, remote_name, remote_repository):

@@ -4,7 +4,6 @@ import sys
 
 import pytest
 
-from splitgraph import get_remote_connection_params
 from splitgraph.commands.repository import _parse_paths_overrides
 from splitgraph.config import CONFIG, create_config_dict
 from splitgraph.config import keys
@@ -587,5 +586,4 @@ def test_env_var_supercedes_config_file(fs):
 def test_lookup_override_parser():
     assert _parse_paths_overrides(lookup_path="remote_driver",
                                   override_path="override_repo_1:local") \
-           == ([('remote_driver', 5431, 'clientuser', 'supersecure', 'cachedb')],
-               {'override_repo_1': get_remote_connection_params('local')})
+           == (['remote_driver'], {'override_repo_1': 'local'})

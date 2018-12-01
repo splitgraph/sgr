@@ -9,7 +9,7 @@ from splitgraph.commands.repository import get_current_repositories
 from splitgraph.commands.tagging import get_current_head
 from splitgraph.connection import override_driver_connection
 from splitgraph.pg_utils import pg_table_exists, get_all_tables
-from test.splitgraph.conftest import PG_MNT, REMOTE_CONN_STRING, OUTPUT
+from test.splitgraph.conftest import PG_MNT, OUTPUT
 
 
 def test_import_basic(sg_pg_conn):
@@ -107,7 +107,7 @@ def test_import_from_remote(empty_pg_conn, remote_driver_conn):
     # Import the 'fruits' table from the origin.
     with override_driver_connection(remote_driver_conn):
         remote_head = get_current_head(PG_MNT)
-    import_table_from_remote(REMOTE_CONN_STRING, PG_MNT, ['fruits'], remote_head, OUTPUT, target_tables=[])
+    import_table_from_remote('remote_driver', PG_MNT, ['fruits'], remote_head, OUTPUT, target_tables=[])
     new_head = get_current_head(OUTPUT)
 
     # Check that the table now exists in the output, is committed and there's no trace of the cloned repo.
@@ -138,7 +138,7 @@ def test_import_and_update(empty_pg_conn, remote_driver_conn):
     with override_driver_connection(remote_driver_conn):
         remote_head = get_current_head(PG_MNT)
     # Import the 'fruits' table from the origin.
-    import_table_from_remote(REMOTE_CONN_STRING, PG_MNT, ['fruits'], remote_head, OUTPUT, target_tables=[])
+    import_table_from_remote('remote_driver', PG_MNT, ['fruits'], remote_head, OUTPUT, target_tables=[])
     new_head = get_current_head(OUTPUT)
 
     with empty_pg_conn.cursor() as cur:

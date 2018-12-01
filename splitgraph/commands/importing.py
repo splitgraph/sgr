@@ -156,7 +156,7 @@ def import_table_from_remote(remote_conn_string, remote_repository, remote_table
                                 repository=remote_repository.repository +
                                            '_clone_tmp')
 
-    clone(remote_repository, remote_conn_string=remote_conn_string, local_repository=tmp_mountpoint, download_all=False)
+    clone(remote_repository, remote_driver=remote_conn_string, local_repository=tmp_mountpoint, download_all=False)
     import_tables(tmp_mountpoint, remote_tables, target_repository, target_tables, image_hash=remote_image_hash,
                   target_hash=target_hash)
 

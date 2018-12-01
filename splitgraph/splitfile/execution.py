@@ -16,7 +16,7 @@ from splitgraph.commands.push_pull import local_clone, pull
 from splitgraph.commands.repository import Repository, repository_exists, lookup_repo
 from splitgraph.commands.tagging import get_current_head, resolve_image
 from splitgraph.config import CONFIG
-from splitgraph.connection import get_connection, serialize_connection_string
+from splitgraph.connection import get_connection
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.mount_handlers import get_mount_handler
 from splitgraph.pg_utils import execute_sql_in
@@ -133,10 +133,10 @@ def _execute_from(node, output):
         init(output)
     if repo_source:
         repository, tag_or_hash = parse_image_spec(repo_source)
-        location = lookup_repo(repository, include_local=True)
+        driver = lookup_repo(repository, include_local=True)
 
-        if location != 'LOCAL':
-            clone(repository, remote_conn_string=serialize_connection_string(*location), local_repository=output,
+        if driver != 'LOCAL':
+            clone(repository, remote_driver=driver, local_repository=output,
                   download_all=False)
             checkout(output, resolve_image(output, tag_or_hash))
         else:
@@ -216,11 +216,10 @@ def _execute_repo_import(repository, table_names, tag_or_hash, target_repository
         # it for hashing: we assume that the queries are deterministic, so if the query is changed,
         # the whole layer is invalidated.
         print("Resolving repository %s" % str(repository))
-        location = lookup_repo(repository, include_local=True)
+        driver = lookup_repo(repository, include_local=True)
 
-        if location != 'LOCAL':
-            clone(repository, remote_conn_string=serialize_connection_string(*location), local_repository=tmp_repo,
-                  download_all=False)
+        if driver != 'LOCAL':
+            clone(repository, remote_driver=driver, local_repository=tmp_repo, download_all=False)
             source_hash = resolve_image(tmp_repo, tag_or_hash)
             source_mountpoint = tmp_repo
         else:

@@ -7,8 +7,7 @@ from contextlib import contextmanager
 
 import psycopg2
 
-from splitgraph import get_remote_connection_params
-from splitgraph.config import POSTGRES_CONNECTION
+from splitgraph.config import POSTGRES_CONNECTION, CONFIG
 
 _PSYCOPG_CONN = None
 
@@ -48,6 +47,8 @@ def parse_connection_string(conn_string):
     :return: a tuple (server, port, username, password, dbname)
     """
     match = re.match(r'(\S+):(\S+)@(.+):(\d+)/(\S+)', conn_string)
+    if not match:
+        raise ValueError("Connection string doesn't match the format!")
     return match.group(3), int(match.group(4)), match.group(1), match.group(2), match.group(5)
 
 
@@ -72,4 +73,15 @@ def make_driver_connection(remote_name):
     :param remote_name: Name of the remote driver as specified in the config file
     :return: Psycopg connection object
     """
-    return make_driver_connection(*get_remote_connection_params(remote_name))
+    return make_conn(*get_remote_connection_params(remote_name))
+
+
+def get_remote_connection_params(remote_name):
+    """
+    Gets connection parameters for a Splitgraph remote.
+    :param remote_name: Name of the remote. Must be specified in the config file.
+    :return: A tuple of (hostname, port, username, password, database)
+    """
+    pdict = CONFIG['remotes'][remote_name]
+    return (pdict['SG_DRIVER_HOST'], int(pdict['SG_DRIVER_PORT']), pdict['SG_DRIVER_USER'],
+            pdict['SG_DRIVER_PWD'], pdict['SG_DRIVER_DB_NAME'])

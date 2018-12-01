@@ -14,7 +14,7 @@ from splitgraph.exceptions import SplitGraphException
 from splitgraph.pg_utils import pg_table_exists
 from splitgraph.splitfile._parsing import preprocess
 from splitgraph.splitfile.execution import execute_commands
-from test.splitgraph.conftest import REMOTE_CONN_STRING, OUTPUT, PG_MNT, add_multitag_dataset_to_remote_driver, \
+from test.splitgraph.conftest import OUTPUT, PG_MNT, add_multitag_dataset_to_remote_driver, \
     SPLITFILE_ROOT, load_splitfile
 
 PARSING_TEST_SPLITFILE = load_splitfile('import_remote_multiple.splitfile')
@@ -151,8 +151,8 @@ def test_import_updating_splitfile_with_uploading(empty_pg_conn, remote_driver_c
 
     assert len(get_existing_objects()) == 4  # Two original tables + two updates
 
-    # Push with upload. Have to specify the remote connection string since we are pushing a new repository.
-    push(OUTPUT, remote_conn_string=REMOTE_CONN_STRING, handler='S3', handler_options={})
+    # Push with upload. Have to specify the remote driver since we are pushing a new repository.
+    push(OUTPUT, remote_driver='remote_driver', handler='S3', handler_options={})
     # Unmount everything locally and cleanup
     rm(OUTPUT)
     cleanup_objects()
@@ -188,7 +188,7 @@ def test_splitfile_end_to_end_with_uploading(empty_pg_conn, remote_driver_conn):
     execute_commands(load_splitfile('import_remote_multiple.splitfile'), params={'TAG': 'v1'}, output=OUTPUT)
 
     # Push with upload
-    push(OUTPUT, remote_conn_string=REMOTE_CONN_STRING, handler='S3', handler_options={})
+    push(OUTPUT, remote_driver='remote_driver', handler='S3', handler_options={})
     # Unmount everything locally and cleanup
     for mountpoint, _ in get_current_repositories():
         rm(mountpoint)

@@ -1,7 +1,6 @@
 """
 Common internal functions used by Splitgraph commands.
 """
-
 from splitgraph.commands.tagging import set_tag
 
 

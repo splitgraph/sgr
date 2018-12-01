@@ -44,11 +44,13 @@ def unprivileged_remote_conn(remote_driver_conn):
 
 
 def test_rls_pull_public(empty_pg_conn, unprivileged_conn_string):
-    clone(PG_MNT, remote_conn_string=unprivileged_conn_string)
+    clone(PG_MNT, remote_driver=unprivileged_conn_string)
 
 
 def test_rls_push_own_delete_own(empty_pg_conn, unprivileged_conn_string, unprivileged_remote_conn):
-    clone(PG_MNT, remote_conn_string=unprivileged_conn_string)
+    # Have to download the data here since we're using a connection string instead of a driver name
+    # and it doesn't get registered as the upstream.
+    clone(PG_MNT, remote_driver=unprivileged_conn_string, download_all=True)
     checkout(PG_MNT, tag='latest')
 
     with empty_pg_conn.cursor() as cur:
@@ -58,7 +60,7 @@ def test_rls_push_own_delete_own(empty_pg_conn, unprivileged_conn_string, unpriv
     target_repo = Repository(namespace='testuser', repository='pg_mount')
 
     # Test we can push to our namespace
-    push(PG_MNT, remote_conn_string=unprivileged_conn_string, remote_repository=target_repo)
+    push(PG_MNT, remote_driver=unprivileged_conn_string, remote_repository=target_repo)
 
     # Test we can delete our own repo once we've pushed it
     with override_driver_connection(unprivileged_remote_conn):
@@ -67,7 +69,7 @@ def test_rls_push_own_delete_own(empty_pg_conn, unprivileged_conn_string, unpriv
 
 
 def test_rls_push_others(empty_pg_conn, unprivileged_conn_string):
-    clone(PG_MNT, remote_conn_string=unprivileged_conn_string)
+    clone(PG_MNT, remote_driver=unprivileged_conn_string, download_all=True)
     checkout(PG_MNT, tag='latest')
 
     with empty_pg_conn.cursor() as cur:
@@ -75,7 +77,7 @@ def test_rls_push_others(empty_pg_conn, unprivileged_conn_string):
     commit(PG_MNT)
 
     with pytest.raises(ProgrammingError) as e:
-        push(PG_MNT, remote_conn_string=unprivileged_conn_string, remote_repository=PG_MNT)
+        push(PG_MNT, remote_driver=unprivileged_conn_string, remote_repository=PG_MNT)
     assert 'new row violates row-level security policy for table "images"' in str(e.value)
 
 
@@ -89,7 +91,7 @@ def test_rls_delete_others(unprivileged_remote_conn):
 
 
 def test_rls_push_own_with_uploading(empty_pg_conn, unprivileged_conn_string):
-    clone(PG_MNT, remote_conn_string=unprivileged_conn_string)
+    clone(PG_MNT, remote_driver=unprivileged_conn_string, download_all=True)
     checkout(PG_MNT, tag='latest')
 
     with empty_pg_conn.cursor() as cur:
@@ -99,7 +101,7 @@ def test_rls_push_own_with_uploading(empty_pg_conn, unprivileged_conn_string):
     target_repo = Repository(namespace='testuser', repository='pg_mount')
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        push(PG_MNT, remote_conn_string=unprivileged_conn_string, remote_repository=target_repo, handler='FILE',
+        push(PG_MNT, remote_driver=unprivileged_conn_string, remote_repository=target_repo, handler='FILE',
              handler_options={'path': tmpdir})
 
 
@@ -117,13 +119,13 @@ def test_rls_impersonate_external_object(unprivileged_remote_conn):
 
 
 def test_rls_publish_unpublish_own(empty_pg_conn, unprivileged_conn_string, unprivileged_remote_conn):
-    clone(PG_MNT, remote_conn_string=unprivileged_conn_string)
+    clone(PG_MNT, remote_driver=unprivileged_conn_string, download_all=True)
     set_tag(PG_MNT, get_tagged_id(PG_MNT, 'latest'), 'my_tag')
     target_repo = Repository(namespace='testuser', repository='pg_mount')
-    push(PG_MNT, remote_conn_string=unprivileged_conn_string, remote_repository=target_repo)
+    push(PG_MNT, remote_driver=unprivileged_conn_string, remote_repository=target_repo)
 
-    publish(PG_MNT, 'my_tag', remote_conn_string=unprivileged_conn_string, remote_repository=target_repo,
-            readme="my_readme", include_provenance=True, include_table_previews=True)
+    publish(PG_MNT, 'my_tag', remote_driver=unprivileged_conn_string, remote_repository=target_repo, readme="my_readme",
+            include_provenance=True, include_table_previews=True)
 
     with override_driver_connection(unprivileged_remote_conn):
         assert get_published_info(target_repo, 'my_tag') is not None
@@ -139,16 +141,15 @@ def test_rls_publish_unpublish_others(empty_pg_conn, remote_driver_conn, unprivi
             cur.execute("SET ROLE TO clientuser;")
         set_tag(PG_MNT, get_tagged_id(PG_MNT, 'latest'), 'my_tag')
         remote_driver_conn.commit()
-    clone(PG_MNT, remote_conn_string=unprivileged_conn_string)
+    clone(PG_MNT, remote_driver=unprivileged_conn_string, download_all=True)
 
     # Publish into the "test" namespace as someone who doesn't have access to it.
     with pytest.raises(ProgrammingError) as e:
-        publish(PG_MNT, 'my_tag', remote_conn_string=unprivileged_conn_string, readme="my_readme")
+        publish(PG_MNT, 'my_tag', remote_driver=unprivileged_conn_string, readme="my_readme")
     assert 'new row violates row-level security policy for table "images"' in str(e.value)
 
     # Publish as the admin user
-    publish(PG_MNT, 'my_tag',
-            remote_conn_string=serialize_connection_string(*get_remote_connection_params('remote_driver')),
+    publish(PG_MNT, 'my_tag', remote_driver=serialize_connection_string(*get_remote_connection_params('remote_driver')),
             readme="my_readme")
 
     # Try to delete as the remote user -- should fail (no error raised since the RLS just doesn't make

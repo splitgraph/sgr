@@ -18,8 +18,8 @@ from .info import get_canonical_image_id, get_tables_at
 from .misc import delete_objects
 from .tagging import get_tagged_id
 from .._data.images import get_image_object_path
-from .._data.objects import get_external_object_locations, get_object_for_table
-from ..connection import get_connection
+from .._data.objects import get_external_object_locations, get_object_for_table, get_existing_objects
+from ..connection import get_connection, get_remote_connection_params
 from ..exceptions import SplitGraphException
 from ..pg_utils import copy_table, get_all_tables, pg_table_exists
 
@@ -48,11 +48,16 @@ def materialize_table(repository, image_hash, table, destination, destination_sc
         # Make sure all the objects have been downloaded from remote if it exists
         remote_info = get_upstream(repository)
         if remote_info:
-            remote_conn, _ = remote_info
             object_locations = get_external_object_locations(to_apply + [object_id])
-            fetched_objects = download_objects(remote_conn, objects_to_fetch=to_apply + [object_id],
+            fetched_objects = download_objects(get_remote_connection_params(remote_info[0]),
+                                               objects_to_fetch=to_apply + [object_id],
                                                object_locations=object_locations)
 
+        difference = set(to_apply + [object_id]).difference(set(get_existing_objects()))
+        if difference:
+            logging.warning("Not all objects required to materialize %s:%s:%s exist locally.",
+                            repository.to_schema(), image_hash, table)
+            logging.warning("Missing objects: %r", difference)
         # Copy the given snap id over to "staging" and apply the DIFFS
         copy_table(conn, SPLITGRAPH_META_SCHEMA, object_id, destination_schema, destination,
                    with_pk_constraints=True)

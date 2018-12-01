@@ -236,7 +236,7 @@ def test_pull_push(empty_pg_conn, remote_driver_conn):
     with override_driver_connection(remote_driver_conn):
         remote_driver_head = commit(PG_MNT)
 
-    result = runner.invoke(pull_c, [str(PG_MNT), 'origin'])
+    result = runner.invoke(pull_c, [str(PG_MNT)])
     assert result.exit_code == 0
     checkout(PG_MNT, remote_driver_head)
 
@@ -246,7 +246,7 @@ def test_pull_push(empty_pg_conn, remote_driver_conn):
 
     with override_driver_connection(remote_driver_conn):
         assert not table_exists_at(PG_MNT, 'fruits', local_head)
-    result = runner.invoke(push_c, [str(PG_MNT), 'origin', '-h', 'DB'])
+    result = runner.invoke(push_c, [str(PG_MNT), '-h', 'DB'])
     assert result.exit_code == 0
     assert table_exists_at(PG_MNT, 'fruits', local_head)
 
