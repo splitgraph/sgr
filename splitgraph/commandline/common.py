@@ -36,4 +36,5 @@ def truncate_line(line, length=80):
 
 
 def pluralise(word, number):
+    """1 banana, 2 bananas"""
     return '%d %s%s' % (number, word, '' if number == 1 else 's')

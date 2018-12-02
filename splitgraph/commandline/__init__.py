@@ -27,23 +27,32 @@ def cli():
     """Toplevel click command group to allow us to invoke e.g. "sgr checkout" / "sgr commit" etc."""
 
 
-cli.add_command(status_c)
+# Image management/creation
+cli.add_command(checkout_c)
+cli.add_command(commit_c)
+cli.add_command(tag_c)
+cli.add_command(import_c)
+
+# Information
 cli.add_command(log_c)
+cli.add_command(diff_c)
+cli.add_command(show_c)
+cli.add_command(sql_c)
+cli.add_command(status_c)
+
+# Miscellaneous
 cli.add_command(mount_c)
 cli.add_command(rm_c)
-cli.add_command(checkout_c)
-cli.add_command(diff_c)
-cli.add_command(commit_c)
-cli.add_command(show_c)
-cli.add_command(build_c)
-cli.add_command(sql_c)
 cli.add_command(init_c)
+cli.add_command(cleanup_c)
+
+# Push/pull/sharing
 cli.add_command(clone_c)
 cli.add_command(pull_c)
 cli.add_command(push_c)
-cli.add_command(tag_c)
-cli.add_command(import_c)
-cli.add_command(cleanup_c)
+cli.add_command(publish_c)
+
+# Splitfile execution
+cli.add_command(build_c)
 cli.add_command(provenance_c)
 cli.add_command(rebuild_c)
-cli.add_command(publish_c)
