@@ -225,7 +225,7 @@ def test_import(sg_pg_mg_conn):
         cur.execute("DELETE FROM test_mg_mount.stuff")
     new_mg_head = commit(MG_MNT)
 
-    result = runner.invoke(import_c, [str(MG_MNT), 'stuff', str(PG_MNT), 'stuff_empty', new_mg_head])
+    result = runner.invoke(import_c, [str(MG_MNT) + ':' + new_mg_head, 'stuff', str(PG_MNT), 'stuff_empty'])
     assert result.exit_code == 0
     new_new_new_head = get_current_head(PG_MNT)
     assert table_exists_at(PG_MNT, 'stuff_empty', new_new_new_head)
@@ -341,12 +341,12 @@ def test_mount_and_import(empty_pg_conn):
                 }}})])
         assert result.exit_code == 0
 
-        result = runner.invoke(import_c, ['tmp', 'stuff', str(MG_MNT), '-f'])
+        result = runner.invoke(import_c, ['tmp', 'stuff', str(MG_MNT)])
         assert result.exit_code == 0
         assert table_exists_at(MG_MNT, 'stuff', get_current_head(MG_MNT))
 
         result = runner.invoke(import_c, ['tmp', 'SELECT * FROM stuff WHERE duration > 10', str(MG_MNT),
-                                          'stuff_query', '-f', '-q'])
+                                          'stuff_query'])
         assert result.exit_code == 0
         assert table_exists_at(MG_MNT, 'stuff_query', get_current_head(MG_MNT))
     finally:
