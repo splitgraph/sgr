@@ -5,7 +5,7 @@ import click
 from psycopg2 import ProgrammingError
 
 import splitgraph as sg
-from splitgraph.commandline.common import parse_image_spec, pluralise
+from splitgraph.commandline.common import image_spec, pluralise
 
 
 @click.command(name='log')
@@ -112,14 +112,14 @@ def _get_actual_hashes(repository, image_1, image_2):
 
 
 @click.command(name='show')
-@click.argument('image_spec', type=parse_image_spec)
+@click.argument('image_spec', type=image_spec(default='HEAD'))
 @click.option('-v', '--verbose', default=False, is_flag=True,
               help='Also show all tables in this image and the objects they map to.')
 def show_c(image_spec, verbose):
     """
     Show information about a Splitgraph image, including its parent, comment and creation time.
 
-    Image spec must be of the format [NAMESPACE/]REPOSITORY[:HASH_OR_TAG].
+    Image spec must be of the format [NAMESPACE/]REPOSITORY[:HASH_OR_TAG]. If no tag is specified, 'HEAD' is used.
     """
     repository, image = image_spec
     image = sg.resolve_image(repository, image)

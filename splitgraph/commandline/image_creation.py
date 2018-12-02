@@ -4,15 +4,16 @@ from collections import defaultdict
 import click
 
 import splitgraph as sg
-from splitgraph.commandline.common import parse_image_spec
+from splitgraph.commandline.common import image_spec
 from splitgraph.pg_utils import get_all_foreign_tables
+
 
 # TODO extra commands here: pruning (delete images that aren't pointed to by a tag) at the very least
 # Also might be useful: squashing an image (turning all of its objects into SNAPs, creating a new image)
 
 
 @click.command(name='checkout')
-@click.argument('image_spec', type=parse_image_spec)
+@click.argument('image_spec', type=image_spec(default='HEAD'))
 @click.option('-f', '--force', help="Discard all pending changes to the schema", is_flag=True, default=False)
 def checkout_c(image_spec, force):
     """
@@ -21,7 +22,7 @@ def checkout_c(image_spec, force):
 
     Image spec must be of the format [NAMESPACE/]REPOSITORY[:HASH_OR_TAG]. Note that currently, the schema that the
     image is checked out into has to have the same name as the repository. If no image hash or tag is passed,
-    "latest" is assumed.
+    "HEAD" is assumed.
 
     If --force isn't passed and the schema has pending changes, this will fail.
     """
@@ -46,11 +47,34 @@ def commit_c(repository, include_snap, message):
 
 
 @click.command(name='tag')
-@click.argument('repository', type=sg.to_repository)
-@click.option('-i', '--image')
+@click.argument('image_spec', type=image_spec(default=None))
 @click.argument('tag', required=False)
-@click.option('-f', '--force', required=False, is_flag=True)
-def tag_c(repository, image, tag, force):  # pylint disable=missing-docstring
+@click.option('-f', '--force', required=False, is_flag=True, help="Overwrite the tag if it already exists.")
+def tag_c(image_spec, tag, force):
+    """
+    Tags a Splitgraph image or lists all tags in a repository.
+
+    Examples:
+
+        sgr tag noaa/climate
+
+    Lists all tagged images in the noaa/climate repository and their tags
+
+        sgr tag noaa/climate:abcdef1234567890
+
+    Lists all tags assigned to the image noaa/climate:abcdef1234567890...
+
+        sgr tag noaa/climate:abcdef1234567890 my_new_tag
+
+    Tags the image noaa/climate:abcdef1234567890... with "my_new_tag". If the tag already exists, this will raise
+    an error, unless -f is passed, which will overwrite the tag.
+
+        sgr tag noaa/climate my_new_tag
+
+    Tags the current HEAD of noaa/climate with "my_new_tag".
+    """
+    repository, image = image_spec
+
     if tag is None:
         # List all tags
         tag_dict = defaultdict(list)
@@ -77,7 +101,7 @@ def tag_c(repository, image, tag, force):  # pylint disable=missing-docstring
 
 
 @click.command(name='import')
-@click.argument('image_spec', type=parse_image_spec)
+@click.argument('image_spec', type=image_spec())
 @click.argument('table_or_query')
 @click.argument('target_repository', type=sg.to_repository)
 @click.argument('target_table', required=False)
@@ -91,7 +115,8 @@ def import_c(image_spec, table_or_query, target_repository, target_table):
         sgr import noaa/climate:my_tag climate_data my/repository
 
     Creates a new image in my/repository with the climate_data table included. Note this links the new image to the
-    physical object, meaning that the history of the climate_data table is preserved.
+    physical object, meaning that the history of the climate_data table is preserved. If no tag is specified, the
+    'latest' (not the HEAD image or current state of the checked out image) image is used.
 
         sgr import noaa/climate:my_tag "SELECT * FROM climate_data" my/repository climate_data
 
@@ -111,10 +136,7 @@ def import_c(image_spec, table_or_query, target_repository, target_table):
 
     if sg.repository_exists(repository):
         foreign_table = False
-        if not image:
-            image = sg.get_current_head(repository)
-        else:
-            image = sg.resolve_image(repository, image)
+        image = sg.resolve_image(repository, image)
         # If the source table doesn't exist in the image, we'll treat it as a query instead.
         is_query = not bool(sg.get_table(repository, table_or_query, image))
     else:
