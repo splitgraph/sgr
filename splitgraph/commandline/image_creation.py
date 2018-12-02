@@ -9,17 +9,21 @@ from splitgraph.commandline.common import parse_image_spec
 
 @click.command(name='checkout')
 @click.argument('image_spec', type=parse_image_spec)
-def checkout_c(image_spec):
+@click.option('-f', '--force', help="Discard all pending changes to the schema", is_flag=True, default=False)
+def checkout_c(image_spec, force):
     """
     Checks out a Splitgraph image into a Postgres schema, discarding all pending changes, downloading the required
     objects and materializing all tables.
 
     Image spec must be of the format [NAMESPACE/]REPOSITORY[:HASH_OR_TAG]. Note that currently, the schema that the
-    image is checked out into has to have the same name as the repository.
+    image is checked out into has to have the same name as the repository. If no image hash or tag is passed,
+    "latest" is assumed.
+
+    If --force isn't passed and the schema has pending changes, this will fail.
     """
     repository, image = image_spec
     image = sg.resolve_image(repository, image)
-    sg.checkout(repository, image)
+    sg.checkout(repository, image, force=force)
     print("Checked out %s:%s." % (str(repository), image[:12]))
 
 

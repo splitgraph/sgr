@@ -67,7 +67,7 @@ def discard_pending_changes(schema):
     conn.commit()
 
 
-def has_pending_changes(repository):
+def has_pending_audit_changes(repository):
     """
     Checks if a checked-out Splitgraph repository has any changes to its tracked tables. Doesn't detect
     table creations, deletions or schema changes.

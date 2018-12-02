@@ -5,7 +5,7 @@ import pytest
 
 from splitgraph import init
 from splitgraph.commands import diff, commit, checkout
-from splitgraph.commands._pg_audit import has_pending_changes
+from splitgraph.commands.diff import has_pending_changes
 from splitgraph.commands.info import get_image, get_table
 from splitgraph.commands.tagging import get_current_head
 from test.splitgraph.conftest import PG_MNT, MG_MNT, OUTPUT
@@ -89,8 +89,8 @@ def test_multiple_mountpoint_commit_diff(include_snap, sg_pg_mg_conn):
     assert has_pending_changes(MG_MNT) is True
     assert has_pending_changes(PG_MNT) is False
 
-    # Discard the commit to the mongodb
-    checkout(MG_MNT, mongo_head)
+    # Discard the write to the mongodb
+    checkout(MG_MNT, mongo_head, force=True)
     assert has_pending_changes(MG_MNT) is False
     assert has_pending_changes(PG_MNT) is False
     with sg_pg_mg_conn.cursor() as cur:

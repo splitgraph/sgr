@@ -13,7 +13,8 @@ from ._common import set_head
 from ._objects.applying import apply_record_to_staging
 from ._objects.loading import download_objects
 from ._objects.utils import get_random_object_id
-from ._pg_audit import has_pending_changes, manage_audit, discard_pending_changes
+from ._pg_audit import manage_audit, discard_pending_changes
+from .diff import has_pending_changes
 from .info import get_canonical_image_id, get_tables_at
 from .misc import delete_objects
 from .tagging import get_tagged_id
@@ -69,24 +70,29 @@ def materialize_table(repository, image_hash, table, destination, destination_sc
 
 
 @manage_audit
-def checkout(repository, image_hash=None, tag=None, tables=None, keep_downloaded_objects=True):
+def checkout(repository, image_hash=None, tag=None, tables=None, keep_downloaded_objects=True, force=False):
     """
-    Discards all pending changes in the current repository and checks out an image, changing the current HEAD pointer.
+    Checks out an image belonging to a given repository, changing the current HEAD pointer. Raises an error
+    if there are pending changes to the
 
     :param repository: Repository to check out.
     :param image_hash: Hash of the image to check out.
     :param tag: Tag of the image to check out. One of `image_hash` or `tag` must be specified.
     :param tables: List of tables to materialize in the mountpoint.
     :param keep_downloaded_objects: If False, deletes externally downloaded objects after they've been used.
+    :param force: Discards all pending changes to the schema.
     """
     target_schema = repository.to_schema()
     conn = get_connection()
     if tables is None:
         tables = []
     if has_pending_changes(repository):
-        logging.warning("%s has pending changes, discarding...", repository)
+        if not force:
+            raise SplitGraphException("{0} has pending changes! Pass force=True or do sgr checkout -f {0}:HEAD"
+                                      .format(repository.to_schema()))
+        logging.warning("%s has pending changes, discarding...", repository.to_schema())
     discard_pending_changes(target_schema)
-    # Detect the actual schema snap we want to check out
+    # Detect the actual image
     if image_hash:
         # get_canonical_image_hash called twice if the commandline entry point already called it. How to fix?
         image_hash = get_canonical_image_id(repository, image_hash)

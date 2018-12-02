@@ -8,12 +8,12 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph._data.objects import get_object_for_table
 from splitgraph.commands._pg_audit import dump_pending_changes
-from splitgraph.commands.checkout import materialized_table
 from splitgraph.commands.info import get_table
 from splitgraph.commands.misc import table_exists_at, find_path
 from splitgraph.commands.tagging import get_current_head
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import get_connection
+from splitgraph.pg_utils import get_all_tables
 
 
 def _changes_to_aggregation(query_result, initial=None):
@@ -112,6 +112,8 @@ def _calculate_merged_diff(repository, table_name, path, aggregate):
 
 
 def _side_by_side_diff(repository, table_name, image_1, image_2, aggregate):
+    # Circular import here otherwise
+    from splitgraph.commands.checkout import materialized_table
     with get_connection().cursor() as cur:
         with materialized_table(repository, table_name, image_1) as (mp_1, table_1):
             with materialized_table(repository, table_name, image_2) as (mp_2, table_2):
@@ -127,3 +129,18 @@ def _side_by_side_diff(repository, table_name, image_1, image_2, aggregate):
         if aggregate:
             return sum(1 for r in right if r not in left), sum(1 for r in left if r not in right), 0
         return [(1, r) for r in left if r not in right] + [(0, r) for r in right if r not in left]
+
+
+def has_pending_changes(repository):
+    """
+    Detects if the repository has any pending changes (schema changes, table additions/deletions, content changes).
+    :param repository: Repository object
+    """
+    head = get_current_head(repository, raise_on_none=False)
+    if not head:
+        # If the repo isn't checked out, no point checking for changes.
+        return False
+    for table in get_all_tables(get_connection(), repository.to_schema()):
+        if diff(repository, table, head, None, aggregate=True) != (0, 0, 0):
+            return True
+    return False

@@ -10,6 +10,7 @@ from splitgraph.commandline import status_c, sql_c, diff_c, commit_c, log_c, sho
     cleanup_c, init_c, mount_c, import_c, clone_c, pull_c, push_c, build_c, provenance_c, rebuild_c, publish_c
 from splitgraph.commandline.common import parse_image_spec
 from splitgraph.commands import commit, checkout
+from splitgraph.commands.diff import has_pending_changes
 from splitgraph.commands.info import get_image, get_table
 from splitgraph.commands.misc import table_exists_at
 from splitgraph.commands.provenance import provenance
@@ -152,6 +153,16 @@ def test_commandline_tag_checkout(sg_pg_mg_conn):
     # Checkout by hash
     runner.invoke(checkout_c, [str(PG_MNT) + ':' + new_head[:20]])
     assert get_current_head(PG_MNT) == new_head
+
+    # Checkout with uncommitted changes
+    runner.invoke(sql_c, ["INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mayonnaise')"])
+    result = runner.invoke(checkout_c, [str(PG_MNT) + ':v1'])
+    assert result.exit_code != 0
+    assert "test/pg_mount has pending changes!" in str(result.exc_info)
+
+    result = runner.invoke(checkout_c, [str(PG_MNT) + ':v1', '-f'])
+    assert result.exit_code == 0
+    assert not has_pending_changes(PG_MNT)
 
 
 def test_misc_mountpoint_management(sg_pg_mg_conn):

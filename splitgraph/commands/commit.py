@@ -103,6 +103,6 @@ def _commit(repository, current_head, image_hash, include_snap=False):
             record_table_as_snap(repository, image_hash, table, table_info)
 
     # Make sure that all pending changes have been discarded by this point (e.g. if we created just a snapshot for
-    # some tables and didn't consume the WAL).
+    # some tables and didn't consume the audit log).
     # NB if we allow partial commits, this will have to be changed (only discard for committed tables).
     discard_pending_changes(target_schema)
