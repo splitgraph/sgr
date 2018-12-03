@@ -12,6 +12,7 @@ from splitgraph.commands.info import get_table
 from splitgraph.commands.publish import publish
 from splitgraph.commands.repository import unregister_repository
 from splitgraph.commands.tagging import get_tagged_id, set_tag
+from splitgraph.config import PG_USER
 from splitgraph.connection import override_driver_connection, serialize_connection_string
 from test.splitgraph.conftest import PG_MNT, add_multitag_dataset_to_remote_driver
 
@@ -40,7 +41,7 @@ def unprivileged_remote_conn(remote_driver_conn):
         # Reset the role back to admin so that the teardown doesn't break + rollback any failed txns
         remote_driver_conn.rollback()
         with remote_driver_conn.cursor() as cur:
-            cur.execute("SET ROLE TO clientuser;")
+            cur.execute("SET ROLE TO %s;" % PG_USER)
 
 
 def test_rls_pull_public(empty_pg_conn, unprivileged_conn_string):
@@ -138,7 +139,7 @@ def test_rls_publish_unpublish_others(empty_pg_conn, remote_driver_conn, unprivi
     with override_driver_connection(remote_driver_conn):
         with remote_driver_conn.cursor() as cur:
             # Make sure we're running this with the elevated privileges
-            cur.execute("SET ROLE TO clientuser;")
+            cur.execute("SET ROLE TO %s;" % PG_USER)
         set_tag(PG_MNT, get_tagged_id(PG_MNT, 'latest'), 'my_tag')
         remote_driver_conn.commit()
     clone(PG_MNT, remote_driver=unprivileged_conn_string, download_all=True)

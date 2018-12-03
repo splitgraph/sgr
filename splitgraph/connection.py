@@ -7,7 +7,7 @@ from contextlib import contextmanager
 
 import psycopg2
 
-from splitgraph.config import POSTGRES_CONNECTION, CONFIG
+from splitgraph.config import CONFIG, PG_DB, PG_USER, PG_PWD, PG_HOST, PG_PORT
 
 _PSYCOPG_CONN = None
 
@@ -38,7 +38,11 @@ def get_connection():
     """
     global _PSYCOPG_CONN
     if not _PSYCOPG_CONN:
-        _PSYCOPG_CONN = psycopg2.connect(POSTGRES_CONNECTION)
+        _PSYCOPG_CONN = psycopg2.connect(dbname=PG_DB,
+                                         user=PG_USER,
+                                         password=PG_PWD,
+                                         host=PG_HOST,
+                                         port=PG_PORT)
     return _PSYCOPG_CONN
 
 

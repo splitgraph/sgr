@@ -508,9 +508,9 @@ def test_config_file_accumulation(fs):
     assert config['remotes']['foo']['SG_DRIVER_HOST'] == 'foo-pass'
 
 
-# Hardcoded default key to check that it's passed hrough
+# Hardcoded default key to check that it's passed through
 def test_default_key(fs):
-    assert CONFIG['SG_DRIVER_DB_NAME'] == 'cachedb'
+    assert CONFIG['SG_DRIVER_DB_NAME'] == 'splitgraph'
 
 
 def test_key_set_in_arg_flag():

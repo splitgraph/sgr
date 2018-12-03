@@ -1,11 +1,10 @@
 DEFAULTS = {
     "SG_NAMESPACE": "sg-default-ns",
-    "SG_DRIVER_CONNECTION_STRING": None,
-    "SG_DRIVER_HOST": None,
+    "SG_DRIVER_HOST": "localhost",
     "SG_DRIVER_PORT": 5432,
-    "SG_DRIVER_DB_NAME": "sg-default-ns",
-    "SG_DRIVER_USER": None,
-    "SG_DRIVER_PWD": None,
+    "SG_DRIVER_DB_NAME": "splitgraph",
+    "SG_DRIVER_USER": "sgr",
+    "SG_DRIVER_PWD": "supersecure",
     "SG_DRIVER_ADMIN_USER": None,
     "SG_DRIVER_ADMIN_PWD": None,
     "SG_DRIVER_POSTGRES_DB_NAME": "postgres",
@@ -29,7 +28,6 @@ KEYS = list(DEFAULTS.keys())
 """
 ARGUMENT_KEY_MAP = {
     "--namespace": "SG_NAMESPACE",
-    "--driver-connection-string": "SG_DRIVER_CONNECTION_STRING",
     "--driver-host": "SG_DRIVER_HOST",
     "--driver-port": "SG_DRIVER_PORT",
     "--driver-db-name": "SG_DRIVER_DB_NAME",

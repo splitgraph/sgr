@@ -9,7 +9,8 @@ import click
 import splitgraph as sg
 from splitgraph.commandline.image_creation import checkout_c, commit_c, tag_c, import_c
 from splitgraph.commandline.image_info import log_c, diff_c, show_c, sql_c, status_c
-from splitgraph.commandline.misc import mount_c, rm_c, init_c, cleanup_c
+from splitgraph.commandline.misc import rm_c, init_c, cleanup_c
+from splitgraph.commandline.mount import mount_c
 from splitgraph.commandline.push_pull import pull_c, clone_c, push_c, publish_c
 from splitgraph.commandline.splitfile import build_c, provenance_c, rebuild_c
 
@@ -36,7 +37,7 @@ def cli():
 # TODO add upstream management commands
 # TODO extra commands here: pruning (delete images that aren't pointed to by a tag) at the very least
 # TODO squashing an image (turning all of its objects into SNAPs, creating a new image)
-# TODO .sgconfig generation (so that we can run sgr out of the box) -- maybe with some extra help text in the comments
+# TODO .sgconfig generation maybe with some extra help text in the comments
 # TODO commands to init in an existing postgres
 # TODO maybe turn mounting into a dynamic Click group so that we can do e.g. sgr mount postgres {schema}
 

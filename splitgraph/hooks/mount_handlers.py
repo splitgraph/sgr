@@ -7,6 +7,7 @@ import logging
 
 from psycopg2.sql import Identifier, SQL
 
+from splitgraph.config import PG_USER
 from splitgraph.connection import get_connection
 from splitgraph.exceptions import SplitGraphException
 
@@ -22,6 +23,11 @@ def get_mount_handler(mount_handler):
         raise SplitGraphException("Mount handler %s not supported!" % mount_handler)
 
 
+def get_mount_handlers():
+    """Returns the names of all registered mount handlers."""
+    return list(_MOUNT_HANDLERS.keys())
+
+
 def register_mount_handler(name, mount_function):
     """Returns a mount function under a given name. See `get_mount_handler` for the mount handler spec."""
     global _MOUNT_HANDLERS
@@ -32,6 +38,8 @@ def register_mount_handler(name, mount_function):
 
 def mount_postgres(mountpoint, server, port, username, password, dbname, remote_schema, tables=[]):
     """
+    Mount a Postgres database.
+
     Mounts a schema on a remote Postgres database as a set of foreign tables locally.
 
     :param mountpoint: Schema to mount the remote into.
@@ -50,9 +58,10 @@ def mount_postgres(mountpoint, server, port, username, password, dbname, remote_
         cur.execute(SQL("""CREATE SERVER {}
                         FOREIGN DATA WRAPPER postgres_fdw
                         OPTIONS (host %s, port %s, dbname %s)""").format(server_id), (server, str(port), dbname))
-        cur.execute(SQL("""CREATE USER MAPPING FOR clientuser
+        cur.execute(SQL("""CREATE USER MAPPING FOR {}
                         SERVER {}
-                        OPTIONS (user %s, password %s)""").format(server_id), (username, password))
+                        OPTIONS (user %s, password %s)""")
+                    .format(Identifier(PG_USER), server_id), (username, password))
 
         cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(mountpoint)))
 
@@ -66,6 +75,8 @@ def mount_postgres(mountpoint, server, port, username, password, dbname, remote_
 
 def mount_mongo(mountpoint, server, port, username, password, **table_spec):
     """
+    Mount a Mongo database.
+
     Mounts one or more collections on a remote Mongo database as a set of foreign tables locally.
 
     :param mountpoint: Schema to mount the remote into.
@@ -82,9 +93,10 @@ def mount_mongo(mountpoint, server, port, username, password, **table_spec):
         cur.execute(SQL("""CREATE SERVER {}
                         FOREIGN DATA WRAPPER mongo_fdw
                         OPTIONS (address %s, port %s)""").format(server_id), (server, str(port)))
-        cur.execute(SQL("""CREATE USER MAPPING FOR clientuser
+        cur.execute(SQL("""CREATE USER MAPPING FOR {}
                         SERVER {}
-                        OPTIONS (username %s, password %s)""").format(server_id), (username, password))
+                        OPTIONS (username %s, password %s)""")
+                    .format(Identifier(PG_USER), server_id), (username, password))
 
         cur.execute(SQL("""CREATE SCHEMA {}""").format(Identifier(mountpoint)))
 
@@ -105,6 +117,8 @@ def mount_mongo(mountpoint, server, port, username, password, **table_spec):
 
 def mount_mysql(mountpoint, server, port, username, password, remote_schema, tables=[]):
     """
+    Mount a MySQL database.
+
     Mounts a schema on a remote MySQL database as a set of foreign tables locally.
 
     :param mountpoint: Schema to mount the remote into.
@@ -123,9 +137,10 @@ def mount_mysql(mountpoint, server, port, username, password, remote_schema, tab
         cur.execute(SQL("""CREATE SERVER {}
                         FOREIGN DATA WRAPPER mysql_fdw
                         OPTIONS (host %s, port %s)""").format(server_id), (server, str(port)))
-        cur.execute(SQL("""CREATE USER MAPPING FOR clientuser
+        cur.execute(SQL("""CREATE USER MAPPING FOR {}
                         SERVER {}
-                        OPTIONS (username %s, password %s)""").format(server_id), (username, password))
+                        OPTIONS (username %s, password %s)""")
+                    .format(Identifier(PG_USER), server_id), (username, password))
 
         cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(mountpoint)))
 
