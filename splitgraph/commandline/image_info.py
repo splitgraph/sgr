@@ -5,7 +5,7 @@ import click
 from psycopg2 import ProgrammingError
 
 import splitgraph as sg
-from splitgraph.commandline.common import image_spec, pluralise
+from splitgraph.commandline.common import image_spec_parser, pluralise
 
 
 @click.command(name='log')
@@ -13,10 +13,12 @@ from splitgraph.commandline.common import image_spec, pluralise
 @click.option('-t', '--tree', is_flag=True)
 def log_c(repository, tree):
     """
-    Show the full log of the current branch, starting from the current HEAD and following the
-    parent chain up. There must be an image checked out into a schema for this to work.
+    Show the history of a Splitgraph repository.
 
-    If -t or --tree is passed, instead render the full image tree. The repository doesn't need to have been
+    By default, this shows the history of the current branch, starting from the HEAD pointer and following its
+    parent chain.
+
+    If -t or --tree is passed, this instead renders the full image tree. The repository doesn't need to have been
     checked out in this case.
     """
     if tree:
@@ -39,15 +41,22 @@ def log_c(repository, tree):
 @click.argument('tag_or_hash_2', required=False)
 def diff_c(verbose, table_name, repository, tag_or_hash_1, tag_or_hash_2):
     """
-    Calculate the differences between two Splitgraph images in the same repository.
+    Show differences between two Splitgraph images.
 
-    The actual targets of this command depend on the number of arguments passed:
+    The two images must be in the same repository. The actual targets of this command depend
+    on the number of arguments passed:
 
-    `sgr diff REPOSITORY`: returns the differences between the current HEAD image and the checked out schema.
+        sgr diff REPOSITORY
 
-    `sgr diff REPOSITORY TAG_OR_HASH`: returns the differences between the image and its parent.
+    Return the differences between the current HEAD image and the checked out schema.
 
-    `sgr diff REPOSITORY TAG_OR_HASH_1 TAG_OR_HASH_2`: returns the differences from the first image to the second image.
+        sgr diff REPOSITORY TAG_OR_HASH
+
+    Return the differences between the image and its parent.
+
+        sgr diff REPOSITORY TAG_OR_HASH_1 TAG_OR_HASH_2
+
+    Return the differences from the first (earlier) image to the second image.
     """
     tag_or_hash_1, tag_or_hash_2 = _get_actual_hashes(repository, tag_or_hash_1, tag_or_hash_2)
 
@@ -112,12 +121,12 @@ def _get_actual_hashes(repository, image_1, image_2):
 
 
 @click.command(name='show')
-@click.argument('image_spec', type=image_spec(default='HEAD'))
+@click.argument('image_spec', type=image_spec_parser(default='HEAD'))
 @click.option('-v', '--verbose', default=False, is_flag=True,
               help='Also show all tables in this image and the objects they map to.')
 def show_c(image_spec, verbose):
     """
-    Show information about a Splitgraph image, including its parent, comment and creation time.
+    Show information about a Splitgraph image. This includes its parent, comment and creation time.
 
     Image spec must be of the format [NAMESPACE/]REPOSITORY[:HASH_OR_TAG]. If no tag is specified, 'HEAD' is used.
     """
@@ -150,7 +159,7 @@ def show_c(image_spec, verbose):
 @click.option('-a', '--show-all', is_flag=True, help='Returns all results of the query.')
 def sql_c(sql, show_all):
     """
-    Run an arbitrary SQL statement against the current Splitgraph driver.
+    Run an SQL statement against the Splitgraph driver.
 
     There are no restrictions on the contents of the statement: this is the same as running it
     from any other PostgreSQL client.

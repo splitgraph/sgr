@@ -8,7 +8,7 @@ from splitgraph._data.images import get_all_image_info
 from splitgraph._data.registry import get_published_info
 from splitgraph.commandline import status_c, sql_c, diff_c, commit_c, log_c, show_c, tag_c, checkout_c, rm_c, \
     cleanup_c, init_c, mount_c, import_c, clone_c, pull_c, push_c, build_c, provenance_c, rebuild_c, publish_c
-from splitgraph.commandline.common import image_spec
+from splitgraph.commandline.common import image_spec_parser
 from splitgraph.commands import commit, checkout
 from splitgraph.commands.diff import has_pending_changes
 from splitgraph.commands.info import get_image, get_table
@@ -20,12 +20,12 @@ from test.splitgraph.conftest import PG_MNT, MG_MNT, OUTPUT, add_multitag_datase
 
 
 def test_image_spec_parsing():
-    assert image_spec()('test/pg_mount') == (Repository('test', 'pg_mount'), 'latest')
-    assert image_spec(default='HEAD')('test/pg_mount') == (Repository('test', 'pg_mount'), 'HEAD')
-    assert image_spec()('test/pg_mount:some_tag') == (Repository('test', 'pg_mount'), 'some_tag')
-    assert image_spec()('pg_mount') == (Repository('', 'pg_mount'), 'latest')
-    assert image_spec()('pg_mount:some_tag') == (Repository('', 'pg_mount'), 'some_tag')
-    assert image_spec(default='HEAD')('pg_mount:some_tag') == (Repository('', 'pg_mount'), 'some_tag')
+    assert image_spec_parser()('test/pg_mount') == (Repository('test', 'pg_mount'), 'latest')
+    assert image_spec_parser(default='HEAD')('test/pg_mount') == (Repository('test', 'pg_mount'), 'HEAD')
+    assert image_spec_parser()('test/pg_mount:some_tag') == (Repository('test', 'pg_mount'), 'some_tag')
+    assert image_spec_parser()('pg_mount') == (Repository('', 'pg_mount'), 'latest')
+    assert image_spec_parser()('pg_mount:some_tag') == (Repository('', 'pg_mount'), 'some_tag')
+    assert image_spec_parser(default='HEAD')('pg_mount:some_tag') == (Repository('', 'pg_mount'), 'some_tag')
 
 
 def test_commandline_basics(sg_pg_mg_conn):

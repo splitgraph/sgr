@@ -5,7 +5,7 @@ Various common functions used by the command line interface.
 from splitgraph import to_repository
 
 
-def image_spec(default='latest'):
+def image_spec_parser(default='latest'):
     """
     Makes a parser that extracts the full image specification (repository and hash/tag).
 
@@ -16,7 +16,7 @@ def image_spec(default='latest'):
     :param default: Default tag/hash for image where it's not specified.
     """
 
-    def _parser(spec):
+    def image_spec(spec):
         repo_image = spec.split(':')
 
         if len(repo_image) == 2:
@@ -25,7 +25,7 @@ def image_spec(default='latest'):
             tag_or_hash = default
         return to_repository(repo_image[0]), tag_or_hash
 
-    return _parser
+    return image_spec
 
 
 class Color:

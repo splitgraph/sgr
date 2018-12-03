@@ -24,8 +24,21 @@ def _commit_connection(result):
 
 @click.group(result_callback=_commit_connection)
 def cli():
-    """Toplevel click command group to allow us to invoke e.g. "sgr checkout" / "sgr commit" etc."""
+    """Splitgraph command line client: manage and build Postgres schema images."""
 
+
+# Note on the docstring format:
+# * Click uses the first sentence as a short help text as a command group
+# * All docstrings are in the imperative mood
+#   (e.g. "Commit a Splitgraph schema" instead of "Commits a Spitgraph schema".)
+
+
+# TODO add upstream management commands
+# TODO extra commands here: pruning (delete images that aren't pointed to by a tag) at the very least
+# TODO squashing an image (turning all of its objects into SNAPs, creating a new image)
+# TODO .sgconfig generation (so that we can run sgr out of the box) -- maybe with some extra help text in the comments
+# TODO commands to init in an existing postgres
+# TODO maybe turn mounting into a dynamic Click group so that we can do e.g. sgr mount postgres {schema}
 
 # Image management/creation
 cli.add_command(checkout_c)

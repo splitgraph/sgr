@@ -5,15 +5,12 @@ import click
 import splitgraph as sg
 
 
-# TODO add upstream management commands
-
-
 @click.command(name='pull')
 @click.argument('repository', type=sg.to_repository)
 @click.option('-d', '--download-all', help='Download all objects immediately instead on checkout.')
 def pull_c(repository, download_all):
     """
-    Synchronises the state of a locally cloned repository with its upstream counterpart.
+    Pull changes from an upstream repository.
     """
     sg.pull(repository, download_all)
 
@@ -26,9 +23,10 @@ def pull_c(repository, download_all):
               default=False, is_flag=True)
 def clone_c(remote_repository, local_repository, remote, download_all):
     """
-    Clones a remote Splitgraph repository into a local one. The lookup path for the repository
-    is governed by the SG_REPO_LOOKUP and SG_REPO_LOOKUP_OVERRIDE config parameters and can be overriden
-    by the command line --remote option.
+    Clone a remote Splitgraph repository into a local one.
+
+    The lookup path for the repository is governed by the SG_REPO_LOOKUP and SG_REPO_LOOKUP_OVERRIDE
+    config parameters and can be overriden by the command line --remote option.
     """
 
     sg.clone(remote_repository, remote_driver=remote,
@@ -41,16 +39,17 @@ def clone_c(remote_repository, local_repository, remote, download_all):
 @click.option('-r', '--remote', help='Alias or full connection string for the remote driver')
 @click.option('-h', '--upload-handler', help='Where to upload objects (FILE or DB for the remote itself)', default='DB')
 @click.option('-o', '--upload-handler-options', help="""For FILE, e.g. '{"path": /mnt/sgobjects}'""", default="{}")
-def push_c(repository, remote_repository, remote,
-           upload_handler, upload_handler_options):
+def push_c(repository, remote_repository, remote, upload_handler, upload_handler_options):
     """
-    Pushes a repository to its upstream. The actual destination is decided as follows:
+    Push changes from a local repository to the upstream.
 
-    Remote driver: `remote` argument (either driver alias as specified in the config or a connection string,
-    then the upstream configured for the repository.
+    The actual destination is decided as follows:
 
-    Remote repository: `remote_repository` argument, then the upstream configured for the repository, then
-    the same name as the repository.
+      * Remote driver: `remote` argument (either driver alias as specified in the config or a connection string,
+        then the upstream configured for the repository.
+
+      * Remote repository: `remote_repository` argument, then the upstream configured for the repository, then
+        the same name as the repository.
     """
     sg.push(repository, remote, remote_repository, handler=upload_handler,
             handler_options=json.loads(upload_handler_options))
@@ -64,9 +63,10 @@ def push_c(repository, remote_repository, remote,
 @click.option('--skip-previews', is_flag=True, help='Don''t include table previews in the published information.')
 def publish_c(repository, tag, readme, skip_provenance, skip_previews):
     """
-    Indexes a Splitgraph image pointed to by a tag and makes it available in the catalog.
+    Publish tagged Splitgraph images to the catalog.
 
-    The image must have been pushed to the registry beforehand.
+    Only images with a tag can be published. The image must have been pushed
+    to the registry beforehand with `sgr push`.
     """
     if readme:
         readme = readme.read()

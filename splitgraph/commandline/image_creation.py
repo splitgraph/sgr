@@ -4,21 +4,18 @@ from collections import defaultdict
 import click
 
 import splitgraph as sg
-from splitgraph.commandline.common import image_spec
+from splitgraph.commandline.common import image_spec_parser
 from splitgraph.pg_utils import get_all_foreign_tables
 
 
-# TODO extra commands here: pruning (delete images that aren't pointed to by a tag) at the very least
-# Also might be useful: squashing an image (turning all of its objects into SNAPs, creating a new image)
-
-
 @click.command(name='checkout')
-@click.argument('image_spec', type=image_spec(default='HEAD'))
+@click.argument('image_spec', type=image_spec_parser(default='HEAD'))
 @click.option('-f', '--force', help="Discard all pending changes to the schema", is_flag=True, default=False)
 def checkout_c(image_spec, force):
     """
-    Checks out a Splitgraph image into a Postgres schema, discarding all pending changes, downloading the required
-    objects and materializing all tables.
+    Check out a Splitgraph image into a Postgres schema.
+
+    This downloads the required physical objects and materializes all tables.
 
     Image spec must be of the format [NAMESPACE/]REPOSITORY[:HASH_OR_TAG]. Note that currently, the schema that the
     image is checked out into has to have the same name as the repository. If no image hash or tag is passed,
@@ -35,43 +32,47 @@ def checkout_c(image_spec, force):
 @click.command(name='commit')
 @click.argument('repository', type=sg.to_repository)
 @click.option('-s', '--include-snap', default=False, is_flag=True,
-              help='Include the full image snapshot. This consumes more space, '
+              help='Include the full table snapshots. This consumes more space, '
                    'but makes checkouts faster.')
 @click.option('-m', '--message', help='Optional commit message')
 def commit_c(repository, include_snap, message):
     """
-    Commits all changes to a checked-out Splitgraph repository, producing a new image.
+    Commit changes to a checked-out Splitgraph repository.
+
+    This produces a new image with all changes packaged up into a new image. Where a table hasn't been created
+    or had its schema changed, this will delta compress the changes. For all other tables (or if `-s` has been passed),
+    this will store them as full table snapshots.
     """
     new_hash = sg.commit(repository, include_snap=include_snap, comment=message)
     print("Committed %s as %s." % (str(repository), new_hash[:12]))
 
 
 @click.command(name='tag')
-@click.argument('image_spec', type=image_spec(default=None))
+@click.argument('image_spec', type=image_spec_parser(default=None))
 @click.argument('tag', required=False)
 @click.option('-f', '--force', required=False, is_flag=True, help="Overwrite the tag if it already exists.")
 def tag_c(image_spec, tag, force):
     """
-    Tags a Splitgraph image or lists all tags in a repository.
+    Tag a Splitgraph image or list all tags in a repository.
 
     Examples:
 
         sgr tag noaa/climate
 
-    Lists all tagged images in the noaa/climate repository and their tags
+    List all tagged images in the noaa/climate repository and their tags.
 
         sgr tag noaa/climate:abcdef1234567890
 
-    Lists all tags assigned to the image noaa/climate:abcdef1234567890...
+    List all tags assigned to the image noaa/climate:abcdef1234567890...
 
         sgr tag noaa/climate:abcdef1234567890 my_new_tag
 
-    Tags the image noaa/climate:abcdef1234567890... with "my_new_tag". If the tag already exists, this will raise
+    Tag the image noaa/climate:abcdef1234567890... with "my_new_tag". If the tag already exists, this will raise
     an error, unless -f is passed, which will overwrite the tag.
 
         sgr tag noaa/climate my_new_tag
 
-    Tags the current HEAD of noaa/climate with "my_new_tag".
+    Tag the current HEAD of noaa/climate with "my_new_tag".
     """
     repository, image = image_spec
 
@@ -101,12 +102,14 @@ def tag_c(image_spec, tag, force):
 
 
 @click.command(name='import')
-@click.argument('image_spec', type=image_spec())
+@click.argument('image_spec', type=image_spec_parser())
 @click.argument('table_or_query')
 @click.argument('target_repository', type=sg.to_repository)
 @click.argument('target_table', required=False)
 def import_c(image_spec, table_or_query, target_repository, target_table):
     """
+    Import tables into a Splitgraph repository.
+
     Imports a table or a result of a query from a local Splitgraph repository or a Postgres schema into another
     Splitgraph repository.
 
@@ -114,13 +117,13 @@ def import_c(image_spec, table_or_query, target_repository, target_table):
 
         sgr import noaa/climate:my_tag climate_data my/repository
 
-    Creates a new image in my/repository with the climate_data table included. Note this links the new image to the
+    Create a new image in my/repository with the climate_data table included. This links the new image to the
     physical object, meaning that the history of the climate_data table is preserved. If no tag is specified, the
     'latest' (not the HEAD image or current state of the checked out image) image is used.
 
         sgr import noaa/climate:my_tag "SELECT * FROM climate_data" my/repository climate_data
 
-    Creates a new image in my/repository with the result of the query stored in the climate_data table. This
+    Create a new image in my/repository with the result of the query stored in the climate_data table. This
     creates a new physical object without any linkage to the original data, so the history of the climate_data
     table isn't preserved. The SQL query can interact with multiple tables in the source image.
 

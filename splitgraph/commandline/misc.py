@@ -6,9 +6,6 @@ import click
 import splitgraph as sg
 
 
-# TODO maybe turn this into a group and hook the FDW handlers from splitgraph.hooks so that we can do
-# sgr mount postgres my_schema instead of -h postgres.
-
 @click.command(name='mount')
 @click.argument('schema')
 @click.option('--connection', '-c', help='Connection string in the form username:password@server:port')
@@ -21,12 +18,12 @@ import splitgraph as sg
               default='{}')
 def mount_c(schema, connection, handler, handler_options):
     """
-    Mount
-    :param schema:
-    :param connection:
-    :param handler:
-    :param handler_options:
-    :return:
+    Mount foreign databases as Postgres schemas.
+
+    Uses the Postgres FDW interface to create a local Postgres schema with foreign tables that map
+    to tables in other databases.
+
+    See a given mount handler's documentation for handler-specific parameters.
     """
     match = re.match(r'(\S+):(\S+)@(.+):(\d+)', connection)
     handler_options = json.loads(handler_options)
@@ -39,9 +36,11 @@ def mount_c(schema, connection, handler, handler_options):
 @click.argument('repository', type=sg.to_repository)
 def rm_c(repository):
     """
-    Deletes a Postgres schema from the local driver. If the schema represents a repository, also
-    deletes the repository and all of its history. This does not delete any physical objects that
-    the repository depends on: use `sgr cleanup` to do that.
+    Delete a Postgres schema from the driver.
+
+    If the schema represents a repository, this also deletes the repository and all of its history.
+
+    This does not delete any physical objects that the repository depends on: use `sgr cleanup` to do that.
     """
     sg.rm(repository)
 
@@ -50,7 +49,9 @@ def rm_c(repository):
 @click.argument('repository', type=sg.to_repository)
 def init_c(repository):
     """
-    Initializes an empty Splitgraph repository with a single empty image.
+    Create an empty Splitgraph repository.
+
+    This creates a single image with the hash 00000... in the new repository.
     """
     sg.init(repository)
     print("Initialized empty repository %s" % str(repository))
@@ -59,7 +60,9 @@ def init_c(repository):
 @click.command(name='cleanup')
 def cleanup_c():
     """
-    Deletes all physical objects from the driver that aren't required by any local repository.
+    Prune unneeded objects from the driver.
+
+    This deletes all objects from the cache that aren't required by any local repository.
     """
     deleted = sg.cleanup_objects()
     print("Deleted %d physical object(s)" % len(deleted))
