@@ -145,6 +145,17 @@ def set_upstream(repository, remote_name, remote_repository):
                      remote_repository.repository))
 
 
+def delete_upstream(repository):
+    """
+    Deletes the upstream remote + repository for a local repository.
+    :param repository: Local repository
+    """
+    with get_connection().cursor() as cur:
+        cur.execute(SQL("DELETE FROM {0}.upstream WHERE namespace = %s AND repository = %s")
+                    .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                    (repository.namespace, repository.repository))
+
+
 def lookup_repo(repo_name, include_local=False):
     """
     Queries the SG drivers on the lookup path to locate one hosting the given driver.

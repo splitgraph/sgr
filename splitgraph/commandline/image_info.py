@@ -156,15 +156,24 @@ def show_c(image_spec, verbose):
 
 @click.command(name='sql')
 @click.argument('sql')
+@click.option('-s', '--schema', help='Run SQL against this schema.')
 @click.option('-a', '--show-all', is_flag=True, help='Returns all results of the query.')
-def sql_c(sql, show_all):
+def sql_c(sql, schema, show_all):
     """
     Run an SQL statement against the Splitgraph driver.
 
     There are no restrictions on the contents of the statement: this is the same as running it
     from any other PostgreSQL client.
+
+    If --schema is specified, the statement is run with the search_path set to that schema. This means
+    that these statements are equivalent:
+
+        sgr sql "SELECT * FROM \"noaa/climate\".table"
+        sgr sql -s noaa/climate "SELECT * FROM table"
     """
     with sg.get_connection().cursor() as cur:
+        if schema:
+            cur.execute("SET search_path TO %s", (schema,))
         cur.execute(sql)
         try:
             results = cur.fetchmany(10) if not show_all else cur.fetchall()

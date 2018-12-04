@@ -11,7 +11,7 @@ from splitgraph.commandline.image_creation import checkout_c, commit_c, tag_c, i
 from splitgraph.commandline.image_info import log_c, diff_c, show_c, sql_c, status_c
 from splitgraph.commandline.misc import rm_c, init_c, cleanup_c
 from splitgraph.commandline.mount import mount_c
-from splitgraph.commandline.push_pull import pull_c, clone_c, push_c, publish_c
+from splitgraph.commandline.push_pull import pull_c, clone_c, push_c, publish_c, upstream_c
 from splitgraph.commandline.splitfile import build_c, provenance_c, rebuild_c
 
 
@@ -34,12 +34,15 @@ def cli():
 #   (e.g. "Commit a Splitgraph schema" instead of "Commits a Spitgraph schema".)
 
 
-# TODO add upstream management commands
-# TODO extra commands here: pruning (delete images that aren't pointed to by a tag) at the very least
-# TODO squashing an image (turning all of its objects into SNAPs, creating a new image)
+# TODO extra commands:
+#  * pruning (delete images that aren't pointed to by a tag)
+#  * squashing an image (turning all of its objects into SNAPs, creating a new image)
+#  * init in an existing postgres (e.g. create database if it doesn't exist, create the metadata schema etc.
+#    * then also need to have audit.sql packaged with sgr
+#    * get_connection() needs to lazily be able to CREATE DATABASE by first connecting to postgres
 # TODO .sgconfig generation maybe with some extra help text in the comments
-# TODO commands to init in an existing postgres
 # TODO maybe turn mounting into a dynamic Click group so that we can do e.g. sgr mount postgres {schema}
+
 
 # Image management/creation
 cli.add_command(checkout_c)
@@ -65,6 +68,7 @@ cli.add_command(clone_c)
 cli.add_command(pull_c)
 cli.add_command(push_c)
 cli.add_command(publish_c)
+cli.add_command(upstream_c)
 
 # Splitfile execution
 cli.add_command(build_c)

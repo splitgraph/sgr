@@ -3,12 +3,13 @@ from decimal import Decimal
 
 from click.testing import CliRunner
 
-from splitgraph import to_repository, rm, repository_exists, Repository
+from splitgraph import to_repository, rm, repository_exists, Repository, get_upstream
 from splitgraph._data.images import get_all_image_info
 from splitgraph._data.registry import get_published_info
 from splitgraph.commandline import status_c, sql_c, diff_c, commit_c, log_c, show_c, tag_c, checkout_c, rm_c, \
     cleanup_c, init_c, mount_c, import_c, clone_c, pull_c, push_c, build_c, provenance_c, rebuild_c, publish_c
 from splitgraph.commandline.common import image_spec_parser
+from splitgraph.commandline.push_pull import upstream_c
 from splitgraph.commands import commit, checkout
 from splitgraph.commands.diff import has_pending_changes
 from splitgraph.commands.info import get_image, get_table
@@ -44,6 +45,10 @@ def test_commandline_basics(sg_pg_mg_conn):
     runner.invoke(sql_c, ["DROP TABLE \"test/pg_mount\".vegetables"])
     runner.invoke(sql_c, ["DELETE FROM \"test/pg_mount\".fruits WHERE fruit_id = 1"])
     result = runner.invoke(sql_c, ["SELECT * FROM \"test/pg_mount\".fruits"])
+    assert "(3, 'mayonnaise')" in result.output
+    assert "(1, 'apple')" not in result.output
+    # Test schema search_path
+    result = runner.invoke(sql_c, ["--schema", "test/pg_mount", "SELECT * FROM fruits"])
     assert "(3, 'mayonnaise')" in result.output
     assert "(1, 'apple')" not in result.output
 
@@ -109,6 +114,41 @@ def test_commandline_basics(sg_pg_mg_conn):
     # Check verbose show also has the actual object IDs
     for o, of in fruit_objs + mushroom_objs:
         assert o in result.output
+
+
+def test_upstream_management(sg_pg_conn):
+    runner = CliRunner()
+
+    # sgr upstream test/pg_mount
+    result = runner.invoke(upstream_c, ["test/pg_mount"])
+    assert result.exit_code == 0
+    assert "has no upstream" in result.output
+
+    # Set to nonexistent driver
+    result = runner.invoke(upstream_c, ["test/pg_mount", "--set", "dummy_driver", "test/pg_mount"])
+    assert result.exit_code == 1
+    assert "Remote driver 'dummy_driver' does not exist" in result.output
+
+    # Set to existing driver (should we check the repo actually exists?)
+    result = runner.invoke(upstream_c, ["test/pg_mount", "--set", "remote_driver", "test/pg_mount"])
+    assert result.exit_code == 0
+    assert "set to track remote_driver:test/pg_mount" in result.output
+
+    # Get upstream again
+    result = runner.invoke(upstream_c, ["test/pg_mount"])
+    assert result.exit_code == 0
+    assert "is tracking remote_driver:test/pg_mount" in result.output
+
+    # Reset it
+    result = runner.invoke(upstream_c, ["test/pg_mount", "--reset"])
+    assert result.exit_code == 0
+    assert "Deleted upstream for test/pg_mount" in result.output
+    assert get_upstream(PG_MNT) is None
+
+    # Reset it again
+    result = runner.invoke(upstream_c, ["test/pg_mount", "--reset"])
+    assert result.exit_code == 1
+    assert "has no upstream" in result.output
 
 
 def test_commandline_tag_checkout(sg_pg_mg_conn):
