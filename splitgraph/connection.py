@@ -31,9 +31,24 @@ def override_driver_connection(conn):
         _PSYCOPG_CONN = old_override
 
 
+@contextmanager
+def do_in_driver(remote=None):
+    """
+    Switches the global connection to one pointing to a specific (or current) driver.
+
+    :param remote: Name of the driver as specified in the config. If None, the current driver is used.
+    """
+    if remote:
+        with make_driver_connection(remote) as conn:
+            with override_driver_connection(conn):
+                yield
+    else:
+        yield
+
+
 def get_connection():
     """
-    Get a connection to the current local Splitgraph driver.
+    Get a connection to the current Splitgraph driver.
     :return: Psycopg connection object
     """
     global _PSYCOPG_CONN

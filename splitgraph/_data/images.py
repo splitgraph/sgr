@@ -1,15 +1,16 @@
 """
 Internal functions for accessing image metadata
 """
-
+import itertools
 from collections import defaultdict
 from datetime import datetime
 
 from psycopg2.extras import Json
-from psycopg2.sql import SQL
+from psycopg2.sql import SQL, Identifier
 
 from splitgraph._data.common import select, insert
 from splitgraph._data.objects import get_full_object_tree, get_object_for_table
+from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import get_connection
 from splitgraph.exceptions import SplitGraphException
 
@@ -27,6 +28,25 @@ def get_all_image_info(repository):
         cur.execute(select("images", IMAGE_COLS, "repository = %s AND namespace = %s") +
                     SQL(" ORDER BY created"), (repository.repository, repository.namespace))
         return cur.fetchall()
+
+
+def _get_all_child_images(repository, start_image):
+    """
+    Get all children of `start_image` of any degree
+    """
+
+    all_images = get_all_image_info(repository)
+    result_size = 1
+    result = {start_image}
+    while True:
+        # Keep expanding the set of children until it stops growing
+        for image in all_images:
+            image_id, image_parent = image[0], image[1]
+            if image_parent in result:
+                result.add(image_id)
+        if len(result) == result_size:
+            return result
+        result_size = len(result)
 
 
 def get_image_object_path(repository, table, image):
@@ -84,3 +104,24 @@ def add_new_image(repository, parent_id, image, created=None, comment=None, prov
                                       "provenance_type", "provenance_data")),
                     (image, repository.namespace, repository.repository, parent_id, created or datetime.now(), comment,
                      provenance_type, Json(provenance_data)))
+
+
+def delete_images(repository, images):
+    """
+    Deletes a set of Splitgraph images from the current driver. Note this doesn't check whether
+    this will orphan some other images in the repository.
+
+    :param repository: Repository the images belong to
+    :param images: List of image IDs
+    """
+    if not images:
+        return
+    with get_connection().cursor() as cur:
+        # Maybe better to have ON DELETE CASCADE on the FK constraints instead of going through
+        # all tables to clean up -- but then we won't get alerted when we accidentally try
+        # to delete something that does have FKs relying on it.
+        args = tuple([repository.namespace, repository.repository] + list(images))
+        for table in ['tags', 'tables', 'images']:
+            cur.execute(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s "
+                            "AND image_hash IN (" + ','.join(itertools.repeat('%s', len(images))) + ")")
+                        .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table)), args)

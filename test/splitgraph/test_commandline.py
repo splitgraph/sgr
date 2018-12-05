@@ -214,8 +214,8 @@ def test_misc_mountpoint_management(sg_pg_mg_conn):
     assert str(PG_MNT) in result.output
     assert str(MG_MNT) in result.output
 
-    # sgr unmount
-    result = runner.invoke(rm_c, [str(MG_MNT)])
+    # sgr rm -y test/pg_mount (no prompting)
+    result = runner.invoke(rm_c, [str(MG_MNT), '-y'])
     assert result.exit_code == 0
     assert not repository_exists(MG_MNT)
 
@@ -398,3 +398,65 @@ def test_mount_and_import(empty_pg_conn):
         assert table_exists_at(MG_MNT, 'stuff_query', get_current_head(MG_MNT))
     finally:
         rm(to_repository('tmp'))
+
+
+def test_rm_repositories(sg_pg_conn, remote_driver_conn):
+    runner = CliRunner()
+
+    # sgr rm test/pg_mount, say "no"
+    result = runner.invoke(rm_c, [str(PG_MNT)], input='n\n')
+    assert result.exit_code == 1
+    assert "Repository test/pg_mount will be deleted" in result.output
+    assert repository_exists(PG_MNT)
+
+    # sgr rm test/pg_mount, say "yes"
+    result = runner.invoke(rm_c, [str(PG_MNT)], input='y\n')
+    assert result.exit_code == 0
+    assert not repository_exists(PG_MNT)
+
+    # sgr rm test/pg_mount -r remote_driver
+    result = runner.invoke(rm_c, [str(PG_MNT), '-r', 'remote_driver'], input='y\n')
+    assert result.exit_code == 0
+    with override_driver_connection(remote_driver_conn):
+        assert not repository_exists(PG_MNT)
+
+
+def test_rm_images(sg_pg_conn, remote_driver_conn):
+    runner = CliRunner()
+
+    # Play around with both drivers for simplicity -- both have 2 images with 2 tags
+    add_multitag_dataset_to_remote_driver(remote_driver_conn)
+    add_multitag_dataset_to_remote_driver(sg_pg_conn)
+
+    local_v1 = get_tagged_id(PG_MNT, 'v1')
+    local_v2 = get_tagged_id(PG_MNT, 'v2')
+    with override_driver_connection(remote_driver_conn):
+        remote_v2 = get_tagged_id(PG_MNT, 'v2')
+
+    # sgr rm test/pg_mount:v2, say "no"
+    result = runner.invoke(rm_c, [str(PG_MNT) + ':v2'], input='n\n')
+    assert result.exit_code == 1
+    # Specify most of the output verbatim here to make sure it's not proposing
+    # to delete more than needed (just the single image and the single v2 tag)
+    assert "Images to be deleted:\n" + local_v2 + '\nTotal: 1\n\nTags to be deleted:\nv2\nTotal: 1' \
+           in result.output
+    # Since we cancelled the operation, 'v2' still remains.
+    assert get_tagged_id(PG_MNT, 'v2') == local_v2
+    assert get_image(PG_MNT, local_v2) is not None
+
+    # sgr rm test/pg_mount:v2 -r remote_driver, say "yes"
+    result = runner.invoke(rm_c, [str(PG_MNT) + ':v2', '-r', 'remote_driver'], input='y\n')
+    assert result.exit_code == 0
+    with override_driver_connection(remote_driver_conn):
+        assert get_tagged_id(PG_MNT, 'v2', raise_on_none=False) is None
+        assert get_image(PG_MNT, remote_v2) is None
+
+    # sgr rm test/pg_mount:v1 -y
+    # Should delete both images since v2 depends on v1
+    result = runner.invoke(rm_c, [str(PG_MNT) + ':v1', '-y'])
+    assert result.exit_code == 0
+    assert local_v2 in result.output
+    assert local_v1 in result.output
+    assert 'v1' in result.output
+    assert 'v2' in result.output
+    assert len(get_all_image_info(PG_MNT)) == 0
