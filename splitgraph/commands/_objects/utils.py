@@ -135,4 +135,6 @@ def get_random_object_id():
     """Assign each table a random ID that it will be stored as. Note that postgres limits table names to 63 characters,
     so the IDs shall be 248-bit strings, hex-encoded, + a letter prefix since Postgres doesn't seem to support table
     names starting with a digit."""
-    return "o%0.2x" % getrandbits(248)
+    # Make sure we're padded to 62 characters (otherwise if the random number generated is less than 2^247 we'll be
+    # dropping characters from the hex format)
+    return str.format('o{:062x}', getrandbits(248))

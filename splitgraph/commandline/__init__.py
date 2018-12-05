@@ -31,7 +31,7 @@ def cli():
 # Note on the docstring format:
 # * Click uses the first sentence as a short help text as a command group
 # * All docstrings are in the imperative mood
-#   (e.g. "Commit a Splitgraph schema" instead of "Commits a Spitgraph schema".)
+#   (e.g. "Commit a Splitgraph schema" instead of "Commits a Splitgraph schema".)
 
 
 # TODO extra commands:
