@@ -32,7 +32,7 @@ def get_tagged_id(repository, tag, raise_on_none=True):
     """
     ensure_metadata_schema()
     if not repository_exists(repository) and raise_on_none:
-        raise SplitGraphException("%s is not mounted." % str(repository))
+        raise SplitGraphException("%s does not exist!" % str(repository))
 
     if tag == 'latest':
         # Special case, return the latest commit from the repository.
@@ -110,6 +110,22 @@ def set_tag(repository, image, tag, force=False):
                             (image, repository.namespace, repository.repository, tag))
             else:
                 raise SplitGraphException("Tag %s already exists in %s!" % (tag, repository.to_schema()))
+
+
+def delete_tag(repository, tag):
+    """
+    Deletes a tag from an image.
+    :param repository: Repository the image belongs to.
+    :param tag: Tag to delete.
+    """
+
+    # Does checks to make sure the tag actually exists, will raise otherwise
+    get_tagged_id(repository, tag)
+
+    with get_connection().cursor() as cur:
+        cur.execute(SQL("DELETE FROM {}.tags WHERE namespace = %s AND repository = %s AND tag = %s")
+                    .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                    (repository.namespace, repository.repository, tag))
 
 
 def resolve_image(repository, tag_or_hash):

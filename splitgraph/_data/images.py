@@ -49,6 +49,25 @@ def _get_all_child_images(repository, start_image):
         result_size = len(result)
 
 
+def _get_all_parent_images(repository, start_images):
+    """
+    Get all parents of the 'start_images' set of any degree.
+    Like `_get_all_child_images`, but vice versa.
+
+    Used by the pruning process to identify all images in the same repo
+    that are required by images with tags.
+    """
+    parent = {image[0]: image[1] for image in get_all_image_info(repository)}
+    result = set(start_images)
+    result_size = len(result)
+    while True:
+        # Keep expanding the set of parents until it stops growing
+        result.update({parent[image] for image in result if parent[image] is not None})
+        if len(result) == result_size:
+            return result
+        result_size = len(result)
+
+
 def get_image_object_path(repository, table, image):
     """
     Calculates a list of objects SNAP, DIFF, ... , DIFF that are used to reconstruct a table.

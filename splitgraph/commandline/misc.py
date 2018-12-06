@@ -1,7 +1,9 @@
+import logging
+
 import click
 
 import splitgraph as sg
-from splitgraph._data.images import _get_all_child_images, delete_images
+from splitgraph._data.images import _get_all_child_images, delete_images, _get_all_parent_images
 from splitgraph.commandline.common import image_spec_parser
 
 
@@ -80,6 +82,44 @@ def rm_c(image_spec, remote, yes):
 
             delete_images(repository, images_to_delete)
             print("Success.")
+
+
+@click.command(name='prune')
+@click.argument('repository', type=sg.to_repository)
+@click.option('-r', '--remote', help="Perform the deletion on a remote instead, specified by its alias")
+@click.option('-y', '--yes', help="Agree to deletion without confirmation", is_flag=True, default=False)
+def prune_c(repository, remote, yes):
+    """
+    Deletes dangling images in a repository (those not pointed to by any tags and those that aren't required
+    by any of the tagged images).
+
+    Will ask for confirmation of the deletion, unless -y is passed. If -r (--remote), is
+    passed, this will perform deletion on a remote Splitgraph driver (registered in the config) instead, assuming
+    the user has write access to the remote repository.
+
+    This does not delete any physical objects that the deleted repository/images depend on:
+    use `sgr cleanup` to do that.
+    """
+    with sg.do_in_driver(remote):
+        all_images = {i[0] for i in sg.get_all_image_info(repository)}
+        logging.info(all_images)
+        all_tagged_images = {i for i, t in sg.get_all_hashes_tags(repository)}
+        logging.info(all_tagged_images)
+        dangling_images = all_images.difference(_get_all_parent_images(repository, all_tagged_images))
+
+        if not dangling_images:
+            print("Nothing to do.")
+            return
+
+        print("Images to be deleted:")
+        print("\n".join(sorted(dangling_images)))
+        print("Total: %d" % len(dangling_images))
+
+        if not yes:
+            click.confirm("Continue? ", abort=True)
+
+        delete_images(repository, dangling_images)
+        print("Success.")
 
 
 @click.command(name='init')

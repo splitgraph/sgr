@@ -3,19 +3,20 @@ from decimal import Decimal
 
 from click.testing import CliRunner
 
-from splitgraph import to_repository, rm, repository_exists, Repository, get_upstream
+from splitgraph import to_repository, rm, repository_exists, Repository, get_upstream, get_all_hashes_tags
 from splitgraph._data.images import get_all_image_info
 from splitgraph._data.registry import get_published_info
 from splitgraph.commandline import status_c, sql_c, diff_c, commit_c, log_c, show_c, tag_c, checkout_c, rm_c, \
     cleanup_c, init_c, mount_c, import_c, clone_c, pull_c, push_c, build_c, provenance_c, rebuild_c, publish_c
 from splitgraph.commandline.common import image_spec_parser
+from splitgraph.commandline.misc import prune_c
 from splitgraph.commandline.push_pull import upstream_c
 from splitgraph.commands import commit, checkout
 from splitgraph.commands.diff import has_pending_changes
 from splitgraph.commands.info import get_image, get_table
 from splitgraph.commands.misc import table_exists_at
 from splitgraph.commands.provenance import provenance
-from splitgraph.commands.tagging import get_current_head, get_tagged_id, set_tag
+from splitgraph.commands.tagging import get_current_head, get_tagged_id, set_tag, delete_tag
 from splitgraph.connection import override_driver_connection
 from splitgraph.hooks.mount_handlers import get_mount_handlers
 from test.splitgraph.conftest import PG_MNT, MG_MNT, OUTPUT, add_multitag_dataset_to_remote_driver, SPLITFILE_ROOT
@@ -478,3 +479,54 @@ def test_mount_docstring_generation():
     assert result.exit_code == 0
     assert "mountpoint" not in result.output
     assert "remote_schema" in result.output
+
+
+def test_prune(sg_pg_conn, remote_driver_conn):
+    runner = CliRunner()
+    # Two drivers, two repos, two images in each (tagged v1 and v2, v1 is the parent of v2).
+    add_multitag_dataset_to_remote_driver(remote_driver_conn)
+    add_multitag_dataset_to_remote_driver(sg_pg_conn)
+
+    # sgr prune test/pg_mount -- all images are tagged, nothing to do.
+    result = runner.invoke(prune_c, [str(PG_MNT)])
+    assert result.exit_code == 0
+    assert "Nothing to do" in result.output
+
+    # Delete tag v2 and run sgr prune -r remote_driver test/pg_mount, say "no": the image
+    # that used to be 'v2' now isn't tagged so it will be a candidate for removal (but not the v1 image).
+    with override_driver_connection(remote_driver_conn):
+        remote_v2 = get_tagged_id(PG_MNT, 'v2')
+        delete_tag(PG_MNT, 'v2')
+
+        # Technically we shouldn't be able to do this, but we assume the remote is a bare repo and
+        # doesn't actually have anything checked out.
+        delete_tag(PG_MNT, 'HEAD')
+        remote_driver_conn.commit()
+    result = runner.invoke(prune_c, [str(PG_MNT), '-r', 'remote_driver'], input='n\n')
+    assert result.exit_code == 1  # Because "n" aborted the command
+    assert remote_v2 in result.output
+    assert 'Total: 1' in result.output
+    # Make sure the image still exists
+    with override_driver_connection(remote_driver_conn):
+        assert get_image(PG_MNT, remote_v2)
+
+    # Delete tag v1 and run sgr prune -r remote_driver -y test_pg_mount:
+    # now both images aren't tagged so will get removed.
+    with override_driver_connection(remote_driver_conn):
+        remote_v1 = get_tagged_id(PG_MNT, 'v1')
+        delete_tag(PG_MNT, 'v1')
+        remote_driver_conn.commit()
+    result = runner.invoke(prune_c, [str(PG_MNT), '-r', 'remote_driver', '-y'])
+    assert result.exit_code == 0
+    assert remote_v2 in result.output
+    assert remote_v1 in result.output
+    assert 'Total: 2' in result.output
+    with override_driver_connection(remote_driver_conn):
+        assert not get_all_image_info(PG_MNT)
+
+    # Finally, delete both tags from the local driver and prune. Since there's still
+    # a HEAD tag pointing to the ex-v2, nothing will actually happen.
+    result = runner.invoke(prune_c, [str(PG_MNT), '-y'])
+    assert "Nothing to do." in result.output
+    assert len(get_all_image_info(PG_MNT)) == 2
+    assert len(get_all_hashes_tags(PG_MNT)) == 3
