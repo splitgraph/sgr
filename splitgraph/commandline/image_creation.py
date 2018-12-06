@@ -51,9 +51,10 @@ def commit_c(repository, include_snap, message):
 @click.argument('image_spec', type=image_spec_parser(default=None))
 @click.argument('tag', required=False)
 @click.option('-f', '--force', required=False, is_flag=True, help="Overwrite the tag if it already exists.")
-def tag_c(image_spec, tag, force):
+@click.option('-r', '--remove', required=False, is_flag=True, help="Remove the tag instead.")
+def tag_c(image_spec, tag, force, remove):
     """
-    Tag a Splitgraph image or list all tags in a repository.
+    Tag a Splitgraph image, list all tags in a repository or delete a tag.
 
     Examples:
 
@@ -73,8 +74,21 @@ def tag_c(image_spec, tag, force):
         sgr tag noaa/climate my_new_tag
 
     Tag the current HEAD of noaa/climate with "my_new_tag".
+
+        sgr tag --remove noaa/climate:my_new_tag
+
+    Removes the tag `my_new_tag` from `noaa/climate`.
     """
     repository, image = image_spec
+
+    if remove:
+        # In this case the tag must be a part of the image spec.
+        if tag is not None or image is None:
+            raise click.BadArgumentUsage("Use sgr tag --remove %s:TAG_TO_DELETE" % repository.to_schema())
+        if image in ('latest', 'HEAD'):
+            raise click.BadArgumentUsage("%s is a reserved tag!" % image)
+        sg.delete_tag(repository, image)
+        return
 
     if tag is None:
         # List all tags

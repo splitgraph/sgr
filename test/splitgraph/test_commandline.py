@@ -208,6 +208,15 @@ def test_commandline_tag_checkout(sg_pg_mg_conn):
     assert result.exit_code == 0
     assert not has_pending_changes(PG_MNT)
 
+    # Delete the tag -- check the help entry correcting the command
+    result = runner.invoke(tag_c, ['--remove', str(PG_MNT), 'v1'])
+    assert result.exit_code != 0
+    assert '--remove test/pg_mount:TAG_TO_DELETE' in result.output
+
+    result = runner.invoke(tag_c, ['--remove', str(PG_MNT) + ':' + 'v1'])
+    assert result.exit_code == 0
+    assert get_tagged_id(PG_MNT, 'v1', raise_on_none=False) is None
+
 
 def test_misc_mountpoint_management(sg_pg_mg_conn):
     runner = CliRunner()
