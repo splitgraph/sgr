@@ -5,6 +5,7 @@ import click
 import splitgraph as sg
 from splitgraph._data.images import _get_all_child_images, delete_images, _get_all_parent_images
 from splitgraph.commandline.common import image_spec_parser
+from splitgraph.config.keys import KEYS, SENSITIVE_KEYS
 
 
 @click.command(name='rm')
@@ -143,3 +144,38 @@ def cleanup_c():
     """
     deleted = sg.cleanup_objects()
     print("Deleted %d physical object(s)" % len(deleted))
+
+
+@click.command(name='config')
+@click.option('-s', '--no-shielding', is_flag=True, default=False,
+              help='If set, doesn''t replace sensitive values (like passwords) with asterisks')
+@click.option('-c', '--config-format', is_flag=True, default=False,
+              help='Output configuration in the Splitgraph config file format')
+def config_c(no_shielding, config_format):
+    """
+    Print the current Splitgraph configuration.
+
+    This takes into account the local config file, the default values
+    and all overrides specified via environment variables.
+    """
+
+    def _kv_to_str(key, value):
+        if not value:
+            value_str = ''
+        elif key in SENSITIVE_KEYS and not no_shielding:
+            value_str = value[0] + '*******'
+        else:
+            value_str = value
+        return "%s=%s" % (key, value_str)
+
+    print("[defaults]\n" if config_format else "", end="")
+    # Print normal config parameters
+    for key in KEYS:
+        print(_kv_to_str(key, sg.CONFIG[key]))
+
+    # Print hoisted remotes
+    print("\nCurrent registered remote drivers:\n" if not config_format else "", end="")
+    for remote in sg.CONFIG.get('remotes', []):
+        print(("\n[remote: %s]" if config_format else "\n%s:") % remote)
+        for key, value in sg.CONFIG['remotes'][remote].items():
+            print(_kv_to_str(key, value))

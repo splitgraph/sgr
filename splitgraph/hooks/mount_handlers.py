@@ -16,7 +16,7 @@ _MOUNT_HANDLERS = {}
 
 def get_mount_handler(mount_handler):
     """Returns a mount function for a given handler.
-    The mount function has a signature (conn, mountpoint, handler_kwargs)."""
+    The mount function has a signature (mountpoint, server, port, username, password, handler_kwargs)."""
     try:
         return _MOUNT_HANDLERS[mount_handler]
     except KeyError:

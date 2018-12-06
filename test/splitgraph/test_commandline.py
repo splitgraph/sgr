@@ -3,13 +3,14 @@ from decimal import Decimal
 
 from click.testing import CliRunner
 
-from splitgraph import to_repository, rm, repository_exists, Repository, get_upstream, get_all_hashes_tags
+from splitgraph import to_repository, rm, repository_exists, Repository, get_upstream, get_all_hashes_tags, PG_PWD, \
+    PG_USER
 from splitgraph._data.images import get_all_image_info
 from splitgraph._data.registry import get_published_info
 from splitgraph.commandline import status_c, sql_c, diff_c, commit_c, log_c, show_c, tag_c, checkout_c, rm_c, \
     cleanup_c, init_c, mount_c, import_c, clone_c, pull_c, push_c, build_c, provenance_c, rebuild_c, publish_c
 from splitgraph.commandline.common import image_spec_parser
-from splitgraph.commandline.misc import prune_c
+from splitgraph.commandline.misc import prune_c, config_c
 from splitgraph.commandline.push_pull import upstream_c
 from splitgraph.commands import commit, checkout
 from splitgraph.commands.diff import has_pending_changes
@@ -539,3 +540,29 @@ def test_prune(sg_pg_conn, remote_driver_conn):
     assert "Nothing to do." in result.output
     assert len(get_all_image_info(PG_MNT)) == 2
     assert len(get_all_hashes_tags(PG_MNT)) == 3
+
+
+def test_config_dumping():
+    runner = CliRunner()
+
+    # sgr config (normal, with passwords shielded)
+    result = runner.invoke(config_c)
+    assert result.exit_code == 0
+    assert PG_PWD not in result.output
+    assert "remote_driver:" in result.output
+    assert ("SG_DRIVER_USER=%s" % PG_USER) in result.output
+
+    # sgr config -s (no password shielding)
+    result = runner.invoke(config_c, ['-s'])
+    assert result.exit_code == 0
+    assert ("SG_DRIVER_USER=%s" % PG_USER) in result.output
+    assert ("SG_DRIVER_PWD=%s" % PG_PWD) in result.output
+    assert "remote_driver:" in result.output
+
+    # sgr config -sc (no password shielding, output in config format)
+    result = runner.invoke(config_c, ['-sc'])
+    assert result.exit_code == 0
+    assert ("SG_DRIVER_USER=%s" % PG_USER) in result.output
+    assert ("SG_DRIVER_PWD=%s" % PG_PWD) in result.output
+    assert "[remote: remote_driver]" in result.output
+    assert "[defaults]" in result.output
