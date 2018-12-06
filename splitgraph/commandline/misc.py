@@ -5,6 +5,7 @@ import click
 import splitgraph as sg
 from splitgraph._data.images import _get_all_child_images, delete_images, _get_all_parent_images
 from splitgraph.commandline.common import image_spec_parser
+from splitgraph.commands.misc import init_driver
 from splitgraph.config.keys import KEYS, SENSITIVE_KEYS
 
 
@@ -124,15 +125,27 @@ def prune_c(repository, remote, yes):
 
 
 @click.command(name='init')
-@click.argument('repository', type=sg.to_repository)
+@click.argument('repository', type=sg.to_repository, required=False, default=None)
 def init_c(repository):
     """
-    Create an empty Splitgraph repository.
+    Initialize a new repository/driver.
 
-    This creates a single image with the hash 00000... in the new repository.
+    Examples:
+
+        sgr init
+
+    Initializes the current local Splitgraph driver by writing some bookkeeping information.
+    This is required for the rest of sgr to work.
+
+        sgr init new/repo
+
+    Creates a single image with the hash 00000... in new/repo
     """
-    sg.init(repository)
-    print("Initialized empty repository %s" % str(repository))
+    if repository:
+        sg.init(repository)
+        print("Initialized empty repository %s" % str(repository))
+    else:
+        init_driver()
 
 
 @click.command(name='cleanup')

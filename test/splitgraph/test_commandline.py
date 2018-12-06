@@ -1,10 +1,18 @@
 import json
+import subprocess
 from decimal import Decimal
 
+try:
+    # python 3.4+ should use builtin unittest.mock not mock package
+    from unittest.mock import patch
+except ImportError:
+    from mock import patch
+
+import psycopg2
 from click.testing import CliRunner
 
 from splitgraph import to_repository, rm, repository_exists, Repository, get_upstream, get_all_hashes_tags, PG_PWD, \
-    PG_USER
+    PG_USER, CONFIG, PG_PORT, PG_HOST
 from splitgraph._data.images import get_all_image_info
 from splitgraph._data.registry import get_published_info
 from splitgraph.commandline import status_c, sql_c, diff_c, commit_c, log_c, show_c, tag_c, checkout_c, rm_c, \
@@ -566,3 +574,22 @@ def test_config_dumping():
     assert ("SG_DRIVER_PWD=%s" % PG_PWD) in result.output
     assert "[remote: remote_driver]" in result.output
     assert "[defaults]" in result.output
+
+
+def test_init_new_db():
+    try:
+        # CliRunner doesn't run in a brand new process and by that point PG_DB has propagated
+        # through a few modules that are difficult to patch out, so let's just shell out.
+        output = subprocess.check_output("SG_DRIVER_DB_NAME=testdb sgr init", shell=True, stderr=subprocess.STDOUT)
+        output = output.decode('utf-8')
+        assert "Creating database testdb" in output
+        assert "Installing the audit trigger" in output
+    finally:
+        with psycopg2.connect(dbname=CONFIG['SG_DRIVER_POSTGRES_DB_NAME'],
+                              user=CONFIG['SG_DRIVER_ADMIN_USER'],
+                              password=CONFIG['SG_DRIVER_ADMIN_PWD'],
+                              host=PG_HOST,
+                              port=PG_PORT) as admin_conn:
+            admin_conn.autocommit = True
+            with admin_conn.cursor() as cur:
+                cur.execute("DROP DATABASE IF EXISTS testdb")

@@ -13,6 +13,13 @@ def pg_table_exists(conn, schema, table_name):
         return cur.fetchone() is not None
 
 
+def pg_schema_exists(conn, schema):
+    with conn.cursor() as cur:
+        cur.execute("""SELECT 1 from information_schema.schemata
+                       WHERE schema_name = %s""", (schema,))
+        return cur.fetchone() is not None
+
+
 def copy_table(conn, source_schema, source_table, target_schema, target_table, with_pk_constraints=True,
                table_exists=False):
     """

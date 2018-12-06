@@ -1,7 +1,10 @@
 """
 Miscellaneous commands for Splitgraph repository management
 """
+import logging
+from pkgutil import get_data
 
+import psycopg2
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph._data.common import META_TABLES, ensure_metadata_schema
@@ -9,9 +12,13 @@ from splitgraph._data.objects import get_object_meta
 from splitgraph.commands._pg_audit import manage_audit, discard_pending_changes
 from splitgraph.commands.info import get_image, get_table
 from splitgraph.commands.repository import register_repository, unregister_repository
-from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, PG_HOST, PG_PORT, PG_DB
 from splitgraph.connection import get_connection
-from splitgraph.pg_utils import pg_table_exists
+from splitgraph.pg_utils import pg_table_exists, pg_schema_exists
+
+_AUDIT_SCHEMA = 'audit'
+_AUDIT_TRIGGER = 'resources/audit_trigger.sql'
+_PACKAGE = 'splitgraph'
 
 
 def table_exists_at(repository, table_name, image_hash):
@@ -142,3 +149,46 @@ def rm(repository):
     # Currently we just discard all history info about the mounted schema
     unregister_repository(repository)
     conn.commit()
+
+
+# Method exercised in test_commandline.test_init_new_db but in
+# an external process
+def init_driver():  # pragma: no cover
+    """
+    Initializes the driver by:
+
+        * creating the database specified in PG_DB
+        * installing the audit trigger for version controlling checked out tables
+        * creating the metadata tables
+
+    If any of these things already exist, that step is skipped.
+    """
+    # Use the connection to the "postgres" database to create the actual PG_DB
+    with psycopg2.connect(dbname=CONFIG['SG_DRIVER_POSTGRES_DB_NAME'],
+                          user=CONFIG['SG_DRIVER_ADMIN_USER'],
+                          password=CONFIG['SG_DRIVER_ADMIN_PWD'],
+                          host=PG_HOST,
+                          port=PG_PORT) as admin_conn:
+        # CREATE DATABASE can't run inside of tx
+        admin_conn.autocommit = True
+        with admin_conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (PG_DB,))
+            if cur.fetchone() is None:
+                logging.info("Creating database %s", PG_DB)
+                cur.execute(SQL("CREATE DATABASE {}").format(Identifier(PG_DB)))
+            else:
+                logging.info("Database %s already exists, skipping", PG_DB)
+
+    # Install the audit trigger if it doesn't exist
+    conn = get_connection()
+    if not pg_schema_exists(conn, _AUDIT_SCHEMA):
+        logging.info("Installing the audit trigger...")
+        audit_trigger = get_data(_PACKAGE, _AUDIT_TRIGGER)
+        with conn.cursor() as cur:
+            cur.execute(audit_trigger.decode('utf-8'))
+    else:
+        logging.info("Skipping the audit trigger as it's already installed")
+
+    # Create splitgraph_meta
+    logging.info("Ensuring metadata schema %s exists...", SPLITGRAPH_META_SCHEMA)
+    ensure_metadata_schema()

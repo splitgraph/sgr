@@ -36,9 +36,6 @@ def cli():
 
 # TODO extra commands:
 #  * squashing an image (turning all of its objects into SNAPs, creating a new image)
-#  * init in an existing postgres (e.g. create database if it doesn't exist, create the metadata schema etc.
-#    * then also need to have audit.sql packaged with sgr
-#    * get_connection() needs to lazily be able to CREATE DATABASE by first connecting to postgres
 # TODO .sgconfig generation maybe with some extra help text in the comments
 
 
