@@ -17,6 +17,7 @@ from splitgraph.commands.misc import table_exists_at
 from splitgraph.commands.provenance import provenance
 from splitgraph.commands.tagging import get_current_head, get_tagged_id, set_tag
 from splitgraph.connection import override_driver_connection
+from splitgraph.hooks.mount_handlers import get_mount_handlers
 from test.splitgraph.conftest import PG_MNT, MG_MNT, OUTPUT, add_multitag_dataset_to_remote_driver, SPLITFILE_ROOT
 
 
@@ -229,8 +230,8 @@ def test_misc_mountpoint_management(sg_pg_mg_conn):
     assert repository_exists(OUTPUT)
 
     # sgr mount
-    result = runner.invoke(mount_c, [str(MG_MNT), '-c', 'originro:originpass@mongoorigin:27017',
-                                     '-h', 'mongo_fdw', '-o', json.dumps({"stuff": {
+    result = runner.invoke(mount_c, ['mongo_fdw', str(MG_MNT), '-c', 'originro:originpass@mongoorigin:27017',
+                                     '-o', json.dumps({"stuff": {
             "db": "origindb",
             "coll": "stuff",
             "schema": {
@@ -377,8 +378,8 @@ def test_mount_and_import(empty_pg_conn):
     runner = CliRunner()
     try:
         # sgr mount
-        result = runner.invoke(mount_c, ['tmp', '-c', 'originro:originpass@mongoorigin:27017',
-                                         '-h', 'mongo_fdw', '-o', json.dumps({"stuff": {
+        result = runner.invoke(mount_c, ['mongo_fdw', 'tmp', '-c', 'originro:originpass@mongoorigin:27017',
+                                         '-o', json.dumps({"stuff": {
                 "db": "origindb",
                 "coll": "stuff",
                 "schema": {
@@ -460,3 +461,20 @@ def test_rm_images(sg_pg_conn, remote_driver_conn):
     assert 'v1' in result.output
     assert 'v2' in result.output
     assert len(get_all_image_info(PG_MNT)) == 0
+
+
+def test_mount_docstring_generation():
+    runner = CliRunner()
+
+    # General mount help: should have all the handlers autoregistered and listed
+    result = runner.invoke(mount_c, ['--help'])
+    assert result.exit_code == 0
+    for handler_name in get_mount_handlers():
+        assert handler_name in result.output
+
+    # Test the reserved params (that we parse separately) don't make it into the help text
+    # and that other function args from the docstring do.
+    result = runner.invoke(mount_c, ['postgres_fdw', '--help'])
+    assert result.exit_code == 0
+    assert "mountpoint" not in result.output
+    assert "remote_schema" in result.output

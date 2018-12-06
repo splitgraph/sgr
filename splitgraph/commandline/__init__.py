@@ -41,7 +41,6 @@ def cli():
 #    * then also need to have audit.sql packaged with sgr
 #    * get_connection() needs to lazily be able to CREATE DATABASE by first connecting to postgres
 # TODO .sgconfig generation maybe with some extra help text in the comments
-# TODO maybe turn mounting into a dynamic Click group so that we can do e.g. sgr mount postgres {schema}
 
 
 # Image management/creation

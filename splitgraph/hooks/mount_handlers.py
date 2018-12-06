@@ -41,7 +41,7 @@ def mount_postgres(mountpoint, server, port, username, password, dbname, remote_
     Mount a Postgres database.
 
     Mounts a schema on a remote Postgres database as a set of foreign tables locally.
-
+    \b
     :param mountpoint: Schema to mount the remote into.
     :param server: Database hostname.
     :param port: Port the Postgres server is running on.
@@ -78,7 +78,7 @@ def mount_mongo(mountpoint, server, port, username, password, **table_spec):
     Mount a Mongo database.
 
     Mounts one or more collections on a remote Mongo database as a set of foreign tables locally.
-
+    \b
     :param mountpoint: Schema to mount the remote into.
     :param server: Database hostname.
     :param port: Port the Mongo server is running on.
@@ -120,7 +120,7 @@ def mount_mysql(mountpoint, server, port, username, password, remote_schema, tab
     Mount a MySQL database.
 
     Mounts a schema on a remote MySQL database as a set of foreign tables locally.
-
+    \b
     :param mountpoint: Schema to mount the remote into.
     :param server: Database hostname.
     :param port: Database port
