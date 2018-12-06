@@ -36,8 +36,6 @@ def cli():
 
 # TODO extra commands:
 #  * squashing an image (turning all of its objects into SNAPs, creating a new image)
-# TODO .sgconfig generation maybe with some extra help text in the comments
-
 
 # Image management/creation
 cli.add_command(checkout_c)

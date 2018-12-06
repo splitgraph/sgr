@@ -559,6 +559,7 @@ def test_config_dumping():
     assert PG_PWD not in result.output
     assert "remote_driver:" in result.output
     assert ("SG_DRIVER_USER=%s" % PG_USER) in result.output
+    assert "DUMMY=test.splitgraph.splitfile" in result.output
 
     # sgr config -s (no password shielding)
     result = runner.invoke(config_c, ['-s'])
@@ -574,6 +575,7 @@ def test_config_dumping():
     assert ("SG_DRIVER_PWD=%s" % PG_PWD) in result.output
     assert "[remote: remote_driver]" in result.output
     assert "[defaults]" in result.output
+    assert "[commands]" in result.output
 
 
 def test_init_new_db():

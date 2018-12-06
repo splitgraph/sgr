@@ -170,6 +170,14 @@ def config_c(no_shielding, config_format):
 
     This takes into account the local config file, the default values
     and all overrides specified via environment variables.
+
+    This command can be used to dump the current Splitgraph configuration into a file:
+
+        sgr config --no-shielding --config-format > .sgconfig
+
+    ...or save a config file overriding an entry:
+
+        SG_REPO_LOOKUP=driver1,driver2 sgr config -sc > .sgconfig
     """
 
     def _kv_to_str(key, value):
@@ -192,3 +200,9 @@ def config_c(no_shielding, config_format):
         print(("\n[remote: %s]" if config_format else "\n%s:") % remote)
         for key, value in sg.CONFIG['remotes'][remote].items():
             print(_kv_to_str(key, value))
+
+    # Print Splitfile commands
+    if 'commands' in sg.CONFIG:
+        print("\nSplitfile command plugins:\n" if not config_format else "[commands]", end="")
+        for command_name, command_class in sg.CONFIG['commands'].items():
+            print(_kv_to_str(command_name, command_class))
