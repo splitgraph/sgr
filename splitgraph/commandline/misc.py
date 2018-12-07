@@ -205,3 +205,15 @@ def config_c(no_shielding, config_format):
         print("\nSplitfile command plugins:\n" if not config_format else "[commands]", end="")
         for command_name, command_class in sg.CONFIG['commands'].items():
             print(_kv_to_str(command_name, command_class))
+
+    # Print mount handlers
+    if 'mount_handlers' in sg.CONFIG:
+        print("\nFDW Mount handlers:\n" if not config_format else "[mount_handlers]", end="")
+        for handler_name, handler_func in sg.CONFIG['mount_handlers'].items():
+            print(_kv_to_str(handler_name, handler_func.lower()))
+
+    # Print external object handlers
+    if 'external_handlers' in sg.CONFIG:
+        print("\nExternal object handlers:\n" if not config_format else "[external_handlers]", end="")
+        for handler_name, handler_func in sg.CONFIG['external_handlers'].items():
+            print(_kv_to_str(handler_name, handler_func))

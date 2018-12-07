@@ -10,7 +10,7 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph._data.objects import get_existing_objects, get_downloaded_objects
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import get_connection, override_driver_connection, make_conn
-from splitgraph.hooks.external_objects import get_upload_download_handler
+from splitgraph.hooks.external_objects import get_external_object_handler
 from splitgraph.hooks.mount_handlers import mount_postgres
 from splitgraph.pg_utils import copy_table, dump_table_creation, get_primary_keys
 from ..misc import rm
@@ -35,7 +35,9 @@ def download_objects(conn_params, objects_to_fetch, object_locations, remote_con
     if not objects_to_fetch:
         return objects_to_fetch
 
-    external_objects = _fetch_external_objects(object_locations, objects_to_fetch)
+    # We don't actually seem to pass extra handler parameters when downloading objects since
+    # we can have multiple handlers in this batch.
+    external_objects = _fetch_external_objects(object_locations, objects_to_fetch, {})
 
     remaining_objects_to_fetch = [o for o in objects_to_fetch if o not in external_objects]
     if not remaining_objects_to_fetch:
@@ -73,7 +75,7 @@ def _fetch_remote_objects(objects_to_fetch, conn_params, remote_conn=None):
         rm(remote_data_mountpoint)
 
 
-def _fetch_external_objects(object_locations, objects_to_fetch):
+def _fetch_external_objects(object_locations, objects_to_fetch, handler_params):
     non_remote_objects = []
     non_remote_by_method = defaultdict(list)
     for object_id, object_url, protocol in object_locations:
@@ -83,8 +85,8 @@ def _fetch_external_objects(object_locations, objects_to_fetch):
     if non_remote_objects:
         logging.info("Fetching external objects...")
         for method, objects in non_remote_by_method.items():
-            _, handler = get_upload_download_handler(method)
-            handler(objects, {})
+            handler = get_external_object_handler(method, handler_params)
+            handler.download_objects(objects)
     return non_remote_objects
 
 
@@ -146,6 +148,6 @@ def upload_objects(conn_params, objects_to_push, handler='DB', handler_params=No
         # We assume that if the object doesn't have an explicit location, it lives on the remote.
         return []
 
-    upload_handler, _ = get_upload_download_handler(handler)
-    uploaded = upload_handler(objects_to_push, handler_params)
+    external_handler = get_external_object_handler(handler, handler_params)
+    uploaded = external_handler.upload_objects(objects_to_push)
     return [(oid, url, handler) for oid, url in zip(objects_to_push, uploaded)]

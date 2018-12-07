@@ -4,10 +4,11 @@ in the command line tool (via sgr mount) and in the Splitfile interpreter (via F
 """
 
 import logging
+from importlib import import_module
 
 from psycopg2.sql import Identifier, SQL
 
-from splitgraph.config import PG_USER
+from splitgraph.config import PG_USER, CONFIG
 from splitgraph.connection import get_connection
 from splitgraph.exceptions import SplitGraphException
 
@@ -151,7 +152,13 @@ def mount_mysql(mountpoint, server, port, username, password, remote_schema, tab
         cur.execute(SQL(query).format(Identifier(remote_schema), server_id, Identifier(mountpoint)), tables)
 
 
-# Register the default mount handlers. Maybe in the future we can put this into the config instead.
-register_mount_handler("postgres_fdw", mount_postgres)
-register_mount_handler("mongo_fdw", mount_mongo)
-register_mount_handler("mysql_fdw", mount_mysql)
+# Register the mount handlers from the config.
+for handler_name, handler_func_name in CONFIG.get('mount_handlers', {}).items():
+    ix = handler_func_name.rindex('.')
+    try:
+        handler_func = getattr(import_module(handler_func_name[:ix]), handler_func_name[ix + 1:])
+        register_mount_handler(handler_name.lower(), handler_func)
+    except AttributeError as e:
+        raise SplitGraphException("Error loading custom mount handler {0}".format(handler_name), e)
+    except ImportError as e:
+        raise SplitGraphException("Error loading custom mount handler {0}".format(handler_name), e)

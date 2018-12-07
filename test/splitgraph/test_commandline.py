@@ -579,6 +579,7 @@ def test_config_dumping():
     assert "remote_driver:" in result.output
     assert ("SG_DRIVER_USER=%s" % PG_USER) in result.output
     assert "DUMMY=test.splitgraph.splitfile" in result.output
+    assert "S3=splitgraph.hooks.s3" in result.output
 
     # sgr config -s (no password shielding)
     result = runner.invoke(config_c, ['-s'])
@@ -595,6 +596,9 @@ def test_config_dumping():
     assert "[remote: remote_driver]" in result.output
     assert "[defaults]" in result.output
     assert "[commands]" in result.output
+    assert "[external_handlers]" in result.output
+    assert "[mount_handlers]" in result.output
+    assert "S3=splitgraph.hooks.s3" in result.output
 
 
 def _drop_test_db():
