@@ -74,10 +74,6 @@ def rm_c(image_spec, remote, yes):
                 # If we're deleting an image that we currently have checked out,
                 # we need to make sure the rest of the metadata (e.g. current state of the audit table) is consistent,
                 # it's better to disallow these deletions completely.
-
-                # TODO allow a "soft reset": checkout an image _without suspending the audit trigger_
-                # (so the actual application of objects will be recorded in the audit again) and without moving the
-                # HEAD pointer.
                 raise SplitGraphException("Deletion will affect a checked-out image! Check out a different branch "
                                           "or do sgr checkout -u %s!" % repository.to_schema())
             if not yes:
@@ -209,6 +205,3 @@ def config_c(no_shielding, config_format):
         print("\nSplitfile command plugins:\n" if not config_format else "[commands]", end="")
         for command_name, command_class in sg.CONFIG['commands'].items():
             print(_kv_to_str(command_name, command_class))
-
-    # TODO no committing for some commands (like RO config) since maybe it's messing with the actual DB.
-    # TODO maybe remove the trigger from the driver and lazily initialize it here -- or maybe not

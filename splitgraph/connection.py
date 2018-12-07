@@ -61,6 +61,16 @@ def get_connection():
     return _PSYCOPG_CONN
 
 
+def commit_and_close_connection():
+    """Commit/close the current global driver connection. If the connection
+    doesn't exist, this does nothing."""
+    global _PSYCOPG_CONN
+    if _PSYCOPG_CONN:
+        _PSYCOPG_CONN.commit()
+        _PSYCOPG_CONN.close()
+        _PSYCOPG_CONN = None
+
+
 def parse_connection_string(conn_string):
     """
     :return: a tuple (server, port, username, password, dbname)

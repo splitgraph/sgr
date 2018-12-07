@@ -6,7 +6,7 @@ Hooks into the API to allow management of Splitgraph repositories and images usi
 
 import click
 
-import splitgraph as sg
+from splitgraph import commit_and_close_connection
 from splitgraph.commandline.image_creation import checkout_c, commit_c, tag_c, import_c
 from splitgraph.commandline.image_info import log_c, diff_c, show_c, sql_c, status_c
 from splitgraph.commandline.misc import rm_c, init_c, cleanup_c, config_c, prune_c
@@ -17,10 +17,7 @@ from splitgraph.commandline.splitfile import build_c, provenance_c, rebuild_c
 
 def _commit_connection(result):
     """Commit and close the PG connection when the application finishes."""
-    conn = sg.get_connection()
-    if conn:
-        conn.commit()
-        conn.close()
+    commit_and_close_connection()
 
 
 @click.group(result_callback=_commit_connection)
@@ -33,9 +30,15 @@ def cli():
 # * All docstrings are in the imperative mood
 #   (e.g. "Commit a Splitgraph schema" instead of "Commits a Splitgraph schema".)
 
-
-# TODO extra commands:
-#  * squashing an image (turning all of its objects into SNAPs, creating a new image)
+# Possible extra commands:
+# * sgr squash namespace/repo:image: takes an image, turns all of its objects into SNAPs and creates
+#   a new image (useful for publishing?)
+# * sgr reset namespace/repo:image: similar to a git "soft reset": moves the HEAD pointer to the target
+#   and restages all changes between the new target and the old HEAD.
+#
+#   It might be possible to implement this by not suspending the audit trigger on the target tables whilst
+#   rerunning the checkout (applying all objects), which should put the staging area in the same state
+#   and recalculate the correct pending changes for the audit table.
 
 # Image management/creation
 cli.add_command(checkout_c)
