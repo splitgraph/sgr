@@ -87,7 +87,7 @@ def convert_audit_change(action, row_data, changed_fields, ri_cols):
         # PK no matter what the replica identity settings are. However, the resulting delete + insert
         # gets conflated back into an update in any case if the PK is the same between the two.
         result = [(tuple(ri_vals), 1, None)]
-        # todo: will this work if a part of the primary key + some other column in the tuple has been updated?
+        # FIXME we need to reinsert the full tuple, not just the updated values (see test_diff_packing[test_case2])
         ri_vals, non_ri_cols, non_ri_vals = _recalculate_disjoint_ri_cols(ri_cols, ri_vals, non_ri_cols, non_ri_vals)
         result.append((tuple(ri_vals), 0, {'c': non_ri_cols, 'v': non_ri_vals}))
         return result
@@ -112,7 +112,7 @@ def conflate_changes(changeset, new_changes):
                     else:
                         changeset[change_pk] = (2, change_data)
                 else:
-                    raise SplitGraphException("TODO logic error")
+                    raise SplitGraphException("Malformed audit log: existing PK %s inserted." % str(change_pk))
             elif change_kind == 1:  # Delete over insert/update: remove the old change
                 del changeset[change_pk]
                 if old_change[0] == 2:
@@ -120,7 +120,7 @@ def conflate_changes(changeset, new_changes):
                     changeset[change_pk] = (1, change_data)
                 if old_change[0] == 1:
                     # Delete over delete: can't happen.
-                    raise SplitGraphException("TODO logic error")
+                    raise SplitGraphException("Malformed audit log: deleted PK %s deleted again" % str(change_pk))
             elif change_kind == 2:  # Update over insert/update: merge the two changes.
                 if old_change[0] == 0 or old_change[0] == 2:
                     new_data = _merge_changes(old_change[1], change_data)
