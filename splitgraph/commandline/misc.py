@@ -3,6 +3,7 @@ import logging
 import click
 
 import splitgraph as sg
+from splitgraph import SplitGraphException
 from splitgraph._data.images import _get_all_child_images, delete_images, _get_all_parent_images
 from splitgraph.commandline.common import image_spec_parser
 from splitgraph.commands.misc import init_driver
@@ -59,17 +60,7 @@ def rm_c(image_spec, remote, yes):
         else:
             image = sg.resolve_image(repository, image)
             images_to_delete = _get_all_child_images(repository, image)
-
-            # TODO Some issues here with the HEAD: if we're deleting an image that we currently have checked out,
-            # we need to make sure the rest of the metadata (e.g. current state of the audit table) is consistent.
-            # Here's an idea for handling this: we don't allow deletions where the current HEAD will get deleted.
-            # We will, however, allow a "soft reset": checkout an image _without suspending the audit trigger_
-            # (so the actual application of objects will be recorded in the audit again) and without moving the
-            # HEAD pointer.
-            # Maybe we'll also need an "uncheckout" command that deletes the current staging are, cleans up the audit
-            # and removes the HEAD pointer (bringing the repo to its bare state).
-
-            tags_to_delete = [t for i, t in sg.get_all_hashes_tags(repository) if i in images_to_delete and t != 'HEAD']
+            tags_to_delete = [t for i, t in sg.get_all_hashes_tags(repository) if i in images_to_delete]
 
             print("Images to be deleted:")
             print("\n".join(sorted(images_to_delete)))
@@ -79,6 +70,16 @@ def rm_c(image_spec, remote, yes):
             print("\n".join(sorted(tags_to_delete)))
             print("Total: %d" % len(tags_to_delete))
 
+            if 'HEAD' in tags_to_delete:
+                # If we're deleting an image that we currently have checked out,
+                # we need to make sure the rest of the metadata (e.g. current state of the audit table) is consistent,
+                # it's better to disallow these deletions completely.
+
+                # TODO allow a "soft reset": checkout an image _without suspending the audit trigger_
+                # (so the actual application of objects will be recorded in the audit again) and without moving the
+                # HEAD pointer.
+                raise SplitGraphException("Deletion will affect a checked-out image! Check out a different branch "
+                                          "or do sgr checkout -u %s!" % repository.to_schema())
             if not yes:
                 click.confirm("Continue? ", abort=True)
 
@@ -92,8 +93,10 @@ def rm_c(image_spec, remote, yes):
 @click.option('-y', '--yes', help="Agree to deletion without confirmation", is_flag=True, default=False)
 def prune_c(repository, remote, yes):
     """
-    Deletes dangling images in a repository (those not pointed to by any tags and those that aren't required
-    by any of the tagged images).
+    Cleanup dangling images from a repository.
+
+    This includes images not pointed to by any tags (or checked out) and those that aren't required by any of
+    such images.
 
     Will ask for confirmation of the deletion, unless -y is passed. If -r (--remote), is
     passed, this will perform deletion on a remote Splitgraph driver (registered in the config) instead, assuming

@@ -23,14 +23,13 @@ _PACKAGE = 'splitgraph'
 
 def table_exists_at(repository, table_name, image_hash):
     """Determines whether a given table exists in a SplitGraph image without checking it out. If `image_hash` is None,
-    determines whether the table exists in the current staging area.
-    :param namespace: """
+    determines whether the table exists in the current staging area."""
     return pg_table_exists(get_connection(), repository.to_schema(), table_name) if image_hash is None \
         else bool(get_table(repository, table_name, image_hash))
 
 
 def get_log(repository, start_image):
-    """Repeatedly gets the parent of a given snapshot until it reaches the bottom."""
+    """Repeatedly gets the parent of a given image until it reaches the bottom."""
     result = []
     while start_image is not None:
         result.append(start_image)
@@ -127,13 +126,14 @@ def init(repository):
     register_repository(repository, image_hash, tables=[], table_object_ids=[])
 
 
-def rm(repository):
+def rm(repository, unregister=True):
     """
-    Discards all changes to a given repository and all of its history, deleting the physical Postgres schema.
+    Discards all changes to a given repository and optionally all of its history,
+    as well as deleting the Postgres schema that it might be checked out into.
     Doesn't delete any cached physical objects.
 
-    :param repository: Repository to unmount.
-    :return:
+    :param repository: Repository/schema to delete.
+    :param unregister: If False, just deletes the schema without purging any other repository metadata
     """
     # Make sure to discard changes to this repository if they exist, otherwise they might
     # be applied/recorded if a new repository with the same name appears.
@@ -146,8 +146,8 @@ def rm(repository):
         # Drop server too if it exists (could have been a non-foreign repository)
         cur.execute(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(repository.to_schema() + '_server')))
 
-    # Currently we just discard all history info about the mounted schema
-    unregister_repository(repository)
+    if unregister:
+        unregister_repository(repository)
     conn.commit()
 
 

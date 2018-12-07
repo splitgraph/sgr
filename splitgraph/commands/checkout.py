@@ -16,8 +16,8 @@ from ._objects.utils import get_random_object_id
 from ._pg_audit import manage_audit, discard_pending_changes
 from .diff import has_pending_changes
 from .info import get_canonical_image_id, get_tables_at
-from .misc import delete_objects
-from .tagging import get_tagged_id
+from .misc import delete_objects, rm
+from .tagging import get_tagged_id, delete_tag
 from .._data.images import get_image_object_path
 from .._data.objects import get_external_object_locations, get_object_for_table, get_existing_objects
 from ..connection import get_connection, get_remote_connection_params
@@ -117,6 +117,25 @@ def checkout(repository, image_hash=None, tag=None, tables=None, keep_downloaded
     if not keep_downloaded_objects:
         logging.info("Removing %d downloaded objects from cache...", downloaded_object_ids)
         delete_objects(downloaded_object_ids)
+
+
+@manage_audit
+def uncheckout(repository, force=False):
+    """
+    Deletes the schema that the repository is checked out into
+
+    :param repository: Repository to check out.
+    :param force: Discards all pending changes to the schema.
+    """
+    if has_pending_changes(repository):
+        if not force:
+            raise SplitGraphException("{0} has pending changes! Pass force=True or do sgr checkout -f {0}:HEAD"
+                                      .format(repository.to_schema()))
+        logging.warning("%s has pending changes, discarding...", repository.to_schema())
+
+    # Delete the schema and remove the HEAD tag
+    rm(repository, unregister=False)
+    delete_tag(repository, 'HEAD')
 
 
 @contextmanager

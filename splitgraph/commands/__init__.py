@@ -3,7 +3,7 @@ Splitgraph public command API
 """
 
 from splitgraph.commands._drawing import render_tree
-from splitgraph.commands.checkout import checkout
+from splitgraph.commands.checkout import checkout, uncheckout
 from splitgraph.commands.commit import commit
 from splitgraph.commands.diff import diff
 from splitgraph.commands.importing import import_tables

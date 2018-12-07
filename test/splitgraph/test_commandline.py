@@ -2,6 +2,9 @@ import json
 import subprocess
 from decimal import Decimal
 
+from splitgraph.commands.checkout import uncheckout
+from splitgraph.pg_utils import pg_schema_exists
+
 try:
     # python 3.4+ should use builtin unittest.mock not mock package
     from unittest.mock import patch
@@ -12,7 +15,7 @@ import psycopg2
 from click.testing import CliRunner
 
 from splitgraph import to_repository, rm, repository_exists, Repository, get_upstream, get_all_hashes_tags, PG_PWD, \
-    PG_USER, CONFIG, PG_PORT, PG_HOST
+    PG_USER, CONFIG, PG_PORT, PG_HOST, get_connection
 from splitgraph._data.images import get_all_image_info
 from splitgraph._data.registry import get_published_info
 from splitgraph.commandline import status_c, sql_c, diff_c, commit_c, log_c, show_c, tag_c, checkout_c, rm_c, \
@@ -216,6 +219,12 @@ def test_commandline_tag_checkout(sg_pg_mg_conn):
     result = runner.invoke(checkout_c, [str(PG_MNT) + ':v1', '-f'])
     assert result.exit_code == 0
     assert not has_pending_changes(PG_MNT)
+
+    # uncheckout
+    result = runner.invoke(checkout_c, [str(PG_MNT), '-u', '-f'])
+    assert result.exit_code == 0
+    assert get_current_head(PG_MNT, raise_on_none=False) is None
+    assert not pg_schema_exists(get_connection(), str(PG_MNT))
 
     # Delete the tag -- check the help entry correcting the command
     result = runner.invoke(tag_c, ['--remove', str(PG_MNT), 'v1'])
@@ -450,8 +459,13 @@ def test_rm_images(sg_pg_conn, remote_driver_conn):
 
     local_v1 = get_tagged_id(PG_MNT, 'v1')
     local_v2 = get_tagged_id(PG_MNT, 'v2')
-    with override_driver_connection(remote_driver_conn):
-        remote_v2 = get_tagged_id(PG_MNT, 'v2')
+
+    # Test deleting checked out image causes an error
+    result = runner.invoke(rm_c, [str(PG_MNT) + ':v2'])
+    assert result.exit_code != 0
+    assert "do sgr checkout -u test/pg_mount" in str(result.exc_info)
+
+    uncheckout(PG_MNT)
 
     # sgr rm test/pg_mount:v2, say "no"
     result = runner.invoke(rm_c, [str(PG_MNT) + ':v2'], input='n\n')
@@ -463,6 +477,11 @@ def test_rm_images(sg_pg_conn, remote_driver_conn):
     # Since we cancelled the operation, 'v2' still remains.
     assert get_tagged_id(PG_MNT, 'v2') == local_v2
     assert get_image(PG_MNT, local_v2) is not None
+
+    # Uncheckout the remote too (it's supposed to be bare anyway)
+    with override_driver_connection(remote_driver_conn):
+        remote_v2 = get_tagged_id(PG_MNT, 'v2')
+        uncheckout(PG_MNT)
 
     # sgr rm test/pg_mount:v2 -r remote_driver, say "yes"
     result = runner.invoke(rm_c, [str(PG_MNT) + ':v2', '-r', 'remote_driver'], input='y\n')
@@ -503,6 +522,9 @@ def test_prune(sg_pg_conn, remote_driver_conn):
     runner = CliRunner()
     # Two drivers, two repos, two images in each (tagged v1 and v2, v1 is the parent of v2).
     add_multitag_dataset_to_remote_driver(remote_driver_conn)
+    with override_driver_connection(remote_driver_conn):
+        uncheckout(PG_MNT)
+
     add_multitag_dataset_to_remote_driver(sg_pg_conn)
 
     # sgr prune test/pg_mount -- all images are tagged, nothing to do.
@@ -515,11 +537,8 @@ def test_prune(sg_pg_conn, remote_driver_conn):
     with override_driver_connection(remote_driver_conn):
         remote_v2 = get_tagged_id(PG_MNT, 'v2')
         delete_tag(PG_MNT, 'v2')
-
-        # Technically we shouldn't be able to do this, but we assume the remote is a bare repo and
-        # doesn't actually have anything checked out.
-        delete_tag(PG_MNT, 'HEAD')
         remote_driver_conn.commit()
+
     result = runner.invoke(prune_c, [str(PG_MNT), '-r', 'remote_driver'], input='n\n')
     assert result.exit_code == 1  # Because "n" aborted the command
     assert remote_v2 in result.output
@@ -578,8 +597,21 @@ def test_config_dumping():
     assert "[commands]" in result.output
 
 
+def _drop_test_db():
+    with psycopg2.connect(dbname=CONFIG['SG_DRIVER_POSTGRES_DB_NAME'],
+                          user=CONFIG['SG_DRIVER_ADMIN_USER'],
+                          password=CONFIG['SG_DRIVER_ADMIN_PWD'],
+                          host=PG_HOST,
+                          port=PG_PORT) as admin_conn:
+        admin_conn.autocommit = True
+        with admin_conn.cursor() as cur:
+            cur.execute("DROP DATABASE IF EXISTS testdb")
+
+
 def test_init_new_db():
     try:
+        _drop_test_db()
+
         # CliRunner doesn't run in a brand new process and by that point PG_DB has propagated
         # through a few modules that are difficult to patch out, so let's just shell out.
         output = subprocess.check_output("SG_DRIVER_DB_NAME=testdb sgr init", shell=True, stderr=subprocess.STDOUT)
@@ -587,11 +619,4 @@ def test_init_new_db():
         assert "Creating database testdb" in output
         assert "Installing the audit trigger" in output
     finally:
-        with psycopg2.connect(dbname=CONFIG['SG_DRIVER_POSTGRES_DB_NAME'],
-                              user=CONFIG['SG_DRIVER_ADMIN_USER'],
-                              password=CONFIG['SG_DRIVER_ADMIN_PWD'],
-                              host=PG_HOST,
-                              port=PG_PORT) as admin_conn:
-            admin_conn.autocommit = True
-            with admin_conn.cursor() as cur:
-                cur.execute("DROP DATABASE IF EXISTS testdb")
+        _drop_test_db()

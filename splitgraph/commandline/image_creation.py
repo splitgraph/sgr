@@ -11,7 +11,8 @@ from splitgraph.pg_utils import get_all_foreign_tables
 @click.command(name='checkout')
 @click.argument('image_spec', type=image_spec_parser(default='HEAD'))
 @click.option('-f', '--force', help="Discard all pending changes to the schema", is_flag=True, default=False)
-def checkout_c(image_spec, force):
+@click.option('-u', '--uncheckout', help="Delete the checked out copy instead", is_flag=True, default=False)
+def checkout_c(image_spec, force, uncheckout):
     """
     Check out a Splitgraph image into a Postgres schema.
 
@@ -21,12 +22,20 @@ def checkout_c(image_spec, force):
     image is checked out into has to have the same name as the repository. If no image hash or tag is passed,
     "HEAD" is assumed.
 
+    If -u or --uncheckout is passed, this instead deletes the checked out schema (assuming there are no pending
+    changes) and removes the HEAD pointer.
+
     If --force isn't passed and the schema has pending changes, this will fail.
     """
     repository, image = image_spec
     image = sg.resolve_image(repository, image)
-    sg.checkout(repository, image, force=force)
-    print("Checked out %s:%s." % (str(repository), image[:12]))
+
+    if uncheckout:
+        sg.uncheckout(repository)
+        print("Unchecked out %s." % (str(repository),))
+    else:
+        sg.checkout(repository, image, force=force)
+        print("Checked out %s:%s." % (str(repository), image[:12]))
 
 
 @click.command(name='commit')
@@ -54,7 +63,10 @@ def commit_c(repository, include_snap, message):
 @click.option('-r', '--remove', required=False, is_flag=True, help="Remove the tag instead.")
 def tag_c(image_spec, tag, force, remove):
     """
-    Tag a Splitgraph image, list all tags in a repository or delete a tag.
+    Manage tags on images.
+
+    Depending on the exact invocation, this command can tag a Splitgraph image,
+    list all tags in a repository or delete a tag.
 
     Examples:
 
@@ -77,7 +89,7 @@ def tag_c(image_spec, tag, force, remove):
 
         sgr tag --remove noaa/climate:my_new_tag
 
-    Removes the tag `my_new_tag` from `noaa/climate`.
+    Remove the tag `my_new_tag` from `noaa/climate`.
     """
     repository, image = image_spec
 
