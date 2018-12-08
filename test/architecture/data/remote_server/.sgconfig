@@ -1,0 +1,33 @@
+; .sgconfig file used for remote_driver in testing
+
+[defaults]
+SG_NAMESPACE=splitgraph
+SG_DRIVER_HOST=remote_driver
+SG_DRIVER_PORT=5431
+SG_DRIVER_DB_NAME=${SG_NAMESPACE}
+SG_DRIVER_USER=sgr
+SG_DRIVER_PWD=supersecure
+SG_DRIVER_ADMIN_USER=sgr
+SG_DRIVER_ADMIN_PWD=supersecure
+SG_DRIVER_POSTGRES_DB_NAME=postgres
+SG_META_SCHEMA=splitgraph_meta
+
+SG_S3_KEY=minioclient
+SG_S3_PWD=supersecure
+
+; Look up repositories on the test remote driver.
+SG_REPO_LOOKUP=
+
+[commands]
+DUMMY=test.splitgraph.splitfile.test_custom_commands.DummyCommand
+BOBBYTABLES=test.splitgraph.splitfile.test_custom_commands.CalcHashTestCommand
+BROKEN1=some.module.that.definitely.doesnt.Exist
+BROKEN2=test.splitgraph.splitfile.test_custom_commands.NonexistentCommand
+
+[mount_handlers]
+postgres_fdw=splitgraph.hooks.mount_handlers.mount_postgres
+mongo_fdw=splitgraph.hooks.mount_handlers.mount_mongo
+mysql_fdw=splitgraph.hooks.mount_handlers.mount_mysql
+
+[external_handlers]
+S3=splitgraph.hooks.s3.S3ExternalObjectHandler

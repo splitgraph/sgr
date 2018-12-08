@@ -1,4 +1,4 @@
-version: "3"
+version: '3'
 services:
   pgorigin:
     image: splitgraphci/pgorigin
@@ -13,7 +13,7 @@ services:
   mongoorigin:
     image: splitgraphci/mongoorigin
     ports:
-      - "0.0.0.0:27017:27017"
+      - '0.0.0.0:27017:27017'
     environment:
       - ORIGIN_USER=originro
       - ORIGIN_PASS=originpass
@@ -25,7 +25,7 @@ services:
   mysqlorigin:
     image: mysql:8.0.13
     ports:
-      - "0.0.0.0:3306:3306"
+      - '0.0.0.0:3306:3306'
     environment:
       - MYSQL_DATABASE=mysqlschema
       - MYSQL_ROOT_PASSWORD=supersecure
@@ -38,7 +38,7 @@ services:
   local_driver:
     image: splitgraph/driver
     ports:
-      - "0.0.0.0:5432:5432"
+      - '0.0.0.0:5432:5432'
     environment:
       - POSTGRES_USER=sgr
       - POSTGRES_PASSWORD=supersecure
@@ -47,10 +47,10 @@ services:
       - 5432
   remote_driver:
     build:
-      context:  ./src/
+      context: ./src/
       dockerfile: remote_driver/Dockerfile
     ports:
-      - "0.0.0.0:5431:5431"
+      - '0.0.0.0:5431:5431'
     environment:
       - POSTGRES_USER=sgr
       - POSTGRES_PASSWORD=supersecure
@@ -63,15 +63,29 @@ services:
   object_storage:
     image: minio/minio
     ports:
-     - "0.0.0.0:9000:9000"
+      - '0.0.0.0:9000:9000'
     environment:
       MINIO_ACCESS_KEY: minioclient
       MINIO_SECRET_KEY: supersecure
     # Run against a temporary throwaway space
     command: server /tmp
+  remote_server:
+    command: registry start-server
+    image: splitgraphci/sgr
+    build:
+      dockerfile: ./test/architecture/src/sgr/Dockerfile
+      context: ../../
+    ports:
+      - '0.0.0.0:11000:80'
+    volumes:
+      - ./data/remote_server/.sgconfig:/splitgraph/.sgconfig
+      - ../../:/src
+      - remote_server_venv:/venv
   ci_pgorigin:
     image: splitgraphci/pgorigin
     build: ./src/pgorigin
   ci_mongoorigin:
     image: splitgraphci/mongoorigin
     build: ./src/mongoorigin
+volumes:
+  remote_server_venv:
