@@ -3,6 +3,7 @@ htmlcov
 **/__pycache__
 **/.eggs
 **/*.egg-info
+.python-version
 
 build/
 dist/
