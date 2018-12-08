@@ -53,16 +53,25 @@ def _split_ri_cols(action, row_data, changed_fields, ri_cols):
     return ri_vals, non_ri_cols, non_ri_vals
 
 
-def _recalculate_disjoint_ri_cols(ri_cols, ri_vals, non_ri_cols, non_ri_vals):
-    # Move the intersecting columns from the non-ri to the ri set
+def _recalculate_disjoint_ri_cols(ri_cols, ri_vals, non_ri_cols, non_ri_vals, row_data):
+    # If part of the PK has been updated (is in the non_ri_cols/vals), we have to instead
+    # apply the update to the PK (ri_cols/vals) and recalculate the new full new tuple
+    # (by applying the update to row_data).
     new_nric = []
     new_nriv = []
+    row_data = row_data.copy()
+
     for nrc, nrv in zip(non_ri_cols, non_ri_vals):
         try:
             ri_vals[ri_cols.index(nrc)] = nrv
         except ValueError:
-            new_nric.append(nrc)
-            new_nriv.append(nrv)
+            row_data[nrc] = nrv
+
+    for col, val in row_data.items():
+        if col not in ri_cols:
+            new_nric.append(col)
+            new_nriv.append(val)
+
     return ri_vals, new_nric, new_nriv
 
 
@@ -83,12 +92,12 @@ def convert_audit_change(action, row_data, changed_fields, ri_cols):
         assert action == 'U'
         # If it's an update that changed the PK (e.g. the table has no replica identity so we treat the whole
         # tuple as a primary key), then we turn it into a delete old tuple + insert new one.
-        # This might happen with updates in any case, since the WAL seems to output the old and the new values for the
-        # PK no matter what the replica identity settings are. However, the resulting delete + insert
-        # gets conflated back into an update in any case if the PK is the same between the two.
         result = [(tuple(ri_vals), 1, None)]
-        # FIXME we need to reinsert the full tuple, not just the updated values (see test_diff_packing[test_case2])
-        ri_vals, non_ri_cols, non_ri_vals = _recalculate_disjoint_ri_cols(ri_cols, ri_vals, non_ri_cols, non_ri_vals)
+
+        # Recalculate the new PK to be inserted + the new (full) tuple, otherwise if the whole
+        # tuple hasn't been updated, we'll lose parts of the old row (see test_diff_conflation_on_commit[test_case2]).
+        ri_vals, non_ri_cols, non_ri_vals = _recalculate_disjoint_ri_cols(ri_cols, ri_vals,
+                                                                          non_ri_cols, non_ri_vals, row_data)
         result.append((tuple(ri_vals), 0, {'c': non_ri_cols, 'v': non_ri_vals}))
         return result
     return [(tuple(ri_vals), KIND[action],

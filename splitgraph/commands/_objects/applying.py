@@ -2,9 +2,7 @@
 Internal functions for materializing Splitgraph objects into tables
 """
 
-import json
-
-from psycopg2._json import Json
+from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
@@ -46,7 +44,7 @@ def apply_record_to_staging(object_id, dest_schema, dest_table):
         for row in cur:
             # Not sure if we can rely on ordering here.
             # Also for the future: if all column names are the same, we can do a big INSERT.
-            action_data = json.loads(row[-1])
+            action_data = row[-1]
             cols_to_insert = list(ri_cols) + action_data['c']
             vals_to_insert = _convert_vals(list(row[:-2]) + action_data['v'])
 
@@ -60,7 +58,7 @@ def apply_record_to_staging(object_id, dest_schema, dest_table):
             SQL("SELECT * FROM {}.{} WHERE sg_action_kind = 2").format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                                        Identifier(object_id)))
         for row in cur:
-            action_data = json.loads(row[-1])
+            action_data = row[-1]
             ri_vals = list(row[:-2])
             cols_to_insert = action_data['c']
             vals_to_insert = action_data['v']

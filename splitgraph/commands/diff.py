@@ -2,8 +2,6 @@
 Public API for calculating differences between two Splitgraph images.
 """
 
-import json
-
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph._data.objects import get_object_for_table
@@ -101,7 +99,7 @@ def _calculate_merged_diff(repository, table_name, path, aggregate):
                 for row in image_diff:
                     pk = row[:-2]
                     action = row[-2]
-                    action_data = json.loads(row[-1]) if row[-1] else None
+                    action_data = row[-1]
                     result.append((pk, action, action_data))
             else:
                 cur.execute(SQL(

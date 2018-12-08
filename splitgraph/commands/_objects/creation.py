@@ -2,9 +2,7 @@
 Internal functions for packaging changes into physical Splitgraph objects.
 """
 
-import json
-
-from psycopg2.extras import execute_batch
+from psycopg2.extras import execute_batch, Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph._data.objects import register_table, register_object, get_object_for_table
@@ -29,7 +27,7 @@ def _create_diff_table(object_id, replica_identity_cols_types):
         query = SQL("CREATE TABLE {}.{} (").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id))
         query += SQL(',').join(SQL("{} %s" % col_type).format(Identifier(col_name))
                                for col_name, col_type in replica_identity_cols_types + [('sg_action_kind', 'smallint'),
-                                                                                        ('sg_action_data', 'varchar')])
+                                                                                        ('sg_action_data', 'jsonb')])
         query += SQL(", PRIMARY KEY (") + SQL(',').join(
             SQL("{}").format(Identifier(c)) for c, _ in replica_identity_cols_types)
         query += SQL("));")
@@ -85,7 +83,7 @@ def _get_conflated_changeset(repository, table, ri_cols):
         changeset = {}
         for action, row_data, changed_fields in cur:
             conflate_changes(changeset, convert_audit_change(action, row_data, changed_fields, ri_cols))
-        return [tuple(list(pk) + [kind_data[0], json.dumps(kind_data[1])]) for pk, kind_data in
+        return [tuple(list(pk) + [kind_data[0], Json(kind_data[1])]) for pk, kind_data in
                 changeset.items()]
 
 

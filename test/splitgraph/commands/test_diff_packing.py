@@ -60,10 +60,23 @@ CASES = [
             INSERT INTO "test/pg_mount".fruits VALUES (1, 1, 'val1', 'val2')""", []),
         # Test an update touching part of the PK and part of the contents
         ("""UPDATE "test/pg_mount".fruits SET pk2 = 2, col1 = 'val3' WHERE pk1 = 1""",
-         # FIXME this is _wrong_, we're supposed to output "delete (1, 1); insert (1,2) with col1=val3, col2=val2
-         # (old value not preserved)
+         # Since we delete one PK and insert another one, we need to reinsert the
+         # full row (as opposed to just the values that were updated).
          [((1, 1), 1, None),
-          ((1, 2), 0, {'c': ['col1'], 'v': ['val3']})]),
+          ((1, 2), 0, {'c': ['col1', 'col2'], 'v': ['val3', 'val2']})]),
+    ],
+    [
+        # Same as previous, but without PKs
+        ("""DROP TABLE "test/pg_mount".fruits; CREATE TABLE "test/pg_mount".fruits (
+        pk1 INTEGER,
+        pk2 INTEGER,
+        col1 VARCHAR,
+        col2 VARCHAR);
+        INSERT INTO "test/pg_mount".fruits VALUES (1, 1, 'val1', 'val2')""", []),
+        ("""UPDATE "test/pg_mount".fruits SET pk2 = 2, col1 = 'val3' WHERE pk1 = 1""",
+         # Full row is the PK, so we just enumerate the whole row for deletion/insertion.
+         [((1, 1, 'val1', 'val2'), 1, None),
+          ((1, 2, 'val3', 'val2'), 0, {'c': [], 'v': []})]),
     ]
 ]
 
