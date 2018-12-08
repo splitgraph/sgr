@@ -5,7 +5,7 @@ Functions for communicating with the remote Splitgraph catalog
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph._data.common import insert, select
+from splitgraph._data.common import insert, select, ensure_metadata_schema
 from splitgraph.config import REGISTRY_META_SCHEMA, SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import get_connection
 
@@ -36,7 +36,6 @@ def _ensure_registry_schema():
         cur.execute("SELECT 1 FROM information_schema.schemata WHERE schema_name = %s", (REGISTRY_META_SCHEMA,))
         if cur.fetchone() is None:
             _create_registry_schema()
-
 
 def publish_tag(repository, tag, image_hash, published, provenance, readme, schemata, previews):
     """
@@ -213,3 +212,16 @@ def toggle_registry_rls(mode='ENABLE'):
                                                                                  Identifier("object_locations")))
         cur.execute(SQL("ALTER TABLE {}.{} %s ROW LEVEL SECURITY" % mode).format(Identifier(REGISTRY_META_SCHEMA),
                                                                                  Identifier("images")))
+
+def initialize_registry():
+    """
+    Initialize a registry.
+
+    Ensure metadata schema -> Ensure registry schema -> Setup registry mode
+
+    Warning: Drops tables in splitgraph_meta that aren't pertinent to the registry
+    """
+
+    ensure_metadata_schema()
+    _ensure_registry_schema()
+    setup_registry_mode()

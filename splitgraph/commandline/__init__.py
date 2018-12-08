@@ -13,7 +13,7 @@ from splitgraph.commandline.misc import rm_c, init_c, cleanup_c, config_c, prune
 from splitgraph.commandline.mount import mount_c
 from splitgraph.commandline.push_pull import pull_c, clone_c, push_c, publish_c, upstream_c
 from splitgraph.commandline.splitfile import build_c, provenance_c, rebuild_c
-
+from splitgraph.registry.commandline import registry_cli
 
 def _commit_connection(result):
     """Commit and close the PG connection when the application finishes."""
@@ -72,3 +72,6 @@ cli.add_command(upstream_c)
 cli.add_command(build_c)
 cli.add_command(provenance_c)
 cli.add_command(rebuild_c)
+
+# Registry CLI
+cli.add_command(registry_cli, 'registry')
