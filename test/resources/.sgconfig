@@ -1,19 +1,18 @@
 ; .sgconfig file used for testing
 
 [defaults]
-SG_NAMESPACE=cachedb
+SG_NAMESPACE=splitgraph
 SG_DRIVER_HOST=localhost
 SG_DRIVER_PORT=5432
 SG_DRIVER_DB_NAME=${SG_NAMESPACE}
-SG_DRIVER_USER=clientuser
+SG_DRIVER_USER=sgr
 SG_DRIVER_PWD=supersecure
-SG_DRIVER_CONNECTION_STRING=host=${SG_DRIVER_HOST} port=${SG_DRIVER_PORT} dbname=${SG_DRIVER_DB_NAME} user=${SG_DRIVER_USER} password=${SG_DRIVER_PWD}
-SG_DRIVER_ADMIN_USER=clientuser
+SG_DRIVER_ADMIN_USER=sgr
 SG_DRIVER_ADMIN_PWD=supersecure
 SG_DRIVER_POSTGRES_DB_NAME=postgres
 SG_META_SCHEMA=splitgraph_meta
 
-SG_S3_KEY=clientuser
+SG_S3_KEY=minioclient
 SG_S3_PWD=supersecure
 
 ; Look up repositories on the test remote driver.
@@ -25,7 +24,6 @@ SG_DRIVER_PORT=${defaults:SG_DRIVER_PORT}
 SG_DRIVER_DB_NAME=${defaults:SG_DRIVER_DB_NAME}
 SG_DRIVER_USER=${defaults:SG_DRIVER_USER}
 SG_DRIVER_PWD=${defaults:SG_DRIVER_PWD}
-SG_DRIVER_CONNECTION_STRING=host=${SG_DRIVER_HOST} port=${SG_DRIVER_PORT} dbname=${SG_DRIVER_DB_NAME} user=${SG_DRIVER_USER} password=${SG_DRIVER_PWD}
 SG_DRIVER_ADMIN_USER=${defaults:SG_DRIVER_ADMIN_USER}
 SG_DRIVER_ADMIN_PWD=${defaults:SG_DRIVER_ADMIN_PWD}
 SG_DRIVER_POSTGRES_DB_NAME=${defaults:SG_DRIVER_POSTGRES_DB_NAME}
@@ -37,14 +35,21 @@ SG_DRIVER_PORT=5431
 SG_DRIVER_DB_NAME=${defaults:SG_DRIVER_DB_NAME}
 SG_DRIVER_USER=${defaults:SG_DRIVER_USER}
 SG_DRIVER_PWD=${defaults:SG_DRIVER_PWD}
-SG_DRIVER_CONNECTION_STRING=host=${SG_DRIVER_HOST} port=${SG_DRIVER_PORT} dbname=${SG_DRIVER_DB_NAME} user=${SG_DRIVER_USER} password=${SG_DRIVER_PWD}
 SG_DRIVER_ADMIN_USER=${defaults:SG_DRIVER_ADMIN_USER}
 SG_DRIVER_ADMIN_PWD=${defaults:SG_DRIVER_ADMIN_PWD}
 SG_DRIVER_POSTGRES_DB_NAME=${defaults:SG_DRIVER_POSTGRES_DB_NAME}
 SG_META_SCHEMA=${defaults:SG_META_SCHEMA}
 
 [commands]
-DUMMY=test.splitgraph.sgfile.test_custom_commands.DummyCommand
-BOBBYTABLES=test.splitgraph.sgfile.test_custom_commands.CalcHashTestCommand
+DUMMY=test.splitgraph.splitfile.test_custom_commands.DummyCommand
+BOBBYTABLES=test.splitgraph.splitfile.test_custom_commands.CalcHashTestCommand
 BROKEN1=some.module.that.definitely.doesnt.Exist
-BROKEN2=test.splitgraph.sgfile.test_custom_commands.NonexistentCommand
+BROKEN2=test.splitgraph.splitfile.test_custom_commands.NonexistentCommand
+
+[mount_handlers]
+postgres_fdw=splitgraph.hooks.mount_handlers.mount_postgres
+mongo_fdw=splitgraph.hooks.mount_handlers.mount_mongo
+mysql_fdw=splitgraph.hooks.mount_handlers.mount_mysql
+
+[external_handlers]
+S3=splitgraph.hooks.s3.S3ExternalObjectHandler

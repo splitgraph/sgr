@@ -40,9 +40,9 @@ services:
     ports:
       - "0.0.0.0:5432:5432"
     environment:
-      - POSTGRES_USER=clientuser
+      - POSTGRES_USER=sgr
       - POSTGRES_PASSWORD=supersecure
-      - POSTGRES_DB=cachedb
+      - POSTGRES_DB=splitgraph
     expose:
       - 5432
   remote_driver:
@@ -52,9 +52,9 @@ services:
     ports:
       - "0.0.0.0:5431:5431"
     environment:
-      - POSTGRES_USER=clientuser
+      - POSTGRES_USER=sgr
       - POSTGRES_PASSWORD=supersecure
-      - POSTGRES_DB=cachedb
+      - POSTGRES_DB=splitgraph
       - PGPORT=5431
     volumes:
       - ./data/remote_driver/setup.sql:/docker-entrypoint-initdb.d/setup.sql
@@ -65,7 +65,7 @@ services:
     ports:
      - "0.0.0.0:9000:9000"
     environment:
-      MINIO_ACCESS_KEY: clientuser
+      MINIO_ACCESS_KEY: minioclient
       MINIO_SECRET_KEY: supersecure
     # Run against a temporary throwaway space
     command: server /tmp

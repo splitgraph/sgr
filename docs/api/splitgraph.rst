@@ -10,7 +10,7 @@ Subpackages
     splitgraph.config
     splitgraph.meta_handler
     splitgraph.objects
-    splitgraph.sgfile
+    splitgraph.splitfile
 
 Submodules
 ----------

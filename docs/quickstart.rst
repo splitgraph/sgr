@@ -71,17 +71,17 @@ namespace for this::
 
     sgr push noaa/climate registry.splitgraph.com <your_username>/climate
 
-SGFiles
+Splitfiles
 =======
 
-SGFiles are a way to define transformations on images in a composable, maintainable and reproducible way. They were
+Splitfiles are a way to define transformations on images in a composable, maintainable and reproducible way. They were
 inspired and heavily influenced by the simplicity of Dockerfiles, so if you are familiar with those, you should have
-no issues with understanding how SGFiles work.
+no issues with understanding how Splitfiles work.
 
 Let's try producing a derivative dataset by joining the dataset we created in the previous section with the USDA
 crop yields data.
 
-First, create the SGFile::
+First, create the Splitfile::
 
     # Import the corn yields data into the new image
     FROM usda/ags:latest IMPORT corn_yields
@@ -97,7 +97,7 @@ First, create the SGFile::
 
 Then, execute it::
 
-    sgr file join_crops.sgfile -o joined_data
+    sgr file join_crops.splitfile -o joined_data
 
 Much like with Dockerfiles, every image has a deterministic hash, so if the upstream data hasn't changed, no new images
 will be produced and no calculations will be rerun. Try running the same command to see what happens.
@@ -117,12 +117,12 @@ can easily find out the exact provenance of an image::
 
 You'll see here that instead of tags (like latest) we've used the actual image hashes.
 
-Moreover, we can also reconstruct an SGFile that can be used to recreate this image::
+Moreover, we can also reconstruct an Splitfile that can be used to recreate this image::
 
     sgr provenance -f joined_data latest
 
 Note that this is done from the image metadata: if we were to push the image out to the registry and if someone else
-pulled it, they would get the same result without having to have our original SGFile handy.
+pulled it, they would get the same result without having to have our original Splitfile handy.
 
 Finally, with that in mind, Splitgraph can substitute any other image instead of the original images, performing
 a kind of a "logical rebase" and allowing us to keep our derivative datasets up to date. Let's instead rerun our dataset

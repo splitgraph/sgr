@@ -2,7 +2,7 @@
 
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.meta_handler.common import select
+from splitgraph._data.common import select
 
 
 def pg_table_exists(conn, schema, table_name):
@@ -10,6 +10,13 @@ def pg_table_exists(conn, schema, table_name):
     with conn.cursor() as cur:
         cur.execute("""SELECT table_name from information_schema.tables
                        WHERE table_schema = %s AND table_name = %s""", (schema, table_name[:63]))
+        return cur.fetchone() is not None
+
+
+def pg_schema_exists(conn, schema):
+    with conn.cursor() as cur:
+        cur.execute("""SELECT 1 from information_schema.schemata
+                       WHERE schema_name = %s""", (schema,))
         return cur.fetchone() is not None
 
 
@@ -59,10 +66,9 @@ def dump_table_creation(conn, schema, tables, created_schema=None):
                 target = SQL("{}.{}").format(Identifier(created_schema), Identifier(table))
             else:
                 target = Identifier(table)
-            query = SQL("CREATE TABLE {} (").format(target) + \
-                    SQL(','.join(
-                        "{} %s " % ctype + ("NOT NULL" if not cnull else "") for _, ctype, cnull in cols)).format(
-                        *(Identifier(cname) for cname, _, _ in cols))
+            query = SQL("CREATE TABLE {} (").format(target) + SQL(','.join(
+                "{} %s " % ctype + ("NOT NULL" if not cnull else "") for _, ctype, cnull in cols)).format(
+                *(Identifier(cname) for cname, _, _ in cols))
 
             pks = get_primary_keys(conn, schema, table)
             if pks:
@@ -89,10 +95,9 @@ def create_table(conn, schema, table, schema_spec):
 
     with conn.cursor() as cur:
         target = SQL("{}.{}").format(Identifier(schema), Identifier(table))
-        query = SQL("CREATE TABLE {} (").format(target) + \
-                SQL(','.join(
-                    "{} %s " % ctype for _, _, ctype, _ in schema_spec)).format(
-                    *(Identifier(cname) for _, cname, _, _ in schema_spec))
+        query = SQL("CREATE TABLE {} (").format(target) \
+                + SQL(','.join("{} %s " % ctype for _, _, ctype, _ in schema_spec)) \
+                    .format(*(Identifier(cname) for _, cname, _, _ in schema_spec))
 
         pk_cols = [cname for _, cname, _, is_pk in schema_spec if is_pk]
         if pk_cols:
@@ -109,12 +114,13 @@ def get_primary_keys(conn, schema, table):
         cur.execute(SQL("""SELECT a.attname, format_type(a.atttypid, a.atttypmod)
                            FROM pg_index i JOIN pg_attribute a ON a.attrelid = i.indrelid
                                                                   AND a.attnum = ANY(i.indkey)
-                           WHERE i.indrelid = '{}.{}'::regclass AND i.indisprimary""").format(
-            Identifier(schema), Identifier(table)))
+                           WHERE i.indrelid = '{}.{}'::regclass AND i.indisprimary""")
+                    .format(Identifier(schema), Identifier(table)))
         return cur.fetchall()
 
 
-def _get_column_names(conn, schema, table_name):
+def get_column_names(conn, schema, table_name):
+    """Returns a list of all columns in a given table."""
     with conn.cursor() as cur:
         cur.execute("""SELECT column_name FROM information_schema.columns
                        WHERE table_schema = %s
@@ -124,6 +130,7 @@ def _get_column_names(conn, schema, table_name):
 
 
 def get_column_names_types(conn, schema, table_name):
+    """Returns a list of (column, type) in a given table."""
     with conn.cursor() as cur:
         cur.execute("""SELECT column_name, data_type FROM information_schema.columns
                        WHERE table_schema = %s
@@ -132,8 +139,10 @@ def get_column_names_types(conn, schema, table_name):
 
 
 def get_full_table_schema(conn, schema, table_name):
-    # Generates a list of (column ordinal, name, data type, is_pk), used to detect
-    # schema changes like columns being dropped/added/renamed or type changes.
+    """
+    Generates a list of (column ordinal, name, data type, is_pk), used to detect schema changes like columns being
+    dropped/added/renamed or type changes.
+    """
     with conn.cursor() as cur:
         cur.execute("""SELECT ordinal_position, column_name, data_type FROM information_schema.columns
                        WHERE table_schema = %s
@@ -162,7 +171,7 @@ def execute_sql_in(conn, schema, sql):
 
 
 def get_all_tables(conn, schema):
-    # Gets all user tables in a schema (tracked or untracked)
+    """Gets all user tables in a schema (tracked or untracked)"""
     with conn.cursor() as cur:
         cur.execute(
             """SELECT table_name FROM information_schema.tables
@@ -172,8 +181,8 @@ def get_all_tables(conn, schema):
 
 def get_all_foreign_tables(conn, schema):
     """Inspects the information_schema to see which foreign tables we have in a given schema.
-    Used by `mount` to populate the metadata since if we did IMPORT FOREIGN SCHEMA we've no idea what tables we actually
-    fetched from the remote postgres."""
+    Used by `import` to populate the metadata since if we did IMPORT FOREIGN SCHEMA we've no idea what tables we
+    actually fetched from the mounted datablase"""
     with conn.cursor() as cur:
         cur.execute(
             select("tables", "table_name", "table_schema = %s and table_type = 'FOREIGN TABLE'", "information_schema"),

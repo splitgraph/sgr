@@ -1,7 +1,7 @@
 import pytest
 
 from splitgraph.commands import commit, diff
-from splitgraph.meta_handler.images import get_image
+from splitgraph.commands.info import get_image
 from test.splitgraph.conftest import PG_MNT
 
 # Test cases: ops are a list of operations (with commit after each set);
@@ -12,7 +12,7 @@ CASES = [
         ("""INSERT INTO "test/pg_mount".fruits VALUES (3, 'mayonnaise');
         UPDATE "test/pg_mount".fruits SET name = 'mustard' WHERE fruit_id = 3""",
          [((3, 'mustard'), 0, {'c': [], 'v': []})]),
-        # Insert + update + delete did nothing (todo what about sequences)
+        # Insert + update + delete did nothing (sequences not supported)
         ("""INSERT INTO "test/pg_mount".fruits VALUES (4, 'kumquat');
         UPDATE "test/pg_mount".fruits SET name = 'mustard' WHERE fruit_id = 4;
         DELETE FROM "test/pg_mount".fruits WHERE fruit_id = 4""",
@@ -26,13 +26,13 @@ CASES = [
         UPDATE "test/pg_mount".fruits SET name = 'apple' WHERE fruit_id = 1""",
          [])
     ],
-    [# Now test this whole thing works with primary keys
+    [  # Now test this whole thing works with primary keys
         ("""ALTER TABLE "test/pg_mount".fruits ADD PRIMARY KEY (fruit_id)""",
          []),
         # Insert + update changed into a single insert (same pk, different value)
         ("""INSERT INTO "test/pg_mount".fruits VALUES (3, 'mayonnaise');
             UPDATE "test/pg_mount".fruits SET name = 'mustard' WHERE fruit_id = 3""",
-            [((3,), 0, {'c': ['name'], 'v': ['mustard']})]),
+         [((3,), 0, {'c': ['name'], 'v': ['mustard']})]),
         # Insert + update + delete did nothing
         ("""INSERT INTO "test/pg_mount".fruits VALUES (4, 'kumquat');
             UPDATE "test/pg_mount".fruits SET name = 'mustard' WHERE fruit_id = 4;
@@ -47,7 +47,36 @@ CASES = [
         ("""UPDATE "test/pg_mount".fruits SET name = 'pineapple' WHERE fruit_id = 1;
             UPDATE "test/pg_mount".fruits SET name = 'apple' WHERE fruit_id = 1""",
          # Same here
-         [((1,), 2, {'c': ['name'], 'v': ['apple']})])
+         [((1,), 2, {'c': ['name'], 'v': ['apple']})]),
+    ],
+    [
+        # Test a table with 2 PKs and 2 non-PK columns
+        ("""DROP TABLE "test/pg_mount".fruits; CREATE TABLE "test/pg_mount".fruits (
+            pk1 INTEGER,
+            pk2 INTEGER,
+            col1 VARCHAR,
+            col2 VARCHAR,        
+            PRIMARY KEY (pk1, pk2));
+            INSERT INTO "test/pg_mount".fruits VALUES (1, 1, 'val1', 'val2')""", []),
+        # Test an update touching part of the PK and part of the contents
+        ("""UPDATE "test/pg_mount".fruits SET pk2 = 2, col1 = 'val3' WHERE pk1 = 1""",
+         # Since we delete one PK and insert another one, we need to reinsert the
+         # full row (as opposed to just the values that were updated).
+         [((1, 1), 1, None),
+          ((1, 2), 0, {'c': ['col1', 'col2'], 'v': ['val3', 'val2']})]),
+    ],
+    [
+        # Same as previous, but without PKs
+        ("""DROP TABLE "test/pg_mount".fruits; CREATE TABLE "test/pg_mount".fruits (
+        pk1 INTEGER,
+        pk2 INTEGER,
+        col1 VARCHAR,
+        col2 VARCHAR);
+        INSERT INTO "test/pg_mount".fruits VALUES (1, 1, 'val1', 'val2')""", []),
+        ("""UPDATE "test/pg_mount".fruits SET pk2 = 2, col1 = 'val3' WHERE pk1 = 1""",
+         # Full row is the PK, so we just enumerate the whole row for deletion/insertion.
+         [((1, 1, 'val1', 'val2'), 1, None),
+          ((1, 2, 'val3', 'val2'), 0, {'c': [], 'v': []})]),
     ]
 ]
 
@@ -60,5 +89,5 @@ def test_diff_conflation_on_commit(sg_pg_conn, test_case):
         with sg_pg_conn.cursor() as cur:
             cur.execute(operation)
         sg_pg_conn.commit()
-        head = commit(sg_pg_conn, PG_MNT)
-        assert diff(sg_pg_conn, PG_MNT, 'fruits', get_image(sg_pg_conn, PG_MNT, head).parent_id, head) == expected_diff
+        head = commit(PG_MNT)
+        assert diff(PG_MNT, 'fruits', get_image(PG_MNT, head).parent_id, head) == expected_diff

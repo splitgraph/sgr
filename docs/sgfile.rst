@@ -1,14 +1,14 @@
-.. _sgfile:
+.. _splitfile:
 
 ================================
-Using SGFiles to define datasets
+Using Splitfiles to define datasets
 ================================
 
-SGFiles are similar to Dockerfiles: each command produces a new commit with a deterministic hash that depends
+Splitfiles are similar to Dockerfiles: each command produces a new commit with a deterministic hash that depends
 on the current hash and the particulars of a command that's being executed.
 
-The SGFile is parsed using parsimonious, a Python parser library. The exact grammar is in
-`splitgraph.sgfile.SGFILE_GRAMMAR` and there is some quality-of-life preprocessing that gets done to the file before
+The Splitfile is parsed using parsimonious, a Python parser library. The exact grammar is in
+`splitgraph.splitfile.SGFILE_GRAMMAR` and there is some quality-of-life preprocessing that gets done to the file before
 it's interpreted:
 
   * Newlines can be escaped to make a command multiline (`"\\n"` gets replaced with `""`)
@@ -22,7 +22,7 @@ Basing an image on another image
 --------------------------------
 
 `FROM repository[:tag] [AS alias]`
-    Bases the output of the sgfile on a certain revision of the remote/local repository.
+    Bases the output of the splitfile on a certain revision of the remote/local repository.
     If `AS alias` is specified, the repository is cloned into `alias` and the current contents of `alias` destroyed.
     Otherwise, the current output repository (passed to the executor) is used.
 
@@ -65,7 +65,7 @@ Repository lookups
 
 Currently, a repository name is converted to a connection string as follows:
 
-  * See if it exists locally (in the case of the sgfile executor). If it does, try to pull it (to update) and
+  * See if it exists locally (in the case of the splitfile executor). If it does, try to pull it (to update) and
     use it for `FROM`/`IMPORT` commands.
   * If not, see if it's specified in the `SG_REPO_LOOKUP_OVERRIDE` parameter which has the format
     `repo_1:user:pwd@host:port/db,repo_2:user:pwd@host:port/db...`. Return the matching connection string directly
@@ -92,7 +92,7 @@ In the future, it might be worth basing the new hash on the hash of the objects 
 Custom command plugins
 ----------------------
 
-It is possible to define custom SGFile commands that follow the normal SGFile execution semantics (cache invalidation
+It is possible to define custom Splitfile commands that follow the normal Splitfile execution semantics (cache invalidation
 and idempotency), allowing you to write your own transformation or data import stages.
 
 The basic idea is that a custom command extends `PluginCommand` and implements at least one method, `execute()` that
@@ -103,4 +103,4 @@ calculate the command context hash without actually running the command.
 For example, for a simple data importer that loads a file from HTTP, `calc_hash()` could return the hash of the file's
 last modified timestamp and `execute()` would perform the actual computation-heavy data import.
 
-See :mod:`splitgraph.sgfile.plugins` for the implementation details.
+See :mod:`splitgraph.splitfile.plugins` for the implementation details.

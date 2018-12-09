@@ -42,7 +42,8 @@ def Entrypoint(dist, group, name, **kwargs):
         **kwargs
     )
 
-a = Entrypoint('splitgraph', 'console_scripts', 'sgr')
+a = Entrypoint('splitgraph', 'console_scripts', 'sgr',
+    datas=[('splitgraph/resources', 'splitgraph/resources')])  # Add the resources folder with the audit trigger
 pyz = PYZ(a.pure, a.zipped_data,
              cipher=block_cipher)
 exe = EXE(pyz,

@@ -8,7 +8,7 @@ Welcome to Splitgraph's documentation!
    introduction
    quickstart
    commands
-   sgfile
+       splitfile
    internals
    API reference <api/modules>
 

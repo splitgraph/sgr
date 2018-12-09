@@ -3,17 +3,17 @@ from timeit import timeit
 
 from psycopg2.extras import execute_batch
 
-from splitgraph.commandline import _conn
 from splitgraph.commands import *
-from splitgraph.commands.diff import dump_pending_changes
+from splitgraph.commands._pg_audit import dump_pending_changes
+from splitgraph.connection import get_connection
 
 MOUNTPOINT = "splitgraph_benchmark"
 
 
-def create_random_table(conn, mountpoint, table, N=1000):
+def create_random_table(mountpoint, table, N=1000):
     fq_table = mountpoint + '.' + table
 
-    with conn.cursor() as cur:
+    with get_connection().cursor() as cur:
         cur.execute("""CREATE TABLE %s (id numeric, value varchar, primary key (id))""" % fq_table)
         to_insert = []
         for i in range(N):
@@ -22,46 +22,39 @@ def create_random_table(conn, mountpoint, table, N=1000):
                 execute_batch(cur, """INSERT INTO %s VALUES (%%s, %%s)""" % fq_table, to_insert)
                 to_insert = []
                 print(i)
+    get_connection().commit()
 
-    conn.commit()
 
-
-def delete_random_rows(conn, mountpoint, table, N=200):
+def delete_random_rows(mountpoint, table, N=200):
     fq_table = mountpoint + '.' + table
-    with conn.cursor() as cur:
+    with get_connection().cursor() as cur:
         cur.execute("""SELECT id FROM %s""" % fq_table)
         ids = [c[0] for c in cur.fetchall()]
 
     to_delete = [(int(i),) for i in sample(ids, N)]
-    with conn.cursor() as cur:
+    with get_connection().cursor() as cur:
         execute_batch(cur, "DELETE FROM %s WHERE id = %%s" % fq_table, to_delete)
-
-
+    get_connection().commit()
 
 
 def bench_delete_checkout(N):
-    unmount(conn, MOUNTPOINT)
-    init(conn, MOUNTPOINT)
-    create_random_table(conn, MOUNTPOINT, "test", N)
-    commit(conn, MOUNTPOINT)
-    delete_random_rows(conn, MOUNTPOINT, "test", N//5)
-    conn.commit()
-    print(dump_pending_changes(conn, MOUNTPOINT, "test", aggregate=True))
-    with conn.cursor() as cur:
-        cur.execute("select count(1) from splitgraph_meta.pending_changes")
-        print(cur.fetchall())
-    rev = commit(conn, MOUNTPOINT)
-    conn.commit()
+    rm(MOUNTPOINT)
+    init(MOUNTPOINT)
+    create_random_table(MOUNTPOINT, "test", N)
+    commit(MOUNTPOINT)
+    delete_random_rows(MOUNTPOINT, "test", N // 5)
+    print(dump_pending_changes(MOUNTPOINT, "test", aggregate=True))
+    rev = commit(MOUNTPOINT)
 
-    print(timeit("checkout(conn, MOUNTPOINT, '%s')" % rev, "from __main__ import conn, MOUNTPOINT, checkout", number=3))
+    print(timeit("checkout(MOUNTPOINT, '%s')" % rev, "from __main__ import MOUNTPOINT, checkout", number=3))
+
 
 if __name__ == '__main__':
-    conn = _conn()
     # for N in [10, 100, 1000, 5000, 10000, 20000]:
     #     print(N)
     #     bench_delete_checkout(N)
     N = 1000000
-    unmount(conn, MOUNTPOINT)
-    init(conn, MOUNTPOINT)
-    create_random_table(conn, MOUNTPOINT, "test", N)
-    commit(conn, MOUNTPOINT)
+    rm(MOUNTPOINT)
+    init(MOUNTPOINT)
+    create_random_table(MOUNTPOINT, "test", N)
+    commit(MOUNTPOINT)

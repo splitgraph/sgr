@@ -12,7 +12,7 @@ Managing images
 `sgr commit`
     Also see :mod:`splitgraph.commands.commit`
 
-    Creates a new commit hash (currently picked at random, unless explicitly specified by the SGFile executor or the user)
+    Creates a new commit hash (currently picked at random, unless explicitly specified by the Splitfile executor or the user)
     and records all changes to the tables in a given schema.
 
 `sgr checkout`
@@ -86,7 +86,7 @@ Importing tables across repositories
 The API version of this function in :mod:`splitgraph.commands.importing` also allows more sophisticated importing,
 such as importing only some data from the source table or simply copying the table over without its physical history.
 
-This command usually doesn't need to used directly and is instead called by the :ref:`SGFile interpreter<sgfile>`.
+This command usually doesn't need to used directly and is instead called by the :ref:`Splitfile interpreter<splitfile>`.
 
 Mounting foreign databases
 ==========================
@@ -122,27 +122,27 @@ For an example, see the Postgres mount handler in :func:`splitgraph.commands.mou
 Provenance tracking
 ===================
 
-Every :ref:`SGFile command <sgfile>` is recorded in the image metadata so that it's possible to track which datasets an
+Every :ref:`Splitfile command <splitfile>` is recorded in the image metadata so that it's possible to track which datasets an
 image depends on, as well as how it can be recreated. Images that are created by `MOUNT` commands
 (data import from a mounted database) aren't currently supported, as it's assumed that those databases
 aren't publicly accessible.
 
-Provenance tracking allows Splitgraph to recreate the SGFile the image was made with, as well as rebase the image to
+Provenance tracking allows Splitgraph to recreate the Splitfile the image was made with, as well as rebase the image to
 use a different version of the datasets it was made from.
 
 `sgr provenance REPOSITORY IMAGE_OR_TAG`
     Inspects the image's parents and outputs a list of datasets and their versions
     that were used to create this image (via `IMPORT` or `FROM` commands). If the `-f (--full)` flag is passed, then the
-    command will try to reconstruct the full sgfile used to create the image, raising an error if there's a break in the
-    provenance chain (e.g. the `MOUNT` command or a SQL query outside of the sgfile interpreter was used somewhere
+    command will try to reconstruct the full splitfile used to create the image, raising an error if there's a break in the
+    provenance chain (e.g. the `MOUNT` command or a SQL query outside of the splitfile interpreter was used somewhere
     in the history of the image). If the `-e` flag is passed, the command will instead stop at the first break in the chain
-    and base the resulting sgfile before the break (using the `FROM` command).
+    and base the resulting splitfile before the break (using the `FROM` command).
 
 `sgr rerun REPOSITORY IMAGE_OR_TAG -i DATASET1 IMAGE_OR_TAG1 -i ...`
-    Recreates the SGFile used to derive a given image
+    Recreates the Splitfile used to derive a given image
     and reruns it, replacing its dependencies as specified by the `-i` options. If the `-u` flag is passed, the image
     is rederived based on the `latest` tag of all its dependencies.
 
     For example, if `pgderiv:v1` was created with `pgorigin:v1` and `pgorigin` has been updated on the remote to tag `v2`,
     then both `sgr rerun pgderiv v1 -i pgorigin v2` and `sgr rerun -u pgderiv v1` will have the same effect of rerunning
-    the sgfile used to create `pgderiv` based on the latest version of `pgorigin`.
+    the splitfile used to create `pgderiv` based on the latest version of `pgorigin`.

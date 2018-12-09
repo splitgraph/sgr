@@ -15,7 +15,7 @@ version and tag information, relationships between images and downloaded tables.
 Here's an overview of the tables in this schema:
 
   * `images`: Describes all image hashes and their parents, as well as extra
-    data about a given commit (the creation timestamp, the commit message and the details of the sgfile command that
+    data about a given commit (the creation timestamp, the commit message and the details of the splitfile command that
     generated this image). PKd on the repository and the image hash, so the same image can exist in multiple schemas
     at the same time.
   * `tables`: an image consists of multiple tables. Each table in a given version is represented by one or more objects.

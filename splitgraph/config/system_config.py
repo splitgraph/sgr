@@ -4,11 +4,10 @@ import sys
 from .argument_config import get_argument_config_value
 from .environment_config import get_environment_config_value
 
-""" "Export" an object of SystemConfigGetters, for getting config values that
-    require operations with the system, like checking if files exist.
-
-    Don't forget to add each method definiton to the object after defining it.
-"""
+# "Export" an object of SystemConfigGetters, for getting config values that
+# require operations with the system, like checking if files exist.
+#
+# Don't forget to add each method definition to the object after defining it.
 SystemConfigGetters = {}
 
 VALID_CONFIG_FILE_NAMES = [
@@ -55,7 +54,7 @@ def get_explicit_config_file_location():
 
     if explicit_location and is_file(explicit_location):
         return explicit_location
-    elif explicit_location and not is_file(explicit_location):
+    if explicit_location and not is_file(explicit_location):
         sys.stderr.write('Warning: %s = %s is not a file' % (key, explicit_location))
 
     return None
@@ -165,8 +164,7 @@ def SG_CONFIG_FILE(default_return=None):
 
         return first_matching_file
 
-    else:
-        return default_return
+    return default_return
 
 
 # Don't forget to do this for each method you want in the object

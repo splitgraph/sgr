@@ -1,27 +1,35 @@
+"""
+Commands for checking out Splitgraph images
+"""
+
 import logging
 from contextlib import contextmanager
 
 from psycopg2.sql import Identifier, SQL
 
-from splitgraph.commands.misc import delete_objects
-from splitgraph.constants import get_random_object_id, SplitGraphException, SPLITGRAPH_META_SCHEMA
-from splitgraph.meta_handler.images import get_canonical_image_id, get_closest_parent_image_object
-from splitgraph.meta_handler.misc import get_remote_for
-from splitgraph.meta_handler.objects import get_external_object_locations
-from splitgraph.meta_handler.tables import get_tables_at, get_object_for_table
-from splitgraph.meta_handler.tags import get_tagged_id, set_head
-from splitgraph.objects.applying import apply_record_to_staging
-from splitgraph.objects.loading import download_objects
-from splitgraph.pg_audit import has_pending_changes, manage_audit, discard_pending_changes
-from splitgraph.pg_utils import copy_table, get_primary_keys, get_all_tables, pg_table_exists
+from splitgraph.commands.repository import get_upstream
+from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from ._common import set_head
+from ._objects.applying import apply_record_to_staging
+from ._objects.loading import download_objects
+from ._objects.utils import get_random_object_id
+from ._pg_audit import manage_audit, discard_pending_changes
+from .diff import has_pending_changes
+from .info import get_canonical_image_id, get_tables_at
+from .misc import delete_objects, rm
+from .tagging import get_tagged_id, delete_tag
+from .._data.images import get_image_object_path
+from .._data.objects import get_external_object_locations, get_object_for_table, get_existing_objects
+from ..connection import get_connection, get_remote_connection_params
+from ..exceptions import SplitGraphException
+from ..pg_utils import copy_table, get_all_tables, pg_table_exists
 
 
-def materialize_table(conn, repository, image_hash, table, destination, destination_schema=None):
+def materialize_table(repository, image_hash, table, destination, destination_schema=None):
     """
     Materializes a SplitGraph table in the target schema as a normal Postgres table, potentially downloading all
     required objects and using them to reconstruct the table.
 
-    :param conn: psycopg connection object
     :param repository: Target mountpoint to materialize the table in.
     :param image_hash: Hash of the commit to get the table from.
     :param table: Name of the table.
@@ -29,73 +37,71 @@ def materialize_table(conn, repository, image_hash, table, destination, destinat
     :param destination_schema: Name of the destination schema.
     :return: A set of IDs of downloaded objects used to construct the table.
     """
+    conn = get_connection()
     destination_schema = destination_schema or repository.to_schema()
     with conn.cursor() as cur:
         cur.execute(
             SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(destination_schema), Identifier(destination)))
         # Get the closest snapshot from the table's parents
         # and then apply all deltas consecutively from it.
-        object_id, to_apply = get_closest_parent_image_object(conn, repository, table, image_hash)
+        object_id, to_apply = get_image_object_path(repository, table, image_hash)
 
         # Make sure all the objects have been downloaded from remote if it exists
-        remote_info = get_remote_for(conn, repository)
+        remote_info = get_upstream(repository)
         if remote_info:
-            remote_conn, _ = remote_info
-            object_locations = get_external_object_locations(conn, to_apply + [object_id])
-            fetched_objects = download_objects(conn, remote_conn, objects_to_fetch=to_apply + [object_id],
+            object_locations = get_external_object_locations(to_apply + [object_id])
+            fetched_objects = download_objects(get_remote_connection_params(remote_info[0]),
+                                               objects_to_fetch=to_apply + [object_id],
                                                object_locations=object_locations)
 
-        # Copy the given snap id over to "staging"
+        difference = set(to_apply + [object_id]).difference(set(get_existing_objects()))
+        if difference:
+            logging.warning("Not all objects required to materialize %s:%s:%s exist locally.",
+                            repository.to_schema(), image_hash, table)
+            logging.warning("Missing objects: %r", difference)
+        # Copy the given snap id over to "staging" and apply the DIFFS
         copy_table(conn, SPLITGRAPH_META_SCHEMA, object_id, destination_schema, destination,
                    with_pk_constraints=True)
-        # This is to work around logical replication not reflecting deletions from non-PKd tables. However, this makes
-        # it emit all column values in the row, not just the updated ones.
-        if not get_primary_keys(conn, destination_schema, destination):
-            logging.warning("Table %s has no primary key. "
-                            "This means that changes will have to be recorded as whole-row.", destination)
-            cur.execute(SQL("ALTER TABLE {}.{} REPLICA IDENTITY FULL").format(Identifier(destination_schema),
-                                                                              Identifier(destination)))
-        else:
-            cur.execute(SQL("ALTER TABLE {}.{} REPLICA IDENTITY DEFAULT").format(Identifier(destination_schema),
-                                                                                 Identifier(destination)))
-
-        # Apply the deltas sequentially to the checked out table
         for pack_object in reversed(to_apply):
             logging.info("Applying %s...", pack_object)
-            apply_record_to_staging(conn, pack_object, destination_schema, destination)
+            apply_record_to_staging(pack_object, destination_schema, destination)
 
         return fetched_objects if remote_info else set()
 
 
 @manage_audit
-def checkout(conn, repository, image_hash=None, tag=None, tables=None, keep_downloaded_objects=True):
+def checkout(repository, image_hash=None, tag=None, tables=None, keep_downloaded_objects=True, force=False):
     """
-    Discards all pending changes in the current mountpoint and checks out an image, changing the current HEAD pointer.
+    Checks out an image belonging to a given repository, changing the current HEAD pointer. Raises an error
+    if there are pending changes to the
 
-    :param conn: psycopg connection object
-    :param repository: Mountpoint to check out.
+    :param repository: Repository to check out.
     :param image_hash: Hash of the image to check out.
     :param tag: Tag of the image to check out. One of `image_hash` or `tag` must be specified.
     :param tables: List of tables to materialize in the mountpoint.
     :param keep_downloaded_objects: If False, deletes externally downloaded objects after they've been used.
-    :param namespace: Namespace
+    :param force: Discards all pending changes to the schema.
     """
     target_schema = repository.to_schema()
+    conn = get_connection()
     if tables is None:
         tables = []
-    if has_pending_changes(conn, repository):
-        logging.warning("%s has pending changes, discarding...", repository)
-    discard_pending_changes(conn, target_schema)
-    # Detect the actual schema snap we want to check out
+    if has_pending_changes(repository):
+        if not force:
+            raise SplitGraphException("{0} has pending changes! Pass force=True or do sgr checkout -f {0}:HEAD"
+                                      .format(repository.to_schema()))
+        logging.warning("%s has pending changes, discarding...", repository.to_schema())
+    discard_pending_changes(target_schema)
+    # Detect the actual image
     if image_hash:
         # get_canonical_image_hash called twice if the commandline entry point already called it. How to fix?
-        image_hash = get_canonical_image_id(conn, repository, image_hash)
+        image_hash = get_canonical_image_id(repository, image_hash)
     elif tag:
-        image_hash = get_tagged_id(conn, repository, tag)
+        image_hash = get_tagged_id(repository, tag)
     else:
-        raise SplitGraphException("One of schema_snap or tag must be specified!")
+        raise SplitGraphException("One of image_hash or tag must be specified!")
 
-    tables = tables or get_tables_at(conn, repository, image_hash)
+    tables = tables or get_tables_at(repository, image_hash)
     with conn.cursor() as cur:
         # Drop all current tables in staging
         for table in get_all_tables(conn, target_schema):
@@ -103,23 +109,41 @@ def checkout(conn, repository, image_hash=None, tag=None, tables=None, keep_down
 
     downloaded_object_ids = set()
     for table in tables:
-        downloaded_object_ids |= materialize_table(conn, repository, image_hash, table, table)
+        downloaded_object_ids |= materialize_table(repository, image_hash, table, table)
 
     # Repoint the current HEAD for this mountpoint to the new snap ID
-    set_head(conn, repository, image_hash)
+    set_head(repository, image_hash)
 
     if not keep_downloaded_objects:
-        logging.info("Removing %d downloaded objects from cache..." % len(downloaded_object_ids))
-        delete_objects(conn, downloaded_object_ids)
+        logging.info("Removing %d downloaded objects from cache...", downloaded_object_ids)
+        delete_objects(downloaded_object_ids)
+
+
+@manage_audit
+def uncheckout(repository, force=False):
+    """
+    Deletes the schema that the repository is checked out into
+
+    :param repository: Repository to check out.
+    :param force: Discards all pending changes to the schema.
+    """
+    if has_pending_changes(repository):
+        if not force:
+            raise SplitGraphException("{0} has pending changes! Pass force=True or do sgr checkout -f {0}:HEAD"
+                                      .format(repository.to_schema()))
+        logging.warning("%s has pending changes, discarding...", repository.to_schema())
+
+    # Delete the schema and remove the HEAD tag
+    rm(repository, unregister=False)
+    delete_tag(repository, 'HEAD')
 
 
 @contextmanager
-def materialized_table(conn, repository, table_name, image_hash):
+def materialized_table(repository, table_name, image_hash):
     """A context manager that returns a pointer to a read-only materialized table in a given image.
     If the table is already stored as a SNAP, this doesn't use any extra space.
     Otherwise, the table is materialized and deleted on exit from the context manager.
 
-    :param conn: Psycopg connection object
     :param repository: Repository that the table belongs to
     :param table_name: Name of the table
     :param image_hash: Image hash to materialize
@@ -127,31 +151,31 @@ def materialized_table(conn, repository, table_name, image_hash):
         The table must not be changed, as it might be a pointer to a real SG SNAP object.
     """
     if image_hash is None:
-        # No snapshot -- just return the current staging table.
+        # No image hash -- just return the current staging table.
         yield repository.to_schema(), table_name
     # See if the table snapshot already exists, otherwise reconstruct it
-    object_id = get_object_for_table(conn, repository, table_name, image_hash, 'SNAP')
+    object_id = get_object_for_table(repository, table_name, image_hash, 'SNAP')
     if object_id is None:
         # Materialize the SNAP into a new object
         new_id = get_random_object_id()
-        materialize_table(conn, repository, image_hash, table_name, new_id, destination_schema=SPLITGRAPH_META_SCHEMA)
+        materialize_table(repository, image_hash, table_name, new_id, destination_schema=SPLITGRAPH_META_SCHEMA)
         yield SPLITGRAPH_META_SCHEMA, new_id
         # Maybe some cache management/expiry strategies here
-        delete_objects(conn, [new_id])
+        delete_objects([new_id])
     else:
-        if pg_table_exists(conn, SPLITGRAPH_META_SCHEMA, object_id):
+        if pg_table_exists(get_connection(), SPLITGRAPH_META_SCHEMA, object_id):
             yield SPLITGRAPH_META_SCHEMA, object_id
         else:
             # The SNAP object doesn't actually exist remotely, so we have to download it.
             # An optimisation here: we could open an RO connection to the remote instead if the object
             # does live there.
-            remote_info = get_remote_for(conn, repository)
+            remote_info = get_upstream(repository)
             if not remote_info:
                 raise SplitGraphException("SNAP %s from %s doesn't exist locally and no remote was found for it!"
                                           % (object_id, str(repository)))
             remote_conn, _ = remote_info
-            object_locations = get_external_object_locations(conn, [object_id])
-            download_objects(conn, remote_conn, objects_to_fetch=[object_id], object_locations=object_locations)
+            object_locations = get_external_object_locations([object_id])
+            download_objects(remote_conn, objects_to_fetch=[object_id], object_locations=object_locations)
             yield SPLITGRAPH_META_SCHEMA, object_id
 
-            delete_objects(conn, [object_id])
+            delete_objects([object_id])

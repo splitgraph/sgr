@@ -19,8 +19,7 @@ def lazy_get_config_value(key, default_return=None):
             or get_environment_config_value(key, None)
             or get_system_config_value(key, None)
             or get_default_config_value(key, None)
-            or default_return
-    )
+            or default_return)
 
 
 def update_config_dict_from_arguments(config_dict):

@@ -1,13 +1,12 @@
 DEFAULTS = {
     "SG_NAMESPACE": "sg-default-ns",
-    "SG_DRIVER_CONNECTION_STRING": None,
-    "SG_DRIVER_HOST": None,
+    "SG_DRIVER_HOST": "localhost",
     "SG_DRIVER_PORT": 5432,
-    "SG_DRIVER_DB_NAME": "sg-default-ns",
-    "SG_DRIVER_USER": None,
-    "SG_DRIVER_PWD": None,
-    "SG_DRIVER_ADMIN_USER": None,
-    "SG_DRIVER_ADMIN_PWD": None,
+    "SG_DRIVER_DB_NAME": "splitgraph",
+    "SG_DRIVER_USER": "sgr",
+    "SG_DRIVER_PWD": "supersecure",
+    "SG_DRIVER_ADMIN_USER": "sgr",
+    "SG_DRIVER_ADMIN_PWD": "supersecure",
     "SG_DRIVER_POSTGRES_DB_NAME": "postgres",
     "SG_CONFIG_FILE": None,
     "SG_META_SCHEMA": "splitgraph_meta",
@@ -23,13 +22,14 @@ DEFAULTS = {
 }
 
 KEYS = list(DEFAULTS.keys())
+# Keys whose contents we don't print fully
+SENSITIVE_KEYS = [k for k in KEYS if '_PWD' in k]
 
 """ Warning: Every key in DEFAULTS must have a key in ARGUMENT_KEY_MAP
     If you add/remove keys from DEFAULTS, make sure to do so here too.
 """
 ARGUMENT_KEY_MAP = {
     "--namespace": "SG_NAMESPACE",
-    "--driver-connection-string": "SG_DRIVER_CONNECTION_STRING",
     "--driver-host": "SG_DRIVER_HOST",
     "--driver-port": "SG_DRIVER_PORT",
     "--driver-db-name": "SG_DRIVER_DB_NAME",

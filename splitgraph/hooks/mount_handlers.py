@@ -1,0 +1,164 @@
+"""
+Hooks for additional handlers used to mount other databases via FDW. These handlers become available
+in the command line tool (via sgr mount) and in the Splitfile interpreter (via FROM MOUNT).
+"""
+
+import logging
+from importlib import import_module
+
+from psycopg2.sql import Identifier, SQL
+
+from splitgraph.config import PG_USER, CONFIG
+from splitgraph.connection import get_connection
+from splitgraph.exceptions import SplitGraphException
+
+_MOUNT_HANDLERS = {}
+
+
+def get_mount_handler(mount_handler):
+    """Returns a mount function for a given handler.
+    The mount function has a signature (mountpoint, server, port, username, password, handler_kwargs)."""
+    try:
+        return _MOUNT_HANDLERS[mount_handler]
+    except KeyError:
+        raise SplitGraphException("Mount handler %s not supported!" % mount_handler)
+
+
+def get_mount_handlers():
+    """Returns the names of all registered mount handlers."""
+    return list(_MOUNT_HANDLERS.keys())
+
+
+def register_mount_handler(name, mount_function):
+    """Returns a mount function under a given name. See `get_mount_handler` for the mount handler spec."""
+    global _MOUNT_HANDLERS
+    if name in _MOUNT_HANDLERS:
+        raise SplitGraphException("Cannot register a mount handler %s as it already exists!" % name)
+    _MOUNT_HANDLERS[name] = mount_function
+
+
+def mount_postgres(mountpoint, server, port, username, password, dbname, remote_schema, tables=[]):
+    """
+    Mount a Postgres database.
+
+    Mounts a schema on a remote Postgres database as a set of foreign tables locally.
+    \b
+    :param mountpoint: Schema to mount the remote into.
+    :param server: Database hostname.
+    :param port: Port the Postgres server is running on.
+    :param username: A read-only user that the database will be accessed as.
+    :param password: Password for the read-only user.
+    :param dbname: Remote database name.
+    :param remote_schema: Remote schema name.
+    :param tables: Tables to mount (default all).
+    """
+    with get_connection().cursor() as cur:
+        logging.info("Importing foreign Postgres schema...")
+        server_id = Identifier(mountpoint + '_server')
+
+        cur.execute(SQL("""CREATE SERVER {}
+                        FOREIGN DATA WRAPPER postgres_fdw
+                        OPTIONS (host %s, port %s, dbname %s)""").format(server_id), (server, str(port), dbname))
+        cur.execute(SQL("""CREATE USER MAPPING FOR {}
+                        SERVER {}
+                        OPTIONS (user %s, password %s)""")
+                    .format(Identifier(PG_USER), server_id), (username, password))
+
+        cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(mountpoint)))
+
+        # Construct a query: import schema limit to (%s, %s, ...) from server mountpoint_server into mountpoint
+        query = "IMPORT FOREIGN SCHEMA {} "
+        if tables:
+            query += "LIMIT TO (" + ",".join("%s" for _ in tables) + ") "
+        query += "FROM SERVER {} INTO {}"
+        cur.execute(SQL(query).format(Identifier(remote_schema), server_id, Identifier(mountpoint)), tables)
+
+
+def mount_mongo(mountpoint, server, port, username, password, **table_spec):
+    """
+    Mount a Mongo database.
+
+    Mounts one or more collections on a remote Mongo database as a set of foreign tables locally.
+    \b
+    :param mountpoint: Schema to mount the remote into.
+    :param server: Database hostname.
+    :param port: Port the Mongo server is running on.
+    :param username: A read-only user that the database will be accessed as.
+    :param password: Password for the read-only user.
+    :param table_spec: A dictionary of form {"table_name": {"db": <dbname>, "coll": <collection>,
+                                                               "schema": {"col1": "type1"...}}}.
+    """
+    with get_connection().cursor() as cur:
+        server_id = Identifier(mountpoint + '_server')
+
+        cur.execute(SQL("""CREATE SERVER {}
+                        FOREIGN DATA WRAPPER mongo_fdw
+                        OPTIONS (address %s, port %s)""").format(server_id), (server, str(port)))
+        cur.execute(SQL("""CREATE USER MAPPING FOR {}
+                        SERVER {}
+                        OPTIONS (username %s, password %s)""")
+                    .format(Identifier(PG_USER), server_id), (username, password))
+
+        cur.execute(SQL("""CREATE SCHEMA {}""").format(Identifier(mountpoint)))
+
+        # Parse the table spec
+        # {table_name: {db: remote_db_name, coll: remote_collection_name, schema: {col1: type1, col2: type2...}}}
+        for table_name, table_options in table_spec.items():
+            logging.info("Mounting table %s", table_name)
+            db = table_options['db']
+            coll = table_options['coll']
+
+            query = SQL("CREATE FOREIGN TABLE {}.{} (_id NAME ").format(Identifier(mountpoint), Identifier(table_name))
+            if table_options['schema']:
+                for cname, ctype in table_options['schema'].items():
+                    query += SQL(", {} %s" % ctype).format(Identifier(cname))
+            query += SQL(") SERVER {} OPTIONS (database %s, collection %s)").format(server_id)
+            cur.execute(query, (db, coll))
+
+
+def mount_mysql(mountpoint, server, port, username, password, remote_schema, tables=[]):
+    """
+    Mount a MySQL database.
+
+    Mounts a schema on a remote MySQL database as a set of foreign tables locally.
+    \b
+    :param mountpoint: Schema to mount the remote into.
+    :param server: Database hostname.
+    :param port: Database port
+    :param username: A read-only user that the database will be accessed as.
+    :param password: Password for the read-only user.
+    :param dbname: Remote database name.
+    :param remote_schema: Remote schema name.
+    :param tables: Tables to mount (default all).
+    """
+    with get_connection().cursor() as cur:
+        logging.info("Mounting foreign MySQL database...")
+        server_id = Identifier(mountpoint + '_server')
+
+        cur.execute(SQL("""CREATE SERVER {}
+                        FOREIGN DATA WRAPPER mysql_fdw
+                        OPTIONS (host %s, port %s)""").format(server_id), (server, str(port)))
+        cur.execute(SQL("""CREATE USER MAPPING FOR {}
+                        SERVER {}
+                        OPTIONS (username %s, password %s)""")
+                    .format(Identifier(PG_USER), server_id), (username, password))
+
+        cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(mountpoint)))
+
+        query = "IMPORT FOREIGN SCHEMA {} "
+        if tables:
+            query += "LIMIT TO (" + ",".join("%s" for _ in tables) + ") "
+        query += "FROM SERVER {} INTO {}"
+        cur.execute(SQL(query).format(Identifier(remote_schema), server_id, Identifier(mountpoint)), tables)
+
+
+# Register the mount handlers from the config.
+for handler_name, handler_func_name in CONFIG.get('mount_handlers', {}).items():
+    ix = handler_func_name.rindex('.')
+    try:
+        handler_func = getattr(import_module(handler_func_name[:ix]), handler_func_name[ix + 1:])
+        register_mount_handler(handler_name.lower(), handler_func)
+    except AttributeError as e:
+        raise SplitGraphException("Error loading custom mount handler {0}".format(handler_name), e)
+    except ImportError as e:
+        raise SplitGraphException("Error loading custom mount handler {0}".format(handler_name), e)
