@@ -5,6 +5,7 @@
 --   to jsonb (jsonb didn't exist when the trigger was made + hstore seems to discard
 --   column type information)
 -- * Not storing unused tx information in the audit table (conn details, users etc)
+-- * Not allowing to exclude columns
 -- At first I set it up to fetch master from github and apply the patches but the master
 -- hasn't been updated for 3 years and these PRs have no chance of getting merged.
 
@@ -70,7 +71,6 @@ DECLARE
     audit_row audit.logged_actions;
     h_old jsonb;
     h_new jsonb;
-    excluded_cols text[] = ARRAY[]::text[];
 BEGIN
     IF TG_WHEN <> 'AFTER' THEN
         RAISE EXCEPTION 'audit.if_modified_func() may only run as an AFTER trigger';
@@ -84,12 +84,8 @@ BEGIN
         NULL, NULL                                    -- row_data, changed_fields
         );
 
-    IF TG_ARGV[1] IS NOT NULL THEN
-        excluded_cols = TG_ARGV[1]::text[];
-    END IF;
-
     IF (TG_OP = 'UPDATE' AND TG_LEVEL = 'ROW') THEN
-        audit_row.row_data = row_to_json(OLD)::JSONB - excluded_cols;
+        audit_row.row_data = row_to_json(OLD)::JSONB;
 
         --Computing differences
         SELECT
@@ -103,9 +99,9 @@ BEGIN
             RETURN NULL;
         END IF;
     ELSIF (TG_OP = 'DELETE' AND TG_LEVEL = 'ROW') THEN
-        audit_row.row_data = row_to_json(OLD)::JSONB - excluded_cols;
+        audit_row.row_data = row_to_json(OLD)::JSONB;
     ELSIF (TG_OP = 'INSERT' AND TG_LEVEL = 'ROW') THEN
-        audit_row.row_data = row_to_json(NEW)::JSONB - excluded_cols;
+        audit_row.row_data = row_to_json(NEW)::JSONB;
     ELSE
         RAISE EXCEPTION '[audit.if_modified_func] - Trigger func added as trigger for unhandled case: %, %',TG_OP, TG_LEVEL;
         RETURN NULL;
@@ -121,25 +117,6 @@ SET search_path = pg_catalog, public;
 COMMENT ON FUNCTION audit.if_modified_func() IS $body$
 Track changes to a table at the statement and/or row level.
 
-Optional parameters to trigger in CREATE TRIGGER call:
-
-param 0: boolean, whether to log the query text. Default 't'.
-
-param 1: text[], columns to ignore in updates. Default [].
-
-         Updates to ignored cols are omitted from changed_fields.
-
-         Updates with only ignored cols changed are not inserted
-         into the audit log.
-
-         Almost all the processing work is still done for updates
-         that ignored. If you need to save the load, you need to use
-         WHEN clause on the trigger instead.
-
-         No warning or error is issued if ignored_cols contains columns
-         that do not exist in the target table. This lets you specify
-         a standard set of ignored columns.
-
 There is no parameter to disable logging of values. Add this trigger as
 a 'FOR EACH STATEMENT' rather than 'FOR EACH ROW' trigger if you do not
 want to log row values.
@@ -149,35 +126,24 @@ cannot obtain the active role because it is reset by the SECURITY DEFINER invoca
 of the audit trigger its self.
 $body$;
 
-CREATE OR REPLACE FUNCTION audit.audit_table(target_table regclass, ignored_cols text[]) RETURNS void AS $body$
+CREATE OR REPLACE FUNCTION audit.audit_table(target_table regclass) RETURNS void AS $body$
 DECLARE
   stm_targets text = 'INSERT OR UPDATE OR DELETE OR TRUNCATE';
   _q_txt text;
-  _ignored_cols_snip text = '';
 BEGIN
     EXECUTE 'DROP TRIGGER IF EXISTS audit_trigger_row ON ' || target_table;
-
-    IF array_length(ignored_cols,1) > 0 THEN
-        _ignored_cols_snip = ', ' || quote_literal(ignored_cols);
-    END IF;
     _q_txt = 'CREATE TRIGGER audit_trigger_row AFTER INSERT OR UPDATE OR DELETE ON ' ||
              target_table ||
-             ' FOR EACH ROW EXECUTE PROCEDURE audit.if_modified_func(' || _ignored_cols_snip || ');';
+             ' FOR EACH ROW EXECUTE PROCEDURE audit.if_modified_func();';
     RAISE NOTICE '%',_q_txt;
     EXECUTE _q_txt;
 END;
 $body$
 language 'plpgsql';
 
-COMMENT ON FUNCTION audit.audit_table(regclass, text[]) IS $body$
+COMMENT ON FUNCTION audit.audit_table(regclass) IS $body$
 Add auditing support to a table.
 
 Arguments:
    target_table:     Table name, schema qualified if not on search_path
-   ignored_cols:     Columns to exclude from update diffs, ignore updates that change only ignored cols.
 $body$;
-
--- Pg doesn't allow variadic calls with 0 params, so provide a wrapper
-CREATE OR REPLACE FUNCTION audit.audit_table(target_table regclass) RETURNS void AS $body$
-SELECT audit.audit_table($1, ARRAY[]::text[]);
-$body$ LANGUAGE SQL;
