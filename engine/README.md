@@ -25,10 +25,6 @@ external databases (only mongo and postgres at the moment):
       to allow mounting of external postgres databases
     * [EnterpriseDB/mysql_fdw](https://github.com/EnterpriseDB/mysql_fdw.git)
        to allow mounting of MySQL (version 8) databases
- * Installs audit triggers for change detection
-    * Creates `audit` schema
-    * Configures audit triggers necessary for Splitgraph change tracking
-    * Based on [2ndQuadrant/audit-trigger](https://github.com/2ndQuadrant/audit-trigger)
 
 ## Running the driver
 
