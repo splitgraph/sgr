@@ -37,7 +37,7 @@ def import_tables(repository, tables, target_repository, target_tables, image_ha
     :param image_hash: Commit hash on the source mountpoint to import tables from.
         Uses the current source HEAD by default.
     :param foreign_tables: If True, copies all source tables to create a series of new SNAP objects instead of treating
-    them as SplitGraph-versioned tables. This is useful for adding brand new tables
+    them as Splitgraph-versioned tables. This is useful for adding brand new tables
         (for example, from an FDW-mounted table).
     :param do_checkout: If False, doesn't materialize the tables in the target mountpoint.
     :param target_hash: Hash of the new image that tables is recorded under. If None, gets chosen at random.
@@ -138,6 +138,7 @@ def import_table_from_remote(remote_conn_string, remote_repository, remote_table
     """
     Shorthand for importing one or more tables from a yet-uncloned remote. Here, the remote image hash is required,
     as otherwise we aren't necessarily able to determine what the remote head is.
+
     :param remote_conn_string: Connection string to the remote driver
     :param remote_repository: Remote repository
     :param remote_tables: List of remote tables to import
@@ -145,7 +146,6 @@ def import_table_from_remote(remote_conn_string, remote_repository, remote_table
     :param target_repository: Target repository to import the tables to
     :param target_tables: Target table aliases
     :param target_hash: Hash of the image that's created with the import. Default random.
-    :return:
     """
 
     # In the future, we could do some vaguely intelligent interrogation of the remote to directly copy the required

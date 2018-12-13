@@ -1,6 +1,6 @@
 """
 Hooks for additional handlers used to mount other databases via FDW. These handlers become available
-in the command line tool (via sgr mount) and in the Splitfile interpreter (via FROM MOUNT).
+in the command line tool (via `sgr mount`) and in the Splitfile interpreter (via `FROM MOUNT`).
 """
 
 import logging
@@ -17,7 +17,7 @@ _MOUNT_HANDLERS = {}
 
 def get_mount_handler(mount_handler):
     """Returns a mount function for a given handler.
-    The mount function has a signature (mountpoint, server, port, username, password, handler_kwargs)."""
+    The mount function must have a signature `(mountpoint, server, port, username, password, handler_kwargs)`."""
     try:
         return _MOUNT_HANDLERS[mount_handler]
     except KeyError:
@@ -43,6 +43,7 @@ def mount_postgres(mountpoint, server, port, username, password, dbname, remote_
 
     Mounts a schema on a remote Postgres database as a set of foreign tables locally.
     \b
+
     :param mountpoint: Schema to mount the remote into.
     :param server: Database hostname.
     :param port: Port the Postgres server is running on.
@@ -80,13 +81,13 @@ def mount_mongo(mountpoint, server, port, username, password, **table_spec):
 
     Mounts one or more collections on a remote Mongo database as a set of foreign tables locally.
     \b
+
     :param mountpoint: Schema to mount the remote into.
     :param server: Database hostname.
     :param port: Port the Mongo server is running on.
     :param username: A read-only user that the database will be accessed as.
     :param password: Password for the read-only user.
-    :param table_spec: A dictionary of form {"table_name": {"db": <dbname>, "coll": <collection>,
-                                                               "schema": {"col1": "type1"...}}}.
+    :param table_spec: A dictionary of form `{"table_name": {"db": <dbname>, "coll": <collection>, "schema": {"col1": "type1"...}}}`.
     """
     with get_connection().cursor() as cur:
         server_id = Identifier(mountpoint + '_server')
@@ -122,6 +123,7 @@ def mount_mysql(mountpoint, server, port, username, password, remote_schema, tab
 
     Mounts a schema on a remote MySQL database as a set of foreign tables locally.
     \b
+
     :param mountpoint: Schema to mount the remote into.
     :param server: Database hostname.
     :param port: Database port

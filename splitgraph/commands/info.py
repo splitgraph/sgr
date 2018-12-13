@@ -34,7 +34,6 @@ def get_canonical_image_id(repository, short_image):
 
     :param repository: Repository the image belongs to
     :param short_image: Shortened image hash
-    :return:
     """
     with get_connection().cursor() as cur:
         cur.execute(select("images", "image_hash", "namespace = %s AND repository = %s AND image_hash LIKE %s"),
@@ -68,9 +67,9 @@ def get_parent_children(repository, image_hash):
 def get_tables_at(repository, image):
     """
     Gets the names of all tables inside of an image.
+
     :param repository: Repository the image belongs to
     :param image: Image hash
-    :return:
     """
     with get_connection().cursor() as cur:
         cur.execute(select('tables', 'table_name', 'namespace = %s AND repository = %s AND image_hash = %s'),
@@ -82,6 +81,7 @@ def get_table(repository, table_name, image):
     """
     Returns a list of objects linked to a given table. Can contain a DIFF object (beginning a chain of DIFFs that
     describe a table), a SNAP object (a full table copy), or both.
+
     :param repository: Repository the image belongs to
     :param table_name: Name of the table
     :param image: Image hash
@@ -100,6 +100,7 @@ def get_table(repository, table_name, image):
 def table_schema_changed(repository, table_name, image_1, image_2=None):
     """
     Checks if the table schema has changed between two images in a repository
+
     :param repository: Repository object
     :param table_name: Table name
     :param image_1: Hash of the first image
@@ -119,6 +120,7 @@ def table_schema_changed(repository, table_name, image_1, image_2=None):
 def get_schema_at(repository, table_name, image_hash):
     """
     Gets the schema of a given table in a given Splitgraph image.
+
     :param repository: Repository object
     :param table_name: Table name
     :param image_hash: Hash of the image

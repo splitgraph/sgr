@@ -132,6 +132,7 @@ def _side_by_side_diff(repository, table_name, image_1, image_2, aggregate):
 def has_pending_changes(repository):
     """
     Detects if the repository has any pending changes (schema changes, table additions/deletions, content changes).
+
     :param repository: Repository object
     """
     head = get_current_head(repository, raise_on_none=False)

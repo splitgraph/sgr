@@ -15,9 +15,9 @@ from .._data.common import ensure_metadata_schema, select, insert
 def get_current_head(repository, raise_on_none=True):
     """
     Gets the currently checked out image hash for a given repository.
+
     :param repository: Repository
     :param raise_on_none: Whether to raise an error or return None if the repository isn't checked out.
-    :return:
     """
     return get_tagged_id(repository, 'HEAD', raise_on_none)
 
@@ -25,10 +25,10 @@ def get_current_head(repository, raise_on_none=True):
 def get_tagged_id(repository, tag, raise_on_none=True):
     """
     Returns the image hash with a given tag in a given repository.
+
     :param repository: Repository
     :param tag: Tag. 'latest' is a special case: it returns the most recent image in the repository.
     :param raise_on_none: Whether to raise an error or return None if the repository isn't checked out.
-    :return:
     """
     ensure_metadata_schema()
     if not repository_exists(repository) and raise_on_none:
@@ -64,6 +64,7 @@ def get_tagged_id(repository, tag, raise_on_none=True):
 def get_all_hashes_tags(repository):
     """
     Gets all tagged images and their hashes in a given repository.
+
     :param repository: Repository
     :return: List of (image_hash, tag)
     """
@@ -76,10 +77,10 @@ def get_all_hashes_tags(repository):
 def set_tags(repository, tags, force=False):
     """
     Sets tags for multiple images.
+
     :param repository: Repository
     :param tags: List of (image_hash, tag)
     :param force: Whether to remove the old tag if an image with this tag already exists.
-    :return:
     """
     for tag, image_id in tags.items():
         if tag != 'HEAD':
@@ -94,7 +95,6 @@ def set_tag(repository, image, tag, force=False):
     :param image: Image hash
     :param tag: Tag to set. 'latest' and 'HEAD' are reserved tags.
     :param force: Whether to remove the old tag if an image with this tag already exists.
-    :return:
     """
     with get_connection().cursor() as cur:
         cur.execute(select("tags", "1", "namespace = %s AND repository = %s AND tag = %s"),
@@ -115,6 +115,7 @@ def set_tag(repository, image, tag, force=False):
 def delete_tag(repository, tag):
     """
     Deletes a tag from an image.
+
     :param repository: Repository the image belongs to.
     :param tag: Tag to delete.
     """

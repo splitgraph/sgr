@@ -5,7 +5,7 @@ import click
 from psycopg2 import ProgrammingError
 
 import splitgraph as sg
-from splitgraph.commandline.common import image_spec_parser, pluralise
+from splitgraph.commandline._common import image_spec_parser, pluralise
 
 
 @click.command(name='log')
@@ -18,8 +18,8 @@ def log_c(repository, tree):
     By default, this shows the history of the current branch, starting from the HEAD pointer and following its
     parent chain.
 
-    If -t or --tree is passed, this instead renders the full image tree. The repository doesn't need to have been
-    checked out in this case.
+    If ``-t`` or ``--tree`` is passed, this instead renders the full image tree. The repository doesn't need to have
+    been checked out in this case.
     """
     if tree:
         sg.render_tree(repository)
@@ -46,17 +46,17 @@ def diff_c(verbose, table_name, repository, tag_or_hash_1, tag_or_hash_2):
     The two images must be in the same repository. The actual targets of this command depend
     on the number of arguments passed:
 
-        sgr diff REPOSITORY
+    ``sgr diff REPOSITORY``
 
-    Return the differences between the current HEAD image and the checked out schema.
+        Return the differences between the current HEAD image and the checked out schema.
 
-        sgr diff REPOSITORY TAG_OR_HASH
+    ``sgr diff REPOSITORY TAG_OR_HASH``
 
-    Return the differences between the image and its parent.
+        Return the differences between the image and its parent.
 
-        sgr diff REPOSITORY TAG_OR_HASH_1 TAG_OR_HASH_2
+    ``sgr diff REPOSITORY TAG_OR_HASH_1 TAG_OR_HASH_2``
 
-    Return the differences from the first (earlier) image to the second image.
+        Return the differences from the first (earlier) image to the second image.
     """
     tag_or_hash_1, tag_or_hash_2 = _get_actual_hashes(repository, tag_or_hash_1, tag_or_hash_2)
 
@@ -128,7 +128,7 @@ def show_c(image_spec, verbose):
     """
     Show information about a Splitgraph image. This includes its parent, comment and creation time.
 
-    Image spec must be of the format [NAMESPACE/]REPOSITORY[:HASH_OR_TAG]. If no tag is specified, 'HEAD' is used.
+    Image spec must be of the format ``[NAMESPACE/]REPOSITORY[:HASH_OR_TAG]``. If no tag is specified, ``HEAD`` is used.
     """
     repository, image = image_spec
     image = sg.resolve_image(repository, image)
@@ -165,8 +165,8 @@ def sql_c(sql, schema, show_all):
     There are no restrictions on the contents of the statement: this is the same as running it
     from any other PostgreSQL client.
 
-    If --schema is specified, the statement is run with the search_path set to that schema. This means
-    that these statements are equivalent:
+    If ``--schema`` is specified, the statement is run with the ``search_path`` set to that schema. This means
+    that these statements are equivalent::
 
         sgr sql "SELECT * FROM \"noaa/climate\".table"
         sgr sql -s noaa/climate "SELECT * FROM table"

@@ -437,6 +437,17 @@ sphinx = ">=1.5,<2.0"
 
 [[package]]
 category = "dev"
+description = "Read the Docs theme for Sphinx"
+name = "sphinx-rtd-theme"
+optional = false
+python-versions = "*"
+version = "0.4.2"
+
+[package.dependencies]
+sphinx = "*"
+
+[[package]]
+category = "dev"
 description = "Sphinx API for Web Apps"
 name = "sphinxcontrib-websupport"
 optional = false
@@ -452,7 +463,7 @@ python-versions = "*"
 version = "1.22"
 
 [metadata]
-content-hash = "f8f42e36f979588a5a372e0bd0c419b6ab595262069ff8860fba05603fef4393"
+content-hash = "e74738e014e60dacfb6112b806e0bec76862a6239b195dbae081f8afcb720e29"
 python-versions = ">=3.5"
 
 [metadata.hashes]
@@ -499,5 +510,6 @@ six = ["3350809f0555b11f552448330d0b52d5f24c91a322ea4a15ef22629740f3761c", "d16a
 snowballstemmer = ["919f26a68b2c17a7634da993d91339e288964f93c274f1343e3bbbe2096e1128", "9f3bcd3c401c3e862ec0ebe6d2c069ebc012ce142cce209c098ccb5b09136e89"]
 sphinx = ["120732cbddb1b2364471c3d9f8bfd4b0c5b550862f99a65736c77f970b142aea", "b348790776490894e0424101af9c8413f2a86831524bd55c5f379d3e3e12ca64"]
 sphinx-click = ["ed79ed8bd696ed3d300f2e1c75f2a1843611f674ee42401943c9fb9cefa5569d", "fb59306349977cca302065308349d1879c21c7d9bc2f0c3fe3f647e7b7aeffaf"]
+sphinx-rtd-theme = ["02f02a676d6baabb758a20c7a479d58648e0f64f13e07d1b388e9bb2afe86a09", "d0f6bc70f98961145c5b0e26a992829363a197321ba571b31b24ea91879e0c96"]
 sphinxcontrib-websupport = ["68ca7ff70785cbe1e7bccc71a48b5b6d965d79ca50629606c7861a21b206d9dd", "9de47f375baf1ea07cdb3436ff39d7a9c76042c10a769c52353ec46e4e8fc3b9"]
 urllib3 = ["06330f386d6e4b195fbfc736b297f58c5a892e4440e54d294d7004e3a9bbea1b", "cc44da8e1145637334317feebd728bd869a35285b93cbb4cca2577da7e62db4f"]

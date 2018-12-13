@@ -27,7 +27,7 @@ from ..pg_utils import copy_table, get_all_tables, pg_table_exists
 
 def materialize_table(repository, image_hash, table, destination, destination_schema=None):
     """
-    Materializes a SplitGraph table in the target schema as a normal Postgres table, potentially downloading all
+    Materializes a Splitgraph table in the target schema as a normal Postgres table, potentially downloading all
     required objects and using them to reconstruct the table.
 
     :param repository: Target mountpoint to materialize the table in.

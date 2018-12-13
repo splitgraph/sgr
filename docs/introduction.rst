@@ -4,7 +4,7 @@
 Introduction
 ============
 
-What if you could `git push` your database?
+What if you could ``git push`` your database?
 
 Splitgraph is a data management tool and a data sharing platform inspired by Docker and Git.
 

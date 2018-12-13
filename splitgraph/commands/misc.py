@@ -22,7 +22,7 @@ _PACKAGE = 'splitgraph'
 
 
 def table_exists_at(repository, table_name, image_hash):
-    """Determines whether a given table exists in a SplitGraph image without checking it out. If `image_hash` is None,
+    """Determines whether a given table exists in a Splitgraph image without checking it out. If `image_hash` is None,
     determines whether the table exists in the current staging area."""
     return pg_table_exists(get_connection(), repository.to_schema(), table_name) if image_hash is None \
         else bool(get_table(repository, table_name, image_hash))

@@ -29,7 +29,6 @@ def _get_required_snaps_objects(remote_conn, local_repository, remote_repository
     :param remote_conn: Connection to the remote Splitgraph driver
     :param local_repository: Local Repository object
     :param remote_repository: Remote Repository object
-    :return:
     """
     local_images = {image_hash: parent_id for image_hash, parent_id, _, _, _, _ in
                     get_all_image_info(local_repository)}
@@ -93,13 +92,12 @@ def _extract_recursive_object_meta(remote_conn, table_meta):
 
 def pull(repository, download_all=False):
     """
-    Synchronizes the state of the local SplitGraph repository with its upstream, optionally downloading all new
+    Synchronizes the state of the local Splitgraph repository with its upstream, optionally downloading all new
     objects created on the remote.
 
     :param repository: Repository to pull changes from.
     :param download_all: If True, downloads all objects and stores them locally. Otherwise, will only download required
         objects when a table is checked out.
-    :return:
     """
     remote_info = get_upstream(repository)
     if not remote_info:
@@ -113,7 +111,7 @@ def pull(repository, download_all=False):
 @manage_audit
 def clone(remote_repository, remote_driver=None, local_repository=None, download_all=False):
     """
-    Clones a remote SplitGraph repository or synchronizes remote changes with the local ones.
+    Clones a remote Splitgraph repository or synchronizes remote changes with the local ones.
 
     If the repository has no set upstream driver, the driver becomes its upstream. If `remote_driver`
     instead is a connection string, the repository won't have an upstream, meaning that lazy object
@@ -200,7 +198,7 @@ def local_clone(source, destination):
 
 def push(local_repository, remote_driver=None, remote_repository=None, handler='DB', handler_options=None):
     """
-    Inverse of `pull`: Pushes all local changes to the remote and uploads new objects.
+    Inverse of ``pull``: Pushes all local changes to the remote and uploads new objects.
 
     :param local_repository: Local repository to push changes from.
     :param remote_driver: The name of the remote driver or a connection string. If not specified, the current upstream
@@ -208,7 +206,8 @@ def push(local_repository, remote_driver=None, remote_repository=None, handler='
     :param remote_repository: Remote repository to push changes to. If not specified, the local repository is used.
     :param handler: Name of the handler to use to upload objects. Use `DB` to push them to the remote or `S3`
         to store them in an S3 bucket.
-    :param handler_options: For `S3`, a dictionary `{"username": username, "password", password}`.
+    :param handler_options: Extra options to pass to the handler. For example, see
+        :class:`splitgraph.hooks.s3.S3ExternalObjectHandler`
     """
 
     if handler_options is None:

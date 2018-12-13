@@ -41,6 +41,7 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.todo',
     'sphinx.ext.githubpages',
+    'sphinx_click.ext',
 ]
 
 # Add any paths that contain templates here, relative to this directory.
