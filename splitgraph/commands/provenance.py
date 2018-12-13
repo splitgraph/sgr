@@ -11,7 +11,7 @@ from splitgraph.exceptions import SplitGraphException
 
 def provenance(repository, image_hash):
     """
-    Inspects the parent chain of an Splitfile-generated image to come up with a set of repositories and their hashes
+    Inspects the parent chain of a Splitfile-generated image to come up with a set of repositories and their hashes
     that it was created from.
 
     :param repository: Repository that contains the image
@@ -41,7 +41,7 @@ def provenance(repository, image_hash):
 
 def _prov_command_to_splitfile(prov_type, prov_data, image_hash, source_replacement):
     """
-    Converts the image's provenance data stored by the Splitfile executor back to an Splitfile used to
+    Converts the image's provenance data stored by the Splitfile executor back to a Splitfile used to
     reconstruct it.
 
     :param prov_type: Provenance type (one of 'IMPORT' or 'SQL'). Any other provenances can't be reconstructed.

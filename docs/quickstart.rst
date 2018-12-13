@@ -118,7 +118,7 @@ can easily find out the exact provenance of an image::
 
 You'll see here that instead of tags (like latest) we've used the actual image hashes.
 
-Moreover, we can also reconstruct an Splitfile that can be used to recreate this image::
+Moreover, we can also reconstruct a Splitfile that can be used to recreate this image::
 
     sgr provenance -f joined_data:latest
 
