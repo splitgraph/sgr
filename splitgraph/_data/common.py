@@ -6,6 +6,7 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import get_connection
+from splitgraph.engine import get_engine, ResultShape
 
 META_TABLES = ['images', 'tags', 'objects', 'tables', 'upstream', 'object_locations', 'info']
 
@@ -19,11 +20,12 @@ def _create_metadata_schema():
     This all should probably be moved into some sort of a routine that runs when the whole driver is set up
     for the first time.
     """
+    engine = get_engine()
 
     with get_connection().cursor() as cur:
-        cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(SPLITGRAPH_META_SCHEMA)))
+        engine.run_sql(SQL("CREATE SCHEMA {}").format(Identifier(SPLITGRAPH_META_SCHEMA)), return_shape=None)
         # maybe FK parent_id on image_hash. NULL there means this is the repo root.
-        cur.execute(SQL("""CREATE TABLE {}.{} (
+        engine.run_sql(SQL("""CREATE TABLE {}.{} (
                         namespace       VARCHAR NOT NULL,
                         repository      VARCHAR NOT NULL,
                         image_hash      VARCHAR NOT NULL,
@@ -33,29 +35,32 @@ def _create_metadata_schema():
                         provenance_type VARCHAR,
                         provenance_data JSON,
                         PRIMARY KEY (namespace, repository, image_hash))""").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                                    Identifier("images")))
-        cur.execute(SQL("""CREATE TABLE {}.{} (
+                                                                                    Identifier("images")),
+                       return_shape=None)
+        engine.run_sql(SQL("""CREATE TABLE {}.{} (
                         namespace       VARCHAR NOT NULL,
                         repository      VARCHAR NOT NULL,
                         image_hash VARCHAR,
                         tag        VARCHAR,
                         PRIMARY KEY (namespace, repository, tag),
                         CONSTRAINT sh_fk FOREIGN KEY (namespace, repository, image_hash) REFERENCES {}.{})""")
-                    .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("tags"),
-                            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("images")))
+                       .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("tags"),
+                               Identifier(SPLITGRAPH_META_SCHEMA), Identifier("images")),
+                       return_shape=None)
 
         # A tree of object parents. The parent of an object is not necessarily the object linked to
         # the parent commit that the object belongs to (e.g. if we imported the object from a different commit tree).
         # One object can have multiple parents (e.g. 1 SNAP and 1 DIFF).
-        cur.execute(SQL("""CREATE TABLE {}.{} (
+        engine.run_sql(SQL("""CREATE TABLE {}.{} (
                         object_id  VARCHAR NOT NULL,
                         namespace  VARCHAR NOT NULL,
                         format     VARCHAR NOT NULL,
-                        parent_id  VARCHAR)""").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")))
+                        parent_id  VARCHAR)""").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")),
+                       return_shape=None)
 
         # Maps a given table at a given point in time to an "object ID" (either a full snapshot or a
         # delta to a previous table).
-        cur.execute(SQL("""CREATE TABLE {}.{} (
+        engine.run_sql(SQL("""CREATE TABLE {}.{} (
                         namespace  VARCHAR NOT NULL,
                         repository VARCHAR NOT NULL,
                         image_hash VARCHAR NOT NULL,
@@ -63,37 +68,41 @@ def _create_metadata_schema():
                         object_id  VARCHAR NOT NULL,
                         PRIMARY KEY (namespace, repository, image_hash, table_name, object_id),
                         CONSTRAINT tb_fk FOREIGN KEY (namespace, repository, image_hash) REFERENCES {}.{})""")
-                    .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("tables"),
-                            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("images")))
+                       .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("tables"),
+                               Identifier(SPLITGRAPH_META_SCHEMA), Identifier("images")),
+                       return_shape=None)
 
         # Keep track of what the remotes for a given repository are (by default, we create an "origin" remote
         # on initial pull)
-        cur.execute(SQL("""CREATE TABLE {}.{} (
+        engine.run_sql(SQL("""CREATE TABLE {}.{} (
                         namespace          VARCHAR NOT NULL,
                         repository         VARCHAR NOT NULL,
                         remote_name        VARCHAR NOT NULL,
                         remote_namespace   VARCHAR NOT NULL,
                         remote_repository  VARCHAR NOT NULL,
                         PRIMARY KEY (namespace, repository))""").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                        Identifier("upstream")))
+                                                                        Identifier("upstream")),
+                       return_shape=None)
 
         # Map objects to their locations for when they don't live on the remote or the local machine but instead
         # in S3/some FTP/HTTP server/torrent etc.
         # Lookup path to resolve an object on checkout: local -> this table -> remote (so that we don't bombard
         # the remote with queries for tables that may have been uploaded to a different place).
-        cur.execute(SQL("""CREATE TABLE {}.{} (
+        engine.run_sql(SQL("""CREATE TABLE {}.{} (
                         object_id          VARCHAR NOT NULL,
                         location           VARCHAR NOT NULL,
                         protocol           VARCHAR NOT NULL,
                         PRIMARY KEY (object_id))""").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                            Identifier("object_locations")))
+                                                            Identifier("object_locations")),
+                       return_shape=None)
 
         # Miscellaneous key-value information for this driver (e.g. whether uploading objects is permitted etc).
-        cur.execute(SQL("""CREATE TABLE {}.{} (
+        engine.run_sql(SQL("""CREATE TABLE {}.{} (
                         key   VARCHAR NOT NULL,
                         value VARCHAR NOT NULL,
                         PRIMARY KEY (key))""").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                      Identifier("info")))
+                                                      Identifier("info")),
+                       return_shape=None)
 
 
 def select(table, columns='*', where='', schema=SPLITGRAPH_META_SCHEMA):
@@ -130,7 +139,7 @@ def insert(table, columns, schema=SPLITGRAPH_META_SCHEMA):
 
 def ensure_metadata_schema():
     """Create the metadata schema if it doesn't exist"""
-    with get_connection().cursor() as cur:
-        cur.execute("SELECT 1 FROM information_schema.schemata WHERE schema_name = %s", (SPLITGRAPH_META_SCHEMA,))
-        if cur.fetchone() is None:
-            _create_metadata_schema()
+    if get_engine().run_sql(
+            "SELECT 1 FROM information_schema.schemata WHERE schema_name = %s", (SPLITGRAPH_META_SCHEMA,),
+            return_shape=ResultShape.ONE_ONE) is None:
+        _create_metadata_schema()

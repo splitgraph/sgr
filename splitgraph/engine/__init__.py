@@ -19,6 +19,12 @@ class Engine:
         """Run an arbitrary SQL statement with some arguments, return an iterator of results"""
         raise NotImplemented()
 
+    def run_sql_batch(self, statement, arguments):
+        """Run a parameterized SQL statement against multiple sets of arguments. Other engines
+        can override if they support a more efficient batching mechanism."""
+        for args in arguments:
+            self.run_sql(statement, args, return_shape=ResultShape.NONE)
+
     def execute_sql_in(self, schema, sql):
         """
         Executes a non-schema-qualified query against a specific schema, using PG's search_path.

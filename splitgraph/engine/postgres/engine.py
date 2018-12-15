@@ -1,3 +1,4 @@
+from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph import get_connection
@@ -26,3 +27,7 @@ class PostgresEngine(Engine):
                                                                       AND a.attnum = ANY(i.indkey)
                                WHERE i.indrelid = '{}.{}'::regclass AND i.indisprimary""")
                             .format(Identifier(schema), Identifier(table)), return_shape=ResultShape.MANY_MANY)
+
+    def run_sql_batch(self, statement, arguments):
+        with get_connection().cursor() as cur:
+            execute_batch(cur, statement, arguments, page_size=1000)

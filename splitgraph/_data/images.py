@@ -11,7 +11,7 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph._data.common import select, insert
 from splitgraph._data.objects import get_full_object_tree, get_object_for_table
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.connection import get_connection
+from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitGraphException
 
 IMAGE_COLS = "image_hash, parent_id, created, comment, provenance_type, provenance_data"
@@ -24,10 +24,8 @@ def get_all_image_info(repository):
     :param repository: Repository
     :return: List of (image_hash, parent_id, creation time, comment, provenance type, provenance data) for all images.
     """
-    with get_connection().cursor() as cur:
-        cur.execute(select("images", IMAGE_COLS, "repository = %s AND namespace = %s") +
-                    SQL(" ORDER BY created"), (repository.repository, repository.namespace))
-        return cur.fetchall()
+    return get_engine().run_sql(select("images", IMAGE_COLS, "repository = %s AND namespace = %s") +
+                                SQL(" ORDER BY created"), (repository.repository, repository.namespace))
 
 
 def _get_all_child_images(repository, start_image):
@@ -118,11 +116,11 @@ def add_new_image(repository, parent_id, image, created=None, comment=None, prov
         (one of None, FROM, MOUNT, IMPORT, SQL)
     :param provenance_data: Extra provenance data (dictionary).
     """
-    with get_connection().cursor() as cur:
-        cur.execute(insert("images", ("image_hash", "namespace", "repository", "parent_id", "created", "comment",
-                                      "provenance_type", "provenance_data")),
-                    (image, repository.namespace, repository.repository, parent_id, created or datetime.now(), comment,
-                     provenance_type, Json(provenance_data)))
+    get_engine().run_sql(insert("images", ("image_hash", "namespace", "repository", "parent_id", "created", "comment",
+                                           "provenance_type", "provenance_data")),
+                         (image, repository.namespace, repository.repository, parent_id, created or datetime.now(),
+                          comment, provenance_type, Json(provenance_data)),
+                         return_shape=None)
 
 
 def delete_images(repository, images):
@@ -135,12 +133,13 @@ def delete_images(repository, images):
     """
     if not images:
         return
-    with get_connection().cursor() as cur:
-        # Maybe better to have ON DELETE CASCADE on the FK constraints instead of going through
-        # all tables to clean up -- but then we won't get alerted when we accidentally try
-        # to delete something that does have FKs relying on it.
-        args = tuple([repository.namespace, repository.repository] + list(images))
-        for table in ['tags', 'tables', 'images']:
-            cur.execute(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s "
-                            "AND image_hash IN (" + ','.join(itertools.repeat('%s', len(images))) + ")")
-                        .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table)), args)
+
+    # Maybe better to have ON DELETE CASCADE on the FK constraints instead of going through
+    # all tables to clean up -- but then we won't get alerted when we accidentally try
+    # to delete something that does have FKs relying on it.
+    args = tuple([repository.namespace, repository.repository] + list(images))
+    for table in ['tags', 'tables', 'images']:
+        get_engine().run_sql(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s "
+                                 "AND image_hash IN (" + ','.join(itertools.repeat('%s', len(images))) + ")")
+                             .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table)), args,
+                             return_shape=None)
