@@ -48,9 +48,9 @@ def commit_c(repository, include_snap, message):
     """
     Commit changes to a checked-out Splitgraph repository.
 
-    This produces a new image with all changes packaged up into a new image. Where a table hasn't been created
-    or had its schema changed, this will delta compress the changes. For all other tables (or if ``-s`` has been passed),
-    this will store them as full table snapshots.
+    This packages up all changes into a new image. Where a table hasn't been created or had its schema changed,
+    this will delta compress the changes. For all other tables (or if ``-s`` has been passed), this will
+    store them as full table snapshots.
     """
     new_hash = sg.commit(repository, include_snap=include_snap, comment=message)
     print("Committed %s as %s." % (str(repository), new_hash[:12]))
