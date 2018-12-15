@@ -1,0 +1,6 @@
+Miscellaneous
+=============
+.. toctree::
+    :glob:
+
+    miscellaneous/*
