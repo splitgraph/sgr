@@ -6,7 +6,7 @@ python:
 install:
   - poetry install
 script:
-  - poetry run pytest
+  - poetry run pytest -sv
 
 services:
   - docker

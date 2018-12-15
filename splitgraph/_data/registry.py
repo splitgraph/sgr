@@ -173,7 +173,8 @@ def _setup_rls_policies(table, schema=SPLITGRAPH_META_SCHEMA, condition=None):
                                                                              Identifier(table)), return_shape=None)
     for flavour in 'SIUD':
         engine.run_sql(SQL("DROP POLICY IF EXISTS {2} ON {0}.{1}")
-                       .format(Identifier(schema), Identifier(table), Identifier(table + '_' + flavour)))
+                       .format(Identifier(schema), Identifier(table), Identifier(table + '_' + flavour)),
+                       return_shape=None)
     engine.run_sql(SQL("""CREATE POLICY {2} ON {0}.{1} FOR SELECT USING (true)""")
                    .format(Identifier(schema), Identifier(table), Identifier(table + '_S')),
                    return_shape=None)
