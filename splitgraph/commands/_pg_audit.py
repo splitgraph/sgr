@@ -1,6 +1,7 @@
 """
 Functions to manage the Postgres audit stored procedures on the driver to detect changes to tables.
 """
+from functools import wraps
 
 from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
@@ -87,6 +88,8 @@ def manage_audit(func):
     (makes sure the metadata schema exists and delete/add required audit triggers)
     """
 
+    # make sure the docstring is passed up
+    @wraps(func)
     def wrapped(*args, **kwargs):
         try:
             ensure_metadata_schema()

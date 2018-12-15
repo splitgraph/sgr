@@ -37,7 +37,7 @@ def import_tables(repository, tables, target_repository, target_tables, image_ha
     :param image_hash: Commit hash on the source mountpoint to import tables from.
         Uses the current source HEAD by default.
     :param foreign_tables: If True, copies all source tables to create a series of new SNAP objects instead of treating
-    them as Splitgraph-versioned tables. This is useful for adding brand new tables
+        them as Splitgraph-versioned tables. This is useful for adding brand new tables
         (for example, from an FDW-mounted table).
     :param do_checkout: If False, doesn't materialize the tables in the target mountpoint.
     :param target_hash: Hash of the new image that tables is recorded under. If None, gets chosen at random.
