@@ -3,7 +3,7 @@ import subprocess
 from decimal import Decimal
 
 from splitgraph.commands.checkout import uncheckout
-from splitgraph.pg_utils import pg_schema_exists
+from splitgraph.engine import get_engine
 
 try:
     # python 3.4+ should use builtin unittest.mock not mock package
@@ -15,7 +15,7 @@ import psycopg2
 from click.testing import CliRunner
 
 from splitgraph import to_repository, rm, repository_exists, Repository, get_upstream, get_all_hashes_tags, PG_PWD, \
-    PG_USER, CONFIG, PG_PORT, PG_HOST, get_connection
+    PG_USER, CONFIG, PG_PORT, PG_HOST
 from splitgraph._data.images import get_all_image_info
 from splitgraph._data.registry import get_published_info
 from splitgraph.commandline import status_c, sql_c, diff_c, commit_c, log_c, show_c, tag_c, checkout_c, rm_c, \
@@ -224,7 +224,7 @@ def test_commandline_tag_checkout(sg_pg_mg_conn):
     result = runner.invoke(checkout_c, [str(PG_MNT), '-u', '-f'])
     assert result.exit_code == 0
     assert get_current_head(PG_MNT, raise_on_none=False) is None
-    assert not pg_schema_exists(get_connection(), str(PG_MNT))
+    assert not get_engine().schema_exists(str(PG_MNT))
 
     # Delete the tag -- check the help entry correcting the command
     result = runner.invoke(tag_c, ['--remove', str(PG_MNT), 'v1'])

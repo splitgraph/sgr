@@ -6,12 +6,12 @@ from functools import wraps
 from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph._data.common import ensure_metadata_schema
 from splitgraph.commands._objects.utils import KIND, get_replica_identity, convert_audit_change
 from splitgraph.commands.info import get_table
 from splitgraph.commands.repository import get_current_repositories
 from splitgraph.connection import get_connection
-from splitgraph.pg_utils import get_all_tables
-from .._data.common import ensure_metadata_schema
+from splitgraph.engine import get_engine
 
 ROW_TRIGGER_NAME = "audit_trigger_row"
 STM_TRIGGER_NAME = "audit_trigger_stm"
@@ -26,8 +26,9 @@ def manage_audit_triggers():
         * Set up audit triggers for new tables
     """
     conn = get_connection()
+    # HACK? manage_audit_triggers can be engine-agnostic as long as the engine lets us add/remove/list them.
     repos_tables = [(r.to_schema(), t) for r, head in get_current_repositories()
-                    for t in get_all_tables(conn, r.to_schema()) if get_table(r, t, head)]
+                    for t in get_engine().get_all_tables(r.to_schema()) if get_table(r, t, head)]
 
     with conn.cursor() as cur:
         cur.execute("SELECT event_object_schema, event_object_table "

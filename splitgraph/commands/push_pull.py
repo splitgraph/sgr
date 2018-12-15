@@ -17,8 +17,8 @@ from splitgraph.commands.tagging import get_all_hashes_tags, set_tags
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import override_driver_connection, get_connection, parse_connection_string, make_conn, \
     get_remote_connection_params
+from splitgraph.engine.postgres._pg_audit import manage_audit
 from splitgraph.exceptions import SplitGraphException
-from ._pg_audit import manage_audit
 
 
 def _get_required_snaps_objects(remote_conn, local_repository, remote_repository):

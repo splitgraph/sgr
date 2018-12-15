@@ -9,12 +9,12 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph._data.common import META_TABLES, ensure_metadata_schema
 from splitgraph._data.objects import get_object_meta
-from splitgraph.commands._pg_audit import manage_audit, discard_pending_changes
 from splitgraph.commands.info import get_image, get_table
 from splitgraph.commands.repository import register_repository, unregister_repository
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, PG_HOST, PG_PORT, PG_DB
 from splitgraph.connection import get_connection
-from splitgraph.pg_utils import pg_table_exists, pg_schema_exists
+from splitgraph.engine import get_engine
+from splitgraph.engine.postgres._pg_audit import manage_audit, discard_pending_changes
 
 _AUDIT_SCHEMA = 'audit'
 _AUDIT_TRIGGER = 'resources/audit_trigger.sql'
@@ -24,7 +24,7 @@ _PACKAGE = 'splitgraph'
 def table_exists_at(repository, table_name, image_hash):
     """Determines whether a given table exists in a Splitgraph image without checking it out. If `image_hash` is None,
     determines whether the table exists in the current staging area."""
-    return pg_table_exists(get_connection(), repository.to_schema(), table_name) if image_hash is None \
+    return get_engine().table_exists(repository.to_schema(), table_name) if image_hash is None \
         else bool(get_table(repository, table_name, image_hash))
 
 
@@ -181,7 +181,7 @@ def init_driver():  # pragma: no cover
 
     # Install the audit trigger if it doesn't exist
     conn = get_connection()
-    if not pg_schema_exists(conn, _AUDIT_SCHEMA):
+    if not get_engine().schema_exists(_AUDIT_SCHEMA):
         logging.info("Installing the audit trigger...")
         audit_trigger = get_data(_PACKAGE, _AUDIT_TRIGGER)
         with conn.cursor() as cur:

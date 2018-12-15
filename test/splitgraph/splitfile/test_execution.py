@@ -10,8 +10,8 @@ from splitgraph.commands.misc import cleanup_objects
 from splitgraph.commands.repository import get_current_repositories
 from splitgraph.commands.tagging import get_current_head
 from splitgraph.connection import override_driver_connection
+from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitGraphException
-from splitgraph.pg_utils import pg_table_exists
 from splitgraph.splitfile._parsing import preprocess
 from splitgraph.splitfile.execution import execute_commands
 from test.splitgraph.conftest import OUTPUT, PG_MNT, add_multitag_dataset_to_remote_driver, \
@@ -80,26 +80,28 @@ def test_local_import_splitfile(sg_pg_mg_conn):
     old_head = get_image(OUTPUT, head).parent_id
 
     checkout(OUTPUT, old_head)
-    assert not pg_table_exists(sg_pg_mg_conn, OUTPUT.to_schema(), 'my_fruits')
-    assert not pg_table_exists(sg_pg_mg_conn, OUTPUT.to_schema(), 'fruits')
+    engine = get_engine()
+    assert not engine.table_exists(OUTPUT.to_schema(), 'my_fruits')
+    assert not engine.table_exists(OUTPUT.to_schema(), 'fruits')
 
     checkout(OUTPUT, head)
-    assert pg_table_exists(sg_pg_mg_conn, OUTPUT.to_schema(), 'my_fruits')
-    assert not pg_table_exists(sg_pg_mg_conn, OUTPUT.to_schema(), 'fruits')
+    assert engine.table_exists(OUTPUT.to_schema(), 'my_fruits')
+    assert not engine.table_exists(OUTPUT.to_schema(), 'fruits')
 
 
 def test_advanced_splitfile(sg_pg_mg_conn):
     execute_commands(load_splitfile('import_local_multiple_with_queries.splitfile'), output=OUTPUT)
     head = get_current_head(OUTPUT)
 
-    assert pg_table_exists(sg_pg_mg_conn, OUTPUT.to_schema(), 'my_fruits')
-    assert pg_table_exists(sg_pg_mg_conn, OUTPUT.to_schema(), 'vegetables')
-    assert not pg_table_exists(sg_pg_mg_conn, OUTPUT.to_schema(), 'fruits')
-    assert pg_table_exists(sg_pg_mg_conn, OUTPUT.to_schema(), 'join_table')
+    engine = get_engine()
+    assert engine.table_exists(OUTPUT.to_schema(), 'my_fruits')
+    assert engine.table_exists(OUTPUT.to_schema(), 'vegetables')
+    assert not engine.table_exists(OUTPUT.to_schema(), 'fruits')
+    assert engine.table_exists(OUTPUT.to_schema(), 'join_table')
 
     old_head = get_image(OUTPUT, head).parent_id
     checkout(OUTPUT, old_head)
-    assert not pg_table_exists(sg_pg_mg_conn, OUTPUT.to_schema(), 'join_table')
+    assert not engine.table_exists(OUTPUT.to_schema(), 'join_table')
     checkout(OUTPUT, head)
     with sg_pg_mg_conn.cursor() as cur:
         cur.execute("""SELECT id, fruit, vegetable FROM output.join_table""")
@@ -243,8 +245,9 @@ def test_import_with_custom_query(sg_pg_mg_conn):
                 [(1, 'potato'), (2, 'carrot'), (3, 'oregano')], [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]]
 
     checkout(OUTPUT, old_head)
+    engine = get_engine()
     for t in tables:
-        assert not pg_table_exists(sg_pg_mg_conn, OUTPUT.to_schema(), t)
+        assert not engine.table_exists(OUTPUT.to_schema(), t)
 
     checkout(OUTPUT, head)
     with sg_pg_mg_conn.cursor() as cur:
@@ -271,8 +274,9 @@ def test_import_mount(empty_pg_conn):
     checkout(OUTPUT, old_head)
     tables = ['my_fruits', 'o_vegetables', 'vegetables', 'all_fruits']
     contents = [[(2, 'orange')], [(1, 'potato')], [(1, 'potato'), (2, 'carrot')], [(1, 'apple'), (2, 'orange')]]
+    engine = get_engine()
     for t in tables:
-        assert not pg_table_exists(empty_pg_conn, OUTPUT.to_schema(), t)
+        assert not engine.table_exists(OUTPUT.to_schema(), t)
 
     checkout(OUTPUT, head)
     with empty_pg_conn.cursor() as cur:
@@ -295,8 +299,9 @@ def test_import_all(empty_pg_conn):
     checkout(OUTPUT, old_head)
     tables = ['vegetables', 'fruits']
     contents = [[(1, 'potato'), (2, 'carrot')], [(1, 'apple'), (2, 'orange')]]
+    engine = get_engine()
     for t in tables:
-        assert not pg_table_exists(empty_pg_conn, OUTPUT.to_schema(), t)
+        assert not engine.table_exists(OUTPUT.to_schema(), t)
 
     checkout(OUTPUT, head)
     with empty_pg_conn.cursor() as cur:
@@ -309,17 +314,18 @@ def test_from_remote(empty_pg_conn, remote_driver_conn):
     add_multitag_dataset_to_remote_driver(remote_driver_conn)
     # Test running commands that base new datasets on a remote repository.
     execute_commands(load_splitfile('from_remote.splitfile'), params={'TAG': 'v1'}, output=OUTPUT)
+    engine = get_engine()
 
     new_head = get_current_head(OUTPUT)
     # Go back to the parent: the two source tables should exist there
     checkout(OUTPUT, get_image(OUTPUT, new_head).parent_id)
-    assert pg_table_exists(empty_pg_conn, OUTPUT.to_schema(), 'fruits')
-    assert pg_table_exists(empty_pg_conn, OUTPUT.to_schema(), 'vegetables')
-    assert not pg_table_exists(empty_pg_conn, OUTPUT.to_schema(), 'join_table')
+    assert engine.table_exists(OUTPUT.to_schema(), 'fruits')
+    assert engine.table_exists(OUTPUT.to_schema(), 'vegetables')
+    assert not engine.table_exists(OUTPUT.to_schema(), 'join_table')
 
     checkout(OUTPUT, new_head)
-    assert pg_table_exists(empty_pg_conn, OUTPUT.to_schema(), 'fruits')
-    assert pg_table_exists(empty_pg_conn, OUTPUT.to_schema(), 'vegetables')
+    assert engine.table_exists(OUTPUT.to_schema(), 'fruits')
+    assert engine.table_exists(OUTPUT.to_schema(), 'vegetables')
     with empty_pg_conn.cursor() as cur:
         cur.execute("SELECT * FROM output.join_table")
         assert cur.fetchall() == [(1, 'apple', 'potato'), (2, 'orange', 'carrot')]
@@ -340,9 +346,10 @@ def test_from_remote_hash(empty_pg_conn, remote_driver_conn):
         head = get_current_head(PG_MNT)
     # Test running commands that base new datasets on a remote repository.
     execute_commands(load_splitfile('from_remote.splitfile'), params={'TAG': head[:10]}, output=OUTPUT)
+    engine = get_engine()
 
-    assert pg_table_exists(empty_pg_conn, OUTPUT.to_schema(), 'fruits')
-    assert pg_table_exists(empty_pg_conn, OUTPUT.to_schema(), 'vegetables')
+    assert engine.table_exists(OUTPUT.to_schema(), 'fruits')
+    assert engine.table_exists(OUTPUT.to_schema(), 'vegetables')
     with empty_pg_conn.cursor() as cur:
         cur.execute("SELECT * FROM output.join_table")
         assert cur.fetchall() == [(1, 'apple', 'potato'), (2, 'orange', 'carrot')]
@@ -370,17 +377,18 @@ def test_from_multistage(empty_pg_conn, remote_driver_conn):
 
 def test_from_local(sg_pg_mg_conn):
     execute_commands(load_splitfile('from_local.splitfile'), output=OUTPUT)
+    engine = get_engine()
 
     new_head = get_current_head(OUTPUT)
     # Go back to the parent: the two source tables should exist there
     checkout(OUTPUT, get_image(OUTPUT, new_head).parent_id)
-    assert pg_table_exists(sg_pg_mg_conn, OUTPUT.to_schema(), 'fruits')
-    assert pg_table_exists(sg_pg_mg_conn, OUTPUT.to_schema(), 'vegetables')
-    assert not pg_table_exists(sg_pg_mg_conn, OUTPUT.to_schema(), 'join_table')
+    assert engine.table_exists(OUTPUT.to_schema(), 'fruits')
+    assert engine.table_exists(OUTPUT.to_schema(), 'vegetables')
+    assert not engine.table_exists(OUTPUT.to_schema(), 'join_table')
 
     checkout(OUTPUT, new_head)
-    assert pg_table_exists(sg_pg_mg_conn, OUTPUT.to_schema(), 'fruits')
-    assert pg_table_exists(sg_pg_mg_conn, OUTPUT.to_schema(), 'vegetables')
+    assert engine.table_exists(OUTPUT.to_schema(), 'fruits')
+    assert engine.table_exists(OUTPUT.to_schema(), 'vegetables')
     with sg_pg_mg_conn.cursor() as cur:
         cur.execute("SELECT * FROM output.join_table")
         assert cur.fetchall() == [(1, 'apple', 'potato'), (2, 'orange', 'carrot')]

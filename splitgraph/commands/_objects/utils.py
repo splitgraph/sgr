@@ -4,9 +4,8 @@ Internal helper functions for packaging changes recorded by the audit trigger in
 
 from random import getrandbits
 
-from splitgraph.connection import get_connection
+from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitGraphException
-from splitgraph.pg_utils import get_primary_keys, get_column_names_types
 
 
 def get_replica_identity(schema, table):
@@ -14,8 +13,8 @@ def get_replica_identity(schema, table):
     Get the PK we're storing changes as. If the table has no PK, we treat the whole row as the primary key,
     meaning that we don't support
     """
-    conn = get_connection()
-    return get_primary_keys(conn, schema, table) or get_column_names_types(conn, schema, table)
+    engine = get_engine()
+    return engine.get_primary_keys(schema, table) or engine.get_column_names_types(schema, table)
 
 
 def _split_ri_cols(action, row_data, changed_fields, ri_cols):

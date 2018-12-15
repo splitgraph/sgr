@@ -10,9 +10,9 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph._data.objects import get_existing_objects, get_downloaded_objects
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import get_connection, override_driver_connection, make_conn
+from splitgraph.engine import get_engine, ResultShape
 from splitgraph.hooks.external_objects import get_external_object_handler
 from splitgraph.hooks.mount_handlers import mount_postgres
-from splitgraph.pg_utils import copy_table, dump_table_creation, get_primary_keys
 from ..misc import rm
 from ..repository import to_repository
 
@@ -59,14 +59,19 @@ def _fetch_remote_objects(objects_to_fetch, conn_params, remote_conn=None):
     mount_postgres(mountpoint='tmp_remote_data', server=server, port=port, username=user, password=pwd, dbname=dbname,
                    remote_schema=SPLITGRAPH_META_SCHEMA)
     remote_conn = remote_conn or make_conn(server, port, user, pwd, dbname)
+    engine = get_engine()
     try:
         for i, obj in enumerate(objects_to_fetch):
             print("(%d/%d) %s..." % (i + 1, len(objects_to_fetch), obj))
             # Foreign tables don't have PK constraints so we'll have to apply them manually.
-            copy_table(conn, remote_data_mountpoint.to_schema(), obj, SPLITGRAPH_META_SCHEMA, obj,
-                       with_pk_constraints=False)
+            engine.copy_table(remote_data_mountpoint.to_schema(), obj, SPLITGRAPH_META_SCHEMA, obj,
+                              with_pk_constraints=False)
             with conn.cursor() as cur:
-                source_pks = get_primary_keys(remote_conn, SPLITGRAPH_META_SCHEMA, obj)
+                # Need to think here whether we want to push the connection object into the engine
+                # and get them to talk to each other (manipulate two engines at push/pull)
+                # or do this connection swapping
+                with override_driver_connection(remote_conn):
+                    source_pks = engine.get_primary_keys(SPLITGRAPH_META_SCHEMA, obj)
                 if source_pks:
                     cur.execute(SQL("ALTER TABLE {}.{} ADD PRIMARY KEY (").format(
                         Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj))
@@ -121,15 +126,19 @@ def upload_objects(conn_params, objects_to_push, handler='DB', handler_params=No
         logging.info("Nothing to upload.")
         return []
     logging.info("Uploading %d object(s)...", len(objects_to_push))
+    engine = get_engine()
 
     if handler == 'DB':
         # Difference from pull here: since we can't get remote to mount us, we instead use normal SQL statements
         # to create new tables remotely, then mount them and write into them from our side.
         # Is there seriously no better way to do this?
-        with remote_conn.cursor() as cur:
-            # This also includes applying our table's FK constraints.
-            cur.execute(dump_table_creation(conn, schema=SPLITGRAPH_META_SCHEMA, tables=objects_to_push,
-                                            created_schema=SPLITGRAPH_META_SCHEMA))
+
+        # This also includes applying our table's FK constraints.
+        create = engine.dump_table_creation(schema=SPLITGRAPH_META_SCHEMA, tables=objects_to_push,
+                                            created_schema=SPLITGRAPH_META_SCHEMA)
+
+        with override_driver_connection(remote_conn):
+            engine.run_sql(create, return_shape=ResultShape.NONE)
         # Have to commit the remote connection here since otherwise we won't see the new tables in the
         # mounted remote.
         remote_conn.commit()
@@ -140,8 +149,8 @@ def upload_objects(conn_params, objects_to_push, handler='DB', handler_params=No
                        password=conn_params[3], dbname=conn_params[4], remote_schema=SPLITGRAPH_META_SCHEMA)
         for i, obj in enumerate(objects_to_push):
             print("(%d/%d) %s..." % (i + 1, len(objects_to_push), obj))
-            copy_table(conn, SPLITGRAPH_META_SCHEMA, obj, 'tmp_remote_data', obj, with_pk_constraints=False,
-                       table_exists=True)
+            engine.copy_table(SPLITGRAPH_META_SCHEMA, obj, 'tmp_remote_data', obj, with_pk_constraints=False,
+                              table_exists=True)
         conn.commit()
         rm(remote_data_mountpoint)
 

@@ -11,7 +11,7 @@ from splitgraph.commands._objects.utils import get_replica_identity, conflate_ch
 from splitgraph.commands.misc import delete_objects
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import get_connection
-from splitgraph.pg_utils import copy_table
+from splitgraph.engine import get_engine
 
 
 def _create_diff_table(object_id, replica_identity_cols_types):
@@ -99,8 +99,8 @@ def record_table_as_snap(repository, image_hash, table, table_info):
     # Make sure we didn't actually create a snap for this table.
     if get_object_for_table(repository, table, image_hash, 'SNAP') is None:
         object_id = get_random_object_id()
-        copy_table(get_connection(), repository.to_schema(), table, SPLITGRAPH_META_SCHEMA, object_id,
-                   with_pk_constraints=True)
+        get_engine().copy_table(repository.to_schema(), table, SPLITGRAPH_META_SCHEMA, object_id,
+                                with_pk_constraints=True)
         if table_info:
             for parent_id, _ in table_info:
                 register_object(object_id, object_format='SNAP', namespace=repository.namespace,

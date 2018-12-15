@@ -9,7 +9,7 @@ from splitgraph._data.registry import _ensure_registry_schema, unpublish_reposit
 from splitgraph.commands import *
 from splitgraph.config import PG_DB, PG_USER, PG_PWD
 from splitgraph.connection import get_connection, override_driver_connection, serialize_connection_string, make_conn
-from splitgraph.pg_utils import get_all_foreign_tables
+from splitgraph.engine import get_engine
 
 PG_MNT = R('test/pg_mount')
 PG_MNT_PULL = R('test_pg_mount_pull')
@@ -22,7 +22,7 @@ def _mount_postgres(repository):
     mount('tmp', "postgres_fdw",
           dict(server='pgorigin', port=5432, username='originro', password='originpass', dbname="origindb",
                remote_schema="public"))
-    import_tables(R('tmp'), get_all_foreign_tables(get_connection(), 'tmp'),
+    import_tables(R('tmp'), get_engine().get_all_tables('tmp'),
                   repository, [], foreign_tables=True, do_checkout=True)
     rm(R('tmp'))
 
@@ -38,7 +38,7 @@ def _mount_mongo(repository):
                                            "duration": "numeric",
                                            "happy": "boolean"
                                        }}))
-    import_tables(R('tmp'), get_all_foreign_tables(get_connection(), 'tmp'),
+    import_tables(R('tmp'), get_engine().get_all_tables('tmp'),
                   repository, [], foreign_tables=True, do_checkout=True)
     rm(R('tmp'))
 

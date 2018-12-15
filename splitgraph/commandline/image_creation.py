@@ -5,7 +5,6 @@ import click
 
 import splitgraph as sg
 from splitgraph.commandline._common import image_spec_parser
-from splitgraph.pg_utils import get_all_foreign_tables
 
 
 @click.command(name='checkout')
@@ -171,9 +170,7 @@ def import_c(image_spec, table_or_query, target_repository, target_table):
     else:
         # If the source schema isn't actually a Splitgraph repo, we'll be copying the table verbatim.
         foreign_table = True
-        conn = sg.get_connection()
-        is_query = table_or_query not in (sg.get_all_tables(conn, repository.to_schema())
-                                          + get_all_foreign_tables(conn, repository.to_schema()))
+        is_query = table_or_query not in (sg.get_engine().get_all_tables(repository.to_schema()))
         image = None
 
     if is_query and not target_table:

@@ -14,8 +14,8 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.connection import get_connection
+from splitgraph.engine import get_engine
 from splitgraph.hooks.external_objects import ExternalObjectHandler
-from splitgraph.pg_utils import get_full_table_schema, create_table
 
 S3_HOST = CONFIG["SG_S3_HOST"]
 S3_PORT = CONFIG["SG_S3_PORT"]
@@ -126,6 +126,8 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
 # we should look into columnar on-disk formats (Parquet/Avro) but we currently just want to get the objects
 # out of/into postgres as fast as possible.
 
+# This dumping should be moved into the engine
+
 def dump_object(object_id, fobj):
     """
     Serializes a Splitgraph object into a file or a file-like object.
@@ -134,7 +136,7 @@ def dump_object(object_id, fobj):
     :param fobj: File-like object to write the object into
     """
     conn = get_connection()
-    schema = json.dumps(get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, object_id))
+    schema = json.dumps(get_engine().get_full_table_schema(SPLITGRAPH_META_SCHEMA, object_id))
     fobj.write(schema.encode('utf-8') + b'\0')
     with conn.cursor() as cur:
         cur.copy_expert(SQL("COPY {}.{} TO STDOUT WITH (FORMAT 'binary')")
@@ -159,7 +161,7 @@ def load_object(object_id, fobj):
         chars += c
 
     schema = json.loads(chars.decode('utf-8'))
-    create_table(conn, SPLITGRAPH_META_SCHEMA, object_id, schema)
+    get_engine().create_table(SPLITGRAPH_META_SCHEMA, object_id, schema)
 
     with conn.cursor() as cur:
         cur.copy_expert(SQL("COPY {}.{} FROM STDIN WITH (FORMAT 'binary')")

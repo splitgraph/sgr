@@ -7,8 +7,8 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import get_connection
+from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitGraphException
-from splitgraph.pg_utils import get_column_names
 from .utils import get_replica_identity
 
 
@@ -26,7 +26,7 @@ def apply_record_to_staging(object_id, dest_schema, dest_table):
 
     # Minor hack alert: here we assume that the PK of the object is the PK of the table it refers to, which means
     # that we are expected to have the PKs applied to the object table no matter how it originated.
-    if sorted(ri_cols) == sorted(get_column_names(get_connection(), SPLITGRAPH_META_SCHEMA, object_id)):
+    if sorted(ri_cols) == sorted(get_engine().get_column_names(SPLITGRAPH_META_SCHEMA, object_id)):
         raise SplitGraphException("Error determining the replica identity of %s. " % object_id +
                                   "Have primary key constraints been applied?")
 

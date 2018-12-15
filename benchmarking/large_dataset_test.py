@@ -4,8 +4,8 @@ from timeit import timeit
 from psycopg2.extras import execute_batch
 
 from splitgraph.commands import *
-from splitgraph.commands._pg_audit import dump_pending_changes
 from splitgraph.connection import get_connection
+from splitgraph.engine.postgres._pg_audit import dump_pending_changes
 
 MOUNTPOINT = "splitgraph_benchmark"
 

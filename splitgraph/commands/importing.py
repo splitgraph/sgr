@@ -17,9 +17,9 @@ from splitgraph.commands.repository import Repository
 from splitgraph.commands.tagging import get_current_head
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import get_connection
-from splitgraph.pg_utils import copy_table, execute_sql_in, get_all_tables, get_all_foreign_tables
+from splitgraph.engine import get_engine
+from splitgraph.engine.postgres._pg_audit import manage_audit
 from ._common import set_head
-from ._pg_audit import manage_audit
 
 
 @manage_audit
@@ -58,7 +58,7 @@ def import_tables(repository, tables, target_repository, target_tables, image_ha
 
     if not tables:
         tables = get_tables_at(repository, image_hash) if not foreign_tables \
-            else get_all_foreign_tables(conn, repository.to_schema())
+            else get_engine().get_all_tables(repository.to_schema())
     if not target_tables:
         if table_queries:
             raise ValueError("target_tables has to be defined if table_queries is True!")
@@ -68,7 +68,7 @@ def import_tables(repository, tables, target_repository, target_tables, image_ha
     if len(tables) != len(target_tables) or len(tables) != len(table_queries):
         raise ValueError("tables, target_tables and table_queries have mismatching lengths!")
 
-    existing_tables = get_all_tables(conn, target_repository.to_schema())
+    existing_tables = get_engine().get_all_tables(target_repository.to_schema())
     clashing = [t for t in target_tables if t in existing_tables]
     if clashing:
         raise ValueError("Table(s) %r already exist(s) at %s!" % (clashing, target_repository))
@@ -99,11 +99,11 @@ def _import_tables(repository, image_hash, tables, target_repository, target_has
             if is_query:
                 # is_query precedes foreign_tables: if we're importing using a query, we don't care if it's a
                 # foreign table or not since we're storing it as a full snapshot.
-                execute_sql_in(conn, repository.to_schema(),
-                               SQL("CREATE TABLE {}.{} AS ").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                    Identifier(object_id)) + SQL(table))
+                get_engine().execute_sql_in(repository.to_schema(),
+                                            SQL("CREATE TABLE {}.{} AS ").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                                 Identifier(object_id)) + SQL(table))
             elif foreign_tables:
-                copy_table(conn, repository.to_schema(), table, SPLITGRAPH_META_SCHEMA, object_id)
+                get_engine().copy_table(repository.to_schema(), table, SPLITGRAPH_META_SCHEMA, object_id)
 
             _register_and_checkout_new_table(do_checkout, object_id, target_hash, target_repository, target_table)
         else:
@@ -130,7 +130,7 @@ def _register_and_checkout_new_table(do_checkout, object_id, target_hash, target
     register_object(object_id, 'SNAP', namespace=target_repository.namespace, parent_object=None)
     register_table(target_repository, target_table, target_hash, object_id)
     if do_checkout:
-        copy_table(get_connection(), SPLITGRAPH_META_SCHEMA, object_id, target_repository.to_schema(), target_table)
+        get_engine().copy_table(SPLITGRAPH_META_SCHEMA, object_id, target_repository.to_schema(), target_table)
 
 
 def import_table_from_remote(remote_conn_string, remote_repository, remote_tables, remote_image_hash, target_repository,

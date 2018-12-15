@@ -14,9 +14,9 @@ from splitgraph.commands._objects.creation import record_table_as_diff, record_t
 from splitgraph.commands.info import get_table, table_schema_changed
 from splitgraph.commands.tagging import get_current_head
 from splitgraph.connection import get_connection
-from splitgraph.pg_utils import get_all_tables
+from splitgraph.engine import get_engine
+from splitgraph.engine.postgres._pg_audit import manage_audit_triggers, discard_pending_changes
 from ._common import set_head
-from ._pg_audit import manage_audit_triggers, discard_pending_changes
 
 
 def commit(repository, image_hash=None, include_snap=False, comment=None):
@@ -78,7 +78,7 @@ def _commit(repository, current_head, image_hash, include_snap=False):
                        WHERE schema_name = %s""").format(Identifier("audit"),
                                                          Identifier("logged_actions")), (target_schema,))
         changed_tables = [c[0] for c in cur.fetchall()]
-    for table in get_all_tables(conn, target_schema):
+    for table in get_engine().get_all_tables(target_schema):
         table_info = get_table(repository, table, current_head)
         # Table already exists at the current HEAD
         if table_info:

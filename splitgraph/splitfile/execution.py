@@ -17,9 +17,9 @@ from splitgraph.commands.repository import Repository, repository_exists, lookup
 from splitgraph.commands.tagging import get_current_head, resolve_image
 from splitgraph.config import CONFIG
 from splitgraph.connection import get_connection
+from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.mount_handlers import get_mount_handler
-from splitgraph.pg_utils import execute_sql_in
 from ._parsing import parse_commands, extract_nodes, get_first_or_none, parse_image_spec, \
     extract_all_table_aliases, parse_custom_command
 
@@ -108,7 +108,7 @@ def _execute_sql(node, output):
 
     def _calc():
         print("Executing SQL...")
-        execute_sql_in(get_connection(), output.to_schema(), sql_command)
+        get_engine().execute_sql_in(output.to_schema(), sql_command)
         commit(output, target_hash, comment=sql_command)
         store_sql_provenance(output, target_hash, sql_command)
 

@@ -3,7 +3,7 @@ import pytest
 from splitgraph import SplitGraphException
 from splitgraph.commands import commit, get_log, checkout, diff
 from splitgraph.commands.tagging import get_current_head, get_all_hashes_tags, set_tag, resolve_image
-from splitgraph.pg_utils import pg_table_exists
+from splitgraph.engine import get_engine
 from test.splitgraph.conftest import PG_MNT
 
 
@@ -51,17 +51,18 @@ def test_table_changes(include_snap, sg_pg_conn):
     head_1 = commit(PG_MNT, include_snap=include_snap)
     # Checkout the old head and make sure the table doesn't exist in it
     checkout(PG_MNT, head)
-    assert not pg_table_exists(sg_pg_conn, PG_MNT.to_schema(), 'fruits_copy')
+    engine = get_engine()
+    assert not engine.table_exists(PG_MNT.to_schema(), 'fruits_copy')
 
     # Make sure the table is reflected in the diff even if we're on a different commit
     assert diff(PG_MNT, 'fruits_copy', image_1=head, image_2=head_1) is True
 
     # Go back and now delete a table
     checkout(PG_MNT, head_1)
-    assert pg_table_exists(sg_pg_conn, PG_MNT.to_schema(), 'fruits_copy')
+    assert engine.table_exists(PG_MNT.to_schema(), 'fruits_copy')
     with sg_pg_conn.cursor() as cur:
         cur.execute("""DROP TABLE "test/pg_mount".fruits""")
-    assert not pg_table_exists(sg_pg_conn, PG_MNT.to_schema(), 'fruits')
+    assert not engine.table_exists(PG_MNT.to_schema(), 'fruits')
 
     # Make sure the diff shows it's been removed and commit it
     assert diff(PG_MNT, 'fruits', image_1=head_1, image_2=None) is False
@@ -69,11 +70,11 @@ def test_table_changes(include_snap, sg_pg_conn):
 
     # Go through the 3 commits and ensure the table existence is maintained
     checkout(PG_MNT, head)
-    assert pg_table_exists(sg_pg_conn, PG_MNT.to_schema(), 'fruits')
+    assert engine.table_exists(PG_MNT.to_schema(), 'fruits')
     checkout(PG_MNT, head_1)
-    assert pg_table_exists(sg_pg_conn, PG_MNT.to_schema(), 'fruits')
+    assert engine.table_exists(PG_MNT.to_schema(), 'fruits')
     checkout(PG_MNT, head_2)
-    assert not pg_table_exists(sg_pg_conn, PG_MNT.to_schema(), 'fruits')
+    assert not engine.table_exists(PG_MNT.to_schema(), 'fruits')
 
 
 def test_tagging(sg_pg_conn):

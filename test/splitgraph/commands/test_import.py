@@ -1,14 +1,14 @@
 from splitgraph import init
 from splitgraph._data.objects import get_existing_objects, get_downloaded_objects
 from splitgraph.commands import checkout, commit, import_tables
-from splitgraph.commands._pg_audit import dump_pending_changes
 from splitgraph.commands.importing import import_table_from_remote
 from splitgraph.commands.info import get_image
 from splitgraph.commands.misc import cleanup_objects
 from splitgraph.commands.repository import get_current_repositories
 from splitgraph.commands.tagging import get_current_head
 from splitgraph.connection import override_driver_connection
-from splitgraph.pg_utils import pg_table_exists, get_all_tables
+from splitgraph.engine import get_engine
+from splitgraph.engine.postgres._pg_audit import dump_pending_changes
 from test.splitgraph.conftest import PG_MNT, OUTPUT
 
 
@@ -46,12 +46,13 @@ def test_import_preserves_existing_tables(sg_pg_conn):
     new_head = get_current_head(OUTPUT)
 
     checkout(OUTPUT, head)
-    assert pg_table_exists(sg_pg_conn, OUTPUT.to_schema(), 'test')
-    assert not pg_table_exists(sg_pg_conn, OUTPUT.to_schema(), 'imported_fruits')
+    engine = get_engine()
+    assert engine.table_exists(OUTPUT.to_schema(), 'test')
+    assert not engine.table_exists(OUTPUT.to_schema(), 'imported_fruits')
 
     checkout(OUTPUT, new_head)
-    assert pg_table_exists(sg_pg_conn, OUTPUT.to_schema(), 'test')
-    assert pg_table_exists(sg_pg_conn, OUTPUT.to_schema(), 'imported_fruits')
+    assert engine.table_exists(OUTPUT.to_schema(), 'test')
+    assert engine.table_exists(OUTPUT.to_schema(), 'imported_fruits')
 
 
 def test_import_preserves_pending_changes(sg_pg_conn):
@@ -100,9 +101,11 @@ def test_import_from_remote(empty_pg_conn, remote_driver_conn):
         cur.execute("""INSERT INTO output.test VALUES (2, 'test2')""")
     head = commit(OUTPUT)
 
+    engine = get_engine()
+
     assert len(get_downloaded_objects()) == 2
     assert len(get_existing_objects()) == 2
-    assert get_all_tables(empty_pg_conn, OUTPUT.to_schema()) == ['test']
+    assert engine.get_all_tables(OUTPUT.to_schema()) == ['test']
 
     # Import the 'fruits' table from the origin.
     with override_driver_connection(remote_driver_conn):
@@ -112,16 +115,16 @@ def test_import_from_remote(empty_pg_conn, remote_driver_conn):
 
     # Check that the table now exists in the output, is committed and there's no trace of the cloned repo.
     # Also clean up the unused objects to make sure that the newly cloned table is still recorded.
-    assert sorted(get_all_tables(empty_pg_conn, OUTPUT.to_schema())) == ['fruits', 'test']
+    assert sorted(engine.get_all_tables(OUTPUT.to_schema())) == ['fruits', 'test']
     cleanup_objects()
     assert len(get_current_repositories()) == 1
     checkout(OUTPUT, head)
-    assert pg_table_exists(empty_pg_conn, OUTPUT.to_schema(), 'test')
-    assert not pg_table_exists(empty_pg_conn, OUTPUT.to_schema(), 'fruits')
+    assert engine.table_exists(OUTPUT.to_schema(), 'test')
+    assert not engine.table_exists(OUTPUT.to_schema(), 'fruits')
 
     checkout(OUTPUT, new_head)
-    assert pg_table_exists(empty_pg_conn, OUTPUT.to_schema(), 'test')
-    assert pg_table_exists(empty_pg_conn, OUTPUT.to_schema(), 'fruits')
+    assert engine.table_exists(OUTPUT.to_schema(), 'test')
+    assert engine.table_exists(OUTPUT.to_schema(), 'fruits')
 
     with empty_pg_conn.cursor() as cur:
         cur.execute("""SELECT * FROM output.fruits""")
@@ -146,7 +149,7 @@ def test_import_and_update(empty_pg_conn, remote_driver_conn):
     new_head_2 = commit(OUTPUT)
 
     checkout(OUTPUT, head)
-    assert not pg_table_exists(empty_pg_conn, OUTPUT.to_schema(), 'fruits')
+    assert not get_engine().table_exists(OUTPUT.to_schema(), 'fruits')
 
     checkout(OUTPUT, new_head)
     with empty_pg_conn.cursor() as cur:

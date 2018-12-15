@@ -62,7 +62,8 @@ def diff_c(verbose, table_name, repository, tag_or_hash_1, tag_or_hash_2):
 
     diffs = {table_name: sg.diff(repository, table_name, tag_or_hash_1, tag_or_hash_2, aggregate=not verbose)
              for table_name in
-             ([table_name] if table_name else sorted(sg.get_all_tables(sg.get_connection(), repository.to_schema())))}
+             ([table_name] if table_name else sorted(
+                 sg.get_engine().get_all_tables(repository.to_schema())))}
 
     if tag_or_hash_2 is None:
         print("Between %s and the current working copy: " % tag_or_hash_1[:12])

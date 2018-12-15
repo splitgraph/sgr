@@ -5,13 +5,13 @@ Public API for calculating differences between two Splitgraph images.
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph._data.objects import get_object_for_table
-from splitgraph.commands._pg_audit import dump_pending_changes
 from splitgraph.commands.info import get_table
 from splitgraph.commands.misc import table_exists_at, find_path
 from splitgraph.commands.tagging import get_current_head
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import get_connection
-from splitgraph.pg_utils import get_all_tables
+from splitgraph.engine import get_engine
+from splitgraph.engine.postgres._pg_audit import dump_pending_changes
 
 
 def _changes_to_aggregation(query_result, initial=None):
@@ -139,7 +139,7 @@ def has_pending_changes(repository):
     if not head:
         # If the repo isn't checked out, no point checking for changes.
         return False
-    for table in get_all_tables(get_connection(), repository.to_schema()):
+    for table in get_engine().get_all_tables(repository.to_schema()):
         if diff(repository, table, head, None, aggregate=True) != (0, 0, 0):
             return True
     return False

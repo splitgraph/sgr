@@ -9,8 +9,8 @@ from splitgraph._data.common import select
 from splitgraph._data.images import IMAGE_COLS, get_image_object_path
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import get_connection
+from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitGraphException
-from splitgraph.pg_utils import get_full_table_schema
 
 
 def get_image(repository, image):
@@ -111,10 +111,10 @@ def table_schema_changed(repository, table_name, image_1, image_2=None):
     # image_2 = None here means the current staging area.
     if image_2 is not None:
         snap_2 = get_image_object_path(repository, table_name, image_2)[0]
-        return get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_1) != \
-               get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_2)
-    return get_full_table_schema(conn, SPLITGRAPH_META_SCHEMA, snap_1) != \
-           get_full_table_schema(conn, repository.to_schema(), table_name)
+        return get_engine().get_full_table_schema(SPLITGRAPH_META_SCHEMA, snap_1) != \
+               get_engine().get_full_table_schema(SPLITGRAPH_META_SCHEMA, snap_2)
+    return get_engine().get_full_table_schema(SPLITGRAPH_META_SCHEMA, snap_1) != \
+           get_engine().get_full_table_schema(repository.to_schema(), table_name)
 
 
 def get_schema_at(repository, table_name, image_hash):
@@ -127,4 +127,4 @@ def get_schema_at(repository, table_name, image_hash):
     :return: The table schema. See the documentation for `get_full_table_schema` for the spec.
     """
     snap_1 = get_image_object_path(repository, table_name, image_hash)[0]
-    return get_full_table_schema(get_connection(), SPLITGRAPH_META_SCHEMA, snap_1)
+    return get_engine().get_full_table_schema(SPLITGRAPH_META_SCHEMA, snap_1)
