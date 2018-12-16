@@ -5,10 +5,10 @@ Commands for checking out Splitgraph images
 import logging
 from contextlib import contextmanager
 
+from splitgraph.commands._common import manage_audit
 from splitgraph.commands.repository import get_upstream
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import get_engine
-from splitgraph.engine.postgres._pg_audit import manage_audit, discard_pending_changes
 from ._common import set_head
 from ._objects.applying import apply_record_to_staging
 from ._objects.loading import download_objects
@@ -19,7 +19,7 @@ from .misc import delete_objects, rm
 from .tagging import get_tagged_id, delete_tag
 from .._data.images import get_image_object_path
 from .._data.objects import get_external_object_locations, get_object_for_table, get_existing_objects
-from ..connection import get_connection, get_remote_connection_params
+from ..connection import get_remote_connection_params
 from ..exceptions import SplitGraphException
 
 
@@ -80,7 +80,7 @@ def checkout(repository, image_hash=None, tag=None, tables=None, keep_downloaded
     :param force: Discards all pending changes to the schema.
     """
     target_schema = repository.to_schema()
-    conn = get_connection()
+    engine = get_engine()
     if tables is None:
         tables = []
     if has_pending_changes(repository):
@@ -88,7 +88,7 @@ def checkout(repository, image_hash=None, tag=None, tables=None, keep_downloaded
             raise SplitGraphException("{0} has pending changes! Pass force=True or do sgr checkout -f {0}:HEAD"
                                       .format(repository.to_schema()))
         logging.warning("%s has pending changes, discarding...", repository.to_schema())
-    discard_pending_changes(target_schema)
+        engine.discard_pending_changes(target_schema)
     # Detect the actual image
     if image_hash:
         # get_canonical_image_hash called twice if the commandline entry point already called it. How to fix?
@@ -99,7 +99,6 @@ def checkout(repository, image_hash=None, tag=None, tables=None, keep_downloaded
         raise SplitGraphException("One of image_hash or tag must be specified!")
 
     tables = tables or get_tables_at(repository, image_hash)
-    engine = get_engine()
     # Drop all current tables in staging
     for table in engine.get_all_tables(target_schema):
         engine.delete_table(target_schema, table)

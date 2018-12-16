@@ -2,23 +2,17 @@
 Miscellaneous commands for Splitgraph repository management
 """
 import logging
-from pkgutil import get_data
 
-import psycopg2
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph._data.common import META_TABLES, ensure_metadata_schema
 from splitgraph._data.objects import get_object_meta
+from splitgraph.commands._common import manage_audit
 from splitgraph.commands.info import get_image, get_table
 from splitgraph.commands.repository import register_repository, unregister_repository
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, PG_HOST, PG_PORT, PG_DB
+from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import get_connection
 from splitgraph.engine import get_engine, ResultShape
-from splitgraph.engine.postgres._pg_audit import manage_audit, discard_pending_changes
-
-_AUDIT_SCHEMA = 'audit'
-_AUDIT_TRIGGER = 'resources/audit_trigger.sql'
-_PACKAGE = 'splitgraph'
 
 
 def table_exists_at(repository, table_name, image_hash):
@@ -140,12 +134,13 @@ def rm(repository, unregister=True):
     # Make sure to discard changes to this repository if they exist, otherwise they might
     # be applied/recorded if a new repository with the same name appears.
     ensure_metadata_schema()
-    discard_pending_changes(repository.to_schema())
-    get_engine().run_sql(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(repository.to_schema())),
-                         return_shape=None)
+    engine = get_engine()
+    engine.discard_pending_changes(repository.to_schema())
+    engine.run_sql(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(repository.to_schema())),
+                   return_shape=None)
     # Drop server too if it exists (could have been a non-foreign repository)
-    get_engine().run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(repository.to_schema() + '_server')),
-                         return_shape=None)
+    engine.run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(repository.to_schema() + '_server')),
+                   return_shape=None)
 
     if unregister:
         unregister_repository(repository)
@@ -158,37 +153,12 @@ def init_driver():  # pragma: no cover
     """
     Initializes the driver by:
 
-        * creating the database specified in PG_DB
-        * installing the audit trigger for version controlling checked out tables
+        * performing any required engine-custom initialization
         * creating the metadata tables
 
-    If any of these things already exist, that step is skipped.
     """
-    # Use the connection to the "postgres" database to create the actual PG_DB
-    with psycopg2.connect(dbname=CONFIG['SG_DRIVER_POSTGRES_DB_NAME'],
-                          user=CONFIG['SG_DRIVER_ADMIN_USER'],
-                          password=CONFIG['SG_DRIVER_ADMIN_PWD'],
-                          host=PG_HOST,
-                          port=PG_PORT) as admin_conn:
-        # CREATE DATABASE can't run inside of tx
-        admin_conn.autocommit = True
-        with admin_conn.cursor() as cur:
-            cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (PG_DB,))
-            if cur.fetchone() is None:
-                logging.info("Creating database %s", PG_DB)
-                cur.execute(SQL("CREATE DATABASE {}").format(Identifier(PG_DB)))
-            else:
-                logging.info("Database %s already exists, skipping", PG_DB)
-
-    # Install the audit trigger if it doesn't exist
-    conn = get_connection()
-    if not get_engine().schema_exists(_AUDIT_SCHEMA):
-        logging.info("Installing the audit trigger...")
-        audit_trigger = get_data(_PACKAGE, _AUDIT_TRIGGER)
-        with conn.cursor() as cur:
-            cur.execute(audit_trigger.decode('utf-8'))
-    else:
-        logging.info("Skipping the audit trigger as it's already installed")
+    # Initialize the engine
+    get_engine().initialize()
 
     # Create splitgraph_meta
     logging.info("Ensuring metadata schema %s exists...", SPLITGRAPH_META_SCHEMA)

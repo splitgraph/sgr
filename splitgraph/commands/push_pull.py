@@ -10,7 +10,7 @@ from splitgraph._data.common import ensure_metadata_schema
 from splitgraph._data.images import get_all_image_info, add_new_image
 from splitgraph._data.objects import register_objects, register_tables, register_object_locations, \
     get_existing_objects, get_external_object_locations, get_object_meta
-from splitgraph.commands._common import set_head
+from splitgraph.commands._common import set_head, manage_audit
 from splitgraph.commands._objects.loading import download_objects, upload_objects
 from splitgraph.commands.repository import get_upstream, set_upstream, lookup_repo
 from splitgraph.commands.tagging import get_all_hashes_tags, set_tags
@@ -18,7 +18,6 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import override_driver_connection, get_connection, parse_connection_string, make_conn, \
     get_remote_connection_params
 from splitgraph.engine import get_engine
-from splitgraph.engine.postgres._pg_audit import manage_audit
 from splitgraph.exceptions import SplitGraphException
 
 

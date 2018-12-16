@@ -5,17 +5,15 @@ Public API for packaging changes to a Splitgraph-versioned schema into a new ima
 import logging
 from random import getrandbits
 
-from psycopg2.sql import SQL, Identifier
-
 from splitgraph._data.common import ensure_metadata_schema
 from splitgraph._data.images import add_new_image
 from splitgraph._data.objects import register_table
+from splitgraph.commands._common import manage_audit_triggers
 from splitgraph.commands._objects.creation import record_table_as_diff, record_table_as_snap
 from splitgraph.commands.info import get_table, table_schema_changed
 from splitgraph.commands.tagging import get_current_head
 from splitgraph.connection import get_connection
-from splitgraph.engine import get_engine, ResultShape
-from splitgraph.engine.postgres._pg_audit import manage_audit_triggers, discard_pending_changes
+from splitgraph.engine import get_engine
 from ._common import set_head
 
 
@@ -72,15 +70,10 @@ def _commit(repository, current_head, image_hash, include_snap=False):
     """
 
     target_schema = repository.to_schema()
+    engine = get_engine()
 
-    # TODO push audit functionality into a mixin
-    changed_tables = \
-        get_engine().run_sql(SQL("""SELECT DISTINCT(table_name) FROM {}.{}
-                       WHERE schema_name = %s""").format(Identifier("audit"),
-                                                         Identifier("logged_actions")), (target_schema,),
-                             return_shape=ResultShape.MANY_ONE)
-
-    for table in get_engine().get_all_tables(target_schema):
+    changed_tables = engine.get_changed_tables(target_schema)
+    for table in engine.get_all_tables(target_schema):
         table_info = get_table(repository, table, current_head)
         # Table already exists at the current HEAD
         if table_info:
@@ -107,4 +100,4 @@ def _commit(repository, current_head, image_hash, include_snap=False):
     # Make sure that all pending changes have been discarded by this point (e.g. if we created just a snapshot for
     # some tables and didn't consume the audit log).
     # NB if we allow partial commits, this will have to be changed (only discard for committed tables).
-    discard_pending_changes(target_schema)
+    get_engine().discard_pending_changes(target_schema)

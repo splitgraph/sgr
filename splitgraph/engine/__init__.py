@@ -179,6 +179,63 @@ class Engine:
         pks = [pk for pk, _ in self.get_primary_keys(schema, table_name)]
         return [(o, n, dt, (n in pks)) for o, n, dt in results]
 
+    def initialize(self):
+        """Does any required initialization of the engine"""
+        pass
+
+    # Methods for table change tracking
+
+    def get_tracked_tables(self):
+        """
+        :return: A list of (table_schema, table_name) that the engine currently tracks for changes
+        """
+        raise NotImplemented()
+
+    def track_tables(self, tables):
+        """
+        Start engine-specific change tracking on a list of tables.
+        :param tables: List of (table_schema, table_name) to start tracking
+        """
+        raise NotImplemented()
+
+    def untrack_tables(self, tables):
+        """
+        Stop engine-specific change tracking on a list of tables and delete any pending changes.
+        :param tables:
+        """
+        raise NotImplemented()
+
+    def has_pending_changes(self, schema):
+        """
+        Return True if the tracked schema has pending changes and False if it doesn't.
+        """
+        raise NotImplemented()
+
+    def discard_pending_changes(self, schema):
+        """
+        Discard recorded pending changes for a tracked schema.
+        """
+        raise NotImplemented()
+
+    def get_pending_changes(self, schema, table, aggregate=False):
+        """
+        Return pending changes for a given tracked table
+        :param schema: Schema the table belongs to
+        :param table: Table to return changes for
+        :param aggregate: Whether to aggregate changes or return them completely
+        :return: If aggregate is True: tuple with numbers of `(added_rows, removed_rows, updated_rows)`.
+            If aggregate is False: List of (primary_key, change_type, change_data)
+        """
+        raise NotImplemented()
+
+    def get_changed_tables(self, schema):
+        """
+        List tracked tables that have pending changes
+        :param schema: Schema to check for changes
+        :return: List of tables with changed contents
+        """
+        raise NotImplemented()
+
 
 _ENGINE = None
 

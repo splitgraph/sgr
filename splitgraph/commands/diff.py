@@ -10,7 +10,6 @@ from splitgraph.commands.misc import table_exists_at, find_path
 from splitgraph.commands.tagging import get_current_head
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import get_engine
-from splitgraph.engine.postgres._pg_audit import dump_pending_changes
 
 
 def _changes_to_aggregation(query_result, initial=None):
@@ -54,7 +53,7 @@ def diff(repository, table_name, image_1, image_2, aggregate=False):
     head = get_current_head(repository)
 
     if image_1 == head and image_2 is None:
-        changes = dump_pending_changes(repository.to_schema(), table_name, aggregate=aggregate)
+        changes = get_engine().get_pending_changes(repository.to_schema(), table_name, aggregate=aggregate)
         return changes if not aggregate else _changes_to_aggregation(changes)
 
     # If the table is the same in the two images, short circuit as well.
@@ -69,7 +68,7 @@ def diff(repository, table_name, image_1, image_2, aggregate=False):
 
         # If snap_2 is staging, also include all changes that have happened since the last commit.
         if image_2 is None:
-            changes = dump_pending_changes(repository, table_name, aggregate=aggregate)
+            changes = get_engine().get_pending_changes(repository, table_name, aggregate=aggregate)
             if aggregate:
                 result = _changes_to_aggregation(changes, result)
             else:

@@ -2,7 +2,7 @@
 Functions to manage Splitgraph repositories
 """
 
-from collections.__init__ import namedtuple
+from collections import namedtuple
 from datetime import datetime
 
 from psycopg2.sql import SQL, Identifier

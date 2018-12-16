@@ -8,7 +8,6 @@ from splitgraph.commands.repository import get_current_repositories
 from splitgraph.commands.tagging import get_current_head
 from splitgraph.connection import override_driver_connection
 from splitgraph.engine import get_engine
-from splitgraph.engine.postgres._pg_audit import dump_pending_changes
 from test.splitgraph.conftest import PG_MNT, OUTPUT
 
 
@@ -63,13 +62,13 @@ def test_import_preserves_pending_changes(sg_pg_conn):
     head = commit(OUTPUT)
     with sg_pg_conn.cursor() as cur:
         cur.execute("""INSERT INTO output.test VALUES (2, 'test2')""")
-    changes = dump_pending_changes(OUTPUT.to_schema(), 'test')
+    changes = get_engine().get_pending_changes(OUTPUT.to_schema(), 'test')
 
     import_tables(repository=PG_MNT, tables=['fruits'], target_repository=OUTPUT, target_tables=['imported_fruits'])
     new_head = get_current_head(OUTPUT)
 
     assert get_image(OUTPUT, new_head).parent_id == head
-    assert changes == dump_pending_changes(OUTPUT.to_schema(), 'test')
+    assert changes == get_engine().get_pending_changes(OUTPUT.to_schema(), 'test')
 
 
 def test_import_multiple_tables(sg_pg_conn):

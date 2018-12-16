@@ -8,6 +8,7 @@ from psycopg2.sql import Identifier, SQL
 
 from splitgraph._data.images import add_new_image
 from splitgraph._data.objects import register_table, register_object
+from splitgraph.commands._common import manage_audit
 from splitgraph.commands._objects.utils import get_random_object_id
 from splitgraph.commands.checkout import materialize_table, checkout
 from splitgraph.commands.info import get_tables_at, get_table
@@ -18,7 +19,6 @@ from splitgraph.commands.tagging import get_current_head
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import get_connection
 from splitgraph.engine import get_engine
-from splitgraph.engine.postgres._pg_audit import manage_audit
 from ._common import set_head
 
 

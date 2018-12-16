@@ -1,8 +1,14 @@
 .coverage
+.sgconfig
 htmlcov
 **/__pycache__
 **/.eggs
 **/*.egg-info
 
 build/
+docs/_build/
 dist/
+.venv/
+.cache/
+
+.idea/
