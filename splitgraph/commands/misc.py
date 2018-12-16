@@ -13,7 +13,7 @@ from splitgraph.commands.info import get_image, get_table
 from splitgraph.commands.repository import register_repository, unregister_repository
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, PG_HOST, PG_PORT, PG_DB
 from splitgraph.connection import get_connection
-from splitgraph.engine import get_engine
+from splitgraph.engine import get_engine, ResultShape
 from splitgraph.engine.postgres._pg_audit import manage_audit, discard_pending_changes
 
 _AUDIT_SCHEMA = 'audit'
@@ -56,10 +56,11 @@ def cleanup_objects(include_external=False):
         needed.
     """
     # First, get a list of all objects required by a table.
-    conn = get_connection()
-    with conn.cursor() as cur:
-        cur.execute(SQL("SELECT DISTINCT (object_id) FROM {}.tables").format(Identifier(SPLITGRAPH_META_SCHEMA)))
-        primary_objects = {c[0] for c in cur.fetchall()}
+    engine = get_engine()
+
+    primary_objects = set(engine.run_sql(
+        SQL("SELECT DISTINCT (object_id) FROM {}.tables").format(Identifier(SPLITGRAPH_META_SCHEMA)),
+        return_shape=ResultShape.MANY_ONE))
 
     # Expand that since each object might have a parent it depends on.
     if primary_objects:
@@ -72,30 +73,32 @@ def cleanup_objects(include_external=False):
                 primary_objects.update(new_parents)
 
     # Go through the tables that aren't mountpoint-dependent and delete entries there.
-    with conn.cursor() as cur:
-        for table_name in ['objects', 'object_locations']:
-            query = SQL("DELETE FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table_name))
-            if primary_objects:
-                query += SQL(" WHERE object_id NOT IN (" + ','.join('%s' for _ in range(len(primary_objects))) + ")")
-            cur.execute(query, list(primary_objects))
+    for table_name in ['objects', 'object_locations']:
+        query = SQL("DELETE FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table_name))
+        if primary_objects:
+            query += SQL(" WHERE object_id NOT IN (" + ','.join('%s' for _ in range(len(primary_objects))) + ")")
+        engine.run_sql(query, list(primary_objects), return_shape=None)
 
     # Go through the physical objects and delete them as well
-    with conn.cursor() as cur:
-        cur.execute("""SELECT information_schema.tables.table_name FROM information_schema.tables
-                        WHERE information_schema.tables.table_schema = %s""", (SPLITGRAPH_META_SCHEMA,))
-        # This is slightly dirty, but since the info about the objects was deleted on unmount, we just say that
-        # anything in splitgraph_meta that's not a system table is fair game.
-        tables_in_meta = set(c[0] for c in cur.fetchall() if c[0] not in META_TABLES)
+    # This is slightly dirty, but since the info about the objects was deleted on rm, we just say that
+    # anything in splitgraph_meta that's not a system table is fair game.
+    tables_in_meta = {c for c in
+                      engine.run_sql("SELECT information_schema.tables.table_name FROM information_schema.tables "
+                                     "WHERE information_schema.tables.table_schema = %s",
+                                     (SPLITGRAPH_META_SCHEMA,),
+                                     return_shape=ResultShape.MANY_ONE)
+                      if c not in META_TABLES}
 
-        to_delete = tables_in_meta.difference(primary_objects)
+    to_delete = tables_in_meta.difference(primary_objects)
 
-        # All objects in `object_locations` are assumed to exist externally (so we can redownload them if need be).
-        # This can be improved on by, on materialization, downloading all SNAPs directly into the target schema and
-        # applying the DIFFs to it (instead of downloading them into a staging area), but that requires us to change
-        # the object downloader interface.
-        if include_external:
-            cur.execute(SQL("SELECT object_id FROM {}.object_locations").format(Identifier(SPLITGRAPH_META_SCHEMA)))
-            to_delete = to_delete.union(set(c[0] for c in cur.fetchall()))
+    # All objects in `object_locations` are assumed to exist externally (so we can redownload them if need be).
+    # This can be improved on by, on materialization, downloading all SNAPs directly into the target schema and
+    # applying the DIFFs to it (instead of downloading them into a staging area), but that requires us to change
+    # the object downloader interface.
+    if include_external:
+        to_delete = to_delete.union(set(
+            engine.run_sql(SQL("SELECT object_id FROM {}.object_locations")
+                           .format(Identifier(SPLITGRAPH_META_SCHEMA)), return_shape=ResultShape.MANY_ONE)))
 
     delete_objects(to_delete)
     return to_delete
@@ -108,9 +111,9 @@ def delete_objects(objects):
     :param objects: A sequence of objects to be deleted
     """
     if objects:
-        with get_connection().cursor() as cur:
-            cur.execute(SQL(";").join(SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                               Identifier(d)) for d in objects))
+        get_engine().run_sql(SQL(";").join(SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                                    Identifier(d)) for d in objects),
+                             return_shape=None)
 
 
 @manage_audit
@@ -120,8 +123,7 @@ def init(repository):
 
     :param repository: Repository to create. Must not exist locally.
     """
-    with get_connection().cursor() as cur:
-        cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(repository.to_schema())))
+    get_engine().create_schema(repository.to_schema())
     image_hash = '0' * 64
     register_repository(repository, image_hash, tables=[], table_object_ids=[])
 
@@ -139,16 +141,15 @@ def rm(repository, unregister=True):
     # be applied/recorded if a new repository with the same name appears.
     ensure_metadata_schema()
     discard_pending_changes(repository.to_schema())
-    conn = get_connection()
-
-    with conn.cursor() as cur:
-        cur.execute(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(repository.to_schema())))
-        # Drop server too if it exists (could have been a non-foreign repository)
-        cur.execute(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(repository.to_schema() + '_server')))
+    get_engine().run_sql(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(repository.to_schema())),
+                         return_shape=None)
+    # Drop server too if it exists (could have been a non-foreign repository)
+    get_engine().run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(repository.to_schema() + '_server')),
+                         return_shape=None)
 
     if unregister:
         unregister_repository(repository)
-    conn.commit()
+    get_connection().commit()
 
 
 # Method exercised in test_commandline.test_init_new_db but in

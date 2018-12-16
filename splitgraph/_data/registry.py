@@ -199,7 +199,6 @@ def toggle_registry_rls(mode='ENABLE'):
     to owners of relevant repositories/objects.
 
     :param mode: ENABLE, DISABLE or FORCE (enable for superusers/table owners)
-    :return:
     """
 
     if mode not in ('ENABLE', 'DISABLE', 'FORCE'):

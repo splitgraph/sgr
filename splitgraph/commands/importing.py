@@ -51,7 +51,6 @@ def import_tables(repository, tables, target_repository, target_tables, image_ha
     if table_queries is None:
         table_queries = []
     target_hash = target_hash or "%0.2x" % getrandbits(256)
-    conn = get_connection()
 
     if not foreign_tables:
         image_hash = image_hash or get_current_head(repository)
@@ -79,9 +78,8 @@ def import_tables(repository, tables, target_repository, target_tables, image_ha
 
 def _import_tables(repository, image_hash, tables, target_repository, target_hash, target_tables, do_checkout,
                    table_queries, foreign_tables):
-    conn = get_connection()
-    with conn.cursor() as cur:
-        cur.execute(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(target_repository.to_schema())))
+    engine = get_engine()
+    engine.create_schema(target_repository.to_schema())
 
     head = get_current_head(target_repository, raise_on_none=False)
     # Add the new snap ID to the tree
@@ -99,9 +97,9 @@ def _import_tables(repository, image_hash, tables, target_repository, target_has
             if is_query:
                 # is_query precedes foreign_tables: if we're importing using a query, we don't care if it's a
                 # foreign table or not since we're storing it as a full snapshot.
-                get_engine().execute_sql_in(repository.to_schema(),
-                                            SQL("CREATE TABLE {}.{} AS ").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                                 Identifier(object_id)) + SQL(table))
+                engine.execute_sql_in(repository.to_schema(),
+                                      SQL("CREATE TABLE {}.{} AS ").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                           Identifier(object_id)) + SQL(table))
             elif foreign_tables:
                 get_engine().copy_table(repository.to_schema(), table, SPLITGRAPH_META_SCHEMA, object_id)
 
@@ -114,13 +112,14 @@ def _import_tables(repository, image_hash, tables, target_repository, target_has
                                   destination_schema=target_repository.to_schema())
     # Register the existing tables at the new commit as well.
     if head is not None:
-        with conn.cursor() as cur:
-            cur.execute(SQL("""INSERT INTO {0}.tables (namespace, repository, image_hash, table_name, object_id)
+        # Maybe push this into the tables API (currently have to make 2 queries)
+        engine.run_sql(SQL("""INSERT INTO {0}.tables (namespace, repository, image_hash, table_name, object_id)
                 (SELECT %s, %s, %s, table_name, object_id FROM {0}.tables
                 WHERE namespace = %s AND repository = %s AND image_hash = %s)""")
-                        .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                        (target_repository.namespace, target_repository.repository,
-                         target_hash, target_repository.namespace, target_repository.repository, head))
+                       .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                       (target_repository.namespace, target_repository.repository,
+                        target_hash, target_repository.namespace, target_repository.repository, head),
+                       return_shape=None)
     set_head(target_repository, target_hash)
     return target_hash
 

@@ -17,6 +17,7 @@ from splitgraph.commands.tagging import get_all_hashes_tags, set_tags
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import override_driver_connection, get_connection, parse_connection_string, make_conn, \
     get_remote_connection_params
+from splitgraph.engine import get_engine
 from splitgraph.engine.postgres._pg_audit import manage_audit
 from splitgraph.exceptions import SplitGraphException
 
@@ -47,12 +48,12 @@ def _get_required_snaps_objects(remote_conn, local_repository, remote_repository
         add_new_image(local_repository, remote_parent, image_hash, remote_created, remote_comment, remote_prov,
                       remote_provdata)
         # Get the meta for all objects we'll need to fetch.
-        with remote_conn.cursor() as cur:
-            cur.execute(SQL("""SELECT image_hash, table_name, object_id FROM {0}.tables
+        with override_driver_connection(remote_conn):
+            table_meta.extend(get_engine().run_sql(SQL("""SELECT image_hash, table_name, object_id FROM {0}.tables
                            WHERE namespace = %s AND repository = %s AND image_hash = %s""")
-                        .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                        (remote_repository.namespace, remote_repository.repository, image_hash))
-            table_meta.extend(cur.fetchall())
+                                                   .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                                                   (remote_repository.namespace, remote_repository.repository,
+                                                    image_hash)))
 
     # Get the tags too
     existing_tags = [t for s, t in get_all_hashes_tags(local_repository)]
@@ -127,8 +128,7 @@ def clone(remote_repository, remote_driver=None, local_repository=None, download
     ensure_metadata_schema()
 
     local_repository = local_repository or remote_repository
-    with get_connection().cursor() as cur:
-        cur.execute(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(local_repository.to_schema())))
+    get_engine().create_schema(local_repository.to_schema())
 
     if not remote_driver:
         remote_driver = lookup_repo(remote_repository)

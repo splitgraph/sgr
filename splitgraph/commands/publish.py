@@ -13,7 +13,7 @@ from splitgraph.commands.info import get_tables_at, get_schema_at
 from splitgraph.commands.provenance import provenance
 from splitgraph.commands.push_pull import merge_push_params
 from splitgraph.commands.tagging import get_tagged_id
-from splitgraph.connection import get_connection, override_driver_connection, make_conn
+from splitgraph.connection import override_driver_connection, make_conn
 from splitgraph.engine import get_engine
 
 PREVIEW_SIZE = 100
@@ -57,12 +57,10 @@ def _prepare_extra_data(image_hash, repository, include_table_previews):
         if include_table_previews:
             logging.info("Generating preview for %s...", table_name)
             with materialized_table(repository, table_name, image_hash) as (tmp_schema, tmp_table):
-                conn = get_connection()
-                schema = get_engine().get_full_table_schema(tmp_schema, tmp_table)
-                with conn.cursor() as cur:
-                    cur.execute(SQL("SELECT * FROM {}.{} LIMIT %s").format(
+                engine = get_engine()
+                schema = engine.get_full_table_schema(tmp_schema, tmp_table)
+                previews[table_name] = engine.run_sql(SQL("SELECT * FROM {}.{} LIMIT %s").format(
                         Identifier(tmp_schema), Identifier(tmp_table)), (PREVIEW_SIZE,))
-                    previews[table_name] = cur.fetchall()
         else:
             schema = get_schema_at(repository, table_name, image_hash)
         schemata[table_name] = [(cn, ct, pk) for _, cn, ct, pk in schema]

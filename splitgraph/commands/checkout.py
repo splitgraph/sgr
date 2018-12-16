@@ -5,8 +5,6 @@ Commands for checking out Splitgraph images
 import logging
 from contextlib import contextmanager
 
-from psycopg2.sql import Identifier, SQL
-
 from splitgraph.commands.repository import get_upstream
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import get_engine
@@ -37,36 +35,35 @@ def materialize_table(repository, image_hash, table, destination, destination_sc
     :param destination_schema: Name of the destination schema.
     :return: A set of IDs of downloaded objects used to construct the table.
     """
-    conn = get_connection()
     destination_schema = destination_schema or repository.to_schema()
-    with conn.cursor() as cur:
-        cur.execute(
-            SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(destination_schema), Identifier(destination)))
-        # Get the closest snapshot from the table's parents
-        # and then apply all deltas consecutively from it.
-        object_id, to_apply = get_image_object_path(repository, table, image_hash)
+    engine = get_engine()
+    engine.delete_table(destination_schema, destination)
+    # Get the closest snapshot from the table's parents
+    # and then apply all deltas consecutively from it.
+    object_id, to_apply = get_image_object_path(repository, table, image_hash)
 
-        # Make sure all the objects have been downloaded from remote if it exists
-        remote_info = get_upstream(repository)
-        if remote_info:
-            object_locations = get_external_object_locations(to_apply + [object_id])
-            fetched_objects = download_objects(get_remote_connection_params(remote_info[0]),
-                                               objects_to_fetch=to_apply + [object_id],
-                                               object_locations=object_locations)
+    # Make sure all the objects have been downloaded from remote if it exists
+    remote_info = get_upstream(repository)
+    if remote_info:
+        object_locations = get_external_object_locations(to_apply + [object_id])
+        fetched_objects = download_objects(get_remote_connection_params(remote_info[0]),
+                                           objects_to_fetch=to_apply + [object_id],
+                                           object_locations=object_locations)
 
-        difference = set(to_apply + [object_id]).difference(set(get_existing_objects()))
-        if difference:
-            logging.warning("Not all objects required to materialize %s:%s:%s exist locally.",
-                            repository.to_schema(), image_hash, table)
-            logging.warning("Missing objects: %r", difference)
-        # Copy the given snap id over to "staging" and apply the DIFFS
-        get_engine().copy_table(SPLITGRAPH_META_SCHEMA, object_id, destination_schema, destination,
-                                with_pk_constraints=True)
-        for pack_object in reversed(to_apply):
-            logging.info("Applying %s...", pack_object)
-            apply_record_to_staging(pack_object, destination_schema, destination)
+    difference = set(to_apply + [object_id]).difference(set(get_existing_objects()))
+    if difference:
+        logging.warning("Not all objects required to materialize %s:%s:%s exist locally.",
+                        repository.to_schema(), image_hash, table)
+        logging.warning("Missing objects: %r", difference)
 
-        return fetched_objects if remote_info else set()
+    # Copy the given snap id over to "staging" and apply the DIFFS
+    engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, destination_schema, destination,
+                      with_pk_constraints=True)
+    for pack_object in reversed(to_apply):
+        logging.info("Applying %s...", pack_object)
+        apply_record_to_staging(pack_object, destination_schema, destination)
+
+    return fetched_objects if remote_info else set()
 
 
 @manage_audit
@@ -102,10 +99,10 @@ def checkout(repository, image_hash=None, tag=None, tables=None, keep_downloaded
         raise SplitGraphException("One of image_hash or tag must be specified!")
 
     tables = tables or get_tables_at(repository, image_hash)
-    with conn.cursor() as cur:
-        # Drop all current tables in staging
-        for table in get_engine().get_all_tables(target_schema):
-            cur.execute(SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(target_schema), Identifier(table)))
+    engine = get_engine()
+    # Drop all current tables in staging
+    for table in engine.get_all_tables(target_schema):
+        engine.delete_table(target_schema, table)
 
     downloaded_object_ids = set()
     for table in tables:

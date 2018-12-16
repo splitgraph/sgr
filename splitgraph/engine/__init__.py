@@ -54,6 +54,11 @@ class Engine:
         return self.run_sql("""SELECT 1 from information_schema.schemata
                            WHERE schema_name = %s""", (schema,), return_shape=ResultShape.ONE_ONE) is not None
 
+    def create_schema(self, schema):
+        """Create a schema if it doesn't exist"""
+        return self.run_sql(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(schema)),
+                            return_shape=ResultShape.NONE)
+
     def copy_table(self, source_schema, source_table, target_schema, target_table, with_pk_constraints=True,
                    table_exists=False):
         """
@@ -74,6 +79,12 @@ class Engine:
                     Identifier(target_schema), Identifier(target_table)) + SQL(',').join(
                     SQL("{}").format(Identifier(c)) for c, _ in pks) + SQL(")")
         self.run_sql(query, return_shape=ResultShape.NONE)
+
+    def delete_table(self, schema, table):
+        """Drop a table from a schema if it exists"""
+        self.run_sql(
+            SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(schema), Identifier(table)),
+            return_shape=ResultShape.NONE)
 
     def get_all_tables(self, schema):
         """Get all tables in a given schema"""

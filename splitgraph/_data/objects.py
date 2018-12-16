@@ -6,7 +6,6 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph._data.common import select, insert
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.connection import get_connection
 from splitgraph.engine import ResultShape, get_engine
 
 
@@ -69,14 +68,12 @@ def register_object_locations(object_locations):
     Objects must already be registered in the object tree.
 
     :param object_locations: List of (object_id, location, protocol).
-    :return:
     """
-    with get_connection().cursor() as cur:
-        # Don't insert redundant objects here either.
-        existing_locations = get_engine().run_sql(select("object_locations", "object_id"),
-                                                  return_shape=ResultShape.MANY_ONE)
-        object_locations = [o for o in object_locations if o[0] not in existing_locations]
-        get_engine().run_sql_batch(insert("object_locations", ("object_id", "location", "protocol")), object_locations)
+    # Don't insert redundant objects here either.
+    existing_locations = get_engine().run_sql(select("object_locations", "object_id"),
+                                              return_shape=ResultShape.MANY_ONE)
+    object_locations = [o for o in object_locations if o[0] not in existing_locations]
+    get_engine().run_sql_batch(insert("object_locations", ("object_id", "location", "protocol")), object_locations)
 
 
 def get_existing_objects():
