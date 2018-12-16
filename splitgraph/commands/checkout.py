@@ -10,7 +10,6 @@ from splitgraph.commands.repository import get_upstream
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import get_engine
 from ._common import set_head
-from ._objects.applying import apply_record_to_staging
 from ._objects.loading import download_objects
 from ._objects.utils import get_random_object_id
 from .diff import has_pending_changes
@@ -61,7 +60,7 @@ def materialize_table(repository, image_hash, table, destination, destination_sc
                       with_pk_constraints=True)
     for pack_object in reversed(to_apply):
         logging.info("Applying %s...", pack_object)
-        apply_record_to_staging(pack_object, destination_schema, destination)
+        engine.apply_diff_object(SPLITGRAPH_META_SCHEMA, pack_object, destination_schema, destination)
 
     return fetched_objects if remote_info else set()
 

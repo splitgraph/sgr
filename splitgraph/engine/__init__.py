@@ -243,6 +243,14 @@ class Engine:
         """
         return self.get_primary_keys(schema, table) or self.get_column_names_types(schema, table)
 
+    # Object creation/application
+
+    def store_diff_object(self, changeset, schema, table, change_key):
+        raise NotImplemented()
+
+    def apply_diff_object(self, source_schema, source_table, target_schema, target_table):
+        raise NotImplemented()
+
 
 _ENGINE = None
 

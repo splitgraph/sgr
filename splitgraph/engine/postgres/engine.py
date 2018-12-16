@@ -1,11 +1,14 @@
+import itertools
 import logging
 from pkgutil import get_data
 
 import psycopg2
+from psycopg2._json import Json
 from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph import get_connection, CONFIG, PG_HOST, PG_PORT, PG_DB
+from splitgraph import get_connection, CONFIG, PG_HOST, PG_PORT, PG_DB, get_engine, SplitGraphException
+from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import Engine, ResultShape
 
 _AUDIT_SCHEMA = 'audit'
@@ -146,6 +149,67 @@ class PostgresEngine(Engine):
                                                                  Identifier("logged_actions")), (schema,),
                             return_shape=ResultShape.MANY_ONE)
 
+    def store_diff_object(self, changeset, schema, table, change_key):
+        _create_diff_table(table, change_key)
+        query = SQL("INSERT INTO {}.{} ").format(Identifier(schema),
+                                                 Identifier(table)) + \
+                SQL("VALUES (" + ','.join(itertools.repeat('%s', len(changeset[0]))) + ")")
+        self.run_sql_batch(query, changeset)
+
+    def apply_diff_object(self, source_schema, source_table, target_schema, target_table):
+        queries = []
+        repl_id = self.get_change_key(source_schema, source_table)
+        ri_cols, _ = zip(*repl_id)
+
+        # Minor hack alert: here we assume that the PK of the object is the PK of the table it refers to, which means
+        # that we are expected to have the PKs applied to the object table no matter how it originated.
+        if sorted(ri_cols) == sorted(get_engine().get_column_names(source_schema, source_table)):
+            raise SplitGraphException("Error determining the replica identity of %s. " % source_table +
+                                      "Have primary key constraints been applied?")
+
+        # Apply deletes
+        self.run_sql(SQL("DELETE FROM {0}.{2} USING {1}.{3} WHERE {1}.{3}.sg_action_kind = 1").format(
+            Identifier(target_schema), Identifier(source_schema), Identifier(target_table),
+            Identifier(source_table)) + SQL(" AND ") + _generate_where_clause(target_schema, target_table, ri_cols,
+                                                                              source_table,
+                                                                              source_schema),
+                     return_shape=ResultShape.NONE)
+
+        with get_connection().cursor() as cur:
+            # Generate queries for inserts
+            # Will remove the cursor later: currently need to to mogrify the query
+            for row in self.run_sql(SQL("SELECT * FROM {}.{} WHERE sg_action_kind = 0")
+                                            .format(Identifier(source_schema),
+                                                    Identifier(source_table))):
+                # For the future: if all column names are the same, we can do a big INSERT.
+                action_data = row[-1]
+                cols_to_insert = list(ri_cols) + action_data['c']
+                vals_to_insert = _convert_vals(list(row[:-2]) + action_data['v'])
+
+                query = SQL("INSERT INTO {}.{} (").format(Identifier(target_schema), Identifier(target_table))
+                query += SQL(','.join('{}' for _ in cols_to_insert)).format(*[Identifier(c) for c in cols_to_insert])
+                query += SQL(") VALUES (" + ','.join('%s' for _ in vals_to_insert) + ')')
+                query = cur.mogrify(query, vals_to_insert)
+                queries.append(query)
+
+            # ...and updates
+            for row in self.run_sql(SQL("SELECT * FROM {}.{} WHERE sg_action_kind = 2")
+                                            .format(Identifier(source_schema),
+                                                    Identifier(source_table))):
+                action_data = row[-1]
+                ri_vals = list(row[:-2])
+                cols_to_insert = action_data['c']
+                vals_to_insert = action_data['v']
+
+                query = SQL("UPDATE {}.{} SET ").format(Identifier(target_schema), Identifier(target_table))
+                query += SQL(', '.join("{} = %s" for _ in cols_to_insert)).format(
+                    *(Identifier(i) for i in cols_to_insert))
+                query += SQL(" WHERE ") + _generate_where_clause(target_schema, target_table, ri_cols)
+                queries.append(cur.mogrify(query, vals_to_insert + ri_vals))
+            # Apply the insert/update queries (might not exist if the diff was all deletes)
+        if queries:
+            self.run_sql(b';'.join(queries), return_shape=ResultShape.NONE)
+
 
 def _split_ri_cols(action, row_data, changed_fields, ri_cols):
     """
@@ -228,3 +292,43 @@ def _convert_audit_change(action, row_data, changed_fields, ri_cols):
 
 
 _KIND = {'I': 0, 'D': 1, 'U': 2}
+
+
+def _create_diff_table(object_id, replica_identity_cols_types):
+    """
+    Create a diff table into which we'll pack the conflated audit log actions.
+
+    :param object_id: table name to create
+    :param replica_identity_cols_types: multiple columns forming the table's PK (or all rows), PKd.
+    """
+    # sg_action_kind: 0, 1, 2 for insert/delete/update
+    # sg_action_data: extra data for insert and update.
+    with get_connection().cursor() as cur:
+        query = SQL("CREATE TABLE {}.{} (").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id))
+        query += SQL(',').join(SQL("{} %s" % col_type).format(Identifier(col_name))
+                               for col_name, col_type in replica_identity_cols_types + [('sg_action_kind', 'smallint'),
+                                                                                        ('sg_action_data', 'jsonb')])
+        query += SQL(", PRIMARY KEY (") + SQL(',').join(
+            SQL("{}").format(Identifier(c)) for c, _ in replica_identity_cols_types)
+        query += SQL("));")
+        cur.execute(query)
+        # RI is PK anyway, so has an index by default
+
+
+def _convert_vals(vals):
+    """Psycopg returns jsonb objects as dicts but doesn't actually accept them directly
+    as a query param. Hence, we have to wrap them in the Json datatype when applying a DIFF
+    to a table."""
+    # This might become a bottleneck since we call this for every row in the diff + function
+    # calls are expensive in Python -- maybe there's a better way (e.g. tell psycopg to not convert
+    # things to dicts or apply diffs in-driver).
+    return [v if not isinstance(v, dict) else Json(v) for v in vals]
+
+
+def _generate_where_clause(schema, table, cols, table_2=None, schema_2=None):
+    if not table_2:
+        return SQL(" AND ").join(SQL("{}.{}.{} = %s").format(
+            Identifier(schema), Identifier(table), Identifier(c)) for c in cols)
+    return SQL(" AND ").join(SQL("{}.{}.{} = {}.{}.{}").format(
+        Identifier(schema), Identifier(table), Identifier(c),
+        Identifier(schema_2), Identifier(table_2), Identifier(c)) for c in cols)
