@@ -9,7 +9,6 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import get_connection
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitGraphException
-from .utils import get_replica_identity
 
 
 def apply_record_to_staging(object_id, dest_schema, dest_table):
@@ -21,7 +20,7 @@ def apply_record_to_staging(object_id, dest_schema, dest_table):
     :param dest_table: Target table.
     """
     queries = []
-    repl_id = get_replica_identity(SPLITGRAPH_META_SCHEMA, object_id)
+    repl_id = get_engine().get_change_key(SPLITGRAPH_META_SCHEMA, object_id)
     ri_cols, _ = zip(*repl_id)
 
     # Minor hack alert: here we assume that the PK of the object is the PK of the table it refers to, which means

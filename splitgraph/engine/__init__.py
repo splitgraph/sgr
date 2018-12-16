@@ -211,9 +211,9 @@ class Engine:
         """
         raise NotImplemented()
 
-    def discard_pending_changes(self, schema):
+    def discard_pending_changes(self, schema, table=None):
         """
-        Discard recorded pending changes for a tracked schema.
+        Discard recorded pending changes for a tracked table or the whole schema
         """
         raise NotImplemented()
 
@@ -235,6 +235,13 @@ class Engine:
         :return: List of tables with changed contents
         """
         raise NotImplemented()
+
+    def get_change_key(self, schema, table):
+        """
+        Returns the key used to identify a row in a change (list of column name, column type).
+        If the tracked table has a PK, we use that; if it doesn't, the whole row is used.
+        """
+        return self.get_primary_keys(schema, table) or self.get_column_names_types(schema, table)
 
 
 _ENGINE = None

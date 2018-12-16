@@ -54,7 +54,7 @@ def diff(repository, table_name, image_1, image_2, aggregate=False):
 
     if image_1 == head and image_2 is None:
         changes = get_engine().get_pending_changes(repository.to_schema(), table_name, aggregate=aggregate)
-        return changes if not aggregate else _changes_to_aggregation(changes)
+        return list(changes) if not aggregate else _changes_to_aggregation(changes)
 
     # If the table is the same in the two images, short circuit as well.
     if set(get_table(repository, table_name, image_1)) == \

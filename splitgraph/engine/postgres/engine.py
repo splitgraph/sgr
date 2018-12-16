@@ -6,7 +6,6 @@ from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph import get_connection, CONFIG, PG_HOST, PG_PORT, PG_DB
-from splitgraph.commands._objects.utils import KIND, get_replica_identity, convert_audit_change
 from splitgraph.engine import Engine, ResultShape
 
 _AUDIT_SCHEMA = 'audit'
@@ -100,13 +99,17 @@ class PostgresEngine(Engine):
                                                                                      Identifier("logged_actions")),
                             (schema,), return_shape=ResultShape.ONE_ONE) is not None
 
-    def discard_pending_changes(self, schema):
+    def discard_pending_changes(self, schema, table=None):
         """
-        Discard recorded pending changes for a tracked schema.
+        Discard recorded pending changes for a tracked schema / table
         """
-        self.run_sql(SQL("DELETE FROM {}.{} WHERE schema_name = %s").format(Identifier("audit"),
-                                                                            Identifier("logged_actions")),
-                     (schema,), return_shape=ResultShape.NONE)
+        query = SQL("DELETE FROM {}.{} WHERE schema_name = %s").format(Identifier("audit"),
+                                                                       Identifier("logged_actions"))
+
+        if table:
+            self.run_sql(query + SQL(" AND table_name = %s"), (schema, table), return_shape=ResultShape.NONE)
+        else:
+            self.run_sql(query, (schema,), return_shape=ResultShape.NONE)
 
     def get_pending_changes(self, schema, table, aggregate=False):
         """
@@ -118,7 +121,7 @@ class PostgresEngine(Engine):
             If aggregate is False: List of (primary_key, change_type, change_data)
         """
         if aggregate:
-            return [(KIND[k], c) for k, c in
+            return [(_KIND[k], c) for k, c in
                     self.run_sql(SQL(
                         "SELECT action, count(action) FROM {}.{} "
                         "WHERE schema_name = %s AND table_name = %s GROUP BY action").format(Identifier("audit"),
@@ -126,22 +129,102 @@ class PostgresEngine(Engine):
                                                                                                  "logged_actions")),
                                  (schema, table))]
 
-        # TODO move RI into the class
-        # TODO move convert_audit_change into the class
-        repl_id = get_replica_identity(schema, table)
-        ri_cols, _ = zip(*repl_id)
+        ri_cols, _ = zip(*self.get_change_key(schema, table))
         result = []
         for action, row_data, changed_fields in self.run_sql(SQL(
                 "SELECT action, row_data, changed_fields FROM {}.{} "
                 "WHERE schema_name = %s AND table_name = %s").format(Identifier("audit"),
                                                                      Identifier("logged_actions")),
                                                              (schema, table)):
-            result.extend(convert_audit_change(action, row_data, changed_fields, ri_cols))
+            result.extend(_convert_audit_change(action, row_data, changed_fields, ri_cols))
         return result
 
     def get_changed_tables(self, schema):
-        """Get list of tables that have changed contents"""
+        """Get list of tables that have changed content"""
         return self.run_sql(SQL("""SELECT DISTINCT(table_name) FROM {}.{}
                                WHERE schema_name = %s""").format(Identifier("audit"),
                                                                  Identifier("logged_actions")), (schema,),
                             return_shape=ResultShape.MANY_ONE)
+
+
+def _split_ri_cols(action, row_data, changed_fields, ri_cols):
+    """
+    :return: `(ri_vals, non_ri_cols, non_ri_vals)`: a tuple of 3 lists:
+        * `ri_vals`: values identifying the replica identity (RI) of a given tuple (matching column names in `ri_cols`)
+        * `non_ri_cols`: column names not in the RI that have been changed/updated
+        * `non_ri_vals`: column values not in the RI that have been changed/updated (matching colnames in `non_ri_cols`)
+    """
+    non_ri_cols = []
+    non_ri_vals = []
+    ri_vals = [None] * len(ri_cols)
+
+    if action == 'I':
+        for cc, cv in row_data.items():
+            if cc in ri_cols:
+                ri_vals[ri_cols.index(cc)] = cv
+            else:
+                non_ri_cols.append(cc)
+                non_ri_vals.append(cv)
+    elif action == 'D':
+        for cc, cv in row_data.items():
+            if cc in ri_cols:
+                ri_vals[ri_cols.index(cc)] = cv
+    elif action == 'U':
+        for cc, cv in row_data.items():
+            if cc in ri_cols:
+                ri_vals[ri_cols.index(cc)] = cv
+        for cc, cv in changed_fields.items():
+            # Hmm: these might intersect with the RI values (e.g. when the whole tuple is the replica identity and
+            # we're updating some of it)
+            non_ri_cols.append(cc)
+            non_ri_vals.append(cv)
+
+    return ri_vals, non_ri_cols, non_ri_vals
+
+
+def _recalculate_disjoint_ri_cols(ri_cols, ri_vals, non_ri_cols, non_ri_vals, row_data):
+    # If part of the PK has been updated (is in the non_ri_cols/vals), we have to instead
+    # apply the update to the PK (ri_cols/vals) and recalculate the new full new tuple
+    # (by applying the update to row_data).
+    new_nric = []
+    new_nriv = []
+    row_data = row_data.copy()
+
+    for nrc, nrv in zip(non_ri_cols, non_ri_vals):
+        try:
+            ri_vals[ri_cols.index(nrc)] = nrv
+        except ValueError:
+            row_data[nrc] = nrv
+
+    for col, val in row_data.items():
+        if col not in ri_cols:
+            new_nric.append(col)
+            new_nriv.append(val)
+
+    return ri_vals, new_nric, new_nriv
+
+
+def _convert_audit_change(action, row_data, changed_fields, ri_cols):
+    """
+    Converts the audit log entry into Splitgraph's internal format.
+    :returns: [(pk, kind, extra data)] (more than 1 change might be emitted from a single audit entry).
+    """
+    ri_vals, non_ri_cols, non_ri_vals = _split_ri_cols(action, row_data, changed_fields, ri_cols)
+    pk_changed = any(c in ri_cols for c in non_ri_cols)
+    if pk_changed:
+        assert action == 'U'
+        # If it's an update that changed the PK (e.g. the table has no replica identity so we treat the whole
+        # tuple as a primary key), then we turn it into a delete old tuple + insert new one.
+        result = [(tuple(ri_vals), 1, None)]
+
+        # Recalculate the new PK to be inserted + the new (full) tuple, otherwise if the whole
+        # tuple hasn't been updated, we'll lose parts of the old row (see test_diff_conflation_on_commit[test_case2]).
+        ri_vals, non_ri_cols, non_ri_vals = _recalculate_disjoint_ri_cols(ri_cols, ri_vals,
+                                                                          non_ri_cols, non_ri_vals, row_data)
+        result.append((tuple(ri_vals), 0, {'c': non_ri_cols, 'v': non_ri_vals}))
+        return result
+    return [(tuple(ri_vals), _KIND[action],
+             {'c': non_ri_cols, 'v': non_ri_vals} if action in ('I', 'U') else None)]
+
+
+_KIND = {'I': 0, 'D': 1, 'U': 2}

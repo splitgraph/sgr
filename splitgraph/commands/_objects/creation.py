@@ -1,13 +1,13 @@
 """
 Internal functions for packaging changes into physical Splitgraph objects.
 """
+import itertools
 
-from psycopg2.extras import execute_batch, Json
+from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph._data.objects import register_table, register_object, get_object_for_table
-from splitgraph.commands._objects.utils import get_replica_identity, conflate_changes, convert_audit_change, \
-    get_random_object_id
+from splitgraph.commands._objects.utils import conflate_changes, get_random_object_id
 from splitgraph.commands.misc import delete_objects
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.connection import get_connection
@@ -44,19 +44,16 @@ def record_table_as_diff(repository, image_hash, table, table_info):
     :param table_info: Information for the previous version of this table (list of object IDs and their formats)
     """
     object_id = get_random_object_id()
-    repl_id = get_replica_identity(repository.to_schema(), table)
-    ri_cols, _ = zip(*repl_id)
-    _create_diff_table(object_id, repl_id)
+    engine = get_engine()
+    _create_diff_table(object_id, engine.get_change_key(repository.to_schema(), table))
 
-    changeset = _get_conflated_changeset(repository, table, ri_cols)
+    changeset = _get_conflated_changeset(repository, table)
 
     if changeset:
         query = SQL("INSERT INTO {}.{} ").format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                  Identifier(object_id)) + \
-                SQL("VALUES (" + ','.join('%s' for _ in range(len(changeset[0]))) + ")")
-
-        with get_connection().cursor() as cur:
-            execute_batch(cur, query, changeset, page_size=1000)
+                SQL("VALUES (" + ','.join(itertools.repeat('%s', len(changeset[0]))) + ")")
+        engine.run_sql_batch(query, changeset)
 
         for parent_id, _ in table_info:
             register_object(object_id, object_format='DIFF', namespace=repository.namespace,
@@ -71,20 +68,15 @@ def record_table_as_diff(repository, image_hash, table, table_info):
             register_table(repository, table, image_hash, prev_object_id)
 
 
-def _get_conflated_changeset(repository, table, ri_cols):
-    # Can't seem to use a server-side cursor here since it doesn't support DELETE FROM RETURNING
-    with get_connection().cursor() as cur:
-        cur.execute(
-            SQL("""DELETE FROM {}.{} WHERE schema_name = %s AND table_name = %s
-                                       RETURNING action, row_data, changed_fields""")
-                .format(Identifier("audit"), Identifier("logged_actions")), (repository.to_schema(), table))
-
-        # Accumulate the diff in-memory. This might become a bottleneck in the future.
-        changeset = {}
-        for action, row_data, changed_fields in cur:
-            conflate_changes(changeset, convert_audit_change(action, row_data, changed_fields, ri_cols))
-        return [tuple(list(pk) + [kind_data[0], Json(kind_data[1])]) for pk, kind_data in
-                changeset.items()]
+def _get_conflated_changeset(repository, table):
+    # Accumulate the diff in-memory. This might become a bottleneck in the future.
+    changeset = {}
+    engine = get_engine()
+    for action, row_data, changed_fields in engine.get_pending_changes(repository.to_schema(), table):
+        conflate_changes(changeset, [(action, row_data, changed_fields)])
+    engine.discard_pending_changes(repository.to_schema(), table)
+    return [tuple(list(pk) + [kind_data[0], Json(kind_data[1])]) for pk, kind_data in
+            changeset.items()]
 
 
 def record_table_as_snap(repository, image_hash, table, table_info):

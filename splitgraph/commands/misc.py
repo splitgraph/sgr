@@ -104,10 +104,9 @@ def delete_objects(objects):
 
     :param objects: A sequence of objects to be deleted
     """
-    if objects:
-        get_engine().run_sql(SQL(";").join(SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                                    Identifier(d)) for d in objects),
-                             return_shape=None)
+    engine = get_engine()
+    for o in objects:
+        engine.delete_table(SPLITGRAPH_META_SCHEMA, o)
 
 
 @manage_audit
