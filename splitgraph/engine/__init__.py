@@ -86,6 +86,14 @@ class Engine:
             SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(schema), Identifier(table)),
             return_shape=ResultShape.NONE)
 
+    def delete_schema(self, schema):
+        """
+        Delete a schema if it exists (+ all the tables in it)
+        """
+        self.run_sql(
+            SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(schema)),
+            return_shape=ResultShape.NONE)
+
     def get_all_tables(self, schema):
         """Get all tables in a given schema"""
         return self.run_sql("SELECT table_name FROM information_schema.tables WHERE table_schema = %s", (schema,),
@@ -237,7 +245,6 @@ class Engine:
         raise NotImplemented()
 
     # TODO split this class up (handling storage, change capture and object application/creation)
-    # TODO figure out sharing objects to different engines
 
     def get_change_key(self, schema, table):
         """
@@ -273,6 +280,26 @@ class Engine:
         :param stream: A file-like stream to load the object from
         """
         raise NotImplemented()
+
+    def upload_objects(self, objects, remote_conn_params, remote_conn):
+        """
+        Upload objects from the local cache to the remote engine
+
+        :param objects: List of object IDs to upload
+        :param remote_conn_params: Connection parameters to the remote driver
+        :param remote_conn: Connection object to use
+        """
+        raise NotImplemented()
+
+    def download_objects(self, objects, remote_conn_params, remote_conn):
+        """
+        Download objects from the remote engine to the local cache
+
+        :param objects: List of object IDs to download
+        :param remote_conn_params: Connection parameters to the remote driver
+        :param remote_conn: Connection object to use
+        :return:
+        """
 
 
 _ENGINE = None

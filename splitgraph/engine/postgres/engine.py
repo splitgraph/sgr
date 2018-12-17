@@ -8,15 +8,18 @@ from psycopg2._json import Json
 from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph import get_connection, CONFIG, PG_HOST, PG_PORT, PG_DB, get_engine, SplitGraphException
+from splitgraph import get_connection, CONFIG, PG_HOST, PG_PORT, PG_DB, SplitGraphException, \
+    override_driver_connection
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import Engine, ResultShape
+from splitgraph.hooks.mount_handlers import mount_postgres
 
 _AUDIT_SCHEMA = 'audit'
 _AUDIT_TRIGGER = 'resources/audit_trigger.sql'
 _PACKAGE = 'splitgraph'
 ROW_TRIGGER_NAME = "audit_trigger_row"
 STM_TRIGGER_NAME = "audit_trigger_stm"
+REMOTE_TMP_SCHEMA = "tmp_remote_data"
 
 
 class PostgresEngine(Engine):
@@ -164,7 +167,7 @@ class PostgresEngine(Engine):
 
         # Minor hack alert: here we assume that the PK of the object is the PK of the table it refers to, which means
         # that we are expected to have the PKs applied to the object table no matter how it originated.
-        if sorted(ri_cols) == sorted(get_engine().get_column_names(source_schema, source_table)):
+        if sorted(ri_cols) == sorted(self.get_column_names(source_schema, source_table)):
             raise SplitGraphException("Error determining the replica identity of %s. " % source_table +
                                       "Have primary key constraints been applied?")
 
@@ -241,6 +244,60 @@ class PostgresEngine(Engine):
         with conn.cursor() as cur:
             cur.copy_expert(SQL("COPY {}.{} FROM STDIN WITH (FORMAT 'binary')")
                             .format(Identifier(schema), Identifier(table)), stream)
+
+    def upload_objects(self, objects, remote_conn_params, remote_conn):
+        # TODO we assume here that remote_conn_params / remote_conn are all Postgres-specific
+        # (there's no engine-to-engine negotiation).
+
+        # Since we can't get remote to mount us, we instead use normal SQL statements
+        # to create new tables remotely, then mount them and write into them from our side.
+        # Is there seriously no better way to do this?
+        # This also includes applying our table's FK constraints.
+        create = self.dump_table_creation(schema=SPLITGRAPH_META_SCHEMA, tables=objects,
+                                          created_schema=SPLITGRAPH_META_SCHEMA)
+        with override_driver_connection(remote_conn):
+            self.run_sql(create, return_shape=ResultShape.NONE)
+        # Have to commit the remote connection here since otherwise we won't see the new tables in the
+        # mounted remote.
+        remote_conn.commit()
+        self.delete_schema(REMOTE_TMP_SCHEMA)
+        mount_postgres(mountpoint=REMOTE_TMP_SCHEMA, server=remote_conn_params[0], port=remote_conn_params[1],
+                       username=remote_conn_params[2],
+                       password=remote_conn_params[3], dbname=remote_conn_params[4],
+                       remote_schema=SPLITGRAPH_META_SCHEMA)
+        for i, obj in enumerate(objects):
+            print("(%d/%d) %s..." % (i + 1, len(objects), obj))
+            self.copy_table(SPLITGRAPH_META_SCHEMA, obj, REMOTE_TMP_SCHEMA, obj, with_pk_constraints=False,
+                            table_exists=True)
+        get_connection().commit()
+        self.delete_schema(REMOTE_TMP_SCHEMA)
+
+    def download_objects(self, objects, remote_conn_params, remote_conn):
+        # Instead of connecting and pushing queries to it from the Python client, we just mount the remote mountpoint
+        # into a temporary space (without any checking out) and SELECT the required data into our local tables.
+
+        server, port, user, pwd, dbname = remote_conn_params
+        self.delete_schema(REMOTE_TMP_SCHEMA)
+        mount_postgres(mountpoint=REMOTE_TMP_SCHEMA, server=server, port=port, username=user, password=pwd,
+                       dbname=dbname,
+                       remote_schema=SPLITGRAPH_META_SCHEMA)
+        try:
+            for i, obj in enumerate(objects):
+                print("(%d/%d) %s..." % (i + 1, len(objects), obj))
+                # Foreign tables don't have PK constraints so we'll have to apply them manually.
+                self.copy_table(REMOTE_TMP_SCHEMA, obj, SPLITGRAPH_META_SCHEMA, obj,
+                                with_pk_constraints=False)
+                # Get the PKs from the remote and apply them
+                with override_driver_connection(remote_conn):
+                    source_pks = self.get_primary_keys(SPLITGRAPH_META_SCHEMA, obj)
+                if source_pks:
+                    self.run_sql(SQL("ALTER TABLE {}.{} ADD PRIMARY KEY (").format(
+                        Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj))
+                                 + SQL(',').join(SQL("{}").format(Identifier(c)) for c, _ in source_pks) + SQL(")"),
+                                 return_shape=ResultShape.NONE)
+                get_connection().commit()
+        finally:
+            self.delete_schema(REMOTE_TMP_SCHEMA)
 
 
 def _split_ri_cols(action, row_data, changed_fields, ri_cols):

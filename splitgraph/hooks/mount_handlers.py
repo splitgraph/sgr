@@ -37,6 +37,24 @@ def register_mount_handler(name, mount_function):
     _MOUNT_HANDLERS[name] = mount_function
 
 
+def _init_fdw(cur, server_id, wrapper, server_options, user_options):
+    cur.execute(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(server_id)))
+    create_server = SQL("CREATE SERVER {} FOREIGN DATA WRAPPER {}").format(Identifier(server_id), Identifier(wrapper))
+
+    server_keys, server_vals = zip(*server_options.items())
+    if server_options:
+        create_server += SQL(" OPTIONS (") \
+                         + SQL(",").join(Identifier(o) + SQL(" %s") for o in server_keys) + SQL(")")
+    cur.execute(create_server, server_vals)
+
+    user_keys, user_vals = zip(*user_options.items())
+    create_mapping = SQL("CREATE USER MAPPING FOR {} SERVER {}").format(Identifier(PG_USER), Identifier(server_id))
+    if user_options:
+        create_mapping += SQL(" OPTIONS (") \
+                          + SQL(",").join(Identifier(o) + SQL(" %s") for o in user_keys) + SQL(")")
+    cur.execute(create_mapping, user_vals)
+
+
 def mount_postgres(mountpoint, server, port, username, password, dbname, remote_schema, tables=[]):
     """
     Mount a Postgres database.
@@ -55,15 +73,10 @@ def mount_postgres(mountpoint, server, port, username, password, dbname, remote_
     """
     with get_connection().cursor() as cur:
         logging.info("Importing foreign Postgres schema...")
-        server_id = Identifier(mountpoint + '_server')
+        server_id = mountpoint + '_server'
 
-        cur.execute(SQL("""CREATE SERVER {}
-                        FOREIGN DATA WRAPPER postgres_fdw
-                        OPTIONS (host %s, port %s, dbname %s)""").format(server_id), (server, str(port), dbname))
-        cur.execute(SQL("""CREATE USER MAPPING FOR {}
-                        SERVER {}
-                        OPTIONS (user %s, password %s)""")
-                    .format(Identifier(PG_USER), server_id), (username, password))
+        _init_fdw(cur, server_id, "postgres_fdw", {'host': server, 'port': str(port), 'dbname': dbname},
+                  {'user': username, 'password': password})
 
         cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(mountpoint)))
 
@@ -72,7 +85,8 @@ def mount_postgres(mountpoint, server, port, username, password, dbname, remote_
         if tables:
             query += "LIMIT TO (" + ",".join("%s" for _ in tables) + ") "
         query += "FROM SERVER {} INTO {}"
-        cur.execute(SQL(query).format(Identifier(remote_schema), server_id, Identifier(mountpoint)), tables)
+        cur.execute(SQL(query).format(Identifier(remote_schema), Identifier(server_id),
+                                      Identifier(mountpoint)), tables)
 
 
 def mount_mongo(mountpoint, server, port, username, password, **table_spec):
@@ -90,15 +104,9 @@ def mount_mongo(mountpoint, server, port, username, password, **table_spec):
     :param table_spec: A dictionary of form `{"table_name": {"db": <dbname>, "coll": <collection>, "schema": {"col1": "type1"...}}}`.
     """
     with get_connection().cursor() as cur:
-        server_id = Identifier(mountpoint + '_server')
-
-        cur.execute(SQL("""CREATE SERVER {}
-                        FOREIGN DATA WRAPPER mongo_fdw
-                        OPTIONS (address %s, port %s)""").format(server_id), (server, str(port)))
-        cur.execute(SQL("""CREATE USER MAPPING FOR {}
-                        SERVER {}
-                        OPTIONS (username %s, password %s)""")
-                    .format(Identifier(PG_USER), server_id), (username, password))
+        server_id = mountpoint + '_server'
+        _init_fdw(cur, server_id, "mongo_fdw", {"address": server, "port": str(port)},
+                  {"username": username, "password": password})
 
         cur.execute(SQL("""CREATE SCHEMA {}""").format(Identifier(mountpoint)))
 
@@ -113,7 +121,7 @@ def mount_mongo(mountpoint, server, port, username, password, **table_spec):
             if table_options['schema']:
                 for cname, ctype in table_options['schema'].items():
                     query += SQL(", {} %s" % ctype).format(Identifier(cname))
-            query += SQL(") SERVER {} OPTIONS (database %s, collection %s)").format(server_id)
+            query += SQL(") SERVER {} OPTIONS (database %s, collection %s)").format(Identifier(server_id))
             cur.execute(query, (db, coll))
 
 
@@ -135,15 +143,10 @@ def mount_mysql(mountpoint, server, port, username, password, remote_schema, tab
     """
     with get_connection().cursor() as cur:
         logging.info("Mounting foreign MySQL database...")
-        server_id = Identifier(mountpoint + '_server')
+        server_id = mountpoint + '_server'
 
-        cur.execute(SQL("""CREATE SERVER {}
-                        FOREIGN DATA WRAPPER mysql_fdw
-                        OPTIONS (host %s, port %s)""").format(server_id), (server, str(port)))
-        cur.execute(SQL("""CREATE USER MAPPING FOR {}
-                        SERVER {}
-                        OPTIONS (username %s, password %s)""")
-                    .format(Identifier(PG_USER), server_id), (username, password))
+        _init_fdw(cur, server_id, "mysql_fdw", {"host": server, "port": str(port)},
+                  {"username": username, "password": password})
 
         cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(mountpoint)))
 
@@ -151,7 +154,8 @@ def mount_mysql(mountpoint, server, port, username, password, remote_schema, tab
         if tables:
             query += "LIMIT TO (" + ",".join("%s" for _ in tables) + ") "
         query += "FROM SERVER {} INTO {}"
-        cur.execute(SQL(query).format(Identifier(remote_schema), server_id, Identifier(mountpoint)), tables)
+        cur.execute(SQL(query).format(Identifier(remote_schema), Identifier(server_id),
+                                      Identifier(mountpoint)), tables)
 
 
 # Register the mount handlers from the config.

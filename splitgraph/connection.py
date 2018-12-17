@@ -20,6 +20,9 @@ def override_driver_connection(conn):
 
     :param conn: Psycopg connection object.
     """
+    if conn is None:
+        raise ValueError("Can't override the current connection with None!")
+
     global _PSYCOPG_CONN
     # Keep track of the old value (so that if we have several context manager calls in the call stack,
     # the old values get restored as we move back
