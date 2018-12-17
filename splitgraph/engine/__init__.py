@@ -236,6 +236,9 @@ class Engine:
         """
         raise NotImplemented()
 
+    # TODO split this class up (handling storage, change capture and object application/creation)
+    # TODO figure out sharing objects to different engines
+
     def get_change_key(self, schema, table):
         """
         Returns the key used to identify a row in a change (list of column name, column type).
@@ -249,6 +252,26 @@ class Engine:
         raise NotImplemented()
 
     def apply_diff_object(self, source_schema, source_table, target_schema, target_table):
+        raise NotImplemented()
+
+    def dump_object(self, schema, table, stream):
+        """
+        Dump a table to a stream using an engine-specific binary format.
+
+        :param schema: Schema the table lives in
+        :param table: Table to dump
+        :param stream: A file-like stream to dump the object into
+        """
+        raise NotImplemented()
+
+    def load_object(self, schema, table, stream):
+        """
+        Load a table from a stream using an engine-specific binary format.
+
+        :param schema: Schema to create the table in. Must already exist.
+        :param table: Table to create. Must not exist.
+        :param stream: A file-like stream to load the object from
+        """
         raise NotImplemented()
 
 

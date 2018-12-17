@@ -1,4 +1,5 @@
 import itertools
+import json
 import logging
 from pkgutil import get_data
 
@@ -209,6 +210,37 @@ class PostgresEngine(Engine):
             # Apply the insert/update queries (might not exist if the diff was all deletes)
         if queries:
             self.run_sql(b';'.join(queries), return_shape=ResultShape.NONE)
+
+    # Utilities to dump objects (SNAP/DIFF) into an external format.
+    # We use a slightly ad hoc format: the schema (JSON) + a null byte + Postgres's copy_to
+    # binary format (only contains data). There's probably some scope to make this more optimized, maybe
+    # we should look into columnar on-disk formats (Parquet/Avro) but we currently just want to get the objects
+    # out of/into postgres as fast as possible.
+    def dump_object(self, schema, table, stream):
+        conn = get_connection()
+        schema_spec = json.dumps(self.get_full_table_schema(schema, table))
+        stream.write(schema_spec.encode('utf-8') + b'\0')
+        with conn.cursor() as cur:
+            cur.copy_expert(SQL("COPY {}.{} TO STDOUT WITH (FORMAT 'binary')")
+                            .format(Identifier(schema), Identifier(table)), stream)
+
+    def load_object(self, schema, table, stream):
+        conn = get_connection()
+        chars = b''
+        # Read until the delimiter separating a JSON schema from the Postgres copy_to dump.
+        # Surely this is buffered?
+        while True:
+            c = stream.read(1)
+            if c == b'\0':
+                break
+            chars += c
+
+        schema_spec = json.loads(chars.decode('utf-8'))
+        self.create_table(schema, table, schema_spec)
+
+        with conn.cursor() as cur:
+            cur.copy_expert(SQL("COPY {}.{} FROM STDIN WITH (FORMAT 'binary')")
+                            .format(Identifier(schema), Identifier(table)), stream)
 
 
 def _split_ri_cols(action, row_data, changed_fields, ri_cols):

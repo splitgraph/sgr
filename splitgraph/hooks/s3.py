@@ -2,7 +2,6 @@
 Plugin for uploading Splitgraph objects from the cache to an external S3-like object store
 """
 
-import json
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
@@ -10,10 +9,8 @@ from threading import Lock
 from minio import Minio
 from minio.error import (BucketAlreadyOwnedByYou,
                          BucketAlreadyExists)
-from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
-from splitgraph.connection import get_connection
 from splitgraph.engine import get_engine
 from splitgraph.hooks.external_objects import ExternalObjectHandler
 
@@ -71,12 +68,15 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
         with tempfile.TemporaryDirectory() as tmpdir:
             def _do_upload(object_id):
                 # First cut: dump the object to file and then upload it using Minio
+                # We can't seem to currently be able to pipe the object directly, since the S3 API
+                # required content-length to be sent before the actual object gets uploaded
+                # and we don't know its size in advance.
                 tmp_path = tmpdir + '/' + object_id
 
                 with pg_conn_lock:
                     with open(tmp_path, 'wb') as f:
-                        dump_object(object_id, f)
-                # Minio pushes can happen concurrently
+                        get_engine().dump_object(SPLITGRAPH_META_SCHEMA, object_id, f)
+                # Minio pushes can happen concurrently, no need to hold the lock here.
                 client.fput_object(bucket, object_id, tmp_path)
 
                 return '%s/%s/%s' % (endpoint, bucket, object_id)
@@ -113,56 +113,8 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
 
                 with pg_conn_lock:
                     with open(local_path, 'rb') as f:
-                        load_object(object_id, f)
+                        get_engine().load_object(SPLITGRAPH_META_SCHEMA, object_id, f)
 
             # Again, first download the objects and then import them (maybe can do streaming later)
             with ThreadPoolExecutor(max_workers=worker_threads) as tpe:
                 tpe.map(_do_download, objects)
-
-
-# Utilities to dump objects (SNAP/DIFF) into an external format.
-# We use a slightly ad hoc format: the schema (JSON) + a null byte + Postgres's copy_to
-# binary format (only contains data). There's probably some scope to make this more optimized, maybe
-# we should look into columnar on-disk formats (Parquet/Avro) but we currently just want to get the objects
-# out of/into postgres as fast as possible.
-
-# This dumping should be moved into the engine
-
-def dump_object(object_id, fobj):
-    """
-    Serializes a Splitgraph object into a file or a file-like object.
-
-    :param object_id: Object ID to dump
-    :param fobj: File-like object to write the object into
-    """
-    conn = get_connection()
-    schema = json.dumps(get_engine().get_full_table_schema(SPLITGRAPH_META_SCHEMA, object_id))
-    fobj.write(schema.encode('utf-8') + b'\0')
-    with conn.cursor() as cur:
-        cur.copy_expert(SQL("COPY {}.{} TO STDOUT WITH (FORMAT 'binary')")
-                        .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)), fobj)
-
-
-def load_object(object_id, fobj):
-    """
-    Loads a Splitgraph object from a file / file-like object.
-
-    :param object_id: Object ID to load the object into
-    :param fobj: File-like object
-    """
-    conn = get_connection()
-    chars = b''
-    # Read until the delimiter separating a JSON schema from the Postgres copy_to dump.
-    # Surely this is buffered?
-    while True:
-        c = fobj.read(1)
-        if c == b'\0':
-            break
-        chars += c
-
-    schema = json.loads(chars.decode('utf-8'))
-    get_engine().create_table(SPLITGRAPH_META_SCHEMA, object_id, schema)
-
-    with conn.cursor() as cur:
-        cur.copy_expert(SQL("COPY {}.{} FROM STDIN WITH (FORMAT 'binary')")
-                        .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)), fobj)
