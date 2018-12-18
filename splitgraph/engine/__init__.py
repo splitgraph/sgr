@@ -1,6 +1,9 @@
+from contextlib import contextmanager
 from enum import Enum
 
 from psycopg2.sql import SQL, Identifier
+
+from splitgraph.config import CONFIG, PG_HOST, PG_PORT, PG_USER, PG_PWD, PG_DB
 
 
 class ResultShape(Enum):
@@ -18,6 +21,15 @@ class Engine:
     def run_sql(self, statement, arguments=(), return_shape=ResultShape.MANY_MANY):
         """Run an arbitrary SQL statement with some arguments, return an iterator of results"""
         raise NotImplemented()
+
+    def commit(self):
+        """Commit the engine's backing connection"""
+
+    def close(self):
+        """Commit and close the engine's backing connection"""
+
+    def rollback(self):
+        """Rollback the engine's backing connection"""
 
     def run_sql_batch(self, statement, arguments):
         """Run a parameterized SQL statement against multiple sets of arguments. Other engines
@@ -281,33 +293,70 @@ class Engine:
         """
         raise NotImplemented()
 
-    def upload_objects(self, objects, remote_conn_params, remote_conn):
+    def upload_objects(self, objects, remote_engine):
         """
         Upload objects from the local cache to the remote engine
 
         :param objects: List of object IDs to upload
-        :param remote_conn_params: Connection parameters to the remote driver
-        :param remote_conn: Connection object to use
+        :param remote_engine: A remote Engine object to upload the objects to.
         """
         raise NotImplemented()
 
-    def download_objects(self, objects, remote_conn_params, remote_conn):
+    def download_objects(self, objects, remote_engine):
         """
         Download objects from the remote engine to the local cache
 
         :param objects: List of object IDs to download
-        :param remote_conn_params: Connection parameters to the remote driver
-        :param remote_conn: Connection object to use
-        :return:
+        :param remote_engine: A remote Engine object to download the objects from.
         """
+        raise NotImplemented()
 
 
-_ENGINE = None
+# Name of the current global engine, 'LOCAL' for the local.
+_ENGINE = 'LOCAL'
+
+# Map of engine names -> Engine instances
+_ENGINES = {}
 
 
-def get_engine():
-    global _ENGINE
-    if not _ENGINE:
+def get_engine(name=None):
+    if not name:
+        if isinstance(_ENGINE, Engine):
+            return _ENGINE
+        name = _ENGINE
+    if name not in _ENGINES:
+        # Here we'd get the engine type/backend (Postgres/MySQL etc)
+        # and instantiate the actual Engine class.
+        # As we only have PostgresEngine, we instantiate that.
         from .postgres.engine import PostgresEngine
-        _ENGINE = PostgresEngine()
-    return _ENGINE
+        _ENGINES[name] = PostgresEngine((PG_HOST, PG_PORT, PG_USER, PG_PWD, PG_DB)
+                                        if name == 'LOCAL' else get_remote_connection_params(name))
+    return _ENGINES[name]
+
+
+@contextmanager
+def switch_engine(engine):
+    """
+    Switch the global engine to a different one. The engine will
+    get switched back on exit from the context manager.
+
+    :param engine: Name of the engine or an Engine instance
+    """
+    global _ENGINE
+    _PREV_ENGINE = _ENGINE
+    try:
+        _ENGINE = engine
+        yield
+    finally:
+        _ENGINE = _PREV_ENGINE
+
+
+def get_remote_connection_params(remote_name):
+    """
+    Gets connection parameters for a Splitgraph remote.
+    :param remote_name: Name of the remote. Must be specified in the config file.
+    :return: A tuple of (hostname, port, username, password, database)
+    """
+    pdict = CONFIG['remotes'][remote_name]
+    return (pdict['SG_DRIVER_HOST'], int(pdict['SG_DRIVER_PORT']), pdict['SG_DRIVER_USER'],
+            pdict['SG_DRIVER_PWD'], pdict['SG_DRIVER_DB_NAME'])

@@ -9,7 +9,7 @@ from importlib import import_module
 from psycopg2.sql import Identifier, SQL
 
 from splitgraph.config import PG_USER, CONFIG
-from splitgraph.connection import get_connection
+from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitGraphException
 
 _MOUNT_HANDLERS = {}
@@ -37,22 +37,26 @@ def register_mount_handler(name, mount_function):
     _MOUNT_HANDLERS[name] = mount_function
 
 
-def _init_fdw(cur, server_id, wrapper, server_options, user_options):
-    cur.execute(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(server_id)))
+def _init_fdw(engine, server_id, wrapper, server_options, user_options):
+    from splitgraph.engine.postgres.engine import PostgresEngine
+    if not isinstance(engine, PostgresEngine):
+        raise SplitGraphException("Only PostgresEngines support mounting via FDW!")
+
+    engine.run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(server_id)), return_shape=None)
     create_server = SQL("CREATE SERVER {} FOREIGN DATA WRAPPER {}").format(Identifier(server_id), Identifier(wrapper))
 
     server_keys, server_vals = zip(*server_options.items())
     if server_options:
         create_server += SQL(" OPTIONS (") \
                          + SQL(",").join(Identifier(o) + SQL(" %s") for o in server_keys) + SQL(")")
-    cur.execute(create_server, server_vals)
+    engine.run_sql(create_server, server_vals, return_shape=None)
 
     user_keys, user_vals = zip(*user_options.items())
     create_mapping = SQL("CREATE USER MAPPING FOR {} SERVER {}").format(Identifier(PG_USER), Identifier(server_id))
     if user_options:
         create_mapping += SQL(" OPTIONS (") \
                           + SQL(",").join(Identifier(o) + SQL(" %s") for o in user_keys) + SQL(")")
-    cur.execute(create_mapping, user_vals)
+    engine.run_sql(create_mapping, user_vals, return_shape=None)
 
 
 def mount_postgres(mountpoint, server, port, username, password, dbname, remote_schema, tables=[]):
@@ -71,22 +75,22 @@ def mount_postgres(mountpoint, server, port, username, password, dbname, remote_
     :param remote_schema: Remote schema name.
     :param tables: Tables to mount (default all).
     """
-    with get_connection().cursor() as cur:
-        logging.info("Importing foreign Postgres schema...")
-        server_id = mountpoint + '_server'
+    engine = get_engine()
+    logging.info("Importing foreign Postgres schema...")
+    server_id = mountpoint + '_server'
 
-        _init_fdw(cur, server_id, "postgres_fdw", {'host': server, 'port': str(port), 'dbname': dbname},
-                  {'user': username, 'password': password})
+    _init_fdw(engine, server_id, "postgres_fdw", {'host': server, 'port': str(port), 'dbname': dbname},
+              {'user': username, 'password': password})
 
-        cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(mountpoint)))
+    engine.run_sql(SQL("CREATE SCHEMA {}").format(Identifier(mountpoint)), return_shape=None)
 
-        # Construct a query: import schema limit to (%s, %s, ...) from server mountpoint_server into mountpoint
-        query = "IMPORT FOREIGN SCHEMA {} "
-        if tables:
-            query += "LIMIT TO (" + ",".join("%s" for _ in tables) + ") "
-        query += "FROM SERVER {} INTO {}"
-        cur.execute(SQL(query).format(Identifier(remote_schema), Identifier(server_id),
-                                      Identifier(mountpoint)), tables)
+    # Construct a query: import schema limit to (%s, %s, ...) from server mountpoint_server into mountpoint
+    query = "IMPORT FOREIGN SCHEMA {} "
+    if tables:
+        query += "LIMIT TO (" + ",".join("%s" for _ in tables) + ") "
+    query += "FROM SERVER {} INTO {}"
+    engine.run_sql(SQL(query).format(Identifier(remote_schema), Identifier(server_id),
+                                     Identifier(mountpoint)), tables, return_shape=None)
 
 
 def mount_mongo(mountpoint, server, port, username, password, **table_spec):
@@ -103,26 +107,26 @@ def mount_mongo(mountpoint, server, port, username, password, **table_spec):
     :param password: Password for the read-only user.
     :param table_spec: A dictionary of form `{"table_name": {"db": <dbname>, "coll": <collection>, "schema": {"col1": "type1"...}}}`.
     """
-    with get_connection().cursor() as cur:
-        server_id = mountpoint + '_server'
-        _init_fdw(cur, server_id, "mongo_fdw", {"address": server, "port": str(port)},
-                  {"username": username, "password": password})
+    engine = get_engine()
+    server_id = mountpoint + '_server'
+    _init_fdw(engine, server_id, "mongo_fdw", {"address": server, "port": str(port)},
+              {"username": username, "password": password})
 
-        cur.execute(SQL("""CREATE SCHEMA {}""").format(Identifier(mountpoint)))
+    engine.run_sql(SQL("""CREATE SCHEMA {}""").format(Identifier(mountpoint)), return_shape=None)
 
-        # Parse the table spec
-        # {table_name: {db: remote_db_name, coll: remote_collection_name, schema: {col1: type1, col2: type2...}}}
-        for table_name, table_options in table_spec.items():
-            logging.info("Mounting table %s", table_name)
-            db = table_options['db']
-            coll = table_options['coll']
+    # Parse the table spec
+    # {table_name: {db: remote_db_name, coll: remote_collection_name, schema: {col1: type1, col2: type2...}}}
+    for table_name, table_options in table_spec.items():
+        logging.info("Mounting table %s", table_name)
+        db = table_options['db']
+        coll = table_options['coll']
 
-            query = SQL("CREATE FOREIGN TABLE {}.{} (_id NAME ").format(Identifier(mountpoint), Identifier(table_name))
-            if table_options['schema']:
-                for cname, ctype in table_options['schema'].items():
-                    query += SQL(", {} %s" % ctype).format(Identifier(cname))
-            query += SQL(") SERVER {} OPTIONS (database %s, collection %s)").format(Identifier(server_id))
-            cur.execute(query, (db, coll))
+        query = SQL("CREATE FOREIGN TABLE {}.{} (_id NAME ").format(Identifier(mountpoint), Identifier(table_name))
+        if table_options['schema']:
+            for cname, ctype in table_options['schema'].items():
+                query += SQL(", {} %s" % ctype).format(Identifier(cname))
+        query += SQL(") SERVER {} OPTIONS (database %s, collection %s)").format(Identifier(server_id))
+        engine.run_sql(query, (db, coll), return_shape=None)
 
 
 def mount_mysql(mountpoint, server, port, username, password, remote_schema, tables=[]):
@@ -141,21 +145,21 @@ def mount_mysql(mountpoint, server, port, username, password, remote_schema, tab
     :param remote_schema: Remote schema name.
     :param tables: Tables to mount (default all).
     """
-    with get_connection().cursor() as cur:
-        logging.info("Mounting foreign MySQL database...")
-        server_id = mountpoint + '_server'
+    engine = get_engine()
+    logging.info("Mounting foreign MySQL database...")
+    server_id = mountpoint + '_server'
 
-        _init_fdw(cur, server_id, "mysql_fdw", {"host": server, "port": str(port)},
-                  {"username": username, "password": password})
+    _init_fdw(engine, server_id, "mysql_fdw", {"host": server, "port": str(port)},
+              {"username": username, "password": password})
 
-        cur.execute(SQL("CREATE SCHEMA {}").format(Identifier(mountpoint)))
+    engine.run_sql(SQL("CREATE SCHEMA {}").format(Identifier(mountpoint)), return_shape=None)
 
-        query = "IMPORT FOREIGN SCHEMA {} "
-        if tables:
-            query += "LIMIT TO (" + ",".join("%s" for _ in tables) + ") "
-        query += "FROM SERVER {} INTO {}"
-        cur.execute(SQL(query).format(Identifier(remote_schema), Identifier(server_id),
-                                      Identifier(mountpoint)), tables)
+    query = "IMPORT FOREIGN SCHEMA {} "
+    if tables:
+        query += "LIMIT TO (" + ",".join("%s" for _ in tables) + ") "
+    query += "FROM SERVER {} INTO {}"
+    engine.run_sql(SQL(query).format(Identifier(remote_schema), Identifier(server_id),
+                                     Identifier(mountpoint)), tables, return_shape=None)
 
 
 # Register the mount handlers from the config.

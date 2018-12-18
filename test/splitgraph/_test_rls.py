@@ -3,7 +3,7 @@ import tempfile
 import pytest
 from psycopg2._psycopg import ProgrammingError
 
-from splitgraph import Repository, get_remote_connection_params
+from splitgraph import Repository
 from splitgraph._data.images import get_all_image_info
 from splitgraph._data.objects import register_object_locations
 from splitgraph._data.registry import get_published_info, unpublish_repository, toggle_registry_rls
@@ -13,15 +13,16 @@ from splitgraph.commands.publish import publish
 from splitgraph.commands.repository import unregister_repository
 from splitgraph.commands.tagging import get_tagged_id, set_tag
 from splitgraph.config import PG_USER
-from splitgraph.connection import override_driver_connection, serialize_connection_string
-from test.splitgraph.conftest import PG_MNT, add_multitag_dataset_to_remote_driver
+from splitgraph.connection import serialize_connection_string
+from splitgraph.engine import get_remote_connection_params, switch_engine
+from test.splitgraph.conftest import PG_MNT, add_multitag_dataset_to_engine, REMOTE_ENGINE
 
 
-def _init_rls_test(remote_driver_conn):
-    add_multitag_dataset_to_remote_driver(remote_driver_conn)
-    with override_driver_connection(remote_driver_conn):
+def _init_rls_test(remote_engine):
+    add_multitag_dataset_to_engine(remote_engine)
+    with switch_engine(REMOTE_ENGINE):
         toggle_registry_rls('ENABLE')
-    remote_driver_conn.commit()
+    remote_engine.commit()
 
 
 @pytest.fixture()
@@ -31,30 +32,35 @@ def unprivileged_conn_string(unprivileged_remote_conn):
 
 
 @pytest.fixture()
-def unprivileged_remote_conn(remote_driver_conn):
-    _init_rls_test(remote_driver_conn)
+def unprivileged_remote_conn(remote_engine):
+    _init_rls_test(remote_engine)
     try:
-        with remote_driver_conn.cursor() as cur:
+        with remote_engine.cursor() as cur:
             cur.execute("SET ROLE TO testuser;")
-        yield remote_driver_conn
+        yield remote_engine
     finally:
         # Reset the role back to admin so that the teardown doesn't break + rollback any failed txns
-        remote_driver_conn.rollback()
-        with remote_driver_conn.cursor() as cur:
+        remote_engine.rollback()
+        with remote_engine.cursor() as cur:
             cur.execute("SET ROLE TO %s;" % PG_USER)
 
 
-def test_rls_pull_public(empty_pg_conn, unprivileged_conn_string):
+## here, let's do this:
+## * create a new driver with testuser as the role (add it to the CONFIG in a fixture)
+## * use that instead of privilege dropping
+
+
+def test_rls_pull_public(local_engine_empty, unprivileged_conn_string):
     clone(PG_MNT, remote_driver=unprivileged_conn_string)
 
 
-def test_rls_push_own_delete_own(empty_pg_conn, unprivileged_conn_string, unprivileged_remote_conn):
+def test_rls_push_own_delete_own(local_engine_empty, unprivileged_conn_string, unprivileged_remote_conn):
     # Have to download the data here since we're using a connection string instead of a driver name
     # and it doesn't get registered as the upstream.
     clone(PG_MNT, remote_driver=unprivileged_conn_string, download_all=True)
     checkout(PG_MNT, tag='latest')
 
-    with empty_pg_conn.cursor() as cur:
+    with local_engine_empty.cursor() as cur:
         cur.execute("""UPDATE "test/pg_mount".fruits SET name = 'banana' WHERE fruit_id = 1""")
     commit(PG_MNT)
 
@@ -64,16 +70,17 @@ def test_rls_push_own_delete_own(empty_pg_conn, unprivileged_conn_string, unpriv
     push(PG_MNT, remote_driver=unprivileged_conn_string, remote_repository=target_repo)
 
     # Test we can delete our own repo once we've pushed it
-    with override_driver_connection(unprivileged_remote_conn):
-        unregister_repository(target_repo, is_remote=True)
+
+    # TODO FIX THIS: remote driver, unprivileged
+    unregister_repository(target_repo, is_remote=True)
     assert len(get_all_image_info(target_repo)) == 0
 
 
-def test_rls_push_others(empty_pg_conn, unprivileged_conn_string):
+def test_rls_push_others(local_engine_empty, unprivileged_conn_string):
     clone(PG_MNT, remote_driver=unprivileged_conn_string, download_all=True)
     checkout(PG_MNT, tag='latest')
 
-    with empty_pg_conn.cursor() as cur:
+    with local_engine_empty.cursor() as cur:
         cur.execute("""UPDATE "test/pg_mount".fruits SET name = 'banana' WHERE fruit_id = 1""")
     commit(PG_MNT)
 
@@ -91,11 +98,11 @@ def test_rls_delete_others(unprivileged_remote_conn):
         assert len(get_all_image_info(PG_MNT)) > 0
 
 
-def test_rls_push_own_with_uploading(empty_pg_conn, unprivileged_conn_string):
+def test_rls_push_own_with_uploading(local_engine_empty, unprivileged_conn_string):
     clone(PG_MNT, remote_driver=unprivileged_conn_string, download_all=True)
     checkout(PG_MNT, tag='latest')
 
-    with empty_pg_conn.cursor() as cur:
+    with local_engine_empty.cursor() as cur:
         cur.execute("""UPDATE "test/pg_mount".fruits SET name = 'banana' WHERE fruit_id = 1""")
     commit(PG_MNT)
 
@@ -119,14 +126,14 @@ def test_rls_impersonate_external_object(unprivileged_remote_conn):
         assert 'new row violates row-level security policy for table "object_locations"' in str(e.value)
 
 
-def test_rls_publish_unpublish_own(empty_pg_conn, unprivileged_conn_string, unprivileged_remote_conn):
+def test_rls_publish_unpublish_own(local_engine_empty, unprivileged_conn_string, unprivileged_remote_conn):
     clone(PG_MNT, remote_driver=unprivileged_conn_string, download_all=True)
     set_tag(PG_MNT, get_tagged_id(PG_MNT, 'latest'), 'my_tag')
     target_repo = Repository(namespace='testuser', repository='pg_mount')
     push(PG_MNT, remote_driver=unprivileged_conn_string, remote_repository=target_repo)
 
-    publish(PG_MNT, 'my_tag', remote_driver=unprivileged_conn_string, remote_repository=target_repo, readme="my_readme",
-            include_provenance=True, include_table_previews=True)
+    publish(PG_MNT, 'my_tag', remote_engine_name=unprivileged_conn_string, remote_repository=target_repo,
+            readme="my_readme", include_provenance=True, include_table_previews=True)
 
     with override_driver_connection(unprivileged_remote_conn):
         assert get_published_info(target_repo, 'my_tag') is not None
@@ -134,30 +141,31 @@ def test_rls_publish_unpublish_own(empty_pg_conn, unprivileged_conn_string, unpr
         assert get_published_info(target_repo, 'my_tag') is None
 
 
-def test_rls_publish_unpublish_others(empty_pg_conn, remote_driver_conn, unprivileged_conn_string):
+def test_rls_publish_unpublish_others(local_engine_empty, remote_engine, unprivileged_conn_string):
     # Tag the remote repo as an admin user and try to publish as an unprivileged one
-    with override_driver_connection(remote_driver_conn):
-        with remote_driver_conn.cursor() as cur:
+    with switch_engine(REMOTE_ENGINE):
+        with remote_engine.cursor() as cur:
             # Make sure we're running this with the elevated privileges
             cur.execute("SET ROLE TO %s;" % PG_USER)
         set_tag(PG_MNT, get_tagged_id(PG_MNT, 'latest'), 'my_tag')
-        remote_driver_conn.commit()
+        remote_engine.commit()
     clone(PG_MNT, remote_driver=unprivileged_conn_string, download_all=True)
 
     # Publish into the "test" namespace as someone who doesn't have access to it.
     with pytest.raises(ProgrammingError) as e:
-        publish(PG_MNT, 'my_tag', remote_driver=unprivileged_conn_string, readme="my_readme")
+        publish(PG_MNT, 'my_tag', remote_engine_name=unprivileged_conn_string, readme="my_readme")
     assert 'new row violates row-level security policy for table "images"' in str(e.value)
 
     # Publish as the admin user
-    publish(PG_MNT, 'my_tag', remote_driver=serialize_connection_string(*get_remote_connection_params('remote_driver')),
+    publish(PG_MNT, 'my_tag',
+            remote_engine_name=serialize_connection_string(*get_remote_connection_params('remote_driver')),
             readme="my_readme")
 
     # Try to delete as the remote user -- should fail (no error raised since the RLS just doesn't make
     # those rows available for deletion)
-    with remote_driver_conn.cursor() as cur:
+    with remote_engine.cursor() as cur:
         cur.execute("SET ROLE TO testuser;")
 
-    with override_driver_connection(remote_driver_conn):
+    with switch_engine(REMOTE_ENGINE):
         unpublish_repository(PG_MNT)
         assert get_published_info(PG_MNT, 'my_tag') is not None

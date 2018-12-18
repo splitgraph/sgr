@@ -15,24 +15,22 @@ from splitgraph.commands._objects.loading import download_objects, upload_object
 from splitgraph.commands.repository import get_upstream, set_upstream, lookup_repo
 from splitgraph.commands.tagging import get_all_hashes_tags, set_tags
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.connection import override_driver_connection, get_connection, parse_connection_string, make_conn, \
-    get_remote_connection_params
-from splitgraph.engine import get_engine
+from splitgraph.engine import get_engine, switch_engine
 from splitgraph.exceptions import SplitGraphException
 
 
-def _get_required_snaps_objects(remote_conn, local_repository, remote_repository):
+def _get_required_snaps_objects(remote_engine_name, local_repository, remote_repository):
     """
     Inspects the remote Splitgraph driver and gathers metadata missing on the local one required
     for a pull, registering new images locally. Internal function.
 
-    :param remote_conn: Connection to the remote Splitgraph driver
+    :param remote_engine_name: Name of the remote Splitgraph engine
     :param local_repository: Local Repository object
     :param remote_repository: Remote Repository object
     """
     local_images = {image_hash: parent_id for image_hash, parent_id, _, _, _, _ in
                     get_all_image_info(local_repository)}
-    with override_driver_connection(remote_conn):
+    with switch_engine(remote_engine_name):
         remote_images = {image_hash: (parent_id, created, comment, prov_type, prov_data)
                          for image_hash, parent_id, created, comment, prov_type, prov_data in
                          get_all_image_info(remote_repository)}
@@ -41,34 +39,34 @@ def _get_required_snaps_objects(remote_conn, local_repository, remote_repository
     # would have created a new image.
     table_meta = []
     new_images = [i for i in remote_images if i not in local_images]
+    remote_engine = get_engine(remote_engine_name)
     for image_hash in new_images:
         # This is not batched but there shouldn't be that many entries here anyway.
         remote_parent, remote_created, remote_comment, remote_prov, remote_provdata = remote_images[image_hash]
         add_new_image(local_repository, remote_parent, image_hash, remote_created, remote_comment, remote_prov,
                       remote_provdata)
         # Get the meta for all objects we'll need to fetch.
-        with override_driver_connection(remote_conn):
-            table_meta.extend(get_engine().run_sql(SQL("""SELECT image_hash, table_name, object_id FROM {0}.tables
-                           WHERE namespace = %s AND repository = %s AND image_hash = %s""")
-                                                   .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                                                   (remote_repository.namespace, remote_repository.repository,
-                                                    image_hash)))
+        table_meta.extend(remote_engine.run_sql(SQL("""SELECT image_hash, table_name, object_id FROM {0}.tables
+                       WHERE namespace = %s AND repository = %s AND image_hash = %s""")
+                                                .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                                                (remote_repository.namespace, remote_repository.repository,
+                                                 image_hash)))
 
     # Get the tags too
     existing_tags = [t for s, t in get_all_hashes_tags(local_repository)]
-    with override_driver_connection(remote_conn):
+    with switch_engine(remote_engine_name):
         tags = {t: s for s, t in get_all_hashes_tags(remote_repository) if t not in existing_tags}
 
     # Crawl the object tree to get the IDs and other metadata for all required objects.
-    distinct_objects, object_meta = _extract_recursive_object_meta(remote_conn, table_meta)
+    distinct_objects, object_meta = _extract_recursive_object_meta(remote_engine_name, table_meta)
 
-    with override_driver_connection(remote_conn):
+    with switch_engine(remote_engine_name):
         object_locations = get_external_object_locations(list(distinct_objects)) if distinct_objects else []
 
     return new_images, table_meta, object_locations, object_meta, tags
 
 
-def _extract_recursive_object_meta(remote_conn, table_meta):
+def _extract_recursive_object_meta(remote_engine_name, table_meta):
     """Since an object can now depend on another object that's not mentioned in the commit tree,
     we now have to follow the objects' links to their parents until we have gathered all the required object IDs."""
     existing_objects = get_existing_objects()
@@ -76,7 +74,7 @@ def _extract_recursive_object_meta(remote_conn, table_meta):
     known_objects = set()
     object_meta = []
 
-    with override_driver_connection(remote_conn):
+    with switch_engine(remote_engine_name):
         while True:
             new_parents = [o for o in distinct_objects if o not in known_objects]
             if not new_parents:
@@ -118,7 +116,7 @@ def clone(remote_repository, remote_driver=None, local_repository=None, download
     downloads from the remote driver won't work at checkout time.
 
     :param remote_repository: Repository to clone.
-    :param remote_driver: Name of the remote driver or a connection string. If unspecified, the current driver
+    :param remote_driver: Name of the remote driver. If unspecified, the current driver
         lookup list is searched for the repository.
     :param local_repository: Local repository to clone into. If None, uses the same name as the remote.
     :param download_all: If True, downloads all objects and stores them locally. Otherwise, will only download required
@@ -131,20 +129,12 @@ def clone(remote_repository, remote_driver=None, local_repository=None, download
 
     if not remote_driver:
         remote_driver = lookup_repo(remote_repository)
-    try:
-        conn_params = parse_connection_string(remote_driver)
-        remote_driver = None
-    except ValueError:
-        conn_params = get_remote_connection_params(remote_driver)
-
-    logging.info("Connecting to the remote driver...")
-    remote_conn = make_conn(*conn_params)
 
     # Get the remote log and the list of objects we need to fetch.
     logging.info("Gathering remote metadata...")
 
     # This also registers the new versions locally.
-    snaps_to_fetch, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(remote_conn,
+    snaps_to_fetch, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(remote_driver,
                                                                                                   local_repository,
                                                                                                   remote_repository)
 
@@ -158,8 +148,8 @@ def clone(remote_repository, remote_driver=None, local_repository=None, download
         # We might already have some objects prefetched
         # (e.g. if a new version of the table is the same as the old version)
         logging.info("Fetching remote objects...")
-        download_objects(conn_params, objects_to_fetch=list(set(o[0] for o in object_meta)),
-                         object_locations=object_locations, remote_conn=remote_conn)
+        download_objects(remote_driver, objects_to_fetch=list(set(o[0] for o in object_meta)),
+                         object_locations=object_locations)
 
     # Map the tables to the actual objects no matter whether or not we're downloading them.
     register_objects(object_meta)
@@ -183,7 +173,7 @@ def local_clone(source, destination):
     or materialization."""
     ensure_metadata_schema()
 
-    _, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(get_connection(),
+    _, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects('LOCAL',
                                                                                      destination, source)
 
     # Map the tables to the actual objects no matter whether or not we're downloading them.
@@ -213,30 +203,29 @@ def push(local_repository, remote_driver=None, remote_repository=None, handler='
         handler_options = {}
     ensure_metadata_schema()
 
-    conn_params, remote_driver, remote_repository = merge_push_params(local_repository, remote_driver,
-                                                                      remote_repository)
+    # Maybe consider having a context manager for getting a remote engine instance
+    # that auto-commits/closes when needed?
 
-    logging.info("Connecting to the remote driver...")
-    remote_conn = make_conn(*conn_params)
+    remote_driver, remote_repository = merge_push_params(local_repository, remote_driver,
+                                                         remote_repository)
     try:
         logging.info("Gathering remote metadata...")
         # Flip the two connections here: pretend the remote driver is local and download metadata from the local
         # driver instead of the remote.
-        conn = get_connection()
-        with override_driver_connection(remote_conn):
+        with switch_engine(remote_driver):
             # This also registers new commits remotely. Should make explicit and move down later on.
             snaps_to_push, table_meta, object_locations, object_meta, tags = \
-                _get_required_snaps_objects(conn, remote_repository, local_repository)
+                _get_required_snaps_objects('LOCAL', remote_repository, local_repository)
 
         if not snaps_to_push:
             logging.info("Nothing to do.")
             return
 
-        new_uploads = upload_objects(conn_params, list(set(o[0] for o in object_meta)),
-                                     handler=handler, handler_params=handler_options, remote_conn=remote_conn)
+        new_uploads = upload_objects(remote_driver, list(set(o[0] for o in object_meta)),
+                                     handler=handler, handler_params=handler_options)
 
         # Register the newly uploaded object locations locally and remotely.
-        with override_driver_connection(remote_conn):
+        with switch_engine(remote_driver):
             register_objects(object_meta)
             register_object_locations(object_locations + new_uploads)
             register_tables(remote_repository, table_meta)
@@ -247,30 +236,28 @@ def push(local_repository, remote_driver=None, remote_repository=None, handler='
         if get_upstream(local_repository) is None and remote_driver:
             set_upstream(local_repository, remote_driver, remote_repository)
 
-        remote_conn.commit()
+        get_engine(remote_driver).commit()
         print("Uploaded metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta),
                                                                                           len(table_meta),
                                                                                           len([t for t in tags if
                                                                                                t != 'HEAD'])))
     finally:
-        remote_conn.close()
+        get_engine(remote_driver).close()
 
 
 def merge_push_params(local_repository, remote_driver, remote_repository):
     """
     Merges remote arguments for push/publish as follows:
 
-    If remote_driver is specified (either as an alias or as a connection string,
-    it's used to get the connection parameters.
+    If remote_driver is specified, it's used to get the connection parameters.
 
     If remote_repository is specified, it's used as a remote repository. Otherwise, the local repository
     name is used.
 
-    Finally, fall back to the repository's upstream. If after this we don't have the connection string,
-    then raise an error
+    Finally, fall back to the repository's upstream.
 
     :param local_repository: Local Repository object
-    :param remote_driver: Remote driver alias or connection string
+    :param remote_driver: Remote driver alias
     :param remote_repository: Remote Repository object
     :return: Connection parameters, remote driver name (can be None), remote Repository object
     """
@@ -282,9 +269,4 @@ def merge_push_params(local_repository, remote_driver, remote_repository):
     if not remote_driver:
         raise SplitGraphException("No upstream found for repository %s and no driver specified!" %
                                   local_repository.to_schema())
-    try:
-        conn_params = parse_connection_string(remote_driver)
-        remote_driver = None
-    except ValueError:
-        conn_params = get_remote_connection_params(remote_driver)
-    return conn_params, remote_driver, remote_repository
+    return remote_driver, remote_repository

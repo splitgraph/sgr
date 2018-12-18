@@ -11,11 +11,10 @@ from splitgraph.commands.tagging import get_current_head
 from test.splitgraph.conftest import PG_MNT, MG_MNT, OUTPUT
 
 
-def test_diff_head(sg_pg_conn):
-    with sg_pg_conn.cursor() as cur:
-        cur.execute("""INSERT INTO "test/pg_mount".fruits VALUES (3, 'mayonnaise')""")
-        cur.execute("""DELETE FROM "test/pg_mount".fruits WHERE name = 'apple'""")
-    sg_pg_conn.commit()  # otherwise the WAL writer won't see this.
+def test_diff_head(local_engine_with_pg):
+    local_engine_with_pg.run_sql("""INSERT INTO "test/pg_mount".fruits VALUES (3, 'mayonnaise');
+        DELETE FROM "test/pg_mount".fruits WHERE name = 'apple'""", return_shape=None)
+    local_engine_with_pg.commit()  # otherwise the audit trigger won't see this
     head = get_current_head(PG_MNT)
     change = diff(PG_MNT, 'fruits', image_1=head, image_2=None)
     # Added (3, mayonnaise); Deleted (1, 'apple')
@@ -24,11 +23,10 @@ def test_diff_head(sg_pg_conn):
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
-def test_commit_diff(include_snap, sg_pg_conn):
-    with sg_pg_conn.cursor() as cur:
-        cur.execute("""INSERT INTO "test/pg_mount".fruits VALUES (3, 'mayonnaise')""")
-        cur.execute("""DELETE FROM "test/pg_mount".fruits WHERE name = 'apple'""")
-        cur.execute("""UPDATE "test/pg_mount".fruits SET name = 'guitar' WHERE fruit_id = 2""")
+def test_commit_diff(include_snap, local_engine_with_pg):
+    local_engine_with_pg.run_sql("""INSERT INTO "test/pg_mount".fruits VALUES (3, 'mayonnaise');
+        DELETE FROM "test/pg_mount".fruits WHERE name = 'apple';
+        UPDATE "test/pg_mount".fruits SET name = 'guitar' WHERE fruit_id = 2""", return_shape=None)
 
     head = get_current_head(PG_MNT)
     new_head = commit(PG_MNT, include_snap=include_snap, comment="test commit")
@@ -50,27 +48,26 @@ def test_commit_diff(include_snap, sg_pg_conn):
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
-def test_commit_on_empty(include_snap, sg_pg_conn):
+def test_commit_on_empty(include_snap, local_engine_with_pg):
     init(OUTPUT)
 
-    with sg_pg_conn.cursor() as cur:
-        cur.execute("""CREATE TABLE output.test AS SELECT * FROM "test/pg_mount".fruits""")
+    local_engine_with_pg.run_sql("CREATE TABLE output.test AS SELECT * FROM \"test/pg_mount\".fruits",
+                                 return_shape=None)
 
-    # Make sure the WAL changes get flushed anyway if we are only committing a snapshot.
+    # Make sure the pending changes get flushed anyway if we are only committing a snapshot.
     assert diff(OUTPUT, 'test', image_1=get_current_head(OUTPUT), image_2=None) == True
     commit(OUTPUT, include_snap=include_snap)
     assert diff(OUTPUT, 'test', image_1=get_current_head(OUTPUT), image_2=None) == []
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
-def test_multiple_mountpoint_commit_diff(include_snap, sg_pg_mg_conn):
-    with sg_pg_mg_conn.cursor() as cur:
-        cur.execute("""INSERT INTO "test/pg_mount".fruits VALUES (3, 'mayonnaise')""")
-        cur.execute("""DELETE FROM "test/pg_mount".fruits WHERE name = 'apple'""")
-        cur.execute("""UPDATE "test/pg_mount".fruits SET name = 'guitar' WHERE fruit_id = 2""")
-        cur.execute("""UPDATE test_mg_mount.stuff SET duration = 11 WHERE name = 'James'""")
+def test_multiple_mountpoint_commit_diff(include_snap, local_engine_with_pg_and_mg):
+    local_engine_with_pg_and_mg.run_sql("""INSERT INTO "test/pg_mount".fruits VALUES (3, 'mayonnaise');
+        DELETE FROM "test/pg_mount".fruits WHERE name = 'apple';
+        UPDATE "test/pg_mount".fruits SET name = 'guitar' WHERE fruit_id = 2;
+        UPDATE test_mg_mount.stuff SET duration = 11 WHERE name = 'James'""", return_shape=None)
     # Both mountpoints have pending changes if we commit the PG connection.
-    sg_pg_mg_conn.commit()
+    local_engine_with_pg_and_mg.commit()
     assert has_pending_changes(MG_MNT) is True
     assert has_pending_changes(PG_MNT) is True
 
@@ -93,36 +90,32 @@ def test_multiple_mountpoint_commit_diff(include_snap, sg_pg_mg_conn):
     checkout(MG_MNT, mongo_head, force=True)
     assert has_pending_changes(MG_MNT) is False
     assert has_pending_changes(PG_MNT) is False
-    with sg_pg_mg_conn.cursor() as cur:
-        cur.execute("""SELECT duration from test_mg_mount.stuff WHERE name = 'James'""")
-        assert cur.fetchall() == [(Decimal(2),)]
+    assert local_engine_with_pg_and_mg.run_sql("SELECT duration from test_mg_mount.stuff WHERE name = 'James'") == \
+           [(Decimal(2),)]
 
     # Update and commit
-    with sg_pg_mg_conn.cursor() as cur:
-        cur.execute("""UPDATE test_mg_mount.stuff SET duration = 15 WHERE name = 'James'""")
-    sg_pg_mg_conn.commit()
+    local_engine_with_pg_and_mg.run_sql("UPDATE test_mg_mount.stuff SET duration = 15 WHERE name = 'James'",
+                                        return_shape=None)
+    local_engine_with_pg_and_mg.commit()
     assert has_pending_changes(MG_MNT) is True
     new_mongo_head = commit(MG_MNT, include_snap=include_snap)
     assert has_pending_changes(MG_MNT) is False
     assert has_pending_changes(PG_MNT) is False
 
     checkout(MG_MNT, mongo_head)
-    with sg_pg_mg_conn.cursor() as cur:
-        cur.execute("""SELECT duration from test_mg_mount.stuff WHERE name = 'James'""")
-        assert cur.fetchall() == [(Decimal(2),)]
+    assert local_engine_with_pg_and_mg.run_sql("SELECT duration from test_mg_mount.stuff WHERE name = 'James'") \
+           == [(Decimal(2),)]
 
     checkout(MG_MNT, new_mongo_head)
-    with sg_pg_mg_conn.cursor() as cur:
-        cur.execute("""SELECT duration from test_mg_mount.stuff WHERE name = 'James'""")
-        assert cur.fetchall() == [(Decimal(15),)]
+    assert local_engine_with_pg_and_mg.run_sql("SELECT duration from test_mg_mount.stuff WHERE name = 'James'") \
+           == [(Decimal(15),)]
     assert has_pending_changes(MG_MNT) is False
     assert has_pending_changes(PG_MNT) is False
 
 
-def test_delete_all_diff(sg_pg_conn):
-    with sg_pg_conn.cursor() as cur:
-        cur.execute("""DELETE FROM "test/pg_mount".fruits""")
-    sg_pg_conn.commit()
+def test_delete_all_diff(local_engine_with_pg):
+    local_engine_with_pg.run_sql("DELETE FROM \"test/pg_mount\".fruits", return_shape=None)
+    local_engine_with_pg.commit()
     assert has_pending_changes(PG_MNT) is True
     expected_diff = [((1, 'apple'), 1, None), ((2, 'orange'), 1, None)]
 
@@ -136,18 +129,16 @@ def test_delete_all_diff(sg_pg_conn):
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
-def test_diff_across_far_commits(include_snap, sg_pg_conn):
+def test_diff_across_far_commits(include_snap, local_engine_with_pg):
     head = get_current_head(PG_MNT)
-    with sg_pg_conn.cursor() as cur:
-        cur.execute("""INSERT INTO "test/pg_mount".fruits VALUES (3, 'mayonnaise')""")
+    local_engine_with_pg.run_sql("INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mayonnaise')", return_shape=None)
     commit(PG_MNT, include_snap=include_snap)
 
-    with sg_pg_conn.cursor() as cur:
-        cur.execute("""DELETE FROM "test/pg_mount".fruits WHERE name = 'apple'""")
+    local_engine_with_pg.run_sql("DELETE FROM \"test/pg_mount\".fruits WHERE name = 'apple'", return_shape=None)
     commit(PG_MNT, include_snap=include_snap)
 
-    with sg_pg_conn.cursor() as cur:
-        cur.execute("""UPDATE "test/pg_mount".fruits SET name = 'guitar' WHERE fruit_id = 2""")
+    local_engine_with_pg.run_sql("UPDATE \"test/pg_mount\".fruits SET name = 'guitar' WHERE fruit_id = 2",
+                                 return_shape=None)
     new_head = commit(PG_MNT, include_snap=include_snap)
 
     change = diff(PG_MNT, 'fruits', head, new_head)
@@ -162,10 +153,10 @@ def test_diff_across_far_commits(include_snap, sg_pg_conn):
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
-def test_non_ordered_inserts(include_snap, sg_pg_conn):
+def test_non_ordered_inserts(include_snap, local_engine_with_pg):
     head = get_current_head(PG_MNT)
-    with sg_pg_conn.cursor() as cur:
-        cur.execute("""INSERT INTO "test/pg_mount".fruits (name, fruit_id) VALUES ('mayonnaise', 3)""")
+    local_engine_with_pg.run_sql("INSERT INTO \"test/pg_mount\".fruits (name, fruit_id) VALUES ('mayonnaise', 3)",
+                                 return_shape=None)
     new_head = commit(PG_MNT, include_snap=include_snap)
 
     change = diff(PG_MNT, 'fruits', head, new_head)
@@ -173,26 +164,22 @@ def test_non_ordered_inserts(include_snap, sg_pg_conn):
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
-def test_non_ordered_inserts_with_pk(include_snap, sg_pg_conn):
+def test_non_ordered_inserts_with_pk(include_snap, local_engine_with_pg):
     init(OUTPUT)
-    with sg_pg_conn.cursor() as cur:
-        cur.execute("""CREATE TABLE output.test
+    local_engine_with_pg.run_sql("""CREATE TABLE output.test
         (a int, 
          b int,
          c int,
-         d varchar, PRIMARY KEY(a))""")
-    sg_pg_conn.commit()
+         d varchar, PRIMARY KEY(a))""", return_shape=None)
+    local_engine_with_pg.commit()
     head = commit(OUTPUT)
 
-    with sg_pg_conn.cursor() as cur:
-        cur.execute("""INSERT INTO output.test (a, d, b, c) VALUES (1, 'four', 2, 3)""")
-    sg_pg_conn.commit()
+    local_engine_with_pg.run_sql("INSERT INTO output.test (a, d, b, c) VALUES (1, 'four', 2, 3)", return_shape=None)
+    local_engine_with_pg.commit()
     new_head = commit(OUTPUT, include_snap=include_snap)
     checkout(OUTPUT, head)
     checkout(OUTPUT, new_head)
-    with sg_pg_conn.cursor() as cur:
-        cur.execute("""SELECT * FROM output.test""")
-        assert cur.fetchall() == [(1, 2, 3, 'four')]
+    assert local_engine_with_pg.run_sql("SELECT * FROM output.test") == [(1, 2, 3, 'four')]
     change = diff(OUTPUT, 'test', head, new_head)
     assert len(change) == 1
     assert change[0][0] == (1,)
@@ -201,11 +188,10 @@ def test_non_ordered_inserts_with_pk(include_snap, sg_pg_conn):
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
-def test_various_types(include_snap, sg_pg_conn):
+def test_various_types(include_snap, local_engine_with_pg):
     # Schema/data copied from the wal2json tests
     init(OUTPUT)
-    with sg_pg_conn.cursor() as cur:
-        cur.execute("""CREATE TABLE output.test
+    local_engine_with_pg.run_sql("""CREATE TABLE output.test
         (a smallserial, 
          b smallint,
          c int,
@@ -221,26 +207,26 @@ def test_various_types(include_snap, sg_pg_conn):
          m date,
          n boolean not null,
          o json,
-         p tsvector, PRIMARY KEY(b, c, d));""")
-    sg_pg_conn.commit()
+         p tsvector, PRIMARY KEY(b, c, d));""", return_shape=None)
+    local_engine_with_pg.commit()
     head = commit(OUTPUT)
 
-    with sg_pg_conn.cursor() as cur:
-        cur.execute("""INSERT INTO output.test (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p)
-            VALUES(1, 2, 3, 3.54, 876.563452345, 1.23, 'test', 'testtesttesttest', 'testtesttesttesttesttesttest',
-            B'001110010101010', '2013-11-02 17:30:52', '2013-02-04', true, '{ "a": 123 }', 'Old Old Parr'::tsvector);""")
-    sg_pg_conn.commit()
+    local_engine_with_pg.run_sql(
+        """INSERT INTO output.test (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p)
+        VALUES(1, 2, 3, 3.54, 876.563452345, 1.23, 'test', 'testtesttesttest', 'testtesttesttesttesttesttest',
+        B'001110010101010', '2013-11-02 17:30:52', '2013-02-04', true, '{ "a": 123 }',
+        'Old Old Parr'::tsvector);""", return_shape=None)
+    local_engine_with_pg.commit()
     new_head = commit(OUTPUT, include_snap=include_snap)
     checkout(OUTPUT, head)
     checkout(OUTPUT, new_head)
-    with sg_pg_conn.cursor() as cur:
-        cur.execute("""SELECT * FROM output.test""")
-        assert cur.fetchall() == [(1, 1, 2, 3, Decimal('3.540'), 876.563, 1.23, 'test      ', 'testtesttesttest',
-                                   'testtesttesttesttesttesttest', '001110010101010', dt(2013, 11, 2, 17, 30, 52),
-                                   date(2013, 2, 4), True, {'a': 123}, "'Old' 'Parr'")]
+    assert local_engine_with_pg.run_sql("SELECT * FROM output.test") \
+           == [(1, 1, 2, 3, Decimal('3.540'), 876.563, 1.23, 'test      ', 'testtesttesttest',
+                'testtesttesttesttesttesttest', '001110010101010', dt(2013, 11, 2, 17, 30, 52),
+                date(2013, 2, 4), True, {'a': 123}, "'Old' 'Parr'")]
 
 
-def test_empty_diff_reuses_object(sg_pg_conn):
+def test_empty_diff_reuses_object(local_engine_with_pg):
     head = get_current_head(PG_MNT)
     head_1 = commit(PG_MNT)
 
@@ -253,22 +239,17 @@ def test_empty_diff_reuses_object(sg_pg_conn):
     assert table_meta_1[0][1] == 'SNAP'
 
 
-def test_update_packing_applying(sg_pg_conn):
+def test_update_packing_applying(local_engine_with_pg):
     # Set fruit_id to be the PK first so that an UPDATE operation is stored in the DIFF.
-    with sg_pg_conn.cursor() as cur:
-        cur.execute("""ALTER TABLE "test/pg_mount".fruits ADD PRIMARY KEY (fruit_id)""")
+    local_engine_with_pg.run_sql("ALTER TABLE \"test/pg_mount\".fruits ADD PRIMARY KEY (fruit_id)", return_shape=None)
     old_head = commit(PG_MNT)
 
-    with sg_pg_conn.cursor() as cur:
-        cur.execute("""UPDATE "test/pg_mount".fruits SET name = 'pineapple' WHERE fruit_id = 1""")
+    local_engine_with_pg.run_sql("UPDATE \"test/pg_mount\".fruits SET name = 'pineapple' WHERE fruit_id = 1",
+                                 return_shape=None)
     new_head = commit(PG_MNT)
-
     checkout(PG_MNT, old_head)
-    with sg_pg_conn.cursor() as cur:
-        cur.execute("""SELECT * FROM "test/pg_mount".fruits WHERE fruit_id = 1""")
-        assert cur.fetchall() == [(1, 'apple')]
+    assert local_engine_with_pg.run_sql("SELECT * FROM \"test/pg_mount\".fruits WHERE fruit_id = 1") == [(1, 'apple')]
 
     checkout(PG_MNT, new_head)
-    with sg_pg_conn.cursor() as cur:
-        cur.execute("""SELECT * FROM "test/pg_mount".fruits WHERE fruit_id = 1""")
-        assert cur.fetchall() == [(1, 'pineapple')]
+    assert local_engine_with_pg.run_sql("SELECT * FROM \"test/pg_mount\".fruits WHERE fruit_id = 1") == \
+           [(1, 'pineapple')]

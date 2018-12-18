@@ -9,8 +9,7 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import CONFIG
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.connection import override_driver_connection, make_driver_connection
-from splitgraph.engine import ResultShape, get_engine
+from splitgraph.engine import ResultShape, get_engine, switch_engine
 from splitgraph.exceptions import SplitGraphException
 from .._data.common import ensure_metadata_schema, insert, select
 from .._data.objects import register_object, register_table
@@ -181,11 +180,10 @@ def lookup_repo(repo_name, include_local=False):
         return "LOCAL"
 
     for candidate in _LOOKUP_PATH:
-        remote_conn = make_driver_connection(candidate)
-        with override_driver_connection(remote_conn):
+        with switch_engine(candidate):
             if repository_exists(repo_name):
-                remote_conn.close()
+                get_engine().close()
                 return candidate
-            remote_conn.close()
+            get_engine().close()
 
     raise SplitGraphException("Unknown repository %s!" % repo_name.to_schema())

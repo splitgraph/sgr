@@ -82,12 +82,11 @@ CASES = [
 
 
 @pytest.mark.parametrize("test_case", CASES)
-def test_diff_conflation_on_commit(sg_pg_conn, test_case):
+def test_diff_conflation_on_commit(local_engine_with_pg, test_case):
     for operation, expected_diff in test_case:
         # Dump the operation we're running to stdout for easier debugging
         print("%r -> %r" % (operation, expected_diff))
-        with sg_pg_conn.cursor() as cur:
-            cur.execute(operation)
-        sg_pg_conn.commit()
+        local_engine_with_pg.run_sql(operation, return_shape=None)
+        local_engine_with_pg.commit()
         head = commit(PG_MNT)
         assert diff(PG_MNT, 'fruits', get_image(PG_MNT, head).parent_id, head) == expected_diff

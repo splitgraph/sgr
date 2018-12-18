@@ -3,7 +3,8 @@ import subprocess
 from decimal import Decimal
 
 from splitgraph.commands.checkout import uncheckout
-from splitgraph.engine import get_engine
+from splitgraph.config import PG_PWD, PG_USER
+from splitgraph.engine import get_engine, switch_engine
 
 try:
     # python 3.4+ should use builtin unittest.mock not mock package
@@ -11,11 +12,9 @@ try:
 except ImportError:
     from mock import patch
 
-import psycopg2
 from click.testing import CliRunner
 
-from splitgraph import to_repository, rm, repository_exists, Repository, get_upstream, get_all_hashes_tags, PG_PWD, \
-    PG_USER, CONFIG, PG_PORT, PG_HOST
+from splitgraph import to_repository, rm, repository_exists, Repository, get_upstream, get_all_hashes_tags
 from splitgraph._data.images import get_all_image_info
 from splitgraph._data.registry import get_published_info
 from splitgraph.commandline import status_c, sql_c, diff_c, commit_c, log_c, show_c, tag_c, checkout_c, rm_c, \
@@ -29,9 +28,9 @@ from splitgraph.commands.info import get_image, get_table
 from splitgraph.commands.misc import table_exists_at
 from splitgraph.commands.provenance import provenance
 from splitgraph.commands.tagging import get_current_head, get_tagged_id, set_tag, delete_tag
-from splitgraph.connection import override_driver_connection
 from splitgraph.hooks.mount_handlers import get_mount_handlers
-from test.splitgraph.conftest import PG_MNT, MG_MNT, OUTPUT, add_multitag_dataset_to_remote_driver, SPLITFILE_ROOT
+from test.splitgraph.conftest import PG_MNT, MG_MNT, OUTPUT, add_multitag_dataset_to_engine, SPLITFILE_ROOT, \
+    REMOTE_ENGINE
 
 
 def test_image_spec_parsing():
@@ -43,7 +42,7 @@ def test_image_spec_parsing():
     assert image_spec_parser(default='HEAD')('pg_mount:some_tag') == (Repository('', 'pg_mount'), 'some_tag')
 
 
-def test_commandline_basics(sg_pg_mg_conn):
+def test_commandline_basics(local_engine_with_pg_and_mg):
     runner = CliRunner()
 
     # sgr status
@@ -130,7 +129,7 @@ def test_commandline_basics(sg_pg_mg_conn):
         assert o in result.output
 
 
-def test_upstream_management(sg_pg_conn):
+def test_upstream_management(local_engine_with_pg):
     runner = CliRunner()
 
     # sgr upstream test/pg_mount
@@ -165,7 +164,7 @@ def test_upstream_management(sg_pg_conn):
     assert "has no upstream" in result.output
 
 
-def test_commandline_tag_checkout(sg_pg_mg_conn):
+def test_commandline_tag_checkout(local_engine_with_pg_and_mg):
     runner = CliRunner()
     # Do the quick setting up with the same commit structure
     old_head = get_current_head(PG_MNT)
@@ -236,7 +235,7 @@ def test_commandline_tag_checkout(sg_pg_mg_conn):
     assert get_tagged_id(PG_MNT, 'v1', raise_on_none=False) is None
 
 
-def test_misc_mountpoint_management(sg_pg_mg_conn):
+def test_misc_mountpoint_management(local_engine_with_pg_and_mg):
     runner = CliRunner()
 
     result = runner.invoke(status_c)
@@ -268,12 +267,10 @@ def test_misc_mountpoint_management(sg_pg_mg_conn):
                 "happy": "boolean"
             }}})])
     assert result.exit_code == 0
-    with sg_pg_mg_conn.cursor() as cur:
-        cur.execute("""SELECT duration from test_mg_mount.stuff WHERE name = 'James'""")
-        assert cur.fetchall() == [(Decimal(2),)]
+    assert get_engine().run_sql("SELECT duration from test_mg_mount.stuff WHERE name = 'James'") == [(Decimal(2),)]
 
 
-def test_import(sg_pg_mg_conn):
+def test_import(local_engine_with_pg_and_mg):
     runner = CliRunner()
     head = get_current_head(PG_MNT)
 
@@ -292,8 +289,7 @@ def test_import(sg_pg_mg_conn):
     assert not table_exists_at(PG_MNT, 'stuff_copy', new_head)
 
     # sgr import with alias and custom image hash
-    with sg_pg_mg_conn.cursor() as cur:
-        cur.execute("DELETE FROM test_mg_mount.stuff")
+    get_engine().run_sql("DELETE FROM test_mg_mount.stuff", return_shape=None)
     new_mg_head = commit(MG_MNT)
 
     result = runner.invoke(import_c, [str(MG_MNT) + ':' + new_mg_head, 'stuff', str(PG_MNT), 'stuff_empty'])
@@ -301,9 +297,7 @@ def test_import(sg_pg_mg_conn):
     new_new_new_head = get_current_head(PG_MNT)
     assert table_exists_at(PG_MNT, 'stuff_empty', new_new_new_head)
     assert not table_exists_at(PG_MNT, 'stuff_empty', new_new_head)
-    with sg_pg_mg_conn.cursor() as cur:
-        cur.execute("SELECT * FROM \"test/pg_mount\".stuff_empty")
-        assert cur.fetchall() == []
+    assert get_engine().run_sql("SELECT * FROM \"test/pg_mount\".stuff_empty") == []
 
     # sgr import with query, no alias
     result = runner.invoke(import_c, [str(MG_MNT) + ':' + new_mg_head, 'SELECT * FROM stuff', str(PG_MNT)])
@@ -311,37 +305,35 @@ def test_import(sg_pg_mg_conn):
     assert 'TARGET_TABLE is required' in str(result.stdout)
 
 
-def test_pull_push(empty_pg_conn, remote_driver_conn):
+def test_pull_push(local_engine_empty, remote_engine):
     runner = CliRunner()
 
     result = runner.invoke(clone_c, [str(PG_MNT)])
     assert result.exit_code == 0
     assert repository_exists(PG_MNT)
 
-    with remote_driver_conn.cursor() as cur:
-        cur.execute("INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mayonnaise')")
-    with override_driver_connection(remote_driver_conn):
+    remote_engine.run_sql("INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mayonnaise')", return_shape=None)
+    with switch_engine(REMOTE_ENGINE):
         remote_driver_head = commit(PG_MNT)
 
     result = runner.invoke(pull_c, [str(PG_MNT)])
     assert result.exit_code == 0
     checkout(PG_MNT, remote_driver_head)
 
-    with empty_pg_conn.cursor() as cur:
-        cur.execute("INSERT INTO \"test/pg_mount\".fruits VALUES (4, 'mustard')")
+    get_engine().run_sql("INSERT INTO \"test/pg_mount\".fruits VALUES (4, 'mustard')", return_shape=None)
     local_head = commit(PG_MNT)
 
-    with override_driver_connection(remote_driver_conn):
+    with switch_engine(REMOTE_ENGINE):
         assert not table_exists_at(PG_MNT, 'fruits', local_head)
     result = runner.invoke(push_c, [str(PG_MNT), '-h', 'DB'])
     assert result.exit_code == 0
     assert table_exists_at(PG_MNT, 'fruits', local_head)
 
     set_tag(PG_MNT, local_head, 'v1')
-    empty_pg_conn.commit()
+    local_engine_empty.commit()
     result = runner.invoke(publish_c, [str(PG_MNT), 'v1', '-r', SPLITFILE_ROOT + 'README.md'])
     assert result.exit_code == 0
-    with override_driver_connection(remote_driver_conn):
+    with switch_engine(REMOTE_ENGINE):
         image_hash, published_dt, deps, readme, schemata, previews = get_published_info(PG_MNT, 'v1')
     assert image_hash == local_head
     assert deps == []
@@ -354,41 +346,40 @@ def test_pull_push(empty_pg_conn, remote_driver_conn):
                         'vegetables': [[1, 'potato'], [2, 'carrot']]}
 
 
-def test_splitfile(empty_pg_conn, remote_driver_conn):
+def test_splitfile(local_engine_empty, remote_engine):
     runner = CliRunner()
 
     result = runner.invoke(build_c, [SPLITFILE_ROOT + 'import_remote_multiple.splitfile',
-                                    '-a', 'TAG', 'latest', '-o', 'output'])
+                                     '-a', 'TAG', 'latest', '-o', 'output'])
     assert result.exit_code == 0
-    with empty_pg_conn.cursor() as cur:
-        cur.execute("""SELECT id, fruit, vegetable FROM output.join_table""")
-        assert cur.fetchall() == [(1, 'apple', 'potato'), (2, 'orange', 'carrot')]
+    assert local_engine_empty.run_sql("SELECT id, fruit, vegetable FROM output.join_table") \
+           == [(1, 'apple', 'potato'), (2, 'orange', 'carrot')]
 
     # Test the sgr provenance command. First, just list the dependencies of the new image.
     result = runner.invoke(provenance_c, ['output:latest'])
-    with override_driver_connection(remote_driver_conn):
+    with switch_engine(REMOTE_ENGINE):
         assert 'test/pg_mount:%s' % get_tagged_id(PG_MNT, 'latest') in result.output
 
     # Second, output the full splitfile (-f)
     result = runner.invoke(provenance_c, ['output:latest', '-f'])
-    with override_driver_connection(remote_driver_conn):
+    with switch_engine(REMOTE_ENGINE):
         assert 'FROM test/pg_mount:%s IMPORT' % get_tagged_id(PG_MNT, 'latest') in result.output
     assert 'SQL CREATE TABLE join_table AS SELECT' in result.output
 
 
-def test_splitfile_rebuild_update(empty_pg_conn, remote_driver_conn):
-    add_multitag_dataset_to_remote_driver(remote_driver_conn)
+def test_splitfile_rebuild_update(local_engine_empty, remote_engine):
+    add_multitag_dataset_to_engine(remote_engine)
     runner = CliRunner()
 
     result = runner.invoke(build_c, [SPLITFILE_ROOT + 'import_remote_multiple.splitfile',
-                                    '-a', 'TAG', 'v1', '-o', 'output'])
+                                     '-a', 'TAG', 'v1', '-o', 'output'])
     assert result.exit_code == 0
 
     # Rerun the output:latest against v2 of the test/pg_mount
     result = runner.invoke(rebuild_c, ['output:latest', '--against', 'test/pg_mount:v2'])
     output_v2 = get_current_head(OUTPUT)
     assert result.exit_code == 0
-    with override_driver_connection(remote_driver_conn):
+    with switch_engine(REMOTE_ENGINE):
         v2 = get_tagged_id(PG_MNT, 'v2')
     assert provenance(OUTPUT, output_v2) == [(PG_MNT, v2)]
 
@@ -402,7 +393,7 @@ def test_splitfile_rebuild_update(empty_pg_conn, remote_driver_conn):
     assert get_all_image_info(OUTPUT) == curr_commits
 
 
-def test_mount_and_import(empty_pg_conn):
+def test_mount_and_import(local_engine_empty):
     runner = CliRunner()
     try:
         # sgr mount
@@ -429,7 +420,7 @@ def test_mount_and_import(empty_pg_conn):
         rm(to_repository('tmp'))
 
 
-def test_rm_repositories(sg_pg_conn, remote_driver_conn):
+def test_rm_repositories(local_engine_with_pg, remote_engine):
     runner = CliRunner()
 
     # sgr rm test/pg_mount, say "no"
@@ -446,16 +437,16 @@ def test_rm_repositories(sg_pg_conn, remote_driver_conn):
     # sgr rm test/pg_mount -r remote_driver
     result = runner.invoke(rm_c, [str(PG_MNT), '-r', 'remote_driver'], input='y\n')
     assert result.exit_code == 0
-    with override_driver_connection(remote_driver_conn):
+    with switch_engine(REMOTE_ENGINE):
         assert not repository_exists(PG_MNT)
 
 
-def test_rm_images(sg_pg_conn, remote_driver_conn):
+def test_rm_images(local_engine_with_pg, remote_engine):
     runner = CliRunner()
 
     # Play around with both drivers for simplicity -- both have 2 images with 2 tags
-    add_multitag_dataset_to_remote_driver(remote_driver_conn)
-    add_multitag_dataset_to_remote_driver(sg_pg_conn)
+    add_multitag_dataset_to_engine(remote_engine)
+    add_multitag_dataset_to_engine(local_engine_with_pg)
 
     local_v1 = get_tagged_id(PG_MNT, 'v1')
     local_v2 = get_tagged_id(PG_MNT, 'v2')
@@ -479,14 +470,14 @@ def test_rm_images(sg_pg_conn, remote_driver_conn):
     assert get_image(PG_MNT, local_v2) is not None
 
     # Uncheckout the remote too (it's supposed to be bare anyway)
-    with override_driver_connection(remote_driver_conn):
+    with switch_engine(REMOTE_ENGINE):
         remote_v2 = get_tagged_id(PG_MNT, 'v2')
         uncheckout(PG_MNT)
 
     # sgr rm test/pg_mount:v2 -r remote_driver, say "yes"
     result = runner.invoke(rm_c, [str(PG_MNT) + ':v2', '-r', 'remote_driver'], input='y\n')
     assert result.exit_code == 0
-    with override_driver_connection(remote_driver_conn):
+    with switch_engine(REMOTE_ENGINE):
         assert get_tagged_id(PG_MNT, 'v2', raise_on_none=False) is None
         assert get_image(PG_MNT, remote_v2) is None
 
@@ -518,14 +509,14 @@ def test_mount_docstring_generation():
     assert "remote_schema" in result.output
 
 
-def test_prune(sg_pg_conn, remote_driver_conn):
+def test_prune(local_engine_with_pg, remote_engine):
     runner = CliRunner()
     # Two drivers, two repos, two images in each (tagged v1 and v2, v1 is the parent of v2).
-    add_multitag_dataset_to_remote_driver(remote_driver_conn)
-    with override_driver_connection(remote_driver_conn):
+    add_multitag_dataset_to_engine(remote_engine)
+    with switch_engine(REMOTE_ENGINE):
         uncheckout(PG_MNT)
 
-    add_multitag_dataset_to_remote_driver(sg_pg_conn)
+    add_multitag_dataset_to_engine(local_engine_with_pg)
 
     # sgr prune test/pg_mount -- all images are tagged, nothing to do.
     result = runner.invoke(prune_c, [str(PG_MNT)])
@@ -534,31 +525,31 @@ def test_prune(sg_pg_conn, remote_driver_conn):
 
     # Delete tag v2 and run sgr prune -r remote_driver test/pg_mount, say "no": the image
     # that used to be 'v2' now isn't tagged so it will be a candidate for removal (but not the v1 image).
-    with override_driver_connection(remote_driver_conn):
+    with switch_engine(REMOTE_ENGINE):
         remote_v2 = get_tagged_id(PG_MNT, 'v2')
         delete_tag(PG_MNT, 'v2')
-        remote_driver_conn.commit()
+        remote_engine.commit()
 
     result = runner.invoke(prune_c, [str(PG_MNT), '-r', 'remote_driver'], input='n\n')
     assert result.exit_code == 1  # Because "n" aborted the command
     assert remote_v2 in result.output
     assert 'Total: 1' in result.output
     # Make sure the image still exists
-    with override_driver_connection(remote_driver_conn):
+    with switch_engine(REMOTE_ENGINE):
         assert get_image(PG_MNT, remote_v2)
 
     # Delete tag v1 and run sgr prune -r remote_driver -y test_pg_mount:
     # now both images aren't tagged so will get removed.
-    with override_driver_connection(remote_driver_conn):
+    with switch_engine(REMOTE_ENGINE):
         remote_v1 = get_tagged_id(PG_MNT, 'v1')
         delete_tag(PG_MNT, 'v1')
-        remote_driver_conn.commit()
+        remote_engine.commit()
     result = runner.invoke(prune_c, [str(PG_MNT), '-r', 'remote_driver', '-y'])
     assert result.exit_code == 0
     assert remote_v2 in result.output
     assert remote_v1 in result.output
     assert 'Total: 2' in result.output
-    with override_driver_connection(remote_driver_conn):
+    with switch_engine(REMOTE_ENGINE):
         assert not get_all_image_info(PG_MNT)
 
     # Finally, delete both tags from the local driver and prune. Since there's still
@@ -601,20 +592,9 @@ def test_config_dumping():
     assert "S3=splitgraph.hooks.s3" in result.output
 
 
-def _drop_test_db():
-    with psycopg2.connect(dbname=CONFIG['SG_DRIVER_POSTGRES_DB_NAME'],
-                          user=CONFIG['SG_DRIVER_ADMIN_USER'],
-                          password=CONFIG['SG_DRIVER_ADMIN_PWD'],
-                          host=PG_HOST,
-                          port=PG_PORT) as admin_conn:
-        admin_conn.autocommit = True
-        with admin_conn.cursor() as cur:
-            cur.execute("DROP DATABASE IF EXISTS testdb")
-
-
 def test_init_new_db():
     try:
-        _drop_test_db()
+        get_engine().delete_database('testdb')
 
         # CliRunner doesn't run in a brand new process and by that point PG_DB has propagated
         # through a few modules that are difficult to patch out, so let's just shell out.
@@ -623,4 +603,4 @@ def test_init_new_db():
         assert "Creating database testdb" in output
         assert "Installing the audit trigger" in output
     finally:
-        _drop_test_db()
+        get_engine().delete_database('testdb')

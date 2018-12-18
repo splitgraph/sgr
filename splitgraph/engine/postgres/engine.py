@@ -8,10 +8,9 @@ from psycopg2._json import Json
 from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph import get_connection, CONFIG, PG_HOST, PG_PORT, PG_DB, SplitGraphException, \
-    override_driver_connection
-from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.engine import Engine, ResultShape
+from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.mount_handlers import mount_postgres
 
 _AUDIT_SCHEMA = 'audit'
@@ -25,8 +24,34 @@ REMOTE_TMP_SCHEMA = "tmp_remote_data"
 class PostgresEngine(Engine):
     """An implementation of the Postgres engine for Splitgraph"""
 
+    def __init__(self, conn_params):
+        """
+        :param conn_params: Tuple of (server, port, username, password, dbname)
+        """
+        self.conn_params = conn_params
+        self._conn = None
+
+    def commit(self):
+        if self._conn:
+            self._conn.commit()
+
+    def close(self):
+        if self._conn:
+            self._conn.close()
+
+    def rollback(self):
+        if self._conn:
+            self._conn.rollback()
+
+    @property
+    def connection(self):
+        if self._conn is None or self._conn.closed:
+            logging.info("Initializing engine connection...")
+            self._conn = make_conn(*self.conn_params)
+        return self._conn
+
     def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY):
-        with get_connection().cursor() as cur:
+        with self.connection.cursor() as cur:
             cur.execute(statement, arguments)
 
             if return_shape == ResultShape.ONE_ONE:
@@ -48,26 +73,31 @@ class PostgresEngine(Engine):
                             .format(Identifier(schema), Identifier(table)), return_shape=ResultShape.MANY_MANY)
 
     def run_sql_batch(self, statement, arguments):
-        with get_connection().cursor() as cur:
+        with self.connection.cursor() as cur:
             execute_batch(cur, statement, arguments, page_size=1000)
+
+    def _admin_conn(self):
+        return psycopg2.connect(dbname=CONFIG['SG_DRIVER_POSTGRES_DB_NAME'],
+                                user=CONFIG['SG_DRIVER_ADMIN_USER'],
+                                password=CONFIG['SG_DRIVER_ADMIN_PWD'],
+                                host=self.conn_params[0],
+                                port=self.conn_params[1])
 
     def initialize(self):
         """Create the Splitgraph Postgres database and install the audit trigger"""
         # Use the connection to the "postgres" database to create the actual PG_DB
-        with psycopg2.connect(dbname=CONFIG['SG_DRIVER_POSTGRES_DB_NAME'],
-                              user=CONFIG['SG_DRIVER_ADMIN_USER'],
-                              password=CONFIG['SG_DRIVER_ADMIN_PWD'],
-                              host=PG_HOST,
-                              port=PG_PORT) as admin_conn:
+        with self._admin_conn() as admin_conn:
             # CREATE DATABASE can't run inside of tx
+            pg_db = self.conn_params[4]
+
             admin_conn.autocommit = True
             with admin_conn.cursor() as cur:
-                cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (PG_DB,))
+                cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (pg_db,))
                 if cur.fetchone() is None:
-                    logging.info("Creating database %s", PG_DB)
-                    cur.execute(SQL("CREATE DATABASE {}").format(Identifier(PG_DB)))
+                    logging.info("Creating database %s", pg_db)
+                    cur.execute(SQL("CREATE DATABASE {}").format(Identifier(pg_db)))
                 else:
-                    logging.info("Database %s already exists, skipping", PG_DB)
+                    logging.info("Database %s already exists, skipping", pg_db)
 
         # Install the audit trigger if it doesn't exist
         if not self.schema_exists(_AUDIT_SCHEMA):
@@ -76,6 +106,16 @@ class PostgresEngine(Engine):
             self.run_sql(audit_trigger.decode('utf-8'), return_shape=ResultShape.NONE)
         else:
             logging.info("Skipping the audit trigger as it's already installed")
+
+    def delete_database(self, database):
+        """
+        Helper function to drop a database using the admin connection
+        :param database: Database name to drop
+        """
+        with self._admin_conn() as admin_conn:
+            admin_conn.autocommit = True
+            with admin_conn.cursor() as cur:
+                cur.execute(SQL("DROP DATABASE IF EXISTS {}").format(Identifier(database)))
 
     def get_tracked_tables(self):
         """Return a list of tables that the audit trigger is working on."""
@@ -154,7 +194,7 @@ class PostgresEngine(Engine):
                             return_shape=ResultShape.MANY_ONE)
 
     def store_diff_object(self, changeset, schema, table, change_key):
-        _create_diff_table(table, change_key)
+        _create_diff_table(self.connection, table, change_key)
         query = SQL("INSERT INTO {}.{} ").format(Identifier(schema),
                                                  Identifier(table)) + \
                 SQL("VALUES (" + ','.join(itertools.repeat('%s', len(changeset[0]))) + ")")
@@ -179,7 +219,7 @@ class PostgresEngine(Engine):
                                                                               source_schema),
                      return_shape=ResultShape.NONE)
 
-        with get_connection().cursor() as cur:
+        with self.connection.cursor() as cur:
             # Generate queries for inserts
             # Will remove the cursor later: currently need to to mogrify the query
             for row in self.run_sql(SQL("SELECT * FROM {}.{} WHERE sg_action_kind = 0")
@@ -220,15 +260,13 @@ class PostgresEngine(Engine):
     # we should look into columnar on-disk formats (Parquet/Avro) but we currently just want to get the objects
     # out of/into postgres as fast as possible.
     def dump_object(self, schema, table, stream):
-        conn = get_connection()
         schema_spec = json.dumps(self.get_full_table_schema(schema, table))
         stream.write(schema_spec.encode('utf-8') + b'\0')
-        with conn.cursor() as cur:
+        with self.connection.cursor() as cur:
             cur.copy_expert(SQL("COPY {}.{} TO STDOUT WITH (FORMAT 'binary')")
                             .format(Identifier(schema), Identifier(table)), stream)
 
     def load_object(self, schema, table, stream):
-        conn = get_connection()
         chars = b''
         # Read until the delimiter separating a JSON schema from the Postgres copy_to dump.
         # Surely this is buffered?
@@ -241,13 +279,14 @@ class PostgresEngine(Engine):
         schema_spec = json.loads(chars.decode('utf-8'))
         self.create_table(schema, table, schema_spec)
 
-        with conn.cursor() as cur:
+        with self.connection.cursor() as cur:
             cur.copy_expert(SQL("COPY {}.{} FROM STDIN WITH (FORMAT 'binary')")
                             .format(Identifier(schema), Identifier(table)), stream)
 
-    def upload_objects(self, objects, remote_conn_params, remote_conn):
-        # TODO we assume here that remote_conn_params / remote_conn are all Postgres-specific
-        # (there's no engine-to-engine negotiation).
+    def upload_objects(self, objects, remote_engine):
+        if not isinstance(remote_engine, PostgresEngine):
+            raise SplitGraphException("Remote engine isn't a Postgres engine, object uploading "
+                                      "is unsupported for now!")
 
         # Since we can't get remote to mount us, we instead use normal SQL statements
         # to create new tables remotely, then mount them and write into them from our side.
@@ -255,28 +294,27 @@ class PostgresEngine(Engine):
         # This also includes applying our table's FK constraints.
         create = self.dump_table_creation(schema=SPLITGRAPH_META_SCHEMA, tables=objects,
                                           created_schema=SPLITGRAPH_META_SCHEMA)
-        with override_driver_connection(remote_conn):
-            self.run_sql(create, return_shape=ResultShape.NONE)
+        remote_engine.run_sql(create, return_shape=ResultShape.NONE)
         # Have to commit the remote connection here since otherwise we won't see the new tables in the
         # mounted remote.
-        remote_conn.commit()
+        remote_engine.commit()
         self.delete_schema(REMOTE_TMP_SCHEMA)
-        mount_postgres(mountpoint=REMOTE_TMP_SCHEMA, server=remote_conn_params[0], port=remote_conn_params[1],
-                       username=remote_conn_params[2],
-                       password=remote_conn_params[3], dbname=remote_conn_params[4],
+        mount_postgres(mountpoint=REMOTE_TMP_SCHEMA, server=remote_engine.conn_params[0],
+                       port=remote_engine.conn_params[1], username=remote_engine.conn_params[2],
+                       password=remote_engine.conn_params[3], dbname=remote_engine.conn_params[4],
                        remote_schema=SPLITGRAPH_META_SCHEMA)
         for i, obj in enumerate(objects):
             print("(%d/%d) %s..." % (i + 1, len(objects), obj))
             self.copy_table(SPLITGRAPH_META_SCHEMA, obj, REMOTE_TMP_SCHEMA, obj, with_pk_constraints=False,
                             table_exists=True)
-        get_connection().commit()
+        self.connection.commit()
         self.delete_schema(REMOTE_TMP_SCHEMA)
 
-    def download_objects(self, objects, remote_conn_params, remote_conn):
+    def download_objects(self, objects, remote_engine):
         # Instead of connecting and pushing queries to it from the Python client, we just mount the remote mountpoint
         # into a temporary space (without any checking out) and SELECT the required data into our local tables.
 
-        server, port, user, pwd, dbname = remote_conn_params
+        server, port, user, pwd, dbname = remote_engine.conn_params
         self.delete_schema(REMOTE_TMP_SCHEMA)
         mount_postgres(mountpoint=REMOTE_TMP_SCHEMA, server=server, port=port, username=user, password=pwd,
                        dbname=dbname,
@@ -288,14 +326,13 @@ class PostgresEngine(Engine):
                 self.copy_table(REMOTE_TMP_SCHEMA, obj, SPLITGRAPH_META_SCHEMA, obj,
                                 with_pk_constraints=False)
                 # Get the PKs from the remote and apply them
-                with override_driver_connection(remote_conn):
-                    source_pks = self.get_primary_keys(SPLITGRAPH_META_SCHEMA, obj)
+                source_pks = remote_engine.get_primary_keys(SPLITGRAPH_META_SCHEMA, obj)
                 if source_pks:
                     self.run_sql(SQL("ALTER TABLE {}.{} ADD PRIMARY KEY (").format(
                         Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj))
                                  + SQL(',').join(SQL("{}").format(Identifier(c)) for c, _ in source_pks) + SQL(")"),
                                  return_shape=ResultShape.NONE)
-                get_connection().commit()
+                self.connection.commit()
         finally:
             self.delete_schema(REMOTE_TMP_SCHEMA)
 
@@ -383,7 +420,7 @@ def _convert_audit_change(action, row_data, changed_fields, ri_cols):
 _KIND = {'I': 0, 'D': 1, 'U': 2}
 
 
-def _create_diff_table(object_id, replica_identity_cols_types):
+def _create_diff_table(conn, object_id, replica_identity_cols_types):
     """
     Create a diff table into which we'll pack the conflated audit log actions.
 
@@ -392,7 +429,7 @@ def _create_diff_table(object_id, replica_identity_cols_types):
     """
     # sg_action_kind: 0, 1, 2 for insert/delete/update
     # sg_action_data: extra data for insert and update.
-    with get_connection().cursor() as cur:
+    with conn.cursor() as cur:
         query = SQL("CREATE TABLE {}.{} (").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id))
         query += SQL(',').join(SQL("{} %s" % col_type).format(Identifier(col_name))
                                for col_name, col_type in replica_identity_cols_types + [('sg_action_kind', 'smallint'),
@@ -421,3 +458,11 @@ def _generate_where_clause(schema, table, cols, table_2=None, schema_2=None):
     return SQL(" AND ").join(SQL("{}.{}.{} = {}.{}.{}").format(
         Identifier(schema), Identifier(table), Identifier(c),
         Identifier(schema_2), Identifier(table_2), Identifier(c)) for c in cols)
+
+
+def make_conn(server, port, username, password, dbname):
+    """
+    Initializes a connection a Splitgraph Postgres engine.
+    :return: Psycopg connection object
+    """
+    return psycopg2.connect(host=server, port=port, user=username, password=password, dbname=dbname)

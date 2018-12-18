@@ -6,21 +6,17 @@ import logging
 from collections import defaultdict
 
 from splitgraph._data.objects import get_existing_objects, get_downloaded_objects
-from splitgraph.connection import override_driver_connection, make_conn
-from splitgraph.engine import get_engine
+from splitgraph.engine import get_engine, switch_engine
 from splitgraph.hooks.external_objects import get_external_object_handler
 
 
-def download_objects(conn_params, objects_to_fetch, object_locations, remote_conn=None):
+def download_objects(remote_engine_name, objects_to_fetch, object_locations):
     """
     Fetches the required objects from the remote and stores them locally. Does nothing for objects that already exist.
 
-    :param conn_params: Tuple of connection parameters (server, port, username, password, database)
+    :param remote_engine_name: Name of the remote engine
     :param objects_to_fetch: List of object IDs to download.
     :param object_locations: List of custom object locations, encoded as tuples (object_id, object_url, protocol).
-    :param remote_conn: If not None, must be a psycopg connection object used by the client to connect to the remote
-        driver. The local driver will still use the parameters specified in `conn_params` to download the
-        actual objects from the remote.
     :return: Set of object IDs that were fetched.
     """
 
@@ -38,8 +34,7 @@ def download_objects(conn_params, objects_to_fetch, object_locations, remote_con
         return objects_to_fetch
 
     print("Fetching remote objects...")
-    remote_conn = remote_conn or make_conn(*conn_params)
-    get_engine().download_objects(remaining_objects_to_fetch, conn_params, remote_conn)
+    get_engine().download_objects(remaining_objects_to_fetch, get_engine(remote_engine_name))
     return objects_to_fetch
 
 
@@ -58,28 +53,24 @@ def _fetch_external_objects(object_locations, objects_to_fetch, handler_params):
     return non_remote_objects
 
 
-def upload_objects(conn_params, objects_to_push, handler='DB', handler_params=None, remote_conn=None):
+def upload_objects(remote_engine_name, objects_to_push, handler='DB', handler_params=None):
     """
     Uploads physical objects to the remote or some other external location.
 
-    :param conn_params: Connection params to the remote Splitgraph driver
+    :param remote_engine_name: Name of the remote engine.
     :param objects_to_push: List of object IDs to upload.
     :param handler: Name of the handler to use to upload objects. Use `DB` to push them to the remote, `FILE`
         to store them in a directory that can be accessed from the client and `HTTP` to upload them to HTTP.
     :param handler_params: For `HTTP`, a dictionary `{"username": username, "password", password}`. For `FILE`,
         a dictionary `{"path": path}` specifying the directory where the objects shall be saved.
-    :param remote_conn: If not None, must be a psycopg connection object used by the client to connect to the remote
-        driver. The local driver will still use the parameters specified in `conn_params` to download the
-        actual objects from the remote.
     :return: A list of (object_id, url, handler) that specifies all objects were uploaded (skipping objects that
         already exist on the remote).
     """
     if handler_params is None:
         handler_params = {}
-    remote_conn = remote_conn or make_conn(*conn_params)
 
     # Get objects that exist on the remote driver
-    with override_driver_connection(remote_conn):
+    with switch_engine(remote_engine_name):
         existing_objects = get_existing_objects()
 
     objects_to_push = list(set(o for o in objects_to_push if o not in existing_objects))
@@ -89,7 +80,7 @@ def upload_objects(conn_params, objects_to_push, handler='DB', handler_params=No
     logging.info("Uploading %d object(s)...", len(objects_to_push))
 
     if handler == 'DB':
-        get_engine().upload_objects(objects_to_push, conn_params, remote_conn)
+        get_engine().upload_objects(objects_to_push, get_engine(remote_engine_name))
         # We assume that if the object doesn't have an explicit location, it lives on the remote.
         return []
 

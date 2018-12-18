@@ -17,7 +17,6 @@ from splitgraph.commands.push_pull import clone
 from splitgraph.commands.repository import Repository
 from splitgraph.commands.tagging import get_current_head
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.connection import get_connection
 from splitgraph.engine import get_engine
 from ._common import set_head
 
@@ -152,12 +151,11 @@ def import_table_from_remote(remote_conn_string, remote_repository, remote_table
     # lightweight (we never download unneeded objects), we just clone it into a temporary mountpoint,
     # do the import into the target and destroy the temporary mp.
     tmp_mountpoint = Repository(namespace=remote_repository.namespace,
-                                repository=remote_repository.repository +
-                                           '_clone_tmp')
+                                repository=remote_repository.repository + '_clone_tmp')
 
     clone(remote_repository, remote_driver=remote_conn_string, local_repository=tmp_mountpoint, download_all=False)
     import_tables(tmp_mountpoint, remote_tables, target_repository, target_tables, image_hash=remote_image_hash,
                   target_hash=target_hash)
 
     rm(tmp_mountpoint)
-    get_connection().commit()
+    get_engine().commit()

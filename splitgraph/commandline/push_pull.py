@@ -4,6 +4,8 @@ import sys
 import click
 
 import splitgraph as sg
+import splitgraph.engine
+import splitgraph.engine.postgres.engine
 
 
 @click.command(name='pull')
@@ -132,7 +134,7 @@ def upstream_c(repository, set_to, reset):
     else:
         driver, remote_repo = set_to
         try:
-            sg.get_remote_connection_params(driver)
+            splitgraph.engine.get_remote_connection_params(driver)
         except KeyError:
             print("Remote driver '%s' does not exist in the configuration file!" % driver)
             sys.exit(1)

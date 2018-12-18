@@ -18,7 +18,6 @@ from .misc import delete_objects, rm
 from .tagging import get_tagged_id, delete_tag
 from .._data.images import get_image_object_path
 from .._data.objects import get_external_object_locations, get_object_for_table, get_existing_objects
-from ..connection import get_remote_connection_params
 from ..exceptions import SplitGraphException
 
 
@@ -45,7 +44,7 @@ def materialize_table(repository, image_hash, table, destination, destination_sc
     remote_info = get_upstream(repository)
     if remote_info:
         object_locations = get_external_object_locations(to_apply + [object_id])
-        fetched_objects = download_objects(get_remote_connection_params(remote_info[0]),
+        fetched_objects = download_objects(remote_info[0],
                                            objects_to_fetch=to_apply + [object_id],
                                            object_locations=object_locations)
 

@@ -16,7 +16,6 @@ from splitgraph.commands.push_pull import local_clone, pull
 from splitgraph.commands.repository import Repository, repository_exists, lookup_repo
 from splitgraph.commands.tagging import get_current_head, resolve_image
 from splitgraph.config import CONFIG
-from splitgraph.connection import get_connection
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.mount_handlers import get_mount_handler
@@ -85,7 +84,7 @@ def execute_commands(commands, params=None, output=None, output_base='0' * 32):
             _initialize_output(output)
             _execute_custom(node, output)
 
-    get_connection().commit()
+    get_engine().commit()
 
 
 def _execute_sql(node, output):

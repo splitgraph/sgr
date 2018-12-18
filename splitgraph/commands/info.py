@@ -1,16 +1,17 @@
 """
 Public API functions to get information about Splitgraph images and repositories.
 """
+from collections import namedtuple
 
-from psycopg2.extras import NamedTupleCursor
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph._data.common import select
 from splitgraph._data.images import IMAGE_COLS, get_image_object_path
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.connection import get_connection
 from splitgraph.engine import get_engine, ResultShape
 from splitgraph.exceptions import SplitGraphException
+
+Image = namedtuple('Image', IMAGE_COLS)
 
 
 def get_image(repository, image):
@@ -21,11 +22,12 @@ def get_image(repository, image):
     :param image: Image hash
     :return: A named tuple of (image_hash, parent_id, created, comment, provenance_type, provenance_data)
     """
-    with get_connection().cursor(cursor_factory=NamedTupleCursor) as cur:
-        cur.execute(select("images", IMAGE_COLS,
-                           "repository = %s AND image_hash = %s AND namespace = %s"), (repository.repository,
-                                                                                       image, repository.namespace))
-        return cur.fetchone()
+    result = get_engine().run_sql(select("images", ','.join(IMAGE_COLS),
+                                         "repository = %s AND image_hash = %s AND namespace = %s"),
+                                  (repository.repository,
+                                   image, repository.namespace),
+                                  return_shape=ResultShape.ONE_MANY)
+    return Image(**{k: v for k, v in zip(IMAGE_COLS, result)}) if result else None
 
 
 def get_canonical_image_id(repository, short_image):

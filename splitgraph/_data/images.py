@@ -14,7 +14,7 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitGraphException
 
-IMAGE_COLS = "image_hash, parent_id, created, comment, provenance_type, provenance_data"
+IMAGE_COLS = ["image_hash", "parent_id", "created", "comment", "provenance_type", "provenance_data"]
 
 
 def get_all_image_info(repository):
@@ -24,7 +24,7 @@ def get_all_image_info(repository):
     :param repository: Repository
     :return: List of (image_hash, parent_id, creation time, comment, provenance type, provenance data) for all images.
     """
-    return get_engine().run_sql(select("images", IMAGE_COLS, "repository = %s AND namespace = %s") +
+    return get_engine().run_sql(select("images", ','.join(IMAGE_COLS), "repository = %s AND namespace = %s") +
                                 SQL(" ORDER BY created"), (repository.repository, repository.namespace))
 
 

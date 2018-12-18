@@ -5,7 +5,6 @@ from splitgraph._data.common import ensure_metadata_schema
 from splitgraph.commands.info import get_table
 from splitgraph.commands.repository import get_current_repositories
 from splitgraph.commands.tagging import set_tag
-from splitgraph.connection import get_connection
 from splitgraph.engine import get_engine
 
 
@@ -49,7 +48,7 @@ def manage_audit(func):
             manage_audit_triggers()
             func(*args, **kwargs)
         finally:
-            get_connection().commit()
+            get_engine().commit()
             manage_audit_triggers()
 
     return wrapped

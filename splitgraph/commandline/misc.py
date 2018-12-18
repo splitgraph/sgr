@@ -8,6 +8,7 @@ from splitgraph._data.images import _get_all_child_images, delete_images, _get_a
 from splitgraph.commandline._common import image_spec_parser
 from splitgraph.commands.misc import init_driver
 from splitgraph.config.keys import KEYS, SENSITIVE_KEYS
+from splitgraph.engine import switch_engine
 
 
 @click.command(name='rm')
@@ -50,7 +51,7 @@ def rm_c(image_spec, remote, yes):
     """
 
     repository, image = image_spec
-    with sg.do_in_driver(remote):
+    with switch_engine(remote or 'LOCAL'):
         if not image:
             print(("Repository" if sg.repository_exists(repository) else "Postgres schema")
                   + " %s will be deleted." % repository.to_schema())
@@ -101,7 +102,7 @@ def prune_c(repository, remote, yes):
     This does not delete any physical objects that the deleted repository/images depend on:
     use ``sgr cleanup`` to do that.
     """
-    with sg.do_in_driver(remote):
+    with switch_engine(remote or 'LOCAL'):
         all_images = {i[0] for i in sg.get_all_image_info(repository)}
         logging.info(all_images)
         all_tagged_images = {i for i, t in sg.get_all_hashes_tags(repository)}

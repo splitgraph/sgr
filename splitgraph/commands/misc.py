@@ -11,7 +11,6 @@ from splitgraph.commands._common import manage_audit
 from splitgraph.commands.info import get_image, get_table
 from splitgraph.commands.repository import register_repository, unregister_repository
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.connection import get_connection
 from splitgraph.engine import get_engine, ResultShape
 
 
@@ -143,7 +142,7 @@ def rm(repository, unregister=True):
 
     if unregister:
         unregister_repository(repository)
-    get_connection().commit()
+    engine.commit()
 
 
 # Method exercised in test_commandline.test_init_new_db but in

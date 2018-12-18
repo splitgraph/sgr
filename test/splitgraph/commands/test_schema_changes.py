@@ -32,14 +32,13 @@ def _reassign_ordinals(schema):
 
 
 @pytest.mark.parametrize("test_case", TEST_CASES)
-def test_schema_changes(sg_pg_conn, test_case):
+def test_schema_changes(local_engine_with_pg, test_case):
     action, expected_new_schema = test_case
     engine = get_engine()
 
     assert engine.get_full_table_schema(PG_MNT.to_schema(), 'fruits') == OLD_SCHEMA
-    with sg_pg_conn.cursor() as cur:
-        cur.execute(action)
-    sg_pg_conn.commit()
+    local_engine_with_pg.run_sql(action, return_shape=None)
+    local_engine_with_pg.commit()
     assert engine.get_full_table_schema(PG_MNT.to_schema(), 'fruits') == expected_new_schema
 
     head = get_current_head(PG_MNT)
@@ -59,11 +58,11 @@ def test_schema_changes(sg_pg_conn, test_case):
     assert engine.get_full_table_schema(PG_MNT.to_schema(), 'fruits') == _reassign_ordinals(expected_new_schema)
 
 
-def test_pk_preserved_on_checkout(sg_pg_conn):
+def test_pk_preserved_on_checkout(local_engine_with_pg):
     engine = get_engine()
     assert list(engine.get_primary_keys(PG_MNT.to_schema(), 'fruits')) == []
-    with sg_pg_conn.cursor() as cur:
-        cur.execute("""ALTER TABLE "test/pg_mount".fruits ADD PRIMARY KEY (fruit_id)""")
+    local_engine_with_pg.run_sql("ALTER TABLE \"test/pg_mount\".fruits ADD PRIMARY KEY (fruit_id)",
+                                 return_shape=None)
     assert list(engine.get_primary_keys(PG_MNT.to_schema(), 'fruits')) == [('fruit_id', 'integer')]
     head = get_current_head(PG_MNT)
     new_head = commit(PG_MNT)

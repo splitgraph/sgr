@@ -12,7 +12,6 @@ from splitgraph.commands._common import manage_audit_triggers
 from splitgraph.commands._objects.creation import record_table_as_diff, record_table_as_snap
 from splitgraph.commands.info import get_table, table_schema_changed
 from splitgraph.commands.tagging import get_current_head
-from splitgraph.connection import get_connection
 from splitgraph.engine import get_engine
 from ._common import set_head
 
@@ -30,9 +29,8 @@ def commit(repository, image_hash=None, include_snap=False, comment=None):
     """
     target_schema = repository.to_schema()
 
-    conn = get_connection()
     ensure_metadata_schema()
-    conn.commit()
+    get_engine().commit()
     manage_audit_triggers()
 
     logging.info("Committing %s...", target_schema)
@@ -48,7 +46,7 @@ def commit(repository, image_hash=None, include_snap=False, comment=None):
     _commit(repository, head, image_hash, include_snap=include_snap)
 
     set_head(repository, image_hash)
-    conn.commit()
+    get_engine().commit()
     manage_audit_triggers()
     return image_hash
 

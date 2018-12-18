@@ -6,6 +6,7 @@ from psycopg2 import ProgrammingError
 
 import splitgraph as sg
 from splitgraph.commandline._common import image_spec_parser, pluralise
+from splitgraph import get_engine
 
 
 @click.command(name='log')
@@ -172,7 +173,10 @@ def sql_c(sql, schema, show_all):
         sgr sql "SELECT * FROM \"noaa/climate\".table"
         sgr sql -s noaa/climate "SELECT * FROM table"
     """
-    with sg.get_connection().cursor() as cur:
+
+    # Temporary until partial fetches with preview get pushed into the engine
+    conn = get_engine().connection
+    with conn.cursor() as cur:
         if schema:
             cur.execute("SET search_path TO %s", (schema,))
         cur.execute(sql)
