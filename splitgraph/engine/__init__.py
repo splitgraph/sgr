@@ -51,6 +51,7 @@ class Engine:
     def table_exists(self, schema, table_name):
         """
         Check if a table exists on the engine
+
         :param schema: Schema name
         :param table_name: Table name
         """
@@ -61,6 +62,7 @@ class Engine:
     def schema_exists(self, schema):
         """
         Check if a schema exists on the engine
+
         :param schema: Schema name
         """
         return self.run_sql("""SELECT 1 from information_schema.schemata
@@ -214,6 +216,7 @@ class Engine:
     def track_tables(self, tables):
         """
         Start engine-specific change tracking on a list of tables.
+
         :param tables: List of (table_schema, table_name) to start tracking
         """
         raise NotImplemented()
@@ -221,7 +224,8 @@ class Engine:
     def untrack_tables(self, tables):
         """
         Stop engine-specific change tracking on a list of tables and delete any pending changes.
-        :param tables:
+
+        :param tables: List of (table_schema, table_name) to start tracking
         """
         raise NotImplemented()
 
@@ -240,6 +244,7 @@ class Engine:
     def get_pending_changes(self, schema, table, aggregate=False):
         """
         Return pending changes for a given tracked table
+
         :param schema: Schema the table belongs to
         :param table: Table to return changes for
         :param aggregate: Whether to aggregate changes or return them completely
@@ -251,6 +256,7 @@ class Engine:
     def get_changed_tables(self, schema):
         """
         List tracked tables that have pending changes
+
         :param schema: Schema to check for changes
         :return: List of tables with changed contents
         """
@@ -320,6 +326,12 @@ _ENGINES = {}
 
 
 def get_engine(name=None):
+    """
+    Get the current global engine or a named remote engine
+
+    :param name: Name of the remote engine as specified in the config. If None, the current global engine
+        is returned.
+    """
     if not name:
         if isinstance(_ENGINE, Engine):
             return _ENGINE
@@ -353,7 +365,8 @@ def switch_engine(engine):
 
 def get_remote_connection_params(remote_name):
     """
-    Gets connection parameters for a Splitgraph remote.
+    Get connection parameters for a Splitgraph remote.
+
     :param remote_name: Name of the remote. Must be specified in the config file.
     :return: A tuple of (hostname, port, username, password, database)
     """

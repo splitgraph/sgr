@@ -110,6 +110,7 @@ class PostgresEngine(Engine):
     def delete_database(self, database):
         """
         Helper function to drop a database using the admin connection
+
         :param database: Database name to drop
         """
         with self._admin_conn() as admin_conn:
@@ -161,6 +162,7 @@ class PostgresEngine(Engine):
     def get_pending_changes(self, schema, table, aggregate=False):
         """
         Return pending changes for a given tracked table
+
         :param schema: Schema the table belongs to
         :param table: Table to return changes for
         :param aggregate: Whether to aggregate changes or return them completely
@@ -397,6 +399,7 @@ def _recalculate_disjoint_ri_cols(ri_cols, ri_vals, non_ri_cols, non_ri_vals, ro
 def _convert_audit_change(action, row_data, changed_fields, ri_cols):
     """
     Converts the audit log entry into Splitgraph's internal format.
+
     :returns: [(pk, kind, extra data)] (more than 1 change might be emitted from a single audit entry).
     """
     ri_vals, non_ri_cols, non_ri_vals = _split_ri_cols(action, row_data, changed_fields, ri_cols)
@@ -463,6 +466,7 @@ def _generate_where_clause(schema, table, cols, table_2=None, schema_2=None):
 def make_conn(server, port, username, password, dbname):
     """
     Initializes a connection a Splitgraph Postgres engine.
+
     :return: Psycopg connection object
     """
     return psycopg2.connect(host=server, port=port, user=username, password=password, dbname=dbname)

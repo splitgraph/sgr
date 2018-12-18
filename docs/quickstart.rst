@@ -2,20 +2,20 @@
 Quickstart
 ==========
 
-A normal Splitgraph installation consists of two components: the Splitgraph driver and the Splitgraph client.
+A normal Splitgraph installation consists of two components: the Splitgraph engine and the Splitgraph client.
 
-The driver is a Docker container with a customized version of PostgreSQL running on it. This is where cached images
+The engine is a Docker container with a customized version of PostgreSQL running on it. This is where cached images
 are stored.
 
-The client is a Python commandline tool that interacts with the driver.
+The client is a Python commandline tool that interacts with the engine.
 
-Most functionality is implemented in the client and to any other application, the driver is just another PostgreSQL
+Most functionality is implemented in the client and to any other application, the engine is just another PostgreSQL
 database: it can interact with it by querying tables and writing to them as usual.
 
 Installation and quick demo
 ===========================
 
-First, pull and start the `driver
+First, pull and start the `engine
 <https://hub.docker.com/r/splitgraph/driver/>`_::
 
     docker run -d \
@@ -31,13 +31,13 @@ Then, install the Splitgraph `client
 **NB this doesn't work yet** -- see :ref:`introduction` / other docs for the vision/overview. In this case, clone
 the ``sgr`` client from Github and install it manually.
 
-Finally, initialize the driver and pull some data::
+Finally, initialize the engine and pull some data::
 
     sgr init
     sgr pull noaa/monthly
     sgr checkout noaa/monthly:201801
 
-The ``noaa/monthly`` schema on the driver now contains the January 2018 version of the NOAA monthly climate data, queryable
+The ``noaa/monthly`` schema on the engine now contains the January 2018 version of the NOAA monthly climate data, queryable
 by any tool that understands SQL. You can also run an ad hoc query yourself::
 
     sgr sql -s noaa_monthly "SELECT temperature FROM state_temperature WHERE state = 'AZ'"
@@ -55,7 +55,7 @@ Let's manipulate our copy of the climate data a bit::
 
     sgr sql -s noaa/monthly "DELETE FROM state_temperature WHERE state = 'AZ'"
 
-Alternatively, we can connect any other Postgres client to your driver, since it's just another database server.
+Alternatively, we can connect any other Postgres client to your engine, since it's just another database server.
 
 Now, inspect the changes we've made::
 
