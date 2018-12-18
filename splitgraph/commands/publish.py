@@ -31,7 +31,6 @@ def publish(repository, tag, remote_driver=None, remote_repository=None, readme=
     :param readme: Optional README for the repository.
     :param include_provenance: If False, doesn't include the dependencies of the image
     :param include_table_previews: Whether to include data previews for every table in the image.
-    :return:
     """
     conn_params, remote_driver, remote_repository = merge_push_params(repository, remote_driver,
                                                                       remote_repository)

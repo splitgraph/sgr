@@ -20,7 +20,7 @@ from splitgraph._data.images import get_all_image_info
 from splitgraph._data.registry import get_published_info
 from splitgraph.commandline import status_c, sql_c, diff_c, commit_c, log_c, show_c, tag_c, checkout_c, rm_c, \
     cleanup_c, init_c, mount_c, import_c, clone_c, pull_c, push_c, build_c, provenance_c, rebuild_c, publish_c
-from splitgraph.commandline.common import image_spec_parser
+from splitgraph.commandline._common import image_spec_parser
 from splitgraph.commandline.misc import prune_c, config_c
 from splitgraph.commandline.push_pull import upstream_c
 from splitgraph.commands import commit, checkout

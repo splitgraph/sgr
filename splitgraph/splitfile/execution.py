@@ -10,7 +10,7 @@ from random import getrandbits
 from splitgraph import to_repository, init, rm
 from splitgraph._data.provenance import store_import_provenance, store_sql_provenance, store_mount_provenance, \
     store_from_provenance
-from splitgraph.commandline.common import Color, truncate_line
+from splitgraph.commandline._common import Color, truncate_line
 from splitgraph.commands import checkout, clone, import_tables, commit, image_hash_to_splitfile
 from splitgraph.commands.push_pull import local_clone, pull
 from splitgraph.commands.repository import Repository, repository_exists, lookup_repo
@@ -306,7 +306,6 @@ def rerun_image_with_replacement(mountpoint, image_hash, source_replacement):
     :param mountpoint: Local repository where the image is located.
     :param image_hash: Hash of the image to rerun
     :param source_replacement: A map that specifies replacement images/tags for repositories that the image depends on
-    :return:
     """
     splitfile_commands = image_hash_to_splitfile(mountpoint, image_hash, err_on_end=False,
                                                  source_replacement=source_replacement)

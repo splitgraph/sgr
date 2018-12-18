@@ -36,18 +36,18 @@ splitgraph.commands.importing module
     :undoc-members:
     :show-inheritance:
 
-splitgraph.commands.misc module
+splitgraph.commands.info module
 -------------------------------
 
-.. automodule:: splitgraph.commands.misc
+.. automodule:: splitgraph.commands.info
     :members:
     :undoc-members:
     :show-inheritance:
 
-splitgraph.commands.mount\_handlers module
-------------------------------------------
+splitgraph.commands.misc module
+-------------------------------
 
-.. automodule:: splitgraph.commands.mount_handlers
+.. automodule:: splitgraph.commands.misc
     :members:
     :undoc-members:
     :show-inheritance:
@@ -80,6 +80,22 @@ splitgraph.commands.push\_pull module
 -------------------------------------
 
 .. automodule:: splitgraph.commands.push_pull
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+splitgraph.commands.repository module
+-------------------------------------
+
+.. automodule:: splitgraph.commands.repository
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+splitgraph.commands.tagging module
+----------------------------------
+
+.. automodule:: splitgraph.commands.tagging
     :members:
     :undoc-members:
     :show-inheritance:

@@ -5,7 +5,7 @@ import click
 import splitgraph as sg
 from splitgraph import SplitGraphException
 from splitgraph._data.images import _get_all_child_images, delete_images, _get_all_parent_images
-from splitgraph.commandline.common import image_spec_parser
+from splitgraph.commandline._common import image_spec_parser
 from splitgraph.commands.misc import init_driver
 from splitgraph.config.keys import KEYS, SENSITIVE_KEYS
 
@@ -24,29 +24,29 @@ def rm_c(image_spec, remote, yes):
 
     If the target of this command is an image, this deletes the image and all of its children.
 
-    In any case, this command will ask for confirmation of the deletion, unless -y is passed. If -r (--remote), is
-    passed, this will perform deletion on a remote Splitgraph driver (registered in the config) instead, assuming
-    the user has write access to the remote repository.
+    In any case, this command will ask for confirmation of the deletion, unless ``-y`` is passed. If ``-r``
+    (``--remote``) is passed, this will perform deletion on a remote Splitgraph driver (registered in the config)
+    instead, assuming the user has write access to the remote repository.
 
     This does not delete any physical objects that the deleted repository/images depend on:
-    use `sgr cleanup` to do that.
+    use ``sgr cleanup`` to do that.
 
     Examples:
 
-        sgr rm temporary_schema
+    ``sgr rm temporary_schema``
 
-    Deletes `temporary_schema` from the local driver.
+        Deletes ``temporary_schema`` from the local driver.
 
-        sgr rm --driver splitgraph.com username/repo
+    ``sgr rm --driver splitgraph.com username/repo``
 
-    Deletes `username/repo` from the Splitgraph registry.
+        Deletes ``username/repo`` from the Splitgraph registry.
 
-        sgr rm -y username/repo:old_branch
+    ``sgr rm -y username/repo:old_branch``
 
-    Deletes the image pointed to by `old_branch` as well as all of its children (images created by a commit based
-    on this image), as well as all of the tags that point to now deleted images, without asking for confirmation. Note
-    this will not delete images that import tables from the deleted images via Splitfiles or indeed the physical
-    objects containing the actual tables.
+        Deletes the image pointed to by ``old_branch`` as well as all of its children (images created by a commit based
+        on this image), as well as all of the tags that point to now deleted images, without asking for confirmation.
+        Note this will not delete images that import tables from the deleted images via Splitfiles or indeed the
+        physical objects containing the actual tables.
     """
 
     repository, image = image_spec
@@ -94,12 +94,12 @@ def prune_c(repository, remote, yes):
     This includes images not pointed to by any tags (or checked out) and those that aren't required by any of
     such images.
 
-    Will ask for confirmation of the deletion, unless -y is passed. If -r (--remote), is
+    Will ask for confirmation of the deletion, unless ``-y`` is passed. If ``-r`` (``--remote``) is
     passed, this will perform deletion on a remote Splitgraph driver (registered in the config) instead, assuming
     the user has write access to the remote repository.
 
     This does not delete any physical objects that the deleted repository/images depend on:
-    use `sgr cleanup` to do that.
+    use ``sgr cleanup`` to do that.
     """
     with sg.do_in_driver(remote):
         all_images = {i[0] for i in sg.get_all_image_info(repository)}
@@ -131,14 +131,14 @@ def init_c(repository):
 
     Examples:
 
-        sgr init
+    ``sgr init``
 
-    Initializes the current local Splitgraph driver by writing some bookkeeping information.
-    This is required for the rest of sgr to work.
+        Initializes the current local Splitgraph driver by writing some bookkeeping information.
+        This is required for the rest of sgr to work.
 
-        sgr init new/repo
+    ``sgr init new/repo``
 
-    Creates a single image with the hash 00000... in new/repo
+        Creates a single image with the hash ``00000...`` in ``new/repo``
     """
     if repository:
         sg.init(repository)
@@ -170,11 +170,11 @@ def config_c(no_shielding, config_format):
     This takes into account the local config file, the default values
     and all overrides specified via environment variables.
 
-    This command can be used to dump the current Splitgraph configuration into a file:
+    This command can be used to dump the current Splitgraph configuration into a file::
 
         sgr config --no-shielding --config-format > .sgconfig
 
-    ...or save a config file overriding an entry:
+    ...or save a config file overriding an entry::
 
         SG_REPO_LOOKUP=driver1,driver2 sgr config -sc > .sgconfig
     """

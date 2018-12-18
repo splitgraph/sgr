@@ -19,8 +19,8 @@ class ExternalObjectHandler:
     For an example of how this can be used, see splitgraph.hooks.s3: it's a handler allowing objects to be
     uploaded to S3/S3-compatible host using the Minio API. It's registered in the config as follows:
 
-    [external_handlers]
-    S3=splitgraph.hooks.s3.S3ExternalObjectHandler
+        [external_handlers]
+        S3=splitgraph.hooks.s3.S3ExternalObjectHandler
 
     The protocol and the URLs returned by this handler are stored in splitgraph_meta.external_objects
     and used to download the objects back into the Splitgraph cache when they are needed.
@@ -39,7 +39,7 @@ class ExternalObjectHandler:
         """Upload objects from the Splitgraph cache to an external location
 
         :param objects: List of object IDs to upload
-        :return A list of URLs (same length as `objects`) that the objects can be found at.
+        :return: A list of URLs (same length as `objects`) that the objects can be found at.
         """
 
     def download_objects(self, objects):

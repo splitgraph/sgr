@@ -51,6 +51,7 @@ def to_repository(schema):
 def repository_exists(repository):
     """
     Checks if a repository exists on the driver. Can be used with `override_driver_connection`
+
     :param repository: Repository object
     """
     with get_connection().cursor() as cur:
@@ -63,6 +64,7 @@ def repository_exists(repository):
 def register_repository(repository, initial_image, tables, table_object_ids):
     """
     Registers a new repository on the driver. Internal function, use `splitgraph.init` instead.
+
     :param repository: Repository object
     :param initial_image: Hash of the initial image
     :param tables: Table names in the initial image
@@ -84,6 +86,7 @@ def register_repository(repository, initial_image, tables, table_object_ids):
 def unregister_repository(repository, is_remote=False):
     """
     Deregisters the repository. Internal function, use splitgraph.rm to delete a repository.
+
     :param repository: Repository object
     :param is_remote: Specifies whether the driver is a remote that doesn't have the "upstream" table.
     """
@@ -101,6 +104,7 @@ def unregister_repository(repository, is_remote=False):
 def get_current_repositories():
     """
     Lists all repositories currently in the driver.
+
     :return: List of (Repository object, current HEAD image)
     """
     ensure_metadata_schema()
@@ -112,6 +116,7 @@ def get_current_repositories():
 def get_upstream(repository):
     """
     Gets the current upstream (connection string and repository) that a local repository tracks
+
     :param repository: Local repository
     :return: Tuple of (remote driver, remote Repository object)
     """
@@ -129,6 +134,7 @@ def get_upstream(repository):
 def set_upstream(repository, remote_name, remote_repository):
     """
     Sets the upstream remote + repository that this repository tracks.
+
     :param repository: Local repository
     :param remote_name: Name of the remote as specified in the Splitgraph config.
     :param remote_repository: Remote Repository object
@@ -148,6 +154,7 @@ def set_upstream(repository, remote_name, remote_repository):
 def delete_upstream(repository):
     """
     Deletes the upstream remote + repository for a local repository.
+
     :param repository: Local repository
     """
     with get_connection().cursor() as cur:
@@ -159,6 +166,7 @@ def delete_upstream(repository):
 def lookup_repo(repo_name, include_local=False):
     """
     Queries the SG drivers on the lookup path to locate one hosting the given driver.
+
     :param repo_name: Repository name
     :param include_local: If True, also queries the local driver
 

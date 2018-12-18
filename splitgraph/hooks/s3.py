@@ -48,7 +48,12 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
     """
 
     def upload_objects(self, objects_to_push):
-        """"""
+        """
+        Upload objects to Minio
+
+        :param objects_to_push: List of object IDs to upload
+        :return: List of URLs the objects were stored at.
+        """
         access_key = self.params.get('access_key', S3_ACCESS_KEY)
         endpoint = '%s:%s' % (self.params.get('host', S3_HOST), self.params.get('port', S3_PORT))
         bucket = self.params.get('bucket', access_key)
@@ -84,6 +89,7 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
     def download_objects(self, objects):
         """
         Download objects from Minio.
+
         :param objects: List of (object ID, object URL of form <endpoint>/<bucket>/<key>)
         """
         # Maybe here we have to set these to None (anonymous) if the S3 host name doesn't match our own one.
@@ -123,6 +129,7 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
 def dump_object(object_id, fobj):
     """
     Serializes a Splitgraph object into a file or a file-like object.
+
     :param object_id: Object ID to dump
     :param fobj: File-like object to write the object into
     """
@@ -137,6 +144,7 @@ def dump_object(object_id, fobj):
 def load_object(object_id, fobj):
     """
     Loads a Splitgraph object from a file / file-like object.
+
     :param object_id: Object ID to load the object into
     :param fobj: File-like object
     """

@@ -49,6 +49,7 @@ def do_in_driver(remote=None):
 def get_connection():
     """
     Get a connection to the current Splitgraph driver.
+
     :return: Psycopg connection object
     """
     global _PSYCOPG_CONN
@@ -91,6 +92,7 @@ def serialize_connection_string(server, port, username, password, dbname):
 def make_conn(server, port, username, password, dbname):
     """
     Initializes a connection to the Splitgraph driver.
+
     :return: Psycopg connection object
     """
     return psycopg2.connect(host=server, port=port, user=username, password=password, dbname=dbname)
@@ -99,6 +101,7 @@ def make_conn(server, port, username, password, dbname):
 def make_driver_connection(remote_name):
     """
     Creates a connection to a remote driver.
+
     :param remote_name: Name of the remote driver as specified in the config file
     :return: Psycopg connection object
     """
@@ -108,6 +111,7 @@ def make_driver_connection(remote_name):
 def get_remote_connection_params(remote_name):
     """
     Gets connection parameters for a Splitgraph remote.
+
     :param remote_name: Name of the remote. Must be specified in the config file.
     :return: A tuple of (hostname, port, username, password, database)
     """

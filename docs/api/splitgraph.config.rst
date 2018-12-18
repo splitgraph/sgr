@@ -52,14 +52,6 @@ splitgraph.config.keys module
     :undoc-members:
     :show-inheritance:
 
-splitgraph.config.repo\_lookups module
---------------------------------------
-
-.. automodule:: splitgraph.config.repo_lookups
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
 splitgraph.config.system\_config module
 ---------------------------------------
 

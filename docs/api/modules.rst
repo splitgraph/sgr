@@ -1,5 +1,5 @@
-Splitgraph API reference
-========================
+splitgraph
+==========
 
 .. toctree::
    :maxdepth: 4

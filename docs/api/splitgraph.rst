@@ -8,41 +8,24 @@ Subpackages
 
     splitgraph.commands
     splitgraph.config
-    splitgraph.meta_handler
-    splitgraph.objects
+    splitgraph.hooks
     splitgraph.splitfile
 
 Submodules
 ----------
 
-splitgraph.commandline module
------------------------------
+splitgraph.connection module
+----------------------------
 
-.. automodule:: splitgraph.commandline
+.. automodule:: splitgraph.connection
     :members:
     :undoc-members:
     :show-inheritance:
 
-splitgraph.constants module
----------------------------
+splitgraph.exceptions module
+----------------------------
 
-.. automodule:: splitgraph.constants
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-splitgraph.drawing module
--------------------------
-
-.. automodule:: splitgraph.drawing
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-splitgraph.pg\_audit module
----------------------------
-
-.. automodule:: splitgraph.pg_audit
+.. automodule:: splitgraph.exceptions
     :members:
     :undoc-members:
     :show-inheritance:
@@ -51,14 +34,6 @@ splitgraph.pg\_utils module
 ---------------------------
 
 .. automodule:: splitgraph.pg_utils
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-splitgraph.registry\_meta\_handler module
------------------------------------------
-
-.. automodule:: splitgraph.registry_meta_handler
     :members:
     :undoc-members:
     :show-inheritance:

@@ -1,32 +1,32 @@
 .. _splitfile:
 
-================================
+===================================
 Using Splitfiles to define datasets
-================================
+===================================
 
 Splitfiles are similar to Dockerfiles: each command produces a new commit with a deterministic hash that depends
 on the current hash and the particulars of a command that's being executed.
 
 The Splitfile is parsed using parsimonious, a Python parser library. The exact grammar is in
-`splitgraph.splitfile.SGFILE_GRAMMAR` and there is some quality-of-life preprocessing that gets done to the file before
+``splitgraph.splitfile.SGFILE_GRAMMAR`` and there is some quality-of-life preprocessing that gets done to the file before
 it's interpreted:
 
-  * Newlines can be escaped to make a command multiline (`"\\n"` gets replaced with `""`)
-  * Parameters are supported (`${PARAM}` is replaced with the value of the parameter that's either passed
-    to the `execute_commands` as a dict or to the commandline `sgr file` as a series of arguments
-    (`-a key1 val1 -a key2 val2...`)).
+  * Newlines can be escaped to make a command multiline (``"\\n"`` gets replaced with ``""``)
+  * Parameters are supported (``${PARAM}`` is replaced with the value of the parameter that's either passed
+    to the ``execute_commands`` as a dict or to the commandline ``sgr build`` as a series of arguments
+    (``-a key1 val1 -a key2 val2...``)).
 
 The following commands are supported by the interpreter:
 
 Basing an image on another image
 --------------------------------
 
-`FROM repository[:tag] [AS alias]`
+``FROM repository[:tag] [AS alias]``
     Bases the output of the splitfile on a certain revision of the remote/local repository.
-    If `AS alias` is specified, the repository is cloned into `alias` and the current contents of `alias` destroyed.
+    If ``AS alias`` is specified, the repository is cloned into ``alias`` and the current contents of ``alias`` destroyed.
     Otherwise, the current output repository (passed to the executor) is used.
 
-`FROM` can also be used to perform Docker-like multistage builds.
+``FROM`` can also be used to perform Docker-like multistage builds.
 
 For example::
 
@@ -39,19 +39,19 @@ For example::
 Importing tables from another image
 -----------------------------------
 
-`FROM (repository[:tag])/(MOUNT handler conn_string handler_options) IMPORT table1/{query1} [AS table1_alias], [table2/{query2}...]`
-    Uses the `sgr import` command to import one or more tables from either a local repository, a remote one, or an
+``FROM (repository[:tag])/(MOUNT handler conn_string handler_options) IMPORT table1/{query1} [AS table1_alias], [table2/{query2}...]``
+    Uses the ``sgr import`` command to import one or more tables from either a local repository, a remote one, or an
     FDW-mounted database.
 
 Optionally, the table name can be replaced with a SELECT query in curly braces that will get executed against the
 source repository in order to create a table. This will be stored as a snapshot. For example:
 
-`FROM internal_data:latest IMPORT {SELECT name, age FROM staff WHERE is_restricted = FALSE} AS visible_staff`
-    Will create a new table that contains non-restricted staff names and ages in `internal_data.staff` without including
+``FROM internal_data:latest IMPORT {SELECT name, age FROM staff WHERE is_restricted = FALSE} AS visible_staff``
+    Will create a new table that contains non-restricted staff names and ages in ``internal_data.staff`` without including
     any other entries in the table history.
 
     In the case of imports from FDW, the commit hash produced by this command is random. Otherwise, the commit hash will be
-    a combination of the current `OUTPUT` hash, the hash of the source repository and the hashes of the names
+    a combination of the current ``OUTPUT`` hash, the hash of the source repository and the hashes of the names
     (or source SQL queries) and aliases of all imported tables.
 
 This is crude, but means that the layer is invalidated if there's a change on the remote or we import a different
@@ -66,22 +66,22 @@ Repository lookups
 Currently, a repository name is converted to a connection string as follows:
 
   * See if it exists locally (in the case of the splitfile executor). If it does, try to pull it (to update) and
-    use it for `FROM`/`IMPORT` commands.
-  * If not, see if it's specified in the `SG_REPO_LOOKUP_OVERRIDE` parameter which has the format
-    `repo_1:user:pwd@host:port/db,repo_2:user:pwd@host:port/db...`. Return the matching connection string directly
+    use it for ``FROM``/``IMPORT`` commands.
+  * If not, see if it's specified in the ``SG_REPO_LOOKUP_OVERRIDE`` parameter which has the format
+    ``repo_1:user:pwd@host:port/db,repo_2:user:pwd@host:port/db...``. Return the matching connection string directly
     without testing to see that the repository exists there.
-  * If not, scan the `SG_REPO_LOOKUP` parameter which has the format `user:pwd@host:port/db,user:pwd@host:port/db...`,
+  * If not, scan the ``SG_REPO_LOOKUP`` parameter which has the format ``user:pwd@host:port/db,user:pwd@host:port/db...``,
     stopping at the first remote that has it.
 
 Running SQL statements
 ----------------------
 
-`SQL command`
+``SQL command``
     Runs a (potentially arbitrary) SQL statement. Doesn't enforce any constraints on the SQL yet,
-    but the spirit of this command is performing actions on tables in the current `OUTPUT` repository (the command is
-    executed with the `OUTPUT` schema being the default one) and not changing/reading data from any other schemas.
+    but the spirit of this command is performing actions on tables in the current ``OUTPUT`` repository (the command is
+    executed with the ``OUTPUT`` schema being the default one) and not changing/reading data from any other schemas.
 
-The image hash produced by this command is a combination of the current `OUTPUT` hash and the hash of the
+The image hash produced by this command is a combination of the current ``OUTPUT`` hash and the hash of the
 "canonicalized" SQL statement (all lowercase with excess whitespace removed). This might cause issues with us not
 invalidating layers when an identifier inside a command changed case: then the results would change but the image
 returned by the command would still have the same hash.
@@ -95,12 +95,12 @@ Custom command plugins
 It is possible to define custom Splitfile commands that follow the normal Splitfile execution semantics (cache invalidation
 and idempotency), allowing you to write your own transformation or data import stages.
 
-The basic idea is that a custom command extends `PluginCommand` and implements at least one method, `execute()` that
+The basic idea is that a custom command extends ``PluginCommand`` and implements at least one method, ``execute()`` that
 runs the command and returns the command context hash which is combined with the hash of the previous image to
-create the hash of the new image. Additionally, the custom command can also implement `calc_hash()` if it's able to
+create the hash of the new image. Additionally, the custom command can also implement ``calc_hash()`` if it's able to
 calculate the command context hash without actually running the command.
 
-For example, for a simple data importer that loads a file from HTTP, `calc_hash()` could return the hash of the file's
-last modified timestamp and `execute()` would perform the actual computation-heavy data import.
+For example, for a simple data importer that loads a file from HTTP, ``calc_hash()`` could return the hash of the file's
+last modified timestamp and ``execute()`` would perform the actual computation-heavy data import.
 
-See :mod:`splitgraph.splitfile.plugins` for the implementation details.
+See :mod:`splitgraph.hooks.splitfile_commands` for the implementation details.

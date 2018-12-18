@@ -1,7 +1,7 @@
 """
 Splitgraph command line client
 
-Hooks into the API to allow management of Splitgraph repositories and images using `sgr`.
+Hooks into the API to allow management of Splitgraph repositories and images using ``sgr``.
 """
 
 import click

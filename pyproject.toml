@@ -22,6 +22,9 @@ pytest-cov = "^2.6"
 pytest-env = "^0.6"
 coveralls = "^1.5"
 pyinstaller = "^3.4"
+sphinx = "^1.8"
+sphinx-click = "^1.4"
+sphinx_rtd_theme = "^0.4.2"
 
 [tool.poetry.scripts]
 sgr = "splitgraph.commandline:cli"

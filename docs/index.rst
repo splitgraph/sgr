@@ -7,9 +7,9 @@ Welcome to Splitgraph's documentation!
 
    introduction
    quickstart
-   commands
-       splitfile
+   splitfile
    internals
+   commands/commands
    API reference <api/modules>
 
 
