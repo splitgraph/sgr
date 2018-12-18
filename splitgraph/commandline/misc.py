@@ -1,3 +1,7 @@
+"""
+Miscellaneous image management sgr commands.
+"""
+
 import logging
 
 import click
@@ -5,7 +9,6 @@ import click
 import splitgraph as sg
 from splitgraph import SplitGraphException
 from splitgraph._data.images import _get_all_child_images, delete_images, _get_all_parent_images
-
 from splitgraph.commandline._common import image_spec_parser
 from splitgraph.commands.misc import init_engine
 from splitgraph.config.keys import KEYS, SENSITIVE_KEYS

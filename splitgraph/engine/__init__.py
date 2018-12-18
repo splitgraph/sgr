@@ -20,7 +20,7 @@ class Engine:
 
     def run_sql(self, statement, arguments=(), return_shape=ResultShape.MANY_MANY):
         """Run an arbitrary SQL statement with some arguments, return an iterator of results"""
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def commit(self):
         """Commit the engine's backing connection"""
@@ -115,7 +115,7 @@ class Engine:
 
     def get_primary_keys(self, schema, table):
         """Get a list of (column_name, column_type) denoting the primary keys of a given table."""
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def dump_table_creation(self, schema, tables, created_schema=None):
         """
@@ -211,7 +211,7 @@ class Engine:
         """
         :return: A list of (table_schema, table_name) that the engine currently tracks for changes
         """
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def track_tables(self, tables):
         """
@@ -219,7 +219,7 @@ class Engine:
 
         :param tables: List of (table_schema, table_name) to start tracking
         """
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def untrack_tables(self, tables):
         """
@@ -227,19 +227,19 @@ class Engine:
 
         :param tables: List of (table_schema, table_name) to start tracking
         """
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def has_pending_changes(self, schema):
         """
         Return True if the tracked schema has pending changes and False if it doesn't.
         """
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def discard_pending_changes(self, schema, table=None):
         """
         Discard recorded pending changes for a tracked table or the whole schema
         """
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def get_pending_changes(self, schema, table, aggregate=False):
         """
@@ -251,7 +251,7 @@ class Engine:
         :return: If aggregate is True: tuple with numbers of `(added_rows, removed_rows, updated_rows)`.
             If aggregate is False: List of (primary_key, change_type, change_data)
         """
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def get_changed_tables(self, schema):
         """
@@ -260,7 +260,7 @@ class Engine:
         :param schema: Schema to check for changes
         :return: List of tables with changed contents
         """
-        raise NotImplemented()
+        raise NotImplementedError()
 
     # TODO split this class up (handling storage, change capture and object application/creation)
 
@@ -274,10 +274,10 @@ class Engine:
     # Object creation/application
 
     def store_diff_object(self, changeset, schema, table, change_key):
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def apply_diff_object(self, source_schema, source_table, target_schema, target_table):
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def dump_object(self, schema, table, stream):
         """
@@ -287,7 +287,7 @@ class Engine:
         :param table: Table to dump
         :param stream: A file-like stream to dump the object into
         """
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def load_object(self, schema, table, stream):
         """
@@ -297,7 +297,7 @@ class Engine:
         :param table: Table to create. Must not exist.
         :param stream: A file-like stream to load the object from
         """
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def upload_objects(self, objects, remote_engine):
         """
@@ -306,7 +306,7 @@ class Engine:
         :param objects: List of object IDs to upload
         :param remote_engine: A remote Engine object to upload the objects to.
         """
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def download_objects(self, objects, remote_engine):
         """
@@ -315,7 +315,7 @@ class Engine:
         :param objects: List of object IDs to download
         :param remote_engine: A remote Engine object to download the objects from.
         """
-        raise NotImplemented()
+        raise NotImplementedError()
 
 
 # Name of the current global engine, 'LOCAL' for the local.

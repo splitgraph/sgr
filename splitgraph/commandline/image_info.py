@@ -1,3 +1,7 @@
+"""
+sgr commands related to getting information out of / about images
+"""
+
 from collections import Counter
 from pprint import pprint
 
@@ -5,8 +9,8 @@ import click
 from psycopg2 import ProgrammingError
 
 import splitgraph as sg
-from splitgraph.commandline._common import image_spec_parser, pluralise
 from splitgraph import get_engine
+from splitgraph.commandline._common import image_spec_parser, pluralise
 
 
 @click.command(name='log')

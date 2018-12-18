@@ -1,3 +1,7 @@
+"""
+sgr commands related to sharing and downloading images.
+"""
+
 import json
 import sys
 

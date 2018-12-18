@@ -64,6 +64,9 @@ class PostgresEngine(Engine):
             if return_shape == ResultShape.MANY_MANY:
                 return cur.fetchall()
 
+        # ResultShape.NONE or None
+        return None
+
     def get_primary_keys(self, schema, table):
         """Inspects the Postgres information_schema to get the primary keys for a given table."""
         return self.run_sql(SQL("""SELECT a.attname, format_type(a.atttypid, a.atttypmod)

@@ -1,3 +1,7 @@
+"""
+sgr commands related to building and rebuilding Splitfiles.
+"""
+
 import click
 
 import splitgraph as sg
@@ -31,7 +35,8 @@ def build_c(splitfile, args, output_repository):
 
     ``sgr build my_other.splitfile -o mynew/otherrepo --args PARAM1 VAL1 --args PARAM2 VAL2``
 
-        Executes ``my_other.splitfile`` with parameters ``PARAM1`` and ``PARAM2`` set to ``VAL1`` and  ``VAL2``, respectively.
+        Executes ``my_other.splitfile`` with parameters ``PARAM1`` and ``PARAM2`` set to
+        ``VAL1`` and  ``VAL2``, respectively.
     """
     args = {k: v for k, v in args}
     print("Executing Splitfile %s with arguments %r" % (splitfile.name, args))

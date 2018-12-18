@@ -1,3 +1,7 @@
+"""
+sgr commands related to creating and checking out images
+"""
+
 import sys
 from collections import defaultdict
 
@@ -79,8 +83,8 @@ def tag_c(image_spec, tag, force, remove):
 
     ``sgr tag noaa/climate:abcdef1234567890 my_new_tag``
 
-        Tag the image ``noaa/climate:abcdef1234567890...`` with ``my_new_tag``. If the tag already exists, this will raise
-        an error, unless ``-f`` is passed, which will overwrite the tag.
+        Tag the image ``noaa/climate:abcdef1234567890...`` with ``my_new_tag``. If the tag already exists, this will
+        raise an error, unless ``-f`` is passed, which will overwrite the tag.
 
     ``sgr tag noaa/climate my_new_tag``
 
@@ -142,9 +146,11 @@ def import_c(image_spec, table_or_query, target_repository, target_table):
 
     ``sgr import noaa/climate:my_tag climate_data my/repository``
 
-        Create a new image in ``my/repository`` with the ``climate_data`` table included. This links the new image to the
-        physical object, meaning that the history of the ``climate_data`` table is preserved. If no tag is specified, the
-        'latest' (not the HEAD image or current state of the checked out image) image is used.
+        Create a new image in ``my/repository`` with the ``climate_data`` table included. This links the new image to
+        the physical object, meaning that the history of the ``climate_data`` table is preserved.
+
+        If no tag is specified, the 'latest' (not the HEAD image or current state of the checked out image)
+        image is used.
 
     ``sgr import noaa/climate:my_tag "SELECT * FROM climate_data" my/repository climate_data``
 
@@ -170,7 +176,7 @@ def import_c(image_spec, table_or_query, target_repository, target_table):
     else:
         # If the source schema isn't actually a Splitgraph repo, we'll be copying the table verbatim.
         foreign_table = True
-        is_query = table_or_query not in (sg.get_engine().get_all_tables(repository.to_schema()))
+        is_query = table_or_query not in sg.get_engine().get_all_tables(repository.to_schema())
         image = None
 
     if is_query and not target_table:

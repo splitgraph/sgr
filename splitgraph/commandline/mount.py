@@ -1,3 +1,7 @@
+"""
+sgr commands related to mounting databases via Postgres FDW
+"""
+
 import json
 import re
 
@@ -27,6 +31,7 @@ def mount_c():
 def _generate_handler_help(docstring):
     """
     Extract the long description and the parameters from a docstring
+
     :param docstring: Docstring
     :returns
     """
@@ -84,7 +89,7 @@ def _make_mount_handler_command(handler_name):
                                     username=match.group(1), password=match.group(2)))
         sg.mount(schema, mount_handler=handler_name, handler_kwargs=handler_options)
 
-    cmd = click.Command(handler_name, params=params, callback=_callback)
+    cmd = click.Command(handler_name, params=params, callback=_callback, help=help_text)
     return cmd
 
 

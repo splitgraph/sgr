@@ -44,11 +44,11 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
         objects.
     """
 
-    def upload_objects(self, objects_to_push):
+    def upload_objects(self, objects):
         """
         Upload objects to Minio
 
-        :param objects_to_push: List of object IDs to upload
+        :param objects: List of object IDs to upload
         :return: List of URLs the objects were stored at.
         """
         access_key = self.params.get('access_key', S3_ACCESS_KEY)
@@ -82,7 +82,7 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
                 return '%s/%s/%s' % (endpoint, bucket, object_id)
 
             with ThreadPoolExecutor(max_workers=worker_threads) as tpe:
-                urls = tpe.map(_do_upload, objects_to_push)
+                urls = tpe.map(_do_upload, objects)
 
         return urls
 

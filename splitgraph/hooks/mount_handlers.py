@@ -105,7 +105,8 @@ def mount_mongo(mountpoint, server, port, username, password, **table_spec):
     :param port: Port the Mongo server is running on.
     :param username: A read-only user that the database will be accessed as.
     :param password: Password for the read-only user.
-    :param table_spec: A dictionary of form `{"table_name": {"db": <dbname>, "coll": <collection>, "schema": {"col1": "type1"...}}}`.
+    :param table_spec: A dictionary of form `{"table_name": {"db": <dbname>, "coll": <collection>,
+        "schema": {"col1": "type1"...}}}`.
     """
     engine = get_engine()
     server_id = mountpoint + '_server'
