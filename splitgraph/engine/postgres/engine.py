@@ -32,15 +32,15 @@ class PostgresEngine(Engine):
         self._conn = None
 
     def commit(self):
-        if self._conn:
+        if self._conn and not self._conn.closed:
             self._conn.commit()
 
     def close(self):
-        if self._conn:
+        if self._conn and not self._conn.closed:
             self._conn.close()
 
     def rollback(self):
-        if self._conn:
+        if self._conn and not self._conn.closed:
             self._conn.rollback()
 
     @property
