@@ -4,7 +4,7 @@ from collections import defaultdict
 import click
 
 import splitgraph as sg
-from splitgraph.commandline.common import image_spec_parser
+from splitgraph.commandline._common import image_spec_parser
 
 
 @click.command(name='checkout')

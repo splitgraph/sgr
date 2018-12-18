@@ -13,10 +13,10 @@ services:
 
 addons:
   hosts:
-    # We need both the host and the local driver to be able to refer to the remote driver
-    # using the same connection string, hence we map remote_driver on the host to localhost
+    # We need both the host and the local engine to be able to refer to the remote engine
+    # using the same connection string, hence we map remote_engine on the host to localhost
     # (Docker networking takes care of wiring it up in the case of the container)
-    - remote_driver
+    - remote_engine
 
 env:
   COMPOSE_VERSION: 1.21.2
@@ -29,10 +29,10 @@ before_install:
 
 before_script:
   # Stop the PG/MySQL that ship with Travis and run our own integration test
-  # SG driver/remote architecture instead.
+  # SG engine/remote architecture instead.
   - sudo /etc/init.d/postgresql stop
   - sudo /etc/init.d/mysql stop
-  - sudo docker-compose --file test/architecture/docker-compose.yml up -d pgorigin mongoorigin mysqlorigin local_driver remote_driver object_storage
+  - sudo docker-compose --file test/architecture/docker-compose.yml up -d pgorigin mongoorigin mysqlorigin local_engine remote_engine object_storage
   - ./wait-for-test-architecture.sh
 
 after_success:
