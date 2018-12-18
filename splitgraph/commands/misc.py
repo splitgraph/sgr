@@ -147,9 +147,9 @@ def rm(repository, unregister=True):
 
 # Method exercised in test_commandline.test_init_new_db but in
 # an external process
-def init_driver():  # pragma: no cover
+def init_engine():  # pragma: no cover
     """
-    Initializes the driver by:
+    Initializes the engine by:
 
         * performing any required engine-custom initialization
         * creating the metadata tables

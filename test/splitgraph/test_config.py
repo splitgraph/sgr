@@ -497,20 +497,20 @@ def test_hoist_section():
 def test_config_file_accumulation(fs):
     _write_config_file(fs, [
         '[remote: blah]',
-        'SG_DRIVER_HOST=pass-the-test',
+        'SG_ENGINE_HOST=pass-the-test',
         '[remote: foo]',
-        'SG_DRIVER_HOST=foo-pass'
+        'SG_ENGINE_HOST=foo-pass'
     ])
 
     config = create_config_dict()
 
-    assert config['remotes']['blah']['SG_DRIVER_HOST'] == 'pass-the-test'
-    assert config['remotes']['foo']['SG_DRIVER_HOST'] == 'foo-pass'
+    assert config['remotes']['blah']['SG_ENGINE_HOST'] == 'pass-the-test'
+    assert config['remotes']['foo']['SG_ENGINE_HOST'] == 'foo-pass'
 
 
 # Hardcoded default key to check that it's passed through
 def test_default_key(fs):
-    assert CONFIG['SG_DRIVER_DB_NAME'] == 'splitgraph'
+    assert CONFIG['SG_ENGINE_DB_NAME'] == 'splitgraph'
 
 
 def test_key_set_in_arg_flag():
@@ -584,6 +584,6 @@ def test_env_var_supercedes_config_file(fs):
 
 
 def test_lookup_override_parser():
-    assert _parse_paths_overrides(lookup_path="remote_driver",
+    assert _parse_paths_overrides(lookup_path="remote_engine",
                                   override_path="override_repo_1:local") \
-           == (['remote_driver'], {'override_repo_1': 'local'})
+           == (['remote_engine'], {'override_repo_1': 'local'})

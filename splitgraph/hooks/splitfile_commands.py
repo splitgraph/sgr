@@ -45,7 +45,7 @@ class PluginCommand():
         Execute the custom command against the target schema, optionally returning the new image hash. The contract
         for the command is as follows (though it is not currently enforced by the runtime):
 
-          * Has to use get_engine().run_sql (or run_sql_batch) to interact with the driver.
+          * Has to use get_engine().run_sql (or run_sql_batch) to interact with the engine.
           * Can only write to the schema with the checked-out repository (run_sql runs non-schema-qualified
             statements against the correct schema).
           * Can inspect splitgraph_meta (e.g. to find the current HEAD) for the repository.

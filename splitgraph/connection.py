@@ -1,5 +1,5 @@
 """
-Routines for managing the connections to local and remote Splitgraph drivers.
+Routines for managing the connections to local and remote Splitgraph engines.
 """
 
 import re
@@ -17,6 +17,6 @@ def parse_connection_string(conn_string):
 
 def serialize_connection_string(server, port, username, password, dbname):
     """
-    Serializes a tuple into a Splitgraph driver connection string.
+    Serializes a tuple into a Splitgraph engine connection string.
     """
     return '%s:%s@%s:%s/%s' % (username, password, server, port, dbname)

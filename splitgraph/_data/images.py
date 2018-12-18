@@ -125,7 +125,7 @@ def add_new_image(repository, parent_id, image, created=None, comment=None, prov
 
 def delete_images(repository, images):
     """
-    Deletes a set of Splitgraph images from the current driver. Note this doesn't check whether
+    Deletes a set of Splitgraph images from the current engine. Note this doesn't check whether
     this will orphan some other images in the repository.
 
     :param repository: Repository the images belong to

@@ -1,5 +1,5 @@
 """
-Internal functions for downloading/uploading Splitgraph objects to remote drivers/external locations.
+Internal functions for downloading/uploading Splitgraph objects to remote engines/external locations.
 """
 
 import logging
@@ -69,7 +69,7 @@ def upload_objects(remote_engine_name, objects_to_push, handler='DB', handler_pa
     if handler_params is None:
         handler_params = {}
 
-    # Get objects that exist on the remote driver
+    # Get objects that exist on the remote engine
     with switch_engine(remote_engine_name):
         existing_objects = get_existing_objects()
 

@@ -131,13 +131,13 @@ def _register_and_checkout_new_table(do_checkout, object_id, target_hash, target
         get_engine().copy_table(SPLITGRAPH_META_SCHEMA, object_id, target_repository.to_schema(), target_table)
 
 
-def import_table_from_remote(remote_conn_string, remote_repository, remote_tables, remote_image_hash, target_repository,
+def import_table_from_remote(remote_engine, remote_repository, remote_tables, remote_image_hash, target_repository,
                              target_tables, target_hash=None):
     """
     Shorthand for importing one or more tables from a yet-uncloned remote. Here, the remote image hash is required,
     as otherwise we aren't necessarily able to determine what the remote head is.
 
-    :param remote_conn_string: Connection string to the remote driver
+    :param remote_engine: Remote engine name
     :param remote_repository: Remote repository
     :param remote_tables: List of remote tables to import
     :param remote_image_hash: Image hash to import the tables from
@@ -153,7 +153,7 @@ def import_table_from_remote(remote_conn_string, remote_repository, remote_table
     tmp_mountpoint = Repository(namespace=remote_repository.namespace,
                                 repository=remote_repository.repository + '_clone_tmp')
 
-    clone(remote_repository, remote_driver=remote_conn_string, local_repository=tmp_mountpoint, download_all=False)
+    clone(remote_repository, remote_engine=remote_engine, local_repository=tmp_mountpoint, download_all=False)
     import_tables(tmp_mountpoint, remote_tables, target_repository, target_tables, image_hash=remote_image_hash,
                   target_hash=target_hash)
 

@@ -16,7 +16,7 @@ def _create_metadata_schema():
     This means we can't mount anything under the schema splitgraph_meta -- much like we can't have a folder
     ".git" under Git version control...
 
-    This all should probably be moved into some sort of a routine that runs when the whole driver is set up
+    This all should probably be moved into some sort of a routine that runs when the whole engine is set up
     for the first time.
     """
     engine = get_engine()
@@ -94,7 +94,7 @@ def _create_metadata_schema():
                                                         Identifier("object_locations")),
                    return_shape=None)
 
-    # Miscellaneous key-value information for this driver (e.g. whether uploading objects is permitted etc).
+    # Miscellaneous key-value information for this engine (e.g. whether uploading objects is permitted etc).
     engine.run_sql(SQL("""CREATE TABLE {}.{} (
                     key   VARCHAR NOT NULL,
                     value VARCHAR NOT NULL,

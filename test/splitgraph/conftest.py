@@ -54,8 +54,8 @@ TEST_MOUNTPOINTS = [PG_MNT, PG_MNT_PULL, OUTPUT, MG_MNT,
 
 def healthcheck():
     # A pre-flight check before we run the tests to make sure the test architecture has been brought up:
-    # the local_driver and the two origins (tested by mounting). There's still an implicit race condition
-    # here since we don't touch the remote_driver but we don't run any tests against it until later on,
+    # the local_engine and the two origins (tested by mounting). There's still an implicit race condition
+    # here since we don't touch the remote_engine but we don't run any tests against it until later on,
     # so it should have enough time to start up.
     for mountpoint in [PG_MNT, MG_MNT, MYSQL_MNT]:
         rm(mountpoint)
@@ -105,12 +105,12 @@ def local_engine_with_pg_and_mg():
         cleanup_objects()
 
 
-REMOTE_ENGINE = 'remote_driver'  # On the host, mapped into localhost; on the local driver works as intended.
+REMOTE_ENGINE = 'remote_engine'  # On the host, mapped into localhost; on the local engine works as intended.
 
 
 @pytest.fixture
 def remote_engine():
-    # For these, we'll use both the cachedb (original postgres for integration tests) as well as the remote_driver.
+    # For these, we'll use both the cachedb (original postgres for integration tests) as well as the remote_engine.
     # Mount and snapshot the two origin DBs (mongo/pg) with the test data.
     with switch_engine(REMOTE_ENGINE):
         ensure_metadata_schema()
@@ -141,7 +141,7 @@ def remote_engine():
 
 @pytest.fixture
 def local_engine_empty():
-    # A connection to the local driver that has nothing mounted on it.
+    # A connection to the local engine that has nothing mounted on it.
     for mountpoint, _ in get_current_repositories():
         rm(mountpoint)
     cleanup_objects()

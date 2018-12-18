@@ -137,8 +137,8 @@ def test_import_updating_splitfile_with_uploading(local_engine_empty, remote_eng
 
     assert len(get_existing_objects()) == 4  # Two original tables + two updates
 
-    # Push with upload. Have to specify the remote driver since we are pushing a new repository.
-    push(OUTPUT, remote_driver='remote_driver', handler='S3', handler_options={})
+    # Push with upload. Have to specify the remote engine since we are pushing a new repository.
+    push(OUTPUT, remote_engine='remote_engine', handler='S3', handler_options={})
     # Unmount everything locally and cleanup
     rm(OUTPUT)
     cleanup_objects()
@@ -159,8 +159,8 @@ def test_import_updating_splitfile_with_uploading(local_engine_empty, remote_eng
 
 def test_splitfile_end_to_end_with_uploading(local_engine_empty, remote_engine):
     # An end-to-end test:
-    #   * Create a derived dataset from some tables imported from the remote driver
-    #   * Push it back to the remote driver, uploading all objects to S3 (instead of the remote driver itself)
+    #   * Create a derived dataset from some tables imported from the remote engine
+    #   * Push it back to the remote engine, uploading all objects to S3 (instead of the remote engine itself)
     #   * Delete everything from pgcache
     #   * Run another splitfile that depends on the just-pushed dataset (and does lazy checkouts to
     #     get the required tables).
@@ -170,7 +170,7 @@ def test_splitfile_end_to_end_with_uploading(local_engine_empty, remote_engine):
     execute_commands(load_splitfile('import_remote_multiple.splitfile'), params={'TAG': 'v1'}, output=OUTPUT)
 
     # Push with upload
-    push(OUTPUT, remote_driver='remote_driver', handler='S3', handler_options={})
+    push(OUTPUT, remote_engine='remote_engine', handler='S3', handler_options={})
     # Unmount everything locally and cleanup
     for mountpoint, _ in get_current_repositories():
         rm(mountpoint)

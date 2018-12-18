@@ -25,7 +25,7 @@ def publish(repository, tag, remote_engine_name=None, remote_repository=None, re
 
     :param repository: Repository to be published. The repository must exist on the remote.
     :param tag: Image tag to be published.
-    :param remote_engine_name: Remote driver or connection string
+    :param remote_engine_name: Remote engine or connection string
     :param remote_repository: Remote repository name
     :param readme: Optional README for the repository.
     :param include_provenance: If False, doesn't include the dependencies of the image

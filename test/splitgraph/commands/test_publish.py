@@ -16,13 +16,13 @@ def test_publish(local_engine_empty, remote_engine, extra_info):
     add_multitag_dataset_to_engine(remote_engine)
     execute_commands(load_splitfile('import_remote_multiple.splitfile'), params={'TAG': 'v1'}, output=OUTPUT)
     set_tag(OUTPUT, get_current_head(OUTPUT), 'v1')
-    push(OUTPUT, remote_driver='remote_driver')
+    push(OUTPUT, remote_engine='remote_engine')
     publish(OUTPUT, 'v1', readme="A test repo.", include_provenance=extra_info, include_table_previews=extra_info)
 
     # Base the derivation on v2 of test/pg_mount and publish that too.
     execute_commands(load_splitfile('import_remote_multiple.splitfile'), params={'TAG': 'v2'}, output=OUTPUT)
     set_tag(OUTPUT, get_current_head(OUTPUT), 'v2')
-    push(OUTPUT, remote_driver='remote_driver')
+    push(OUTPUT, remote_engine='remote_engine')
     publish(OUTPUT, 'v2', readme="Based on v2.", include_provenance=extra_info, include_table_previews=extra_info)
 
     with switch_engine(REMOTE_ENGINE):

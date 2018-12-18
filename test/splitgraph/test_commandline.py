@@ -137,20 +137,20 @@ def test_upstream_management(local_engine_with_pg):
     assert result.exit_code == 0
     assert "has no upstream" in result.output
 
-    # Set to nonexistent driver
-    result = runner.invoke(upstream_c, ["test/pg_mount", "--set", "dummy_driver", "test/pg_mount"])
+    # Set to nonexistent engine
+    result = runner.invoke(upstream_c, ["test/pg_mount", "--set", "dummy_engine", "test/pg_mount"])
     assert result.exit_code == 1
-    assert "Remote driver 'dummy_driver' does not exist" in result.output
+    assert "Remote engine 'dummy_engine' does not exist" in result.output
 
-    # Set to existing driver (should we check the repo actually exists?)
-    result = runner.invoke(upstream_c, ["test/pg_mount", "--set", "remote_driver", "test/pg_mount"])
+    # Set to existing engine (should we check the repo actually exists?)
+    result = runner.invoke(upstream_c, ["test/pg_mount", "--set", "remote_engine", "test/pg_mount"])
     assert result.exit_code == 0
-    assert "set to track remote_driver:test/pg_mount" in result.output
+    assert "set to track remote_engine:test/pg_mount" in result.output
 
     # Get upstream again
     result = runner.invoke(upstream_c, ["test/pg_mount"])
     assert result.exit_code == 0
-    assert "is tracking remote_driver:test/pg_mount" in result.output
+    assert "is tracking remote_engine:test/pg_mount" in result.output
 
     # Reset it
     result = runner.invoke(upstream_c, ["test/pg_mount", "--reset"])
@@ -314,11 +314,11 @@ def test_pull_push(local_engine_empty, remote_engine):
 
     remote_engine.run_sql("INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mayonnaise')", return_shape=None)
     with switch_engine(REMOTE_ENGINE):
-        remote_driver_head = commit(PG_MNT)
+        remote_engine_head = commit(PG_MNT)
 
     result = runner.invoke(pull_c, [str(PG_MNT)])
     assert result.exit_code == 0
-    checkout(PG_MNT, remote_driver_head)
+    checkout(PG_MNT, remote_engine_head)
 
     get_engine().run_sql("INSERT INTO \"test/pg_mount\".fruits VALUES (4, 'mustard')", return_shape=None)
     local_head = commit(PG_MNT)
@@ -434,8 +434,8 @@ def test_rm_repositories(local_engine_with_pg, remote_engine):
     assert result.exit_code == 0
     assert not repository_exists(PG_MNT)
 
-    # sgr rm test/pg_mount -r remote_driver
-    result = runner.invoke(rm_c, [str(PG_MNT), '-r', 'remote_driver'], input='y\n')
+    # sgr rm test/pg_mount -r remote_engine
+    result = runner.invoke(rm_c, [str(PG_MNT), '-r', 'remote_engine'], input='y\n')
     assert result.exit_code == 0
     with switch_engine(REMOTE_ENGINE):
         assert not repository_exists(PG_MNT)
@@ -444,7 +444,7 @@ def test_rm_repositories(local_engine_with_pg, remote_engine):
 def test_rm_images(local_engine_with_pg, remote_engine):
     runner = CliRunner()
 
-    # Play around with both drivers for simplicity -- both have 2 images with 2 tags
+    # Play around with both engines for simplicity -- both have 2 images with 2 tags
     add_multitag_dataset_to_engine(remote_engine)
     add_multitag_dataset_to_engine(local_engine_with_pg)
 
@@ -474,8 +474,8 @@ def test_rm_images(local_engine_with_pg, remote_engine):
         remote_v2 = get_tagged_id(PG_MNT, 'v2')
         uncheckout(PG_MNT)
 
-    # sgr rm test/pg_mount:v2 -r remote_driver, say "yes"
-    result = runner.invoke(rm_c, [str(PG_MNT) + ':v2', '-r', 'remote_driver'], input='y\n')
+    # sgr rm test/pg_mount:v2 -r remote_engine, say "yes"
+    result = runner.invoke(rm_c, [str(PG_MNT) + ':v2', '-r', 'remote_engine'], input='y\n')
     assert result.exit_code == 0
     with switch_engine(REMOTE_ENGINE):
         assert get_tagged_id(PG_MNT, 'v2', raise_on_none=False) is None
@@ -511,7 +511,7 @@ def test_mount_docstring_generation():
 
 def test_prune(local_engine_with_pg, remote_engine):
     runner = CliRunner()
-    # Two drivers, two repos, two images in each (tagged v1 and v2, v1 is the parent of v2).
+    # Two engines, two repos, two images in each (tagged v1 and v2, v1 is the parent of v2).
     add_multitag_dataset_to_engine(remote_engine)
     with switch_engine(REMOTE_ENGINE):
         uncheckout(PG_MNT)
@@ -523,14 +523,14 @@ def test_prune(local_engine_with_pg, remote_engine):
     assert result.exit_code == 0
     assert "Nothing to do" in result.output
 
-    # Delete tag v2 and run sgr prune -r remote_driver test/pg_mount, say "no": the image
+    # Delete tag v2 and run sgr prune -r remote_engine test/pg_mount, say "no": the image
     # that used to be 'v2' now isn't tagged so it will be a candidate for removal (but not the v1 image).
     with switch_engine(REMOTE_ENGINE):
         remote_v2 = get_tagged_id(PG_MNT, 'v2')
         delete_tag(PG_MNT, 'v2')
         remote_engine.commit()
 
-    result = runner.invoke(prune_c, [str(PG_MNT), '-r', 'remote_driver'], input='n\n')
+    result = runner.invoke(prune_c, [str(PG_MNT), '-r', 'remote_engine'], input='n\n')
     assert result.exit_code == 1  # Because "n" aborted the command
     assert remote_v2 in result.output
     assert 'Total: 1' in result.output
@@ -538,13 +538,13 @@ def test_prune(local_engine_with_pg, remote_engine):
     with switch_engine(REMOTE_ENGINE):
         assert get_image(PG_MNT, remote_v2)
 
-    # Delete tag v1 and run sgr prune -r remote_driver -y test_pg_mount:
+    # Delete tag v1 and run sgr prune -r remote_engine -y test_pg_mount:
     # now both images aren't tagged so will get removed.
     with switch_engine(REMOTE_ENGINE):
         remote_v1 = get_tagged_id(PG_MNT, 'v1')
         delete_tag(PG_MNT, 'v1')
         remote_engine.commit()
-    result = runner.invoke(prune_c, [str(PG_MNT), '-r', 'remote_driver', '-y'])
+    result = runner.invoke(prune_c, [str(PG_MNT), '-r', 'remote_engine', '-y'])
     assert result.exit_code == 0
     assert remote_v2 in result.output
     assert remote_v1 in result.output
@@ -552,7 +552,7 @@ def test_prune(local_engine_with_pg, remote_engine):
     with switch_engine(REMOTE_ENGINE):
         assert not get_all_image_info(PG_MNT)
 
-    # Finally, delete both tags from the local driver and prune. Since there's still
+    # Finally, delete both tags from the local engine and prune. Since there's still
     # a HEAD tag pointing to the ex-v2, nothing will actually happen.
     result = runner.invoke(prune_c, [str(PG_MNT), '-y'])
     assert "Nothing to do." in result.output
@@ -567,24 +567,24 @@ def test_config_dumping():
     result = runner.invoke(config_c)
     assert result.exit_code == 0
     assert PG_PWD not in result.output
-    assert "remote_driver:" in result.output
-    assert ("SG_DRIVER_USER=%s" % PG_USER) in result.output
+    assert "remote_engine:" in result.output
+    assert ("SG_ENGINE_USER=%s" % PG_USER) in result.output
     assert "DUMMY=test.splitgraph.splitfile" in result.output
     assert "S3=splitgraph.hooks.s3" in result.output
 
     # sgr config -s (no password shielding)
     result = runner.invoke(config_c, ['-s'])
     assert result.exit_code == 0
-    assert ("SG_DRIVER_USER=%s" % PG_USER) in result.output
-    assert ("SG_DRIVER_PWD=%s" % PG_PWD) in result.output
-    assert "remote_driver:" in result.output
+    assert ("SG_ENGINE_USER=%s" % PG_USER) in result.output
+    assert ("SG_ENGINE_PWD=%s" % PG_PWD) in result.output
+    assert "remote_engine:" in result.output
 
     # sgr config -sc (no password shielding, output in config format)
     result = runner.invoke(config_c, ['-sc'])
     assert result.exit_code == 0
-    assert ("SG_DRIVER_USER=%s" % PG_USER) in result.output
-    assert ("SG_DRIVER_PWD=%s" % PG_PWD) in result.output
-    assert "[remote: remote_driver]" in result.output
+    assert ("SG_ENGINE_USER=%s" % PG_USER) in result.output
+    assert ("SG_ENGINE_PWD=%s" % PG_PWD) in result.output
+    assert "[remote: remote_engine]" in result.output
     assert "[defaults]" in result.output
     assert "[commands]" in result.output
     assert "[external_handlers]" in result.output
@@ -598,7 +598,7 @@ def test_init_new_db():
 
         # CliRunner doesn't run in a brand new process and by that point PG_DB has propagated
         # through a few modules that are difficult to patch out, so let's just shell out.
-        output = subprocess.check_output("SG_DRIVER_DB_NAME=testdb sgr init", shell=True, stderr=subprocess.STDOUT)
+        output = subprocess.check_output("SG_ENGINE_DB_NAME=testdb sgr init", shell=True, stderr=subprocess.STDOUT)
         output = output.decode('utf-8')
         assert "Creating database testdb" in output
         assert "Installing the audit trigger" in output

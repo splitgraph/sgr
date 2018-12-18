@@ -11,9 +11,9 @@ from test.splitgraph.conftest import PG_MNT, PG_MNT_PULL, REMOTE_ENGINE
 @pytest.mark.parametrize("download_all", [True, False])
 def test_pull(local_engine_with_pg, remote_engine, download_all):
     # Pull the schema from the remote
-    # Here, it's the pg on cachedb that connects to the remote driver, so we can use the actual hostname
+    # Here, it's the pg on cachedb that connects to the remote engine, so we can use the actual hostname
     # (as opposed to the one exposed to us). However, the clone procedure also uses that connection string to talk to
-    # the remote. Hence, there's an /etc/hosts indirection on the host mapping the remote driver to localhost.
+    # the remote. Hence, there's an /etc/hosts indirection on the host mapping the remote engine to localhost.
     clone(PG_MNT, local_repository=PG_MNT_PULL, download_all=download_all)
 
     with switch_engine(REMOTE_ENGINE):
@@ -101,7 +101,7 @@ def test_pulls_with_lazy_object_downloads(local_engine_empty, remote_engine, kee
 
 
 def test_push(local_engine_empty, remote_engine):
-    # Clone from the remote driver like in the previous test.
+    # Clone from the remote engine like in the previous test.
     clone(PG_MNT, local_repository=PG_MNT_PULL)
 
     with switch_engine(REMOTE_ENGINE):

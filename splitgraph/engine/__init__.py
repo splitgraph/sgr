@@ -358,5 +358,5 @@ def get_remote_connection_params(remote_name):
     :return: A tuple of (hostname, port, username, password, database)
     """
     pdict = CONFIG['remotes'][remote_name]
-    return (pdict['SG_DRIVER_HOST'], int(pdict['SG_DRIVER_PORT']), pdict['SG_DRIVER_USER'],
-            pdict['SG_DRIVER_PWD'], pdict['SG_DRIVER_DB_NAME'])
+    return (pdict['SG_ENGINE_HOST'], int(pdict['SG_ENGINE_PORT']), pdict['SG_ENGINE_USER'],
+            pdict['SG_ENGINE_PWD'], pdict['SG_ENGINE_DB_NAME'])

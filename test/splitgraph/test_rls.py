@@ -32,8 +32,8 @@ def unprivileged_remote_engine(remote_engine):
     _init_rls_test(remote_engine)
     from splitgraph.engine import CONFIG
     CONFIG['remotes'][UNPRIVILEGED] = copy(CONFIG['remotes'][REMOTE_ENGINE])
-    CONFIG['remotes'][UNPRIVILEGED]['SG_DRIVER_USER'] = 'testuser'
-    CONFIG['remotes'][UNPRIVILEGED]['SG_DRIVER_PWD'] = 'testpassword'
+    CONFIG['remotes'][UNPRIVILEGED]['SG_ENGINE_USER'] = 'testuser'
+    CONFIG['remotes'][UNPRIVILEGED]['SG_ENGINE_PWD'] = 'testpassword'
     try:
         E = get_engine(UNPRIVILEGED)
         assert E.conn_params[2] == 'testuser'
@@ -46,11 +46,11 @@ def unprivileged_remote_engine(remote_engine):
 
 
 def test_rls_pull_public(local_engine_empty, unprivileged_remote_engine):
-    clone(PG_MNT, remote_driver=UNPRIVILEGED)
+    clone(PG_MNT, remote_engine=UNPRIVILEGED)
 
 
 def test_rls_push_own_delete_own(local_engine_empty, unprivileged_remote_engine):
-    clone(PG_MNT, remote_driver=UNPRIVILEGED)
+    clone(PG_MNT, remote_engine=UNPRIVILEGED)
     checkout(PG_MNT, tag='latest')
 
     local_engine_empty.run_sql("""UPDATE "test/pg_mount".fruits SET name = 'banana' WHERE fruit_id = 1""",
@@ -60,7 +60,7 @@ def test_rls_push_own_delete_own(local_engine_empty, unprivileged_remote_engine)
     target_repo = Repository(namespace='testuser', repository='pg_mount')
 
     # Test we can push to our namespace
-    push(PG_MNT, remote_driver=UNPRIVILEGED, remote_repository=target_repo)
+    push(PG_MNT, remote_engine=UNPRIVILEGED, remote_repository=target_repo)
 
     # Test we can delete our own repo once we've pushed it
     with switch_engine(UNPRIVILEGED):
@@ -69,7 +69,7 @@ def test_rls_push_own_delete_own(local_engine_empty, unprivileged_remote_engine)
 
 
 def test_rls_push_others(local_engine_empty, unprivileged_remote_engine):
-    clone(PG_MNT, remote_driver=UNPRIVILEGED)
+    clone(PG_MNT, remote_engine=UNPRIVILEGED)
     checkout(PG_MNT, tag='latest')
 
     local_engine_empty.run_sql("""UPDATE "test/pg_mount".fruits SET name = 'banana' WHERE fruit_id = 1""",
@@ -77,7 +77,7 @@ def test_rls_push_others(local_engine_empty, unprivileged_remote_engine):
     commit(PG_MNT)
 
     with pytest.raises(ProgrammingError) as e:
-        push(PG_MNT, remote_driver=UNPRIVILEGED, remote_repository=PG_MNT)
+        push(PG_MNT, remote_engine=UNPRIVILEGED, remote_repository=PG_MNT)
     assert 'new row violates row-level security policy for table "images"' in str(e.value)
 
 
@@ -91,7 +91,7 @@ def test_rls_delete_others(unprivileged_remote_engine):
 
 
 def test_rls_push_own_with_uploading(local_engine_empty, unprivileged_remote_engine):
-    clone(PG_MNT, remote_driver=UNPRIVILEGED)
+    clone(PG_MNT, remote_engine=UNPRIVILEGED)
     checkout(PG_MNT, tag='latest')
 
     local_engine_empty.run_sql("""UPDATE "test/pg_mount".fruits SET name = 'banana' WHERE fruit_id = 1""",
@@ -101,7 +101,7 @@ def test_rls_push_own_with_uploading(local_engine_empty, unprivileged_remote_eng
     target_repo = Repository(namespace='testuser', repository='pg_mount')
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        push(PG_MNT, remote_driver=UNPRIVILEGED, remote_repository=target_repo, handler='S3')
+        push(PG_MNT, remote_engine=UNPRIVILEGED, remote_repository=target_repo, handler='S3')
 
 
 def test_rls_impersonate_external_object(unprivileged_remote_engine):
@@ -118,10 +118,10 @@ def test_rls_impersonate_external_object(unprivileged_remote_engine):
 
 
 def test_rls_publish_unpublish_own(local_engine_empty, unprivileged_remote_engine):
-    clone(PG_MNT, remote_driver=UNPRIVILEGED, download_all=True)
+    clone(PG_MNT, remote_engine=UNPRIVILEGED, download_all=True)
     set_tag(PG_MNT, get_tagged_id(PG_MNT, 'latest'), 'my_tag')
     target_repo = Repository(namespace='testuser', repository='pg_mount')
-    push(PG_MNT, remote_driver=UNPRIVILEGED, remote_repository=target_repo)
+    push(PG_MNT, remote_engine=UNPRIVILEGED, remote_repository=target_repo)
 
     publish(PG_MNT, 'my_tag', remote_engine_name=UNPRIVILEGED, remote_repository=target_repo,
             readme="my_readme", include_provenance=True, include_table_previews=True)
@@ -137,7 +137,7 @@ def test_rls_publish_unpublish_others(local_engine_empty, remote_engine, unprivi
     with switch_engine(REMOTE_ENGINE):
         set_tag(PG_MNT, get_tagged_id(PG_MNT, 'latest'), 'my_tag')
         remote_engine.commit()
-    clone(PG_MNT, remote_driver=UNPRIVILEGED, download_all=True)
+    clone(PG_MNT, remote_engine=UNPRIVILEGED, download_all=True)
 
     # Publish into the "test" namespace as someone who doesn't have access to it.
     with pytest.raises(ProgrammingError) as e:

@@ -162,7 +162,7 @@ def show_c(image_spec, verbose):
 @click.option('-a', '--show-all', is_flag=True, help='Returns all results of the query.')
 def sql_c(sql, schema, show_all):
     """
-    Run an SQL statement against the Splitgraph driver.
+    Run an SQL statement against the Splitgraph engine.
 
     There are no restrictions on the contents of the statement: this is the same as running it
     from any other PostgreSQL client.
@@ -193,8 +193,8 @@ def sql_c(sql, schema, show_all):
 @click.argument('repository', required=False, type=sg.to_repository)
 def status_c(repository):
     """
-    Show the status of the Splitgraph driver. If a repository is passed, show information about
-    the repository. If not, show information about all repositories local to the driver.
+    Show the status of the Splitgraph engine. If a repository is passed, show information about
+    the repository. If not, show information about all repositories local to the engine.
     """
     if repository is None:
         repositories = sg.get_current_repositories()

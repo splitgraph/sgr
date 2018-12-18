@@ -132,10 +132,10 @@ def _execute_from(node, output):
         init(output)
     if repo_source:
         repository, tag_or_hash = parse_image_spec(repo_source)
-        driver = lookup_repo(repository, include_local=True)
+        engine = lookup_repo(repository, include_local=True)
 
-        if driver != 'LOCAL':
-            clone(repository, remote_driver=driver, local_repository=output,
+        if engine != 'LOCAL':
+            clone(repository, remote_engine=engine, local_repository=output,
                   download_all=False)
             checkout(output, resolve_image(output, tag_or_hash))
         else:
@@ -215,10 +215,10 @@ def _execute_repo_import(repository, table_names, tag_or_hash, target_repository
         # it for hashing: we assume that the queries are deterministic, so if the query is changed,
         # the whole layer is invalidated.
         print("Resolving repository %s" % str(repository))
-        driver = lookup_repo(repository, include_local=True)
+        engine = lookup_repo(repository, include_local=True)
 
-        if driver != 'LOCAL':
-            clone(repository, remote_driver=driver, local_repository=tmp_repo, download_all=False)
+        if engine != 'LOCAL':
+            clone(repository, remote_engine=engine, local_repository=tmp_repo, download_all=False)
             source_hash = resolve_image(tmp_repo, tag_or_hash)
             source_mountpoint = tmp_repo
         else:

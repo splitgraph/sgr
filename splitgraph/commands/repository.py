@@ -50,7 +50,7 @@ def to_repository(schema):
 
 def repository_exists(repository):
     """
-    Checks if a repository exists on the driver. Can be used with `override_driver_connection`
+    Checks if a repository exists on the engine. Can be used with `override_engine_connection`
 
     :param repository: Repository object
     """
@@ -62,7 +62,7 @@ def repository_exists(repository):
 
 def register_repository(repository, initial_image, tables, table_object_ids):
     """
-    Registers a new repository on the driver. Internal function, use `splitgraph.init` instead.
+    Registers a new repository on the engine. Internal function, use `splitgraph.init` instead.
 
     :param repository: Repository object
     :param initial_image: Hash of the initial image
@@ -89,7 +89,7 @@ def unregister_repository(repository, is_remote=False):
     Deregisters the repository. Internal function, use splitgraph.rm to delete a repository.
 
     :param repository: Repository object
-    :param is_remote: Specifies whether the driver is a remote that doesn't have the "upstream" table.
+    :param is_remote: Specifies whether the engine is a remote that doesn't have the "upstream" table.
     """
     engine = get_engine()
     meta_tables = ["tables", "tags", "images"]
@@ -104,7 +104,7 @@ def unregister_repository(repository, is_remote=False):
 
 def get_current_repositories():
     """
-    Lists all repositories currently in the driver.
+    Lists all repositories currently in the engine.
 
     :return: List of (Repository object, current HEAD image)
     """
@@ -118,7 +118,7 @@ def get_upstream(repository):
     Gets the current upstream (connection string and repository) that a local repository tracks
 
     :param repository: Local repository
-    :return: Tuple of (remote driver, remote Repository object)
+    :return: Tuple of (remote engine, remote Repository object)
     """
     result = get_engine().run_sql(select("upstream", "remote_name, remote_namespace, remote_repository",
                                          "namespace = %s AND repository = %s"),
@@ -163,13 +163,13 @@ def delete_upstream(repository):
 
 def lookup_repo(repo_name, include_local=False):
     """
-    Queries the SG drivers on the lookup path to locate one hosting the given driver.
+    Queries the SG drivers on the lookup path to locate one hosting the given engine.
 
     :param repo_name: Repository name
-    :param include_local: If True, also queries the local driver
+    :param include_local: If True, also queries the local engine
 
-    :return: The name of the remote driver that has the repository (as specified in the config)
-        or "LOCAL" if the local driver has the repository.
+    :return: The name of the remote engine that has the repository (as specified in the config)
+        or "LOCAL" if the local engine has the repository.
     """
 
     if repo_name in _LOOKUP_PATH_OVERRIDE:

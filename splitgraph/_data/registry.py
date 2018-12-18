@@ -63,8 +63,8 @@ def publish_tag(repository, tag, image_hash, published, provenance, readme, sche
 
 def get_published_info(repository, tag):
     """
-    Get information on an image that's published in a catalog. Should be called with the driver connection
-    switching context manager (`override_driver_connection`).
+    Get information on an image that's published in a catalog. Should be called with the engine
+    switching context manager (`switch_engine`).
 
     :param repository: Repository
     :param tag: Image tag
@@ -79,8 +79,8 @@ def get_published_info(repository, tag):
 
 def unpublish_repository(repository):
     """
-    Deletes the repository from the remote catalog. Should be called with the driver connection
-    switching context manager (`override_driver_connection`).
+    Deletes the repository from the remote catalog. Should be called with the engine
+    switching context manager (`switch_engine`).
 
     :param repository: Repository to unpublish
     """
@@ -93,7 +93,7 @@ def get_info_key(key):
     """
     Gets a configuration key from the remote registry, used to notify the client of the registry's capabilities.
 
-    Should be called with the driver connection switching context manager (`override_driver_connection`).
+    Should be called with the engine switching context manager (`switch_engine`).
 
     :param key: Key to get
     """
@@ -106,7 +106,7 @@ def set_info_key(key, value):
     """
     Sets a configuration value on the remote registry.
 
-    Should be called with the driver connection switching context manager (`override_driver_connection`).
+    Should be called with the engine switching context manager (`switch_engine`).
 
     :param key: Key to set
     :param value: New value for the key

@@ -91,7 +91,7 @@ def test_import_from_remote(local_engine_empty, remote_engine):
     # Import the 'fruits' table from the origin.
     with switch_engine(REMOTE_ENGINE):
         remote_head = get_current_head(PG_MNT)
-    import_table_from_remote('remote_driver', PG_MNT, ['fruits'], remote_head, OUTPUT, target_tables=[])
+    import_table_from_remote('remote_engine', PG_MNT, ['fruits'], remote_head, OUTPUT, target_tables=[])
     new_head = get_current_head(OUTPUT)
 
     # Check that the table now exists in the output, is committed and there's no trace of the cloned repo.
@@ -117,7 +117,7 @@ def test_import_and_update(local_engine_empty, remote_engine):
     with switch_engine(REMOTE_ENGINE):
         remote_head = get_current_head(PG_MNT)
     # Import the 'fruits' table from the origin.
-    import_table_from_remote('remote_driver', PG_MNT, ['fruits'], remote_head, OUTPUT, target_tables=[])
+    import_table_from_remote('remote_engine', PG_MNT, ['fruits'], remote_head, OUTPUT, target_tables=[])
     new_head = get_current_head(OUTPUT)
 
     local_engine_empty.run_sql("INSERT INTO output.fruits VALUES (3, 'mayonnaise')", return_shape=None)

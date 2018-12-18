@@ -55,7 +55,7 @@ def test_s3_push_pull(local_engine_empty, remote_engine, clean_minio):
         objects = get_existing_objects()
     local_objects = get_existing_objects()
     assert all(o in objects for o in local_objects)
-    # Two non-local objects in the local driver, both registered as non-local on the remote driver.
+    # Two non-local objects in the local engine, both registered as non-local on the remote engine.
     ext_objects_orig = get_external_object_locations(list(objects))
     with switch_engine(REMOTE_ENGINE):
         ext_objects_pull = get_external_object_locations(list(objects))

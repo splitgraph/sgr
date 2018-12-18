@@ -21,7 +21,7 @@ from splitgraph.exceptions import SplitGraphException
 
 def _get_required_snaps_objects(remote_engine_name, local_repository, remote_repository):
     """
-    Inspects the remote Splitgraph driver and gathers metadata missing on the local one required
+    Inspects the remote Splitgraph engine and gathers metadata missing on the local one required
     for a pull, registering new images locally. Internal function.
 
     :param remote_engine_name: Name of the remote Splitgraph engine
@@ -101,22 +101,22 @@ def pull(repository, download_all=False):
     if not remote_info:
         raise SplitGraphException("No upstream found for repository %s!" % repository.to_schema())
 
-    remote_driver, remote_repository = remote_info
-    clone(remote_repository=remote_repository, remote_driver=remote_driver, local_repository=repository,
+    remote_engine, remote_repository = remote_info
+    clone(remote_repository=remote_repository, remote_engine=remote_engine, local_repository=repository,
           download_all=download_all)
 
 
 @manage_audit
-def clone(remote_repository, remote_driver=None, local_repository=None, download_all=False):
+def clone(remote_repository, remote_engine=None, local_repository=None, download_all=False):
     """
     Clones a remote Splitgraph repository or synchronizes remote changes with the local ones.
 
-    If the repository has no set upstream driver, the driver becomes its upstream. If `remote_driver`
+    If the repository has no set upstream engine, the engine becomes its upstream. If `remote_engine`
     instead is a connection string, the repository won't have an upstream, meaning that lazy object
-    downloads from the remote driver won't work at checkout time.
+    downloads from the remote engine won't work at checkout time.
 
     :param remote_repository: Repository to clone.
-    :param remote_driver: Name of the remote driver. If unspecified, the current driver
+    :param remote_engine: Name of the remote engine. If unspecified, the current engine
         lookup list is searched for the repository.
     :param local_repository: Local repository to clone into. If None, uses the same name as the remote.
     :param download_all: If True, downloads all objects and stores them locally. Otherwise, will only download required
@@ -127,14 +127,14 @@ def clone(remote_repository, remote_driver=None, local_repository=None, download
     local_repository = local_repository or remote_repository
     get_engine().create_schema(local_repository.to_schema())
 
-    if not remote_driver:
-        remote_driver = lookup_repo(remote_repository)
+    if not remote_engine:
+        remote_engine = lookup_repo(remote_repository)
 
     # Get the remote log and the list of objects we need to fetch.
     logging.info("Gathering remote metadata...")
 
     # This also registers the new versions locally.
-    snaps_to_fetch, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(remote_driver,
+    snaps_to_fetch, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(remote_engine,
                                                                                                   local_repository,
                                                                                                   remote_repository)
 
@@ -148,7 +148,7 @@ def clone(remote_repository, remote_driver=None, local_repository=None, download
         # We might already have some objects prefetched
         # (e.g. if a new version of the table is the same as the old version)
         logging.info("Fetching remote objects...")
-        download_objects(remote_driver, objects_to_fetch=list(set(o[0] for o in object_meta)),
+        download_objects(remote_engine, objects_to_fetch=list(set(o[0] for o in object_meta)),
                          object_locations=object_locations)
 
     # Map the tables to the actual objects no matter whether or not we're downloading them.
@@ -164,8 +164,8 @@ def clone(remote_repository, remote_driver=None, local_repository=None, download
                                                                                      len([t for t in tags if
                                                                                           t != 'HEAD'])))
 
-    if get_upstream(local_repository) is None and remote_driver:
-        set_upstream(local_repository, remote_driver, remote_repository)
+    if get_upstream(local_repository) is None and remote_engine:
+        set_upstream(local_repository, remote_engine, remote_repository)
 
 
 def local_clone(source, destination):
@@ -185,12 +185,12 @@ def local_clone(source, destination):
     set_head(destination, None)
 
 
-def push(local_repository, remote_driver=None, remote_repository=None, handler='DB', handler_options=None):
+def push(local_repository, remote_engine=None, remote_repository=None, handler='DB', handler_options=None):
     """
     Inverse of ``pull``: Pushes all local changes to the remote and uploads new objects.
 
     :param local_repository: Local repository to push changes from.
-    :param remote_driver: The name of the remote driver or a connection string. If not specified, the current upstream
+    :param remote_engine: The name of the remote engine or a connection string. If not specified, the current upstream
         is used.
     :param remote_repository: Remote repository to push changes to. If not specified, the local repository is used.
     :param handler: Name of the handler to use to upload objects. Use `DB` to push them to the remote or `S3`
@@ -206,13 +206,13 @@ def push(local_repository, remote_driver=None, remote_repository=None, handler='
     # Maybe consider having a context manager for getting a remote engine instance
     # that auto-commits/closes when needed?
 
-    remote_driver, remote_repository = merge_push_params(local_repository, remote_driver,
+    remote_engine, remote_repository = merge_push_params(local_repository, remote_engine,
                                                          remote_repository)
     try:
         logging.info("Gathering remote metadata...")
-        # Flip the two connections here: pretend the remote driver is local and download metadata from the local
-        # driver instead of the remote.
-        with switch_engine(remote_driver):
+        # Flip the two connections here: pretend the remote engine is local and download metadata from the local
+        # engine instead of the remote.
+        with switch_engine(remote_engine):
             # This also registers new commits remotely. Should make explicit and move down later on.
             snaps_to_push, table_meta, object_locations, object_meta, tags = \
                 _get_required_snaps_objects('LOCAL', remote_repository, local_repository)
@@ -221,11 +221,11 @@ def push(local_repository, remote_driver=None, remote_repository=None, handler='
             logging.info("Nothing to do.")
             return
 
-        new_uploads = upload_objects(remote_driver, list(set(o[0] for o in object_meta)),
+        new_uploads = upload_objects(remote_engine, list(set(o[0] for o in object_meta)),
                                      handler=handler, handler_params=handler_options)
 
         # Register the newly uploaded object locations locally and remotely.
-        with switch_engine(remote_driver):
+        with switch_engine(remote_engine):
             register_objects(object_meta)
             register_object_locations(object_locations + new_uploads)
             register_tables(remote_repository, table_meta)
@@ -233,23 +233,23 @@ def push(local_repository, remote_driver=None, remote_repository=None, handler='
 
         register_object_locations(new_uploads)
 
-        if get_upstream(local_repository) is None and remote_driver:
-            set_upstream(local_repository, remote_driver, remote_repository)
+        if get_upstream(local_repository) is None and remote_engine:
+            set_upstream(local_repository, remote_engine, remote_repository)
 
-        get_engine(remote_driver).commit()
+        get_engine(remote_engine).commit()
         print("Uploaded metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta),
                                                                                           len(table_meta),
                                                                                           len([t for t in tags if
                                                                                                t != 'HEAD'])))
     finally:
-        get_engine(remote_driver).close()
+        get_engine(remote_engine).close()
 
 
-def merge_push_params(local_repository, remote_driver, remote_repository):
+def merge_push_params(local_repository, remote_engine, remote_repository):
     """
     Merges remote arguments for push/publish as follows:
 
-    If remote_driver is specified, it's used to get the connection parameters.
+    If remote_engine is specified, it's used to get the connection parameters.
 
     If remote_repository is specified, it's used as a remote repository. Otherwise, the local repository
     name is used.
@@ -257,16 +257,16 @@ def merge_push_params(local_repository, remote_driver, remote_repository):
     Finally, fall back to the repository's upstream.
 
     :param local_repository: Local Repository object
-    :param remote_driver: Remote driver alias
+    :param remote_engine: Remote engine alias
     :param remote_repository: Remote Repository object
-    :return: Connection parameters, remote driver name (can be None), remote Repository object
+    :return: Connection parameters, remote engine name (can be None), remote Repository object
     """
     remote_repository = remote_repository or local_repository
     upstream = get_upstream(local_repository)
     if upstream:
-        remote_driver = remote_driver or upstream[0]
+        remote_engine = remote_engine or upstream[0]
         remote_repository = remote_repository or upstream[1]
-    if not remote_driver:
-        raise SplitGraphException("No upstream found for repository %s and no driver specified!" %
+    if not remote_engine:
+        raise SplitGraphException("No upstream found for repository %s and no engine specified!" %
                                   local_repository.to_schema())
-    return remote_driver, remote_repository
+    return remote_engine, remote_repository

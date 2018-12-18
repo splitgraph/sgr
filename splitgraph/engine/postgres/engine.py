@@ -77,9 +77,9 @@ class PostgresEngine(Engine):
             execute_batch(cur, statement, arguments, page_size=1000)
 
     def _admin_conn(self):
-        return psycopg2.connect(dbname=CONFIG['SG_DRIVER_POSTGRES_DB_NAME'],
-                                user=CONFIG['SG_DRIVER_ADMIN_USER'],
-                                password=CONFIG['SG_DRIVER_ADMIN_PWD'],
+        return psycopg2.connect(dbname=CONFIG['SG_ENGINE_POSTGRES_DB_NAME'],
+                                user=CONFIG['SG_ENGINE_ADMIN_USER'],
+                                password=CONFIG['SG_ENGINE_ADMIN_PWD'],
                                 host=self.conn_params[0],
                                 port=self.conn_params[1])
 
@@ -447,7 +447,7 @@ def _convert_vals(vals):
     to a table."""
     # This might become a bottleneck since we call this for every row in the diff + function
     # calls are expensive in Python -- maybe there's a better way (e.g. tell psycopg to not convert
-    # things to dicts or apply diffs in-driver).
+    # things to dicts or apply diffs in-engine).
     return [v if not isinstance(v, dict) else Json(v) for v in vals]
 
 

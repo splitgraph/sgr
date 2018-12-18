@@ -5,8 +5,9 @@ import click
 import splitgraph as sg
 from splitgraph import SplitGraphException
 from splitgraph._data.images import _get_all_child_images, delete_images, _get_all_parent_images
+
 from splitgraph.commandline._common import image_spec_parser
-from splitgraph.commands.misc import init_driver
+from splitgraph.commands.misc import init_engine
 from splitgraph.config.keys import KEYS, SENSITIVE_KEYS
 from splitgraph.engine import switch_engine
 
@@ -26,7 +27,7 @@ def rm_c(image_spec, remote, yes):
     If the target of this command is an image, this deletes the image and all of its children.
 
     In any case, this command will ask for confirmation of the deletion, unless ``-y`` is passed. If ``-r``
-    (``--remote``) is passed, this will perform deletion on a remote Splitgraph driver (registered in the config)
+    (``--remote``), is passed, this will perform deletion on a remote Splitgraph engine (registered in the config)
     instead, assuming the user has write access to the remote repository.
 
     This does not delete any physical objects that the deleted repository/images depend on:
@@ -36,9 +37,9 @@ def rm_c(image_spec, remote, yes):
 
     ``sgr rm temporary_schema``
 
-        Deletes ``temporary_schema`` from the local driver.
+        Deletes ``temporary_schema`` from the local engine.
 
-    ``sgr rm --driver splitgraph.com username/repo``
+    ``sgr rm --remote splitgraph.com username/repo``
 
         Deletes ``username/repo`` from the Splitgraph registry.
 
@@ -95,8 +96,8 @@ def prune_c(repository, remote, yes):
     This includes images not pointed to by any tags (or checked out) and those that aren't required by any of
     such images.
 
-    Will ask for confirmation of the deletion, unless ``-y`` is passed. If ``-r`` (``--remote``) is
-    passed, this will perform deletion on a remote Splitgraph driver (registered in the config) instead, assuming
+    Will ask for confirmation of the deletion, unless ``-y ``is passed. If ``-r`` (``--remote``) is
+    passed, this will perform deletion on a remote Splitgraph engine (registered in the config) instead, assuming
     the user has write access to the remote repository.
 
     This does not delete any physical objects that the deleted repository/images depend on:
@@ -128,13 +129,13 @@ def prune_c(repository, remote, yes):
 @click.argument('repository', type=sg.to_repository, required=False, default=None)
 def init_c(repository):
     """
-    Initialize a new repository/driver.
+    Initialize a new repository/engine.
 
     Examples:
 
     ``sgr init``
 
-        Initializes the current local Splitgraph driver by writing some bookkeeping information.
+        Initializes the current local Splitgraph engine by writing some bookkeeping information.
         This is required for the rest of sgr to work.
 
     ``sgr init new/repo``
@@ -145,13 +146,13 @@ def init_c(repository):
         sg.init(repository)
         print("Initialized empty repository %s" % str(repository))
     else:
-        init_driver()
+        init_engine()
 
 
 @click.command(name='cleanup')
 def cleanup_c():
     """
-    Prune unneeded objects from the driver.
+    Prune unneeded objects from the engine.
 
     This deletes all objects from the cache that aren't required by any local repository.
     """
@@ -177,7 +178,7 @@ def config_c(no_shielding, config_format):
 
     ...or save a config file overriding an entry::
 
-        SG_REPO_LOOKUP=driver1,driver2 sgr config -sc > .sgconfig
+        SG_REPO_LOOKUP=engine1,engine2 sgr config -sc > .sgconfig
     """
 
     def _kv_to_str(key, value):
@@ -195,7 +196,7 @@ def config_c(no_shielding, config_format):
         print(_kv_to_str(key, sg.CONFIG[key]))
 
     # Print hoisted remotes
-    print("\nCurrent registered remote drivers:\n" if not config_format else "", end="")
+    print("\nCurrent registered remote engines:\n" if not config_format else "", end="")
     for remote in sg.CONFIG.get('remotes', []):
         print(("\n[remote: %s]" if config_format else "\n%s:") % remote)
         for key, value in sg.CONFIG['remotes'][remote].items():
