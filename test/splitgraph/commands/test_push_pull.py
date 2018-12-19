@@ -21,7 +21,7 @@ def test_pull(local_engine_with_pg, remote_engine, download_all):
     checkout(PG_MNT_PULL, remote_head)
 
     # Do something to fruits on the remote
-    remote_engine.run_sql("INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mayonnaise')", return_shape=None)
+    remote_engine.run_sql("INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mayonnaise')")
     with switch_engine(REMOTE_ENGINE):
         head_1 = commit(PG_MNT)
 
@@ -68,11 +68,11 @@ def test_pulls_with_lazy_object_downloads(local_engine_empty, remote_engine, kee
 
     # In the meantime, make two branches off of origin (a total of 3 commits)
     with switch_engine(REMOTE_ENGINE):
-        remote_engine.run_sql("INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mayonnaise')", return_shape=None)
+        remote_engine.run_sql("INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mayonnaise')")
         left = commit(PG_MNT)
 
         checkout(PG_MNT, head)
-        remote_engine.run_sql("INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mustard')", return_shape=None)
+        remote_engine.run_sql("INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mustard')")
         right = commit(PG_MNT)
 
     # Pull from upstream.
@@ -109,7 +109,7 @@ def test_push(local_engine_empty, remote_engine):
     checkout(PG_MNT_PULL, head)
 
     # Then, change our copy and commit.
-    local_engine_empty.run_sql("INSERT INTO test_pg_mount_pull.fruits VALUES (3, 'mayonnaise')", return_shape=None)
+    local_engine_empty.run_sql("INSERT INTO test_pg_mount_pull.fruits VALUES (3, 'mayonnaise')")
     head_1 = commit(PG_MNT_PULL)
 
     # Now, push to remote.

@@ -21,7 +21,7 @@ def _create_metadata_schema():
     """
     engine = get_engine()
 
-    engine.run_sql(SQL("CREATE SCHEMA {}").format(Identifier(SPLITGRAPH_META_SCHEMA)), return_shape=None)
+    engine.run_sql(SQL("CREATE SCHEMA {}").format(Identifier(SPLITGRAPH_META_SCHEMA)))
     # maybe FK parent_id on image_hash. NULL there means this is the repo root.
     engine.run_sql(SQL("""CREATE TABLE {}.{} (
                     namespace       VARCHAR NOT NULL,

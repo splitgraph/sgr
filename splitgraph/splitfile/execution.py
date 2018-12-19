@@ -264,7 +264,7 @@ def _execute_custom(node, output):
     except ImportError as e:
         raise SplitGraphException("Error loading custom command {0}".format(command), e)
 
-    get_engine().run_sql("SET search_path TO %s", (output.to_schema(),), return_shape=None)
+    get_engine().run_sql("SET search_path TO %s", (output.to_schema(),))
     command = cmd_class()
 
     # Pre-flight check: get the new command hash and see if we can short-circuit and just check the image out.

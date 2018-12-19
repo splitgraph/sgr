@@ -91,7 +91,7 @@ def unregister_repository(repository, is_remote=False):
         engine.run_sql(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s")
                        .format(Identifier(SPLITGRAPH_META_SCHEMA),
                                Identifier(meta_table)),
-                       (repository.namespace, repository.repository), return_shape=None)
+                       (repository.namespace, repository.repository))
 
 
 def get_current_repositories():
@@ -138,7 +138,7 @@ def set_upstream(repository, remote_name, remote_repository):
                              "AND upstream.repository = excluded.repository")
                          .format(Identifier(SPLITGRAPH_META_SCHEMA)),
                          (repository.namespace, repository.repository, remote_name, remote_repository.namespace,
-                          remote_repository.repository), return_shape=None)
+                          remote_repository.repository))
 
 
 def delete_upstream(repository):

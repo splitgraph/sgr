@@ -53,6 +53,8 @@ class PostgresEngine(SQLEngine, ObjectEngine):
     def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY):
         with self.connection.cursor() as cur:
             cur.execute(statement, arguments)
+            if cur.description is None:
+                return None
 
             if return_shape == ResultShape.ONE_ONE:
                 result = cur.fetchone()

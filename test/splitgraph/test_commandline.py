@@ -311,7 +311,7 @@ def test_import(local_engine_with_pg_and_mg):
     assert not table_exists_at(PG_MNT, 'stuff_copy', new_head)
 
     # sgr import with alias and custom image hash
-    get_engine().run_sql("DELETE FROM test_mg_mount.stuff", return_shape=None)
+    get_engine().run_sql("DELETE FROM test_mg_mount.stuff")
     new_mg_head = commit(MG_MNT)
 
     result = runner.invoke(import_c, [str(MG_MNT) + ':' + new_mg_head, 'stuff', str(PG_MNT), 'stuff_empty'])
@@ -334,7 +334,7 @@ def test_pull_push(local_engine_empty, remote_engine):
     assert result.exit_code == 0
     assert repository_exists(PG_MNT)
 
-    remote_engine.run_sql("INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mayonnaise')", return_shape=None)
+    remote_engine.run_sql("INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mayonnaise')")
     with switch_engine(REMOTE_ENGINE):
         remote_engine_head = commit(PG_MNT)
 
@@ -342,7 +342,7 @@ def test_pull_push(local_engine_empty, remote_engine):
     assert result.exit_code == 0
     checkout(PG_MNT, remote_engine_head)
 
-    get_engine().run_sql("INSERT INTO \"test/pg_mount\".fruits VALUES (4, 'mustard')", return_shape=None)
+    get_engine().run_sql("INSERT INTO \"test/pg_mount\".fruits VALUES (4, 'mustard')")
     local_head = commit(PG_MNT)
 
     with switch_engine(REMOTE_ENGINE):

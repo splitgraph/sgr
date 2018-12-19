@@ -13,7 +13,7 @@ from test.splitgraph.conftest import PG_MNT, MG_MNT, OUTPUT
 
 def test_diff_head(local_engine_with_pg):
     local_engine_with_pg.run_sql("""INSERT INTO "test/pg_mount".fruits VALUES (3, 'mayonnaise');
-        DELETE FROM "test/pg_mount".fruits WHERE name = 'apple'""", return_shape=None)
+        DELETE FROM "test/pg_mount".fruits WHERE name = 'apple'""")
     local_engine_with_pg.commit()  # otherwise the audit trigger won't see this
     head = get_current_head(PG_MNT)
     change = diff(PG_MNT, 'fruits', image_1=head, image_2=None)
@@ -26,7 +26,7 @@ def test_diff_head(local_engine_with_pg):
 def test_commit_diff(include_snap, local_engine_with_pg):
     local_engine_with_pg.run_sql("""INSERT INTO "test/pg_mount".fruits VALUES (3, 'mayonnaise');
         DELETE FROM "test/pg_mount".fruits WHERE name = 'apple';
-        UPDATE "test/pg_mount".fruits SET name = 'guitar' WHERE fruit_id = 2""", return_shape=None)
+        UPDATE "test/pg_mount".fruits SET name = 'guitar' WHERE fruit_id = 2""")
 
     head = get_current_head(PG_MNT)
     new_head = commit(PG_MNT, include_snap=include_snap, comment="test commit")
@@ -65,7 +65,7 @@ def test_multiple_mountpoint_commit_diff(include_snap, local_engine_with_pg_and_
     local_engine_with_pg_and_mg.run_sql("""INSERT INTO "test/pg_mount".fruits VALUES (3, 'mayonnaise');
         DELETE FROM "test/pg_mount".fruits WHERE name = 'apple';
         UPDATE "test/pg_mount".fruits SET name = 'guitar' WHERE fruit_id = 2;
-        UPDATE test_mg_mount.stuff SET duration = 11 WHERE name = 'James'""", return_shape=None)
+        UPDATE test_mg_mount.stuff SET duration = 11 WHERE name = 'James'""")
     # Both mountpoints have pending changes if we commit the PG connection.
     local_engine_with_pg_and_mg.commit()
     assert has_pending_changes(MG_MNT) is True
@@ -114,7 +114,7 @@ def test_multiple_mountpoint_commit_diff(include_snap, local_engine_with_pg_and_
 
 
 def test_delete_all_diff(local_engine_with_pg):
-    local_engine_with_pg.run_sql("DELETE FROM \"test/pg_mount\".fruits", return_shape=None)
+    local_engine_with_pg.run_sql("DELETE FROM \"test/pg_mount\".fruits")
     local_engine_with_pg.commit()
     assert has_pending_changes(PG_MNT) is True
     expected_diff = [((1, 'apple'), 1, None), ((2, 'orange'), 1, None)]
@@ -131,10 +131,10 @@ def test_delete_all_diff(local_engine_with_pg):
 @pytest.mark.parametrize("include_snap", [True, False])
 def test_diff_across_far_commits(include_snap, local_engine_with_pg):
     head = get_current_head(PG_MNT)
-    local_engine_with_pg.run_sql("INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mayonnaise')", return_shape=None)
+    local_engine_with_pg.run_sql("INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mayonnaise')")
     commit(PG_MNT, include_snap=include_snap)
 
-    local_engine_with_pg.run_sql("DELETE FROM \"test/pg_mount\".fruits WHERE name = 'apple'", return_shape=None)
+    local_engine_with_pg.run_sql("DELETE FROM \"test/pg_mount\".fruits WHERE name = 'apple'")
     commit(PG_MNT, include_snap=include_snap)
 
     local_engine_with_pg.run_sql("UPDATE \"test/pg_mount\".fruits SET name = 'guitar' WHERE fruit_id = 2",
@@ -170,11 +170,11 @@ def test_non_ordered_inserts_with_pk(include_snap, local_engine_with_pg):
         (a int, 
          b int,
          c int,
-         d varchar, PRIMARY KEY(a))""", return_shape=None)
+         d varchar, PRIMARY KEY(a))""")
     local_engine_with_pg.commit()
     head = commit(OUTPUT)
 
-    local_engine_with_pg.run_sql("INSERT INTO output.test (a, d, b, c) VALUES (1, 'four', 2, 3)", return_shape=None)
+    local_engine_with_pg.run_sql("INSERT INTO output.test (a, d, b, c) VALUES (1, 'four', 2, 3)")
     local_engine_with_pg.commit()
     new_head = commit(OUTPUT, include_snap=include_snap)
     checkout(OUTPUT, head)
@@ -207,7 +207,7 @@ def test_various_types(include_snap, local_engine_with_pg):
          m date,
          n boolean not null,
          o json,
-         p tsvector, PRIMARY KEY(b, c, d));""", return_shape=None)
+         p tsvector, PRIMARY KEY(b, c, d));""")
     local_engine_with_pg.commit()
     head = commit(OUTPUT)
 
@@ -215,7 +215,7 @@ def test_various_types(include_snap, local_engine_with_pg):
         """INSERT INTO output.test (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p)
         VALUES(1, 2, 3, 3.54, 876.563452345, 1.23, 'test', 'testtesttesttest', 'testtesttesttesttesttesttest',
         B'001110010101010', '2013-11-02 17:30:52', '2013-02-04', true, '{ "a": 123 }',
-        'Old Old Parr'::tsvector);""", return_shape=None)
+        'Old Old Parr'::tsvector);""")
     local_engine_with_pg.commit()
     new_head = commit(OUTPUT, include_snap=include_snap)
     checkout(OUTPUT, head)
@@ -241,7 +241,7 @@ def test_empty_diff_reuses_object(local_engine_with_pg):
 
 def test_update_packing_applying(local_engine_with_pg):
     # Set fruit_id to be the PK first so that an UPDATE operation is stored in the DIFF.
-    local_engine_with_pg.run_sql("ALTER TABLE \"test/pg_mount\".fruits ADD PRIMARY KEY (fruit_id)", return_shape=None)
+    local_engine_with_pg.run_sql("ALTER TABLE \"test/pg_mount\".fruits ADD PRIMARY KEY (fruit_id)")
     old_head = commit(PG_MNT)
 
     local_engine_with_pg.run_sql("UPDATE \"test/pg_mount\".fruits SET name = 'pineapple' WHERE fruit_id = 1",
@@ -257,7 +257,7 @@ def test_update_packing_applying(local_engine_with_pg):
 
 def test_diff_staging_aggregation(local_engine_with_pg):
     # Test diff from HEAD~1 to the current staging area (accumulate actual DIFF object with the pending changes)
-    local_engine_with_pg.run_sql("ALTER TABLE \"test/pg_mount\".fruits ADD PRIMARY KEY (fruit_id)", return_shape=None)
+    local_engine_with_pg.run_sql("ALTER TABLE \"test/pg_mount\".fruits ADD PRIMARY KEY (fruit_id)")
     old_head = commit(PG_MNT)
 
     local_engine_with_pg.run_sql("UPDATE \"test/pg_mount\".fruits SET name = 'pineapple' WHERE fruit_id = 1",
@@ -275,7 +275,7 @@ def test_diff_schema_change(local_engine_with_pg):
     # Test diff when there's been a schema change and so we stored an intermediate object
     # as a SNAP.
     old_head = get_current_head(PG_MNT)
-    local_engine_with_pg.run_sql("ALTER TABLE \"test/pg_mount\".fruits ADD PRIMARY KEY (fruit_id)", return_shape=None)
+    local_engine_with_pg.run_sql("ALTER TABLE \"test/pg_mount\".fruits ADD PRIMARY KEY (fruit_id)")
     commit(PG_MNT)
 
     local_engine_with_pg.run_sql("UPDATE \"test/pg_mount\".fruits SET name = 'pineapple' WHERE fruit_id = 1",

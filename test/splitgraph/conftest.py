@@ -159,7 +159,7 @@ def local_engine_empty():
 def add_multitag_dataset_to_engine(engine):
     with switch_engine(engine):
         set_tag(PG_MNT, get_current_head(PG_MNT), 'v1')
-        get_engine().run_sql("DELETE FROM \"test/pg_mount\".fruits WHERE fruit_id = 1", return_shape=None)
+        get_engine().run_sql("DELETE FROM \"test/pg_mount\".fruits WHERE fruit_id = 1")
         new_head = commit(PG_MNT)
         set_tag(PG_MNT, new_head, 'v2')
         get_engine().commit()

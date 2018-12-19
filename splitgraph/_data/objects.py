@@ -27,7 +27,7 @@ def register_object(object_id, object_format, namespace, parent_object=None):
     if not parent_object and object_format != 'SNAP':
         raise ValueError("Non-SNAP objects can't have no parent!")
     return get_engine().run_sql(insert("objects", ("object_id", "format", "parent_id", "namespace")),
-                                (object_id, object_format, parent_object, namespace), return_shape=None)
+                                (object_id, object_format, parent_object, namespace))
 
 
 def deregister_table_object(object_id):
@@ -131,7 +131,7 @@ def register_table(repository, table, image, object_id):
     :param object_id: Object ID to register the table to.
     """
     get_engine().run_sql(insert("tables", ("namespace", "repository", "image_hash", "table_name", "object_id")),
-                         (repository.namespace, repository.repository, image, table, object_id), return_shape=None)
+                         (repository.namespace, repository.repository, image, table, object_id))
 
 
 def get_object_for_table(repository, table_name, image, object_format):

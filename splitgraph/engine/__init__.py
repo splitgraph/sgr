@@ -19,7 +19,9 @@ class SQLEngine:
     """Abstraction for a Splitgraph SQL backend"""
 
     def run_sql(self, statement, arguments=(), return_shape=ResultShape.MANY_MANY):
-        """Run an arbitrary SQL statement with some arguments, return an iterator of results"""
+        """Run an arbitrary SQL statement with some arguments, return an iterator of results.
+        If the statement doesn't return any results, return None.
+        """
         raise NotImplementedError()
 
     def commit(self):

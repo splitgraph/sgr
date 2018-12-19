@@ -70,7 +70,7 @@ def cleanup_objects(include_external=False):
         query = SQL("DELETE FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table_name))
         if primary_objects:
             query += SQL(" WHERE object_id NOT IN (" + ','.join('%s' for _ in range(len(primary_objects))) + ")")
-        engine.run_sql(query, list(primary_objects), return_shape=None)
+        engine.run_sql(query, list(primary_objects))
 
     # Go through the physical objects and delete them as well
     # This is slightly dirty, but since the info about the objects was deleted on rm, we just say that

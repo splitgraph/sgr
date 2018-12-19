@@ -37,7 +37,7 @@ def test_schema_changes(local_engine_with_pg, test_case):
     engine = get_engine()
 
     assert engine.get_full_table_schema(PG_MNT.to_schema(), 'fruits') == OLD_SCHEMA
-    local_engine_with_pg.run_sql(action, return_shape=None)
+    local_engine_with_pg.run_sql(action)
     local_engine_with_pg.commit()
     assert engine.get_full_table_schema(PG_MNT.to_schema(), 'fruits') == expected_new_schema
 

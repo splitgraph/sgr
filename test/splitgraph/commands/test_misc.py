@@ -8,12 +8,12 @@ from test.splitgraph.conftest import PG_MNT
 
 @pytest.mark.parametrize("include_snap", [True, False])
 def test_log_checkout(include_snap, local_engine_with_pg):
-    local_engine_with_pg.run_sql("INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mayonnaise')", return_shape=None)
+    local_engine_with_pg.run_sql("INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mayonnaise')")
 
     head = get_current_head(PG_MNT)
     head_1 = commit(PG_MNT, include_snap=include_snap)
 
-    local_engine_with_pg.run_sql("DELETE FROM \"test/pg_mount\".fruits WHERE name = 'apple'", return_shape=None)
+    local_engine_with_pg.run_sql("DELETE FROM \"test/pg_mount\".fruits WHERE name = 'apple'")
 
     head_2 = commit(PG_MNT, include_snap=include_snap)
 

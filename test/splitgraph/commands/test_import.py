@@ -13,9 +13,9 @@ from test.splitgraph.conftest import PG_MNT, OUTPUT, REMOTE_ENGINE
 def _setup_dataset(engine):
     init(OUTPUT)
     engine.run_sql("""CREATE TABLE output.test (id integer, name varchar);
-        INSERT INTO output.test VALUES (1, 'test')""", return_shape=None)
+        INSERT INTO output.test VALUES (1, 'test')""")
     commit(OUTPUT)
-    engine.run_sql("INSERT INTO output.test VALUES (2, 'test2')", return_shape=None)
+    engine.run_sql("INSERT INTO output.test VALUES (2, 'test2')")
     return commit(OUTPUT)
 
 
@@ -54,9 +54,9 @@ def test_import_preserves_existing_tables(local_engine_with_pg):
 def test_import_preserves_pending_changes(local_engine_with_pg):
     init(OUTPUT)
     local_engine_with_pg.run_sql("""CREATE TABLE output.test (id integer, name varchar);
-            INSERT INTO output.test VALUES (1, 'test')""", return_shape=None)
+            INSERT INTO output.test VALUES (1, 'test')""")
     head = commit(OUTPUT)
-    local_engine_with_pg.run_sql("INSERT INTO output.test VALUES (2, 'test2')", return_shape=None)
+    local_engine_with_pg.run_sql("INSERT INTO output.test VALUES (2, 'test2')")
     changes = get_engine().get_pending_changes(OUTPUT.to_schema(), 'test')
 
     import_tables(repository=PG_MNT, tables=['fruits'], target_repository=OUTPUT, target_tables=['imported_fruits'])
@@ -120,7 +120,7 @@ def test_import_and_update(local_engine_empty, remote_engine):
     import_table_from_remote('remote_engine', PG_MNT, ['fruits'], remote_head, OUTPUT, target_tables=[])
     new_head = get_current_head(OUTPUT)
 
-    local_engine_empty.run_sql("INSERT INTO output.fruits VALUES (3, 'mayonnaise')", return_shape=None)
+    local_engine_empty.run_sql("INSERT INTO output.fruits VALUES (3, 'mayonnaise')")
     new_head_2 = commit(OUTPUT)
 
     checkout(OUTPUT, head)

@@ -32,7 +32,7 @@ class CalcHashTestCommand(PluginCommand):
         return 'deadbeef' * 8
 
     def execute(self, repository, args):
-        get_engine().run_sql(SQL("DROP TABLE {}").format(Identifier(args[0])), return_shape=None)
+        get_engine().run_sql(SQL("DROP TABLE {}").format(Identifier(args[0])))
 
 
 def test_dummy_command(local_engine_with_pg):

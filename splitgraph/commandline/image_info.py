@@ -6,7 +6,6 @@ from collections import Counter
 from pprint import pprint
 
 import click
-from psycopg2 import ProgrammingError
 
 import splitgraph as sg
 from splitgraph import get_engine
@@ -177,20 +176,17 @@ def sql_c(sql, schema, show_all):
         sgr sql "SELECT * FROM \"noaa/climate\".table"
         sgr sql -s noaa/climate "SELECT * FROM table"
     """
+    if schema:
+        get_engine().run_sql("SET search_path TO %s", (schema,))
+    results = get_engine().run_sql(sql)
+    if results is None:
+        return
 
-    # Temporary until partial fetches with preview get pushed into the engine
-    conn = get_engine().connection
-    with conn.cursor() as cur:
-        if schema:
-            cur.execute("SET search_path TO %s", (schema,))
-        cur.execute(sql)
-        try:
-            results = cur.fetchmany(10) if not show_all else cur.fetchall()
-            pprint(results)
-            if cur.rowcount > 10 and not show_all:
-                print("...")
-        except ProgrammingError:
-            pass  # sql wasn't a SELECT statement
+    if len(results) > 10 and not show_all:
+        pprint(results[:10])
+        print("...")
+    else:
+        pprint(results)
 
 
 @click.command(name='status')

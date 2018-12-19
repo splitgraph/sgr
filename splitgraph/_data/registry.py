@@ -86,7 +86,7 @@ def unpublish_repository(repository):
     """
     get_engine().run_sql(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s")
                          .format(Identifier(REGISTRY_META_SCHEMA), Identifier("images")),
-                         (repository.namespace, repository.repository), return_shape=None)
+                         (repository.namespace, repository.repository))
 
 
 def get_info_key(key):
@@ -114,7 +114,7 @@ def set_info_key(key, value):
 
     get_engine().run_sql(SQL("INSERT INTO {0}.info (key, value) VALUES (%s, %s)"
                              " ON CONFLICT (key) DO UPDATE SET value = excluded.value WHERE info.key = excluded.key")
-                         .format(Identifier(SPLITGRAPH_META_SCHEMA)), (key, value), return_shape=None)
+                         .format(Identifier(SPLITGRAPH_META_SCHEMA)), (key, value))
 
 
 _RLS_TABLES = ['images', 'tags', 'objects', 'tables']
@@ -138,18 +138,18 @@ def setup_registry_mode():
     engine = get_engine()
 
     for schema in (SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA):
-        engine.run_sql(SQL("REVOKE CREATE ON SCHEMA {} FROM PUBLIC").format(Identifier(schema)), return_shape=None)
-        engine.run_sql(SQL("GRANT USAGE ON SCHEMA {} TO PUBLIC").format(Identifier(schema)), return_shape=None)
+        engine.run_sql(SQL("REVOKE CREATE ON SCHEMA {} FROM PUBLIC").format(Identifier(schema)))
+        engine.run_sql(SQL("GRANT USAGE ON SCHEMA {} TO PUBLIC").format(Identifier(schema)))
         # Grant everything by default -- RLS will supersede these.
         engine.run_sql(SQL("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA {} TO PUBLIC")
-                       .format(Identifier(schema)), return_shape=None)
+                       .format(Identifier(schema)))
 
     engine.run_sql(SQL("REVOKE INSERT, DELETE, UPDATE ON TABLE {}.info FROM PUBLIC").format(
-        Identifier(SPLITGRAPH_META_SCHEMA)), return_shape=None)
+        Identifier(SPLITGRAPH_META_SCHEMA)))
 
     # Allow everyone to read objects that have been uploaded
     engine.run_sql(SQL("ALTER DEFAULT PRIVILEGES IN SCHEMA {} GRANT SELECT ON TABLES TO PUBLIC")
-                   .format(Identifier(SPLITGRAPH_META_SCHEMA)), return_shape=None)
+                   .format(Identifier(SPLITGRAPH_META_SCHEMA)))
 
     for t in _RLS_TABLES:
         _setup_rls_policies(t)
@@ -170,7 +170,7 @@ def _setup_rls_policies(table, schema=SPLITGRAPH_META_SCHEMA, condition=None):
     engine = get_engine()
 
     engine.run_sql(SQL("ALTER TABLE {}.{} ENABLE ROW LEVEL SECURITY").format(Identifier(schema),
-                                                                             Identifier(table)), return_shape=None)
+                                                                             Identifier(table)))
     for flavour in 'SIUD':
         engine.run_sql(SQL("DROP POLICY IF EXISTS {2} ON {0}.{1}")
                        .format(Identifier(schema), Identifier(table), Identifier(table + '_' + flavour)),
