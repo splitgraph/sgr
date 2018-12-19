@@ -9,7 +9,7 @@ from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
-from splitgraph.engine import Engine, ResultShape
+from splitgraph.engine import SQLEngine, ResultShape, ObjectEngine
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.mount_handlers import mount_postgres
 
@@ -21,7 +21,7 @@ STM_TRIGGER_NAME = "audit_trigger_stm"
 REMOTE_TMP_SCHEMA = "tmp_remote_data"
 
 
-class PostgresEngine(Engine):
+class PostgresEngine(SQLEngine, ObjectEngine):
     """An implementation of the Postgres engine for Splitgraph"""
 
     def __init__(self, conn_params):

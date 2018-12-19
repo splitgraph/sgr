@@ -15,7 +15,7 @@ class ResultShape(Enum):
     MANY_MANY = 4  # e.g. [("row1_val1", "row1_val_2"), ("row2_val1", "row2_val_2"), ...]
 
 
-class Engine:
+class SQLEngine:
     """Abstraction for a Splitgraph SQL backend"""
 
     def run_sql(self, statement, arguments=(), return_shape=ResultShape.MANY_MANY):
@@ -271,12 +271,33 @@ class Engine:
         """
         return self.get_primary_keys(schema, table) or self.get_column_names_types(schema, table)
 
-    # Object creation/application
 
+class ObjectEngine:
+    """
+    Routines for storing/applying objects as well as sharing them with other engines.
+    """
     def store_diff_object(self, changeset, schema, table, change_key):
+        """
+        Store a changeset in a table
+
+        :param changeset: List of (pk, action (0 for Insert, 1 for Delete, 2 for Update), action_data)
+            where action_data is None for Delete and `{'c': [column_names], 'v': [column_values]}` that
+            have been inserted/updated otherwise.
+        :param schema: Schema to store the changeset in
+        :param table: Table to store the changeset in
+        :param change_key: Change key as returned by `get_change_key`
+        """
         raise NotImplementedError()
 
     def apply_diff_object(self, source_schema, source_table, target_schema, target_table):
+        """
+        Apply a changeset stored in a table to a certain target table.
+
+        :param source_schema: Schema the changeset is stored in
+        :param source_table: Table the changeset is stored in
+        :param target_schema: Schema to apply the changeset to
+        :param target_table: Table to apply the changeset to
+        """
         raise NotImplementedError()
 
     def dump_object(self, schema, table, stream):
@@ -333,7 +354,7 @@ def get_engine(name=None):
         is returned.
     """
     if not name:
-        if isinstance(_ENGINE, Engine):
+        if isinstance(_ENGINE, SQLEngine):
             return _ENGINE
         name = _ENGINE
     if name not in _ENGINES:
