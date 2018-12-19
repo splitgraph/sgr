@@ -8,6 +8,7 @@ Subpackages
 
     splitgraph.commands
     splitgraph.config
+    splitgraph.engine
     splitgraph.hooks
     splitgraph.splitfile
 
@@ -26,14 +27,6 @@ splitgraph.exceptions module
 ----------------------------
 
 .. automodule:: splitgraph.exceptions
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-splitgraph.pg\_utils module
----------------------------
-
-.. automodule:: splitgraph.pg_utils
     :members:
     :undoc-members:
     :show-inheritance:

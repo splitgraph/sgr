@@ -2,17 +2,16 @@
 Functions to manage Splitgraph repositories
 """
 
-from collections.__init__ import namedtuple
+from collections import namedtuple
 from datetime import datetime
 
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import CONFIG
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.connection import override_driver_connection, get_connection, make_driver_connection
+from splitgraph.engine import ResultShape, get_engine, switch_engine
 from splitgraph.exceptions import SplitGraphException
 from .._data.common import ensure_metadata_schema, insert, select
-from .._data.objects import register_object, register_table
 
 
 def _parse_paths_overrides(lookup_path, override_path):
@@ -50,37 +49,31 @@ def to_repository(schema):
 
 def repository_exists(repository):
     """
-    Checks if a repository exists on the driver. Can be used with `override_driver_connection`
+    Checks if a repository exists on the engine. Can be used with `override_engine_connection`
 
     :param repository: Repository object
     """
-    with get_connection().cursor() as cur:
-        cur.execute(SQL("SELECT 1 FROM {}.images WHERE namespace = %s AND repository = %s")
-                    .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                    (repository.namespace, repository.repository))
-        return cur.fetchone() is not None
+    return get_engine().run_sql(SQL("SELECT 1 FROM {}.images WHERE namespace = %s AND repository = %s")
+                                .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                                (repository.namespace, repository.repository),
+                                return_shape=ResultShape.ONE_ONE) is not None
 
 
-def register_repository(repository, initial_image, tables, table_object_ids):
+def register_repository(repository, initial_image):
     """
-    Registers a new repository on the driver. Internal function, use `splitgraph.init` instead.
+    Registers a new repository on the engine. Internal function, use `splitgraph.init` instead.
 
     :param repository: Repository object
     :param initial_image: Hash of the initial image
-    :param tables: Table names in the initial image
-    :param table_object_ids: Object IDs that the initial tables map to.
     """
-    with get_connection().cursor() as cur:
-        cur.execute(insert("images", ("image_hash", "namespace", "repository", "parent_id", "created")),
-                    (initial_image, repository.namespace, repository.repository, None, datetime.now()))
-        # Strictly speaking this is redundant since the checkout (of the "HEAD" commit) updates the tag table.
-        cur.execute(insert("tags", ("namespace", "repository", "image_hash", "tag")),
-                    (repository.namespace, repository.repository, initial_image, "HEAD"))
-        for t, ti in zip(tables, table_object_ids):
-            # Register the tables and the object IDs they were stored under.
-            # They're obviously stored as snaps since there's nothing to diff to...
-            register_object(ti, 'SNAP', repository.namespace, None)
-            register_table(repository, t, initial_image, ti)
+    engine = get_engine()
+    engine.run_sql(insert("images", ("image_hash", "namespace", "repository", "parent_id", "created")),
+                   (initial_image, repository.namespace, repository.repository, None, datetime.now()),
+                   return_shape=None)
+    # Strictly speaking this is redundant since the checkout (of the "HEAD" commit) updates the tag table.
+    engine.run_sql(insert("tags", ("namespace", "repository", "image_hash", "tag")),
+                   (repository.namespace, repository.repository, initial_image, "HEAD"),
+                   return_shape=None)
 
 
 def unregister_repository(repository, is_remote=False):
@@ -88,29 +81,28 @@ def unregister_repository(repository, is_remote=False):
     Deregisters the repository. Internal function, use splitgraph.rm to delete a repository.
 
     :param repository: Repository object
-    :param is_remote: Specifies whether the driver is a remote that doesn't have the "upstream" table.
+    :param is_remote: Specifies whether the engine is a remote that doesn't have the "upstream" table.
     """
-    with get_connection().cursor() as cur:
-        meta_tables = ["tables", "tags", "images"]
-        if not is_remote:
-            meta_tables.append("upstream")
-        for meta_table in meta_tables:
-            cur.execute(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s")
-                        .format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                Identifier(meta_table)),
-                        (repository.namespace, repository.repository))
+    engine = get_engine()
+    meta_tables = ["tables", "tags", "images"]
+    if not is_remote:
+        meta_tables.append("upstream")
+    for meta_table in meta_tables:
+        engine.run_sql(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s")
+                       .format(Identifier(SPLITGRAPH_META_SCHEMA),
+                               Identifier(meta_table)),
+                       (repository.namespace, repository.repository))
 
 
 def get_current_repositories():
     """
-    Lists all repositories currently in the driver.
+    Lists all repositories currently in the engine.
 
     :return: List of (Repository object, current HEAD image)
     """
     ensure_metadata_schema()
-    with get_connection().cursor() as cur:
-        cur.execute(select("tags", "namespace, repository, image_hash", "tag = 'HEAD'"))
-        return [(Repository(n, r), i) for n, r, i in cur.fetchall()]
+    return [(Repository(n, r), i) for n, r, i in
+            get_engine().run_sql(select("tags", "namespace, repository, image_hash", "tag = 'HEAD'"))]
 
 
 def get_upstream(repository):
@@ -118,17 +110,15 @@ def get_upstream(repository):
     Gets the current upstream (connection string and repository) that a local repository tracks
 
     :param repository: Local repository
-    :return: Tuple of (remote driver, remote Repository object)
+    :return: Tuple of (remote engine, remote Repository object)
     """
-    with get_connection().cursor() as cur:
-        cur.execute(select("upstream", "remote_name, remote_namespace, remote_repository",
-                           "namespace = %s AND repository = %s"),
-                    (repository.namespace, repository.repository))
-        result = cur.fetchone()
-        if result is None:
-            return result
-
-        return result[0], Repository(result[1], result[2])
+    result = get_engine().run_sql(select("upstream", "remote_name, remote_namespace, remote_repository",
+                                         "namespace = %s AND repository = %s"),
+                                  (repository.namespace, repository.repository),
+                                  return_shape=ResultShape.ONE_MANY)
+    if result is None:
+        return result
+    return result[0], Repository(result[1], result[2])
 
 
 def set_upstream(repository, remote_name, remote_repository):
@@ -139,16 +129,16 @@ def set_upstream(repository, remote_name, remote_repository):
     :param remote_name: Name of the remote as specified in the Splitgraph config.
     :param remote_repository: Remote Repository object
     """
-    with get_connection().cursor() as cur:
-        cur.execute(SQL("INSERT INTO {0}.upstream (namespace, repository, "
-                        "remote_name, remote_namespace, remote_repository) VALUES (%s, %s, %s, %s, %s)"
-                        " ON CONFLICT (namespace, repository) DO UPDATE SET "
-                        "remote_name = excluded.remote_name, remote_namespace = excluded.remote_namespace, "
-                        "remote_repository = excluded.remote_repository WHERE upstream.namespace = excluded.namespace "
-                        "AND upstream.repository = excluded.repository")
-                    .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                    (repository.namespace, repository.repository, remote_name, remote_repository.namespace,
-                     remote_repository.repository))
+    get_engine().run_sql(SQL("INSERT INTO {0}.upstream (namespace, repository, "
+                             "remote_name, remote_namespace, remote_repository) VALUES (%s, %s, %s, %s, %s)"
+                             " ON CONFLICT (namespace, repository) DO UPDATE SET "
+                             "remote_name = excluded.remote_name, remote_namespace = excluded.remote_namespace, "
+                             "remote_repository = excluded.remote_repository WHERE "
+                             "upstream.namespace = excluded.namespace "
+                             "AND upstream.repository = excluded.repository")
+                         .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                         (repository.namespace, repository.repository, remote_name, remote_repository.namespace,
+                          remote_repository.repository))
 
 
 def delete_upstream(repository):
@@ -157,21 +147,21 @@ def delete_upstream(repository):
 
     :param repository: Local repository
     """
-    with get_connection().cursor() as cur:
-        cur.execute(SQL("DELETE FROM {0}.upstream WHERE namespace = %s AND repository = %s")
-                    .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                    (repository.namespace, repository.repository))
+    get_engine().run_sql(SQL("DELETE FROM {0}.upstream WHERE namespace = %s AND repository = %s")
+                         .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                         (repository.namespace, repository.repository),
+                         return_shape=None)
 
 
 def lookup_repo(repo_name, include_local=False):
     """
-    Queries the SG drivers on the lookup path to locate one hosting the given driver.
+    Queries the SG drivers on the lookup path to locate one hosting the given engine.
 
     :param repo_name: Repository name
-    :param include_local: If True, also queries the local driver
+    :param include_local: If True, also queries the local engine
 
-    :return: The name of the remote driver that has the repository (as specified in the config)
-        or "LOCAL" if the local driver has the repository.
+    :return: The name of the remote engine that has the repository (as specified in the config)
+        or "LOCAL" if the local engine has the repository.
     """
 
     if repo_name in _LOOKUP_PATH_OVERRIDE:
@@ -182,11 +172,10 @@ def lookup_repo(repo_name, include_local=False):
         return "LOCAL"
 
     for candidate in _LOOKUP_PATH:
-        remote_conn = make_driver_connection(candidate)
-        with override_driver_connection(remote_conn):
+        with switch_engine(candidate):
             if repository_exists(repo_name):
-                remote_conn.close()
+                get_engine().close()
                 return candidate
-            remote_conn.close()
+            get_engine().close()
 
     raise SplitGraphException("Unknown repository %s!" % repo_name.to_schema())

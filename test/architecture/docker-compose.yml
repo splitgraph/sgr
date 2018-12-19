@@ -35,7 +35,7 @@ services:
       - 3306
     volumes:
       - ./data/mysqlorigin/setup.sql:/docker-entrypoint-initdb.d/setup.sql:ro
-  local_driver:
+  local_engine:
     image: splitgraph/driver
     ports:
       - "0.0.0.0:5432:5432"
@@ -45,10 +45,10 @@ services:
       - POSTGRES_DB=splitgraph
     expose:
       - 5432
-  remote_driver:
+  remote_engine:
     build:
       context:  ./src/
-      dockerfile: remote_driver/Dockerfile
+      dockerfile: remote_engine/Dockerfile
     ports:
       - "0.0.0.0:5431:5431"
     environment:
@@ -57,7 +57,7 @@ services:
       - POSTGRES_DB=splitgraph
       - PGPORT=5431
     volumes:
-      - ./data/remote_driver/setup.sql:/docker-entrypoint-initdb.d/setup.sql
+      - ./data/remote_engine/setup.sql:/docker-entrypoint-initdb.d/setup.sql
     expose:
       - 5431
   object_storage:

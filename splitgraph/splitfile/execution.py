@@ -16,10 +16,9 @@ from splitgraph.commands.push_pull import local_clone, pull
 from splitgraph.commands.repository import Repository, repository_exists, lookup_repo
 from splitgraph.commands.tagging import get_current_head, resolve_image
 from splitgraph.config import CONFIG
-from splitgraph.connection import get_connection
+from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.mount_handlers import get_mount_handler
-from splitgraph.pg_utils import execute_sql_in
 from ._parsing import parse_commands, extract_nodes, get_first_or_none, parse_image_spec, \
     extract_all_table_aliases, parse_custom_command
 
@@ -85,7 +84,7 @@ def execute_commands(commands, params=None, output=None, output_base='0' * 32):
             _initialize_output(output)
             _execute_custom(node, output)
 
-    get_connection().commit()
+    get_engine().commit()
 
 
 def _execute_sql(node, output):
@@ -108,7 +107,7 @@ def _execute_sql(node, output):
 
     def _calc():
         print("Executing SQL...")
-        execute_sql_in(get_connection(), output.to_schema(), sql_command)
+        get_engine().execute_sql_in(output.to_schema(), sql_command)
         commit(output, target_hash, comment=sql_command)
         store_sql_provenance(output, target_hash, sql_command)
 
@@ -133,10 +132,10 @@ def _execute_from(node, output):
         init(output)
     if repo_source:
         repository, tag_or_hash = parse_image_spec(repo_source)
-        driver = lookup_repo(repository, include_local=True)
+        engine = lookup_repo(repository, include_local=True)
 
-        if driver != 'LOCAL':
-            clone(repository, remote_driver=driver, local_repository=output,
+        if engine != 'LOCAL':
+            clone(repository, remote_engine=engine, local_repository=output,
                   download_all=False)
             checkout(output, resolve_image(output, tag_or_hash))
         else:
@@ -216,10 +215,10 @@ def _execute_repo_import(repository, table_names, tag_or_hash, target_repository
         # it for hashing: we assume that the queries are deterministic, so if the query is changed,
         # the whole layer is invalidated.
         print("Resolving repository %s" % str(repository))
-        driver = lookup_repo(repository, include_local=True)
+        engine = lookup_repo(repository, include_local=True)
 
-        if driver != 'LOCAL':
-            clone(repository, remote_driver=driver, local_repository=tmp_repo, download_all=False)
+        if engine != 'LOCAL':
+            clone(repository, remote_engine=engine, local_repository=tmp_repo, download_all=False)
             source_hash = resolve_image(tmp_repo, tag_or_hash)
             source_mountpoint = tmp_repo
         else:
@@ -265,8 +264,7 @@ def _execute_custom(node, output):
     except ImportError as e:
         raise SplitGraphException("Error loading custom command {0}".format(command), e)
 
-    with get_connection().cursor() as cur:
-        cur.execute("SET search_path TO %s", (output.to_schema(),))
+    get_engine().run_sql("SET search_path TO %s", (output.to_schema(),))
     command = cmd_class()
 
     # Pre-flight check: get the new command hash and see if we can short-circuit and just check the image out.

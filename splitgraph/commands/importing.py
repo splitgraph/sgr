@@ -8,6 +8,7 @@ from psycopg2.sql import Identifier, SQL
 
 from splitgraph._data.images import add_new_image
 from splitgraph._data.objects import register_table, register_object
+from splitgraph.commands._common import manage_audit
 from splitgraph.commands._objects.utils import get_random_object_id
 from splitgraph.commands.checkout import materialize_table, checkout
 from splitgraph.commands.info import get_tables_at, get_table
@@ -16,10 +17,8 @@ from splitgraph.commands.push_pull import clone
 from splitgraph.commands.repository import Repository
 from splitgraph.commands.tagging import get_current_head
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.connection import get_connection
-from splitgraph.pg_utils import copy_table, execute_sql_in, get_all_tables, get_all_foreign_tables
+from splitgraph.engine import get_engine
 from ._common import set_head
-from ._pg_audit import manage_audit
 
 
 @manage_audit
@@ -51,14 +50,13 @@ def import_tables(repository, tables, target_repository, target_tables, image_ha
     if table_queries is None:
         table_queries = []
     target_hash = target_hash or "%0.2x" % getrandbits(256)
-    conn = get_connection()
 
     if not foreign_tables:
         image_hash = image_hash or get_current_head(repository)
 
     if not tables:
         tables = get_tables_at(repository, image_hash) if not foreign_tables \
-            else get_all_foreign_tables(conn, repository.to_schema())
+            else get_engine().get_all_tables(repository.to_schema())
     if not target_tables:
         if table_queries:
             raise ValueError("target_tables has to be defined if table_queries is True!")
@@ -68,7 +66,7 @@ def import_tables(repository, tables, target_repository, target_tables, image_ha
     if len(tables) != len(target_tables) or len(tables) != len(table_queries):
         raise ValueError("tables, target_tables and table_queries have mismatching lengths!")
 
-    existing_tables = get_all_tables(conn, target_repository.to_schema())
+    existing_tables = get_engine().get_all_tables(target_repository.to_schema())
     clashing = [t for t in target_tables if t in existing_tables]
     if clashing:
         raise ValueError("Table(s) %r already exist(s) at %s!" % (clashing, target_repository))
@@ -79,9 +77,8 @@ def import_tables(repository, tables, target_repository, target_tables, image_ha
 
 def _import_tables(repository, image_hash, tables, target_repository, target_hash, target_tables, do_checkout,
                    table_queries, foreign_tables):
-    conn = get_connection()
-    with conn.cursor() as cur:
-        cur.execute(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(target_repository.to_schema())))
+    engine = get_engine()
+    engine.create_schema(target_repository.to_schema())
 
     head = get_current_head(target_repository, raise_on_none=False)
     # Add the new snap ID to the tree
@@ -99,11 +96,11 @@ def _import_tables(repository, image_hash, tables, target_repository, target_has
             if is_query:
                 # is_query precedes foreign_tables: if we're importing using a query, we don't care if it's a
                 # foreign table or not since we're storing it as a full snapshot.
-                execute_sql_in(conn, repository.to_schema(),
-                               SQL("CREATE TABLE {}.{} AS ").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                    Identifier(object_id)) + SQL(table))
+                engine.execute_sql_in(repository.to_schema(),
+                                      SQL("CREATE TABLE {}.{} AS ").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                           Identifier(object_id)) + SQL(table))
             elif foreign_tables:
-                copy_table(conn, repository.to_schema(), table, SPLITGRAPH_META_SCHEMA, object_id)
+                get_engine().copy_table(repository.to_schema(), table, SPLITGRAPH_META_SCHEMA, object_id)
 
             _register_and_checkout_new_table(do_checkout, object_id, target_hash, target_repository, target_table)
         else:
@@ -114,13 +111,14 @@ def _import_tables(repository, image_hash, tables, target_repository, target_has
                                   destination_schema=target_repository.to_schema())
     # Register the existing tables at the new commit as well.
     if head is not None:
-        with conn.cursor() as cur:
-            cur.execute(SQL("""INSERT INTO {0}.tables (namespace, repository, image_hash, table_name, object_id)
+        # Maybe push this into the tables API (currently have to make 2 queries)
+        engine.run_sql(SQL("""INSERT INTO {0}.tables (namespace, repository, image_hash, table_name, object_id)
                 (SELECT %s, %s, %s, table_name, object_id FROM {0}.tables
                 WHERE namespace = %s AND repository = %s AND image_hash = %s)""")
-                        .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                        (target_repository.namespace, target_repository.repository,
-                         target_hash, target_repository.namespace, target_repository.repository, head))
+                       .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                       (target_repository.namespace, target_repository.repository,
+                        target_hash, target_repository.namespace, target_repository.repository, head),
+                       return_shape=None)
     set_head(target_repository, target_hash)
     return target_hash
 
@@ -130,16 +128,16 @@ def _register_and_checkout_new_table(do_checkout, object_id, target_hash, target
     register_object(object_id, 'SNAP', namespace=target_repository.namespace, parent_object=None)
     register_table(target_repository, target_table, target_hash, object_id)
     if do_checkout:
-        copy_table(get_connection(), SPLITGRAPH_META_SCHEMA, object_id, target_repository.to_schema(), target_table)
+        get_engine().copy_table(SPLITGRAPH_META_SCHEMA, object_id, target_repository.to_schema(), target_table)
 
 
-def import_table_from_remote(remote_conn_string, remote_repository, remote_tables, remote_image_hash, target_repository,
+def import_table_from_remote(remote_engine, remote_repository, remote_tables, remote_image_hash, target_repository,
                              target_tables, target_hash=None):
     """
     Shorthand for importing one or more tables from a yet-uncloned remote. Here, the remote image hash is required,
     as otherwise we aren't necessarily able to determine what the remote head is.
 
-    :param remote_conn_string: Connection string to the remote driver
+    :param remote_engine: Remote engine name
     :param remote_repository: Remote repository
     :param remote_tables: List of remote tables to import
     :param remote_image_hash: Image hash to import the tables from
@@ -153,12 +151,11 @@ def import_table_from_remote(remote_conn_string, remote_repository, remote_table
     # lightweight (we never download unneeded objects), we just clone it into a temporary mountpoint,
     # do the import into the target and destroy the temporary mp.
     tmp_mountpoint = Repository(namespace=remote_repository.namespace,
-                                repository=remote_repository.repository +
-                                           '_clone_tmp')
+                                repository=remote_repository.repository + '_clone_tmp')
 
-    clone(remote_repository, remote_driver=remote_conn_string, local_repository=tmp_mountpoint, download_all=False)
+    clone(remote_repository, remote_engine=remote_engine, local_repository=tmp_mountpoint, download_all=False)
     import_tables(tmp_mountpoint, remote_tables, target_repository, target_tables, image_hash=remote_image_hash,
                   target_hash=target_hash)
 
     rm(tmp_mountpoint)
-    get_connection().commit()
+    get_engine().commit()

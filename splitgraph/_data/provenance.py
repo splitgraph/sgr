@@ -6,7 +6,7 @@ from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.connection import get_connection
+from splitgraph.engine import get_engine
 
 _QUERY = SQL("""UPDATE {}.images SET provenance_type = %s, provenance_data = %s WHERE
                             namespace = %s AND repository = %s AND image_hash = %s""") \
@@ -16,21 +16,21 @@ _QUERY = SQL("""UPDATE {}.images SET provenance_type = %s, provenance_data = %s 
 def store_import_provenance(repository, image_hash, source_repository, source_hash, tables, table_aliases,
                             table_queries):
     """Stores provenance for images produced by the FROM ... IMPORT Splitfile statement."""
-    with get_connection().cursor() as cur:
-        cur.execute(_QUERY,
-                    ("IMPORT", Json({
-                        'source': source_repository.repository,
-                        'source_namespace': source_repository.namespace,
-                        'source_hash': source_hash,
-                        'tables': tables,
-                        'table_aliases': table_aliases,
-                        'table_queries': table_queries}), repository.namespace, repository.repository, image_hash))
+    get_engine().run_sql(_QUERY,
+                         ("IMPORT", Json({
+                             'source': source_repository.repository,
+                             'source_namespace': source_repository.namespace,
+                             'source_hash': source_hash,
+                             'tables': tables,
+                             'table_aliases': table_aliases,
+                             'table_queries': table_queries}), repository.namespace, repository.repository, image_hash),
+                         return_shape=None)
 
 
 def store_sql_provenance(repository, image_hash, sql):
     """Stores provenance for images produced by the SQL Splitfile statement."""
-    with get_connection().cursor() as cur:
-        cur.execute(_QUERY, ('SQL', Json(sql), repository.namespace, repository.repository, image_hash))
+    get_engine().run_sql(_QUERY, ('SQL', Json(sql), repository.namespace, repository.repository, image_hash),
+                         return_shape=None)
 
 
 def store_mount_provenance(repository, image_hash):
@@ -39,12 +39,12 @@ def store_mount_provenance(repository, image_hash):
     We don't store the details of images that come from an sgr MOUNT command since those are assumed to be based
     on an inaccessible db.
     """
-    with get_connection().cursor() as cur:
-        cur.execute(_QUERY, ('MOUNT', None, repository.namespace, repository.repository, image_hash))
+    get_engine().run_sql(_QUERY, ('MOUNT', None, repository.namespace, repository.repository, image_hash),
+                         return_shape=None)
 
 
 def store_from_provenance(repository, image_hash, source):
     """Stores provenance for images produced by the FROM... Splitfile statement."""
-    with get_connection().cursor() as cur:
-        cur.execute(_QUERY, ('FROM', Json({'source': source.repository, 'source_namespace': source.namespace}),
-                             repository.namespace, repository.repository, image_hash))
+    get_engine().run_sql(_QUERY, ('FROM', Json({'source': source.repository, 'source_namespace': source.namespace}),
+                                  repository.namespace, repository.repository, image_hash),
+                         return_shape=None)

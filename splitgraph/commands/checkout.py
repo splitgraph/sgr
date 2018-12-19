@@ -5,24 +5,20 @@ Commands for checking out Splitgraph images
 import logging
 from contextlib import contextmanager
 
-from psycopg2.sql import Identifier, SQL
-
+from splitgraph.commands._common import manage_audit
 from splitgraph.commands.repository import get_upstream
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from splitgraph.engine import get_engine
 from ._common import set_head
-from ._objects.applying import apply_record_to_staging
 from ._objects.loading import download_objects
 from ._objects.utils import get_random_object_id
-from ._pg_audit import manage_audit, discard_pending_changes
 from .diff import has_pending_changes
 from .info import get_canonical_image_id, get_tables_at
 from .misc import delete_objects, rm
 from .tagging import get_tagged_id, delete_tag
 from .._data.images import get_image_object_path
 from .._data.objects import get_external_object_locations, get_object_for_table, get_existing_objects
-from ..connection import get_connection, get_remote_connection_params
 from ..exceptions import SplitGraphException
-from ..pg_utils import copy_table, get_all_tables, pg_table_exists
 
 
 def materialize_table(repository, image_hash, table, destination, destination_schema=None):
@@ -37,36 +33,35 @@ def materialize_table(repository, image_hash, table, destination, destination_sc
     :param destination_schema: Name of the destination schema.
     :return: A set of IDs of downloaded objects used to construct the table.
     """
-    conn = get_connection()
     destination_schema = destination_schema or repository.to_schema()
-    with conn.cursor() as cur:
-        cur.execute(
-            SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(destination_schema), Identifier(destination)))
-        # Get the closest snapshot from the table's parents
-        # and then apply all deltas consecutively from it.
-        object_id, to_apply = get_image_object_path(repository, table, image_hash)
+    engine = get_engine()
+    engine.delete_table(destination_schema, destination)
+    # Get the closest snapshot from the table's parents
+    # and then apply all deltas consecutively from it.
+    object_id, to_apply = get_image_object_path(repository, table, image_hash)
 
-        # Make sure all the objects have been downloaded from remote if it exists
-        remote_info = get_upstream(repository)
-        if remote_info:
-            object_locations = get_external_object_locations(to_apply + [object_id])
-            fetched_objects = download_objects(get_remote_connection_params(remote_info[0]),
-                                               objects_to_fetch=to_apply + [object_id],
-                                               object_locations=object_locations)
+    # Make sure all the objects have been downloaded from remote if it exists
+    remote_info = get_upstream(repository)
+    if remote_info:
+        object_locations = get_external_object_locations(to_apply + [object_id])
+        fetched_objects = download_objects(remote_info[0],
+                                           objects_to_fetch=to_apply + [object_id],
+                                           object_locations=object_locations)
 
-        difference = set(to_apply + [object_id]).difference(set(get_existing_objects()))
-        if difference:
-            logging.warning("Not all objects required to materialize %s:%s:%s exist locally.",
-                            repository.to_schema(), image_hash, table)
-            logging.warning("Missing objects: %r", difference)
-        # Copy the given snap id over to "staging" and apply the DIFFS
-        copy_table(conn, SPLITGRAPH_META_SCHEMA, object_id, destination_schema, destination,
-                   with_pk_constraints=True)
-        for pack_object in reversed(to_apply):
-            logging.info("Applying %s...", pack_object)
-            apply_record_to_staging(pack_object, destination_schema, destination)
+    difference = set(to_apply + [object_id]).difference(set(get_existing_objects()))
+    if difference:
+        logging.warning("Not all objects required to materialize %s:%s:%s exist locally.",
+                        repository.to_schema(), image_hash, table)
+        logging.warning("Missing objects: %r", difference)
 
-        return fetched_objects if remote_info else set()
+    # Copy the given snap id over to "staging" and apply the DIFFS
+    engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, destination_schema, destination,
+                      with_pk_constraints=True)
+    for pack_object in reversed(to_apply):
+        logging.info("Applying %s...", pack_object)
+        engine.apply_diff_object(SPLITGRAPH_META_SCHEMA, pack_object, destination_schema, destination)
+
+    return fetched_objects if remote_info else set()
 
 
 @manage_audit
@@ -83,7 +78,7 @@ def checkout(repository, image_hash=None, tag=None, tables=None, keep_downloaded
     :param force: Discards all pending changes to the schema.
     """
     target_schema = repository.to_schema()
-    conn = get_connection()
+    engine = get_engine()
     if tables is None:
         tables = []
     if has_pending_changes(repository):
@@ -91,7 +86,7 @@ def checkout(repository, image_hash=None, tag=None, tables=None, keep_downloaded
             raise SplitGraphException("{0} has pending changes! Pass force=True or do sgr checkout -f {0}:HEAD"
                                       .format(repository.to_schema()))
         logging.warning("%s has pending changes, discarding...", repository.to_schema())
-    discard_pending_changes(target_schema)
+        engine.discard_pending_changes(target_schema)
     # Detect the actual image
     if image_hash:
         # get_canonical_image_hash called twice if the commandline entry point already called it. How to fix?
@@ -102,10 +97,9 @@ def checkout(repository, image_hash=None, tag=None, tables=None, keep_downloaded
         raise SplitGraphException("One of image_hash or tag must be specified!")
 
     tables = tables or get_tables_at(repository, image_hash)
-    with conn.cursor() as cur:
-        # Drop all current tables in staging
-        for table in get_all_tables(conn, target_schema):
-            cur.execute(SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(target_schema), Identifier(table)))
+    # Drop all current tables in staging
+    for table in engine.get_all_tables(target_schema):
+        engine.delete_table(target_schema, table)
 
     downloaded_object_ids = set()
     for table in tables:
@@ -153,6 +147,7 @@ def materialized_table(repository, table_name, image_hash):
     if image_hash is None:
         # No image hash -- just return the current staging table.
         yield repository.to_schema(), table_name
+        return  # make sure we don't fall through after the user is finished
     # See if the table snapshot already exists, otherwise reconstruct it
     object_id = get_object_for_table(repository, table_name, image_hash, 'SNAP')
     if object_id is None:
@@ -163,7 +158,7 @@ def materialized_table(repository, table_name, image_hash):
         # Maybe some cache management/expiry strategies here
         delete_objects([new_id])
     else:
-        if pg_table_exists(get_connection(), SPLITGRAPH_META_SCHEMA, object_id):
+        if get_engine().table_exists(SPLITGRAPH_META_SCHEMA, object_id):
             yield SPLITGRAPH_META_SCHEMA, object_id
         else:
             # The SNAP object doesn't actually exist remotely, so we have to download it.

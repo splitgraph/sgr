@@ -5,7 +5,7 @@ API functions for tagging images/getting tag information
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.connection import get_connection
+from splitgraph.engine import ResultShape, get_engine
 from splitgraph.exceptions import SplitGraphException
 from .info import get_canonical_image_id
 from .repository import repository_exists
@@ -33,32 +33,31 @@ def get_tagged_id(repository, tag, raise_on_none=True):
     ensure_metadata_schema()
     if not repository_exists(repository) and raise_on_none:
         raise SplitGraphException("%s does not exist!" % str(repository))
+    engine = get_engine()
 
     if tag == 'latest':
         # Special case, return the latest commit from the repository.
-        with get_connection().cursor() as cur:
-            cur.execute(select("images", "image_hash", "namespace = %s AND repository = %s")
-                        + SQL(" ORDER BY created DESC LIMIT 1"), (repository.namespace, repository.repository,))
-            result = cur.fetchone()
-            if result is None:
-                raise SplitGraphException("No commits found in %s!")
-            return result[0]
+        result = engine.run_sql(select("images", "image_hash", "namespace = %s AND repository = %s")
+                                + SQL(" ORDER BY created DESC LIMIT 1"), (repository.namespace, repository.repository,),
+                                return_shape=ResultShape.ONE_ONE)
+        if result is None:
+            raise SplitGraphException("No commits found in %s!")
+        return result
 
-    with get_connection().cursor() as cur:
-        cur.execute(select("tags", "image_hash", "namespace = %s AND repository = %s AND tag = %s"),
-                    (repository.namespace, repository.repository, tag))
-        result = cur.fetchone()
-        if result is None or result == (None,):
-            if raise_on_none:
-                schema = repository.to_schema()
-                if tag == 'HEAD':
-                    raise SplitGraphException("No current checked out revision found for %s. Check one out with \"sgr "
-                                              "checkout %s image_hash\"." % (schema, schema))
-                else:
-                    raise SplitGraphException("Tag %s not found in repository %s" % (tag, schema))
+    result = engine.run_sql(select("tags", "image_hash", "namespace = %s AND repository = %s AND tag = %s"),
+                            (repository.namespace, repository.repository, tag),
+                            return_shape=ResultShape.ONE_ONE)
+    if result is None:
+        if raise_on_none:
+            schema = repository.to_schema()
+            if tag == 'HEAD':
+                raise SplitGraphException("No current checked out revision found for %s. Check one out with \"sgr "
+                                          "checkout %s image_hash\"." % (schema, schema))
             else:
-                return None
-        return result[0]
+                raise SplitGraphException("Tag %s not found in repository %s" % (tag, schema))
+        else:
+            return None
+    return result
 
 
 def get_all_hashes_tags(repository):
@@ -68,10 +67,8 @@ def get_all_hashes_tags(repository):
     :param repository: Repository
     :return: List of (image_hash, tag)
     """
-    with get_connection().cursor() as cur:
-        cur.execute(select("tags", "image_hash, tag", "namespace = %s AND repository = %s"),
-                    (repository.namespace, repository.repository,))
-        return cur.fetchall()
+    return get_engine().run_sql(select("tags", "image_hash, tag", "namespace = %s AND repository = %s"),
+                                (repository.namespace, repository.repository,))
 
 
 def set_tags(repository, tags, force=False):
@@ -96,20 +93,21 @@ def set_tag(repository, image, tag, force=False):
     :param tag: Tag to set. 'latest' and 'HEAD' are reserved tags.
     :param force: Whether to remove the old tag if an image with this tag already exists.
     """
-    with get_connection().cursor() as cur:
-        cur.execute(select("tags", "1", "namespace = %s AND repository = %s AND tag = %s"),
-                    (repository.namespace, repository.repository, tag))
-        if cur.fetchone() is None:
-            cur.execute(insert("tags", ("image_hash", "namespace", "repository", "tag")),
-                        (image, repository.namespace, repository.repository, tag))
+    engine = get_engine()
+    if engine.run_sql(select("tags", "1", "namespace = %s AND repository = %s AND tag = %s"),
+                      (repository.namespace, repository.repository, tag), return_shape=ResultShape.ONE_ONE) is None:
+        engine.run_sql(insert("tags", ("image_hash", "namespace", "repository", "tag")),
+                       (image, repository.namespace, repository.repository, tag),
+                       return_shape=None)
+    else:
+        if force:
+            engine.run_sql(SQL("UPDATE {}.tags SET image_hash = %s "
+                               "WHERE namespace = %s AND repository = %s AND tag = %s")
+                           .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                           (image, repository.namespace, repository.repository, tag),
+                           return_shape=None)
         else:
-            if force:
-                cur.execute(SQL("UPDATE {}.tags SET image_hash = %s "
-                                "WHERE namespace = %s AND repository = %s AND tag = %s")
-                            .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                            (image, repository.namespace, repository.repository, tag))
-            else:
-                raise SplitGraphException("Tag %s already exists in %s!" % (tag, repository.to_schema()))
+            raise SplitGraphException("Tag %s already exists in %s!" % (tag, repository.to_schema()))
 
 
 def delete_tag(repository, tag):
@@ -123,10 +121,10 @@ def delete_tag(repository, tag):
     # Does checks to make sure the tag actually exists, will raise otherwise
     get_tagged_id(repository, tag)
 
-    with get_connection().cursor() as cur:
-        cur.execute(SQL("DELETE FROM {}.tags WHERE namespace = %s AND repository = %s AND tag = %s")
-                    .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                    (repository.namespace, repository.repository, tag))
+    get_engine().run_sql(SQL("DELETE FROM {}.tags WHERE namespace = %s AND repository = %s AND tag = %s")
+                         .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                         (repository.namespace, repository.repository, tag),
+                         return_shape=None)
 
 
 def resolve_image(repository, tag_or_hash):

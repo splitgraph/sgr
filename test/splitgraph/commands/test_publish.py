@@ -4,28 +4,28 @@ from splitgraph._data.registry import get_published_info
 from splitgraph.commands import push
 from splitgraph.commands.publish import publish
 from splitgraph.commands.tagging import get_current_head, get_tagged_id, set_tag
-from splitgraph.connection import override_driver_connection
+from splitgraph.engine import switch_engine
 from splitgraph.splitfile import execute_commands
-from test.splitgraph.conftest import OUTPUT, PG_MNT, add_multitag_dataset_to_remote_driver, \
-    load_splitfile
+from test.splitgraph.conftest import OUTPUT, PG_MNT, add_multitag_dataset_to_engine, \
+    load_splitfile, REMOTE_ENGINE
 
 
 @pytest.mark.parametrize('extra_info', [True, False])
-def test_publish(empty_pg_conn, remote_driver_conn, extra_info):
+def test_publish(local_engine_empty, remote_engine, extra_info):
     # Run some splitfile commands to create a dataset and push it
-    add_multitag_dataset_to_remote_driver(remote_driver_conn)
+    add_multitag_dataset_to_engine(remote_engine)
     execute_commands(load_splitfile('import_remote_multiple.splitfile'), params={'TAG': 'v1'}, output=OUTPUT)
     set_tag(OUTPUT, get_current_head(OUTPUT), 'v1')
-    push(OUTPUT, remote_driver='remote_driver')
+    push(OUTPUT, remote_engine='remote_engine')
     publish(OUTPUT, 'v1', readme="A test repo.", include_provenance=extra_info, include_table_previews=extra_info)
 
     # Base the derivation on v2 of test/pg_mount and publish that too.
     execute_commands(load_splitfile('import_remote_multiple.splitfile'), params={'TAG': 'v2'}, output=OUTPUT)
     set_tag(OUTPUT, get_current_head(OUTPUT), 'v2')
-    push(OUTPUT, remote_driver='remote_driver')
+    push(OUTPUT, remote_engine='remote_engine')
     publish(OUTPUT, 'v2', readme="Based on v2.", include_provenance=extra_info, include_table_previews=extra_info)
 
-    with override_driver_connection(remote_driver_conn):
+    with switch_engine(REMOTE_ENGINE):
         image_hash, published_dt, provenance, readme, schemata, previews = get_published_info(OUTPUT, 'v1')
     assert image_hash == get_tagged_id(OUTPUT, 'v1')
     assert readme == "A test repo."
@@ -39,7 +39,7 @@ def test_publish(empty_pg_conn, remote_driver_conn, extra_info):
 
     assert schemata == expected_schemata
     if extra_info:
-        with override_driver_connection(remote_driver_conn):
+        with switch_engine(REMOTE_ENGINE):
             assert provenance == [[['test', 'pg_mount'], get_tagged_id(PG_MNT, 'v1')]]
         assert previews == {'join_table': [[1, 'apple', 'potato'], [2, 'orange', 'carrot']],
                             'my_fruits': [[1, 'apple'], [2, 'orange']],
@@ -49,13 +49,13 @@ def test_publish(empty_pg_conn, remote_driver_conn, extra_info):
         assert provenance is None
         assert previews is None
 
-    with override_driver_connection(remote_driver_conn):
+    with switch_engine(REMOTE_ENGINE):
         image_hash, published_dt, provenance, readme, schemata, previews = get_published_info(OUTPUT, 'v2')
     assert image_hash == get_tagged_id(OUTPUT, 'v2')
     assert readme == "Based on v2."
     assert schemata == expected_schemata
     if extra_info:
-        with override_driver_connection(remote_driver_conn):
+        with switch_engine(REMOTE_ENGINE):
             assert provenance == [[['test', 'pg_mount'], get_tagged_id(PG_MNT, 'v2')]]
         assert previews == {'join_table': [[2, 'orange', 'carrot']],
                             'my_fruits': [[2, 'orange']],

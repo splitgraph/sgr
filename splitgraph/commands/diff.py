@@ -5,13 +5,11 @@ Public API for calculating differences between two Splitgraph images.
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph._data.objects import get_object_for_table
-from splitgraph.commands._pg_audit import dump_pending_changes
 from splitgraph.commands.info import get_table
 from splitgraph.commands.misc import table_exists_at, find_path
 from splitgraph.commands.tagging import get_current_head
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.connection import get_connection
-from splitgraph.pg_utils import get_all_tables
+from splitgraph.engine import get_engine
 
 
 def _changes_to_aggregation(query_result, initial=None):
@@ -55,26 +53,28 @@ def diff(repository, table_name, image_1, image_2, aggregate=False):
     head = get_current_head(repository)
 
     if image_1 == head and image_2 is None:
-        changes = dump_pending_changes(repository.to_schema(), table_name, aggregate=aggregate)
-        return changes if not aggregate else _changes_to_aggregation(changes)
+        changes = get_engine().get_pending_changes(repository.to_schema(), table_name, aggregate=aggregate)
+        return list(changes) if not aggregate else _changes_to_aggregation(changes)
 
     # If the table is the same in the two images, short circuit as well.
     if set(get_table(repository, table_name, image_1)) == \
             set(get_table(repository, table_name, image_2)):
         return [] if not aggregate else (0, 0, 0)
 
-    # Otherwise, check if snap_1 is a parent of snap_2, then we can merge all the diffs.
+    # Otherwise, check if image_1 is a parent of image_2, then we can merge all the diffs.
+    # FIXME: we have to find if there's a path between two _objects_ representing these tables that's made out of DIFFs.
     path = find_path(repository, image_1, (image_2 if image_2 is not None else head))
     if path is not None:
         result = _calculate_merged_diff(repository, table_name, path, aggregate)
+        if result is None:
+            return _side_by_side_diff(repository, table_name, image_1, image_2, aggregate)
 
         # If snap_2 is staging, also include all changes that have happened since the last commit.
         if image_2 is None:
-            changes = dump_pending_changes(repository, table_name, aggregate=aggregate)
+            changes = get_engine().get_pending_changes(repository.to_schema(), table_name, aggregate=aggregate)
             if aggregate:
-                result = _changes_to_aggregation(changes, result)
-            else:
-                result.extend(changes)
+                return _changes_to_aggregation(changes, result)
+            result.extend(changes)
         return result
 
     # Finally, resort to manual diffing (images on different branches or reverse comparison order).
@@ -82,51 +82,47 @@ def diff(repository, table_name, image_1, image_2, aggregate=False):
 
 
 def _calculate_merged_diff(repository, table_name, path, aggregate):
-    with get_connection().cursor() as cur:
-        result = [] if not aggregate else (0, 0, 0)
-        for image in reversed(path):
-            diff_id = get_object_for_table(repository, table_name, image, 'DIFF')
-            if diff_id is None:
-                # TODO This entry on the path between the two nodes is a snapshot -- meaning there
-                # has been a schema change and we can't just accumulate diffs. For now, we just pretend
-                # it didn't happen and dump the data changes.
-                continue
-            if not aggregate:
-                cur.execute(SQL("""SELECT * FROM {}.{}""").format(
-                    Identifier(SPLITGRAPH_META_SCHEMA), Identifier(diff_id)))
-                # There's only one action applied to a tuple in a single diff, so the ordering doesn't matter.
-                image_diff = sorted(cur.fetchall())
-                for row in image_diff:
-                    pk = row[:-2]
-                    action = row[-2]
-                    action_data = row[-1]
-                    result.append((pk, action, action_data))
-            else:
-                cur.execute(SQL(
-                    """SELECT sg_action_kind, count(sg_action_kind) FROM {}.{} GROUP BY sg_action_kind""")
-                            .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(diff_id)))
-                result = _changes_to_aggregation(cur.fetchall(), result)
+    result = [] if not aggregate else (0, 0, 0)
+    for image in reversed(path):
+        diff_id = get_object_for_table(repository, table_name, image, 'DIFF')
+        if diff_id is None:
+            # There's a SNAP entry between the two images, meaning there has been a schema change.
+            # Hence we can't accumulate the DIFFs and have to resort to manual side-by-side diffing.
+            return None
+        if not aggregate:
+            # There's only one action applied to a tuple in a single diff, so the ordering doesn't matter.
+            for row in sorted(
+                    get_engine().run_sql(SQL("SELECT * FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                           Identifier(diff_id)))):
+                pk = row[:-2]
+                action = row[-2]
+                action_data = row[-1]
+                result.append((pk, action, action_data))
+        else:
+            result = _changes_to_aggregation(
+                get_engine().run_sql(
+                    SQL("SELECT sg_action_kind, count(sg_action_kind) FROM {}.{} GROUP BY sg_action_kind")
+                        .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(diff_id))), result)
     return result
 
 
 def _side_by_side_diff(repository, table_name, image_1, image_2, aggregate):
     # Circular import here otherwise
     from splitgraph.commands.checkout import materialized_table
-    with get_connection().cursor() as cur:
-        with materialized_table(repository, table_name, image_1) as (mp_1, table_1):
-            with materialized_table(repository, table_name, image_2) as (mp_2, table_2):
-                # Check both tables out at the same time since then table_2 calculation can be based
-                # on table_1's snapshot.
-                cur.execute(SQL("SELECT * FROM {}.{}").format(Identifier(mp_1),
-                                                              Identifier(table_1)))
-                left = cur.fetchall()
-                cur.execute(SQL("SELECT * FROM {}.{}").format(Identifier(mp_2),
-                                                              Identifier(table_2)))
-                right = cur.fetchall()
+    with materialized_table(repository, table_name, image_1) as (mp_1, table_1):
+        with materialized_table(repository, table_name, image_2) as (mp_2, table_2):
+            # Check both tables out at the same time since then table_2 calculation can be based
+            # on table_1's snapshot.
+            left = get_engine().run_sql(SQL("SELECT * FROM {}.{}").format(Identifier(mp_1),
+                                                                          Identifier(table_1)))
+            right = get_engine().run_sql(SQL("SELECT * FROM {}.{}").format(Identifier(mp_2),
+                                                                           Identifier(table_2)))
 
-        if aggregate:
-            return sum(1 for r in right if r not in left), sum(1 for r in left if r not in right), 0
-        return [(1, r) for r in left if r not in right] + [(0, r) for r in right if r not in left]
+    if aggregate:
+        return sum(1 for r in right if r not in left), sum(1 for r in left if r not in right), 0
+    # Mimic the diff format returned by the DIFF-object-accumulating function
+    return [(r, 1, None) for r in left if r not in right] + \
+           [(r, 0, {'c': [], 'v': []}) for r in right if r not in left]
 
 
 def has_pending_changes(repository):
@@ -139,7 +135,7 @@ def has_pending_changes(repository):
     if not head:
         # If the repo isn't checked out, no point checking for changes.
         return False
-    for table in get_all_tables(get_connection(), repository.to_schema()):
+    for table in get_engine().get_all_tables(repository.to_schema()):
         if diff(repository, table, head, None, aggregate=True) != (0, 0, 0):
             return True
     return False

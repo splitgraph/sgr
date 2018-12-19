@@ -7,7 +7,7 @@ import logging
 from splitgraph._data.common import ensure_metadata_schema
 from splitgraph.commands.misc import rm
 from splitgraph.commands.repository import to_repository
-from splitgraph.connection import get_connection
+from splitgraph.engine import get_engine
 from splitgraph.hooks.mount_handlers import get_mount_handler
 
 
@@ -26,4 +26,4 @@ def mount(mountpoint, mount_handler, handler_kwargs):
     rm(to_repository(mountpoint))
     mh_func(mountpoint, **handler_kwargs)
 
-    get_connection().commit()
+    get_engine().commit()

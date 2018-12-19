@@ -6,9 +6,9 @@ from splitgraph._data.objects import get_existing_objects, get_external_object_l
 from splitgraph.commands import clone, checkout, commit, push
 from splitgraph.commands.misc import cleanup_objects
 from splitgraph.commands.tagging import get_tagged_id
-from splitgraph.connection import override_driver_connection
+from splitgraph.engine import switch_engine
 from splitgraph.hooks.s3 import S3_HOST, S3_PORT, S3_ACCESS_KEY, S3_SECRET_KEY
-from test.splitgraph.conftest import PG_MNT, PG_MNT_PULL
+from test.splitgraph.conftest import PG_MNT, PG_MNT_PULL, REMOTE_ENGINE
 
 
 def _cleanup_minio():
@@ -31,19 +31,19 @@ def clean_minio():
     _cleanup_minio()
 
 
-def test_s3_push_pull(empty_pg_conn, remote_driver_conn, clean_minio):
+def test_s3_push_pull(local_engine_empty, remote_engine, clean_minio):
     # Test pushing/pulling when the objects are uploaded to a remote storage instead of to the actual remote DB.
 
     clone(PG_MNT, local_repository=PG_MNT_PULL, download_all=False)
     # Add a couple of commits, this time on the cloned copy.
     head = get_tagged_id(PG_MNT_PULL, 'latest')
     checkout(PG_MNT_PULL, head)
-    with empty_pg_conn.cursor() as cur:
-        cur.execute("""INSERT INTO test_pg_mount_pull.fruits VALUES (3, 'mayonnaise')""")
+    local_engine_empty.run_sql("INSERT INTO test_pg_mount_pull.fruits VALUES (3, 'mayonnaise')",
+                               return_shape=None)
     left = commit(PG_MNT_PULL)
     checkout(PG_MNT_PULL, head)
-    with empty_pg_conn.cursor() as cur:
-        cur.execute("""INSERT INTO test_pg_mount_pull.fruits VALUES (3, 'mustard')""")
+    local_engine_empty.run_sql("INSERT INTO test_pg_mount_pull.fruits VALUES (3, 'mustard')",
+                               return_shape=None)
     right = commit(PG_MNT_PULL)
 
     # Push to origin, but this time upload the actual objects instead.
@@ -51,13 +51,13 @@ def test_s3_push_pull(empty_pg_conn, remote_driver_conn, clean_minio):
 
     # Check that the actual objects don't exist on the remote but are instead registered with an URL.
     # All the objects on pgcache were registered remotely
-    with override_driver_connection(remote_driver_conn):
+    with switch_engine(REMOTE_ENGINE):
         objects = get_existing_objects()
     local_objects = get_existing_objects()
     assert all(o in objects for o in local_objects)
-    # Two non-local objects in the local driver, both registered as non-local on the remote driver.
+    # Two non-local objects in the local engine, both registered as non-local on the remote engine.
     ext_objects_orig = get_external_object_locations(list(objects))
-    with override_driver_connection(remote_driver_conn):
+    with switch_engine(REMOTE_ENGINE):
         ext_objects_pull = get_external_object_locations(list(objects))
     assert len(ext_objects_orig) == 2
     assert all(e in ext_objects_pull for e in ext_objects_orig)

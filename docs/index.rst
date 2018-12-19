@@ -10,7 +10,7 @@ Welcome to Splitgraph's documentation!
    splitfile
    internals
    commands/commands
-   API reference <api/modules>
+      API reference <api/splitgraph>
 
 
 Indices and tables

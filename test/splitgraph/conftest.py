@@ -7,9 +7,7 @@ from splitgraph._data.common import ensure_metadata_schema
 from splitgraph._data.registry import _ensure_registry_schema, unpublish_repository, setup_registry_mode, \
     toggle_registry_rls
 from splitgraph.commands import *
-from splitgraph.config import PG_DB, PG_USER, PG_PWD
-from splitgraph.connection import get_connection, override_driver_connection, serialize_connection_string, make_conn
-from splitgraph.pg_utils import get_all_foreign_tables
+from splitgraph.engine import get_engine, ResultShape, switch_engine
 
 PG_MNT = R('test/pg_mount')
 PG_MNT_PULL = R('test_pg_mount_pull')
@@ -22,7 +20,7 @@ def _mount_postgres(repository):
     mount('tmp', "postgres_fdw",
           dict(server='pgorigin', port=5432, username='originro', password='originpass', dbname="origindb",
                remote_schema="public"))
-    import_tables(R('tmp'), get_all_foreign_tables(get_connection(), 'tmp'),
+    import_tables(R('tmp'), get_engine().get_all_tables('tmp'),
                   repository, [], foreign_tables=True, do_checkout=True)
     rm(R('tmp'))
 
@@ -38,7 +36,7 @@ def _mount_mongo(repository):
                                            "duration": "numeric",
                                            "happy": "boolean"
                                        }}))
-    import_tables(R('tmp'), get_all_foreign_tables(get_connection(), 'tmp'),
+    import_tables(R('tmp'), get_engine().get_all_tables('tmp'),
                   repository, [], foreign_tables=True, do_checkout=True)
     rm(R('tmp'))
 
@@ -56,8 +54,8 @@ TEST_MOUNTPOINTS = [PG_MNT, PG_MNT_PULL, OUTPUT, MG_MNT,
 
 def healthcheck():
     # A pre-flight check before we run the tests to make sure the test architecture has been brought up:
-    # the local_driver and the two origins (tested by mounting). There's still an implicit race condition
-    # here since we don't touch the remote_driver but we don't run any tests against it until later on,
+    # the local_engine and the two origins (tested by mounting). There's still an implicit race condition
+    # here since we don't touch the remote_engine but we don't run any tests against it until later on,
     # so it should have enough time to start up.
     for mountpoint in [PG_MNT, MG_MNT, MYSQL_MNT]:
         rm(mountpoint)
@@ -65,34 +63,33 @@ def healthcheck():
     _mount_mongo(MG_MNT)
     _mount_mysql(MYSQL_MNT)
     try:
-        with get_connection().cursor() as cur:
-            cur.execute('SELECT COUNT(*) FROM "test/pg_mount".fruits')
-            assert cur.fetchone()[0] > 0
-            cur.execute('SELECT COUNT(*) FROM "test_mg_mount".stuff')
-            assert cur.fetchone()[0] > 0
-            cur.execute('SELECT COUNT(*) FROM "test/mysql_mount".mushrooms')
-            assert cur.fetchone()[0] > 0
+        assert get_engine().run_sql('SELECT COUNT(*) FROM "test/pg_mount".fruits',
+                                    return_shape=ResultShape.ONE_ONE) is not None
+        assert get_engine().run_sql('SELECT COUNT(*) FROM "test_mg_mount".stuff',
+                                    return_shape=ResultShape.ONE_ONE) is not None
+        assert get_engine().run_sql('SELECT COUNT(*) FROM "test/mysql_mount".mushrooms',
+                                    return_shape=ResultShape.ONE_ONE) is not None
     finally:
         for mountpoint in [PG_MNT, MG_MNT, MYSQL_MNT]:
             rm(mountpoint)
 
 
 @pytest.fixture
-def sg_pg_conn():
+def local_engine_with_pg():
     # SG connection with a mounted Postgres db
     for mountpoint in TEST_MOUNTPOINTS:
         rm(mountpoint)
     _mount_postgres(PG_MNT)
     try:
-        yield get_connection()
+        yield get_engine()
     finally:
-        get_connection().rollback()
+        get_engine().rollback()
         for mountpoint in TEST_MOUNTPOINTS:
             rm(mountpoint)
 
 
 @pytest.fixture
-def sg_pg_mg_conn():
+def local_engine_with_pg_and_mg():
     # SG connection with a mounted Mongo + Postgres db
     for mountpoint in TEST_MOUNTPOINTS:
         rm(mountpoint)
@@ -100,24 +97,22 @@ def sg_pg_mg_conn():
     _mount_postgres(PG_MNT)
     _mount_mongo(MG_MNT)
     try:
-        yield get_connection()
+        yield get_engine()
     finally:
-        get_connection().rollback()
+        get_engine().rollback()
         for mountpoint in TEST_MOUNTPOINTS:
             rm(mountpoint)
         cleanup_objects()
 
 
-REMOTE_HOST = 'remote_driver'  # On the host, mapped into localhost; on the local driver works as intended.
-REMOTE_PORT = 5431
+REMOTE_ENGINE = 'remote_engine'  # On the host, mapped into localhost; on the local engine works as intended.
 
 
 @pytest.fixture
-def remote_driver_conn():
-    # For these, we'll use both the cachedb (original postgres for integration tests) as well as the remote_driver.
+def remote_engine():
+    # For these, we'll use both the cachedb (original postgres for integration tests) as well as the remote_engine.
     # Mount and snapshot the two origin DBs (mongo/pg) with the test data.
-    conn = make_conn(REMOTE_HOST, REMOTE_PORT, PG_USER, PG_PWD, PG_DB)
-    with override_driver_connection(conn):
+    with switch_engine(REMOTE_ENGINE):
         ensure_metadata_schema()
         _ensure_registry_schema()
         setup_registry_mode()
@@ -128,50 +123,46 @@ def remote_driver_conn():
         for mountpoint in TEST_MOUNTPOINTS:
             rm(mountpoint)
         cleanup_objects()
-        conn.commit()
+        get_engine().commit()
         _mount_postgres(PG_MNT)
         _mount_mongo(MG_MNT)
     try:
-        yield conn
+        yield get_engine(REMOTE_ENGINE)
     finally:
-        conn.rollback()
-        with override_driver_connection(conn):
+        with switch_engine(REMOTE_ENGINE):
+            e = get_engine()
+            e.rollback()
             for mountpoint in TEST_MOUNTPOINTS:
                 rm(mountpoint)
             cleanup_objects()
-        conn.commit()
-        conn.close()
+            e.commit()
+            e.close()
 
 
 @pytest.fixture
-def empty_pg_conn():
-    # A connection to the local driver that has nothing mounted on it.
-    conn = get_connection()
+def local_engine_empty():
+    # A connection to the local engine that has nothing mounted on it.
     for mountpoint, _ in get_current_repositories():
         rm(mountpoint)
     cleanup_objects()
-    conn.commit()
+    get_engine().commit()
     try:
-        yield conn
+        yield get_engine()
     finally:
-        conn.rollback()
+        get_engine().rollback()
         for mountpoint, _ in get_current_repositories():
             rm(mountpoint)
         cleanup_objects()
-        conn.commit()
+        get_engine().commit()
 
 
-REMOTE_CONN_STRING = serialize_connection_string(REMOTE_HOST, REMOTE_PORT, PG_USER, PG_PWD, PG_DB)
-
-
-def add_multitag_dataset_to_remote_driver(remote_driver_conn):
-    with override_driver_connection(remote_driver_conn):
+def add_multitag_dataset_to_engine(engine):
+    with switch_engine(engine):
         set_tag(PG_MNT, get_current_head(PG_MNT), 'v1')
-        with remote_driver_conn.cursor() as cur:
-            cur.execute("DELETE FROM \"test/pg_mount\".fruits WHERE fruit_id = 1")
+        get_engine().run_sql("DELETE FROM \"test/pg_mount\".fruits WHERE fruit_id = 1")
         new_head = commit(PG_MNT)
         set_tag(PG_MNT, new_head, 'v2')
-        remote_driver_conn.commit()
+        get_engine().commit()
         return new_head
 
 

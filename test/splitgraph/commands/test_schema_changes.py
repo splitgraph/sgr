@@ -4,7 +4,7 @@ from splitgraph._data.objects import get_object_for_table
 from splitgraph.commands import commit, checkout
 from splitgraph.commands.tagging import get_current_head
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.pg_utils import get_full_table_schema, get_primary_keys
+from splitgraph.engine import get_engine
 from test.splitgraph.conftest import PG_MNT
 
 TEST_CASES = [
@@ -32,14 +32,14 @@ def _reassign_ordinals(schema):
 
 
 @pytest.mark.parametrize("test_case", TEST_CASES)
-def test_schema_changes(sg_pg_conn, test_case):
+def test_schema_changes(local_engine_with_pg, test_case):
     action, expected_new_schema = test_case
+    engine = get_engine()
 
-    assert get_full_table_schema(sg_pg_conn, PG_MNT.to_schema(), 'fruits') == OLD_SCHEMA
-    with sg_pg_conn.cursor() as cur:
-        cur.execute(action)
-    sg_pg_conn.commit()
-    assert get_full_table_schema(sg_pg_conn, PG_MNT.to_schema(), 'fruits') == expected_new_schema
+    assert engine.get_full_table_schema(PG_MNT.to_schema(), 'fruits') == OLD_SCHEMA
+    local_engine_with_pg.run_sql(action)
+    local_engine_with_pg.commit()
+    assert engine.get_full_table_schema(PG_MNT.to_schema(), 'fruits') == expected_new_schema
 
     head = get_current_head(PG_MNT)
     new_head = commit(PG_MNT)
@@ -48,26 +48,27 @@ def test_schema_changes(sg_pg_conn, test_case):
     assert get_object_for_table(PG_MNT, 'fruits', new_head, 'DIFF') is None
     new_snap = get_object_for_table(PG_MNT, 'fruits', new_head, 'SNAP')
     assert new_snap is not None
-    assert get_full_table_schema(sg_pg_conn, SPLITGRAPH_META_SCHEMA, new_snap) == _reassign_ordinals(
+    assert engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, new_snap) == _reassign_ordinals(
         expected_new_schema)
 
     checkout(PG_MNT, head)
-    assert get_full_table_schema(sg_pg_conn, PG_MNT.to_schema(), 'fruits') == OLD_SCHEMA
+    assert engine.get_full_table_schema(PG_MNT.to_schema(), 'fruits') == OLD_SCHEMA
     checkout(PG_MNT, new_head)
 
-    assert get_full_table_schema(sg_pg_conn, PG_MNT.to_schema(), 'fruits') == _reassign_ordinals(expected_new_schema)
+    assert engine.get_full_table_schema(PG_MNT.to_schema(), 'fruits') == _reassign_ordinals(expected_new_schema)
 
 
-def test_pk_preserved_on_checkout(sg_pg_conn):
-    assert list(get_primary_keys(sg_pg_conn, PG_MNT.to_schema(), 'fruits')) == []
-    with sg_pg_conn.cursor() as cur:
-        cur.execute("""ALTER TABLE "test/pg_mount".fruits ADD PRIMARY KEY (fruit_id)""")
-    assert list(get_primary_keys(sg_pg_conn, PG_MNT.to_schema(), 'fruits')) == [('fruit_id', 'integer')]
+def test_pk_preserved_on_checkout(local_engine_with_pg):
+    engine = get_engine()
+    assert list(engine.get_primary_keys(PG_MNT.to_schema(), 'fruits')) == []
+    local_engine_with_pg.run_sql("ALTER TABLE \"test/pg_mount\".fruits ADD PRIMARY KEY (fruit_id)",
+                                 return_shape=None)
+    assert list(engine.get_primary_keys(PG_MNT.to_schema(), 'fruits')) == [('fruit_id', 'integer')]
     head = get_current_head(PG_MNT)
     new_head = commit(PG_MNT)
-    assert list(get_primary_keys(sg_pg_conn, PG_MNT.to_schema(), 'fruits')) == [('fruit_id', 'integer')]
+    assert list(engine.get_primary_keys(PG_MNT.to_schema(), 'fruits')) == [('fruit_id', 'integer')]
 
     checkout(PG_MNT, head)
-    assert list(get_primary_keys(sg_pg_conn, PG_MNT.to_schema(), 'fruits')) == []
+    assert list(engine.get_primary_keys(PG_MNT.to_schema(), 'fruits')) == []
     checkout(PG_MNT, new_head)
-    assert list(get_primary_keys(sg_pg_conn, PG_MNT.to_schema(), 'fruits')) == [('fruit_id', 'integer')]
+    assert list(engine.get_primary_keys(PG_MNT.to_schema(), 'fruits')) == [('fruit_id', 'integer')]

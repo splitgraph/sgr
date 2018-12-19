@@ -1,33 +1,29 @@
-from psycopg2.sql import Identifier, SQL
-
-from splitgraph import get_current_repositories, get_connection
+from splitgraph import get_current_repositories
 from splitgraph._data.common import ensure_metadata_schema
 from splitgraph._data.registry import setup_registry_mode, get_published_info, _ensure_registry_schema
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA
-from splitgraph.connection import override_driver_connection
-from test.splitgraph.conftest import PG_MNT
+from splitgraph.engine import switch_engine
+from test.splitgraph.conftest import PG_MNT, REMOTE_ENGINE
 
 
-def test_metadata_schema(sg_pg_conn):
+def test_metadata_schema(local_engine_with_pg):
     # Exercise the metadata schema creation code since it might never get reached
     # in test runs where the schema already exists
     try:
-        with get_connection().cursor() as cur:
-            cur.execute(SQL("DROP SCHEMA {} CASCADE").format(Identifier(SPLITGRAPH_META_SCHEMA)))
+        local_engine_with_pg.delete_schema(SPLITGRAPH_META_SCHEMA)
         ensure_metadata_schema()
         assert get_current_repositories() == []
     finally:
-        get_connection().rollback()
+        local_engine_with_pg.rollback()
 
 
-def test_registry_schema(remote_driver_conn):
+def test_registry_schema(remote_engine):
     # Similar idea -- exercise the registry meta schema code if for when it's already set up,
     try:
-        with remote_driver_conn.cursor() as cur:
-            cur.execute(SQL("DROP SCHEMA {} CASCADE").format(Identifier(REGISTRY_META_SCHEMA)))
-        with override_driver_connection(remote_driver_conn):
+        remote_engine.delete_schema(REGISTRY_META_SCHEMA)
+        with switch_engine(REMOTE_ENGINE):
             _ensure_registry_schema()
             setup_registry_mode()
             assert get_published_info(PG_MNT, 'latest') is None
     finally:
-        remote_driver_conn.rollback()
+        remote_engine.rollback()

@@ -12,7 +12,7 @@ _EXTERNAL_OBJECT_HANDLERS = {}
 class ExternalObjectHandler:
     """
     Framework for allowing to dump objects from the Splitgraph cache to an external location. This allows
-    the objects to be stored somewhere other than the actual remote driver.
+    the objects to be stored somewhere other than the actual remote engine.
 
     External object handlers must extend this class and be registered in the Splitgraph config.
 

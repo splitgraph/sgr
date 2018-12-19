@@ -5,18 +5,15 @@ Public API for packaging changes to a Splitgraph-versioned schema into a new ima
 import logging
 from random import getrandbits
 
-from psycopg2.sql import SQL, Identifier
-
 from splitgraph._data.common import ensure_metadata_schema
 from splitgraph._data.images import add_new_image
 from splitgraph._data.objects import register_table
+from splitgraph.commands._common import manage_audit_triggers
 from splitgraph.commands._objects.creation import record_table_as_diff, record_table_as_snap
 from splitgraph.commands.info import get_table, table_schema_changed
 from splitgraph.commands.tagging import get_current_head
-from splitgraph.connection import get_connection
-from splitgraph.pg_utils import get_all_tables
+from splitgraph.engine import get_engine
 from ._common import set_head
-from ._pg_audit import manage_audit_triggers, discard_pending_changes
 
 
 def commit(repository, image_hash=None, include_snap=False, comment=None):
@@ -32,9 +29,8 @@ def commit(repository, image_hash=None, include_snap=False, comment=None):
     """
     target_schema = repository.to_schema()
 
-    conn = get_connection()
     ensure_metadata_schema()
-    conn.commit()
+    get_engine().commit()
     manage_audit_triggers()
 
     logging.info("Committing %s...", target_schema)
@@ -50,7 +46,7 @@ def commit(repository, image_hash=None, include_snap=False, comment=None):
     _commit(repository, head, image_hash, include_snap=include_snap)
 
     set_head(repository, image_hash)
-    conn.commit()
+    get_engine().commit()
     manage_audit_triggers()
     return image_hash
 
@@ -71,14 +67,11 @@ def _commit(repository, current_head, image_hash, include_snap=False):
     :param include_snap: If True, also stores the table as a SNAP.
     """
 
-    conn = get_connection()
     target_schema = repository.to_schema()
-    with conn.cursor() as cur:
-        cur.execute(SQL("""SELECT DISTINCT(table_name) FROM {}.{}
-                       WHERE schema_name = %s""").format(Identifier("audit"),
-                                                         Identifier("logged_actions")), (target_schema,))
-        changed_tables = [c[0] for c in cur.fetchall()]
-    for table in get_all_tables(conn, target_schema):
+    engine = get_engine()
+
+    changed_tables = engine.get_changed_tables(target_schema)
+    for table in engine.get_all_tables(target_schema):
         table_info = get_table(repository, table, current_head)
         # Table already exists at the current HEAD
         if table_info:
@@ -105,4 +98,4 @@ def _commit(repository, current_head, image_hash, include_snap=False):
     # Make sure that all pending changes have been discarded by this point (e.g. if we created just a snapshot for
     # some tables and didn't consume the audit log).
     # NB if we allow partial commits, this will have to be changed (only discard for committed tables).
-    discard_pending_changes(target_schema)
+    get_engine().discard_pending_changes(target_schema)

@@ -1,10 +1,14 @@
+"""
+sgr commands related to getting information out of / about images
+"""
+
 from collections import Counter
 from pprint import pprint
 
 import click
-from psycopg2 import ProgrammingError
 
 import splitgraph as sg
+from splitgraph import get_engine
 from splitgraph.commandline._common import image_spec_parser, pluralise
 
 
@@ -62,7 +66,8 @@ def diff_c(verbose, table_name, repository, tag_or_hash_1, tag_or_hash_2):
 
     diffs = {table_name: sg.diff(repository, table_name, tag_or_hash_1, tag_or_hash_2, aggregate=not verbose)
              for table_name in
-             ([table_name] if table_name else sorted(sg.get_all_tables(sg.get_connection(), repository.to_schema())))}
+             ([table_name] if table_name else sorted(
+                 sg.get_engine().get_all_tables(repository.to_schema())))}
 
     if tag_or_hash_2 is None:
         print("Between %s and the current working copy: " % tag_or_hash_1[:12])
@@ -160,7 +165,7 @@ def show_c(image_spec, verbose):
 @click.option('-a', '--show-all', is_flag=True, help='Returns all results of the query.')
 def sql_c(sql, schema, show_all):
     """
-    Run an SQL statement against the Splitgraph driver.
+    Run an SQL statement against the Splitgraph engine.
 
     There are no restrictions on the contents of the statement: this is the same as running it
     from any other PostgreSQL client.
@@ -171,25 +176,25 @@ def sql_c(sql, schema, show_all):
         sgr sql "SELECT * FROM \"noaa/climate\".table"
         sgr sql -s noaa/climate "SELECT * FROM table"
     """
-    with sg.get_connection().cursor() as cur:
-        if schema:
-            cur.execute("SET search_path TO %s", (schema,))
-        cur.execute(sql)
-        try:
-            results = cur.fetchmany(10) if not show_all else cur.fetchall()
-            pprint(results)
-            if cur.rowcount > 10 and not show_all:
-                print("...")
-        except ProgrammingError:
-            pass  # sql wasn't a SELECT statement
+    if schema:
+        get_engine().run_sql("SET search_path TO %s", (schema,))
+    results = get_engine().run_sql(sql)
+    if results is None:
+        return
+
+    if len(results) > 10 and not show_all:
+        pprint(results[:10])
+        print("...")
+    else:
+        pprint(results)
 
 
 @click.command(name='status')
 @click.argument('repository', required=False, type=sg.to_repository)
 def status_c(repository):
     """
-    Show the status of the Splitgraph driver. If a repository is passed, show information about
-    the repository. If not, show information about all repositories local to the driver.
+    Show the status of the Splitgraph engine. If a repository is passed, show information about
+    the repository. If not, show information about all repositories local to the engine.
     """
     if repository is None:
         repositories = sg.get_current_repositories()

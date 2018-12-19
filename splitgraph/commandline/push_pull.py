@@ -1,9 +1,15 @@
+"""
+sgr commands related to sharing and downloading images.
+"""
+
 import json
 import sys
 
 import click
 
 import splitgraph as sg
+import splitgraph.engine
+import splitgraph.engine.postgres.engine
 
 
 @click.command(name='pull')
@@ -19,7 +25,7 @@ def pull_c(repository, download_all):
 @click.command(name='clone')
 @click.argument('remote_repository', type=sg.to_repository)
 @click.argument('local_repository', required=False, type=sg.to_repository)
-@click.option('-r', '--remote', help='Alias or full connection string for the remote driver')
+@click.option('-r', '--remote', help='Alias or full connection string for the remote engine')
 @click.option('-d', '--download-all', help='Download all objects immediately instead on checkout.',
               default=False, is_flag=True)
 def clone_c(remote_repository, local_repository, remote, download_all):
@@ -30,14 +36,14 @@ def clone_c(remote_repository, local_repository, remote, download_all):
     config parameters and can be overriden by the command line ``--remote`` option.
     """
 
-    sg.clone(remote_repository, remote_driver=remote,
+    sg.clone(remote_repository, remote_engine=remote,
              local_repository=local_repository, download_all=download_all)
 
 
 @click.command(name='push')
 @click.argument('repository', type=sg.to_repository)
 @click.argument('remote_repository', required=False, type=sg.to_repository)
-@click.option('-r', '--remote', help='Alias or full connection string for the remote driver')
+@click.option('-r', '--remote', help='Alias or full connection string for the remote engine')
 @click.option('-h', '--upload-handler', help='Upload handler', default='DB')
 @click.option('-o', '--upload-handler-options', help='Upload handler parameters', default="{}")
 def push_c(repository, remote_repository, remote, upload_handler, upload_handler_options):
@@ -46,7 +52,7 @@ def push_c(repository, remote_repository, remote, upload_handler, upload_handler
 
     The actual destination is decided as follows:
 
-      * Remote driver: ``remote`` argument (either driver alias as specified in the config or a connection string,
+      * Remote engine: ``remote`` argument (either engine alias as specified in the config or a connection string,
         then the upstream configured for the repository.
 
       * Remote repository: ``remote_repository`` argument, then the upstream configured for the repository, then
@@ -84,22 +90,22 @@ def publish_c(repository, tag, readme, skip_provenance, skip_previews):
 @click.command(name='upstream')
 @click.argument('repository', type=sg.to_repository)
 @click.option('-s', '--set', 'set_to',
-              help="Set the upstream to a driver alias + repository", type=(str, sg.to_repository), default=("", None))
+              help="Set the upstream to a engine alias + repository", type=(str, sg.to_repository), default=("", None))
 @click.option('-r', '--reset', help="Delete the upstream", is_flag=True, default=False)
 def upstream_c(repository, set_to, reset):
     """
     Get or set the upstream for a repository.
 
     This shows the default repository used for pushes and pulls as well as allows to change it to a different
-    remote driver and repository.
+    remote engine and repository.
 
-    The remote driver alias must exist in the config file.
+    The remote engine alias must exist in the config file.
 
     Examples:
 
     ``sgr upstream my/repo --set splitgraph.com username/repo``
 
-        Sets the upstream for ``my/repo`` to ``username/repo`` existing on the ``splitgraph.com`` driver
+        Sets the upstream for ``my/repo`` to ``username/repo`` existing on the ``splitgraph.com`` engine
 
     ``sgr upstream my/repo --reset``
 
@@ -125,16 +131,16 @@ def upstream_c(repository, set_to, reset):
     if set_to == ("", None):
         upstream = sg.get_upstream(repository)
         if upstream:
-            driver, remote_repo = upstream
-            print("%s is tracking %s:%s." % (repository.to_schema(), driver, remote_repo.to_schema()))
+            engine, remote_repo = upstream
+            print("%s is tracking %s:%s." % (repository.to_schema(), engine, remote_repo.to_schema()))
         else:
             print("%s has no upstream." % repository.to_schema())
     else:
-        driver, remote_repo = set_to
+        engine, remote_repo = set_to
         try:
-            sg.get_remote_connection_params(driver)
+            splitgraph.engine.get_remote_connection_params(engine)
         except KeyError:
-            print("Remote driver '%s' does not exist in the configuration file!" % driver)
+            print("Remote engine '%s' does not exist in the configuration file!" % engine)
             sys.exit(1)
-        sg.set_upstream(repository, driver, remote_repo)
-        print("%s set to track %s:%s." % (repository.to_schema(), driver, remote_repo.to_schema()))
+        sg.set_upstream(repository, engine, remote_repo)
+        print("%s set to track %s:%s." % (repository.to_schema(), engine, remote_repo.to_schema()))

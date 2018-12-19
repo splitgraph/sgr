@@ -9,7 +9,7 @@ the source code or are just curious, read on!
 The ``splitgraph_meta`` schema
 ==============================
 
-Most of the metadata related to Splitgraph is stored in the ``splitgraph_meta`` schema on the driver, including
+Most of the metadata related to Splitgraph is stored in the ``splitgraph_meta`` schema on the engine, including
 version and tag information, relationships between images and downloaded tables.
 
 Here's an overview of the tables in this schema:
@@ -97,18 +97,18 @@ Implementation of various Splitgraph commands
       cause a PK violation on the local schema.
     * Changes to existing object locations won't be reflected locally.
 
-To fetch and update metadata, the local SG Python client initializes a direct connection to the remote driver (origin).
-However, to actually download objects from the remote, the Python client gets the local SG driver to mount the remote
-via FDW and use driver-to-driver ``SELECT`` queries to save some roundtrips between the client and the driver. This
+To fetch and update metadata, the local SG Python client initializes a direct connection to the remote engine (origin).
+However, to actually download objects from the remote, the Python client gets the local SG engine to mount the remote
+via FDW and use engine-to-engine ``SELECT`` queries to save some roundtrips between the client and the engine. This
 doesn't happen in the case of objects stored externally: those dumps are fetched by the client and sent to the server
 to be executed.
 
 Pushes are very similar to pulls with reversed roles, since we are currently assuming that the client has equal access
-rights to their local and the remote driver. This might not be the case in the future.
+rights to their local and the remote engine. This might not be the case in the future.
 
 Currently, the only difference is that for uploading objects to the remote, the local client has to use its own
-connection to create the tables that will house the objects remotely, then mount those tables on the local driver and
-then use the driver-to-driver ``SELECT`` queries to send the object contents over. In the case of externally stored
+connection to create the tables that will house the objects remotely, then mount those tables on the local engine and
+then use the engine-to-engine ``SELECT`` queries to send the object contents over. In the case of externally stored
 objects, the client first uploads them to an external location and only then registers the new metadata (commits,
 tags, objects and their locations) on the remote.
 
