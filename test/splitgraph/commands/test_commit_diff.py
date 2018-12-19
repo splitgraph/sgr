@@ -253,3 +253,45 @@ def test_update_packing_applying(local_engine_with_pg):
     checkout(PG_MNT, new_head)
     assert local_engine_with_pg.run_sql("SELECT * FROM \"test/pg_mount\".fruits WHERE fruit_id = 1") == \
            [(1, 'pineapple')]
+
+
+def test_diff_staging_aggregation(local_engine_with_pg):
+    # Test diff from HEAD~1 to the current staging area (accumulate actual DIFF object with the pending changes)
+    local_engine_with_pg.run_sql("ALTER TABLE \"test/pg_mount\".fruits ADD PRIMARY KEY (fruit_id)", return_shape=None)
+    old_head = commit(PG_MNT)
+
+    local_engine_with_pg.run_sql("UPDATE \"test/pg_mount\".fruits SET name = 'pineapple' WHERE fruit_id = 1",
+                                 return_shape=None)
+    commit(PG_MNT)
+    local_engine_with_pg.run_sql("UPDATE \"test/pg_mount\".fruits SET name = 'mustard' WHERE fruit_id = 2",
+                                 return_shape=None)
+
+    assert diff(PG_MNT, "fruits", old_head, None, aggregate=True) == (0, 0, 2)
+    assert diff(PG_MNT, "fruits", old_head, None, aggregate=False) == [((1,), 2, {'c': ['name'], 'v': ['pineapple']}),
+                                                                       ((2,), 2, {'c': ['name'], 'v': ['mustard']})]
+
+
+def test_diff_schema_change(local_engine_with_pg):
+    # Test diff when there's been a schema change and so we stored an intermediate object
+    # as a SNAP.
+    old_head = get_current_head(PG_MNT)
+    local_engine_with_pg.run_sql("ALTER TABLE \"test/pg_mount\".fruits ADD PRIMARY KEY (fruit_id)", return_shape=None)
+    commit(PG_MNT)
+
+    local_engine_with_pg.run_sql("UPDATE \"test/pg_mount\".fruits SET name = 'pineapple' WHERE fruit_id = 1",
+                                 return_shape=None)
+    after_update = commit(PG_MNT)
+    local_engine_with_pg.run_sql("UPDATE \"test/pg_mount\".fruits SET name = 'mustard' WHERE fruit_id = 2",
+                                 return_shape=None)
+
+    # Can't detect an UPDATE since there's been a schema change (old table has no PK)
+    assert diff(PG_MNT, "fruits", old_head, after_update, aggregate=True) == (1, 1, 0)
+    assert diff(PG_MNT, "fruits", old_head, after_update, aggregate=False) == \
+           [((1, 'apple'), 1, None), ((1, 'pineapple'), 0, {'c': [], 'v': []})]
+
+    # Again can't detect UPDATEs -- delete 2 rows, add two rows
+    assert diff(PG_MNT, "fruits", old_head, None, aggregate=True) == (2, 2, 0)
+    assert diff(PG_MNT, "fruits", old_head, None, aggregate=False) == [((1, 'apple'), 1, None),
+                                                                       ((2, 'orange'), 1, None),
+                                                                       ((1, 'pineapple'), 0, {'c': [], 'v': []}),
+                                                                       ((2, 'mustard'), 0, {'c': [], 'v': []})]

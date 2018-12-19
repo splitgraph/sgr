@@ -12,7 +12,6 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import ResultShape, get_engine, switch_engine
 from splitgraph.exceptions import SplitGraphException
 from .._data.common import ensure_metadata_schema, insert, select
-from .._data.objects import register_object, register_table
 
 
 def _parse_paths_overrides(lookup_path, override_path):
@@ -60,14 +59,12 @@ def repository_exists(repository):
                                 return_shape=ResultShape.ONE_ONE) is not None
 
 
-def register_repository(repository, initial_image, tables, table_object_ids):
+def register_repository(repository, initial_image):
     """
     Registers a new repository on the engine. Internal function, use `splitgraph.init` instead.
 
     :param repository: Repository object
     :param initial_image: Hash of the initial image
-    :param tables: Table names in the initial image
-    :param table_object_ids: Object IDs that the initial tables map to.
     """
     engine = get_engine()
     engine.run_sql(insert("images", ("image_hash", "namespace", "repository", "parent_id", "created")),
@@ -77,11 +74,6 @@ def register_repository(repository, initial_image, tables, table_object_ids):
     engine.run_sql(insert("tags", ("namespace", "repository", "image_hash", "tag")),
                    (repository.namespace, repository.repository, initial_image, "HEAD"),
                    return_shape=None)
-    for t, ti in zip(tables, table_object_ids):
-        # Register the tables and the object IDs they were stored under.
-        # They're obviously stored as snaps since there's nothing to diff to...
-        register_object(ti, 'SNAP', repository.namespace, None)
-        register_table(repository, t, initial_image, ti)
 
 
 def unregister_repository(repository, is_remote=False):

@@ -117,7 +117,7 @@ def init(repository):
     """
     get_engine().create_schema(repository.to_schema())
     image_hash = '0' * 64
-    register_repository(repository, image_hash, tables=[], table_object_ids=[])
+    register_repository(repository, image_hash)
 
 
 def rm(repository, unregister=True):

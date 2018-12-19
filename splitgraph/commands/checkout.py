@@ -147,6 +147,7 @@ def materialized_table(repository, table_name, image_hash):
     if image_hash is None:
         # No image hash -- just return the current staging table.
         yield repository.to_schema(), table_name
+        return  # make sure we don't fall through after the user is finished
     # See if the table snapshot already exists, otherwise reconstruct it
     object_id = get_object_for_table(repository, table_name, image_hash, 'SNAP')
     if object_id is None:

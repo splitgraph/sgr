@@ -61,18 +61,20 @@ def diff(repository, table_name, image_1, image_2, aggregate=False):
             set(get_table(repository, table_name, image_2)):
         return [] if not aggregate else (0, 0, 0)
 
-    # Otherwise, check if snap_1 is a parent of snap_2, then we can merge all the diffs.
+    # Otherwise, check if image_1 is a parent of image_2, then we can merge all the diffs.
+    # FIXME: we have to find if there's a path between two _objects_ representing these tables that's made out of DIFFs.
     path = find_path(repository, image_1, (image_2 if image_2 is not None else head))
     if path is not None:
         result = _calculate_merged_diff(repository, table_name, path, aggregate)
+        if result is None:
+            return _side_by_side_diff(repository, table_name, image_1, image_2, aggregate)
 
         # If snap_2 is staging, also include all changes that have happened since the last commit.
         if image_2 is None:
-            changes = get_engine().get_pending_changes(repository, table_name, aggregate=aggregate)
+            changes = get_engine().get_pending_changes(repository.to_schema(), table_name, aggregate=aggregate)
             if aggregate:
-                result = _changes_to_aggregation(changes, result)
-            else:
-                result.extend(changes)
+                return _changes_to_aggregation(changes, result)
+            result.extend(changes)
         return result
 
     # Finally, resort to manual diffing (images on different branches or reverse comparison order).
@@ -84,10 +86,9 @@ def _calculate_merged_diff(repository, table_name, path, aggregate):
     for image in reversed(path):
         diff_id = get_object_for_table(repository, table_name, image, 'DIFF')
         if diff_id is None:
-            # TODO This entry on the path between the two nodes is a snapshot -- meaning there
-            # has been a schema change and we can't just accumulate diffs. For now, we just pretend
-            # it didn't happen and dump the data changes.
-            continue
+            # There's a SNAP entry between the two images, meaning there has been a schema change.
+            # Hence we can't accumulate the DIFFs and have to resort to manual side-by-side diffing.
+            return None
         if not aggregate:
             # There's only one action applied to a tuple in a single diff, so the ordering doesn't matter.
             for row in sorted(
@@ -119,7 +120,9 @@ def _side_by_side_diff(repository, table_name, image_1, image_2, aggregate):
 
     if aggregate:
         return sum(1 for r in right if r not in left), sum(1 for r in left if r not in right), 0
-    return [(1, r) for r in left if r not in right] + [(0, r) for r in right if r not in left]
+    # Mimic the diff format returned by the DIFF-object-accumulating function
+    return [(r, 1, None) for r in left if r not in right] + \
+           [(r, 0, {'c': [], 'v': []}) for r in right if r not in left]
 
 
 def has_pending_changes(repository):

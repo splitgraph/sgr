@@ -1,7 +1,7 @@
 import os
 os.environ['SG_CONFIG_FILE'] = 'test/resources/.sgconfig'
 
-from splitgraph.connection import serialize_connection_string
+from splitgraph.commands._common import serialize_connection_string
 from splitgraph.engine import get_remote_connection_params, get_engine, switch_engine
 from minio import Minio
 

@@ -2,6 +2,9 @@ import json
 import subprocess
 from decimal import Decimal
 
+import pytest
+
+from splitgraph.commands._common import parse_connection_string, serialize_connection_string
 from splitgraph.commands.checkout import uncheckout
 from splitgraph.config import PG_PWD, PG_USER
 from splitgraph.engine import get_engine, switch_engine
@@ -40,6 +43,16 @@ def test_image_spec_parsing():
     assert image_spec_parser()('pg_mount') == (Repository('', 'pg_mount'), 'latest')
     assert image_spec_parser()('pg_mount:some_tag') == (Repository('', 'pg_mount'), 'some_tag')
     assert image_spec_parser(default='HEAD')('pg_mount:some_tag') == (Repository('', 'pg_mount'), 'some_tag')
+
+
+def test_conn_string_parsing():
+    assert parse_connection_string("user:pwd@host.com:1234/db") == ("host.com", 1234, "user", "pwd", "db")
+    with pytest.raises(ValueError):
+        parse_connection_string("abcdef@blabla/blabla")
+
+
+def test_conn_string_serialization():
+    assert serialize_connection_string("host.com", 1234, "user", "pwd", "db") == "user:pwd@host.com:1234/db"
 
 
 def test_commandline_basics(local_engine_with_pg_and_mg):
@@ -95,10 +108,19 @@ def test_commandline_basics(local_engine_with_pg_and_mg):
 
     # sgr diff, just the new head -- assumes the diff on top of the old head.
     check_diff([PG_MNT, new_head[:20]])
-    #
-    # # sgr diff, reverse order -- actually checks the two tables out and materializes them since there isn't a
-    # # path of DIFF objects between them.
-    # check_diff([PG_MNT, new_head[:20], old_head[:20]])
+
+    # sgr diff, reverse order -- actually checks the two tables out and materializes them since there isn't a
+    # path of DIFF objects between them.
+    result = runner.invoke(diff_c, [str(PG_MNT), new_head[:20], old_head[:20]])
+    assert "added 1 row" in result.output
+    assert "removed 1 row" in result.output
+    assert "vegetables: table removed"
+    assert "mushrooms: table added"
+    result = runner.invoke(diff_c, [str(PG_MNT), new_head[:20], old_head[:20], '-v'])
+    # Since the images were flipped, here the result is that, since the row that was added
+    # didn't exist in the first image, diff() thinks it was _removed_ and vice versa for the other row.
+    assert "(3, 'mayonnaise'): -" in result.output
+    assert "(1, 'apple'): +" in result.output
 
     # sgr status with the new commit
     result = runner.invoke(status_c, [str(PG_MNT)])

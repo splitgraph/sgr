@@ -57,7 +57,11 @@ CASES = [
             col1 VARCHAR,
             col2 VARCHAR,        
             PRIMARY KEY (pk1, pk2));
-            INSERT INTO "test/pg_mount".fruits VALUES (1, 1, 'val1', 'val2')""", []),
+            INSERT INTO "test/pg_mount".fruits VALUES (1, 1, 'val1', 'val2')""",
+         # We don't really care about this diff but worth noting it's produced by comparing two tables
+         # side-by-side since there's been a schema change. Hence it isn't aware that (1,1) is actually
+         # the PK for the new table and instead just dumps the whole row as a diff.
+         [((1, 'apple'), 1, None), ((2, 'orange'), 1, None), ((1, 1, 'val1', 'val2'), 0, {'c': [], 'v': []})]),
         # Test an update touching part of the PK and part of the contents
         ("""UPDATE "test/pg_mount".fruits SET pk2 = 2, col1 = 'val3' WHERE pk1 = 1""",
          # Since we delete one PK and insert another one, we need to reinsert the
@@ -72,7 +76,9 @@ CASES = [
         pk2 INTEGER,
         col1 VARCHAR,
         col2 VARCHAR);
-        INSERT INTO "test/pg_mount".fruits VALUES (1, 1, 'val1', 'val2')""", []),
+        INSERT INTO "test/pg_mount".fruits VALUES (1, 1, 'val1', 'val2')""",
+         # Same here for the diff produced by this DDL
+         [((1, 'apple'), 1, None), ((2, 'orange'), 1, None), ((1, 1, 'val1', 'val2'), 0, {'c': [], 'v': []})]),
         ("""UPDATE "test/pg_mount".fruits SET pk2 = 2, col1 = 'val3' WHERE pk1 = 1""",
          # Full row is the PK, so we just enumerate the whole row for deletion/insertion.
          [((1, 1, 'val1', 'val2'), 1, None),
