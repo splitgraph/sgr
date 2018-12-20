@@ -19,18 +19,11 @@ except ImportError:
 
 from click.testing import CliRunner
 
-from splitgraph import get_all_hashes_tags
-from splitgraph._data.images import get_all_image_info
 from splitgraph._data.registry import get_published_info
 from splitgraph.commandline import *
 from splitgraph.commandline._common import image_spec_parser
 from splitgraph.commandline.push_pull import upstream_c
-from splitgraph.commands import commit, checkout
-from splitgraph.commands.diff import has_pending_changes
-from splitgraph.commands.info import get_image, get_table
-from splitgraph.commands.misc import table_exists_at, rm
-from splitgraph.commands.provenance import provenance
-from splitgraph.commands.tagging import get_current_head, get_tagged_id, set_tag, delete_tag
+from splitgraph.commands.misc import rm
 from splitgraph.hooks.mount_handlers import get_mount_handlers
 from test.splitgraph.conftest import PG_MNT, MG_MNT, OUTPUT, add_multitag_dataset_to_engine, SPLITFILE_ROOT, \
     REMOTE_ENGINE
@@ -62,7 +55,7 @@ def test_commandline_basics(local_engine_with_pg_and_mg):
     result = runner.invoke(status_c, [])
     assert PG_MNT.to_schema() in result.output
     assert MG_MNT.to_schema() in result.output
-    old_head = get_current_head(PG_MNT)
+    old_head = PG_MNT.get_head()
     assert old_head in result.output
 
     # sgr sql
@@ -94,9 +87,9 @@ def test_commandline_basics(local_engine_with_pg_and_mg):
     # sgr commit (with an extra snapshot
     result = runner.invoke(commit_c, [str(PG_MNT), '-m', 'Test commit', '-s'])
     assert result.exit_code == 0
-    new_head = get_current_head(PG_MNT)
+    new_head = PG_MNT.get_head()
     assert new_head != old_head
-    assert get_image(PG_MNT, new_head).parent_id == old_head
+    assert PG_MNT.get_image(new_head).parent_id == old_head
     assert new_head[:10] in result.output
 
     # sgr diff, old head -> new head (2-param), truncated hashes
@@ -143,8 +136,8 @@ def test_commandline_basics(local_engine_with_pg_and_mg):
     result = runner.invoke(show_c, [str(PG_MNT) + ':' + new_head[:20], '-v'])
     assert "Test commit" in result.output
     assert "Parent: " + old_head in result.output
-    fruit_objs = get_table(PG_MNT, 'fruits', new_head[:20])
-    mushroom_objs = get_table(PG_MNT, 'mushrooms', new_head[:20])
+    fruit_objs = PG_MNT.get_image(new_head).get_table('fruits').objects
+    mushroom_objs = PG_MNT.get_image(new_head).get_table('mushrooms').objects
 
     # Check verbose show also has the actual object IDs
     for o, of in fruit_objs + mushroom_objs:
@@ -189,7 +182,7 @@ def test_upstream_management(local_engine_with_pg):
 def test_commandline_tag_checkout(local_engine_with_pg_and_mg):
     runner = CliRunner()
     # Do the quick setting up with the same commit structure
-    old_head = get_current_head(PG_MNT)
+    old_head = PG_MNT.get_head()
     runner.invoke(sql_c, ["INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mayonnaise')"])
     runner.invoke(sql_c, ["CREATE TABLE \"test/pg_mount\".mushrooms (mushroom_id integer, name varchar)"])
     runner.invoke(sql_c, ["DROP TABLE \"test/pg_mount\".vegetables"])
@@ -198,15 +191,15 @@ def test_commandline_tag_checkout(local_engine_with_pg_and_mg):
     result = runner.invoke(commit_c, [str(PG_MNT), '-m', 'Test commit'])
     assert result.exit_code == 0
 
-    new_head = get_current_head(PG_MNT)
+    new_head = PG_MNT.get_head()
 
     # sgr tag <repo> <tag>: tags the current HEAD
     runner.invoke(tag_c, [str(PG_MNT), 'v2'])
-    assert get_tagged_id(PG_MNT, 'v2') == new_head
+    assert PG_MNT.resolve_image('v2') == new_head
 
     # sgr tag <repo>:imagehash <tag>:
     runner.invoke(tag_c, [str(PG_MNT) + ':' + old_head[:10], 'v1'])
-    assert get_tagged_id(PG_MNT, 'v1') == old_head
+    assert PG_MNT.resolve_image('v1') == old_head
 
     # sgr tag <mountpoint> with the same tag -- expect an error
     result = runner.invoke(tag_c, [str(PG_MNT), 'v1'])
@@ -225,11 +218,11 @@ def test_commandline_tag_checkout(local_engine_with_pg_and_mg):
 
     # Checkout by tag
     runner.invoke(checkout_c, [str(PG_MNT) + ':v1'])
-    assert get_current_head(PG_MNT) == old_head
+    assert PG_MNT.get_head() == old_head
 
     # Checkout by hash
     runner.invoke(checkout_c, [str(PG_MNT) + ':' + new_head[:20]])
-    assert get_current_head(PG_MNT) == new_head
+    assert PG_MNT.get_head() == new_head
 
     # Checkout with uncommitted changes
     runner.invoke(sql_c, ["INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mayonnaise')"])
@@ -239,12 +232,12 @@ def test_commandline_tag_checkout(local_engine_with_pg_and_mg):
 
     result = runner.invoke(checkout_c, [str(PG_MNT) + ':v1', '-f'])
     assert result.exit_code == 0
-    assert not has_pending_changes(PG_MNT)
+    assert not PG_MNT.has_pending_changes()
 
     # uncheckout
     result = runner.invoke(checkout_c, [str(PG_MNT), '-u', '-f'])
     assert result.exit_code == 0
-    assert get_current_head(PG_MNT, raise_on_none=False) is None
+    assert PG_MNT.get_head(raise_on_none=False) is None
     assert not get_engine().schema_exists(str(PG_MNT))
 
     # Delete the tag -- check the help entry correcting the command
@@ -254,7 +247,7 @@ def test_commandline_tag_checkout(local_engine_with_pg_and_mg):
 
     result = runner.invoke(tag_c, ['--remove', str(PG_MNT) + ':' + 'v1'])
     assert result.exit_code == 0
-    assert get_tagged_id(PG_MNT, 'v1', raise_on_none=False) is None
+    assert PG_MNT.resolve_image('v1', raise_on_none=False) is None
 
 
 def test_misc_mountpoint_management(local_engine_with_pg_and_mg):
@@ -294,32 +287,32 @@ def test_misc_mountpoint_management(local_engine_with_pg_and_mg):
 
 def test_import(local_engine_with_pg_and_mg):
     runner = CliRunner()
-    head = get_current_head(PG_MNT)
+    head = PG_MNT.get_head()
 
     # sgr import mountpoint, table, target_mountpoint (3-arg)
     result = runner.invoke(import_c, [str(MG_MNT), 'stuff', str(PG_MNT)])
     assert result.exit_code == 0
-    new_head = get_current_head(PG_MNT)
-    assert table_exists_at(PG_MNT, 'stuff', new_head)
-    assert not table_exists_at(PG_MNT, 'stuff', head)
+    new_head = PG_MNT.get_head()
+    assert PG_MNT.get_image(new_head).get_table('stuff')
+    assert not PG_MNT.get_image(head).get_table('stuff')
 
     # sgr import with alias
     result = runner.invoke(import_c, [str(MG_MNT), 'stuff', str(PG_MNT), 'stuff_copy'])
     assert result.exit_code == 0
-    new_new_head = get_current_head(PG_MNT)
-    assert table_exists_at(PG_MNT, 'stuff_copy', new_new_head)
-    assert not table_exists_at(PG_MNT, 'stuff_copy', new_head)
+    new_new_head = PG_MNT.get_head()
+    assert PG_MNT.get_image(new_new_head).get_table('stuff_copy')
+    assert not PG_MNT.get_image(new_head).get_table('stuff_copy')
 
     # sgr import with alias and custom image hash
     get_engine().run_sql("DELETE FROM test_mg_mount.stuff")
-    new_mg_head = commit(MG_MNT)
+    new_mg_head = MG_MNT.commit()
 
     result = runner.invoke(import_c, [str(MG_MNT) + ':' + new_mg_head, 'stuff', str(PG_MNT), 'stuff_empty'])
     assert result.exit_code == 0
-    new_new_new_head = get_current_head(PG_MNT)
-    assert table_exists_at(PG_MNT, 'stuff_empty', new_new_new_head)
-    assert not table_exists_at(PG_MNT, 'stuff_empty', new_new_head)
-    assert get_engine().run_sql("SELECT * FROM \"test/pg_mount\".stuff_empty") == []
+    new_new_new_head = PG_MNT.get_head()
+    assert PG_MNT.get_image(new_new_new_head).get_table('stuff_empty')
+    assert not PG_MNT.get_image(new_new_head).get_table('stuff_empty')
+    assert PG_MNT.run_sql("SELECT * FROM stuff_empty") == []
 
     # sgr import with query, no alias
     result = runner.invoke(import_c, [str(MG_MNT) + ':' + new_mg_head, 'SELECT * FROM stuff', str(PG_MNT)])
@@ -336,23 +329,23 @@ def test_pull_push(local_engine_empty, remote_engine):
 
     remote_engine.run_sql("INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mayonnaise')")
     with switch_engine(REMOTE_ENGINE):
-        remote_engine_head = commit(PG_MNT)
+        remote_engine_head = PG_MNT.commit()
 
     result = runner.invoke(pull_c, [str(PG_MNT)])
     assert result.exit_code == 0
-    checkout(PG_MNT, remote_engine_head)
+    PG_MNT.checkout(remote_engine_head)
 
-    get_engine().run_sql("INSERT INTO \"test/pg_mount\".fruits VALUES (4, 'mustard')")
-    local_head = commit(PG_MNT)
+    PG_MNT.run_sql("INSERT INTO fruits VALUES (4, 'mustard')")
+    local_head = PG_MNT.commit()
 
     with switch_engine(REMOTE_ENGINE):
-        assert not table_exists_at(PG_MNT, 'fruits', local_head)
+        assert not PG_MNT.get_image(local_head)
     result = runner.invoke(push_c, [str(PG_MNT), '-h', 'DB'])
     assert result.exit_code == 0
-    assert table_exists_at(PG_MNT, 'fruits', local_head)
+    assert PG_MNT.get_image(local_head).get_table('fruits')
 
-    set_tag(PG_MNT, local_head, 'v1')
-    local_engine_empty.commit()
+    PG_MNT.get_image(local_head).tag('v1')
+    PG_MNT.engine.commit()
     result = runner.invoke(publish_c, [str(PG_MNT), 'v1', '-r', SPLITFILE_ROOT + 'README.md'])
     assert result.exit_code == 0
     with switch_engine(REMOTE_ENGINE):
@@ -380,12 +373,12 @@ def test_splitfile(local_engine_empty, remote_engine):
     # Test the sgr provenance command. First, just list the dependencies of the new image.
     result = runner.invoke(provenance_c, ['output:latest'])
     with switch_engine(REMOTE_ENGINE):
-        assert 'test/pg_mount:%s' % get_tagged_id(PG_MNT, 'latest') in result.output
+        assert 'test/pg_mount:%s' % PG_MNT.resolve_image('latest') in result.output
 
     # Second, output the full splitfile (-f)
     result = runner.invoke(provenance_c, ['output:latest', '-f'], catch_exceptions=False)
     with switch_engine(REMOTE_ENGINE):
-        assert 'FROM test/pg_mount:%s IMPORT' % get_tagged_id(PG_MNT, 'latest') in result.output
+        assert 'FROM test/pg_mount:%s IMPORT' % PG_MNT.resolve_image('latest') in result.output
     assert 'SQL CREATE TABLE join_table AS SELECT' in result.output
 
 
@@ -399,20 +392,20 @@ def test_splitfile_rebuild_update(local_engine_empty, remote_engine):
 
     # Rerun the output:latest against v2 of the test/pg_mount
     result = runner.invoke(rebuild_c, ['output:latest', '--against', 'test/pg_mount:v2'])
-    output_v2 = get_current_head(OUTPUT)
+    output_v2 = OUTPUT.get_head()
     assert result.exit_code == 0
     with switch_engine(REMOTE_ENGINE):
-        v2 = get_tagged_id(PG_MNT, 'v2')
-    assert provenance(OUTPUT, output_v2) == [(PG_MNT, v2)]
+        v2 = PG_MNT.resolve_image('v2')
+    assert OUTPUT.get_image(output_v2).provenance() == [(PG_MNT, v2)]
 
     # Now rerun the output:latest against the latest version of everything.
     # In this case, this should all resolve to the same version of test/pg_mount (v2) and not produce
     # any extra commits.
-    curr_commits = get_all_image_info(OUTPUT)
+    curr_commits = OUTPUT.get_images()
     result = runner.invoke(rebuild_c, ['output:latest', '-u'])
     assert result.exit_code == 0
-    assert output_v2 == get_current_head(OUTPUT)
-    assert get_all_image_info(OUTPUT) == curr_commits
+    assert output_v2 == OUTPUT.get_head()
+    assert OUTPUT.get_images() == curr_commits
 
 
 def test_mount_and_import(local_engine_empty):
@@ -432,12 +425,12 @@ def test_mount_and_import(local_engine_empty):
 
         result = runner.invoke(import_c, ['tmp', 'stuff', str(MG_MNT)])
         assert result.exit_code == 0
-        assert table_exists_at(MG_MNT, 'stuff', get_current_head(MG_MNT))
+        assert MG_MNT.get_image(MG_MNT.get_head()).get_table('stuff')
 
         result = runner.invoke(import_c, ['tmp', 'SELECT * FROM stuff WHERE duration > 10', str(MG_MNT),
                                           'stuff_query'])
         assert result.exit_code == 0
-        assert table_exists_at(MG_MNT, 'stuff_query', get_current_head(MG_MNT))
+        assert MG_MNT.get_image(MG_MNT.get_head()).get_table('stuff_query')
     finally:
         rm(to_repository('tmp'))
 
@@ -470,8 +463,8 @@ def test_rm_images(local_engine_with_pg, remote_engine):
     add_multitag_dataset_to_engine(remote_engine)
     add_multitag_dataset_to_engine(local_engine_with_pg)
 
-    local_v1 = get_tagged_id(PG_MNT, 'v1')
-    local_v2 = get_tagged_id(PG_MNT, 'v2')
+    local_v1 = PG_MNT.resolve_image('v1')
+    local_v2 = PG_MNT.resolve_image('v2')
 
     # Test deleting checked out image causes an error
     result = runner.invoke(rm_c, [str(PG_MNT) + ':v2'])
@@ -488,20 +481,20 @@ def test_rm_images(local_engine_with_pg, remote_engine):
     assert "Images to be deleted:\n" + local_v2 + '\nTotal: 1\n\nTags to be deleted:\nv2\nTotal: 1' \
            in result.output
     # Since we cancelled the operation, 'v2' still remains.
-    assert get_tagged_id(PG_MNT, 'v2') == local_v2
-    assert get_image(PG_MNT, local_v2) is not None
+    assert PG_MNT.resolve_image('v2') == local_v2
+    assert PG_MNT.get_image(local_v2) is not None
 
     # Uncheckout the remote too (it's supposed to be bare anyway)
     with switch_engine(REMOTE_ENGINE):
-        remote_v2 = get_tagged_id(PG_MNT, 'v2')
+        remote_v2 = PG_MNT.resolve_image('v2')
         uncheckout(PG_MNT)
 
     # sgr rm test/pg_mount:v2 -r remote_engine, say "yes"
     result = runner.invoke(rm_c, [str(PG_MNT) + ':v2', '-r', 'remote_engine'], input='y\n')
     assert result.exit_code == 0
     with switch_engine(REMOTE_ENGINE):
-        assert get_tagged_id(PG_MNT, 'v2', raise_on_none=False) is None
-        assert get_image(PG_MNT, remote_v2) is None
+        assert PG_MNT.resolve_image('v2', raise_on_none=False) is None
+        assert PG_MNT.get_image(remote_v2) is None
 
     # sgr rm test/pg_mount:v1 -y
     # Should delete both images since v2 depends on v1
@@ -511,7 +504,7 @@ def test_rm_images(local_engine_with_pg, remote_engine):
     assert local_v1 in result.output
     assert 'v1' in result.output
     assert 'v2' in result.output
-    assert len(get_all_image_info(PG_MNT)) == 0
+    assert len(PG_MNT.get_images()) == 0
 
 
 def test_mount_docstring_generation():
@@ -548,8 +541,8 @@ def test_prune(local_engine_with_pg, remote_engine):
     # Delete tag v2 and run sgr prune -r remote_engine test/pg_mount, say "no": the image
     # that used to be 'v2' now isn't tagged so it will be a candidate for removal (but not the v1 image).
     with switch_engine(REMOTE_ENGINE):
-        remote_v2 = get_tagged_id(PG_MNT, 'v2')
-        delete_tag(PG_MNT, 'v2')
+        remote_v2 = PG_MNT.resolve_image('v2')
+        PG_MNT.get_image(remote_v2).delete_tag('v2')
         remote_engine.commit()
 
     result = runner.invoke(prune_c, [str(PG_MNT), '-r', 'remote_engine'], input='n\n')
@@ -558,13 +551,13 @@ def test_prune(local_engine_with_pg, remote_engine):
     assert 'Total: 1' in result.output
     # Make sure the image still exists
     with switch_engine(REMOTE_ENGINE):
-        assert get_image(PG_MNT, remote_v2)
+        assert PG_MNT.get_image(remote_v2)
 
     # Delete tag v1 and run sgr prune -r remote_engine -y test_pg_mount:
     # now both images aren't tagged so will get removed.
     with switch_engine(REMOTE_ENGINE):
-        remote_v1 = get_tagged_id(PG_MNT, 'v1')
-        delete_tag(PG_MNT, 'v1')
+        remote_v1 = PG_MNT.resolve_image('v1')
+        PG_MNT.get_image(remote_v1).delete_tag('v1')
         remote_engine.commit()
     result = runner.invoke(prune_c, [str(PG_MNT), '-r', 'remote_engine', '-y'])
     assert result.exit_code == 0
@@ -572,14 +565,14 @@ def test_prune(local_engine_with_pg, remote_engine):
     assert remote_v1 in result.output
     assert 'Total: 2' in result.output
     with switch_engine(REMOTE_ENGINE):
-        assert not get_all_image_info(PG_MNT)
+        assert not PG_MNT.get_images()
 
     # Finally, delete both tags from the local engine and prune. Since there's still
     # a HEAD tag pointing to the ex-v2, nothing will actually happen.
     result = runner.invoke(prune_c, [str(PG_MNT), '-y'])
     assert "Nothing to do." in result.output
-    assert len(get_all_image_info(PG_MNT)) == 2
-    assert len(get_all_hashes_tags(PG_MNT)) == 3
+    assert len(PG_MNT.get_images()) == 2
+    assert len(PG_MNT.get_all_hashes_tags()) == 3
 
 
 def test_config_dumping():

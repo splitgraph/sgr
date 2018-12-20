@@ -7,7 +7,6 @@ try:
 except ImportError:
     from mock import patch
 from psycopg2.sql import Identifier, SQL
-from splitgraph.commands import commit
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.splitfile import execute_commands
 from splitgraph.splitfile.execution import _combine_hashes
@@ -76,7 +75,7 @@ def test_calc_hash_short_circuit(local_engine_with_pg):
     # Run 3: alter test_pg_mount (same command context hash but different image)
     local_engine_with_pg.run_sql("""UPDATE "test/pg_mount".fruits SET name = 'banana' where fruit_id = 1""",
                                  return_shape=None)
-    commit(PG_MNT)
+    PG_MNT.commit()
     with patch('test.splitgraph.splitfile.test_custom_commands.CalcHashTestCommand.execute') as cmd:
         execute_commands(load_splitfile('custom_command_calc_hash.splitfile'), output=OUTPUT)
         log_3 = OUTPUT.get_image(OUTPUT.get_head()).get_log()

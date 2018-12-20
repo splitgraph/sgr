@@ -39,7 +39,7 @@ class Repository:
 
     def get_image(self, image_hash):
         image_tuple = sg.get_image(self, image=image_hash)
-        return Image(*list(image_tuple), repository=self)
+        return Image(*list(image_tuple), repository=self) if image_tuple else None
 
     def get_images(self):
         return [img[0] for img in sg.get_all_image_info(self)]
@@ -49,8 +49,8 @@ class Repository:
     has_pending_changes = _has_changes
     publish = sg.publish
 
-    def get_head(self):
-        return sg.get_current_head(self)
+    def get_head(self, raise_on_none=True):
+        return sg.get_current_head(self, raise_on_none=raise_on_none)
 
     def get_upstream(self):
         return get_upstream(self)

@@ -127,7 +127,7 @@ def delete_tag(repository, tag):
                          return_shape=None)
 
 
-def resolve_image(repository, tag_or_hash):
+def resolve_image(repository, tag_or_hash, raise_on_none=True):
     """Converts a tag or shortened hash to a full image hash that exists in the repository."""
     try:
         return get_canonical_image_id(repository, tag_or_hash)
@@ -135,4 +135,7 @@ def resolve_image(repository, tag_or_hash):
         try:
             return get_tagged_id(repository, tag_or_hash)
         except SplitGraphException:
-            raise SplitGraphException("%s does not refer to either an image commit hash or a tag!" % tag_or_hash)
+            if raise_on_none:
+                raise SplitGraphException("%s does not refer to either an image commit hash or a tag!" % tag_or_hash)
+            else:
+                return None
