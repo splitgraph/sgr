@@ -1,4 +1,5 @@
 import splitgraph as sg
+from splitgraph.commands.diff import has_pending_changes as _has_changes
 from splitgraph.commands.repository import get_upstream, set_upstream
 from .image import Image
 
@@ -45,6 +46,7 @@ class Repository:
 
     push = sg.push
     pull = sg.pull
+    has_pending_changes = _has_changes
 
     def get_head(self):
         return sg.get_current_head(self)
@@ -62,7 +64,7 @@ class Repository:
         engine.run_sql("SET search_path TO public")
         return result
 
-    def diff(self, table_name, image_1, image_2=None, aggregate=True):
+    def diff(self, table_name, image_1, image_2=None, aggregate=False):
         return sg.diff(self, table_name, image_1, image_2, aggregate)
 
 
