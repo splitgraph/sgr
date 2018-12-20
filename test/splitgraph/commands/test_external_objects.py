@@ -1,11 +1,8 @@
 import pytest
 from minio import Minio
 
-from splitgraph import rm
+from splitgraph import rm, clone, cleanup_objects
 from splitgraph._data.objects import get_existing_objects, get_external_object_locations, get_downloaded_objects
-from splitgraph.commands import clone, checkout, commit, push
-from splitgraph.commands.misc import cleanup_objects
-from splitgraph.commands.tagging import get_tagged_id
 from splitgraph.engine import switch_engine
 from splitgraph.hooks.s3 import S3_HOST, S3_PORT, S3_ACCESS_KEY, S3_SECRET_KEY
 from test.splitgraph.conftest import PG_MNT, PG_MNT_PULL, REMOTE_ENGINE
@@ -36,18 +33,16 @@ def test_s3_push_pull(local_engine_empty, remote_engine, clean_minio):
 
     clone(PG_MNT, local_repository=PG_MNT_PULL, download_all=False)
     # Add a couple of commits, this time on the cloned copy.
-    head = get_tagged_id(PG_MNT_PULL, 'latest')
-    checkout(PG_MNT_PULL, head)
-    local_engine_empty.run_sql("INSERT INTO test_pg_mount_pull.fruits VALUES (3, 'mayonnaise')",
-                               return_shape=None)
-    left = commit(PG_MNT_PULL)
-    checkout(PG_MNT_PULL, head)
-    local_engine_empty.run_sql("INSERT INTO test_pg_mount_pull.fruits VALUES (3, 'mustard')",
-                               return_shape=None)
-    right = commit(PG_MNT_PULL)
+    head = PG_MNT_PULL.resolve_image('latest')
+    PG_MNT_PULL.checkout(head)
+    PG_MNT_PULL.run_sql("INSERT INTO fruits VALUES (3, 'mayonnaise')")
+    left = PG_MNT_PULL.commit()
+    PG_MNT_PULL.checkout(head)
+    PG_MNT_PULL.run_sql("INSERT INTO fruits VALUES (3, 'mustard')")
+    right = PG_MNT_PULL.commit()
 
     # Push to origin, but this time upload the actual objects instead.
-    push(PG_MNT_PULL, remote_repository=PG_MNT, handler='S3', handler_options={})
+    PG_MNT_PULL.push(remote_repository=PG_MNT, handler='S3', handler_options={})
 
     # Check that the actual objects don't exist on the remote but are instead registered with an URL.
     # All the objects on pgcache were registered remotely
@@ -76,11 +71,10 @@ def test_s3_push_pull(local_engine_empty, remote_engine, clean_minio):
     assert len(get_downloaded_objects()) == 0
 
     # Check out left commit: since it only depends on the root, we should download just the new version of fruits.
-    checkout(PG_MNT_PULL, left)
-    assert len(
-        get_downloaded_objects()) == 3  # now have 2 versions of fruits + 1 vegetables
+    PG_MNT_PULL.checkout(left)
+    assert len(get_downloaded_objects()) == 3  # now have 2 versions of fruits + 1 vegetables
 
-    checkout(PG_MNT_PULL, right)
+    PG_MNT_PULL.checkout(right)
     assert len(get_downloaded_objects()) == 4
     # Only now we actually have all the objects materialized.
     assert get_downloaded_objects() == get_existing_objects()

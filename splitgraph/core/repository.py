@@ -47,6 +47,7 @@ class Repository:
     push = sg.push
     pull = sg.pull
     has_pending_changes = _has_changes
+    publish = sg.publish
 
     def get_head(self):
         return sg.get_current_head(self)

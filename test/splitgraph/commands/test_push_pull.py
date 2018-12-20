@@ -2,8 +2,7 @@ import pytest
 
 from splitgraph._data.images import get_all_image_info
 from splitgraph._data.objects import get_existing_objects, get_downloaded_objects
-from splitgraph.commands import clone, checkout, commit, pull, push
-from splitgraph.commands.tagging import get_current_head
+from splitgraph.commands import clone
 from splitgraph.engine import switch_engine
 from test.splitgraph.conftest import PG_MNT, PG_MNT_PULL, REMOTE_ENGINE
 
@@ -17,13 +16,13 @@ def test_pull(local_engine_with_pg, remote_engine, download_all):
     clone(PG_MNT, local_repository=PG_MNT_PULL, download_all=download_all)
 
     with switch_engine(REMOTE_ENGINE):
-        remote_head = get_current_head(PG_MNT)
-    checkout(PG_MNT_PULL, remote_head)
+        remote_head = PG_MNT.get_head()
+    PG_MNT_PULL.checkout(remote_head)
 
     # Do something to fruits on the remote
     remote_engine.run_sql("INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mayonnaise')")
     with switch_engine(REMOTE_ENGINE):
-        head_1 = commit(PG_MNT)
+        head_1 = PG_MNT.commit()
 
     # Check that the fruits table changed on the original mount
     assert remote_engine.run_sql("SELECT * FROM \"test/pg_mount\".fruits") == \
@@ -38,15 +37,14 @@ def test_pull(local_engine_with_pg, remote_engine, download_all):
     # in order to see them.
     remote_engine.commit()
 
-    pull(PG_MNT_PULL)
+    PG_MNT_PULL.pull()
     assert head_1 in [snapdata[0] for snapdata in get_all_image_info(PG_MNT_PULL)]
 
     # Check out the newly-pulled commit and verify it has the same data.
-    checkout(PG_MNT_PULL, head_1)
+    PG_MNT_PULL.checkout(head_1)
 
-    assert local_engine_with_pg.run_sql("SELECT * FROM test_pg_mount_pull.fruits") == [(1, 'apple'), (2, 'orange'),
-                                                                                       (3, 'mayonnaise')]
-    assert get_current_head(PG_MNT_PULL) == head_1
+    assert PG_MNT_PULL.run_sql("SELECT * FROM fruits") == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]
+    assert PG_MNT_PULL.get_head() == head_1
 
 
 @pytest.mark.parametrize("keep_downloaded", [True, False])
@@ -56,9 +54,9 @@ def test_pulls_with_lazy_object_downloads(local_engine_empty, remote_engine, kee
     assert not get_downloaded_objects()
 
     with switch_engine(REMOTE_ENGINE):
-        head = get_current_head(PG_MNT)
+        head = PG_MNT.get_head()
 
-    checkout(PG_MNT_PULL, head, keep_downloaded_objects=keep_downloaded)
+    PG_MNT_PULL.checkout(head, keep_downloaded_objects=keep_downloaded)
     if keep_downloaded:
         assert len(get_downloaded_objects()) == 2  # Original fruits and vegetables tables.
         assert get_downloaded_objects() == get_existing_objects()
@@ -69,14 +67,14 @@ def test_pulls_with_lazy_object_downloads(local_engine_empty, remote_engine, kee
     # In the meantime, make two branches off of origin (a total of 3 commits)
     with switch_engine(REMOTE_ENGINE):
         remote_engine.run_sql("INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mayonnaise')")
-        left = commit(PG_MNT)
+        left = PG_MNT.commit()
 
-        checkout(PG_MNT, head)
+        PG_MNT.checkout(head)
         remote_engine.run_sql("INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mustard')")
-        right = commit(PG_MNT)
+        right = PG_MNT.commit()
 
     # Pull from upstream.
-    pull(PG_MNT_PULL, download_all=False)
+    PG_MNT_PULL.pull(download_all=False)
     # Make sure we have the pointers to the three versions of the fruits table + the original vegetables
     assert len(get_existing_objects()) == 4
 
@@ -85,14 +83,14 @@ def test_pulls_with_lazy_object_downloads(local_engine_empty, remote_engine, kee
         assert len(get_downloaded_objects()) == 2
 
     # Check out left commit: since it only depends on the root, we should download just the new version of fruits.
-    checkout(PG_MNT_PULL, left, keep_downloaded_objects=keep_downloaded)
+    PG_MNT_PULL.checkout(left, keep_downloaded_objects=keep_downloaded)
 
     if keep_downloaded:
         assert len(get_downloaded_objects()) == 3  # now have 2 versions of fruits + 1 vegetables
     else:
         assert not get_downloaded_objects()
 
-    checkout(PG_MNT_PULL, right, keep_downloaded_objects=keep_downloaded)
+    PG_MNT_PULL.checkout(right, keep_downloaded_objects=keep_downloaded)
     if keep_downloaded:
         assert len(get_downloaded_objects()) == 4  # now have 2 versions of fruits + 1 vegetables
         assert get_downloaded_objects() == get_existing_objects()
@@ -105,18 +103,18 @@ def test_push(local_engine_empty, remote_engine):
     clone(PG_MNT, local_repository=PG_MNT_PULL)
 
     with switch_engine(REMOTE_ENGINE):
-        head = get_current_head(PG_MNT)
-    checkout(PG_MNT_PULL, head)
+        head = PG_MNT.get_head()
+    PG_MNT_PULL.checkout(head)
 
     # Then, change our copy and commit.
-    local_engine_empty.run_sql("INSERT INTO test_pg_mount_pull.fruits VALUES (3, 'mayonnaise')")
-    head_1 = commit(PG_MNT_PULL)
+    PG_MNT_PULL.run_sql("INSERT INTO fruits VALUES (3, 'mayonnaise')")
+    head_1 = PG_MNT_PULL.commit()
 
     # Now, push to remote.
-    push(PG_MNT_PULL, remote_repository=PG_MNT)
+    PG_MNT_PULL.push(remote_repository=PG_MNT)
 
     # See if the original mountpoint got updated.
     with switch_engine(REMOTE_ENGINE):
-        checkout(PG_MNT, head_1)
+        PG_MNT.checkout(head_1)
     assert remote_engine.run_sql("SELECT * FROM \"test/pg_mount\".fruits") == \
            [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]

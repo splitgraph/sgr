@@ -1,8 +1,6 @@
 import pytest
 
 from splitgraph._data.objects import get_object_for_table
-from splitgraph.commands import commit, checkout
-from splitgraph.commands.tagging import get_current_head
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import get_engine
 from test.splitgraph.conftest import PG_MNT
@@ -41,8 +39,8 @@ def test_schema_changes(local_engine_with_pg, test_case):
     local_engine_with_pg.commit()
     assert engine.get_full_table_schema(PG_MNT.to_schema(), 'fruits') == expected_new_schema
 
-    head = get_current_head(PG_MNT)
-    new_head = commit(PG_MNT)
+    head = PG_MNT.get_head()
+    new_head = PG_MNT.commit()
 
     # Test that the new image only has a snap and the object storing the snap has the expected new schema
     assert get_object_for_table(PG_MNT, 'fruits', new_head, 'DIFF') is None
@@ -51,10 +49,10 @@ def test_schema_changes(local_engine_with_pg, test_case):
     assert engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, new_snap) == _reassign_ordinals(
         expected_new_schema)
 
-    checkout(PG_MNT, head)
+    PG_MNT.checkout(head)
     assert engine.get_full_table_schema(PG_MNT.to_schema(), 'fruits') == OLD_SCHEMA
-    checkout(PG_MNT, new_head)
 
+    PG_MNT.checkout(new_head)
     assert engine.get_full_table_schema(PG_MNT.to_schema(), 'fruits') == _reassign_ordinals(expected_new_schema)
 
 
@@ -64,11 +62,11 @@ def test_pk_preserved_on_checkout(local_engine_with_pg):
     local_engine_with_pg.run_sql("ALTER TABLE \"test/pg_mount\".fruits ADD PRIMARY KEY (fruit_id)",
                                  return_shape=None)
     assert list(engine.get_primary_keys(PG_MNT.to_schema(), 'fruits')) == [('fruit_id', 'integer')]
-    head = get_current_head(PG_MNT)
-    new_head = commit(PG_MNT)
+    head = PG_MNT.get_head()
+    new_head = PG_MNT.commit()
     assert list(engine.get_primary_keys(PG_MNT.to_schema(), 'fruits')) == [('fruit_id', 'integer')]
 
-    checkout(PG_MNT, head)
+    PG_MNT.checkout(head)
     assert list(engine.get_primary_keys(PG_MNT.to_schema(), 'fruits')) == []
-    checkout(PG_MNT, new_head)
+    PG_MNT.checkout(new_head)
     assert list(engine.get_primary_keys(PG_MNT.to_schema(), 'fruits')) == [('fruit_id', 'integer')]
