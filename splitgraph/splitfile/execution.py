@@ -7,13 +7,11 @@ from hashlib import sha256
 from importlib import import_module
 from random import getrandbits
 
-from splitgraph import init, rm
+from splitgraph import init, rm, clone
 from splitgraph._data.provenance import store_import_provenance, store_sql_provenance, store_mount_provenance, \
     store_from_provenance
-from splitgraph.commands import checkout, clone, import_tables, commit, image_hash_to_splitfile
-from splitgraph.commands.push_pull import local_clone, pull
+from splitgraph.commands.push_pull import local_clone
 from splitgraph.commands.repository import repository_exists, lookup_repo
-from splitgraph.commands.tagging import get_current_head, resolve_image
 from splitgraph.config import CONFIG
 from splitgraph.core.repository import to_repository, Repository
 from splitgraph.engine import get_engine
@@ -33,7 +31,7 @@ def _checkout_or_calculate_layer(output, image_hash, calc_func):
 
     # Have we already calculated this hash?
     try:
-        checkout(output, image_hash)
+        output.checkout(image_hash)
         print(" ---> Using cache")
     except SplitGraphException:
         calc_func()
@@ -54,7 +52,7 @@ def execute_commands(commands, params=None, output=None, output_base='0' * 32):
     if params is None:
         params = {}
     if output and repository_exists(output) and output_base is not None:
-        checkout(output, output_base)
+        output.checkout(output_base)
     # Use a random target schema if unspecified.
     output = output or "output_%0.2x" % getrandbits(16)
 
@@ -103,13 +101,13 @@ def _execute_sql(node, output):
             sql_command = f.read()
     else:
         sql_command = node_contents
-    output_head = get_current_head(output)
+    output_head = output.get_head()
     target_hash = _combine_hashes([output_head, sha256(sql_command.encode('utf-8')).hexdigest()])
 
     def _calc():
         print("Executing SQL...")
-        get_engine().execute_sql_in(output.to_schema(), sql_command)
-        commit(output, target_hash, comment=sql_command)
+        output.run_sql(sql_command)
+        output.commit(target_hash, comment=sql_command)
         store_sql_provenance(output, target_hash, sql_command)
 
     _checkout_or_calculate_layer(output, target_hash, _calc)
@@ -138,20 +136,20 @@ def _execute_from(node, output):
         if engine != 'LOCAL':
             clone(repository, remote_engine=engine, local_repository=output,
                   download_all=False)
-            checkout(output, resolve_image(output, tag_or_hash))
+            output.checkout(output.resolve_image(tag_or_hash))
         else:
             # For local repositories, first try to pull them to see if they are clones of a remote.
             try:
-                pull(repository)
+                repository.pull()
             except SplitGraphException:
                 pass
             # Get the target snap ID from the source repo: otherwise, if the tag is, say, 'latest' and
             # the output has just had the base commit (000...) created in it, that commit will be the latest.
-            to_checkout = resolve_image(repository, tag_or_hash)
+            to_checkout = repository.resolve_image(tag_or_hash)
             print("Cloning %s into %s..." % (repository, output))
             local_clone(repository, output)
-            checkout(output, to_checkout)
-        store_from_provenance(output, get_current_head(output), repository)
+            output.checkout(to_checkout)
+        store_from_provenance(output, output.get_head(), repository)
     else:
         # FROM EMPTY AS repository -- initializes an empty repository (say to create a table or import
         # the results of a previous stage in a multistage build.
@@ -195,8 +193,8 @@ def _execute_db_import(conn_string, fdw_name, fdw_params, table_names, target_mo
         # Maybe in the future, when the object hash is a function of its contents, we can be smarter here...
         target_hash = "%0.2x" % getrandbits(256)
 
-        import_tables(tmp_mountpoint, table_names, target_mountpoint, table_aliases, image_hash=target_hash,
-                      foreign_tables=True, table_queries=table_queries)
+        tmp_mountpoint.import_tables(table_names, target_mountpoint, table_aliases, image_hash=target_hash,
+                                     foreign_tables=True, table_queries=table_queries)
         store_mount_provenance(target_mountpoint, target_hash)
     finally:
         rm(tmp_mountpoint)
@@ -220,17 +218,17 @@ def _execute_repo_import(repository, table_names, tag_or_hash, target_repository
 
         if engine != 'LOCAL':
             clone(repository, remote_engine=engine, local_repository=tmp_repo, download_all=False)
-            source_hash = resolve_image(tmp_repo, tag_or_hash)
+            source_hash = tmp_repo.resolve_image(tag_or_hash)
             source_mountpoint = tmp_repo
         else:
             # For local repositories, first try to pull them to see if they are clones of a remote.
             try:
-                pull(repository)
+                repository.pull(repository)
             except SplitGraphException:
                 pass
-            source_hash = resolve_image(repository, tag_or_hash)
+            source_hash = repository.resolve_image(tag_or_hash)
             source_mountpoint = repository
-        output_head = get_current_head(target_repository)
+        output_head = target_repository.get_head()
         target_hash = _combine_hashes(
             [output_head, source_hash] + [sha256(n.encode('utf-8')).hexdigest() for n in
                                           table_names + table_aliases])
@@ -238,8 +236,8 @@ def _execute_repo_import(repository, table_names, tag_or_hash, target_repository
         def _calc():
             print("Importing tables %r:%s from %s into %s" % (
                 table_names, source_hash[:12], str(repository), str(target_repository)))
-            import_tables(source_mountpoint, table_names, target_repository, table_aliases, image_hash=source_hash,
-                          target_hash=target_hash, table_queries=table_queries)
+            source_mountpoint.import_tables(table_names, target_repository, table_aliases, image_hash=source_hash,
+                                            target_hash=target_hash, table_queries=table_queries)
             store_import_provenance(target_repository, target_hash, repository, source_hash, table_names, table_aliases,
                                     table_queries)
 
@@ -270,12 +268,12 @@ def _execute_custom(node, output):
 
     # Pre-flight check: get the new command hash and see if we can short-circuit and just check the image out.
     command_hash = command.calc_hash(repository=output, args=args)
-    output_head = get_current_head(output)
+    output_head = output.get_head()
 
     if command_hash is not None:
         image_hash = _combine_hashes([output_head, command_hash])
         try:
-            checkout(output, image_hash)
+            output.checkout(image_hash)
             print(" ---> Using cache")
             return
         except SplitGraphException:
@@ -290,10 +288,10 @@ def _execute_custom(node, output):
 
     # Check just in case if the new hash produced by the command already exists.
     try:
-        checkout(output, image_hash)
+        output.checkout(image_hash)
     except SplitGraphException:
         # Full command as a commit comment
-        commit(output, image_hash, comment=node.text)
+        output.commit(image_hash, comment=node.text)
         # Worth storing provenance here anyway?
 
 
@@ -306,7 +304,7 @@ def rerun_image_with_replacement(mountpoint, image_hash, source_replacement):
     :param image_hash: Hash of the image to rerun
     :param source_replacement: A map that specifies replacement images/tags for repositories that the image depends on
     """
-    splitfile_commands = image_hash_to_splitfile(mountpoint, image_hash, err_on_end=False,
-                                                 source_replacement=source_replacement)
+    splitfile_commands = mountpoint.get_image(image_hash).to_splitfile(err_on_end=False,
+                                                                       source_replacement=source_replacement)
     # Params are supposed to be stored in the commands already (baked in) -- what if there's sensitive data there?
     execute_commands('\n'.join(splitfile_commands), output=mountpoint)

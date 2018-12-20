@@ -35,7 +35,8 @@ def publish(repository, tag, remote_engine_name=None, remote_repository=None, re
     image_hash = get_tagged_id(repository, tag)
     logging.info("Publishing %s:%s (%s)", repository, image_hash, tag)
 
-    dependencies = provenance(repository, image_hash) if include_provenance else None
+    dependencies = [((r.namespace, r.repository), i) for r, i in provenance(repository, image_hash)] \
+        if include_provenance else None
     previews, schemata = _prepare_extra_data(image_hash, repository, include_table_previews)
 
     remote_engine = get_engine(remote_engine_name)

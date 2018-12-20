@@ -17,12 +17,12 @@ def provenance(repository, image_hash):
     :param image_hash: Image hash to inspect
     :return: List of (repository, image_hash)
     """
+    from splitgraph.core.repository import Repository
     result = set()
     while image_hash:
         image = get_image(repository, image_hash)
         parent, prov_type, prov_data = image.parent_id, image.provenance_type, image.provenance_data
         if prov_type == 'IMPORT':
-            from splitgraph.core.repository import Repository
             result.add((Repository(prov_data['source_namespace'], prov_data['source']), prov_data['source_hash']))
         if prov_type == 'FROM':
             # If we reached "FROM", then that's the first statement in the image build process (as it bases the build
