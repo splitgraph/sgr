@@ -6,7 +6,6 @@ import logging
 
 from splitgraph._data.common import ensure_metadata_schema
 from splitgraph.commands.misc import rm
-from splitgraph.commands.repository import to_repository
 from splitgraph.engine import get_engine
 from splitgraph.hooks.mount_handlers import get_mount_handler
 
@@ -23,6 +22,7 @@ def mount(mountpoint, mount_handler, handler_kwargs):
     mh_func = get_mount_handler(mount_handler)
     logging.info("Connecting to remote server...")
 
+    from splitgraph.core.repository import to_repository
     rm(to_repository(mountpoint))
     mh_func(mountpoint, **handler_kwargs)
 

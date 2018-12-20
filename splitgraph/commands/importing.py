@@ -14,7 +14,6 @@ from splitgraph.commands.checkout import materialize_table, checkout
 from splitgraph.commands.info import get_tables_at, get_table
 from splitgraph.commands.misc import rm
 from splitgraph.commands.push_pull import clone
-from splitgraph.commands.repository import Repository
 from splitgraph.commands.tagging import get_current_head
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import get_engine
@@ -150,6 +149,7 @@ def import_table_from_remote(remote_engine, remote_repository, remote_tables, re
     # metadata (object locations and relationships) into the local mountpoint. However, since the metadata is fairly
     # lightweight (we never download unneeded objects), we just clone it into a temporary mountpoint,
     # do the import into the target and destroy the temporary mp.
+    from splitgraph.core.repository import Repository
     tmp_mountpoint = Repository(namespace=remote_repository.namespace,
                                 repository=remote_repository.repository + '_clone_tmp')
 

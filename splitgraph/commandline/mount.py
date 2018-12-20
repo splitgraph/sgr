@@ -7,7 +7,7 @@ import re
 
 import click
 
-import splitgraph as sg
+from splitgraph import mount
 from splitgraph.hooks.mount_handlers import get_mount_handler, get_mount_handlers
 
 _PARAM_REGEX = re.compile('^:param\s+(?P<type>\w+\s+)?(?P<param>\w+):\s+(?P<doc>.*)$', re.MULTILINE)
@@ -87,7 +87,7 @@ def _make_mount_handler_command(handler_name):
         handler_options = json.loads(handler_options)
         handler_options.update(dict(server=match.group(3), port=int(match.group(4)),
                                     username=match.group(1), password=match.group(2)))
-        sg.mount(schema, mount_handler=handler_name, handler_kwargs=handler_options)
+        mount(schema, mount_handler=handler_name, handler_kwargs=handler_options)
 
     cmd = click.Command(handler_name, params=params, callback=_callback, help=help_text)
     return cmd

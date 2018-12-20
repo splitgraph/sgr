@@ -5,7 +5,6 @@ API for getting provenance of a Splitgraph image.
 import logging
 
 from splitgraph.commands.info import get_image
-from splitgraph.commands.repository import Repository
 from splitgraph.exceptions import SplitGraphException
 
 
@@ -23,6 +22,7 @@ def provenance(repository, image_hash):
         image = get_image(repository, image_hash)
         parent, prov_type, prov_data = image.parent_id, image.provenance_type, image.provenance_data
         if prov_type == 'IMPORT':
+            from splitgraph.core.repository import Repository
             result.add((Repository(prov_data['source_namespace'], prov_data['source']), prov_data['source_hash']))
         if prov_type == 'FROM':
             # If we reached "FROM", then that's the first statement in the image build process (as it bases the build
@@ -50,6 +50,8 @@ def _prov_command_to_splitfile(prov_type, prov_data, image_hash, source_replacem
     :param source_replacement: Replace repository imports with different versions
     :return: String with the Splitfile command.
     """
+    from splitgraph.core.repository import Repository
+
     if prov_type == "IMPORT":
         repo, image = Repository(prov_data['source_namespace'], prov_data['source']), prov_data['source_hash']
         result = "FROM %s:%s IMPORT " % (str(repo), source_replacement.get(repo, image))

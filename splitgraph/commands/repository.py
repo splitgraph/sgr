@@ -2,7 +2,6 @@
 Functions to manage Splitgraph repositories
 """
 
-from collections import namedtuple
 from datetime import datetime
 
 from psycopg2.sql import SQL, Identifier
@@ -24,27 +23,6 @@ def _parse_paths_overrides(lookup_path, override_path):
 # recalculated.
 _LOOKUP_PATH, _LOOKUP_PATH_OVERRIDE = \
     _parse_paths_overrides(CONFIG['SG_REPO_LOOKUP'], CONFIG['SG_REPO_LOOKUP_OVERRIDE'])
-
-
-class Repository(namedtuple('Repository', ['namespace', 'repository'])):
-    """
-    A repository object that encapsulates the namespace and the actual repository name.
-    """
-
-    def to_schema(self):
-        """Converts the object to a Postgres schema."""
-        return self.repository if not self.namespace else self.namespace + '/' + self.repository
-
-    __repr__ = to_schema
-    __str__ = to_schema
-
-
-def to_repository(schema):
-    """Converts a Postgres schema name of the format `namespace/repository` to a Splitgraph repository object."""
-    if '/' in schema:
-        namespace, repository = schema.split('/')
-        return Repository(namespace, repository)
-    return Repository('', schema)
 
 
 def repository_exists(repository):
@@ -101,6 +79,7 @@ def get_current_repositories():
     :return: List of (Repository object, current HEAD image)
     """
     ensure_metadata_schema()
+    from splitgraph.core.repository import Repository
     return [(Repository(n, r), i) for n, r, i in
             get_engine().run_sql(select("tags", "namespace, repository, image_hash", "tag = 'HEAD'"))]
 
@@ -118,6 +97,7 @@ def get_upstream(repository):
                                   return_shape=ResultShape.ONE_MANY)
     if result is None:
         return result
+    from splitgraph.core.repository import Repository
     return result[0], Repository(result[1], result[2])
 
 

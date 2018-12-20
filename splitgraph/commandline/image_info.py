@@ -7,13 +7,14 @@ from pprint import pprint
 
 import click
 
-import splitgraph as sg
-from splitgraph import get_engine
+import splitgraph.core.repository
+from splitgraph import render_tree, get_engine
 from splitgraph.commandline._common import image_spec_parser, pluralise
+from splitgraph.commands.repository import get_current_repositories
 
 
 @click.command(name='log')
-@click.argument('repository', type=sg.to_repository)
+@click.argument('repository', type=splitgraph.core.repository.to_repository)
 @click.option('-t', '--tree', is_flag=True)
 def log_c(repository, tree):
     """
@@ -26,12 +27,12 @@ def log_c(repository, tree):
     been checked out in this case.
     """
     if tree:
-        sg.render_tree(repository)
+        render_tree(repository)
     else:
-        head = sg.get_current_head(repository)
-        log = sg.get_log(repository, head)
+        head = repository.get_image(repository.get_head())
+        log = head.get_log()
         for entry in log:
-            image_info = sg.get_image(repository, entry)
+            image_info = repository.get_image(entry)
             print("%s %s %s %s" % ("H->" if entry == head else "   ", entry, image_info.created,
                                    image_info.comment or ""))
 
@@ -40,7 +41,7 @@ def log_c(repository, tree):
 @click.option('-v', '--verbose', default=False, is_flag=True,
               help='Include the actual differences rather than just the total number of updated rows.')
 @click.option('-t', '--table-name', help='Show the differences for a single table.')
-@click.argument('repository', type=sg.to_repository)
+@click.argument('repository', type=splitgraph.core.repository.to_repository)
 @click.argument('tag_or_hash_1', required=False)
 @click.argument('tag_or_hash_2', required=False)
 def diff_c(verbose, table_name, repository, tag_or_hash_1, tag_or_hash_2):
@@ -64,10 +65,10 @@ def diff_c(verbose, table_name, repository, tag_or_hash_1, tag_or_hash_2):
     """
     tag_or_hash_1, tag_or_hash_2 = _get_actual_hashes(repository, tag_or_hash_1, tag_or_hash_2)
 
-    diffs = {table_name: sg.diff(repository, table_name, tag_or_hash_1, tag_or_hash_2, aggregate=not verbose)
+    diffs = {table_name: repository.diff(table_name, tag_or_hash_1, tag_or_hash_2, aggregate=not verbose)
              for table_name in
              ([table_name] if table_name else sorted(
-                 sg.get_engine().get_all_tables(repository.to_schema())))}
+                 repository.engine.get_all_tables(repository.to_schema())))}
 
     if tag_or_hash_2 is None:
         print("Between %s and the current working copy: " % tag_or_hash_1[:12])
@@ -111,17 +112,17 @@ def _emit_table_diff(table_name, diff_result, verbose):
 def _get_actual_hashes(repository, image_1, image_2):
     if image_1 is None and image_2 is None:
         # Comparing current working copy against the last commit
-        image_1 = sg.get_current_head(repository)
+        image_1 = repository.get_head()
     elif image_2 is None:
-        image_1 = sg.resolve_image(repository, image_1)
+        image_1 = repository.resolve_image(image_1)
         # One parameter: diff from that and its parent.
-        image_2 = sg.get_image(repository, image_1).parent_id
+        image_2 = repository.get_image(image_1).parent_id
         if image_2 is None:
             print("%s has no parent to compare to!" % image_1)
         image_1, image_2 = image_2, image_1  # snap_1 has to come first
     else:
-        image_1 = sg.resolve_image(repository, image_1)
-        image_2 = sg.resolve_image(repository, image_2)
+        image_1 = repository.resolve_image(image_1)
+        image_2 = repository.resolve_image(image_2)
     return image_1, image_2
 
 
@@ -136,10 +137,10 @@ def show_c(image_spec, verbose):
     Image spec must be of the format ``[NAMESPACE/]REPOSITORY[:HASH_OR_TAG]``. If no tag is specified, ``HEAD`` is used.
     """
     repository, image = image_spec
-    image = sg.resolve_image(repository, image)
+    image = repository.resolve_image(image)
 
     print("Commit %s:%s" % (repository.to_schema(), image))
-    image_info = sg.get_image(repository, image)
+    image_info = repository.get_image(image)
     print(image_info.comment or "")
     print("Created at %s" % image_info.created.isoformat())
     if image_info.parent_id:
@@ -149,8 +150,8 @@ def show_c(image_spec, verbose):
     if verbose:
         print()
         print("Tables:")
-        for t in sg.get_tables_at(repository, image):
-            table_objects = sg.get_table(repository, t, image)
+        for t in image_info.get_tables():
+            table_objects = image_info.get_table(t).objects
             if len(table_objects) == 1:
                 print("  %s: %s (%s)" % (t, table_objects[0][0], table_objects[0][1]))
             else:
@@ -190,25 +191,25 @@ def sql_c(sql, schema, show_all):
 
 
 @click.command(name='status')
-@click.argument('repository', required=False, type=sg.to_repository)
+@click.argument('repository', required=False, type=splitgraph.core.repository.to_repository)
 def status_c(repository):
     """
     Show the status of the Splitgraph engine. If a repository is passed, show information about
     the repository. If not, show information about all repositories local to the engine.
     """
     if repository is None:
-        repositories = sg.get_current_repositories()
+        repositories = get_current_repositories()
         print("Local repositories: ")
         for mp_name, mp_hash in repositories:
             # Maybe should also show the remote DB address/server
             print("%s: \t %s" % (mp_name, mp_hash))
         print("\nUse sgr status repository to get information about a given repository.")
     else:
-        current_snap = sg.get_current_head(repository, raise_on_none=False)
+        current_snap = repository.get_head()
         if not current_snap:
             print("%s: nothing checked out." % str(repository))
             return
-        parent, children = sg.get_parent_children(repository, current_snap)
+        parent, children = repository.get_parent_children(current_snap)
         print("%s: on image %s." % (str(repository), current_snap))
         if parent is not None:
             print("Parent: %s" % parent)

@@ -1,8 +1,7 @@
 """
 Various common functions used by the command line interface.
 """
-
-from splitgraph import to_repository
+from splitgraph.core.repository import to_repository
 
 
 def image_spec_parser(default='latest'):

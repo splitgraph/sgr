@@ -2,15 +2,14 @@
 Miscellaneous image management sgr commands.
 """
 
-import logging
-
 import click
 
-import splitgraph as sg
-from splitgraph import SplitGraphException
+import splitgraph.core.repository
+from splitgraph import SplitGraphException, CONFIG
 from splitgraph._data.images import _get_all_child_images, delete_images, _get_all_parent_images
 from splitgraph.commandline._common import image_spec_parser
-from splitgraph.commands.misc import init_engine
+from splitgraph.commands.misc import init_engine, rm, init, cleanup_objects
+from splitgraph.commands.repository import repository_exists
 from splitgraph.config.keys import KEYS, SENSITIVE_KEYS
 from splitgraph.engine import switch_engine
 
@@ -57,15 +56,15 @@ def rm_c(image_spec, remote, yes):
     repository, image = image_spec
     with switch_engine(remote or 'LOCAL'):
         if not image:
-            print(("Repository" if sg.repository_exists(repository) else "Postgres schema")
+            print(("Repository" if repository_exists(repository) else "Postgres schema")
                   + " %s will be deleted." % repository.to_schema())
             if not yes:
                 click.confirm("Continue? ", abort=True)
-            sg.rm(repository)
+            rm(repository)
         else:
-            image = sg.resolve_image(repository, image)
+            image = repository.resolve_image(image)
             images_to_delete = _get_all_child_images(repository, image)
-            tags_to_delete = [t for i, t in sg.get_all_hashes_tags(repository) if i in images_to_delete]
+            tags_to_delete = [t for i, t in repository.get_all_hashes_tags() if i in images_to_delete]
 
             print("Images to be deleted:")
             print("\n".join(sorted(images_to_delete)))
@@ -89,7 +88,7 @@ def rm_c(image_spec, remote, yes):
 
 
 @click.command(name='prune')
-@click.argument('repository', type=sg.to_repository)
+@click.argument('repository', type=splitgraph.core.repository.to_repository)
 @click.option('-r', '--remote', help="Perform the deletion on a remote instead, specified by its alias")
 @click.option('-y', '--yes', help="Agree to deletion without confirmation", is_flag=True, default=False)
 def prune_c(repository, remote, yes):
@@ -107,10 +106,8 @@ def prune_c(repository, remote, yes):
     use ``sgr cleanup`` to do that.
     """
     with switch_engine(remote or 'LOCAL'):
-        all_images = {i[0] for i in sg.get_all_image_info(repository)}
-        logging.info(all_images)
-        all_tagged_images = {i for i, t in sg.get_all_hashes_tags(repository)}
-        logging.info(all_tagged_images)
+        all_images = set(repository.get_images())
+        all_tagged_images = {i for i, t in repository.get_all_hashes_tags()}
         dangling_images = all_images.difference(_get_all_parent_images(repository, all_tagged_images))
 
         if not dangling_images:
@@ -129,7 +126,7 @@ def prune_c(repository, remote, yes):
 
 
 @click.command(name='init')
-@click.argument('repository', type=sg.to_repository, required=False, default=None)
+@click.argument('repository', type=splitgraph.core.repository.to_repository, required=False, default=None)
 def init_c(repository):
     """
     Initialize a new repository/engine.
@@ -146,7 +143,7 @@ def init_c(repository):
         Creates a single image with the hash ``00000...`` in ``new/repo``
     """
     if repository:
-        sg.init(repository)
+        init(repository)
         print("Initialized empty repository %s" % str(repository))
     else:
         init_engine()
@@ -159,7 +156,7 @@ def cleanup_c():
 
     This deletes all objects from the cache that aren't required by any local repository.
     """
-    deleted = sg.cleanup_objects()
+    deleted = cleanup_objects()
     print("Deleted %d physical object(s)" % len(deleted))
 
 
@@ -196,29 +193,29 @@ def config_c(no_shielding, config_format):
     print("[defaults]\n" if config_format else "", end="")
     # Print normal config parameters
     for key in KEYS:
-        print(_kv_to_str(key, sg.CONFIG[key]))
+        print(_kv_to_str(key, CONFIG[key]))
 
     # Print hoisted remotes
     print("\nCurrent registered remote engines:\n" if not config_format else "", end="")
-    for remote in sg.CONFIG.get('remotes', []):
+    for remote in CONFIG.get('remotes', []):
         print(("\n[remote: %s]" if config_format else "\n%s:") % remote)
-        for key, value in sg.CONFIG['remotes'][remote].items():
+        for key, value in CONFIG['remotes'][remote].items():
             print(_kv_to_str(key, value))
 
     # Print Splitfile commands
-    if 'commands' in sg.CONFIG:
+    if 'commands' in CONFIG:
         print("\nSplitfile command plugins:\n" if not config_format else "[commands]", end="")
-        for command_name, command_class in sg.CONFIG['commands'].items():
+        for command_name, command_class in CONFIG['commands'].items():
             print(_kv_to_str(command_name, command_class))
 
     # Print mount handlers
-    if 'mount_handlers' in sg.CONFIG:
+    if 'mount_handlers' in CONFIG:
         print("\nFDW Mount handlers:\n" if not config_format else "[mount_handlers]", end="")
-        for handler_name, handler_func in sg.CONFIG['mount_handlers'].items():
+        for handler_name, handler_func in CONFIG['mount_handlers'].items():
             print(_kv_to_str(handler_name, handler_func.lower()))
 
     # Print external object handlers
-    if 'external_handlers' in sg.CONFIG:
+    if 'external_handlers' in CONFIG:
         print("\nExternal object handlers:\n" if not config_format else "[external_handlers]", end="")
-        for handler_name, handler_func in sg.CONFIG['external_handlers'].items():
+        for handler_name, handler_func in CONFIG['external_handlers'].items():
             print(_kv_to_str(handler_name, handler_func))

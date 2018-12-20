@@ -6,8 +6,10 @@ import pytest
 
 from splitgraph.commands._common import parse_connection_string, serialize_connection_string
 from splitgraph.commands.checkout import uncheckout
+from splitgraph.commands.repository import repository_exists, get_upstream
 from splitgraph.config import PG_PWD, PG_USER
-from splitgraph.engine import get_engine, switch_engine
+from splitgraph.core.repository import Repository, to_repository
+from splitgraph.engine import switch_engine
 
 try:
     # python 3.4+ should use builtin unittest.mock not mock package
@@ -17,18 +19,16 @@ except ImportError:
 
 from click.testing import CliRunner
 
-from splitgraph import to_repository, rm, repository_exists, Repository, get_upstream, get_all_hashes_tags
+from splitgraph import get_all_hashes_tags
 from splitgraph._data.images import get_all_image_info
 from splitgraph._data.registry import get_published_info
-from splitgraph.commandline import status_c, sql_c, diff_c, commit_c, log_c, show_c, tag_c, checkout_c, rm_c, \
-    cleanup_c, init_c, mount_c, import_c, clone_c, pull_c, push_c, build_c, provenance_c, rebuild_c, publish_c
+from splitgraph.commandline import *
 from splitgraph.commandline._common import image_spec_parser
-from splitgraph.commandline.misc import prune_c, config_c
 from splitgraph.commandline.push_pull import upstream_c
 from splitgraph.commands import commit, checkout
 from splitgraph.commands.diff import has_pending_changes
 from splitgraph.commands.info import get_image, get_table
-from splitgraph.commands.misc import table_exists_at
+from splitgraph.commands.misc import table_exists_at, rm
 from splitgraph.commands.provenance import provenance
 from splitgraph.commands.tagging import get_current_head, get_tagged_id, set_tag, delete_tag
 from splitgraph.hooks.mount_handlers import get_mount_handlers
@@ -383,7 +383,7 @@ def test_splitfile(local_engine_empty, remote_engine):
         assert 'test/pg_mount:%s' % get_tagged_id(PG_MNT, 'latest') in result.output
 
     # Second, output the full splitfile (-f)
-    result = runner.invoke(provenance_c, ['output:latest', '-f'])
+    result = runner.invoke(provenance_c, ['output:latest', '-f'], catch_exceptions=False)
     with switch_engine(REMOTE_ENGINE):
         assert 'FROM test/pg_mount:%s IMPORT' % get_tagged_id(PG_MNT, 'latest') in result.output
     assert 'SQL CREATE TABLE join_table AS SELECT' in result.output

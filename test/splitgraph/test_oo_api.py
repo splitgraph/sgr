@@ -8,7 +8,7 @@ def test_oo_api(local_engine_with_pg_and_mg):
     # Repository just contains the engine and its name (doesn't
     # load anything, any API call results in a query).
 
-    pg = Repository('test/pg_mount')
+    pg = Repository('test', 'pg_mount')
     all_image_hashes = pg.get_images()
     assert len(all_image_hashes) == 1
 

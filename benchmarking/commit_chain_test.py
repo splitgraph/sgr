@@ -1,4 +1,7 @@
 import os
+
+from splitgraph.core.repository import to_repository
+
 os.environ['SG_CONFIG_FILE'] = 'test/resources/.sgconfig'
 
 from splitgraph.commands._common import serialize_connection_string
@@ -9,7 +12,7 @@ from datetime import datetime
 from random import getrandbits, randrange
 
 from splitgraph.commands import *
-from splitgraph import to_repository, init, rm
+from splitgraph import init, rm
 from splitgraph.hooks.s3 import S3_HOST, S3_PORT, S3_ACCESS_KEY, S3_SECRET_KEY
 from splitgraph.commands.tagging import get_current_head
 

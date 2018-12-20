@@ -7,15 +7,15 @@ from hashlib import sha256
 from importlib import import_module
 from random import getrandbits
 
-from splitgraph import to_repository, init, rm
+from splitgraph import init, rm
 from splitgraph._data.provenance import store_import_provenance, store_sql_provenance, store_mount_provenance, \
     store_from_provenance
-from splitgraph.commandline._common import Color, truncate_line
 from splitgraph.commands import checkout, clone, import_tables, commit, image_hash_to_splitfile
 from splitgraph.commands.push_pull import local_clone, pull
-from splitgraph.commands.repository import Repository, repository_exists, lookup_repo
+from splitgraph.commands.repository import repository_exists, lookup_repo
 from splitgraph.commands.tagging import get_current_head, resolve_image
 from splitgraph.config import CONFIG
+from splitgraph.core.repository import to_repository, Repository
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.mount_handlers import get_mount_handler
@@ -65,6 +65,7 @@ def execute_commands(commands, params=None, output=None, output_base='0' * 32):
         if not repository_exists(output):
             init(output)
 
+    from splitgraph.commandline._common import Color, truncate_line
     node_list = parse_commands(commands, params=params)
     for i, node in enumerate(node_list):
         print(Color.BOLD + "\nStep %d/%d : %s" % (i + 1, len(node_list), truncate_line(node.text, length=60))
