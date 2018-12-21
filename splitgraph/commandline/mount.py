@@ -7,7 +7,7 @@ import re
 
 import click
 
-from splitgraph import mount
+from splitgraph.core.repository import mount
 from splitgraph.hooks.mount_handlers import get_mount_handler, get_mount_handlers
 
 _PARAM_REGEX = re.compile('^:param\s+(?P<type>\w+\s+)?(?P<param>\w+):\s+(?P<doc>.*)$', re.MULTILINE)
@@ -33,7 +33,6 @@ def _generate_handler_help(docstring):
     Extract the long description and the parameters from a docstring
 
     :param docstring: Docstring
-    :returns
     """
     # The handler's docstring can have \b as per Click convention to separate
     # docstring params from the rest of the help -- we do our own parsing here and

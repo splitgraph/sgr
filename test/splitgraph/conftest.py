@@ -5,9 +5,8 @@ import pytest
 from splitgraph._data.common import ensure_metadata_schema
 from splitgraph._data.registry import _ensure_registry_schema, unpublish_repository, setup_registry_mode, \
     toggle_registry_rls
-from splitgraph.commands import *
 from splitgraph.commands.repository import get_current_repositories
-from splitgraph.core.repository import to_repository as R, Repository
+from splitgraph.core.repository import to_repository as R, Repository, cleanup_objects, mount
 from splitgraph.engine import get_engine, ResultShape, switch_engine
 
 PG_MNT = R('test/pg_mount')
@@ -23,7 +22,7 @@ def _mount_postgres(repository):
                remote_schema="public"))
     R('tmp').import_tables(get_engine().get_all_tables('tmp'),
                            repository, [], foreign_tables=True, do_checkout=True)
-    rm(R('tmp'))
+    R('tmp').rm()
 
 
 def _mount_mongo(repository):
@@ -39,7 +38,7 @@ def _mount_mongo(repository):
                                        }}))
     R('tmp').import_tables(get_engine().get_all_tables('tmp'),
                            repository, [], foreign_tables=True, do_checkout=True)
-    rm(R('tmp'))
+    R('tmp').rm()
 
 
 def _mount_mysql(repository):
@@ -59,7 +58,7 @@ def healthcheck():
     # here since we don't touch the remote_engine but we don't run any tests against it until later on,
     # so it should have enough time to start up.
     for mountpoint in [PG_MNT, MG_MNT, MYSQL_MNT]:
-        rm(mountpoint)
+        mountpoint.rm()
     _mount_postgres(PG_MNT)
     _mount_mongo(MG_MNT)
     _mount_mysql(MYSQL_MNT)
@@ -72,28 +71,28 @@ def healthcheck():
                                     return_shape=ResultShape.ONE_ONE) is not None
     finally:
         for mountpoint in [PG_MNT, MG_MNT, MYSQL_MNT]:
-            rm(mountpoint)
+            mountpoint.rm()
 
 
 @pytest.fixture
 def local_engine_with_pg():
     # SG connection with a mounted Postgres db
     for mountpoint in TEST_MOUNTPOINTS:
-        rm(mountpoint)
+        mountpoint.rm()
     _mount_postgres(PG_MNT)
     try:
         yield get_engine()
     finally:
         get_engine().rollback()
         for mountpoint in TEST_MOUNTPOINTS:
-            rm(mountpoint)
+            mountpoint.rm()
 
 
 @pytest.fixture
 def local_engine_with_pg_and_mg():
     # SG connection with a mounted Mongo + Postgres db
     for mountpoint in TEST_MOUNTPOINTS:
-        rm(mountpoint)
+        mountpoint.rm()
     cleanup_objects()
     _mount_postgres(PG_MNT)
     _mount_mongo(MG_MNT)
@@ -102,7 +101,7 @@ def local_engine_with_pg_and_mg():
     finally:
         get_engine().rollback()
         for mountpoint in TEST_MOUNTPOINTS:
-            rm(mountpoint)
+            mountpoint.rm()
         cleanup_objects()
 
 
@@ -122,7 +121,7 @@ def remote_engine():
         unpublish_repository(PG_MNT)
         unpublish_repository(Repository('testuser', 'pg_mount'))
         for mountpoint in TEST_MOUNTPOINTS:
-            rm(mountpoint)
+            mountpoint.rm()
         cleanup_objects()
         get_engine().commit()
         _mount_postgres(PG_MNT)
@@ -134,7 +133,7 @@ def remote_engine():
             e = get_engine()
             e.rollback()
             for mountpoint in TEST_MOUNTPOINTS:
-                rm(mountpoint)
+                mountpoint.rm()
             cleanup_objects()
             e.commit()
             e.close()
@@ -144,7 +143,7 @@ def remote_engine():
 def local_engine_empty():
     # A connection to the local engine that has nothing mounted on it.
     for mountpoint, _ in get_current_repositories():
-        rm(mountpoint)
+        mountpoint.rm()
     cleanup_objects()
     get_engine().commit()
     try:
@@ -152,7 +151,7 @@ def local_engine_empty():
     finally:
         get_engine().rollback()
         for mountpoint, _ in get_current_repositories():
-            rm(mountpoint)
+            mountpoint.rm()
         cleanup_objects()
         get_engine().commit()
 

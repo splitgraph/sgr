@@ -1,14 +1,14 @@
 from datetime import datetime as dt
 
-from splitgraph import rm, get_engine
+from splitgraph import get_engine
 from test.splitgraph.conftest import PG_MNT, _mount_postgres, _mount_mysql, MYSQL_MNT
 
 
 def test_mount_unmount():
-    rm(PG_MNT)
+    PG_MNT.rm()
     _mount_postgres(PG_MNT)
     assert (1, 'apple') in get_engine().run_sql("""SELECT * FROM "test/pg_mount".fruits""")
-    rm(PG_MNT)
+    PG_MNT.rm()
     assert not get_engine().schema_exists(PG_MNT.to_schema())
 
 
@@ -21,7 +21,7 @@ def test_mount_mysql():
                            FROM "test/mysql_mount".mushrooms
                            WHERE friendly = 0""")
     finally:
-        rm(MYSQL_MNT)
+        MYSQL_MNT.rm()
 
 
 def test_cross_joins(local_engine_with_pg_and_mg):

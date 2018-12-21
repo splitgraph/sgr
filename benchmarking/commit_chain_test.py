@@ -1,6 +1,6 @@
 import os
 
-from splitgraph.core.repository import to_repository
+from splitgraph.core.repository import to_repository, cleanup_objects, clone
 
 os.environ['SG_CONFIG_FILE'] = 'test/resources/.sgconfig'
 
@@ -10,7 +10,6 @@ from minio import Minio
 from datetime import datetime
 from random import getrandbits, randrange
 
-from splitgraph import init, rm, cleanup_objects, clone
 from splitgraph.hooks.s3 import S3_HOST, S3_PORT, S3_ACCESS_KEY, S3_SECRET_KEY
 
 MOUNTPOINT = to_repository("splitgraph_benchmark")
@@ -50,8 +49,8 @@ def alter_random_row(mountpoint, table, table_size, update_size):
 
 
 def bench_commit_chain_checkout(commits, table_size, update_size):
-    rm(MOUNTPOINT)
-    init(MOUNTPOINT)
+    MOUNTPOINT.rm()
+    MOUNTPOINT.init()
     print("START")
     print(datetime.now())
     create_random_table(MOUNTPOINT, "test", table_size)
@@ -71,8 +70,8 @@ if __name__ == '__main__':
         update_size = 1000
         commits = 10
 
-        rm(MOUNTPOINT)
-        init(MOUNTPOINT)
+        MOUNTPOINT.rm()
+        MOUNTPOINT.init()
         print("START")
         print(datetime.now())
         create_random_table(MOUNTPOINT, "test", table_size)
@@ -82,7 +81,7 @@ if __name__ == '__main__':
             alter_random_row(MOUNTPOINT, "test", table_size, update_size)
         print("COMMITS MADE")
         print(datetime.now())
-        rev = get_head(MOUNTPOINT)
+        rev = MOUNTPOINT.get_head()
         # print(timeit("checkout(conn, MOUNTPOINT, '%s')" % rev, "from __main__ import conn, MOUNTPOINT, checkout", number=3))
 
         # N = 1000
@@ -102,7 +101,7 @@ if __name__ == '__main__':
     _cleanup_minio()
     remote_driver = get_engine('remote_driver')
     with switch_engine('remote_driver'):
-        rm(PG_MNT)
+        MOUNTPOINT.rm()
         cleanup_objects(include_external=True)
     remote_driver.commit()
     remote_driver.close()
@@ -112,7 +111,7 @@ if __name__ == '__main__':
     print("UPLOADED")
     print(datetime.now())
 
-    rm(MOUNTPOINT)
+    MOUNTPOINT.rm()
     cleanup_objects()
 
     print(datetime.now())

@@ -10,7 +10,7 @@ import click
 import splitgraph.core.repository
 import splitgraph.engine
 import splitgraph.engine.postgres.engine
-from splitgraph import clone, publish
+from splitgraph.core.repository import clone
 
 
 @click.command(name='pull')
@@ -84,8 +84,8 @@ def publish_c(repository, tag, readme, skip_provenance, skip_previews):
         readme = readme.read()
     else:
         readme = ""
-    publish(repository, tag, readme=readme, include_provenance=not skip_provenance,
-            include_table_previews=not skip_previews)
+    repository.publish(tag, readme=readme, include_provenance=not skip_provenance,
+                       include_table_previews=not skip_previews)
 
 
 @click.command(name='upstream')

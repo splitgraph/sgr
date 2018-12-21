@@ -3,7 +3,6 @@ from decimal import Decimal
 
 import pytest
 
-from splitgraph import init
 from test.splitgraph.conftest import PG_MNT, MG_MNT, OUTPUT
 
 
@@ -45,8 +44,7 @@ def test_commit_diff(include_snap, local_engine_with_pg):
 
 @pytest.mark.parametrize("include_snap", [True, False])
 def test_commit_on_empty(include_snap, local_engine_with_pg):
-    init(OUTPUT)
-
+    OUTPUT.init()
     OUTPUT.run_sql("CREATE TABLE test AS SELECT * FROM \"test/pg_mount\".fruits")
 
     # Make sure the pending changes get flushed anyway if we are only committing a snapshot.
@@ -155,7 +153,7 @@ def test_non_ordered_inserts(include_snap, local_engine_with_pg):
 
 @pytest.mark.parametrize("include_snap", [True, False])
 def test_non_ordered_inserts_with_pk(include_snap, local_engine_with_pg):
-    init(OUTPUT)
+    OUTPUT.init()
     OUTPUT.run_sql("""CREATE TABLE test
         (a int, 
          b int,
@@ -178,7 +176,7 @@ def test_non_ordered_inserts_with_pk(include_snap, local_engine_with_pg):
 @pytest.mark.parametrize("include_snap", [True, False])
 def test_various_types(include_snap, local_engine_with_pg):
     # Schema/data copied from the wal2json tests
-    init(OUTPUT)
+    OUTPUT.init()
     OUTPUT.run_sql("""CREATE TABLE test
         (a smallserial, 
          b smallint,

@@ -8,9 +8,9 @@ import splitgraph.core.repository
 from splitgraph import SplitGraphException, CONFIG
 from splitgraph._data.images import _get_all_child_images, delete_images, _get_all_parent_images
 from splitgraph.commandline._common import image_spec_parser
-from splitgraph.commands.misc import init_engine, rm, init, cleanup_objects
 from splitgraph.commands.repository import repository_exists
 from splitgraph.config.keys import KEYS, SENSITIVE_KEYS
+from splitgraph.core.repository import init_engine, cleanup_objects
 from splitgraph.engine import switch_engine
 
 
@@ -60,7 +60,7 @@ def rm_c(image_spec, remote, yes):
                   + " %s will be deleted." % repository.to_schema())
             if not yes:
                 click.confirm("Continue? ", abort=True)
-            rm(repository)
+            repository.rm()
         else:
             image = repository.resolve_image(image)
             images_to_delete = _get_all_child_images(repository, image)
@@ -143,7 +143,7 @@ def init_c(repository):
         Creates a single image with the hash ``00000...`` in ``new/repo``
     """
     if repository:
-        init(repository)
+        repository.init()
         print("Initialized empty repository %s" % str(repository))
     else:
         init_engine()

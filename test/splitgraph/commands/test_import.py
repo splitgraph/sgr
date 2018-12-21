@@ -1,13 +1,12 @@
-from splitgraph import init, cleanup_objects
 from splitgraph._data.objects import get_existing_objects, get_downloaded_objects
 from splitgraph.commands.repository import get_current_repositories
-from splitgraph.core.repository import import_table_from_remote
+from splitgraph.core.repository import import_table_from_remote, cleanup_objects
 from splitgraph.engine import get_engine, switch_engine
 from test.splitgraph.conftest import PG_MNT, OUTPUT, REMOTE_ENGINE
 
 
 def _setup_dataset():
-    init(OUTPUT)
+    OUTPUT.init()
     OUTPUT.run_sql("""CREATE TABLE test (id integer, name varchar);
         INSERT INTO test VALUES (1, 'test')""")
     OUTPUT.commit()
@@ -17,7 +16,7 @@ def _setup_dataset():
 
 def test_import_basic(local_engine_with_pg):
     # Create a new schema and import 'fruits' from the mounted PG table.
-    init(OUTPUT)
+    OUTPUT.init()
     head = OUTPUT.get_head()
 
     # todo maybe flip the import tables -- or make it part of the Image class instead
@@ -46,7 +45,7 @@ def test_import_preserves_existing_tables(local_engine_with_pg):
 
 
 def test_import_preserves_pending_changes(local_engine_with_pg):
-    init(OUTPUT)
+    OUTPUT.init()
     OUTPUT.run_sql("""CREATE TABLE test (id integer, name varchar);
             INSERT INTO test VALUES (1, 'test')""")
     head = OUTPUT.commit()
@@ -61,7 +60,7 @@ def test_import_preserves_pending_changes(local_engine_with_pg):
 
 
 def test_import_multiple_tables(local_engine_with_pg):
-    init(OUTPUT)
+    OUTPUT.init()
     head = OUTPUT.get_head()
     PG_MNT.import_tables(tables=[], target_repository=OUTPUT, target_tables=[])
 
@@ -107,7 +106,7 @@ def test_import_from_remote(local_engine_empty, remote_engine):
 
 
 def test_import_and_update(local_engine_empty, remote_engine):
-    init(OUTPUT)
+    OUTPUT.init()
     head = OUTPUT.get_head()
     with switch_engine(REMOTE_ENGINE):
         remote_head = PG_MNT.get_head()

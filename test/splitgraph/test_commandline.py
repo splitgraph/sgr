@@ -4,10 +4,10 @@ from decimal import Decimal
 
 import pytest
 
-from splitgraph.commands._common import parse_connection_string, serialize_connection_string
 from splitgraph.commands.repository import repository_exists
 from splitgraph.config import PG_PWD, PG_USER
-from splitgraph.core.repository import Repository, to_repository
+from splitgraph.core._common import parse_connection_string, serialize_connection_string
+from splitgraph.core.repository import Repository
 from splitgraph.engine import switch_engine
 
 try:
@@ -21,8 +21,6 @@ from click.testing import CliRunner
 from splitgraph._data.registry import get_published_info
 from splitgraph.commandline import *
 from splitgraph.commandline._common import image_spec_parser
-from splitgraph.commandline.push_pull import upstream_c
-from splitgraph.commands.misc import rm
 from splitgraph.hooks.mount_handlers import get_mount_handlers
 from test.splitgraph.conftest import PG_MNT, MG_MNT, OUTPUT, add_multitag_dataset_to_engine, SPLITFILE_ROOT, \
     REMOTE_ENGINE
@@ -431,7 +429,7 @@ def test_mount_and_import(local_engine_empty):
         assert result.exit_code == 0
         assert MG_MNT.get_image(MG_MNT.get_head()).get_table('stuff_query')
     finally:
-        rm(to_repository('tmp'))
+        Repository('', 'tmp').rm()
 
 
 def test_rm_repositories(local_engine_with_pg, remote_engine):

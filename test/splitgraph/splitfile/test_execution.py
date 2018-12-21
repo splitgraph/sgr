@@ -1,12 +1,10 @@
 import pytest
 
-from splitgraph import clone
 from splitgraph._data.images import get_all_image_info
 from splitgraph._data.objects import get_existing_objects, get_downloaded_objects, get_external_object_locations, \
     get_object_for_table
-from splitgraph.commands.misc import cleanup_objects, rm
 from splitgraph.commands.repository import get_current_repositories
-from splitgraph.core.repository import to_repository as R
+from splitgraph.core.repository import to_repository as R, cleanup_objects, clone
 from splitgraph.engine import get_engine, switch_engine
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.splitfile._parsing import preprocess
@@ -138,7 +136,7 @@ def test_import_updating_splitfile_with_uploading(local_engine_empty, remote_eng
     # Push with upload. Have to specify the remote engine since we are pushing a new repository.
     OUTPUT.push(remote_engine='remote_engine', handler='S3', handler_options={})
     # Unmount everything locally and cleanup
-    rm(OUTPUT)
+    OUTPUT.rm()
     cleanup_objects()
     assert not get_existing_objects()
 
@@ -171,7 +169,7 @@ def test_splitfile_end_to_end_with_uploading(local_engine_empty, remote_engine):
     OUTPUT.push(remote_engine='remote_engine', handler='S3', handler_options={})
     # Unmount everything locally and cleanup
     for mountpoint, _ in get_current_repositories():
-        rm(mountpoint)
+        mountpoint.rm()
     cleanup_objects()
 
     execute_commands(load_splitfile('import_from_preuploaded_remote.splitfile'), output=R('output_stage_2'))
@@ -301,7 +299,7 @@ def test_from_remote(local_engine_empty, remote_engine):
     # Now run the same splitfile but from the v2 of the remote (where row 1 has been removed from the fruits table)
     # First, remove the output mountpoint (the executor tries to fetch the commit 0000 from it otherwise which
     # doesn't exist).
-    rm(OUTPUT)
+    OUTPUT.rm()
     execute_commands(load_splitfile('from_remote.splitfile'), params={'TAG': 'v2'}, output=OUTPUT)
 
     assert local_engine_empty.run_sql("SELECT * FROM output.join_table") == [(2, 'orange', 'carrot')]

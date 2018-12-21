@@ -3,12 +3,11 @@ from collections import namedtuple
 
 from psycopg2.sql import SQL, Identifier
 
-import splitgraph as sg
 from splitgraph import get_engine, SplitGraphException
 from splitgraph._data.common import select
 from splitgraph._data.images import IMAGE_COLS, get_image_object_path
-from splitgraph.commands._common import set_tag
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from splitgraph.core._common import set_tag
 from splitgraph.core.table import Table
 from splitgraph.engine import ResultShape
 
@@ -92,7 +91,7 @@ class Image(namedtuple('Image', IMAGE_COLS)):
                              return_shape=None)
 
     def get_log(self):
-        return sg.get_log(self.repository, self.image_hash)
+        return get_log(self.repository, self.image_hash)
 
     def to_splitfile(self, err_on_end=True, source_replacement=None):
         """
@@ -197,3 +196,12 @@ def _prov_command_to_splitfile(prov_type, prov_data, image_hash, source_replacem
     if prov_type == "SQL":
         return "SQL " + prov_data.replace("\n", "\\\n")
     raise SplitGraphException("Cannot reconstruct provenance %s!" % prov_type)
+
+
+def get_log(repository, start_image):
+    """Repeatedly gets the parent of a given image until it reaches the bottom."""
+    result = []
+    while start_image is not None:
+        result.append(start_image)
+        start_image = repository.get_image(start_image).parent_id
+    return result

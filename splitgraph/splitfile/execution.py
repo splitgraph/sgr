@@ -7,13 +7,11 @@ from hashlib import sha256
 from importlib import import_module
 from random import getrandbits
 
-from splitgraph import init, rm, clone
 from splitgraph._data.provenance import store_import_provenance, store_sql_provenance, store_mount_provenance, \
     store_from_provenance
-from splitgraph.commands.push_pull import local_clone
 from splitgraph.commands.repository import repository_exists, lookup_repo
 from splitgraph.config import CONFIG
-from splitgraph.core.repository import to_repository, Repository
+from splitgraph.core.repository import to_repository, Repository, local_clone, clone
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.mount_handlers import get_mount_handler
@@ -61,7 +59,7 @@ def execute_commands(commands, params=None, output=None, output_base='0' * 32):
 
     def _initialize_output(output):
         if not repository_exists(output):
-            init(output)
+            output.init()
 
     from splitgraph.commandline._common import Color, truncate_line
     node_list = parse_commands(commands, params=params)
@@ -126,9 +124,9 @@ def _execute_from(node, output):
         # did FROM (...) without AS repository
         if repository_exists(output):
             print("Clearing all output from %s" % str(output))
-            rm(output)
+            output.rm()
     if not repository_exists(output):
-        init(output)
+        output.init()
     if repo_source:
         repository, tag_or_hash = parse_image_spec(repo_source)
         engine = lookup_repo(repository, include_local=True)
@@ -182,7 +180,7 @@ def _execute_import(node, output):
 def _execute_db_import(conn_string, fdw_name, fdw_params, table_names, target_mountpoint, table_aliases, table_queries):
     mount_handler = get_mount_handler(fdw_name)
     tmp_mountpoint = to_repository(fdw_name + '_tmp_staging')
-    rm(tmp_mountpoint)
+    tmp_mountpoint.rm()
     try:
         handler_kwargs = json.loads(fdw_params)
         handler_kwargs.update(dict(server=conn_string.group(3), port=int(conn_string.group(4)),
@@ -197,7 +195,7 @@ def _execute_db_import(conn_string, fdw_name, fdw_params, table_names, target_mo
                                      foreign_tables=True, table_queries=table_queries)
         store_mount_provenance(target_mountpoint, target_hash)
     finally:
-        rm(tmp_mountpoint)
+        tmp_mountpoint.rm()
 
 
 def _execute_repo_import(repository, table_names, tag_or_hash, target_repository, table_aliases, table_queries):
@@ -243,7 +241,7 @@ def _execute_repo_import(repository, table_names, tag_or_hash, target_repository
 
         _checkout_or_calculate_layer(target_repository, target_hash, _calc)
     finally:
-        rm(tmp_repo)
+        tmp_repo.rm()
 
 
 def _execute_custom(node, output):

@@ -1,4 +1,4 @@
-from splitgraph.commands._drawing import render_tree
+from splitgraph.core._drawing import render_tree
 from splitgraph.splitfile.execution import execute_commands
 from test.splitgraph.conftest import OUTPUT, load_splitfile
 

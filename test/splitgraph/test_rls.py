@@ -4,12 +4,11 @@ from copy import copy
 import pytest
 from psycopg2._psycopg import ProgrammingError
 
-from splitgraph import clone
 from splitgraph._data.images import get_all_image_info
 from splitgraph._data.objects import register_object_locations
 from splitgraph._data.registry import get_published_info, unpublish_repository, toggle_registry_rls
 from splitgraph.commands.repository import unregister_repository
-from splitgraph.core.repository import Repository
+from splitgraph.core.repository import Repository, clone
 from splitgraph.engine import switch_engine, get_engine
 from test.splitgraph.conftest import PG_MNT, add_multitag_dataset_to_engine, REMOTE_ENGINE
 

@@ -2,7 +2,7 @@ import pytest
 
 from splitgraph._data.images import get_all_image_info
 from splitgraph._data.objects import get_existing_objects, get_downloaded_objects
-from splitgraph.commands import clone
+from splitgraph.core.repository import clone
 from splitgraph.engine import switch_engine
 from test.splitgraph.conftest import PG_MNT, PG_MNT_PULL, REMOTE_ENGINE
 
