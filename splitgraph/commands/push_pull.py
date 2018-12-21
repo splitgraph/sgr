@@ -11,10 +11,10 @@ from splitgraph._data.images import get_all_image_info, add_new_image
 from splitgraph._data.objects import register_objects, register_tables, register_object_locations, \
     get_existing_objects, get_external_object_locations, get_object_meta
 from splitgraph.commands._common import set_head, manage_audit
-from splitgraph.commands._objects.loading import download_objects, upload_objects
 from splitgraph.commands.repository import lookup_repo
 from splitgraph.commands.tagging import get_all_hashes_tags, set_tags
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from splitgraph.core._objects.loading import download_objects, upload_objects
 from splitgraph.engine import get_engine, switch_engine
 from splitgraph.exceptions import SplitGraphException
 

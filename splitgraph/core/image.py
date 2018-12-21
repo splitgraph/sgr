@@ -5,7 +5,7 @@ from psycopg2.sql import SQL, Identifier
 import splitgraph as sg
 from splitgraph import get_engine
 from splitgraph._data.common import select
-from splitgraph._data.images import IMAGE_COLS
+from splitgraph._data.images import IMAGE_COLS, get_image_object_path
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.table import Table
 from splitgraph.engine import ResultShape
@@ -81,3 +81,13 @@ class Image(namedtuple('Image', IMAGE_COLS)):
         return sg.image_hash_to_splitfile(self.repository, self.image_hash, err_on_end, source_replacement)
 
     # todo image deletion -- here or in the Repository?
+
+    def get_table_schema(self, table):
+        """
+        Gets the schema of a given table
+
+        :param table: Table name
+        :return: The table schema. See the documentation for `get_full_table_schema` for the spec.
+        """
+        snap_1 = get_image_object_path(self.repository, table, self.image_hash)[0]
+        return get_engine().get_full_table_schema(SPLITGRAPH_META_SCHEMA, snap_1)

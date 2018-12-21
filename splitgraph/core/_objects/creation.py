@@ -5,36 +5,35 @@ Internal functions for packaging changes into physical Splitgraph objects.
 from psycopg2.extras import Json
 
 from splitgraph._data.objects import register_table, register_object, get_object_for_table
-from splitgraph.commands._objects.utils import conflate_changes, get_random_object_id
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from splitgraph.core._objects.utils import conflate_changes, get_random_object_id
 from splitgraph.engine import get_engine
 
 
-def record_table_as_diff(repository, image_hash, table, table_info):
+def record_table_as_diff(table, image_hash):
     """
     Flushes the pending changes from the audit table for a given table and records them, registering the new objects.
-    :param repository: Repository object
-    :param image_hash: Hash of the new image
-    :param table: Table name
-    :param table_info: Information for the previous version of this table (list of object IDs and their formats)
+
+    :param table: Table object pointing to the HEAD table
+    :param image_hash: Image hash to store the table under
     """
     object_id = get_random_object_id()
-    changeset = _get_conflated_changeset(repository, table)
+    changeset = _get_conflated_changeset(table.repository, table.table_name)
 
     if changeset:
         engine = get_engine()
         engine.store_diff_object(changeset, SPLITGRAPH_META_SCHEMA, object_id,
-                                 change_key=engine.get_change_key(repository.to_schema(), table))
-        for parent_id, _ in table_info:
-            register_object(object_id, object_format='DIFF', namespace=repository.namespace,
+                                 change_key=engine.get_change_key(table.repository.to_schema(), table.table_name))
+        for parent_id, _ in table.objects:
+            register_object(object_id, object_format='DIFF', namespace=table.repository.namespace,
                             parent_object=parent_id)
 
-        register_table(repository, table, image_hash, object_id)
+        register_table(table.repository, table.table_name, image_hash, object_id)
     else:
         # Changes in the audit log cancelled each other out. Delete the diff table and just point
         # the commit to the old table objects.
-        for prev_object_id, _ in table_info:
-            register_table(repository, table, image_hash, prev_object_id)
+        for prev_object_id, _ in table.objects:
+            register_table(table.repository, table.table_name, image_hash, prev_object_id)
 
 
 def _get_conflated_changeset(repository, table):
@@ -48,24 +47,26 @@ def _get_conflated_changeset(repository, table):
             changeset.items()]
 
 
-def record_table_as_snap(repository, image_hash, table, table_info):
+def record_table_as_snap(table, image_hash, repository=None, table_name=None):
     """
     Copies the full table verbatim into a new Splitgraph SNAP object, registering the new object.
 
-    :param repository: Repository object
     :param image_hash: Hash of the new image
-    :param table: Table name
-    :param table_info: Information for the previous version of this table (list of object IDs and their formats)
+    :param table: Table object
     """
+
+    table_name = table_name or table.table_name
+    repository = repository or table.repository
+    
     # Make sure we didn't actually create a snap for this table.
-    if get_object_for_table(repository, table, image_hash, 'SNAP') is None:
+    if get_object_for_table(repository, table_name, image_hash, 'SNAP') is None:
         object_id = get_random_object_id()
-        get_engine().copy_table(repository.to_schema(), table, SPLITGRAPH_META_SCHEMA, object_id,
+        get_engine().copy_table(repository.to_schema(), table_name, SPLITGRAPH_META_SCHEMA, object_id,
                                 with_pk_constraints=True)
-        if table_info:
-            for parent_id, _ in table_info:
+        if table and table.objects:
+            for parent_id, _ in table.objects:
                 register_object(object_id, object_format='SNAP', namespace=repository.namespace,
                                 parent_object=parent_id)
         else:
             register_object(object_id, object_format='SNAP', namespace=repository.namespace, parent_object=None)
-        register_table(repository, table, image_hash, object_id)
+        register_table(repository, table_name, image_hash, object_id)

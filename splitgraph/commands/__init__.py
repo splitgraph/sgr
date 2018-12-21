@@ -3,8 +3,6 @@ Splitgraph public command API
 """
 
 from splitgraph.commands._drawing import render_tree
-from splitgraph.commands.diff import diff
-from splitgraph.commands.importing import import_tables
 from splitgraph.commands.misc import get_log, cleanup_objects, init, rm
 from splitgraph.commands.mounting import mount
 from splitgraph.commands.provenance import provenance, image_hash_to_splitfile

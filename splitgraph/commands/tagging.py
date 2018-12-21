@@ -7,7 +7,6 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import ResultShape, get_engine
 from splitgraph.exceptions import SplitGraphException
-from .info import get_canonical_image_id
 from .repository import repository_exists
 from .._data.common import ensure_metadata_schema, select, insert
 
@@ -130,7 +129,7 @@ def delete_tag(repository, tag):
 def resolve_image(repository, tag_or_hash, raise_on_none=True):
     """Converts a tag or shortened hash to a full image hash that exists in the repository."""
     try:
-        return get_canonical_image_id(repository, tag_or_hash)
+        return repository.get_canonical_image_id(tag_or_hash)
     except SplitGraphException:
         try:
             return get_tagged_id(repository, tag_or_hash)
