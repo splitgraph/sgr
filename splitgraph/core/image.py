@@ -1,13 +1,19 @@
 from collections import namedtuple
 
+from psycopg2.sql import SQL, Identifier
+
 import splitgraph as sg
+from splitgraph import get_engine
+from splitgraph._data.common import select
 from splitgraph._data.images import IMAGE_COLS
+from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.table import Table
+from splitgraph.engine import ResultShape
 
 
 class Image(namedtuple('Image', IMAGE_COLS)):
     """
-    Shim, experimenting with sg OO API. Inherits from the Image namedtuple for now
+    Shim, experimenting with sg OO API.
     """
 
     def __new__(cls, *args, **kwargs):
@@ -16,11 +22,42 @@ class Image(namedtuple('Image', IMAGE_COLS)):
         self.repository = repository
         return self
 
+    def get_parent_children(self):
+        """Gets the parent and a list of children of a given image."""
+        parent = self.parent_id
+
+        children = get_engine().run_sql(SQL("""SELECT image_hash FROM {}.images
+                WHERE namespace = %s AND repository = %s AND parent_id = %s""")
+                                        .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                                        (self.repository.namespace, self.repository.repository, self.image_hash),
+                                        return_shape=ResultShape.MANY_ONE)
+        return parent, children
+
     def get_tables(self):
-        return sg.get_tables_at(repository=self.repository, image=self.image_hash)
+        """
+        Gets the names of all tables inside of an image.
+        """
+        return get_engine().run_sql(
+            select('tables', 'table_name', 'namespace = %s AND repository = %s AND image_hash = %s'),
+            (self.repository.namespace, self.repository.repository, self.image_hash),
+            return_shape=ResultShape.MANY_ONE)
 
     def get_table(self, table_name):
-        objects = sg.get_table(self.repository, table_name, self.image_hash)
+        """
+        Returns a Table object representing a version of a given table.
+        Contains a list of objects that the table is linked to: a DIFF object (beginning a chain of DIFFs that
+        describe a table), a SNAP object (a full table copy), or both.
+
+        :param table_name: Name of the table
+        :return: Table object or None
+        """
+        objects = get_engine().run_sql(SQL("""SELECT {0}.tables.object_id, format FROM {0}.tables JOIN {0}.objects
+                                              ON {0}.objects.object_id = {0}.tables.object_id
+                                              WHERE {0}.tables.namespace = %s AND repository = %s AND image_hash = %s
+                                              AND table_name = %s""")
+                                       .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                                       (self.repository.namespace, self.repository.repository,
+                                        self.image_hash, table_name))
         if not objects:
             return None
         return Table(self.repository, self, table_name, objects)

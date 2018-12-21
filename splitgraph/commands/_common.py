@@ -4,7 +4,6 @@ Common internal functions used by Splitgraph commands.
 import re
 
 from splitgraph._data.common import ensure_metadata_schema
-from splitgraph.commands.info import get_table
 from splitgraph.commands.repository import get_current_repositories
 from splitgraph.commands.tagging import set_tag
 from splitgraph.engine import get_engine
@@ -25,8 +24,8 @@ def manage_audit_triggers():
     """
 
     engine = get_engine()
-    repos_tables = [(r.to_schema(), t) for r, head in get_current_repositories()
-                    for t in engine.get_all_tables(r.to_schema()) if get_table(r, t, head)]
+    repos_tables = [(r.to_schema(), t) for r, head in get_current_repositories() if head is not None
+                    for t in set(engine.get_all_tables(r.to_schema())) & set(r.get_image(head).get_tables())]
     tracked_tables = engine.get_tracked_tables()
 
     to_untrack = [t for t in tracked_tables if t not in repos_tables]

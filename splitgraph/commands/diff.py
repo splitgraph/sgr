@@ -5,7 +5,6 @@ Public API for calculating differences between two Splitgraph images.
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph._data.objects import get_object_for_table
-from splitgraph.commands.info import get_table
 from splitgraph.commands.misc import table_exists_at, find_path
 from splitgraph.commands.tagging import get_current_head
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
@@ -57,9 +56,10 @@ def diff(repository, table_name, image_1, image_2, aggregate=False):
         return list(changes) if not aggregate else _changes_to_aggregation(changes)
 
     # If the table is the same in the two images, short circuit as well.
-    if set(get_table(repository, table_name, image_1)) == \
-            set(get_table(repository, table_name, image_2)):
-        return [] if not aggregate else (0, 0, 0)
+    if image_2 is not None:
+        if set(repository.get_image(image_1).get_table(table_name).objects) == \
+                set(repository.get_image(image_2).get_table(table_name).objects):
+            return [] if not aggregate else (0, 0, 0)
 
     # Otherwise, check if image_1 is a parent of image_2, then we can merge all the diffs.
     # FIXME: we have to find if there's a path between two _objects_ representing these tables that's made out of DIFFs.
@@ -107,10 +107,8 @@ def _calculate_merged_diff(repository, table_name, path, aggregate):
 
 
 def _side_by_side_diff(repository, table_name, image_1, image_2, aggregate):
-    # Circular import here otherwise
-    from splitgraph.commands.checkout import materialized_table
-    with materialized_table(repository, table_name, image_1) as (mp_1, table_1):
-        with materialized_table(repository, table_name, image_2) as (mp_2, table_2):
+    with repository.materialized_table(table_name, image_1) as (mp_1, table_1):
+        with repository.materialized_table(table_name, image_2) as (mp_2, table_2):
             # Check both tables out at the same time since then table_2 calculation can be based
             # on table_1's snapshot.
             left = get_engine().run_sql(SQL("SELECT * FROM {}.{}").format(Identifier(mp_1),

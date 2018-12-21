@@ -8,8 +8,7 @@ from datetime import datetime
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph._data.registry import publish_tag
-from splitgraph.commands.checkout import materialized_table
-from splitgraph.commands.info import get_tables_at, get_schema_at
+from splitgraph.commands.info import get_schema_at
 from splitgraph.commands.provenance import provenance
 from splitgraph.commands.push_pull import merge_push_params
 from splitgraph.commands.tagging import get_tagged_id
@@ -52,10 +51,10 @@ def publish(repository, tag, remote_engine_name=None, remote_repository=None, re
 def _prepare_extra_data(image_hash, repository, include_table_previews):
     schemata = {}
     previews = {}
-    for table_name in get_tables_at(repository, image_hash):
+    for table_name in repository.get_image(image_hash).get_tables():
         if include_table_previews:
             logging.info("Generating preview for %s...", table_name)
-            with materialized_table(repository, table_name, image_hash) as (tmp_schema, tmp_table):
+            with repository.materialized_table(table_name, image_hash) as (tmp_schema, tmp_table):
                 engine = get_engine()
                 schema = engine.get_full_table_schema(tmp_schema, tmp_table)
                 previews[table_name] = engine.run_sql(SQL("SELECT * FROM {}.{} LIMIT %s").format(

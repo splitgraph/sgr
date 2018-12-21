@@ -4,15 +4,13 @@ from splitgraph.core.repository import to_repository
 
 os.environ['SG_CONFIG_FILE'] = 'test/resources/.sgconfig'
 
-from splitgraph.commands._common import serialize_connection_string
-from splitgraph.engine import get_remote_connection_params, get_engine, switch_engine
+from splitgraph.engine import get_engine, switch_engine
 from minio import Minio
 
 from datetime import datetime
 from random import getrandbits, randrange
 
-from splitgraph.commands import *
-from splitgraph import init, rm
+from splitgraph import init, rm, cleanup_objects, clone
 from splitgraph.hooks.s3 import S3_HOST, S3_PORT, S3_ACCESS_KEY, S3_SECRET_KEY
 from splitgraph.commands.tagging import get_current_head
 
@@ -33,8 +31,7 @@ def _cleanup_minio():
 
 def create_random_table(mountpoint, table, N=1000):
     fq_table = mountpoint.to_schema() + '.' + table
-    get_engine().run_sql("""CREATE TABLE %s (id numeric, value varchar, primary key (id))""" % fq_table,
-                         return_shape=None)
+    mountpoint.run_sql("""CREATE TABLE %s (id numeric, value varchar, primary key (id))""" % table)
     to_insert = []
     for i in range(N):
         to_insert.append((i, "%0.2x" % getrandbits(256)))
@@ -50,7 +47,7 @@ def alter_random_row(mountpoint, table, table_size, update_size):
         to_update.append(("%0.2x" % getrandbits(256), row_id))
     get_engine().run_sql_batch("UPDATE %s SET value=%%s WHERE id=%%s" % fq_table, to_update)
     get_engine().commit()
-    commit(mountpoint)
+    mountpoint.commit()
 
 
 def bench_commit_chain_checkout(commits, table_size, update_size):
@@ -112,8 +109,7 @@ if __name__ == '__main__':
     remote_driver.close()
 
     print(datetime.now())
-    push(MOUNTPOINT, remote_conn_string=serialize_connection_string(*get_remote_connection_params('remote_driver')),
-         remote_repository=PG_MNT, handler='S3', handler_options={})
+    MOUNTPOINT.push(remote_engine='remote_driver', remote_repository=PG_MNT, handler='S3', handler_options={})
     print("UPLOADED")
     print(datetime.now())
 
@@ -125,6 +121,6 @@ if __name__ == '__main__':
     clone(PG_MNT, local_repository=MOUNTPOINT, download_all=True)
     print(datetime.now())
     print("STARTING CHECKOUT")
-    checkout(MOUNTPOINT, tag='latest')
+    MOUNTPOINT.checkout(tag='latest')
     print("CHECKOUT DONE")
     print(datetime.now())

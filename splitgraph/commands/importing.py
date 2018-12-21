@@ -10,8 +10,6 @@ from splitgraph._data.images import add_new_image
 from splitgraph._data.objects import register_table, register_object
 from splitgraph.commands._common import manage_audit
 from splitgraph.commands._objects.utils import get_random_object_id
-from splitgraph.commands.checkout import materialize_table, checkout
-from splitgraph.commands.info import get_tables_at, get_table
 from splitgraph.commands.misc import rm
 from splitgraph.commands.push_pull import clone
 from splitgraph.commands.tagging import get_current_head
@@ -54,7 +52,7 @@ def import_tables(repository, tables, target_repository, target_tables, image_ha
         image_hash = image_hash or get_current_head(repository)
 
     if not tables:
-        tables = get_tables_at(repository, image_hash) if not foreign_tables \
+        tables = repository.get_image(image_hash).get_tables() if not foreign_tables \
             else get_engine().get_all_tables(repository.to_schema())
     if not target_tables:
         if table_queries:
@@ -86,7 +84,7 @@ def _import_tables(repository, image_hash, tables, target_repository, target_has
     if any(table_queries) and not foreign_tables:
         # If we want to run some queries against the source repository to create the new tables,
         # we have to materialize it fully.
-        checkout(repository, image_hash)
+        repository.checkout(image_hash)
     # Materialize the actual tables in the target repository and register them.
     for table, target_table, is_query in zip(tables, target_tables, table_queries):
         if foreign_tables or is_query:
@@ -103,11 +101,11 @@ def _import_tables(repository, image_hash, tables, target_repository, target_has
 
             _register_and_checkout_new_table(do_checkout, object_id, target_hash, target_repository, target_table)
         else:
-            for object_id, _ in get_table(repository, table, image_hash):
+            for object_id, _ in repository.get_image(image_hash).get_table(table).objects:
                 register_table(target_repository, target_table, target_hash, object_id)
             if do_checkout:
-                materialize_table(repository, image_hash, table, target_table,
-                                  destination_schema=target_repository.to_schema())
+                repository.materialize_table(image_hash, table, target_table,
+                                             destination_schema=target_repository.to_schema())
     # Register the existing tables at the new commit as well.
     if head is not None:
         # Maybe push this into the tables API (currently have to make 2 queries)

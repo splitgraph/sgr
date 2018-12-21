@@ -8,7 +8,6 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph._data.common import META_TABLES, ensure_metadata_schema
 from splitgraph._data.objects import get_object_meta
 from splitgraph.commands._common import manage_audit
-from splitgraph.commands.info import get_image, get_table
 from splitgraph.commands.repository import register_repository, unregister_repository
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import get_engine, ResultShape
@@ -18,7 +17,7 @@ def table_exists_at(repository, table_name, image_hash):
     """Determines whether a given table exists in a Splitgraph image without checking it out. If `image_hash` is None,
     determines whether the table exists in the current staging area."""
     return get_engine().table_exists(repository.to_schema(), table_name) if image_hash is None \
-        else bool(get_table(repository, table_name, image_hash))
+        else bool(repository.get_image(image_hash).get_table(table_name))
 
 
 def get_log(repository, start_image):
@@ -26,7 +25,7 @@ def get_log(repository, start_image):
     result = []
     while start_image is not None:
         result.append(start_image)
-        start_image = get_image(repository, start_image).parent_id
+        start_image = repository.get_image(start_image).parent_id
     return result
 
 
@@ -35,7 +34,7 @@ def find_path(repository, hash_1, hash_2):
     path = []
     while hash_2 is not None:
         path.append(hash_2)
-        hash_2 = get_image(repository, hash_2).parent_id
+        hash_2 = repository.get_image(hash_2).parent_id
         if hash_2 == hash_1:
             return path
 

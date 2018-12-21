@@ -5,8 +5,7 @@ from decimal import Decimal
 import pytest
 
 from splitgraph.commands._common import parse_connection_string, serialize_connection_string
-from splitgraph.commands.checkout import uncheckout
-from splitgraph.commands.repository import repository_exists, get_upstream
+from splitgraph.commands.repository import repository_exists
 from splitgraph.config import PG_PWD, PG_USER
 from splitgraph.core.repository import Repository, to_repository
 from splitgraph.engine import switch_engine
@@ -171,7 +170,7 @@ def test_upstream_management(local_engine_with_pg):
     result = runner.invoke(upstream_c, ["test/pg_mount", "--reset"])
     assert result.exit_code == 0
     assert "Deleted upstream for test/pg_mount" in result.output
-    assert get_upstream(PG_MNT) is None
+    assert PG_MNT.get_upstream() is None
 
     # Reset it again
     result = runner.invoke(upstream_c, ["test/pg_mount", "--reset"])
@@ -471,7 +470,7 @@ def test_rm_images(local_engine_with_pg, remote_engine):
     assert result.exit_code != 0
     assert "do sgr checkout -u test/pg_mount" in str(result.exc_info)
 
-    uncheckout(PG_MNT)
+    PG_MNT.uncheckout()
 
     # sgr rm test/pg_mount:v2, say "no"
     result = runner.invoke(rm_c, [str(PG_MNT) + ':v2'], input='n\n')
@@ -487,7 +486,7 @@ def test_rm_images(local_engine_with_pg, remote_engine):
     # Uncheckout the remote too (it's supposed to be bare anyway)
     with switch_engine(REMOTE_ENGINE):
         remote_v2 = PG_MNT.resolve_image('v2')
-        uncheckout(PG_MNT)
+        PG_MNT.uncheckout()
 
     # sgr rm test/pg_mount:v2 -r remote_engine, say "yes"
     result = runner.invoke(rm_c, [str(PG_MNT) + ':v2', '-r', 'remote_engine'], input='y\n')
@@ -529,7 +528,7 @@ def test_prune(local_engine_with_pg, remote_engine):
     # Two engines, two repos, two images in each (tagged v1 and v2, v1 is the parent of v2).
     add_multitag_dataset_to_engine(remote_engine)
     with switch_engine(REMOTE_ENGINE):
-        uncheckout(PG_MNT)
+        PG_MNT.uncheckout()
 
     add_multitag_dataset_to_engine(local_engine_with_pg)
 

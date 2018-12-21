@@ -48,7 +48,7 @@ def test_oo_api(local_engine_with_pg_and_mg):
     image_2_obj = pg.get_image(image_2)
     assert image_2_obj.parent_id == image_1
     tables = image_2_obj.get_tables()
-    assert tables == ['fruits', 'vegetables']
+    assert sorted(tables) == ['fruits', 'vegetables']
     fruits = image_2_obj.get_table('fruits')
 
     assert len(fruits.objects) == 1

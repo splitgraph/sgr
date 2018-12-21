@@ -205,12 +205,12 @@ def status_c(repository):
             print("%s: \t %s" % (mp_name, mp_hash))
         print("\nUse sgr status repository to get information about a given repository.")
     else:
-        current_snap = repository.get_head()
-        if not current_snap:
+        head = repository.get_head()
+        if not head:
             print("%s: nothing checked out." % str(repository))
             return
-        parent, children = repository.get_parent_children(current_snap)
-        print("%s: on image %s." % (str(repository), current_snap))
+        parent, children = repository.get_image(head).get_parent_children()
+        print("%s: on image %s." % (str(repository), head))
         if parent is not None:
             print("Parent: %s" % parent)
         if len(children) > 1:

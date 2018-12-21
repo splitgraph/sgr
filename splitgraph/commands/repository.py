@@ -46,12 +46,10 @@ def register_repository(repository, initial_image):
     """
     engine = get_engine()
     engine.run_sql(insert("images", ("image_hash", "namespace", "repository", "parent_id", "created")),
-                   (initial_image, repository.namespace, repository.repository, None, datetime.now()),
-                   return_shape=None)
+                   (initial_image, repository.namespace, repository.repository, None, datetime.now()))
     # Strictly speaking this is redundant since the checkout (of the "HEAD" commit) updates the tag table.
     engine.run_sql(insert("tags", ("namespace", "repository", "image_hash", "tag")),
-                   (repository.namespace, repository.repository, initial_image, "HEAD"),
-                   return_shape=None)
+                   (repository.namespace, repository.repository, initial_image, "HEAD"))
 
 
 def unregister_repository(repository, is_remote=False):
@@ -82,55 +80,6 @@ def get_current_repositories():
     from splitgraph.core.repository import Repository
     return [(Repository(n, r), i) for n, r, i in
             get_engine().run_sql(select("tags", "namespace, repository, image_hash", "tag = 'HEAD'"))]
-
-
-def get_upstream(repository):
-    """
-    Gets the current upstream (connection string and repository) that a local repository tracks
-
-    :param repository: Local repository
-    :return: Tuple of (remote engine, remote Repository object)
-    """
-    result = get_engine().run_sql(select("upstream", "remote_name, remote_namespace, remote_repository",
-                                         "namespace = %s AND repository = %s"),
-                                  (repository.namespace, repository.repository),
-                                  return_shape=ResultShape.ONE_MANY)
-    if result is None:
-        return result
-    from splitgraph.core.repository import Repository
-    return result[0], Repository(result[1], result[2])
-
-
-def set_upstream(repository, remote_name, remote_repository):
-    """
-    Sets the upstream remote + repository that this repository tracks.
-
-    :param repository: Local repository
-    :param remote_name: Name of the remote as specified in the Splitgraph config.
-    :param remote_repository: Remote Repository object
-    """
-    get_engine().run_sql(SQL("INSERT INTO {0}.upstream (namespace, repository, "
-                             "remote_name, remote_namespace, remote_repository) VALUES (%s, %s, %s, %s, %s)"
-                             " ON CONFLICT (namespace, repository) DO UPDATE SET "
-                             "remote_name = excluded.remote_name, remote_namespace = excluded.remote_namespace, "
-                             "remote_repository = excluded.remote_repository WHERE "
-                             "upstream.namespace = excluded.namespace "
-                             "AND upstream.repository = excluded.repository")
-                         .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                         (repository.namespace, repository.repository, remote_name, remote_repository.namespace,
-                          remote_repository.repository))
-
-
-def delete_upstream(repository):
-    """
-    Deletes the upstream remote + repository for a local repository.
-
-    :param repository: Local repository
-    """
-    get_engine().run_sql(SQL("DELETE FROM {0}.upstream WHERE namespace = %s AND repository = %s")
-                         .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                         (repository.namespace, repository.repository),
-                         return_shape=None)
 
 
 def lookup_repo(repo_name, include_local=False):

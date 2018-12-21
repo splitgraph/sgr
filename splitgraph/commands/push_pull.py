@@ -12,7 +12,7 @@ from splitgraph._data.objects import register_objects, register_tables, register
     get_existing_objects, get_external_object_locations, get_object_meta
 from splitgraph.commands._common import set_head, manage_audit
 from splitgraph.commands._objects.loading import download_objects, upload_objects
-from splitgraph.commands.repository import get_upstream, set_upstream, lookup_repo
+from splitgraph.commands.repository import lookup_repo
 from splitgraph.commands.tagging import get_all_hashes_tags, set_tags
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import get_engine, switch_engine
@@ -97,7 +97,7 @@ def pull(repository, download_all=False):
     :param download_all: If True, downloads all objects and stores them locally. Otherwise, will only download required
         objects when a table is checked out.
     """
-    remote_info = get_upstream(repository)
+    remote_info = repository.get_upstream()
     if not remote_info:
         raise SplitGraphException("No upstream found for repository %s!" % repository.to_schema())
 
@@ -164,8 +164,8 @@ def clone(remote_repository, remote_engine=None, local_repository=None, download
                                                                                      len([t for t in tags if
                                                                                           t != 'HEAD'])))
 
-    if get_upstream(local_repository) is None and remote_engine:
-        set_upstream(local_repository, remote_engine, remote_repository)
+    if local_repository.get_upstream() is None and remote_engine:
+        local_repository.set_upstream(remote_engine, remote_repository)
 
 
 def local_clone(source, destination):
@@ -233,8 +233,8 @@ def push(local_repository, remote_engine=None, remote_repository=None, handler='
 
         register_object_locations(new_uploads)
 
-        if get_upstream(local_repository) is None and remote_engine:
-            set_upstream(local_repository, remote_engine, remote_repository)
+        if local_repository.get_upstream() is None and remote_engine:
+            local_repository.set_upstream(remote_engine, remote_repository)
 
         get_engine(remote_engine).commit()
         print("Uploaded metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta),
@@ -262,7 +262,7 @@ def merge_push_params(local_repository, remote_engine, remote_repository):
     :return: Connection parameters, remote engine name (can be None), remote Repository object
     """
     remote_repository = remote_repository or local_repository
-    upstream = get_upstream(local_repository)
+    upstream = local_repository.get_upstream()
     if upstream:
         remote_engine = remote_engine or upstream[0]
         remote_repository = remote_repository or upstream[1]
