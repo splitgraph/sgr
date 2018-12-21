@@ -12,7 +12,6 @@ from splitgraph._data.objects import register_objects, register_tables, register
     get_existing_objects, get_external_object_locations, get_object_meta
 from splitgraph.commands._common import set_head, manage_audit
 from splitgraph.commands.repository import lookup_repo
-from splitgraph.commands.tagging import get_all_hashes_tags, set_tags
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core._objects.loading import download_objects, upload_objects
 from splitgraph.engine import get_engine, switch_engine
@@ -53,9 +52,9 @@ def _get_required_snaps_objects(remote_engine_name, local_repository, remote_rep
                                                  image_hash)))
 
     # Get the tags too
-    existing_tags = [t for s, t in get_all_hashes_tags(local_repository)]
+    existing_tags = [t for s, t in local_repository.get_all_hashes_tags()]
     with switch_engine(remote_engine_name):
-        tags = {t: s for s, t in get_all_hashes_tags(remote_repository) if t not in existing_tags}
+        tags = {t: s for s, t in remote_repository.get_all_hashes_tags() if t not in existing_tags}
 
     # Crawl the object tree to get the IDs and other metadata for all required objects.
     distinct_objects, object_meta = _extract_recursive_object_meta(remote_engine_name, table_meta)
@@ -155,7 +154,7 @@ def clone(remote_repository, remote_engine=None, local_repository=None, download
     register_objects(object_meta)
     register_object_locations(object_locations)
     register_tables(local_repository, table_meta)
-    set_tags(local_repository, tags, force=False)
+    local_repository.set_tags(tags, force=False)
     # Don't check anything out, keep the repo bare.
     set_head(local_repository, None)
 
@@ -180,7 +179,7 @@ def local_clone(source, destination):
     register_objects(object_meta)
     register_object_locations(object_locations)
     register_tables(destination, table_meta)
-    set_tags(destination, tags, force=False)
+    destination.set_tags(tags, force=False)
     # Don't check anything out, keep the repo bare.
     set_head(destination, None)
 
@@ -229,7 +228,7 @@ def push(local_repository, remote_engine=None, remote_repository=None, handler='
             register_objects(object_meta)
             register_object_locations(object_locations + new_uploads)
             register_tables(remote_repository, table_meta)
-            set_tags(remote_repository, tags, force=False)
+            remote_repository.set_tags(tags, force=False)
 
         register_object_locations(new_uploads)
 

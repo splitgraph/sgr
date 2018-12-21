@@ -6,7 +6,6 @@ from collections import defaultdict
 
 from splitgraph._data.common import ensure_metadata_schema
 from splitgraph._data.images import get_all_image_info
-from splitgraph.commands.tagging import get_current_head
 from splitgraph.exceptions import SplitGraphException
 
 
@@ -58,7 +57,7 @@ def render_tree(repository):
     # Prepare the tree structure by loading the index from the db and flipping it
     children = defaultdict(list)
     base_node = None
-    head = get_current_head(repository, raise_on_none=False)
+    head = repository.get_head()
 
     # Get all commits in ascending time order
     snap_parents = get_all_image_info(repository)

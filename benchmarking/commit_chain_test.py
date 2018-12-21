@@ -12,7 +12,6 @@ from random import getrandbits, randrange
 
 from splitgraph import init, rm, cleanup_objects, clone
 from splitgraph.hooks.s3 import S3_HOST, S3_PORT, S3_ACCESS_KEY, S3_SECRET_KEY
-from splitgraph.commands.tagging import get_current_head
 
 MOUNTPOINT = to_repository("splitgraph_benchmark")
 PG_MNT = to_repository('test/pg_mount')
@@ -62,7 +61,7 @@ def bench_commit_chain_checkout(commits, table_size, update_size):
         alter_random_row(MOUNTPOINT, "test", table_size, update_size)
     print("COMMITS MADE")
     print(datetime.now())
-    rev = get_current_head(MOUNTPOINT)
+    rev = MOUNTPOINT.get_head()
     # print(timeit("checkout(conn, MOUNTPOINT, '%s')" % rev, "from __main__ import conn, MOUNTPOINT, checkout", number=3))
 
 
@@ -83,7 +82,7 @@ if __name__ == '__main__':
             alter_random_row(MOUNTPOINT, "test", table_size, update_size)
         print("COMMITS MADE")
         print(datetime.now())
-        rev = get_current_head(MOUNTPOINT)
+        rev = get_head(MOUNTPOINT)
         # print(timeit("checkout(conn, MOUNTPOINT, '%s')" % rev, "from __main__ import conn, MOUNTPOINT, checkout", number=3))
 
         # N = 1000

@@ -3,10 +3,32 @@ Common internal functions used by Splitgraph commands.
 """
 import re
 
-from splitgraph._data.common import ensure_metadata_schema
+from psycopg2.sql import Identifier, SQL
+
+from splitgraph._data.common import ensure_metadata_schema, select, insert
 from splitgraph.commands.repository import get_current_repositories
-from splitgraph.commands.tagging import set_tag
-from splitgraph.engine import get_engine
+from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from splitgraph.engine import get_engine, ResultShape
+from splitgraph.exceptions import SplitGraphException
+
+
+def set_tag(repository, image_hash, tag, force=False):
+    engine = get_engine()
+    if engine.run_sql(select("tags", "1", "namespace = %s AND repository = %s AND tag = %s"),
+                      (repository.namespace, repository.repository, tag),
+                      return_shape=ResultShape.ONE_ONE) is None:
+        engine.run_sql(insert("tags", ("image_hash", "namespace", "repository", "tag")),
+                       (image_hash, repository.namespace, repository.repository, tag),
+                       return_shape=None)
+    else:
+        if force:
+            engine.run_sql(SQL("UPDATE {}.tags SET image_hash = %s "
+                               "WHERE namespace = %s AND repository = %s AND tag = %s")
+                           .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                           (image_hash, repository.namespace, repository.repository, tag),
+                           return_shape=None)
+        else:
+            raise SplitGraphException("Tag %s already exists in %s!" % (tag, repository.to_schema()))
 
 
 def set_head(repository, image):

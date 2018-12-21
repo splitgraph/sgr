@@ -5,14 +5,14 @@ from random import getrandbits
 from psycopg2.sql import SQL, Identifier
 
 import splitgraph as sg
-from splitgraph import get_engine, SplitGraphException, rm, delete_tag, get_current_head, clone
+from splitgraph import get_engine, SplitGraphException, rm, clone
 from splitgraph._data.common import ensure_metadata_schema, select
 from splitgraph._data.images import add_new_image, get_image_object_path, IMAGE_COLS
 from splitgraph._data.objects import register_table, get_external_object_locations, get_existing_objects, \
     get_object_for_table, register_object
 from splitgraph.commands._common import manage_audit_triggers, set_head, manage_audit
 from splitgraph.commands.misc import delete_objects, table_exists_at, find_path
-from splitgraph.commands.tagging import get_tagged_id
+from splitgraph.commands.repository import repository_exists
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import ResultShape
 from ._objects.creation import record_table_as_snap, record_table_as_diff
@@ -210,7 +210,7 @@ class Repository:
             # get_canonical_image_hash called twice if the commandline entry point already called it. How to fix?
             image_hash = self.get_canonical_image_id(image_hash)
         elif tag:
-            image_hash = get_tagged_id(self, tag)
+            image_hash = self.get_tagged_id(tag)
         else:
             raise SplitGraphException("One of image_hash or tag must be specified!")
 
@@ -245,7 +245,7 @@ class Repository:
 
         # Delete the schema and remove the HEAD tag
         rm(self, unregister=False)
-        delete_tag(self, 'HEAD')
+        self.get_image(self.get_head()).delete_tag('HEAD')
 
     def commit(self, image_hash=None, include_snap=False, comment=None):
         """
@@ -333,7 +333,61 @@ class Repository:
         # NB if we allow partial commits, this will have to be changed (only discard for committed tables).
         get_engine().discard_pending_changes(target_schema)
 
-    get_all_hashes_tags = sg.get_all_hashes_tags
+    def get_all_hashes_tags(self):
+        """
+        Gets all tagged images and their hashes in a given repository.
+
+        :return: List of (image_hash, tag)
+        """
+        return get_engine().run_sql(select("tags", "image_hash, tag", "namespace = %s AND repository = %s"),
+                                    (self.namespace, self.repository,))
+
+    def set_tags(self, tags, force=False):
+        """
+        Sets tags for multiple images.
+
+        :param tags: List of (image_hash, tag)
+        :param force: Whether to remove the old tag if an image with this tag already exists.
+        """
+        for tag, image_id in tags.items():
+            if tag != 'HEAD':
+                self.get_image(image_id).tag(tag, force)
+
+    def get_tagged_id(self, tag, raise_on_none=True):
+        """
+        Returns the image hash with a given tag in a given repository.
+
+        :param tag: Tag. 'latest' is a special case: it returns the most recent image in the repository.
+        :param raise_on_none: Whether to raise an error or return None if the repository isn't checked out.
+        """
+        ensure_metadata_schema()
+        if not repository_exists(self) and raise_on_none:
+            raise SplitGraphException("%s does not exist!" % str(self))
+        engine = get_engine()
+
+        if tag == 'latest':
+            # Special case, return the latest commit from the repository.
+            result = engine.run_sql(select("images", "image_hash", "namespace = %s AND repository = %s")
+                                    + SQL(" ORDER BY created DESC LIMIT 1"), (self.namespace, self.repository,),
+                                    return_shape=ResultShape.ONE_ONE)
+            if result is None:
+                raise SplitGraphException("No commits found in %s!")
+            return result
+
+        result = engine.run_sql(select("tags", "image_hash", "namespace = %s AND repository = %s AND tag = %s"),
+                                (self.namespace, self.repository, tag),
+                                return_shape=ResultShape.ONE_ONE)
+        if result is None:
+            if raise_on_none:
+                schema = self.to_schema()
+                if tag == 'HEAD':
+                    raise SplitGraphException("No current checked out revision found for %s. Check one out with \"sgr "
+                                              "checkout %s image_hash\"." % (schema, schema))
+                else:
+                    raise SplitGraphException("Tag %s not found in repository %s" % (tag, schema))
+            else:
+                return None
+        return result
 
     def get_canonical_image_id(self, short_image):
         """
@@ -356,7 +410,19 @@ class Repository:
 
         return candidates[0]
 
-    resolve_image = sg.resolve_image
+    def resolve_image(self, tag_or_hash, raise_on_none=True):
+        """Converts a tag or shortened hash to a full image hash that exists in the repository."""
+        try:
+            return self.get_canonical_image_id(tag_or_hash)
+        except SplitGraphException:
+            try:
+                return self.get_tagged_id(tag_or_hash)
+            except SplitGraphException:
+                if raise_on_none:
+                    raise SplitGraphException(
+                        "%s does not refer to either an image commit hash or a tag!" % tag_or_hash)
+                else:
+                    return None
 
     @manage_audit
     def import_tables(self, tables, target_repository, target_tables, image_hash=None, foreign_tables=False,
@@ -390,7 +456,7 @@ class Repository:
         target_hash = target_hash or "%0.2x" % getrandbits(256)
 
         if not foreign_tables:
-            image_hash = image_hash or get_current_head(self)
+            image_hash = image_hash or self.get_head()
 
         if not tables:
             tables = self.get_image(image_hash).get_tables() if not foreign_tables \
@@ -417,7 +483,7 @@ class Repository:
         engine = get_engine()
         engine.create_schema(target_repository.to_schema())
 
-        head = get_current_head(target_repository, raise_on_none=False)
+        head = target_repository.get_head(raise_on_none=False)
         # Add the new snap ID to the tree
         add_new_image(target_repository, head, target_hash, comment="Importing %s from %s" % (tables, self))
 
@@ -489,7 +555,7 @@ class Repository:
 
         :param self: Repository object
         """
-        head = get_current_head(self, raise_on_none=False)
+        head = self.get_head(raise_on_none=False)
         if not head:
             # If the repo isn't checked out, no point checking for changes.
             return False
@@ -501,7 +567,12 @@ class Repository:
     publish = sg.publish
 
     def get_head(self, raise_on_none=True):
-        return sg.get_current_head(self, raise_on_none=raise_on_none)
+        """
+        Gets the currently checked out image hash
+
+        :param raise_on_none: Whether to raise an error or return None if the repository isn't checked out.
+        """
+        return self.get_tagged_id('HEAD', raise_on_none)
 
     def run_sql(self, sql):
         engine = self.engine
@@ -542,7 +613,7 @@ class Repository:
             return False
 
         # Special case: if diffing HEAD and staging, then just return the current pending changes.
-        head = get_current_head(self)
+        head = self.get_head()
 
         if image_1 == head and image_2 is None:
             changes = get_engine().get_pending_changes(self.to_schema(), table_name, aggregate=aggregate)
