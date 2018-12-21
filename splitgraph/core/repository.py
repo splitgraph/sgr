@@ -7,12 +7,11 @@ from psycopg2.sql import SQL, Identifier
 
 import splitgraph as sg
 from splitgraph import get_engine, SplitGraphException, switch_engine, publish_tag, get_all_image_info
-from splitgraph._data.common import ensure_metadata_schema, select, META_TABLES
+from splitgraph._data.common import ensure_metadata_schema, select, META_TABLES, insert
 from splitgraph._data.images import add_new_image, get_image_object_path, IMAGE_COLS
 from splitgraph._data.objects import register_table, get_external_object_locations, get_existing_objects, \
     get_object_for_table, register_object, get_object_meta, register_objects, register_object_locations, register_tables
-from splitgraph.commands.repository import repository_exists, register_repository, unregister_repository, lookup_repo
-from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.core._common import manage_audit_triggers, set_head, manage_audit
 from splitgraph.engine import ResultShape
 from splitgraph.hooks.mount_handlers import get_mount_handler
@@ -27,11 +26,13 @@ _PUBLISH_PREVIEW_SIZE = 100
 # OO API porting plan:
 # [x] make shims, direct them to splitgraph.commands
 # [x] direct commandline, tests and splitfile interpreter to the shims
-# [ ] move the commands inside the shims
+# [x] move the commands inside the shims
+# [ ] move things out from Repository into more appropriate classes (e.g. materialize_table -> Table?)
 # [ ] review current internal metadata access/creation commands to see which can be made
 #     into private methods
-# [ ] make sure Repo objects use their own internal engine pointer
-# [ ] remove switch_engine -- instead use fixtures like PG_MNT_REMOTE/PG_MNT
+# [ ] make sure Repository objects use their own internal engine pointer
+# [ ] remove switch_engine from tests -- instead use fixtures like PG_MNT_REMOTE/PG_MNT
+# [ ] Document the new API, regenerate the docs
 
 
 class Repository:
@@ -64,10 +65,16 @@ class Repository:
         Initializes an empty repo with an initial commit (hash 0000...)
 
         """
-        get_engine().create_schema(self.to_schema())
-        register_repository(self, initial_image='0' * 64)
+        engine = get_engine()
+        engine.create_schema(self.to_schema())
+        initial_image = '0' * 64
+        engine.run_sql(insert("images", ("image_hash", "namespace", "repository", "parent_id", "created")),
+                       (initial_image, self.namespace, self.repository, None, datetime.now()))
+        # Strictly speaking this is redundant since the checkout (of the "HEAD" commit) updates the tag table.
+        engine.run_sql(insert("tags", ("namespace", "repository", "image_hash", "tag")),
+                       (self.namespace, self.repository, initial_image, "HEAD"))
 
-    def rm(self, unregister=True):
+    def rm(self, unregister=True, uncheckout=True):
         """
         Discards all changes to a given repository and optionally all of its history,
         as well as deleting the Postgres schema that it might be checked out into.
@@ -76,21 +83,30 @@ class Repository:
         After performing this operation, this object becomes invalid and must be discarded,
         unless init() is called again.
 
-        :param unregister: If False, just deletes the schema without purging any other repository metadata
+        :param unregister: Whether to purge repository history/metadata
+        :param uncheckout: Whether to delete the actual checked out repo
         """
         # Make sure to discard changes to this repository if they exist, otherwise they might
         # be applied/recorded if a new repository with the same name appears.
         ensure_metadata_schema()
         engine = get_engine()
-        engine.discard_pending_changes(self.to_schema())
-        engine.run_sql(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(self.to_schema())),
-                       return_shape=None)
-        # Drop server too if it exists (could have been a non-foreign repository)
-        engine.run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(self.to_schema() + '_server')),
-                       return_shape=None)
+        if uncheckout:
+            # If we're talking to a bare repo / a remote that doesn't have checked out repositories,
+            # there's no point in touching the audit trigger.
+            engine.discard_pending_changes(self.to_schema())
+            engine.run_sql(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(self.to_schema())))
+            # Drop server too if it exists (could have been a non-foreign repository)
+            engine.run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(self.to_schema() + '_server')))
 
         if unregister:
-            unregister_repository(self)
+            meta_tables = ["tables", "tags", "images"]
+            if engine.table_exists(SPLITGRAPH_META_SCHEMA, 'upstream'):
+                meta_tables.append("upstream")
+            for meta_table in meta_tables:
+                engine.run_sql(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s")
+                               .format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                       Identifier(meta_table)),
+                               (self.namespace, self.repository))
         engine.commit()
 
     def get_upstream(self):
@@ -282,7 +298,7 @@ class Repository:
             logging.warning("%s has pending changes, discarding...", self.to_schema())
 
         # Delete the schema and remove the HEAD tag
-        self.rm(unregister=False)
+        self.rm(unregister=False, uncheckout=True)
         self.get_image(self.get_head()).delete_tag('HEAD')
 
     def commit(self, image_hash=None, include_snap=False, comment=None):
@@ -1186,7 +1202,71 @@ def mount(mountpoint, mount_handler, handler_kwargs):
     mh_func = get_mount_handler(mount_handler)
     logging.info("Connecting to remote server...")
 
-    to_repository(mountpoint).rm()
+    engine = get_engine()
+    engine.run_sql(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(mountpoint)))
+    engine.run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(mountpoint + '_server')))
     mh_func(mountpoint, **handler_kwargs)
+    engine.commit()
 
-    get_engine().commit()
+
+def _parse_paths_overrides(lookup_path, override_path):
+    return (lookup_path.split(',') if lookup_path else [],
+            {r[:r.index(':')]: r[r.index(':') + 1:]
+             for r in override_path.split(',')} if override_path else {})
+
+
+# Parse and set these on import. If we ever need to be able to reread the config on the fly, these have to be
+# recalculated.
+_LOOKUP_PATH, _LOOKUP_PATH_OVERRIDE = \
+    _parse_paths_overrides(CONFIG['SG_REPO_LOOKUP'], CONFIG['SG_REPO_LOOKUP_OVERRIDE'])
+
+
+def repository_exists(repository):
+    """
+    Checks if a repository exists on the engine. Can be used with `override_engine_connection`
+
+    :param repository: Repository object
+    """
+    return get_engine().run_sql(SQL("SELECT 1 FROM {}.images WHERE namespace = %s AND repository = %s")
+                                .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                                (repository.namespace, repository.repository),
+                                return_shape=ResultShape.ONE_ONE) is not None
+
+
+def lookup_repo(repo_name, include_local=False):
+    """
+    Queries the SG drivers on the lookup path to locate one hosting the given engine.
+
+    :param repo_name: Repository name
+    :param include_local: If True, also queries the local engine
+
+    :return: The name of the remote engine that has the repository (as specified in the config)
+        or "LOCAL" if the local engine has the repository.
+    """
+
+    if repo_name in _LOOKUP_PATH_OVERRIDE:
+        return _LOOKUP_PATH_OVERRIDE[repo_name]
+
+    # Currently just check if the schema with that name exists on the remote.
+    if include_local and repository_exists(repo_name):
+        return "LOCAL"
+
+    for candidate in _LOOKUP_PATH:
+        with switch_engine(candidate):
+            if repository_exists(repo_name):
+                get_engine().close()
+                return candidate
+            get_engine().close()
+
+    raise SplitGraphException("Unknown repository %s!" % repo_name.to_schema())
+
+
+def get_current_repositories():
+    """
+    Lists all repositories currently in the engine.
+
+    :return: List of (Repository object, current HEAD image)
+    """
+    ensure_metadata_schema()
+    return [(Repository(n, r), i) for n, r, i in
+            get_engine().run_sql(select("tags", "namespace, repository, image_hash", "tag = 'HEAD'"))]

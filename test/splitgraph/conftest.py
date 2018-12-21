@@ -5,8 +5,7 @@ import pytest
 from splitgraph._data.common import ensure_metadata_schema
 from splitgraph._data.registry import _ensure_registry_schema, unpublish_repository, setup_registry_mode, \
     toggle_registry_rls
-from splitgraph.commands.repository import get_current_repositories
-from splitgraph.core.repository import to_repository as R, Repository, cleanup_objects, mount
+from splitgraph.core.repository import to_repository as R, Repository, cleanup_objects, mount, get_current_repositories
 from splitgraph.engine import get_engine, ResultShape, switch_engine
 
 PG_MNT = R('test/pg_mount')

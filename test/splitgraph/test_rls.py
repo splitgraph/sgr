@@ -7,7 +7,6 @@ from psycopg2._psycopg import ProgrammingError
 from splitgraph._data.images import get_all_image_info
 from splitgraph._data.objects import register_object_locations
 from splitgraph._data.registry import get_published_info, unpublish_repository, toggle_registry_rls
-from splitgraph.commands.repository import unregister_repository
 from splitgraph.core.repository import Repository, clone
 from splitgraph.engine import switch_engine, get_engine
 from test.splitgraph.conftest import PG_MNT, add_multitag_dataset_to_engine, REMOTE_ENGINE
@@ -30,8 +29,8 @@ def unprivileged_remote_engine(remote_engine):
     CONFIG['remotes'][UNPRIVILEGED] = copy(CONFIG['remotes'][REMOTE_ENGINE])
     CONFIG['remotes'][UNPRIVILEGED]['SG_ENGINE_USER'] = 'testuser'
     CONFIG['remotes'][UNPRIVILEGED]['SG_ENGINE_PWD'] = 'testpassword'
+    E = get_engine(UNPRIVILEGED)
     try:
-        E = get_engine(UNPRIVILEGED)
         assert E.conn_params[2] == 'testuser'
         assert E.conn_params[3] == 'testpassword'
         yield E
@@ -58,7 +57,7 @@ def test_rls_push_own_delete_own(local_engine_empty, unprivileged_remote_engine)
 
     # Test we can delete our own repo once we've pushed it
     with switch_engine(UNPRIVILEGED):
-        unregister_repository(target_repo, is_remote=True)
+        target_repo.rm(uncheckout=False)
         assert len(get_all_image_info(target_repo)) == 0
 
 
@@ -77,7 +76,7 @@ def test_rls_delete_others(unprivileged_remote_engine):
     # RLS doesn't actually raise an error for this, since it just appends the policy qualifier to the query.
     # Hence in this case this simply does nothing (the rows in "test" namespace aren't available for deletion).
     with switch_engine(UNPRIVILEGED):
-        unregister_repository(PG_MNT, is_remote=True)
+        PG_MNT.rm(uncheckout=False)
         # Check that the policy worked by verifying that the repository still exists on the remote.
         assert len(get_all_image_info(PG_MNT)) > 0
 

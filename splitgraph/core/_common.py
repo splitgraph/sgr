@@ -6,7 +6,6 @@ import re
 from psycopg2.sql import Identifier, SQL
 
 from splitgraph._data.common import ensure_metadata_schema, select, insert
-from splitgraph.commands.repository import get_current_repositories
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import get_engine, ResultShape
 from splitgraph.exceptions import SplitGraphException
@@ -46,6 +45,7 @@ def manage_audit_triggers():
     """
 
     engine = get_engine()
+    from splitgraph.core.repository import get_current_repositories
     repos_tables = [(r.to_schema(), t) for r, head in get_current_repositories() if head is not None
                     for t in set(engine.get_all_tables(r.to_schema())) & set(r.get_image(head).get_tables())]
     tracked_tables = engine.get_tracked_tables()

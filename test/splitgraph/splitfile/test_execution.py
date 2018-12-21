@@ -3,8 +3,7 @@ import pytest
 from splitgraph._data.images import get_all_image_info
 from splitgraph._data.objects import get_existing_objects, get_downloaded_objects, get_external_object_locations, \
     get_object_for_table
-from splitgraph.commands.repository import get_current_repositories
-from splitgraph.core.repository import to_repository as R, cleanup_objects, clone
+from splitgraph.core.repository import to_repository as R, cleanup_objects, clone, get_current_repositories
 from splitgraph.engine import get_engine, switch_engine
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.splitfile._parsing import preprocess

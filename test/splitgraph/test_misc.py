@@ -1,7 +1,7 @@
 from splitgraph._data.common import ensure_metadata_schema
 from splitgraph._data.registry import setup_registry_mode, get_published_info, _ensure_registry_schema
-from splitgraph.commands.repository import get_current_repositories
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA
+from splitgraph.core.repository import get_current_repositories
 from splitgraph.engine import switch_engine
 from test.splitgraph.conftest import PG_MNT, REMOTE_ENGINE
 

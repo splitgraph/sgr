@@ -9,9 +9,8 @@ from random import getrandbits
 
 from splitgraph._data.provenance import store_import_provenance, store_sql_provenance, store_mount_provenance, \
     store_from_provenance
-from splitgraph.commands.repository import repository_exists, lookup_repo
 from splitgraph.config import CONFIG
-from splitgraph.core.repository import to_repository, Repository, local_clone, clone
+from splitgraph.core.repository import to_repository, Repository, local_clone, clone, repository_exists, lookup_repo
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.mount_handlers import get_mount_handler
