@@ -375,8 +375,10 @@ def switch_engine(engine):
     Switch the global engine to a different one. The engine will
     get switched back on exit from the context manager.
 
-    :param engine: Name of the engine or an Engine instance
+    :param engine: Name of the engine or an SQLEngine instance
     """
+    if not isinstance(engine, str) and not isinstance(engine, SQLEngine):
+        raise ValueError("engine must be an engine name or an SQLEngine, not %r!" % type(engine))
     global _ENGINE
     _PREV_ENGINE = _ENGINE
     try:

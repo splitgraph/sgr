@@ -14,7 +14,8 @@ from splitgraph.engine import ResultShape
 
 class Image(namedtuple('Image', IMAGE_COLS)):
     """
-    Shim, experimenting with sg OO API.
+    Represents a Splitgraph image. Should't be created directly, use Image-loading methods in the
+    Repository class instead.
     """
 
     def __new__(cls, *args, **kwargs):
@@ -91,7 +92,13 @@ class Image(namedtuple('Image', IMAGE_COLS)):
                              return_shape=None)
 
     def get_log(self):
-        return get_log(self.repository, self.image_hash)
+        """Repeatedly gets the parent of a given image until it reaches the bottom."""
+        result = [self.image_hash]
+        image = self
+        while image.parent_id:
+            result.append(image.parent_id)
+            image = self.repository.get_image(image.parent_id)
+        return result
 
     def to_splitfile(self, err_on_end=True, source_replacement=None):
         """
@@ -196,12 +203,3 @@ def _prov_command_to_splitfile(prov_type, prov_data, image_hash, source_replacem
     if prov_type == "SQL":
         return "SQL " + prov_data.replace("\n", "\\\n")
     raise SplitGraphException("Cannot reconstruct provenance %s!" % prov_type)
-
-
-def get_log(repository, start_image):
-    """Repeatedly gets the parent of a given image until it reaches the bottom."""
-    result = []
-    while start_image is not None:
-        result.append(start_image)
-        start_image = repository.get_image(start_image).parent_id
-    return result

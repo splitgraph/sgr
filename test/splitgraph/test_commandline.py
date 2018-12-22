@@ -500,7 +500,8 @@ def test_rm_images(local_engine_with_pg, remote_engine):
     assert local_v1 in result.output
     assert 'v1' in result.output
     assert 'v2' in result.output
-    assert len(PG_MNT.get_images()) == 0
+    # One image remaining (the 00000.. base image)
+    assert len(PG_MNT.get_images()) == 1
 
 
 def test_mount_docstring_generation():
@@ -559,7 +560,8 @@ def test_prune(local_engine_with_pg, remote_engine):
     assert result.exit_code == 0
     assert remote_v2 in result.output
     assert remote_v1 in result.output
-    assert 'Total: 2' in result.output
+    # 2 images + the 000... image
+    assert 'Total: 3' in result.output
     with switch_engine(REMOTE_ENGINE):
         assert not PG_MNT.get_images()
 
@@ -567,7 +569,8 @@ def test_prune(local_engine_with_pg, remote_engine):
     # a HEAD tag pointing to the ex-v2, nothing will actually happen.
     result = runner.invoke(prune_c, [str(PG_MNT), '-y'])
     assert "Nothing to do." in result.output
-    assert len(PG_MNT.get_images()) == 2
+    # 2 images + the 000.. image
+    assert len(PG_MNT.get_images()) == 3
     assert len(PG_MNT.get_all_hashes_tags()) == 3
 
 

@@ -16,7 +16,9 @@ def test_log_checkout(include_snap, local_engine_with_pg):
     head_2 = PG_MNT.commit(include_snap=include_snap)
 
     assert PG_MNT.get_head() == head_2
-    assert PG_MNT.get_image(head_2).get_log() == [head_2, head_1, head]
+    # 4 images (last one is the empty 00000... image -- should try to avoid having that 0 image at all
+    # in the future)
+    assert PG_MNT.get_image(head_2).get_log()[:3] == [head_2, head_1, head]
 
     PG_MNT.checkout(head)
     assert PG_MNT.run_sql("SELECT * FROM fruits") == [(1, 'apple'), (2, 'orange')]

@@ -12,9 +12,9 @@ from splitgraph._data.images import add_new_image, get_image_object_path, IMAGE_
 from splitgraph._data.objects import register_table, get_external_object_locations, get_existing_objects, \
     get_object_for_table, register_object, get_object_meta, register_objects, register_object_locations, register_tables
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
-from splitgraph.core._common import manage_audit_triggers, set_head, manage_audit
 from splitgraph.engine import ResultShape
 from splitgraph.hooks.mount_handlers import get_mount_handler
+from ._common import manage_audit_triggers, set_head, manage_audit
 from ._objects.creation import record_table_as_snap, record_table_as_diff
 from ._objects.loading import download_objects, upload_objects
 from ._objects.utils import get_random_object_id
@@ -320,7 +320,8 @@ class Repository:
 
         logging.info("Committing %s...", target_schema)
 
-        head = self.get_head()
+        # HEAD can be None (if this is the first commit in this repository)
+        head = self.get_head(raise_on_none=False)
 
         if image_hash is None:
             image_hash = "%0.2x" % getrandbits(256)
@@ -353,11 +354,11 @@ class Repository:
         target_schema = self.to_schema()
         engine = get_engine()
 
-        head = self.get_image(current_head)
+        head = self.get_image(current_head) if current_head else None
 
         changed_tables = engine.get_changed_tables(target_schema)
         for table in engine.get_all_tables(target_schema):
-            table_info = head.get_table(table)
+            table_info = head.get_table(table) if head else None
             # Table already exists at the current HEAD
             if table_info:
                 # If there has been a schema change, we currently just snapshot the whole table.
@@ -947,12 +948,7 @@ def cleanup_objects(include_external=False):
     # Go through the physical objects and delete them as well
     # This is slightly dirty, but since the info about the objects was deleted on rm, we just say that
     # anything in splitgraph_meta that's not a system table is fair game.
-    tables_in_meta = {c for c in
-                      engine.run_sql("SELECT information_schema.tables.table_name FROM information_schema.tables "
-                                     "WHERE information_schema.tables.table_schema = %s",
-                                     (SPLITGRAPH_META_SCHEMA,),
-                                     return_shape=ResultShape.MANY_ONE)
-                      if c not in META_TABLES}
+    tables_in_meta = {c for c in engine.get_all_tables(SPLITGRAPH_META_SCHEMA) if c not in META_TABLES}
 
     to_delete = tables_in_meta.difference(primary_objects)
 
@@ -1228,6 +1224,10 @@ def repository_exists(repository):
     :param repository: Repository object
     """
     return get_engine().run_sql(SQL("SELECT 1 FROM {}.images WHERE namespace = %s AND repository = %s")
+                                .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                                (repository.namespace, repository.repository),
+                                return_shape=ResultShape.ONE_ONE) is not None or \
+           get_engine().run_sql(SQL("SELECT 1 FROM {}.tags WHERE namespace = %s AND repository = %s")
                                 .format(Identifier(SPLITGRAPH_META_SCHEMA)),
                                 (repository.namespace, repository.repository),
                                 return_shape=ResultShape.ONE_ONE) is not None

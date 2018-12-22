@@ -74,34 +74,47 @@ def healthcheck():
 
 
 @pytest.fixture
-def local_engine_with_pg():
-    # SG connection with a mounted Postgres db
-    for mountpoint in TEST_MOUNTPOINTS:
+def local_engine_empty():
+    # A connection to the local engine that has nothing mounted on it.
+    for mountpoint, _ in get_current_repositories():
         mountpoint.rm()
-    _mount_postgres(PG_MNT)
-    try:
-        yield get_engine()
-    finally:
-        get_engine().rollback()
-        for mountpoint in TEST_MOUNTPOINTS:
-            mountpoint.rm()
-
-
-@pytest.fixture
-def local_engine_with_pg_and_mg():
-    # SG connection with a mounted Mongo + Postgres db
     for mountpoint in TEST_MOUNTPOINTS:
         mountpoint.rm()
     cleanup_objects()
-    _mount_postgres(PG_MNT)
-    _mount_mongo(MG_MNT)
+    get_engine().commit()
     try:
         yield get_engine()
     finally:
         get_engine().rollback()
+        for mountpoint, _ in get_current_repositories():
+            mountpoint.rm()
         for mountpoint in TEST_MOUNTPOINTS:
             mountpoint.rm()
         cleanup_objects()
+        get_engine().commit()
+
+
+with open(os.path.join(os.path.dirname(__file__), '../architecture/data/pgorigin/setup.sql'), 'r') as f:
+    FRUITS_DATA = f.read()
+
+
+@pytest.fixture
+def local_engine_with_pg(local_engine_empty):
+    # Used to be a mount, trying to just write the data directly to speed tests up
+    PG_MNT.init()
+    PG_MNT.run_sql(FRUITS_DATA)
+    PG_MNT.commit()
+    yield local_engine_empty
+
+
+@pytest.fixture
+def local_engine_with_pg_and_mg(local_engine_empty):
+    # SG connection with a mounted Mongo + Postgres db
+    PG_MNT.init()
+    PG_MNT.run_sql(FRUITS_DATA)
+    PG_MNT.commit()
+    _mount_mongo(MG_MNT)
+    yield local_engine_empty
 
 
 REMOTE_ENGINE = 'remote_engine'  # On the host, mapped into localhost; on the local engine works as intended.
@@ -109,8 +122,6 @@ REMOTE_ENGINE = 'remote_engine'  # On the host, mapped into localhost; on the lo
 
 @pytest.fixture
 def remote_engine():
-    # For these, we'll use both the cachedb (original postgres for integration tests) as well as the remote_engine.
-    # Mount and snapshot the two origin DBs (mongo/pg) with the test data.
     with switch_engine(REMOTE_ENGINE):
         ensure_metadata_schema()
         _ensure_registry_schema()
@@ -123,7 +134,9 @@ def remote_engine():
             mountpoint.rm()
         cleanup_objects()
         get_engine().commit()
-        _mount_postgres(PG_MNT)
+        PG_MNT.init()
+        get_engine().execute_sql_in(PG_MNT.to_schema(), FRUITS_DATA)
+        PG_MNT.commit()
         _mount_mongo(MG_MNT)
     try:
         yield get_engine(REMOTE_ENGINE)
@@ -136,23 +149,6 @@ def remote_engine():
             cleanup_objects()
             e.commit()
             e.close()
-
-
-@pytest.fixture
-def local_engine_empty():
-    # A connection to the local engine that has nothing mounted on it.
-    for mountpoint, _ in get_current_repositories():
-        mountpoint.rm()
-    cleanup_objects()
-    get_engine().commit()
-    try:
-        yield get_engine()
-    finally:
-        get_engine().rollback()
-        for mountpoint, _ in get_current_repositories():
-            mountpoint.rm()
-        cleanup_objects()
-        get_engine().commit()
 
 
 def add_multitag_dataset_to_engine(engine):
