@@ -10,7 +10,7 @@ import click
 import splitgraph.core.repository
 from splitgraph import SplitGraphException
 from splitgraph.commandline._common import image_spec_parser
-from splitgraph.core.repository import repository_exists
+from splitgraph.core.engine import repository_exists
 
 
 @click.command(name='checkout')

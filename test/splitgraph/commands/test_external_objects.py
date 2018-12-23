@@ -2,7 +2,8 @@ import pytest
 from minio import Minio
 
 from splitgraph._data.objects import get_existing_objects, get_external_object_locations, get_downloaded_objects
-from splitgraph.core.repository import cleanup_objects, clone
+from splitgraph.core.engine import cleanup_objects
+from splitgraph.core.repository import clone
 from splitgraph.engine import switch_engine
 from splitgraph.hooks.s3 import S3_HOST, S3_PORT, S3_ACCESS_KEY, S3_SECRET_KEY
 from test.splitgraph.conftest import PG_MNT, PG_MNT_PULL, REMOTE_ENGINE

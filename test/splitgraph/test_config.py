@@ -15,7 +15,7 @@ from splitgraph.config.system_config import (
     SG_CONFIG_FILE,
     VALID_CONFIG_FILE_NAMES
 )
-from splitgraph.core.repository import _parse_paths_overrides
+from splitgraph.core.engine import _parse_paths_overrides
 
 try:
     # python 3.4+ should use builtin unittest.mock not mock package

@@ -7,8 +7,7 @@ import re
 
 import click
 
-from splitgraph.core.repository import mount
-from splitgraph.hooks.mount_handlers import get_mount_handler, get_mount_handlers
+from splitgraph.hooks.mount_handlers import get_mount_handler, get_mount_handlers, mount
 
 _PARAM_REGEX = re.compile('^:param\s+(?P<type>\w+\s+)?(?P<param>\w+):\s+(?P<doc>.*)$', re.MULTILINE)
 # Mount handler function arguments that get parsed by other means (connection string) and aren't

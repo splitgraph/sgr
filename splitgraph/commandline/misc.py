@@ -9,7 +9,7 @@ from splitgraph import SplitGraphException, CONFIG
 from splitgraph._data.images import _get_all_child_images, delete_images, _get_all_parent_images
 from splitgraph.commandline._common import image_spec_parser
 from splitgraph.config.keys import KEYS, SENSITIVE_KEYS
-from splitgraph.core.repository import init_engine, cleanup_objects, repository_exists
+from splitgraph.core.engine import cleanup_objects, init_engine, repository_exists
 from splitgraph.engine import switch_engine
 
 

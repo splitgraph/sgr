@@ -7,13 +7,13 @@ from psycopg2.sql import SQL, Identifier
 
 import splitgraph as sg
 from splitgraph import get_engine, SplitGraphException, switch_engine, publish_tag, get_all_image_info
-from splitgraph._data.common import ensure_metadata_schema, select, META_TABLES, insert
+from splitgraph._data.common import ensure_metadata_schema, select, insert
 from splitgraph._data.images import add_new_image, get_image_object_path, IMAGE_COLS
 from splitgraph._data.objects import register_table, get_external_object_locations, get_existing_objects, \
     get_object_for_table, register_object, get_object_meta, register_objects, register_object_locations, register_tables
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
+from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from splitgraph.core.engine import delete_objects, repository_exists, lookup_repo
 from splitgraph.engine import ResultShape
-from splitgraph.hooks.mount_handlers import get_mount_handler
 from ._common import manage_audit_triggers, set_head, manage_audit
 from ._objects.creation import record_table_as_snap, record_table_as_diff
 from ._objects.loading import download_objects, upload_objects
@@ -24,10 +24,7 @@ _PUBLISH_PREVIEW_SIZE = 100
 
 
 # OO API porting plan:
-# [x] make shims, direct them to splitgraph.commands
-# [x] direct commandline, tests and splitfile interpreter to the shims
-# [x] move the commands inside the shims
-# [ ] move things out from Repository into more appropriate classes (e.g. materialize_table -> Table?)
+# [ ] move things out from Repository into more appropriate classes
 # [ ] review current internal metadata access/creation commands to see which can be made
 #     into private methods
 # [ ] make sure Repository objects use their own internal engine pointer
@@ -113,7 +110,6 @@ class Repository:
         """
         Gets the current upstream (connection string and repository) that a local repository tracks
 
-        :param self: Local repository
         :return: Tuple of (remote engine, remote Repository object)
         """
         result = get_engine().run_sql(select("upstream", "remote_name, remote_namespace, remote_repository",
@@ -128,7 +124,6 @@ class Repository:
         """
         Sets the upstream remote + repository that this repository tracks.
 
-        :param self: Local repository
         :param remote_name: Name of the remote as specified in the Splitgraph config.
         :param remote_repository: Remote Repository object
         """
@@ -146,54 +141,11 @@ class Repository:
     def delete_upstream(self):
         """
         Deletes the upstream remote + repository for a local repository.
-
-        :param self: Local repository
         """
         get_engine().run_sql(SQL("DELETE FROM {0}.upstream WHERE namespace = %s AND repository = %s")
                              .format(Identifier(SPLITGRAPH_META_SCHEMA)),
                              (self.namespace, self.repository),
                              return_shape=None)
-
-    def materialize_table(self, image_hash, table, destination, destination_schema=None):
-        """
-        Materializes a Splitgraph table in the target schema as a normal Postgres table, potentially downloading all
-        required objects and using them to reconstruct the table.
-
-        :param image_hash: Hash of the commit to get the table from.
-        :param table: Name of the table.
-        :param destination: Name of the destination table.
-        :param destination_schema: Name of the destination schema.
-        :return: A set of IDs of downloaded objects used to construct the table.
-        """
-        destination_schema = destination_schema or self.to_schema()
-        engine = get_engine()
-        engine.delete_table(destination_schema, destination)
-        # Get the closest snapshot from the table's parents
-        # and then apply all deltas consecutively from it.
-        object_id, to_apply = get_image_object_path(self, table, image_hash)
-
-        # Make sure all the objects have been downloaded from remote if it exists
-        remote_info = self.get_upstream()
-        if remote_info:
-            object_locations = get_external_object_locations(to_apply + [object_id])
-            fetched_objects = download_objects(remote_info[0],
-                                               objects_to_fetch=to_apply + [object_id],
-                                               object_locations=object_locations)
-
-        difference = set(to_apply + [object_id]).difference(set(get_existing_objects()))
-        if difference:
-            logging.warning("Not all objects required to materialize %s:%s:%s exist locally.",
-                            self.to_schema(), image_hash, table)
-            logging.warning("Missing objects: %r", difference)
-
-        # Copy the given snap id over to "staging" and apply the DIFFS
-        engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, destination_schema, destination,
-                          with_pk_constraints=True)
-        for pack_object in reversed(to_apply):
-            logging.info("Applying %s...", pack_object)
-            engine.apply_diff_object(SPLITGRAPH_META_SCHEMA, pack_object, destination_schema, destination)
-
-        return fetched_objects if remote_info else set()
 
     @contextmanager
     def materialized_table(self, table_name, image_hash):
@@ -215,7 +167,8 @@ class Repository:
         if object_id is None:
             # Materialize the SNAP into a new object
             new_id = get_random_object_id()
-            self.materialize_table(image_hash, table_name, new_id, destination_schema=SPLITGRAPH_META_SCHEMA)
+            table = self.get_image(image_hash).get_table(table_name)
+            table.materialize(new_id, destination_schema=SPLITGRAPH_META_SCHEMA)
             yield SPLITGRAPH_META_SCHEMA, new_id
             # Maybe some cache management/expiry strategies here
             delete_objects([new_id])
@@ -251,8 +204,6 @@ class Repository:
         """
         target_schema = self.to_schema()
         engine = get_engine()
-        if tables is None:
-            tables = []
         if self.has_pending_changes():
             if not force:
                 raise SplitGraphException("{0} has pending changes! Pass force=True or do sgr checkout -f {0}:HEAD"
@@ -268,16 +219,17 @@ class Repository:
         else:
             raise SplitGraphException("One of image_hash or tag must be specified!")
 
-        tables = tables or self.get_image(image_hash).get_tables()
+        image = self.get_image(image_hash)
         # Drop all current tables in staging
         for table in engine.get_all_tables(target_schema):
             engine.delete_table(target_schema, table)
 
         downloaded_object_ids = set()
+        tables = tables or image.get_tables()
         for table in tables:
-            downloaded_object_ids |= self.materialize_table(image_hash, table, table)
+            downloaded_object_ids |= image.get_table(table).materialize(table)
 
-        # Repoint the current HEAD for this mountpoint to the new snap ID
+        # Repoint the current HEAD for this repository to the new snap ID
         set_head(self, image_hash)
 
         if not keep_downloaded_objects:
@@ -305,20 +257,17 @@ class Repository:
         """
         Commits all pending changes to a given repository, creating a new image.
 
-        :param self: Repository to commit.
         :param image_hash: Hash of the commit. Chosen by random if unspecified.
         :param include_snap: If True, also creates a SNAP object with a full copy of the table. This will speed up
             checkouts, but consumes extra space.
         :param comment: Optional comment to add to the commit.
-        :return: The image hash the current state of the mountpoint was committed under.
+        :return: The image hash the current state of the repository was committed under.
         """
-        target_schema = self.to_schema()
+        logging.info("Committing %s...", self.to_schema())
 
         ensure_metadata_schema()
         get_engine().commit()
         manage_audit_triggers()
-
-        logging.info("Committing %s...", target_schema)
 
         # HEAD can be None (if this is the first commit in this repository)
         head = self.get_head(raise_on_none=False)
@@ -350,7 +299,6 @@ class Repository:
         :param image_hash: Hash of the image to commit changes under.
         :param include_snap: If True, also stores the table as a SNAP.
         """
-
         target_schema = self.to_schema()
         engine = get_engine()
 
@@ -547,6 +495,8 @@ class Repository:
             # we have to materialize it fully.
             self.checkout(image_hash)
         # Materialize the actual tables in the target repository and register them.
+        image = self.get_image(image_hash)
+
         for table, target_table, is_query in zip(tables, target_tables, table_queries):
             if foreign_tables or is_query:
                 # For foreign tables/SELECT queries, we define a new object/table instead.
@@ -560,13 +510,18 @@ class Repository:
                 elif foreign_tables:
                     get_engine().copy_table(self.to_schema(), table, SPLITGRAPH_META_SCHEMA, object_id)
 
-                _register_and_checkout_new_table(do_checkout, object_id, target_hash, target_repository, target_table)
+                # Might not be necessary if we don't actually want to materialize the snapshot (wastes space).
+                register_object(object_id, 'SNAP', namespace=target_repository.namespace, parent_object=None)
+                register_table(target_repository, target_table, target_hash, object_id)
+                if do_checkout:
+                    get_engine().copy_table(SPLITGRAPH_META_SCHEMA, object_id, target_repository.to_schema(),
+                                            target_table)
             else:
-                for object_id, _ in self.get_image(image_hash).get_table(table).objects:
+                table_obj = image.get_table(table)
+                for object_id, _ in table_obj.objects:
                     register_table(target_repository, target_table, target_hash, object_id)
                 if do_checkout:
-                    self.materialize_table(image_hash, table, target_table,
-                                           destination_schema=target_repository.to_schema())
+                    table_obj.materialize(target_table, destination_schema=target_repository.to_schema())
         # Register the existing tables at the new commit as well.
         if head is not None:
             # Maybe push this into the tables API (currently have to make 2 queries)
@@ -664,7 +619,6 @@ class Repository:
         Synchronizes the state of the local Splitgraph repository with its upstream, optionally downloading all new
         objects created on the remote.
 
-        :param self: Repository to pull changes from.
         :param download_all: If True, downloads all objects and stores them locally. Otherwise, will only download required
             objects when a table is checked out.
         """
@@ -679,8 +633,6 @@ class Repository:
     def has_pending_changes(self):
         """
         Detects if the repository has any pending changes (schema changes, table additions/deletions, content changes).
-
-        :param self: Repository object
         """
         head = self.get_head(raise_on_none=False)
         if not head:
@@ -858,14 +810,6 @@ def _side_by_side_diff(repository, table_name, image_1, image_2, aggregate):
            [(r, 0, {'c': [], 'v': []}) for r in right if r not in left]
 
 
-def _register_and_checkout_new_table(do_checkout, object_id, target_hash, target_repository, target_table):
-    # Might not be necessary if we don't actually want to materialize the snapshot (wastes space).
-    register_object(object_id, 'SNAP', namespace=target_repository.namespace, parent_object=None)
-    register_table(target_repository, target_table, target_hash, object_id)
-    if do_checkout:
-        get_engine().copy_table(SPLITGRAPH_META_SCHEMA, object_id, target_repository.to_schema(), target_table)
-
-
 def import_table_from_remote(remote_engine, remote_repository, remote_tables, remote_image_hash, target_repository,
                              target_tables, target_hash=None):
     """
@@ -911,87 +855,6 @@ def table_exists_at(repository, table_name, image_hash):
     determines whether the table exists in the current staging area."""
     return get_engine().table_exists(repository.to_schema(), table_name) if image_hash is None \
         else bool(repository.get_image(image_hash).get_table(table_name))
-
-
-def cleanup_objects(include_external=False):
-    """
-    Deletes all local objects not required by any current mountpoint, including their dependencies, their remote
-    locations and their cached local copies.
-
-    :param include_external: If True, deletes all external objects cached locally and redownloads them when they're
-        needed.
-    """
-    # First, get a list of all objects required by a table.
-    engine = get_engine()
-
-    primary_objects = set(engine.run_sql(
-        SQL("SELECT DISTINCT (object_id) FROM {}.tables").format(Identifier(SPLITGRAPH_META_SCHEMA)),
-        return_shape=ResultShape.MANY_ONE))
-
-    # Expand that since each object might have a parent it depends on.
-    if primary_objects:
-        while True:
-            new_parents = set(parent_id for _, _, parent_id, _ in get_object_meta(list(primary_objects))
-                              if parent_id not in primary_objects and parent_id is not None)
-            if not new_parents:
-                break
-            else:
-                primary_objects.update(new_parents)
-
-    # Go through the tables that aren't mountpoint-dependent and delete entries there.
-    for table_name in ['objects', 'object_locations']:
-        query = SQL("DELETE FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table_name))
-        if primary_objects:
-            query += SQL(" WHERE object_id NOT IN (" + ','.join('%s' for _ in range(len(primary_objects))) + ")")
-        engine.run_sql(query, list(primary_objects))
-
-    # Go through the physical objects and delete them as well
-    # This is slightly dirty, but since the info about the objects was deleted on rm, we just say that
-    # anything in splitgraph_meta that's not a system table is fair game.
-    tables_in_meta = {c for c in engine.get_all_tables(SPLITGRAPH_META_SCHEMA) if c not in META_TABLES}
-
-    to_delete = tables_in_meta.difference(primary_objects)
-
-    # All objects in `object_locations` are assumed to exist externally (so we can redownload them if need be).
-    # This can be improved on by, on materialization, downloading all SNAPs directly into the target schema and
-    # applying the DIFFs to it (instead of downloading them into a staging area), but that requires us to change
-    # the object downloader interface.
-    if include_external:
-        to_delete = to_delete.union(set(
-            engine.run_sql(SQL("SELECT object_id FROM {}.object_locations")
-                           .format(Identifier(SPLITGRAPH_META_SCHEMA)), return_shape=ResultShape.MANY_ONE)))
-
-    delete_objects(to_delete)
-    return to_delete
-
-
-def delete_objects(objects):
-    """
-    Deletes objects from the Splitgraph cache
-
-    :param objects: A sequence of objects to be deleted
-    """
-    engine = get_engine()
-    for o in objects:
-        engine.delete_table(SPLITGRAPH_META_SCHEMA, o)
-
-
-def init_engine():  # pragma: no cover
-    # Method exercised in test_commandline.test_init_new_db but in
-    # an external process
-    """
-    Initializes the engine by:
-
-        * performing any required engine-custom initialization
-        * creating the metadata tables
-
-    """
-    # Initialize the engine
-    get_engine().initialize()
-
-    # Create splitgraph_meta
-    logging.info("Ensuring metadata schema %s exists...", SPLITGRAPH_META_SCHEMA)
-    ensure_metadata_schema()
 
 
 def _prepare_extra_data(image, repository, include_table_previews):
@@ -1184,89 +1047,3 @@ def merge_push_params(local_repository, remote_engine, remote_repository):
         raise SplitGraphException("No upstream found for repository %s and no engine specified!" %
                                   local_repository.to_schema())
     return remote_engine, remote_repository
-
-
-def mount(mountpoint, mount_handler, handler_kwargs):
-    """
-    Mounts a foreign database via Postgres FDW (without creating new Splitgraph objects)
-
-    :param mountpoint: Mountpoint to import the new tables into.
-    :param mount_handler: The type of the mounted database. Must be one of `postgres_fdw` or `mongo_fdw`.
-    :param handler_kwargs: Dictionary of options to pass to the mount handler.
-    """
-    ensure_metadata_schema()
-    mh_func = get_mount_handler(mount_handler)
-    logging.info("Connecting to remote server...")
-
-    engine = get_engine()
-    engine.run_sql(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(mountpoint)))
-    engine.run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(mountpoint + '_server')))
-    mh_func(mountpoint, **handler_kwargs)
-    engine.commit()
-
-
-def _parse_paths_overrides(lookup_path, override_path):
-    return (lookup_path.split(',') if lookup_path else [],
-            {r[:r.index(':')]: r[r.index(':') + 1:]
-             for r in override_path.split(',')} if override_path else {})
-
-
-# Parse and set these on import. If we ever need to be able to reread the config on the fly, these have to be
-# recalculated.
-_LOOKUP_PATH, _LOOKUP_PATH_OVERRIDE = \
-    _parse_paths_overrides(CONFIG['SG_REPO_LOOKUP'], CONFIG['SG_REPO_LOOKUP_OVERRIDE'])
-
-
-def repository_exists(repository):
-    """
-    Checks if a repository exists on the engine. Can be used with `override_engine_connection`
-
-    :param repository: Repository object
-    """
-    return get_engine().run_sql(SQL("SELECT 1 FROM {}.images WHERE namespace = %s AND repository = %s")
-                                .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                                (repository.namespace, repository.repository),
-                                return_shape=ResultShape.ONE_ONE) is not None or \
-           get_engine().run_sql(SQL("SELECT 1 FROM {}.tags WHERE namespace = %s AND repository = %s")
-                                .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                                (repository.namespace, repository.repository),
-                                return_shape=ResultShape.ONE_ONE) is not None
-
-
-def lookup_repo(repo_name, include_local=False):
-    """
-    Queries the SG drivers on the lookup path to locate one hosting the given engine.
-
-    :param repo_name: Repository name
-    :param include_local: If True, also queries the local engine
-
-    :return: The name of the remote engine that has the repository (as specified in the config)
-        or "LOCAL" if the local engine has the repository.
-    """
-
-    if repo_name in _LOOKUP_PATH_OVERRIDE:
-        return _LOOKUP_PATH_OVERRIDE[repo_name]
-
-    # Currently just check if the schema with that name exists on the remote.
-    if include_local and repository_exists(repo_name):
-        return "LOCAL"
-
-    for candidate in _LOOKUP_PATH:
-        with switch_engine(candidate):
-            if repository_exists(repo_name):
-                get_engine().close()
-                return candidate
-            get_engine().close()
-
-    raise SplitGraphException("Unknown repository %s!" % repo_name.to_schema())
-
-
-def get_current_repositories():
-    """
-    Lists all repositories currently in the engine.
-
-    :return: List of (Repository object, current HEAD image)
-    """
-    ensure_metadata_schema()
-    return [(Repository(n, r), i) for n, r, i in
-            get_engine().run_sql(select("tags", "namespace, repository, image_hash", "tag = 'HEAD'"))]

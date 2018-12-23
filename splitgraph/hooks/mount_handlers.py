@@ -8,6 +8,7 @@ from importlib import import_module
 
 from psycopg2.sql import Identifier, SQL
 
+from splitgraph._data.common import ensure_metadata_schema
 from splitgraph.config import PG_USER, CONFIG
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitGraphException
@@ -173,3 +174,22 @@ for handler_name, handler_func_name in CONFIG.get('mount_handlers', {}).items():
         raise SplitGraphException("Error loading custom mount handler {0}".format(handler_name), e)
     except ImportError as e:
         raise SplitGraphException("Error loading custom mount handler {0}".format(handler_name), e)
+
+
+def mount(mountpoint, mount_handler, handler_kwargs):
+    """
+    Mounts a foreign database via Postgres FDW (without creating new Splitgraph objects)
+
+    :param mountpoint: Mountpoint to import the new tables into.
+    :param mount_handler: The type of the mounted database. Must be one of `postgres_fdw` or `mongo_fdw`.
+    :param handler_kwargs: Dictionary of options to pass to the mount handler.
+    """
+    ensure_metadata_schema()
+    mh_func = get_mount_handler(mount_handler)
+    logging.info("Connecting to remote server...")
+
+    engine = get_engine()
+    engine.run_sql(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(mountpoint)))
+    engine.run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(mountpoint + '_server')))
+    mh_func(mountpoint, **handler_kwargs)
+    engine.commit()

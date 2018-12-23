@@ -6,7 +6,8 @@ import pytest
 
 from splitgraph.config import PG_PWD, PG_USER
 from splitgraph.core._common import parse_connection_string, serialize_connection_string
-from splitgraph.core.repository import Repository, repository_exists
+from splitgraph.core.engine import repository_exists
+from splitgraph.core.repository import Repository
 from splitgraph.engine import switch_engine
 
 try:

@@ -11,7 +11,7 @@ import splitgraph.core.repository
 from splitgraph import get_engine
 from splitgraph.commandline._common import image_spec_parser, pluralise
 from splitgraph.core._drawing import render_tree
-from splitgraph.core.repository import get_current_repositories
+from splitgraph.core.engine import get_current_repositories
 
 
 @click.command(name='log')

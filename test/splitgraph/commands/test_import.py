@@ -1,5 +1,6 @@
 from splitgraph._data.objects import get_existing_objects, get_downloaded_objects
-from splitgraph.core.repository import import_table_from_remote, cleanup_objects, get_current_repositories
+from splitgraph.core.engine import cleanup_objects, get_current_repositories
+from splitgraph.core.repository import import_table_from_remote
 from splitgraph.engine import get_engine, switch_engine
 from test.splitgraph.conftest import PG_MNT, OUTPUT, REMOTE_ENGINE
 

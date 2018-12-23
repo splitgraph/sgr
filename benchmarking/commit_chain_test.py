@@ -1,6 +1,7 @@
 import os
 
-from splitgraph.core.repository import to_repository, cleanup_objects, clone
+from splitgraph.core.engine import cleanup_objects
+from splitgraph.core.repository import to_repository, clone
 
 os.environ['SG_CONFIG_FILE'] = 'test/resources/.sgconfig'
 
