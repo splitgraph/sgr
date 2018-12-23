@@ -10,7 +10,7 @@ from splitgraph._data.images import _get_all_child_images, delete_images, _get_a
 from splitgraph.commandline._common import image_spec_parser
 from splitgraph.config.keys import KEYS, SENSITIVE_KEYS
 from splitgraph.core.engine import cleanup_objects, init_engine, repository_exists
-from splitgraph.engine import switch_engine
+from splitgraph.engine import switch_engine, get_engine
 
 
 @click.command(name='rm')
@@ -53,7 +53,10 @@ def rm_c(image_spec, remote, yes):
     """
 
     repository, image = image_spec
-    with switch_engine(remote or 'LOCAL'):
+    engine = get_engine(remote or 'LOCAL')
+    repository.engine = engine
+    # still WIP, will remove it to rely on the engine in the repository
+    with switch_engine(engine):
         if not image:
             print(("Repository" if repository_exists(repository) else "Postgres schema")
                   + " %s will be deleted." % repository.to_schema())
@@ -83,6 +86,7 @@ def rm_c(image_spec, remote, yes):
                 click.confirm("Continue? ", abort=True)
 
             delete_images(repository, images_to_delete)
+            engine.commit()
             print("Success.")
 
 
@@ -104,7 +108,10 @@ def prune_c(repository, remote, yes):
     This does not delete any physical objects that the deleted repository/images depend on:
     use ``sgr cleanup`` to do that.
     """
-    with switch_engine(remote or 'LOCAL'):
+    engine = get_engine(remote or 'LOCAL')
+    repository.engine = engine
+    # still WIP, will remove it to rely on the engine in the repository
+    with switch_engine(engine):
         all_images = set(repository.get_images())
         all_tagged_images = {i for i, t in repository.get_all_hashes_tags()}
         dangling_images = all_images.difference(_get_all_parent_images(repository, all_tagged_images))
@@ -121,6 +128,7 @@ def prune_c(repository, remote, yes):
             click.confirm("Continue? ", abort=True)
 
         delete_images(repository, dangling_images)
+        engine.commit()
         print("Success.")
 
 

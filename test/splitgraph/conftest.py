@@ -146,6 +146,14 @@ def mg_repo_local(local_engine_empty):
     yield result
 
 
+@pytest.fixture
+def mg_repo_remote(remote_engine):
+    result = Repository("", "test_mg_mount", engine=remote_engine)
+    with switch_engine(remote_engine):
+        _mount_mongo(result)
+    yield result
+
+
 REMOTE_ENGINE = 'remote_engine'  # On the host, mapped into localhost; on the local engine works as intended.
 
 
@@ -159,8 +167,6 @@ def remote_engine():
         unpublish_repository(OUTPUT)
         unpublish_repository(PG_MNT)
         unpublish_repository(Repository('testuser', 'pg_mount'))
-        for mountpoint in TEST_MOUNTPOINTS:
-            mountpoint.rm()
         for mountpoint, _ in get_current_repositories():
             mountpoint.rm()
         cleanup_objects()
@@ -171,8 +177,6 @@ def remote_engine():
         with switch_engine(REMOTE_ENGINE):
             e = get_engine()
             e.rollback()
-            for mountpoint in TEST_MOUNTPOINTS:
-                mountpoint.rm()
             for mountpoint, _ in get_current_repositories():
                 mountpoint.rm()
             cleanup_objects()

@@ -158,5 +158,7 @@ def get_current_repositories():
     ensure_metadata_schema()
     from splitgraph.core.repository import Repository
     engine = get_engine()
-    return [(Repository(n, r, engine), i) for n, r, i in
-            get_engine().run_sql(select("tags", "namespace, repository, image_hash", "tag = 'HEAD'"))]
+
+    all_repositories = [Repository(n, r, engine) for n, r in
+                        get_engine().run_sql(select("images", "DISTINCT namespace,repository"))]
+    return [(r, r.get_head(raise_on_none=False)) for r in all_repositories]

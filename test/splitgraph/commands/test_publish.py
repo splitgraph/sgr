@@ -1,9 +1,9 @@
 import pytest
 
 from splitgraph._data.registry import get_published_info
-from splitgraph.engine import switch_engine
+from splitgraph.core.repository import Repository
 from splitgraph.splitfile import execute_commands
-from test.splitgraph.conftest import OUTPUT, load_splitfile, REMOTE_ENGINE
+from test.splitgraph.conftest import OUTPUT, load_splitfile
 
 
 @pytest.mark.parametrize('extra_info', [True, False])
@@ -20,8 +20,8 @@ def test_publish(local_engine_empty, pg_repo_remote_multitag, extra_info):
     OUTPUT.push(remote_engine='remote_engine')
     OUTPUT.publish('v2', readme="Based on v2.", include_provenance=extra_info, include_table_previews=extra_info)
 
-    with switch_engine(REMOTE_ENGINE):
-        image_hash, published_dt, provenance, readme, schemata, previews = get_published_info(OUTPUT, 'v1')
+    remote_output = Repository('', 'output', pg_repo_remote_multitag.engine)
+    image_hash, published_dt, provenance, readme, schemata, previews = get_published_info(remote_output, 'v1')
     assert image_hash == OUTPUT.resolve_image('v1')
     assert readme == "A test repo."
     expected_schemata = {'join_table': [['id', 'integer', False],
@@ -43,8 +43,7 @@ def test_publish(local_engine_empty, pg_repo_remote_multitag, extra_info):
         assert provenance is None
         assert previews is None
 
-    with switch_engine(REMOTE_ENGINE):
-        image_hash, published_dt, provenance, readme, schemata, previews = get_published_info(OUTPUT, 'v2')
+    image_hash, published_dt, provenance, readme, schemata, previews = get_published_info(remote_output, 'v2')
     assert image_hash == OUTPUT.resolve_image('v2')
     assert readme == "Based on v2."
     assert schemata == expected_schemata

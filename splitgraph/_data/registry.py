@@ -63,18 +63,17 @@ def publish_tag(repository, tag, image_hash, published, provenance, readme, sche
 
 def get_published_info(repository, tag):
     """
-    Get information on an image that's published in a catalog. Should be called with the engine
-    switching context manager (`switch_engine`).
+    Get information on an image that's published in a catalog.
 
     :param repository: Repository
     :param tag: Image tag
     :return: A tuple of (image_hash, published_timestamp, provenance, readme, table schemata, previews)
     """
-    return get_engine().run_sql(select("images",
+    return repository.engine.run_sql(select("images",
                                        'image_hash,published,provenance,readme,schemata,previews',
                                        "namespace = %s AND repository = %s AND tag = %s",
-                                       REGISTRY_META_SCHEMA), (repository.namespace, repository.repository, tag),
-                                return_shape=ResultShape.ONE_MANY)
+                                            REGISTRY_META_SCHEMA), (repository.namespace, repository.repository, tag),
+                                     return_shape=ResultShape.ONE_MANY)
 
 
 def unpublish_repository(repository):

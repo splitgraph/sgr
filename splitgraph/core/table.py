@@ -1,6 +1,6 @@
 import logging
 
-from splitgraph import get_engine
+from splitgraph import get_engine, switch_engine
 from splitgraph._data.images import get_image_object_path
 from splitgraph._data.objects import get_external_object_locations, get_existing_objects
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
@@ -30,21 +30,22 @@ class Table:
         engine.delete_table(destination_schema, destination)
         # Get the closest snapshot from the table's parents
         # and then apply all deltas consecutively from it.
-        object_id, to_apply = get_image_object_path(self.repository, self.table_name, self.image.image_hash)
+        with switch_engine(engine):
+            object_id, to_apply = get_image_object_path(self.repository, self.table_name, self.image.image_hash)
 
-        # Make sure all the objects have been downloaded from remote if it exists
-        remote_info = self.repository.get_upstream()
-        if remote_info:
-            object_locations = get_external_object_locations(to_apply + [object_id])
-            fetched_objects = download_objects(get_engine(remote_info[0]),
-                                               objects_to_fetch=to_apply + [object_id],
-                                               object_locations=object_locations)
+            # Make sure all the objects have been downloaded from remote if it exists
+            remote_info = self.repository.get_upstream()
+            if remote_info:
+                object_locations = get_external_object_locations(to_apply + [object_id])
+                fetched_objects = download_objects(get_engine(remote_info[0]),
+                                                   objects_to_fetch=to_apply + [object_id],
+                                                   object_locations=object_locations)
 
-        difference = set(to_apply + [object_id]).difference(set(get_existing_objects()))
-        if difference:
-            logging.warning("Not all objects required to materialize %s:%s:%s exist locally.",
-                            destination_schema(), self.image.image_hash, self.table_name)
-            logging.warning("Missing objects: %r", difference)
+            difference = set(to_apply + [object_id]).difference(set(get_existing_objects()))
+            if difference:
+                logging.warning("Not all objects required to materialize %s:%s:%s exist locally.",
+                                destination_schema, self.image.image_hash, self.table_name)
+                logging.warning("Missing objects: %r", difference)
 
         # Copy the given snap id over to "staging" and apply the DIFFS
         engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, destination_schema, destination,

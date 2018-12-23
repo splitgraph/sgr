@@ -2,6 +2,7 @@
 Internal functions for accessing image metadata
 """
 import itertools
+import logging
 from collections import defaultdict
 from datetime import datetime
 
@@ -24,8 +25,8 @@ def get_all_image_info(repository):
     :param repository: Repository
     :return: List of (image_hash, parent_id, creation time, comment, provenance type, provenance data) for all images.
     """
-    return get_engine().run_sql(select("images", ','.join(IMAGE_COLS), "repository = %s AND namespace = %s") +
-                                SQL(" ORDER BY created"), (repository.repository, repository.namespace))
+    return repository.engine.run_sql(select("images", ','.join(IMAGE_COLS), "repository = %s AND namespace = %s") +
+                                     SQL(" ORDER BY created"), (repository.repository, repository.namespace))
 
 
 def _get_all_child_images(repository, start_image):
@@ -133,10 +134,10 @@ def delete_images(repository, images):
     """
     if not images:
         return
-
     # Maybe better to have ON DELETE CASCADE on the FK constraints instead of going through
     # all tables to clean up -- but then we won't get alerted when we accidentally try
     # to delete something that does have FKs relying on it.
+    logging.info("DELETING %r FROM %r (engine %r)" % (images, repository, get_engine()))
     args = tuple([repository.namespace, repository.repository] + list(images))
     for table in ['tags', 'tables', 'images']:
         get_engine().run_sql(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s "

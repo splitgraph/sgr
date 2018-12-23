@@ -33,13 +33,20 @@ def test_commit_diff(include_snap, pg_repo_local):
 
     change = pg_repo_local.diff('fruits', image_1=head, image_2=new_head)
     # pk (no PK here so the whole row) -- 0 for INS -- extra non-PK cols
-    assert change == [  # 1, apple deleted
+    assert sorted(change) == [  # 1, apple deleted
         ((1, 'apple'), 1, None),
         # 2, orange deleted and 2, guitar added (PK (whole tuple) changed)
         ((2, 'guitar'), 0, {'c': [], 'v': []}),
         ((2, 'orange'), 1, None),
         ((3, 'mayonnaise'), 0, {"c": [], "v": []})]
     assert pg_repo_local.diff('vegetables', image_1=head, image_2=new_head) == []
+
+
+@pytest.mark.parametrize("include_snap", [True, False])
+def test_commit_diff_remote(include_snap, pg_repo_remote):
+    # Rerun the previous test against the remote fixture to make sure it works without
+    # dependencies on the get_engine()
+    test_commit_diff(include_snap, pg_repo_remote)
 
 
 @pytest.mark.parametrize("include_snap", [True, False])

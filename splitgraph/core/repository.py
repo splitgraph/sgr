@@ -1,5 +1,6 @@
 import logging
 from contextlib import contextmanager
+from copy import copy
 from datetime import datetime
 from random import getrandbits
 
@@ -44,8 +45,7 @@ class Repository:
         self.engine = engine or splitgraph.get_engine()
 
     def __eq__(self, other):
-        return self.namespace == other.namespace and self.repository == other.repository \
-               and self.engine == other.engine
+        return self.namespace == other.namespace and self.repository == other.repository
 
     def to_schema(self):
         return self.namespace + "/" + self.repository if self.namespace else self.repository
@@ -266,7 +266,8 @@ class Repository:
 
         ensure_metadata_schema()
         self.engine.commit()
-        manage_audit_triggers()
+        with switch_engine(self.engine):
+            manage_audit_triggers()
 
         # HEAD can be None (if this is the first commit in this repository)
         head = self.get_head(raise_on_none=False)
@@ -282,8 +283,8 @@ class Repository:
 
         with switch_engine(self.engine):
             set_head(self, image_hash)
-        self.engine.commit()
-        manage_audit_triggers()
+            manage_audit_triggers()
+            self.engine.commit()
         return image_hash
 
     def _commit(self, current_head, image_hash, include_snap=False):
@@ -488,9 +489,13 @@ class Repository:
         engine = self.engine
         engine.create_schema(target_repository.to_schema())
 
+        # This importing route only supported between local repos.
+        assert engine == target_repository.engine
+
         head = target_repository.get_head(raise_on_none=False)
         # Add the new snap ID to the tree
-        add_new_image(target_repository, head, target_hash, comment="Importing %s from %s" % (tables, self))
+        with switch_engine(engine):
+            add_new_image(target_repository, head, target_hash, comment="Importing %s from %s" % (tables, self))
 
         if any(table_queries) and not foreign_tables:
             # If we want to run some queries against the source repository to create the new tables,
@@ -906,11 +911,9 @@ def _get_required_snaps_objects(remote_engine, local_repository, remote_reposito
                                                 .format(Identifier(SPLITGRAPH_META_SCHEMA)),
                                                 (remote_repository.namespace, remote_repository.repository,
                                                  image_hash)))
-
     # Get the tags too
     existing_tags = [t for s, t in local_repository.get_all_hashes_tags()]
-    with switch_engine(remote_engine):
-        tags = {t: s for s, t in remote_repository.get_all_hashes_tags() if t not in existing_tags}
+    tags = {t: s for s, t in remote_repository.get_all_hashes_tags() if t not in existing_tags}
 
     # Crawl the object tree to get the IDs and other metadata for all required objects.
     distinct_objects, object_meta = _extract_recursive_object_meta(remote_engine, table_meta)
@@ -960,12 +963,20 @@ def clone(remote_repository, remote_engine=None, local_repository=None, download
     """
     ensure_metadata_schema()
 
+    # TODO remote_repository.engine overrides remote_engine?
     if not local_repository:
         local_repository = Repository(remote_repository.namespace, remote_repository.repository)
     local_repository.engine.create_schema(local_repository.to_schema())
 
     if not remote_engine:
         remote_engine = splitgraph.get_engine(lookup_repo(remote_repository))
+
+    # todo fix this horror -- basically allow to either pass in a repo name
+    # (which we resolve with the engine inside of it) or a Repository instance which we
+    # don't resolve and assume that whatever engine is inside of it is fair game
+    # I just want the tests to work again.
+    remote_repository = copy(remote_repository)
+    remote_repository.engine = remote_engine
 
     # Get the remote log and the list of objects we need to fetch.
     logging.info("Gathering remote metadata...")

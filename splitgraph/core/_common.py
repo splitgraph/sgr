@@ -45,6 +45,7 @@ def manage_audit_triggers():
     """
 
     engine = get_engine()
+
     from splitgraph.core.engine import get_current_repositories
     repos_tables = [(r.to_schema(), t) for r, head in get_current_repositories() if head is not None
                     for t in set(engine.get_all_tables(r.to_schema())) & set(r.get_image(head).get_tables())]
@@ -66,15 +67,14 @@ def manage_audit(func):
     """
 
     def wrapped(self, *args, **kwargs):
-        repository = self
         try:
             # hacks
-            with switch_engine(repository.engine):
+            with switch_engine(self.engine):
                 ensure_metadata_schema()
                 manage_audit_triggers()
             func(self, *args, **kwargs)
         finally:
-            with switch_engine(repository.engine):
+            with switch_engine(self.engine):
                 get_engine().commit()
                 manage_audit_triggers()
 

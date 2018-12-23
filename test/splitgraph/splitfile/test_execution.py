@@ -100,7 +100,6 @@ def test_splitfile_cached(pg_repo_local, mg_repo_local):
 
 
 def test_splitfile_remote(local_engine_empty, pg_repo_remote_multitag):
-
     # We use the v1 tag when importing from the remote, so fruit_id = 1 still exists there.
     execute_commands(load_splitfile('import_remote_multiple.splitfile'), params={'TAG': 'v1'}, output=OUTPUT)
     assert OUTPUT.run_sql("SELECT id, fruit, vegetable FROM join_table") == \
@@ -143,7 +142,7 @@ def test_import_updating_splitfile_with_uploading(local_engine_empty, pg_repo_re
     assert OUTPUT.run_sql("SELECT fruit_id, name FROM my_fruits") == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]
 
 
-def test_splitfile_end_to_end_with_uploading(local_engine_empty, pg_repo_remote_multitag):
+def test_splitfile_end_to_end_with_uploading(local_engine_empty, pg_repo_remote_multitag, mg_repo_remote):
     # An end-to-end test:
     #   * Create a derived dataset from some tables imported from the remote engine
     #   * Push it back to the remote engine, uploading all objects to S3 (instead of the remote engine itself)
@@ -312,7 +311,7 @@ def test_from_multistage(local_engine_empty, pg_repo_remote_multitag):
     assert get_object_for_table(stage_2, 'balanced_diet', head, 'DIFF') is None
 
 
-def test_from_local(pg_repo_local, pg_repo_remote):
+def test_from_local(pg_repo_local):
     execute_commands(load_splitfile('from_local.splitfile'), output=OUTPUT)
 
     new_head = OUTPUT.get_head()

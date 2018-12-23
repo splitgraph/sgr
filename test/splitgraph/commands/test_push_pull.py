@@ -21,6 +21,10 @@ def test_pull(local_engine_empty, pg_repo_remote, download_all):
     pg_repo_remote.run_sql("INSERT INTO fruits VALUES (3, 'mayonnaise')")
     head_1 = pg_repo_remote.commit()
 
+    # Canary to make sure everything got committed on the remote
+    assert pg_repo_remote.diff('fruits', remote_head, head_1, aggregate=False) \
+           == [((3, 'mayonnaise'), 0, {'c': [], 'v': []})]
+
     # Check that the fruits table changed on the original repository
     assert pg_repo_remote.run_sql("SELECT * FROM fruits") == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]
 

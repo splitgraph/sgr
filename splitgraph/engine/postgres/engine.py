@@ -32,6 +32,10 @@ class PostgresEngine(SQLEngine, ObjectEngine):
         self.name = name
         self._conn = None
 
+    def __repr__(self):
+        return "PostgresEngine %s (%s@%s:%s/%s)" % (self.name, self.conn_params[2], self.conn_params[0],
+                                                    str(self.conn_params[1]), self.conn_params[4])
+
     def commit(self):
         if self._conn and not self._conn.closed:
             self._conn.commit()
@@ -126,7 +130,7 @@ class PostgresEngine(SQLEngine, ObjectEngine):
 
     def get_tracked_tables(self):
         """Return a list of tables that the audit trigger is working on."""
-        return self.run_sql("SELECT event_object_schema, event_object_table "
+        return self.run_sql("SELECT DISTINCT event_object_schema, event_object_table "
                             "FROM information_schema.triggers WHERE trigger_name IN (%s, %s)",
                             (ROW_TRIGGER_NAME, STM_TRIGGER_NAME))
 

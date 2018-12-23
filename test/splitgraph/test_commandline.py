@@ -449,7 +449,6 @@ def test_rm_repositories(pg_repo_local, pg_repo_remote):
 def test_rm_images(pg_repo_local_multitag, pg_repo_remote_multitag):
     # Play around with both engines for simplicity -- both have 2 images with 2 tags
     runner = CliRunner()
-
     local_v1 = pg_repo_local_multitag.resolve_image('v1')
     local_v2 = pg_repo_local_multitag.resolve_image('v2')
 
