@@ -6,7 +6,7 @@ from splitgraph.core.engine import cleanup_objects
 from splitgraph.core.repository import clone
 from splitgraph.engine import switch_engine
 from splitgraph.hooks.s3 import S3_HOST, S3_PORT, S3_ACCESS_KEY, S3_SECRET_KEY
-from test.splitgraph.conftest import PG_MNT, PG_MNT_PULL, REMOTE_ENGINE
+from test.splitgraph.conftest import PG_MNT, REMOTE_ENGINE
 
 
 def _cleanup_minio():
@@ -29,21 +29,21 @@ def clean_minio():
     _cleanup_minio()
 
 
-def test_s3_push_pull(local_engine_empty, remote_engine, clean_minio):
+def test_s3_push_pull(local_engine_empty, pg_repo_remote, clean_minio):
     # Test pushing/pulling when the objects are uploaded to a remote storage instead of to the actual remote DB.
 
-    clone(PG_MNT, local_repository=PG_MNT_PULL, download_all=False)
+    clone(pg_repo_remote, local_repository=PG_MNT, download_all=False)
     # Add a couple of commits, this time on the cloned copy.
-    head = PG_MNT_PULL.resolve_image('latest')
-    PG_MNT_PULL.checkout(head)
-    PG_MNT_PULL.run_sql("INSERT INTO fruits VALUES (3, 'mayonnaise')")
-    left = PG_MNT_PULL.commit()
-    PG_MNT_PULL.checkout(head)
-    PG_MNT_PULL.run_sql("INSERT INTO fruits VALUES (3, 'mustard')")
-    right = PG_MNT_PULL.commit()
+    head = PG_MNT.resolve_image('latest')
+    PG_MNT.checkout(head)
+    PG_MNT.run_sql("INSERT INTO fruits VALUES (3, 'mayonnaise')")
+    left = PG_MNT.commit()
+    PG_MNT.checkout(head)
+    PG_MNT.run_sql("INSERT INTO fruits VALUES (3, 'mustard')")
+    right = PG_MNT.commit()
 
     # Push to origin, but this time upload the actual objects instead.
-    PG_MNT_PULL.push(remote_repository=PG_MNT, handler='S3', handler_options={})
+    PG_MNT.push(remote_repository=pg_repo_remote, handler='S3', handler_options={})
 
     # Check that the actual objects don't exist on the remote but are instead registered with an URL.
     # All the objects on pgcache were registered remotely
@@ -60,22 +60,22 @@ def test_s3_push_pull(local_engine_empty, remote_engine, clean_minio):
 
     # Destroy the pulled mountpoint and recreate it again.
     assert len(get_downloaded_objects()) == 4
-    PG_MNT_PULL.rm()
+    PG_MNT.rm()
     # Make sure we don't have any leftover physical objects.
     cleanup_objects()
     assert len(get_downloaded_objects()) == 0
 
-    clone(PG_MNT, local_repository=PG_MNT_PULL, download_all=False)
+    clone(pg_repo_remote, local_repository=PG_MNT, download_all=False)
 
     # Proceed as per the lazy checkout tests to make sure we don't download more than required.
     # Make sure we still haven't downloaded anything.
     assert len(get_downloaded_objects()) == 0
 
     # Check out left commit: since it only depends on the root, we should download just the new version of fruits.
-    PG_MNT_PULL.checkout(left)
+    PG_MNT.checkout(left)
     assert len(get_downloaded_objects()) == 3  # now have 2 versions of fruits + 1 vegetables
 
-    PG_MNT_PULL.checkout(right)
+    PG_MNT.checkout(right)
     assert len(get_downloaded_objects()) == 4
     # Only now we actually have all the objects materialized.
     assert get_downloaded_objects() == get_existing_objects()

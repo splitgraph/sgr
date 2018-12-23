@@ -10,11 +10,11 @@ from splitgraph.engine import get_engine, switch_engine
 from splitgraph.hooks.external_objects import get_external_object_handler
 
 
-def download_objects(remote_engine_name, objects_to_fetch, object_locations):
+def download_objects(remote_engine, objects_to_fetch, object_locations):
     """
     Fetches the required objects from the remote and stores them locally. Does nothing for objects that already exist.
 
-    :param remote_engine_name: Name of the remote engine
+    :param remote_engine: Remote Engine object
     :param objects_to_fetch: List of object IDs to download.
     :param object_locations: List of custom object locations, encoded as tuples (object_id, object_url, protocol).
     :return: Set of object IDs that were fetched.
@@ -34,7 +34,7 @@ def download_objects(remote_engine_name, objects_to_fetch, object_locations):
         return objects_to_fetch
 
     print("Fetching remote objects...")
-    get_engine().download_objects(remaining_objects_to_fetch, get_engine(remote_engine_name))
+    get_engine().download_objects(remaining_objects_to_fetch, remote_engine)
     return objects_to_fetch
 
 

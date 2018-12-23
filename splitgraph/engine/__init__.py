@@ -278,6 +278,7 @@ class ObjectEngine:
     """
     Routines for storing/applying objects as well as sharing them with other engines.
     """
+
     def store_diff_object(self, changeset, schema, table, change_key):
         """
         Store a changeset in a table
@@ -365,7 +366,8 @@ def get_engine(name=None):
         # As we only have PostgresEngine, we instantiate that.
         from .postgres.engine import PostgresEngine
         _ENGINES[name] = PostgresEngine((PG_HOST, PG_PORT, PG_USER, PG_PWD, PG_DB)
-                                        if name == 'LOCAL' else get_remote_connection_params(name))
+                                        if name == 'LOCAL' else get_remote_connection_params(name),
+                                        name=name)
     return _ENGINES[name]
 
 

@@ -24,11 +24,12 @@ REMOTE_TMP_SCHEMA = "tmp_remote_data"
 class PostgresEngine(SQLEngine, ObjectEngine):
     """An implementation of the Postgres engine for Splitgraph"""
 
-    def __init__(self, conn_params):
+    def __init__(self, conn_params, name):
         """
         :param conn_params: Tuple of (server, port, username, password, dbname)
         """
         self.conn_params = conn_params
+        self.name = name
         self._conn = None
 
     def commit(self):

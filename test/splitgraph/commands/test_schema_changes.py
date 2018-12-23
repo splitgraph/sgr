@@ -3,20 +3,19 @@ import pytest
 from splitgraph._data.objects import get_object_for_table
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import get_engine
-from test.splitgraph.conftest import PG_MNT
 
 TEST_CASES = [
-    ("ALTER TABLE \"test/pg_mount\".fruits DROP COLUMN name",
+    ("ALTER TABLE fruits DROP COLUMN name",
      [(1, 'fruit_id', 'integer', False)]),
-    ("ALTER TABLE \"test/pg_mount\".fruits ADD COLUMN test varchar",
+    ("ALTER TABLE fruits ADD COLUMN test varchar",
      [(1, 'fruit_id', 'integer', False), (2, 'name', 'character varying', False),
       (3, 'test', 'character varying', False)]),
-    ("ALTER TABLE \"test/pg_mount\".fruits ADD PRIMARY KEY (fruit_id)",
+    ("ALTER TABLE fruits ADD PRIMARY KEY (fruit_id)",
      [(1, 'fruit_id', 'integer', True), (2, 'name', 'character varying', False)]),
 
-    ("""ALTER TABLE "test/pg_mount".fruits ADD COLUMN test_1 varchar, ADD COLUMN test_2 integer,
+    ("""ALTER TABLE fruits ADD COLUMN test_1 varchar, ADD COLUMN test_2 integer,
                                          DROP COLUMN name;
-        ALTER TABLE "test/pg_mount".fruits ADD PRIMARY KEY (fruit_id)""",
+        ALTER TABLE fruits ADD PRIMARY KEY (fruit_id)""",
      [(1, 'fruit_id', 'integer', True), (3, 'test_1', 'character varying', False),
       (4, 'test_2', 'integer', False)]),
 ]
@@ -30,43 +29,42 @@ def _reassign_ordinals(schema):
 
 
 @pytest.mark.parametrize("test_case", TEST_CASES)
-def test_schema_changes(local_engine_with_pg, test_case):
+def test_schema_changes(pg_repo_local, test_case):
     action, expected_new_schema = test_case
     engine = get_engine()
 
-    assert engine.get_full_table_schema(PG_MNT.to_schema(), 'fruits') == OLD_SCHEMA
-    local_engine_with_pg.run_sql(action)
-    local_engine_with_pg.commit()
-    assert engine.get_full_table_schema(PG_MNT.to_schema(), 'fruits') == expected_new_schema
+    assert pg_repo_local.engine.get_full_table_schema(pg_repo_local.to_schema(), 'fruits') == OLD_SCHEMA
+    pg_repo_local.run_sql(action)
+    pg_repo_local.engine.commit()
+    assert pg_repo_local.engine.get_full_table_schema(pg_repo_local.to_schema(), 'fruits') == expected_new_schema
 
-    head = PG_MNT.get_head()
-    new_head = PG_MNT.commit()
+    head = pg_repo_local.get_head()
+    new_head = pg_repo_local.commit()
 
     # Test that the new image only has a snap and the object storing the snap has the expected new schema
-    assert get_object_for_table(PG_MNT, 'fruits', new_head, 'DIFF') is None
-    new_snap = get_object_for_table(PG_MNT, 'fruits', new_head, 'SNAP')
+    assert get_object_for_table(pg_repo_local, 'fruits', new_head, 'DIFF') is None
+    new_snap = get_object_for_table(pg_repo_local, 'fruits', new_head, 'SNAP')
     assert new_snap is not None
-    assert engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, new_snap) == _reassign_ordinals(
+    assert pg_repo_local.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, new_snap) == _reassign_ordinals(
         expected_new_schema)
 
-    PG_MNT.checkout(head)
-    assert engine.get_full_table_schema(PG_MNT.to_schema(), 'fruits') == OLD_SCHEMA
+    pg_repo_local.checkout(head)
+    assert pg_repo_local.engine.get_full_table_schema(pg_repo_local.to_schema(), 'fruits') == OLD_SCHEMA
 
-    PG_MNT.checkout(new_head)
-    assert engine.get_full_table_schema(PG_MNT.to_schema(), 'fruits') == _reassign_ordinals(expected_new_schema)
+    pg_repo_local.checkout(new_head)
+    assert pg_repo_local.engine.get_full_table_schema(pg_repo_local.to_schema(), 'fruits') == \
+           _reassign_ordinals(expected_new_schema)
 
 
-def test_pk_preserved_on_checkout(local_engine_with_pg):
-    engine = get_engine()
-    assert list(engine.get_primary_keys(PG_MNT.to_schema(), 'fruits')) == []
-    local_engine_with_pg.run_sql("ALTER TABLE \"test/pg_mount\".fruits ADD PRIMARY KEY (fruit_id)",
-                                 return_shape=None)
-    assert list(engine.get_primary_keys(PG_MNT.to_schema(), 'fruits')) == [('fruit_id', 'integer')]
-    head = PG_MNT.get_head()
-    new_head = PG_MNT.commit()
-    assert list(engine.get_primary_keys(PG_MNT.to_schema(), 'fruits')) == [('fruit_id', 'integer')]
+def test_pk_preserved_on_checkout(pg_repo_local):
+    assert list(pg_repo_local.engine.get_primary_keys(pg_repo_local.to_schema(), 'fruits')) == []
+    pg_repo_local.run_sql("ALTER TABLE fruits ADD PRIMARY KEY (fruit_id)")
+    assert list(pg_repo_local.engine.get_primary_keys(pg_repo_local.to_schema(), 'fruits')) == [('fruit_id', 'integer')]
+    head = pg_repo_local.get_head()
+    new_head = pg_repo_local.commit()
+    assert list(pg_repo_local.engine.get_primary_keys(pg_repo_local.to_schema(), 'fruits')) == [('fruit_id', 'integer')]
 
-    PG_MNT.checkout(head)
-    assert list(engine.get_primary_keys(PG_MNT.to_schema(), 'fruits')) == []
-    PG_MNT.checkout(new_head)
-    assert list(engine.get_primary_keys(PG_MNT.to_schema(), 'fruits')) == [('fruit_id', 'integer')]
+    pg_repo_local.checkout(head)
+    assert list(pg_repo_local.engine.get_primary_keys(pg_repo_local.to_schema(), 'fruits')) == []
+    pg_repo_local.checkout(new_head)
+    assert list(pg_repo_local.engine.get_primary_keys(pg_repo_local.to_schema(), 'fruits')) == [('fruit_id', 'integer')]

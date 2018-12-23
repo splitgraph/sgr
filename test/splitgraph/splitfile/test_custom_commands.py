@@ -11,7 +11,7 @@ from splitgraph.exceptions import SplitGraphException
 from splitgraph.splitfile import execute_commands
 from splitgraph.splitfile.execution import _combine_hashes
 from splitgraph.hooks.splitfile_commands import PluginCommand
-from test.splitgraph.conftest import OUTPUT, PG_MNT, load_splitfile
+from test.splitgraph.conftest import OUTPUT, load_splitfile
 
 
 class DummyCommand(PluginCommand):
@@ -32,7 +32,7 @@ class CalcHashTestCommand(PluginCommand):
         get_engine().run_sql(SQL("DROP TABLE {}").format(Identifier(args[0])))
 
 
-def test_dummy_command(local_engine_with_pg):
+def test_dummy_command(pg_repo_local):
     # Basic test to make sure the config gets wired to the splitfile executor and the arguments
     # are passed to it correctly.
     execute_commands(load_splitfile('custom_command_dummy.splitfile'), output=OUTPUT)
@@ -54,7 +54,7 @@ def test_dummy_command(local_engine_with_pg):
     assert new_log[0] != log[0]
 
 
-def test_calc_hash_short_circuit(local_engine_with_pg):
+def test_calc_hash_short_circuit(pg_repo_local):
     # Test that if the hash returned by calc_hash is unchanged, we don't run execute() again
     execute_commands(load_splitfile('custom_command_calc_hash.splitfile'), output=OUTPUT)
 
@@ -73,9 +73,8 @@ def test_calc_hash_short_circuit(local_engine_with_pg):
         assert cmd.call_count == 0
 
     # Run 3: alter test_pg_mount (same command context hash but different image)
-    local_engine_with_pg.run_sql("""UPDATE "test/pg_mount".fruits SET name = 'banana' where fruit_id = 1""",
-                                 return_shape=None)
-    PG_MNT.commit()
+    pg_repo_local.run_sql("""UPDATE fruits SET name = 'banana' where fruit_id = 1""")
+    pg_repo_local.commit()
     with patch('test.splitgraph.splitfile.test_custom_commands.CalcHashTestCommand.execute') as cmd:
         execute_commands(load_splitfile('custom_command_calc_hash.splitfile'), output=OUTPUT)
         log_3 = OUTPUT.get_image(OUTPUT.get_head()).get_log()
@@ -92,7 +91,7 @@ def test_calc_hash_short_circuit(local_engine_with_pg):
         assert log_3[2] == log[2]
 
 
-def test_custom_command_errors(local_engine_with_pg):
+def test_custom_command_errors(pg_repo_local):
     # Test we raise for undefined commands
     with pytest.raises(SplitGraphException) as e:
         execute_commands(load_splitfile('custom_command_dummy.splitfile').replace('DUMMY', 'NOP'), output=OUTPUT)

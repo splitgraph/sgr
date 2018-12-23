@@ -26,7 +26,7 @@ class Table:
         :return: A set of IDs of downloaded objects used to construct the table.
         """
         destination_schema = destination_schema or self.repository.to_schema()
-        engine = get_engine()
+        engine = self.repository.engine
         engine.delete_table(destination_schema, destination)
         # Get the closest snapshot from the table's parents
         # and then apply all deltas consecutively from it.
@@ -36,7 +36,7 @@ class Table:
         remote_info = self.repository.get_upstream()
         if remote_info:
             object_locations = get_external_object_locations(to_apply + [object_id])
-            fetched_objects = download_objects(remote_info[0],
+            fetched_objects = download_objects(get_engine(remote_info[0]),
                                                objects_to_fetch=to_apply + [object_id],
                                                object_locations=object_locations)
 

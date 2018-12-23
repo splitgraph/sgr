@@ -143,7 +143,6 @@ def mount_mysql(mountpoint, server, port, username, password, remote_schema, tab
     :param port: Database port
     :param username: A read-only user that the database will be accessed as.
     :param password: Password for the read-only user.
-    :param dbname: Remote database name.
     :param remote_schema: Remote schema name.
     :param tables: Tables to mount (default all).
     """

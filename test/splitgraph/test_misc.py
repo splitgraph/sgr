@@ -6,15 +6,15 @@ from splitgraph.engine import switch_engine
 from test.splitgraph.conftest import PG_MNT, REMOTE_ENGINE
 
 
-def test_metadata_schema(local_engine_with_pg):
+def test_metadata_schema(pg_repo_local):
     # Exercise the metadata schema creation code since it might never get reached
     # in test runs where the schema already exists
     try:
-        local_engine_with_pg.delete_schema(SPLITGRAPH_META_SCHEMA)
+        pg_repo_local.engine.delete_schema(SPLITGRAPH_META_SCHEMA)
         ensure_metadata_schema()
         assert get_current_repositories() == []
     finally:
-        local_engine_with_pg.rollback()
+        pg_repo_local.engine.rollback()
 
 
 def test_registry_schema(remote_engine):

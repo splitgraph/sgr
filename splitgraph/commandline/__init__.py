@@ -15,7 +15,7 @@ from splitgraph.commandline.splitfile import build_c, provenance_c, rebuild_c
 from splitgraph.engine import get_engine
 
 
-def _commit_connection(result):
+def _commit_connection(_):
     """Commit and close the PG connection when the application finishes."""
     get_engine().commit()
     get_engine().close()

@@ -3,13 +3,13 @@ from collections import namedtuple
 
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph import get_engine, SplitGraphException
+from splitgraph import SplitGraphException
 from splitgraph._data.common import select
 from splitgraph._data.images import IMAGE_COLS, get_image_object_path
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core._common import set_tag
 from splitgraph.core.table import Table
-from splitgraph.engine import ResultShape
+from splitgraph.engine import ResultShape, switch_engine
 
 
 class Image(namedtuple('Image', IMAGE_COLS)):
@@ -22,24 +22,25 @@ class Image(namedtuple('Image', IMAGE_COLS)):
         repository = kwargs.pop('repository')
         self = super(Image, cls).__new__(cls, *args, **kwargs)
         self.repository = repository
+        self.engine = repository.engine
         return self
 
     def get_parent_children(self):
         """Gets the parent and a list of children of a given image."""
         parent = self.parent_id
 
-        children = get_engine().run_sql(SQL("""SELECT image_hash FROM {}.images
+        children = self.engine.run_sql(SQL("""SELECT image_hash FROM {}.images
                 WHERE namespace = %s AND repository = %s AND parent_id = %s""")
-                                        .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                                        (self.repository.namespace, self.repository.repository, self.image_hash),
-                                        return_shape=ResultShape.MANY_ONE)
+                                       .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                                       (self.repository.namespace, self.repository.repository, self.image_hash),
+                                       return_shape=ResultShape.MANY_ONE)
         return parent, children
 
     def get_tables(self):
         """
         Gets the names of all tables inside of an image.
         """
-        return get_engine().run_sql(
+        return self.engine.run_sql(
             select('tables', 'table_name', 'namespace = %s AND repository = %s AND image_hash = %s'),
             (self.repository.namespace, self.repository.repository, self.image_hash),
             return_shape=ResultShape.MANY_ONE)
@@ -53,13 +54,13 @@ class Image(namedtuple('Image', IMAGE_COLS)):
         :param table_name: Name of the table
         :return: Table object or None
         """
-        objects = get_engine().run_sql(SQL("""SELECT {0}.tables.object_id, format FROM {0}.tables JOIN {0}.objects
+        objects = self.engine.run_sql(SQL("""SELECT {0}.tables.object_id, format FROM {0}.tables JOIN {0}.objects
                                               ON {0}.objects.object_id = {0}.tables.object_id
                                               WHERE {0}.tables.namespace = %s AND repository = %s AND image_hash = %s
                                               AND table_name = %s""")
-                                       .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                                       (self.repository.namespace, self.repository.repository,
-                                        self.image_hash, table_name))
+                                      .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                                      (self.repository.namespace, self.repository.repository,
+                                       self.image_hash, table_name))
         if not objects:
             return None
         return Table(self.repository, self, table_name, objects)
@@ -71,7 +72,8 @@ class Image(namedtuple('Image', IMAGE_COLS)):
         :param tag: Tag to set. 'latest' and 'HEAD' are reserved tags.
         :param force: Whether to remove the old tag if an image with this tag already exists.
         """
-        set_tag(self.repository, self.image_hash, tag, force)
+        with switch_engine(self.engine):
+            set_tag(self.repository, self.image_hash, tag, force)
 
     def get_tags(self):
         return [t for h, t in self.repository.get_all_hashes_tags() if h == self.image_hash]
@@ -86,10 +88,10 @@ class Image(namedtuple('Image', IMAGE_COLS)):
         # Does checks to make sure the tag actually exists, will raise otherwise
         self.repository.get_tagged_id(tag)
 
-        get_engine().run_sql(SQL("DELETE FROM {}.tags WHERE namespace = %s AND repository = %s AND tag = %s")
-                             .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                             (self.repository.namespace, self.repository.repository, tag),
-                             return_shape=None)
+        self.engine.run_sql(SQL("DELETE FROM {}.tags WHERE namespace = %s AND repository = %s AND tag = %s")
+                            .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                            (self.repository.namespace, self.repository.repository, tag),
+                            return_shape=None)
 
     def get_log(self):
         """Repeatedly gets the parent of a given image until it reaches the bottom."""
@@ -144,8 +146,9 @@ class Image(namedtuple('Image', IMAGE_COLS)):
         :param table: Table name
         :return: The table schema. See the documentation for `get_full_table_schema` for the spec.
         """
-        snap_1 = get_image_object_path(self.repository, table, self.image_hash)[0]
-        return get_engine().get_full_table_schema(SPLITGRAPH_META_SCHEMA, snap_1)
+        with switch_engine(self.engine):
+            snap_1 = get_image_object_path(self.repository, table, self.image_hash)[0]
+        return self.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, snap_1)
 
     def provenance(self):
         """

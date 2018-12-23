@@ -5,15 +5,15 @@ from random import getrandbits
 
 from psycopg2.sql import SQL, Identifier
 
-import splitgraph as sg
-from splitgraph import get_engine, SplitGraphException, switch_engine, publish_tag, get_all_image_info
+import splitgraph
+from splitgraph import SplitGraphException, switch_engine, publish_tag, get_all_image_info
 from splitgraph._data.common import ensure_metadata_schema, select, insert
 from splitgraph._data.images import add_new_image, get_image_object_path, IMAGE_COLS
 from splitgraph._data.objects import register_table, get_external_object_locations, get_existing_objects, \
     get_object_for_table, register_object, get_object_meta, register_objects, register_object_locations, register_tables
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.engine import delete_objects, repository_exists, lookup_repo
-from splitgraph.engine import ResultShape
+from splitgraph.engine import ResultShape, get_engine
 from ._common import manage_audit_triggers, set_head, manage_audit
 from ._objects.creation import record_table_as_snap, record_table_as_diff
 from ._objects.loading import download_objects, upload_objects
@@ -41,7 +41,7 @@ class Repository:
         self.namespace = namespace
         self.repository = repository
 
-        self.engine = engine or get_engine()
+        self.engine = engine or splitgraph.get_engine()
 
     def __eq__(self, other):
         return self.namespace == other.namespace and self.repository == other.repository \
@@ -62,14 +62,13 @@ class Repository:
         Initializes an empty repo with an initial commit (hash 0000...)
 
         """
-        engine = get_engine()
-        engine.create_schema(self.to_schema())
+        self.engine.create_schema(self.to_schema())
         initial_image = '0' * 64
-        engine.run_sql(insert("images", ("image_hash", "namespace", "repository", "parent_id", "created")),
-                       (initial_image, self.namespace, self.repository, None, datetime.now()))
+        self.engine.run_sql(insert("images", ("image_hash", "namespace", "repository", "parent_id", "created")),
+                            (initial_image, self.namespace, self.repository, None, datetime.now()))
         # Strictly speaking this is redundant since the checkout (of the "HEAD" commit) updates the tag table.
-        engine.run_sql(insert("tags", ("namespace", "repository", "image_hash", "tag")),
-                       (self.namespace, self.repository, initial_image, "HEAD"))
+        self.engine.run_sql(insert("tags", ("namespace", "repository", "image_hash", "tag")),
+                            (self.namespace, self.repository, initial_image, "HEAD"))
 
     def rm(self, unregister=True, uncheckout=True):
         """
@@ -86,25 +85,25 @@ class Repository:
         # Make sure to discard changes to this repository if they exist, otherwise they might
         # be applied/recorded if a new repository with the same name appears.
         ensure_metadata_schema()
-        engine = get_engine()
         if uncheckout:
             # If we're talking to a bare repo / a remote that doesn't have checked out repositories,
             # there's no point in touching the audit trigger.
-            engine.discard_pending_changes(self.to_schema())
-            engine.run_sql(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(self.to_schema())))
+            self.engine.discard_pending_changes(self.to_schema())
+            self.engine.run_sql(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(self.to_schema())))
             # Drop server too if it exists (could have been a non-foreign repository)
-            engine.run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(self.to_schema() + '_server')))
+            self.engine.run_sql(
+                SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(self.to_schema() + '_server')))
 
         if unregister:
             meta_tables = ["tables", "tags", "images"]
-            if engine.table_exists(SPLITGRAPH_META_SCHEMA, 'upstream'):
+            if self.engine.table_exists(SPLITGRAPH_META_SCHEMA, 'upstream'):
                 meta_tables.append("upstream")
             for meta_table in meta_tables:
-                engine.run_sql(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s")
-                               .format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                       Identifier(meta_table)),
-                               (self.namespace, self.repository))
-        engine.commit()
+                self.engine.run_sql(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s")
+                                    .format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                            Identifier(meta_table)),
+                                    (self.namespace, self.repository))
+        self.engine.commit()
 
     def get_upstream(self):
         """
@@ -112,10 +111,10 @@ class Repository:
 
         :return: Tuple of (remote engine, remote Repository object)
         """
-        result = get_engine().run_sql(select("upstream", "remote_name, remote_namespace, remote_repository",
-                                             "namespace = %s AND repository = %s"),
-                                      (self.namespace, self.repository),
-                                      return_shape=ResultShape.ONE_MANY)
+        result = self.engine.run_sql(select("upstream", "remote_name, remote_namespace, remote_repository",
+                                            "namespace = %s AND repository = %s"),
+                                     (self.namespace, self.repository),
+                                     return_shape=ResultShape.ONE_MANY)
         if result is None:
             return result
         return result[0], Repository(result[1], result[2])
@@ -127,25 +126,25 @@ class Repository:
         :param remote_name: Name of the remote as specified in the Splitgraph config.
         :param remote_repository: Remote Repository object
         """
-        get_engine().run_sql(SQL("INSERT INTO {0}.upstream (namespace, repository, "
-                                 "remote_name, remote_namespace, remote_repository) VALUES (%s, %s, %s, %s, %s)"
-                                 " ON CONFLICT (namespace, repository) DO UPDATE SET "
-                                 "remote_name = excluded.remote_name, remote_namespace = excluded.remote_namespace, "
-                                 "remote_repository = excluded.remote_repository WHERE "
-                                 "upstream.namespace = excluded.namespace "
-                                 "AND upstream.repository = excluded.repository")
-                             .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                             (self.namespace, self.repository, remote_name, remote_repository.namespace,
-                              remote_repository.repository))
+        self.engine.run_sql(SQL("INSERT INTO {0}.upstream (namespace, repository, "
+                                "remote_name, remote_namespace, remote_repository) VALUES (%s, %s, %s, %s, %s)"
+                                " ON CONFLICT (namespace, repository) DO UPDATE SET "
+                                "remote_name = excluded.remote_name, remote_namespace = excluded.remote_namespace, "
+                                "remote_repository = excluded.remote_repository WHERE "
+                                "upstream.namespace = excluded.namespace "
+                                "AND upstream.repository = excluded.repository")
+                            .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                            (self.namespace, self.repository, remote_name, remote_repository.namespace,
+                             remote_repository.repository))
 
     def delete_upstream(self):
         """
         Deletes the upstream remote + repository for a local repository.
         """
-        get_engine().run_sql(SQL("DELETE FROM {0}.upstream WHERE namespace = %s AND repository = %s")
-                             .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                             (self.namespace, self.repository),
-                             return_shape=None)
+        self.engine.run_sql(SQL("DELETE FROM {0}.upstream WHERE namespace = %s AND repository = %s")
+                            .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                            (self.namespace, self.repository),
+                            return_shape=None)
 
     @contextmanager
     def materialized_table(self, table_name, image_hash):
@@ -173,7 +172,7 @@ class Repository:
             # Maybe some cache management/expiry strategies here
             delete_objects([new_id])
         else:
-            if get_engine().table_exists(SPLITGRAPH_META_SCHEMA, object_id):
+            if self.engine.table_exists(SPLITGRAPH_META_SCHEMA, object_id):
                 yield SPLITGRAPH_META_SCHEMA, object_id
             else:
                 # The SNAP object doesn't actually exist remotely, so we have to download it.
@@ -184,8 +183,9 @@ class Repository:
                     raise SplitGraphException("SNAP %s from %s doesn't exist locally and no remote was found for it!"
                                               % (object_id, str(self)))
                 remote_conn, _ = remote_info
-                object_locations = get_external_object_locations([object_id])
-                download_objects(remote_conn, objects_to_fetch=[object_id], object_locations=object_locations)
+                object_locations = get_external_object_locations(self.engine, [object_id])
+                download_objects(get_engine(remote_conn),
+                                 objects_to_fetch=[object_id], object_locations=object_locations)
                 yield SPLITGRAPH_META_SCHEMA, object_id
 
                 delete_objects([object_id])
@@ -203,13 +203,12 @@ class Repository:
         :param force: Discards all pending changes to the schema.
         """
         target_schema = self.to_schema()
-        engine = get_engine()
         if self.has_pending_changes():
             if not force:
                 raise SplitGraphException("{0} has pending changes! Pass force=True or do sgr checkout -f {0}:HEAD"
                                           .format(self.to_schema()))
             logging.warning("%s has pending changes, discarding...", self.to_schema())
-            engine.discard_pending_changes(target_schema)
+            self.engine.discard_pending_changes(target_schema)
         # Detect the actual image
         if image_hash:
             # get_canonical_image_hash called twice if the commandline entry point already called it. How to fix?
@@ -221,8 +220,8 @@ class Repository:
 
         image = self.get_image(image_hash)
         # Drop all current tables in staging
-        for table in engine.get_all_tables(target_schema):
-            engine.delete_table(target_schema, table)
+        for table in self.engine.get_all_tables(target_schema):
+            self.engine.delete_table(target_schema, table)
 
         downloaded_object_ids = set()
         tables = tables or image.get_tables()
@@ -233,7 +232,7 @@ class Repository:
         set_head(self, image_hash)
 
         if not keep_downloaded_objects:
-            logging.info("Removing %d downloaded objects from cache...", downloaded_object_ids)
+            logging.info("Removing %d downloaded objects from cache...", len(downloaded_object_ids))
             delete_objects(downloaded_object_ids)
 
     @manage_audit
@@ -266,7 +265,7 @@ class Repository:
         logging.info("Committing %s...", self.to_schema())
 
         ensure_metadata_schema()
-        get_engine().commit()
+        self.engine.commit()
         manage_audit_triggers()
 
         # HEAD can be None (if this is the first commit in this repository)
@@ -276,12 +275,14 @@ class Repository:
             image_hash = "%0.2x" % getrandbits(256)
 
         # Add the new snap ID to the tree
-        add_new_image(self, head, image_hash, comment=comment)
+        with switch_engine(self.engine):
+            add_new_image(self, head, image_hash, comment=comment)
 
         self._commit(head, image_hash, include_snap=include_snap)
 
-        set_head(self, image_hash)
-        get_engine().commit()
+        with switch_engine(self.engine):
+            set_head(self, image_hash)
+        self.engine.commit()
         manage_audit_triggers()
         return image_hash
 
@@ -300,41 +301,41 @@ class Repository:
         :param include_snap: If True, also stores the table as a SNAP.
         """
         target_schema = self.to_schema()
-        engine = get_engine()
 
         head = self.get_image(current_head) if current_head else None
 
-        changed_tables = engine.get_changed_tables(target_schema)
-        for table in engine.get_all_tables(target_schema):
+        changed_tables = self.engine.get_changed_tables(target_schema)
+        for table in self.engine.get_all_tables(target_schema):
             table_info = head.get_table(table) if head else None
             # Table already exists at the current HEAD
-            if table_info:
-                # If there has been a schema change, we currently just snapshot the whole table.
-                # This is obviously wasteful (say if just one column has been added/dropped or we added a PK,
-                # but it's a starting point to support schema changes.
-                snap_1 = get_image_object_path(self, table, current_head)[0]
-                if get_engine().get_full_table_schema(SPLITGRAPH_META_SCHEMA, snap_1) != \
-                        get_engine().get_full_table_schema(self.to_schema(), table):
-                    record_table_as_snap(table_info, image_hash)
-                    continue
+            with switch_engine(self.engine):
+                if table_info:
+                    # If there has been a schema change, we currently just snapshot the whole table.
+                    # This is obviously wasteful (say if just one column has been added/dropped or we added a PK,
+                    # but it's a starting point to support schema changes.
+                    snap_1 = get_image_object_path(self, table, current_head)[0]
+                    if self.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, snap_1) != \
+                            self.engine.get_full_table_schema(self.to_schema(), table):
+                        record_table_as_snap(table_info, image_hash)
+                        continue
 
-                if table in changed_tables:
-                    record_table_as_diff(table_info, image_hash)
-                else:
-                    # If the table wasn't changed, point the commit to the old table objects (including
-                    # any of snaps or diffs).
-                    # This feels slightly weird: are we denormalized here?
-                    for prev_object_id, _ in table_info.objects:
-                        register_table(self, table, image_hash, prev_object_id)
+                    if table in changed_tables:
+                        record_table_as_diff(table_info, image_hash)
+                    else:
+                        # If the table wasn't changed, point the commit to the old table objects (including
+                        # any of snaps or diffs).
+                        # This feels slightly weird: are we denormalized here?
+                        for prev_object_id, _ in table_info.objects:
+                            register_table(self, table, image_hash, prev_object_id)
 
-            # If table created (or we want to store a snap anyway), copy the whole table over as well.
-            if not table_info or include_snap:
-                record_table_as_snap(table_info, image_hash, table_name=table, repository=self)
+                # If table created (or we want to store a snap anyway), copy the whole table over as well.
+                if not table_info or include_snap:
+                    record_table_as_snap(table_info, image_hash, table_name=table, repository=self)
 
         # Make sure that all pending changes have been discarded by this point (e.g. if we created just a snapshot for
         # some tables and didn't consume the audit log).
         # NB if we allow partial commits, this will have to be changed (only discard for committed tables).
-        get_engine().discard_pending_changes(target_schema)
+        self.engine.discard_pending_changes(target_schema)
 
     def get_all_hashes_tags(self):
         """
@@ -342,8 +343,8 @@ class Repository:
 
         :return: List of (image_hash, tag)
         """
-        return get_engine().run_sql(select("tags", "image_hash, tag", "namespace = %s AND repository = %s"),
-                                    (self.namespace, self.repository,))
+        return self.engine.run_sql(select("tags", "image_hash, tag", "namespace = %s AND repository = %s"),
+                                   (self.namespace, self.repository,))
 
     def set_tags(self, tags, force=False):
         """
@@ -364,9 +365,10 @@ class Repository:
         :param raise_on_none: Whether to raise an error or return None if the repository isn't checked out.
         """
         ensure_metadata_schema()
-        if not repository_exists(self) and raise_on_none:
-            raise SplitGraphException("%s does not exist!" % str(self))
-        engine = get_engine()
+        engine = self.engine
+        with switch_engine(engine):
+            if not repository_exists(self) and raise_on_none:
+                raise SplitGraphException("%s does not exist!" % str(self))
 
         if tag == 'latest':
             # Special case, return the latest commit from the repository.
@@ -398,10 +400,10 @@ class Repository:
 
         :param short_image: Shortened image hash
         """
-        candidates = get_engine().run_sql(select("images", "image_hash",
-                                                 "namespace = %s AND repository = %s AND image_hash LIKE %s"),
-                                          (self.namespace, self.repository, short_image.lower() + '%'),
-                                          return_shape=ResultShape.MANY_ONE)
+        candidates = self.engine.run_sql(select("images", "image_hash",
+                                                "namespace = %s AND repository = %s AND image_hash LIKE %s"),
+                                         (self.namespace, self.repository, short_image.lower() + '%'),
+                                         return_shape=ResultShape.MANY_ONE)
 
         if not candidates:
             raise SplitGraphException("No snapshots beginning with %s found for mountpoint %s!" % (short_image,
@@ -463,7 +465,7 @@ class Repository:
 
         if not tables:
             tables = self.get_image(image_hash).get_tables() if not foreign_tables \
-                else get_engine().get_all_tables(self.to_schema())
+                else self.engine.get_all_tables(self.to_schema())
         if not target_tables:
             if table_queries:
                 raise ValueError("target_tables has to be defined if table_queries is True!")
@@ -473,7 +475,7 @@ class Repository:
         if len(tables) != len(target_tables) or len(tables) != len(table_queries):
             raise ValueError("tables, target_tables and table_queries have mismatching lengths!")
 
-        existing_tables = get_engine().get_all_tables(target_repository.to_schema())
+        existing_tables = self.engine.get_all_tables(target_repository.to_schema())
         clashing = [t for t in target_tables if t in existing_tables]
         if clashing:
             raise ValueError("Table(s) %r already exist(s) at %s!" % (clashing, target_repository))
@@ -483,7 +485,7 @@ class Repository:
 
     def _import_tables(self, image_hash, tables, target_repository, target_hash, target_tables, do_checkout,
                        table_queries, foreign_tables):
-        engine = get_engine()
+        engine = self.engine
         engine.create_schema(target_repository.to_schema())
 
         head = target_repository.get_head(raise_on_none=False)
@@ -508,14 +510,14 @@ class Repository:
                                           SQL("CREATE TABLE {}.{} AS ").format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                                                Identifier(object_id)) + SQL(table))
                 elif foreign_tables:
-                    get_engine().copy_table(self.to_schema(), table, SPLITGRAPH_META_SCHEMA, object_id)
+                    self.engine.copy_table(self.to_schema(), table, SPLITGRAPH_META_SCHEMA, object_id)
 
                 # Might not be necessary if we don't actually want to materialize the snapshot (wastes space).
                 register_object(object_id, 'SNAP', namespace=target_repository.namespace, parent_object=None)
                 register_table(target_repository, target_table, target_hash, object_id)
                 if do_checkout:
-                    get_engine().copy_table(SPLITGRAPH_META_SCHEMA, object_id, target_repository.to_schema(),
-                                            target_table)
+                    self.engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, target_repository.to_schema(),
+                                           target_table)
             else:
                 table_obj = image.get_table(table)
                 for object_id, _ in table_obj.objects:
@@ -542,11 +544,11 @@ class Repository:
         :param image_hash: Image hash
         :return: An Image object or None
         """
-        result = get_engine().run_sql(select("images", ','.join(IMAGE_COLS),
-                                             "repository = %s AND image_hash = %s AND namespace = %s"),
-                                      (self.repository,
-                                       image_hash, self.namespace),
-                                      return_shape=ResultShape.ONE_MANY)
+        result = self.engine.run_sql(select("images", ','.join(IMAGE_COLS),
+                                            "repository = %s AND image_hash = %s AND namespace = %s"),
+                                     (self.repository,
+                                      image_hash, self.namespace),
+                                     return_shape=ResultShape.ONE_MANY)
         if not result:
             return None
         r_dict = {k: v for k, v in zip(IMAGE_COLS, result)}
@@ -554,7 +556,7 @@ class Repository:
         return Image(**r_dict)
 
     def get_images(self):
-        return [img[0] for img in sg.get_all_image_info(self)]
+        return [img[0] for img in get_all_image_info(self)]
 
     def push(self, remote_engine=None, remote_repository=None, handler='DB', handler_options=None):
         """
@@ -585,7 +587,7 @@ class Repository:
             with switch_engine(remote_engine):
                 # This also registers new commits remotely. Should make explicit and move down later on.
                 snaps_to_push, table_meta, object_locations, object_meta, tags = \
-                    _get_required_snaps_objects('LOCAL', remote_repository, self)
+                    _get_required_snaps_objects(splitgraph.get_engine('LOCAL'), remote_repository, self)
 
             if not snaps_to_push:
                 logging.info("Nothing to do.")
@@ -606,13 +608,13 @@ class Repository:
             if self.get_upstream() is None and remote_engine:
                 self.set_upstream(remote_engine, remote_repository)
 
-            get_engine(remote_engine).commit()
+            splitgraph.get_engine(remote_engine).commit()
             print("Uploaded metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta),
                                                                                               len(table_meta),
                                                                                               len([t for t in tags if
                                                                                                    t != 'HEAD'])))
         finally:
-            get_engine(remote_engine).close()
+            splitgraph.get_engine(remote_engine).close()
 
     def pull(self, download_all=False):
         """
@@ -627,7 +629,7 @@ class Repository:
             raise SplitGraphException("No upstream found for repository %s!" % self.to_schema())
 
         remote_engine, remote_repository = remote_info
-        clone(remote_repository=remote_repository, remote_engine=remote_engine, local_repository=self,
+        clone(remote_repository=remote_repository, remote_engine=get_engine(remote_engine), local_repository=self,
               download_all=download_all)
 
     def has_pending_changes(self):
@@ -638,7 +640,7 @@ class Repository:
         if not head:
             # If the repo isn't checked out, no point checking for changes.
             return False
-        for table in get_engine().get_all_tables(self.to_schema()):
+        for table in self.engine.get_all_tables(self.to_schema()):
             if self.diff(table, head, None, aggregate=True) != (0, 0, 0):
                 return True
         return False
@@ -664,7 +666,7 @@ class Repository:
             if include_provenance else None
         previews, schemata = _prepare_extra_data(image, self, include_table_previews)
 
-        remote_engine = get_engine(remote_engine_name)
+        remote_engine = splitgraph.get_engine(remote_engine_name)
         try:
             with switch_engine(remote_engine_name):
                 publish_tag(remote_repository, tag, image_hash, datetime.now(), dependencies, readme, schemata=schemata,
@@ -682,10 +684,9 @@ class Repository:
         return self.get_tagged_id('HEAD', raise_on_none)
 
     def run_sql(self, sql):
-        engine = self.engine
-        engine.run_sql("SET search_path TO %s", (self.to_schema(),))
+        self.engine.run_sql("SET search_path TO %s", (self.to_schema(),))
         result = self.engine.run_sql(sql)
-        engine.run_sql("SET search_path TO public")
+        self.engine.run_sql("SET search_path TO public")
         return result
 
     def diff(self, table_name, image_1, image_2, aggregate=False):
@@ -723,7 +724,7 @@ class Repository:
         head = self.get_head()
 
         if image_1 == head and image_2 is None:
-            changes = get_engine().get_pending_changes(self.to_schema(), table_name, aggregate=aggregate)
+            changes = self.engine.get_pending_changes(self.to_schema(), table_name, aggregate=aggregate)
             return list(changes) if not aggregate else _changes_to_aggregation(changes)
 
         # If the table is the same in the two images, short circuit as well.
@@ -743,7 +744,7 @@ class Repository:
 
             # If snap_2 is staging, also include all changes that have happened since the last commit.
             if image_2 is None:
-                changes = get_engine().get_pending_changes(self.to_schema(), table_name, aggregate=aggregate)
+                changes = self.engine.get_pending_changes(self.to_schema(), table_name, aggregate=aggregate)
                 if aggregate:
                     return _changes_to_aggregation(changes, result)
                 result.extend(changes)
@@ -779,15 +780,15 @@ def _calculate_merged_diff(repository, table_name, path, aggregate):
         if not aggregate:
             # There's only one action applied to a tuple in a single diff, so the ordering doesn't matter.
             for row in sorted(
-                    get_engine().run_sql(SQL("SELECT * FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                           Identifier(diff_id)))):
+                    repository.engine.run_sql(SQL("SELECT * FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                                Identifier(diff_id)))):
                 pk = row[:-2]
                 action = row[-2]
                 action_data = row[-1]
                 result.append((pk, action, action_data))
         else:
             result = _changes_to_aggregation(
-                get_engine().run_sql(
+                repository.engine.run_sql(
                     SQL("SELECT sg_action_kind, count(sg_action_kind) FROM {}.{} GROUP BY sg_action_kind")
                         .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(diff_id))), result)
     return result
@@ -798,10 +799,10 @@ def _side_by_side_diff(repository, table_name, image_1, image_2, aggregate):
         with repository.materialized_table(table_name, image_2) as (mp_2, table_2):
             # Check both tables out at the same time since then table_2 calculation can be based
             # on table_1's snapshot.
-            left = get_engine().run_sql(SQL("SELECT * FROM {}.{}").format(Identifier(mp_1),
-                                                                          Identifier(table_1)))
-            right = get_engine().run_sql(SQL("SELECT * FROM {}.{}").format(Identifier(mp_2),
-                                                                           Identifier(table_2)))
+            left = repository.engine.run_sql(SQL("SELECT * FROM {}.{}").format(Identifier(mp_1),
+                                                                               Identifier(table_1)))
+            right = repository.engine.run_sql(SQL("SELECT * FROM {}.{}").format(Identifier(mp_2),
+                                                                                Identifier(table_2)))
 
     if aggregate:
         return sum(1 for r in right if r not in left), sum(1 for r in left if r not in right), 0
@@ -810,14 +811,13 @@ def _side_by_side_diff(repository, table_name, image_1, image_2, aggregate):
            [(r, 0, {'c': [], 'v': []}) for r in right if r not in left]
 
 
-def import_table_from_remote(remote_engine, remote_repository, remote_tables, remote_image_hash, target_repository,
-                             target_tables, target_hash=None):
+def import_table_from_remote(remote_repository, remote_tables, remote_image_hash, target_repository, target_tables,
+                             target_hash=None):
     """
     Shorthand for importing one or more tables from a yet-uncloned remote. Here, the remote image hash is required,
     as otherwise we aren't necessarily able to determine what the remote head is.
 
-    :param remote_engine: Remote engine name
-    :param remote_repository: Remote repository
+    :param remote_repository: Remote Repository object
     :param remote_tables: List of remote tables to import
     :param remote_image_hash: Image hash to import the tables from
     :param target_repository: Target repository to import the tables to
@@ -832,12 +832,13 @@ def import_table_from_remote(remote_engine, remote_repository, remote_tables, re
     tmp_mountpoint = Repository(namespace=remote_repository.namespace,
                                 repository=remote_repository.repository + '_clone_tmp')
 
-    clone(remote_repository, remote_engine=remote_engine, local_repository=tmp_mountpoint, download_all=False)
+    clone(remote_repository, remote_engine=remote_repository.engine,
+          local_repository=tmp_mountpoint, download_all=False)
     tmp_mountpoint.import_tables(remote_tables, target_repository, target_tables, image_hash=remote_image_hash,
                                  target_hash=target_hash)
 
     tmp_mountpoint.rm()
-    get_engine().commit()
+    target_repository.engine.commit()
 
 
 def find_path(repository, hash_1, hash_2):
@@ -853,7 +854,7 @@ def find_path(repository, hash_1, hash_2):
 def table_exists_at(repository, table_name, image_hash):
     """Determines whether a given table exists in a Splitgraph image without checking it out. If `image_hash` is None,
     determines whether the table exists in the current staging area."""
-    return get_engine().table_exists(repository.to_schema(), table_name) if image_hash is None \
+    return repository.engine.table_exists(repository.to_schema(), table_name) if image_hash is None \
         else bool(repository.get_image(image_hash).get_table(table_name))
 
 
@@ -864,7 +865,7 @@ def _prepare_extra_data(image, repository, include_table_previews):
         if include_table_previews:
             logging.info("Generating preview for %s...", table_name)
             with repository.materialized_table(table_name, image.image_hash) as (tmp_schema, tmp_table):
-                engine = get_engine()
+                engine = repository.engine
                 schema = engine.get_full_table_schema(tmp_schema, tmp_table)
                 previews[table_name] = engine.run_sql(SQL("SELECT * FROM {}.{} LIMIT %s").format(
                     Identifier(tmp_schema), Identifier(tmp_table)), (_PUBLISH_PREVIEW_SIZE,))
@@ -874,18 +875,18 @@ def _prepare_extra_data(image, repository, include_table_previews):
     return previews, schemata
 
 
-def _get_required_snaps_objects(remote_engine_name, local_repository, remote_repository):
+def _get_required_snaps_objects(remote_engine, local_repository, remote_repository):
     """
     Inspects the remote Splitgraph engine and gathers metadata missing on the local one required
     for a pull, registering new images locally. Internal function.
 
-    :param remote_engine_name: Name of the remote Splitgraph engine
+    :param remote_engine: Remote Splitgraph engine object
     :param local_repository: Local Repository object
     :param remote_repository: Remote Repository object
     """
     local_images = {image_hash: parent_id for image_hash, parent_id, _, _, _, _ in
                     get_all_image_info(local_repository)}
-    with switch_engine(remote_engine_name):
+    with switch_engine(remote_engine):
         remote_images = {image_hash: (parent_id, created, comment, prov_type, prov_data)
                          for image_hash, parent_id, created, comment, prov_type, prov_data in
                          get_all_image_info(remote_repository)}
@@ -894,7 +895,6 @@ def _get_required_snaps_objects(remote_engine_name, local_repository, remote_rep
     # would have created a new image.
     table_meta = []
     new_images = [i for i in remote_images if i not in local_images]
-    remote_engine = get_engine(remote_engine_name)
     for image_hash in new_images:
         # This is not batched but there shouldn't be that many entries here anyway.
         remote_parent, remote_created, remote_comment, remote_prov, remote_provdata = remote_images[image_hash]
@@ -909,19 +909,19 @@ def _get_required_snaps_objects(remote_engine_name, local_repository, remote_rep
 
     # Get the tags too
     existing_tags = [t for s, t in local_repository.get_all_hashes_tags()]
-    with switch_engine(remote_engine_name):
+    with switch_engine(remote_engine):
         tags = {t: s for s, t in remote_repository.get_all_hashes_tags() if t not in existing_tags}
 
     # Crawl the object tree to get the IDs and other metadata for all required objects.
-    distinct_objects, object_meta = _extract_recursive_object_meta(remote_engine_name, table_meta)
+    distinct_objects, object_meta = _extract_recursive_object_meta(remote_engine, table_meta)
 
-    with switch_engine(remote_engine_name):
+    with switch_engine(remote_engine):
         object_locations = get_external_object_locations(list(distinct_objects)) if distinct_objects else []
 
     return new_images, table_meta, object_locations, object_meta, tags
 
 
-def _extract_recursive_object_meta(remote_engine_name, table_meta):
+def _extract_recursive_object_meta(remote_engine, table_meta):
     """Since an object can now depend on another object that's not mentioned in the commit tree,
     we now have to follow the objects' links to their parents until we have gathered all the required object IDs."""
     existing_objects = get_existing_objects()
@@ -929,7 +929,7 @@ def _extract_recursive_object_meta(remote_engine_name, table_meta):
     known_objects = set()
     object_meta = []
 
-    with switch_engine(remote_engine_name):
+    with switch_engine(remote_engine):
         while True:
             new_parents = [o for o in distinct_objects if o not in known_objects]
             if not new_parents:
@@ -943,7 +943,6 @@ def _extract_recursive_object_meta(remote_engine_name, table_meta):
     return distinct_objects, object_meta
 
 
-@manage_audit
 def clone(remote_repository, remote_engine=None, local_repository=None, download_all=False):
     """
     Clones a remote Splitgraph repository or synchronizes remote changes with the local ones.
@@ -953,7 +952,7 @@ def clone(remote_repository, remote_engine=None, local_repository=None, download
     downloads from the remote engine won't work at checkout time.
 
     :param remote_repository: Repository to clone.
-    :param remote_engine: Name of the remote engine. If unspecified, the current engine
+    :param remote_engine: Remote engine object. If unspecified, the current engine
         lookup list is searched for the repository.
     :param local_repository: Local repository to clone into. If None, uses the same name as the remote.
     :param download_all: If True, downloads all objects and stores them locally. Otherwise, will only download required
@@ -961,11 +960,12 @@ def clone(remote_repository, remote_engine=None, local_repository=None, download
     """
     ensure_metadata_schema()
 
-    local_repository = local_repository or remote_repository
-    get_engine().create_schema(local_repository.to_schema())
+    if not local_repository:
+        local_repository = Repository(remote_repository.namespace, remote_repository.repository)
+    local_repository.engine.create_schema(local_repository.to_schema())
 
     if not remote_engine:
-        remote_engine = lookup_repo(remote_repository)
+        remote_engine = splitgraph.get_engine(lookup_repo(remote_repository))
 
     # Get the remote log and the list of objects we need to fetch.
     logging.info("Gathering remote metadata...")
@@ -1002,7 +1002,7 @@ def clone(remote_repository, remote_engine=None, local_repository=None, download
                                                                                           t != 'HEAD'])))
 
     if local_repository.get_upstream() is None and remote_engine:
-        local_repository.set_upstream(remote_engine, remote_repository)
+        local_repository.set_upstream(remote_engine.name, remote_repository)
 
 
 def local_clone(self, destination):
@@ -1010,7 +1010,7 @@ def local_clone(self, destination):
     or materialization."""
     ensure_metadata_schema()
 
-    _, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects('LOCAL',
+    _, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(splitgraph.get_engine('LOCAL'),
                                                                                      destination, self)
 
     # Map the tables to the actual objects no matter whether or not we're downloading them.

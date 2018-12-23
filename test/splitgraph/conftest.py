@@ -97,26 +97,53 @@ def local_engine_empty():
 
 
 with open(os.path.join(os.path.dirname(__file__), '../architecture/data/pgorigin/setup.sql'), 'r') as f:
-    FRUITS_DATA = f.read()
+    PG_DATA = f.read()
 
 
-@pytest.fixture
-def local_engine_with_pg(local_engine_empty):
+def make_pg_repo(engine):
     # Used to be a mount, trying to just write the data directly to speed tests up
-    PG_MNT.init()
-    PG_MNT.run_sql(FRUITS_DATA)
-    PG_MNT.commit()
-    yield local_engine_empty
+    result = Repository("test", "pg_mount", engine=engine)
+    result.init()
+    result.run_sql(PG_DATA)
+    assert result.has_pending_changes()
+    result.commit()
+    return result
+
+
+def make_multitag_pg_repo(pg_repo):
+    pg_repo.get_image(pg_repo.get_head()).tag('v1')
+    pg_repo.run_sql("DELETE FROM fruits WHERE fruit_id = 1")
+    new_head = pg_repo.commit()
+    pg_repo.get_image(new_head).tag('v2')
+    pg_repo.engine.commit()
+    return pg_repo
 
 
 @pytest.fixture
-def local_engine_with_pg_and_mg(local_engine_empty):
-    # SG connection with a mounted Mongo + Postgres db
-    PG_MNT.init()
-    PG_MNT.run_sql(FRUITS_DATA)
-    PG_MNT.commit()
-    _mount_mongo(MG_MNT)
-    yield local_engine_empty
+def pg_repo_local(local_engine_empty):
+    yield make_pg_repo(local_engine_empty)
+
+
+@pytest.fixture
+def pg_repo_remote(remote_engine):
+    yield make_pg_repo(remote_engine)
+
+
+@pytest.fixture
+def pg_repo_remote_multitag(pg_repo_remote):
+    yield make_multitag_pg_repo(pg_repo_remote)
+
+
+@pytest.fixture
+def pg_repo_local_multitag(pg_repo_local):
+    yield make_multitag_pg_repo(pg_repo_local)
+
+
+@pytest.fixture
+def mg_repo_local(local_engine_empty):
+    result = Repository("", "test_mg_mount", engine=local_engine_empty)
+    _mount_mongo(result)
+    yield result
 
 
 REMOTE_ENGINE = 'remote_engine'  # On the host, mapped into localhost; on the local engine works as intended.
@@ -134,12 +161,10 @@ def remote_engine():
         unpublish_repository(Repository('testuser', 'pg_mount'))
         for mountpoint in TEST_MOUNTPOINTS:
             mountpoint.rm()
+        for mountpoint, _ in get_current_repositories():
+            mountpoint.rm()
         cleanup_objects()
         get_engine().commit()
-        PG_MNT.init()
-        get_engine().execute_sql_in(PG_MNT.to_schema(), FRUITS_DATA)
-        PG_MNT.commit()
-        _mount_mongo(MG_MNT)
     try:
         yield get_engine(REMOTE_ENGINE)
     finally:
@@ -148,19 +173,11 @@ def remote_engine():
             e.rollback()
             for mountpoint in TEST_MOUNTPOINTS:
                 mountpoint.rm()
+            for mountpoint, _ in get_current_repositories():
+                mountpoint.rm()
             cleanup_objects()
             e.commit()
             e.close()
-
-
-def add_multitag_dataset_to_engine(engine):
-    with switch_engine(engine):
-        PG_MNT.get_image(PG_MNT.get_head()).tag('v1')
-        engine.run_sql("DELETE FROM \"test/pg_mount\".fruits WHERE fruit_id = 1")
-        new_head = PG_MNT.commit()
-        PG_MNT.get_image(new_head).tag('v2')
-        get_engine().commit()
-        return new_head
 
 
 SPLITFILE_ROOT = os.path.join(os.path.dirname(__file__), '../resources/')

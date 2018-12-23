@@ -9,13 +9,12 @@ from splitgraph._data.objects import register_object_locations
 from splitgraph._data.registry import get_published_info, unpublish_repository, toggle_registry_rls
 from splitgraph.core.repository import Repository, clone
 from splitgraph.engine import switch_engine, get_engine
-from test.splitgraph.conftest import PG_MNT, add_multitag_dataset_to_engine, REMOTE_ENGINE
+from test.splitgraph.conftest import PG_MNT, REMOTE_ENGINE
 
 UNPRIVILEGED = 'unprivileged_remote_engine'
 
 
 def _init_rls_test(remote_engine):
-    add_multitag_dataset_to_engine(remote_engine)
     with switch_engine(remote_engine):
         toggle_registry_rls('ENABLE')
     remote_engine.commit()

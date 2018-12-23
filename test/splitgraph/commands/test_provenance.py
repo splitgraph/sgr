@@ -1,56 +1,48 @@
-from splitgraph.engine import switch_engine
 from splitgraph.splitfile import execute_commands
 from splitgraph.splitfile.execution import rerun_image_with_replacement
-from test.splitgraph.conftest import OUTPUT, PG_MNT, add_multitag_dataset_to_engine, load_splitfile, REMOTE_ENGINE
+from test.splitgraph.conftest import OUTPUT, load_splitfile
 
 
-def test_provenance(local_engine_empty, remote_engine):
-    add_multitag_dataset_to_engine(remote_engine)
+def test_provenance(local_engine_empty, pg_repo_remote_multitag):
     execute_commands(load_splitfile('import_remote_multiple.splitfile'), params={'TAG': 'v1'}, output=OUTPUT)
     dependencies = OUTPUT.get_image(OUTPUT.get_head()).provenance()
 
-    with switch_engine(REMOTE_ENGINE):
-        assert dependencies == [(PG_MNT, PG_MNT.resolve_image('v1'))]
+    assert dependencies == [(pg_repo_remote_multitag,
+                             pg_repo_remote_multitag.resolve_image('v1'))]
 
 
-def test_provenance_with_from(local_engine_empty, remote_engine):
-    add_multitag_dataset_to_engine(remote_engine)
+def test_provenance_with_from(local_engine_empty, pg_repo_remote_multitag):
     execute_commands(load_splitfile('from_remote.splitfile'), params={'TAG': 'v1'}, output=OUTPUT)
     dependencies = OUTPUT.get_image(OUTPUT.get_head()).provenance()
 
-    with switch_engine(REMOTE_ENGINE):
-        assert dependencies == [(PG_MNT, PG_MNT.resolve_image('v1'))]
+    assert dependencies == [(pg_repo_remote_multitag,
+                             pg_repo_remote_multitag.resolve_image('v1'))]
 
 
-def test_splitfile_recreate(local_engine_empty, remote_engine):
-    add_multitag_dataset_to_engine(remote_engine)
+def test_splitfile_recreate(local_engine_empty, pg_repo_remote_multitag):
     execute_commands(load_splitfile('import_with_custom_query_and_sql.splitfile'), params={'TAG': 'v1'}, output=OUTPUT)
     recreated_commands = OUTPUT.get_image(OUTPUT.get_head()).to_splitfile(err_on_end=False)
-    with switch_engine(REMOTE_ENGINE):
-        assert recreated_commands == ["FROM test/pg_mount:%s IMPORT {SELECT * FROM fruits WHERE name = 'orange'} AS " \
-                                      % PG_MNT.resolve_image('v1') +
-                                      "my_fruits, {SELECT * FROM vegetables WHERE name LIKE '%o'} AS o_vegetables, "
-                                      "vegetables AS vegetables, fruits AS all_fruits",
-                                      "SQL CREATE TABLE test_table AS SELECT * FROM all_fruits"]
+    assert recreated_commands == ["FROM test/pg_mount:%s IMPORT {SELECT * FROM fruits WHERE name = 'orange'} AS " \
+                                  % pg_repo_remote_multitag.resolve_image('v1') +
+                                  "my_fruits, {SELECT * FROM vegetables WHERE name LIKE '%o'} AS o_vegetables, "
+                                  "vegetables AS vegetables, fruits AS all_fruits",
+                                  "SQL CREATE TABLE test_table AS SELECT * FROM all_fruits"]
 
 
-def test_splitfile_recreate_custom_from(local_engine_empty, remote_engine):
-    add_multitag_dataset_to_engine(remote_engine)
+def test_splitfile_recreate_custom_from(local_engine_empty, pg_repo_remote_multitag):
     execute_commands(load_splitfile('from_remote.splitfile'), params={'TAG': 'v1'}, output=OUTPUT)
     recreated_commands = OUTPUT.get_image(OUTPUT.get_head()).to_splitfile(err_on_end=False)
 
     # Parser strips newlines in sql but not the whitespace, so we have to reproduce the query here verbatim.
-    with switch_engine(REMOTE_ENGINE):
-        assert recreated_commands == ["FROM test/pg_mount:%s" % PG_MNT.resolve_image('v1'),
-                                      "SQL CREATE TABLE join_table AS SELECT fruit_id AS id, fruits.name AS fruit, "
-                                      "vegetables.name AS vegetable                                 FROM fruits "
-                                      "JOIN vegetables                                ON fruit_id = vegetable_id"]
+    assert recreated_commands == ["FROM test/pg_mount:%s" % pg_repo_remote_multitag.resolve_image('v1'),
+                                  "SQL CREATE TABLE join_table AS SELECT fruit_id AS id, fruits.name AS fruit, "
+                                  "vegetables.name AS vegetable                                 FROM fruits "
+                                  "JOIN vegetables                                ON fruit_id = vegetable_id"]
 
 
-def test_splitfile_incomplete_provenance(local_engine_empty, remote_engine):
+def test_splitfile_incomplete_provenance(local_engine_empty, pg_repo_remote_multitag):
     # This splitfile has a MOUNT as its first command. We're expecting image_hash_to_splitfile to base the result
     # on the image created by MOUNT and not regenerate the MOUNT command.
-    add_multitag_dataset_to_engine(remote_engine)
     execute_commands(load_splitfile('import_from_mounted_db_with_sql.splitfile'), params={'TAG': 'v1'}, output=OUTPUT)
     head_img = OUTPUT.get_image(OUTPUT.get_head())
     image_with_mount = head_img.get_log()[-2]
@@ -60,25 +52,23 @@ def test_splitfile_incomplete_provenance(local_engine_empty, remote_engine):
                                   "SQL CREATE TABLE new_table AS SELECT * FROM all_fruits"]
 
 
-def test_rerun_with_new_version(local_engine_empty, remote_engine):
-    add_multitag_dataset_to_engine(remote_engine)
+def test_rerun_with_new_version(local_engine_empty, pg_repo_remote_multitag):
     # Test running commands that base new datasets on a remote repository.
     execute_commands(load_splitfile('from_remote.splitfile'), params={'TAG': 'v1'}, output=OUTPUT)
 
     output_v1 = OUTPUT.get_head()
     # Do a logical rebase of the newly created image on the V2 of the remote repository
 
-    rerun_image_with_replacement(OUTPUT, output_v1, {PG_MNT: 'v2'})
+    rerun_image_with_replacement(OUTPUT, output_v1, {pg_repo_remote_multitag: 'v2'})
     output_v2 = OUTPUT.get_head()
     assert local_engine_empty.run_sql("SELECT * FROM output.join_table") == [(2, 'orange', 'carrot')]
 
     # Do some checks on the structure of the final output repo. In particular, make sure that the two derived versions
     # still exist and depend only on the respective tags of the source.
-    with switch_engine(REMOTE_ENGINE):
-        v1 = PG_MNT.resolve_image('v1')
-        v2 = PG_MNT.resolve_image('v2')
-    assert OUTPUT.get_image(output_v1).provenance() == [(PG_MNT, v1)]
-    assert OUTPUT.get_image(output_v2).provenance() == [(PG_MNT, v2)]
+    v1 = pg_repo_remote_multitag.resolve_image('v1')
+    v2 = pg_repo_remote_multitag.resolve_image('v2')
+    assert OUTPUT.get_image(output_v1).provenance() == [(pg_repo_remote_multitag, v1)]
+    assert OUTPUT.get_image(output_v2).provenance() == [(pg_repo_remote_multitag, v2)]
 
     ov1_log = OUTPUT.get_image(output_v1).get_log()
     ov2_log = OUTPUT.get_image(output_v2).get_log()
@@ -89,23 +79,21 @@ def test_rerun_with_new_version(local_engine_empty, remote_engine):
     assert ov1_log[1:] == ov2_log[2:]
 
 
-def test_rerun_with_from_import(local_engine_empty, remote_engine):
-    add_multitag_dataset_to_engine(remote_engine)
+def test_rerun_with_from_import(local_engine_empty, pg_repo_remote_multitag):
     execute_commands(load_splitfile('import_remote_multiple.splitfile'), params={'TAG': 'v1'}, output=OUTPUT)
 
     output_v1 = OUTPUT.get_head()
     # Do a logical rebase of the newly created image on the V2 of the remote repository
 
-    rerun_image_with_replacement(OUTPUT, output_v1, {PG_MNT: 'v2'})
+    rerun_image_with_replacement(OUTPUT, output_v1, {pg_repo_remote_multitag: 'v2'})
     output_v2 = OUTPUT.get_head()
 
     # Do some checks on the structure of the final output repo. In particular, make sure that the two derived versions
     # still exist and depend only on the respective tags of the source.
-    with switch_engine(REMOTE_ENGINE):
-        v1 = PG_MNT.resolve_image('v1')
-        v2 = PG_MNT.resolve_image('v2')
-    assert OUTPUT.get_image(output_v1).provenance() == [(PG_MNT, v1)]
-    assert OUTPUT.get_image(output_v2).provenance() == [(PG_MNT, v2)]
+    v1 = pg_repo_remote_multitag.resolve_image('v1')
+    v2 = pg_repo_remote_multitag.resolve_image('v2')
+    assert OUTPUT.get_image(output_v1).provenance() == [(pg_repo_remote_multitag, v1)]
+    assert OUTPUT.get_image(output_v2).provenance() == [(pg_repo_remote_multitag, v2)]
 
     ov1_log = OUTPUT.get_image(output_v1).get_log()
     ov2_log = OUTPUT.get_image(output_v2).get_log()

@@ -1,7 +1,5 @@
 import pytest
 
-from test.splitgraph.conftest import PG_MNT
-
 # Test cases: ops are a list of operations (with commit after each set);
 #             diffs are expected diffs produced by each operation.
 
@@ -89,10 +87,10 @@ CASES = [
 # flow (apply a change -- check the diff -- commit -- check the diff again)
 
 @pytest.mark.parametrize("test_case", CASES)
-def test_diff_conflation_on_commit(local_engine_with_pg, test_case):
+def test_diff_conflation_on_commit(pg_repo_local, test_case):
     for operation, expected_diff in test_case:
         # Dump the operation we're running to stdout for easier debugging
         print("%r -> %r" % (operation, expected_diff))
-        PG_MNT.run_sql(operation)
-        head = PG_MNT.commit()
-        assert PG_MNT.diff('fruits', PG_MNT.get_image(head).parent_id, head) == expected_diff
+        pg_repo_local.run_sql(operation)
+        head = pg_repo_local.commit()
+        assert pg_repo_local.diff('fruits', pg_repo_local.get_image(head).parent_id, head) == expected_diff

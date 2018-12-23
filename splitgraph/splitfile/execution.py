@@ -132,7 +132,7 @@ def _execute_from(node, output):
         engine = lookup_repo(repository, include_local=True)
 
         if engine != 'LOCAL':
-            clone(repository, remote_engine=engine, local_repository=output,
+            clone(repository, remote_engine=get_engine(engine), local_repository=output,
                   download_all=False)
             output.checkout(output.resolve_image(tag_or_hash))
         else:
@@ -215,7 +215,7 @@ def _execute_repo_import(repository, table_names, tag_or_hash, target_repository
         engine = lookup_repo(repository, include_local=True)
 
         if engine != 'LOCAL':
-            clone(repository, remote_engine=engine, local_repository=tmp_repo, download_all=False)
+            clone(repository, remote_engine=get_engine(engine), local_repository=tmp_repo, download_all=False)
             source_hash = tmp_repo.resolve_image(tag_or_hash)
             source_mountpoint = tmp_repo
         else:

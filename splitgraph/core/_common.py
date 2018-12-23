@@ -7,12 +7,12 @@ from psycopg2.sql import Identifier, SQL
 
 from splitgraph._data.common import ensure_metadata_schema, select, insert
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.engine import get_engine, ResultShape
+from splitgraph.engine import get_engine, ResultShape, switch_engine
 from splitgraph.exceptions import SplitGraphException
 
 
 def set_tag(repository, image_hash, tag, force=False):
-    engine = get_engine()
+    engine = repository.engine
     if engine.run_sql(select("tags", "1", "namespace = %s AND repository = %s AND tag = %s"),
                       (repository.namespace, repository.repository, tag),
                       return_shape=ResultShape.ONE_ONE) is None:
@@ -65,14 +65,18 @@ def manage_audit(func):
     (makes sure the metadata schema exists and delete/add required audit triggers)
     """
 
-    def wrapped(*args, **kwargs):
+    def wrapped(self, *args, **kwargs):
+        repository = self
         try:
-            ensure_metadata_schema()
-            manage_audit_triggers()
-            func(*args, **kwargs)
+            # hacks
+            with switch_engine(repository.engine):
+                ensure_metadata_schema()
+                manage_audit_triggers()
+            func(self, *args, **kwargs)
         finally:
-            get_engine().commit()
-            manage_audit_triggers()
+            with switch_engine(repository.engine):
+                get_engine().commit()
+                manage_audit_triggers()
 
     return wrapped
 

@@ -16,7 +16,7 @@
 """
 
 
-class PluginCommand():
+class PluginCommand:
     """Base class for custom Splitfile commands."""
 
     def calc_hash(self, repository, args):
