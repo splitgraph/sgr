@@ -28,7 +28,7 @@ _PUBLISH_PREVIEW_SIZE = 100
 # [ ] move things out from Repository into more appropriate classes
 # [ ] review current internal metadata access/creation commands to see which can be made
 #     into private methods
-# [ ] make sure Repository objects use their own internal engine pointer
+# [/] make sure Repository objects use their own internal engine pointer
 # [ ] remove switch_engine from tests -- instead use fixtures like PG_MNT_REMOTE/PG_MNT
 # [ ] Document the new API, regenerate the docs
 
@@ -585,6 +585,9 @@ class Repository:
 
         remote_engine, remote_repository = merge_push_params(self, remote_engine,
                                                              remote_repository)
+        # todo figure out the actual UX for this
+        remote_repository = copy(remote_repository)
+        remote_repository.engine = get_engine(remote_engine)
         try:
             logging.info("Gathering remote metadata...")
             # Flip the two connections here: pretend the remote engine is local and download metadata from the local

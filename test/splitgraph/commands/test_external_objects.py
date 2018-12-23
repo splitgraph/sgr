@@ -1,32 +1,9 @@
-import pytest
-from minio import Minio
 
 from splitgraph._data.objects import get_existing_objects, get_external_object_locations, get_downloaded_objects
 from splitgraph.core.engine import cleanup_objects
 from splitgraph.core.repository import clone
 from splitgraph.engine import switch_engine
-from splitgraph.hooks.s3 import S3_HOST, S3_PORT, S3_ACCESS_KEY, S3_SECRET_KEY
 from test.splitgraph.conftest import PG_MNT, REMOTE_ENGINE
-
-
-def _cleanup_minio():
-    client = Minio('%s:%s' % (S3_HOST, S3_PORT),
-                   access_key=S3_ACCESS_KEY,
-                   secret_key=S3_SECRET_KEY,
-                   secure=False)
-    if client.bucket_exists(S3_ACCESS_KEY):
-        objects = [o.object_name for o in client.list_objects(bucket_name=S3_ACCESS_KEY)]
-        # remove_objects is an iterator, so we force evaluate it
-        list(client.remove_objects(bucket_name=S3_ACCESS_KEY, objects_iter=objects))
-
-
-@pytest.fixture
-def clean_minio():
-    # Make sure to delete extra objects in the remote Minio bucket
-    _cleanup_minio()
-    yield
-    # Comment this out if tests fail and you want to see what the hell went on in the bucket.
-    _cleanup_minio()
 
 
 def test_s3_push_pull(local_engine_empty, pg_repo_remote, clean_minio):

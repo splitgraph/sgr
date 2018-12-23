@@ -83,9 +83,9 @@ def unpublish_repository(repository):
 
     :param repository: Repository to unpublish
     """
-    get_engine().run_sql(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s")
-                         .format(Identifier(REGISTRY_META_SCHEMA), Identifier("images")),
-                         (repository.namespace, repository.repository))
+    repository.engine.run_sql(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s")
+                              .format(Identifier(REGISTRY_META_SCHEMA), Identifier("images")),
+                              (repository.namespace, repository.repository))
 
 
 def get_info_key(key):

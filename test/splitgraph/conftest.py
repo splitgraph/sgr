@@ -1,6 +1,7 @@
 import os
 
 import pytest
+from minio import Minio
 
 from splitgraph._data.common import ensure_metadata_schema
 from splitgraph._data.registry import _ensure_registry_schema, unpublish_repository, setup_registry_mode, \
@@ -9,6 +10,7 @@ from splitgraph.core.engine import cleanup_objects, get_current_repositories
 from splitgraph.core.repository import to_repository as R, Repository
 from splitgraph.engine import get_engine, ResultShape, switch_engine
 from splitgraph.hooks.mount_handlers import mount
+from splitgraph.hooks.s3 import S3_HOST, S3_PORT, S3_ACCESS_KEY, S3_SECRET_KEY
 
 PG_MNT = R('test/pg_mount')
 PG_MNT_PULL = R('test_pg_mount_pull')
@@ -164,8 +166,8 @@ def remote_engine():
         _ensure_registry_schema()
         setup_registry_mode()
         toggle_registry_rls('DISABLE')
-        unpublish_repository(OUTPUT)
-        unpublish_repository(PG_MNT)
+        unpublish_repository(Repository('', 'output'))
+        unpublish_repository(Repository('test', 'pg_mount'))
         unpublish_repository(Repository('testuser', 'pg_mount'))
         for mountpoint, _ in get_current_repositories():
             mountpoint.rm()
@@ -190,3 +192,23 @@ SPLITFILE_ROOT = os.path.join(os.path.dirname(__file__), '../resources/')
 def load_splitfile(name):
     with open(SPLITFILE_ROOT + name, 'r') as f:
         return f.read()
+
+
+def _cleanup_minio():
+    client = Minio('%s:%s' % (S3_HOST, S3_PORT),
+                   access_key=S3_ACCESS_KEY,
+                   secret_key=S3_SECRET_KEY,
+                   secure=False)
+    if client.bucket_exists(S3_ACCESS_KEY):
+        objects = [o.object_name for o in client.list_objects(bucket_name=S3_ACCESS_KEY)]
+        # remove_objects is an iterator, so we force evaluate it
+        list(client.remove_objects(bucket_name=S3_ACCESS_KEY, objects_iter=objects))
+
+
+@pytest.fixture
+def clean_minio():
+    # Make sure to delete extra objects in the remote Minio bucket
+    _cleanup_minio()
+    yield
+    # Comment this out if tests fail and you want to see what the hell went on in the bucket.
+    _cleanup_minio()
