@@ -5,7 +5,6 @@ Routines for rendering a Splitgraph repository as a tree of images
 from collections import defaultdict
 
 from splitgraph._data.common import ensure_metadata_schema
-from splitgraph._data.images import get_all_image_info
 from splitgraph.exceptions import SplitGraphException
 
 
@@ -60,11 +59,11 @@ def render_tree(repository):
     head = repository.get_head()
 
     # Get all commits in ascending time order
-    snap_parents = get_all_image_info(repository)
-    for image_hash, parent_id, _, _, _, _ in snap_parents:
-        if parent_id is None:
-            base_node = image_hash
-        children[parent_id].append(image_hash)
+    all_images = repository.get_images()
+    for image in all_images:
+        if image.parent_id is None:
+            base_node = image.image_hash
+        children[image.parent_id].append(image.image_hash)
 
     if base_node is None:
         raise SplitGraphException("Something is seriously wrong with the index.")
@@ -72,6 +71,6 @@ def render_tree(repository):
     # Calculate the column in which each node should be displayed.
     node_cols = _calc_columns(children, base_node)
 
-    for image_hash, _, _, _, _, _ in reversed(snap_parents):
-        _render_node(image_hash, children, node_cols, mark_node=' H' if image_hash == head else '',
+    for image in reversed(all_images):
+        _render_node(image.image_hash, children, node_cols, mark_node=' H' if image.image_hash == head else '',
                      max_col=max(node_cols.values()))

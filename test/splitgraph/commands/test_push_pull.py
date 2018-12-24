@@ -1,6 +1,5 @@
 import pytest
 
-from splitgraph._data.images import get_all_image_info
 from splitgraph._data.objects import get_existing_objects, get_downloaded_objects
 from splitgraph.core.repository import clone
 from test.splitgraph.conftest import PG_MNT
@@ -30,14 +29,13 @@ def test_pull(local_engine_empty, pg_repo_remote, download_all):
 
     # ...and check it's unchanged on the pulled one.
     assert PG_MNT.run_sql("SELECT * FROM fruits") == [(1, 'apple'), (2, 'orange')]
-    assert head_1 not in [snapdata[0] for snapdata in
-                          get_all_image_info(PG_MNT)]
+    assert PG_MNT.get_image(head_1) is None
 
     # Since the pull procedure initializes a new connection, we have to commit our changes
     # in order to see them.
     pg_repo_remote.engine.commit()
     PG_MNT.pull()
-    assert head_1 in [snapdata[0] for snapdata in get_all_image_info(PG_MNT)]
+    assert PG_MNT.get_image(head_1) is not None
 
     # Check out the newly-pulled commit and verify it has the same data.
     PG_MNT.checkout(head_1)

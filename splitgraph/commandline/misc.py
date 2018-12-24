@@ -112,7 +112,7 @@ def prune_c(repository, remote, yes):
     repository.engine = engine
     # still WIP, will remove it to rely on the engine in the repository
     with switch_engine(engine):
-        all_images = set(repository.get_images())
+        all_images = set(image.image_hash for image in repository.get_images())
         all_tagged_images = {i for i, t in repository.get_all_hashes_tags()}
         dangling_images = all_images.difference(_get_all_parent_images(repository, all_tagged_images))
 

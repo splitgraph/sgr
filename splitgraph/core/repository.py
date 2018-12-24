@@ -6,9 +6,9 @@ from random import getrandbits
 from psycopg2.sql import SQL, Identifier
 
 import splitgraph
-from splitgraph import SplitGraphException, switch_engine, publish_tag, get_all_image_info
+from splitgraph import SplitGraphException, switch_engine, publish_tag
 from splitgraph._data.common import ensure_metadata_schema, select, insert
-from splitgraph._data.images import add_new_image, get_image_object_path, IMAGE_COLS
+from splitgraph._data.images import add_new_image, get_image_object_path
 from splitgraph._data.objects import register_table, get_external_object_locations, get_existing_objects, \
     get_object_for_table, register_object, get_object_meta, register_objects, register_object_locations, register_tables
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
@@ -18,7 +18,7 @@ from ._common import manage_audit_triggers, set_head, manage_audit
 from ._objects.creation import record_table_as_snap, record_table_as_diff
 from ._objects.loading import download_objects, upload_objects
 from ._objects.utils import get_random_object_id
-from .image import Image
+from .image import Image, IMAGE_COLS
 
 _PUBLISH_PREVIEW_SIZE = 100
 
@@ -559,7 +559,18 @@ class Repository:
         return Image(**r_dict)
 
     def get_images(self):
-        return [img[0] for img in get_all_image_info(self)]
+        """
+        Get all images in the repository
+
+        :return: List of Image objects
+        """
+        result = []
+        for image in self.engine.run_sql(select("images", ','.join(IMAGE_COLS), "repository = %s AND namespace = %s") +
+                                         SQL(" ORDER BY created"), (self.repository, self.namespace)):
+            r_dict = {k: v for k, v in zip(IMAGE_COLS, image)}
+            r_dict.update(repository=self)
+            result.append(Image(**r_dict))
+        return result
 
     def push(self, remote_repository=None, handler='DB', handler_options=None):
         """
@@ -588,10 +599,10 @@ class Repository:
             # Flip the two connections here: pretend the remote engine is local and download metadata from the local
             # engine instead of the remote.
             # This also registers new commits remotely. Should make explicit and move down later on.
-            snaps_to_push, table_meta, object_locations, object_meta, tags = \
+            new_images, table_meta, object_locations, object_meta, tags = \
                 _get_required_snaps_objects(remote_repository, self)
 
-            if not snaps_to_push:
+            if not new_images:
                 logging.info("Nothing to do.")
                 return
 
@@ -882,30 +893,24 @@ def _get_required_snaps_objects(target, source):
     :param source: Source repository object
     """
 
-    target_images = {image_hash: parent_id for image_hash, parent_id, _, _, _, _ in
-                     get_all_image_info(target)}
-    source_images = {image_hash: (parent_id, created, comment, prov_type, prov_data)
-                     for image_hash, parent_id, created, comment, prov_type, prov_data in
-                     get_all_image_info(source)}
-
-    # TODO use Image objects
+    target_images = {i.image_hash: i for i in target.get_images()}
+    source_images = {i.image_hash: i for i in source.get_images()}
 
     # We assume here that none of the target image hashes have changed (are immutable) since otherwise the target
     # would have created a new images
     table_meta = []
     new_images = [i for i in source_images if i not in target_images]
     for image_hash in new_images:
+        image = source_images[image_hash]
         # This is not batched but there shouldn't be that many entries here anyway.
-        remote_parent, remote_created, remote_comment, remote_prov, remote_provdata = source_images[image_hash]
-        add_new_image(target, remote_parent, image_hash, remote_created, remote_comment, remote_prov,
-                      remote_provdata)
+        add_new_image(target, image.parent_id, image.image_hash, image.created, image.comment, image.provenance_type,
+                      image.provenance_data)
         # Get the meta for all objects we'll need to fetch.
         table_meta.extend(source.engine.run_sql(
             SQL("""SELECT image_hash, table_name, object_id FROM {0}.tables
                        WHERE namespace = %s AND repository = %s AND image_hash = %s""")
                 .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-            (source.namespace, source.repository,
-             image_hash)))
+            (source.namespace, source.repository, image.image_hash)))
     # Get the tags too
     existing_tags = [t for s, t in target.get_all_hashes_tags()]
     tags = {t: s for s, t in source.get_all_hashes_tags() if t not in existing_tags}
@@ -967,10 +972,10 @@ def clone(remote_repository, local_repository=None, download_all=False):
     logging.info("Gathering remote metadata...")
 
     # This also registers the new versions locally.
-    snaps_to_fetch, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(local_repository,
-                                                                                                  remote_repository)
+    new_images, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(local_repository,
+                                                                                              remote_repository)
 
-    if not snaps_to_fetch:
+    if not new_images:
         logging.info("Nothing to do.")
         return
 

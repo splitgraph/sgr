@@ -9,24 +9,11 @@ from datetime import datetime
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph._data.common import select, insert
+from splitgraph._data.common import insert
 from splitgraph._data.objects import get_full_object_tree, get_object_for_table
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitGraphException
-
-IMAGE_COLS = ["image_hash", "parent_id", "created", "comment", "provenance_type", "provenance_data"]
-
-
-def get_all_image_info(repository):
-    """
-    Gets all information about all images in a repository.
-
-    :param repository: Repository
-    :return: List of (image_hash, parent_id, creation time, comment, provenance type, provenance data) for all images.
-    """
-    return repository.engine.run_sql(select("images", ','.join(IMAGE_COLS), "repository = %s AND namespace = %s") +
-                                     SQL(" ORDER BY created"), (repository.repository, repository.namespace))
 
 
 def _get_all_child_images(repository, start_image):
@@ -34,15 +21,14 @@ def _get_all_child_images(repository, start_image):
     Get all children of `start_image` of any degree
     """
 
-    all_images = get_all_image_info(repository)
+    all_images = repository.get_images()
     result_size = 1
     result = {start_image}
     while True:
         # Keep expanding the set of children until it stops growing
         for image in all_images:
-            image_id, image_parent = image[0], image[1]
-            if image_parent in result:
-                result.add(image_id)
+            if image.parent_id in result:
+                result.add(image.image_hash)
         if len(result) == result_size:
             return result
         result_size = len(result)
@@ -56,7 +42,7 @@ def _get_all_parent_images(repository, start_images):
     Used by the pruning process to identify all images in the same repo
     that are required by images with tags.
     """
-    parent = {image[0]: image[1] for image in get_all_image_info(repository)}
+    parent = {image.image_hash: image.parent_id for image in repository.get_images()}
     result = set(start_images)
     result_size = len(result)
     while True:

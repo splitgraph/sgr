@@ -3,7 +3,6 @@ from copy import copy
 import pytest
 from psycopg2._psycopg import ProgrammingError
 
-from splitgraph._data.images import get_all_image_info
 from splitgraph._data.objects import register_object_locations
 from splitgraph._data.registry import get_published_info, unpublish_repository, toggle_registry_rls
 from splitgraph.core.repository import Repository, clone
@@ -70,7 +69,7 @@ def test_rls_push_own_delete_own(local_engine_empty, unprivileged_pg_repo, clean
     destination.push(handler='S3')
     # Test we can delete our own repo once we've pushed it
     remote_destination.rm(uncheckout=False)
-    assert len(get_all_image_info(remote_destination)) == 0
+    assert len(remote_destination.get_images()) == 0
 
 
 def test_rls_push_others(local_engine_empty, unprivileged_pg_repo):
@@ -90,7 +89,7 @@ def test_rls_delete_others(unprivileged_pg_repo, unprivileged_remote_engine):
 
     unprivileged_pg_repo.rm(uncheckout=False)
     # Check that the policy worked by verifying that the repository still exists on the remote.
-    assert len(get_all_image_info(unprivileged_pg_repo)) > 0
+    assert len(unprivileged_pg_repo.get_images()) > 0
 
 
 def test_rls_impersonate_external_object(unprivileged_pg_repo, unprivileged_remote_engine):
