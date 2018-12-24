@@ -58,8 +58,8 @@ def register_tables(repository, table_meta):
     :param table_meta: A list of (image_hash, table_name, object_id).
     """
     table_meta = [(repository.namespace, repository.repository) + o for o in table_meta]
-    get_engine().run_sql_batch(insert("tables", ("namespace", "repository", "image_hash", "table_name", "object_id")),
-                               table_meta)
+    repository.engine.run_sql_batch(
+        insert("tables", ("namespace", "repository", "image_hash", "table_name", "object_id")), table_meta)
 
 
 def register_object_locations(object_locations):

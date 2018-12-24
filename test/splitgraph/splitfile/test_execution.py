@@ -1,3 +1,5 @@
+from copy import copy
+
 import pytest
 
 from splitgraph._data.images import get_all_image_info
@@ -8,7 +10,7 @@ from splitgraph.core.repository import to_repository as R, clone
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.splitfile._parsing import preprocess
 from splitgraph.splitfile.execution import execute_commands
-from test.splitgraph.conftest import OUTPUT, SPLITFILE_ROOT, load_splitfile, REMOTE_ENGINE
+from test.splitgraph.conftest import OUTPUT, SPLITFILE_ROOT, load_splitfile
 
 PARSING_TEST_SPLITFILE = load_splitfile('import_remote_multiple.splitfile')
 
@@ -117,20 +119,22 @@ def test_splitfile_remote_hash(local_engine_empty, pg_repo_remote):
            [(1, 'apple', 'potato'), (2, 'orange', 'carrot')]
 
 
-def test_import_updating_splitfile_with_uploading(local_engine_empty, pg_repo_remote):
+def test_import_updating_splitfile_with_uploading(local_engine_empty, remote_engine, pg_repo_remote):
     execute_commands(load_splitfile('import_and_update.splitfile'), output=OUTPUT)
     head = OUTPUT.get_head()
 
     assert len(get_existing_objects()) == 4  # Two original tables + two updates
 
-    # Push with upload. Have to specify the remote engine since we are pushing a new repository.
-    OUTPUT.push(remote_engine=REMOTE_ENGINE, handler='S3', handler_options={})
+    # Push with upload. Have to specify the remote repo.
+    remote_output = copy(OUTPUT)
+    remote_output.engine = remote_engine
+    OUTPUT.push(remote_output, handler='S3', handler_options={})
     # Unmount everything locally and cleanup
     OUTPUT.rm()
     cleanup_objects()
     assert not get_existing_objects()
 
-    clone(OUTPUT, download_all=False)
+    clone(OUTPUT.to_schema(), download_all=False)
 
     assert not get_downloaded_objects()
     existing_objects = list(get_existing_objects())
@@ -142,7 +146,8 @@ def test_import_updating_splitfile_with_uploading(local_engine_empty, pg_repo_re
     assert OUTPUT.run_sql("SELECT fruit_id, name FROM my_fruits") == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]
 
 
-def test_splitfile_end_to_end_with_uploading(local_engine_empty, pg_repo_remote_multitag, mg_repo_remote):
+def test_splitfile_end_to_end_with_uploading(local_engine_empty, remote_engine,
+                                             pg_repo_remote_multitag, mg_repo_remote):
     # An end-to-end test:
     #   * Create a derived dataset from some tables imported from the remote engine
     #   * Push it back to the remote engine, uploading all objects to S3 (instead of the remote engine itself)
@@ -153,8 +158,12 @@ def test_splitfile_end_to_end_with_uploading(local_engine_empty, pg_repo_remote_
     # Do the same setting up first and run the splitfile against the remote data.
     execute_commands(load_splitfile('import_remote_multiple.splitfile'), params={'TAG': 'v1'}, output=OUTPUT)
 
+    remote_output = copy(OUTPUT)
+    remote_output.engine = remote_engine
+
     # Push with upload
-    OUTPUT.push(remote_engine='remote_engine', handler='S3', handler_options={})
+    # TODO maybe push/clone should return the target repos they pushed to
+    OUTPUT.push(remote_repository=remote_output, handler='S3', handler_options={})
     # Unmount everything locally and cleanup
     for mountpoint, _ in get_current_repositories():
         mountpoint.rm()

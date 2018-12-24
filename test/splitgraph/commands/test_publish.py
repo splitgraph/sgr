@@ -1,26 +1,30 @@
+from copy import copy
+
 import pytest
 
 from splitgraph._data.registry import get_published_info
-from splitgraph.core.repository import Repository
 from splitgraph.splitfile import execute_commands
 from test.splitgraph.conftest import OUTPUT, load_splitfile
 
 
 @pytest.mark.parametrize('extra_info', [True, False])
-def test_publish(local_engine_empty, pg_repo_remote_multitag, extra_info):
+def test_publish(local_engine_empty, remote_engine, pg_repo_remote_multitag, extra_info):
     # Run some splitfile commands to create a dataset and push it
     execute_commands(load_splitfile('import_remote_multiple.splitfile'), params={'TAG': 'v1'}, output=OUTPUT)
     OUTPUT.get_image(OUTPUT.get_head()).tag('v1')
-    OUTPUT.push(remote_engine='remote_engine')
+
+    remote_output = copy(OUTPUT)
+    remote_output.engine = remote_engine
+
+    OUTPUT.push(remote_output)
     OUTPUT.publish('v1', readme="A test repo.", include_provenance=extra_info, include_table_previews=extra_info)
 
     # Base the derivation on v2 of test/pg_mount and publish that too.
     execute_commands(load_splitfile('import_remote_multiple.splitfile'), params={'TAG': 'v2'}, output=OUTPUT)
     OUTPUT.get_image(OUTPUT.get_head()).tag('v2')
-    OUTPUT.push(remote_engine='remote_engine')
+    OUTPUT.push(remote_output)
     OUTPUT.publish('v2', readme="Based on v2.", include_provenance=extra_info, include_table_previews=extra_info)
 
-    remote_output = Repository('', 'output', pg_repo_remote_multitag.engine)
     image_hash, published_dt, provenance, readme, schemata, previews = get_published_info(remote_output, 'v1')
     assert image_hash == OUTPUT.resolve_image('v1')
     assert readme == "A test repo."

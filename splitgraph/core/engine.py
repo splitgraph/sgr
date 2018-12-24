@@ -5,7 +5,7 @@ import logging
 
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph import get_engine, switch_engine, SplitGraphException
+from splitgraph import get_engine, SplitGraphException
 from splitgraph._data.common import META_TABLES, ensure_metadata_schema, select
 from splitgraph._data.objects import get_object_meta
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
@@ -107,44 +107,45 @@ def init_engine():  # pragma: no cover
 
 def repository_exists(repository):
     """
-    Checks if a repository exists on the engine. Can be used with `override_engine_connection`
+    Checks if a repository exists on the engine.
 
     :param repository: Repository object
     """
-    return get_engine().run_sql(SQL("SELECT 1 FROM {}.images WHERE namespace = %s AND repository = %s")
-                                .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                                (repository.namespace, repository.repository),
-                                return_shape=ResultShape.ONE_ONE) is not None or \
-           get_engine().run_sql(SQL("SELECT 1 FROM {}.tags WHERE namespace = %s AND repository = %s")
-                                .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                                (repository.namespace, repository.repository),
-                                return_shape=ResultShape.ONE_ONE) is not None
+    return repository.engine.run_sql(SQL("SELECT 1 FROM {}.images WHERE namespace = %s AND repository = %s")
+                                     .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                                     (repository.namespace, repository.repository),
+                                     return_shape=ResultShape.ONE_ONE) is not None or \
+           repository.engine.run_sql(SQL("SELECT 1 FROM {}.tags WHERE namespace = %s AND repository = %s")
+                                     .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                                     (repository.namespace, repository.repository),
+                                     return_shape=ResultShape.ONE_ONE) is not None
 
 
 def lookup_repo(repo_name, include_local=False):
     """
-    Queries the SG drivers on the lookup path to locate one hosting the given engine.
+    Queries the SG drivers on the lookup path to locate one hosting the given repository.
 
     :param repo_name: Repository name
     :param include_local: If True, also queries the local engine
 
-    :return: The name of the remote engine that has the repository (as specified in the config)
-        or "LOCAL" if the local engine has the repository.
+    :return: Local or remote Repository object
     """
+    from splitgraph.core.repository import to_repository
+    result = to_repository(repo_name)
 
     if repo_name in _LOOKUP_PATH_OVERRIDE:
-        return _LOOKUP_PATH_OVERRIDE[repo_name]
+        result.engine = get_engine(_LOOKUP_PATH_OVERRIDE[repo_name])
+        return result
 
     # Currently just check if the schema with that name exists on the remote.
-    if include_local and repository_exists(repo_name):
-        return "LOCAL"
+    if include_local and repository_exists(result):
+        return result
 
     for candidate in _LOOKUP_PATH:
-        with switch_engine(candidate):
-            if repository_exists(repo_name):
-                get_engine().close()
-                return candidate
-            get_engine().close()
+        result.engine = get_engine(candidate)
+        if repository_exists(result):
+            return result
+        result.engine.close()
 
     raise SplitGraphException("Unknown repository %s!" % repo_name.to_schema())
 

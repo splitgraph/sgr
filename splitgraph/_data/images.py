@@ -117,11 +117,12 @@ def add_new_image(repository, parent_id, image, created=None, comment=None, prov
         (one of None, FROM, MOUNT, IMPORT, SQL)
     :param provenance_data: Extra provenance data (dictionary).
     """
-    get_engine().run_sql(insert("images", ("image_hash", "namespace", "repository", "parent_id", "created", "comment",
-                                           "provenance_type", "provenance_data")),
-                         (image, repository.namespace, repository.repository, parent_id, created or datetime.now(),
-                          comment, provenance_type, Json(provenance_data)),
-                         return_shape=None)
+    repository.engine.run_sql(
+        insert("images", ("image_hash", "namespace", "repository", "parent_id", "created", "comment",
+                          "provenance_type", "provenance_data")),
+        (image, repository.namespace, repository.repository, parent_id, created or datetime.now(),
+         comment, provenance_type, Json(provenance_data)),
+        return_shape=None)
 
 
 def delete_images(repository, images):

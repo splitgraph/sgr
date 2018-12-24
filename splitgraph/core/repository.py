@@ -1,6 +1,5 @@
 import logging
 from contextlib import contextmanager
-from copy import copy
 from datetime import datetime
 from random import getrandbits
 
@@ -50,8 +49,10 @@ class Repository:
     def to_schema(self):
         return self.namespace + "/" + self.repository if self.namespace else self.repository
 
+    def __repr__(self):
+        return "Repository " + self.to_schema() + " on " + self.engine.name
+
     __str__ = to_schema
-    __repr__ = to_schema
 
     def __hash__(self):
         return hash(self.namespace) * hash(self.repository)
@@ -107,9 +108,9 @@ class Repository:
 
     def get_upstream(self):
         """
-        Gets the current upstream (connection string and repository) that a local repository tracks
+        Gets the current upstream repository that a local repository tracks
 
-        :return: Tuple of (remote engine, remote Repository object)
+        :return: Remote Repository object (with a remote engine)
         """
         result = self.engine.run_sql(select("upstream", "remote_name, remote_namespace, remote_repository",
                                             "namespace = %s AND repository = %s"),
@@ -117,13 +118,12 @@ class Repository:
                                      return_shape=ResultShape.ONE_MANY)
         if result is None:
             return result
-        return result[0], Repository(result[1], result[2])
+        return Repository(namespace=result[1], repository=result[2], engine=get_engine(result[0]))
 
-    def set_upstream(self, remote_name, remote_repository):
+    def set_upstream(self, remote_repository):
         """
         Sets the upstream remote + repository that this repository tracks.
 
-        :param remote_name: Name of the remote as specified in the Splitgraph config.
         :param remote_repository: Remote Repository object
         """
         self.engine.run_sql(SQL("INSERT INTO {0}.upstream (namespace, repository, "
@@ -134,8 +134,8 @@ class Repository:
                                 "upstream.namespace = excluded.namespace "
                                 "AND upstream.repository = excluded.repository")
                             .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                            (self.namespace, self.repository, remote_name, remote_repository.namespace,
-                             remote_repository.repository))
+                            (self.namespace, self.repository, remote_repository.engine.name,
+                             remote_repository.namespace, remote_repository.repository))
 
     def delete_upstream(self):
         """
@@ -178,14 +178,12 @@ class Repository:
                 # The SNAP object doesn't actually exist remotely, so we have to download it.
                 # An optimisation here: we could open an RO connection to the remote instead if the object
                 # does live there.
-                remote_info = self.get_upstream()
-                if not remote_info:
+                upstream = self.get_upstream()
+                if not upstream:
                     raise SplitGraphException("SNAP %s from %s doesn't exist locally and no remote was found for it!"
                                               % (object_id, str(self)))
-                remote_conn, _ = remote_info
-                object_locations = get_external_object_locations(self.engine, [object_id])
-                download_objects(get_engine(remote_conn),
-                                 objects_to_fetch=[object_id], object_locations=object_locations)
+                object_locations = get_external_object_locations([object_id])
+                download_objects(upstream.engine, objects_to_fetch=[object_id], object_locations=object_locations)
                 yield SPLITGRAPH_META_SCHEMA, object_id
 
                 delete_objects([object_id])
@@ -563,13 +561,12 @@ class Repository:
     def get_images(self):
         return [img[0] for img in get_all_image_info(self)]
 
-    def push(self, remote_engine=None, remote_repository=None, handler='DB', handler_options=None):
+    def push(self, remote_repository=None, handler='DB', handler_options=None):
         """
         Inverse of ``pull``: Pushes all local changes to the remote and uploads new objects.
-
-        :param remote_engine: The name of the remote engine or a connection string. If not specified, the current upstream
-            is used.
-        :param remote_repository: Remote repository to push changes to. If not specified, the local repository is used.
+.
+        :param remote_repository: Remote repository to push changes to. If not specified, the current
+            upstream is used.
         :param handler: Name of the handler to use to upload objects. Use `DB` to push them to the remote or `S3`
             to store them in an S3 bucket.
         :param handler_options: Extra options to pass to the handler. For example, see
@@ -582,30 +579,26 @@ class Repository:
 
         # Maybe consider having a context manager for getting a remote engine instance
         # that auto-commits/closes when needed?
+        remote_repository = remote_repository or self.get_upstream()
+        if not remote_repository:
+            raise SplitGraphException("No remote repository specified and no upstream found for %s!" % self.to_schema())
 
-        remote_engine, remote_repository = merge_push_params(self, remote_engine,
-                                                             remote_repository)
-        # todo figure out the actual UX for this
-        remote_repository = copy(remote_repository)
-        remote_repository.engine = get_engine(remote_engine)
         try:
             logging.info("Gathering remote metadata...")
             # Flip the two connections here: pretend the remote engine is local and download metadata from the local
             # engine instead of the remote.
-            with switch_engine(remote_engine):
-                # This also registers new commits remotely. Should make explicit and move down later on.
-                snaps_to_push, table_meta, object_locations, object_meta, tags = \
-                    _get_required_snaps_objects(splitgraph.get_engine('LOCAL'), remote_repository, self)
+            # This also registers new commits remotely. Should make explicit and move down later on.
+            snaps_to_push, table_meta, object_locations, object_meta, tags = \
+                _get_required_snaps_objects(remote_repository, self)
 
             if not snaps_to_push:
                 logging.info("Nothing to do.")
                 return
 
-            new_uploads = upload_objects(remote_engine, list(set(o[0] for o in object_meta)),
+            new_uploads = upload_objects(remote_repository.engine, list(set(o[0] for o in object_meta)),
                                          handler=handler, handler_params=handler_options)
-
             # Register the newly uploaded object locations locally and remotely.
-            with switch_engine(remote_engine):
+            with switch_engine(remote_repository.engine):
                 register_objects(object_meta)
                 register_object_locations(object_locations + new_uploads)
                 register_tables(remote_repository, table_meta)
@@ -613,16 +606,16 @@ class Repository:
 
             register_object_locations(new_uploads)
 
-            if self.get_upstream() is None and remote_engine:
-                self.set_upstream(remote_engine, remote_repository)
+            if self.get_upstream() is None:
+                self.set_upstream(remote_repository)
 
-            splitgraph.get_engine(remote_engine).commit()
+            remote_repository.engine.commit()
             print("Uploaded metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta),
                                                                                               len(table_meta),
                                                                                               len([t for t in tags if
                                                                                                    t != 'HEAD'])))
         finally:
-            splitgraph.get_engine(remote_engine).close()
+            remote_repository.engine.close()
 
     def pull(self, download_all=False):
         """
@@ -632,13 +625,11 @@ class Repository:
         :param download_all: If True, downloads all objects and stores them locally. Otherwise, will only download required
             objects when a table is checked out.
         """
-        remote_info = self.get_upstream()
-        if not remote_info:
+        upstream = self.get_upstream()
+        if not upstream:
             raise SplitGraphException("No upstream found for repository %s!" % self.to_schema())
 
-        remote_engine, remote_repository = remote_info
-        clone(remote_repository=remote_repository, remote_engine=get_engine(remote_engine), local_repository=self,
-              download_all=download_all)
+        clone(remote_repository=upstream, local_repository=self, download_all=download_all)
 
     def has_pending_changes(self):
         """
@@ -653,19 +644,21 @@ class Repository:
                 return True
         return False
 
-    def publish(self, tag, remote_engine_name=None, remote_repository=None, readme="", include_provenance=True,
+    def publish(self, tag, remote_repository=None, readme="", include_provenance=True,
                 include_table_previews=True):
         """
         Summarizes the data on a previously-pushed repository and makes it available in the catalog.
 
         :param tag: Image tag. Only images with tags can be published.
-        :param remote_engine_name: Remote engine or connection string
-        :param remote_repository: Remote repository name
+        :param remote_repository: Remote Repository object (uses the upstream if unspecified)
         :param readme: Optional README for the repository.
         :param include_provenance: If False, doesn't include the dependencies of the image
         :param include_table_previews: Whether to include data previews for every table in the image.
         """
-        remote_engine_name, remote_repository = merge_push_params(self, remote_engine_name, remote_repository)
+        remote_repository = remote_repository or self.get_upstream()
+        if not remote_repository:
+            raise SplitGraphException("No remote repository specified and no upstream found for %s!" % self.to_schema())
+
         image_hash = self.get_tagged_id(tag)
         logging.info("Publishing %s:%s (%s)", self, image_hash, tag)
 
@@ -674,14 +667,12 @@ class Repository:
             if include_provenance else None
         previews, schemata = _prepare_extra_data(image, self, include_table_previews)
 
-        remote_engine = splitgraph.get_engine(remote_engine_name)
         try:
-            with switch_engine(remote_engine_name):
-                publish_tag(remote_repository, tag, image_hash, datetime.now(), dependencies, readme, schemata=schemata,
-                            previews=previews if include_table_previews else None)
-            remote_engine.commit()
+            publish_tag(remote_repository, tag, image_hash, datetime.now(), dependencies, readme, schemata=schemata,
+                        previews=previews if include_table_previews else None)
+            remote_repository.engine.commit()
         finally:
-            remote_engine.close()
+            remote_repository.engine.close()
 
     def get_head(self, raise_on_none=True):
         """
@@ -840,8 +831,7 @@ def import_table_from_remote(remote_repository, remote_tables, remote_image_hash
     tmp_mountpoint = Repository(namespace=remote_repository.namespace,
                                 repository=remote_repository.repository + '_clone_tmp')
 
-    clone(remote_repository, remote_engine=remote_repository.engine,
-          local_repository=tmp_mountpoint, download_all=False)
+    clone(remote_repository, local_repository=tmp_mountpoint, download_all=False)
     tmp_mountpoint.import_tables(remote_tables, target_repository, target_tables, image_hash=remote_image_hash,
                                  target_hash=target_hash)
 
@@ -883,59 +873,61 @@ def _prepare_extra_data(image, repository, include_table_previews):
     return previews, schemata
 
 
-def _get_required_snaps_objects(remote_engine, local_repository, remote_repository):
+def _get_required_snaps_objects(target, source):
     """
-    Inspects the remote Splitgraph engine and gathers metadata missing on the local one required
-    for a pull, registering new images locally. Internal function.
+    Inspects two Splitgraph repositories and gathers metadata that is required to bring target up to
+    date with source.
 
-    :param remote_engine: Remote Splitgraph engine object
-    :param local_repository: Local Repository object
-    :param remote_repository: Remote Repository object
+    :param target: Target Repository object
+    :param source: Source repository object
     """
-    local_images = {image_hash: parent_id for image_hash, parent_id, _, _, _, _ in
-                    get_all_image_info(local_repository)}
-    with switch_engine(remote_engine):
-        remote_images = {image_hash: (parent_id, created, comment, prov_type, prov_data)
-                         for image_hash, parent_id, created, comment, prov_type, prov_data in
-                         get_all_image_info(remote_repository)}
 
-    # We assume here that none of the remote image hashes have changed (are immutable) since otherwise the remote
-    # would have created a new image.
+    target_images = {image_hash: parent_id for image_hash, parent_id, _, _, _, _ in
+                     get_all_image_info(target)}
+    source_images = {image_hash: (parent_id, created, comment, prov_type, prov_data)
+                     for image_hash, parent_id, created, comment, prov_type, prov_data in
+                     get_all_image_info(source)}
+
+    # TODO use Image objects
+
+    # We assume here that none of the target image hashes have changed (are immutable) since otherwise the target
+    # would have created a new images
     table_meta = []
-    new_images = [i for i in remote_images if i not in local_images]
+    new_images = [i for i in source_images if i not in target_images]
     for image_hash in new_images:
         # This is not batched but there shouldn't be that many entries here anyway.
-        remote_parent, remote_created, remote_comment, remote_prov, remote_provdata = remote_images[image_hash]
-        add_new_image(local_repository, remote_parent, image_hash, remote_created, remote_comment, remote_prov,
+        remote_parent, remote_created, remote_comment, remote_prov, remote_provdata = source_images[image_hash]
+        add_new_image(target, remote_parent, image_hash, remote_created, remote_comment, remote_prov,
                       remote_provdata)
         # Get the meta for all objects we'll need to fetch.
-        table_meta.extend(remote_engine.run_sql(SQL("""SELECT image_hash, table_name, object_id FROM {0}.tables
+        table_meta.extend(source.engine.run_sql(
+            SQL("""SELECT image_hash, table_name, object_id FROM {0}.tables
                        WHERE namespace = %s AND repository = %s AND image_hash = %s""")
-                                                .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                                                (remote_repository.namespace, remote_repository.repository,
-                                                 image_hash)))
+                .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+            (source.namespace, source.repository,
+             image_hash)))
     # Get the tags too
-    existing_tags = [t for s, t in local_repository.get_all_hashes_tags()]
-    tags = {t: s for s, t in remote_repository.get_all_hashes_tags() if t not in existing_tags}
+    existing_tags = [t for s, t in target.get_all_hashes_tags()]
+    tags = {t: s for s, t in source.get_all_hashes_tags() if t not in existing_tags}
 
     # Crawl the object tree to get the IDs and other metadata for all required objects.
-    distinct_objects, object_meta = _extract_recursive_object_meta(remote_engine, table_meta)
+    distinct_objects, object_meta = _extract_recursive_object_meta(source.engine, target.engine, table_meta)
 
-    with switch_engine(remote_engine):
+    with switch_engine(source.engine):
         object_locations = get_external_object_locations(list(distinct_objects)) if distinct_objects else []
-
     return new_images, table_meta, object_locations, object_meta, tags
 
 
-def _extract_recursive_object_meta(remote_engine, table_meta):
-    """Since an object can now depend on another object that's not mentioned in the commit tree,
-    we now have to follow the objects' links to their parents until we have gathered all the required object IDs."""
-    existing_objects = get_existing_objects()
+def _extract_recursive_object_meta(source_engine, target_engine, table_meta):
+    """Recursively crawl the object tree on a given engine in order to fetch all objects
+    required to materialize tables specified in `table_meta` that don't yet exist on the local engine."""
+    with switch_engine(target_engine):
+        existing_objects = get_existing_objects()
     distinct_objects = set(o[2] for o in table_meta if o[2] not in existing_objects)
     known_objects = set()
     object_meta = []
 
-    with switch_engine(remote_engine):
+    with switch_engine(source_engine):
         while True:
             new_parents = [o for o in distinct_objects if o not in known_objects]
             if not new_parents:
@@ -949,44 +941,33 @@ def _extract_recursive_object_meta(remote_engine, table_meta):
     return distinct_objects, object_meta
 
 
-def clone(remote_repository, remote_engine=None, local_repository=None, download_all=False):
+def clone(remote_repository, local_repository=None, download_all=False):
     """
     Clones a remote Splitgraph repository or synchronizes remote changes with the local ones.
 
-    If the repository has no set upstream engine, the engine becomes its upstream. If `remote_engine`
-    instead is a connection string, the repository won't have an upstream, meaning that lazy object
-    downloads from the remote engine won't work at checkout time.
+    If the target repository has no set upstream engine, the source repository becomes its upstream.
 
-    :param remote_repository: Repository to clone.
-    :param remote_engine: Remote engine object. If unspecified, the current engine
-        lookup list is searched for the repository.
+    :param remote_repository: Remote Repository object to clone or the repository's name. If a name is passed,
+        the repository will be looked up on the current lookup path in order to find the engine the repository
+        belongs to.
     :param local_repository: Local repository to clone into. If None, uses the same name as the remote.
     :param download_all: If True, downloads all objects and stores them locally. Otherwise, will only download required
         objects when a table is checked out.
     """
+    if isinstance(remote_repository, str):
+        remote_repository = lookup_repo(remote_repository, include_local=False)
     ensure_metadata_schema()
 
-    # TODO remote_repository.engine overrides remote_engine?
+    # Repository engine should be local by default
     if not local_repository:
         local_repository = Repository(remote_repository.namespace, remote_repository.repository)
     local_repository.engine.create_schema(local_repository.to_schema())
-
-    if not remote_engine:
-        remote_engine = splitgraph.get_engine(lookup_repo(remote_repository))
-
-    # todo fix this horror -- basically allow to either pass in a repo name
-    # (which we resolve with the engine inside of it) or a Repository instance which we
-    # don't resolve and assume that whatever engine is inside of it is fair game
-    # I just want the tests to work again.
-    remote_repository = copy(remote_repository)
-    remote_repository.engine = remote_engine
 
     # Get the remote log and the list of objects we need to fetch.
     logging.info("Gathering remote metadata...")
 
     # This also registers the new versions locally.
-    snaps_to_fetch, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(remote_engine,
-                                                                                                  local_repository,
+    snaps_to_fetch, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(local_repository,
                                                                                                   remote_repository)
 
     if not snaps_to_fetch:
@@ -999,7 +980,7 @@ def clone(remote_repository, remote_engine=None, local_repository=None, download
         # We might already have some objects prefetched
         # (e.g. if a new version of the table is the same as the old version)
         logging.info("Fetching remote objects...")
-        download_objects(remote_engine, objects_to_fetch=list(set(o[0] for o in object_meta)),
+        download_objects(remote_repository.engine, objects_to_fetch=list(set(o[0] for o in object_meta)),
                          object_locations=object_locations)
 
     # Map the tables to the actual objects no matter whether or not we're downloading them.
@@ -1015,8 +996,8 @@ def clone(remote_repository, remote_engine=None, local_repository=None, download
                                                                                      len([t for t in tags if
                                                                                           t != 'HEAD'])))
 
-    if local_repository.get_upstream() is None and remote_engine:
-        local_repository.set_upstream(remote_engine.name, remote_repository)
+    if local_repository.get_upstream() is None:
+        local_repository.set_upstream(remote_repository)
 
 
 def local_clone(self, destination):
@@ -1024,8 +1005,7 @@ def local_clone(self, destination):
     or materialization."""
     ensure_metadata_schema()
 
-    _, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(splitgraph.get_engine('LOCAL'),
-                                                                                     destination, self)
+    _, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(destination, self)
 
     # Map the tables to the actual objects no matter whether or not we're downloading them.
     register_objects(object_meta)
@@ -1034,30 +1014,3 @@ def local_clone(self, destination):
     destination.set_tags(tags, force=False)
     # Don't check anything out, keep the repo bare.
     set_head(destination, None)
-
-
-def merge_push_params(local_repository, remote_engine, remote_repository):
-    """
-    Merges remote arguments for push/publish as follows:
-
-    If remote_engine is specified, it's used to get the connection parameters.
-
-    If remote_repository is specified, it's used as a remote repository. Otherwise, the local repository
-    name is used.
-
-    Finally, fall back to the repository's upstream.
-
-    :param local_repository: Local Repository object
-    :param remote_engine: Remote engine alias
-    :param remote_repository: Remote Repository object
-    :return: Connection parameters, remote engine name (can be None), remote Repository object
-    """
-    remote_repository = remote_repository or local_repository
-    upstream = local_repository.get_upstream()
-    if upstream:
-        remote_engine = remote_engine or upstream[0]
-        remote_repository = remote_repository or upstream[1]
-    if not remote_engine:
-        raise SplitGraphException("No upstream found for repository %s and no engine specified!" %
-                                  local_repository.to_schema())
-    return remote_engine, remote_repository

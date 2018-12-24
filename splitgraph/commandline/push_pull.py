@@ -36,9 +36,15 @@ def clone_c(remote_repository, local_repository, remote, download_all):
     The lookup path for the repository is governed by the ``SG_REPO_LOOKUP`` and ``SG_REPO_LOOKUP_OVERRIDE``
     config parameters and can be overriden by the command line ``--remote`` option.
     """
+    # If the user passed in a remote, we can inject that into the repository spec.
+    # Otherwise, we have to turn the repository into a string and let clone() look up the
+    # actual engine the repository lives on.
+    if remote:
+        remote_repository.engine = splitgraph.get_engine(remote)
+    else:
+        remote_repository = remote_repository.to_schema()
 
-    clone(remote_repository, remote_engine=remote,
-          local_repository=local_repository, download_all=download_all)
+    clone(remote_repository, local_repository=local_repository, download_all=download_all)
 
 
 @click.command(name='push')
@@ -63,8 +69,12 @@ def push_c(repository, remote_repository, remote, upload_handler, upload_handler
     uploading to an S3-compatible host via Minio is supported: see :mod:`splitgraph.hooks.s3` for information
     on handler options and how to register a new upload handler.
     """
-    repository.push(remote, remote_repository,
-                    handler=upload_handler, handler_options=json.loads(upload_handler_options))
+    # redesign this so that people push to some default remote engine (e.g. the global registry)?
+    if remote_repository and remote:
+        remote_repository.remote = splitgraph.get_engine(remote)
+    else:
+        remote_repository = None
+    repository.push(remote_repository, handler=upload_handler, handler_options=json.loads(upload_handler_options))
 
 
 @click.command(name='publish')
@@ -134,16 +144,15 @@ def upstream_c(repository, set_to, reset):
     if set_to == ("", None):
         upstream = repository.get_upstream()
         if upstream:
-            engine, remote_repo = upstream
-            print("%s is tracking %s:%s." % (repository.to_schema(), engine, remote_repo.to_schema()))
+            print("%s is tracking %s:%s." % (repository.to_schema(), upstream.engine.name, upstream.to_schema()))
         else:
             print("%s has no upstream." % repository.to_schema())
     else:
         engine, remote_repo = set_to
         try:
-            splitgraph.engine.get_remote_connection_params(engine)
+            remote_repo.engine = splitgraph.get_engine(engine)
         except KeyError:
             print("Remote engine '%s' does not exist in the configuration file!" % engine)
             sys.exit(1)
-        repository.set_upstream(engine, remote_repo)
+        repository.set_upstream(remote_repo)
         print("%s set to track %s:%s." % (repository.to_schema(), engine, remote_repo.to_schema()))

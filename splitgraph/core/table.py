@@ -1,6 +1,6 @@
 import logging
 
-from splitgraph import get_engine, switch_engine
+from splitgraph import switch_engine
 from splitgraph._data.images import get_image_object_path
 from splitgraph._data.objects import get_external_object_locations, get_existing_objects
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
@@ -34,10 +34,10 @@ class Table:
             object_id, to_apply = get_image_object_path(self.repository, self.table_name, self.image.image_hash)
 
             # Make sure all the objects have been downloaded from remote if it exists
-            remote_info = self.repository.get_upstream()
-            if remote_info:
+            upstream = self.repository.get_upstream()
+            if upstream:
                 object_locations = get_external_object_locations(to_apply + [object_id])
-                fetched_objects = download_objects(get_engine(remote_info[0]),
+                fetched_objects = download_objects(upstream.engine,
                                                    objects_to_fetch=to_apply + [object_id],
                                                    object_locations=object_locations)
 
@@ -54,4 +54,4 @@ class Table:
             logging.info("Applying %s...", pack_object)
             engine.apply_diff_object(SPLITGRAPH_META_SCHEMA, pack_object, destination_schema, destination)
 
-        return fetched_objects if remote_info else set()
+        return fetched_objects if upstream else set()

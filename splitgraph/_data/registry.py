@@ -43,7 +43,7 @@ def publish_tag(repository, tag, image_hash, published, provenance, readme, sche
     Publishes a given tag in the remote catalog. Should't be called directly.
     Use splitgraph.commands.publish instead.
 
-    :param repository: Repository name
+    :param repository: Remote (!) Repository object
     :param tag: Tag to publish
     :param image_hash: Image hash corresponding to the given tag.
     :param published: Publish time (datetime)
@@ -52,13 +52,12 @@ def publish_tag(repository, tag, image_hash, published, provenance, readme, sche
     :param schemata: Dict mapping table name to a list of (column name, column type)
     :param previews: Dict mapping table name to a list of tuples with a preview
     """
-    get_engine().run_sql(insert("images",
-                                ['namespace', 'repository', 'tag', 'image_hash', 'published',
+    repository.engine.run_sql(insert("images",
+                                     ['namespace', 'repository', 'tag', 'image_hash', 'published',
                                  'provenance', 'readme', 'schemata', 'previews'],
-                                REGISTRY_META_SCHEMA), (repository.namespace, repository.repository, tag, image_hash,
-                                                        published, Json(provenance), readme, Json(schemata),
-                                                        Json(previews)),
-                         return_shape=None)
+                                     REGISTRY_META_SCHEMA), (repository.namespace, repository.repository, tag, image_hash,
+                                                             published, Json(provenance), readme, Json(schemata),
+                                                             Json(previews)))
 
 
 def get_published_info(repository, tag):
@@ -155,9 +154,9 @@ def setup_registry_mode():
 
     # Object_locations is different, since we have to refer to the objects table for the namespace of the object
     # whose location we're changing.
-    test_query = """((SELECT true as bool FROM {0}.{1}
-                        JOIN {0}.objects ON {0}.{1}.object_id = {0}.objects.object_id
-                        WHERE {0}.objects.namespace = current_user) = true)"""
+    test_query = """(EXISTS (SELECT object_id FROM {0}.objects
+                        WHERE {0}.objects.namespace = current_user
+                        AND object_id = {0}.{1}.object_id))"""
     _setup_rls_policies("object_locations", condition=test_query)
     _setup_rls_policies("images", schema=REGISTRY_META_SCHEMA)
 
@@ -172,24 +171,19 @@ def _setup_rls_policies(table, schema=SPLITGRAPH_META_SCHEMA, condition=None):
                                                                              Identifier(table)))
     for flavour in 'SIUD':
         engine.run_sql(SQL("DROP POLICY IF EXISTS {2} ON {0}.{1}")
-                       .format(Identifier(schema), Identifier(table), Identifier(table + '_' + flavour)),
-                       return_shape=None)
+                       .format(Identifier(schema), Identifier(table), Identifier(table + '_' + flavour)))
     engine.run_sql(SQL("""CREATE POLICY {2} ON {0}.{1} FOR SELECT USING (true)""")
-                   .format(Identifier(schema), Identifier(table), Identifier(table + '_S')),
-                   return_shape=None)
+                   .format(Identifier(schema), Identifier(table), Identifier(table + '_S')))
     engine.run_sql(SQL("""CREATE POLICY {2} ON {0}.{1} FOR INSERT WITH CHECK """)
                    .format(Identifier(schema), Identifier(table), Identifier(table + '_I'))
-                   + SQL(condition).format(Identifier(schema), Identifier(table)),
-                   return_shape=None)
+                   + SQL(condition).format(Identifier(schema), Identifier(table)))
     engine.run_sql(SQL("CREATE POLICY {2} ON {0}.{1} FOR UPDATE USING ")
                    .format(Identifier(schema), Identifier(table), Identifier(table + '_U'))
                    + SQL(condition).format(Identifier(schema), Identifier(table))
-                   + SQL(" WITH CHECK ") + SQL(condition).format(Identifier(schema), Identifier(table)),
-                   return_shape=None)
+                   + SQL(" WITH CHECK ") + SQL(condition).format(Identifier(schema), Identifier(table)))
     engine.run_sql(SQL("CREATE POLICY {2} ON {0}.{1} FOR DELETE USING ")
                    .format(Identifier(schema), Identifier(table), Identifier(table + '_D'))
-                   + SQL(condition).format(Identifier(schema), Identifier(table)),
-                   return_shape=None)
+                   + SQL(condition).format(Identifier(schema), Identifier(table)))
 
 
 def toggle_registry_rls(mode='ENABLE'):

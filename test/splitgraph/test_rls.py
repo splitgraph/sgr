@@ -45,13 +45,13 @@ def unprivileged_pg_repo(pg_repo_remote, unprivileged_remote_engine):
     return result
 
 
-def test_rls_pull_public(local_engine_empty, pg_repo_remote, unprivileged_remote_engine):
-    clone(pg_repo_remote, remote_engine=unprivileged_remote_engine)
+def test_rls_pull_public(local_engine_empty, unprivileged_pg_repo):
+    clone(unprivileged_pg_repo)
 
 
-def test_rls_push_own_delete_own(local_engine_empty, pg_repo_remote, unprivileged_remote_engine, clean_minio):
+def test_rls_push_own_delete_own(local_engine_empty, unprivileged_pg_repo, clean_minio):
     destination = Repository(namespace='testuser', repository='pg_mount')
-    clone(pg_repo_remote, remote_engine=unprivileged_remote_engine, local_repository=destination)
+    clone(unprivileged_pg_repo, local_repository=destination)
 
     destination.checkout(tag='latest')
     destination.run_sql("""UPDATE fruits SET name = 'banana' WHERE fruit_id = 1""")
@@ -63,22 +63,24 @@ def test_rls_push_own_delete_own(local_engine_empty, pg_repo_remote, unprivilege
 
     # Test we can push to our namespace -- can't upload the object to the splitgraph_meta since we can't create
     # tables there
-    PG_MNT.push(remote_engine=UNPRIVILEGED, remote_repository=destination, handler='S3')
+    remote_destination = copy(destination)
+    remote_destination.engine = unprivileged_pg_repo.engine
+    destination.set_upstream(remote_destination)
 
+    destination.push(handler='S3')
     # Test we can delete our own repo once we've pushed it
-    destination.engine = unprivileged_remote_engine
-    destination.rm(uncheckout=False)
-    assert len(get_all_image_info(destination)) == 0
+    remote_destination.rm(uncheckout=False)
+    assert len(get_all_image_info(remote_destination)) == 0
 
 
-def test_rls_push_others(local_engine_empty, pg_repo_remote, unprivileged_remote_engine):
-    clone(pg_repo_remote, remote_engine=unprivileged_remote_engine)
+def test_rls_push_others(local_engine_empty, unprivileged_pg_repo):
+    clone(unprivileged_pg_repo)
     PG_MNT.checkout(tag='latest')
     PG_MNT.run_sql("""UPDATE fruits SET name = 'banana' WHERE fruit_id = 1""")
     PG_MNT.commit()
 
     with pytest.raises(ProgrammingError) as e:
-        PG_MNT.push(remote_engine=UNPRIVILEGED, remote_repository=pg_repo_remote)
+        PG_MNT.push(remote_repository=unprivileged_pg_repo)
     assert 'new row violates row-level security policy for table "images"' in str(e.value)
 
 
@@ -105,36 +107,36 @@ def test_rls_impersonate_external_object(unprivileged_pg_repo, unprivileged_remo
 
 
 def test_rls_publish_unpublish_own(local_engine_empty, pg_repo_remote, unprivileged_remote_engine):
-    clone(pg_repo_remote, remote_engine=unprivileged_remote_engine, download_all=True)
+    clone(pg_repo_remote, download_all=True)
     PG_MNT.get_image(PG_MNT.resolve_image('latest')).tag('my_tag')
-    target_repo = Repository(namespace='testuser', repository='pg_mount')
-    PG_MNT.push(remote_engine=UNPRIVILEGED, remote_repository=target_repo)
+    target_repo = Repository(namespace='testuser', repository='pg_mount', engine=unprivileged_remote_engine)
 
-    PG_MNT.publish('my_tag', remote_engine_name=UNPRIVILEGED, remote_repository=target_repo,
-            readme="my_readme", include_provenance=True, include_table_previews=True)
+    PG_MNT.push(remote_repository=target_repo)
 
-    target_repo.engine = unprivileged_remote_engine
+    PG_MNT.publish('my_tag', remote_repository=target_repo,
+                   readme="my_readme", include_provenance=True, include_table_previews=True)
+
     assert get_published_info(target_repo, 'my_tag') is not None
     unpublish_repository(target_repo)
     assert get_published_info(target_repo, 'my_tag') is None
 
 
-def test_rls_publish_unpublish_others(local_engine_empty, pg_repo_remote, unprivileged_remote_engine):
+def test_rls_publish_unpublish_others(local_engine_empty, pg_repo_remote, unprivileged_pg_repo,
+                                      unprivileged_remote_engine):
     # Tag the remote repo as an admin user and try to publish as an unprivileged one
     pg_repo_remote.get_image(pg_repo_remote.resolve_image('latest')).tag('my_tag')
     pg_repo_remote.engine.commit()
-    clone(pg_repo_remote, remote_engine=unprivileged_remote_engine, download_all=True)
+    clone(unprivileged_pg_repo, download_all=True)
 
     # Publish into the "test" namespace as someone who doesn't have access to it.
     with pytest.raises(ProgrammingError) as e:
-        PG_MNT.publish('my_tag', remote_engine_name=UNPRIVILEGED, readme="my_readme")
+        PG_MNT.publish('my_tag', remote_repository=unprivileged_pg_repo, readme="my_readme")
     assert 'new row violates row-level security policy for table "images"' in str(e.value)
 
     # Publish as the admin user
-    PG_MNT.publish('my_tag', remote_engine_name=REMOTE_ENGINE, readme="my_readme")
+    PG_MNT.publish('my_tag', remote_repository=pg_repo_remote, readme="my_readme")
 
     # Try to delete as the remote user -- should fail (no error raised since the RLS just doesn't make
     # those rows available for deletion)
-    target = Repository("test", "pg_mount", unprivileged_remote_engine)
-    unpublish_repository(target)
-    assert get_published_info(target, 'my_tag') is not None
+    unpublish_repository(unprivileged_pg_repo)
+    assert get_published_info(unprivileged_pg_repo, 'my_tag') is not None

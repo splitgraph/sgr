@@ -129,25 +129,25 @@ def _execute_from(node, output):
         output.init()
     if repo_source:
         repository, tag_or_hash = parse_image_spec(repo_source)
-        engine = lookup_repo(repository, include_local=True)
+        # TODO maybe two different objects (repository and repository with an engine?)
+        source_repo = lookup_repo(repository.to_schema(), include_local=True)
 
-        if engine != 'LOCAL':
-            clone(repository, remote_engine=get_engine(engine), local_repository=output,
-                  download_all=False)
+        if source_repo.engine.name != 'LOCAL':
+            clone(source_repo, local_repository=output, download_all=False)
             output.checkout(output.resolve_image(tag_or_hash))
         else:
             # For local repositories, first try to pull them to see if they are clones of a remote.
             try:
-                repository.pull()
+                source_repo.pull()
             except SplitGraphException:
                 pass
             # Get the target snap ID from the source repo: otherwise, if the tag is, say, 'latest' and
             # the output has just had the base commit (000...) created in it, that commit will be the latest.
-            to_checkout = repository.resolve_image(tag_or_hash)
-            print("Cloning %s into %s..." % (repository, output))
-            local_clone(repository, output)
+            to_checkout = source_repo.resolve_image(tag_or_hash)
+            print("Cloning %s into %s..." % (source_repo, output))
+            local_clone(source_repo, output)
             output.checkout(to_checkout)
-        store_from_provenance(output, output.get_head(), repository)
+        store_from_provenance(output, output.get_head(), source_repo)
     else:
         # FROM EMPTY AS repository -- initializes an empty repository (say to create a table or import
         # the results of a previous stage in a multistage build.
@@ -212,20 +212,20 @@ def _execute_repo_import(repository, table_names, tag_or_hash, target_repository
         # it for hashing: we assume that the queries are deterministic, so if the query is changed,
         # the whole layer is invalidated.
         print("Resolving repository %s" % str(repository))
-        engine = lookup_repo(repository, include_local=True)
+        source_repo = lookup_repo(repository.to_schema(), include_local=True)
 
-        if engine != 'LOCAL':
-            clone(repository, remote_engine=get_engine(engine), local_repository=tmp_repo, download_all=False)
+        if source_repo.engine.name != 'LOCAL':
+            clone(source_repo, local_repository=tmp_repo, download_all=False)
             source_hash = tmp_repo.resolve_image(tag_or_hash)
             source_mountpoint = tmp_repo
         else:
             # For local repositories, first try to pull them to see if they are clones of a remote.
             try:
-                repository.pull(repository)
+                source_repo.pull()
             except SplitGraphException:
                 pass
-            source_hash = repository.resolve_image(tag_or_hash)
-            source_mountpoint = repository
+            source_hash = source_repo.resolve_image(tag_or_hash)
+            source_mountpoint = source_repo
         output_head = target_repository.get_head()
         target_hash = _combine_hashes(
             [output_head, source_hash] + [sha256(n.encode('utf-8')).hexdigest() for n in

@@ -5,7 +5,7 @@ from minio import Minio
 
 from splitgraph._data.common import ensure_metadata_schema
 from splitgraph._data.registry import _ensure_registry_schema, unpublish_repository, setup_registry_mode, \
-    toggle_registry_rls
+    toggle_registry_rls, set_info_key
 from splitgraph.core.engine import cleanup_objects, get_current_repositories
 from splitgraph.core.repository import to_repository as R, Repository
 from splitgraph.engine import get_engine, ResultShape, switch_engine
@@ -164,6 +164,7 @@ def remote_engine():
     with switch_engine(REMOTE_ENGINE):
         ensure_metadata_schema()
         _ensure_registry_schema()
+        set_info_key('registry_mode', False)
         setup_registry_mode()
         toggle_registry_rls('DISABLE')
         unpublish_repository(Repository('', 'output'))
