@@ -102,7 +102,7 @@ def init_engine():  # pragma: no cover
 
     # Create splitgraph_meta
     logging.info("Ensuring metadata schema %s exists...", SPLITGRAPH_META_SCHEMA)
-    ensure_metadata_schema()
+    ensure_metadata_schema(get_engine())
 
 
 def repository_exists(repository):
@@ -150,16 +150,16 @@ def lookup_repo(repo_name, include_local=False):
     raise SplitGraphException("Unknown repository %s!" % repo_name.to_schema())
 
 
-def get_current_repositories():
+def get_current_repositories(engine):
     """
     Lists all repositories currently in the engine.
 
+    :param engine: Engine
     :return: List of (Repository object, current HEAD image)
     """
-    ensure_metadata_schema()
+    ensure_metadata_schema(engine)
     from splitgraph.core.repository import Repository
-    engine = get_engine()
 
     all_repositories = [Repository(n, r, engine) for n, r in
-                        get_engine().run_sql(select("images", "DISTINCT namespace,repository"))]
+                        engine.run_sql(select("images", "DISTINCT namespace,repository"))]
     return [(r, r.get_head(raise_on_none=False)) for r in all_repositories]

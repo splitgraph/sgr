@@ -264,8 +264,6 @@ class SQLEngine:
         """
         raise NotImplementedError()
 
-    # TODO split this class up (handling storage, change capture and object application/creation)
-
     def get_change_key(self, schema, table):
         """
         Returns the key used to identify a row in a change (list of column name, column type).

@@ -183,11 +183,11 @@ def mount(mountpoint, mount_handler, handler_kwargs):
     :param mount_handler: The type of the mounted database. Must be one of `postgres_fdw` or `mongo_fdw`.
     :param handler_kwargs: Dictionary of options to pass to the mount handler.
     """
-    ensure_metadata_schema()
+    engine = get_engine()
+    ensure_metadata_schema(engine)
     mh_func = get_mount_handler(mount_handler)
     logging.info("Connecting to remote server...")
 
-    engine = get_engine()
     engine.run_sql(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(mountpoint)))
     engine.run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(mountpoint + '_server')))
     mh_func(mountpoint, **handler_kwargs)

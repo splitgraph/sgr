@@ -2,7 +2,6 @@
 Internal functions for accessing image metadata
 """
 import itertools
-import logging
 from collections import defaultdict
 from datetime import datetime
 
@@ -12,7 +11,6 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph._data.common import insert
 from splitgraph._data.objects import get_full_object_tree, get_object_for_table
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitGraphException
 
 
@@ -124,10 +122,9 @@ def delete_images(repository, images):
     # Maybe better to have ON DELETE CASCADE on the FK constraints instead of going through
     # all tables to clean up -- but then we won't get alerted when we accidentally try
     # to delete something that does have FKs relying on it.
-    logging.info("DELETING %r FROM %r (engine %r)" % (images, repository, get_engine()))
     args = tuple([repository.namespace, repository.repository] + list(images))
     for table in ['tags', 'tables', 'images']:
-        get_engine().run_sql(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s "
-                                 "AND image_hash IN (" + ','.join(itertools.repeat('%s', len(images))) + ")")
-                             .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table)), args,
-                             return_shape=None)
+        repository.engine.run_sql(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s "
+                                      "AND image_hash IN (" + ','.join(itertools.repeat('%s', len(images))) + ")")
+                                  .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table)), args,
+                                  return_shape=None)

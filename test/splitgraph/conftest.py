@@ -23,8 +23,7 @@ def _mount_postgres(repository):
     mount('tmp', "postgres_fdw",
           dict(server='pgorigin', port=5432, username='originro', password='originpass', dbname="origindb",
                remote_schema="public"))
-    R('tmp').import_tables(get_engine().get_all_tables('tmp'),
-                           repository, [], foreign_tables=True, do_checkout=True)
+    R('tmp').import_tables([], repository, [], foreign_tables=True, do_checkout=True)
     R('tmp').rm()
 
 
@@ -39,8 +38,7 @@ def _mount_mongo(repository):
                                            "duration": "numeric",
                                            "happy": "boolean"
                                        }}))
-    R('tmp').import_tables(get_engine().get_all_tables('tmp'),
-                           repository, [], foreign_tables=True, do_checkout=True)
+    R('tmp').import_tables([], repository, [], foreign_tables=True, do_checkout=True)
     R('tmp').rm()
 
 
@@ -79,23 +77,24 @@ def healthcheck():
 
 @pytest.fixture
 def local_engine_empty():
+    engine = get_engine()
     # A connection to the local engine that has nothing mounted on it.
-    for mountpoint, _ in get_current_repositories():
+    for mountpoint, _ in get_current_repositories(engine):
         mountpoint.rm()
     for mountpoint in TEST_MOUNTPOINTS:
         mountpoint.rm()
     cleanup_objects()
-    get_engine().commit()
+    engine.commit()
     try:
-        yield get_engine()
+        yield engine
     finally:
-        get_engine().rollback()
-        for mountpoint, _ in get_current_repositories():
+        engine.rollback()
+        for mountpoint, _ in get_current_repositories(engine):
             mountpoint.rm()
         for mountpoint in TEST_MOUNTPOINTS:
             mountpoint.rm()
         cleanup_objects()
-        get_engine().commit()
+        engine.commit()
 
 
 with open(os.path.join(os.path.dirname(__file__), '../architecture/data/pgorigin/setup.sql'), 'r') as f:
@@ -162,7 +161,8 @@ REMOTE_ENGINE = 'remote_engine'  # On the host, mapped into localhost; on the lo
 @pytest.fixture
 def remote_engine():
     with switch_engine(REMOTE_ENGINE):
-        ensure_metadata_schema()
+        engine = get_engine()
+        ensure_metadata_schema(engine)
         _ensure_registry_schema()
         set_info_key('registry_mode', False)
         setup_registry_mode()
@@ -170,17 +170,17 @@ def remote_engine():
         unpublish_repository(Repository('', 'output'))
         unpublish_repository(Repository('test', 'pg_mount'))
         unpublish_repository(Repository('testuser', 'pg_mount'))
-        for mountpoint, _ in get_current_repositories():
+        for mountpoint, _ in get_current_repositories(engine):
             mountpoint.rm()
         cleanup_objects()
-        get_engine().commit()
+        engine.commit()
     try:
         yield get_engine(REMOTE_ENGINE)
     finally:
         with switch_engine(REMOTE_ENGINE):
             e = get_engine()
             e.rollback()
-            for mountpoint, _ in get_current_repositories():
+            for mountpoint, _ in get_current_repositories(e):
                 mountpoint.rm()
             cleanup_objects()
             e.commit()

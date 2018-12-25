@@ -5,12 +5,12 @@ Common internal metadata access functions
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.engine import get_engine, ResultShape
+from splitgraph.engine import ResultShape
 
 META_TABLES = ['images', 'tags', 'objects', 'tables', 'upstream', 'object_locations', 'info']
 
 
-def _create_metadata_schema():
+def _create_metadata_schema(engine):
     """
     Creates the metadata schema splitgraph_meta that stores the hash tree of schema snaps and the current tags.
     This means we can't mount anything under the schema splitgraph_meta -- much like we can't have a folder
@@ -19,8 +19,6 @@ def _create_metadata_schema():
     This all should probably be moved into some sort of a routine that runs when the whole engine is set up
     for the first time.
     """
-    engine = get_engine()
-
     engine.run_sql(SQL("CREATE SCHEMA {}").format(Identifier(SPLITGRAPH_META_SCHEMA)))
     # maybe FK parent_id on image_hash. NULL there means this is the repo root.
     engine.run_sql(SQL("""CREATE TABLE {}.{} (
@@ -135,9 +133,9 @@ def insert(table, columns, schema=SPLITGRAPH_META_SCHEMA):
     return query
 
 
-def ensure_metadata_schema():
+def ensure_metadata_schema(engine):
     """Create the metadata schema if it doesn't exist"""
-    if get_engine().run_sql(
+    if engine.run_sql(
             "SELECT 1 FROM information_schema.schemata WHERE schema_name = %s", (SPLITGRAPH_META_SCHEMA,),
             return_shape=ResultShape.ONE_ONE) is None:
-        _create_metadata_schema()
+        _create_metadata_schema(engine)

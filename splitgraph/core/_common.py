@@ -7,7 +7,7 @@ from psycopg2.sql import Identifier, SQL
 
 from splitgraph._data.common import ensure_metadata_schema, select, insert
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.engine import get_engine, ResultShape, switch_engine
+from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphException
 
 
@@ -35,7 +35,7 @@ def set_head(repository, image):
     set_tag(repository, image, 'HEAD', force=True)
 
 
-def manage_audit_triggers():
+def manage_audit_triggers(engine):
     """Does bookkeeping on audit triggers / audit table:
 
         * Detect tables that are being audited that don't need to be any more
@@ -44,10 +44,8 @@ def manage_audit_triggers():
         * Set up audit triggers for new tables
     """
 
-    engine = get_engine()
-
     from splitgraph.core.engine import get_current_repositories
-    repos_tables = [(r.to_schema(), t) for r, head in get_current_repositories() if head is not None
+    repos_tables = [(r.to_schema(), t) for r, head in get_current_repositories(engine) if head is not None
                     for t in set(engine.get_all_tables(r.to_schema())) & set(r.get_image(head).get_tables())]
     tracked_tables = engine.get_tracked_tables()
 
@@ -68,15 +66,12 @@ def manage_audit(func):
 
     def wrapped(self, *args, **kwargs):
         try:
-            # hacks
-            with switch_engine(self.engine):
-                ensure_metadata_schema()
-                manage_audit_triggers()
+            ensure_metadata_schema(self.engine)
+            manage_audit_triggers(self.engine)
             func(self, *args, **kwargs)
         finally:
-            with switch_engine(self.engine):
-                get_engine().commit()
-                manage_audit_triggers()
+            self.engine.commit()
+            manage_audit_triggers(self.engine)
 
     return wrapped
 

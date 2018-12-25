@@ -19,6 +19,8 @@ def test_diff_head(pg_repo_local):
 
 @pytest.mark.parametrize("include_snap", [True, False])
 def test_commit_diff(include_snap, pg_repo_local):
+    assert (pg_repo_local.to_schema(), 'fruits') in pg_repo_local.engine.get_tracked_tables()
+
     pg_repo_local.run_sql("""INSERT INTO fruits VALUES (3, 'mayonnaise');
         DELETE FROM fruits WHERE name = 'apple';
         UPDATE fruits SET name = 'guitar' WHERE fruit_id = 2""")

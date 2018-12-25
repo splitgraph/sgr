@@ -89,7 +89,7 @@ def test_import_from_remote(local_engine_empty, pg_repo_remote):
     # Also clean up the unused objects to make sure that the newly cloned table is still recorded.
     assert sorted(local_engine_empty.get_all_tables(OUTPUT.to_schema())) == ['fruits', 'test']
     cleanup_objects()
-    assert len(get_current_repositories()) == 1
+    assert len(get_current_repositories(local_engine_empty)) == 1
     OUTPUT.checkout(head)
     assert local_engine_empty.table_exists(OUTPUT.to_schema(), 'test')
     assert not local_engine_empty.table_exists(OUTPUT.to_schema(), 'fruits')

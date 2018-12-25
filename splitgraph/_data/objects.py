@@ -10,7 +10,7 @@ from splitgraph.engine import ResultShape, get_engine
 
 
 def get_full_object_tree():
-    """Returns a list of (object_id, parent_id, SNAP/DIFF) with the full object tree in the """
+    """Returns a list of (object_id, parent_id, SNAP/DIFF) with the full object tree in the engine"""
     return get_engine().run_sql(select("objects", "object_id,parent_id,format"))
 
 
@@ -130,8 +130,8 @@ def register_table(repository, table, image, object_id):
     :param image: Image hash
     :param object_id: Object ID to register the table to.
     """
-    get_engine().run_sql(insert("tables", ("namespace", "repository", "image_hash", "table_name", "object_id")),
-                         (repository.namespace, repository.repository, image, table, object_id))
+    repository.engine.run_sql(insert("tables", ("namespace", "repository", "image_hash", "table_name", "object_id")),
+                              (repository.namespace, repository.repository, image, table, object_id))
 
 
 def get_object_for_table(repository, table_name, image, object_format):
@@ -146,11 +146,11 @@ def get_object_for_table(repository, table_name, image, object_format):
     :param object_format: Format of the object (DIFF or SNAP).
     :return: None if there's no such object, otherwise the object ID.
     """
-    return get_engine().run_sql(SQL("""SELECT {0}.tables.object_id FROM {0}.tables JOIN {0}.objects
+    return repository.engine.run_sql(SQL("""SELECT {0}.tables.object_id FROM {0}.tables JOIN {0}.objects
                             ON {0}.objects.object_id = {0}.tables.object_id
                             WHERE {0}.tables.namespace = %s AND repository = %s AND image_hash = %s
                             AND table_name = %s AND format = %s""")
-                                .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                                (repository.namespace, repository.repository,
-                                 image, table_name, object_format),
-                                return_shape=ResultShape.ONE_ONE)
+                                     .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                                     (repository.namespace, repository.repository,
+                                      image, table_name, object_format),
+                                     return_shape=ResultShape.ONE_ONE)

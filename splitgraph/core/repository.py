@@ -28,7 +28,6 @@ _PUBLISH_PREVIEW_SIZE = 100
 # [ ] review current internal metadata access/creation commands to see which can be made
 #     into private methods
 # [/] make sure Repository objects use their own internal engine pointer
-# [ ] remove switch_engine from tests -- instead use fixtures like PG_MNT_REMOTE/PG_MNT
 # [ ] Document the new API, regenerate the docs
 
 
@@ -85,7 +84,7 @@ class Repository:
         """
         # Make sure to discard changes to this repository if they exist, otherwise they might
         # be applied/recorded if a new repository with the same name appears.
-        ensure_metadata_schema()
+        ensure_metadata_schema(self.engine)
         if uncheckout:
             # If we're talking to a bare repo / a remote that doesn't have checked out repositories,
             # there's no point in touching the audit trigger.
@@ -262,10 +261,9 @@ class Repository:
         """
         logging.info("Committing %s...", self.to_schema())
 
-        ensure_metadata_schema()
+        ensure_metadata_schema(self.engine)
         self.engine.commit()
-        with switch_engine(self.engine):
-            manage_audit_triggers()
+        manage_audit_triggers(self.engine)
 
         # HEAD can be None (if this is the first commit in this repository)
         head = self.get_head(raise_on_none=False)
@@ -279,10 +277,9 @@ class Repository:
 
         self._commit(head, image_hash, include_snap=include_snap)
 
-        with switch_engine(self.engine):
-            set_head(self, image_hash)
-            manage_audit_triggers()
-            self.engine.commit()
+        set_head(self, image_hash)
+        manage_audit_triggers(self.engine)
+        self.engine.commit()
         return image_hash
 
     def _commit(self, current_head, image_hash, include_snap=False):
@@ -363,8 +360,8 @@ class Repository:
         :param tag: Tag. 'latest' is a special case: it returns the most recent image in the repository.
         :param raise_on_none: Whether to raise an error or return None if the repository isn't checked out.
         """
-        ensure_metadata_schema()
         engine = self.engine
+        ensure_metadata_schema(engine)
         with switch_engine(engine):
             if not repository_exists(self) and raise_on_none:
                 raise SplitGraphException("%s does not exist!" % str(self))
@@ -586,7 +583,7 @@ class Repository:
 
         if handler_options is None:
             handler_options = {}
-        ensure_metadata_schema()
+        ensure_metadata_schema(self.engine)
 
         # Maybe consider having a context manager for getting a remote engine instance
         # that auto-commits/closes when needed?
@@ -961,7 +958,6 @@ def clone(remote_repository, local_repository=None, download_all=False):
     """
     if isinstance(remote_repository, str):
         remote_repository = lookup_repo(remote_repository, include_local=False)
-    ensure_metadata_schema()
 
     # Repository engine should be local by default
     if not local_repository:
@@ -1008,7 +1004,6 @@ def clone(remote_repository, local_repository=None, download_all=False):
 def local_clone(self, destination):
     """Clones one local repository into another, copying all of its commit history over. Doesn't do any checking out
     or materialization."""
-    ensure_metadata_schema()
 
     _, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(destination, self)
 

@@ -12,8 +12,8 @@ def test_metadata_schema(pg_repo_local):
     # in test runs where the schema already exists
     try:
         pg_repo_local.engine.delete_schema(SPLITGRAPH_META_SCHEMA)
-        ensure_metadata_schema()
-        assert get_current_repositories() == []
+        ensure_metadata_schema(pg_repo_local.engine)
+        assert get_current_repositories(pg_repo_local.engine) == []
     finally:
         pg_repo_local.engine.rollback()
 

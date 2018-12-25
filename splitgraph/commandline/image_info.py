@@ -199,7 +199,7 @@ def status_c(repository):
     the repository. If not, show information about all repositories local to the engine.
     """
     if repository is None:
-        repositories = get_current_repositories()
+        repositories = get_current_repositories(get_engine())
         print("Local repositories: ")
         for mp_name, mp_hash in repositories:
             # Maybe should also show the remote DB address/server
