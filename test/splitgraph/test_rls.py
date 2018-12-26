@@ -5,15 +5,14 @@ from psycopg2._psycopg import ProgrammingError
 
 from splitgraph._data.registry import get_published_info, unpublish_repository, toggle_registry_rls
 from splitgraph.core.repository import Repository, clone
-from splitgraph.engine import switch_engine, get_engine
+from splitgraph.engine import get_engine
 from test.splitgraph.conftest import PG_MNT, REMOTE_ENGINE
 
 UNPRIVILEGED = 'unprivileged_remote_engine'
 
 
 def _init_rls_test(remote_engine):
-    with switch_engine(remote_engine):
-        toggle_registry_rls('ENABLE')
+    toggle_registry_rls(remote_engine, 'ENABLE')
     remote_engine.commit()
 
 

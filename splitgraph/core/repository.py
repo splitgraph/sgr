@@ -12,7 +12,7 @@ from splitgraph._data.images import add_new_image, get_image_object_path
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.engine import repository_exists, lookup_repo
 from splitgraph.core.object_manager import ObjectManager
-from splitgraph.engine import ResultShape, get_engine, switch_engine
+from splitgraph.engine import ResultShape, get_engine
 from ._common import manage_audit_triggers, set_head, manage_audit
 from ._objects.creation import record_table_as_snap, record_table_as_diff
 from ._objects.utils import get_random_object_id
@@ -23,9 +23,8 @@ _PUBLISH_PREVIEW_SIZE = 100
 
 # OO API porting plan:
 # [ ] move things out from Repository into more appropriate classes
-# [ ] review current internal metadata access/creation commands to see which can be made
-#     into private methods
-# [/] make sure Repository objects use their own internal engine pointer
+# [ ] review current internal metadata access/creation commands to see which can be made into private methods
+# [ ] clone() and push() are very similar now, merge with some extra UX flags ("uploading"/"downloading")
 # [ ] Document the new API, regenerate the docs
 
 
@@ -41,9 +40,13 @@ class Repository:
         self.engine = engine or splitgraph.get_engine()
 
         # consider making this an injected/a singleton for a given engine
+        # since it's global for the whole engine but calls (e.g. repo.objects.cleanup()) make it
+        # look like it's the manager for objects related to a repo.
         self.objects = ObjectManager(self.engine)
 
     def switch_engine(self, engine):
+        """Used instead of creating a new Repository object with a different engine or doing
+        repository.engine = new_engine (since then the object manager isn't repointed)"""
         self.engine = engine
         self.objects = ObjectManager(engine)
 
@@ -311,30 +314,28 @@ class Repository:
             table_info = head.get_table(table) if head else None
             # Table already exists at the current HEAD
 
-            # TODO REMOVE
-            with switch_engine(self.engine):
-                if table_info:
-                    # If there has been a schema change, we currently just snapshot the whole table.
-                    # This is obviously wasteful (say if just one column has been added/dropped or we added a PK,
-                    # but it's a starting point to support schema changes.
-                    snap_1 = get_image_object_path(self, table, current_head)[0]
-                    if self.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, snap_1) != \
-                            self.engine.get_full_table_schema(self.to_schema(), table):
-                        record_table_as_snap(table_info, image_hash)
-                        continue
+            if table_info:
+                # If there has been a schema change, we currently just snapshot the whole table.
+                # This is obviously wasteful (say if just one column has been added/dropped or we added a PK,
+                # but it's a starting point to support schema changes.
+                snap_1 = get_image_object_path(self, table, current_head)[0]
+                if self.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, snap_1) != \
+                        self.engine.get_full_table_schema(self.to_schema(), table):
+                    record_table_as_snap(table_info, image_hash)
+                    continue
 
-                    if table in changed_tables:
-                        record_table_as_diff(table_info, image_hash)
-                    else:
-                        # If the table wasn't changed, point the commit to the old table objects (including
-                        # any of snaps or diffs).
-                        # This feels slightly weird: are we denormalized here?
-                        for prev_object_id, _ in table_info.objects:
-                            self.objects.register_table(self, table, image_hash, prev_object_id)
+                if table in changed_tables:
+                    record_table_as_diff(table_info, image_hash)
+                else:
+                    # If the table wasn't changed, point the commit to the old table objects (including
+                    # any of snaps or diffs).
+                    # This feels slightly weird: are we denormalized here?
+                    for prev_object_id, _ in table_info.objects:
+                        self.objects.register_table(self, table, image_hash, prev_object_id)
 
-                # If table created (or we want to store a snap anyway), copy the whole table over as well.
-                if not table_info or include_snap:
-                    record_table_as_snap(table_info, image_hash, table_name=table, repository=self)
+            # If table created (or we want to store a snap anyway), copy the whole table over as well.
+            if not table_info or include_snap:
+                record_table_as_snap(table_info, image_hash, table_name=table, repository=self)
 
         # Make sure that all pending changes have been discarded by this point (e.g. if we created just a snapshot for
         # some tables and didn't consume the audit log).

@@ -161,31 +161,28 @@ REMOTE_ENGINE = 'remote_engine'  # On the host, mapped into localhost; on the lo
 
 @pytest.fixture
 def remote_engine():
-    with switch_engine(REMOTE_ENGINE):
-        engine = get_engine()
-        ensure_metadata_schema(engine)
-        _ensure_registry_schema()
-        set_info_key('registry_mode', False)
-        setup_registry_mode()
-        toggle_registry_rls('DISABLE')
-        unpublish_repository(Repository('', 'output'))
-        unpublish_repository(Repository('test', 'pg_mount'))
-        unpublish_repository(Repository('testuser', 'pg_mount'))
+    engine = get_engine(REMOTE_ENGINE)
+    ensure_metadata_schema(engine)
+    _ensure_registry_schema(engine)
+    set_info_key(engine, 'registry_mode', False)
+    setup_registry_mode(engine)
+    toggle_registry_rls(engine, 'DISABLE')
+    unpublish_repository(Repository('', 'output', engine))
+    unpublish_repository(Repository('test', 'pg_mount', engine))
+    unpublish_repository(Repository('testuser', 'pg_mount', engine))
+    for mountpoint, _ in get_current_repositories(engine):
+        mountpoint.rm()
+    ObjectManager(engine).cleanup()
+    engine.commit()
+    try:
+        yield engine
+    finally:
+        engine.rollback()
         for mountpoint, _ in get_current_repositories(engine):
             mountpoint.rm()
         ObjectManager(engine).cleanup()
         engine.commit()
-    try:
-        yield get_engine(REMOTE_ENGINE)
-    finally:
-        with switch_engine(REMOTE_ENGINE):
-            e = get_engine()
-            e.rollback()
-            for mountpoint, _ in get_current_repositories(e):
-                mountpoint.rm()
-            ObjectManager(engine).cleanup()
-            e.commit()
-            e.close()
+        engine.close()
 
 
 SPLITFILE_ROOT = os.path.join(os.path.dirname(__file__), '../resources/')
