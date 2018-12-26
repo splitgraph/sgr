@@ -11,7 +11,7 @@ from splitgraph._data.provenance import store_import_provenance, store_sql_prove
     store_from_provenance
 from splitgraph.config import CONFIG
 from splitgraph.core.engine import repository_exists, lookup_repo
-from splitgraph.core.repository import to_repository, Repository, local_clone, clone
+from splitgraph.core.repository import to_repository, Repository, clone
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.mount_handlers import get_mount_handler
@@ -132,21 +132,17 @@ def _execute_from(node, output):
         # TODO maybe two different objects (repository and repository with an engine?)
         source_repo = lookup_repo(repository.to_schema(), include_local=True)
 
-        if source_repo.engine.name != 'LOCAL':
-            clone(source_repo, local_repository=output, download_all=False)
-            output.checkout(output.resolve_image(tag_or_hash))
-        else:
-            # For local repositories, first try to pull them to see if they are clones of a remote.
+        if source_repo.engine.name == 'LOCAL':
+            # For local repositories, make sure to update them if they've an upstream
             try:
                 source_repo.pull()
             except SplitGraphException:
                 pass
-            # Get the target snap ID from the source repo: otherwise, if the tag is, say, 'latest' and
-            # the output has just had the base commit (000...) created in it, that commit will be the latest.
-            to_checkout = source_repo.resolve_image(tag_or_hash)
-            print("Cloning %s into %s..." % (source_repo, output))
-            local_clone(source_repo, output)
-            output.checkout(to_checkout)
+
+        # Get the target snap ID from the source repo: otherwise, if the tag is, say, 'latest' and
+        # the output has just had the base commit (000...) created in it, that commit will be the latest.
+        clone(source_repo, local_repository=output, download_all=False)
+        output.checkout(source_repo.resolve_image(tag_or_hash))
         store_from_provenance(output, output.get_head(), source_repo)
     else:
         # FROM EMPTY AS repository -- initializes an empty repository (say to create a table or import

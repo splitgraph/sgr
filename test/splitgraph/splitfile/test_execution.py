@@ -1,11 +1,7 @@
-from copy import copy
-
 import pytest
 
-from splitgraph._data.objects import get_existing_objects, get_downloaded_objects, get_external_object_locations, \
-    get_object_for_table
-from splitgraph.core.engine import cleanup_objects, get_current_repositories
-from splitgraph.core.repository import to_repository as R, clone
+from splitgraph.core.engine import get_current_repositories
+from splitgraph.core.repository import to_repository as R, clone, Repository
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.splitfile._parsing import preprocess
 from splitgraph.splitfile.execution import execute_commands
@@ -122,24 +118,26 @@ def test_import_updating_splitfile_with_uploading(local_engine_empty, remote_eng
     execute_commands(load_splitfile('import_and_update.splitfile'), output=OUTPUT)
     head = OUTPUT.get_head()
 
-    assert len(get_existing_objects()) == 4  # Two original tables + two updates
+    assert len(OUTPUT.objects.get_existing_objects()) == 4  # Two original tables + two updates
 
     # Push with upload. Have to specify the remote repo.
-    remote_output = copy(OUTPUT)
-    remote_output.engine = remote_engine
+    remote_output = Repository(OUTPUT.namespace, OUTPUT.repository, remote_engine)
     OUTPUT.push(remote_output, handler='S3', handler_options={})
     # Unmount everything locally and cleanup
     OUTPUT.rm()
-    cleanup_objects()
-    assert not get_existing_objects()
+
+    # OUTPUT doesn't exist but we use its ObjectManager reference to access the global object
+    # manager for the engine (maybe should inject it into local_engine/remote_engine instead)
+    OUTPUT.objects.cleanup()
+    assert not OUTPUT.objects.get_existing_objects()
 
     clone(OUTPUT.to_schema(), download_all=False)
 
-    assert not get_downloaded_objects()
-    existing_objects = list(get_existing_objects())
+    assert not OUTPUT.objects.get_downloaded_objects()
+    existing_objects = list(OUTPUT.objects.get_existing_objects())
     assert len(existing_objects) == 4  # Two original tables + two updates
     # Only 2 objects are stored externally (the other two have been on the remote the whole time)
-    assert len(get_external_object_locations(existing_objects)) == 2
+    assert len(OUTPUT.objects.get_external_object_locations(existing_objects)) == 2
 
     OUTPUT.checkout(head)
     assert OUTPUT.run_sql("SELECT fruit_id, name FROM my_fruits") == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]
@@ -157,8 +155,7 @@ def test_splitfile_end_to_end_with_uploading(local_engine_empty, remote_engine,
     # Do the same setting up first and run the splitfile against the remote data.
     execute_commands(load_splitfile('import_remote_multiple.splitfile'), params={'TAG': 'v1'}, output=OUTPUT)
 
-    remote_output = copy(OUTPUT)
-    remote_output.engine = remote_engine
+    remote_output = Repository(OUTPUT.namespace, OUTPUT.repository, remote_engine)
 
     # Push with upload
     # TODO maybe push/clone should return the target repos they pushed to
@@ -166,7 +163,7 @@ def test_splitfile_end_to_end_with_uploading(local_engine_empty, remote_engine,
     # Unmount everything locally and cleanup
     for mountpoint, _ in get_current_repositories(local_engine_empty):
         mountpoint.rm()
-    cleanup_objects()
+    OUTPUT.objects.cleanup()
 
     stage_2 = R('output_stage_2')
     execute_commands(load_splitfile('import_from_preuploaded_remote.splitfile'), output=stage_2)
@@ -221,11 +218,11 @@ def test_import_with_custom_query(pg_repo_local, mg_repo_local):
     for t in tables:
         # Tables with queries stored as snaps, actually imported tables share objects with test/pg_mount.
         if t in ['my_fruits', 'o_vegetables']:
-            assert get_object_for_table(OUTPUT, t, head, 'SNAP') is not None
-            assert get_object_for_table(OUTPUT, t, head, 'DIFF') is None
+            assert OUTPUT.objects.get_object_for_table(OUTPUT, t, head, 'SNAP') is not None
+            assert OUTPUT.objects.get_object_for_table(OUTPUT, t, head, 'DIFF') is None
         else:
-            assert get_object_for_table(OUTPUT, t, head, 'SNAP') is None
-            assert get_object_for_table(OUTPUT, t, head, 'DIFF') is not None
+            assert OUTPUT.objects.get_object_for_table(OUTPUT, t, head, 'SNAP') is None
+            assert OUTPUT.objects.get_object_for_table(OUTPUT, t, head, 'DIFF') is not None
 
 
 def test_import_mount(local_engine_empty):
@@ -246,8 +243,8 @@ def test_import_mount(local_engine_empty):
 
     # All imported tables stored as snapshots
     for t in tables:
-        assert get_object_for_table(OUTPUT, t, head, 'SNAP') is not None
-        assert get_object_for_table(OUTPUT, t, head, 'DIFF') is None
+        assert OUTPUT.objects.get_object_for_table(OUTPUT, t, head, 'SNAP') is not None
+        assert OUTPUT.objects.get_object_for_table(OUTPUT, t, head, 'DIFF') is None
 
 
 def test_import_all(local_engine_empty):
@@ -315,8 +312,8 @@ def test_from_multistage(local_engine_empty, pg_repo_remote_multitag):
     # Check the commit is based on the original empty image.
     assert stage_2.get_image(head).parent_id == '0' * 64
     assert stage_2.get_image(head).get_tables() == ['balanced_diet']
-    assert get_object_for_table(stage_2, 'balanced_diet', head, 'SNAP') is not None
-    assert get_object_for_table(stage_2, 'balanced_diet', head, 'DIFF') is None
+    assert OUTPUT.objects.get_object_for_table(stage_2, 'balanced_diet', head, 'SNAP') is not None
+    assert OUTPUT.objects.get_object_for_table(stage_2, 'balanced_diet', head, 'DIFF') is None
 
 
 def test_from_local(pg_repo_local):

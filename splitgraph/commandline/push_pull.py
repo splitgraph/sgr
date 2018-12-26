@@ -40,7 +40,7 @@ def clone_c(remote_repository, local_repository, remote, download_all):
     # Otherwise, we have to turn the repository into a string and let clone() look up the
     # actual engine the repository lives on.
     if remote:
-        remote_repository.engine = splitgraph.get_engine(remote)
+        remote_repository.switch_engine(splitgraph.get_engine(remote))
     else:
         remote_repository = remote_repository.to_schema()
 
@@ -71,7 +71,7 @@ def push_c(repository, remote_repository, remote, upload_handler, upload_handler
     """
     # redesign this so that people push to some default remote engine (e.g. the global registry)?
     if remote_repository and remote:
-        remote_repository.remote = splitgraph.get_engine(remote)
+        remote_repository.switch_engine(splitgraph.get_engine(remote))
     else:
         remote_repository = None
     repository.push(remote_repository, handler=upload_handler, handler_options=json.loads(upload_handler_options))
@@ -150,7 +150,7 @@ def upstream_c(repository, set_to, reset):
     else:
         engine, remote_repo = set_to
         try:
-            remote_repo.engine = splitgraph.get_engine(engine)
+            remote_repo.switch_engine(splitgraph.get_engine(engine))
         except KeyError:
             print("Remote engine '%s' does not exist in the configuration file!" % engine)
             sys.exit(1)

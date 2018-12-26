@@ -3,7 +3,6 @@ from copy import copy
 import pytest
 from psycopg2._psycopg import ProgrammingError
 
-from splitgraph._data.objects import register_object_locations
 from splitgraph._data.registry import get_published_info, unpublish_repository, toggle_registry_rls
 from splitgraph.core.repository import Repository, clone
 from splitgraph.engine import switch_engine, get_engine
@@ -40,7 +39,7 @@ def unprivileged_remote_engine(remote_engine):
 @pytest.fixture()
 def unprivileged_pg_repo(pg_repo_remote, unprivileged_remote_engine):
     result = copy(pg_repo_remote)
-    result.engine = unprivileged_remote_engine
+    result.switch_engine(unprivileged_remote_engine)
     return result
 
 
@@ -63,7 +62,7 @@ def test_rls_push_own_delete_own(local_engine_empty, unprivileged_pg_repo, clean
     # Test we can push to our namespace -- can't upload the object to the splitgraph_meta since we can't create
     # tables there
     remote_destination = copy(destination)
-    remote_destination.engine = unprivileged_pg_repo.engine
+    remote_destination.switch_engine(unprivileged_pg_repo.engine)
     destination.set_upstream(remote_destination)
 
     destination.push(handler='S3')
@@ -100,8 +99,7 @@ def test_rls_impersonate_external_object(unprivileged_pg_repo, unprivileged_remo
     # Try to impersonate the owner of the "test" namespace and add a different external link to
     # an object that they own.
     with pytest.raises(ProgrammingError) as e:
-        with switch_engine(UNPRIVILEGED):
-            register_object_locations([(sample_object, 'fake_location', 'S3')])
+        unprivileged_pg_repo.objects.register_object_locations([(sample_object, 'fake_location', 'S3')])
     assert 'new row violates row-level security policy for table "object_locations"' in str(e.value)
 
 

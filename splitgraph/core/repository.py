@@ -6,17 +6,15 @@ from random import getrandbits
 from psycopg2.sql import SQL, Identifier
 
 import splitgraph
-from splitgraph import SplitGraphException, switch_engine, publish_tag
+from splitgraph import SplitGraphException, publish_tag
 from splitgraph._data.common import ensure_metadata_schema, select, insert
 from splitgraph._data.images import add_new_image, get_image_object_path
-from splitgraph._data.objects import register_table, get_external_object_locations, get_existing_objects, \
-    get_object_for_table, register_object, get_object_meta, register_objects, register_object_locations, register_tables
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.core.engine import delete_objects, repository_exists, lookup_repo
-from splitgraph.engine import ResultShape, get_engine
+from splitgraph.core.engine import repository_exists, lookup_repo
+from splitgraph.core.object_manager import ObjectManager
+from splitgraph.engine import ResultShape, get_engine, switch_engine
 from ._common import manage_audit_triggers, set_head, manage_audit
 from ._objects.creation import record_table_as_snap, record_table_as_diff
-from ._objects.loading import download_objects, upload_objects
 from ._objects.utils import get_random_object_id
 from .image import Image, IMAGE_COLS
 
@@ -41,6 +39,13 @@ class Repository:
         self.repository = repository
 
         self.engine = engine or splitgraph.get_engine()
+
+        # consider making this an injected/a singleton for a given engine
+        self.objects = ObjectManager(self.engine)
+
+    def switch_engine(self, engine):
+        self.engine = engine
+        self.objects = ObjectManager(engine)
 
     def __eq__(self, other):
         return self.namespace == other.namespace and self.repository == other.repository
@@ -161,7 +166,7 @@ class Repository:
             yield self.to_schema(), table_name
             return  # make sure we don't fall through after the user is finished
         # See if the table snapshot already exists, otherwise reconstruct it
-        object_id = get_object_for_table(self, table_name, image_hash, 'SNAP')
+        object_id = self.objects.get_object_for_table(self, table_name, image_hash, 'SNAP')
         if object_id is None:
             # Materialize the SNAP into a new object
             new_id = get_random_object_id()
@@ -169,7 +174,7 @@ class Repository:
             table.materialize(new_id, destination_schema=SPLITGRAPH_META_SCHEMA)
             yield SPLITGRAPH_META_SCHEMA, new_id
             # Maybe some cache management/expiry strategies here
-            delete_objects([new_id])
+            self.objects.delete_objects([new_id])
         else:
             if self.engine.table_exists(SPLITGRAPH_META_SCHEMA, object_id):
                 yield SPLITGRAPH_META_SCHEMA, object_id
@@ -181,11 +186,12 @@ class Repository:
                 if not upstream:
                     raise SplitGraphException("SNAP %s from %s doesn't exist locally and no remote was found for it!"
                                               % (object_id, str(self)))
-                object_locations = get_external_object_locations([object_id])
-                download_objects(upstream.engine, objects_to_fetch=[object_id], object_locations=object_locations)
+                object_locations = self.objects.get_external_object_locations([object_id])
+                self.objects.download_objects(upstream.engine, objects_to_fetch=[object_id],
+                                              object_locations=object_locations)
                 yield SPLITGRAPH_META_SCHEMA, object_id
 
-                delete_objects([object_id])
+                self.objects.delete_objects([object_id])
 
     @manage_audit
     def checkout(self, image_hash=None, tag=None, tables=None, keep_downloaded_objects=True, force=False):
@@ -217,6 +223,7 @@ class Repository:
 
         image = self.get_image(image_hash)
         # Drop all current tables in staging
+        self.engine.create_schema(target_schema)
         for table in self.engine.get_all_tables(target_schema):
             self.engine.delete_table(target_schema, table)
 
@@ -230,7 +237,7 @@ class Repository:
 
         if not keep_downloaded_objects:
             logging.info("Removing %d downloaded objects from cache...", len(downloaded_object_ids))
-            delete_objects(downloaded_object_ids)
+            self.objects.delete_objects(downloaded_object_ids)
 
     @manage_audit
     def uncheckout(self, force=False):
@@ -303,6 +310,8 @@ class Repository:
         for table in self.engine.get_all_tables(target_schema):
             table_info = head.get_table(table) if head else None
             # Table already exists at the current HEAD
+
+            # TODO REMOVE
             with switch_engine(self.engine):
                 if table_info:
                     # If there has been a schema change, we currently just snapshot the whole table.
@@ -321,7 +330,7 @@ class Repository:
                         # any of snaps or diffs).
                         # This feels slightly weird: are we denormalized here?
                         for prev_object_id, _ in table_info.objects:
-                            register_table(self, table, image_hash, prev_object_id)
+                            self.objects.register_table(self, table, image_hash, prev_object_id)
 
                 # If table created (or we want to store a snap anyway), copy the whole table over as well.
                 if not table_info or include_snap:
@@ -510,15 +519,16 @@ class Repository:
                     self.engine.copy_table(self.to_schema(), table, SPLITGRAPH_META_SCHEMA, object_id)
 
                 # Might not be necessary if we don't actually want to materialize the snapshot (wastes space).
-                register_object(object_id, 'SNAP', namespace=target_repository.namespace, parent_object=None)
-                register_table(target_repository, target_table, target_hash, object_id)
+                self.objects.register_object(object_id, 'SNAP', namespace=target_repository.namespace,
+                                             parent_object=None)
+                self.objects.register_table(target_repository, target_table, target_hash, object_id)
                 if do_checkout:
                     self.engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, target_repository.to_schema(),
                                            target_table)
             else:
                 table_obj = image.get_table(table)
                 for object_id, _ in table_obj.objects:
-                    register_table(target_repository, target_table, target_hash, object_id)
+                    self.objects.register_table(target_repository, target_table, target_hash, object_id)
                 if do_checkout:
                     table_obj.materialize(target_table, destination_schema=target_repository.to_schema())
         # Register the existing tables at the new commit as well.
@@ -600,16 +610,15 @@ class Repository:
                 logging.info("Nothing to do.")
                 return
 
-            new_uploads = upload_objects(remote_repository.engine, list(set(o[0] for o in object_meta)),
-                                         handler=handler, handler_params=handler_options)
+            new_uploads = self.objects.upload_objects(remote_repository.objects, list(set(o[0] for o in object_meta)),
+                                                      handler=handler, handler_params=handler_options)
             # Register the newly uploaded object locations locally and remotely.
-            with switch_engine(remote_repository.engine):
-                register_objects(object_meta)
-                register_object_locations(object_locations + new_uploads)
-                register_tables(remote_repository, table_meta)
-                remote_repository.set_tags(tags, force=False)
+            remote_repository.objects.register_objects(object_meta)
+            remote_repository.objects.register_object_locations(object_locations + new_uploads)
+            remote_repository.objects.register_tables(remote_repository, table_meta)
+            remote_repository.set_tags(tags, force=False)
 
-            register_object_locations(new_uploads)
+            self.objects.register_object_locations(new_uploads)
 
             if self.get_upstream() is None:
                 self.set_upstream(remote_repository)
@@ -776,7 +785,7 @@ def _changes_to_aggregation(query_result, initial=None):
 def _calculate_merged_diff(repository, table_name, path, aggregate):
     result = [] if not aggregate else (0, 0, 0)
     for image in reversed(path):
-        diff_id = get_object_for_table(repository, table_name, image, 'DIFF')
+        diff_id = repository.objects.get_object_for_table(repository, table_name, image, 'DIFF')
         if diff_id is None:
             # There's a SNAP entry between the two images, meaning there has been a schema change.
             # Hence we can't accumulate the DIFFs and have to resort to manual side-by-side diffing.
@@ -910,34 +919,10 @@ def _get_required_snaps_objects(target, source):
     tags = {t: s for s, t in source.get_all_hashes_tags() if t not in existing_tags}
 
     # Crawl the object tree to get the IDs and other metadata for all required objects.
-    distinct_objects, object_meta = _extract_recursive_object_meta(source.engine, target.engine, table_meta)
+    distinct_objects, object_meta = target.objects.extract_recursive_object_meta(source.objects, table_meta)
 
-    with switch_engine(source.engine):
-        object_locations = get_external_object_locations(list(distinct_objects)) if distinct_objects else []
+    object_locations = source.objects.get_external_object_locations(list(distinct_objects)) if distinct_objects else []
     return new_images, table_meta, object_locations, object_meta, tags
-
-
-def _extract_recursive_object_meta(source_engine, target_engine, table_meta):
-    """Recursively crawl the object tree on a given engine in order to fetch all objects
-    required to materialize tables specified in `table_meta` that don't yet exist on the local engine."""
-    with switch_engine(target_engine):
-        existing_objects = get_existing_objects()
-    distinct_objects = set(o[2] for o in table_meta if o[2] not in existing_objects)
-    known_objects = set()
-    object_meta = []
-
-    with switch_engine(source_engine):
-        while True:
-            new_parents = [o for o in distinct_objects if o not in known_objects]
-            if not new_parents:
-                break
-            else:
-                parents_meta = get_object_meta(new_parents)
-                distinct_objects.update(
-                    set(o[2] for o in parents_meta if o[2] is not None and o[2] not in existing_objects))
-                object_meta.extend(parents_meta)
-                known_objects.update(new_parents)
-    return distinct_objects, object_meta
 
 
 def clone(remote_repository, local_repository=None, download_all=False):
@@ -959,7 +944,6 @@ def clone(remote_repository, local_repository=None, download_all=False):
     # Repository engine should be local by default
     if not local_repository:
         local_repository = Repository(remote_repository.namespace, remote_repository.repository)
-    local_repository.engine.create_schema(local_repository.to_schema())
 
     # Get the remote log and the list of objects we need to fetch.
     logging.info("Gathering remote metadata...")
@@ -978,13 +962,14 @@ def clone(remote_repository, local_repository=None, download_all=False):
         # We might already have some objects prefetched
         # (e.g. if a new version of the table is the same as the old version)
         logging.info("Fetching remote objects...")
-        download_objects(remote_repository.engine, objects_to_fetch=list(set(o[0] for o in object_meta)),
-                         object_locations=object_locations)
+        local_repository.objects.download_objects(
+            remote_repository.objects, objects_to_fetch=list(set(o[0] for o in object_meta)),
+            object_locations=object_locations)
 
     # Map the tables to the actual objects no matter whether or not we're downloading them.
-    register_objects(object_meta)
-    register_object_locations(object_locations)
-    register_tables(local_repository, table_meta)
+    local_repository.objects.register_objects(object_meta)
+    local_repository.objects.register_object_locations(object_locations)
+    local_repository.objects.register_tables(local_repository, table_meta)
     local_repository.set_tags(tags, force=False)
     # Don't check anything out, keep the repo bare.
     set_head(local_repository, None)
@@ -996,18 +981,3 @@ def clone(remote_repository, local_repository=None, download_all=False):
 
     if local_repository.get_upstream() is None:
         local_repository.set_upstream(remote_repository)
-
-
-def local_clone(self, destination):
-    """Clones one local repository into another, copying all of its commit history over. Doesn't do any checking out
-    or materialization."""
-
-    _, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(destination, self)
-
-    # Map the tables to the actual objects no matter whether or not we're downloading them.
-    register_objects(object_meta)
-    register_object_locations(object_locations)
-    register_tables(destination, table_meta)
-    destination.set_tags(tags, force=False)
-    # Don't check anything out, keep the repo bare.
-    set_head(destination, None)

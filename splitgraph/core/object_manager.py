@@ -1,0 +1,304 @@
+import logging
+from collections.__init__ import defaultdict
+
+from psycopg2.sql import SQL, Identifier
+
+from splitgraph._data.common import select, insert, META_TABLES
+from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from splitgraph.engine import ResultShape
+from splitgraph.hooks.external_objects import get_external_object_handler
+
+
+class ObjectManager:
+    """A Splitgraph metadata-aware class that keeps track of objects on a given engine.
+    Backed by ObjectEngine to move physical objects around and run metadata queries."""
+
+    def __init__(self, object_engine):
+        self.object_engine = object_engine
+
+    def get_full_object_tree(self):
+        """Returns a list of (object_id, parent_id, SNAP/DIFF) with the full object tree in the engine"""
+        return self.object_engine.run_sql(select("objects", "object_id,parent_id,format"))
+
+    def register_object(self, object_id, object_format, namespace, parent_object=None):
+        """
+        Registers a Splitgraph object in the object tree
+
+        :param object_id: Object ID
+        :param object_format: Format (SNAP or DIFF)
+        :param namespace: Namespace that owns the object. In registry mode, only namespace owners can alter or delete
+            objects.
+        :param parent_object: Parent that the object depends on, if it's a DIFF object.
+        """
+        if not parent_object and object_format != 'SNAP':
+            raise ValueError("Non-SNAP objects can't have no parent!")
+        return self.object_engine.run_sql(insert("objects", ("object_id", "format", "parent_id", "namespace")),
+                                          (object_id, object_format, parent_object, namespace))
+
+    def register_objects(self, object_meta):
+        """
+        Registers multiple Splitgraph objects in the tree. See `register_object` for more information.
+        :param object_meta: List of (object_id, format, parent_id, namesapce).
+        """
+        self.object_engine.run_sql_batch(insert("objects", ("object_id", "format", "parent_id", "namespace")),
+                                         object_meta)
+
+    def register_tables(self, repository, table_meta):
+        """
+        Links tables in an image to physical objects that they are stored as.
+        Objects must already be registered in the object tree.
+
+        :param repository: Repository that the tables belong to.
+        :param table_meta: A list of (image_hash, table_name, object_id).
+        """
+        table_meta = [(repository.namespace, repository.repository) + o for o in table_meta]
+        self.object_engine.run_sql_batch(
+            insert("tables", ("namespace", "repository", "image_hash", "table_name", "object_id")), table_meta)
+
+    def register_object_locations(self, object_locations):
+        """
+        Registers external locations (e.g. HTTP or S3) for Splitgraph objects.
+        Objects must already be registered in the object tree.
+
+        :param object_locations: List of (object_id, location, protocol).
+        """
+        # Don't insert redundant objects here either.
+        existing_locations = self.object_engine.run_sql(select("object_locations", "object_id"),
+                                                        return_shape=ResultShape.MANY_ONE)
+        object_locations = [o for o in object_locations if o[0] not in existing_locations]
+        self.object_engine.run_sql_batch(insert("object_locations", ("object_id", "location", "protocol")),
+                                         object_locations)
+
+    def get_existing_objects(self):
+        """
+        Gets all objects currently in the Splitgraph tree.
+        :return: Set of object IDs.
+        """
+        return set(self.object_engine.run_sql(select("objects", "object_id"), return_shape=ResultShape.MANY_ONE))
+
+    def get_downloaded_objects(self):
+        """
+        Gets a list of objects currently in the Splitgraph cache (i.e. not only existing externally.)
+
+        :return: Set of object IDs.
+        """
+        # Minor normalization sadness here: this can return duplicate object IDs since
+        # we might repeat them if different versions of the same table point to the same object ID.
+        return set(
+            self.object_engine.run_sql(
+                SQL("""SELECT information_schema.tables.table_name FROM information_schema.tables JOIN {}.tables
+                            ON information_schema.tables.table_name = {}.tables.object_id
+                            WHERE information_schema.tables.table_schema = %s""")
+                    .format(Identifier(SPLITGRAPH_META_SCHEMA),
+                            Identifier(SPLITGRAPH_META_SCHEMA)),
+                (SPLITGRAPH_META_SCHEMA,), return_shape=ResultShape.MANY_ONE))
+
+    def get_external_object_locations(self, objects):
+        """
+        Gets external locations for objects.
+
+        :param objects: List of objects stored externally.
+        :return: List of (object_id, location, protocol).
+        """
+        return self.object_engine.run_sql(select("object_locations", "object_id, location, protocol",
+                                                 "object_id IN (" + ','.join('%s' for _ in objects) + ")"),
+                                          objects)
+
+    def get_object_meta(self, objects):
+        """
+        Get metadata for multiple Splitgraph objects from the tree
+
+        :param objects: List of objects to get metadata for.
+        :return: List of (object_id, format, parent_id, namespace).
+        """
+        return self.object_engine.run_sql(select("objects", "object_id, format, parent_id, namespace",
+                                                 "object_id IN (" + ','.join('%s' for _ in objects) + ")"), objects)
+
+    def register_table(self, repository, table, image, object_id):
+        """
+        Registers the object that represents a Splitgraph table inside of an image.
+
+        :param repository: Repository
+        :param table: Table name
+        :param image: Image hash
+        :param object_id: Object ID to register the table to.
+        """
+        self.object_engine.run_sql(
+            insert("tables", ("namespace", "repository", "image_hash", "table_name", "object_id")),
+            (repository.namespace, repository.repository, image, table, object_id))
+
+    def get_object_for_table(self, repository, table_name, image, object_format):
+        """
+        Returns the object ID of a table in a given image, with a given format. Used in cases
+        where it's easier to materialize a table by downloading the whole snapshot but the table can be
+        stored as both a DIFF and a SNAP.
+
+        :param repository: Repository the table belongs to
+        :param table_name: Name of the table
+        :param image: Image the table belongs to
+        :param object_format: Format of the object (DIFF or SNAP).
+        :return: None if there's no such object, otherwise the object ID.
+        """
+        return self.object_engine.run_sql(SQL("""SELECT {0}.tables.object_id FROM {0}.tables JOIN {0}.objects
+                                ON {0}.objects.object_id = {0}.tables.object_id
+                                WHERE {0}.tables.namespace = %s AND repository = %s AND image_hash = %s
+                                AND table_name = %s AND format = %s""")
+                                          .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                                          (repository.namespace, repository.repository,
+                                           image, table_name, object_format),
+                                          return_shape=ResultShape.ONE_ONE)
+
+    def extract_recursive_object_meta(self, remote, table_meta):
+        """Recursively crawl the a remote object manager in order to fetch all objects
+        required to materialize tables specified in `table_meta` that don't yet exist on the local engine."""
+        existing_objects = self.get_existing_objects()
+        distinct_objects = set(o[2] for o in table_meta if o[2] not in existing_objects)
+        known_objects = set()
+        object_meta = []
+
+        while True:
+            new_parents = [o for o in distinct_objects if o not in known_objects]
+            if not new_parents:
+                break
+            else:
+                parents_meta = remote.get_object_meta(new_parents)
+                distinct_objects.update(
+                    set(o[2] for o in parents_meta if o[2] is not None and o[2] not in existing_objects))
+                object_meta.extend(parents_meta)
+                known_objects.update(new_parents)
+        return distinct_objects, object_meta
+
+    def download_objects(self, source, objects_to_fetch, object_locations):
+        """
+        Fetches the required objects from the remote and stores them locally. Does nothing for objects that already exist.
+
+        :param source: Remote ObjectManager
+        :param objects_to_fetch: List of object IDs to download.
+        :param object_locations: List of custom object locations, encoded as tuples (object_id, object_url, protocol).
+        :return: Set of object IDs that were fetched.
+        """
+
+        existing_objects = self.get_downloaded_objects()
+        objects_to_fetch = set(o for o in objects_to_fetch if o not in existing_objects)
+        if not objects_to_fetch:
+            return objects_to_fetch
+
+        # We don't actually seem to pass extra handler parameters when downloading objects since
+        # we can have multiple handlers in this batch.
+        external_objects = _fetch_external_objects(object_locations, objects_to_fetch, {})
+
+        remaining_objects_to_fetch = [o for o in objects_to_fetch if o not in external_objects]
+        if not remaining_objects_to_fetch:
+            return objects_to_fetch
+
+        print("Fetching remote objects...")
+        self.object_engine.download_objects(remaining_objects_to_fetch, source.object_engine)
+        return objects_to_fetch
+
+    def upload_objects(self, target, objects_to_push, handler='DB', handler_params=None):
+        """
+        Uploads physical objects to the remote or some other external location.
+
+        :param target: Target ObjectManager
+        :param objects_to_push: List of object IDs to upload.
+        :param handler: Name of the handler to use to upload objects. Use `DB` to push them to the remote, `FILE`
+            to store them in a directory that can be accessed from the client and `HTTP` to upload them to HTTP.
+        :param handler_params: For `HTTP`, a dictionary `{"username": username, "password", password}`. For `FILE`,
+            a dictionary `{"path": path}` specifying the directory where the objects shall be saved.
+        :return: A list of (object_id, url, handler) that specifies all objects were uploaded (skipping objects that
+            already exist on the remote).
+        """
+        if handler_params is None:
+            handler_params = {}
+
+        # Get objects that exist on the remote engine
+        existing_objects = target.get_existing_objects()
+
+        objects_to_push = list(set(o for o in objects_to_push if o not in existing_objects))
+        if not objects_to_push:
+            logging.info("Nothing to upload.")
+            return []
+        logging.info("Uploading %d object(s)...", len(objects_to_push))
+
+        if handler == 'DB':
+            self.object_engine.upload_objects(objects_to_push, target.object_engine)
+            # We assume that if the object doesn't have an explicit location, it lives on the remote.
+            return []
+
+        external_handler = get_external_object_handler(handler, handler_params)
+        uploaded = external_handler.upload_objects(objects_to_push)
+        return [(oid, url, handler) for oid, url in zip(objects_to_push, uploaded)]
+
+    def cleanup(self, include_external=False):
+        """
+        Deletes all local objects not required by any current mountpoint, including their dependencies, their remote
+        locations and their cached local copies.
+
+        :param include_external: If True, deletes all external objects cached locally and redownloads them when they're
+            needed.
+        """
+        # First, get a list of all objects required by a table.
+        primary_objects = set(self.object_engine.run_sql(
+            SQL("SELECT DISTINCT (object_id) FROM {}.tables").format(Identifier(SPLITGRAPH_META_SCHEMA)),
+            return_shape=ResultShape.MANY_ONE))
+
+        # Expand that since each object might have a parent it depends on.
+        if primary_objects:
+            while True:
+                new_parents = set(parent_id for _, _, parent_id, _ in self.get_object_meta(list(primary_objects))
+                                  if parent_id not in primary_objects and parent_id is not None)
+                if not new_parents:
+                    break
+                else:
+                    primary_objects.update(new_parents)
+
+        # Go through the tables that aren't mountpoint-dependent and delete entries there.
+        for table_name in ['objects', 'object_locations']:
+            query = SQL("DELETE FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table_name))
+            if primary_objects:
+                query += SQL(" WHERE object_id NOT IN (" + ','.join('%s' for _ in range(len(primary_objects))) + ")")
+            self.object_engine.run_sql(query, list(primary_objects))
+
+        # Go through the physical objects and delete them as well
+        # This is slightly dirty, but since the info about the objects was deleted on rm, we just say that
+        # anything in splitgraph_meta that's not a system table is fair game.
+        tables_in_meta = {c for c in self.object_engine.get_all_tables(SPLITGRAPH_META_SCHEMA) if c not in META_TABLES}
+
+        to_delete = tables_in_meta.difference(primary_objects)
+
+        # All objects in `object_locations` are assumed to exist externally (so we can redownload them if need be).
+        # This can be improved on by, on materialization, downloading all SNAPs directly into the target schema and
+        # applying the DIFFs to it (instead of downloading them into a staging area), but that requires us to change
+        # the object downloader interface.
+        if include_external:
+            to_delete = to_delete.union(set(
+                self.object_engine.run_sql(SQL("SELECT object_id FROM {}.object_locations")
+                                           .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                                           return_shape=ResultShape.MANY_ONE)))
+
+        self.delete_objects(to_delete)
+        return to_delete
+
+    def delete_objects(self, objects):
+        """
+        Deletes objects from the Splitgraph cache
+
+        :param objects: A sequence of objects to be deleted
+        """
+        for o in objects:
+            self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, o)
+
+
+def _fetch_external_objects(object_locations, objects_to_fetch, handler_params):
+    non_remote_objects = []
+    non_remote_by_method = defaultdict(list)
+    for object_id, object_url, protocol in object_locations:
+        if object_id in objects_to_fetch:
+            non_remote_by_method[protocol].append((object_id, object_url))
+            non_remote_objects.append(object_id)
+    if non_remote_objects:
+        logging.info("Fetching external objects...")
+        for method, objects in non_remote_by_method.items():
+            handler = get_external_object_handler(method, handler_params)
+            handler.download_objects(objects)
+    return non_remote_objects

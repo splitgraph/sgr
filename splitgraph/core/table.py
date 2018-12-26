@@ -1,10 +1,7 @@
 import logging
 
-from splitgraph import switch_engine
 from splitgraph._data.images import get_image_object_path
-from splitgraph._data.objects import get_external_object_locations, get_existing_objects
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.core._objects.loading import download_objects
 
 
 class Table:
@@ -35,13 +32,12 @@ class Table:
         # Make sure all the objects have been downloaded from remote if it exists
         upstream = self.repository.get_upstream()
         if upstream:
-            with switch_engine(engine):
-                object_locations = get_external_object_locations(to_apply + [object_id])
-                fetched_objects = download_objects(upstream.engine,
-                                                   objects_to_fetch=to_apply + [object_id],
-                                                   object_locations=object_locations)
+            object_locations = self.repository.objects.get_external_object_locations(to_apply + [object_id])
+            fetched_objects = self.repository.objects.download_objects(upstream.objects,
+                                                                       objects_to_fetch=to_apply + [object_id],
+                                                                       object_locations=object_locations)
 
-        difference = set(to_apply + [object_id]).difference(set(get_existing_objects()))
+        difference = set(to_apply + [object_id]).difference(set(self.repository.objects.get_existing_objects()))
         if difference:
             logging.warning("Not all objects required to materialize %s:%s:%s exist locally.",
                             destination_schema, self.image.image_hash, self.table_name)

@@ -6,7 +6,8 @@ from minio import Minio
 from splitgraph._data.common import ensure_metadata_schema
 from splitgraph._data.registry import _ensure_registry_schema, unpublish_repository, setup_registry_mode, \
     toggle_registry_rls, set_info_key
-from splitgraph.core.engine import cleanup_objects, get_current_repositories
+from splitgraph.core.engine import get_current_repositories
+from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.repository import to_repository as R, Repository
 from splitgraph.engine import get_engine, ResultShape, switch_engine
 from splitgraph.hooks.mount_handlers import mount
@@ -83,7 +84,7 @@ def local_engine_empty():
         mountpoint.rm()
     for mountpoint in TEST_MOUNTPOINTS:
         mountpoint.rm()
-    cleanup_objects()
+    ObjectManager(engine).cleanup()
     engine.commit()
     try:
         yield engine
@@ -93,7 +94,7 @@ def local_engine_empty():
             mountpoint.rm()
         for mountpoint in TEST_MOUNTPOINTS:
             mountpoint.rm()
-        cleanup_objects()
+        ObjectManager(engine).cleanup()
         engine.commit()
 
 
@@ -172,7 +173,7 @@ def remote_engine():
         unpublish_repository(Repository('testuser', 'pg_mount'))
         for mountpoint, _ in get_current_repositories(engine):
             mountpoint.rm()
-        cleanup_objects()
+        ObjectManager(engine).cleanup()
         engine.commit()
     try:
         yield get_engine(REMOTE_ENGINE)
@@ -182,7 +183,7 @@ def remote_engine():
             e.rollback()
             for mountpoint, _ in get_current_repositories(e):
                 mountpoint.rm()
-            cleanup_objects()
+            ObjectManager(engine).cleanup()
             e.commit()
             e.close()
 

@@ -1,5 +1,4 @@
-from splitgraph._data.objects import get_existing_objects, get_downloaded_objects
-from splitgraph.core.engine import cleanup_objects, get_current_repositories
+from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.repository import import_table_from_remote
 from splitgraph.engine import get_engine
 from test.splitgraph.conftest import OUTPUT
@@ -76,8 +75,10 @@ def test_import_from_remote(local_engine_empty, pg_repo_remote):
     # Start with a clean repo -- add a table to output to see if it's preserved.
     head = _setup_dataset()
 
-    assert len(get_downloaded_objects()) == 2
-    assert len(get_existing_objects()) == 2
+    local_objects = OUTPUT.objects
+
+    assert len(local_objects.get_downloaded_objects()) == 2
+    assert len(local_objects.get_existing_objects()) == 2
     assert local_engine_empty.get_all_tables(OUTPUT.to_schema()) == ['test']
 
     # Import the 'fruits' table from the origin.
@@ -88,7 +89,7 @@ def test_import_from_remote(local_engine_empty, pg_repo_remote):
     # Check that the table now exists in the output, is committed and there's no trace of the cloned repo.
     # Also clean up the unused objects to make sure that the newly cloned table is still recorded.
     assert sorted(local_engine_empty.get_all_tables(OUTPUT.to_schema())) == ['fruits', 'test']
-    cleanup_objects()
+    local_objects.cleanup()
     assert len(get_current_repositories(local_engine_empty)) == 1
     OUTPUT.checkout(head)
     assert local_engine_empty.table_exists(OUTPUT.to_schema(), 'test')

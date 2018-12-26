@@ -4,10 +4,8 @@ Internal functions for packaging changes into physical Splitgraph objects.
 
 from psycopg2.extras import Json
 
-from splitgraph._data.objects import register_table, register_object, get_object_for_table
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core._objects.utils import conflate_changes, get_random_object_id
-from splitgraph.engine import get_engine
 
 
 def record_table_as_diff(table, image_hash):
@@ -24,7 +22,6 @@ def record_table_as_diff(table, image_hash):
     for action, row_data, changed_fields in engine.get_pending_changes(table.repository.to_schema(), table.table_name):
         conflate_changes(changeset, [(action, row_data, changed_fields)])
     engine.discard_pending_changes(table.repository.to_schema(), table.table_name)
-
     changeset = [tuple(list(pk) + [kind_data[0], Json(kind_data[1])]) for pk, kind_data in
                  changeset.items()]
 
@@ -32,15 +29,15 @@ def record_table_as_diff(table, image_hash):
         engine.store_diff_object(changeset, SPLITGRAPH_META_SCHEMA, object_id,
                                  change_key=engine.get_change_key(table.repository.to_schema(), table.table_name))
         for parent_id, _ in table.objects:
-            register_object(object_id, object_format='DIFF', namespace=table.repository.namespace,
-                            parent_object=parent_id)
+            table.repository.objects.register_object(
+                object_id, object_format='DIFF', namespace=table.repository.namespace, parent_object=parent_id)
 
-        register_table(table.repository, table.table_name, image_hash, object_id)
+        table.repository.objects.register_table(table.repository, table.table_name, image_hash, object_id)
     else:
         # Changes in the audit log cancelled each other out. Delete the diff table and just point
         # the commit to the old table objects.
         for prev_object_id, _ in table.objects:
-            register_table(table.repository, table.table_name, image_hash, prev_object_id)
+            table.repository.objects.register_table(table.repository, table.table_name, image_hash, prev_object_id)
 
 
 def record_table_as_snap(table, image_hash, repository=None, table_name=None):
@@ -55,14 +52,15 @@ def record_table_as_snap(table, image_hash, repository=None, table_name=None):
     repository = repository or table.repository
     
     # Make sure we didn't actually create a snap for this table.
-    if get_object_for_table(repository, table_name, image_hash, 'SNAP') is None:
+    if repository.objects.get_object_for_table(repository, table_name, image_hash, 'SNAP') is None:
         object_id = get_random_object_id()
-        get_engine().copy_table(repository.to_schema(), table_name, SPLITGRAPH_META_SCHEMA, object_id,
-                                with_pk_constraints=True)
+        repository.engine.copy_table(repository.to_schema(), table_name, SPLITGRAPH_META_SCHEMA, object_id,
+                                     with_pk_constraints=True)
         if table and table.objects:
             for parent_id, _ in table.objects:
-                register_object(object_id, object_format='SNAP', namespace=repository.namespace,
-                                parent_object=parent_id)
+                repository.objects.register_object(object_id, object_format='SNAP', namespace=repository.namespace,
+                                                   parent_object=parent_id)
         else:
-            register_object(object_id, object_format='SNAP', namespace=repository.namespace, parent_object=None)
-        register_table(repository, table_name, image_hash, object_id)
+            repository.objects.register_object(object_id, object_format='SNAP', namespace=repository.namespace,
+                                               parent_object=None)
+        repository.objects.register_table(repository, table_name, image_hash, object_id)

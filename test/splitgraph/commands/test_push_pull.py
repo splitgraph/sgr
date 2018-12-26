@@ -1,6 +1,5 @@
 import pytest
 
-from splitgraph._data.objects import get_existing_objects, get_downloaded_objects
 from splitgraph.core.repository import clone
 from test.splitgraph.conftest import PG_MNT
 
@@ -48,17 +47,17 @@ def test_pull(local_engine_empty, pg_repo_remote, download_all):
 def test_pulls_with_lazy_object_downloads(local_engine_empty, pg_repo_remote, keep_downloaded):
     clone(pg_repo_remote, local_repository=PG_MNT, download_all=False)
     # Make sure we haven't downloaded anything until checkout
-    assert not get_downloaded_objects()
+    assert not PG_MNT.objects.get_downloaded_objects()
 
     head = pg_repo_remote.get_head()
 
     PG_MNT.checkout(head, keep_downloaded_objects=keep_downloaded)
     if keep_downloaded:
-        assert len(get_downloaded_objects()) == 2  # Original fruits and vegetables tables.
-        assert get_downloaded_objects() == get_existing_objects()
+        assert len(PG_MNT.objects.get_downloaded_objects()) == 2  # Original fruits and vegetables tables.
+        assert PG_MNT.objects.get_downloaded_objects() == PG_MNT.objects.get_existing_objects()
     else:
         # If we're deleting remote objects after checkout, there shouldn't be any left.
-        assert not get_downloaded_objects()
+        assert not PG_MNT.objects.get_downloaded_objects()
 
     # In the meantime, make two branches off of origin (a total of 3 commits)
     pg_repo_remote.run_sql("INSERT INTO fruits VALUES (3, 'mayonnaise')")
@@ -71,26 +70,26 @@ def test_pulls_with_lazy_object_downloads(local_engine_empty, pg_repo_remote, ke
     # Pull from upstream.
     PG_MNT.pull(download_all=False)
     # Make sure we have the pointers to the three versions of the fruits table + the original vegetables
-    assert len(get_existing_objects()) == 4
+    assert len(PG_MNT.objects.get_existing_objects()) == 4
 
     if keep_downloaded:
         # Also make sure still only have the objects with the original fruits + vegetables tables
-        assert len(get_downloaded_objects()) == 2
+        assert len(PG_MNT.objects.get_downloaded_objects()) == 2
 
     # Check out left commit: since it only depends on the root, we should download just the new version of fruits.
     PG_MNT.checkout(left, keep_downloaded_objects=keep_downloaded)
 
     if keep_downloaded:
-        assert len(get_downloaded_objects()) == 3  # now have 2 versions of fruits + 1 vegetables
+        assert len(PG_MNT.objects.get_downloaded_objects()) == 3  # now have 2 versions of fruits + 1 vegetables
     else:
-        assert not get_downloaded_objects()
+        assert not PG_MNT.objects.get_downloaded_objects()
 
     PG_MNT.checkout(right, keep_downloaded_objects=keep_downloaded)
     if keep_downloaded:
-        assert len(get_downloaded_objects()) == 4  # now have 2 versions of fruits + 1 vegetables
-        assert get_downloaded_objects() == get_existing_objects()
+        assert len(PG_MNT.objects.get_downloaded_objects()) == 4  # now have 2 versions of fruits + 1 vegetables
+        assert PG_MNT.objects.get_downloaded_objects() == PG_MNT.objects.get_existing_objects()
     else:
-        assert not get_downloaded_objects()
+        assert not PG_MNT.objects.get_downloaded_objects()
 
 
 def test_push(local_engine_empty, pg_repo_remote):

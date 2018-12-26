@@ -14,7 +14,7 @@ def test_publish(local_engine_empty, remote_engine, pg_repo_remote_multitag, ext
     OUTPUT.get_image(OUTPUT.get_head()).tag('v1')
 
     remote_output = copy(OUTPUT)
-    remote_output.engine = remote_engine
+    remote_output.switch_engine(remote_engine)
 
     OUTPUT.push(remote_output)
     OUTPUT.publish('v1', readme="A test repo.", include_provenance=extra_info, include_table_previews=extra_info)

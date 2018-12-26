@@ -9,8 +9,9 @@ from splitgraph import SplitGraphException, CONFIG
 from splitgraph._data.images import _get_all_child_images, delete_images, _get_all_parent_images
 from splitgraph.commandline._common import image_spec_parser
 from splitgraph.config.keys import KEYS, SENSITIVE_KEYS
-from splitgraph.core.engine import cleanup_objects, init_engine, repository_exists
-from splitgraph.engine import switch_engine, get_engine
+from splitgraph.core.engine import init_engine, repository_exists
+from splitgraph.core.object_manager import ObjectManager
+from splitgraph.engine import get_engine
 
 
 @click.command(name='rm')
@@ -54,40 +55,38 @@ def rm_c(image_spec, remote, yes):
 
     repository, image = image_spec
     engine = get_engine(remote or 'LOCAL')
-    repository.engine = engine
-    # still WIP, will remove it to rely on the engine in the repository
-    with switch_engine(engine):
-        if not image:
-            print(("Repository" if repository_exists(repository) else "Postgres schema")
-                  + " %s will be deleted." % repository.to_schema())
-            if not yes:
-                click.confirm("Continue? ", abort=True)
-            repository.rm()
-        else:
-            image = repository.resolve_image(image)
-            images_to_delete = _get_all_child_images(repository, image)
-            tags_to_delete = [t for i, t in repository.get_all_hashes_tags() if i in images_to_delete]
+    repository.switch_engine(engine)
+    if not image:
+        print(("Repository" if repository_exists(repository) else "Postgres schema")
+              + " %s will be deleted." % repository.to_schema())
+        if not yes:
+            click.confirm("Continue? ", abort=True)
+        repository.rm()
+    else:
+        image = repository.resolve_image(image)
+        images_to_delete = _get_all_child_images(repository, image)
+        tags_to_delete = [t for i, t in repository.get_all_hashes_tags() if i in images_to_delete]
 
-            print("Images to be deleted:")
-            print("\n".join(sorted(images_to_delete)))
-            print("Total: %d" % len(images_to_delete))
+        print("Images to be deleted:")
+        print("\n".join(sorted(images_to_delete)))
+        print("Total: %d" % len(images_to_delete))
 
-            print("\nTags to be deleted:")
-            print("\n".join(sorted(tags_to_delete)))
-            print("Total: %d" % len(tags_to_delete))
+        print("\nTags to be deleted:")
+        print("\n".join(sorted(tags_to_delete)))
+        print("Total: %d" % len(tags_to_delete))
 
-            if 'HEAD' in tags_to_delete:
-                # If we're deleting an image that we currently have checked out,
-                # we need to make sure the rest of the metadata (e.g. current state of the audit table) is consistent,
-                # it's better to disallow these deletions completely.
-                raise SplitGraphException("Deletion will affect a checked-out image! Check out a different branch "
-                                          "or do sgr checkout -u %s!" % repository.to_schema())
-            if not yes:
-                click.confirm("Continue? ", abort=True)
+        if 'HEAD' in tags_to_delete:
+            # If we're deleting an image that we currently have checked out,
+            # we need to make sure the rest of the metadata (e.g. current state of the audit table) is consistent,
+            # it's better to disallow these deletions completely.
+            raise SplitGraphException("Deletion will affect a checked-out image! Check out a different branch "
+                                      "or do sgr checkout -u %s!" % repository.to_schema())
+        if not yes:
+            click.confirm("Continue? ", abort=True)
 
-            delete_images(repository, images_to_delete)
-            engine.commit()
-            print("Success.")
+        delete_images(repository, images_to_delete)
+        engine.commit()
+        print("Success.")
 
 
 @click.command(name='prune')
@@ -109,27 +108,26 @@ def prune_c(repository, remote, yes):
     use ``sgr cleanup`` to do that.
     """
     engine = get_engine(remote or 'LOCAL')
-    repository.engine = engine
-    # still WIP, will remove it to rely on the engine in the repository
-    with switch_engine(engine):
-        all_images = set(image.image_hash for image in repository.get_images())
-        all_tagged_images = {i for i, t in repository.get_all_hashes_tags()}
-        dangling_images = all_images.difference(_get_all_parent_images(repository, all_tagged_images))
+    repository.switch_engine(engine)
 
-        if not dangling_images:
-            print("Nothing to do.")
-            return
+    all_images = set(image.image_hash for image in repository.get_images())
+    all_tagged_images = {i for i, t in repository.get_all_hashes_tags()}
+    dangling_images = all_images.difference(_get_all_parent_images(repository, all_tagged_images))
 
-        print("Images to be deleted:")
-        print("\n".join(sorted(dangling_images)))
-        print("Total: %d" % len(dangling_images))
+    if not dangling_images:
+        print("Nothing to do.")
+        return
 
-        if not yes:
-            click.confirm("Continue? ", abort=True)
+    print("Images to be deleted:")
+    print("\n".join(sorted(dangling_images)))
+    print("Total: %d" % len(dangling_images))
 
-        delete_images(repository, dangling_images)
-        engine.commit()
-        print("Success.")
+    if not yes:
+        click.confirm("Continue? ", abort=True)
+
+    delete_images(repository, dangling_images)
+    engine.commit()
+    print("Success.")
 
 
 @click.command(name='init')
@@ -163,7 +161,7 @@ def cleanup_c():
 
     This deletes all objects from the cache that aren't required by any local repository.
     """
-    deleted = cleanup_objects()
+    deleted = ObjectManager(get_engine()).cleanup()
     print("Deleted %d physical object(s)" % len(deleted))
 
 

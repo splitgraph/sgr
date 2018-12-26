@@ -1,6 +1,5 @@
 import os
 
-from splitgraph.core.engine import cleanup_objects
 from splitgraph.core.repository import to_repository, clone
 
 os.environ['SG_CONFIG_FILE'] = 'test/resources/.sgconfig'
@@ -103,7 +102,7 @@ if __name__ == '__main__':
     remote_driver = get_engine('remote_driver')
     with switch_engine('remote_driver'):
         MOUNTPOINT.rm()
-        cleanup_objects(include_external=True)
+        MOUNTPOINT.objects.cleanup(include_external=True)
     remote_driver.commit()
     remote_driver.close()
 
@@ -113,7 +112,7 @@ if __name__ == '__main__':
     print(datetime.now())
 
     MOUNTPOINT.rm()
-    cleanup_objects()
+    MOUNTPOINT.objects.cleanup()
 
     print(datetime.now())
     print("STARTING CLONE + DOWNLOAD")
