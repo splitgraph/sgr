@@ -72,7 +72,7 @@ def get_image_object_path(repository, table, image):
     # This could be done with a recursive PG query in the future, but currently we just load the whole tree
     # and crawl it in memory.
     object_tree = defaultdict(list)
-    for oid, pid, object_format in get_full_object_tree():
+    for oid, pid, object_format in get_full_object_tree(repository.engine):
         object_tree[oid].append((pid, object_format))
 
     while object_id is not None:

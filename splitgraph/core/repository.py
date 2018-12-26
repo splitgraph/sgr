@@ -272,8 +272,7 @@ class Repository:
             image_hash = "%0.2x" % getrandbits(256)
 
         # Add the new snap ID to the tree
-        with switch_engine(self.engine):
-            add_new_image(self, head, image_hash, comment=comment)
+        add_new_image(self, head, image_hash, comment=comment)
 
         self._commit(head, image_hash, include_snap=include_snap)
 
@@ -362,9 +361,8 @@ class Repository:
         """
         engine = self.engine
         ensure_metadata_schema(engine)
-        with switch_engine(engine):
-            if not repository_exists(self) and raise_on_none:
-                raise SplitGraphException("%s does not exist!" % str(self))
+        if not repository_exists(self) and raise_on_none:
+            raise SplitGraphException("%s does not exist!" % str(self))
 
         if tag == 'latest':
             # Special case, return the latest commit from the repository.
@@ -489,8 +487,7 @@ class Repository:
 
         head = target_repository.get_head(raise_on_none=False)
         # Add the new snap ID to the tree
-        with switch_engine(engine):
-            add_new_image(target_repository, head, target_hash, comment="Importing %s from %s" % (tables, self))
+        add_new_image(target_repository, head, target_hash, comment="Importing %s from %s" % (tables, self))
 
         if any(table_queries) and not foreign_tables:
             # If we want to run some queries against the source repository to create the new tables,

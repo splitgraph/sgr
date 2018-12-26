@@ -9,9 +9,9 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import ResultShape, get_engine
 
 
-def get_full_object_tree():
+def get_full_object_tree(engine):
     """Returns a list of (object_id, parent_id, SNAP/DIFF) with the full object tree in the engine"""
-    return get_engine().run_sql(select("objects", "object_id,parent_id,format"))
+    return engine.run_sql(select("objects", "object_id,parent_id,format"))
 
 
 def register_object(object_id, object_format, namespace, parent_object=None):

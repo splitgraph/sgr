@@ -54,10 +54,11 @@ def publish_tag(repository, tag, image_hash, published, provenance, readme, sche
     """
     repository.engine.run_sql(insert("images",
                                      ['namespace', 'repository', 'tag', 'image_hash', 'published',
-                                 'provenance', 'readme', 'schemata', 'previews'],
-                                     REGISTRY_META_SCHEMA), (repository.namespace, repository.repository, tag, image_hash,
-                                                             published, Json(provenance), readme, Json(schemata),
-                                                             Json(previews)))
+                                      'provenance', 'readme', 'schemata', 'previews'],
+                                     REGISTRY_META_SCHEMA),
+                              (repository.namespace, repository.repository, tag, image_hash,
+                               published, Json(provenance), readme, Json(schemata),
+                               Json(previews)))
 
 
 def get_published_info(repository, tag):
@@ -69,8 +70,8 @@ def get_published_info(repository, tag):
     :return: A tuple of (image_hash, published_timestamp, provenance, readme, table schemata, previews)
     """
     return repository.engine.run_sql(select("images",
-                                       'image_hash,published,provenance,readme,schemata,previews',
-                                       "namespace = %s AND repository = %s AND tag = %s",
+                                            'image_hash,published,provenance,readme,schemata,previews',
+                                            "namespace = %s AND repository = %s AND tag = %s",
                                             REGISTRY_META_SCHEMA), (repository.namespace, repository.repository, tag),
                                      return_shape=ResultShape.ONE_MANY)
 

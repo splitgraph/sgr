@@ -18,10 +18,17 @@ def record_table_as_diff(table, image_hash):
     :param image_hash: Image hash to store the table under
     """
     object_id = get_random_object_id()
-    changeset = _get_conflated_changeset(table.repository, table.table_name)
+    engine = table.repository.engine
+    # Accumulate the diff in-memory. This might become a bottleneck in the future.
+    changeset = {}
+    for action, row_data, changed_fields in engine.get_pending_changes(table.repository.to_schema(), table.table_name):
+        conflate_changes(changeset, [(action, row_data, changed_fields)])
+    engine.discard_pending_changes(table.repository.to_schema(), table.table_name)
+
+    changeset = [tuple(list(pk) + [kind_data[0], Json(kind_data[1])]) for pk, kind_data in
+                 changeset.items()]
 
     if changeset:
-        engine = get_engine()
         engine.store_diff_object(changeset, SPLITGRAPH_META_SCHEMA, object_id,
                                  change_key=engine.get_change_key(table.repository.to_schema(), table.table_name))
         for parent_id, _ in table.objects:
@@ -34,17 +41,6 @@ def record_table_as_diff(table, image_hash):
         # the commit to the old table objects.
         for prev_object_id, _ in table.objects:
             register_table(table.repository, table.table_name, image_hash, prev_object_id)
-
-
-def _get_conflated_changeset(repository, table):
-    # Accumulate the diff in-memory. This might become a bottleneck in the future.
-    changeset = {}
-    engine = get_engine()
-    for action, row_data, changed_fields in engine.get_pending_changes(repository.to_schema(), table):
-        conflate_changes(changeset, [(action, row_data, changed_fields)])
-    engine.discard_pending_changes(repository.to_schema(), table)
-    return [tuple(list(pk) + [kind_data[0], Json(kind_data[1])]) for pk, kind_data in
-            changeset.items()]
 
 
 def record_table_as_snap(table, image_hash, repository=None, table_name=None):

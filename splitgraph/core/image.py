@@ -9,7 +9,7 @@ from splitgraph._data.images import get_image_object_path
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core._common import set_tag
 from splitgraph.core.table import Table
-from splitgraph.engine import ResultShape, switch_engine
+from splitgraph.engine import ResultShape
 
 IMAGE_COLS = ["image_hash", "parent_id", "created", "comment", "provenance_type", "provenance_data"]
 
@@ -74,8 +74,7 @@ class Image(namedtuple('Image', IMAGE_COLS)):
         :param tag: Tag to set. 'latest' and 'HEAD' are reserved tags.
         :param force: Whether to remove the old tag if an image with this tag already exists.
         """
-        with switch_engine(self.engine):
-            set_tag(self.repository, self.image_hash, tag, force)
+        set_tag(self.repository, self.image_hash, tag, force)
 
     def get_tags(self):
         return [t for h, t in self.repository.get_all_hashes_tags() if h == self.image_hash]
@@ -148,8 +147,7 @@ class Image(namedtuple('Image', IMAGE_COLS)):
         :param table: Table name
         :return: The table schema. See the documentation for `get_full_table_schema` for the spec.
         """
-        with switch_engine(self.engine):
-            snap_1 = get_image_object_path(self.repository, table, self.image_hash)[0]
+        snap_1 = get_image_object_path(self.repository, table, self.image_hash)[0]
         return self.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, snap_1)
 
     def provenance(self):

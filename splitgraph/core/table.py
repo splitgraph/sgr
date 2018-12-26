@@ -30,22 +30,22 @@ class Table:
         engine.delete_table(destination_schema, destination)
         # Get the closest snapshot from the table's parents
         # and then apply all deltas consecutively from it.
-        with switch_engine(engine):
-            object_id, to_apply = get_image_object_path(self.repository, self.table_name, self.image.image_hash)
+        object_id, to_apply = get_image_object_path(self.repository, self.table_name, self.image.image_hash)
 
-            # Make sure all the objects have been downloaded from remote if it exists
-            upstream = self.repository.get_upstream()
-            if upstream:
+        # Make sure all the objects have been downloaded from remote if it exists
+        upstream = self.repository.get_upstream()
+        if upstream:
+            with switch_engine(engine):
                 object_locations = get_external_object_locations(to_apply + [object_id])
                 fetched_objects = download_objects(upstream.engine,
                                                    objects_to_fetch=to_apply + [object_id],
                                                    object_locations=object_locations)
 
-            difference = set(to_apply + [object_id]).difference(set(get_existing_objects()))
-            if difference:
-                logging.warning("Not all objects required to materialize %s:%s:%s exist locally.",
-                                destination_schema, self.image.image_hash, self.table_name)
-                logging.warning("Missing objects: %r", difference)
+        difference = set(to_apply + [object_id]).difference(set(get_existing_objects()))
+        if difference:
+            logging.warning("Not all objects required to materialize %s:%s:%s exist locally.",
+                            destination_schema, self.image.image_hash, self.table_name)
+            logging.warning("Missing objects: %r", difference)
 
         # Copy the given snap id over to "staging" and apply the DIFFS
         engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, destination_schema, destination,
