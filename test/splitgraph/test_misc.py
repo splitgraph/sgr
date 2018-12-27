@@ -1,7 +1,7 @@
-from splitgraph._data.registry import setup_registry_mode, get_published_info, _ensure_registry_schema
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA
 from splitgraph.core._common import ensure_metadata_schema
 from splitgraph.core.engine import get_current_repositories
+from splitgraph.core.registry import setup_registry_mode, get_published_info, _ensure_registry_schema
 from splitgraph.core.repository import Repository
 
 

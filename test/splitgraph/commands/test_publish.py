@@ -2,7 +2,7 @@ from copy import copy
 
 import pytest
 
-from splitgraph._data.registry import get_published_info
+from splitgraph.core.registry import get_published_info
 from splitgraph.splitfile import execute_commands
 from test.splitgraph.conftest import OUTPUT, load_splitfile
 

@@ -7,8 +7,6 @@ from hashlib import sha256
 from importlib import import_module
 from random import getrandbits
 
-from splitgraph._data.provenance import store_import_provenance, store_sql_provenance, store_mount_provenance, \
-    store_from_provenance
 from splitgraph.config import CONFIG
 from splitgraph.core.engine import repository_exists, lookup_repo
 from splitgraph.core.repository import to_repository, Repository, clone
@@ -106,7 +104,7 @@ def _execute_sql(node, output):
         print("Executing SQL...")
         output.run_sql(sql_command)
         output.commit(target_hash, comment=sql_command)
-        store_sql_provenance(output, target_hash, sql_command)
+        output.get_image(target_hash).set_provenance('SQL', sql=sql_command)
 
     _checkout_or_calculate_layer(output, target_hash, _calc)
 
@@ -143,7 +141,7 @@ def _execute_from(node, output):
         # the output has just had the base commit (000...) created in it, that commit will be the latest.
         clone(source_repo, local_repository=output, download_all=False)
         output.checkout(source_repo.resolve_image(tag_or_hash))
-        store_from_provenance(output, output.get_head(), source_repo)
+        output.get_image(output.get_head()).set_provenance('FROM', source=source_repo)
     else:
         # FROM EMPTY AS repository -- initializes an empty repository (say to create a table or import
         # the results of a previous stage in a multistage build.
@@ -187,9 +185,9 @@ def _execute_db_import(conn_string, fdw_name, fdw_params, table_names, target_mo
         # Maybe in the future, when the object hash is a function of its contents, we can be smarter here...
         target_hash = "%0.2x" % getrandbits(256)
 
-        tmp_mountpoint.import_tables(table_names, target_mountpoint, table_aliases, image_hash=target_hash,
+        tmp_mountpoint.import_tables(table_names, target_mountpoint, table_aliases, target_hash=target_hash,
                                      foreign_tables=True, table_queries=table_queries)
-        store_mount_provenance(target_mountpoint, target_hash)
+        target_mountpoint.get_image(target_hash).set_provenance('MOUNT')
     finally:
         tmp_mountpoint.rm()
 
@@ -232,9 +230,11 @@ def _execute_repo_import(repository, table_names, tag_or_hash, target_repository
                 table_names, source_hash[:12], str(repository), str(target_repository)))
             source_mountpoint.import_tables(table_names, target_repository, table_aliases, image_hash=source_hash,
                                             target_hash=target_hash, table_queries=table_queries)
-            store_import_provenance(target_repository, target_hash, repository, source_hash, table_names, table_aliases,
-                                    table_queries)
-
+            target_repository.get_image(target_hash).set_provenance('IMPORT', source_repository=repository,
+                                                                    source_hash=source_hash,
+                                                                    tables=table_names,
+                                                                    table_aliases=table_aliases,
+                                                                    table_queries=table_queries)
         _checkout_or_calculate_layer(target_repository, target_hash, _calc)
     finally:
         tmp_repo.rm()

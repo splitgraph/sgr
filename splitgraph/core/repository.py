@@ -1,29 +1,27 @@
+import itertools
 import logging
 from contextlib import contextmanager
 from datetime import datetime
 from random import getrandbits
 
+from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
 import splitgraph
 from splitgraph import SplitGraphException, publish_tag
-from splitgraph._data.images import add_new_image
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.core._common import select, insert, ensure_metadata_schema
-from splitgraph.core.engine import repository_exists, lookup_repo
-from splitgraph.core.object_manager import ObjectManager
+from splitgraph.core.object_manager import get_random_object_id
 from splitgraph.engine import ResultShape, get_engine
-from ._common import manage_audit_triggers, set_head, manage_audit
-from ._objects.creation import record_table_as_snap, record_table_as_diff
-from ._objects.utils import get_random_object_id
+from ._common import manage_audit_triggers, set_head, manage_audit, select, insert, ensure_metadata_schema
+from .engine import repository_exists, lookup_repo
 from .image import Image, IMAGE_COLS
+from .object_manager import ObjectManager
 
 _PUBLISH_PREVIEW_SIZE = 100
 
 
 # OO API porting plan:
 # [ ] move things out from Repository into more appropriate classes
-# [ ] review current internal metadata access/creation commands to see which can be made into private methods
 # [ ] clone() and push() are very similar now, merge with some extra UX flags ("uploading"/"downloading")
 # [ ] Document the new API, regenerate the docs
 
@@ -281,9 +279,7 @@ class Repository:
         if image_hash is None:
             image_hash = "%0.2x" % getrandbits(256)
 
-        # Add the new snap ID to the tree
-        add_new_image(self, head, image_hash, comment=comment)
-
+        self.add_image(head, image_hash, comment=comment)
         self._commit(head, image_hash, include_snap=include_snap)
 
         set_head(self, image_hash)
@@ -321,11 +317,11 @@ class Repository:
                 snap_1 = self.objects.get_image_object_path(table_info)[0]
                 if self.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, snap_1) != \
                         self.engine.get_full_table_schema(self.to_schema(), table):
-                    record_table_as_snap(table_info, image_hash)
+                    self.objects.record_table_as_snap(self, table, image_hash)
                     continue
 
                 if table in changed_tables:
-                    record_table_as_diff(table_info, image_hash)
+                    self.objects.record_table_as_diff(table_info, image_hash)
                 else:
                     # If the table wasn't changed, point the commit to the old table objects (including
                     # any of snaps or diffs).
@@ -335,7 +331,7 @@ class Repository:
 
             # If table created (or we want to store a snap anyway), copy the whole table over as well.
             if not table_info or include_snap:
-                record_table_as_snap(table_info, image_hash, table_name=table, repository=self)
+                self.objects.record_table_as_snap(self, table, image_hash)
 
         # Make sure that all pending changes have been discarded by this point (e.g. if we created just a snapshot for
         # some tables and didn't consume the audit log).
@@ -496,8 +492,7 @@ class Repository:
         assert engine == target_repository.engine
 
         head = target_repository.get_head(raise_on_none=False)
-        # Add the new snap ID to the tree
-        add_new_image(target_repository, head, target_hash, comment="Importing %s from %s" % (tables, self))
+        target_repository.add_image(head, target_hash, comment="Importing %s from %s" % (tables, self))
 
         if any(table_queries) and not foreign_tables:
             # If we want to run some queries against the source repository to create the new tables,
@@ -576,6 +571,76 @@ class Repository:
             r_dict.update(repository=self)
             result.append(Image(**r_dict))
         return result
+
+    def get_all_child_images(self, start_image):
+        """Get all children of `start_image` of any degree."""
+
+        all_images = self.get_images()
+        result_size = 1
+        result = {start_image}
+        while True:
+            # Keep expanding the set of children until it stops growing
+            for image in all_images:
+                if image.parent_id in result:
+                    result.add(image.image_hash)
+            if len(result) == result_size:
+                return result
+            result_size = len(result)
+
+    def get_all_parent_images(self, start_images):
+        """
+        Get all parents of the 'start_images' set of any degree.
+        """
+        parent = {image.image_hash: image.parent_id for image in self.get_images()}
+        result = set(start_images)
+        result_size = len(result)
+        while True:
+            # Keep expanding the set of parents until it stops growing
+            result.update({parent[image] for image in result if parent[image] is not None})
+            if len(result) == result_size:
+                return result
+            result_size = len(result)
+
+    def add_image(self, parent_id, image, created=None, comment=None, provenance_type=None, provenance_data=None):
+        """
+        Registers a new image in the Splitgraph image tree.
+
+        Internal method used by actual image creation routines (committing, importing or pulling).
+
+        :param parent_id: Parent of the image
+        :param image: Image hash
+        :param created: Creation time (defaults to current timestamp)
+        :param comment: Comment (defaults to empty)
+        :param provenance_type: Image provenance that can be used to rebuild the image
+            (one of None, FROM, MOUNT, IMPORT, SQL)
+        :param provenance_data: Extra provenance data (dictionary).
+        """
+        self.engine.run_sql(
+            insert("images", ("image_hash", "namespace", "repository", "parent_id", "created", "comment",
+                              "provenance_type", "provenance_data")),
+            (image, self.namespace, self.repository, parent_id, created or datetime.now(),
+             comment, provenance_type, Json(provenance_data)))
+
+    def delete_images(self, images):
+        """
+        Deletes a set of Splitgraph images from the repository. Note this doesn't check whether
+        this will orphan some other images in the repository and can make the state of the repository
+        invalid.
+
+        Image deletions won't be replicated on push/pull (those can only add new images).
+
+        :param images: List of image IDs
+        """
+        if not images:
+            return
+        # Maybe better to have ON DELETE CASCADE on the FK constraints instead of going through
+        # all tables to clean up -- but then we won't get alerted when we accidentally try
+        # to delete something that does have FKs relying on it.
+        args = tuple([self.namespace, self.repository] + list(images))
+        for table in ['tags', 'tables', 'images']:
+            self.engine.run_sql(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s "
+                                    "AND image_hash IN (" + ','.join(itertools.repeat('%s', len(images))) + ")")
+                                .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table)), args)
 
     def push(self, remote_repository=None, handler='DB', handler_options=None):
         """
@@ -907,8 +972,8 @@ def _get_required_snaps_objects(target, source):
     for image_hash in new_images:
         image = source_images[image_hash]
         # This is not batched but there shouldn't be that many entries here anyway.
-        add_new_image(target, image.parent_id, image.image_hash, image.created, image.comment, image.provenance_type,
-                      image.provenance_data)
+        target.add_image(image.parent_id, image.image_hash, image.created, image.comment, image.provenance_type,
+                         image.provenance_data)
         # Get the meta for all objects we'll need to fetch.
         table_meta.extend(source.engine.run_sql(
             SQL("""SELECT image_hash, table_name, object_id FROM {0}.tables

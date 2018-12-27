@@ -1,6 +1,8 @@
 import logging
 from collections.__init__ import defaultdict
+from random import getrandbits
 
+from psycopg2._json import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph import SplitGraphException
@@ -33,13 +35,15 @@ class ObjectManager:
         """
         if not parent_object and object_format != 'SNAP':
             raise ValueError("Non-SNAP objects can't have no parent!")
+        if parent_object and object_format == 'SNAP':
+            raise ValueError("SNAP objects can't have a parent!")
         return self.object_engine.run_sql(insert("objects", ("object_id", "format", "parent_id", "namespace")),
                                           (object_id, object_format, parent_object, namespace))
 
     def register_objects(self, object_meta):
         """
         Registers multiple Splitgraph objects in the tree. See `register_object` for more information.
-        :param object_meta: List of (object_id, format, parent_id, namesapce).
+        :param object_meta: List of (object_id, format, parent_id, namespace).
         """
         self.object_engine.run_sql_batch(insert("objects", ("object_id", "format", "parent_id", "namespace")),
                                          object_meta)
@@ -127,6 +131,59 @@ class ObjectManager:
         self.object_engine.run_sql(
             insert("tables", ("namespace", "repository", "image_hash", "table_name", "object_id")),
             (repository.namespace, repository.repository, image, table, object_id))
+
+    def record_table_as_diff(self, old_table, image_hash):
+        """
+        Flushes the pending changes from the audit table for a given table and records them, registering the new objects.
+
+        :param old_table: Table object pointing to the current HEAD table
+        :param image_hash: Image hash to store the table under
+        """
+        object_id = get_random_object_id()
+        engine = self.object_engine
+        # Accumulate the diff in-memory. This might become a bottleneck in the future.
+        changeset = {}
+        for action, row_data, changed_fields in engine.get_pending_changes(old_table.repository.to_schema(),
+                                                                           old_table.table_name):
+            _conflate_changes(changeset, [(action, row_data, changed_fields)])
+        engine.discard_pending_changes(old_table.repository.to_schema(), old_table.table_name)
+        changeset = [tuple(list(pk) + [kind_data[0], Json(kind_data[1])]) for pk, kind_data in
+                     changeset.items()]
+
+        if changeset:
+            engine.store_diff_object(changeset, SPLITGRAPH_META_SCHEMA, object_id,
+                                     change_key=engine.get_change_key(old_table.repository.to_schema(),
+                                                                      old_table.table_name))
+            for parent_id, _ in old_table.objects:
+                self.register_object(
+                    object_id, object_format='DIFF', namespace=old_table.repository.namespace, parent_object=parent_id)
+
+            self.register_table(old_table.repository, old_table.table_name, image_hash, object_id)
+        else:
+            # Changes in the audit log cancelled each other out. Delete the diff table and just point
+            # the commit to the old table objects.
+            for prev_object_id, _ in old_table.objects:
+                self.register_table(old_table.repository, old_table.table_name, image_hash, prev_object_id)
+
+    def record_table_as_snap(self, repository, table_name, image_hash):
+        """
+        Copies the full table verbatim into a new Splitgraph SNAP object, registering the new object.
+
+        :param repository: Repository
+        :param table_name: Table name
+        :param image_hash: Hash of the new image
+        """
+        # Make sure the SNAP for this table doesn't already exist
+        table = repository.get_image(image_hash).get_table(table_name)
+        if table and table.get_object('SNAP'):
+            return
+
+        object_id = get_random_object_id()
+        self.object_engine.copy_table(repository.to_schema(), table_name, SPLITGRAPH_META_SCHEMA, object_id,
+                                      with_pk_constraints=True)
+        self.register_object(object_id, object_format='SNAP', namespace=repository.namespace,
+                             parent_object=None)
+        self.register_table(repository, table_name, image_hash, object_id)
 
     def extract_recursive_object_meta(self, remote, table_meta):
         """Recursively crawl the a remote object manager in order to fetch all objects
@@ -316,3 +373,50 @@ def _fetch_external_objects(object_locations, objects_to_fetch, handler_params):
             handler = get_external_object_handler(method, handler_params)
             handler.download_objects(objects)
     return non_remote_objects
+
+
+def _merge_changes(old_change_data, new_change_data):
+    old_change_data = {k: v for k, v in zip(old_change_data['c'], old_change_data['v'])}
+    old_change_data.update({k: v for k, v in zip(new_change_data['c'], new_change_data['v'])})
+    return {'c': list(old_change_data.keys()), 'v': list(old_change_data.values())}
+
+
+def _conflate_changes(changeset, new_changes):
+    """
+    Updates a changeset to incorporate the new changes. Assumes that the new changes are non-pk changing
+    (e.g. PK-changing updates have been converted into a del + ins).
+    """
+    for change_pk, change_kind, change_data in new_changes:
+        old_change = changeset.get(change_pk)
+        if not old_change:
+            changeset[change_pk] = (change_kind, change_data)
+        else:
+            if change_kind == 0:
+                if old_change[0] == 1:  # Insert over delete: change to update
+                    if change_data == {'c': [], 'v': []}:
+                        del changeset[change_pk]
+                    else:
+                        changeset[change_pk] = (2, change_data)
+                else:
+                    raise SplitGraphException("Malformed audit log: existing PK %s inserted." % str(change_pk))
+            elif change_kind == 1:  # Delete over insert/update: remove the old change
+                del changeset[change_pk]
+                if old_change[0] == 2:
+                    # If it was an update, also remove the old row.
+                    changeset[change_pk] = (1, change_data)
+                if old_change[0] == 1:
+                    # Delete over delete: can't happen.
+                    raise SplitGraphException("Malformed audit log: deleted PK %s deleted again" % str(change_pk))
+            elif change_kind == 2:  # Update over insert/update: merge the two changes.
+                if old_change[0] == 0 or old_change[0] == 2:
+                    new_data = _merge_changes(old_change[1], change_data)
+                    changeset[change_pk] = (old_change[0], new_data)
+
+
+def get_random_object_id():
+    """Assign each table a random ID that it will be stored as. Note that postgres limits table names to 63 characters,
+    so the IDs shall be 248-bit strings, hex-encoded, + a letter prefix since Postgres doesn't seem to support table
+    names starting with a digit."""
+    # Make sure we're padded to 62 characters (otherwise if the random number generated is less than 2^247 we'll be
+    # dropping characters from the hex format)
+    return str.format('o{:062x}', getrandbits(248))

@@ -1,6 +1,7 @@
 import logging
 from collections import namedtuple
 
+from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph import SplitGraphException
@@ -10,6 +11,9 @@ from ._common import set_tag, select
 from .table import Table
 
 IMAGE_COLS = ["image_hash", "parent_id", "created", "comment", "provenance_type", "provenance_data"]
+_PROV_QUERY = SQL("""UPDATE {}.images SET provenance_type = %s, provenance_data = %s WHERE
+                            namespace = %s AND repository = %s AND image_hash = %s""") \
+    .format(Identifier(SPLITGRAPH_META_SCHEMA))
 
 
 class Image(namedtuple('Image', IMAGE_COLS)):
@@ -167,6 +171,43 @@ class Image(namedtuple('Image', IMAGE_COLS)):
                 break
             image = self.repository.get_image(parent)
         return list(result)
+
+    def set_provenance(self, provenance_type, **kwargs):
+        """
+        Sets the image's provenance. Internal function called by the Splitfile interpreter, shouldn't
+        be called directly as it changes the image after it's been created.
+
+        :param provenance_type: One of "SQL", "MOUNT", "IMPORT" or "FROM"
+        :param kwargs: Extra provenance-specific arguments
+        """
+        if provenance_type == "IMPORT":
+            self.engine.run_sql(_PROV_QUERY,
+                                ("IMPORT", Json({
+                                    'source': kwargs['source_repository'].repository,
+                                    'source_namespace': kwargs['source_repository'].namespace,
+                                    'source_hash': kwargs['source_hash'],
+                                    'tables': kwargs['tables'],
+                                    'table_aliases': kwargs['table_aliases'],
+                                    'table_queries': kwargs['table_queries']}),
+                                 self.repository.namespace, self.repository.repository, self.image_hash))
+        elif provenance_type == "SQL":
+            self.engine.run_sql(_PROV_QUERY,
+                                ('SQL', Json(kwargs['sql']),
+                                 self.repository.namespace, self.repository.repository, self.image_hash))
+        elif provenance_type == "MOUNT":
+            # We don't store the details of images that come from an sgr MOUNT command
+            # since those are assumed to be based on an inaccessible db.
+            self.engine.run_sql(_PROV_QUERY,
+                                ('MOUNT', None,
+                                 self.repository.namespace, self.repository.repository, self.image_hash))
+        elif provenance_type == "FROM":
+            self.engine.run_sql(_PROV_QUERY,
+                                ('FROM', Json({'source': kwargs['source'].repository,
+                                               'source_namespace': kwargs['source'].namespace}),
+                                 self.repository.namespace, self.repository.repository, self.image_hash))
+        else:
+            raise ValueError("Provenance type %s not supported!" % provenance_type)
+
 
 
 def _prov_command_to_splitfile(prov_type, prov_data, image_hash, source_replacement):

@@ -17,7 +17,7 @@ except ImportError:
 
 from click.testing import CliRunner
 
-from splitgraph._data.registry import get_published_info
+from splitgraph.core.registry import get_published_info
 from splitgraph.commandline import *
 from splitgraph.commandline._common import image_spec_parser
 from splitgraph.hooks.mount_handlers import get_mount_handlers

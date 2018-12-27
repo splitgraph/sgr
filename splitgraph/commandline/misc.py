@@ -6,7 +6,6 @@ import click
 
 import splitgraph.core.repository
 from splitgraph import SplitGraphException, CONFIG
-from splitgraph._data.images import _get_all_child_images, delete_images, _get_all_parent_images
 from splitgraph.commandline._common import image_spec_parser
 from splitgraph.config.keys import KEYS, SENSITIVE_KEYS
 from splitgraph.core.engine import init_engine, repository_exists
@@ -64,7 +63,7 @@ def rm_c(image_spec, remote, yes):
         repository.rm()
     else:
         image = repository.resolve_image(image)
-        images_to_delete = _get_all_child_images(repository, image)
+        images_to_delete = repository.get_all_child_images(image)
         tags_to_delete = [t for i, t in repository.get_all_hashes_tags() if i in images_to_delete]
 
         print("Images to be deleted:")
@@ -84,7 +83,7 @@ def rm_c(image_spec, remote, yes):
         if not yes:
             click.confirm("Continue? ", abort=True)
 
-        delete_images(repository, images_to_delete)
+        repository.delete_images(images_to_delete)
         engine.commit()
         print("Success.")
 
@@ -112,7 +111,7 @@ def prune_c(repository, remote, yes):
 
     all_images = set(image.image_hash for image in repository.get_images())
     all_tagged_images = {i for i, t in repository.get_all_hashes_tags()}
-    dangling_images = all_images.difference(_get_all_parent_images(repository, all_tagged_images))
+    dangling_images = all_images.difference(repository.get_all_parent_images(all_tagged_images))
 
     if not dangling_images:
         print("Nothing to do.")
@@ -125,7 +124,7 @@ def prune_c(repository, remote, yes):
     if not yes:
         click.confirm("Continue? ", abort=True)
 
-    delete_images(repository, dangling_images)
+    repository.delete_images(dangling_images)
     engine.commit()
     print("Success.")
 
