@@ -7,9 +7,9 @@ from psycopg2.sql import SQL, Identifier
 
 import splitgraph
 from splitgraph import SplitGraphException, publish_tag
-from splitgraph._data.common import ensure_metadata_schema, select, insert
-from splitgraph._data.images import add_new_image, get_image_object_path
+from splitgraph._data.images import add_new_image
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from splitgraph.core._common import select, insert, ensure_metadata_schema
 from splitgraph.core.engine import repository_exists, lookup_repo
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.engine import ResultShape, get_engine
@@ -169,11 +169,11 @@ class Repository:
             yield self.to_schema(), table_name
             return  # make sure we don't fall through after the user is finished
         # See if the table snapshot already exists, otherwise reconstruct it
-        object_id = self.objects.get_object_for_table(self, table_name, image_hash, 'SNAP')
+        table = self.get_image(image_hash).get_table(table_name)
+        object_id = table.get_object('SNAP')
         if object_id is None:
             # Materialize the SNAP into a new object
             new_id = get_random_object_id()
-            table = self.get_image(image_hash).get_table(table_name)
             table.materialize(new_id, destination_schema=SPLITGRAPH_META_SCHEMA)
             yield SPLITGRAPH_META_SCHEMA, new_id
             # Maybe some cache management/expiry strategies here
@@ -318,7 +318,7 @@ class Repository:
                 # If there has been a schema change, we currently just snapshot the whole table.
                 # This is obviously wasteful (say if just one column has been added/dropped or we added a PK,
                 # but it's a starting point to support schema changes.
-                snap_1 = get_image_object_path(self, table, current_head)[0]
+                snap_1 = self.objects.get_image_object_path(table_info)[0]
                 if self.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, snap_1) != \
                         self.engine.get_full_table_schema(self.to_schema(), table):
                     record_table_as_snap(table_info, image_hash)
@@ -786,7 +786,7 @@ def _changes_to_aggregation(query_result, initial=None):
 def _calculate_merged_diff(repository, table_name, path, aggregate):
     result = [] if not aggregate else (0, 0, 0)
     for image in reversed(path):
-        diff_id = repository.objects.get_object_for_table(repository, table_name, image, 'DIFF')
+        diff_id = repository.get_image(image).get_table(table_name).get_object('DIFF')
         if diff_id is None:
             # There's a SNAP entry between the two images, meaning there has been a schema change.
             # Hence we can't accumulate the DIFFs and have to resort to manual side-by-side diffing.
@@ -883,7 +883,7 @@ def _prepare_extra_data(image, repository, include_table_previews):
                 previews[table_name] = engine.run_sql(SQL("SELECT * FROM {}.{} LIMIT %s").format(
                     Identifier(tmp_schema), Identifier(tmp_table)), (_PUBLISH_PREVIEW_SIZE,))
         else:
-            schema = image.get_table_schema(table_name)
+            schema = image.get_table(table_name).get_schema()
         schemata[table_name] = [(cn, ct, pk) for _, cn, ct, pk in schema]
     return previews, schemata
 

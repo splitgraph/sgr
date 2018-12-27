@@ -5,8 +5,8 @@ Functions for communicating with the remote Splitgraph catalog
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph._data.common import insert, select
 from splitgraph.config import REGISTRY_META_SCHEMA, SPLITGRAPH_META_SCHEMA
+from splitgraph.core._common import select, insert
 from splitgraph.engine import ResultShape
 
 

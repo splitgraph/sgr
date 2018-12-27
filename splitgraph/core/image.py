@@ -4,12 +4,10 @@ from collections import namedtuple
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph import SplitGraphException
-from splitgraph._data.common import select
-from splitgraph._data.images import get_image_object_path
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.core._common import set_tag
-from splitgraph.core.table import Table
 from splitgraph.engine import ResultShape
+from ._common import set_tag, select
+from .table import Table
 
 IMAGE_COLS = ["image_hash", "parent_id", "created", "comment", "provenance_type", "provenance_data"]
 
@@ -139,16 +137,6 @@ class Image(namedtuple('Image', IMAGE_COLS)):
         return list(reversed(splitfile_commands))
 
     # todo image deletion -- here or in the Repository?
-
-    def get_table_schema(self, table):
-        """
-        Gets the schema of a given table
-
-        :param table: Table name
-        :return: The table schema. See the documentation for `get_full_table_schema` for the spec.
-        """
-        snap_1 = get_image_object_path(self.repository, table, self.image_hash)[0]
-        return self.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, snap_1)
 
     def provenance(self):
         """

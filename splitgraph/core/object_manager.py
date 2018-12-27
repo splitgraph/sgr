@@ -3,8 +3,9 @@ from collections.__init__ import defaultdict
 
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph._data.common import select, insert, META_TABLES
+from splitgraph import SplitGraphException
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from splitgraph.core._common import META_TABLES, select, insert
 from splitgraph.engine import ResultShape
 from splitgraph.hooks.external_objects import get_external_object_handler
 
@@ -127,27 +128,6 @@ class ObjectManager:
             insert("tables", ("namespace", "repository", "image_hash", "table_name", "object_id")),
             (repository.namespace, repository.repository, image, table, object_id))
 
-    def get_object_for_table(self, repository, table_name, image, object_format):
-        """
-        Returns the object ID of a table in a given image, with a given format. Used in cases
-        where it's easier to materialize a table by downloading the whole snapshot but the table can be
-        stored as both a DIFF and a SNAP.
-
-        :param repository: Repository the table belongs to
-        :param table_name: Name of the table
-        :param image: Image the table belongs to
-        :param object_format: Format of the object (DIFF or SNAP).
-        :return: None if there's no such object, otherwise the object ID.
-        """
-        return self.object_engine.run_sql(SQL("""SELECT {0}.tables.object_id FROM {0}.tables JOIN {0}.objects
-                                ON {0}.objects.object_id = {0}.tables.object_id
-                                WHERE {0}.tables.namespace = %s AND repository = %s AND image_hash = %s
-                                AND table_name = %s AND format = %s""")
-                                          .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                                          (repository.namespace, repository.repository,
-                                           image, table_name, object_format),
-                                          return_shape=ResultShape.ONE_ONE)
-
     def extract_recursive_object_meta(self, remote, table_meta):
         """Recursively crawl the a remote object manager in order to fetch all objects
         required to materialize tables specified in `table_meta` that don't yet exist on the local engine."""
@@ -167,6 +147,40 @@ class ObjectManager:
                 object_meta.extend(parents_meta)
                 known_objects.update(new_parents)
         return distinct_objects, object_meta
+
+    def get_image_object_path(self, table):
+        """
+        Calculates a list of objects SNAP, DIFF, ... , DIFF that are used to reconstruct a table.
+
+        :param table: Table object
+        :return: A tuple of (SNAP object, list of DIFF objects in reverse order (latest object first))
+        """
+        path = []
+        object_id = table.get_object('SNAP')
+        if object_id is not None:
+            return object_id, path
+
+        object_id = table.get_object('DIFF')
+
+        # Here, we have to follow the object tree up until we encounter a parent of type SNAP -- firing a query
+        # for every object is a massive bottleneck.
+        # This could be done with a recursive PG query in the future, but currently we just load the whole tree
+        # and crawl it in memory.
+        object_tree = defaultdict(list)
+        for oid, pid, object_format in self.get_full_object_tree():
+            object_tree[oid].append((pid, object_format))
+
+        while object_id is not None:
+            path.append(object_id)
+            for parent_id, object_format in object_tree[object_id]:
+                # Check the _parent_'s format -- if it's a SNAP, we're done
+                if object_tree[parent_id][0][1] == 'SNAP':
+                    return parent_id, path
+                object_id = parent_id
+                break  # Found 1 diff, will be added to the path at the next iteration.
+
+        # We didn't find an actual snapshot for this table -- something's wrong with the object tree.
+        raise SplitGraphException("Couldn't find a SNAP object for %s (malformed object tree)" % table)
 
     def download_objects(self, source, objects_to_fetch, object_locations):
         """

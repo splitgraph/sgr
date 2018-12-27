@@ -8,8 +8,8 @@ from importlib import import_module
 
 from psycopg2.sql import Identifier, SQL
 
-from splitgraph._data.common import ensure_metadata_schema
 from splitgraph.config import PG_USER, CONFIG
+from splitgraph.core._common import ensure_metadata_schema
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitGraphException
 

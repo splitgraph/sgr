@@ -8,6 +8,9 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core._objects.utils import conflate_changes, get_random_object_id
 
 
+# TODO push these into object_manager
+
+
 def record_table_as_diff(table, image_hash):
     """
     Flushes the pending changes from the audit table for a given table and records them, registering the new objects.
@@ -52,7 +55,8 @@ def record_table_as_snap(table, image_hash, repository=None, table_name=None):
     repository = repository or table.repository
     
     # Make sure we didn't actually create a snap for this table.
-    if repository.objects.get_object_for_table(repository, table_name, image_hash, 'SNAP') is None:
+    if repository.get_image(image_hash).get_table(table_name) is None \
+            or repository.get_image(image_hash).get_table(table_name).get_object('SNAP') is None:
         object_id = get_random_object_id()
         repository.engine.copy_table(repository.to_schema(), table_name, SPLITGRAPH_META_SCHEMA, object_id,
                                      with_pk_constraints=True)

@@ -6,8 +6,8 @@ import logging
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph import get_engine, SplitGraphException
-from splitgraph._data.common import ensure_metadata_schema, select
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
+from splitgraph.core._common import select, ensure_metadata_schema
 from splitgraph.engine import ResultShape
 
 
