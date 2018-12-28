@@ -7,22 +7,18 @@ from random import getrandbits
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
-import splitgraph
-from splitgraph import SplitGraphException, publish_tag
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.core.object_manager import get_random_object_id
-from splitgraph.engine import ResultShape, get_engine
-from ._common import manage_audit_triggers, set_head, manage_audit, select, insert, ensure_metadata_schema
-from .engine import repository_exists, lookup_repo
+from splitgraph.exceptions import SplitGraphException
+from ._common import manage_audit_triggers, set_head, manage_audit, select, insert, ensure_metadata_schema, \
+    aggregate_changes, merged_diff, slow_diff, prepare_publish_data, gather_sync_metadata
+from .engine import repository_exists, lookup_repo, ResultShape, get_engine
 from .image import Image, IMAGE_COLS
-from .object_manager import ObjectManager
-
-_PUBLISH_PREVIEW_SIZE = 100
+from .object_manager import ObjectManager, get_random_object_id
+from .registry import publish_tag
 
 
 # OO API porting plan:
 # [ ] move things out from Repository into more appropriate classes
-# [ ] clone() and push() are very similar now, merge with some extra UX flags ("uploading"/"downloading")
 # [ ] Document the new API, regenerate the docs
 
 
@@ -35,7 +31,7 @@ class Repository:
         self.namespace = namespace
         self.repository = repository
 
-        self.engine = engine or splitgraph.get_engine()
+        self.engine = engine or get_engine()
 
         # consider making this an injected/a singleton for a given engine
         # since it's global for the whole engine but calls (e.g. repo.objects.cleanup()) make it
@@ -642,6 +638,67 @@ class Repository:
                                     "AND image_hash IN (" + ','.join(itertools.repeat('%s', len(images))) + ")")
                                 .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table)), args)
 
+    def _sync(self, source, download=True, download_all=False, handler='DB', handler_options=None):
+        """
+        Generic routine for syncing two repositories: fetches images, hashes, objects and tags
+        on `source` that don't exist in this repository.
+
+        Common code between push and pull, since the only difference between those routines is that
+        uploading and downloading objects are different operations.
+
+        :param source: Source Repository object
+        :param download: If True, uses the download routines to download physical objects to self.
+            If False, uses the upload routines to get `source` to upload physical objects to self / external.
+        :param download_all: Whether to download all objects (pull option)
+        :param handler: Upload handler
+        :param handler_options: Upload handler options
+        """
+
+        if handler_options is None:
+            handler_options = {}
+
+        # Get the remote log and the list of objects we need to fetch.
+        logging.info("Gathering remote metadata...")
+        new_images, table_meta, object_locations, object_meta, tags = \
+            gather_sync_metadata(self, source)
+
+        if not new_images:
+            logging.info("Nothing to do.")
+            return
+
+        if download:
+            # Don't actually download any real objects until the user tries to check out a revision.
+            if download_all:
+                # Check which new objects we need to fetch/preregister.
+                # We might already have some objects prefetched
+                # (e.g. if a new version of the table is the same as the old version)
+                logging.info("Fetching remote objects...")
+                self.objects.download_objects(source.objects,
+                                              objects_to_fetch=list(set(o[0] for o in object_meta)),
+                                              object_locations=object_locations)
+
+            self.objects.register_objects(object_meta)
+            self.objects.register_object_locations(object_locations)
+            # Don't check anything out, keep the repo bare.
+            set_head(self, None)
+        else:
+            new_uploads = source.objects.upload_objects(self.objects, list(set(o[0] for o in object_meta)),
+                                                        handler=handler, handler_params=handler_options)
+            # Here we have to register the new objects after the upload but before we store their external
+            # location (as the RLS for object_locations relies on the object metadata being in place)
+            self.objects.register_objects(object_meta)
+            self.objects.register_object_locations(object_locations + new_uploads)
+            source.objects.register_object_locations(new_uploads)
+
+        # Register the new tables / tags.
+        self.objects.register_tables(self, table_meta)
+        self.set_tags(tags, force=False)
+
+        print(("Fetched" if download else "Uploaded") +
+              " metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta), len(table_meta),
+                                                                                  len([t for t in tags if
+                                                                                       t != 'HEAD'])))
+
     def push(self, remote_repository=None, handler='DB', handler_options=None):
         """
         Inverse of ``pull``: Pushes all local changes to the remote and uploads new objects.
@@ -653,11 +710,7 @@ class Repository:
         :param handler_options: Extra options to pass to the handler. For example, see
             :class:`splitgraph.hooks.s3.S3ExternalObjectHandler`
         """
-
-        if handler_options is None:
-            handler_options = {}
         ensure_metadata_schema(self.engine)
-
         # Maybe consider having a context manager for getting a remote engine instance
         # that auto-commits/closes when needed?
         remote_repository = remote_repository or self.get_upstream()
@@ -665,36 +718,13 @@ class Repository:
             raise SplitGraphException("No remote repository specified and no upstream found for %s!" % self.to_schema())
 
         try:
-            logging.info("Gathering remote metadata...")
-            # Flip the two connections here: pretend the remote engine is local and download metadata from the local
-            # engine instead of the remote.
-            # This also registers new commits remotely. Should make explicit and move down later on.
-            new_images, table_meta, object_locations, object_meta, tags = \
-                _get_required_snaps_objects(remote_repository, self)
-
-            if not new_images:
-                logging.info("Nothing to do.")
-                return
-
-            new_uploads = self.objects.upload_objects(remote_repository.objects, list(set(o[0] for o in object_meta)),
-                                                      handler=handler, handler_params=handler_options)
-            # Register the newly uploaded object locations locally and remotely.
-            remote_repository.objects.register_objects(object_meta)
-            remote_repository.objects.register_object_locations(object_locations + new_uploads)
-            remote_repository.objects.register_tables(remote_repository, table_meta)
-            remote_repository.set_tags(tags, force=False)
-
-            self.objects.register_object_locations(new_uploads)
+            remote_repository._sync(source=self, download=False, handler=handler,
+                                    handler_options=handler_options)
 
             if self.get_upstream() is None:
                 self.set_upstream(remote_repository)
-
-            remote_repository.engine.commit()
-            print("Uploaded metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta),
-                                                                                              len(table_meta),
-                                                                                              len([t for t in tags if
-                                                                                                   t != 'HEAD'])))
         finally:
+            remote_repository.engine.commit()
             remote_repository.engine.close()
 
     def pull(self, download_all=False):
@@ -745,7 +775,7 @@ class Repository:
         image = self.get_image(image_hash)
         dependencies = [((r.namespace, r.repository), i) for r, i in image.provenance()] \
             if include_provenance else None
-        previews, schemata = _prepare_extra_data(image, self, include_table_previews)
+        previews, schemata = prepare_publish_data(image, self, include_table_previews)
 
         try:
             publish_tag(remote_repository, tag, image_hash, datetime.now(), dependencies, readme, schemata=schemata,
@@ -804,7 +834,7 @@ class Repository:
 
         if image_1 == head and image_2 is None:
             changes = self.engine.get_pending_changes(self.to_schema(), table_name, aggregate=aggregate)
-            return list(changes) if not aggregate else _changes_to_aggregation(changes)
+            return list(changes) if not aggregate else aggregate_changes(changes)
 
         # If the table is the same in the two images, short circuit as well.
         if image_2 is not None:
@@ -817,20 +847,20 @@ class Repository:
         # of DIFFs.
         path = find_path(self, image_1, (image_2 if image_2 is not None else head))
         if path is not None:
-            result = _calculate_merged_diff(self, table_name, path, aggregate)
+            result = merged_diff(self, table_name, path, aggregate)
             if result is None:
-                return _side_by_side_diff(self, table_name, image_1, image_2, aggregate)
+                return slow_diff(self, table_name, image_1, image_2, aggregate)
 
             # If snap_2 is staging, also include all changes that have happened since the last commit.
             if image_2 is None:
                 changes = self.engine.get_pending_changes(self.to_schema(), table_name, aggregate=aggregate)
                 if aggregate:
-                    return _changes_to_aggregation(changes, result)
+                    return aggregate_changes(changes, result)
                 result.extend(changes)
             return result
 
         # Finally, resort to manual diffing (images on different branches or reverse comparison order).
-        return _side_by_side_diff(self, table_name, image_1, image_2, aggregate)
+        return slow_diff(self, table_name, image_1, image_2, aggregate)
 
 
 def to_repository(schema):
@@ -839,55 +869,6 @@ def to_repository(schema):
         namespace, repository = schema.split('/')
         return Repository(namespace, repository)
     return Repository('', schema)
-
-
-def _changes_to_aggregation(query_result, initial=None):
-    result = list(initial) if initial else [0, 0, 0]
-    for kind, kind_count in query_result:
-        result[kind] += kind_count
-    return tuple(result)
-
-
-def _calculate_merged_diff(repository, table_name, path, aggregate):
-    result = [] if not aggregate else (0, 0, 0)
-    for image in reversed(path):
-        diff_id = repository.get_image(image).get_table(table_name).get_object('DIFF')
-        if diff_id is None:
-            # There's a SNAP entry between the two images, meaning there has been a schema change.
-            # Hence we can't accumulate the DIFFs and have to resort to manual side-by-side diffing.
-            return None
-        if not aggregate:
-            # There's only one action applied to a tuple in a single diff, so the ordering doesn't matter.
-            for row in sorted(
-                    repository.engine.run_sql(SQL("SELECT * FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                                Identifier(diff_id)))):
-                pk = row[:-2]
-                action = row[-2]
-                action_data = row[-1]
-                result.append((pk, action, action_data))
-        else:
-            result = _changes_to_aggregation(
-                repository.engine.run_sql(
-                    SQL("SELECT sg_action_kind, count(sg_action_kind) FROM {}.{} GROUP BY sg_action_kind")
-                        .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(diff_id))), result)
-    return result
-
-
-def _side_by_side_diff(repository, table_name, image_1, image_2, aggregate):
-    with repository.materialized_table(table_name, image_1) as (mp_1, table_1):
-        with repository.materialized_table(table_name, image_2) as (mp_2, table_2):
-            # Check both tables out at the same time since then table_2 calculation can be based
-            # on table_1's snapshot.
-            left = repository.engine.run_sql(SQL("SELECT * FROM {}.{}").format(Identifier(mp_1),
-                                                                               Identifier(table_1)))
-            right = repository.engine.run_sql(SQL("SELECT * FROM {}.{}").format(Identifier(mp_2),
-                                                                                Identifier(table_2)))
-
-    if aggregate:
-        return sum(1 for r in right if r not in left), sum(1 for r in left if r not in right), 0
-    # Mimic the diff format returned by the DIFF-object-accumulating function
-    return [(r, 1, None) for r in left if r not in right] + \
-           [(r, 0, {'c': [], 'v': []}) for r in right if r not in left]
 
 
 def import_table_from_remote(remote_repository, remote_tables, remote_image_hash, target_repository, target_tables,
@@ -936,61 +917,6 @@ def table_exists_at(repository, table_name, image_hash):
         else bool(repository.get_image(image_hash).get_table(table_name))
 
 
-def _prepare_extra_data(image, repository, include_table_previews):
-    schemata = {}
-    previews = {}
-    for table_name in image.get_tables():
-        if include_table_previews:
-            logging.info("Generating preview for %s...", table_name)
-            with repository.materialized_table(table_name, image.image_hash) as (tmp_schema, tmp_table):
-                engine = repository.engine
-                schema = engine.get_full_table_schema(tmp_schema, tmp_table)
-                previews[table_name] = engine.run_sql(SQL("SELECT * FROM {}.{} LIMIT %s").format(
-                    Identifier(tmp_schema), Identifier(tmp_table)), (_PUBLISH_PREVIEW_SIZE,))
-        else:
-            schema = image.get_table(table_name).get_schema()
-        schemata[table_name] = [(cn, ct, pk) for _, cn, ct, pk in schema]
-    return previews, schemata
-
-
-def _get_required_snaps_objects(target, source):
-    """
-    Inspects two Splitgraph repositories and gathers metadata that is required to bring target up to
-    date with source.
-
-    :param target: Target Repository object
-    :param source: Source repository object
-    """
-
-    target_images = {i.image_hash: i for i in target.get_images()}
-    source_images = {i.image_hash: i for i in source.get_images()}
-
-    # We assume here that none of the target image hashes have changed (are immutable) since otherwise the target
-    # would have created a new images
-    table_meta = []
-    new_images = [i for i in source_images if i not in target_images]
-    for image_hash in new_images:
-        image = source_images[image_hash]
-        # This is not batched but there shouldn't be that many entries here anyway.
-        target.add_image(image.parent_id, image.image_hash, image.created, image.comment, image.provenance_type,
-                         image.provenance_data)
-        # Get the meta for all objects we'll need to fetch.
-        table_meta.extend(source.engine.run_sql(
-            SQL("""SELECT image_hash, table_name, object_id FROM {0}.tables
-                       WHERE namespace = %s AND repository = %s AND image_hash = %s""")
-                .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-            (source.namespace, source.repository, image.image_hash)))
-    # Get the tags too
-    existing_tags = [t for s, t in target.get_all_hashes_tags()]
-    tags = {t: s for s, t in source.get_all_hashes_tags() if t not in existing_tags}
-
-    # Crawl the object tree to get the IDs and other metadata for all required objects.
-    distinct_objects, object_meta = target.objects.extract_recursive_object_meta(source.objects, table_meta)
-
-    object_locations = source.objects.get_external_object_locations(list(distinct_objects)) if distinct_objects else []
-    return new_images, table_meta, object_locations, object_meta, tags
-
-
 def clone(remote_repository, local_repository=None, download_all=False):
     """
     Clones a remote Splitgraph repository or synchronizes remote changes with the local ones.
@@ -1011,39 +937,7 @@ def clone(remote_repository, local_repository=None, download_all=False):
     if not local_repository:
         local_repository = Repository(remote_repository.namespace, remote_repository.repository)
 
-    # Get the remote log and the list of objects we need to fetch.
-    logging.info("Gathering remote metadata...")
-
-    # This also registers the new versions locally.
-    new_images, table_meta, object_locations, object_meta, tags = _get_required_snaps_objects(local_repository,
-                                                                                              remote_repository)
-
-    if not new_images:
-        logging.info("Nothing to do.")
-        return
-
-    # Don't actually download any real objects until the user tries to check out a revision.
-    if download_all:
-        # Check which new objects we need to fetch/preregister.
-        # We might already have some objects prefetched
-        # (e.g. if a new version of the table is the same as the old version)
-        logging.info("Fetching remote objects...")
-        local_repository.objects.download_objects(
-            remote_repository.objects, objects_to_fetch=list(set(o[0] for o in object_meta)),
-            object_locations=object_locations)
-
-    # Map the tables to the actual objects no matter whether or not we're downloading them.
-    local_repository.objects.register_objects(object_meta)
-    local_repository.objects.register_object_locations(object_locations)
-    local_repository.objects.register_tables(local_repository, table_meta)
-    local_repository.set_tags(tags, force=False)
-    # Don't check anything out, keep the repo bare.
-    set_head(local_repository, None)
-
-    print("Fetched metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta),
-                                                                                     len(table_meta),
-                                                                                     len([t for t in tags if
-                                                                                          t != 'HEAD'])))
+    local_repository._sync(remote_repository, download=True, download_all=download_all)
 
     if local_repository.get_upstream() is None:
         local_repository.set_upstream(remote_repository)

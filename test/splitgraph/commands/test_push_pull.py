@@ -107,5 +107,7 @@ def test_push(local_engine_empty, pg_repo_remote):
     PG_MNT.push(remote_repository=pg_repo_remote)
 
     # See if the original mountpoint got updated.
+    assert len(pg_repo_remote.objects.get_existing_objects()) == 3
+
     pg_repo_remote.checkout(head_1)
     assert pg_repo_remote.run_sql("SELECT * FROM fruits") == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]

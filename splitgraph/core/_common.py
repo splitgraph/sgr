@@ -1,6 +1,7 @@
 """
 Common internal functions used by Splitgraph commands.
 """
+import logging
 import re
 
 from psycopg2.sql import Identifier, SQL
@@ -10,6 +11,7 @@ from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphException
 
 META_TABLES = ['images', 'tags', 'objects', 'tables', 'upstream', 'object_locations', 'info']
+_PUBLISH_PREVIEW_SIZE = 100
 
 
 def set_tag(repository, image_hash, tag, force=False):
@@ -223,3 +225,107 @@ def ensure_metadata_schema(engine):
             "SELECT 1 FROM information_schema.schemata WHERE schema_name = %s", (SPLITGRAPH_META_SCHEMA,),
             return_shape=ResultShape.ONE_ONE) is None:
         _create_metadata_schema(engine)
+
+
+def aggregate_changes(query_result, initial=None):
+    result = list(initial) if initial else [0, 0, 0]
+    for kind, kind_count in query_result:
+        result[kind] += kind_count
+    return tuple(result)
+
+
+def merged_diff(repository, table_name, path, aggregate):
+    result = [] if not aggregate else (0, 0, 0)
+    for image in reversed(path):
+        diff_id = repository.get_image(image).get_table(table_name).get_object('DIFF')
+        if diff_id is None:
+            # There's a SNAP entry between the two images, meaning there has been a schema change.
+            # Hence we can't accumulate the DIFFs and have to resort to manual side-by-side diffing.
+            return None
+        if not aggregate:
+            # There's only one action applied to a tuple in a single diff, so the ordering doesn't matter.
+            for row in sorted(
+                    repository.engine.run_sql(SQL("SELECT * FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                                Identifier(diff_id)))):
+                pk = row[:-2]
+                action = row[-2]
+                action_data = row[-1]
+                result.append((pk, action, action_data))
+        else:
+            result = aggregate_changes(
+                repository.engine.run_sql(
+                    SQL("SELECT sg_action_kind, count(sg_action_kind) FROM {}.{} GROUP BY sg_action_kind")
+                        .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(diff_id))), result)
+    return result
+
+
+def slow_diff(repository, table_name, image_1, image_2, aggregate):
+    with repository.materialized_table(table_name, image_1) as (mp_1, table_1):
+        with repository.materialized_table(table_name, image_2) as (mp_2, table_2):
+            # Check both tables out at the same time since then table_2 calculation can be based
+            # on table_1's snapshot.
+            left = repository.engine.run_sql(SQL("SELECT * FROM {}.{}").format(Identifier(mp_1),
+                                                                               Identifier(table_1)))
+            right = repository.engine.run_sql(SQL("SELECT * FROM {}.{}").format(Identifier(mp_2),
+                                                                                Identifier(table_2)))
+
+    if aggregate:
+        return sum(1 for r in right if r not in left), sum(1 for r in left if r not in right), 0
+    # Mimic the diff format returned by the DIFF-object-accumulating function
+    return [(r, 1, None) for r in left if r not in right] + \
+           [(r, 0, {'c': [], 'v': []}) for r in right if r not in left]
+
+
+def prepare_publish_data(image, repository, include_table_previews):
+    schemata = {}
+    previews = {}
+    for table_name in image.get_tables():
+        if include_table_previews:
+            logging.info("Generating preview for %s...", table_name)
+            with repository.materialized_table(table_name, image.image_hash) as (tmp_schema, tmp_table):
+                engine = repository.engine
+                schema = engine.get_full_table_schema(tmp_schema, tmp_table)
+                previews[table_name] = engine.run_sql(SQL("SELECT * FROM {}.{} LIMIT %s").format(
+                    Identifier(tmp_schema), Identifier(tmp_table)), (_PUBLISH_PREVIEW_SIZE,))
+        else:
+            schema = image.get_table(table_name).get_schema()
+        schemata[table_name] = [(cn, ct, pk) for _, cn, ct, pk in schema]
+    return previews, schemata
+
+
+def gather_sync_metadata(target, source):
+    """
+    Inspects two Splitgraph repositories and gathers metadata that is required to bring target up to
+    date with source.
+
+    :param target: Target Repository object
+    :param source: Source repository object
+    """
+
+    target_images = {i.image_hash: i for i in target.get_images()}
+    source_images = {i.image_hash: i for i in source.get_images()}
+
+    # We assume here that none of the target image hashes have changed (are immutable) since otherwise the target
+    # would have created a new images
+    table_meta = []
+    new_images = [i for i in source_images if i not in target_images]
+    for image_hash in new_images:
+        image = source_images[image_hash]
+        # This is not batched but there shouldn't be that many entries here anyway.
+        target.add_image(image.parent_id, image.image_hash, image.created, image.comment, image.provenance_type,
+                         image.provenance_data)
+        # Get the meta for all objects we'll need to fetch.
+        table_meta.extend(source.engine.run_sql(
+            SQL("""SELECT image_hash, table_name, object_id FROM {0}.tables
+                       WHERE namespace = %s AND repository = %s AND image_hash = %s""")
+                .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+            (source.namespace, source.repository, image.image_hash)))
+    # Get the tags too
+    existing_tags = [t for s, t in target.get_all_hashes_tags()]
+    tags = {t: s for s, t in source.get_all_hashes_tags() if t not in existing_tags}
+
+    # Crawl the object tree to get the IDs and other metadata for all required objects.
+    distinct_objects, object_meta = target.objects.extract_recursive_object_meta(source.objects, table_meta)
+
+    object_locations = source.objects.get_external_object_locations(list(distinct_objects)) if distinct_objects else []
+    return new_images, table_meta, object_locations, object_meta, tags

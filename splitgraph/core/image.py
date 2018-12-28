@@ -140,8 +140,6 @@ class Image(namedtuple('Image', IMAGE_COLS)):
                 image = self.repository.get_image(parent)
         return list(reversed(splitfile_commands))
 
-    # todo image deletion -- here or in the Repository?
-
     def provenance(self):
         """
         Inspects the image's parent chain to come up with a set of repositories and their hashes
@@ -157,11 +155,11 @@ class Image(namedtuple('Image', IMAGE_COLS)):
             if prov_type == 'IMPORT':
                 result.add((Repository(prov_data['source_namespace'], prov_data['source']), prov_data['source_hash']))
             if prov_type == 'FROM':
-                # If we reached "FROM", then that's the first statement in the image build process (as it bases the build
-                # on a completely different base image). Otherwise, let's say we have several versions of the source
-                # repo and base some Splitfile builds on each of them sequentially. In that case, the newest build will
-                # have all of the previous FROM statements in it (since we clone the upstream commit history locally
-                # and then add the FROM ... provenance data into it).
+                # If we reached "FROM", then that's the first statement in the image build process (as it bases the
+                # build on a completely different base image). Otherwise, let's say we have several versions of the
+                # source repo and base some Splitfile builds on each of them sequentially. In that case, the newest
+                # build will have all of the previous FROM statements in it (since we clone the upstream commit history
+                # locally and then add the FROM ... provenance data into it).
                 result.add((Repository(prov_data['source_namespace'], prov_data['source']), image.image_hash))
                 break
             if prov_type in (None, 'MOUNT'):
@@ -207,7 +205,6 @@ class Image(namedtuple('Image', IMAGE_COLS)):
                                  self.repository.namespace, self.repository.repository, self.image_hash))
         else:
             raise ValueError("Provenance type %s not supported!" % provenance_type)
-
 
 
 def _prov_command_to_splitfile(prov_type, prov_data, image_hash, source_replacement):
