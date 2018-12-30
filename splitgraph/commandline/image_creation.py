@@ -33,14 +33,14 @@ def checkout_c(image_spec, force, uncheckout):
     If ``--force`` isn't passed and the schema has pending changes, this will fail.
     """
     repository, image = image_spec
-    image = repository.resolve_image(image)
 
     if uncheckout:
         repository.uncheckout()
         print("Unchecked out %s." % (str(repository),))
     else:
-        repository.checkout(image, force=force)
-        print("Checked out %s:%s." % (str(repository), image[:12]))
+        image = repository.images[image]
+        image.checkout(force=force)
+        print("Checked out %s:%s." % (str(repository), image.image_hash[:12]))
 
 
 @click.command(name='commit')
@@ -104,7 +104,7 @@ def tag_c(image_spec, tag, force, remove):
             raise click.BadArgumentUsage("Use sgr tag --remove %s:TAG_TO_DELETE" % repository.to_schema())
         if image in ('latest', 'HEAD'):
             raise click.BadArgumentUsage("%s is a reserved tag!" % image)
-        repository.get_image(repository.resolve_image(image)).delete_tag(image)
+        repository.images[image].delete_tag(image)
         return
 
     if tag is None:
@@ -118,19 +118,19 @@ def tag_c(image_spec, tag, force, remove):
                 if img:
                     print("%s: %s" % (img[:12], ', '.join(tags)))
         else:
-            print(', '.join(tag_dict[repository.resolve_image(image)]))
+            print(', '.join(tag_dict[repository.images[image].image_hash]))
         return
 
     if tag == 'HEAD':
         raise SplitGraphException("HEAD is a reserved tag!")
 
     if image is None:
-        image = repository.get_head()
+        image = repository.head
     else:
-        image = repository.resolve_image(image)
+        image = repository[image]
 
-    repository.get_image(image).tag(tag, force)
-    print("Tagged %s:%s with %s." % (str(repository), image, tag))
+    image.tag(tag, force)
+    print("Tagged %s:%s with %s." % (str(repository), image.image_hash, tag))
 
 
 @click.command(name='import')
@@ -173,9 +173,9 @@ def import_c(image_spec, table_or_query, target_repository, target_table):
 
     if repository_exists(repository):
         foreign_table = False
-        image = repository.resolve_image(image)
+        image = repository.images[image]
         # If the source table doesn't exist in the image, we'll treat it as a query instead.
-        is_query = not bool(repository.get_image(image).get_table(table_or_query))
+        is_query = not bool(image.get_table(table_or_query))
     else:
         # If the source schema isn't actually a Splitgraph repo, we'll be copying the table verbatim.
         foreign_table = True
@@ -187,8 +187,9 @@ def import_c(image_spec, table_or_query, target_repository, target_table):
         sys.exit(1)
 
     repository.import_tables([table_or_query], target_repository, [target_table] if target_table else [],
-                             image_hash=image, foreign_tables=foreign_table,
+                             image_hash=image.image_hash, foreign_tables=foreign_table,
                              table_queries=[] if not is_query else [True])
 
     print("%s:%s has been imported from %s:%s%s" % (str(target_repository), target_table, str(repository),
-                                                    table_or_query, (' (%s)' % image[:12] if image else '')))
+                                                    table_or_query, (' (%s)' % image.image_hash[:12] if image.image_hash
+                                                                     else '')))

@@ -1,7 +1,6 @@
 import pytest
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.engine import get_engine
 
 TEST_CASES = [
     ("ALTER TABLE fruits DROP COLUMN name",
@@ -30,27 +29,26 @@ def _reassign_ordinals(schema):
 @pytest.mark.parametrize("test_case", TEST_CASES)
 def test_schema_changes(pg_repo_local, test_case):
     action, expected_new_schema = test_case
-    engine = get_engine()
 
     assert pg_repo_local.engine.get_full_table_schema(pg_repo_local.to_schema(), 'fruits') == OLD_SCHEMA
     pg_repo_local.run_sql(action)
     pg_repo_local.engine.commit()
     assert pg_repo_local.engine.get_full_table_schema(pg_repo_local.to_schema(), 'fruits') == expected_new_schema
 
-    head = pg_repo_local.get_head()
-    new_head = pg_repo_local.commit()
+    head = pg_repo_local.head
+    new_head = pg_repo_local.images.by_hash(pg_repo_local.commit())
 
     # Test that the new image only has a snap and the object storing the snap has the expected new schema
-    assert pg_repo_local.get_image(new_head).get_table('fruits').get_object('DIFF') is None
-    new_snap = pg_repo_local.get_image(new_head).get_table('fruits').get_object('SNAP')
+    assert new_head.get_table('fruits').get_object('DIFF') is None
+    new_snap = new_head.get_table('fruits').get_object('SNAP')
     assert new_snap is not None
     assert pg_repo_local.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, new_snap) == _reassign_ordinals(
         expected_new_schema)
 
-    pg_repo_local.checkout(head)
+    head.checkout()
     assert pg_repo_local.engine.get_full_table_schema(pg_repo_local.to_schema(), 'fruits') == OLD_SCHEMA
 
-    pg_repo_local.checkout(new_head)
+    new_head.checkout()
     assert pg_repo_local.engine.get_full_table_schema(pg_repo_local.to_schema(), 'fruits') == \
            _reassign_ordinals(expected_new_schema)
 
@@ -59,11 +57,11 @@ def test_pk_preserved_on_checkout(pg_repo_local):
     assert list(pg_repo_local.engine.get_primary_keys(pg_repo_local.to_schema(), 'fruits')) == []
     pg_repo_local.run_sql("ALTER TABLE fruits ADD PRIMARY KEY (fruit_id)")
     assert list(pg_repo_local.engine.get_primary_keys(pg_repo_local.to_schema(), 'fruits')) == [('fruit_id', 'integer')]
-    head = pg_repo_local.get_head()
+    head = pg_repo_local.head
     new_head = pg_repo_local.commit()
     assert list(pg_repo_local.engine.get_primary_keys(pg_repo_local.to_schema(), 'fruits')) == [('fruit_id', 'integer')]
 
-    pg_repo_local.checkout(head)
+    head.checkout()
     assert list(pg_repo_local.engine.get_primary_keys(pg_repo_local.to_schema(), 'fruits')) == []
-    pg_repo_local.checkout(new_head)
+    pg_repo_local.images.by_hash(new_head).checkout()
     assert list(pg_repo_local.engine.get_primary_keys(pg_repo_local.to_schema(), 'fruits')) == [('fruit_id', 'integer')]

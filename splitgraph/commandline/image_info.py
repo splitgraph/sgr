@@ -30,10 +30,10 @@ def log_c(repository, tree):
     if tree:
         render_tree(repository)
     else:
-        head = repository.get_image(repository.get_head())
+        head = repository.head
         log = head.get_log()
         for entry in log:
-            image_info = repository.get_image(entry)
+            image_info = repository.images.by_hash(entry)
             print("%s %s %s %s" % ("H->" if entry == head else "   ", entry, image_info.created,
                                    image_info.comment or ""))
 
@@ -113,17 +113,18 @@ def _emit_table_diff(table_name, diff_result, verbose):
 def _get_actual_hashes(repository, image_1, image_2):
     if image_1 is None and image_2 is None:
         # Comparing current working copy against the last commit
-        image_1 = repository.get_head()
+        image_1 = repository.head.image_hash
     elif image_2 is None:
-        image_1 = repository.resolve_image(image_1)
+        image_1_obj = repository.images[image_1]
+        image_1 = image_1_obj.image_hash
         # One parameter: diff from that and its parent.
-        image_2 = repository.get_image(image_1).parent_id
+        image_2 = image_1_obj.parent_id
         if image_2 is None:
             print("%s has no parent to compare to!" % image_1)
         image_1, image_2 = image_2, image_1  # snap_1 has to come first
     else:
-        image_1 = repository.resolve_image(image_1)
-        image_2 = repository.resolve_image(image_2)
+        image_1 = repository.images[image_1].image_hash
+        image_2 = repository.images[image_2].image_hash
     return image_1, image_2
 
 
@@ -138,21 +139,20 @@ def show_c(image_spec, verbose):
     Image spec must be of the format ``[NAMESPACE/]REPOSITORY[:HASH_OR_TAG]``. If no tag is specified, ``HEAD`` is used.
     """
     repository, image = image_spec
-    image = repository.resolve_image(image)
+    image = repository.images[image]
 
     print("Commit %s:%s" % (repository.to_schema(), image))
-    image_info = repository.get_image(image)
-    print(image_info.comment or "")
-    print("Created at %s" % image_info.created.isoformat())
-    if image_info.parent_id:
-        print("Parent: %s" % image_info.parent_id)
+    print(image.comment or "")
+    print("Created at %s" % image.created.isoformat())
+    if image.parent_id:
+        print("Parent: %s" % image.parent_id)
     else:
         print("No parent (root commit)")
     if verbose:
         print()
         print("Tables:")
-        for t in image_info.get_tables():
-            table_objects = image_info.get_table(t).objects
+        for t in image.get_tables():
+            table_objects = image.get_table(t).objects
             if len(table_objects) == 1:
                 print("  %s: %s (%s)" % (t, table_objects[0][0], table_objects[0][1]))
             else:
@@ -206,11 +206,11 @@ def status_c(repository):
             print("%s: \t %s" % (mp_name, mp_hash))
         print("\nUse sgr status repository to get information about a given repository.")
     else:
-        head = repository.get_head()
+        head = repository.head
         if not head:
             print("%s: nothing checked out." % str(repository))
             return
-        parent, children = repository.get_image(head).get_parent_children()
+        parent, children = head.get_parent_children()
         print("%s: on image %s." % (str(repository), head))
         if parent is not None:
             print("Parent: %s" % parent)

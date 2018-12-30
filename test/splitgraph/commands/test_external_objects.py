@@ -7,11 +7,11 @@ def test_s3_push_pull(local_engine_empty, pg_repo_remote, clean_minio):
 
     clone(pg_repo_remote, local_repository=PG_MNT, download_all=False)
     # Add a couple of commits, this time on the cloned copy.
-    head = PG_MNT.resolve_image('latest')
-    PG_MNT.checkout(head)
+    head = PG_MNT.images['latest']
+    head.checkout()
     PG_MNT.run_sql("INSERT INTO fruits VALUES (3, 'mayonnaise')")
     left = PG_MNT.commit()
-    PG_MNT.checkout(head)
+    head.checkout()
     PG_MNT.run_sql("INSERT INTO fruits VALUES (3, 'mustard')")
     right = PG_MNT.commit()
 
@@ -43,10 +43,10 @@ def test_s3_push_pull(local_engine_empty, pg_repo_remote, clean_minio):
     assert len(PG_MNT.objects.get_downloaded_objects()) == 0
 
     # Check out left commit: since it only depends on the root, we should download just the new version of fruits.
-    PG_MNT.checkout(left)
+    PG_MNT.images.by_hash(left).checkout()
     assert len(PG_MNT.objects.get_downloaded_objects()) == 3  # now have 2 versions of fruits + 1 vegetables
 
-    PG_MNT.checkout(right)
+    PG_MNT.images.by_hash(right).checkout()
     assert len(PG_MNT.objects.get_downloaded_objects()) == 4
     # Only now we actually have all the objects materialized.
     assert PG_MNT.objects.get_downloaded_objects() == PG_MNT.objects.get_existing_objects()

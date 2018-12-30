@@ -7,7 +7,7 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph import SplitGraphException
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import ResultShape
-from ._common import set_tag, select
+from ._common import set_tag, select, manage_audit, set_head
 from .table import Table
 
 IMAGE_COLS = ["image_hash", "parent_id", "created", "comment", "provenance_type", "provenance_data"]
@@ -69,6 +69,39 @@ class Image(namedtuple('Image', IMAGE_COLS)):
             return None
         return Table(self.repository, self, table_name, objects)
 
+    @manage_audit
+    def checkout(self, keep_downloaded_objects=True, force=False):
+        """
+        Checks the image out, changing the current HEAD pointer. Raises an error
+        if there are pending changes to its checkout.
+
+        :param keep_downloaded_objects: If False, deletes externally downloaded objects after they've been used.
+        :param force: Discards all pending changes to the schema.
+        """
+        target_schema = self.repository.to_schema()
+        if self.repository.has_pending_changes():
+            if not force:
+                raise SplitGraphException("{0} has pending changes! Pass force=True or do sgr checkout -f {0}:HEAD"
+                                          .format(target_schema))
+            logging.warning("%s has pending changes, discarding...", target_schema)
+            self.engine.discard_pending_changes(target_schema)
+
+        # Drop all current tables in staging
+        self.engine.create_schema(target_schema)
+        for table in self.engine.get_all_tables(target_schema):
+            self.engine.delete_table(target_schema, table)
+
+        downloaded_object_ids = set()
+        for table in self.get_tables():
+            downloaded_object_ids |= self.get_table(table).materialize(table)
+
+        # Repoint the current HEAD for this repository to the new snap ID
+        set_head(self.repository, self.image_hash)
+
+        if not keep_downloaded_objects:
+            logging.info("Removing %d downloaded objects from cache...", len(downloaded_object_ids))
+            self.repository.objects.delete_objects(downloaded_object_ids)
+
     def tag(self, tag, force=False):
         """
         Tags a given image. All tags are unique inside of a repository.
@@ -89,7 +122,7 @@ class Image(namedtuple('Image', IMAGE_COLS)):
         """
 
         # Does checks to make sure the tag actually exists, will raise otherwise
-        self.repository.get_tagged_id(tag)
+        self.repository.images.by_tag(tag)
 
         self.engine.run_sql(SQL("DELETE FROM {}.tags WHERE namespace = %s AND repository = %s AND tag = %s")
                             .format(Identifier(SPLITGRAPH_META_SCHEMA)),
@@ -102,18 +135,18 @@ class Image(namedtuple('Image', IMAGE_COLS)):
         image = self
         while image.parent_id:
             result.append(image.parent_id)
-            image = self.repository.get_image(image.parent_id)
+            image = self.repository.images.by_hash(image.parent_id)
         return result
 
     def to_splitfile(self, err_on_end=True, source_replacement=None):
         """
-        Crawls the image's parent chain to recreates an splitfile that can be used to reconstruct it.
+        Crawls the image's parent chain to recreates a Splitfile that can be used to reconstruct it.
 
-        :param err_on_end: If False, when an image with no provenance is reached and it still has a parent, then instead of
-            raising an exception, it will base the splitfile (using the FROM command) on that image.
+        :param err_on_end: If False, when an image with no provenance is reached and it still has a parent, then instead
+            of raising an exception, it will base the Splitfile (using the FROM command) on that image.
         :param source_replacement: A dictionary of repositories and image hashes/tags specifying how to replace the
-            dependencies of this splitfile (table imports and FROM commands).
-        :return: A list of splitfile commands that can be fed back into the executor.
+            dependencies of this Splitfile (table imports and FROM commands).
+        :return: A list of Splitfile commands that can be fed back into the executor.
         """
 
         if source_replacement is None:
@@ -137,7 +170,7 @@ class Image(namedtuple('Image', IMAGE_COLS)):
             if not parent:
                 break
             else:
-                image = self.repository.get_image(parent)
+                image = self.repository.images.by_hash(parent)
         return list(reversed(splitfile_commands))
 
     def provenance(self):
@@ -167,7 +200,7 @@ class Image(namedtuple('Image', IMAGE_COLS)):
                                 image.image_hash[:12], prov_type)
             if parent is None:
                 break
-            image = self.repository.get_image(parent)
+            image = self.repository.images.by_hash(parent)
         return list(result)
 
     def set_provenance(self, provenance_type, **kwargs):

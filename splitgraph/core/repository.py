@@ -22,6 +22,161 @@ from .registry import publish_tag
 # [ ] Document the new API, regenerate the docs
 
 
+class ImageManager:
+    """Collects various image-related functions."""
+
+    def __init__(self, repository):
+        self.repository = repository
+        self.engine = repository.engine
+
+    def __call__(self):
+        """Get all Image objects in the repository."""
+        result = []
+        for image in self.engine.run_sql(select("images", ','.join(IMAGE_COLS), "repository = %s AND namespace = %s") +
+                                         SQL(" ORDER BY created"),
+                                         (self.repository.repository, self.repository.namespace)):
+            r_dict = {k: v for k, v in zip(IMAGE_COLS, image)}
+            r_dict.update(repository=self)
+            result.append(Image(**r_dict))
+        return result
+
+    def _make_image(self, img_tuple):
+        r_dict = {k: v for k, v in zip(IMAGE_COLS, img_tuple)}
+        r_dict.update(repository=self.repository)
+        return Image(**r_dict)
+
+    def by_tag(self, tag, raise_on_none):
+        """
+        Returns an image with a given tag
+
+        :param tag: Tag. 'latest' is a special case: it returns the most recent image in the repository.
+        :param raise_on_none: Whether to raise an error or return None if the tag doesn't exist.
+        """
+        engine = self.engine
+        if not repository_exists(self.repository) and raise_on_none:
+            raise SplitGraphException("%s does not exist!" % str(self))
+
+        if tag == 'latest':
+            # Special case, return the latest commit from the repository.
+            result = engine.run_sql(select("images", ','.join(IMAGE_COLS), "namespace = %s AND repository = %s")
+                                    + SQL(" ORDER BY created DESC LIMIT 1"),
+                                    (self.repository.namespace, self.repository.repository,),
+                                    return_shape=ResultShape.ONE_MANY)
+            if result is None:
+                raise SplitGraphException("No commits found in %s!")
+            return self._make_image(result)
+
+        result = engine.run_sql(select("tags", "image_hash", "namespace = %s AND repository = %s AND tag = %s"),
+                                (self.repository.namespace, self.repository.repository, tag),
+                                return_shape=ResultShape.ONE_ONE)
+        if result is None:
+            if raise_on_none:
+                schema = self.repository.to_schema()
+                if tag == 'HEAD':
+                    raise SplitGraphException(
+                        "No current checked out revision found for %s. Check one out with \"sgr "
+                        "checkout %s image_hash\"." % (schema, schema))
+                else:
+                    raise SplitGraphException("Tag %s not found in repository %s" % (tag, schema))
+            else:
+                return None
+        return self.by_hash(result)
+
+    def by_hash(self, image_hash, raise_on_none=True):
+        result = self.engine.run_sql(select("images", ','.join(IMAGE_COLS),
+                                            "repository = %s AND image_hash LIKE %s AND namespace = %s"),
+                                     (self.repository.repository, image_hash.lower() + '%',
+                                      self.repository.namespace),
+                                     return_shape=ResultShape.MANY_MANY)
+        if not result:
+            if raise_on_none:
+                raise SplitGraphException("No images starting with %s found!" % image_hash)
+            else:
+                return None
+        if len(result) > 1:
+            result = "Multiple suitable candidates found: \n * " + "\n * ".join(result)
+            raise SplitGraphException(result)
+        return self._make_image(result[0])
+
+    def __getitem__(self, key):
+        """Resolve an Image object in the repository."""
+        # Things we can have here: full hash, shortened hash or tag.
+        # Users can always use by_hash or by_tag to be explicit -- this is just a shorthand. There's little
+        # chance for ambiguity (why would someone have a hexadecimal tag that can be confused with a hash?)
+        # so we can detect what the user meant in the future.
+        return self.by_tag(key, raise_on_none=False) or self.by_hash(key)
+
+    def get_all_child_images(self, start_image):
+        """Get all children of `start_image` of any degree."""
+
+        all_images = self()
+        result_size = 1
+        result = {start_image}
+        while True:
+            # Keep expanding the set of children until it stops growing
+            for image in all_images:
+                if image.parent_id in result:
+                    result.add(image.image_hash)
+            if len(result) == result_size:
+                return result
+            result_size = len(result)
+
+    def get_all_parent_images(self, start_images):
+        """
+        Get all parents of the 'start_images' set of any degree.
+        """
+        parent = {image.image_hash: image.parent_id for image in self()}
+        result = set(start_images)
+        result_size = len(result)
+        while True:
+            # Keep expanding the set of parents until it stops growing
+            result.update({parent[image] for image in result if parent[image] is not None})
+            if len(result) == result_size:
+                return result
+            result_size = len(result)
+
+    def add(self, parent_id, image, created=None, comment=None, provenance_type=None, provenance_data=None):
+        """
+        Registers a new image in the Splitgraph image tree.
+
+        Internal method used by actual image creation routines (committing, importing or pulling).
+
+        :param parent_id: Parent of the image
+        :param image: Image hash
+        :param created: Creation time (defaults to current timestamp)
+        :param comment: Comment (defaults to empty)
+        :param provenance_type: Image provenance that can be used to rebuild the image
+            (one of None, FROM, MOUNT, IMPORT, SQL)
+        :param provenance_data: Extra provenance data (dictionary).
+        """
+        self.engine.run_sql(
+            insert("images", ("image_hash", "namespace", "repository", "parent_id", "created", "comment",
+                              "provenance_type", "provenance_data")),
+            (image, self.repository.namespace, self.repository.repository, parent_id, created or datetime.now(),
+             comment, provenance_type, Json(provenance_data)))
+
+    def delete(self, images):
+        """
+        Deletes a set of Splitgraph images from the repository. Note this doesn't check whether
+        this will orphan some other images in the repository and can make the state of the repository
+        invalid.
+
+        Image deletions won't be replicated on push/pull (those can only add new images).
+
+        :param images: List of image IDs
+        """
+        if not images:
+            return
+        # Maybe better to have ON DELETE CASCADE on the FK constraints instead of going through
+        # all tables to clean up -- but then we won't get alerted when we accidentally try
+        # to delete something that does have FKs relying on it.
+        args = tuple([self.repository.namespace, self.repository.repository] + list(images))
+        for table in ['tags', 'tables', 'images']:
+            self.engine.run_sql(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s "
+                                    "AND image_hash IN (" + ','.join(itertools.repeat('%s', len(images))) + ")")
+                                .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table)), args)
+
+
 class Repository:
     """
     Splitgraph repository API
@@ -32,6 +187,8 @@ class Repository:
         self.repository = repository
 
         self.engine = engine or get_engine()
+        ensure_metadata_schema(self.engine)
+        self.images = ImageManager(self)
 
         # consider making this an injected/a singleton for a given engine
         # since it's global for the whole engine but calls (e.g. repo.objects.cleanup()) make it
@@ -48,6 +205,7 @@ class Repository:
         return self.namespace == other.namespace and self.repository == other.repository
 
     def to_schema(self):
+        """Returns the engine schema that this repository gets checked out into."""
         return self.namespace + "/" + self.repository if self.namespace else self.repository
 
     def __repr__(self):
@@ -57,6 +215,8 @@ class Repository:
 
     def __hash__(self):
         return hash(self.namespace) * hash(self.repository)
+
+    # --- GENERAL REPOSITORY MANAGEMENT ---
 
     @manage_audit
     def init(self):
@@ -147,6 +307,8 @@ class Repository:
                             (self.namespace, self.repository),
                             return_shape=None)
 
+    # --- COMMITS / CHECKOUTS ---
+
     @contextmanager
     def materialized_table(self, table_name, image_hash):
         """A context manager that returns a pointer to a read-only materialized table in a given image.
@@ -163,7 +325,7 @@ class Repository:
             yield self.to_schema(), table_name
             return  # make sure we don't fall through after the user is finished
         # See if the table snapshot already exists, otherwise reconstruct it
-        table = self.get_image(image_hash).get_table(table_name)
+        table = self.images.by_hash(image_hash).get_table(table_name)
         object_id = table.get_object('SNAP')
         if object_id is None:
             # Materialize the SNAP into a new object
@@ -190,51 +352,10 @@ class Repository:
 
                 self.objects.delete_objects([object_id])
 
-    @manage_audit
-    def checkout(self, image_hash=None, tag=None, tables=None, keep_downloaded_objects=True, force=False):
-        """
-        Checks out an image belonging to a given repository, changing the current HEAD pointer. Raises an error
-        if there are pending changes to its checkout.
-
-        :param image_hash: Hash of the image to check out.
-        :param tag: Tag of the image to check out. One of `image_hash` or `tag` must be specified.
-        :param tables: List of tables to materialize in the mountpoint.
-        :param keep_downloaded_objects: If False, deletes externally downloaded objects after they've been used.
-        :param force: Discards all pending changes to the schema.
-        """
-        target_schema = self.to_schema()
-        if self.has_pending_changes():
-            if not force:
-                raise SplitGraphException("{0} has pending changes! Pass force=True or do sgr checkout -f {0}:HEAD"
-                                          .format(self.to_schema()))
-            logging.warning("%s has pending changes, discarding...", self.to_schema())
-            self.engine.discard_pending_changes(target_schema)
-        # Detect the actual image
-        if image_hash:
-            # get_canonical_image_hash called twice if the commandline entry point already called it. How to fix?
-            image_hash = self.get_canonical_image_id(image_hash)
-        elif tag:
-            image_hash = self.get_tagged_id(tag)
-        else:
-            raise SplitGraphException("One of image_hash or tag must be specified!")
-
-        image = self.get_image(image_hash)
-        # Drop all current tables in staging
-        self.engine.create_schema(target_schema)
-        for table in self.engine.get_all_tables(target_schema):
-            self.engine.delete_table(target_schema, table)
-
-        downloaded_object_ids = set()
-        tables = tables or image.get_tables()
-        for table in tables:
-            downloaded_object_ids |= image.get_table(table).materialize(table)
-
-        # Repoint the current HEAD for this repository to the new snap ID
-        set_head(self, image_hash)
-
-        if not keep_downloaded_objects:
-            logging.info("Removing %d downloaded objects from cache...", len(downloaded_object_ids))
-            self.objects.delete_objects(downloaded_object_ids)
+    @property
+    def head(self):
+        """Return the HEAD image for the repository or None if the repository isn't checked out."""
+        return self.images.by_tag('HEAD', raise_on_none=False)
 
     @manage_audit
     def uncheckout(self, force=False):
@@ -251,7 +372,7 @@ class Repository:
 
         # Delete the schema and remove the HEAD tag
         self.rm(unregister=False, uncheckout=True)
-        self.get_image(self.get_head()).delete_tag('HEAD')
+        self.head.delete_tag('HEAD')
 
     def commit(self, image_hash=None, include_snap=False, comment=None):
         """
@@ -263,6 +384,8 @@ class Repository:
         :param comment: Optional comment to add to the commit.
         :return: The image hash the current state of the repository was committed under.
         """
+
+        # TODO probably better to return the new Image object.
         logging.info("Committing %s...", self.to_schema())
 
         ensure_metadata_schema(self.engine)
@@ -270,12 +393,11 @@ class Repository:
         manage_audit_triggers(self.engine)
 
         # HEAD can be None (if this is the first commit in this repository)
-        head = self.get_head(raise_on_none=False)
-
+        head = self.head
         if image_hash is None:
             image_hash = "%0.2x" % getrandbits(256)
 
-        self.add_image(head, image_hash, comment=comment)
+        self.images.add(head.image_hash, image_hash, comment=comment)
         self._commit(head, image_hash, include_snap=include_snap)
 
         set_head(self, image_hash)
@@ -283,23 +405,21 @@ class Repository:
         self.engine.commit()
         return image_hash
 
-    def _commit(self, current_head, image_hash, include_snap=False):
+    def _commit(self, head, image_hash, include_snap=False):
         """
         Reads the recorded pending changes to all tables in a given mountpoint, conflates them and possibly stores them
         as new object(s) as follows:
 
             * If a table has been created or there has been a schema change, it's only stored as a SNAP (full snapshot).
-            * If a table hasn't changed since the last revision, no new objects are created and it's linked to the previous
-              objects belonging to the last revision.
+            * If a table hasn't changed since the last revision, no new objects are created and it's linked to the
+                previous objects belonging to the last revision.
             * Otherwise, the table is stored as a conflated (1 change per PK) DIFF object and an optional SNAP.
 
-        :param current_head: Current HEAD pointer to base the commit on.
+        :param head: Current HEAD image to base the commit on.
         :param image_hash: Hash of the image to commit changes under.
         :param include_snap: If True, also stores the table as a SNAP.
         """
         target_schema = self.to_schema()
-
-        head = self.get_image(current_head) if current_head else None
 
         changed_tables = self.engine.get_changed_tables(target_schema)
         for table in self.engine.get_all_tables(target_schema):
@@ -334,6 +454,21 @@ class Repository:
         # NB if we allow partial commits, this will have to be changed (only discard for committed tables).
         self.engine.discard_pending_changes(target_schema)
 
+    def has_pending_changes(self):
+        """
+        Detects if the repository has any pending changes (schema changes, table additions/deletions, content changes).
+        """
+        head = self.head
+        if not head:
+            # If the repo isn't checked out, no point checking for changes.
+            return False
+        for table in self.engine.get_all_tables(self.to_schema()):
+            if self.diff(table, head.image_hash, None, aggregate=True) != (0, 0, 0):
+                return True
+        return False
+
+    # --- TAG AND IMAGE MANAGEMENT ---
+
     def get_all_hashes_tags(self):
         """
         Gets all tagged images and their hashes in a given repository.
@@ -352,101 +487,40 @@ class Repository:
         """
         for tag, image_id in tags.items():
             if tag != 'HEAD':
-                self.get_image(image_id).tag(tag, force)
+                self.images.by_hash(image_id).tag(tag, force)
 
-    def get_tagged_id(self, tag, raise_on_none=True):
-        """
-        Returns the image hash with a given tag in a given repository.
-
-        :param tag: Tag. 'latest' is a special case: it returns the most recent image in the repository.
-        :param raise_on_none: Whether to raise an error or return None if the repository isn't checked out.
-        """
-        engine = self.engine
-        ensure_metadata_schema(engine)
-        if not repository_exists(self) and raise_on_none:
-            raise SplitGraphException("%s does not exist!" % str(self))
-
-        if tag == 'latest':
-            # Special case, return the latest commit from the repository.
-            result = engine.run_sql(select("images", "image_hash", "namespace = %s AND repository = %s")
-                                    + SQL(" ORDER BY created DESC LIMIT 1"), (self.namespace, self.repository,),
-                                    return_shape=ResultShape.ONE_ONE)
-            if result is None:
-                raise SplitGraphException("No commits found in %s!")
-            return result
-
-        result = engine.run_sql(select("tags", "image_hash", "namespace = %s AND repository = %s AND tag = %s"),
-                                (self.namespace, self.repository, tag),
-                                return_shape=ResultShape.ONE_ONE)
-        if result is None:
-            if raise_on_none:
-                schema = self.to_schema()
-                if tag == 'HEAD':
-                    raise SplitGraphException("No current checked out revision found for %s. Check one out with \"sgr "
-                                              "checkout %s image_hash\"." % (schema, schema))
-                else:
-                    raise SplitGraphException("Tag %s not found in repository %s" % (tag, schema))
-            else:
-                return None
+    def run_sql(self, sql):
+        """Execute an arbitrary SQL statement inside of this repository's checked out schema."""
+        self.engine.run_sql("SET search_path TO %s", (self.to_schema(),))
+        result = self.engine.run_sql(sql)
+        self.engine.run_sql("SET search_path TO public")
         return result
 
-    def get_canonical_image_id(self, short_image):
-        """
-        Converts a truncated image hash into a full hash. Raises if there's an ambiguity.
-
-        :param short_image: Shortened image hash
-        """
-        candidates = self.engine.run_sql(select("images", "image_hash",
-                                                "namespace = %s AND repository = %s AND image_hash LIKE %s"),
-                                         (self.namespace, self.repository, short_image.lower() + '%'),
-                                         return_shape=ResultShape.MANY_ONE)
-
-        if not candidates:
-            raise SplitGraphException("No snapshots beginning with %s found for mountpoint %s!" % (short_image,
-                                                                                                   self.to_schema()))
-
-        if len(candidates) > 1:
-            result = "Multiple suitable candidates found: \n * " + "\n * ".join(candidates)
-            raise SplitGraphException(result)
-
-        return candidates[0]
-
-    def resolve_image(self, tag_or_hash, raise_on_none=True):
-        """Converts a tag or shortened hash to a full image hash that exists in the repository."""
-        try:
-            return self.get_canonical_image_id(tag_or_hash)
-        except SplitGraphException:
-            try:
-                return self.get_tagged_id(tag_or_hash)
-            except SplitGraphException:
-                if raise_on_none:
-                    raise SplitGraphException(
-                        "%s does not refer to either an image commit hash or a tag!" % tag_or_hash)
-                else:
-                    return None
+    # --- IMPORTING TABLES ---
 
     @manage_audit
     def import_tables(self, tables, target_repository, target_tables, image_hash=None, foreign_tables=False,
                       do_checkout=True, target_hash=None, table_queries=None):
         """
-        Creates a new commit in target_mountpoint with one or more tables linked to already-existing tables.
-        After this operation, the HEAD of the target mountpoint moves to the new commit and the new tables are materialized.
+        Creates a new commit in target_repository with one or more tables linked to already-existing tables.
+        After this operation, the HEAD of the target repository moves to the new commit and the new tables are
+        materialized.
 
         :param tables: List of tables to import. If empty, imports all tables.
-        :param target_repository: Mountpoint to import tables into.
-        :param target_tables: If not empty, must be the list of the same length as `tables` specifying names to store them
-            under in the target mountpoint.
+        :param target_repository: Repository to import tables into.
+        :param target_tables: If not empty, must be the list of the same length as `tables` specifying names to store
+            them under in the target repository.
         :param image_hash: Commit hash on the source mountpoint to import tables from.
             Uses the current source HEAD by default.
-        :param foreign_tables: If True, copies all source tables to create a series of new SNAP objects instead of treating
-            them as Splitgraph-versioned tables. This is useful for adding brand new tables
+        :param foreign_tables: If True, copies all source tables to create a series of new SNAP objects instead of
+            treating them as Splitgraph-versioned tables. This is useful for adding brand new tables
             (for example, from an FDW-mounted table).
         :param do_checkout: If False, doesn't materialize the tables in the target mountpoint.
         :param target_hash: Hash of the new image that tables is recorded under. If None, gets chosen at random.
         :param table_queries: If not [], it's treated as a Boolean mask showing which entries in the `tables` list are
-            instead SELECT SQL queries that form the target table. The queries have to be non-schema qualified and work only
-            against tables in the source mountpoint. Each target table created is the result of the respective SQL query.
-            This is committed as a new snapshot.
+            instead SELECT SQL queries that form the target table. The queries have to be non-schema qualified and work
+            only against tables in the source repository. Each target table created is the result of the respective SQL
+            query. This is committed as a new snapshot.
         :return: Hash that the new image was stored under.
         """
         # TODO import: should this be the method of the source repo/image instead?
@@ -457,10 +531,12 @@ class Repository:
         target_hash = target_hash or "%0.2x" % getrandbits(256)
 
         if not foreign_tables:
-            image_hash = image_hash or self.get_head()
+            image = self.images.by_hash(image_hash) if image_hash else self.head
+        else:
+            image = None
 
         if not tables:
-            tables = self.get_image(image_hash).get_tables() if not foreign_tables \
+            tables = image.get_tables() if not foreign_tables \
                 else self.engine.get_all_tables(self.to_schema())
         if not target_tables:
             if table_queries:
@@ -476,10 +552,10 @@ class Repository:
         if clashing:
             raise ValueError("Table(s) %r already exist(s) at %s!" % (clashing, target_repository))
 
-        return self._import_tables(image_hash, tables, target_repository, target_hash, target_tables, do_checkout,
+        return self._import_tables(image, tables, target_repository, target_hash, target_tables, do_checkout,
                                    table_queries, foreign_tables)
 
-    def _import_tables(self, image_hash, tables, target_repository, target_hash, target_tables, do_checkout,
+    def _import_tables(self, image, tables, target_repository, target_hash, target_tables, do_checkout,
                        table_queries, foreign_tables):
         engine = self.engine
         engine.create_schema(target_repository.to_schema())
@@ -487,16 +563,16 @@ class Repository:
         # This importing route only supported between local repos.
         assert engine == target_repository.engine
 
-        head = target_repository.get_head(raise_on_none=False)
-        target_repository.add_image(head, target_hash, comment="Importing %s from %s" % (tables, self))
+        head = target_repository.head
+        target_repository.images.add(head.image_hash if head else None,
+                                     target_hash, comment="Importing %s from %s" % (tables, self))
 
         if any(table_queries) and not foreign_tables:
             # If we want to run some queries against the source repository to create the new tables,
             # we have to materialize it fully.
-            self.checkout(image_hash)
-        # Materialize the actual tables in the target repository and register them.
-        image = self.get_image(image_hash)
+            image.checkout()
 
+        # Materialize the actual tables in the target repository and register them.
         for table, target_table, is_query in zip(tables, target_tables, table_queries):
             if foreign_tables or is_query:
                 # For foreign tables/SELECT queries, we define a new object/table instead.
@@ -531,112 +607,12 @@ class Repository:
                     WHERE namespace = %s AND repository = %s AND image_hash = %s)""")
                            .format(Identifier(SPLITGRAPH_META_SCHEMA)),
                            (target_repository.namespace, target_repository.repository,
-                            target_hash, target_repository.namespace, target_repository.repository, head),
+                            target_hash, target_repository.namespace, target_repository.repository, head.image_hash),
                            return_shape=None)
         set_head(target_repository, target_hash)
         return target_hash
 
-    def get_image(self, image_hash):
-        """
-        Gets information about a single image.
-
-        :param image_hash: Image hash
-        :return: An Image object or None
-        """
-        result = self.engine.run_sql(select("images", ','.join(IMAGE_COLS),
-                                            "repository = %s AND image_hash = %s AND namespace = %s"),
-                                     (self.repository,
-                                      image_hash, self.namespace),
-                                     return_shape=ResultShape.ONE_MANY)
-        if not result:
-            return None
-        r_dict = {k: v for k, v in zip(IMAGE_COLS, result)}
-        r_dict.update(repository=self)
-        return Image(**r_dict)
-
-    def get_images(self):
-        """
-        Get all images in the repository
-
-        :return: List of Image objects
-        """
-        result = []
-        for image in self.engine.run_sql(select("images", ','.join(IMAGE_COLS), "repository = %s AND namespace = %s") +
-                                         SQL(" ORDER BY created"), (self.repository, self.namespace)):
-            r_dict = {k: v for k, v in zip(IMAGE_COLS, image)}
-            r_dict.update(repository=self)
-            result.append(Image(**r_dict))
-        return result
-
-    def get_all_child_images(self, start_image):
-        """Get all children of `start_image` of any degree."""
-
-        all_images = self.get_images()
-        result_size = 1
-        result = {start_image}
-        while True:
-            # Keep expanding the set of children until it stops growing
-            for image in all_images:
-                if image.parent_id in result:
-                    result.add(image.image_hash)
-            if len(result) == result_size:
-                return result
-            result_size = len(result)
-
-    def get_all_parent_images(self, start_images):
-        """
-        Get all parents of the 'start_images' set of any degree.
-        """
-        parent = {image.image_hash: image.parent_id for image in self.get_images()}
-        result = set(start_images)
-        result_size = len(result)
-        while True:
-            # Keep expanding the set of parents until it stops growing
-            result.update({parent[image] for image in result if parent[image] is not None})
-            if len(result) == result_size:
-                return result
-            result_size = len(result)
-
-    def add_image(self, parent_id, image, created=None, comment=None, provenance_type=None, provenance_data=None):
-        """
-        Registers a new image in the Splitgraph image tree.
-
-        Internal method used by actual image creation routines (committing, importing or pulling).
-
-        :param parent_id: Parent of the image
-        :param image: Image hash
-        :param created: Creation time (defaults to current timestamp)
-        :param comment: Comment (defaults to empty)
-        :param provenance_type: Image provenance that can be used to rebuild the image
-            (one of None, FROM, MOUNT, IMPORT, SQL)
-        :param provenance_data: Extra provenance data (dictionary).
-        """
-        self.engine.run_sql(
-            insert("images", ("image_hash", "namespace", "repository", "parent_id", "created", "comment",
-                              "provenance_type", "provenance_data")),
-            (image, self.namespace, self.repository, parent_id, created or datetime.now(),
-             comment, provenance_type, Json(provenance_data)))
-
-    def delete_images(self, images):
-        """
-        Deletes a set of Splitgraph images from the repository. Note this doesn't check whether
-        this will orphan some other images in the repository and can make the state of the repository
-        invalid.
-
-        Image deletions won't be replicated on push/pull (those can only add new images).
-
-        :param images: List of image IDs
-        """
-        if not images:
-            return
-        # Maybe better to have ON DELETE CASCADE on the FK constraints instead of going through
-        # all tables to clean up -- but then we won't get alerted when we accidentally try
-        # to delete something that does have FKs relying on it.
-        args = tuple([self.namespace, self.repository] + list(images))
-        for table in ['tags', 'tables', 'images']:
-            self.engine.run_sql(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s "
-                                    "AND image_hash IN (" + ','.join(itertools.repeat('%s', len(images))) + ")")
-                                .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table)), args)
+    # --- SYNCING WITH OTHER REPOSITORIES ---
 
     def _sync(self, source, download=True, download_all=False, handler='DB', handler_options=None):
         """
@@ -732,27 +708,14 @@ class Repository:
         Synchronizes the state of the local Splitgraph repository with its upstream, optionally downloading all new
         objects created on the remote.
 
-        :param download_all: If True, downloads all objects and stores them locally. Otherwise, will only download required
-            objects when a table is checked out.
+        :param download_all: If True, downloads all objects and stores them locally. Otherwise, will only download
+            required objects when a table is checked out.
         """
         upstream = self.get_upstream()
         if not upstream:
             raise SplitGraphException("No upstream found for repository %s!" % self.to_schema())
 
         clone(remote_repository=upstream, local_repository=self, download_all=download_all)
-
-    def has_pending_changes(self):
-        """
-        Detects if the repository has any pending changes (schema changes, table additions/deletions, content changes).
-        """
-        head = self.get_head(raise_on_none=False)
-        if not head:
-            # If the repo isn't checked out, no point checking for changes.
-            return False
-        for table in self.engine.get_all_tables(self.to_schema()):
-            if self.diff(table, head, None, aggregate=True) != (0, 0, 0):
-                return True
-        return False
 
     def publish(self, tag, remote_repository=None, readme="", include_provenance=True,
                 include_table_previews=True):
@@ -769,34 +732,19 @@ class Repository:
         if not remote_repository:
             raise SplitGraphException("No remote repository specified and no upstream found for %s!" % self.to_schema())
 
-        image_hash = self.get_tagged_id(tag)
-        logging.info("Publishing %s:%s (%s)", self, image_hash, tag)
+        image = self.images[tag]
+        logging.info("Publishing %s:%s (%s)", self, image.image_hash, tag)
 
-        image = self.get_image(image_hash)
         dependencies = [((r.namespace, r.repository), i) for r, i in image.provenance()] \
             if include_provenance else None
         previews, schemata = prepare_publish_data(image, self, include_table_previews)
 
         try:
-            publish_tag(remote_repository, tag, image_hash, datetime.now(), dependencies, readme, schemata=schemata,
-                        previews=previews if include_table_previews else None)
+            publish_tag(remote_repository, tag, image.image_hash, datetime.now(), dependencies, readme,
+                        schemata=schemata, previews=previews if include_table_previews else None)
             remote_repository.engine.commit()
         finally:
             remote_repository.engine.close()
-
-    def get_head(self, raise_on_none=True):
-        """
-        Gets the currently checked out image hash
-
-        :param raise_on_none: Whether to raise an error or return None if the repository isn't checked out.
-        """
-        return self.get_tagged_id('HEAD', raise_on_none)
-
-    def run_sql(self, sql):
-        self.engine.run_sql("SET search_path TO %s", (self.to_schema(),))
-        result = self.engine.run_sql(sql)
-        self.engine.run_sql("SET search_path TO public")
-        return result
 
     def diff(self, table_name, image_1, image_2, aggregate=False):
         """
@@ -816,10 +764,10 @@ class Repository:
             `(primary key, action_type, action_data)`:
 
                 * `action_type == 0` is Insert and the `action_data` contains a dictionary of non-PK columns and values
-                  inserted.
+                    inserted.
                 * `action_type == 1`: Delete, `action_data` is None.
-                * `action_type == 2`: Update, `action_data` is a dictionary of non-PK columns and their new values for that
-                  particular row.
+                * `action_type == 2`: Update, `action_data` is a dictionary of non-PK columns and their new values for
+                    that particular row.
         """
 
         # If the table doesn't exist in the first or the second image, short-circuit and
@@ -830,7 +778,7 @@ class Repository:
             return False
 
         # Special case: if diffing HEAD and staging, then just return the current pending changes.
-        head = self.get_head()
+        head = self.head.image_hash
 
         if image_1 == head and image_2 is None:
             changes = self.engine.get_pending_changes(self.to_schema(), table_name, aggregate=aggregate)
@@ -838,8 +786,8 @@ class Repository:
 
         # If the table is the same in the two images, short circuit as well.
         if image_2 is not None:
-            if set(self.get_image(image_1).get_table(table_name).objects) == \
-                    set(self.get_image(image_2).get_table(table_name).objects):
+            if set(self.images.by_hash(image_1).get_table(table_name).objects) == \
+                    set(self.images.by_hash(image_2).get_table(table_name).objects):
                 return [] if not aggregate else (0, 0, 0)
 
         # Otherwise, check if image_1 is a parent of image_2, then we can merge all the diffs.
@@ -905,7 +853,7 @@ def find_path(repository, hash_1, hash_2):
     path = []
     while hash_2 is not None:
         path.append(hash_2)
-        hash_2 = repository.get_image(hash_2).parent_id
+        hash_2 = repository.images.by_hash(hash_2).parent_id
         if hash_2 == hash_1:
             return path
 
@@ -914,7 +862,7 @@ def table_exists_at(repository, table_name, image_hash):
     """Determines whether a given table exists in a Splitgraph image without checking it out. If `image_hash` is None,
     determines whether the table exists in the current staging area."""
     return repository.engine.table_exists(repository.to_schema(), table_name) if image_hash is None \
-        else bool(repository.get_image(image_hash).get_table(table_name))
+        else bool(repository.images.by_hash(image_hash).get_table(table_name))
 
 
 def clone(remote_repository, local_repository=None, download_all=False):

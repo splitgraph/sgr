@@ -62,8 +62,8 @@ def rm_c(image_spec, remote, yes):
             click.confirm("Continue? ", abort=True)
         repository.rm()
     else:
-        image = repository.resolve_image(image)
-        images_to_delete = repository.get_all_child_images(image)
+        image = repository.images[image]
+        images_to_delete = repository.images.get_all_child_images(image)
         tags_to_delete = [t for i, t in repository.get_all_hashes_tags() if i in images_to_delete]
 
         print("Images to be deleted:")
@@ -83,7 +83,7 @@ def rm_c(image_spec, remote, yes):
         if not yes:
             click.confirm("Continue? ", abort=True)
 
-        repository.delete_images(images_to_delete)
+        repository.images.delete(images_to_delete)
         engine.commit()
         print("Success.")
 
@@ -109,9 +109,9 @@ def prune_c(repository, remote, yes):
     engine = get_engine(remote or 'LOCAL')
     repository.switch_engine(engine)
 
-    all_images = set(image.image_hash for image in repository.get_images())
+    all_images = set(image.image_hash for image in repository.images())
     all_tagged_images = {i for i, t in repository.get_all_hashes_tags()}
-    dangling_images = all_images.difference(repository.get_all_parent_images(all_tagged_images))
+    dangling_images = all_images.difference(repository.images.get_all_parent_images(all_tagged_images))
 
     if not dangling_images:
         print("Nothing to do.")
@@ -124,7 +124,7 @@ def prune_c(repository, remote, yes):
     if not yes:
         click.confirm("Continue? ", abort=True)
 
-    repository.delete_images(dangling_images)
+    repository.images.delete(dangling_images)
     engine.commit()
     print("Success.")
 

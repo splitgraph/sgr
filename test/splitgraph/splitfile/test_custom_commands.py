@@ -36,15 +36,16 @@ def test_dummy_command(pg_repo_local):
     # Basic test to make sure the config gets wired to the splitfile executor and the arguments
     # are passed to it correctly.
     execute_commands(load_splitfile('custom_command_dummy.splitfile'), output=OUTPUT)
-    log = OUTPUT.get_image(OUTPUT.get_head()).get_log()
+    log = OUTPUT.head.get_log()
 
     assert len(log) == 3  # Base 000.., import from test/pg_mount, DUMMY run that created a dupe image
-    assert OUTPUT.get_image(log[0]).get_tables() == OUTPUT.get_image(log[1]).get_tables()
-    assert OUTPUT.get_image(log[0]).comment == 'DUMMY arg1 --arg2 "argument three"'
+    img_0 = OUTPUT.images.by_hash(log[0])
+    assert img_0.get_tables() == OUTPUT.images.by_hash(log[1]).get_tables()
+    assert img_0.comment == 'DUMMY arg1 --arg2 "argument three"'
 
     # Run the command again -- since it returns a random hash every time, it should add yet another image to the base.
     execute_commands(load_splitfile('custom_command_dummy.splitfile'), output=OUTPUT)
-    new_log = OUTPUT.get_image(OUTPUT.get_head()).get_log()
+    new_log = OUTPUT.head.get_log()
 
     # Two common images -- 0000... and the import
     assert new_log[2] == log[2]
@@ -59,16 +60,16 @@ def test_calc_hash_short_circuit(pg_repo_local):
     execute_commands(load_splitfile('custom_command_calc_hash.splitfile'), output=OUTPUT)
 
     # Run 1: table gets dropped (since the image doesn't exist)
-    log = OUTPUT.get_image(OUTPUT.get_head()).get_log()
+    log = OUTPUT.head.get_log()
     assert len(log) == 3  # Base 000.., import from test/pg_mount, drop table fruits
-    assert OUTPUT.get_image(log[0]).get_tables() == []
+    assert OUTPUT.images.by_hash(log[0]).get_tables() == []
     # Hash: combination of the previous image hash and the command context (unchanged)
     assert log[0] == _combine_hashes([log[1], "deadbeef" * 8])
 
     # Run 2: same command context hash, same original image -- no effect
     with patch('test.splitgraph.splitfile.test_custom_commands.CalcHashTestCommand.execute') as cmd:
         execute_commands(load_splitfile('custom_command_calc_hash.splitfile'), output=OUTPUT)
-        new_log = OUTPUT.get_image(OUTPUT.get_head()).get_log()
+        new_log = OUTPUT.head.get_log()
         assert new_log == log
         assert cmd.call_count == 0
 
@@ -77,7 +78,7 @@ def test_calc_hash_short_circuit(pg_repo_local):
     pg_repo_local.commit()
     with patch('test.splitgraph.splitfile.test_custom_commands.CalcHashTestCommand.execute') as cmd:
         execute_commands(load_splitfile('custom_command_calc_hash.splitfile'), output=OUTPUT)
-        log_3 = OUTPUT.get_image(OUTPUT.get_head()).get_log()
+        log_3 = OUTPUT.head.get_log()
 
         assert cmd.call_count == 1
         assert len(log_3) == 3

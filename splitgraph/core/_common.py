@@ -15,6 +15,7 @@ _PUBLISH_PREVIEW_SIZE = 100
 
 
 def set_tag(repository, image_hash, tag, force=False):
+    """Internal function -- add a tag to an image."""
     engine = repository.engine
     if engine.run_sql(select("tags", "1", "namespace = %s AND repository = %s AND tag = %s"),
                       (repository.namespace, repository.repository, tag),
@@ -49,7 +50,7 @@ def manage_audit_triggers(engine):
 
     from splitgraph.core.engine import get_current_repositories
     repos_tables = [(r.to_schema(), t) for r, head in get_current_repositories(engine) if head is not None
-                    for t in set(engine.get_all_tables(r.to_schema())) & set(r.get_image(head).get_tables())]
+                    for t in set(engine.get_all_tables(r.to_schema())) & set(head.get_tables())]
     tracked_tables = engine.get_tracked_tables()
 
     to_untrack = [t for t in tracked_tables if t not in repos_tables]
@@ -68,13 +69,18 @@ def manage_audit(func):
     """
 
     def wrapped(self, *args, **kwargs):
+        from .image import Image
+        if isinstance(self, Image):
+            repository = self.repository
+        else:
+            repository = self
         try:
-            ensure_metadata_schema(self.engine)
-            manage_audit_triggers(self.engine)
+            ensure_metadata_schema(repository.engine)
+            manage_audit_triggers(repository.engine)
             func(self, *args, **kwargs)
         finally:
             self.engine.commit()
-            manage_audit_triggers(self.engine)
+            manage_audit_triggers(repository.engine)
 
     return wrapped
 
@@ -228,6 +234,7 @@ def ensure_metadata_schema(engine):
 
 
 def aggregate_changes(query_result, initial=None):
+    """Add a DIFF object to the aggregated diff result"""
     result = list(initial) if initial else [0, 0, 0]
     for kind, kind_count in query_result:
         result[kind] += kind_count
@@ -235,9 +242,12 @@ def aggregate_changes(query_result, initial=None):
 
 
 def merged_diff(repository, table_name, path, aggregate):
+    """
+    Calculate the diff between two versions of the same table by combining changes in DIFF objects.
+    """
     result = [] if not aggregate else (0, 0, 0)
     for image in reversed(path):
-        diff_id = repository.get_image(image).get_table(table_name).get_object('DIFF')
+        diff_id = repository.images.by_hash(image).get_table(table_name).get_object('DIFF')
         if diff_id is None:
             # There's a SNAP entry between the two images, meaning there has been a schema change.
             # Hence we can't accumulate the DIFFs and have to resort to manual side-by-side diffing.
@@ -260,6 +270,7 @@ def merged_diff(repository, table_name, path, aggregate):
 
 
 def slow_diff(repository, table_name, image_1, image_2, aggregate):
+    """Materialize both tables and manually diff them"""
     with repository.materialized_table(table_name, image_1) as (mp_1, table_1):
         with repository.materialized_table(table_name, image_2) as (mp_2, table_2):
             # Check both tables out at the same time since then table_2 calculation can be based
@@ -277,6 +288,7 @@ def slow_diff(repository, table_name, image_1, image_2, aggregate):
 
 
 def prepare_publish_data(image, repository, include_table_previews):
+    """Prepare previews and schemata for a given image for publishing to a registry."""
     schemata = {}
     previews = {}
     for table_name in image.get_tables():
@@ -302,8 +314,8 @@ def gather_sync_metadata(target, source):
     :param source: Source repository object
     """
 
-    target_images = {i.image_hash: i for i in target.get_images()}
-    source_images = {i.image_hash: i for i in source.get_images()}
+    target_images = {i.image_hash: i for i in target.images()}
+    source_images = {i.image_hash: i for i in source.images()}
 
     # We assume here that none of the target image hashes have changed (are immutable) since otherwise the target
     # would have created a new images
@@ -312,8 +324,8 @@ def gather_sync_metadata(target, source):
     for image_hash in new_images:
         image = source_images[image_hash]
         # This is not batched but there shouldn't be that many entries here anyway.
-        target.add_image(image.parent_id, image.image_hash, image.created, image.comment, image.provenance_type,
-                         image.provenance_data)
+        target.images.add(image.parent_id, image.image_hash, image.created, image.comment, image.provenance_type,
+                          image.provenance_data)
         # Get the meta for all objects we'll need to fetch.
         table_meta.extend(source.engine.run_sql(
             SQL("""SELECT image_hash, table_name, object_id FROM {0}.tables

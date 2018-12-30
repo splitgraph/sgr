@@ -29,15 +29,15 @@ def test_splitfile_preprocessor_escaping():
 
 def test_basic_splitfile(pg_repo_local, mg_repo_local):
     execute_commands(load_splitfile('create_table.splitfile'), output=OUTPUT)
-    log = list(reversed(OUTPUT.get_image(OUTPUT.get_head()).get_log()))
+    log = list(reversed(OUTPUT.head.get_log()))
 
-    OUTPUT.checkout(log[1])
+    OUTPUT.images.by_hash(log[1]).checkout()
     assert OUTPUT.run_sql("SELECT * FROM my_fruits") == []
 
-    OUTPUT.checkout(log[2])
+    OUTPUT.images.by_hash(log[2]).checkout()
     assert OUTPUT.run_sql("SELECT * FROM my_fruits") == [(1, 'pineapple')]
 
-    OUTPUT.checkout(log[3])
+    OUTPUT.images.by_hash(log[3]).checkout()
     assert OUTPUT.run_sql("SELECT * FROM my_fruits") == [(1, 'pineapple'), (2, 'banana')]
 
 
@@ -45,42 +45,40 @@ def test_update_without_import_splitfile(pg_repo_local, mg_repo_local):
     # Test that correct commits are produced by executing an splitfile (both against newly created and already
     # existing tables on an existing mountpoint)
     execute_commands(load_splitfile('update_without_import.splitfile'), output=OUTPUT)
-    log = OUTPUT.get_image(OUTPUT.get_head()).get_log()
+    log = OUTPUT.head.get_log()
 
-    OUTPUT.checkout(log[1])
+    OUTPUT.images.by_hash(log[1]).checkout()
     assert OUTPUT.run_sql("SELECT * FROM my_fruits") == []
 
-    OUTPUT.checkout(log[0])
+    OUTPUT.images.by_hash(log[0]).checkout()
     assert OUTPUT.run_sql("SELECT * FROM my_fruits") == [(1, 'pineapple')]
 
 
 def test_local_import_splitfile(pg_repo_local, mg_repo_local):
     execute_commands(load_splitfile('import_local.splitfile'), output=OUTPUT)
-    head = OUTPUT.get_head()
-    old_head = OUTPUT.get_image(head).parent_id
+    old_head = OUTPUT.head.parent_id
 
-    OUTPUT.checkout(old_head)
+    OUTPUT.images.by_hash(old_head).checkout()
     assert not OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'my_fruits')
     assert not OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'fruits')
 
-    OUTPUT.checkout(head)
+    OUTPUT.head.checkout()
     assert OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'my_fruits')
     assert not OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'fruits')
 
 
 def test_advanced_splitfile(pg_repo_local, mg_repo_local):
     execute_commands(load_splitfile('import_local_multiple_with_queries.splitfile'), output=OUTPUT)
-    head = OUTPUT.get_head()
 
     assert OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'my_fruits')
     assert OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'vegetables')
     assert not OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'fruits')
     assert OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'join_table')
 
-    old_head = OUTPUT.get_image(head).parent_id
-    OUTPUT.checkout(old_head)
+    old_head = OUTPUT.head.parent_id
+    OUTPUT.images.by_hash(old_head).checkout()
     assert not OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'join_table')
-    OUTPUT.checkout(head)
+    OUTPUT.head.checkout()
     assert OUTPUT.run_sql("SELECT id, fruit, vegetable FROM join_table") == [(2, 'orange', 'carrot')]
     assert OUTPUT.run_sql("SELECT * FROM my_fruits") == [(2, 'orange')]
 
@@ -88,11 +86,11 @@ def test_advanced_splitfile(pg_repo_local, mg_repo_local):
 def test_splitfile_cached(pg_repo_local, mg_repo_local):
     # Check that no new commits/snaps are created if we rerun the same splitfile
     execute_commands(load_splitfile('import_local_multiple_with_queries.splitfile'), output=OUTPUT)
-    images = OUTPUT.get_images()
+    images = OUTPUT.images()
     assert len(images) == 4
 
     execute_commands(load_splitfile('import_local_multiple_with_queries.splitfile'), output=OUTPUT)
-    new_images = OUTPUT.get_images()
+    new_images = OUTPUT.images()
     assert new_images == images
 
 
@@ -108,7 +106,7 @@ def test_splitfile_remote(local_engine_empty, pg_repo_remote_multitag):
 
 
 def test_splitfile_remote_hash(local_engine_empty, pg_repo_remote):
-    head = pg_repo_remote.get_head()
+    head = pg_repo_remote.head.image_hash
     execute_commands(load_splitfile('import_remote_multiple.splitfile'), params={'TAG': head[:10]}, output=OUTPUT)
     assert OUTPUT.run_sql("SELECT id, fruit, vegetable FROM output.join_table") == \
            [(1, 'apple', 'potato'), (2, 'orange', 'carrot')]
@@ -116,7 +114,7 @@ def test_splitfile_remote_hash(local_engine_empty, pg_repo_remote):
 
 def test_import_updating_splitfile_with_uploading(local_engine_empty, remote_engine, pg_repo_remote):
     execute_commands(load_splitfile('import_and_update.splitfile'), output=OUTPUT)
-    head = OUTPUT.get_head()
+    head = OUTPUT.head.image_hash
 
     assert len(OUTPUT.objects.get_existing_objects()) == 4  # Two original tables + two updates
 
@@ -139,7 +137,7 @@ def test_import_updating_splitfile_with_uploading(local_engine_empty, remote_eng
     # Only 2 objects are stored externally (the other two have been on the remote the whole time)
     assert len(OUTPUT.objects.get_external_object_locations(existing_objects)) == 2
 
-    OUTPUT.checkout(head)
+    OUTPUT.images.by_hash(head).checkout()
     assert OUTPUT.run_sql("SELECT fruit_id, name FROM my_fruits") == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]
 
 
@@ -173,18 +171,18 @@ def test_splitfile_end_to_end_with_uploading(local_engine_empty, remote_engine,
 
 def test_splitfile_schema_changes(pg_repo_local, mg_repo_local):
     execute_commands(load_splitfile('schema_changes.splitfile'), output=OUTPUT)
-    old_output_head = OUTPUT.get_head()
+    old_output_head = OUTPUT.head
 
     # Then, alter the dataset and rerun the splitfile.
     pg_repo_local.run_sql("INSERT INTO fruits VALUES (12, 'mayonnaise')")
     pg_repo_local.commit()
     execute_commands(load_splitfile('schema_changes.splitfile'), output=OUTPUT)
-    new_output_head = OUTPUT.get_head()
+    new_output_head = OUTPUT.head
 
-    OUTPUT.checkout(old_output_head)
+    old_output_head.checkout()
     assert OUTPUT.run_sql("SELECT * FROM spirit_fruits") == [('James', 'orange', 12)]
 
-    OUTPUT.checkout(new_output_head)
+    new_output_head.checkout()
     # Mayonnaise joined with Alex, ID 12 + 10 = 22.
     assert OUTPUT.run_sql("SELECT * FROM spirit_fruits") == [('James', 'orange', 12), ('Alex', 'mayonnaise', 22)]
 
@@ -197,8 +195,8 @@ def test_import_with_custom_query(pg_repo_local, mg_repo_local):
     pg_repo_local.commit()
 
     execute_commands(load_splitfile('import_with_custom_query.splitfile'), output=OUTPUT)
-    head = OUTPUT.get_head()
-    old_head = OUTPUT.get_image(head).parent_id
+    head = OUTPUT.head
+    old_head = OUTPUT.images.by_hash(head.parent_id)
 
     # First two tables imported as snaps since they had a custom query, the other two are diffs (basically a commit
     # pointing to the same object as test/pg_mount has).
@@ -206,60 +204,60 @@ def test_import_with_custom_query(pg_repo_local, mg_repo_local):
     contents = [[(2, 'orange')], [(1, 'potato'), (3, 'oregano')],
                 [(1, 'potato'), (2, 'carrot'), (3, 'oregano')], [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]]
 
-    OUTPUT.checkout(old_head)
+    old_head.checkout()
     engine = OUTPUT.engine
     for t in tables:
         assert not engine.table_exists(OUTPUT.to_schema(), t)
 
-    OUTPUT.checkout(head)
+    head.checkout()
     for t, c in zip(tables, contents):
         assert OUTPUT.run_sql("SELECT * FROM %s" % t) == c
 
     for t in tables:
         # Tables with queries stored as snaps, actually imported tables share objects with test/pg_mount.
         if t in ['my_fruits', 'o_vegetables']:
-            assert OUTPUT.get_image(head).get_table(t).get_object('SNAP') is not None
-            assert OUTPUT.get_image(head).get_table(t).get_object('DIFF') is None
+            assert head.get_table(t).get_object('SNAP') is not None
+            assert head.get_table(t).get_object('DIFF') is None
         else:
-            assert OUTPUT.get_image(head).get_table(t).get_object('SNAP') is None
-            assert OUTPUT.get_image(head).get_table(t).get_object('DIFF') is not None
+            assert head.get_table(t).get_object('SNAP') is None
+            assert head.get_table(t).get_object('DIFF') is not None
 
 
 def test_import_mount(local_engine_empty):
     execute_commands(load_splitfile('import_from_mounted_db.splitfile'), output=OUTPUT)
 
-    head = OUTPUT.get_head()
-    old_head = OUTPUT.get_image(head).parent_id
+    head = OUTPUT.head
+    old_head = OUTPUT.images.by_hash(head.parent_id)
 
-    OUTPUT.checkout(old_head)
+    old_head.checkout()
     tables = ['my_fruits', 'o_vegetables', 'vegetables', 'all_fruits']
     contents = [[(2, 'orange')], [(1, 'potato')], [(1, 'potato'), (2, 'carrot')], [(1, 'apple'), (2, 'orange')]]
     for t in tables:
         assert not OUTPUT.engine.table_exists(OUTPUT.to_schema(), t)
 
-    OUTPUT.checkout(head)
+    head.checkout()
     for t, c in zip(tables, contents):
         assert OUTPUT.run_sql("SELECT * FROM %s" % t) == c
 
     # All imported tables stored as snapshots
     for t in tables:
-        assert OUTPUT.get_image(head).get_table(t).get_object('SNAP') is not None
-        assert OUTPUT.get_image(head).get_table(t).get_object('DIFF') is None
+        assert head.get_table(t).get_object('SNAP') is not None
+        assert head.get_table(t).get_object('DIFF') is None
 
 
 def test_import_all(local_engine_empty):
     execute_commands(load_splitfile('import_all_from_mounted.splitfile'), output=OUTPUT)
 
-    head = OUTPUT.get_head()
-    old_head = OUTPUT.get_image(head).parent_id
+    head = OUTPUT.head
+    old_head = OUTPUT.images.by_hash(head.parent_id)
 
-    OUTPUT.checkout(old_head)
+    old_head.checkout()
     tables = ['vegetables', 'fruits']
     contents = [[(1, 'potato'), (2, 'carrot')], [(1, 'apple'), (2, 'orange')]]
     for t in tables:
         assert not OUTPUT.engine.table_exists(OUTPUT.to_schema(), t)
 
-    OUTPUT.checkout(head)
+    head.checkout()
     for t, c in zip(tables, contents):
         assert OUTPUT.run_sql("SELECT * FROM %s" % t) == c
 
@@ -268,14 +266,15 @@ def test_from_remote(local_engine_empty, pg_repo_remote_multitag):
     # Test running commands that base new datasets on a remote repository.
     execute_commands(load_splitfile('from_remote.splitfile'), params={'TAG': 'v1'}, output=OUTPUT)
 
-    new_head = OUTPUT.get_head()
+    new_head = OUTPUT.head
+    parent = OUTPUT.images.by_hash(new_head.parent_id)
     # Go back to the parent: the two source tables should exist there
-    OUTPUT.checkout(OUTPUT.get_image(new_head).parent_id)
+    parent.checkout()
     assert OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'fruits')
     assert OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'vegetables')
     assert not OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'join_table')
 
-    OUTPUT.checkout(new_head)
+    new_head.checkout()
     assert OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'fruits')
     assert OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'vegetables')
     assert OUTPUT.run_sql("SELECT * FROM join_table") == [(1, 'apple', 'potato'), (2, 'orange', 'carrot')]
@@ -290,7 +289,7 @@ def test_from_remote(local_engine_empty, pg_repo_remote_multitag):
 
 
 def test_from_remote_hash(local_engine_empty, pg_repo_remote):
-    head = pg_repo_remote.get_head()
+    head = pg_repo_remote.head.image_hash
     # Test running commands that base new datasets on a remote repository.
     execute_commands(load_splitfile('from_remote.splitfile'), params={'TAG': head[:10]}, output=OUTPUT)
 
@@ -308,25 +307,25 @@ def test_from_multistage(local_engine_empty, pg_repo_remote_multitag):
     # Check the final output ('output_stage_2'): it should only have one single table object (a SNAP with the join_table
     # from the first stage, OUTPUT.
     assert stage_2.run_sql("SELECT * FROM balanced_diet") == [(1, 'apple', 'potato'), (2, 'orange', 'carrot')]
-    head = stage_2.get_head()
+    head = stage_2.head
     # Check the commit is based on the original empty image.
-    assert stage_2.get_image(head).parent_id == '0' * 64
-    assert stage_2.get_image(head).get_tables() == ['balanced_diet']
-    assert stage_2.get_image(head).get_table('balanced_diet').get_object('SNAP') is not None
-    assert stage_2.get_image(head).get_table('balanced_diet').get_object('DIFF') is None
+    assert stage_2.head.parent_id == '0' * 64
+    assert stage_2.head.get_tables() == ['balanced_diet']
+    assert stage_2.head.get_table('balanced_diet').get_object('SNAP') is not None
+    assert stage_2.head.get_table('balanced_diet').get_object('DIFF') is None
 
 
 def test_from_local(pg_repo_local):
     execute_commands(load_splitfile('from_local.splitfile'), output=OUTPUT)
 
-    new_head = OUTPUT.get_head()
+    new_head = OUTPUT.head
     # Go back to the parent: the two source tables should exist there
-    OUTPUT.checkout(OUTPUT.get_image(new_head).parent_id)
+    OUTPUT.images.by_hash(new_head.parent_id).checkout()
     assert OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'fruits')
     assert OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'vegetables')
     assert not OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'join_table')
 
-    OUTPUT.checkout(new_head)
+    new_head.checkout()
     assert OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'fruits')
     assert OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'vegetables')
     assert OUTPUT.run_sql("SELECT * FROM join_table") == [(1, 'apple', 'potato'), (2, 'orange', 'carrot')]

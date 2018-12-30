@@ -113,10 +113,10 @@ def make_pg_repo(engine):
 
 
 def make_multitag_pg_repo(pg_repo):
-    pg_repo.get_image(pg_repo.get_head()).tag('v1')
+    pg_repo.head.tag('v1')
     pg_repo.run_sql("DELETE FROM fruits WHERE fruit_id = 1")
     new_head = pg_repo.commit()
-    pg_repo.get_image(new_head).tag('v2')
+    pg_repo.images.by_hash(new_head).tag('v2')
     pg_repo.engine.commit()
     return pg_repo
 

@@ -50,7 +50,7 @@ def test_rls_push_own_delete_own(local_engine_empty, unprivileged_pg_repo, clean
     destination = Repository(namespace='testuser', repository='pg_mount')
     clone(unprivileged_pg_repo, local_repository=destination)
 
-    destination.checkout(tag='latest')
+    destination.images['latest'].checkout()
     destination.run_sql("""UPDATE fruits SET name = 'banana' WHERE fruit_id = 1""")
     destination.commit()
 
@@ -67,12 +67,12 @@ def test_rls_push_own_delete_own(local_engine_empty, unprivileged_pg_repo, clean
     destination.push(handler='S3')
     # Test we can delete our own repo once we've pushed it
     remote_destination.rm(uncheckout=False)
-    assert len(remote_destination.get_images()) == 0
+    assert len(remote_destination.images()) == 0
 
 
 def test_rls_push_others(local_engine_empty, unprivileged_pg_repo):
     clone(unprivileged_pg_repo)
-    PG_MNT.checkout(tag='latest')
+    PG_MNT.images['latest'].checkout()
     PG_MNT.run_sql("""UPDATE fruits SET name = 'banana' WHERE fruit_id = 1""")
     PG_MNT.commit()
 
@@ -87,12 +87,11 @@ def test_rls_delete_others(unprivileged_pg_repo, unprivileged_remote_engine):
 
     unprivileged_pg_repo.rm(uncheckout=False)
     # Check that the policy worked by verifying that the repository still exists on the remote.
-    assert len(unprivileged_pg_repo.get_images()) > 0
+    assert len(unprivileged_pg_repo.images()) > 0
 
 
 def test_rls_impersonate_external_object(unprivileged_pg_repo, unprivileged_remote_engine):
-    latest = unprivileged_pg_repo.resolve_image('latest')
-    sample_object = unprivileged_pg_repo.get_image(latest).get_table('fruits').objects[0][0]
+    sample_object = unprivileged_pg_repo.images['latest'].get_table('fruits').objects[0][0]
     assert sample_object is not None
 
     # Try to impersonate the owner of the "test" namespace and add a different external link to
@@ -104,7 +103,7 @@ def test_rls_impersonate_external_object(unprivileged_pg_repo, unprivileged_remo
 
 def test_rls_publish_unpublish_own(local_engine_empty, pg_repo_remote, unprivileged_remote_engine):
     clone(pg_repo_remote, download_all=True)
-    PG_MNT.get_image(PG_MNT.resolve_image('latest')).tag('my_tag')
+    PG_MNT.images['latest'].tag('my_tag')
     target_repo = Repository(namespace='testuser', repository='pg_mount', engine=unprivileged_remote_engine)
 
     PG_MNT.push(remote_repository=target_repo)
@@ -120,7 +119,7 @@ def test_rls_publish_unpublish_own(local_engine_empty, pg_repo_remote, unprivile
 def test_rls_publish_unpublish_others(local_engine_empty, pg_repo_remote, unprivileged_pg_repo,
                                       unprivileged_remote_engine):
     # Tag the remote repo as an admin user and try to publish as an unprivileged one
-    pg_repo_remote.get_image(pg_repo_remote.resolve_image('latest')).tag('my_tag')
+    pg_repo_remote.images['latest'].tag('my_tag')
     pg_repo_remote.engine.commit()
     clone(unprivileged_pg_repo, download_all=True)
 

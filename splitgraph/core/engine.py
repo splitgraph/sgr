@@ -98,4 +98,4 @@ def get_current_repositories(engine):
 
     all_repositories = [Repository(n, r, engine) for n, r in
                         engine.run_sql(select("images", "DISTINCT namespace,repository"))]
-    return [(r, r.get_head(raise_on_none=False)) for r in all_repositories]
+    return [(r, r.head) for r in all_repositories]

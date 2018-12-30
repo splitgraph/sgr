@@ -93,4 +93,4 @@ def test_diff_conflation_on_commit(pg_repo_local, test_case):
         print("%r -> %r" % (operation, expected_diff))
         pg_repo_local.run_sql(operation)
         head = pg_repo_local.commit()
-        assert pg_repo_local.diff('fruits', pg_repo_local.get_image(head).parent_id, head) == expected_diff
+        assert pg_repo_local.diff('fruits', pg_repo_local.head.parent_id, head) == expected_diff

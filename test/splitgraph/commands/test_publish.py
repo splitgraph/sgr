@@ -11,7 +11,7 @@ from test.splitgraph.conftest import OUTPUT, load_splitfile
 def test_publish(local_engine_empty, remote_engine, pg_repo_remote_multitag, extra_info):
     # Run some splitfile commands to create a dataset and push it
     execute_commands(load_splitfile('import_remote_multiple.splitfile'), params={'TAG': 'v1'}, output=OUTPUT)
-    OUTPUT.get_image(OUTPUT.get_head()).tag('v1')
+    OUTPUT.head.tag('v1')
 
     remote_output = copy(OUTPUT)
     remote_output.switch_engine(remote_engine)
@@ -21,12 +21,12 @@ def test_publish(local_engine_empty, remote_engine, pg_repo_remote_multitag, ext
 
     # Base the derivation on v2 of test/pg_mount and publish that too.
     execute_commands(load_splitfile('import_remote_multiple.splitfile'), params={'TAG': 'v2'}, output=OUTPUT)
-    OUTPUT.get_image(OUTPUT.get_head()).tag('v2')
+    OUTPUT.head.tag('v2')
     OUTPUT.push(remote_output)
     OUTPUT.publish('v2', readme="Based on v2.", include_provenance=extra_info, include_table_previews=extra_info)
 
     image_hash, published_dt, provenance, readme, schemata, previews = get_published_info(remote_output, 'v1')
-    assert image_hash == OUTPUT.resolve_image('v1')
+    assert image_hash == OUTPUT.images['v1'].image_hash
     assert readme == "A test repo."
     expected_schemata = {'join_table': [['id', 'integer', False],
                                         ['fruit', 'character varying', False],
@@ -38,7 +38,7 @@ def test_publish(local_engine_empty, remote_engine, pg_repo_remote_multitag, ext
 
     assert schemata == expected_schemata
     if extra_info:
-        assert provenance == [[['test', 'pg_mount'], pg_repo_remote_multitag.resolve_image('v1')]]
+        assert provenance == [[['test', 'pg_mount'], pg_repo_remote_multitag.images['v1'].image_hash]]
         assert previews == {'join_table': [[1, 'apple', 'potato'], [2, 'orange', 'carrot']],
                             'my_fruits': [[1, 'apple'], [2, 'orange']],
                             'vegetables': [[1, 'potato'], [2, 'carrot']]}
@@ -48,11 +48,11 @@ def test_publish(local_engine_empty, remote_engine, pg_repo_remote_multitag, ext
         assert previews is None
 
     image_hash, published_dt, provenance, readme, schemata, previews = get_published_info(remote_output, 'v2')
-    assert image_hash == OUTPUT.resolve_image('v2')
+    assert image_hash == OUTPUT.images['v2']
     assert readme == "Based on v2."
     assert schemata == expected_schemata
     if extra_info:
-        assert provenance == [[['test', 'pg_mount'], pg_repo_remote_multitag.resolve_image('v2')]]
+        assert provenance == [[['test', 'pg_mount'], pg_repo_remote_multitag.images['v2'].image_hash]]
         assert previews == {'join_table': [[2, 'orange', 'carrot']],
                             'my_fruits': [[2, 'orange']],
                             'vegetables': [[1, 'potato'], [2, 'carrot']]}

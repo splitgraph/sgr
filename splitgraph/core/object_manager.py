@@ -1,3 +1,4 @@
+"""Functions related to creating, deleting and keeping track of physical Splitgraph objects."""
 import logging
 from collections.__init__ import defaultdict
 from random import getrandbits
@@ -134,7 +135,8 @@ class ObjectManager:
 
     def record_table_as_diff(self, old_table, image_hash):
         """
-        Flushes the pending changes from the audit table for a given table and records them, registering the new objects.
+        Flushes the pending changes from the audit table for a given table and records them,
+        registering the new objects.
 
         :param old_table: Table object pointing to the current HEAD table
         :param image_hash: Image hash to store the table under
@@ -174,7 +176,7 @@ class ObjectManager:
         :param image_hash: Hash of the new image
         """
         # Make sure the SNAP for this table doesn't already exist
-        table = repository.get_image(image_hash).get_table(table_name)
+        table = repository.images.by_hash(image_hash).get_table(table_name)
         if table and table.get_object('SNAP'):
             return
 
@@ -241,7 +243,8 @@ class ObjectManager:
 
     def download_objects(self, source, objects_to_fetch, object_locations):
         """
-        Fetches the required objects from the remote and stores them locally. Does nothing for objects that already exist.
+        Fetches the required objects from the remote and stores them locally.
+        Does nothing for objects that already exist.
 
         :param source: Remote ObjectManager
         :param objects_to_fetch: List of object IDs to download.

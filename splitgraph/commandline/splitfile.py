@@ -96,15 +96,14 @@ def provenance_c(image_spec, full, error_on_end):
             FROM noaa/climate:[hash_3] IMPORT {SELECT * FROM rainfall_data WHERE state = 'AZ'}
     """
     repository, image = image_spec
-    image = repository.resolve_image(image)
-    image_obj = repository.get_image(image)
+    image = repository.images[image]
     
     if full:
-        splitfile_commands = image_obj.to_splitfile(err_on_end=error_on_end)
+        splitfile_commands = image.to_splitfile(err_on_end=error_on_end)
         print("# Splitfile commands used to recreate %s:%s" % (str(repository), image))
         print('\n'.join(splitfile_commands))
     else:
-        result = image_obj.provenance()
+        result = image.provenance()
         print("%s:%s depends on:" % (str(repository), image))
         print('\n'.join("%s:%s" % rs for rs in result))
 
@@ -137,14 +136,13 @@ def rebuild_c(image_spec, update, against):
         out.
     """
     repository, image = image_spec
-    image = repository.resolve_image(image)
-    image_obj = repository.get_image(image)
+    image = repository.images[image]
 
     # Replace the sources used to construct the image with either the latest ones or the images specified by the user.
     # This doesn't require us at this point to have pulled all the dependencies: the Splitfile executor will do it
     # after we feed in the reconstructed and patched Splitfile.
-    deps = {k: v for k, v in image_obj.provenance()}
-    new_images = {repo: image for repo, image in against} if not update \
+    deps = {k: v for k, v in image.provenance()}
+    new_images = {repo: repl_image for repo, repl_image in against} if not update \
         else {repo: 'latest' for repo, _ in deps.items()}
     deps.update(new_images)
 
