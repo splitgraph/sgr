@@ -7,14 +7,13 @@ import sys
 
 import click
 
-import splitgraph.core.repository
 import splitgraph.engine
 import splitgraph.engine.postgres.engine
-from splitgraph.core.repository import clone
+from splitgraph.core.repository import clone, Repository
 
 
 @click.command(name='pull')
-@click.argument('repository', type=splitgraph.core.repository.to_repository)
+@click.argument('repository', type=Repository.from_schema)
 @click.option('-d', '--download-all', help='Download all objects immediately instead on checkout.')
 def pull_c(repository, download_all):
     """
@@ -24,8 +23,8 @@ def pull_c(repository, download_all):
 
 
 @click.command(name='clone')
-@click.argument('remote_repository', type=splitgraph.core.repository.to_repository)
-@click.argument('local_repository', required=False, type=splitgraph.core.repository.to_repository)
+@click.argument('remote_repository', type=Repository.from_schema)
+@click.argument('local_repository', required=False, type=Repository.from_schema)
 @click.option('-r', '--remote', help='Alias or full connection string for the remote engine')
 @click.option('-d', '--download-all', help='Download all objects immediately instead on checkout.',
               default=False, is_flag=True)
@@ -40,7 +39,7 @@ def clone_c(remote_repository, local_repository, remote, download_all):
     # Otherwise, we have to turn the repository into a string and let clone() look up the
     # actual engine the repository lives on.
     if remote:
-        remote_repository.switch_engine(splitgraph.get_engine(remote))
+        remote_repository = Repository.from_template(remote_repository, engine=splitgraph.get_engine(remote))
     else:
         remote_repository = remote_repository.to_schema()
 
@@ -48,8 +47,8 @@ def clone_c(remote_repository, local_repository, remote, download_all):
 
 
 @click.command(name='push')
-@click.argument('repository', type=splitgraph.core.repository.to_repository)
-@click.argument('remote_repository', required=False, type=splitgraph.core.repository.to_repository)
+@click.argument('repository', type=Repository.from_schema)
+@click.argument('remote_repository', required=False, type=Repository.from_schema)
 @click.option('-r', '--remote', help='Alias or full connection string for the remote engine')
 @click.option('-h', '--upload-handler', help='Upload handler', default='DB')
 @click.option('-o', '--upload-handler-options', help='Upload handler parameters', default="{}")
@@ -71,14 +70,14 @@ def push_c(repository, remote_repository, remote, upload_handler, upload_handler
     """
     # redesign this so that people push to some default remote engine (e.g. the global registry)?
     if remote_repository and remote:
-        remote_repository.switch_engine(splitgraph.get_engine(remote))
+        remote_repository = Repository.from_template(remote_repository, engine=splitgraph.get_engine(remote))
     else:
         remote_repository = None
     repository.push(remote_repository, handler=upload_handler, handler_options=json.loads(upload_handler_options))
 
 
 @click.command(name='publish')
-@click.argument('repository', type=splitgraph.core.repository.to_repository)
+@click.argument('repository', type=Repository.from_schema)
 @click.argument('tag')
 @click.option('-r', '--readme', type=click.File('r'))
 @click.option('--skip-provenance', is_flag=True, help="Don't include provenance in the published information.")
@@ -99,10 +98,10 @@ def publish_c(repository, tag, readme, skip_provenance, skip_previews):
 
 
 @click.command(name='upstream')
-@click.argument('repository', type=splitgraph.core.repository.to_repository)
+@click.argument('repository', type=Repository.from_schema)
 @click.option('-s', '--set', 'set_to',
               help="Set the upstream to a engine alias + repository", type=(str,
-                                                                            splitgraph.core.repository.to_repository),
+                                                                            Repository.from_schema),
               default=("", None))
 @click.option('-r', '--reset', help="Delete the upstream", is_flag=True, default=False)
 def upstream_c(repository, set_to, reset):
@@ -150,7 +149,7 @@ def upstream_c(repository, set_to, reset):
     else:
         engine, remote_repo = set_to
         try:
-            remote_repo.switch_engine(splitgraph.get_engine(engine))
+            remote_repo = Repository.from_template(remote_repo, engine=splitgraph.get_engine(engine))
         except KeyError:
             print("Remote engine '%s' does not exist in the configuration file!" % engine)
             sys.exit(1)

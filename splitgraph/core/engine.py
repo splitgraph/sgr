@@ -66,8 +66,8 @@ def lookup_repo(repo_name, include_local=False):
 
     :return: Local or remote Repository object
     """
-    from splitgraph.core.repository import to_repository, Repository
-    template = to_repository(repo_name)
+    from splitgraph.core.repository import Repository
+    template = Repository.from_schema(repo_name)
 
     if repo_name in _LOOKUP_PATH_OVERRIDE:
         return Repository(template.namespace, template.repository,

@@ -1,8 +1,7 @@
-from copy import copy
-
 import pytest
 
 from splitgraph.core.registry import get_published_info
+from splitgraph.core.repository import Repository
 from splitgraph.splitfile import execute_commands
 from test.splitgraph.conftest import OUTPUT, load_splitfile
 
@@ -13,8 +12,7 @@ def test_publish(local_engine_empty, remote_engine, pg_repo_remote_multitag, ext
     execute_commands(load_splitfile('import_remote_multiple.splitfile'), params={'TAG': 'v1'}, output=OUTPUT)
     OUTPUT.head.tag('v1')
 
-    remote_output = copy(OUTPUT)
-    remote_output.switch_engine(remote_engine)
+    remote_output = Repository.from_template(OUTPUT, engine=remote_engine)
 
     OUTPUT.push(remote_output)
     OUTPUT.publish('v1', readme="A test repo.", include_provenance=extra_info, include_table_previews=extra_info)
@@ -48,7 +46,7 @@ def test_publish(local_engine_empty, remote_engine, pg_repo_remote_multitag, ext
         assert previews is None
 
     image_hash, published_dt, provenance, readme, schemata, previews = get_published_info(remote_output, 'v2')
-    assert image_hash == OUTPUT.images['v2']
+    assert image_hash == OUTPUT.images['v2'].image_hash
     assert readme == "Based on v2."
     assert schemata == expected_schemata
     if extra_info:

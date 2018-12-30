@@ -8,10 +8,12 @@ from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.registry import _ensure_registry_schema, unpublish_repository, setup_registry_mode, \
     toggle_registry_rls, set_info_key
-from splitgraph.core.repository import to_repository as R, Repository
+from splitgraph.core.repository import Repository
 from splitgraph.engine import get_engine, ResultShape, switch_engine
 from splitgraph.hooks.mount_handlers import mount
 from splitgraph.hooks.s3 import S3_HOST, S3_PORT, S3_ACCESS_KEY, S3_SECRET_KEY
+
+R = Repository.from_schema
 
 PG_MNT = R('test/pg_mount')
 PG_MNT_PULL = R('test_pg_mount_pull')

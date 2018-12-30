@@ -7,10 +7,10 @@ from collections import defaultdict
 
 import click
 
-import splitgraph.core.repository
 from splitgraph import SplitGraphException
 from splitgraph.commandline._common import image_spec_parser
 from splitgraph.core.engine import repository_exists
+from splitgraph.core.repository import Repository
 
 
 @click.command(name='checkout')
@@ -44,7 +44,7 @@ def checkout_c(image_spec, force, uncheckout):
 
 
 @click.command(name='commit')
-@click.argument('repository', type=splitgraph.core.repository.to_repository)
+@click.argument('repository', type=Repository.from_schema)
 @click.option('-s', '--include-snap', default=False, is_flag=True,
               help='Include the full table snapshots. This consumes more space, '
                    'but makes checkouts faster.')
@@ -127,7 +127,7 @@ def tag_c(image_spec, tag, force, remove):
     if image is None:
         image = repository.head
     else:
-        image = repository[image]
+        image = repository.images[image]
 
     image.tag(tag, force)
     print("Tagged %s:%s with %s." % (str(repository), image.image_hash, tag))
@@ -136,7 +136,7 @@ def tag_c(image_spec, tag, force, remove):
 @click.command(name='import')
 @click.argument('image_spec', type=image_spec_parser())
 @click.argument('table_or_query')
-@click.argument('target_repository', type=splitgraph.core.repository.to_repository)
+@click.argument('target_repository', type=Repository.from_schema)
 @click.argument('target_table', required=False)
 def import_c(image_spec, table_or_query, target_repository, target_table):
     """
@@ -187,9 +187,8 @@ def import_c(image_spec, table_or_query, target_repository, target_table):
         sys.exit(1)
 
     repository.import_tables([table_or_query], target_repository, [target_table] if target_table else [],
-                             image_hash=image.image_hash, foreign_tables=foreign_table,
+                             image_hash=image.image_hash if image else None, foreign_tables=foreign_table,
                              table_queries=[] if not is_query else [True])
 
     print("%s:%s has been imported from %s:%s%s" % (str(target_repository), target_table, str(repository),
-                                                    table_or_query, (' (%s)' % image.image_hash[:12] if image.image_hash
-                                                                     else '')))
+                                                    table_or_query, (' (%s)' % image.image_hash[:12] if image else '')))

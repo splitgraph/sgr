@@ -205,9 +205,16 @@ class SQLEngine:
 
     def initialize(self):
         """Does any required initialization of the engine"""
-        pass
 
-    # Methods for table change tracking
+
+class ChangeEngine(SQLEngine):
+    """An SQL engine that can perform change tracking on a set of tables."""
+
+    def get_primary_keys(self, schema, table):
+        raise NotImplementedError()
+
+    def run_sql(self, statement, arguments=(), return_shape=ResultShape.MANY_MANY):
+        raise NotImplementedError()
 
     def get_tracked_tables(self):
         """

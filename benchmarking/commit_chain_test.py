@@ -1,6 +1,6 @@
 import os
 
-from splitgraph.core.repository import to_repository, clone
+from splitgraph.core.repository import Repository, clone
 
 os.environ['SG_CONFIG_FILE'] = 'test/resources/.sgconfig'
 
@@ -12,8 +12,8 @@ from random import getrandbits, randrange
 
 from splitgraph.hooks.s3 import S3_HOST, S3_PORT, S3_ACCESS_KEY, S3_SECRET_KEY
 
-MOUNTPOINT = to_repository("splitgraph_benchmark")
-PG_MNT = to_repository('test/pg_mount')
+MOUNTPOINT = Repository.from_schema("splitgraph_benchmark")
+PG_MNT = Repository.from_schema('test/pg_mount')
 
 
 def _cleanup_minio():

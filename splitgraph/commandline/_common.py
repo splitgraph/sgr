@@ -1,7 +1,7 @@
 """
 Various common functions used by the command line interface.
 """
-from splitgraph.core.repository import to_repository
+from splitgraph.core.repository import Repository
 
 
 def image_spec_parser(default='latest'):
@@ -22,7 +22,7 @@ def image_spec_parser(default='latest'):
             tag_or_hash = repo_image[1]
         else:
             tag_or_hash = default
-        return to_repository(repo_image[0]), tag_or_hash
+        return Repository.from_schema(repo_image[0]), tag_or_hash
 
     return image_spec
 

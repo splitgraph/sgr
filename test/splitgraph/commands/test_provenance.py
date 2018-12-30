@@ -1,5 +1,5 @@
 from splitgraph.splitfile import execute_commands
-from splitgraph.splitfile.execution import rerun_image_with_replacement
+from splitgraph.splitfile.execution import rebuild_image
 from test.splitgraph.conftest import OUTPUT, load_splitfile
 
 
@@ -59,7 +59,7 @@ def test_rerun_with_new_version(local_engine_empty, pg_repo_remote_multitag):
     output_v1 = OUTPUT.head
     # Do a logical rebase of the newly created image on the V2 of the remote repository
 
-    rerun_image_with_replacement(OUTPUT, output_v1.image_hash, {pg_repo_remote_multitag: 'v2'})
+    rebuild_image(output_v1, {pg_repo_remote_multitag: 'v2'})
     output_v2 = OUTPUT.head
     assert local_engine_empty.run_sql("SELECT * FROM output.join_table") == [(2, 'orange', 'carrot')]
 
@@ -85,7 +85,7 @@ def test_rerun_with_from_import(local_engine_empty, pg_repo_remote_multitag):
     output_v1 = OUTPUT.head
     # Do a logical rebase of the newly created image on the V2 of the remote repository
 
-    rerun_image_with_replacement(OUTPUT, output_v1.image_hash, {pg_repo_remote_multitag: 'v2'})
+    rebuild_image(output_v1, {pg_repo_remote_multitag: 'v2'})
     output_v2 = OUTPUT.head
 
     # Do some checks on the structure of the final output repo. In particular, make sure that the two derived versions

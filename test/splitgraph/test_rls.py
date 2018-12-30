@@ -37,9 +37,7 @@ def unprivileged_remote_engine(remote_engine):
 
 @pytest.fixture()
 def unprivileged_pg_repo(pg_repo_remote, unprivileged_remote_engine):
-    result = copy(pg_repo_remote)
-    result.switch_engine(unprivileged_remote_engine)
-    return result
+    return Repository.from_template(pg_repo_remote, engine=unprivileged_remote_engine)
 
 
 def test_rls_pull_public(local_engine_empty, unprivileged_pg_repo):
@@ -60,8 +58,7 @@ def test_rls_push_own_delete_own(local_engine_empty, unprivileged_pg_repo, clean
 
     # Test we can push to our namespace -- can't upload the object to the splitgraph_meta since we can't create
     # tables there
-    remote_destination = copy(destination)
-    remote_destination.switch_engine(unprivileged_pg_repo.engine)
+    remote_destination = Repository.from_template(destination, engine=unprivileged_pg_repo.engine)
     destination.set_upstream(remote_destination)
 
     destination.push(handler='S3')

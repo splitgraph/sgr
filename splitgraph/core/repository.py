@@ -1,3 +1,7 @@
+"""
+Public API for managing images in a Splitgraph repository.
+"""
+
 import itertools
 import logging
 from contextlib import contextmanager
@@ -19,6 +23,7 @@ from .registry import publish_tag
 
 # OO API porting plan:
 # [ ] move things out from Repository into more appropriate classes
+# [ ] look at which parts of the Image API should return Image objects and which -- hashes
 # [ ] Document the new API, regenerate the docs
 
 
@@ -35,9 +40,7 @@ class ImageManager:
         for image in self.engine.run_sql(select("images", ','.join(IMAGE_COLS), "repository = %s AND namespace = %s") +
                                          SQL(" ORDER BY created"),
                                          (self.repository.repository, self.repository.namespace)):
-            r_dict = {k: v for k, v in zip(IMAGE_COLS, image)}
-            r_dict.update(repository=self)
-            result.append(Image(**r_dict))
+            result.append(self._make_image(image))
         return result
 
     def _make_image(self, img_tuple):
@@ -45,7 +48,7 @@ class ImageManager:
         r_dict.update(repository=self.repository)
         return Image(**r_dict)
 
-    def by_tag(self, tag, raise_on_none):
+    def by_tag(self, tag, raise_on_none=True):
         """
         Returns an image with a given tag
 
@@ -83,6 +86,14 @@ class ImageManager:
         return self.by_hash(result)
 
     def by_hash(self, image_hash, raise_on_none=True):
+        """
+        Returns an image corresponding to a given (possibly shortened) image hash. If the image hash
+        is ambiguous, raises an error. If the image does not exist, raises an error or returns None.
+
+        :param image_hash: Image hash (can be shortened).
+        :param raise_on_none: Whether to raise if the image doesn't exist.
+        :return: Image object or None
+        """
         result = self.engine.run_sql(select("images", ','.join(IMAGE_COLS),
                                             "repository = %s AND image_hash LIKE %s AND namespace = %s"),
                                      (self.repository.repository, image_hash.lower() + '%',
@@ -99,7 +110,7 @@ class ImageManager:
         return self._make_image(result[0])
 
     def __getitem__(self, key):
-        """Resolve an Image object in the repository."""
+        """Resolve an Image object from its tag or hash."""
         # Things we can have here: full hash, shortened hash or tag.
         # Users can always use by_hash or by_tag to be explicit -- this is just a shorthand. There's little
         # chance for ambiguity (why would someone have a hexadecimal tag that can be confused with a hash?)
@@ -108,7 +119,6 @@ class ImageManager:
 
     def get_all_child_images(self, start_image):
         """Get all children of `start_image` of any degree."""
-
         all_images = self()
         result_size = 1
         result = {start_image}
@@ -122,9 +132,7 @@ class ImageManager:
             result_size = len(result)
 
     def get_all_parent_images(self, start_images):
-        """
-        Get all parents of the 'start_images' set of any degree.
-        """
+        """Get all parents of the 'start_images' set of any degree."""
         parent = {image.image_hash: image.parent_id for image in self()}
         result = set(start_images)
         result_size = len(result)
@@ -195,11 +203,18 @@ class Repository:
         # look like it's the manager for objects related to a repo.
         self.objects = ObjectManager(self.engine)
 
-    def switch_engine(self, engine):
-        """Used instead of creating a new Repository object with a different engine or doing
-        repository.engine = new_engine (since then the object manager isn't repointed)"""
-        self.engine = engine
-        self.objects = ObjectManager(engine)
+    @classmethod
+    def from_template(cls, template, namespace=None, repository=None, engine=None):
+        """Create a Repository from an existing one replacing some of its attributes."""
+        return cls(namespace or template.namespace, repository or template.repository, engine or template.engine)
+
+    @classmethod
+    def from_schema(cls, schema):
+        """Convert a Postgres schema name of the format `namespace/repository` to a Splitgraph repository object."""
+        if '/' in schema:
+            namespace, repository = schema.split('/')
+            return cls(namespace, repository)
+        return cls('', schema)
 
     def __eq__(self, other):
         return self.namespace == other.namespace and self.repository == other.repository
@@ -246,7 +261,6 @@ class Repository:
         """
         # Make sure to discard changes to this repository if they exist, otherwise they might
         # be applied/recorded if a new repository with the same name appears.
-        ensure_metadata_schema(self.engine)
         if uncheckout:
             # If we're talking to a bare repo / a remote that doesn't have checked out repositories,
             # there's no point in touching the audit trigger.
@@ -809,14 +823,6 @@ class Repository:
 
         # Finally, resort to manual diffing (images on different branches or reverse comparison order).
         return slow_diff(self, table_name, image_1, image_2, aggregate)
-
-
-def to_repository(schema):
-    """Converts a Postgres schema name of the format `namespace/repository` to a Splitgraph repository object."""
-    if '/' in schema:
-        namespace, repository = schema.split('/')
-        return Repository(namespace, repository)
-    return Repository('', schema)
 
 
 def import_table_from_remote(remote_repository, remote_tables, remote_image_hash, target_repository, target_tables,

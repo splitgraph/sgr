@@ -7,15 +7,15 @@ from pprint import pprint
 
 import click
 
-import splitgraph.core.repository
 from splitgraph import get_engine
 from splitgraph.commandline._common import image_spec_parser, pluralise
 from splitgraph.core._drawing import render_tree
 from splitgraph.core.engine import get_current_repositories
+from splitgraph.core.repository import Repository
 
 
 @click.command(name='log')
-@click.argument('repository', type=splitgraph.core.repository.to_repository)
+@click.argument('repository', type=Repository.from_schema)
 @click.option('-t', '--tree', is_flag=True)
 def log_c(repository, tree):
     """
@@ -42,7 +42,7 @@ def log_c(repository, tree):
 @click.option('-v', '--verbose', default=False, is_flag=True,
               help='Include the actual differences rather than just the total number of updated rows.')
 @click.option('-t', '--table-name', help='Show the differences for a single table.')
-@click.argument('repository', type=splitgraph.core.repository.to_repository)
+@click.argument('repository', type=Repository.from_schema)
 @click.argument('tag_or_hash_1', required=False)
 @click.argument('tag_or_hash_2', required=False)
 def diff_c(verbose, table_name, repository, tag_or_hash_1, tag_or_hash_2):
@@ -192,7 +192,7 @@ def sql_c(sql, schema, show_all):
 
 
 @click.command(name='status')
-@click.argument('repository', required=False, type=splitgraph.core.repository.to_repository)
+@click.argument('repository', required=False, type=Repository.from_schema)
 def status_c(repository):
     """
     Show the status of the Splitgraph engine. If a repository is passed, show information about

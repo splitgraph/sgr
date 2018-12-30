@@ -1,13 +1,14 @@
 import pytest
 
 from splitgraph.core.engine import get_current_repositories
-from splitgraph.core.repository import to_repository as R, clone, Repository
+from splitgraph.core.repository import clone, Repository
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.splitfile._parsing import preprocess
 from splitgraph.splitfile.execution import execute_commands
 from test.splitgraph.conftest import OUTPUT, SPLITFILE_ROOT, load_splitfile
 
 PARSING_TEST_SPLITFILE = load_splitfile('import_remote_multiple.splitfile')
+R = Repository.from_schema
 
 
 def test_splitfile_preprocessor_missing_params():
@@ -56,13 +57,14 @@ def test_update_without_import_splitfile(pg_repo_local, mg_repo_local):
 
 def test_local_import_splitfile(pg_repo_local, mg_repo_local):
     execute_commands(load_splitfile('import_local.splitfile'), output=OUTPUT)
-    old_head = OUTPUT.head.parent_id
+    head = OUTPUT.head
+    old_head = head.parent_id
 
     OUTPUT.images.by_hash(old_head).checkout()
     assert not OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'my_fruits')
     assert not OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'fruits')
 
-    OUTPUT.head.checkout()
+    head.checkout()
     assert OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'my_fruits')
     assert not OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'fruits')
 
@@ -75,10 +77,11 @@ def test_advanced_splitfile(pg_repo_local, mg_repo_local):
     assert not OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'fruits')
     assert OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'join_table')
 
-    old_head = OUTPUT.head.parent_id
+    head = OUTPUT.head
+    old_head = head.parent_id
     OUTPUT.images.by_hash(old_head).checkout()
     assert not OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'join_table')
-    OUTPUT.head.checkout()
+    head.checkout()
     assert OUTPUT.run_sql("SELECT id, fruit, vegetable FROM join_table") == [(2, 'orange', 'carrot')]
     assert OUTPUT.run_sql("SELECT * FROM my_fruits") == [(2, 'orange')]
 

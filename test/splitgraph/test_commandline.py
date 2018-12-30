@@ -4,10 +4,16 @@ from decimal import Decimal
 
 import pytest
 
+from splitgraph.commandline import *
+from splitgraph.commandline._common import image_spec_parser
 from splitgraph.config import PG_PWD, PG_USER
 from splitgraph.core._common import parse_connection_string, serialize_connection_string
 from splitgraph.core.engine import repository_exists
+from splitgraph.core.registry import get_published_info
 from splitgraph.core.repository import Repository
+from splitgraph.hooks.mount_handlers import get_mount_handlers
+from test.splitgraph.conftest import OUTPUT, SPLITFILE_ROOT, \
+    MG_MNT
 
 try:
     # python 3.4+ should use builtin unittest.mock not mock package
@@ -16,13 +22,6 @@ except ImportError:
     from mock import patch
 
 from click.testing import CliRunner
-
-from splitgraph.core.registry import get_published_info
-from splitgraph.commandline import *
-from splitgraph.commandline._common import image_spec_parser
-from splitgraph.hooks.mount_handlers import get_mount_handlers
-from test.splitgraph.conftest import OUTPUT, SPLITFILE_ROOT, \
-    MG_MNT
 
 
 def test_image_spec_parsing():
@@ -190,11 +189,13 @@ def test_commandline_tag_checkout(pg_repo_local):
     new_head = pg_repo_local.head.image_hash
 
     # sgr tag <repo> <tag>: tags the current HEAD
-    runner.invoke(tag_c, [str(pg_repo_local), 'v2'])
+    result = runner.invoke(tag_c, [str(pg_repo_local), 'v2'])
+    assert result.exit_code == 0
     assert pg_repo_local.images['v2'].image_hash == new_head
 
     # sgr tag <repo>:imagehash <tag>:
-    runner.invoke(tag_c, [str(pg_repo_local) + ':' + old_head[:10], 'v1'])
+    result = runner.invoke(tag_c, [str(pg_repo_local) + ':' + old_head[:10], 'v1'])
+    assert result.exit_code == 0
     assert pg_repo_local.images['v1'].image_hash == old_head
 
     # sgr tag <mountpoint> with the same tag -- expect an error
@@ -370,7 +371,7 @@ def test_splitfile(local_engine_empty, pg_repo_remote):
     assert 'test/pg_mount:%s' % pg_repo_remote.images['latest'].image_hash in result.output
 
     # Second, output the full splitfile (-f)
-    result = runner.invoke(provenance_c, ['output:latest', '-f'], catch_exceptions=False)
+    result = runner.invoke(provenance_c, ['output:latest', '-f'])
     assert 'FROM test/pg_mount:%s IMPORT' % pg_repo_remote.images['latest'].image_hash in result.output
     assert 'SQL CREATE TABLE join_table AS SELECT' in result.output
 
@@ -395,7 +396,7 @@ def test_splitfile_rebuild_update(local_engine_empty, pg_repo_remote_multitag):
     curr_commits = OUTPUT.images()
     result = runner.invoke(rebuild_c, ['output:latest', '-u'])
     assert result.exit_code == 0
-    assert output_v2 == OUTPUT.head.image_hash
+    assert output_v2 == OUTPUT.head
     assert OUTPUT.images() == curr_commits
 
 

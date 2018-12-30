@@ -1,12 +1,12 @@
 from datetime import datetime as dt
 
 from splitgraph import get_engine
-from splitgraph.core.repository import to_repository
+from splitgraph.core.repository import Repository
 from test.splitgraph.conftest import _mount_postgres, _mount_mysql, _mount_mongo
 
-PG_MNT = to_repository("test/pg_mount")
-MG_MNT = to_repository("test_mg_mount")
-MYSQL_MNT = to_repository("test/mysql_mount")
+PG_MNT = Repository.from_schema("test/pg_mount")
+MG_MNT = Repository.from_schema("test_mg_mount")
+MYSQL_MNT = Repository.from_schema("test/mysql_mount")
 
 
 def test_mount_unmount(local_engine_empty):

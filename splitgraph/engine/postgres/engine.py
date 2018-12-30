@@ -9,7 +9,7 @@ from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
-from splitgraph.engine import SQLEngine, ResultShape, ObjectEngine
+from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.mount_handlers import mount_postgres
 
@@ -21,8 +21,8 @@ STM_TRIGGER_NAME = "audit_trigger_stm"
 REMOTE_TMP_SCHEMA = "tmp_remote_data"
 
 
-class PostgresEngine(SQLEngine, ObjectEngine):
-    """An implementation of the Postgres engine for Splitgraph"""
+class PsycopgEngine(SQLEngine):
+    """Postgres SQL engine backed by a Psycopg connection."""
 
     def __init__(self, conn_params, name):
         """
@@ -128,6 +128,10 @@ class PostgresEngine(SQLEngine, ObjectEngine):
             with admin_conn.cursor() as cur:
                 cur.execute(SQL("DROP DATABASE IF EXISTS {}").format(Identifier(database)))
 
+
+class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
+    """Change tracking based on an audit trigger stored procedure"""
+
     def get_tracked_tables(self):
         """Return a list of tables that the audit trigger is working on."""
         return self.run_sql("SELECT DISTINCT event_object_schema, event_object_table "
@@ -204,6 +208,10 @@ class PostgresEngine(SQLEngine, ObjectEngine):
                                WHERE schema_name = %s""").format(Identifier("audit"),
                                                                  Identifier("logged_actions")), (schema,),
                             return_shape=ResultShape.MANY_ONE)
+
+
+class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
+    """An implementation of the Postgres engine for Splitgraph"""
 
     def store_diff_object(self, changeset, schema, table, change_key):
         _create_diff_table(self.connection, table, change_key)

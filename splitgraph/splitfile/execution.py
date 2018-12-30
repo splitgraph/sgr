@@ -9,7 +9,7 @@ from random import getrandbits
 
 from splitgraph.config import CONFIG
 from splitgraph.core.engine import repository_exists, lookup_repo
-from splitgraph.core.repository import to_repository, Repository, clone
+from splitgraph.core.repository import Repository, clone
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.mount_handlers import get_mount_handler
@@ -115,7 +115,7 @@ def _execute_from(node, output):
     output_node = get_first_or_none(interesting_nodes, 'repository')
     if output_node:
         # AS (output) detected, change the current output repository to it.
-        output = to_repository(output_node.match.group(0))
+        output = Repository.from_schema(output_node.match.group(0))
         print("Changed output repository to %s" % str(output))
 
         # NB this destroys all data in the case where we ran some commands in the Splitfile and then
@@ -172,7 +172,7 @@ def _execute_import(node, output):
 
 def _execute_db_import(conn_string, fdw_name, fdw_params, table_names, target_mountpoint, table_aliases, table_queries):
     mount_handler = get_mount_handler(fdw_name)
-    tmp_mountpoint = to_repository(fdw_name + '_tmp_staging')
+    tmp_mountpoint = Repository.from_schema(fdw_name + '_tmp_staging')
     tmp_mountpoint.rm()
     try:
         handler_kwargs = json.loads(fdw_params)
@@ -289,16 +289,14 @@ def _execute_custom(node, output):
         # Worth storing provenance here anyway?
 
 
-def rerun_image_with_replacement(mountpoint, image_hash, source_replacement):
+def rebuild_image(image, source_replacement):
     """
     Recreates the Splitfile used to create a given image and reruns it, replacing its dependencies with a different
     set of versions.
 
-    :param mountpoint: Local repository where the image is located.
-    :param image_hash: Hash of the image to rerun
+    :param image: Image object
     :param source_replacement: A map that specifies replacement images/tags for repositories that the image depends on
     """
-    splitfile_commands = mountpoint.images.by_hash(image_hash).to_splitfile(err_on_end=False,
-                                                                            source_replacement=source_replacement)
+    splitfile_commands = image.to_splitfile(err_on_end=False, source_replacement=source_replacement)
     # Params are supposed to be stored in the commands already (baked in) -- what if there's sensitive data there?
-    execute_commands('\n'.join(splitfile_commands), output=mountpoint)
+    execute_commands('\n'.join(splitfile_commands), output=image.repository)

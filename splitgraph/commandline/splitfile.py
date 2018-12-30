@@ -5,8 +5,8 @@ sgr commands related to building and rebuilding Splitfiles.
 import click
 
 from splitgraph.commandline._common import image_spec_parser
-from splitgraph.core.repository import to_repository
-from splitgraph.splitfile import execute_commands, rerun_image_with_replacement
+from splitgraph.core.repository import Repository
+from splitgraph.splitfile import execute_commands, rebuild_image
 
 
 @click.command(name='build')
@@ -15,7 +15,7 @@ from splitgraph.splitfile import execute_commands, rerun_image_with_replacement
               help='Parameters to be substituted into the Splitfile. All parameters mentioned in the file'
                    ' must be specified in order for the Splitfile to be executed.')
 @click.option('-o', '--output-repository', help='Repository to store the result in.',
-              type=to_repository)
+              type=Repository.from_schema)
 def build_c(splitfile, args, output_repository):
     """
     Build Splitgraph images.
@@ -146,7 +146,7 @@ def rebuild_c(image_spec, update, against):
         else {repo: 'latest' for repo, _ in deps.items()}
     deps.update(new_images)
 
-    print("Rerunning %s:%s against:" % (str(repository), image))
+    print("Rerunning %s:%s against:" % (str(repository), image.image_hash))
     print('\n'.join("%s:%s" % rs for rs in new_images.items()))
 
-    rerun_image_with_replacement(repository, image, new_images)
+    rebuild_image(image, new_images)

@@ -4,12 +4,12 @@ Miscellaneous image management sgr commands.
 
 import click
 
-import splitgraph.core.repository
 from splitgraph import SplitGraphException, CONFIG
 from splitgraph.commandline._common import image_spec_parser
 from splitgraph.config.keys import KEYS, SENSITIVE_KEYS
 from splitgraph.core.engine import init_engine, repository_exists
 from splitgraph.core.object_manager import ObjectManager
+from splitgraph.core.repository import Repository
 from splitgraph.engine import get_engine
 
 
@@ -53,8 +53,7 @@ def rm_c(image_spec, remote, yes):
     """
 
     repository, image = image_spec
-    engine = get_engine(remote or 'LOCAL')
-    repository.switch_engine(engine)
+    repository = Repository.from_template(repository, engine=get_engine(remote or 'LOCAL'))
     if not image:
         print(("Repository" if repository_exists(repository) else "Postgres schema")
               + " %s will be deleted." % repository.to_schema())
@@ -63,7 +62,7 @@ def rm_c(image_spec, remote, yes):
         repository.rm()
     else:
         image = repository.images[image]
-        images_to_delete = repository.images.get_all_child_images(image)
+        images_to_delete = repository.images.get_all_child_images(image.image_hash)
         tags_to_delete = [t for i, t in repository.get_all_hashes_tags() if i in images_to_delete]
 
         print("Images to be deleted:")
@@ -84,12 +83,12 @@ def rm_c(image_spec, remote, yes):
             click.confirm("Continue? ", abort=True)
 
         repository.images.delete(images_to_delete)
-        engine.commit()
+        repository.engine.commit()
         print("Success.")
 
 
 @click.command(name='prune')
-@click.argument('repository', type=splitgraph.core.repository.to_repository)
+@click.argument('repository', type=Repository.from_schema)
 @click.option('-r', '--remote', help="Perform the deletion on a remote instead, specified by its alias")
 @click.option('-y', '--yes', help="Agree to deletion without confirmation", is_flag=True, default=False)
 def prune_c(repository, remote, yes):
@@ -106,8 +105,7 @@ def prune_c(repository, remote, yes):
     This does not delete any physical objects that the deleted repository/images depend on:
     use ``sgr cleanup`` to do that.
     """
-    engine = get_engine(remote or 'LOCAL')
-    repository.switch_engine(engine)
+    repository = Repository.from_template(repository, engine=get_engine(remote or 'LOCAL'))
 
     all_images = set(image.image_hash for image in repository.images())
     all_tagged_images = {i for i, t in repository.get_all_hashes_tags()}
@@ -125,12 +123,12 @@ def prune_c(repository, remote, yes):
         click.confirm("Continue? ", abort=True)
 
     repository.images.delete(dangling_images)
-    engine.commit()
+    repository.engine.commit()
     print("Success.")
 
 
 @click.command(name='init')
-@click.argument('repository', type=splitgraph.core.repository.to_repository, required=False, default=None)
+@click.argument('repository', type=Repository.from_schema, required=False, default=None)
 def init_c(repository):
     """
     Initialize a new repository/engine.
