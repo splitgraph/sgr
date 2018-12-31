@@ -305,7 +305,8 @@ def test_import(pg_repo_local, mg_repo_local):
     new_mg_head = mg_repo_local.commit()
 
     result = runner.invoke(import_c,
-                           [str(mg_repo_local) + ':' + new_mg_head, 'stuff', str(pg_repo_local), 'stuff_empty'])
+                           [str(mg_repo_local) + ':' + new_mg_head.image_hash,
+                            'stuff', str(pg_repo_local), 'stuff_empty'])
     assert result.exit_code == 0
     new_new_new_head = pg_repo_local.head
     assert new_new_new_head.get_table('stuff_empty')
@@ -314,7 +315,8 @@ def test_import(pg_repo_local, mg_repo_local):
 
     # sgr import with query, no alias
     result = runner.invoke(import_c,
-                           [str(mg_repo_local) + ':' + new_mg_head, 'SELECT * FROM stuff', str(pg_repo_local)])
+                           [str(mg_repo_local) + ':' + new_mg_head.image_hash,
+                            'SELECT * FROM stuff', str(pg_repo_local)])
     assert result.exit_code != 0
     assert 'TARGET_TABLE is required' in str(result.stdout)
 
@@ -331,12 +333,12 @@ def test_pull_push(pg_repo_local, pg_repo_remote):
 
     result = runner.invoke(pull_c, [str(pg_repo_local)])
     assert result.exit_code == 0
-    pg_repo_local.images.by_hash(remote_engine_head).checkout()
+    pg_repo_local.images.by_hash(remote_engine_head.image_hash).checkout()
 
     pg_repo_local.run_sql("INSERT INTO fruits VALUES (4, 'mustard')")
     local_head = pg_repo_local.commit()
 
-    assert not pg_repo_remote.images.by_hash(local_head, raise_on_none=False)
+    assert not pg_repo_remote.images.by_hash(local_head.image_hash, raise_on_none=False)
     result = runner.invoke(push_c, [str(pg_repo_local), '-h', 'DB'])
     assert result.exit_code == 0
     assert pg_repo_local.head.get_table('fruits')
@@ -346,7 +348,7 @@ def test_pull_push(pg_repo_local, pg_repo_remote):
     result = runner.invoke(publish_c, [str(pg_repo_local), 'v1', '-r', SPLITFILE_ROOT + 'README.md'])
     assert result.exit_code == 0
     image_hash, published_dt, deps, readme, schemata, previews = get_published_info(pg_repo_remote, 'v1')
-    assert image_hash == local_head
+    assert image_hash == local_head.image_hash
     assert deps == []
     assert readme == "Test readme for a test dataset."
     assert schemata == {'fruits': [['fruit_id', 'integer', False],

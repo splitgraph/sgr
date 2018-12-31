@@ -28,9 +28,9 @@ def test_commit_diff(include_snap, pg_repo_local):
     new_head = pg_repo_local.commit(include_snap=include_snap, comment="test commit")
 
     # After commit, we should be switched to the new commit hash and there should be no differences.
-    assert pg_repo_local.head.image_hash == new_head
+    assert pg_repo_local.head == new_head
     assert pg_repo_local.diff('fruits', image_1=new_head, image_2=None) == []
-    assert pg_repo_local.images.by_hash(new_head).comment == "test commit"
+    assert new_head.comment == "test commit"
     change = pg_repo_local.diff('fruits', image_1=head, image_2=new_head)
     # pk (no PK here so the whole row) -- 0 for INS -- extra non-PK cols
     assert sorted(change) == [  # 1, apple deleted
@@ -104,7 +104,7 @@ def test_multiple_mountpoint_commit_diff(include_snap, pg_repo_local, mg_repo_lo
     mongo_head.checkout()
     assert mg_repo_local.run_sql("SELECT duration from stuff WHERE name = 'James'") == [(Decimal(2),)]
 
-    mg_repo_local.images.by_hash(new_mongo_head).checkout()
+    new_mongo_head.checkout()
     assert mg_repo_local.run_sql("SELECT duration from stuff WHERE name = 'James'") == [(Decimal(15),)]
     assert not mg_repo_local.has_pending_changes()
     assert not pg_repo_local.has_pending_changes()
@@ -122,7 +122,7 @@ def test_delete_all_diff(pg_repo_local):
     new_head = pg_repo_local.commit()
     assert not pg_repo_local.has_pending_changes()
     assert pg_repo_local.diff('fruits', new_head, None) == []
-    assert pg_repo_local.diff('fruits', pg_repo_local.images.by_hash(new_head).parent_id, new_head) == expected_diff
+    assert pg_repo_local.diff('fruits', new_head.parent_id, new_head) == expected_diff
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
@@ -170,8 +170,8 @@ def test_non_ordered_inserts_with_pk(include_snap, local_engine_empty):
 
     OUTPUT.run_sql("INSERT INTO test (a, d, b, c) VALUES (1, 'four', 2, 3)")
     new_head = OUTPUT.commit(include_snap=include_snap)
-    OUTPUT.images.by_hash(head).checkout()
-    OUTPUT.images.by_hash(new_head).checkout()
+    head.checkout()
+    new_head.checkout()
     assert OUTPUT.run_sql("SELECT * FROM test") == [(1, 2, 3, 'four')]
     change = OUTPUT.diff('test', head, new_head)
     assert len(change) == 1
@@ -209,8 +209,8 @@ def test_various_types(include_snap, local_engine_empty):
         B'001110010101010', '2013-11-02 17:30:52', '2013-02-04', true, '{ "a": 123 }',
         'Old Old Parr'::tsvector);""")
     new_head = OUTPUT.commit(include_snap=include_snap)
-    OUTPUT.images.by_hash(head).checkout()
-    OUTPUT.images.by_hash(new_head).checkout()
+    head.checkout()
+    new_head.checkout()
     assert OUTPUT.run_sql("SELECT * FROM test") \
            == [(1, 1, 2, 3, Decimal('3.540'), 876.563, 1.23, 'test      ', 'testtesttesttest',
                 'testtesttesttesttesttesttest', '001110010101010', dt(2013, 11, 2, 17, 30, 52),
@@ -221,7 +221,7 @@ def test_empty_diff_reuses_object(pg_repo_local):
     head_1 = pg_repo_local.commit()
 
     table_meta_1 = pg_repo_local.head.get_table('fruits').objects
-    table_meta_2 = pg_repo_local.images.by_hash(head_1).get_table('fruits').objects
+    table_meta_2 = head_1.get_table('fruits').objects
 
     assert table_meta_1 == table_meta_2
     assert len(table_meta_2) == 1  # Only SNAP stored even if we didn't ask for it, since this is just a pointer
@@ -236,10 +236,10 @@ def test_update_packing_applying(pg_repo_local):
 
     pg_repo_local.run_sql("UPDATE fruits SET name = 'pineapple' WHERE fruit_id = 1")
     new_head = pg_repo_local.commit()
-    pg_repo_local.images.by_hash(old_head).checkout()
+    old_head.checkout()
     assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id = 1") == [(1, 'apple')]
 
-    pg_repo_local.images.by_hash(new_head).checkout()
+    new_head.checkout()
     assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id = 1") == [(1, 'pineapple')]
 
 

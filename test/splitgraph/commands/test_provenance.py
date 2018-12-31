@@ -48,7 +48,7 @@ def test_splitfile_incomplete_provenance(local_engine_empty, pg_repo_remote_mult
     image_with_mount = head_img.get_log()[-2]
     recreated_commands = head_img.to_splitfile(err_on_end=False)
 
-    assert recreated_commands == ["FROM output:%s" % image_with_mount,
+    assert recreated_commands == ["FROM output:%s" % image_with_mount.image_hash,
                                   "SQL CREATE TABLE new_table AS SELECT * FROM all_fruits"]
 
 

@@ -131,11 +131,9 @@ class Image(namedtuple('Image', IMAGE_COLS)):
 
     def get_log(self):
         """Repeatedly gets the parent of a given image until it reaches the bottom."""
-        result = [self.image_hash]
-        image = self
-        while image.parent_id:
-            result.append(image.parent_id)
-            image = self.repository.images.by_hash(image.parent_id)
+        result = [self]
+        while result[-1].parent_id:
+            result.append(self.repository.images.by_hash(result[-1].parent_id))
         return result
 
     def to_splitfile(self, err_on_end=True, source_replacement=None):

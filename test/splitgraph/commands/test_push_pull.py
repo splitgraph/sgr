@@ -28,13 +28,13 @@ def test_pull(local_engine_empty, pg_repo_remote, download_all):
 
     # ...and check it's unchanged on the pulled one.
     assert PG_MNT.run_sql("SELECT * FROM fruits") == [(1, 'apple'), (2, 'orange')]
-    assert PG_MNT.images.by_hash(head_1, raise_on_none=False) is None
+    assert PG_MNT.images.by_hash(head_1.image_hash, raise_on_none=False) is None
 
     # Since the pull procedure initializes a new connection, we have to commit our changes
     # in order to see them.
     pg_repo_remote.engine.commit()
     PG_MNT.pull()
-    head_1 = PG_MNT.images.by_hash(head_1)
+    head_1 = PG_MNT.images.by_hash(head_1.image_hash)
 
     # Check out the newly-pulled commit and verify it has the same data.
     head_1.checkout()
@@ -77,14 +77,14 @@ def test_pulls_with_lazy_object_downloads(local_engine_empty, pg_repo_remote, ke
         assert len(PG_MNT.objects.get_downloaded_objects()) == 2
 
     # Check out left commit: since it only depends on the root, we should download just the new version of fruits.
-    PG_MNT.images.by_hash(left).checkout(keep_downloaded_objects=keep_downloaded)
+    PG_MNT.images.by_hash(left.image_hash).checkout(keep_downloaded_objects=keep_downloaded)
 
     if keep_downloaded:
         assert len(PG_MNT.objects.get_downloaded_objects()) == 3  # now have 2 versions of fruits + 1 vegetables
     else:
         assert not PG_MNT.objects.get_downloaded_objects()
 
-    PG_MNT.images.by_hash(right).checkout(keep_downloaded_objects=keep_downloaded)
+    PG_MNT.images.by_hash(right.image_hash).checkout(keep_downloaded_objects=keep_downloaded)
     if keep_downloaded:
         assert len(PG_MNT.objects.get_downloaded_objects()) == 4  # now have 2 versions of fruits + 1 vegetables
         assert PG_MNT.objects.get_downloaded_objects() == PG_MNT.objects.get_existing_objects()
@@ -109,5 +109,5 @@ def test_push(local_engine_empty, pg_repo_remote):
     # See if the original mountpoint got updated.
     assert len(pg_repo_remote.objects.get_existing_objects()) == 3
 
-    pg_repo_remote.images.by_hash(head_1).checkout()
+    pg_repo_remote.images.by_hash(head_1.image_hash).checkout()
     assert pg_repo_remote.run_sql("SELECT * FROM fruits") == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]

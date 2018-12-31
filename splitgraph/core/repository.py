@@ -396,10 +396,9 @@ class Repository:
         :param include_snap: If True, also creates a SNAP object with a full copy of the table. This will speed up
             checkouts, but consumes extra space.
         :param comment: Optional comment to add to the commit.
-        :return: The image hash the current state of the repository was committed under.
+        :return: The newly created Image object.
         """
 
-        # TODO probably better to return the new Image object.
         logging.info("Committing %s...", self.to_schema())
 
         ensure_metadata_schema(self.engine)
@@ -411,13 +410,13 @@ class Repository:
         if image_hash is None:
             image_hash = "%0.2x" % getrandbits(256)
 
-        self.images.add(head.image_hash, image_hash, comment=comment)
+        self.images.add(head.image_hash if head else None, image_hash, comment=comment)
         self._commit(head, image_hash, include_snap=include_snap)
 
         set_head(self, image_hash)
         manage_audit_triggers(self.engine)
         self.engine.commit()
-        return image_hash
+        return self.images.by_hash(image_hash)
 
     def _commit(self, head, image_hash, include_snap=False):
         """
@@ -767,8 +766,8 @@ class Repository:
         changelog. Otherwise, it materializes both tables into a temporary space and compares them row-to-row.
 
         :param table_name: Name of the table.
-        :param image_1: First image. If None, uses the state of the current staging area.
-        :param image_2: Second image. If None, uses the state of the current staging area.
+        :param image_1: First image hash / object. If None, uses the state of the current staging area.
+        :param image_2: Second image hash / object. If None, uses the state of the current staging area.
         :param aggregate: If True, returns a tuple of integers denoting added, removed and updated rows between
             the two images.
         :return: If the table doesn't exist in one of the images, returns True if it was added and False if it was
@@ -784,6 +783,11 @@ class Repository:
                     that particular row.
         """
 
+        if isinstance(image_1, str):
+            image_1 = self.images.by_hash(image_1)
+        if isinstance(image_2, str):
+            image_2 = self.images.by_hash(image_2)
+
         # If the table doesn't exist in the first or the second image, short-circuit and
         # return the bool.
         if not table_exists_at(self, table_name, image_1):
@@ -792,26 +796,24 @@ class Repository:
             return False
 
         # Special case: if diffing HEAD and staging, then just return the current pending changes.
-        head = self.head.image_hash
-
-        if image_1 == head and image_2 is None:
+        if image_1 == self.head and image_2 is None:
             changes = self.engine.get_pending_changes(self.to_schema(), table_name, aggregate=aggregate)
             return list(changes) if not aggregate else aggregate_changes(changes)
 
         # If the table is the same in the two images, short circuit as well.
         if image_2 is not None:
-            if set(self.images.by_hash(image_1).get_table(table_name).objects) == \
-                    set(self.images.by_hash(image_2).get_table(table_name).objects):
+            if set(image_1.get_table(table_name).objects) == \
+                    set(image_2.get_table(table_name).objects):
                 return [] if not aggregate else (0, 0, 0)
 
         # Otherwise, check if image_1 is a parent of image_2, then we can merge all the diffs.
         # FIXME: we have to find if there's a path between two _objects_ representing these tables that's made out
         # of DIFFs.
-        path = find_path(self, image_1, (image_2 if image_2 is not None else head))
+        path = find_path(self, image_1.image_hash, (image_2 if image_2 is not None else self.head).image_hash)
         if path is not None:
             result = merged_diff(self, table_name, path, aggregate)
             if result is None:
-                return slow_diff(self, table_name, image_1, image_2, aggregate)
+                return slow_diff(self, table_name, hash_or_none(image_1), hash_or_none(image_2), aggregate)
 
             # If snap_2 is staging, also include all changes that have happened since the last commit.
             if image_2 is None:
@@ -822,7 +824,7 @@ class Repository:
             return result
 
         # Finally, resort to manual diffing (images on different branches or reverse comparison order).
-        return slow_diff(self, table_name, image_1, image_2, aggregate)
+        return slow_diff(self, table_name, hash_or_none(image_1), hash_or_none(image_2), aggregate)
 
 
 def import_table_from_remote(remote_repository, remote_tables, remote_image_hash, target_repository, target_tables,
@@ -864,11 +866,11 @@ def find_path(repository, hash_1, hash_2):
             return path
 
 
-def table_exists_at(repository, table_name, image_hash):
+def table_exists_at(repository, table_name, image=None):
     """Determines whether a given table exists in a Splitgraph image without checking it out. If `image_hash` is None,
     determines whether the table exists in the current staging area."""
-    return repository.engine.table_exists(repository.to_schema(), table_name) if image_hash is None \
-        else bool(repository.images.by_hash(image_hash).get_table(table_name))
+    return repository.engine.table_exists(repository.to_schema(), table_name) if image is None \
+        else bool(image.get_table(table_name))
 
 
 def clone(remote_repository, local_repository=None, download_all=False):
@@ -883,6 +885,8 @@ def clone(remote_repository, local_repository=None, download_all=False):
     :param local_repository: Local repository to clone into. If None, uses the same name as the remote.
     :param download_all: If True, downloads all objects and stores them locally. Otherwise, will only download required
         objects when a table is checked out.
+
+    :return A locally cloned Repository object
     """
     if isinstance(remote_repository, str):
         remote_repository = lookup_repo(remote_repository, include_local=False)
@@ -895,3 +899,9 @@ def clone(remote_repository, local_repository=None, download_all=False):
 
     if local_repository.get_upstream() is None:
         local_repository.set_upstream(remote_repository)
+
+    return local_repository
+
+
+def hash_or_none(image):
+    return image.image_hash if image is not None else None

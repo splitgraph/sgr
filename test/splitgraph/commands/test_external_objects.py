@@ -43,10 +43,10 @@ def test_s3_push_pull(local_engine_empty, pg_repo_remote, clean_minio):
     assert len(PG_MNT.objects.get_downloaded_objects()) == 0
 
     # Check out left commit: since it only depends on the root, we should download just the new version of fruits.
-    PG_MNT.images.by_hash(left).checkout()
+    left.checkout()
     assert len(PG_MNT.objects.get_downloaded_objects()) == 3  # now have 2 versions of fruits + 1 vegetables
 
-    PG_MNT.images.by_hash(right).checkout()
+    right.checkout()
     assert len(PG_MNT.objects.get_downloaded_objects()) == 4
     # Only now we actually have all the objects materialized.
     assert PG_MNT.objects.get_downloaded_objects() == PG_MNT.objects.get_existing_objects()

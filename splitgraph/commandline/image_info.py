@@ -33,9 +33,8 @@ def log_c(repository, tree):
         head = repository.head
         log = head.get_log()
         for entry in log:
-            image_info = repository.images.by_hash(entry)
-            print("%s %s %s %s" % ("H->" if entry == head else "   ", entry, image_info.created,
-                                   image_info.comment or ""))
+            print("%s %s %s %s" % ("H->" if entry == head else "   ", entry.image_hash, entry.created,
+                                   entry.comment or ""))
 
 
 @click.command(name='diff')

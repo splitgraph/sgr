@@ -14,18 +14,18 @@ def test_log_checkout(include_snap, pg_repo_local):
 
     head_2 = pg_repo_local.commit(include_snap=include_snap)
 
-    assert pg_repo_local.head.image_hash == head_2
+    assert pg_repo_local.head == head_2
     # 4 images (last one is the empty 00000... image -- should try to avoid having that 0 image at all
     # in the future)
-    assert pg_repo_local.images.by_hash(head_2).get_log()[:3] == [head_2, head_1, head.image_hash]
+    assert head_2.get_log()[:3] == [head_2, head_1, head]
 
     head.checkout()
     assert pg_repo_local.run_sql("SELECT * FROM fruits") == [(1, 'apple'), (2, 'orange')]
 
-    pg_repo_local.images.by_hash(head_1).checkout()
+    head_1.checkout()
     assert pg_repo_local.run_sql("SELECT * FROM fruits") == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]
 
-    pg_repo_local.images.by_hash(head_2).checkout()
+    head_2.checkout()
     assert pg_repo_local.run_sql("SELECT * FROM fruits") == [(2, 'orange'), (3, 'mayonnaise')]
 
 
@@ -46,7 +46,7 @@ def test_table_changes(include_snap, pg_repo_local):
     assert pg_repo_local.diff('fruits_copy', image_1=head.image_hash, image_2=head_1) is True
 
     # Go back and now delete a table
-    pg_repo_local.images.by_hash(head_1).checkout()
+    head_1.checkout()
     assert pg_repo_local.engine.table_exists(pg_repo_local.to_schema(), 'fruits_copy')
     pg_repo_local.engine.delete_table(pg_repo_local.to_schema(), "fruits")
     assert not pg_repo_local.engine.table_exists(pg_repo_local.to_schema(), 'fruits')
@@ -58,9 +58,9 @@ def test_table_changes(include_snap, pg_repo_local):
     # Go through the 3 commits and ensure the table existence is maintained
     head.checkout()
     assert pg_repo_local.engine.table_exists(pg_repo_local.to_schema(), 'fruits')
-    pg_repo_local.images.by_hash(head_1).checkout()
+    head_1.checkout()
     assert pg_repo_local.engine.table_exists(pg_repo_local.to_schema(), 'fruits')
-    pg_repo_local.images.by_hash(head_2).checkout()
+    head_2.checkout()
     assert not pg_repo_local.engine.table_exists(pg_repo_local.to_schema(), 'fruits')
 
 
@@ -74,18 +74,18 @@ def test_tagging(pg_repo_local):
     right = pg_repo_local.commit()
 
     head.tag('base')
-    pg_repo_local.images.by_hash(right).tag('right')
+    right.tag('right')
 
     pg_repo_local.images['base'].checkout()
     assert pg_repo_local.head == head
 
     pg_repo_local.images['right'].checkout()
-    assert pg_repo_local.head.image_hash == right
+    assert pg_repo_local.head == right
 
     hashes_tags = pg_repo_local.get_all_hashes_tags()
     assert (head.image_hash, 'base') in hashes_tags
-    assert (right, 'right') in hashes_tags
-    assert (right, 'HEAD') in hashes_tags
+    assert (right.image_hash, 'right') in hashes_tags
+    assert (right.image_hash, 'HEAD') in hashes_tags
 
 
 def test_image_resolution(pg_repo_local):

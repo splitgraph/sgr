@@ -39,9 +39,8 @@ def test_dummy_command(pg_repo_local):
     log = OUTPUT.head.get_log()
 
     assert len(log) == 3  # Base 000.., import from test/pg_mount, DUMMY run that created a dupe image
-    img_0 = OUTPUT.images.by_hash(log[0])
-    assert img_0.get_tables() == OUTPUT.images.by_hash(log[1]).get_tables()
-    assert img_0.comment == 'DUMMY arg1 --arg2 "argument three"'
+    assert log[0].get_tables() == log[1].get_tables()
+    assert log[0].comment == 'DUMMY arg1 --arg2 "argument three"'
 
     # Run the command again -- since it returns a random hash every time, it should add yet another image to the base.
     execute_commands(load_splitfile('custom_command_dummy.splitfile'), output=OUTPUT)
@@ -62,9 +61,9 @@ def test_calc_hash_short_circuit(pg_repo_local):
     # Run 1: table gets dropped (since the image doesn't exist)
     log = OUTPUT.head.get_log()
     assert len(log) == 3  # Base 000.., import from test/pg_mount, drop table fruits
-    assert OUTPUT.images.by_hash(log[0]).get_tables() == []
+    assert log[0].get_tables() == []
     # Hash: combination of the previous image hash and the command context (unchanged)
-    assert log[0] == _combine_hashes([log[1], "deadbeef" * 8])
+    assert log[0].image_hash == _combine_hashes([log[1].image_hash, "deadbeef" * 8])
 
     # Run 2: same command context hash, same original image -- no effect
     with patch('test.splitgraph.splitfile.test_custom_commands.CalcHashTestCommand.execute') as cmd:
@@ -85,11 +84,11 @@ def test_calc_hash_short_circuit(pg_repo_local):
 
         # Since we patched the execute() out, it won't have run the DROP TABLE command so we don't check for that.
         # However, the sg_meta is still altered.
-        assert log_3[0] == _combine_hashes([log_3[1], "deadbeef" * 8])
+        assert log_3[0].image_hash == _combine_hashes([log_3[1].image_hash, "deadbeef" * 8])
         # Import from test/pg_mount changed (since the actual repo changed)
-        assert log_3[1] != log[1]
+        assert log_3[1].image_hash != log[1].image_hash
         # Base layer (00000...) unchanged
-        assert log_3[2] == log[2]
+        assert log_3[2].image_hash == log[2].image_hash
 
 
 def test_custom_command_errors(pg_repo_local):

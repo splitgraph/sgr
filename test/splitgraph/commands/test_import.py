@@ -34,7 +34,7 @@ def test_import_preserves_existing_tables(pg_repo_local):
     pg_repo_local.import_tables(tables=['fruits'], target_repository=OUTPUT, target_tables=['imported_fruits'])
     new_head = OUTPUT.head
 
-    OUTPUT.images.by_hash(head).checkout()
+    head.checkout()
     assert OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'test')
     assert not OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'imported_fruits')
 
@@ -53,7 +53,7 @@ def test_import_preserves_pending_changes(pg_repo_local):
 
     pg_repo_local.import_tables(tables=['fruits'], target_repository=OUTPUT, target_tables=['imported_fruits'])
 
-    assert OUTPUT.head.parent_id == head
+    assert OUTPUT.head.parent_id == head.image_hash
     assert changes == OUTPUT.engine.get_pending_changes(OUTPUT.to_schema(), 'test')
 
 
@@ -90,7 +90,7 @@ def test_import_from_remote(local_engine_empty, pg_repo_remote):
     assert sorted(local_engine_empty.get_all_tables(OUTPUT.to_schema())) == ['fruits', 'test']
     local_objects.cleanup()
     assert len(get_current_repositories(local_engine_empty)) == 1
-    OUTPUT.images.by_hash(head).checkout()
+    head.checkout()
     assert local_engine_empty.table_exists(OUTPUT.to_schema(), 'test')
     assert not local_engine_empty.table_exists(OUTPUT.to_schema(), 'fruits')
 
@@ -118,5 +118,5 @@ def test_import_and_update(local_engine_empty, pg_repo_remote):
     new_head.checkout()
     assert OUTPUT.run_sql("SELECT * FROM fruits") == [(1, 'apple'), (2, 'orange')]
 
-    OUTPUT.images.by_hash(new_head_2).checkout()
+    new_head_2.checkout()
     assert OUTPUT.run_sql("SELECT * FROM fruits") == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]

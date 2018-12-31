@@ -32,13 +32,13 @@ def test_basic_splitfile(pg_repo_local, mg_repo_local):
     execute_commands(load_splitfile('create_table.splitfile'), output=OUTPUT)
     log = list(reversed(OUTPUT.head.get_log()))
 
-    OUTPUT.images.by_hash(log[1]).checkout()
+    log[1].checkout()
     assert OUTPUT.run_sql("SELECT * FROM my_fruits") == []
 
-    OUTPUT.images.by_hash(log[2]).checkout()
+    log[2].checkout()
     assert OUTPUT.run_sql("SELECT * FROM my_fruits") == [(1, 'pineapple')]
 
-    OUTPUT.images.by_hash(log[3]).checkout()
+    log[3].checkout()
     assert OUTPUT.run_sql("SELECT * FROM my_fruits") == [(1, 'pineapple'), (2, 'banana')]
 
 
@@ -48,10 +48,10 @@ def test_update_without_import_splitfile(pg_repo_local, mg_repo_local):
     execute_commands(load_splitfile('update_without_import.splitfile'), output=OUTPUT)
     log = OUTPUT.head.get_log()
 
-    OUTPUT.images.by_hash(log[1]).checkout()
+    log[1].checkout()
     assert OUTPUT.run_sql("SELECT * FROM my_fruits") == []
 
-    OUTPUT.images.by_hash(log[0]).checkout()
+    log[0].checkout()
     assert OUTPUT.run_sql("SELECT * FROM my_fruits") == [(1, 'pineapple')]
 
 
@@ -117,7 +117,7 @@ def test_splitfile_remote_hash(local_engine_empty, pg_repo_remote):
 
 def test_import_updating_splitfile_with_uploading(local_engine_empty, remote_engine, pg_repo_remote):
     execute_commands(load_splitfile('import_and_update.splitfile'), output=OUTPUT)
-    head = OUTPUT.head.image_hash
+    head = OUTPUT.head
 
     assert len(OUTPUT.objects.get_existing_objects()) == 4  # Two original tables + two updates
 
@@ -140,7 +140,7 @@ def test_import_updating_splitfile_with_uploading(local_engine_empty, remote_eng
     # Only 2 objects are stored externally (the other two have been on the remote the whole time)
     assert len(OUTPUT.objects.get_external_object_locations(existing_objects)) == 2
 
-    OUTPUT.images.by_hash(head).checkout()
+    head.checkout()
     assert OUTPUT.run_sql("SELECT fruit_id, name FROM my_fruits") == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]
 
 

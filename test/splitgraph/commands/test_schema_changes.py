@@ -36,7 +36,7 @@ def test_schema_changes(pg_repo_local, test_case):
     assert pg_repo_local.engine.get_full_table_schema(pg_repo_local.to_schema(), 'fruits') == expected_new_schema
 
     head = pg_repo_local.head
-    new_head = pg_repo_local.images.by_hash(pg_repo_local.commit())
+    new_head = pg_repo_local.commit()
 
     # Test that the new image only has a snap and the object storing the snap has the expected new schema
     assert new_head.get_table('fruits').get_object('DIFF') is None
@@ -63,5 +63,5 @@ def test_pk_preserved_on_checkout(pg_repo_local):
 
     head.checkout()
     assert list(pg_repo_local.engine.get_primary_keys(pg_repo_local.to_schema(), 'fruits')) == []
-    pg_repo_local.images.by_hash(new_head).checkout()
+    new_head.checkout()
     assert list(pg_repo_local.engine.get_primary_keys(pg_repo_local.to_schema(), 'fruits')) == [('fruit_id', 'integer')]
