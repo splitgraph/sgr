@@ -5,7 +5,8 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA
 
 class Table:
     """Represents a Splitgraph table in a given image. Shouldn't be created directly, use Table-loading
-    methods in the :class:`splitgraph.core.Image` class instead."""
+    methods in the :class:`splitgraph.core.image.Image` class instead."""
+
     def __init__(self, repository, image, table_name, objects):
         self.repository = repository
         self.image = image

@@ -6,10 +6,10 @@ from random import getrandbits
 from psycopg2._json import Json
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph import SplitGraphException
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core._common import META_TABLES, select, insert
 from splitgraph.engine import ResultShape
+from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.external_objects import get_external_object_handler
 
 
@@ -44,6 +44,7 @@ class ObjectManager:
     def register_objects(self, object_meta):
         """
         Registers multiple Splitgraph objects in the tree. See `register_object` for more information.
+
         :param object_meta: List of (object_id, format, parent_id, namespace).
         """
         self.object_engine.run_sql_batch(insert("objects", ("object_id", "format", "parent_id", "namespace")),
@@ -78,6 +79,7 @@ class ObjectManager:
     def get_existing_objects(self):
         """
         Gets all objects currently in the Splitgraph tree.
+
         :return: Set of object IDs.
         """
         return set(self.object_engine.run_sql(select("objects", "object_id"), return_shape=ResultShape.MANY_ONE))

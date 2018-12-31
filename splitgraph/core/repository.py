@@ -21,12 +21,6 @@ from .object_manager import ObjectManager, get_random_object_id
 from .registry import publish_tag
 
 
-# OO API porting plan:
-# [ ] move things out from Repository into more appropriate classes
-# [ ] look at which parts of the Image API should return Image objects and which -- hashes
-# [ ] Document the new API, regenerate the docs
-
-
 class ImageManager:
     """Collects various image-related functions."""
 
@@ -237,7 +231,6 @@ class Repository:
     def init(self):
         """
         Initializes an empty repo with an initial commit (hash 0000...)
-
         """
         self.engine.create_schema(self.to_schema())
         initial_image = '0' * 64
@@ -689,13 +682,13 @@ class Repository:
     def push(self, remote_repository=None, handler='DB', handler_options=None):
         """
         Inverse of ``pull``: Pushes all local changes to the remote and uploads new objects.
-.
+
         :param remote_repository: Remote repository to push changes to. If not specified, the current
             upstream is used.
         :param handler: Name of the handler to use to upload objects. Use `DB` to push them to the remote or `S3`
             to store them in an S3 bucket.
         :param handler_options: Extra options to pass to the handler. For example, see
-            :class:`splitgraph.hooks.s3.S3ExternalObjectHandler`
+            :class:`splitgraph.hooks.s3.S3ExternalObjectHandler`.
         """
         ensure_metadata_schema(self.engine)
         # Maybe consider having a context manager for getting a remote engine instance
@@ -883,8 +876,7 @@ def clone(remote_repository, local_repository=None, download_all=False):
     :param local_repository: Local repository to clone into. If None, uses the same name as the remote.
     :param download_all: If True, downloads all objects and stores them locally. Otherwise, will only download required
         objects when a table is checked out.
-
-    :return A locally cloned Repository object
+    :return: A locally cloned Repository object.
     """
     if isinstance(remote_repository, str):
         remote_repository = lookup_repo(remote_repository, include_local=False)

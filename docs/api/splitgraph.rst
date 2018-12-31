@@ -6,22 +6,14 @@ Subpackages
 
 .. toctree::
 
-    splitgraph.commands
     splitgraph.config
+    splitgraph.core
     splitgraph.engine
     splitgraph.hooks
     splitgraph.splitfile
 
 Submodules
 ----------
-
-splitgraph.connection module
-----------------------------
-
-.. automodule:: splitgraph.connection
-    :members:
-    :undoc-members:
-    :show-inheritance:
 
 splitgraph.exceptions module
 ----------------------------

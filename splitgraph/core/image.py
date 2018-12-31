@@ -6,9 +6,9 @@ from collections import namedtuple
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph import SplitGraphException
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import ResultShape
+from splitgraph.exceptions import SplitGraphException
 from ._common import set_tag, select, manage_audit, set_head
 from .table import Table
 
@@ -21,7 +21,7 @@ _PROV_QUERY = SQL("""UPDATE {}.images SET provenance_type = %s, provenance_data 
 class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
     """
     Represents a Splitgraph image. Should't be created directly, use Image-loading methods in the
-    :class:`splitgraph.core.Repository` class instead.
+    :class:`splitgraph.core.repository.Repository` class instead.
     """
 
     def __new__(cls, *args, **kwargs):
