@@ -512,18 +512,18 @@ class Repository:
     # --- IMPORTING TABLES ---
 
     @manage_audit
-    def import_tables(self, tables, target_repository, target_tables, image_hash=None, foreign_tables=False,
+    def import_tables(self, tables, source_repository, source_tables, image_hash=None, foreign_tables=False,
                       do_checkout=True, target_hash=None, table_queries=None):
         """
         Creates a new commit in target_repository with one or more tables linked to already-existing tables.
         After this operation, the HEAD of the target repository moves to the new commit and the new tables are
         materialized.
 
-        :param tables: List of tables to import. If empty, imports all tables.
-        :param target_repository: Repository to import tables into.
-        :param target_tables: If not empty, must be the list of the same length as `tables` specifying names to store
+        :param tables: If not empty, must be the list of the same length as `source_tables` specifying names to store
             them under in the target repository.
-        :param image_hash: Commit hash on the source mountpoint to import tables from.
+        :param source_repository: Repository to import tables from.
+        :param source_tables: List of tables to import. If empty, imports all tables.
+        :param image_hash: Image hash in the source repository to import tables from.
             Uses the current source HEAD by default.
         :param foreign_tables: If True, copies all source tables to create a series of new SNAP objects instead of
             treating them as Splitgraph-versioned tables. This is useful for adding brand new tables
@@ -536,49 +536,47 @@ class Repository:
             query. This is committed as a new snapshot.
         :return: Hash that the new image was stored under.
         """
-        # TODO import: should this be the method of the source repo/image instead?
-
         # Sanitize/validate the parameters and call the internal function.
         if table_queries is None:
             table_queries = []
         target_hash = target_hash or "%0.2x" % getrandbits(256)
 
         if not foreign_tables:
-            image = self.images.by_hash(image_hash) if image_hash else self.head
+            image = source_repository.images.by_hash(image_hash) if image_hash else source_repository.head
         else:
             image = None
 
+        if not source_tables:
+            source_tables = image.get_tables() if not foreign_tables \
+                else source_repository.engine.get_all_tables(source_repository.to_schema())
         if not tables:
-            tables = image.get_tables() if not foreign_tables \
-                else self.engine.get_all_tables(self.to_schema())
-        if not target_tables:
             if table_queries:
                 raise ValueError("target_tables has to be defined if table_queries is True!")
-            target_tables = tables
+            tables = source_tables
         if not table_queries:
             table_queries = [False] * len(tables)
-        if len(tables) != len(target_tables) or len(tables) != len(table_queries):
-            raise ValueError("tables, target_tables and table_queries have mismatching lengths!")
+        if len(tables) != len(source_tables) or len(source_tables) != len(table_queries):
+            raise ValueError("tables, source_tables and table_queries have mismatching lengths!")
 
-        existing_tables = self.engine.get_all_tables(target_repository.to_schema())
-        clashing = [t for t in target_tables if t in existing_tables]
+        existing_tables = self.engine.get_all_tables(self.to_schema())
+        clashing = [t for t in tables if t in existing_tables]
         if clashing:
-            raise ValueError("Table(s) %r already exist(s) at %s!" % (clashing, target_repository))
+            raise ValueError("Table(s) %r already exist(s) at %s!" % (clashing, self))
 
-        return self._import_tables(image, tables, target_repository, target_hash, target_tables, do_checkout,
+        return self._import_tables(image, tables, source_repository, target_hash, source_tables, do_checkout,
                                    table_queries, foreign_tables)
 
-    def _import_tables(self, image, tables, target_repository, target_hash, target_tables, do_checkout,
+    def _import_tables(self, image, tables, source_repository, target_hash, source_tables, do_checkout,
                        table_queries, foreign_tables):
         engine = self.engine
-        engine.create_schema(target_repository.to_schema())
+        engine.create_schema(self.to_schema())
 
         # This importing route only supported between local repos.
-        assert engine == target_repository.engine
+        assert engine == source_repository.engine
 
-        head = target_repository.head
-        target_repository.images.add(head.image_hash if head else None,
-                                     target_hash, comment="Importing %s from %s" % (tables, self))
+        head = self.head
+        self.images.add(head.image_hash if head else None, target_hash,
+                        comment="Importing %s from %s" % (tables, source_repository))
 
         if any(table_queries) and not foreign_tables:
             # If we want to run some queries against the source repository to create the new tables,
@@ -586,32 +584,33 @@ class Repository:
             image.checkout()
 
         # Materialize the actual tables in the target repository and register them.
-        for table, target_table, is_query in zip(tables, target_tables, table_queries):
+        for source_table, target_table, is_query in zip(source_tables, tables, table_queries):
             if foreign_tables or is_query:
                 # For foreign tables/SELECT queries, we define a new object/table instead.
                 object_id = get_random_object_id()
                 if is_query:
                     # is_query precedes foreign_tables: if we're importing using a query, we don't care if it's a
                     # foreign table or not since we're storing it as a full snapshot.
-                    engine.execute_sql_in(self.to_schema(),
+                    engine.execute_sql_in(source_repository.to_schema(),
                                           SQL("CREATE TABLE {}.{} AS ").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                               Identifier(object_id)) + SQL(table))
+                                                                               Identifier(object_id))
+                                          + SQL(source_table))
                 elif foreign_tables:
-                    self.engine.copy_table(self.to_schema(), table, SPLITGRAPH_META_SCHEMA, object_id)
+                    self.engine.copy_table(source_repository.to_schema(), source_table, SPLITGRAPH_META_SCHEMA,
+                                           object_id)
 
                 # Might not be necessary if we don't actually want to materialize the snapshot (wastes space).
-                self.objects.register_object(object_id, 'SNAP', namespace=target_repository.namespace,
+                self.objects.register_object(object_id, 'SNAP', namespace=self.namespace,
                                              parent_object=None)
-                self.objects.register_table(target_repository, target_table, target_hash, object_id)
+                self.objects.register_table(self, target_table, target_hash, object_id)
                 if do_checkout:
-                    self.engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, target_repository.to_schema(),
-                                           target_table)
+                    self.engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, self.to_schema(), target_table)
             else:
-                table_obj = image.get_table(table)
+                table_obj = image.get_table(source_table)
                 for object_id, _ in table_obj.objects:
-                    self.objects.register_table(target_repository, target_table, target_hash, object_id)
+                    self.objects.register_table(self, target_table, target_hash, object_id)
                 if do_checkout:
-                    table_obj.materialize(target_table, destination_schema=target_repository.to_schema())
+                    table_obj.materialize(target_table, destination_schema=self.to_schema())
         # Register the existing tables at the new commit as well.
         if head is not None:
             # Maybe push this into the tables API (currently have to make 2 queries)
@@ -619,10 +618,9 @@ class Repository:
                     (SELECT %s, %s, %s, table_name, object_id FROM {0}.tables
                     WHERE namespace = %s AND repository = %s AND image_hash = %s)""")
                            .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                           (target_repository.namespace, target_repository.repository,
-                            target_hash, target_repository.namespace, target_repository.repository, head.image_hash),
-                           return_shape=None)
-        set_head(target_repository, target_hash)
+                           (self.namespace, self.repository, target_hash,
+                            self.namespace, self.repository, head.image_hash))
+        set_head(self, target_hash)
         return target_hash
 
     # --- SYNCING WITH OTHER REPOSITORIES ---
@@ -813,7 +811,7 @@ class Repository:
         if path is not None:
             result = merged_diff(self, table_name, path, aggregate)
             if result is None:
-                return slow_diff(self, table_name, hash_or_none(image_1), hash_or_none(image_2), aggregate)
+                return slow_diff(self, table_name, _hash(image_1), _hash(image_2), aggregate)
 
             # If snap_2 is staging, also include all changes that have happened since the last commit.
             if image_2 is None:
@@ -824,7 +822,7 @@ class Repository:
             return result
 
         # Finally, resort to manual diffing (images on different branches or reverse comparison order).
-        return slow_diff(self, table_name, hash_or_none(image_1), hash_or_none(image_2), aggregate)
+        return slow_diff(self, table_name, _hash(image_1), _hash(image_2), aggregate)
 
 
 def import_table_from_remote(remote_repository, remote_tables, remote_image_hash, target_repository, target_tables,
@@ -849,8 +847,8 @@ def import_table_from_remote(remote_repository, remote_tables, remote_image_hash
                                 repository=remote_repository.repository + '_clone_tmp')
 
     clone(remote_repository, local_repository=tmp_mountpoint, download_all=False)
-    tmp_mountpoint.import_tables(remote_tables, target_repository, target_tables, image_hash=remote_image_hash,
-                                 target_hash=target_hash)
+    target_repository.import_tables(target_tables, tmp_mountpoint, remote_tables, image_hash=remote_image_hash,
+                                    target_hash=target_hash)
 
     tmp_mountpoint.rm()
     target_repository.engine.commit()
@@ -903,5 +901,5 @@ def clone(remote_repository, local_repository=None, download_all=False):
     return local_repository
 
 
-def hash_or_none(image):
+def _hash(image):
     return image.image_hash if image is not None else None

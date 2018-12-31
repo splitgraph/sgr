@@ -183,9 +183,8 @@ def _execute_db_import(conn_string, fdw_name, fdw_params, table_names, target_mo
         # The foreign database is a moving target, so the new image hash is random.
         # Maybe in the future, when the object hash is a function of its contents, we can be smarter here...
         target_hash = "%0.2x" % getrandbits(256)
-
-        tmp_mountpoint.import_tables(table_names, target_mountpoint, table_aliases, target_hash=target_hash,
-                                     foreign_tables=True, table_queries=table_queries)
+        target_mountpoint.import_tables(table_aliases, tmp_mountpoint, table_names, target_hash=target_hash,
+                                        foreign_tables=True, table_queries=table_queries)
         target_mountpoint.images.by_hash(target_hash).set_provenance('MOUNT')
     finally:
         tmp_mountpoint.rm()
@@ -227,7 +226,7 @@ def _execute_repo_import(repository, table_names, tag_or_hash, target_repository
         def _calc():
             print("Importing tables %r:%s from %s into %s" % (
                 table_names, source_hash[:12], str(repository), str(target_repository)))
-            source_mountpoint.import_tables(table_names, target_repository, table_aliases, image_hash=source_hash,
+            target_repository.import_tables(table_aliases, source_mountpoint, table_names, image_hash=source_hash,
                                             target_hash=target_hash, table_queries=table_queries)
             target_repository.images.by_hash(target_hash).set_provenance('IMPORT', source_repository=repository,
                                                                          source_hash=source_hash,

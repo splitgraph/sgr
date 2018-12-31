@@ -159,7 +159,6 @@ def test_splitfile_end_to_end_with_uploading(local_engine_empty, remote_engine,
     remote_output = Repository(OUTPUT.namespace, OUTPUT.repository, remote_engine)
 
     # Push with upload
-    # TODO maybe push/clone should return the target repos they pushed to
     OUTPUT.push(remote_repository=remote_output, handler='S3', handler_options={})
     # Unmount everything locally and cleanup
     for mountpoint, _ in get_current_repositories(local_engine_empty):

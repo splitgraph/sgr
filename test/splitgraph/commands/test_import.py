@@ -18,8 +18,7 @@ def test_import_basic(pg_repo_local):
     OUTPUT.init()
     head = OUTPUT.head
 
-    # todo maybe flip the import tables -- or make it part of the Image class instead
-    pg_repo_local.import_tables(tables=['fruits'], target_repository=OUTPUT, target_tables=['imported_fruits'])
+    OUTPUT.import_tables(tables=['imported_fruits'], source_repository=pg_repo_local, source_tables=['fruits'])
 
     assert OUTPUT.run_sql("SELECT * FROM imported_fruits") == pg_repo_local.run_sql("SELECT * FROM fruits")
     new_head = OUTPUT.head
@@ -31,7 +30,7 @@ def test_import_basic(pg_repo_local):
 def test_import_preserves_existing_tables(pg_repo_local):
     # Create a new schema and import 'fruits' from the mounted PG table.
     head = _setup_dataset()
-    pg_repo_local.import_tables(tables=['fruits'], target_repository=OUTPUT, target_tables=['imported_fruits'])
+    OUTPUT.import_tables(tables=['imported_fruits'], source_repository=pg_repo_local, source_tables=['fruits'])
     new_head = OUTPUT.head
 
     head.checkout()
@@ -51,7 +50,7 @@ def test_import_preserves_pending_changes(pg_repo_local):
     OUTPUT.run_sql("INSERT INTO test VALUES (2, 'test2')")
     changes = get_engine().get_pending_changes(OUTPUT.to_schema(), 'test')
 
-    pg_repo_local.import_tables(tables=['fruits'], target_repository=OUTPUT, target_tables=['imported_fruits'])
+    OUTPUT.import_tables(tables=['imported_fruits'], source_repository=pg_repo_local, source_tables=['fruits'])
 
     assert OUTPUT.head.parent_id == head.image_hash
     assert changes == OUTPUT.engine.get_pending_changes(OUTPUT.to_schema(), 'test')
@@ -60,7 +59,7 @@ def test_import_preserves_pending_changes(pg_repo_local):
 def test_import_multiple_tables(pg_repo_local):
     OUTPUT.init()
     head = OUTPUT.head
-    pg_repo_local.import_tables(tables=[], target_repository=OUTPUT, target_tables=[])
+    OUTPUT.import_tables(tables=[], source_repository=pg_repo_local, source_tables=[])
 
     for table_name in ['fruits', 'vegetables']:
         assert OUTPUT.run_sql("SELECT * FROM %s" % table_name) == pg_repo_local.run_sql("SELECT * FROM %s" % table_name)

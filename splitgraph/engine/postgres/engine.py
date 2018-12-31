@@ -50,6 +50,7 @@ class PsycopgEngine(SQLEngine):
 
     @property
     def connection(self):
+        """Engine-internal Psycopg connection. Will (re)open if closed/doesn't exist."""
         if self._conn is None or self._conn.closed:
             logging.info("Initializing engine connection...")
             self._conn = make_conn(*self.conn_params)
@@ -140,16 +141,15 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
 
     def track_tables(self, tables):
         """Install the audit trigger on the required tables"""
-        # FIXME: escaping for schema + . + table
-        self.run_sql_batch("SELECT audit.audit_table(%s)", [(s + '.' + t,) for s, t in tables])
+        self.run_sql(SQL(";").join(SQL("SELECT audit.audit_table('{}.{}')").format(Identifier(s), Identifier(t))
+                                   for s, t in tables))
 
     def untrack_tables(self, tables):
         """Remove triggers from tables and delete their pending changes"""
         for trigger in (ROW_TRIGGER_NAME, STM_TRIGGER_NAME):
             self.run_sql(SQL(";").join(SQL("DROP TRIGGER IF EXISTS {} ON {}.{}").format(
                 Identifier(trigger), Identifier(s), Identifier(t))
-                                       for s, t in tables),
-                         return_shape=ResultShape.NONE)
+                                       for s, t in tables))
         # Delete the actual logged actions for untracked tables
         self.run_sql_batch("DELETE FROM audit.logged_actions WHERE schema_name = %s AND table_name = %s", tables)
 
@@ -221,9 +221,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         self.run_sql_batch(query, changeset)
 
     def apply_diff_object(self, source_schema, source_table, target_schema, target_table):
-        queries = []
-        repl_id = self.get_change_key(source_schema, source_table)
-        ri_cols, _ = zip(*repl_id)
+        ri_cols, _ = zip(*self.get_change_key(source_schema, source_table))
 
         # Minor hack alert: here we assume that the PK of the object is the PK of the table it refers to, which means
         # that we are expected to have the PKs applied to the object table no matter how it originated.
@@ -239,6 +237,13 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                                                                               source_schema),
                      return_shape=ResultShape.NONE)
 
+        queries = self._generate_insert_update_queries(ri_cols, source_schema, source_table,
+                                                       target_schema, target_table)
+        if queries:
+            self.run_sql(b';'.join(queries), return_shape=ResultShape.NONE)
+
+    def _generate_insert_update_queries(self, ri_cols, source_schema, source_table, target_schema, target_table):
+        queries = []
         with self.connection.cursor() as cur:
             # Generate queries for inserts
             # Will remove the cursor later: currently need to to mogrify the query
@@ -270,9 +275,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                     *(Identifier(i) for i in cols_to_insert))
                 query += SQL(" WHERE ") + _generate_where_clause(target_schema, target_table, ri_cols)
                 queries.append(cur.mogrify(query, vals_to_insert + ri_vals))
-            # Apply the insert/update queries (might not exist if the diff was all deletes)
-        if queries:
-            self.run_sql(b';'.join(queries), return_shape=ResultShape.NONE)
+        return queries
 
     # Utilities to dump objects (SNAP/DIFF) into an external format.
     # We use a slightly ad hoc format: the schema (JSON) + a null byte + Postgres's copy_to

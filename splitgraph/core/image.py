@@ -1,3 +1,5 @@
+"""Image representation and provenance"""
+
 import logging
 from collections import namedtuple
 
@@ -16,18 +18,19 @@ _PROV_QUERY = SQL("""UPDATE {}.images SET provenance_type = %s, provenance_data 
     .format(Identifier(SPLITGRAPH_META_SCHEMA))
 
 
-class Image(namedtuple('Image', IMAGE_COLS)):
+class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
     """
     Represents a Splitgraph image. Should't be created directly, use Image-loading methods in the
-    Repository class instead.
+    :class:`splitgraph.core.Repository` class instead.
     """
 
     def __new__(cls, *args, **kwargs):
-        repository = kwargs.pop('repository')
+        kwargs['engine'] = kwargs['repository'].engine
         self = super(Image, cls).__new__(cls, *args, **kwargs)
-        self.repository = repository
-        self.engine = repository.engine
         return self
+
+    def __eq__(self, other):
+        return self.image_hash == other.image_hash and self.repository == other.repository
 
     def get_parent_children(self):
         """Gets the parent and a list of children of a given image."""
@@ -112,6 +115,7 @@ class Image(namedtuple('Image', IMAGE_COLS)):
         set_tag(self.repository, self.image_hash, tag, force)
 
     def get_tags(self):
+        """Lists all tags that this image has."""
         return [t for h, t in self.repository.get_all_hashes_tags() if h == self.image_hash]
 
     def delete_tag(self, tag):

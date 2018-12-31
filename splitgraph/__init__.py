@@ -3,8 +3,9 @@ Public API for Splitgraph
 """
 import logging
 
-from splitgraph.core.registry import publish_tag, unpublish_repository, get_published_info
+from splitgraph.core.registry import *
 from .config import CONFIG
+from .core.repository import Repository
 from .engine import get_engine, switch_engine
 from .exceptions import SplitGraphException
 from .splitfile import *

@@ -97,7 +97,7 @@ def provenance_c(image_spec, full, error_on_end):
     """
     repository, image = image_spec
     image = repository.images[image]
-    
+
     if full:
         splitfile_commands = image.to_splitfile(err_on_end=error_on_end)
         print("# Splitfile commands used to recreate %s:%s" % (str(repository), image))

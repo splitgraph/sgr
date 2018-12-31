@@ -26,7 +26,7 @@ def _mount_postgres(repository):
     mount('tmp', "postgres_fdw",
           dict(server='pgorigin', port=5432, username='originro', password='originpass', dbname="origindb",
                remote_schema="public"))
-    R('tmp').import_tables([], repository, [], foreign_tables=True, do_checkout=True)
+    repository.import_tables([], R('tmp'), [], foreign_tables=True, do_checkout=True)
     R('tmp').rm()
 
 
@@ -41,7 +41,7 @@ def _mount_mongo(repository):
                                            "duration": "numeric",
                                            "happy": "boolean"
                                        }}))
-    R('tmp').import_tables([], repository, [], foreign_tables=True, do_checkout=True)
+    repository.import_tables([], R('tmp'), [], foreign_tables=True, do_checkout=True)
     R('tmp').rm()
 
 

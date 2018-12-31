@@ -186,9 +186,9 @@ def import_c(image_spec, table_or_query, target_repository, target_table):
         print("TARGET_TABLE is required when the source is a query!")
         sys.exit(1)
 
-    repository.import_tables([table_or_query], target_repository, [target_table] if target_table else [],
-                             image_hash=image.image_hash if image else None, foreign_tables=foreign_table,
-                             table_queries=[] if not is_query else [True])
+    target_repository.import_tables([target_table] if target_table else [], repository, [table_or_query],
+                                    image_hash=image.image_hash if image else None, foreign_tables=foreign_table,
+                                    table_queries=[] if not is_query else [True])
 
     print("%s:%s has been imported from %s:%s%s" % (str(target_repository), target_table, str(repository),
                                                     table_or_query, (' (%s)' % image.image_hash[:12] if image else '')))
