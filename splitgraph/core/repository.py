@@ -15,7 +15,7 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.exceptions import SplitGraphException
 from ._common import manage_audit_triggers, set_head, manage_audit, select, insert, ensure_metadata_schema, \
     aggregate_changes, merged_diff, slow_diff, prepare_publish_data, gather_sync_metadata
-from .engine import repository_exists, lookup_repo, ResultShape, get_engine
+from .engine import repository_exists, lookup_repository, ResultShape, get_engine
 from .image import Image, IMAGE_COLS
 from .object_manager import ObjectManager, get_random_object_id
 from .registry import publish_tag
@@ -879,7 +879,7 @@ def clone(remote_repository, local_repository=None, download_all=False):
     :return: A locally cloned Repository object.
     """
     if isinstance(remote_repository, str):
-        remote_repository = lookup_repo(remote_repository, include_local=False)
+        remote_repository = lookup_repository(remote_repository, include_local=False)
 
     # Repository engine should be local by default
     if not local_repository:

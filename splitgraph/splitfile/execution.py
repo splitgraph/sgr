@@ -8,7 +8,7 @@ from importlib import import_module
 from random import getrandbits
 
 from splitgraph.config import CONFIG
-from splitgraph.core.engine import repository_exists, lookup_repo
+from splitgraph.core.engine import repository_exists, lookup_repository
 from splitgraph.core.repository import Repository, clone
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitGraphException
@@ -127,7 +127,7 @@ def _execute_from(node, output):
         output.init()
     if repo_source:
         repository, tag_or_hash = parse_image_spec(repo_source)
-        source_repo = lookup_repo(repository.to_schema(), include_local=True)
+        source_repo = lookup_repository(repository.to_schema(), include_local=True)
 
         if source_repo.engine.name == 'LOCAL':
             # For local repositories, make sure to update them if they've an upstream
@@ -204,7 +204,7 @@ def _execute_repo_import(repository, table_names, tag_or_hash, target_repository
         # it for hashing: we assume that the queries are deterministic, so if the query is changed,
         # the whole layer is invalidated.
         print("Resolving repository %s" % str(repository))
-        source_repo = lookup_repo(repository.to_schema(), include_local=True)
+        source_repo = lookup_repository(repository.to_schema(), include_local=True)
 
         if source_repo.engine.name != 'LOCAL':
             clone(source_repo, local_repository=tmp_repo, download_all=False)

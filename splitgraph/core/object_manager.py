@@ -1,16 +1,17 @@
 """Functions related to creating, deleting and keeping track of physical Splitgraph objects."""
+
 import logging
-from collections.__init__ import defaultdict
+from collections import defaultdict
 from random import getrandbits
 
-from psycopg2._json import Json
+from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.core._common import META_TABLES, select, insert
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.external_objects import get_external_object_handler
+from ._common import META_TABLES, select, insert
 
 
 class ObjectManager:
@@ -18,6 +19,10 @@ class ObjectManager:
     Backed by ObjectEngine to move physical objects around and run metadata queries."""
 
     def __init__(self, object_engine):
+        """
+        :param object_engine: An ObjectEngine that will be used as a backing store for the
+            objects.
+        """
         self.object_engine = object_engine
 
     def get_full_object_tree(self):

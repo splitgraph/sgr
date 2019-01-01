@@ -4,9 +4,9 @@ sgr commands related to building and rebuilding Splitfiles.
 
 import click
 
-from splitgraph.commandline._common import image_spec_parser
 from splitgraph.core.repository import Repository
 from splitgraph.splitfile import execute_commands, rebuild_image
+from ._common import image_spec_parser
 
 
 @click.command(name='build')

@@ -8,9 +8,9 @@ from collections import defaultdict
 import click
 
 from splitgraph import SplitGraphException
-from splitgraph.commandline._common import image_spec_parser
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.repository import Repository
+from ._common import image_spec_parser
 
 
 @click.command(name='checkout')

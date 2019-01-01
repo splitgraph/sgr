@@ -5,12 +5,12 @@ Miscellaneous image management sgr commands.
 import click
 
 from splitgraph import SplitGraphException, CONFIG
-from splitgraph.commandline._common import image_spec_parser
 from splitgraph.config.keys import KEYS, SENSITIVE_KEYS
 from splitgraph.core.engine import init_engine, repository_exists
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.repository import Repository
 from splitgraph.engine import get_engine
+from ._common import image_spec_parser
 
 
 @click.command(name='rm')

@@ -8,10 +8,10 @@ from pprint import pprint
 import click
 
 from splitgraph import get_engine
-from splitgraph.commandline._common import image_spec_parser, pluralise
 from splitgraph.core._drawing import render_tree
 from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.repository import Repository
+from ._common import image_spec_parser, pluralise
 
 
 @click.command(name='log')

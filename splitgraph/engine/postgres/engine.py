@@ -1,3 +1,6 @@
+"""Default Splitgraph engine: uses PostgreSQL to store metadata and actual objects and an audit stored procedure
+to track changes, as well as the Postgres FDW interface to upload/download objects to/from other Postgres engines."""
+
 import itertools
 import json
 import logging

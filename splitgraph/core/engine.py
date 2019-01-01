@@ -57,21 +57,21 @@ def repository_exists(repository):
                                      return_shape=ResultShape.ONE_ONE) is not None
 
 
-def lookup_repo(repo_name, include_local=False):
+def lookup_repository(name, include_local=False):
     """
     Queries the SG drivers on the lookup path to locate one hosting the given repository.
 
-    :param repo_name: Repository name
+    :param name: Repository name
     :param include_local: If True, also queries the local engine
 
     :return: Local or remote Repository object
     """
     from splitgraph.core.repository import Repository
-    template = Repository.from_schema(repo_name)
+    template = Repository.from_schema(name)
 
-    if repo_name in _LOOKUP_PATH_OVERRIDE:
+    if name in _LOOKUP_PATH_OVERRIDE:
         return Repository(template.namespace, template.repository,
-                          get_engine(_LOOKUP_PATH_OVERRIDE[repo_name]))
+                          get_engine(_LOOKUP_PATH_OVERRIDE[name]))
 
     # Currently just check if the schema with that name exists on the remote.
     if include_local and repository_exists(template):
@@ -83,7 +83,7 @@ def lookup_repo(repo_name, include_local=False):
             return candidate
         candidate.engine.close()
 
-    raise SplitGraphException("Unknown repository %s!" % repo_name.to_schema())
+    raise SplitGraphException("Unknown repository %s!" % name.to_schema())
 
 
 def get_current_repositories(engine):
