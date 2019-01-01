@@ -57,7 +57,7 @@ def commit_c(repository, include_snap, message):
     this will delta compress the changes. For all other tables (or if ``-s`` has been passed), this will
     store them as full table snapshots.
     """
-    new_hash = repository.commit(include_snap=include_snap, comment=message)
+    new_hash = repository.commit(include_snap=include_snap, comment=message).image_hash
     print("Committed %s as %s." % (str(repository), new_hash[:12]))
 
 

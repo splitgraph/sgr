@@ -495,10 +495,10 @@ class Repository:
             if tag != 'HEAD':
                 self.images.by_hash(image_id).tag(tag, force)
 
-    def run_sql(self, sql):
+    def run_sql(self, sql, arguments=(), return_shape=ResultShape.MANY_MANY):
         """Execute an arbitrary SQL statement inside of this repository's checked out schema."""
         self.engine.run_sql("SET search_path TO %s", (self.to_schema(),))
-        result = self.engine.run_sql(sql)
+        result = self.engine.run_sql(sql, arguments=arguments, return_shape=return_shape)
         self.engine.run_sql("SET search_path TO public")
         return result
 
@@ -584,10 +584,10 @@ class Repository:
                 if is_query:
                     # is_query precedes foreign_tables: if we're importing using a query, we don't care if it's a
                     # foreign table or not since we're storing it as a full snapshot.
-                    engine.execute_sql_in(source_repository.to_schema(),
-                                          SQL("CREATE TABLE {}.{} AS ").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                               Identifier(object_id))
-                                          + SQL(source_table))
+                    engine.run_sql_in(source_repository.to_schema(),
+                                      SQL("CREATE TABLE {}.{} AS ").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                           Identifier(object_id))
+                                      + SQL(source_table))
                 elif foreign_tables:
                     self.engine.copy_table(source_repository.to_schema(), source_table, SPLITGRAPH_META_SCHEMA,
                                            object_id)

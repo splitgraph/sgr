@@ -255,7 +255,7 @@ def test_diff_staging_aggregation(pg_repo_local):
     assert pg_repo_local.diff("fruits", old_head, None, aggregate=True) == (0, 0, 2)
     assert pg_repo_local.diff("fruits", old_head, None, aggregate=False) == [
         ((1,), 2, {'c': ['name'], 'v': ['pineapple']}),
-                                                                      ((2,), 2, {'c': ['name'], 'v': ['mustard']})]
+        ((2,), 2, {'c': ['name'], 'v': ['mustard']})]
 
 
 def test_diff_schema_change(pg_repo_local):
@@ -277,6 +277,6 @@ def test_diff_schema_change(pg_repo_local):
     # Again can't detect UPDATEs -- delete 2 rows, add two rows
     assert pg_repo_local.diff("fruits", old_head, None, aggregate=True) == (2, 2, 0)
     assert pg_repo_local.diff("fruits", old_head, None, aggregate=False) == [((1, 'apple'), 1, None),
-                                                                       ((2, 'orange'), 1, None),
-                                                                       ((1, 'pineapple'), 0, {'c': [], 'v': []}),
-                                                                       ((2, 'mustard'), 0, {'c': [], 'v': []})]
+                                                                             ((2, 'orange'), 1, None),
+                                                                             ((1, 'pineapple'), 0, {'c': [], 'v': []}),
+                                                                             ((2, 'mustard'), 0, {'c': [], 'v': []})]

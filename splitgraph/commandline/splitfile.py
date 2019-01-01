@@ -100,11 +100,11 @@ def provenance_c(image_spec, full, error_on_end):
 
     if full:
         splitfile_commands = image.to_splitfile(err_on_end=error_on_end)
-        print("# Splitfile commands used to recreate %s:%s" % (str(repository), image))
+        print("# Splitfile commands used to recreate %s:%s" % (str(repository), image.image_hash))
         print('\n'.join(splitfile_commands))
     else:
         result = image.provenance()
-        print("%s:%s depends on:" % (str(repository), image))
+        print("%s:%s depends on:" % (str(repository), image.image_hash))
         print('\n'.join("%s:%s" % rs for rs in result))
 
 

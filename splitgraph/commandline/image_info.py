@@ -140,13 +140,13 @@ def show_c(image_spec, verbose):
     repository, image = image_spec
     image = repository.images[image]
 
-    print("Commit %s:%s" % (repository.to_schema(), image))
+    print("Image %s:%s" % (repository.to_schema(), image.image_hash))
     print(image.comment or "")
     print("Created at %s" % image.created.isoformat())
     if image.parent_id:
         print("Parent: %s" % image.parent_id)
     else:
-        print("No parent (root commit)")
+        print("No parent (root image)")
     if verbose:
         print()
         print("Tables:")
@@ -200,9 +200,9 @@ def status_c(repository):
     if repository is None:
         repositories = get_current_repositories(get_engine())
         print("Local repositories: ")
-        for mp_name, mp_hash in repositories:
+        for mp_name, mp_head in repositories:
             # Maybe should also show the remote DB address/server
-            print("%s: \t %s" % (mp_name, mp_hash))
+            print("%s: \t %s" % (mp_name, mp_head.image_hash if mp_head else None))
         print("\nUse sgr status repository to get information about a given repository.")
     else:
         head = repository.head
@@ -210,7 +210,7 @@ def status_c(repository):
             print("%s: nothing checked out." % str(repository))
             return
         parent, children = head.get_parent_children()
-        print("%s: on image %s." % (str(repository), head))
+        print("%s: on image %s." % (str(repository), head.image_hash))
         if parent is not None:
             print("Parent: %s" % parent)
         if len(children) > 1:

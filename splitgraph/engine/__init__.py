@@ -29,7 +29,7 @@ class SQLEngine:
     functions to implement some basic database management methods like listing, deleting, creating, dumping
     and loading tables."""
 
-    def run_sql(self, statement, arguments=(), return_shape=ResultShape.MANY_MANY):
+    def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY):
         """Run an arbitrary SQL statement with some arguments, return an iterator of results.
         If the statement doesn't return any results, return None."""
         raise NotImplementedError()
@@ -43,22 +43,28 @@ class SQLEngine:
     def rollback(self):
         """Rollback the engine's backing connection"""
 
-    def run_sql_batch(self, statement, arguments):
+    def run_sql_batch(self, statement, arguments, schema=None):
         """Run a parameterized SQL statement against multiple sets of arguments. Other engines
         can override if they support a more efficient batching mechanism."""
         for args in arguments:
-            self.run_sql(statement, args, return_shape=ResultShape.NONE)
+            if schema:
+                self.run_sql_in(schema, statement, args, return_shape=ResultShape.NONE)
+            else:
+                self.run_sql(statement, args, return_shape=ResultShape.NONE)
 
-    def execute_sql_in(self, schema, sql):
+    def run_sql_in(self, schema, sql, arguments=None, return_shape=ResultShape.MANY_MANY):
         """
         Executes a non-schema-qualified query against a specific schema.
 
         :param schema: Schema to run the query in
         :param sql: Query
+        :param arguments: Query arguments
+        :param return_shape: ReturnShape to coerce the result into.
         """
         self.run_sql("SET search_path TO %s", (schema,), return_shape=ResultShape.NONE)
-        self.run_sql(sql, return_shape=ResultShape.NONE)
+        result = self.run_sql(sql, arguments, return_shape=return_shape)
         self.run_sql("SET search_path TO public", (schema,), return_shape=ResultShape.NONE)
+        return result
 
     def table_exists(self, schema, table_name):
         """

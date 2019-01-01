@@ -197,11 +197,11 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
                 # locally and then add the FROM ... provenance data into it).
                 result.add((Repository(prov_data['source_namespace'], prov_data['source']), image.image_hash))
                 break
+            if parent is None:
+                break
             if prov_type in (None, 'MOUNT'):
                 logging.warning("Image %s has provenance type %s, which means it might not be rederiveable.",
                                 image.image_hash[:12], prov_type)
-            if parent is None:
-                break
             image = self.repository.images.by_hash(parent)
         return list(result)
 

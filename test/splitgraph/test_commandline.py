@@ -4,8 +4,10 @@ from decimal import Decimal
 
 import pytest
 
+from splitgraph import ResultShape
 from splitgraph.commandline import *
 from splitgraph.commandline._common import image_spec_parser
+from splitgraph.commandline.example import generate_c, alter_c, splitfile_c
 from splitgraph.config import PG_PWD, PG_USER
 from splitgraph.core._common import parse_connection_string, serialize_connection_string
 from splitgraph.core.engine import repository_exists
@@ -601,3 +603,26 @@ def test_init_new_db():
         assert "Installing the audit trigger" in output
     finally:
         get_engine().delete_database('testdb')
+
+
+def test_examples(local_engine_empty):
+    # Test the example-generating commands used in the quickstart
+
+    runner = CliRunner()
+    result = runner.invoke(generate_c, ['example/repo_1'])
+    assert result.exit_code == 0
+
+    repo = Repository.from_schema("example/repo_1")
+    assert len(repo.images()) == 2
+    assert repo.run_sql("SELECT COUNT(*) FROM demo", return_shape=ResultShape.ONE_ONE) == 10
+    assert repo.diff('demo', repo.head, None, aggregate=True) == (0, 0, 0)
+
+    result = runner.invoke(alter_c, ['example/repo_1'])
+    assert result.exit_code == 0
+    assert len(repo.images()) == 2
+    assert repo.diff('demo', repo.head, None, aggregate=True) == (2, 2, 2)
+
+    result = runner.invoke(splitfile_c, ['example/repo_1', 'example/repo_2'])
+    assert result.exit_code == 0
+    assert 'FROM example/repo_1 IMPORT demo AS table_1' in result.stdout
+    assert 'FROM example/repo_2:${IMAGE_2} IMPORT demo AS table_2' in result.stdout

@@ -55,7 +55,6 @@ class PsycopgEngine(SQLEngine):
     def connection(self):
         """Engine-internal Psycopg connection. Will (re)open if closed/doesn't exist."""
         if self._conn is None or self._conn.closed:
-            logging.info("Initializing engine connection...")
             self._conn = make_conn(*self.conn_params)
         return self._conn
 
@@ -86,9 +85,13 @@ class PsycopgEngine(SQLEngine):
                                WHERE i.indrelid = '{}.{}'::regclass AND i.indisprimary""")
                             .format(Identifier(schema), Identifier(table)), return_shape=ResultShape.MANY_MANY)
 
-    def run_sql_batch(self, statement, arguments):
+    def run_sql_batch(self, statement, arguments, schema=None):
         with self.connection.cursor() as cur:
+            if schema:
+                cur.execute("SET search_path to %s;", (schema,))
             execute_batch(cur, statement, arguments, page_size=1000)
+            if schema:
+                cur.execute("SET search_path to public")
 
     def _admin_conn(self):
         return psycopg2.connect(dbname=CONFIG['SG_ENGINE_POSTGRES_DB_NAME'],

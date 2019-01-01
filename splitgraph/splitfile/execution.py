@@ -50,7 +50,7 @@ def execute_commands(commands, params=None, output=None, output_base='0' * 32):
     if output and repository_exists(output) and output_base is not None:
         output.images.by_hash(output_base).checkout()
     # Use a random target schema if unspecified.
-    output = output or "output_%0.2x" % getrandbits(16)
+    output = output or Repository.from_schema("output_%0.2x" % getrandbits(16))
 
     # Don't initialize the output until a command writing to it asks us to
     # (otherwise we might have a FROM ... AS output_name change it).
