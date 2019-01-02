@@ -46,12 +46,16 @@ class ObjectManager:
         return self.object_engine.run_sql(insert("objects", ("object_id", "format", "parent_id", "namespace")),
                                           (object_id, object_format, parent_object, namespace))
 
-    def register_objects(self, object_meta):
+    def register_objects(self, object_meta, namespace=None):
         """
         Registers multiple Splitgraph objects in the tree. See `register_object` for more information.
 
         :param object_meta: List of (object_id, format, parent_id, namespace).
+        :param namespace: If specified, overrides the original object namespace, required
+            in the case where the remote repository has a different namespace than the local one.
         """
+        if namespace:
+            object_meta = [(o, f, p, namespace) for o, f, p, _ in object_meta]
         self.object_engine.run_sql_batch(insert("objects", ("object_id", "format", "parent_id", "namespace")),
                                          object_meta)
 

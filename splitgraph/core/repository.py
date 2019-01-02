@@ -666,7 +666,7 @@ class Repository:
                                                         handler=handler, handler_params=handler_options)
             # Here we have to register the new objects after the upload but before we store their external
             # location (as the RLS for object_locations relies on the object metadata being in place)
-            self.objects.register_objects(object_meta)
+            self.objects.register_objects(object_meta, namespace=self.namespace)
             self.objects.register_object_locations(object_locations + new_uploads)
             source.objects.register_object_locations(new_uploads)
 

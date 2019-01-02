@@ -52,13 +52,27 @@ def test_rls_push_own_delete_own(local_engine_empty, unprivileged_pg_repo, clean
     destination.run_sql("""UPDATE fruits SET name = 'banana' WHERE fruit_id = 1""")
     destination.commit()
 
-    # clone destination needs to have the same namespace as our username for now: this is because a commit
-    # gives the object the same namespace as the repo and the namespace doesn't get rewritten on push
-    # so TODO rewrite object namespaces on push to be the pushing user's namespace as opposed to the repo namespace
-
     # Test we can push to our namespace -- can't upload the object to the splitgraph_meta since we can't create
     # tables there
     remote_destination = Repository.from_template(destination, engine=unprivileged_pg_repo.engine)
+    destination.set_upstream(remote_destination)
+
+    destination.push(handler='S3')
+    # Test we can delete our own repo once we've pushed it
+    remote_destination.rm(uncheckout=False)
+    assert len(remote_destination.images()) == 0
+
+
+def test_rls_push_own_delete_own_different_namespaces(local_engine_empty, unprivileged_pg_repo, clean_minio):
+    # Same as previous but we clone into test/pg_mount and push to our own namespace
+    # to check that the objects we push get their namespaces rewritten to be testuser, not test.
+    destination = clone(unprivileged_pg_repo)
+
+    destination.images['latest'].checkout()
+    destination.run_sql("""UPDATE fruits SET name = 'banana' WHERE fruit_id = 1""")
+    destination.commit()
+
+    remote_destination = Repository('testuser', 'pg_mount', unprivileged_pg_repo.engine)
     destination.set_upstream(remote_destination)
 
     destination.push(handler='S3')
