@@ -19,7 +19,11 @@ addons:
     - remote_engine
 
 env:
-  COMPOSE_VERSION: 1.21.2
+  global:
+    - secure: "h3RGGiUxXzirelNuxyqbb5Qgqahg4aL2LCVXKaVkoq0SIGftHSHy4Hu0QEV8h5UGQIaXLIyMeNZcS5XPuYg0MBEz5mP0MJyUj4E9l/TJFSyKQHiFUjB34d16vf/xkSzCBMkNbOltNNKe4gonZhn3/I8uRMF9ZyfsoP1SC8B3B7+C7wCZhNS6hvFXG0+n9+HDQDsx6Tws0Oa28YHctzLcFp5mTCr+cBUGqJ1NphuOqAfsRzgj1poWt0uU2XysbcJ3nSBFrPWYjtgF7IFP/G0NqrYF7cQ60G4R9GhAbyPmrc7AF7NHfjrreu4+3199NMpSbQtumLWBIAxkhblSU7likiLEIVw3hIipNHXKnSiMXeGRlcNBMrb2vO57cTifhtwi7fzHHrsVOjnYANmCQHM+nDS7rj5j2hXPUmAr1Zw6AZ4HYGW0iL+79eB5IfyKRqc75/YPyRnYSDjz6oiwlGYWrAlgWnz3Nwa5/TcCNMA7u9N3Lml4P/Wly3aC/87yPa8gT0SM/KRfweslcx29JsRkxjeRfOe8cyejAvQonN/RFibdOo/CD02oNu3Bzp5EaNW0FY/cWDi4diq4ok+t5Z0ID1i6NXBd9xPqYJiWWNGnh5lNIi6N/flFomwJpocDiIInOWCF6+y/K6SrLV2pGCBlyItjhbC9rMO9FrOnO45QScA="
+    - COMPOSE_VERSION: 1.21.2
+  matrix:
+    - BINARY_OUTPUT: sgr-linux
 
 before_install:
   - curl -L https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-`uname -s`-`uname -m` > docker-compose
@@ -37,3 +41,46 @@ before_script:
 
 after_success:
   - poetry run coveralls
+
+# How to release:
+# * make sure the master build passes
+# * do poetry version (to bump the version in pyproject.toml), commit
+# * add a tag with the same version
+# * git push --tags
+
+# How to undo a release:
+# * Remove the release from the releases page on GH
+# * git tag -d <tag>  -- delete tag locally
+# * git push origin :<tag> -- delete tag remotely on GH
+# * delete the release from pypi (won't be able to push the same version again)
+
+before_deploy:
+  # Create the single binary (currently linux only)
+  - poetry run pyinstaller -F splitgraph.spec
+  - mv dist/sgr dist/${BINARY_OUTPUT}
+  # Deploy to pypi
+  - poetry config repositories.testpypi https://test.pypi.org/legacy/
+  - poetry config http-basic.testpypi splitgraph $PYPI_PASSWORD
+  - poetry config http-basic.pypi splitgraph $PYPI_PASSWORD
+  - poetry build
+deploy:
+  - provider: releases
+    api_key:
+      secure: "BL9bLoFZB/1hZfq8vez4i+A1y6O//slLqdTjcWJPCr6G4kBIkwbQsSPjsyMpJACNlzNbCo02bGROIttlEWVJ11jxYHioKWexG7j4pTMQNwup96s9PRTwm8o4H/64a6PT4+ruCVz0wO7qzet5y6QTx5oOZZqEIB/93X8PAhpednU0eq9Vedf3VjutZ3xXEMsgfltkE7Lm3b0brHKQVQOoecudRt1mFLduusUx1lsO+V7Wu8pET2zIn7g6W8sUiPYgtsrcZ8bFyl3OewyYEFyb0e45EW2KWFnf0Ozm0GNEz6FlyRo6JmcmfdkjWoM7mHSiTj2vCnz/FsJwsIJS1z4RRaSe2gJe9kQSHNy0erCr8eehJyphsYBbqyLjXuP3e9QzdLJAsdhqV+KFK5QGOEjIhKTY6IiFctF8yeKiEKL/kD31KPQcnFX/RDrwEUGWkBfaqwlORZC68Q4P2ZkbW1ydsdYcthFhFE6IFhs0sZDdreOVHsM1t0CwePpWPU+iFb1j2HQv9LROFo7G404PpnjbkP+UIZChxMZxv3s2FOeFMDiTCJEiPHMw8Q6kRJmi9+3qZULkjcWnpSb02YBiJjaXJng93o7H85cb6G5HfmGmlphe6+8twQsS7v3pB+DTDLSKLu3VS3LlUP92EwM3H9+BZqR3tpFVmDoimVjYfydkmKc="
+    file: dist/${BINARY_OUTPUT}
+    skip_cleanup: true
+    on:
+      repo: splitgraph/splitgraph
+      tags: true
+      # Uncomment this to trigger deploys from all branches
+      # all_branches: true
+  - provider: script
+    # Remove -r testpypi to publish to the real PyPI
+    # NB PyPI is write-once: once we've published a version, we can't overwrite it!
+    script: poetry publish -r testpypi
+    skip_cleanup: true
+    on:
+      repo: splitgraph/splitgraph
+      tags: true
+      # Uncomment this to trigger deploys from all branches
+      # all_branches: true
