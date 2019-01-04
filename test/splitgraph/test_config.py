@@ -4,7 +4,6 @@ import sys
 
 import pytest
 
-from splitgraph.commands.repository import _parse_paths_overrides
 from splitgraph.config import CONFIG, create_config_dict
 from splitgraph.config import keys
 from splitgraph.config.argument_config import get_arg_tuples, get_argument_config_value
@@ -16,6 +15,7 @@ from splitgraph.config.system_config import (
     SG_CONFIG_FILE,
     VALID_CONFIG_FILE_NAMES
 )
+from splitgraph.core.engine import _parse_paths_overrides
 
 try:
     # python 3.4+ should use builtin unittest.mock not mock package

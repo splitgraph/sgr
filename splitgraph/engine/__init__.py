@@ -1,3 +1,11 @@
+"""
+Defines the interface for a Splitgraph engine (a backing database), including running basic SQL commands,
+tracking tables for changes and uploading/downloading tables to other remote engines.
+
+By default, Splitgraph is backed by Postgres: see :mod:`splitgraph.engine.postgres` for an example of how to
+implement a different engine.
+"""
+
 from contextlib import contextmanager
 from enum import Enum
 
@@ -16,12 +24,14 @@ class ResultShape(Enum):
 
 
 class SQLEngine:
-    """Abstraction for a Splitgraph SQL backend"""
+    """Abstraction for a Splitgraph SQL backend. Requires any overriding classes to implement `run_sql` as well as
+    a few other functions. Together with the `information_schema` (part of the SQL standard), this class uses those
+    functions to implement some basic database management methods like listing, deleting, creating, dumping
+    and loading tables."""
 
-    def run_sql(self, statement, arguments=(), return_shape=ResultShape.MANY_MANY):
+    def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY):
         """Run an arbitrary SQL statement with some arguments, return an iterator of results.
-        If the statement doesn't return any results, return None.
-        """
+        If the statement doesn't return any results, return None."""
         raise NotImplementedError()
 
     def commit(self):
@@ -33,26 +43,32 @@ class SQLEngine:
     def rollback(self):
         """Rollback the engine's backing connection"""
 
-    def run_sql_batch(self, statement, arguments):
+    def run_sql_batch(self, statement, arguments, schema=None):
         """Run a parameterized SQL statement against multiple sets of arguments. Other engines
         can override if they support a more efficient batching mechanism."""
         for args in arguments:
-            self.run_sql(statement, args, return_shape=ResultShape.NONE)
+            if schema:
+                self.run_sql_in(schema, statement, args, return_shape=ResultShape.NONE)
+            else:
+                self.run_sql(statement, args, return_shape=ResultShape.NONE)
 
-    def execute_sql_in(self, schema, sql):
+    def run_sql_in(self, schema, sql, arguments=None, return_shape=ResultShape.MANY_MANY):
         """
-        Executes a non-schema-qualified query against a specific schema, using PG's search_path.
+        Executes a non-schema-qualified query against a specific schema.
 
         :param schema: Schema to run the query in
         :param sql: Query
+        :param arguments: Query arguments
+        :param return_shape: ReturnShape to coerce the result into.
         """
         self.run_sql("SET search_path TO %s", (schema,), return_shape=ResultShape.NONE)
-        self.run_sql(sql, return_shape=ResultShape.NONE)
+        result = self.run_sql(sql, arguments, return_shape=return_shape)
         self.run_sql("SET search_path TO public", (schema,), return_shape=ResultShape.NONE)
+        return result
 
     def table_exists(self, schema, table_name):
         """
-        Check if a table exists on the engine
+        Check if a table exists on the engine.
 
         :param schema: Schema name
         :param table_name: Table name
@@ -63,7 +79,7 @@ class SQLEngine:
 
     def schema_exists(self, schema):
         """
-        Check if a schema exists on the engine
+        Check if a schema exists on the engine.
 
         :param schema: Schema name
         """
@@ -77,9 +93,7 @@ class SQLEngine:
 
     def copy_table(self, source_schema, source_table, target_schema, target_table, with_pk_constraints=True,
                    table_exists=False):
-        """
-        Copies a table in the same engine , optionally applying primary key constraints as well.
-        """
+        """Copy a table in the same engine, optionally applying primary key constraints as well."""
         if not table_exists:
             query = SQL("CREATE TABLE {}.{} AS SELECT * FROM {}.{};").format(
                 Identifier(target_schema), Identifier(target_table),
@@ -103,15 +117,13 @@ class SQLEngine:
             return_shape=ResultShape.NONE)
 
     def delete_schema(self, schema):
-        """
-        Delete a schema if it exists (+ all the tables in it)
-        """
+        """Delete a schema if it exists, including all the tables in it."""
         self.run_sql(
             SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(schema)),
             return_shape=ResultShape.NONE)
 
     def get_all_tables(self, schema):
-        """Get all tables in a given schema"""
+        """Get all tables in a given schema."""
         return self.run_sql("SELECT table_name FROM information_schema.tables WHERE table_schema = %s", (schema,),
                             return_shape=ResultShape.MANY_ONE)
 
@@ -205,9 +217,16 @@ class SQLEngine:
 
     def initialize(self):
         """Does any required initialization of the engine"""
-        pass
 
-    # Methods for table change tracking
+
+class ChangeEngine(SQLEngine):
+    """An SQL engine that can perform change tracking on a set of tables."""
+
+    def get_primary_keys(self, schema, table):
+        raise NotImplementedError()
+
+    def run_sql(self, statement, arguments=(), return_shape=ResultShape.MANY_MANY):
+        raise NotImplementedError()
 
     def get_tracked_tables(self):
         """
@@ -251,7 +270,10 @@ class SQLEngine:
         :param table: Table to return changes for
         :param aggregate: Whether to aggregate changes or return them completely
         :return: If aggregate is True: tuple with numbers of `(added_rows, removed_rows, updated_rows)`.
-            If aggregate is False: List of (primary_key, change_type, change_data)
+            If aggregate is False: A changeset. The changeset is a list of
+            `(pk, action (0 for Insert, 1 for Delete, 2 for Update), action_data)`
+            where `action_data` is `None` for Delete and `{'c': [column_names], 'v': [column_values]}` that
+            have been inserted/updated otherwise.
         """
         raise NotImplementedError()
 
@@ -263,8 +285,6 @@ class SQLEngine:
         :return: List of tables with changed contents
         """
         raise NotImplementedError()
-
-    # TODO split this class up (handling storage, change capture and object application/creation)
 
     def get_change_key(self, schema, table):
         """
@@ -278,6 +298,7 @@ class ObjectEngine:
     """
     Routines for storing/applying objects as well as sharing them with other engines.
     """
+
     def store_diff_object(self, changeset, schema, table, change_key):
         """
         Store a changeset in a table
@@ -327,7 +348,7 @@ class ObjectEngine:
         Upload objects from the local cache to the remote engine
 
         :param objects: List of object IDs to upload
-        :param remote_engine: A remote Engine object to upload the objects to.
+        :param remote_engine: A remote ObjectEngine to upload the objects to.
         """
         raise NotImplementedError()
 
@@ -336,7 +357,7 @@ class ObjectEngine:
         Download objects from the remote engine to the local cache
 
         :param objects: List of object IDs to download
-        :param remote_engine: A remote Engine object to download the objects from.
+        :param remote_engine: A remote ObjectEngine to download the objects from.
         """
         raise NotImplementedError()
 
@@ -365,7 +386,8 @@ def get_engine(name=None):
         # As we only have PostgresEngine, we instantiate that.
         from .postgres.engine import PostgresEngine
         _ENGINES[name] = PostgresEngine((PG_HOST, PG_PORT, PG_USER, PG_PWD, PG_DB)
-                                        if name == 'LOCAL' else get_remote_connection_params(name))
+                                        if name == 'LOCAL' else get_remote_connection_params(name),
+                                        name=name)
     return _ENGINES[name]
 
 
@@ -375,8 +397,10 @@ def switch_engine(engine):
     Switch the global engine to a different one. The engine will
     get switched back on exit from the context manager.
 
-    :param engine: Name of the engine or an Engine instance
+    :param engine: Name of the engine or an SQLEngine instance
     """
+    if not isinstance(engine, str) and not isinstance(engine, SQLEngine):
+        raise ValueError("engine must be an engine name or an SQLEngine, not %r!" % type(engine))
     global _ENGINE
     _PREV_ENGINE = _ENGINE
     try:

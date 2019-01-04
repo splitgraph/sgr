@@ -134,8 +134,8 @@ def parse_image_spec(remote_repo_node):
     """
     repo_nodes = extract_nodes(remote_repo_node, ['repository', 'identifier', 'image_hash'])
     # Avoid cyclic imports
-    from splitgraph.commands.repository import to_repository
-    repository = to_repository(repo_nodes[0].match.group(0))
+    from splitgraph.core.repository import Repository
+    repository = Repository.from_schema(repo_nodes[0].match.group(0))
     # See if we got given a tag / hash (the executor will try to interpret it as both).
     if len(repo_nodes) == 2:
         tag_or_hash = repo_nodes[1].match.group(0)

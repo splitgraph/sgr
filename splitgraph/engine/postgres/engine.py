@@ -1,3 +1,6 @@
+"""Default Splitgraph engine: uses PostgreSQL to store metadata and actual objects and an audit stored procedure
+to track changes, as well as the Postgres FDW interface to upload/download objects to/from other Postgres engines."""
+
 import itertools
 import json
 import logging
@@ -9,7 +12,7 @@ from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
-from splitgraph.engine import SQLEngine, ResultShape, ObjectEngine
+from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.mount_handlers import mount_postgres
 
@@ -21,15 +24,20 @@ STM_TRIGGER_NAME = "audit_trigger_stm"
 REMOTE_TMP_SCHEMA = "tmp_remote_data"
 
 
-class PostgresEngine(SQLEngine, ObjectEngine):
-    """An implementation of the Postgres engine for Splitgraph"""
+class PsycopgEngine(SQLEngine):
+    """Postgres SQL engine backed by a Psycopg connection."""
 
-    def __init__(self, conn_params):
+    def __init__(self, conn_params, name):
         """
         :param conn_params: Tuple of (server, port, username, password, dbname)
         """
         self.conn_params = conn_params
+        self.name = name
         self._conn = None
+
+    def __repr__(self):
+        return "PostgresEngine %s (%s@%s:%s/%s)" % (self.name, self.conn_params[2], self.conn_params[0],
+                                                    str(self.conn_params[1]), self.conn_params[4])
 
     def commit(self):
         if self._conn and not self._conn.closed:
@@ -45,8 +53,8 @@ class PostgresEngine(SQLEngine, ObjectEngine):
 
     @property
     def connection(self):
+        """Engine-internal Psycopg connection. Will (re)open if closed/doesn't exist."""
         if self._conn is None or self._conn.closed:
-            logging.info("Initializing engine connection...")
             self._conn = make_conn(*self.conn_params)
         return self._conn
 
@@ -77,9 +85,13 @@ class PostgresEngine(SQLEngine, ObjectEngine):
                                WHERE i.indrelid = '{}.{}'::regclass AND i.indisprimary""")
                             .format(Identifier(schema), Identifier(table)), return_shape=ResultShape.MANY_MANY)
 
-    def run_sql_batch(self, statement, arguments):
+    def run_sql_batch(self, statement, arguments, schema=None):
         with self.connection.cursor() as cur:
+            if schema:
+                cur.execute("SET search_path to %s;", (schema,))
             execute_batch(cur, statement, arguments, page_size=1000)
+            if schema:
+                cur.execute("SET search_path to public")
 
     def _admin_conn(self):
         return psycopg2.connect(dbname=CONFIG['SG_ENGINE_POSTGRES_DB_NAME'],
@@ -123,24 +135,27 @@ class PostgresEngine(SQLEngine, ObjectEngine):
             with admin_conn.cursor() as cur:
                 cur.execute(SQL("DROP DATABASE IF EXISTS {}").format(Identifier(database)))
 
+
+class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
+    """Change tracking based on an audit trigger stored procedure"""
+
     def get_tracked_tables(self):
         """Return a list of tables that the audit trigger is working on."""
-        return self.run_sql("SELECT event_object_schema, event_object_table "
+        return self.run_sql("SELECT DISTINCT event_object_schema, event_object_table "
                             "FROM information_schema.triggers WHERE trigger_name IN (%s, %s)",
                             (ROW_TRIGGER_NAME, STM_TRIGGER_NAME))
 
     def track_tables(self, tables):
         """Install the audit trigger on the required tables"""
-        # FIXME: escaping for schema + . + table
-        self.run_sql_batch("SELECT audit.audit_table(%s)", [(s + '.' + t,) for s, t in tables])
+        self.run_sql(SQL(";").join(SQL("SELECT audit.audit_table('{}.{}')").format(Identifier(s), Identifier(t))
+                                   for s, t in tables))
 
     def untrack_tables(self, tables):
         """Remove triggers from tables and delete their pending changes"""
         for trigger in (ROW_TRIGGER_NAME, STM_TRIGGER_NAME):
             self.run_sql(SQL(";").join(SQL("DROP TRIGGER IF EXISTS {} ON {}.{}").format(
                 Identifier(trigger), Identifier(s), Identifier(t))
-                                       for s, t in tables),
-                         return_shape=ResultShape.NONE)
+                                       for s, t in tables))
         # Delete the actual logged actions for untracked tables
         self.run_sql_batch("DELETE FROM audit.logged_actions WHERE schema_name = %s AND table_name = %s", tables)
 
@@ -200,6 +215,10 @@ class PostgresEngine(SQLEngine, ObjectEngine):
                                                                  Identifier("logged_actions")), (schema,),
                             return_shape=ResultShape.MANY_ONE)
 
+
+class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
+    """An implementation of the Postgres engine for Splitgraph"""
+
     def store_diff_object(self, changeset, schema, table, change_key):
         _create_diff_table(self.connection, table, change_key)
         query = SQL("INSERT INTO {}.{} ").format(Identifier(schema),
@@ -208,9 +227,7 @@ class PostgresEngine(SQLEngine, ObjectEngine):
         self.run_sql_batch(query, changeset)
 
     def apply_diff_object(self, source_schema, source_table, target_schema, target_table):
-        queries = []
-        repl_id = self.get_change_key(source_schema, source_table)
-        ri_cols, _ = zip(*repl_id)
+        ri_cols, _ = zip(*self.get_change_key(source_schema, source_table))
 
         # Minor hack alert: here we assume that the PK of the object is the PK of the table it refers to, which means
         # that we are expected to have the PKs applied to the object table no matter how it originated.
@@ -226,6 +243,13 @@ class PostgresEngine(SQLEngine, ObjectEngine):
                                                                               source_schema),
                      return_shape=ResultShape.NONE)
 
+        queries = self._generate_insert_update_queries(ri_cols, source_schema, source_table,
+                                                       target_schema, target_table)
+        if queries:
+            self.run_sql(b';'.join(queries), return_shape=ResultShape.NONE)
+
+    def _generate_insert_update_queries(self, ri_cols, source_schema, source_table, target_schema, target_table):
+        queries = []
         with self.connection.cursor() as cur:
             # Generate queries for inserts
             # Will remove the cursor later: currently need to to mogrify the query
@@ -257,9 +281,7 @@ class PostgresEngine(SQLEngine, ObjectEngine):
                     *(Identifier(i) for i in cols_to_insert))
                 query += SQL(" WHERE ") + _generate_where_clause(target_schema, target_table, ri_cols)
                 queries.append(cur.mogrify(query, vals_to_insert + ri_vals))
-            # Apply the insert/update queries (might not exist if the diff was all deletes)
-        if queries:
-            self.run_sql(b';'.join(queries), return_shape=ResultShape.NONE)
+        return queries
 
     # Utilities to dump objects (SNAP/DIFF) into an external format.
     # We use a slightly ad hoc format: the schema (JSON) + a null byte + Postgres's copy_to

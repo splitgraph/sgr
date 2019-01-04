@@ -4,9 +4,6 @@ Routines for rendering a Splitgraph repository as a tree of images
 """
 from collections import defaultdict
 
-from splitgraph._data.common import ensure_metadata_schema
-from splitgraph._data.images import get_all_image_info
-from splitgraph.commands.tagging import get_current_head
 from splitgraph.exceptions import SplitGraphException
 
 
@@ -54,18 +51,17 @@ def _render_node(node_id, children, node_cols, max_col, mark_node='', node_width
 
 def render_tree(repository):
     """Draws the repository's commit graph as a Git-like tree."""
-    ensure_metadata_schema()
     # Prepare the tree structure by loading the index from the db and flipping it
     children = defaultdict(list)
     base_node = None
-    head = get_current_head(repository, raise_on_none=False)
+    head = repository.head.image_hash
 
     # Get all commits in ascending time order
-    snap_parents = get_all_image_info(repository)
-    for image_hash, parent_id, _, _, _, _ in snap_parents:
-        if parent_id is None:
-            base_node = image_hash
-        children[parent_id].append(image_hash)
+    all_images = repository.images()
+    for image in all_images:
+        if image.parent_id is None:
+            base_node = image.image_hash
+        children[image.parent_id].append(image.image_hash)
 
     if base_node is None:
         raise SplitGraphException("Something is seriously wrong with the index.")
@@ -73,6 +69,6 @@ def render_tree(repository):
     # Calculate the column in which each node should be displayed.
     node_cols = _calc_columns(children, base_node)
 
-    for image_hash, _, _, _, _, _ in reversed(snap_parents):
-        _render_node(image_hash, children, node_cols, mark_node=' H' if image_hash == head else '',
+    for image in reversed(all_images):
+        _render_node(image.image_hash, children, node_cols, mark_node=' H' if image.image_hash == head else '',
                      max_col=max(node_cols.values()))

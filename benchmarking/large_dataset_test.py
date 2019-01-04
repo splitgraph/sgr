@@ -2,7 +2,6 @@ from random import getrandbits, sample
 from timeit import timeit
 
 from splitgraph import get_engine
-from splitgraph.commands import *
 from splitgraph.engine import ResultShape
 
 MOUNTPOINT = "splitgraph_benchmark"
@@ -32,13 +31,13 @@ def delete_random_rows(mountpoint, table, N=200):
 
 
 def bench_delete_checkout(N):
-    rm(MOUNTPOINT)
+    rm()
     init(MOUNTPOINT)
     create_random_table(MOUNTPOINT, "test", N)
-    commit(MOUNTPOINT)
+    MOUNTPOINT.commit()
     delete_random_rows(MOUNTPOINT, "test", N // 5)
     print(get_engine().dump_pending_changes(MOUNTPOINT, "test", aggregate=True))
-    rev = commit(MOUNTPOINT)
+    rev = MOUNTPOINT.commit()
 
     print(timeit("checkout(MOUNTPOINT, '%s')" % rev, "from __main__ import MOUNTPOINT, checkout", number=3))
 
@@ -48,7 +47,7 @@ if __name__ == '__main__':
     #     print(N)
     #     bench_delete_checkout(N)
     N = 1000000
-    rm(MOUNTPOINT)
-    init(MOUNTPOINT)
+    MOUNTPOINT.rm()
+    MOUNTPOINT.init()
     create_random_table(MOUNTPOINT, "test", N)
-    commit(MOUNTPOINT)
+    MOUNTPOINT.commit()

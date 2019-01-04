@@ -63,7 +63,7 @@ we're importing haven't changed even if other parts of the repository have).
 Repository lookups
 ------------------
 
-Currently, a repository name is converted to a connection string as follows:
+Currently, a repository name is resolved as follows:
 
   * See if it exists locally (in the case of the splitfile executor). If it does, try to pull it (to update) and
     use it for ``FROM``/``IMPORT`` commands.

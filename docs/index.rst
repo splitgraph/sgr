@@ -8,9 +8,8 @@ Welcome to Splitgraph's documentation!
    introduction
    quickstart
    splitfile
-   internals
    commands/commands
-      API reference <api/splitgraph>
+   API reference <api/splitgraph>
 
 
 Indices and tables

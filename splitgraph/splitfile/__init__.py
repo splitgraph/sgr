@@ -4,4 +4,4 @@ the user a Dockerfile-like experience for building Splitgraph images (caching, c
 language).
 """
 
-from splitgraph.splitfile.execution import execute_commands, rerun_image_with_replacement
+from splitgraph.splitfile.execution import execute_commands, rebuild_image

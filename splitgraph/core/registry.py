@@ -5,19 +5,18 @@ Functions for communicating with the remote Splitgraph catalog
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph._data.common import insert, select
 from splitgraph.config import REGISTRY_META_SCHEMA, SPLITGRAPH_META_SCHEMA
-from splitgraph.engine import get_engine, ResultShape
+from splitgraph.core._common import select, insert
+from splitgraph.engine import ResultShape
 
 
-def _create_registry_schema():
+def _create_registry_schema(engine):
     """
     Creates the registry metadata schema that contains information on published images that will appear
     in the catalog.
     """
-    get_engine().run_sql(SQL("CREATE SCHEMA {}").format(Identifier(REGISTRY_META_SCHEMA)),
-                         return_shape=None)
-    get_engine().run_sql(SQL("""CREATE TABLE {}.{} (
+    engine.run_sql(SQL("CREATE SCHEMA {}").format(Identifier(REGISTRY_META_SCHEMA)))
+    engine.run_sql(SQL("""CREATE TABLE {}.{} (
                         namespace  VARCHAR NOT NULL,
                         repository VARCHAR NOT NULL,
                         tag        VARCHAR NOT NULL,
@@ -28,14 +27,13 @@ def _create_registry_schema():
                         schemata   JSON,
                         previews   JSON,
                         PRIMARY KEY (namespace, repository, tag))""").format(Identifier(REGISTRY_META_SCHEMA),
-                                                                             Identifier("images")),
-                         return_shape=None)
+                                                                             Identifier("images")))
 
 
-def _ensure_registry_schema():
-    if get_engine().run_sql("SELECT 1 FROM information_schema.schemata WHERE schema_name = %s", (REGISTRY_META_SCHEMA,),
-                            return_shape=ResultShape.ONE_ONE) is None:
-        _create_registry_schema()
+def _ensure_registry_schema(engine):
+    if engine.run_sql("SELECT 1 FROM information_schema.schemata WHERE schema_name = %s", (REGISTRY_META_SCHEMA,),
+                      return_shape=ResultShape.ONE_ONE) is None:
+        _create_registry_schema(engine)
 
 
 def publish_tag(repository, tag, image_hash, published, provenance, readme, schemata, previews):
@@ -43,7 +41,7 @@ def publish_tag(repository, tag, image_hash, published, provenance, readme, sche
     Publishes a given tag in the remote catalog. Should't be called directly.
     Use splitgraph.commands.publish instead.
 
-    :param repository: Repository name
+    :param repository: Remote (!) Repository object
     :param tag: Tag to publish
     :param image_hash: Image hash corresponding to the given tag.
     :param published: Publish time (datetime)
@@ -52,75 +50,71 @@ def publish_tag(repository, tag, image_hash, published, provenance, readme, sche
     :param schemata: Dict mapping table name to a list of (column name, column type)
     :param previews: Dict mapping table name to a list of tuples with a preview
     """
-    get_engine().run_sql(insert("images",
-                                ['namespace', 'repository', 'tag', 'image_hash', 'published',
-                                 'provenance', 'readme', 'schemata', 'previews'],
-                                REGISTRY_META_SCHEMA), (repository.namespace, repository.repository, tag, image_hash,
-                                                        published, Json(provenance), readme, Json(schemata),
-                                                        Json(previews)),
-                         return_shape=None)
+    repository.engine.run_sql(insert("images",
+                                     ['namespace', 'repository', 'tag', 'image_hash', 'published',
+                                      'provenance', 'readme', 'schemata', 'previews'],
+                                     REGISTRY_META_SCHEMA),
+                              (repository.namespace, repository.repository, tag, image_hash,
+                               published, Json(provenance), readme, Json(schemata),
+                               Json(previews)))
 
 
 def get_published_info(repository, tag):
     """
-    Get information on an image that's published in a catalog. Should be called with the engine
-    switching context manager (`switch_engine`).
+    Get information on an image that's published in a catalog.
 
     :param repository: Repository
     :param tag: Image tag
     :return: A tuple of (image_hash, published_timestamp, provenance, readme, table schemata, previews)
     """
-    return get_engine().run_sql(select("images",
-                                       'image_hash,published,provenance,readme,schemata,previews',
-                                       "namespace = %s AND repository = %s AND tag = %s",
-                                       REGISTRY_META_SCHEMA), (repository.namespace, repository.repository, tag),
-                                return_shape=ResultShape.ONE_MANY)
+    return repository.engine.run_sql(select("images",
+                                            'image_hash,published,provenance,readme,schemata,previews',
+                                            "namespace = %s AND repository = %s AND tag = %s",
+                                            REGISTRY_META_SCHEMA), (repository.namespace, repository.repository, tag),
+                                     return_shape=ResultShape.ONE_MANY)
 
 
 def unpublish_repository(repository):
     """
-    Deletes the repository from the remote catalog. Should be called with the engine
-    switching context manager (`switch_engine`).
+    Deletes the repository from the remote catalog.
 
     :param repository: Repository to unpublish
     """
-    get_engine().run_sql(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s")
-                         .format(Identifier(REGISTRY_META_SCHEMA), Identifier("images")),
-                         (repository.namespace, repository.repository))
+    repository.engine.run_sql(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s")
+                              .format(Identifier(REGISTRY_META_SCHEMA), Identifier("images")),
+                              (repository.namespace, repository.repository))
 
 
-def get_info_key(key):
+def get_info_key(engine, key):
     """
     Gets a configuration key from the remote registry, used to notify the client of the registry's capabilities.
 
-    Should be called with the engine switching context manager (`switch_engine`).
-
+    :param engine: Engine
     :param key: Key to get
     """
-    return get_engine().run_sql(SQL("SELECT value FROM {}.info WHERE key = %s")
-                                .format(Identifier(SPLITGRAPH_META_SCHEMA)), (key,),
-                                return_shape=ResultShape.ONE_ONE)
+    return engine.run_sql(SQL("SELECT value FROM {}.info WHERE key = %s")
+                          .format(Identifier(SPLITGRAPH_META_SCHEMA)), (key,),
+                          return_shape=ResultShape.ONE_ONE)
 
 
-def set_info_key(key, value):
+def set_info_key(engine, key, value):
     """
     Sets a configuration value on the remote registry.
 
-    Should be called with the engine switching context manager (`switch_engine`).
-
+    :param engine: Engine
     :param key: Key to set
     :param value: New value for the key
     """
 
-    get_engine().run_sql(SQL("INSERT INTO {0}.info (key, value) VALUES (%s, %s)"
-                             " ON CONFLICT (key) DO UPDATE SET value = excluded.value WHERE info.key = excluded.key")
-                         .format(Identifier(SPLITGRAPH_META_SCHEMA)), (key, value))
+    engine.run_sql(SQL("INSERT INTO {0}.info (key, value) VALUES (%s, %s)"
+                       " ON CONFLICT (key) DO UPDATE SET value = excluded.value WHERE info.key = excluded.key")
+                   .format(Identifier(SPLITGRAPH_META_SCHEMA)), (key, value))
 
 
 _RLS_TABLES = ['images', 'tags', 'objects', 'tables']
 
 
-def setup_registry_mode():
+def setup_registry_mode(engine):
     """
     Drops tables in splitgraph_meta that aren't pertinent to the registry + sets up access policies/RLS:
 
@@ -133,9 +127,8 @@ def setup_registry_mode():
 
     """
 
-    if get_info_key("registry_mode") == 'true':
+    if get_info_key(engine, "registry_mode") == 'true':
         return
-    engine = get_engine()
 
     for schema in (SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA):
         engine.run_sql(SQL("REVOKE CREATE ON SCHEMA {} FROM PUBLIC").format(Identifier(schema)))
@@ -152,58 +145,52 @@ def setup_registry_mode():
                    .format(Identifier(SPLITGRAPH_META_SCHEMA)))
 
     for t in _RLS_TABLES:
-        _setup_rls_policies(t)
+        _setup_rls_policies(engine, t)
 
     # Object_locations is different, since we have to refer to the objects table for the namespace of the object
     # whose location we're changing.
-    test_query = """((SELECT true as bool FROM {0}.{1}
-                        JOIN {0}.objects ON {0}.{1}.object_id = {0}.objects.object_id
-                        WHERE {0}.objects.namespace = current_user) = true)"""
-    _setup_rls_policies("object_locations", condition=test_query)
-    _setup_rls_policies("images", schema=REGISTRY_META_SCHEMA)
+    test_query = """(EXISTS (SELECT object_id FROM {0}.objects
+                        WHERE {0}.objects.namespace = current_user
+                        AND object_id = {0}.{1}.object_id))"""
+    _setup_rls_policies(engine, "object_locations", condition=test_query)
+    _setup_rls_policies(engine, "images", schema=REGISTRY_META_SCHEMA)
 
-    set_info_key("registry_mode", "true")
+    set_info_key(engine, "registry_mode", "true")
 
 
-def _setup_rls_policies(table, schema=SPLITGRAPH_META_SCHEMA, condition=None):
+def _setup_rls_policies(engine, table, schema=SPLITGRAPH_META_SCHEMA, condition=None):
     condition = condition or "({0}.{1}.namespace = current_user)"
-    engine = get_engine()
 
     engine.run_sql(SQL("ALTER TABLE {}.{} ENABLE ROW LEVEL SECURITY").format(Identifier(schema),
                                                                              Identifier(table)))
     for flavour in 'SIUD':
         engine.run_sql(SQL("DROP POLICY IF EXISTS {2} ON {0}.{1}")
-                       .format(Identifier(schema), Identifier(table), Identifier(table + '_' + flavour)),
-                       return_shape=None)
+                       .format(Identifier(schema), Identifier(table), Identifier(table + '_' + flavour)))
     engine.run_sql(SQL("""CREATE POLICY {2} ON {0}.{1} FOR SELECT USING (true)""")
-                   .format(Identifier(schema), Identifier(table), Identifier(table + '_S')),
-                   return_shape=None)
+                   .format(Identifier(schema), Identifier(table), Identifier(table + '_S')))
     engine.run_sql(SQL("""CREATE POLICY {2} ON {0}.{1} FOR INSERT WITH CHECK """)
                    .format(Identifier(schema), Identifier(table), Identifier(table + '_I'))
-                   + SQL(condition).format(Identifier(schema), Identifier(table)),
-                   return_shape=None)
+                   + SQL(condition).format(Identifier(schema), Identifier(table)))
     engine.run_sql(SQL("CREATE POLICY {2} ON {0}.{1} FOR UPDATE USING ")
                    .format(Identifier(schema), Identifier(table), Identifier(table + '_U'))
                    + SQL(condition).format(Identifier(schema), Identifier(table))
-                   + SQL(" WITH CHECK ") + SQL(condition).format(Identifier(schema), Identifier(table)),
-                   return_shape=None)
+                   + SQL(" WITH CHECK ") + SQL(condition).format(Identifier(schema), Identifier(table)))
     engine.run_sql(SQL("CREATE POLICY {2} ON {0}.{1} FOR DELETE USING ")
                    .format(Identifier(schema), Identifier(table), Identifier(table + '_D'))
-                   + SQL(condition).format(Identifier(schema), Identifier(table)),
-                   return_shape=None)
+                   + SQL(condition).format(Identifier(schema), Identifier(table)))
 
 
-def toggle_registry_rls(mode='ENABLE'):
+def toggle_registry_rls(engine, mode='ENABLE'):
     """
     Switches row-level security on the registry, restricting write access to metadata tables
     to owners of relevant repositories/objects.
 
+    :param engine: Engine
     :param mode: ENABLE, DISABLE or FORCE (enable for superusers/table owners)
     """
 
     if mode not in ('ENABLE', 'DISABLE', 'FORCE'):
         raise ValueError()
-    engine = get_engine()
 
     for t in _RLS_TABLES:
         engine.run_sql(SQL("ALTER TABLE {}.{} %s ROW LEVEL SECURITY" % mode).format(Identifier(SPLITGRAPH_META_SCHEMA),

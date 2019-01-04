@@ -4,8 +4,9 @@ sgr commands related to building and rebuilding Splitfiles.
 
 import click
 
-import splitgraph as sg
-from splitgraph.commandline._common import image_spec_parser
+from splitgraph.core.repository import Repository
+from splitgraph.splitfile import execute_commands, rebuild_image
+from ._common import image_spec_parser
 
 
 @click.command(name='build')
@@ -14,7 +15,7 @@ from splitgraph.commandline._common import image_spec_parser
               help='Parameters to be substituted into the Splitfile. All parameters mentioned in the file'
                    ' must be specified in order for the Splitfile to be executed.')
 @click.option('-o', '--output-repository', help='Repository to store the result in.',
-              type=sg.to_repository)
+              type=Repository.from_schema)
 def build_c(splitfile, args, output_repository):
     """
     Build Splitgraph images.
@@ -40,7 +41,7 @@ def build_c(splitfile, args, output_repository):
     """
     args = {k: v for k, v in args}
     print("Executing Splitfile %s with arguments %r" % (splitfile.name, args))
-    sg.execute_commands(splitfile.read(), args, output=output_repository)
+    execute_commands(splitfile.read(), args, output=output_repository)
 
 
 @click.command(name='provenance')
@@ -95,15 +96,15 @@ def provenance_c(image_spec, full, error_on_end):
             FROM noaa/climate:[hash_3] IMPORT {SELECT * FROM rainfall_data WHERE state = 'AZ'}
     """
     repository, image = image_spec
-    image = sg.resolve_image(repository, image)
-    
+    image = repository.images[image]
+
     if full:
-        splitfile_commands = sg.image_hash_to_splitfile(repository, image, error_on_end)
-        print("# Splitfile commands used to recreate %s:%s" % (str(repository), image))
+        splitfile_commands = image.to_splitfile(err_on_end=error_on_end)
+        print("# Splitfile commands used to recreate %s:%s" % (str(repository), image.image_hash))
         print('\n'.join(splitfile_commands))
     else:
-        result = sg.provenance(repository, image)
-        print("%s:%s depends on:" % (str(repository), image))
+        result = image.provenance()
+        print("%s:%s depends on:" % (str(repository), image.image_hash))
         print('\n'.join("%s:%s" % rs for rs in result))
 
 
@@ -135,17 +136,17 @@ def rebuild_c(image_spec, update, against):
         out.
     """
     repository, image = image_spec
-    image = sg.resolve_image(repository, image)
+    image = repository.images[image]
 
     # Replace the sources used to construct the image with either the latest ones or the images specified by the user.
     # This doesn't require us at this point to have pulled all the dependencies: the Splitfile executor will do it
     # after we feed in the reconstructed and patched Splitfile.
-    deps = {k: v for k, v in sg.provenance(repository, image)}
-    new_images = {repo: image for repo, image in against} if not update \
+    deps = {k: v for k, v in image.provenance()}
+    new_images = {repo: repl_image for repo, repl_image in against} if not update \
         else {repo: 'latest' for repo, _ in deps.items()}
     deps.update(new_images)
 
-    print("Rerunning %s:%s against:" % (str(repository), image))
+    print("Rerunning %s:%s against:" % (str(repository), image.image_hash))
     print('\n'.join("%s:%s" % rs for rs in new_images.items()))
 
-    sg.rerun_image_with_replacement(repository, image, new_images)
+    rebuild_image(image, new_images)

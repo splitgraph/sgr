@@ -6,6 +6,7 @@ Hooks into the API to allow management of Splitgraph repositories and images usi
 
 import click
 
+from splitgraph.commandline.example import example
 from splitgraph.commandline.image_creation import checkout_c, commit_c, tag_c, import_c
 from splitgraph.commandline.image_info import log_c, diff_c, show_c, sql_c, status_c
 from splitgraph.commandline.misc import rm_c, init_c, cleanup_c, config_c, prune_c
@@ -15,7 +16,7 @@ from splitgraph.commandline.splitfile import build_c, provenance_c, rebuild_c
 from splitgraph.engine import get_engine
 
 
-def _commit_connection(result):
+def _commit_connection(_):
     """Commit and close the PG connection when the application finishes."""
     get_engine().commit()
     get_engine().close()
@@ -73,3 +74,6 @@ cli.add_command(upstream_c)
 cli.add_command(build_c)
 cli.add_command(provenance_c)
 cli.add_command(rebuild_c)
+
+# Examples
+cli.add_command(example)

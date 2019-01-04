@@ -1,18 +1,22 @@
 from datetime import datetime as dt
 
-from splitgraph import rm, get_engine
-from test.splitgraph.conftest import PG_MNT, _mount_postgres, _mount_mysql, MYSQL_MNT
+from splitgraph import get_engine
+from splitgraph.core.repository import Repository
+from test.splitgraph.conftest import _mount_postgres, _mount_mysql, _mount_mongo
+
+PG_MNT = Repository.from_schema("test/pg_mount")
+MG_MNT = Repository.from_schema("test_mg_mount")
+MYSQL_MNT = Repository.from_schema("test/mysql_mount")
 
 
-def test_mount_unmount():
-    rm(PG_MNT)
+def test_mount_unmount(local_engine_empty):
     _mount_postgres(PG_MNT)
     assert (1, 'apple') in get_engine().run_sql("""SELECT * FROM "test/pg_mount".fruits""")
-    rm(PG_MNT)
+    PG_MNT.rm()
     assert not get_engine().schema_exists(PG_MNT.to_schema())
 
 
-def test_mount_mysql():
+def test_mount_mysql(local_engine_empty):
     try:
         _mount_mysql(MYSQL_MNT)
         # Gotchas: bool coerced to int
@@ -21,11 +25,13 @@ def test_mount_mysql():
                            FROM "test/mysql_mount".mushrooms
                            WHERE friendly = 0""")
     finally:
-        rm(MYSQL_MNT)
+        MYSQL_MNT.rm()
 
 
-def test_cross_joins(local_engine_with_pg_and_mg):
-    assert local_engine_with_pg_and_mg.run_sql(
+def test_cross_joins(local_engine_empty):
+    _mount_postgres(PG_MNT)
+    _mount_mongo(MG_MNT)
+    assert local_engine_empty.run_sql(
         """SELECT "test/pg_mount".fruits.fruit_id,
                  test_mg_mount.stuff.name,
                  "test/pg_mount".fruits.name as spirit_fruit

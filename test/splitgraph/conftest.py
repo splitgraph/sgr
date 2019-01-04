@@ -1,13 +1,19 @@
 import os
 
 import pytest
+from minio import Minio
 
-from splitgraph import to_repository as R
-from splitgraph._data.common import ensure_metadata_schema
-from splitgraph._data.registry import _ensure_registry_schema, unpublish_repository, setup_registry_mode, \
-    toggle_registry_rls
-from splitgraph.commands import *
+from splitgraph.core._common import ensure_metadata_schema
+from splitgraph.core.engine import get_current_repositories
+from splitgraph.core.object_manager import ObjectManager
+from splitgraph.core.registry import _ensure_registry_schema, unpublish_repository, setup_registry_mode, \
+    toggle_registry_rls, set_info_key
+from splitgraph.core.repository import Repository
 from splitgraph.engine import get_engine, ResultShape, switch_engine
+from splitgraph.hooks.mount_handlers import mount
+from splitgraph.hooks.s3 import S3_HOST, S3_PORT, S3_ACCESS_KEY, S3_SECRET_KEY
+
+R = Repository.from_schema
 
 PG_MNT = R('test/pg_mount')
 PG_MNT_PULL = R('test_pg_mount_pull')
@@ -20,9 +26,8 @@ def _mount_postgres(repository):
     mount('tmp', "postgres_fdw",
           dict(server='pgorigin', port=5432, username='originro', password='originpass', dbname="origindb",
                remote_schema="public"))
-    import_tables(R('tmp'), get_engine().get_all_tables('tmp'),
-                  repository, [], foreign_tables=True, do_checkout=True)
-    rm(R('tmp'))
+    repository.import_tables([], R('tmp'), [], foreign_tables=True, do_checkout=True)
+    R('tmp').rm()
 
 
 def _mount_mongo(repository):
@@ -36,9 +41,8 @@ def _mount_mongo(repository):
                                            "duration": "numeric",
                                            "happy": "boolean"
                                        }}))
-    import_tables(R('tmp'), get_engine().get_all_tables('tmp'),
-                  repository, [], foreign_tables=True, do_checkout=True)
-    rm(R('tmp'))
+    repository.import_tables([], R('tmp'), [], foreign_tables=True, do_checkout=True)
+    R('tmp').rm()
 
 
 def _mount_mysql(repository):
@@ -58,7 +62,7 @@ def healthcheck():
     # here since we don't touch the remote_engine but we don't run any tests against it until later on,
     # so it should have enough time to start up.
     for mountpoint in [PG_MNT, MG_MNT, MYSQL_MNT]:
-        rm(mountpoint)
+        mountpoint.rm()
     _mount_postgres(PG_MNT)
     _mount_mongo(MG_MNT)
     _mount_mysql(MYSQL_MNT)
@@ -71,38 +75,86 @@ def healthcheck():
                                     return_shape=ResultShape.ONE_ONE) is not None
     finally:
         for mountpoint in [PG_MNT, MG_MNT, MYSQL_MNT]:
-            rm(mountpoint)
+            mountpoint.rm()
 
 
 @pytest.fixture
-def local_engine_with_pg():
-    # SG connection with a mounted Postgres db
+def local_engine_empty():
+    engine = get_engine()
+    # A connection to the local engine that has nothing mounted on it.
+    for mountpoint, _ in get_current_repositories(engine):
+        mountpoint.rm()
     for mountpoint in TEST_MOUNTPOINTS:
-        rm(mountpoint)
-    _mount_postgres(PG_MNT)
+        mountpoint.rm()
+    ObjectManager(engine).cleanup()
+    engine.commit()
     try:
-        yield get_engine()
+        yield engine
     finally:
-        get_engine().rollback()
+        engine.rollback()
+        for mountpoint, _ in get_current_repositories(engine):
+            mountpoint.rm()
         for mountpoint in TEST_MOUNTPOINTS:
-            rm(mountpoint)
+            mountpoint.rm()
+        ObjectManager(engine).cleanup()
+        engine.commit()
+
+
+with open(os.path.join(os.path.dirname(__file__), '../architecture/data/pgorigin/setup.sql'), 'r') as f:
+    PG_DATA = f.read()
+
+
+def make_pg_repo(engine):
+    # Used to be a mount, trying to just write the data directly to speed tests up
+    result = Repository("test", "pg_mount", engine=engine)
+    result.init()
+    result.run_sql(PG_DATA)
+    assert result.has_pending_changes()
+    result.commit()
+    return result
+
+
+def make_multitag_pg_repo(pg_repo):
+    pg_repo.head.tag('v1')
+    pg_repo.run_sql("DELETE FROM fruits WHERE fruit_id = 1")
+    pg_repo.commit().tag('v2')
+    pg_repo.engine.commit()
+    return pg_repo
 
 
 @pytest.fixture
-def local_engine_with_pg_and_mg():
-    # SG connection with a mounted Mongo + Postgres db
-    for mountpoint in TEST_MOUNTPOINTS:
-        rm(mountpoint)
-    cleanup_objects()
-    _mount_postgres(PG_MNT)
-    _mount_mongo(MG_MNT)
-    try:
-        yield get_engine()
-    finally:
-        get_engine().rollback()
-        for mountpoint in TEST_MOUNTPOINTS:
-            rm(mountpoint)
-        cleanup_objects()
+def pg_repo_local(local_engine_empty):
+    yield make_pg_repo(local_engine_empty)
+
+
+@pytest.fixture
+def pg_repo_remote(remote_engine):
+    yield make_pg_repo(remote_engine)
+
+
+@pytest.fixture
+def pg_repo_remote_multitag(pg_repo_remote):
+    yield make_multitag_pg_repo(pg_repo_remote)
+
+
+@pytest.fixture
+def pg_repo_local_multitag(pg_repo_local):
+    yield make_multitag_pg_repo(pg_repo_local)
+
+
+@pytest.fixture
+def mg_repo_local(local_engine_empty):
+    result = Repository("", "test_mg_mount", engine=local_engine_empty)
+    _mount_mongo(result)
+    yield result
+
+
+@pytest.fixture
+def mg_repo_remote(remote_engine):
+    result = Repository("", "test_mg_mount", engine=remote_engine)
+    with switch_engine(remote_engine):
+        _mount_mongo(result)
+    yield result
 
 
 REMOTE_ENGINE = 'remote_engine'  # On the host, mapped into localhost; on the local engine works as intended.
@@ -110,60 +162,28 @@ REMOTE_ENGINE = 'remote_engine'  # On the host, mapped into localhost; on the lo
 
 @pytest.fixture
 def remote_engine():
-    # For these, we'll use both the cachedb (original postgres for integration tests) as well as the remote_engine.
-    # Mount and snapshot the two origin DBs (mongo/pg) with the test data.
-    with switch_engine(REMOTE_ENGINE):
-        ensure_metadata_schema()
-        _ensure_registry_schema()
-        setup_registry_mode()
-        toggle_registry_rls('DISABLE')
-        unpublish_repository(OUTPUT)
-        unpublish_repository(PG_MNT)
-        unpublish_repository(Repository('testuser', 'pg_mount'))
-        for mountpoint in TEST_MOUNTPOINTS:
-            rm(mountpoint)
-        cleanup_objects()
-        get_engine().commit()
-        _mount_postgres(PG_MNT)
-        _mount_mongo(MG_MNT)
+    engine = get_engine(REMOTE_ENGINE)
+    ensure_metadata_schema(engine)
+    _ensure_registry_schema(engine)
+    set_info_key(engine, 'registry_mode', False)
+    setup_registry_mode(engine)
+    toggle_registry_rls(engine, 'DISABLE')
+    unpublish_repository(Repository('', 'output', engine))
+    unpublish_repository(Repository('test', 'pg_mount', engine))
+    unpublish_repository(Repository('testuser', 'pg_mount', engine))
+    for mountpoint, _ in get_current_repositories(engine):
+        mountpoint.rm()
+    ObjectManager(engine).cleanup()
+    engine.commit()
     try:
-        yield get_engine(REMOTE_ENGINE)
+        yield engine
     finally:
-        with switch_engine(REMOTE_ENGINE):
-            e = get_engine()
-            e.rollback()
-            for mountpoint in TEST_MOUNTPOINTS:
-                rm(mountpoint)
-            cleanup_objects()
-            e.commit()
-            e.close()
-
-
-@pytest.fixture
-def local_engine_empty():
-    # A connection to the local engine that has nothing mounted on it.
-    for mountpoint, _ in get_current_repositories():
-        rm(mountpoint)
-    cleanup_objects()
-    get_engine().commit()
-    try:
-        yield get_engine()
-    finally:
-        get_engine().rollback()
-        for mountpoint, _ in get_current_repositories():
-            rm(mountpoint)
-        cleanup_objects()
-        get_engine().commit()
-
-
-def add_multitag_dataset_to_engine(engine):
-    with switch_engine(engine):
-        set_tag(PG_MNT, get_current_head(PG_MNT), 'v1')
-        get_engine().run_sql("DELETE FROM \"test/pg_mount\".fruits WHERE fruit_id = 1")
-        new_head = commit(PG_MNT)
-        set_tag(PG_MNT, new_head, 'v2')
-        get_engine().commit()
-        return new_head
+        engine.rollback()
+        for mountpoint, _ in get_current_repositories(engine):
+            mountpoint.rm()
+        ObjectManager(engine).cleanup()
+        engine.commit()
+        engine.close()
 
 
 SPLITFILE_ROOT = os.path.join(os.path.dirname(__file__), '../resources/')
@@ -172,3 +192,23 @@ SPLITFILE_ROOT = os.path.join(os.path.dirname(__file__), '../resources/')
 def load_splitfile(name):
     with open(SPLITFILE_ROOT + name, 'r') as f:
         return f.read()
+
+
+def _cleanup_minio():
+    client = Minio('%s:%s' % (S3_HOST, S3_PORT),
+                   access_key=S3_ACCESS_KEY,
+                   secret_key=S3_SECRET_KEY,
+                   secure=False)
+    if client.bucket_exists(S3_ACCESS_KEY):
+        objects = [o.object_name for o in client.list_objects(bucket_name=S3_ACCESS_KEY)]
+        # remove_objects is an iterator, so we force evaluate it
+        list(client.remove_objects(bucket_name=S3_ACCESS_KEY, objects_iter=objects))
+
+
+@pytest.fixture
+def clean_minio():
+    # Make sure to delete extra objects in the remote Minio bucket
+    _cleanup_minio()
+    yield
+    # Comment this out if tests fail and you want to see what the hell went on in the bucket.
+    _cleanup_minio()

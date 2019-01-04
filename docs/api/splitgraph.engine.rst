@@ -12,6 +12,6 @@ Module contents
 ---------------
 
 .. automodule:: splitgraph.engine
-:members:
-        :undoc-members:
-                    :show-inheritance:
+    :members:
+    :undoc-members:
+    :show-inheritance:

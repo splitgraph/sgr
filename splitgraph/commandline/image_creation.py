@@ -7,8 +7,10 @@ from collections import defaultdict
 
 import click
 
-import splitgraph as sg
-from splitgraph.commandline._common import image_spec_parser
+from splitgraph import SplitGraphException
+from splitgraph.core.engine import repository_exists
+from splitgraph.core.repository import Repository
+from ._common import image_spec_parser
 
 
 @click.command(name='checkout')
@@ -31,18 +33,18 @@ def checkout_c(image_spec, force, uncheckout):
     If ``--force`` isn't passed and the schema has pending changes, this will fail.
     """
     repository, image = image_spec
-    image = sg.resolve_image(repository, image)
 
     if uncheckout:
-        sg.uncheckout(repository)
+        repository.uncheckout()
         print("Unchecked out %s." % (str(repository),))
     else:
-        sg.checkout(repository, image, force=force)
-        print("Checked out %s:%s." % (str(repository), image[:12]))
+        image = repository.images[image]
+        image.checkout(force=force)
+        print("Checked out %s:%s." % (str(repository), image.image_hash[:12]))
 
 
 @click.command(name='commit')
-@click.argument('repository', type=sg.to_repository)
+@click.argument('repository', type=Repository.from_schema)
 @click.option('-s', '--include-snap', default=False, is_flag=True,
               help='Include the full table snapshots. This consumes more space, '
                    'but makes checkouts faster.')
@@ -55,7 +57,7 @@ def commit_c(repository, include_snap, message):
     this will delta compress the changes. For all other tables (or if ``-s`` has been passed), this will
     store them as full table snapshots.
     """
-    new_hash = sg.commit(repository, include_snap=include_snap, comment=message)
+    new_hash = repository.commit(include_snap=include_snap, comment=message).image_hash
     print("Committed %s as %s." % (str(repository), new_hash[:12]))
 
 
@@ -102,13 +104,13 @@ def tag_c(image_spec, tag, force, remove):
             raise click.BadArgumentUsage("Use sgr tag --remove %s:TAG_TO_DELETE" % repository.to_schema())
         if image in ('latest', 'HEAD'):
             raise click.BadArgumentUsage("%s is a reserved tag!" % image)
-        sg.delete_tag(repository, image)
+        repository.images[image].delete_tag(image)
         return
 
     if tag is None:
         # List all tags
         tag_dict = defaultdict(list)
-        for img, img_tag in sg.get_all_hashes_tags(repository):
+        for img, img_tag in repository.get_all_hashes_tags():
             tag_dict[img].append(img_tag)
         if image is None:
             for img, tags in tag_dict.items():
@@ -116,24 +118,25 @@ def tag_c(image_spec, tag, force, remove):
                 if img:
                     print("%s: %s" % (img[:12], ', '.join(tags)))
         else:
-            print(', '.join(tag_dict[sg.get_canonical_image_id(repository, image)]))
+            print(', '.join(tag_dict[repository.images[image].image_hash]))
         return
 
     if tag == 'HEAD':
-        raise sg.SplitGraphException("HEAD is a reserved tag!")
+        raise SplitGraphException("HEAD is a reserved tag!")
 
     if image is None:
-        image = sg.get_current_head(repository)
+        image = repository.head
     else:
-        image = sg.get_canonical_image_id(repository, image)
-    sg.set_tag(repository, image, tag, force)
-    print("Tagged %s:%s with %s." % (str(repository), image, tag))
+        image = repository.images[image]
+
+    image.tag(tag, force)
+    print("Tagged %s:%s with %s." % (str(repository), image.image_hash, tag))
 
 
 @click.command(name='import')
 @click.argument('image_spec', type=image_spec_parser())
 @click.argument('table_or_query')
-@click.argument('target_repository', type=sg.to_repository)
+@click.argument('target_repository', type=Repository.from_schema)
 @click.argument('target_table', required=False)
 def import_c(image_spec, table_or_query, target_repository, target_table):
     """
@@ -168,23 +171,24 @@ def import_c(image_spec, table_or_query, target_repository, target_table):
     """
     repository, image = image_spec
 
-    if sg.repository_exists(repository):
+    if repository_exists(repository):
         foreign_table = False
-        image = sg.resolve_image(repository, image)
+        image = repository.images[image]
         # If the source table doesn't exist in the image, we'll treat it as a query instead.
-        is_query = not bool(sg.get_table(repository, table_or_query, image))
+        is_query = not bool(image.get_table(table_or_query))
     else:
         # If the source schema isn't actually a Splitgraph repo, we'll be copying the table verbatim.
         foreign_table = True
-        is_query = table_or_query not in sg.get_engine().get_all_tables(repository.to_schema())
+        is_query = table_or_query not in repository.engine.get_all_tables(repository.to_schema())
         image = None
 
     if is_query and not target_table:
         print("TARGET_TABLE is required when the source is a query!")
         sys.exit(1)
 
-    sg.import_tables(repository, [table_or_query], target_repository, [target_table] if target_table else [],
-                     image_hash=image, foreign_tables=foreign_table, table_queries=[] if not is_query else [True])
+    target_repository.import_tables([target_table] if target_table else [], repository, [table_or_query],
+                                    image_hash=image.image_hash if image else None, foreign_tables=foreign_table,
+                                    table_queries=[] if not is_query else [True])
 
     print("%s:%s has been imported from %s:%s%s" % (str(target_repository), target_table, str(repository),
-                                                    table_or_query, (' (%s)' % image[:12] if image else '')))
+                                                    table_or_query, (' (%s)' % image.image_hash[:12] if image else '')))

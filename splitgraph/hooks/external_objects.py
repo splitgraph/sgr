@@ -17,7 +17,7 @@ class ExternalObjectHandler:
     External object handlers must extend this class and be registered in the Splitgraph config.
 
     For an example of how this can be used, see splitgraph.hooks.s3: it's a handler allowing objects to be
-    uploaded to S3/S3-compatible host using the Minio API. It's registered in the config as follows:
+    uploaded to S3/S3-compatible host using the Minio API. It's registered in the config as follows::
 
         [external_handlers]
         S3=splitgraph.hooks.s3.S3ExternalObjectHandler
@@ -30,6 +30,7 @@ class ExternalObjectHandler:
         """
         Initialize the handler with a dictionary of parameters (e.g. remote access keys etc).
         The instantiation happens at the beginning of a pull/push.
+
         :param params: Extra params to be passed to the handler from the commandline invocation
             of push/pull.
         """
@@ -51,6 +52,7 @@ class ExternalObjectHandler:
 
 
 def get_external_object_handler(name, handler_params):
+    """Load an external protocol handler by its name, initializing it with optional parameters."""
     try:
         handler_class = _EXTERNAL_OBJECT_HANDLERS[name]
         return handler_class(handler_params)
