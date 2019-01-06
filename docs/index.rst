@@ -5,10 +5,6 @@ Welcome to Splitgraph's documentation!
    :maxdepth: 2
    :caption: Contents:
 
-   introduction
-   quickstart
-   splitfile
-   commands/commands
    API reference <api/splitgraph>
 
 

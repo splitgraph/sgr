@@ -117,15 +117,15 @@ def upstream_c(repository, set_to, reset):
 
     ``sgr upstream my/repo --set splitgraph.com username/repo``
 
-        Sets the upstream for ``my/repo`` to ``username/repo`` existing on the ``splitgraph.com`` engine
+    Sets the upstream for ``my/repo`` to ``username/repo`` existing on the ``splitgraph.com`` engine
 
     ``sgr upstream my/repo --reset``
 
-        Removes the upstream for ``my/repo``.
+    Removes the upstream for ``my/repo``.
 
     ``sgr upstream my/repo``
 
-        Shows the current upstream for ``my/repo``.
+    Shows the current upstream for ``my/repo``.
     """
     # surely there's a better way of finding out whether --set isn't specified
     if set_to != ("", None) and reset:
