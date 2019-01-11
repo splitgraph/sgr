@@ -33,6 +33,8 @@ RUN find /build_scripts -type f -name '*.sh' -exec chmod a+x {} \;
 RUN ./build_scripts/fdws/mongo_fdw/build_mongo_fdw.sh
 # MySQL FDW
 RUN ./build_scripts/fdws/mysql_fdw/build_mysql_fdw.sh
+# Multicorn
+RUN ./build_scripts/fdws/multicorn/build_multicorn.sh
 
 EXPOSE 5432
 ENV POSTGRES_DB cachedb
