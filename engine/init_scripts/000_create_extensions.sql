@@ -1,3 +1,4 @@
 CREATE EXTENSION postgres_fdw;
 CREATE EXTENSION mongo_fdw;
 CREATE EXTENSION mysql_fdw;
+CREATE EXTENSION multicorn;
