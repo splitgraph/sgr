@@ -15,7 +15,7 @@ following methods:
 # and importing the config fails
 import sys
 
-if not hasattr(sys, 'argv'):
+if not hasattr(sys, 'argv'):  # pragma: no cover
     sys.argv = ['']
 
 from .engine import *

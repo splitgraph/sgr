@@ -16,9 +16,7 @@ except ImportError:
 _PG_LOGLEVEL = logging.INFO
 
 
-# Class tested as part of the actual FDW on the engine (see test/splitgraph/commands/test_layered_querying)
-# but isn't instrumented by pytest-cov.
-class QueryingForeignDataWrapper(ForeignDataWrapper):  # pragma: no cover
+class QueryingForeignDataWrapper(ForeignDataWrapper):
     """
     A read-only Postgres FDW that allows to query Splitgraph tables without materializing them.
     """
