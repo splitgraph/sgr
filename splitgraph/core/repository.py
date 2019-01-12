@@ -258,10 +258,14 @@ class Repository:
             # If we're talking to a bare repo / a remote that doesn't have checked out repositories,
             # there's no point in touching the audit trigger.
             self.engine.discard_pending_changes(self.to_schema())
-            self.engine.run_sql(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(self.to_schema())))
-            # Drop server too if it exists (could have been a non-foreign repository)
+
+            # Dispose of the foreign servers (LQ FDW, other FDWs) for this schema if it exists (otherwise its connection
+            # won't be recycled and we can get deadlocked).
+            self.engine.run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(
+                Identifier('%s_lq_checkout_server' % self.to_schema())))
             self.engine.run_sql(
                 SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(self.to_schema() + '_server')))
+            self.engine.run_sql(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(self.to_schema())))
 
         if unregister:
             meta_tables = ["tables", "tags", "images"]
@@ -495,7 +499,7 @@ class Repository:
             if tag != 'HEAD':
                 self.images.by_hash(image_id).tag(tag, force)
 
-    def run_sql(self, sql, arguments=(), return_shape=ResultShape.MANY_MANY):
+    def run_sql(self, sql, arguments=None, return_shape=ResultShape.MANY_MANY):
         """Execute an arbitrary SQL statement inside of this repository's checked out schema."""
         self.engine.run_sql("SET search_path TO %s", (self.to_schema(),))
         result = self.engine.run_sql(sql, arguments=arguments, return_shape=return_shape)

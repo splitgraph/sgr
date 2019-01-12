@@ -1,5 +1,7 @@
 import logging
 
+from psycopg2.sql import SQL, Identifier
+
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 
 
@@ -13,13 +15,14 @@ class Table:
         self.table_name = table_name
         self.objects = objects
 
-    def materialize(self, destination, destination_schema=None):
+    def materialize(self, destination, destination_schema=None, lq_server=None):
         """
         Materializes a Splitgraph table in the target schema as a normal Postgres table, potentially downloading all
         required objects and using them to reconstruct the table.
 
         :param destination: Name of the destination table.
         :param destination_schema: Name of the destination schema.
+        :param lq_server: If set, sets up a layered querying FDW for the table instead using this foreign server.
         :return: A set of IDs of downloaded objects used to construct the table.
         """
         destination_schema = destination_schema or self.repository.to_schema()
@@ -44,12 +47,22 @@ class Table:
                             destination_schema, self.image.image_hash, self.table_name)
             logging.warning("Missing objects: %r", difference)
 
-        # Copy the given snap id over to "staging" and apply the DIFFS
-        engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, destination_schema, destination,
-                          with_pk_constraints=True)
-        for pack_object in reversed(to_apply):
-            logging.info("Applying %s...", pack_object)
-            engine.apply_diff_object(SPLITGRAPH_META_SCHEMA, pack_object, destination_schema, destination)
+        if not lq_server:
+            # Copy the given snap id over to "staging" and apply the DIFFS
+            engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, destination_schema, destination,
+                              with_pk_constraints=True)
+            for pack_object in reversed(to_apply):
+                logging.info("Applying %s...", pack_object)
+                engine.apply_diff_object(SPLITGRAPH_META_SCHEMA, pack_object, destination_schema, destination)
+        else:
+            table_schema = self.get_schema()
+            query = SQL("CREATE FOREIGN TABLE {}.{} (") \
+                .format(Identifier(self.repository.to_schema()), Identifier(self.table_name))
+            query += SQL(','.join(
+                "{} %s " % ctype for _, _, ctype, _ in table_schema)).format(
+                *(Identifier(cname) for _, cname, _, _ in table_schema))
+            query += SQL(") SERVER {} OPTIONS (table %s)").format(Identifier(lq_server))
+            engine.run_sql(query, (self.table_name,))
 
         return fetched_objects if upstream else set()
 

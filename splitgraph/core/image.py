@@ -9,6 +9,7 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphException
+from splitgraph.hooks.mount_handlers import init_fdw
 from ._common import set_tag, select, manage_audit, set_head
 from .table import Table
 
@@ -99,67 +100,43 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
         if layered:
             self._lq_checkout()
             set_head(self.repository, self.image_hash)
+        else:
+            downloaded_object_ids = set()
+            for table in self.get_tables():
+                downloaded_object_ids |= self.get_table(table).materialize(table)
 
-        downloaded_object_ids = set()
-        for table in self.get_tables():
-            downloaded_object_ids |= self.get_table(table).materialize(table)
+            # Repoint the current HEAD for this repository to the new snap ID
+            set_head(self.repository, self.image_hash)
 
-        # Repoint the current HEAD for this repository to the new snap ID
-        set_head(self.repository, self.image_hash)
-
-        if not keep_downloaded_objects:
-            logging.info("Removing %d downloaded objects from cache...", len(downloaded_object_ids))
-            self.repository.objects.delete_objects(downloaded_object_ids)
+            if not keep_downloaded_objects:
+                logging.info("Removing %d downloaded objects from cache...", len(downloaded_object_ids))
+                self.repository.objects.delete_objects(downloaded_object_ids)
 
     def _lq_checkout(self):
         """
-        Intended to be run on the sgr side.  Initializes the FDW for all tables in a given image,
+        Intended to be run on the sgr side. Initializes the FDW for all tables in a given image,
         allowing to query them directly without materializing the tables.
         """
         # assumes that we got to the point in the normal checkout where we're about to materialize the tables
         # (e.g. the schemata are cleared)
         # Use a per-schema "foreign server" for layered queries for now
-        repository = self.repository
-        object_manager = repository.objects
-        server_id = Identifier('%s_lq_checkout_server' % repository.to_schema())
-        engine = repository.engine
+        server_id = '%s_lq_checkout_server' % self.repository.to_schema()
+        engine = self.repository.engine
 
-        engine.run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(server_id))
-        engine.run_sql(SQL("""CREATE SERVER {}
-                            FOREIGN DATA WRAPPER multicorn
-                            OPTIONS (wrapper 'splitgraph.commands.fdw_checkout.QueryingForeignDataWrapper',
-                                     host %s, port %s, dbname %s, namespace %s, repository %s, image_hash %s)""")
-                       .format(server_id),
-                       (engine.conn_params[0], str(engine.conn_params[1]), engine.conn_params[4],
-                        self.repository.namespace, self.repository.repository, self.image_hash))
-        engine.run_sql(SQL("""CREATE USER MAPPING FOR clientuser SERVER {} OPTIONS (user %s, password %s)""")
-                       .format(server_id), (engine.conn_params[2], engine.conn_params[3]))
+        init_fdw(engine, server_id=server_id, wrapper='multicorn',
+                 server_options={'wrapper': 'splitgraph.core.fdw_checkout.QueryingForeignDataWrapper',
+                                 'host': engine.conn_params[0],
+                                 'port': str(engine.conn_params[1]),
+                                 'dbname': engine.conn_params[4],
+                                 'namespace': self.repository.namespace,
+                                 'repository': self.repository.repository,
+                                 'image_hash': self.image_hash},
+                 user_options={'user': engine.conn_params[2], 'password': engine.conn_params[3]})
 
         # It's easier to create the foreign tables from our side than to implement IMPORT FOREIGN SCHEMA by the FDW
         for table_name in self.get_tables():
             logging.info("Mounting %s", table_name)
-
-            # Also need to actually download the remote objects at this point so that the FDW can query them
-            table = self.get_table(table_name)
-            object_id, to_apply = object_manager.get_image_object_path(table)
-            remote_info = self.repository.get_upstream()
-            if remote_info:
-                remote_conn, _ = remote_info
-                object_locations = object_manager.get_external_object_locations(to_apply + [object_id])
-                object_manager.download_objects(remote_conn, objects_to_fetch=to_apply + [object_id],
-                                                object_locations=object_locations)
-
-            table_schema = table.get_schema()
-            engine.run_sql(SQL("DROP FOREIGN TABLE IF EXISTS {}.{}")
-                           .format(Identifier(repository.to_schema()), Identifier(table)))
-            engine.run_sql(
-                SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(repository.to_schema()), Identifier(table)))
-            query = SQL("CREATE FOREIGN TABLE {}.{} (").format(Identifier(repository.to_schema()), Identifier(table))
-            query += SQL(','.join(
-                "{} %s " % ctype for _, _, ctype, _ in table_schema)).format(
-                *(Identifier(cname) for _, cname, _, _ in table_schema))
-            query += SQL(") SERVER {} OPTIONS (table %s)").format(server_id)
-            engine.run_sql(query, (table,))
+            self.get_table(table_name).materialize(table_name, self.repository.to_schema(), lq_server=server_id)
 
     def tag(self, tag, force=False):
         """

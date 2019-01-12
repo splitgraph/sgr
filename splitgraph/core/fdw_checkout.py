@@ -8,12 +8,17 @@ from splitgraph.engine.postgres.engine import PostgresEngine, _generate_where_cl
 
 try:
     from multicorn import ForeignDataWrapper, ANY, ALL
+    from multicorn.utils import log_to_postgres
 except ImportError:
-    # Multicorn not installed (OK if we're not on the driver machine).
+    # Multicorn not installed (OK if we're not on the engine machine).
     pass
 
+_PG_LOGLEVEL = logging.INFO
 
-class QueryingForeignDataWrapper(ForeignDataWrapper):
+
+# Class tested as part of the actual FDW on the engine (see test/splitgraph/commands/test_layered_querying)
+# but isn't instrumented by pytest-cov.
+class QueryingForeignDataWrapper(ForeignDataWrapper):  # pragma: no cover
     """
     A read-only Postgres FDW that allows to query Splitgraph tables without materializing them.
     """
@@ -60,7 +65,7 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         query = SQL("SELECT ") + SQL(','.join('{}' for _ in columns)).format(*[Identifier(c) for c in columns]) \
                 + SQL(" FROM {}.{}").format(Identifier(schema),
                                             Identifier(table))
-        logging.debug(query.as_string(self.engine.connection))
+        log_to_postgres("SELECT FROM STAGING: " + query.as_string(self.engine.connection), _PG_LOGLEVEL)
         cur.execute(query)
 
         while True:
@@ -71,6 +76,10 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
                 cur.close()
                 if drop_table:
                     self.engine.delete_table(schema, table)
+
+                # End the transaction so that nothing else deadlocks (at this point we've returned
+                # all the data we needed to the runtime so nothing will be lost).
+                self.engine.rollback()
                 raise StopIteration
 
     def execute(self, quals, columns, sortkeys=None):
@@ -82,14 +91,13 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         qual_sql, qual_vals = self._quals_to_postgres(quals)
         if not self.diff_chain:
             # If we only have the SNAP, we can just send SELECTs directly to it.
-            yield from self._run_select_from_staging(SPLITGRAPH_META_SCHEMA, self.snap, columns,
-                                                     drop_table=False)
-            raise StopIteration
+            return self._run_select_from_staging(SPLITGRAPH_META_SCHEMA, self.snap, columns, drop_table=False)
 
         # Accumulate the query result in a temporary table.
         # This is done inside of a transaction which gets discarded after the connection closed,
         # so it's invisible to others.
         staging_table = get_random_object_id()
+        log_to_postgres("Using staging table %s" % staging_table, _PG_LOGLEVEL)
         self.engine.run_sql(SQL("CREATE TABLE {0}.{1} AS SELECT * FROM {0}.{2} LIMIT 1 WITH NO DATA").format(
                 Identifier(SPLITGRAPH_META_SCHEMA), Identifier(staging_table), Identifier(self.snap)))
         self.engine.run_sql(SQL("ALTER TABLE {}.{} ADD COLUMN sg_meta_keep_pk BOOLEAN DEFAULT TRUE").format(
@@ -124,7 +132,7 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
                 query += _generate_where_clause(schema=SPLITGRAPH_META_SCHEMA, table=self.snap, cols=ri_cols,
                                                 table_2=object_id, schema_2=SPLITGRAPH_META_SCHEMA)
                 query += SQL(" WHERE {}.sg_action_kind=2) ON CONFLICT DO NOTHING").format(Identifier(object_id))
-                logging.debug(query.as_string(self.engine.connection))
+                log_to_postgres(query.as_string(self.engine.connection), _PG_LOGLEVEL)
                 self.engine.run_sql(query)
 
         # 2) Add all rows from the SNAP satisfying the query (if they already exist in staging, skip them).
@@ -136,7 +144,7 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         if quals:
             query += SQL(" WHERE ") + qual_sql
         query += SQL(") ON CONFLICT DO NOTHING")
-        logging.debug(query.as_string(self.engine.connection))
+        log_to_postgres(query.as_string(self.engine.connection), _PG_LOGLEVEL)
         self.engine.run_sql(query, qual_vals)
 
         # 3) Apply the diffs to the partially materialized table, making sure to discard rows that don't match
@@ -148,13 +156,12 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
 
         # For the final diff, we don't need to apply any quals to the staging table since Postgres doesn't trust
         # us and will apply them/do projections anyway.
-        logging.debug("Applying %s to %s", self.diff_chain[-1], staging_table)
+        log_to_postgres("Applying %s to %s" % (self.diff_chain[-1], staging_table), _PG_LOGLEVEL)
         self.engine.apply_diff_object(SPLITGRAPH_META_SCHEMA, self.diff_chain[-1],
                                       SPLITGRAPH_META_SCHEMA, staging_table)
 
-        yield from self._run_select_from_staging(SPLITGRAPH_META_SCHEMA, staging_table, columns,
-                                                 drop_table=True)
-        raise StopIteration
+        return self._run_select_from_staging(SPLITGRAPH_META_SCHEMA, staging_table, columns,
+                                             drop_table=True)
 
     def __init__(self, fdw_options, fdw_columns):
         """The foreign data wrapper is initialized on the first query.
@@ -178,5 +185,3 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         self.snap, self.diff_chain = ObjectManager(self.engine).get_image_object_path(
             self.repository.images[fdw_options['image_hash']].get_table(fdw_options['table']))
         self.diff_chain = list(reversed(self.diff_chain))
-
-

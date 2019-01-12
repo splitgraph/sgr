@@ -17,11 +17,21 @@ from ._common import image_spec_parser
 @click.argument('image_spec', type=image_spec_parser(default='HEAD'))
 @click.option('-f', '--force', help="Discard all pending changes to the schema", is_flag=True, default=False)
 @click.option('-u', '--uncheckout', help="Delete the checked out copy instead", is_flag=True, default=False)
-def checkout_c(image_spec, force, uncheckout):
+@click.option('-l', '--layered', help="Don't materialize the tables, use layered querying instead.",
+              is_flag=True, default=False)
+def checkout_c(image_spec, force, uncheckout, layered):
     """
     Check out a Splitgraph image into a Postgres schema.
 
-    This downloads the required physical objects and materializes all tables.
+    This downloads the required physical objects and materializes all tables, unless ``-l`` or ``--layered`` is passed,
+    in which case the objects are downloaded and a foreign data wrapper is set up on the engine to satisfy read-only
+    queries by combining results from each table's DIFF objects.
+
+    Tables checked out in this way are still presented as normal Postgres tables and can queried in the same way.
+    Since the tables aren't materialized, layered querying is faster to set up, but since each query now results in a
+    subquery to each object comprising the table, actual query execution is slower than to materialized Postgres tables.
+
+    Layered querying is only supported for reading from tables and only with the official Splitgraph engine.
 
     Image spec must be of the format ``[NAMESPACE/]REPOSITORY[:HASH_OR_TAG]``. Note that currently, the schema that the
     image is checked out into has to have the same name as the repository. If no image hash or tag is passed,
@@ -39,7 +49,7 @@ def checkout_c(image_spec, force, uncheckout):
         print("Unchecked out %s." % (str(repository),))
     else:
         image = repository.images[image]
-        image.checkout(force=force)
+        image.checkout(force=force, layered=layered)
         print("Checked out %s:%s." % (str(repository), image.image_hash[:12]))
 
 

@@ -112,9 +112,10 @@ class SQLEngine:
 
     def delete_table(self, schema, table):
         """Drop a table from a schema if it exists"""
-        self.run_sql(
-            SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(schema), Identifier(table)),
-            return_shape=ResultShape.NONE)
+        if self.get_table_type(schema, table) == 'BASE TABLE':
+            self.run_sql(SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(schema), Identifier(table)))
+        else:
+            self.run_sql(SQL("DROP FOREIGN TABLE IF EXISTS {}.{}").format(Identifier(schema), Identifier(table)))
 
     def delete_schema(self, schema):
         """Delete a schema if it exists, including all the tables in it."""
@@ -126,6 +127,11 @@ class SQLEngine:
         """Get all tables in a given schema."""
         return self.run_sql("SELECT table_name FROM information_schema.tables WHERE table_schema = %s", (schema,),
                             return_shape=ResultShape.MANY_ONE)
+
+    def get_table_type(self, schema, table):
+        return self.run_sql("SELECT table_type FROM information_schema.tables WHERE table_schema = %s"
+                            " AND table_name = %s", (schema, table),
+                            return_shape=ResultShape.ONE_ONE)
 
     def get_primary_keys(self, schema, table):
         """Get a list of (column_name, column_type) denoting the primary keys of a given table."""
@@ -225,7 +231,7 @@ class ChangeEngine(SQLEngine):
     def get_primary_keys(self, schema, table):
         raise NotImplementedError()
 
-    def run_sql(self, statement, arguments=(), return_shape=ResultShape.MANY_MANY):
+    def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY):
         raise NotImplementedError()
 
     def get_tracked_tables(self):

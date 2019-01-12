@@ -38,7 +38,16 @@ def register_mount_handler(name, mount_function):
     _MOUNT_HANDLERS[name] = mount_function
 
 
-def _init_fdw(engine, server_id, wrapper, server_options, user_options):
+def init_fdw(engine, server_id, wrapper, server_options, user_options):
+    """
+    Sets up a foreign data server on the engine.
+
+    :param engine: PostgresEngine
+    :param server_id: Name to call the foreign server, must be unique. Will be deleted if exists.
+    :param wrapper: Name of the foreign data wrapper (must be installed as an extension on the engine)
+    :param server_options: Dictionary of FDW options
+    :param user_options: Dictionary of user options
+    """
     from splitgraph.engine.postgres.engine import PostgresEngine
     if not isinstance(engine, PostgresEngine):
         raise SplitGraphException("Only PostgresEngines support mounting via FDW!")
@@ -80,8 +89,8 @@ def mount_postgres(mountpoint, server, port, username, password, dbname, remote_
     logging.info("Importing foreign Postgres schema...")
     server_id = mountpoint + '_server'
 
-    _init_fdw(engine, server_id, "postgres_fdw", {'host': server, 'port': str(port), 'dbname': dbname},
-              {'user': username, 'password': password})
+    init_fdw(engine, server_id, "postgres_fdw", {'host': server, 'port': str(port), 'dbname': dbname},
+             {'user': username, 'password': password})
 
     engine.run_sql(SQL("CREATE SCHEMA {}").format(Identifier(mountpoint)))
 
@@ -111,8 +120,8 @@ def mount_mongo(mountpoint, server, port, username, password, **table_spec):
     """
     engine = get_engine()
     server_id = mountpoint + '_server'
-    _init_fdw(engine, server_id, "mongo_fdw", {"address": server, "port": str(port)},
-              {"username": username, "password": password})
+    init_fdw(engine, server_id, "mongo_fdw", {"address": server, "port": str(port)},
+             {"username": username, "password": password})
 
     engine.run_sql(SQL("""CREATE SCHEMA {}""").format(Identifier(mountpoint)))
 
@@ -150,8 +159,8 @@ def mount_mysql(mountpoint, server, port, username, password, remote_schema, tab
     logging.info("Mounting foreign MySQL database...")
     server_id = mountpoint + '_server'
 
-    _init_fdw(engine, server_id, "mysql_fdw", {"host": server, "port": str(port)},
-              {"username": username, "password": password})
+    init_fdw(engine, server_id, "mysql_fdw", {"host": server, "port": str(port)},
+             {"username": username, "password": password})
 
     engine.run_sql(SQL("CREATE SCHEMA {}").format(Identifier(mountpoint)))
 

@@ -1,8 +1,6 @@
 import pytest
-from psycopg2 import ProgrammingError
 
 
-@pytest.mark.xfail(raises=ProgrammingError, reason="Multicorn not installed on the driver")
 @pytest.mark.parametrize("include_snap", [True, False])
 @pytest.mark.parametrize("commit_after_every", [True, False])
 @pytest.mark.parametrize("include_pk", [True, False])
@@ -40,7 +38,7 @@ def test_layered_querying(pg_repo_local, include_snap, commit_after_every, inclu
     assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE name = 'guitar'") == [(2, 'guitar', 1)]
 
     # IN ( converted to =ANY(array([...]))
-    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE name IN ('guitar', 'mayonnaise')") ==\
+    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE name IN ('guitar', 'mayonnaise') ORDER BY fruit_id") == \
            [(2, 'guitar', 1), (3, 'mayonnaise', 1)]
 
     # LIKE (operator ~~)
