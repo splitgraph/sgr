@@ -71,15 +71,19 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
                                        self.image_hash, table_name))
         if not objects:
             return None
-        return Table(self.repository, self, table_name, objects)
+        table_schema = self.engine.run_sql(SQL("SELECT table_schema FROM {}.tables WHERE namespace = %s "
+                                               "AND repository = %s AND image_hash = %s AND table_name = %s")
+                                           .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                                           (self.repository.namespace, self.repository.repository,
+                                            self.image_hash, table_name), return_shape=ResultShape.ONE_ONE)
+        return Table(self.repository, self, table_name, table_schema, objects)
 
     @manage_audit
-    def checkout(self, keep_downloaded_objects=True, force=False, layered=False):
+    def checkout(self, force=False, layered=False):
         """
         Checks the image out, changing the current HEAD pointer. Raises an error
         if there are pending changes to its checkout.
 
-        :param keep_downloaded_objects: If False, deletes externally downloaded objects after they've been used.
         :param force: Discards all pending changes to the schema.
         :param layered: If True, uses layered querying to check out the image (doesn't materialize tables
             inside of it).
@@ -99,18 +103,10 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
 
         if layered:
             self._lq_checkout()
-            set_head(self.repository, self.image_hash)
         else:
-            downloaded_object_ids = set()
             for table in self.get_tables():
-                downloaded_object_ids |= self.get_table(table).materialize(table)
-
-            # Repoint the current HEAD for this repository to the new snap ID
-            set_head(self.repository, self.image_hash)
-
-            if not keep_downloaded_objects:
-                logging.info("Removing %d downloaded objects from cache...", len(downloaded_object_ids))
-                self.repository.objects.delete_objects(downloaded_object_ids)
+                self.get_table(table).materialize(table)
+        set_head(self.repository, self.image_hash)
 
     def _lq_checkout(self):
         """

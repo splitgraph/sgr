@@ -440,9 +440,7 @@ class Repository:
                 # If there has been a schema change, we currently just snapshot the whole table.
                 # This is obviously wasteful (say if just one column has been added/dropped or we added a PK,
                 # but it's a starting point to support schema changes.
-                snap_1 = self.objects.get_image_object_path(table_info)[0]
-                if self.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, snap_1) != \
-                        self.engine.get_full_table_schema(self.to_schema(), table):
+                if table_info.table_schema != self.engine.get_full_table_schema(self.to_schema(), table):
                     self.objects.record_table_as_snap(self, table, image_hash)
                     continue
 
@@ -453,7 +451,7 @@ class Repository:
                     # any of snaps or diffs).
                     # This feels slightly weird: are we denormalized here?
                     for prev_object_id, _ in table_info.objects:
-                        self.objects.register_table(self, table, image_hash, prev_object_id)
+                        self.objects.register_table(self, table, image_hash, table_info.table_schema, prev_object_id)
 
             # If table created (or we want to store a snap anyway), copy the whole table over as well.
             if not table_info or include_snap:
@@ -599,21 +597,23 @@ class Repository:
                 # Might not be necessary if we don't actually want to materialize the snapshot (wastes space).
                 self.objects.register_object(object_id, 'SNAP', namespace=self.namespace,
                                              parent_object=None)
-                self.objects.register_table(self, target_table, target_hash, object_id)
+                self.objects.register_table(self, target_table, target_hash,
+                                            self.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, object_id),
+                                            object_id)
                 if do_checkout:
                     self.engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, self.to_schema(), target_table)
             else:
                 table_obj = image.get_table(source_table)
                 for object_id, _ in table_obj.objects:
-                    self.objects.register_table(self, target_table, target_hash, object_id)
+                    self.objects.register_table(self, target_table, target_hash, table_obj.table_schema, object_id)
                 if do_checkout:
                     table_obj.materialize(target_table, destination_schema=self.to_schema())
         # Register the existing tables at the new commit as well.
         if head is not None:
             # Maybe push this into the tables API (currently have to make 2 queries)
-            engine.run_sql(SQL("""INSERT INTO {0}.tables (namespace, repository, image_hash, table_name, object_id)
-                    (SELECT %s, %s, %s, table_name, object_id FROM {0}.tables
-                    WHERE namespace = %s AND repository = %s AND image_hash = %s)""")
+            engine.run_sql(SQL("""INSERT INTO {0}.tables (namespace, repository, image_hash, 
+                    table_name, table_schema, object_id) (SELECT %s, %s, %s, table_name, table_schema, object_id
+                    FROM {0}.tables WHERE namespace = %s AND repository = %s AND image_hash = %s)""")
                            .format(Identifier(SPLITGRAPH_META_SCHEMA)),
                            (self.namespace, self.repository, target_hash,
                             self.namespace, self.repository, head.image_hash))

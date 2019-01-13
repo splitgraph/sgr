@@ -30,6 +30,10 @@ def test_commit_diff(include_snap, pg_repo_local):
     # After commit, we should be switched to the new commit hash and there should be no differences.
     assert pg_repo_local.head == new_head
     assert pg_repo_local.diff('fruits', image_1=new_head, image_2=None) == []
+
+    assert pg_repo_local.head.get_table('fruits').table_schema == [(1, 'fruit_id', 'integer', False),
+                                                                   (2, 'name', 'character varying', False)]
+
     assert new_head.comment == "test commit"
     change = pg_repo_local.diff('fruits', image_1=head, image_2=new_head)
     # pk (no PK here so the whole row) -- 0 for INS -- extra non-PK cols
@@ -39,6 +43,7 @@ def test_commit_diff(include_snap, pg_repo_local):
         ((2, 'guitar'), 0, {'c': [], 'v': []}),
         ((2, 'orange'), 1, None),
         ((3, 'mayonnaise'), 0, {"c": [], "v": []})]
+
     assert pg_repo_local.diff('vegetables', image_1=head, image_2=new_head) == []
 
 

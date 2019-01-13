@@ -156,6 +156,7 @@ def _create_metadata_schema(engine):
                     repository VARCHAR NOT NULL,
                     image_hash VARCHAR NOT NULL,
                     table_name VARCHAR NOT NULL,
+                    table_schema JSON,
                     object_id  VARCHAR NOT NULL,
                     PRIMARY KEY (namespace, repository, image_hash, table_name, object_id),
                     CONSTRAINT tb_fk FOREIGN KEY (namespace, repository, image_hash) REFERENCES {}.{})""")
@@ -303,7 +304,7 @@ def prepare_publish_data(image, repository, include_table_previews):
                 previews[table_name] = engine.run_sql(SQL("SELECT * FROM {}.{} LIMIT %s").format(
                     Identifier(tmp_schema), Identifier(tmp_table)), (_PUBLISH_PREVIEW_SIZE,))
         else:
-            schema = image.get_table(table_name).get_schema()
+            schema = image.get_table(table_name).table_schema
         schemata[table_name] = [(cn, ct, pk) for _, cn, ct, pk in schema]
     return previews, schemata
 
@@ -331,7 +332,7 @@ def gather_sync_metadata(target, source):
                           image.provenance_data)
         # Get the meta for all objects we'll need to fetch.
         table_meta.extend(source.engine.run_sql(
-            SQL("""SELECT image_hash, table_name, object_id FROM {0}.tables
+            SQL("""SELECT image_hash, table_name, table_schema, object_id FROM {0}.tables
                        WHERE namespace = %s AND repository = %s AND image_hash = %s""")
                 .format(Identifier(SPLITGRAPH_META_SCHEMA)),
             (source.namespace, source.repository, image.image_hash)))

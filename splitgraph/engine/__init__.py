@@ -133,6 +133,10 @@ class SQLEngine:
                             " AND table_name = %s", (schema, table),
                             return_shape=ResultShape.ONE_ONE)
 
+    def get_table_size(self, schema, table):
+        """Return the table disk usage, in bytes."""
+        raise NotImplementedError()
+
     def get_primary_keys(self, schema, table):
         """Get a list of (column_name, column_type) denoting the primary keys of a given table."""
         raise NotImplementedError()

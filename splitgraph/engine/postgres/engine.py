@@ -93,6 +93,10 @@ class PsycopgEngine(SQLEngine):
             if schema:
                 cur.execute("SET search_path to public")
 
+    def get_table_size(self, schema, table):
+        return self.run_sql(SQL("SELECT pg_relation_size('{}.{}')").format(Identifier(schema), Identifier(table)),
+                            return_shape=ResultShape.ONE_ONE)
+
     def _admin_conn(self):
         return psycopg2.connect(dbname=CONFIG['SG_ENGINE_POSTGRES_DB_NAME'],
                                 user=CONFIG['SG_ENGINE_ADMIN_USER'],
@@ -345,12 +349,16 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
         server, port, user, pwd, dbname = remote_engine.conn_params
         self.delete_schema(REMOTE_TMP_SCHEMA)
+        logging.info("Mounting remote schema %s@%s:%s/%s/%s to %s...", user, server, port, dbname,
+                     SPLITGRAPH_META_SCHEMA, REMOTE_TMP_SCHEMA)
         mount_postgres(mountpoint=REMOTE_TMP_SCHEMA, server=server, port=port, username=user, password=pwd,
                        dbname=dbname,
                        remote_schema=SPLITGRAPH_META_SCHEMA)
+        logging.info("Discovered remote tables: %r", self.get_all_tables(REMOTE_TMP_SCHEMA))
+        logging.info("Remote engine has %r", remote_engine.get_all_tables(SPLITGRAPH_META_SCHEMA))
         try:
             for i, obj in enumerate(objects):
-                print("(%d/%d) %s..." % (i + 1, len(objects), obj))
+                logging.info("(%d/%d) Downloading %s...", i + 1, len(objects), obj)
                 # Foreign tables don't have PK constraints so we'll have to apply them manually.
                 self.copy_table(REMOTE_TMP_SCHEMA, obj, SPLITGRAPH_META_SCHEMA, obj,
                                 with_pk_constraints=False)

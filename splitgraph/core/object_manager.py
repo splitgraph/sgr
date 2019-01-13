@@ -2,6 +2,7 @@
 
 import logging
 from collections import defaultdict
+from contextlib import contextmanager
 from random import getrandbits
 
 from psycopg2.extras import Json
@@ -65,11 +66,13 @@ class ObjectManager:
         Objects must already be registered in the object tree.
 
         :param repository: Repository that the tables belong to.
-        :param table_meta: A list of (image_hash, table_name, object_id).
+        :param table_meta: A list of (image_hash, table_name, table_schema, object_id).
         """
-        table_meta = [(repository.namespace, repository.repository) + o for o in table_meta]
+        table_meta = [(repository.namespace, repository.repository,
+                       o[0], o[1], Json(o[2]), o[3]) for o in table_meta]
         self.object_engine.run_sql_batch(
-            insert("tables", ("namespace", "repository", "image_hash", "table_name", "object_id")), table_meta)
+            insert("tables", ("namespace", "repository", "image_hash", "table_name", "table_schema", "object_id")),
+            table_meta)
 
     def register_object_locations(self, object_locations):
         """
@@ -131,18 +134,19 @@ class ObjectManager:
         return self.object_engine.run_sql(select("objects", "object_id, format, parent_id, namespace",
                                                  "object_id IN (" + ','.join('%s' for _ in objects) + ")"), objects)
 
-    def register_table(self, repository, table, image, object_id):
+    def register_table(self, repository, table, image, schema, object_id):
         """
         Registers the object that represents a Splitgraph table inside of an image.
 
         :param repository: Repository
         :param table: Table name
         :param image: Image hash
+        :param schema: Table schema
         :param object_id: Object ID to register the table to.
         """
         self.object_engine.run_sql(
-            insert("tables", ("namespace", "repository", "image_hash", "table_name", "object_id")),
-            (repository.namespace, repository.repository, image, table, object_id))
+            insert("tables", ("namespace", "repository", "image_hash", "table_name", "table_schema", "object_id")),
+            (repository.namespace, repository.repository, image, table, Json(schema), object_id))
 
     def record_table_as_diff(self, old_table, image_hash):
         """
@@ -171,12 +175,14 @@ class ObjectManager:
                 self.register_object(
                     object_id, object_format='DIFF', namespace=old_table.repository.namespace, parent_object=parent_id)
 
-            self.register_table(old_table.repository, old_table.table_name, image_hash, object_id)
+            self.register_table(old_table.repository, old_table.table_name, image_hash,
+                                old_table.table_schema, object_id)
         else:
             # Changes in the audit log cancelled each other out. Delete the diff table and just point
             # the commit to the old table objects.
             for prev_object_id, _ in old_table.objects:
-                self.register_table(old_table.repository, old_table.table_name, image_hash, prev_object_id)
+                self.register_table(old_table.repository, old_table.table_name, image_hash,
+                                    old_table.table_schema, prev_object_id)
 
     def record_table_as_snap(self, repository, table_name, image_hash):
         """
@@ -196,13 +202,14 @@ class ObjectManager:
                                       with_pk_constraints=True)
         self.register_object(object_id, object_format='SNAP', namespace=repository.namespace,
                              parent_object=None)
-        self.register_table(repository, table_name, image_hash, object_id)
+        table_schema = self.object_engine.get_full_table_schema(repository.to_schema(), table_name)
+        self.register_table(repository, table_name, image_hash, table_schema, object_id)
 
     def extract_recursive_object_meta(self, remote, table_meta):
         """Recursively crawl the a remote object manager in order to fetch all objects
         required to materialize tables specified in `table_meta` that don't yet exist on the local engine."""
         existing_objects = self.get_existing_objects()
-        distinct_objects = set(o[2] for o in table_meta if o[2] not in existing_objects)
+        distinct_objects = set(o[3] for o in table_meta if o[3] not in existing_objects)
         known_objects = set()
         object_meta = []
 
@@ -213,7 +220,7 @@ class ObjectManager:
             else:
                 parents_meta = remote.get_object_meta(new_parents)
                 distinct_objects.update(
-                    set(o[2] for o in parents_meta if o[2] is not None and o[2] not in existing_objects))
+                    set(o[3] for o in parents_meta if o[3] is not None and o[3] not in existing_objects))
                 object_meta.extend(parents_meta)
                 known_objects.update(new_parents)
         return distinct_objects, object_meta
@@ -251,6 +258,45 @@ class ObjectManager:
 
         # We didn't find an actual snapshot for this table -- something's wrong with the object tree.
         raise SplitGraphException("Couldn't find a SNAP object for %s (malformed object tree)" % table)
+
+    @contextmanager
+    def ensure_objects(self, table):
+        """
+        Resolves the objects needed to materialize a given table and makes sure they are in the local
+        splitgraph_meta schema.
+
+        Whilst inside this manager, the objects are guaranteed to exist. On exit from, the objects are marked as
+        unneeded and can be garbage collected.
+
+        :param table: Table to materialize
+        :return: (SNAP object ID, list of DIFFs to apply to the SNAP (can be empty))
+        """
+
+        # This is where we'd decide if we want to perhaps cache the full SNAP if the table is popular.
+        snap, diffs = self.get_image_object_path(table)
+
+        # Make sure all the objects have been downloaded from remote if it exists
+        required_objects = diffs + [snap]
+        upstream = table.repository.get_upstream()
+        if upstream:
+            object_locations = self.get_external_object_locations(required_objects)
+
+            # Here we'd make sure that we have enough space left in the cache and/or evict unneeded objects.
+            # Also, increase the refcount on the objects.
+            self.download_objects(upstream.objects, objects_to_fetch=required_objects,
+                                  object_locations=object_locations)
+
+        difference = set(required_objects).difference(set(self.get_existing_objects()))
+        if difference:
+            logging.exception("Not all objects required to materialize %s:%s:%s exist locally. Missing objects: %r",
+                              table.repository.to_schema(0), table.image.image_hash, table.table_name, difference)
+
+        try:
+            self.object_engine.commit()
+            yield snap, list(reversed(diffs))
+        finally:
+            pass
+            # This is where we mark objects as unneeded.
 
     def download_objects(self, source, objects_to_fetch, object_locations):
         """

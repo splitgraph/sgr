@@ -87,79 +87,86 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         # For quals, the more elaborate ones (like table.id = table.name or similar) actually aren't passed here
         # at all and PG filters them out later on.
         qual_sql, qual_vals = self._quals_to_postgres(quals)
-        if not self.diff_chain:
-            # If we only have the SNAP, we can just send SELECTs directly to it.
-            return self._run_select_from_staging(SPLITGRAPH_META_SCHEMA, self.snap, columns, drop_table=False)
+        table_obj = self.repository.images[self.fdw_options['image_hash']].get_table(self.fdw_options['table'])
 
-        # Accumulate the query result in a temporary table.
-        # This is done inside of a transaction which gets discarded after the connection closed,
-        # so it's invisible to others.
+        with ObjectManager(self.engine).ensure_objects(table_obj) as (snap, diffs):
+            log_to_postgres("Using SNAP %s, DIFFs %r to satisfy the query" % (snap, diffs), _PG_LOGLEVEL)
+            if not diffs:
+                # If we only have the SNAP, we can just send SELECTs directly to it.
+                return self._run_select_from_staging(SPLITGRAPH_META_SCHEMA, snap, columns, drop_table=False)
+
+            # Accumulate the query result in a temporary table.
+            staging_table = self._create_staging_table(snap)
+
+            # 1) First, insert all rows in the SNAP where the PK will be updated, marking them as sg_meta_keep_pk=True
+            #    (meaning we won't check them against the qualifiers until the very end).
+            ri_cols, _ = zip(*self.engine.get_change_key(SPLITGRAPH_META_SCHEMA, snap))
+            all_cols = self.engine.get_column_names(SPLITGRAPH_META_SCHEMA, snap)
+            all_cols_sql = SQL(','.join('{}' for _ in all_cols)).format(*[Identifier(c) for c in all_cols])
+
+            # Faster route here: if all quals only touch the PK, we don't need to hold on to tuples that will
+            # eventually get updated (to see if they start satisfying the qualifiers again) since UPDATEs
+            # can't change PK by definition.
+            pk_only_quals = all(q.field_name in ri_cols for q in quals)
+
+            if not pk_only_quals:
+                for object_id in diffs:
+                    query = SQL("INSERT INTO {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                            Identifier(staging_table))
+                    query += SQL(" (") + all_cols_sql + SQL(",sg_meta_keep_pk)")
+                    # SELECT <snap_id>.col1, <snap_id>.col2, TRUE FROM <snap_id> join <object_id> on [pk_cols]
+                    query += SQL(" (SELECT ") + SQL(','.join('{}.{}' for _ in all_cols)).format(
+                        *[f for c in all_cols for f in (Identifier(snap), Identifier(c))]) \
+                             + SQL(",TRUE")
+                    query += SQL(" FROM {0}.{1} JOIN {0}.{2} ON ").format(
+                        Identifier(SPLITGRAPH_META_SCHEMA), Identifier(snap), Identifier(object_id))
+                    query += _generate_where_clause(schema=SPLITGRAPH_META_SCHEMA, table=snap, cols=ri_cols,
+                                                    table_2=object_id, schema_2=SPLITGRAPH_META_SCHEMA)
+                    query += SQL(" WHERE {}.sg_action_kind=2) ON CONFLICT DO NOTHING").format(Identifier(object_id))
+                    log_to_postgres(query.as_string(self.engine.connection), _PG_LOGLEVEL)
+                    self.engine.run_sql(query)
+
+            # 2) Add all rows from the SNAP satisfying the query (if they already exist in staging, skip them).
+            #    This time, set sg_meta_keep_pk to False (if they stop satisfying the qualifiers, they will be deleted).
+            query = SQL("INSERT INTO {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(staging_table))
+            query += SQL(" (") + all_cols_sql + SQL(",sg_meta_keep_pk)")
+            query += SQL(" (SELECT ") + all_cols_sql + SQL(",FALSE")
+            query += SQL(" FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(snap))
+            if quals:
+                query += SQL(" WHERE ") + qual_sql
+            query += SQL(") ON CONFLICT DO NOTHING")
+            log_to_postgres(query.as_string(self.engine.connection), _PG_LOGLEVEL)
+            self.engine.run_sql(query, qual_vals)
+
+            # 3) Apply the diffs to the partially materialized table, making sure to discard rows that don't match
+            #    the qualifiers any more
+            for object_id in diffs[:-1]:
+                self.engine.apply_diff_object(SPLITGRAPH_META_SCHEMA, object_id, SPLITGRAPH_META_SCHEMA, staging_table)
+                if quals:
+                    self._apply_qual_filter(SPLITGRAPH_META_SCHEMA, staging_table, qual_sql, qual_vals)
+
+            # For the final diff, we don't need to apply any quals to the staging table since Postgres doesn't trust
+            # us and will apply them/do projections anyway.
+            log_to_postgres("Applying %s to %s" % (diffs[-1], staging_table), _PG_LOGLEVEL)
+            self.engine.apply_diff_object(SPLITGRAPH_META_SCHEMA, diffs[-1],
+                                          SPLITGRAPH_META_SCHEMA, staging_table)
+
+        return self._run_select_from_staging(SPLITGRAPH_META_SCHEMA, staging_table, columns,
+                                             drop_table=True)
+
+    def _create_staging_table(self, snap):
         staging_table = get_random_object_id()
         log_to_postgres("Using staging table %s" % staging_table, _PG_LOGLEVEL)
         self.engine.run_sql(SQL("CREATE TABLE {0}.{1} AS SELECT * FROM {0}.{2} LIMIT 1 WITH NO DATA").format(
-                Identifier(SPLITGRAPH_META_SCHEMA), Identifier(staging_table), Identifier(self.snap)))
+            Identifier(SPLITGRAPH_META_SCHEMA), Identifier(staging_table), Identifier(snap)))
         self.engine.run_sql(SQL("ALTER TABLE {}.{} ADD COLUMN sg_meta_keep_pk BOOLEAN DEFAULT TRUE").format(
             Identifier(SPLITGRAPH_META_SCHEMA), Identifier(staging_table)))
-        pks = self.engine.get_primary_keys(SPLITGRAPH_META_SCHEMA, self.snap)
+        pks = self.engine.get_primary_keys(SPLITGRAPH_META_SCHEMA, snap)
         if pks:
             self.engine.run_sql(SQL("ALTER TABLE {}.{} ADD PRIMARY KEY (").format(
                 Identifier(SPLITGRAPH_META_SCHEMA), Identifier(staging_table)) + SQL(',').join(
                 SQL("{}").format(Identifier(c)) for c, _ in pks) + SQL(")"))
-
-        # 1) First, insert all rows in the SNAP where the PK will be updated, marking them as sg_meta_keep_pk=True
-        #    (meaning we won't check them against the qualifiers until the very end).
-        ri_cols, _ = zip(*self.engine.get_change_key(SPLITGRAPH_META_SCHEMA, self.snap))
-        all_cols = self.engine.get_column_names(SPLITGRAPH_META_SCHEMA, self.snap)
-        all_cols_sql = SQL(','.join('{}' for _ in all_cols)).format(*[Identifier(c) for c in all_cols])
-
-        # Faster route here: if all quals only touch the PK, we don't need to hold on to tuples that will
-        # eventually get updated (to see if they start satisfying the qualifiers again) since UPDATEs
-        # can't change PK by definition.
-        pk_only_quals = all(q.field_name in ri_cols for q in quals)
-
-        if not pk_only_quals:
-            for object_id in self.diff_chain:
-                query = SQL("INSERT INTO {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(staging_table))
-                query += SQL(" (") + all_cols_sql + SQL(",sg_meta_keep_pk)")
-                # SELECT <snap_id>.col1, <snap_id>.col2, TRUE FROM <snap_id> join <object_id> on [pk_cols]
-                query += SQL(" (SELECT ") + SQL(','.join('{}.{}' for _ in all_cols)).format(
-                    *[f for c in all_cols for f in (Identifier(self.snap), Identifier(c))]) \
-                         + SQL(",TRUE")
-                query += SQL(" FROM {0}.{1} JOIN {0}.{2} ON ").format(
-                    Identifier(SPLITGRAPH_META_SCHEMA), Identifier(self.snap), Identifier(object_id))
-                query += _generate_where_clause(schema=SPLITGRAPH_META_SCHEMA, table=self.snap, cols=ri_cols,
-                                                table_2=object_id, schema_2=SPLITGRAPH_META_SCHEMA)
-                query += SQL(" WHERE {}.sg_action_kind=2) ON CONFLICT DO NOTHING").format(Identifier(object_id))
-                log_to_postgres(query.as_string(self.engine.connection), _PG_LOGLEVEL)
-                self.engine.run_sql(query)
-
-        # 2) Add all rows from the SNAP satisfying the query (if they already exist in staging, skip them).
-        #    This time, set sg_meta_keep_pk to False (if they stop satisfying the qualifiers, they will be deleted).
-        query = SQL("INSERT INTO {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(staging_table))
-        query += SQL(" (") + all_cols_sql + SQL(",sg_meta_keep_pk)")
-        query += SQL(" (SELECT ") + all_cols_sql + SQL(",FALSE")
-        query += SQL(" FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(self.snap))
-        if quals:
-            query += SQL(" WHERE ") + qual_sql
-        query += SQL(") ON CONFLICT DO NOTHING")
-        log_to_postgres(query.as_string(self.engine.connection), _PG_LOGLEVEL)
-        self.engine.run_sql(query, qual_vals)
-
-        # 3) Apply the diffs to the partially materialized table, making sure to discard rows that don't match
-        #    the qualifiers any more
-        for object_id in self.diff_chain[:-1]:
-            self.engine.apply_diff_object(SPLITGRAPH_META_SCHEMA, object_id, SPLITGRAPH_META_SCHEMA, staging_table)
-            if quals:
-                self._apply_qual_filter(SPLITGRAPH_META_SCHEMA, staging_table, qual_sql, qual_vals)
-
-        # For the final diff, we don't need to apply any quals to the staging table since Postgres doesn't trust
-        # us and will apply them/do projections anyway.
-        log_to_postgres("Applying %s to %s" % (self.diff_chain[-1], staging_table), _PG_LOGLEVEL)
-        self.engine.apply_diff_object(SPLITGRAPH_META_SCHEMA, self.diff_chain[-1],
-                                      SPLITGRAPH_META_SCHEMA, staging_table)
-
-        return self._run_select_from_staging(SPLITGRAPH_META_SCHEMA, staging_table, columns,
-                                             drop_table=True)
+        return staging_table
 
     def __init__(self, fdw_options, fdw_columns):
         """The foreign data wrapper is initialized on the first query.
@@ -180,6 +187,3 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         self.engine = PostgresEngine((self.fdw_options['host'], self.fdw_options['port'], self.fdw_options['user'],
                                       self.fdw_options['password'], self.fdw_options['dbname']), name='temp')
         self.repository = Repository(fdw_options['namespace'], self.fdw_options['repository'], self.engine)
-        self.snap, self.diff_chain = ObjectManager(self.engine).get_image_object_path(
-            self.repository.images[fdw_options['image_hash']].get_table(fdw_options['table']))
-        self.diff_chain = list(reversed(self.diff_chain))
