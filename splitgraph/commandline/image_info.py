@@ -53,15 +53,15 @@ def diff_c(verbose, table_name, repository, tag_or_hash_1, tag_or_hash_2):
 
     ``sgr diff REPOSITORY``
 
-        Return the differences between the current HEAD image and the checked out schema.
+    Return the differences between the current HEAD image and the checked out schema.
 
     ``sgr diff REPOSITORY TAG_OR_HASH``
 
-        Return the differences between the image and its parent.
+    Return the differences between the image and its parent.
 
     ``sgr diff REPOSITORY TAG_OR_HASH_1 TAG_OR_HASH_2``
 
-        Return the differences from the first (earlier) image to the second image.
+    Return the differences from the first (earlier) image to the second image.
     """
     tag_or_hash_1, tag_or_hash_2 = _get_actual_hashes(repository, tag_or_hash_1, tag_or_hash_2)
 

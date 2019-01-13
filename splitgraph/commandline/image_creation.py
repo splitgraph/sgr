@@ -77,24 +77,24 @@ def tag_c(image_spec, tag, force, remove):
 
     ``sgr tag noaa/climate``
 
-        List all tagged images in the ``noaa/climate`` repository and their tags.
+    List all tagged images in the ``noaa/climate`` repository and their tags.
 
     ``sgr tag noaa/climate:abcdef1234567890``
 
-        List all tags assigned to the image ``noaa/climate:abcdef1234567890...``
+    List all tags assigned to the image ``noaa/climate:abcdef1234567890...``
 
     ``sgr tag noaa/climate:abcdef1234567890 my_new_tag``
 
-        Tag the image ``noaa/climate:abcdef1234567890...`` with ``my_new_tag``. If the tag already exists, this will
-        raise an error, unless ``-f`` is passed, which will overwrite the tag.
+    Tag the image ``noaa/climate:abcdef1234567890...`` with ``my_new_tag``. If the tag already exists, this will
+    raise an error, unless ``-f`` is passed, which will overwrite the tag.
 
     ``sgr tag noaa/climate my_new_tag``
 
-        Tag the current ``HEAD`` of ``noaa/climate`` with ``my_new_tag``.
+    Tag the current ``HEAD`` of ``noaa/climate`` with ``my_new_tag``.
 
     ``sgr tag --remove noaa/climate:my_new_tag``
 
-        Remove the tag ``my_new_tag`` from ``noaa/climate``.
+    Remove the tag ``my_new_tag`` from ``noaa/climate``.
     """
     repository, image = image_spec
 
@@ -149,22 +149,22 @@ def import_c(image_spec, table_or_query, target_repository, target_table):
 
     ``sgr import noaa/climate:my_tag climate_data my/repository``
 
-        Create a new image in ``my/repository`` with the ``climate_data`` table included. This links the new image to
-        the physical object, meaning that the history of the ``climate_data`` table is preserved.
+    Create a new image in ``my/repository`` with the ``climate_data`` table included. This links the new image to
+    the physical object, meaning that the history of the ``climate_data`` table is preserved.
 
-        If no tag is specified, the 'latest' (not the HEAD image or current state of the checked out image)
-        image is used.
+    If no tag is specified, the 'latest' (not the HEAD image or current state of the checked out image)
+    image is used.
 
     ``sgr import noaa/climate:my_tag "SELECT * FROM climate_data" my/repository climate_data``
 
-        Create a new image in ``my/repository`` with the result of the query stored in the ``climate_data`` table. This
-        creates a new physical object without any linkage to the original data, so the history of the ``climate_data``
-        table isn't preserved. The SQL query can interact with multiple tables in the source image.
+    Create a new image in ``my/repository`` with the result of the query stored in the ``climate_data`` table. This
+    creates a new physical object without any linkage to the original data, so the history of the ``climate_data``
+    table isn't preserved. The SQL query can interact with multiple tables in the source image.
 
     ``sgr import other_schema other_table my/repository``
 
-        Since other_schema isn't a Splitgraph repository, this will copy ``other_schema.other_table``
-        into a new Splitgraph object and add the ``other_table`` table to a new image in ``my/repository``.
+    Since other_schema isn't a Splitgraph repository, this will copy ``other_schema.other_table``
+    into a new Splitgraph object and add the ``other_table`` table to a new image in ``my/repository``.
 
     Note that importing doesn't discard or commit pending changes in the target Splitgraph repository: a new image
     is created with the new table added, the new table is materialized in the repository and the HEAD pointer is moved.

@@ -38,18 +38,18 @@ def rm_c(image_spec, remote, yes):
 
     ``sgr rm temporary_schema``
 
-        Deletes ``temporary_schema`` from the local engine.
+    Deletes ``temporary_schema`` from the local engine.
 
     ``sgr rm --remote splitgraph.com username/repo``
 
-        Deletes ``username/repo`` from the Splitgraph registry.
+    Deletes ``username/repo`` from the Splitgraph registry.
 
     ``sgr rm -y username/repo:old_branch``
 
-        Deletes the image pointed to by ``old_branch`` as well as all of its children (images created by a commit based
-        on this image), as well as all of the tags that point to now deleted images, without asking for confirmation.
-        Note this will not delete images that import tables from the deleted images via Splitfiles or indeed the
-        physical objects containing the actual tables.
+    Deletes the image pointed to by ``old_branch`` as well as all of its children (images created by a commit based
+    on this image), as well as all of the tags that point to now deleted images, without asking for confirmation.
+    Note this will not delete images that import tables from the deleted images via Splitfiles or indeed the
+    physical objects containing the actual tables.
     """
 
     repository, image = image_spec
@@ -137,12 +137,12 @@ def init_c(repository):
 
     ``sgr init``
 
-        Initializes the current local Splitgraph engine by writing some bookkeeping information.
-        This is required for the rest of sgr to work.
+    Initializes the current local Splitgraph engine by writing some bookkeeping information.
+    This is required for the rest of sgr to work.
 
     ``sgr init new/repo``
 
-        Creates a single image with the hash ``00000...`` in ``new/repo``
+    Creates a single image with the hash ``00000...`` in ``new/repo``
     """
     if repository:
         repository.init()
@@ -174,11 +174,11 @@ def config_c(no_shielding, config_format):
     This takes into account the local config file, the default values
     and all overrides specified via environment variables.
 
-    This command can be used to dump the current Splitgraph configuration into a file::
+    This command can be used to dump the current Splitgraph configuration into a file:
 
         sgr config --no-shielding --config-format > .sgconfig
 
-    ...or save a config file overriding an entry::
+    ...or save a config file overriding an entry:
 
         SG_REPO_LOOKUP=engine1,engine2 sgr config -sc > .sgconfig
     """
