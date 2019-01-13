@@ -710,6 +710,7 @@ class Repository:
         finally:
             remote_repository.engine.commit()
             remote_repository.engine.close()
+        return remote_repository
 
     def pull(self, download_all=False):
         """

@@ -13,6 +13,7 @@ def _prepare_lq_repo(repo, include_snap, commit_after_every, include_pk):
     if include_pk:
         repo.run_sql("ALTER TABLE fruits ADD PRIMARY KEY (fruit_id)")
         repo.run_sql("ALTER TABLE vegetables ADD PRIMARY KEY (vegetable_id)")
+        repo.commit()
 
     for o in OPS:
         repo.run_sql(o)
@@ -58,31 +59,51 @@ def test_layered_querying(pg_repo_local, include_snap, commit_after_every, inclu
     assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id = number + 1 ") == [(2, 'guitar', 1)]
 
 
-@pytest.mark.xfail(reason="FDW on the engine can't yet download objects from the remote on demand")
+def _test_lazy_lq_checkout(pg_repo_local):
+    assert len(pg_repo_local.objects.get_downloaded_objects()) == 0
+    # Do a lazy LQ checkout -- no objects should be downloaded yet
+    pg_repo_local.images['latest'].checkout(layered=True)
+    assert len(pg_repo_local.objects.get_downloaded_objects()) == 0
+    # Actual LQ still downloads the objects, but one by one.
+    # Hit fruits -- 2 objects should be downloaded (the second SNAP and the actual DIFF -- old SNAP not downloaded)
+    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id = 2") == [(2, 'guitar', 1)]
+    assert len(pg_repo_local.objects.get_downloaded_objects()) == 2
+    # Hit vegetables -- 2 more objects should be downloaded
+    assert pg_repo_local.run_sql("SELECT * FROM vegetables WHERE vegetable_id = 1") == []
+    # import pdb; pdb.set_trace()
+    assert len(pg_repo_local.objects.get_downloaded_objects()) == 4
+
+
 def test_lq_remote(local_engine_empty, pg_repo_remote):
     # Test layered querying works when we initialize it on a cloned repo that doesn't have any
-    # external objects.
+    # cached objects (all are on the remote).
 
     # 1 DIFF on top of fruits, 1 DIFF on top of vegetables
     _prepare_lq_repo(pg_repo_remote, include_snap=False, commit_after_every=False, include_pk=True)
     pg_repo_local = clone(pg_repo_remote, download_all=False)
+    _test_lazy_lq_checkout(pg_repo_local)
+
+
+def test_lq_external(local_engine_empty, pg_repo_remote):
+    # Test layered querying works when we initialize it on a cloned repo that doesn't have any
+    # cached objects (all are on S3 or other external location).
+
+    pg_repo_local = clone(pg_repo_remote)
+    pg_repo_local.images['latest'].checkout()
+    _prepare_lq_repo(pg_repo_local, include_snap=False, commit_after_every=False, include_pk=True)
+
+    # Setup: upstream has the same repository as in the previous test but with no cached objects (all are external).
+    remote = pg_repo_local.push(handler='S3', handler_options={})
+    pg_repo_local.rm()
+    pg_repo_remote.objects.delete_objects(remote.objects.get_downloaded_objects())
+    pg_repo_remote.engine.commit()
+    pg_repo_local.objects.cleanup()
+
+    assert len(pg_repo_local.objects.get_existing_objects()) == 0
     assert len(pg_repo_local.objects.get_downloaded_objects()) == 0
-    assert len(pg_repo_remote.objects.get_downloaded_objects()) == 4  # 2 SNAPs, 2 DIFFs
+    assert len(remote.objects.get_existing_objects()) == 6
+    assert len(remote.objects.get_downloaded_objects()) == 0
 
-    # Do a lazy LQ checkout -- no objects should be downloaded yet
-    pg_repo_local.images['latest'].checkout(layered=True)
-    assert len(pg_repo_local.objects.get_downloaded_objects()) == 0
-
-    # Actual LQ still downloads the objects, but one by one.
-
-    # Hit fruits -- 2 objects should be downloaded
-    try:
-        assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id = 2") == [(2, 'guitar', 1)]
-    except Exception:
-        import pdb;
-        pdb.set_trace()
-    assert len(pg_repo_local.objects.get_downloaded_objects()) == 2
-
-    # Hit vegetables -- 2 more objects should be downloaded
-    assert pg_repo_local.run_sql("SELECT * FROM vegetables WHERE vegetable_id = 1") == []
-    assert len(pg_repo_local.objects.get_downloaded_objects()) == 4
+    # Proceed as per the previous test
+    pg_repo_local = clone(pg_repo_remote, download_all=False)
+    _test_lazy_lq_checkout(pg_repo_local)

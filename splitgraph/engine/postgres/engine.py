@@ -12,7 +12,7 @@ from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
-from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine
+from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.mount_handlers import mount_postgres
 
@@ -332,10 +332,13 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         # mounted remote.
         remote_engine.commit()
         self.delete_schema(REMOTE_TMP_SCHEMA)
-        mount_postgres(mountpoint=REMOTE_TMP_SCHEMA, server=remote_engine.conn_params[0],
-                       port=remote_engine.conn_params[1], username=remote_engine.conn_params[2],
-                       password=remote_engine.conn_params[3], dbname=remote_engine.conn_params[4],
-                       remote_schema=SPLITGRAPH_META_SCHEMA)
+
+        # In case the local engine isn't the same as the target (e.g. we're running from the FDW)
+        with switch_engine(self):
+            mount_postgres(mountpoint=REMOTE_TMP_SCHEMA, server=remote_engine.conn_params[0],
+                           port=remote_engine.conn_params[1], username=remote_engine.conn_params[2],
+                           password=remote_engine.conn_params[3], dbname=remote_engine.conn_params[4],
+                           remote_schema=SPLITGRAPH_META_SCHEMA)
         for i, obj in enumerate(objects):
             print("(%d/%d) %s..." % (i + 1, len(objects), obj))
             self.copy_table(SPLITGRAPH_META_SCHEMA, obj, REMOTE_TMP_SCHEMA, obj, with_pk_constraints=False,
@@ -351,11 +354,13 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         self.delete_schema(REMOTE_TMP_SCHEMA)
         logging.info("Mounting remote schema %s@%s:%s/%s/%s to %s...", user, server, port, dbname,
                      SPLITGRAPH_META_SCHEMA, REMOTE_TMP_SCHEMA)
-        mount_postgres(mountpoint=REMOTE_TMP_SCHEMA, server=server, port=port, username=user, password=pwd,
-                       dbname=dbname,
-                       remote_schema=SPLITGRAPH_META_SCHEMA)
-        logging.info("Discovered remote tables: %r", self.get_all_tables(REMOTE_TMP_SCHEMA))
-        logging.info("Remote engine has %r", remote_engine.get_all_tables(SPLITGRAPH_META_SCHEMA))
+
+        # In case the local engine isn't the same as the target (e.g. we're running from the FDW)
+        with switch_engine(self):
+            mount_postgres(mountpoint=REMOTE_TMP_SCHEMA, server=server, port=port, username=user, password=pwd,
+                           dbname=dbname,
+                           remote_schema=SPLITGRAPH_META_SCHEMA)
+
         try:
             for i, obj in enumerate(objects):
                 logging.info("(%d/%d) Downloading %s...", i + 1, len(objects), obj)

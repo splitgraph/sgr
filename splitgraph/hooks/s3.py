@@ -1,7 +1,7 @@
 """
 Plugin for uploading Splitgraph objects from the cache to an external S3-like object store
 """
-
+import logging
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
@@ -55,6 +55,8 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
         endpoint = '%s:%s' % (self.params.get('host', S3_HOST), self.params.get('port', S3_PORT))
         bucket = self.params.get('bucket', access_key)
         worker_threads = self.params.get('threads', 4)
+
+        logging.info("Uploading %d object(s) to %s/%s" % (len(objects), endpoint, bucket))
         client = Minio(endpoint,
                        access_key=access_key,
                        secret_key=self.params.get('secret_key', S3_SECRET_KEY),

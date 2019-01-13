@@ -12,6 +12,9 @@ SG_ENGINE_ADMIN_PWD=supersecure
 SG_ENGINE_POSTGRES_DB_NAME=postgres
 SG_META_SCHEMA=splitgraph_meta
 
+; Must be accessible from both the host and the actual engine container
+SG_S3_HOST=objectstorage
+SG_S3_PORT=9000
 SG_S3_KEY=minioclient
 SG_S3_PWD=supersecure
 

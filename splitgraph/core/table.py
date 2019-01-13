@@ -14,7 +14,7 @@ class Table:
         self.image = image
         self.table_name = table_name
         self.table_schema = [tuple(entry) for entry in table_schema]
-        self.objects = objects
+        self.objects = list(set(objects))
 
     def materialize(self, destination, destination_schema=None, lq_server=None):
         """

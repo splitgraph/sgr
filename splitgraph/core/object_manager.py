@@ -9,7 +9,7 @@ from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.engine import ResultShape
+from splitgraph.engine import ResultShape, switch_engine
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.external_objects import get_external_object_handler
 from ._common import META_TABLES, select, insert
@@ -316,7 +316,7 @@ class ObjectManager:
 
         # We don't actually seem to pass extra handler parameters when downloading objects since
         # we can have multiple handlers in this batch.
-        external_objects = _fetch_external_objects(object_locations, objects_to_fetch, {})
+        external_objects = _fetch_external_objects(self.object_engine, object_locations, objects_to_fetch, {})
 
         remaining_objects_to_fetch = [o for o in objects_to_fetch if o not in external_objects]
         if not remaining_objects_to_fetch:
@@ -357,7 +357,8 @@ class ObjectManager:
             return []
 
         external_handler = get_external_object_handler(handler, handler_params)
-        uploaded = external_handler.upload_objects(objects_to_push)
+        with switch_engine(self.object_engine):
+            uploaded = external_handler.upload_objects(objects_to_push)
         return [(oid, url, handler) for oid, url in zip(objects_to_push, uploaded)]
 
     def cleanup(self, include_external=False):
@@ -420,7 +421,7 @@ class ObjectManager:
             self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, o)
 
 
-def _fetch_external_objects(object_locations, objects_to_fetch, handler_params):
+def _fetch_external_objects(engine, object_locations, objects_to_fetch, handler_params):
     non_remote_objects = []
     non_remote_by_method = defaultdict(list)
     for object_id, object_url, protocol in object_locations:
@@ -431,7 +432,9 @@ def _fetch_external_objects(object_locations, objects_to_fetch, handler_params):
         logging.info("Fetching external objects...")
         for method, objects in non_remote_by_method.items():
             handler = get_external_object_handler(method, handler_params)
-            handler.download_objects(objects)
+            # In case we're calling this from inside the FDW
+            with switch_engine(engine):
+                handler.download_objects(objects)
     return non_remote_objects
 
 
