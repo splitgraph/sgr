@@ -338,9 +338,11 @@ class ObjectManager:
         # If the total cache size isn't large enough, there's nothing we can do without cooperating with the
         # caller and seeing if they can use the objects one-by-one.
         if required_space > self.cache_size:
-            raise SplitGraphException("Not enough free space in the cache to download the required objects!")
+            raise SplitGraphException("Not enough space in the cache to download the required objects!")
         if required_space > self.cache_size - current_occupied:
-            self.run_eviction(object_tree, to_fetch, required_space + current_occupied - self.cache_size)
+            to_free = required_space + current_occupied - self.cache_size
+            logging.info("Need to free %s" % pretty_size(to_free))
+            self.run_eviction(object_tree, to_fetch, to_free)
 
         # Perform the actual download. If the table has no upstream but still has external locations, we download
         # just the external objects.
@@ -390,8 +392,11 @@ class ObjectManager:
         :param keep_objects: List of objects (besides those with nonzero refcount) to be deleted.
         :param required_space: Space, in bytes, to free. If the routine can't free at least this much space,
             it shall raise an exception.
-        :return:
         """
+
+        # TODO Make sure we don't evict objects that were created here (that have no upstream) -- only consider those
+        # that have an external location.
+
         logging.info("Performing eviction...")
         # Maybe here we should also do the old cleanup (see if the objects aren't required
         #   by any of the current repositories at all).
@@ -400,11 +405,12 @@ class ObjectManager:
         # Currently, do the most basic thing and delete all objects with 0 refcount.
         # Add object size to external_objects too?
         to_delete = self.object_engine.run_sql(select("object_cache_status", "object_id", "refcount=0"),
-                                               return_shape=ResultShape.ONE_MANY)
+                                               return_shape=ResultShape.MANY_ONE)
         # Make sure we don't actually delete the objects we'll need.
-        to_delete = [o for o in to_delete if o not in keep_objects]
+        downloaded_objects = self.get_downloaded_objects()
+        to_delete = [o for o in to_delete if o not in keep_objects and o in downloaded_objects]
         freed_space = sum(object_tree[o][2] for o in to_delete)
-        logging.info("Will delete %d object(s), total size %s", to_delete, freed_space)
+        logging.info("Will delete %d object(s), total size %s", len(to_delete), pretty_size(freed_space))
         if freed_space < required_space:
             raise SplitGraphException("Not enough space will be reclaimed after eviction!")
         self.delete_objects(to_delete)
