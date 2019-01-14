@@ -3,7 +3,7 @@ import pytest
 from splitgraph.core import clone
 
 
-def _prepare_lq_repo(repo, include_snap, commit_after_every, include_pk):
+def prepare_lq_repo(repo, include_snap, commit_after_every, include_pk):
     OPS = ["INSERT INTO fruits VALUES (3, 'mayonnaise')",
            "DELETE FROM fruits WHERE name = 'apple'",
            "DELETE FROM vegetables WHERE vegetable_id = 1",
@@ -29,7 +29,10 @@ def _prepare_lq_repo(repo, include_snap, commit_after_every, include_pk):
 @pytest.mark.parametrize("commit_after_every", [True, False])
 @pytest.mark.parametrize("include_pk", [True, False])
 def test_layered_querying(pg_repo_local, include_snap, commit_after_every, include_pk):
-    _prepare_lq_repo(pg_repo_local, include_snap, commit_after_every, include_pk)
+    # Future: move the LQ tests to be local (instantiate the FDW with some mocks and send the same query requests)
+    # since it's much easier to test them like that.
+
+    prepare_lq_repo(pg_repo_local, include_snap, commit_after_every, include_pk)
     new_head = pg_repo_local.head
     # Discard the actual materialized table and query everything via FDW
     new_head.checkout(layered=True)
@@ -70,7 +73,6 @@ def _test_lazy_lq_checkout(pg_repo_local):
     assert len(pg_repo_local.objects.get_downloaded_objects()) == 2
     # Hit vegetables -- 2 more objects should be downloaded
     assert pg_repo_local.run_sql("SELECT * FROM vegetables WHERE vegetable_id = 1") == []
-    # import pdb; pdb.set_trace()
     assert len(pg_repo_local.objects.get_downloaded_objects()) == 4
 
 
@@ -79,7 +81,7 @@ def test_lq_remote(local_engine_empty, pg_repo_remote):
     # cached objects (all are on the remote).
 
     # 1 DIFF on top of fruits, 1 DIFF on top of vegetables
-    _prepare_lq_repo(pg_repo_remote, include_snap=False, commit_after_every=False, include_pk=True)
+    prepare_lq_repo(pg_repo_remote, include_snap=False, commit_after_every=False, include_pk=True)
     pg_repo_local = clone(pg_repo_remote, download_all=False)
     _test_lazy_lq_checkout(pg_repo_local)
 
@@ -90,7 +92,7 @@ def test_lq_external(local_engine_empty, pg_repo_remote):
 
     pg_repo_local = clone(pg_repo_remote)
     pg_repo_local.images['latest'].checkout()
-    _prepare_lq_repo(pg_repo_local, include_snap=False, commit_after_every=False, include_pk=True)
+    prepare_lq_repo(pg_repo_local, include_snap=False, commit_after_every=False, include_pk=True)
 
     # Setup: upstream has the same repository as in the previous test but with no cached objects (all are external).
     remote = pg_repo_local.push(handler='S3', handler_options={})

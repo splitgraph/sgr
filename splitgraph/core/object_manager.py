@@ -1,5 +1,5 @@
 """Functions related to creating, deleting and keeping track of physical Splitgraph objects."""
-
+import itertools
 import logging
 from collections import defaultdict
 from contextlib import contextmanager
@@ -12,7 +12,7 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import ResultShape, switch_engine
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.external_objects import get_external_object_handler
-from ._common import META_TABLES, select, insert
+from ._common import META_TABLES, select, insert, pretty_size
 
 
 class ObjectManager:
@@ -26,9 +26,23 @@ class ObjectManager:
         """
         self.object_engine = object_engine
 
+        # Cache size in bytes
+        self.cache_size = 1024 * 1024 * 1024
+
     def get_full_object_tree(self):
-        """Returns a list of (object_id, parent_id, SNAP/DIFF) with the full object tree in the engine"""
-        return self.object_engine.run_sql(select("objects", "object_id,parent_id,format"))
+        """Returns a dictionary (object_id -> [list of parents], SNAP/DIFF, size) with the full object tree
+        in the engine"""
+        query_result = self.object_engine.run_sql(select("objects", "object_id,parent_id,format,size"))
+
+        result = {}
+        for object_id, parent_id, object_format, size in query_result:
+            if object_id not in result:
+                result[object_id] = ([parent_id], object_format, size) if parent_id else ([], object_format, size)
+            else:
+                if parent_id:
+                    result[object_id][0].append(parent_id)
+
+        return result
 
     def register_object(self, object_id, object_format, namespace, parent_object=None):
         """
@@ -44,21 +58,30 @@ class ObjectManager:
             raise ValueError("Non-SNAP objects can't have no parent!")
         if parent_object and object_format == 'SNAP':
             raise ValueError("SNAP objects can't have a parent!")
-        return self.object_engine.run_sql(insert("objects", ("object_id", "format", "parent_id", "namespace")),
-                                          (object_id, object_format, parent_object, namespace))
+
+        object_size = self.object_engine.get_table_size(SPLITGRAPH_META_SCHEMA, object_id)
+        self.object_engine.run_sql(insert("objects", ("object_id", "format", "parent_id", "namespace", "size")),
+                                   (object_id, object_format, parent_object, namespace, object_size))
+        # Also add a cache status entry for the object.
+        if not self.object_engine.run_sql(select("object_cache_status", "1", "object_id=%s"), (object_id,)):
+            self.object_engine.run_sql(insert("object_cache_status", ("object_id", "status", "refcount")),
+                                       (object_id, 2, 0))
 
     def register_objects(self, object_meta, namespace=None):
         """
         Registers multiple Splitgraph objects in the tree. See `register_object` for more information.
 
-        :param object_meta: List of (object_id, format, parent_id, namespace).
+        :param object_meta: List of (object_id, format, parent_id, namespace, size).
         :param namespace: If specified, overrides the original object namespace, required
             in the case where the remote repository has a different namespace than the local one.
         """
         if namespace:
-            object_meta = [(o, f, p, namespace) for o, f, p, _ in object_meta]
-        self.object_engine.run_sql_batch(insert("objects", ("object_id", "format", "parent_id", "namespace")),
+            object_meta = [(o, f, p, namespace, s) for o, f, p, _, s in object_meta]
+        self.object_engine.run_sql_batch(insert("objects", ("object_id", "format", "parent_id", "namespace", "size")),
                                          object_meta)
+        distinct_objects = set(o[0] for o in object_meta)
+        self.object_engine.run_sql_batch(insert("object_cache_status", ("object_id", "status", "refcount")),
+                                         [(o, 2, 0) for o in distinct_objects])
 
     def register_tables(self, repository, table_meta):
         """
@@ -104,6 +127,7 @@ class ObjectManager:
         """
         # Minor normalization sadness here: this can return duplicate object IDs since
         # we might repeat them if different versions of the same table point to the same object ID.
+        # Also, maybe we should consider looking at the cache status table instead.
         return set(
             self.object_engine.run_sql(
                 SQL("""SELECT information_schema.tables.table_name FROM information_schema.tables JOIN {}.tables
@@ -129,9 +153,9 @@ class ObjectManager:
         Get metadata for multiple Splitgraph objects from the tree
 
         :param objects: List of objects to get metadata for.
-        :return: List of (object_id, format, parent_id, namespace).
+        :return: List of (object_id, format, parent_id, namespace, size).
         """
-        return self.object_engine.run_sql(select("objects", "object_id, format, parent_id, namespace",
+        return self.object_engine.run_sql(select("objects", "object_id, format, parent_id, namespace, size",
                                                  "object_id IN (" + ','.join('%s' for _ in objects) + ")"), objects)
 
     def register_table(self, repository, table, image, schema, object_id):
@@ -225,11 +249,13 @@ class ObjectManager:
                 known_objects.update(new_parents)
         return distinct_objects, object_meta
 
-    def get_image_object_path(self, table):
+    @staticmethod
+    def _get_image_object_path(table, object_tree):
         """
         Calculates a list of objects SNAP, DIFF, ... , DIFF that are used to reconstruct a table.
 
         :param table: Table object
+        :param object_tree: Full object tree
         :return: A tuple of (SNAP object, list of DIFF objects in reverse order (latest object first))
         """
         path = []
@@ -243,15 +269,11 @@ class ObjectManager:
         # for every object is a massive bottleneck.
         # This could be done with a recursive PG query in the future, but currently we just load the whole tree
         # and crawl it in memory.
-        object_tree = defaultdict(list)
-        for oid, pid, object_format in self.get_full_object_tree():
-            object_tree[oid].append((pid, object_format))
-
         while object_id is not None:
             path.append(object_id)
-            for parent_id, object_format in object_tree[object_id]:
+            for parent_id in object_tree[object_id][0]:
                 # Check the _parent_'s format -- if it's a SNAP, we're done
-                if object_tree[parent_id][0][1] == 'SNAP':
+                if object_tree[parent_id][1] == 'SNAP':
                     return parent_id, path
                 object_id = parent_id
                 break  # Found 1 diff, will be added to the path at the next iteration.
@@ -272,59 +294,149 @@ class ObjectManager:
         :return: (SNAP object ID, list of DIFFs to apply to the SNAP (can be empty))
         """
 
-        # This is where we'd decide if we want to perhaps cache the full SNAP if the table is popular.
-        snap, diffs = self.get_image_object_path(table)
+        # Main cache management issue here is concurrency: since we have multiple processes per connection on the
+        # server side, if we're accessing this from the FDW, multiple ObjectManagers can fiddle around in the cache
+        # status table, triggering weird concurrency cases like:
+        #   * We need to download some objects -- another manager wants the same objects. How do we make sure we don't
+        #     download them twice? Do we wait on a row-level lock? What happens if another manager crashes?
+        #   * We have decided which objects we need -- how do we make sure we don't get evicted by another manager
+        #     between us making that decision and increasing the refcount?
+        #   * What happens if we crash when we're downloading these objects?
 
-        # Make sure all the objects have been downloaded from remote if it exists
+        # So, for now, we lock the whole cache status table. This means that multiple FDWs can't download objects
+        # at the same time, but we can try and saturate the download bandwidth. In the future, we can try mode
+        # granular row-level locking.
+        logging.info("Resolving objects for table %s:%s", table.repository, table.table_name)
+        self.object_engine.lock_table(SPLITGRAPH_META_SCHEMA, "object_cache_status")
+
+        object_tree = self.get_full_object_tree()
+
+        # Resolve the table into a list of objects we want to fetch (one SNAP and optionally a list of DIFFs).
+        # In the future, we can also take other things into account, such as how expensive it is to load a given object
+        # (its size), consider creating a SNAP for tables that are often hit etc.
+
+        # * Questions:
+        #   * when do we evict a SNAP? (as opposed to the old SNAP + DIFF chain -- note that chain is obviously bigger
+        #     in size than the final SNAP but it lets us access more versions.
+        #     * Maybe this solves itself by LRU (if the DIFF chain gets hit more, we'll be more likely to
+        #       evict the SNAP.
+        #   * Where do we store these SNAPs and how do we incorporate them into the object resolution (as in,
+        #     without just registering them in the object tree since then other clients will think they can use that
+        #     temporary object)
+        snap, diffs = self._get_image_object_path(table, object_tree)
         required_objects = diffs + [snap]
+        downloaded_objects = self.get_downloaded_objects()
+        to_fetch = set(required_objects).difference(downloaded_objects)
+
+        required_space = sum(object_tree[o][2] for o in to_fetch)
+        current_occupied = sum(object_tree[o][2] for o in downloaded_objects)
+
+        logging.info("Need to download %d object(s) (%s), cache occupancy: %s/%s",
+                     len(to_fetch), pretty_size(required_space),
+                     pretty_size(current_occupied), pretty_size(self.cache_size))
+
+        # If the total cache size isn't large enough, there's nothing we can do without cooperating with the
+        # caller and seeing if they can use the objects one-by-one.
+        if required_space > self.cache_size:
+            raise SplitGraphException("Not enough free space in the cache to download the required objects!")
+        if required_space > self.cache_size - current_occupied:
+            self.run_eviction(object_tree, to_fetch, required_space + current_occupied - self.cache_size)
+
+        # Perform the actual download. If the table has no upstream but still has external locations, we download
+        # just the external objects.
         upstream = table.repository.get_upstream()
-        if upstream:
-            object_locations = self.get_external_object_locations(required_objects)
-
-            # Here we'd make sure that we have enough space left in the cache and/or evict unneeded objects.
-            # Also, increase the refcount on the objects.
-            self.download_objects(upstream.objects, objects_to_fetch=required_objects,
-                                  object_locations=object_locations)
-
-        difference = set(required_objects).difference(set(self.get_existing_objects()))
+        object_locations = self.get_external_object_locations(required_objects)
+        self.download_objects(upstream.objects if upstream else None, objects_to_fetch=to_fetch,
+                              object_locations=object_locations)
+        difference = set(to_fetch).difference(set(self.get_downloaded_objects()))
         if difference:
-            logging.exception("Not all objects required to materialize %s:%s:%s exist locally. Missing objects: %r",
+            logging.exception("Not all objects required to materialize %s:%s:%s have been fetched. Missing objects: %r",
                               table.repository.to_schema(0), table.image.image_hash, table.table_name, difference)
+            raise SplitGraphException()
+
+        # We'll probably need to collect some stats here: which objects/tables were hit and when, for example, to guide
+        # future SNAP caching.
+        # Possibly: a table of (namespace, repository, image_hash, table, timestamp acquired, timestamp released)
+        # and occasionally when looking at a new table, we look at the last N minutes of activity and see if we
+        # should SNAP it instead.
+
+        # Increase the refcount on all of the objects we're giving back to the caller so that others don't GC them.
+        self._update_refcount(required_objects, increment=True)
 
         try:
+            # Release the lock and yield to the caller.
             self.object_engine.commit()
             yield snap, list(reversed(diffs))
         finally:
-            pass
-            # This is where we mark objects as unneeded.
+            # Decrease the refcounts on the objects. Optionally, evict them.
+            # If the caller crashes, we should still hit this and decrease the refcounts, but if the whole program
+            # is terminated abnormally, we'll leak memory.
+            self._update_refcount(required_objects, increment=False)
+            self.object_engine.commit()
+
+    def _update_refcount(self, objects, increment=True):
+        self.object_engine.run_sql(SQL("UPDATE {}.{} SET refcount = refcount " +
+                                       ("+" if increment else "-") + " 1 WHERE object_id IN (" +
+                                       ",".join(itertools.repeat("%s", len(objects))) + ")")
+                                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status")),
+                                   objects)
+
+    def run_eviction(self, object_tree, keep_objects, required_space):
+        """
+        Delete enough objects with zero reference count (only those, since we guarantee that whilst refcount is >0,
+        the object stays alive) to free at least `required_space` in the cache.
+
+        :param object_tree: Object tree dictionary
+        :param keep_objects: List of objects (besides those with nonzero refcount) to be deleted.
+        :param required_space: Space, in bytes, to free. If the routine can't free at least this much space,
+            it shall raise an exception.
+        :return:
+        """
+        logging.info("Performing eviction...")
+        # Maybe here we should also do the old cleanup (see if the objects aren't required
+        #   by any of the current repositories at all).
+        # Lots of ways to improve this in the future: approximate the utility of keeping the object
+        #   (cost of re-loading * probability of re-loading), LRU, how many tables the object is used in...
+        # Currently, do the most basic thing and delete all objects with 0 refcount.
+        # Add object size to external_objects too?
+        to_delete = self.object_engine.run_sql(select("object_cache_status", "object_id", "refcount=0"),
+                                               return_shape=ResultShape.ONE_MANY)
+        # Make sure we don't actually delete the objects we'll need.
+        to_delete = [o for o in to_delete if o not in keep_objects]
+        freed_space = sum(object_tree[o][2] for o in to_delete)
+        logging.info("Will delete %d object(s), total size %s", to_delete, freed_space)
+        if freed_space < required_space:
+            raise SplitGraphException("Not enough space will be reclaimed after eviction!")
+        self.delete_objects(to_delete)
 
     def download_objects(self, source, objects_to_fetch, object_locations):
         """
         Fetches the required objects from the remote and stores them locally.
         Does nothing for objects that already exist.
 
-        :param source: Remote ObjectManager
+        :param source: Remote ObjectManager. If None, will only try to download objects from the external location.
         :param objects_to_fetch: List of object IDs to download.
         :param object_locations: List of custom object locations, encoded as tuples (object_id, object_url, protocol).
-        :return: Set of object IDs that were fetched.
         """
 
         existing_objects = self.get_downloaded_objects()
-        objects_to_fetch = set(o for o in objects_to_fetch if o not in existing_objects)
+        objects_to_fetch = list(set(o for o in objects_to_fetch if o not in existing_objects))
         if not objects_to_fetch:
-            return objects_to_fetch
+            return
+
+        total_size = sum(o[4] for o in self.get_object_meta(objects_to_fetch))
+        logging.info("Fetching %d object(s), total size %s", len(objects_to_fetch), pretty_size(total_size))
 
         # We don't actually seem to pass extra handler parameters when downloading objects since
         # we can have multiple handlers in this batch.
         external_objects = _fetch_external_objects(self.object_engine, object_locations, objects_to_fetch, {})
 
         remaining_objects_to_fetch = [o for o in objects_to_fetch if o not in external_objects]
-        if not remaining_objects_to_fetch:
-            return objects_to_fetch
+        if not remaining_objects_to_fetch or not source:
+            return
 
-        print("Fetching remote objects...")
         self.object_engine.download_objects(remaining_objects_to_fetch, source.object_engine)
-        return objects_to_fetch
+        return
 
     def upload_objects(self, target, objects_to_push, handler='DB', handler_params=None):
         """
@@ -349,7 +461,8 @@ class ObjectManager:
         if not objects_to_push:
             logging.info("Nothing to upload.")
             return []
-        logging.info("Uploading %d object(s)...", len(objects_to_push))
+        total_size = sum(o[4] for o in self.get_object_meta(objects_to_push))
+        logging.info("Uploading %d object(s), total size %s", len(objects_to_push), pretty_size(total_size))
 
         if handler == 'DB':
             self.object_engine.upload_objects(objects_to_push, target.object_engine)
@@ -361,13 +474,10 @@ class ObjectManager:
             uploaded = external_handler.upload_objects(objects_to_push)
         return [(oid, url, handler) for oid, url in zip(objects_to_push, uploaded)]
 
-    def cleanup(self, include_external=False):
+    def cleanup(self):
         """
-        Deletes all local objects not required by any current mountpoint, including their dependencies, their remote
-        locations and their cached local copies.
-
-        :param include_external: If True, deletes all external objects cached locally and redownloads them when they're
-            needed.
+        Deletes all objects in the object_tree not required by any current repository, including their dependencies and
+        their remote locations. Also deletes all objects not registered in the object_tree.
         """
         # First, get a list of all objects required by a table.
         primary_objects = set(self.object_engine.run_sql(
@@ -377,7 +487,7 @@ class ObjectManager:
         # Expand that since each object might have a parent it depends on.
         if primary_objects:
             while True:
-                new_parents = set(parent_id for _, _, parent_id, _ in self.get_object_meta(list(primary_objects))
+                new_parents = set(parent_id for _, _, parent_id, _, _ in self.get_object_meta(list(primary_objects))
                                   if parent_id not in primary_objects and parent_id is not None)
                 if not new_parents:
                     break
@@ -385,7 +495,7 @@ class ObjectManager:
                     primary_objects.update(new_parents)
 
         # Go through the tables that aren't mountpoint-dependent and delete entries there.
-        for table_name in ['objects', 'object_locations']:
+        for table_name in ['objects', 'object_locations', 'object_cache_status']:
             query = SQL("DELETE FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table_name))
             if primary_objects:
                 query += SQL(" WHERE object_id NOT IN (" + ','.join('%s' for _ in range(len(primary_objects))) + ")")
@@ -397,17 +507,6 @@ class ObjectManager:
         tables_in_meta = {c for c in self.object_engine.get_all_tables(SPLITGRAPH_META_SCHEMA) if c not in META_TABLES}
 
         to_delete = tables_in_meta.difference(primary_objects)
-
-        # All objects in `object_locations` are assumed to exist externally (so we can redownload them if need be).
-        # This can be improved on by, on materialization, downloading all SNAPs directly into the target schema and
-        # applying the DIFFs to it (instead of downloading them into a staging area), but that requires us to change
-        # the object downloader interface.
-        if include_external:
-            to_delete = to_delete.union(set(
-                self.object_engine.run_sql(SQL("SELECT object_id FROM {}.object_locations")
-                                           .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                                           return_shape=ResultShape.MANY_ONE)))
-
         self.delete_objects(to_delete)
         return to_delete
 

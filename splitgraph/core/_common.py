@@ -11,7 +11,7 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphException
 
-META_TABLES = ['images', 'tags', 'objects', 'tables', 'upstream', 'object_locations', 'info']
+META_TABLES = ['images', 'tags', 'objects', 'tables', 'upstream', 'object_locations', 'object_cache_status', 'info']
 _PUBLISH_PREVIEW_SIZE = 100
 
 
@@ -142,12 +142,30 @@ def _create_metadata_schema(engine):
     # A tree of object parents. The parent of an object is not necessarily the object linked to
     # the parent commit that the object belongs to (e.g. if we imported the object from a different commit tree).
     # One object can have multiple parents (e.g. 1 SNAP and 1 DIFF).
+    # The size is the on-disk (in-database) size occupied by the object table as reported by the engine
+    # (not the size stored externally)
     engine.run_sql(SQL("""CREATE TABLE {}.{} (
                     object_id  VARCHAR NOT NULL,
                     namespace  VARCHAR NOT NULL,
+                    size       BIGINT,
                     format     VARCHAR NOT NULL,
                     parent_id  VARCHAR)""").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")),
                    return_shape=None)
+
+    # Keep track of objects that have been cached locally on the engine.
+    # Refcount: incremented when a component requests the object to be downloaded (for materialization
+    #           or a layered query). Decremented when the component has finished using the object.
+    #           (maybe consider a row-level lock on this table?)
+    # Status:   0 if the object is remote, 1 if being downloaded, 2 if local.
+    #
+    # Do we need the status field? If we're locking the full cache table, there can be no inconsistencies:
+    # just list the tables in SPLITGRAPH_META_SCHEMA.
+    engine.run_sql(SQL("""CREATE TABLE {}.{} (
+                        object_id  VARCHAR NOT NULL PRIMARY KEY,
+                        refcount   INTEGER,
+                        status     SMALLINT)""")
+                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status"),
+                           Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")), return_shape=None)
 
     # Maps a given table at a given point in time to an "object ID" (either a full snapshot or a
     # delta to a previous table).
@@ -345,3 +363,14 @@ def gather_sync_metadata(target, source):
 
     object_locations = source.objects.get_external_object_locations(list(distinct_objects)) if distinct_objects else []
     return new_images, table_meta, object_locations, object_meta, tags
+
+
+def pretty_size(size):
+    size = float(size)
+    power = 2 ** 10
+    n = 0
+    while size > power:
+        size /= power
+        n += 1
+
+    return "%.2f %s" % (size, {0: '', 1: 'Ki', 2: 'Mi', 3: 'Gi', 4: 'Ti'}[n] + 'B')

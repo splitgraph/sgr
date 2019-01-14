@@ -31,8 +31,14 @@ def test_commit_diff(include_snap, pg_repo_local):
     assert pg_repo_local.head == new_head
     assert pg_repo_local.diff('fruits', image_1=new_head, image_2=None) == []
 
-    assert pg_repo_local.head.get_table('fruits').table_schema == [(1, 'fruit_id', 'integer', False),
-                                                                   (2, 'name', 'character varying', False)]
+    # Test object structure
+    table = pg_repo_local.head.get_table('fruits')
+    assert table.table_schema == [(1, 'fruit_id', 'integer', False), (2, 'name', 'character varying', False)]
+
+    obj = table.get_object('DIFF')
+    obj_meta = pg_repo_local.objects.get_object_meta([obj])[0]
+    # Check object size has been written
+    assert obj_meta[4] > 0
 
     assert new_head.comment == "test commit"
     change = pg_repo_local.diff('fruits', image_1=head, image_2=new_head)

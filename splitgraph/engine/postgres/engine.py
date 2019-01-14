@@ -51,6 +51,9 @@ class PsycopgEngine(SQLEngine):
         if self._conn and not self._conn.closed:
             self._conn.rollback()
 
+    def lock_table(self, schema, table):
+        self.run_sql(SQL("LOCK TABLE {}.{} IN ACCESS EXCLUSIVE MODE").format(Identifier(schema), Identifier(table)))
+
     @property
     def connection(self):
         """Engine-internal Psycopg connection. Will (re)open if closed/doesn't exist."""
