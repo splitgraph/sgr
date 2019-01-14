@@ -342,7 +342,7 @@ class ObjectManager:
         if required_space > self.cache_size - current_occupied:
             to_free = required_space + current_occupied - self.cache_size
             logging.info("Need to free %s" % pretty_size(to_free))
-            self.run_eviction(object_tree, to_fetch, to_free)
+            self.run_eviction(object_tree, required_objects, to_free)
 
         # Perform the actual download. If the table has no upstream but still has external locations, we download
         # just the external objects.

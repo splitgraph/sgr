@@ -123,11 +123,15 @@ def test_object_cache_eviction(local_engine_empty, pg_repo_remote):
         assert not object_manager.object_engine.table_exists(SPLITGRAPH_META_SCHEMA, fruit_diff)
         assert len(object_manager.get_downloaded_objects()) == 1
 
-    # However, loading the next version will fail (not enough space for 2 objects).
+    # Delete all objects
+    object_manager.run_eviction(object_manager.get_full_object_tree(), [], 0)
+    assert len(object_manager.get_downloaded_objects()) == 0
+
+    # Loading the next version (DIFF + SNAP) (not enough space for 2 objects).
     with pytest.raises(SplitGraphException) as ex:
         with object_manager.ensure_objects(fruits_v3):
             pass
-    assert "Not enough space in the cache" in str(ex.message)
+    assert "Not enough space in the cache" in str(ex)
 
 
 def test_object_cache_nested(local_engine_empty, pg_repo_remote):
@@ -158,5 +162,6 @@ def test_object_cache_nested(local_engine_empty, pg_repo_remote):
     with object_manager.ensure_objects(fruits_v3):
         # Now the fruits objects are being used and so we can't reclaim that space and have to raise an error.
         with pytest.raises(SplitGraphException) as ex:
-            object_manager.ensure_objects(vegetables_v2)
-        assert "Not enough space will be reclaimed" in str(ex.message)
+            with object_manager.ensure_objects(vegetables_v2):
+                pass
+        assert "Not enough space will be reclaimed" in str(ex)
