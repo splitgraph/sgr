@@ -10,6 +10,11 @@ def _get_refcount(object_manager, object_id):
                                                 (object_id,), return_shape=ResultShape.ONE_ONE)
 
 
+def _get_last_used(object_manager, object_id):
+    return object_manager.object_engine.run_sql(select("object_cache_status", "last_used", "object_id = %s"),
+                                                (object_id,), return_shape=ResultShape.ONE_ONE)
+
+
 def _setup_object_cache_test(pg_repo_remote):
     pg_repo_local = clone(pg_repo_remote)
     pg_repo_local.images['latest'].checkout()
@@ -124,7 +129,7 @@ def test_object_cache_eviction(local_engine_empty, pg_repo_remote):
         assert len(object_manager.get_downloaded_objects()) == 1
 
     # Delete all objects
-    object_manager.run_eviction(object_manager.get_full_object_tree(), [], 0)
+    object_manager.run_eviction(object_manager.get_full_object_tree(), [], None)
     assert len(object_manager.get_downloaded_objects()) == 0
 
     # Loading the next version (DIFF + SNAP) (not enough space for 2 objects).
@@ -153,9 +158,8 @@ def test_object_cache_nested(local_engine_empty, pg_repo_remote):
             assert _get_refcount(object_manager, vegetables_snap) == 1
             assert len(object_manager.get_downloaded_objects()) == 3
 
-    # Now evict everything from the cache (don't specify any reclaimed space requirements, it'll evict
-    # everything with refcount 0 anyway).
-    object_manager.run_eviction(object_manager.get_full_object_tree(), keep_objects=[], required_space=0)
+    # Now evict everything from the cache.
+    object_manager.run_eviction(object_manager.get_full_object_tree(), keep_objects=[], required_space=None)
     assert len(object_manager.get_downloaded_objects()) == 0
 
     object_manager.cache_size = 8192 * 2
@@ -163,5 +167,73 @@ def test_object_cache_nested(local_engine_empty, pg_repo_remote):
         # Now the fruits objects are being used and so we can't reclaim that space and have to raise an error.
         with pytest.raises(SplitGraphException) as ex:
             with object_manager.ensure_objects(vegetables_v2):
+                pass
+        assert "Not enough space will be reclaimed" in str(ex)
+
+
+def test_object_cache_eviction_priority(local_engine_empty, pg_repo_remote):
+    pg_repo_local = _setup_object_cache_test(pg_repo_remote)
+
+    object_manager = pg_repo_local.objects
+    fruits_v2 = pg_repo_local.images[pg_repo_local.images['latest'].parent_id].get_table('fruits')
+    fruits_v3 = pg_repo_local.images['latest'].get_table('fruits')
+    fruit_snap = fruits_v2.get_object('SNAP')
+    fruit_diff = fruits_v3.get_object('DIFF')
+    vegetables_v2 = pg_repo_local.images[pg_repo_local.images['latest'].parent_id].get_table('vegetables')
+    vegetables_v3 = pg_repo_local.images['latest'].get_table('vegetables')
+    vegetables_snap = vegetables_v2.get_object('SNAP')
+    vegetables_diff = vegetables_v3.get_object('DIFF')
+
+    # Setup: the cache has enough space for 3 objects
+    object_manager.cache_size = 8192 * 3
+
+    # Can't use time-freezing methods (e.g. freezegun) here since we interact with the Minio server which timestamps
+    # everything with the actual current time and kindly tells us to go away when we show up from the past and ask
+    # to upload or download objects.
+
+    with object_manager.ensure_objects(fruits_v3):
+        lu_1 = _get_last_used(object_manager, fruit_snap)
+        assert lu_1 == _get_last_used(object_manager, fruit_diff)
+
+        current_objects = object_manager.get_downloaded_objects()
+        assert fruit_snap in current_objects
+        assert fruit_diff in current_objects
+        assert vegetables_snap not in current_objects
+        assert vegetables_diff not in current_objects
+
+    # Slightly later: fetch just the old version (the SNAP)
+    with object_manager.ensure_objects(fruits_v2):
+        # Make sure the timestamp for the SNAP has been bumped.
+        lu_2 = _get_last_used(object_manager, fruit_snap)
+        assert _get_last_used(object_manager, fruit_diff) == lu_1
+        assert lu_2 > lu_1
+
+        # None of the fruits have been evicted yet.
+        current_objects = object_manager.get_downloaded_objects()
+        assert fruit_snap in current_objects
+        assert fruit_diff in current_objects
+        assert vegetables_snap not in current_objects
+        assert vegetables_diff not in current_objects
+
+    # Now, fetch the new vegetables version (2 objects). Since we already have
+    # 2 objects in the cache and the limit is 3, one must be evicted.
+    with object_manager.ensure_objects(vegetables_v3):
+        assert _get_last_used(object_manager, fruit_snap) == lu_2
+        assert _get_last_used(object_manager, fruit_diff) == lu_1
+        lu_3 = _get_last_used(object_manager, vegetables_snap)
+        assert lu_3 > lu_2
+        assert _get_last_used(object_manager, vegetables_diff) == lu_3
+
+        # The fruit SNAP was used more recently than the DIFF and they both have the same size,
+        # so the SNAP will stay.
+        current_objects = object_manager.get_downloaded_objects()
+        assert fruit_snap in current_objects
+        assert fruit_diff not in current_objects
+        assert vegetables_snap in current_objects
+        assert vegetables_diff in current_objects
+
+        with pytest.raises(SplitGraphException) as ex:
+            # Try to load all 4 objects in the same time: should fail.
+            with object_manager.ensure_objects(fruits_v3):
                 pass
         assert "Not enough space will be reclaimed" in str(ex)

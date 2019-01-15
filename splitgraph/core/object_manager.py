@@ -1,8 +1,10 @@
 """Functions related to creating, deleting and keeping track of physical Splitgraph objects."""
 import itertools
 import logging
+import math
 from collections import defaultdict
 from contextlib import contextmanager
+from datetime import datetime as dt
 from random import getrandbits
 
 from psycopg2.extras import Json
@@ -28,6 +30,16 @@ class ObjectManager:
 
         # Cache size in bytes
         self.cache_size = 1024 * 1024 * 1024
+
+        # 0 to infinity; higher means objects with smaller sizes are more likely to
+        # get evicted than objects that haven't been used for a while.
+        # Currently calculated so that an object that hasn't been accessed for 5 minutes has the same
+        # removal priority as an object twice its size that's just been accessed.
+        self.eviction_decay_constant = 0.002
+
+        # Objects smaller than this size are assumed to have this size (to simulate the latency of
+        # downloading them). Cu
+        self.eviction_floor = 1024 * 1024
 
     def get_full_object_tree(self):
         """Returns a dictionary (object_id -> [list of parents], SNAP/DIFF, size) with the full object tree
@@ -64,8 +76,8 @@ class ObjectManager:
                                    (object_id, object_format, parent_object, namespace, object_size))
         # Also add a cache status entry for the object.
         if not self.object_engine.run_sql(select("object_cache_status", "1", "object_id=%s"), (object_id,)):
-            self.object_engine.run_sql(insert("object_cache_status", ("object_id", "status", "refcount")),
-                                       (object_id, 2, 0))
+            self.object_engine.run_sql(insert("object_cache_status", ("object_id", "status", "refcount", "last_used")),
+                                       (object_id, 2, 0, dt.utcnow()))
 
     def register_objects(self, object_meta, namespace=None):
         """
@@ -80,8 +92,10 @@ class ObjectManager:
         self.object_engine.run_sql_batch(insert("objects", ("object_id", "format", "parent_id", "namespace", "size")),
                                          object_meta)
         distinct_objects = set(o[0] for o in object_meta)
-        self.object_engine.run_sql_batch(insert("object_cache_status", ("object_id", "status", "refcount")),
-                                         [(o, 2, 0) for o in distinct_objects])
+        now = dt.utcnow()
+        self.object_engine.run_sql_batch(insert("object_cache_status",
+                                                ("object_id", "status", "refcount", "last_used")),
+                                         [(o, 2, 0, now) for o in distinct_objects])
 
     def register_tables(self, repository, table_meta):
         """
@@ -315,15 +329,42 @@ class ObjectManager:
         # In the future, we can also take other things into account, such as how expensive it is to load a given object
         # (its size), consider creating a SNAP for tables that are often hit etc.
 
-        # * Questions:
-        #   * when do we evict a SNAP? (as opposed to the old SNAP + DIFF chain -- note that chain is obviously bigger
-        #     in size than the final SNAP but it lets us access more versions.
-        #     * Maybe this solves itself by LRU (if the DIFF chain gets hit more, we'll be more likely to
-        #       evict the SNAP.
-        #   * Where do we store these SNAPs and how do we incorporate them into the object resolution (as in,
-        #     without just registering them in the object tree since then other clients will think they can use that
-        #     temporary object)
         snap, diffs = self._get_image_object_path(table, object_tree)
+
+        # SNAP caching, smart(er) resolution and general stats keeping
+        #   * A SNAP for a given table is always the same size or smaller than the equivalent SNAP + DIFF chain
+        #     used to materialize that table -- but the DIFF chain allows to materialize more versions of a table.
+        #   * Currently an object can't have more than 1 DIFF parent (at most 1 DIFF and at most 1 SNAP)
+        #     since the only time we add objects to a table is on commit (where we link the object to the previous
+        #     table's objects and that table also is linked to at most 1 DIFF and at most 1 SNAP) and on import (where
+        #     we copy a table's object links).
+        #
+        #     OTOH this might be possible in the future where we'd coalesce multiple
+        #     DIFF objects into a single one taking us directly from one version of a table to another one several
+        #     jumps away.
+        #
+        #     Therefore, we don't actually yet have multiple resolution paths: all we can do is follow the DIFF chain
+        #     (there's only one parent DIFF we can jump to) until we reach an object where we have a SNAP --
+        #     cached locally, derived locally or stored remotely). Then we should always use that SNAP in
+        #     materialization/LQ (might be some argument whether we should still choose a remote SNAP over
+        #     a completely local DIFF chain).
+        #   * When to generate a temporarily derived SNAP: we need to keep a history table with
+        #     (namespace, repository, image_hash, table_name, timestamp_used).
+        #     When a table gets hit, we record that in this table and if there have been enough hits in the last N
+        #     minutes, we create a single large SNAP instead of downloading SNAP + multiple DIFFs.
+        #   * Keeping track of the SNAP: add a snap_cache table mapping (diff_id -> temporary_snap_id). Since the ID
+        #     of a DIFF object currently uniquely defines the whole DIFF chain, now the resolution routine can at every
+        #     step of crawling down the DIFF chain check this table to see whether there is a cached SNAP.
+        #   * We shouldn't store these cached SNAPs in the actual object tree (since then clients might see it and try
+        #     to use it for something and we have no guarantees on it). We'll probably keep track of the SNAP size
+        #     in the snap_cache and also have it in object_cache_status.
+        #   * SNAP eviction: should take care of itself: if an older version starts getting hit, the SNAP's last_used
+        #     timestamp will never get updated and it'll get evicted.
+        #   * Really, SNAP caching should be done based on DIFF chains rather than tables: if I import something from
+        #     another table, then if that source table becomes popular and has a SNAP, me accessing my table should also
+        #     use that SNAP. We could technically store both the table access stats (which is very useful in any case)
+        #     and the DIFF usage stats (diff_id -> timestamp used in materialization).
+
         required_objects = diffs + [snap]
         downloaded_objects = self.get_downloaded_objects()
         to_fetch = set(required_objects).difference(downloaded_objects)
@@ -353,17 +394,11 @@ class ObjectManager:
         difference = set(to_fetch).difference(set(self.get_downloaded_objects()))
         if difference:
             logging.exception("Not all objects required to materialize %s:%s:%s have been fetched. Missing objects: %r",
-                              table.repository.to_schema(0), table.image.image_hash, table.table_name, difference)
+                              table.repository.to_schema(), table.image.image_hash, table.table_name, difference)
             raise SplitGraphException()
 
-        # We'll probably need to collect some stats here: which objects/tables were hit and when, for example, to guide
-        # future SNAP caching.
-        # Possibly: a table of (namespace, repository, image_hash, table, timestamp acquired, timestamp released)
-        # and occasionally when looking at a new table, we look at the last N minutes of activity and see if we
-        # should SNAP it instead.
-
         # Increase the refcount on all of the objects we're giving back to the caller so that others don't GC them.
-        self._update_refcount(required_objects, increment=True)
+        self._claim_objects(required_objects)
 
         try:
             # Release the lock and yield to the caller.
@@ -373,46 +408,89 @@ class ObjectManager:
             # Decrease the refcounts on the objects. Optionally, evict them.
             # If the caller crashes, we should still hit this and decrease the refcounts, but if the whole program
             # is terminated abnormally, we'll leak memory.
-            self._update_refcount(required_objects, increment=False)
+            self._release_objects(required_objects)
             self.object_engine.commit()
 
-    def _update_refcount(self, objects, increment=True):
-        self.object_engine.run_sql(SQL("UPDATE {}.{} SET refcount = refcount " +
-                                       ("+" if increment else "-") + " 1 WHERE object_id IN (" +
+    def _claim_objects(self, objects):
+        """Increases objects' refcounts and bumps their last used timestamp to now."""
+        now = dt.utcnow()
+        self.object_engine.run_sql(SQL("UPDATE {}.{} SET refcount = refcount + 1, last_used = %s WHERE object_id IN (" +
+                                       ",".join(itertools.repeat("%s", len(objects))) + ")")
+                                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status")),
+                                   (now,) + tuple(objects))
+
+    def _release_objects(self, objects):
+        """Decreases objects' refcounts."""
+        self.object_engine.run_sql(SQL("UPDATE {}.{} SET refcount = refcount - 1 WHERE object_id IN (" +
                                        ",".join(itertools.repeat("%s", len(objects))) + ")")
                                    .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status")),
                                    objects)
 
-    def run_eviction(self, object_tree, keep_objects, required_space):
+    def run_eviction(self, object_tree, keep_objects, required_space=None):
         """
         Delete enough objects with zero reference count (only those, since we guarantee that whilst refcount is >0,
         the object stays alive) to free at least `required_space` in the cache.
 
         :param object_tree: Object tree dictionary
-        :param keep_objects: List of objects (besides those with nonzero refcount) to be deleted.
+        :param keep_objects: List of objects (besides those with nonzero refcount) that can't be deleted.
         :param required_space: Space, in bytes, to free. If the routine can't free at least this much space,
-            it shall raise an exception.
+            it shall raise an exception. If None, removes all eligible objects.
         """
+
+        now = dt.utcnow()
+
+        def _eviction_score(object_size, last_used):
+            # We want to evict objects in order to minimize
+            # P(object is requested again) * (cost of redownloading the object).
+            # To approximate the probability, we use an exponential decay function (1 if last_used = now, dropping down
+            # to 0 as time since the object's last usage time passes).
+            # To approximate the cost, we use the object's size, floored to a constant (so if the object has
+            # size <= floor, we'd use the floor value -- this is to simulate the latency of re-fetching the object,
+            # as opposed to the bandwidth)
+            time_since_used = (now - last_used).total_seconds()
+            time_factor = math.exp(-self.eviction_decay_constant * time_since_used)
+            size_factor = object_size if object_size > self.eviction_floor else self.eviction_floor
+            return time_factor * size_factor
 
         # TODO Make sure we don't evict objects that were created here (that have no upstream) -- only consider those
         # that have an external location.
+        # Objects can't have an upstream -- do we really need to see if any of the tables that use this objects
+        # have an upstream?
+        # TODO maybe only add objects to the cache stats table if we've just downloaded them from an external location
+        # otherwise what do we put for the last_used?
+        # TODO should SNAPs have priority over DIFFs (since they give access to more potential table versions),
+        # but they kind of do since they are bigger.
 
         logging.info("Performing eviction...")
         # Maybe here we should also do the old cleanup (see if the objects aren't required
         #   by any of the current repositories at all).
-        # Lots of ways to improve this in the future: approximate the utility of keeping the object
-        #   (cost of re-loading * probability of re-loading), LRU, how many tables the object is used in...
-        # Currently, do the most basic thing and delete all objects with 0 refcount.
-        # Add object size to external_objects too?
-        to_delete = self.object_engine.run_sql(select("object_cache_status", "object_id", "refcount=0"),
-                                               return_shape=ResultShape.MANY_ONE)
-        # Make sure we don't actually delete the objects we'll need.
+
         downloaded_objects = self.get_downloaded_objects()
-        to_delete = [o for o in to_delete if o not in keep_objects and o in downloaded_objects]
-        freed_space = sum(object_tree[o][2] for o in to_delete)
+        # Find deletion candidates: objects that we have locally, with refcount 0, that aren't in the whitelist
+        candidates = [o for o in self.object_engine.run_sql(
+            select("object_cache_status", "object_id,last_used", "refcount=0"),
+            return_shape=ResultShape.MANY_MANY) if o[0] not in keep_objects and o[0] in downloaded_objects]
+
+        if required_space is None:
+            # Just delete everything with refcount 0.
+            to_delete = [o[0] for o in candidates]
+            freed_space = sum(object_tree[o][2] for o in to_delete)
+        else:
+            if required_space > sum(object_tree[o[0]][2] for o in candidates):
+                raise SplitGraphException("Not enough space will be reclaimed after eviction!")
+
+            # Sort them by deletion priority (lowest is smallest expected retrieval cost -- more likely to delete)
+            to_delete = []
+            candidates = sorted(candidates, key=lambda o: _eviction_score(object_tree[o[0]][2], o[1]))
+            freed_space = 0
+            # Keep adding deletion candidates until we've freed enough space.
+            for object_id, _ in candidates:
+                to_delete.append(object_id)
+                freed_space += object_tree[object_id][2]
+                if freed_space >= required_space:
+                    break
+
         logging.info("Will delete %d object(s), total size %s", len(to_delete), pretty_size(freed_space))
-        if freed_space < required_space:
-            raise SplitGraphException("Not enough space will be reclaimed after eviction!")
         self.delete_objects(to_delete)
 
     def download_objects(self, source, objects_to_fetch, object_locations):
