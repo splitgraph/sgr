@@ -4,7 +4,7 @@ import logging
 import math
 from collections import defaultdict
 from contextlib import contextmanager
-from datetime import datetime as dt
+from datetime import datetime as dt, timedelta
 from random import getrandbits
 
 from psycopg2.extras import Json
@@ -38,8 +38,15 @@ class ObjectManager:
         self.eviction_decay_constant = 0.002
 
         # Objects smaller than this size are assumed to have this size (to simulate the latency of
-        # downloading them). Cu
+        # downloading them).
         self.eviction_floor = 1024 * 1024
+
+        # If we had to return a given DIFF more than or equal to `cache_misses_for_snap` times in the last
+        # `cache_misses_lookback` seconds, the resolver creates a SNAP from the diff chain and returns
+        # that instead. This is to replace layered querying with direct SNAP queries for popular tables.
+        # The temporary SNAP is evicted just like other objects.
+        self.cache_misses_for_snap = 5
+        self.cache_misses_lookback = 300
 
     def get_full_object_tree(self):
         """Returns a dictionary (object_id -> [list of parents], SNAP/DIFF, size) with the full object tree
@@ -74,10 +81,6 @@ class ObjectManager:
         object_size = self.object_engine.get_table_size(SPLITGRAPH_META_SCHEMA, object_id)
         self.object_engine.run_sql(insert("objects", ("object_id", "format", "parent_id", "namespace", "size")),
                                    (object_id, object_format, parent_object, namespace, object_size))
-        # Also add a cache status entry for the object.
-        if not self.object_engine.run_sql(select("object_cache_status", "1", "object_id=%s"), (object_id,)):
-            self.object_engine.run_sql(insert("object_cache_status", ("object_id", "status", "refcount", "last_used")),
-                                       (object_id, 2, 0, dt.utcnow()))
 
     def register_objects(self, object_meta, namespace=None):
         """
@@ -91,11 +94,6 @@ class ObjectManager:
             object_meta = [(o, f, p, namespace, s) for o, f, p, _, s in object_meta]
         self.object_engine.run_sql_batch(insert("objects", ("object_id", "format", "parent_id", "namespace", "size")),
                                          object_meta)
-        distinct_objects = set(o[0] for o in object_meta)
-        now = dt.utcnow()
-        self.object_engine.run_sql_batch(insert("object_cache_status",
-                                                ("object_id", "status", "refcount", "last_used")),
-                                         [(o, 2, 0, now) for o in distinct_objects])
 
     def register_tables(self, repository, table_meta):
         """
@@ -263,8 +261,7 @@ class ObjectManager:
                 known_objects.update(new_parents)
         return distinct_objects, object_meta
 
-    @staticmethod
-    def _get_image_object_path(table, object_tree):
+    def _get_image_object_path(self, table, object_tree):
         """
         Calculates a list of objects SNAP, DIFF, ... , DIFF that are used to reconstruct a table.
 
@@ -272,6 +269,24 @@ class ObjectManager:
         :param object_tree: Full object tree
         :return: A tuple of (SNAP object, list of DIFF objects in reverse order (latest object first))
         """
+
+        # * A SNAP for a given table is always the same size or smaller than the equivalent SNAP + DIFF chain
+        #   used to materialize that table -- but the DIFF chain allows to materialize more versions of a table.
+        # * Currently an object can't have more than 1 DIFF parent (at most 1 DIFF and at most 1 SNAP)
+        #   since the only time we add objects to a table is on commit (where we link the object to the previous
+        #   table's objects and that table also is linked to at most 1 DIFF and at most 1 SNAP) and on import (where
+        #   we copy a table's object links).
+        #
+        #   OTOH this might be possible in the future where we'd coalesce multiple
+        #   DIFF objects into a single one taking us directly from one version of a table to another one several
+        #   jumps away.
+        #
+        #   Therefore, we don't actually yet have multiple resolution paths: all we can do is follow the DIFF chain
+        #   (there's only one parent DIFF we can jump to) until we reach an object where we have a SNAP --
+        #   cached locally, derived locally or stored remotely). Then we should always use that SNAP in
+        #   materialization/LQ (might be some argument whether we should still choose a remote SNAP over
+        #   a completely local DIFF chain).
+
         path = []
         object_id = table.get_object('SNAP')
         if object_id is not None:
@@ -289,11 +304,35 @@ class ObjectManager:
                 # Check the _parent_'s format -- if it's a SNAP, we're done
                 if object_tree[parent_id][1] == 'SNAP':
                     return parent_id, path
+                cached_snap = self._get_snap_cache_for(parent_id)
+                if cached_snap is not None:
+                    # Found a SNAP that is equivalent to the full compressed DIFF chain, short-circuit.
+                    return cached_snap, path
                 object_id = parent_id
                 break  # Found 1 diff, will be added to the path at the next iteration.
 
         # We didn't find an actual snapshot for this table -- something's wrong with the object tree.
         raise SplitGraphException("Couldn't find a SNAP object for %s (malformed object tree)" % table)
+
+    def _store_snap_cache_miss(self, diff_id, timestamp):
+        self.object_engine.run_sql(insert("snap_cache_misses", ("diff_id", "used_time")), (diff_id, timestamp))
+
+    def _recent_snap_cache_misses(self, diff_id, start):
+        return self.object_engine.run_sql(select("snap_cache_misses", "COUNT(diff_id)",
+                                                 "diff_id = %s AND used_time > %s"), (diff_id, start),
+                                          return_shape=ResultShape.ONE_ONE)
+
+    def _get_snap_cache_for(self, diff_id):
+        return self.object_engine.run_sql(select("snap_cache", "snap_id", "diff_id = %s"), (diff_id,),
+                                          return_shape=ResultShape.ONE_ONE)
+
+    def _get_snap_cache(self):
+        return {snap_id: (diff_id, size) for snap_id, diff_id, size
+                in self.object_engine.run_sql(select("snap_cache", "snap_id,diff_id,size"))}
+
+    def _add_snap_cache(self, snap_id, diff_id):
+        size = self.object_engine.get_table_size(SPLITGRAPH_META_SCHEMA, snap_id)
+        self.object_engine.run_sql(insert("snap_cache", ("snap_id", "diff_id", "size")), (snap_id, diff_id, size))
 
     @contextmanager
     def ensure_objects(self, table):
@@ -320,50 +359,15 @@ class ObjectManager:
         # So, for now, we lock the whole cache status table. This means that multiple FDWs can't download objects
         # at the same time, but we can try and saturate the download bandwidth. In the future, we can try mode
         # granular row-level locking.
-        logging.info("Resolving objects for table %s:%s", table.repository, table.table_name)
+        logging.info("Resolving objects for table %s:%s:%s", table.repository, table.image.image_hash, table.table_name)
         self.object_engine.lock_table(SPLITGRAPH_META_SCHEMA, "object_cache_status")
 
         object_tree = self.get_full_object_tree()
 
         # Resolve the table into a list of objects we want to fetch (one SNAP and optionally a list of DIFFs).
         # In the future, we can also take other things into account, such as how expensive it is to load a given object
-        # (its size), consider creating a SNAP for tables that are often hit etc.
-
+        # (its size), location...
         snap, diffs = self._get_image_object_path(table, object_tree)
-
-        # SNAP caching, smart(er) resolution and general stats keeping
-        #   * A SNAP for a given table is always the same size or smaller than the equivalent SNAP + DIFF chain
-        #     used to materialize that table -- but the DIFF chain allows to materialize more versions of a table.
-        #   * Currently an object can't have more than 1 DIFF parent (at most 1 DIFF and at most 1 SNAP)
-        #     since the only time we add objects to a table is on commit (where we link the object to the previous
-        #     table's objects and that table also is linked to at most 1 DIFF and at most 1 SNAP) and on import (where
-        #     we copy a table's object links).
-        #
-        #     OTOH this might be possible in the future where we'd coalesce multiple
-        #     DIFF objects into a single one taking us directly from one version of a table to another one several
-        #     jumps away.
-        #
-        #     Therefore, we don't actually yet have multiple resolution paths: all we can do is follow the DIFF chain
-        #     (there's only one parent DIFF we can jump to) until we reach an object where we have a SNAP --
-        #     cached locally, derived locally or stored remotely). Then we should always use that SNAP in
-        #     materialization/LQ (might be some argument whether we should still choose a remote SNAP over
-        #     a completely local DIFF chain).
-        #   * When to generate a temporarily derived SNAP: we need to keep a history table with
-        #     (namespace, repository, image_hash, table_name, timestamp_used).
-        #     When a table gets hit, we record that in this table and if there have been enough hits in the last N
-        #     minutes, we create a single large SNAP instead of downloading SNAP + multiple DIFFs.
-        #   * Keeping track of the SNAP: add a snap_cache table mapping (diff_id -> temporary_snap_id). Since the ID
-        #     of a DIFF object currently uniquely defines the whole DIFF chain, now the resolution routine can at every
-        #     step of crawling down the DIFF chain check this table to see whether there is a cached SNAP.
-        #   * We shouldn't store these cached SNAPs in the actual object tree (since then clients might see it and try
-        #     to use it for something and we have no guarantees on it). We'll probably keep track of the SNAP size
-        #     in the snap_cache and also have it in object_cache_status.
-        #   * SNAP eviction: should take care of itself: if an older version starts getting hit, the SNAP's last_used
-        #     timestamp will never get updated and it'll get evicted.
-        #   * Really, SNAP caching should be done based on DIFF chains rather than tables: if I import something from
-        #     another table, then if that source table becomes popular and has a SNAP, me accessing my table should also
-        #     use that SNAP. We could technically store both the table access stats (which is very useful in any case)
-        #     and the DIFF usage stats (diff_id -> timestamp used in materialization).
 
         required_objects = diffs + [snap]
         downloaded_objects = self.get_downloaded_objects()
@@ -397,9 +401,47 @@ class ObjectManager:
                               table.repository.to_schema(), table.image.image_hash, table.table_name, difference)
             raise SplitGraphException()
 
+        if diffs:
+            # We want to return a SNAP + a DIFF chain. See if a DIFF chain ending (starting?) with a given DIFF
+            # has been requested too many times.
+            now = dt.utcnow()
+            self._store_snap_cache_miss(diffs[0], now)
+            if self._recent_snap_cache_misses(
+                    diffs[0], now - timedelta(seconds=self.cache_misses_lookback)) >= self.cache_misses_for_snap:
+                # Maybe here we should give longer DIFF chains priority somehow?
+                new_snap_id = get_random_object_id()
+                logging.info("Generating a temporary SNAP %s for a DIFF chain starting with %s", new_snap_id, diffs[0])
+
+                # We'll need extra space to create the temporary SNAP: we can't always do it on the fly
+                # (e.g. by just taking the old base SNAP and applying new DIFFs to it) since that operation
+                # is destructive and some other users might be using this object.
+                # But we also can't anticipate how much space we'll need: we could have a 1000-row SNAP + a
+                # 1000-row DIFF that deletes all rows in that SNAP, so the result is an empty table. However, we
+                # are bounded from the top by the sum of the sizes of all intermediate objects.
+
+                # Nevertheless, we'll create the SNAP anyway and just keep it there, letting whoever else gets
+                # to access the cache next run eviction if they need it.
+                self.object_engine.copy_table(SPLITGRAPH_META_SCHEMA, snap, SPLITGRAPH_META_SCHEMA, new_snap_id,
+                                              with_pk_constraints=True)
+                for diff in diffs:
+                    logging.info("Applying %s...", diff)
+                    self.object_engine.apply_diff_object(SPLITGRAPH_META_SCHEMA, diff, SPLITGRAPH_META_SCHEMA,
+                                                         new_snap_id)
+
+                # Instead of the old SNAP + DIFF chain, use the new SNAP (the rest will proceed in the same way:
+                # we'll increase the refcount and set the last used time on the SNAP instead of the full chain,
+                # yield it and then release the refcount.
+                diffs = []
+                snap = new_snap_id
+
+        # Extra stuff: stats to gather:
+        #   * Object cache misses
+        #   * SNAP cache misses
+        #   * Table usage
+        #   * time spent downloading, materializing, using LQs
+
         # Increase the refcount on all of the objects we're giving back to the caller so that others don't GC them.
         self._claim_objects(required_objects)
-
         try:
             # Release the lock and yield to the caller.
             self.object_engine.commit()
@@ -412,12 +454,15 @@ class ObjectManager:
             self.object_engine.commit()
 
     def _claim_objects(self, objects):
-        """Increases objects' refcounts and bumps their last used timestamp to now."""
+        """Adds objects to the cache_stats table, if they're not there already. If they are, increases their refcounts
+        and bumps their last used timestamp to now."""
         now = dt.utcnow()
-        self.object_engine.run_sql(SQL("UPDATE {}.{} SET refcount = refcount + 1, last_used = %s WHERE object_id IN (" +
-                                       ",".join(itertools.repeat("%s", len(objects))) + ")")
-                                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status")),
-                                   (now,) + tuple(objects))
+        self.object_engine.run_sql_batch(insert("object_cache_status", ("object_id", "status", "refcount", "last_used"))
+                                         + SQL("ON CONFLICT (object_id) DO UPDATE "
+                                               "SET refcount = {0}.{1}.refcount + 1, "
+                                               "last_used = %s WHERE {0}.{1}.object_id = excluded.object_id")
+                                         .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status")),
+                                         [(object_id, 2, 1, now, now) for object_id in objects])
 
     def _release_objects(self, objects):
         """Decreases objects' refcounts."""
@@ -438,6 +483,7 @@ class ObjectManager:
         """
 
         now = dt.utcnow()
+        snap_cache_sizes = self._get_snap_cache()
 
         def _eviction_score(object_size, last_used):
             # We want to evict objects in order to minimize
@@ -452,12 +498,13 @@ class ObjectManager:
             size_factor = object_size if object_size > self.eviction_floor else self.eviction_floor
             return time_factor * size_factor
 
-        # TODO Make sure we don't evict objects that were created here (that have no upstream) -- only consider those
-        # that have an external location.
-        # Objects can't have an upstream -- do we really need to see if any of the tables that use this objects
-        # have an upstream?
-        # TODO maybe only add objects to the cache stats table if we've just downloaded them from an external location
-        # otherwise what do we put for the last_used?
+        def _object_size(object_id):
+            # An object can be either a real object or an ephemeral SNAP.
+            if object_id in object_tree:
+                return object_tree[object_id][2]
+            else:
+                return snap_cache_sizes[object_id][1]
+
         # TODO should SNAPs have priority over DIFFs (since they give access to more potential table versions),
         # but they kind of do since they are bigger.
 
@@ -465,33 +512,42 @@ class ObjectManager:
         # Maybe here we should also do the old cleanup (see if the objects aren't required
         #   by any of the current repositories at all).
 
-        downloaded_objects = self.get_downloaded_objects()
-        # Find deletion candidates: objects that we have locally, with refcount 0, that aren't in the whitelist
+        # Find deletion candidates: objects that we have locally, with refcount 0, that aren't in the whitelist.
+        # Note this will also evict temporary materialized SNAPs: if an older version starts getting hit, the SNAP's
+        # last_used timestamp will never get updated and it'll get evicted.
         candidates = [o for o in self.object_engine.run_sql(
             select("object_cache_status", "object_id,last_used", "refcount=0"),
-            return_shape=ResultShape.MANY_MANY) if o[0] not in keep_objects and o[0] in downloaded_objects]
+            return_shape=ResultShape.MANY_MANY) if o[0] not in keep_objects]
 
         if required_space is None:
             # Just delete everything with refcount 0.
             to_delete = [o[0] for o in candidates]
-            freed_space = sum(object_tree[o][2] for o in to_delete)
+            freed_space = sum(_object_size(o) for o in to_delete)
         else:
-            if required_space > sum(object_tree[o[0]][2] for o in candidates):
+            if required_space > sum(_object_size(o[0]) for o in candidates):
                 raise SplitGraphException("Not enough space will be reclaimed after eviction!")
 
             # Sort them by deletion priority (lowest is smallest expected retrieval cost -- more likely to delete)
             to_delete = []
-            candidates = sorted(candidates, key=lambda o: _eviction_score(object_tree[o[0]][2], o[1]))
+            candidates = sorted(candidates, key=lambda o: _eviction_score(_object_size(o[0]), o[1]))
             freed_space = 0
             # Keep adding deletion candidates until we've freed enough space.
             for object_id, _ in candidates:
                 to_delete.append(object_id)
-                freed_space += object_tree[object_id][2]
+                freed_space += _object_size(object_id)
                 if freed_space >= required_space:
                     break
 
         logging.info("Will delete %d object(s), total size %s", len(to_delete), pretty_size(freed_space))
         self.delete_objects(to_delete)
+        self.object_engine.run_sql(SQL("DELETE FROM {}.{} WHERE object_id IN (" +
+                                       ",".join(itertools.repeat("%s", len(to_delete))) + ")")
+                                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status")),
+                                   to_delete)
+        self.object_engine.run_sql(SQL("DELETE FROM {}.{} WHERE snap_id IN (" +
+                                       ",".join(itertools.repeat("%s", len(to_delete))) + ")")
+                                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("snap_cache")),
+                                   to_delete)
 
     def download_objects(self, source, objects_to_fetch, object_locations):
         """
@@ -585,12 +641,21 @@ class ObjectManager:
                 query += SQL(" WHERE object_id NOT IN (" + ','.join('%s' for _ in range(len(primary_objects))) + ")")
             self.object_engine.run_sql(query, list(primary_objects))
 
+        # Delete objects from the snap_cache table (SNAPs that are linked to DIFFs that no longer exist).
+        query = SQL("DELETE FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier('snap_cache'))
+        if primary_objects:
+            query += SQL(" WHERE diff_id NOT IN (" + ','.join('%s' for _ in range(len(primary_objects))) + ")")
+        self.object_engine.run_sql(query, list(primary_objects))
+
         # Go through the physical objects and delete them as well
         # This is slightly dirty, but since the info about the objects was deleted on rm, we just say that
         # anything in splitgraph_meta that's not a system table is fair game.
         tables_in_meta = {c for c in self.object_engine.get_all_tables(SPLITGRAPH_META_SCHEMA) if c not in META_TABLES}
 
-        to_delete = tables_in_meta.difference(primary_objects)
+        # Need to test this cleanup to make sure we don't keep spurious objects here
+
+        # Make sure not to delete objects that are still supposed to be in the snap cache.
+        to_delete = tables_in_meta.difference(primary_objects).difference(self._get_snap_cache().keys())
         self.delete_objects(to_delete)
         return to_delete
 

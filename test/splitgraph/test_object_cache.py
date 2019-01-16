@@ -35,7 +35,8 @@ def _setup_object_cache_test(pg_repo_remote):
     assert len(remote.objects.get_existing_objects()) == 6
     assert len(remote.objects.get_downloaded_objects()) == 0
 
-    assert len(pg_repo_local.engine.run_sql("SELECT * FROM splitgraph_meta.object_cache_status")) == 6
+    # Nothing has yet been downloaded (cache entries only for externally downloaded things)
+    assert len(pg_repo_local.engine.run_sql("SELECT * FROM splitgraph_meta.object_cache_status")) == 0
 
     return pg_repo_local
 
@@ -66,11 +67,12 @@ def test_object_cache_loading(local_engine_empty, pg_repo_remote):
         assert diffs == []
 
         assert _get_refcount(object_manager, fruit_snap) == 1
-        assert _get_refcount(object_manager, fruit_diff) == 0
+        # fruit_diff not in the cache at all
+        assert _get_refcount(object_manager, fruit_diff) is None
 
     # Exit from the manager: refcounts are 0 but the object is still in the cache since there's enough space.
     assert _get_refcount(object_manager, fruit_snap) == 0
-    assert _get_refcount(object_manager, fruit_diff) == 0
+    assert _get_refcount(object_manager, fruit_diff) is None
     assert len(object_manager.get_downloaded_objects()) == 1
 
     # Resolve and download the new version: will download the DIFF.
@@ -219,7 +221,7 @@ def test_object_cache_eviction_priority(local_engine_empty, pg_repo_remote):
     # 2 objects in the cache and the limit is 3, one must be evicted.
     with object_manager.ensure_objects(vegetables_v3):
         assert _get_last_used(object_manager, fruit_snap) == lu_2
-        assert _get_last_used(object_manager, fruit_diff) == lu_1
+        assert _get_last_used(object_manager, fruit_diff) is None
         lu_3 = _get_last_used(object_manager, vegetables_snap)
         assert lu_3 > lu_2
         assert _get_last_used(object_manager, vegetables_diff) == lu_3
