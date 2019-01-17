@@ -140,7 +140,7 @@ class ObjectManager:
         # Minor normalization sadness here: this can return duplicate object IDs since
         # we might repeat them if different versions of the same table point to the same object ID.
         # Also, maybe we should consider looking at the cache status table instead.
-        return set(
+        permanent_objects = set(
             self.object_engine.run_sql(
                 SQL("""SELECT information_schema.tables.table_name FROM information_schema.tables JOIN {}.tables
                             ON information_schema.tables.table_name = {}.tables.object_id
@@ -148,6 +148,16 @@ class ObjectManager:
                     .format(Identifier(SPLITGRAPH_META_SCHEMA),
                             Identifier(SPLITGRAPH_META_SCHEMA)),
                 (SPLITGRAPH_META_SCHEMA,), return_shape=ResultShape.MANY_ONE))
+        temporary_objects = set(
+            self.object_engine.run_sql(
+                SQL("""SELECT information_schema.tables.table_name FROM information_schema.tables JOIN {}.snap_cache
+                            ON information_schema.tables.table_name = {}.snap_cache.snap_id
+                            WHERE information_schema.tables.table_schema = %s""")
+                    .format(Identifier(SPLITGRAPH_META_SCHEMA),
+                            Identifier(SPLITGRAPH_META_SCHEMA)),
+                (SPLITGRAPH_META_SCHEMA,), return_shape=ResultShape.MANY_ONE))
+
+        return permanent_objects.union(temporary_objects)
 
     def get_external_object_locations(self, objects):
         """
@@ -287,17 +297,20 @@ class ObjectManager:
         #   materialization/LQ (might be some argument whether we should still choose a remote SNAP over
         #   a completely local DIFF chain).
 
-        path = []
         object_id = table.get_object('SNAP')
         if object_id is not None:
-            return object_id, path
+            return object_id, []
 
         object_id = table.get_object('DIFF')
+        snap_id = self._get_snap_cache_for(object_id)
+        if snap_id is not None:
+            return snap_id, []
 
         # Here, we have to follow the object tree up until we encounter a parent of type SNAP -- firing a query
         # for every object is a massive bottleneck.
         # This could be done with a recursive PG query in the future, but currently we just load the whole tree
         # and crawl it in memory.
+        path = []
         while object_id is not None:
             path.append(object_id)
             for parent_id in object_tree[object_id][0]:
@@ -334,6 +347,14 @@ class ObjectManager:
         size = self.object_engine.get_table_size(SPLITGRAPH_META_SCHEMA, snap_id)
         self.object_engine.run_sql(insert("snap_cache", ("snap_id", "diff_id", "size")), (snap_id, diff_id, size))
 
+    @staticmethod
+    def _object_size(object_id, object_tree, snap_cache):
+        # An object can be either a real object or an ephemeral SNAP.
+        if object_id in object_tree:
+            return object_tree[object_id][2]
+        else:
+            return snap_cache[object_id][1]
+
     @contextmanager
     def ensure_objects(self, table):
         """
@@ -363,6 +384,7 @@ class ObjectManager:
         self.object_engine.lock_table(SPLITGRAPH_META_SCHEMA, "object_cache_status")
 
         object_tree = self.get_full_object_tree()
+        snap_cache = self._get_snap_cache()
 
         # Resolve the table into a list of objects we want to fetch (one SNAP and optionally a list of DIFFs).
         # In the future, we can also take other things into account, such as how expensive it is to load a given object
@@ -374,7 +396,8 @@ class ObjectManager:
         to_fetch = set(required_objects).difference(downloaded_objects)
 
         required_space = sum(object_tree[o][2] for o in to_fetch)
-        current_occupied = sum(object_tree[o][2] for o in downloaded_objects)
+
+        current_occupied = sum(self._object_size(o, object_tree, snap_cache) for o in downloaded_objects)
 
         logging.info("Need to download %d object(s) (%s), cache occupancy: %s/%s",
                      len(to_fetch), pretty_size(required_space),
@@ -423,16 +446,18 @@ class ObjectManager:
                 # to access the cache next run eviction if they need it.
                 self.object_engine.copy_table(SPLITGRAPH_META_SCHEMA, snap, SPLITGRAPH_META_SCHEMA, new_snap_id,
                                               with_pk_constraints=True)
-                for diff in diffs:
+                for diff in reversed(diffs):
                     logging.info("Applying %s...", diff)
                     self.object_engine.apply_diff_object(SPLITGRAPH_META_SCHEMA, diff, SPLITGRAPH_META_SCHEMA,
                                                          new_snap_id)
 
+                self._add_snap_cache(new_snap_id, diffs[0])
                 # Instead of the old SNAP + DIFF chain, use the new SNAP (the rest will proceed in the same way:
                 # we'll increase the refcount and set the last used time on the SNAP instead of the full chain,
                 # yield it and then release the refcount.
                 diffs = []
                 snap = new_snap_id
+                required_objects = [new_snap_id]
 
         # Extra stuff: stats to gather:
         #   * Object cache misses
@@ -498,13 +523,6 @@ class ObjectManager:
             size_factor = object_size if object_size > self.eviction_floor else self.eviction_floor
             return time_factor * size_factor
 
-        def _object_size(object_id):
-            # An object can be either a real object or an ephemeral SNAP.
-            if object_id in object_tree:
-                return object_tree[object_id][2]
-            else:
-                return snap_cache_sizes[object_id][1]
-
         # TODO should SNAPs have priority over DIFFs (since they give access to more potential table versions),
         # but they kind of do since they are bigger.
 
@@ -522,19 +540,21 @@ class ObjectManager:
         if required_space is None:
             # Just delete everything with refcount 0.
             to_delete = [o[0] for o in candidates]
-            freed_space = sum(_object_size(o) for o in to_delete)
+            freed_space = sum(self._object_size(o, object_tree, snap_cache_sizes) for o in to_delete)
         else:
-            if required_space > sum(_object_size(o[0]) for o in candidates):
+            if required_space > sum(self._object_size(o[0], object_tree, snap_cache_sizes) for o in candidates):
                 raise SplitGraphException("Not enough space will be reclaimed after eviction!")
 
             # Sort them by deletion priority (lowest is smallest expected retrieval cost -- more likely to delete)
             to_delete = []
-            candidates = sorted(candidates, key=lambda o: _eviction_score(_object_size(o[0]), o[1]))
+            candidates = sorted(candidates,
+                                key=lambda o: _eviction_score(self._object_size(o[0], object_tree, snap_cache_sizes),
+                                                              o[1]))
             freed_space = 0
             # Keep adding deletion candidates until we've freed enough space.
             for object_id, _ in candidates:
                 to_delete.append(object_id)
-                freed_space += _object_size(object_id)
+                freed_space += self._object_size(object_id, object_tree, snap_cache_sizes)
                 if freed_space >= required_space:
                     break
 
