@@ -82,21 +82,6 @@ if __name__ == '__main__':
         print("COMMITS MADE")
         print(datetime.now())
         rev = MOUNTPOINT.get_head()
-        # print(timeit("checkout(conn, MOUNTPOINT, '%s')" % rev, "from __main__ import conn, MOUNTPOINT, checkout", number=3))
-
-        # N = 1000
-        # unmount(conn, MOUNTPOINT)
-        # init(conn, MOUNTPOINT)
-        # create_random_table(conn, MOUNTPOINT, "test", N)
-        # commit(conn, MOUNTPOINT)
-        #
-        #
-        # import cProfile
-        # import pstats
-        # cProfile.run("checkout(conn, MOUNTPOINT, '8792466ac755ac65a384563db889aa6e616f48cddb1f35b3e216ca0bad786fe1')", 'checkout_fast.cprofile')
-        #
-        # ps = pstats.Stats('checkout_fast.cprofile')
-        # ps_2 = pstats.Stats('checkout.cprofile')
 
     _cleanup_minio()
     remote_driver = get_engine('remote_driver')

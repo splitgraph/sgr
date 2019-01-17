@@ -5,7 +5,7 @@ from random import getrandbits
 
 import click
 
-from splitgraph.core import Repository, repository_exists, ResultShape
+from splitgraph.core import Repository, repository_exists, ResultShape, Identifier, SQL, select
 
 _DEMO_TABLE_SIZE = 10
 _DEMO_CHANGE_SIZE = 2
@@ -29,6 +29,41 @@ def example():
     pass
 
 
+def generate_random_table(repository, table_name, size):
+    repository.engine.create_table(repository.to_schema(), table_name, [(1, 'key', 'integer', True),
+                                                                        (2, 'value', 'varchar', False)])
+    repository.engine.run_sql_batch(SQL("INSERT INTO {} VALUES (%s, %s)").format(Identifier(table_name)),
+                                    [(i, "%0.2x" % getrandbits(256)) for i in range(size)],
+                                    schema=repository.to_schema())
+
+
+def alter_random_table(repository, table_name, rows_added, rows_deleted, rows_updated):
+    keys = repository.run_sql(select(table_name, "key", schema=repository.to_schema()),
+                              return_shape=ResultShape.MANY_ONE)
+    last = repository.run_sql(select(table_name, "MAX(key)", schema=repository.to_schema()),
+                              return_shape=ResultShape.ONE_ONE)
+
+    # Delete first N rows
+    print("Deleting %d rows..." % rows_deleted)
+    repository.engine.run_sql_batch(SQL("DELETE FROM {} WHERE key = %s").format(Identifier(table_name)),
+                                    [(k,) for k in keys[:rows_deleted]],
+                                    schema=repository.to_schema())
+
+    # Update next N rows
+    print("Updating %d rows..." % rows_updated)
+    repository.engine.run_sql_batch(SQL("UPDATE {} SET value = %s WHERE key = %s").format(Identifier(table_name)),
+                                    [("%0.2x" % getrandbits(256), k)
+                                     for k in keys[rows_updated:rows_updated * 2]],
+                                    schema=repository.to_schema())
+
+    # Insert rows at the end
+    print("Adding %d rows..." % rows_added)
+    repository.engine.run_sql_batch(SQL("INSERT INTO {} VALUES (%s, %s)").format(Identifier(table_name)),
+                                    [(k, "%0.2x" % getrandbits(256))
+                                     for k in range(last + 1, last + rows_added + 1)],
+                                    schema=repository.to_schema())
+
+
 @click.command(name='generate')
 @click.argument('repository', type=Repository.from_schema)
 def generate_c(repository):
@@ -41,13 +76,9 @@ def generate_c(repository):
         raise click.ClickException("Repository %s already exists, use sgr rm to delete it!" % repository.to_schema())
 
     repository.init()
-    repository.engine.create_table(repository.to_schema(), 'demo', [(1, 'key', 'integer', True),
-                                                                    (2, 'value', 'varchar', False)])
-
     # Insert some random data
-    repository.engine.run_sql_batch("INSERT INTO demo VALUES (%s, %s)", [(i, "%0.2x" % getrandbits(256))
-                                                                         for i in range(_DEMO_TABLE_SIZE)],
-                                    schema=repository.to_schema())
+    generate_random_table(repository, 'demo', size=_DEMO_TABLE_SIZE)
+
     image = repository.commit()
     print("Generated %s:%s with %s rows, image hash %s." % (repository.to_schema(), 'demo', _DEMO_TABLE_SIZE,
                                                             image.image_hash[:12]))
@@ -63,28 +94,7 @@ def alter_c(repository):
 
     :param repository: Generated demo repository.
     """
-
-    keys = repository.run_sql("SELECT key FROM demo", return_shape=ResultShape.MANY_ONE)
-    last = repository.run_sql("SELECT MAX(key) FROM demo", return_shape=ResultShape.ONE_ONE)
-
-    # Delete first N rows
-    print("Deleting %d rows..." % _DEMO_CHANGE_SIZE)
-    repository.engine.run_sql_batch("DELETE FROM demo WHERE key = %s", [(k,) for k in keys[:_DEMO_CHANGE_SIZE]],
-                                    schema=repository.to_schema())
-
-    # Update next N rows
-    print("Updating %d rows..." % _DEMO_CHANGE_SIZE)
-    repository.engine.run_sql_batch("UPDATE demo SET value = %s WHERE key = %s",
-                                    [("%0.2x" % getrandbits(256), k)
-                                     for k in keys[_DEMO_CHANGE_SIZE:_DEMO_CHANGE_SIZE * 2]],
-                                    schema=repository.to_schema())
-
-    # Insert rows at the end
-    print("Adding %d rows..." % _DEMO_CHANGE_SIZE)
-    repository.engine.run_sql_batch("INSERT INTO demo VALUES (%s, %s)",
-                                    [(k, "%0.2x" % getrandbits(256))
-                                     for k in range(last + 1, last + _DEMO_CHANGE_SIZE + 1)],
-                                    schema=repository.to_schema())
+    alter_random_table(repository, 'demo', _DEMO_CHANGE_SIZE, _DEMO_CHANGE_SIZE, _DEMO_CHANGE_SIZE)
 
 
 @click.command(name='splitfile')

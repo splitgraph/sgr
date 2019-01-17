@@ -390,7 +390,11 @@ class ObjectManager:
         snap, diffs = self._get_image_object_path(table, object_tree)
 
         required_objects = diffs + [snap]
-        to_fetch = self._prepare_fetch_list(required_objects, object_tree, snap_cache)
+        try:
+            to_fetch = self._prepare_fetch_list(required_objects, object_tree, snap_cache)
+        except SplitGraphException:
+            self.object_engine.rollback()
+            raise
 
         # Perform the actual download. If the table has no upstream but still has external locations, we download
         # just the external objects.
@@ -402,6 +406,7 @@ class ObjectManager:
         if difference:
             logging.exception("Not all objects required to materialize %s:%s:%s have been fetched. Missing objects: %r",
                               table.repository.to_schema(), table.image.image_hash, table.table_name, difference)
+            self.object_engine.rollback()
             raise SplitGraphException()
 
         if diffs:
@@ -568,14 +573,15 @@ class ObjectManager:
 
         logging.info("Will delete %d object(s), total size %s", len(to_delete), pretty_size(freed_space))
         self.delete_objects(to_delete)
-        self.object_engine.run_sql(SQL("DELETE FROM {}.{} WHERE object_id IN (" +
-                                       ",".join(itertools.repeat("%s", len(to_delete))) + ")")
-                                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status")),
-                                   to_delete)
-        self.object_engine.run_sql(SQL("DELETE FROM {}.{} WHERE snap_id IN (" +
-                                       ",".join(itertools.repeat("%s", len(to_delete))) + ")")
-                                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("snap_cache")),
-                                   to_delete)
+        if to_delete:
+            self.object_engine.run_sql(SQL("DELETE FROM {}.{} WHERE object_id IN (" +
+                                           ",".join(itertools.repeat("%s", len(to_delete))) + ")")
+                                       .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status")),
+                                       to_delete)
+            self.object_engine.run_sql(SQL("DELETE FROM {}.{} WHERE snap_id IN (" +
+                                           ",".join(itertools.repeat("%s", len(to_delete))) + ")")
+                                       .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("snap_cache")),
+                                       to_delete)
 
     def download_objects(self, source, objects_to_fetch, object_locations):
         """
@@ -670,10 +676,11 @@ class ObjectManager:
             self.object_engine.run_sql(query, list(primary_objects))
 
         # Delete objects from the snap_cache table (SNAPs that are linked to DIFFs that no longer exist).
-        query = SQL("DELETE FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier('snap_cache'))
-        if primary_objects:
-            query += SQL(" WHERE diff_id NOT IN (" + ','.join('%s' for _ in range(len(primary_objects))) + ")")
-        self.object_engine.run_sql(query, list(primary_objects))
+        for table_name in ['snap_cache', 'snap_cache_misses']:
+            query = SQL("DELETE FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table_name))
+            if primary_objects:
+                query += SQL(" WHERE diff_id NOT IN (" + ','.join('%s' for _ in range(len(primary_objects))) + ")")
+            self.object_engine.run_sql(query, list(primary_objects))
 
         # Go through the physical objects and delete them as well
         # This is slightly dirty, but since the info about the objects was deleted on rm, we just say that
