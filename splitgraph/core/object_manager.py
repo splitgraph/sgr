@@ -352,8 +352,7 @@ class ObjectManager:
         # An object can be either a real object or an ephemeral SNAP.
         if object_id in object_tree:
             return object_tree[object_id][2]
-        else:
-            return snap_cache[object_id][1]
+        return snap_cache[object_id][1]
 
     @contextmanager
     def ensure_objects(self, table):
@@ -383,34 +382,15 @@ class ObjectManager:
         logging.info("Resolving objects for table %s:%s:%s", table.repository, table.image.image_hash, table.table_name)
         self.object_engine.lock_table(SPLITGRAPH_META_SCHEMA, "object_cache_status")
 
-        object_tree = self.get_full_object_tree()
-        snap_cache = self._get_snap_cache()
-
         # Resolve the table into a list of objects we want to fetch (one SNAP and optionally a list of DIFFs).
         # In the future, we can also take other things into account, such as how expensive it is to load a given object
         # (its size), location...
+        object_tree = self.get_full_object_tree()
+        snap_cache = self._get_snap_cache()
         snap, diffs = self._get_image_object_path(table, object_tree)
 
         required_objects = diffs + [snap]
-        downloaded_objects = self.get_downloaded_objects()
-        to_fetch = set(required_objects).difference(downloaded_objects)
-
-        required_space = sum(object_tree[o][2] for o in to_fetch)
-
-        current_occupied = sum(self._object_size(o, object_tree, snap_cache) for o in downloaded_objects)
-
-        logging.info("Need to download %d object(s) (%s), cache occupancy: %s/%s",
-                     len(to_fetch), pretty_size(required_space),
-                     pretty_size(current_occupied), pretty_size(self.cache_size))
-
-        # If the total cache size isn't large enough, there's nothing we can do without cooperating with the
-        # caller and seeing if they can use the objects one-by-one.
-        if required_space > self.cache_size:
-            raise SplitGraphException("Not enough space in the cache to download the required objects!")
-        if required_space > self.cache_size - current_occupied:
-            to_free = required_space + current_occupied - self.cache_size
-            logging.info("Need to free %s" % pretty_size(to_free))
-            self.run_eviction(object_tree, required_objects, to_free)
+        to_fetch = self._prepare_fetch_list(required_objects, object_tree, snap_cache)
 
         # Perform the actual download. If the table has no upstream but still has external locations, we download
         # just the external objects.
@@ -431,27 +411,7 @@ class ObjectManager:
             self._store_snap_cache_miss(diffs[0], now)
             if self._recent_snap_cache_misses(
                     diffs[0], now - timedelta(seconds=self.cache_misses_lookback)) >= self.cache_misses_for_snap:
-                # Maybe here we should give longer DIFF chains priority somehow?
-                new_snap_id = get_random_object_id()
-                logging.info("Generating a temporary SNAP %s for a DIFF chain starting with %s", new_snap_id, diffs[0])
-
-                # We'll need extra space to create the temporary SNAP: we can't always do it on the fly
-                # (e.g. by just taking the old base SNAP and applying new DIFFs to it) since that operation
-                # is destructive and some other users might be using this object.
-                # But we also can't anticipate how much space we'll need: we could have a 1000-row SNAP + a
-                # 1000-row DIFF that deletes all rows in that SNAP, so the result is an empty table. However, we
-                # are bounded from the top by the sum of the sizes of all intermediate objects.
-
-                # Nevertheless, we'll create the SNAP anyway and just keep it there, letting whoever else gets
-                # to access the cache next run eviction if they need it.
-                self.object_engine.copy_table(SPLITGRAPH_META_SCHEMA, snap, SPLITGRAPH_META_SCHEMA, new_snap_id,
-                                              with_pk_constraints=True)
-                for diff in reversed(diffs):
-                    logging.info("Applying %s...", diff)
-                    self.object_engine.apply_diff_object(SPLITGRAPH_META_SCHEMA, diff, SPLITGRAPH_META_SCHEMA,
-                                                         new_snap_id)
-
-                self._add_snap_cache(new_snap_id, diffs[0])
+                new_snap_id = self._create_and_register_temporary_snap(snap, diffs)
                 # Instead of the old SNAP + DIFF chain, use the new SNAP (the rest will proceed in the same way:
                 # we'll increase the refcount and set the last used time on the SNAP instead of the full chain,
                 # yield it and then release the refcount.
@@ -477,6 +437,54 @@ class ObjectManager:
             # is terminated abnormally, we'll leak memory.
             self._release_objects(required_objects)
             self.object_engine.commit()
+
+    def _create_and_register_temporary_snap(self, snap, diffs):
+        # Maybe here we should give longer DIFF chains priority somehow?
+        new_snap_id = get_random_object_id()
+        logging.info("Generating a temporary SNAP %s for a DIFF chain starting with %s", new_snap_id, diffs[0])
+        # We'll need extra space to create the temporary SNAP: we can't always do it on the fly
+        # (e.g. by just taking the old base SNAP and applying new DIFFs to it) since that operation
+        # is destructive and some other users might be using this object.
+        # But we also can't anticipate how much space we'll need: we could have a 1000-row SNAP + a
+        # 1000-row DIFF that deletes all rows in that SNAP, so the result is an empty table. However, we
+        # are bounded from the top by the sum of the sizes of all intermediate objects.
+        # Nevertheless, we'll create the SNAP anyway and just keep it there, letting whoever else gets
+        # to access the cache next run eviction if they need it.
+        self.object_engine.copy_table(SPLITGRAPH_META_SCHEMA, snap, SPLITGRAPH_META_SCHEMA, new_snap_id,
+                                      with_pk_constraints=True)
+        for diff in reversed(diffs):
+            logging.info("Applying %s...", diff)
+            self.object_engine.apply_diff_object(SPLITGRAPH_META_SCHEMA, diff, SPLITGRAPH_META_SCHEMA,
+                                                 new_snap_id)
+        self._add_snap_cache(new_snap_id, diffs[0])
+        return new_snap_id
+
+    def _prepare_fetch_list(self, required_objects, object_tree, snap_cache):
+        """
+        Calculates the missing objects and ensures there's enough space in the cache
+        to download them.
+
+        :param required_objects: Iterable of object IDs that are required to be on the engine.
+        :param object_tree: Object tree
+        :param snap_cache: Contents of the SNAP materialization cache
+        :return: Set of objects to fetch
+        """
+        downloaded_objects = self.get_downloaded_objects()
+        to_fetch = set(required_objects).difference(downloaded_objects)
+        required_space = sum(object_tree[o][2] for o in to_fetch)
+        current_occupied = sum(self._object_size(o, object_tree, snap_cache) for o in downloaded_objects)
+        logging.info("Need to download %d object(s) (%s), cache occupancy: %s/%s",
+                     len(to_fetch), pretty_size(required_space),
+                     pretty_size(current_occupied), pretty_size(self.cache_size))
+        # If the total cache size isn't large enough, there's nothing we can do without cooperating with the
+        # caller and seeing if they can use the objects one-by-one.
+        if required_space > self.cache_size:
+            raise SplitGraphException("Not enough space in the cache to download the required objects!")
+        if required_space > self.cache_size - current_occupied:
+            to_free = required_space + current_occupied - self.cache_size
+            logging.info("Need to free %s", pretty_size(to_free))
+            self.run_eviction(object_tree, required_objects, to_free)
+        return to_fetch
 
     def _claim_objects(self, objects):
         """Adds objects to the cache_stats table, if they're not there already. If they are, increases their refcounts

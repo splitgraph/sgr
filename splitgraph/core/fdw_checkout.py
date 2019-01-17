@@ -1,3 +1,6 @@
+"""Module imported by Multicorn on the Splitgraph engine server: a foreign data wrapper that implements
+layered querying (read-only queries to Splitgraph tables without materialization)."""
+
 import logging
 
 from psycopg2.sql import Identifier, SQL
@@ -17,9 +20,7 @@ _PG_LOGLEVEL = logging.INFO
 
 
 class QueryingForeignDataWrapper(ForeignDataWrapper):
-    """
-    A read-only Postgres FDW that allows to query Splitgraph tables without materializing them.
-    """
+    """The actual Multicorn LQ FDW class"""
 
     def _apply_qual_filter(self, schema, table, qual_sql, qual_vals):
         """
@@ -48,10 +49,10 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
 
         sql_objs = []
         vals = []
-        for q in quals:
-            s, v = _qual_to_pg(q)
-            sql_objs.append(s)
-            vals.extend(v)
+        for qual in quals:
+            sql, value = _qual_to_pg(qual)
+            sql_objs.append(sql)
+            vals.extend(value)
 
         return SQL(" AND ").join(s for s in sql_objs), vals
 
@@ -78,9 +79,11 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
                 # End the transaction so that nothing else deadlocks (at this point we've returned
                 # all the data we needed to the runtime so nothing will be lost).
                 self.engine.rollback()
-                raise StopIteration
+                return
 
     def execute(self, quals, columns, sortkeys=None):
+        """Main Multicorn entry point."""
+
         # Multicorn passes a _set_ of columns to us instead of a list, so the order of iteration through
         # it can randomly change and the order in which we return the tuples might not be the one it expects.
         columns = list(columns)
