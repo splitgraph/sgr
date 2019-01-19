@@ -40,7 +40,7 @@ class Table:
                     engine.apply_diff_object(SPLITGRAPH_META_SCHEMA, diff, destination_schema, destination)
         else:
             query = SQL("CREATE FOREIGN TABLE {}.{} (") \
-                .format(Identifier(self.repository.to_schema()), Identifier(self.table_name))
+                .format(Identifier(destination_schema), Identifier(self.table_name))
             query += SQL(','.join(
                 "{} %s " % ctype for _, _, ctype, _ in self.table_schema)).format(
                 *(Identifier(cname) for _, cname, _, _ in self.table_schema))

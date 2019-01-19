@@ -1,16 +1,16 @@
 """Functions related to creating, deleting and keeping track of physical Splitgraph objects."""
-import itertools
 import logging
-import math
 from collections import defaultdict
 from contextlib import contextmanager
-from datetime import datetime as dt, timedelta
 from random import getrandbits
 
+import itertools
+import math
+from datetime import datetime as dt, timedelta
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.engine import ResultShape, switch_engine
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.external_objects import get_external_object_handler
@@ -29,24 +29,24 @@ class ObjectManager:
         self.object_engine = object_engine
 
         # Cache size in bytes
-        self.cache_size = 1024 * 1024 * 1024
+        self.cache_size = float(CONFIG['SG_OBJECT_CACHE_SIZE']) * 1024 * 1024
 
         # 0 to infinity; higher means objects with smaller sizes are more likely to
         # get evicted than objects that haven't been used for a while.
         # Currently calculated so that an object that hasn't been accessed for 5 minutes has the same
         # removal priority as an object twice its size that's just been accessed.
-        self.eviction_decay_constant = 0.002
+        self.eviction_decay_constant = float(CONFIG['SG_EVICTION_DECAY'])
 
         # Objects smaller than this size are assumed to have this size (to simulate the latency of
         # downloading them).
-        self.eviction_floor = 1024 * 1024
+        self.eviction_floor = float(CONFIG['SG_EVICTION_FLOOR']) * 1024 * 1024
 
         # If we had to return a given DIFF more than or equal to `cache_misses_for_snap` times in the last
         # `cache_misses_lookback` seconds, the resolver creates a SNAP from the diff chain and returns
         # that instead. This is to replace layered querying with direct SNAP queries for popular tables.
         # The temporary SNAP is evicted just like other objects.
-        self.cache_misses_for_snap = 5
-        self.cache_misses_lookback = 300
+        self.cache_misses_for_snap = int(CONFIG['SG_SNAP_CACHE_MISSES'])
+        self.cache_misses_lookback = int(CONFIG['SG_SNAP_CACHE_LOOKBACK'])
 
     def get_full_object_tree(self):
         """Returns a dictionary (object_id -> [list of parents], SNAP/DIFF, size) with the full object tree
@@ -354,6 +354,12 @@ class ObjectManager:
             return object_tree[object_id][2]
         return snap_cache[object_id][1]
 
+    def get_cache_occupancy(self):
+        downloaded_objects = self.get_downloaded_objects()
+        object_tree = self.get_full_object_tree()
+        snap_cache = self._get_snap_cache()
+        return sum(self._object_size(o, object_tree, snap_cache) for o in downloaded_objects)
+
     @contextmanager
     def ensure_objects(self, table):
         """
@@ -431,6 +437,7 @@ class ObjectManager:
         #   * time spent downloading, materializing, using LQs
 
         # Increase the refcount on all of the objects we're giving back to the caller so that others don't GC them.
+        logging.info("Claiming %d object(s)", len(required_objects))
         self._claim_objects(required_objects)
         try:
             # Release the lock and yield to the caller.
@@ -441,6 +448,7 @@ class ObjectManager:
             # If the caller crashes, we should still hit this and decrease the refcounts, but if the whole program
             # is terminated abnormally, we'll leak memory.
             self._release_objects(required_objects)
+            logging.info("Releasing %d object(s)", len(required_objects))
             self.object_engine.commit()
 
     def _create_and_register_temporary_snap(self, snap, diffs):
@@ -702,6 +710,7 @@ class ObjectManager:
         """
         for o in objects:
             self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, o)
+            self.object_engine.commit()
 
 
 def _fetch_external_objects(engine, object_locations, objects_to_fetch, handler_params):
@@ -721,12 +730,6 @@ def _fetch_external_objects(engine, object_locations, objects_to_fetch, handler_
     return non_remote_objects
 
 
-def _merge_changes(old_change_data, new_change_data):
-    old_change_data = {k: v for k, v in zip(old_change_data['c'], old_change_data['v'])}
-    old_change_data.update({k: v for k, v in zip(new_change_data['c'], new_change_data['v'])})
-    return {'c': list(old_change_data.keys()), 'v': list(old_change_data.values())}
-
-
 def _conflate_changes(changeset, new_changes):
     """
     Updates a changeset to incorporate the new changes. Assumes that the new changes are non-pk changing
@@ -739,7 +742,7 @@ def _conflate_changes(changeset, new_changes):
         else:
             if change_kind == 0:
                 if old_change[0] == 1:  # Insert over delete: change to update
-                    if change_data == {'c': [], 'v': []}:
+                    if change_data == {}:
                         del changeset[change_pk]
                     else:
                         changeset[change_pk] = (2, change_data)
@@ -755,8 +758,8 @@ def _conflate_changes(changeset, new_changes):
                     raise SplitGraphException("Malformed audit log: deleted PK %s deleted again" % str(change_pk))
             elif change_kind == 2:  # Update over insert/update: merge the two changes.
                 if old_change[0] == 0 or old_change[0] == 2:
-                    new_data = _merge_changes(old_change[1], change_data)
-                    changeset[change_pk] = (old_change[0], new_data)
+                    old_change[1].update(change_data)
+                    # changeset[change_pk] = (old_change[0], new_data)
 
 
 def get_random_object_id():

@@ -1,11 +1,11 @@
 """Default Splitgraph engine: uses PostgreSQL to store metadata and actual objects and an audit stored procedure
 to track changes, as well as the Postgres FDW interface to upload/download objects to/from other Postgres engines."""
 
-import itertools
 import json
 import logging
 from pkgutil import get_data
 
+import itertools
 import psycopg2
 from psycopg2._json import Json
 from psycopg2.extras import execute_batch
@@ -231,6 +231,10 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         query = SQL("INSERT INTO {}.{} ").format(Identifier(schema),
                                                  Identifier(table)) + \
                 SQL("VALUES (" + ','.join(itertools.repeat('%s', len(changeset[0]))) + ")")
+
+        # TODO: if we have a default value, then the diff also contains that value.
+        # so there's no point in storing the extra rows as kv (they all have the same dimension)
+
         self.run_sql_batch(query, changeset)
 
     def apply_diff_object(self, source_schema, source_table, target_schema, target_table):
@@ -265,8 +269,8 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                                                     Identifier(source_table))):
                 # For the future: if all column names are the same, we can do a big INSERT.
                 action_data = row[-1]
-                cols_to_insert = list(ri_cols) + action_data['c']
-                vals_to_insert = _convert_vals(list(row[:-2]) + action_data['v'])
+                cols_to_insert = list(ri_cols) + list(action_data.keys())
+                vals_to_insert = _convert_vals(list(row[:-2]) + list(action_data.values()))
 
                 query = SQL("INSERT INTO {}.{} (").format(Identifier(target_schema), Identifier(target_table))
                 query += SQL(','.join('{}' for _ in cols_to_insert)).format(*[Identifier(c) for c in cols_to_insert])
@@ -280,8 +284,8 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                                                     Identifier(source_table))):
                 action_data = row[-1]
                 ri_vals = list(row[:-2])
-                cols_to_insert = action_data['c']
-                vals_to_insert = action_data['v']
+                cols_to_insert = list(action_data.keys())
+                vals_to_insert = list(action_data.values())
 
                 query = SQL("UPDATE {}.{} SET ").format(Identifier(target_schema), Identifier(target_table))
                 query += SQL(', '.join("{} = %s" for _ in cols_to_insert)).format(
@@ -384,59 +388,53 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
 def _split_ri_cols(action, row_data, changed_fields, ri_cols):
     """
-    :return: `(ri_vals, non_ri_cols, non_ri_vals)`: a tuple of 3 lists:
-        * `ri_vals`: values identifying the replica identity (RI) of a given tuple (matching column names in `ri_cols`)
-        * `non_ri_cols`: column names not in the RI that have been changed/updated
-        * `non_ri_vals`: column values not in the RI that have been changed/updated (matching colnames in `non_ri_cols`)
+    :return: `(ri_data, non_ri_data)`: a tuple of 2 dictionaries:
+        * `ri_data`: maps column names in `ri_cols` to values identifying the replica identity (RI) of a given tuple
+        * `non_ri_data`: map of column names and values not in the RI that have been changed/updated
     """
-    non_ri_cols = []
-    non_ri_vals = []
-    ri_vals = [None] * len(ri_cols)
+    non_ri_data = {}
+    ri_data = {}
 
     if action == 'I':
         for cc, cv in row_data.items():
             if cc in ri_cols:
-                ri_vals[ri_cols.index(cc)] = cv
+                ri_data[cc] = cv
             else:
-                non_ri_cols.append(cc)
-                non_ri_vals.append(cv)
+                non_ri_data[cc] = cv
     elif action == 'D':
         for cc, cv in row_data.items():
             if cc in ri_cols:
-                ri_vals[ri_cols.index(cc)] = cv
+                ri_data[cc] = cv
     elif action == 'U':
         for cc, cv in row_data.items():
             if cc in ri_cols:
-                ri_vals[ri_cols.index(cc)] = cv
+                ri_data[cc] = cv
         for cc, cv in changed_fields.items():
             # Hmm: these might intersect with the RI values (e.g. when the whole tuple is the replica identity and
             # we're updating some of it)
-            non_ri_cols.append(cc)
-            non_ri_vals.append(cv)
+            non_ri_data[cc] = cv
 
-    return ri_vals, non_ri_cols, non_ri_vals
+    return ri_data, non_ri_data
 
 
-def _recalculate_disjoint_ri_cols(ri_cols, ri_vals, non_ri_cols, non_ri_vals, row_data):
+def _recalculate_disjoint_ri_cols(ri_cols, ri_data, non_ri_data, row_data):
     # If part of the PK has been updated (is in the non_ri_cols/vals), we have to instead
     # apply the update to the PK (ri_cols/vals) and recalculate the new full new tuple
     # (by applying the update to row_data).
-    new_nric = []
-    new_nriv = []
+    new_non_ri_data = {}
     row_data = row_data.copy()
 
-    for nrc, nrv in zip(non_ri_cols, non_ri_vals):
-        try:
-            ri_vals[ri_cols.index(nrc)] = nrv
-        except ValueError:
+    for nrc, nrv in non_ri_data.items():
+        if nrc in ri_cols:
+            ri_data[nrc] = nrv
+        else:
             row_data[nrc] = nrv
 
     for col, val in row_data.items():
         if col not in ri_cols:
-            new_nric.append(col)
-            new_nriv.append(val)
+            new_non_ri_data[col] = val
 
-    return ri_vals, new_nric, new_nriv
+    return ri_data, new_non_ri_data
 
 
 def _convert_audit_change(action, row_data, changed_fields, ri_cols):
@@ -445,22 +443,21 @@ def _convert_audit_change(action, row_data, changed_fields, ri_cols):
 
     :returns: [(pk, kind, extra data)] (more than 1 change might be emitted from a single audit entry).
     """
-    ri_vals, non_ri_cols, non_ri_vals = _split_ri_cols(action, row_data, changed_fields, ri_cols)
-    pk_changed = any(c in ri_cols for c in non_ri_cols)
+    ri_data, non_ri_data = _split_ri_cols(action, row_data, changed_fields, ri_cols)
+    pk_changed = any(c in ri_cols for c in non_ri_data)
     if pk_changed:
         assert action == 'U'
         # If it's an update that changed the PK (e.g. the table has no replica identity so we treat the whole
         # tuple as a primary key), then we turn it into a delete old tuple + insert new one.
-        result = [(tuple(ri_vals), 1, None)]
+        result = [(tuple(ri_data[c] for c in ri_cols), 1, None)]
 
         # Recalculate the new PK to be inserted + the new (full) tuple, otherwise if the whole
         # tuple hasn't been updated, we'll lose parts of the old row (see test_diff_conflation_on_commit[test_case2]).
-        ri_vals, non_ri_cols, non_ri_vals = _recalculate_disjoint_ri_cols(ri_cols, ri_vals,
-                                                                          non_ri_cols, non_ri_vals, row_data)
-        result.append((tuple(ri_vals), 0, {'c': non_ri_cols, 'v': non_ri_vals}))
+        ri_data, non_ri_data = _recalculate_disjoint_ri_cols(ri_cols, ri_data, non_ri_data, row_data)
+        result.append((tuple(ri_data[c] for c in ri_cols), 0, non_ri_data))
         return result
-    return [(tuple(ri_vals), _KIND[action],
-             {'c': non_ri_cols, 'v': non_ri_vals} if action in ('I', 'U') else None)]
+    return [(tuple(ri_data[c] for c in ri_cols), _KIND[action],
+             non_ri_data if action in ('I', 'U') else None)]
 
 
 _KIND = {'I': 0, 'D': 1, 'U': 2}

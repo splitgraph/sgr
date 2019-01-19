@@ -108,7 +108,7 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
                 self.get_table(table).materialize(table)
         set_head(self.repository, self.image_hash)
 
-    def _lq_checkout(self):
+    def _lq_checkout(self, target_schema=None):
         """
         Intended to be run on the sgr side. Initializes the FDW for all tables in a given image,
         allowing to query them directly without materializing the tables.
@@ -116,7 +116,8 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
         # assumes that we got to the point in the normal checkout where we're about to materialize the tables
         # (e.g. the schemata are cleared)
         # Use a per-schema "foreign server" for layered queries for now
-        server_id = '%s_lq_checkout_server' % self.repository.to_schema()
+        target_schema = target_schema or self.repository.to_schema()
+        server_id = '%s_lq_checkout_server' % target_schema
         engine = self.repository.engine
 
         init_fdw(engine, server_id=server_id, wrapper='multicorn',
@@ -131,8 +132,9 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
 
         # It's easier to create the foreign tables from our side than to implement IMPORT FOREIGN SCHEMA by the FDW
         for table_name in self.get_tables():
-            logging.info("Mounting %s", table_name)
-            self.get_table(table_name).materialize(table_name, self.repository.to_schema(), lq_server=server_id)
+            logging.info("Mounting %s:%s/%s into %s", self.repository.to_schema(), self.image_hash, table_name,
+                         target_schema)
+            self.get_table(table_name).materialize(table_name, target_schema, lq_server=server_id)
 
     def tag(self, tag, force=False):
         """
