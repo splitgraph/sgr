@@ -337,6 +337,18 @@ class ObjectEngine:
         """
         raise NotImplementedError()
 
+    def batch_apply_diff_objects(self, objects, target_schema, target_table):
+        """
+        Apply a list of changesets to a target table. By default, runs `apply_diff_object` for
+        every table in `objects`.
+
+        :param objects: List of tuples `(object_schema, object_table)` that the objects are stored in.
+        :param target_schema: Schema to apply the changeset to
+        :param target_table: Table to apply the changeset to
+        """
+        for ss, st in objects:
+            self.apply_diff_object(ss, st, target_schema, target_table)
+
     def dump_object(self, schema, table, stream):
         """
         Dump a table to a stream using an engine-specific binary format.

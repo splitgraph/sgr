@@ -35,9 +35,10 @@ class Table:
             with object_manager.ensure_objects(self) as (snap, diffs):
                 engine.copy_table(SPLITGRAPH_META_SCHEMA, snap, destination_schema, destination,
                                   with_pk_constraints=True)
-                for diff in diffs:
-                    logging.info("Applying %s...", diff)
-                    engine.apply_diff_object(SPLITGRAPH_META_SCHEMA, diff, destination_schema, destination)
+                if diffs:
+                    logging.info("Applying %d DIFF object(s)..." % len(diffs))
+                    engine.batch_apply_diff_objects(
+                        [(SPLITGRAPH_META_SCHEMA, d) for d in diffs], destination_schema, destination)
         else:
             query = SQL("CREATE FOREIGN TABLE {}.{} (") \
                 .format(Identifier(destination_schema), Identifier(self.table_name))

@@ -234,43 +234,59 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
         self.run_sql_batch(query, changeset)
 
-    def apply_diff_object(self, source_schema, source_table, target_schema, target_table):
-        ri_cols, _ = zip(*self.get_change_key(source_schema, source_table))
-        non_ri_cols_types = [c for c in self.get_column_names_types(target_schema, target_table) if c[0] not in ri_cols]
-        non_ri_cols, non_ri_types = zip(*non_ri_cols_types) if non_ri_cols_types else ((), ())
+    def batch_apply_diff_objects(self, objects, target_schema, target_table):
+        ri_data = self._prepare_ri_data(target_schema, target_table)
+        query = SQL(";").join(self._generate_diff_application(ss, st, target_schema, target_table, ri_data)
+                              for ss, st in objects)
+        self.run_sql(query)
 
-        # Apply deletes
-        self.run_sql(SQL("DELETE FROM {0}.{2} USING {1}.{3} WHERE {1}.{3}.sg_action_kind = 1").format(
+    def _prepare_ri_data(self, schema, table):
+        ri_cols, _ = zip(*self.get_change_key(schema, table))
+        non_ri_cols_types = [c for c in self.get_column_names_types(schema, table) if c[0] not in ri_cols]
+        non_ri_cols, non_ri_types = zip(*non_ri_cols_types) if non_ri_cols_types else ((), ())
+        return ri_cols, non_ri_cols, non_ri_types
+
+    @staticmethod
+    def _generate_diff_application(source_schema, source_table, target_schema, target_table,
+                                   ri_data):
+        ri_cols, non_ri_cols, non_ri_types = ri_data
+
+        # Generate deletions
+        result = SQL("DELETE FROM {0}.{2} USING {1}.{3} WHERE {1}.{3}.sg_action_kind = 1").format(
             Identifier(target_schema), Identifier(source_schema), Identifier(target_table),
             Identifier(source_table)) + SQL(" AND ") + _generate_where_clause(target_schema, target_table, ri_cols,
                                                                               source_table,
-                                                                              source_schema))
-        # Apply inserts
-        insert_query = SQL("INSERT INTO {}.{} ").format(Identifier(target_schema), Identifier(target_table)) \
-                       + SQL("(") + SQL(",").join(Identifier(c) for c in list(ri_cols) + list(non_ri_cols)) + SQL(")") \
-                       + SQL("(SELECT ") + SQL(",").join(SQL("s.") + Identifier(c) for c in list(ri_cols)) \
-                       + SQL("," if non_ri_cols else "") \
-                       + SQL(",").join(SQL("o.") + Identifier(c) for c in list(non_ri_cols)) \
-                       + SQL(" FROM {}.{} s, jsonb_populate_record(null::{}.{}, s.sg_action_data) o "
-                             "WHERE s.sg_action_kind = 0)") \
-                           .format(Identifier(source_schema), Identifier(source_table), Identifier(target_schema),
-                                   Identifier(target_table))
-        self.run_sql(insert_query)
+                                                                              source_schema)
+        # Generate insertions
+        result += SQL(";INSERT INTO {}.{} ").format(Identifier(target_schema), Identifier(target_table)) \
+                  + SQL("(") + SQL(",").join(Identifier(c) for c in list(ri_cols) + list(non_ri_cols)) + SQL(")") \
+                  + SQL("(SELECT ") + SQL(",").join(SQL("s.") + Identifier(c) for c in list(ri_cols)) \
+                  + SQL("," if non_ri_cols else "") \
+                  + SQL(",").join(SQL("o.") + Identifier(c) for c in list(non_ri_cols)) \
+                  + SQL(" FROM {}.{} s, jsonb_populate_record(null::{}.{}, s.sg_action_data) o "
+                        "WHERE s.sg_action_kind = 0)") \
+                      .format(Identifier(source_schema), Identifier(source_table), Identifier(target_schema),
+                              Identifier(target_table))
 
-        # Apply updates
+        # Generate updates
         if non_ri_cols:
-            update_query = SQL("UPDATE {}.{}").format(Identifier(target_schema), Identifier(target_table)) \
-                           + SQL("SET (") + SQL(",").join(Identifier(c) for c in list(non_ri_cols)) + SQL(")") \
-                           + SQL(" = (SELECT ") + SQL(",").join(SQL("o.") + Identifier(c) for c in list(non_ri_cols)) \
-                           + SQL(" FROM jsonb_populate_record(null::{2}.{3}, to_jsonb(t) || s.sg_action_data) o) "
-                                 "FROM {0}.{1} s, {2}.{3} t") \
-                               .format(Identifier(source_schema), Identifier(source_table),
-                                       Identifier(target_schema), Identifier(target_table)) \
-                           + SQL(" WHERE s.sg_action_kind = 2 AND ") \
-                           + SQL(" AND ").join(SQL("s.{0} = t.{0} AND t.{0} = {1}.{2}.{0}")
-                                               .format(Identifier(c), Identifier(target_schema),
-                                                       Identifier(target_table)) for c in ri_cols)
-            self.run_sql(update_query)
+            result += SQL(";UPDATE {}.{}").format(Identifier(target_schema), Identifier(target_table)) \
+                      + SQL("SET (") + SQL(",").join(Identifier(c) for c in list(non_ri_cols)) + SQL(")") \
+                      + SQL(" = (SELECT ") + SQL(",").join(SQL("o.") + Identifier(c) for c in list(non_ri_cols)) \
+                      + SQL(" FROM jsonb_populate_record(null::{2}.{3}, to_jsonb(t) || s.sg_action_data) o) "
+                            "FROM {0}.{1} s, {2}.{3} t") \
+                          .format(Identifier(source_schema), Identifier(source_table),
+                                  Identifier(target_schema), Identifier(target_table)) \
+                      + SQL(" WHERE s.sg_action_kind = 2 AND ") \
+                      + SQL(" AND ").join(SQL("s.{0} = t.{0} AND t.{0} = {1}.{2}.{0}")
+                                          .format(Identifier(c), Identifier(target_schema),
+                                                  Identifier(target_table)) for c in ri_cols)
+        return result
+
+    def apply_diff_object(self, source_schema, source_table, target_schema, target_table):
+        ri_data = self._prepare_ri_data(target_schema, target_table)
+        query = self._generate_diff_application(source_schema, source_table, target_schema, target_table, ri_data)
+        self.run_sql(query)
 
     # Utilities to dump objects (SNAP/DIFF) into an external format.
     # We use a slightly ad hoc format: the schema (JSON) + a null byte + Postgres's copy_to

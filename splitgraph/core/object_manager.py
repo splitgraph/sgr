@@ -465,10 +465,9 @@ class ObjectManager:
         # to access the cache next run eviction if they need it.
         self.object_engine.copy_table(SPLITGRAPH_META_SCHEMA, snap, SPLITGRAPH_META_SCHEMA, new_snap_id,
                                       with_pk_constraints=True)
-        for diff in reversed(diffs):
-            logging.info("Applying %s...", diff)
-            self.object_engine.apply_diff_object(SPLITGRAPH_META_SCHEMA, diff, SPLITGRAPH_META_SCHEMA,
-                                                 new_snap_id)
+        logging.info("Applying %d DIFF object(s)..." % len(diffs))
+        self.object_engine.batch_apply_diff_objects([(SPLITGRAPH_META_SCHEMA, d) for d in reversed(diffs)],
+                                                    SPLITGRAPH_META_SCHEMA, new_snap_id)
         self._add_snap_cache(new_snap_id, diffs[0])
         return new_snap_id
 
