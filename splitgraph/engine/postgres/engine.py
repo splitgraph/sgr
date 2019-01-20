@@ -234,15 +234,26 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
         self.run_sql_batch(query, changeset)
 
-    def batch_apply_diff_objects(self, objects, target_schema, target_table):
-        ri_data = self._prepare_ri_data(target_schema, target_table)
-        query = SQL(";").join(self._generate_diff_application(ss, st, target_schema, target_table, ri_data)
-                              for ss, st in objects)
-        self.run_sql(query)
+    def batch_apply_diff_objects(self, objects, target_schema, target_table, run_after_every=None,
+                                 run_after_every_args=None, ignore_cols=None):
+        ri_data = self._prepare_ri_data(target_schema, target_table, ignore_cols)
+        if run_after_every:
+            query = SQL(";").join(q for ss, st in objects
+                                  for q in
+                                  (self._generate_diff_application(ss, st, target_schema, target_table, ri_data),
+                                   run_after_every))
+            self.run_sql(query, run_after_every_args * len(objects))
+        else:
+            query = SQL(";").join(self._generate_diff_application(ss, st, target_schema, target_table, ri_data)
+                                  for ss, st in objects)
+            self.run_sql(query)
 
-    def _prepare_ri_data(self, schema, table):
+    def _prepare_ri_data(self, schema, table, ignore_cols=None):
+        ignore_cols = ignore_cols or []
         ri_cols, _ = zip(*self.get_change_key(schema, table))
-        non_ri_cols_types = [c for c in self.get_column_names_types(schema, table) if c[0] not in ri_cols]
+        ri_cols = [r for r in ri_cols if r not in ignore_cols]
+        non_ri_cols_types = [c for c in self.get_column_names_types(schema, table) if c[0] not in ri_cols
+                             and c[0] not in ignore_cols]
         non_ri_cols, non_ri_types = zip(*non_ri_cols_types) if non_ri_cols_types else ((), ())
         return ri_cols, non_ri_cols, non_ri_types
 
@@ -283,8 +294,8 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                                                   Identifier(target_table)) for c in ri_cols)
         return result
 
-    def apply_diff_object(self, source_schema, source_table, target_schema, target_table):
-        ri_data = self._prepare_ri_data(target_schema, target_table)
+    def apply_diff_object(self, source_schema, source_table, target_schema, target_table, ignore_cols=None):
+        ri_data = self._prepare_ri_data(target_schema, target_table, ignore_cols)
         query = self._generate_diff_application(source_schema, source_table, target_schema, target_table, ri_data)
         self.run_sql(query)
 

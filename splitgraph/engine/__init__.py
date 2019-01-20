@@ -326,7 +326,7 @@ class ObjectEngine:
         """
         raise NotImplementedError()
 
-    def apply_diff_object(self, source_schema, source_table, target_schema, target_table):
+    def apply_diff_object(self, source_schema, source_table, target_schema, target_table, ignore_cols):
         """
         Apply a changeset stored in a table to a certain target table.
 
@@ -334,20 +334,23 @@ class ObjectEngine:
         :param source_table: Table the changeset is stored in
         :param target_schema: Schema to apply the changeset to
         :param target_table: Table to apply the changeset to
+        :param ignore_cols: Column names to exclude from any operations.
         """
         raise NotImplementedError()
 
-    def batch_apply_diff_objects(self, objects, target_schema, target_table):
+    def batch_apply_diff_objects(self, objects, target_schema, target_table, run_after_every=None,
+                                 run_after_every_args=None, ignore_cols=None):
         """
-        Apply a list of changesets to a target table. By default, runs `apply_diff_object` for
-        every table in `objects`.
+        Apply a list of changesets to a target table as a batch operation.
 
         :param objects: List of tuples `(object_schema, object_table)` that the objects are stored in.
         :param target_schema: Schema to apply the changeset to
         :param target_table: Table to apply the changeset to
+        :param run_after_every: If specified, an extra SQL (Composable) query to run after every DIFF application.
+        :param run_after_every_args: Optional, a tuple of arguments to use with `run_after_every`.
+        :param ignore_cols: Column names to exclude from any operations.
         """
-        for ss, st in objects:
-            self.apply_diff_object(ss, st, target_schema, target_table)
+        raise NotImplementedError()
 
     def dump_object(self, schema, table, stream):
         """

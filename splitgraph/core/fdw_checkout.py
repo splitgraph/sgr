@@ -5,9 +5,9 @@ import logging
 
 from psycopg2.sql import Identifier, SQL
 
-from splitgraph import SPLITGRAPH_META_SCHEMA, Repository
+from splitgraph import SPLITGRAPH_META_SCHEMA, Repository, get_engine
 from splitgraph.core.object_manager import get_random_object_id, ObjectManager
-from splitgraph.engine.postgres.engine import PostgresEngine, _generate_where_clause
+from splitgraph.engine.postgres.engine import _generate_where_clause, PostgresEngine
 
 try:
     from multicorn import ForeignDataWrapper, ANY, ALL
@@ -22,20 +22,10 @@ _PG_LOGLEVEL = logging.INFO
 class QueryingForeignDataWrapper(ForeignDataWrapper):
     """The actual Multicorn LQ FDW class"""
 
-    def _apply_qual_filter(self, schema, table, qual_sql, qual_vals):
-        """
-        Deletes the rows from the staging table that don't meet the PG qualifiers.
-            Ignores the rows that might at some point get touched by an UPDATE operation (since they might
-            start satisfying the qualifiers again after that UPDATE even if they currently don't).
-        """
-        query = SQL("DELETE FROM {}.{} WHERE ").format(Identifier(schema), Identifier(table))
-        query += SQL("sg_meta_keep_pk = FALSE AND NOT (") + qual_sql + SQL(")")
-        logging.debug(query.as_string(self.engine.connection))
-        self.engine.run_sql(query, qual_vals)
-
     @staticmethod
     def _quals_to_postgres(quals):
         """Converts a list of Multicorn Quals to Postgres clauses (joined with AND)."""
+
         def _qual_to_pg(qual):
             # Returns a SQL object + a list of args to be mogrified into it.
             if qual.is_list_operator:
@@ -143,16 +133,22 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
 
             # 3) Apply the diffs to the partially materialized table, making sure to discard rows that don't match
             #    the qualifiers any more
-            for object_id in diffs[:-1]:
-                self.engine.apply_diff_object(SPLITGRAPH_META_SCHEMA, object_id, SPLITGRAPH_META_SCHEMA, staging_table)
-                if quals:
-                    self._apply_qual_filter(SPLITGRAPH_META_SCHEMA, staging_table, qual_sql, qual_vals)
+            if quals:
+                discard_query = SQL("DELETE FROM {}.{} WHERE ").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                       Identifier(staging_table)) \
+                                + SQL("sg_meta_keep_pk = FALSE AND NOT (") + qual_sql + SQL(")")
 
-            # For the final diff, we don't need to apply any quals to the staging table since Postgres doesn't trust
-            # us and will apply them/do projections anyway.
-            log_to_postgres("Applying %s to %s" % (diffs[-1], staging_table), _PG_LOGLEVEL)
-            self.engine.apply_diff_object(SPLITGRAPH_META_SCHEMA, diffs[-1],
-                                          SPLITGRAPH_META_SCHEMA, staging_table)
+                # For the final diff, we don't need to apply any quals to the staging table since Postgres doesn't trust
+                # us and will apply them/do projections anyway.
+                self.engine.batch_apply_diff_objects([(SPLITGRAPH_META_SCHEMA, o) for o in diffs],
+                                                     SPLITGRAPH_META_SCHEMA, staging_table,
+                                                     run_after_every=discard_query,
+                                                     run_after_every_args=qual_vals,
+                                                     ignore_cols=['sg_meta_keep_pk'])
+            else:
+                self.engine.batch_apply_diff_objects([(SPLITGRAPH_META_SCHEMA, o) for o in diffs],
+                                                     SPLITGRAPH_META_SCHEMA, staging_table,
+                                                     ignore_cols=['sg_meta_keep_pk'])
 
         return self._run_select_from_staging(SPLITGRAPH_META_SCHEMA, staging_table, columns,
                                              drop_table=True)
