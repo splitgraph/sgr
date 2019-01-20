@@ -247,11 +247,18 @@ def test_update_packing_applying(pg_repo_local):
 
     pg_repo_local.run_sql("UPDATE fruits SET name = 'pineapple' WHERE fruit_id = 1")
     new_head = pg_repo_local.commit()
+
+    pg_repo_local.run_sql("UPDATE fruits SET name = 'kumquat' WHERE fruit_id = 2")
+    v_new_head = pg_repo_local.commit()
+
     old_head.checkout()
-    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id = 1") == [(1, 'apple')]
+    assert pg_repo_local.run_sql("SELECT * FROM fruits ORDER BY fruit_id") == [(1, 'apple'), (2, 'orange')]
 
     new_head.checkout()
-    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id = 1") == [(1, 'pineapple')]
+    assert pg_repo_local.run_sql("SELECT * FROM fruits ORDER BY fruit_id") == [(1, 'pineapple'), (2, 'orange')]
+
+    v_new_head.checkout()
+    assert pg_repo_local.run_sql("SELECT * FROM fruits ORDER BY fruit_id") == [(1, 'pineapple'), (2, 'kumquat')]
 
 
 def test_diff_staging_aggregation(pg_repo_local):

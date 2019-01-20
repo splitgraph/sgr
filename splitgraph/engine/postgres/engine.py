@@ -232,9 +232,6 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                                                  Identifier(table)) + \
                 SQL("VALUES (" + ','.join(itertools.repeat('%s', len(changeset[0]))) + ")")
 
-        # TODO: if we have a default value, then the diff also contains that value.
-        # so there's no point in storing the extra rows as kv (they all have the same dimension)
-
         self.run_sql_batch(query, changeset)
 
     def apply_diff_object(self, source_schema, source_table, target_schema, target_table):
@@ -258,31 +255,22 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                              "WHERE s.sg_action_kind = 0)") \
                            .format(Identifier(source_schema), Identifier(source_table), Identifier(target_schema),
                                    Identifier(target_table))
-        self.run_sql(insert_query, [o for col in zip(non_ri_cols, non_ri_types) for o in col])
+        self.run_sql(insert_query)
 
-        queries = self._generate_update_queries(ri_cols, source_schema, source_table,
-                                                target_schema, target_table)
-        if queries:
-            self.run_sql(b';'.join(queries), return_shape=ResultShape.NONE)
-
-    def _generate_update_queries(self, ri_cols, source_schema, source_table, target_schema, target_table):
-        queries = []
-        with self.connection.cursor() as cur:
-            # Will remove the cursor later: currently need to to mogrify the query
-            for row in self.run_sql(SQL("SELECT * FROM {}.{} WHERE sg_action_kind = 2")
-                                            .format(Identifier(source_schema),
-                                                    Identifier(source_table))):
-                action_data = row[-1]
-                ri_vals = list(row[:-2])
-                cols_to_insert = list(action_data.keys())
-                vals_to_insert = list(action_data.values())
-
-                query = SQL("UPDATE {}.{} SET ").format(Identifier(target_schema), Identifier(target_table))
-                query += SQL(', '.join("{} = %s" for _ in cols_to_insert)).format(
-                    *(Identifier(i) for i in cols_to_insert))
-                query += SQL(" WHERE ") + _generate_where_clause(target_schema, target_table, ri_cols)
-                queries.append(cur.mogrify(query, vals_to_insert + ri_vals))
-        return queries
+        # Apply updates
+        if non_ri_cols:
+            update_query = SQL("UPDATE {}.{}").format(Identifier(target_schema), Identifier(target_table)) \
+                           + SQL("SET (") + SQL(",").join(Identifier(c) for c in list(non_ri_cols)) + SQL(")") \
+                           + SQL(" = (SELECT ") + SQL(",").join(SQL("o.") + Identifier(c) for c in list(non_ri_cols)) \
+                           + SQL(" FROM jsonb_populate_record(null::{2}.{3}, to_jsonb(t) || s.sg_action_data) o) "
+                                 "FROM {0}.{1} s, {2}.{3} t") \
+                               .format(Identifier(source_schema), Identifier(source_table),
+                                       Identifier(target_schema), Identifier(target_table)) \
+                           + SQL(" WHERE s.sg_action_kind = 2 AND ") \
+                           + SQL(" AND ").join(SQL("s.{0} = t.{0} AND t.{0} = {1}.{2}.{0}")
+                                               .format(Identifier(c), Identifier(target_schema),
+                                                       Identifier(target_table)) for c in ri_cols)
+            self.run_sql(update_query)
 
     # Utilities to dump objects (SNAP/DIFF) into an external format.
     # We use a slightly ad hoc format: the schema (JSON) + a null byte + Postgres's copy_to
