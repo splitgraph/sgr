@@ -239,46 +239,36 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
     def apply_diff_object(self, source_schema, source_table, target_schema, target_table):
         ri_cols, _ = zip(*self.get_change_key(source_schema, source_table))
-
-        # Minor hack alert: here we assume that the PK of the object is the PK of the table it refers to, which means
-        # that we are expected to have the PKs applied to the object table no matter how it originated.
-        if sorted(ri_cols) == sorted(self.get_column_names(source_schema, source_table)):
-            raise SplitGraphException("Error determining the replica identity of %s. " % source_table +
-                                      "Have primary key constraints been applied?")
+        non_ri_cols_types = [c for c in self.get_column_names_types(target_schema, target_table) if c[0] not in ri_cols]
+        non_ri_cols, non_ri_types = zip(*non_ri_cols_types) if non_ri_cols_types else ((), ())
 
         # Apply deletes
         self.run_sql(SQL("DELETE FROM {0}.{2} USING {1}.{3} WHERE {1}.{3}.sg_action_kind = 1").format(
             Identifier(target_schema), Identifier(source_schema), Identifier(target_table),
             Identifier(source_table)) + SQL(" AND ") + _generate_where_clause(target_schema, target_table, ri_cols,
                                                                               source_table,
-                                                                              source_schema),
-                     return_shape=ResultShape.NONE)
+                                                                              source_schema))
+        # Apply inserts
+        insert_query = SQL("INSERT INTO {}.{} ").format(Identifier(target_schema), Identifier(target_table)) \
+                       + SQL("(") + SQL(",").join(Identifier(c) for c in list(ri_cols) + list(non_ri_cols)) + SQL(")") \
+                       + SQL("(SELECT ") + SQL(",").join(SQL("s.") + Identifier(c) for c in list(ri_cols)) \
+                       + SQL("," if non_ri_cols else "") \
+                       + SQL(",").join(SQL("o.") + Identifier(c) for c in list(non_ri_cols)) \
+                       + SQL(" FROM {}.{} s, jsonb_populate_record(null::{}.{}, s.sg_action_data) o "
+                             "WHERE s.sg_action_kind = 0)") \
+                           .format(Identifier(source_schema), Identifier(source_table), Identifier(target_schema),
+                                   Identifier(target_table))
+        self.run_sql(insert_query, [o for col in zip(non_ri_cols, non_ri_types) for o in col])
 
-        queries = self._generate_insert_update_queries(ri_cols, source_schema, source_table,
-                                                       target_schema, target_table)
+        queries = self._generate_update_queries(ri_cols, source_schema, source_table,
+                                                target_schema, target_table)
         if queries:
             self.run_sql(b';'.join(queries), return_shape=ResultShape.NONE)
 
-    def _generate_insert_update_queries(self, ri_cols, source_schema, source_table, target_schema, target_table):
+    def _generate_update_queries(self, ri_cols, source_schema, source_table, target_schema, target_table):
         queries = []
         with self.connection.cursor() as cur:
-            # Generate queries for inserts
             # Will remove the cursor later: currently need to to mogrify the query
-            for row in self.run_sql(SQL("SELECT * FROM {}.{} WHERE sg_action_kind = 0")
-                                            .format(Identifier(source_schema),
-                                                    Identifier(source_table))):
-                # For the future: if all column names are the same, we can do a big INSERT.
-                action_data = row[-1]
-                cols_to_insert = list(ri_cols) + list(action_data.keys())
-                vals_to_insert = _convert_vals(list(row[:-2]) + list(action_data.values()))
-
-                query = SQL("INSERT INTO {}.{} (").format(Identifier(target_schema), Identifier(target_table))
-                query += SQL(','.join('{}' for _ in cols_to_insert)).format(*[Identifier(c) for c in cols_to_insert])
-                query += SQL(") VALUES (" + ','.join('%s' for _ in vals_to_insert) + ')')
-                query = cur.mogrify(query, vals_to_insert)
-                queries.append(query)
-
-            # ...and updates
             for row in self.run_sql(SQL("SELECT * FROM {}.{} WHERE sg_action_kind = 2")
                                             .format(Identifier(source_schema),
                                                     Identifier(source_table))):
