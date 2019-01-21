@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+
 from datetime import datetime
 
 from benchmarking.commit_chain_test import _cleanup_minio
@@ -86,24 +87,28 @@ def setup_dataset(table_size, rows_added, rows_deleted, rows_updated, number_of_
     REMOTE.objects.cleanup()
     REMOTE.objects.run_eviction(object_tree=REMOTE.objects.get_full_object_tree(), keep_objects=[], required_space=None)
     REMOTE.engine.commit()
-    MOUNTPOINT.rm()
-    MOUNTPOINT.init()
 
-    generate_random_table(MOUNTPOINT, "test", table_size)
-    MOUNTPOINT.commit()
+    return create_repo(MOUNTPOINT, number_of_commits, rows_added, rows_deleted, rows_updated, table_size)
+
+
+def create_repo(repo, number_of_commits, rows_added, rows_deleted, rows_updated, table_size):
+    repo.rm()
+    repo.init()
+    generate_random_table(repo, "test", table_size)
+    repo.commit()
     for i in range(number_of_commits):
-        alter_random_table(MOUNTPOINT, "test", rows_added=rows_added,
+        alter_random_table(repo, "test", rows_added=rows_added,
                            rows_deleted=rows_deleted, rows_updated=rows_updated)
-        MOUNTPOINT.commit()
-    MOUNTPOINT.set_upstream(REMOTE)
-    MOUNTPOINT.push(handler='S3', handler_options={})
-
-    MOUNTPOINT.rm()
-    MOUNTPOINT.objects.cleanup()
-    MOUNTPOINT.objects.run_eviction(MOUNTPOINT.objects.get_full_object_tree(), [], None)
-    clone(REMOTE, local_repository=MOUNTPOINT, download_all=False)
-    MOUNTPOINT.images['latest'].checkout(layered=True)
-    return MOUNTPOINT
+        repo.commit()
+    target = Repository.from_template(repo, engine=get_engine('remote_engine'))
+    target.rm()
+    repo.push(remote_repository=target, handler='S3', handler_options={})
+    repo.rm()
+    repo.objects.cleanup()
+    repo.objects.run_eviction(repo.objects.get_full_object_tree(), [], None)
+    clone(target, local_repository=repo, download_all=False)
+    repo.images['latest'].checkout(layered=True)
+    return repo
 
 
 if __name__ == "__main__":

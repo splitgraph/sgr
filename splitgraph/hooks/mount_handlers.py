@@ -38,7 +38,7 @@ def register_mount_handler(name, mount_function):
     _MOUNT_HANDLERS[name] = mount_function
 
 
-def init_fdw(engine, server_id, wrapper, server_options, user_options, overwrite=True):
+def init_fdw(engine, server_id, wrapper, server_options=None, user_options=None, overwrite=True):
     """
     Sets up a foreign data server on the engine.
 
@@ -59,19 +59,21 @@ def init_fdw(engine, server_id, wrapper, server_options, user_options, overwrite
     create_server = SQL("CREATE SERVER IF NOT EXISTS {} FOREIGN DATA WRAPPER {}")\
         .format(Identifier(server_id), Identifier(wrapper))
 
-    server_keys, server_vals = zip(*server_options.items())
     if server_options:
+        server_keys, server_vals = zip(*server_options.items())
         create_server += SQL(" OPTIONS (") \
                          + SQL(",").join(Identifier(o) + SQL(" %s") for o in server_keys) + SQL(")")
-    engine.run_sql(create_server, server_vals)
+        engine.run_sql(create_server, server_vals)
+    else:
+        engine.run_sql(create_server)
 
-    user_keys, user_vals = zip(*user_options.items())
-    create_mapping = SQL("CREATE USER MAPPING IF NOT EXISTS FOR {} SERVER {}")\
-        .format(Identifier(PG_USER), Identifier(server_id))
     if user_options:
+        create_mapping = SQL("CREATE USER MAPPING IF NOT EXISTS FOR {} SERVER {}") \
+            .format(Identifier(PG_USER), Identifier(server_id))
+        user_keys, user_vals = zip(*user_options.items())
         create_mapping += SQL(" OPTIONS (") \
                           + SQL(",").join(Identifier(o) + SQL(" %s") for o in user_keys) + SQL(")")
-    engine.run_sql(create_mapping, user_vals)
+        engine.run_sql(create_mapping, user_vals)
 
 
 def mount_postgres(mountpoint, server, port, username, password, dbname, remote_schema, tables=[]):

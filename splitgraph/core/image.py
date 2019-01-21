@@ -122,13 +122,10 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
 
         init_fdw(engine, server_id=server_id, wrapper='multicorn',
                  server_options={'wrapper': 'splitgraph.core.fdw_checkout.QueryingForeignDataWrapper',
-                                 'host': engine.conn_params[0],
-                                 'port': str(engine.conn_params[1]),
-                                 'dbname': engine.conn_params[4],
+                                 'engine': engine.name,
                                  'namespace': self.repository.namespace,
                                  'repository': self.repository.repository,
-                                 'image_hash': self.image_hash},
-                 user_options={'user': engine.conn_params[2], 'password': engine.conn_params[3]})
+                                 'image_hash': self.image_hash})
 
         # It's easier to create the foreign tables from our side than to implement IMPORT FOREIGN SCHEMA by the FDW
         for table_name in self.get_tables():

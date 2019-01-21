@@ -7,7 +7,7 @@ from psycopg2.sql import Identifier, SQL
 
 from splitgraph import SPLITGRAPH_META_SCHEMA, Repository, get_engine
 from splitgraph.core.object_manager import get_random_object_id, ObjectManager
-from splitgraph.engine.postgres.engine import _generate_where_clause, PostgresEngine
+from splitgraph.engine.postgres.engine import _generate_where_clause
 
 try:
     from multicorn import ForeignDataWrapper, ANY, ALL
@@ -183,6 +183,5 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         # The foreign datawrapper columns (name -> ColumnDefinition).
         self.fdw_columns = fdw_columns
 
-        self.engine = PostgresEngine((self.fdw_options['host'], self.fdw_options['port'], self.fdw_options['user'],
-                                      self.fdw_options['password'], self.fdw_options['dbname']), name='temp')
+        self.engine = get_engine(self.fdw_options['engine'])
         self.repository = Repository(fdw_options['namespace'], self.fdw_options['repository'], self.engine)
