@@ -4,11 +4,11 @@ Plugin for uploading Splitgraph objects from the cache to an external S3-like ob
 import logging
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
-from threading import Lock
 
 from minio import Minio
 from minio.error import (BucketAlreadyOwnedByYou,
                          BucketAlreadyExists)
+from threading import Lock
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.engine import get_engine
@@ -101,22 +101,18 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
 
         pg_conn_lock = Lock()
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            def _do_download(obj_id_url):
-                object_id, object_url = obj_id_url
-                endpoint, bucket, remote_object = object_url.split('/')
-                client = Minio(endpoint,
-                               access_key=access_key,
-                               secret_key=secret_key,
-                               secure=False)
+        def _do_download(obj_id_url):
+            object_id, object_url = obj_id_url
+            endpoint, bucket, remote_object = object_url.split('/')
+            client = Minio(endpoint,
+                           access_key=access_key,
+                           secret_key=secret_key,
+                           secure=False)
 
-                local_path = tmpdir + '/' + remote_object
-                client.fget_object(bucket, remote_object, local_path)
+            object_response = client.get_object(bucket, remote_object)
 
-                with pg_conn_lock:
-                    with open(local_path, 'rb') as f:
-                        get_engine().load_object(SPLITGRAPH_META_SCHEMA, object_id, f)
+            with pg_conn_lock:
+                get_engine().load_object(SPLITGRAPH_META_SCHEMA, object_id, object_response)
 
-            # Again, first download the objects and then import them (maybe can do streaming later)
-            with ThreadPoolExecutor(max_workers=worker_threads) as tpe:
-                tpe.map(_do_download, objects)
+        with ThreadPoolExecutor(max_workers=worker_threads) as tpe:
+            tpe.map(_do_download, objects)

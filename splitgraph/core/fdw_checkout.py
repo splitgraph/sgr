@@ -183,5 +183,6 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         # The foreign datawrapper columns (name -> ColumnDefinition).
         self.fdw_columns = fdw_columns
 
-        self.engine = get_engine(self.fdw_options['engine'])
+        # Try using a UNIX socket if the engine is local to us
+        self.engine = get_engine(self.fdw_options['engine'], bool(self.fdw_options.get('use_socket', False)))
         self.repository = Repository(fdw_options['namespace'], self.fdw_options['repository'], self.engine)

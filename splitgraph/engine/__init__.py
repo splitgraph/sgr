@@ -398,12 +398,13 @@ _ENGINE = 'LOCAL'
 _ENGINES = {}
 
 
-def get_engine(name=None):
+def get_engine(name=None, use_socket=False):
     """
     Get the current global engine or a named remote engine
 
     :param name: Name of the remote engine as specified in the config. If None, the current global engine
         is returned.
+    :param use_socket: Use a local UNIX socket instead of PG_HOST, PG_PORT for LOCAL engine connections.
     """
     if not name:
         if isinstance(_ENGINE, SQLEngine):
@@ -414,9 +415,13 @@ def get_engine(name=None):
         # and instantiate the actual Engine class.
         # As we only have PostgresEngine, we instantiate that.
         from .postgres.engine import PostgresEngine
-        _ENGINES[name] = PostgresEngine((PG_HOST, PG_PORT, PG_USER, PG_PWD, PG_DB)
-                                        if name == 'LOCAL' else get_remote_connection_params(name),
-                                        name=name)
+        if name == 'LOCAL':
+            if use_socket:
+                _ENGINES[name] = PostgresEngine((None, None, PG_USER, PG_PWD, PG_DB), name=name)
+            else:
+                _ENGINES[name] = PostgresEngine((PG_HOST, PG_PORT, PG_USER, PG_PWD, PG_DB), name=name)
+        else:
+            _ENGINES[name] = PostgresEngine(get_remote_connection_params(name), name=name)
     return _ENGINES[name]
 
 
@@ -447,5 +452,5 @@ def get_remote_connection_params(remote_name):
     :return: A tuple of (hostname, port, username, password, database)
     """
     pdict = CONFIG['remotes'][remote_name]
-    return (pdict['SG_ENGINE_HOST'], int(pdict['SG_ENGINE_PORT']), pdict['SG_ENGINE_USER'],
-            pdict['SG_ENGINE_PWD'], pdict['SG_ENGINE_DB_NAME'])
+    return (pdict['SG_ENGINE_HOST'] or None, int(pdict['SG_ENGINE_PORT']) if pdict['SG_ENGINE_PORT'] else None,
+            pdict['SG_ENGINE_USER'], pdict['SG_ENGINE_PWD'], pdict['SG_ENGINE_DB_NAME'])

@@ -123,6 +123,7 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
         init_fdw(engine, server_id=server_id, wrapper='multicorn',
                  server_options={'wrapper': 'splitgraph.core.fdw_checkout.QueryingForeignDataWrapper',
                                  'engine': engine.name,
+                                 'use_socket': 'True',
                                  'namespace': self.repository.namespace,
                                  'repository': self.repository.repository,
                                  'image_hash': self.image_hash})

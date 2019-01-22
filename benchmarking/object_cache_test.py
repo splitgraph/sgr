@@ -64,10 +64,10 @@ def run_bench(repository):
     print("Running SELECT all benchmarks...")
     results.extend(_run_sub_bench("SELECT all", repository, "SELECT key FROM test"))
     keys = repository.run_sql("SELECT * FROM test", return_shape=ResultShape.MANY_ONE)
-    one_key = keys[0]
+    one_key = keys[len(keys) // 2]
 
     MOUNTPOINT.objects.cleanup()
-    MOUNTPOINT.objects.run_eviction(repository.objects.get_full_object_tree(), keep_objects=[], required_space=None)
+    MOUNTPOINT.objects.run_eviction(MOUNTPOINT.objects.get_full_object_tree(), keep_objects=[], required_space=None)
     # yeah lol
     MOUNTPOINT.engine.run_sql("DELETE FROM splitgraph_meta.snap_cache_misses")
     MOUNTPOINT.engine.run_sql("DELETE FROM splitgraph_meta.snap_cache")
@@ -118,9 +118,9 @@ if __name__ == "__main__":
                         (10000, 1500, 1500, 0, 10),
                         (10000, 100, 100, 0, 1000),
                         (100000, 3000, 3000, 3000, 10),
-                        (100000, 4500, 4500, 0, 10),
+                        (100000, 4500, 4500, 0, 100),
                         ]
-
+    benchmark_matrix = [(100000, 1000, 1000, 0, 1000)]
     results = {}
 
     for case in benchmark_matrix:

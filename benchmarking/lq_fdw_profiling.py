@@ -54,6 +54,7 @@ if __name__ == "__main__":
     cleanup_cache(repo)
     fdw = QueryingForeignDataWrapper(fdw_options={'namespace': repo.namespace,
                                                   'repository': repo.repository,
+                                                  'engine': 'LOCAL',
                                                   'image_hash': repo.images['latest'].image_hash,
                                                   'table': 'test'},
                                      fdw_columns={})  # columns not used
