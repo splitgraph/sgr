@@ -43,8 +43,13 @@ services:
       - POSTGRES_USER=sgr
       - POSTGRES_PASSWORD=supersecure
       - POSTGRES_DB=splitgraph
+      - SG_CONFIG_FILE=/.sgconfig
     expose:
       - 5432
+    volumes:
+      # Mount the .sgconfig so that the splitgraph library used by the LQ FDW knows about
+      # the remote_engine / Minio handler that we use locally.
+      - ../resources/.sgconfig:/.sgconfig
   remote_engine:
     build:
       context:  ./src/
@@ -60,7 +65,8 @@ services:
       - ./data/remote_engine/setup.sql:/docker-entrypoint-initdb.d/setup.sql
     expose:
       - 5431
-  object_storage:
+  # Name without an underscore because Minio client really wants to be compliant with the RFC
+  objectstorage:
     image: minio/minio
     ports:
      - "0.0.0.0:9000:9000"

@@ -19,6 +19,17 @@ DEFAULTS = {
     # Anonymous access by default
     "SG_S3_KEY": None,
     "SG_S3_PWD": None,
+    # Object cache (objects downloaded from an external location) tuning
+    # Will try to target this size (in MB).
+    "SG_OBJECT_CACHE_SIZE": 1024,
+    # Significance of recent usage time and object size in cache eviction.
+    # See splitgraph.core.object_manager for an explanation.
+    "SG_EVICTION_DECAY": 0.002,
+    "SG_EVICTION_FLOOR": 1,
+    # Times the object manager returns a DIFF chain in a given window of time before it materializes
+    # it instead (to speed up layered querying).
+    "SG_SNAP_CACHE_MISSES": 5,
+    "SG_SNAP_CACHE_LOOKBACK": 300
 }
 
 KEYS = list(DEFAULTS.keys())
@@ -47,7 +58,12 @@ ARGUMENT_KEY_MAP = {
     "--s3-host": "SG_S3_HOST",
     "--s3-port": "SG_S3_PORT",
     "--s3-access-key": "SG_S3_KEY",
-    "--s3-secret-key": "SG_S3_PWD"
+    "--s3-secret-key": "SG_S3_PWD",
+    "--object-cache-size": "SG_OBJECT_CACHE_SIZE",
+    "--eviction-decay": "SG_EVICTION_DECAY",
+    "--eviction-floor": "SG_EVICTION_FLOOR",
+    "--cache-misses-for-snap": "SG_SNAP_CACHE_MISSES",
+    "--cache-misses-lookback": "SG_SNAP_CACHE_LOOKBACK",
 }
 
 ARG_KEYS = list(ARGUMENT_KEY_MAP.keys())

@@ -1,18 +1,18 @@
 """Default Splitgraph engine: uses PostgreSQL to store metadata and actual objects and an audit stored procedure
 to track changes, as well as the Postgres FDW interface to upload/download objects to/from other Postgres engines."""
 
-import itertools
 import json
 import logging
 from pkgutil import get_data
 
+import itertools
 import psycopg2
 from psycopg2._json import Json
 from psycopg2.extras import execute_batch
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
-from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine
+from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.mount_handlers import mount_postgres
 
@@ -50,6 +50,9 @@ class PsycopgEngine(SQLEngine):
     def rollback(self):
         if self._conn and not self._conn.closed:
             self._conn.rollback()
+
+    def lock_table(self, schema, table):
+        self.run_sql(SQL("LOCK TABLE {}.{} IN ACCESS EXCLUSIVE MODE").format(Identifier(schema), Identifier(table)))
 
     @property
     def connection(self):
@@ -92,6 +95,10 @@ class PsycopgEngine(SQLEngine):
             execute_batch(cur, statement, arguments, page_size=1000)
             if schema:
                 cur.execute("SET search_path to public")
+
+    def get_table_size(self, schema, table):
+        return self.run_sql(SQL("SELECT pg_relation_size('{}.{}')").format(Identifier(schema), Identifier(table)),
+                            return_shape=ResultShape.ONE_ONE)
 
     def _admin_conn(self):
         return psycopg2.connect(dbname=CONFIG['SG_ENGINE_POSTGRES_DB_NAME'],
@@ -224,64 +231,73 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         query = SQL("INSERT INTO {}.{} ").format(Identifier(schema),
                                                  Identifier(table)) + \
                 SQL("VALUES (" + ','.join(itertools.repeat('%s', len(changeset[0]))) + ")")
+
         self.run_sql_batch(query, changeset)
 
-    def apply_diff_object(self, source_schema, source_table, target_schema, target_table):
-        ri_cols, _ = zip(*self.get_change_key(source_schema, source_table))
+    def batch_apply_diff_objects(self, objects, target_schema, target_table, run_after_every=None,
+                                 run_after_every_args=None, ignore_cols=None):
+        ri_data = self._prepare_ri_data(target_schema, target_table, ignore_cols)
+        if run_after_every:
+            query = SQL(";").join(q for ss, st in objects
+                                  for q in
+                                  (self._generate_diff_application(ss, st, target_schema, target_table, ri_data),
+                                   run_after_every))
+            self.run_sql(query, run_after_every_args * len(objects))
+        else:
+            query = SQL(";").join(self._generate_diff_application(ss, st, target_schema, target_table, ri_data)
+                                  for ss, st in objects)
+            self.run_sql(query)
 
-        # Minor hack alert: here we assume that the PK of the object is the PK of the table it refers to, which means
-        # that we are expected to have the PKs applied to the object table no matter how it originated.
-        if sorted(ri_cols) == sorted(self.get_column_names(source_schema, source_table)):
-            raise SplitGraphException("Error determining the replica identity of %s. " % source_table +
-                                      "Have primary key constraints been applied?")
+    def _prepare_ri_data(self, schema, table, ignore_cols=None):
+        ignore_cols = ignore_cols or []
+        ri_cols, _ = zip(*self.get_change_key(schema, table))
+        ri_cols = [r for r in ri_cols if r not in ignore_cols]
+        non_ri_cols_types = [c for c in self.get_column_names_types(schema, table) if c[0] not in ri_cols
+                             and c[0] not in ignore_cols]
+        non_ri_cols, non_ri_types = zip(*non_ri_cols_types) if non_ri_cols_types else ((), ())
+        return ri_cols, non_ri_cols, non_ri_types
 
-        # Apply deletes
-        self.run_sql(SQL("DELETE FROM {0}.{2} USING {1}.{3} WHERE {1}.{3}.sg_action_kind = 1").format(
+    @staticmethod
+    def _generate_diff_application(source_schema, source_table, target_schema, target_table,
+                                   ri_data):
+        ri_cols, non_ri_cols, non_ri_types = ri_data
+
+        # Generate deletions
+        result = SQL("DELETE FROM {0}.{2} USING {1}.{3} WHERE {1}.{3}.sg_action_kind = 1").format(
             Identifier(target_schema), Identifier(source_schema), Identifier(target_table),
             Identifier(source_table)) + SQL(" AND ") + _generate_where_clause(target_schema, target_table, ri_cols,
                                                                               source_table,
-                                                                              source_schema),
-                     return_shape=ResultShape.NONE)
+                                                                              source_schema)
+        # Generate insertions
+        result += SQL(";INSERT INTO {}.{} ").format(Identifier(target_schema), Identifier(target_table)) \
+                  + SQL("(") + SQL(",").join(Identifier(c) for c in list(ri_cols) + list(non_ri_cols)) + SQL(")") \
+                  + SQL("(SELECT ") + SQL(",").join(SQL("s.") + Identifier(c) for c in list(ri_cols)) \
+                  + SQL("," if non_ri_cols else "") \
+                  + SQL(",").join(SQL("o.") + Identifier(c) for c in list(non_ri_cols)) \
+                  + SQL(" FROM {}.{} s, jsonb_populate_record(null::{}.{}, s.sg_action_data) o "
+                        "WHERE s.sg_action_kind = 0)") \
+                      .format(Identifier(source_schema), Identifier(source_table), Identifier(target_schema),
+                              Identifier(target_table))
 
-        queries = self._generate_insert_update_queries(ri_cols, source_schema, source_table,
-                                                       target_schema, target_table)
-        if queries:
-            self.run_sql(b';'.join(queries), return_shape=ResultShape.NONE)
+        # Generate updates
+        if non_ri_cols:
+            result += SQL(";UPDATE {}.{}").format(Identifier(target_schema), Identifier(target_table)) \
+                      + SQL("SET (") + SQL(",").join(Identifier(c) for c in list(non_ri_cols)) + SQL(")") \
+                      + SQL(" = (SELECT ") + SQL(",").join(SQL("o.") + Identifier(c) for c in list(non_ri_cols)) \
+                      + SQL(" FROM jsonb_populate_record(null::{2}.{3}, to_jsonb(t) || s.sg_action_data) o) "
+                            "FROM {0}.{1} s, {2}.{3} t") \
+                          .format(Identifier(source_schema), Identifier(source_table),
+                                  Identifier(target_schema), Identifier(target_table)) \
+                      + SQL(" WHERE s.sg_action_kind = 2 AND ") \
+                      + SQL(" AND ").join(SQL("s.{0} = t.{0} AND t.{0} = {1}.{2}.{0}")
+                                          .format(Identifier(c), Identifier(target_schema),
+                                                  Identifier(target_table)) for c in ri_cols)
+        return result
 
-    def _generate_insert_update_queries(self, ri_cols, source_schema, source_table, target_schema, target_table):
-        queries = []
-        with self.connection.cursor() as cur:
-            # Generate queries for inserts
-            # Will remove the cursor later: currently need to to mogrify the query
-            for row in self.run_sql(SQL("SELECT * FROM {}.{} WHERE sg_action_kind = 0")
-                                            .format(Identifier(source_schema),
-                                                    Identifier(source_table))):
-                # For the future: if all column names are the same, we can do a big INSERT.
-                action_data = row[-1]
-                cols_to_insert = list(ri_cols) + action_data['c']
-                vals_to_insert = _convert_vals(list(row[:-2]) + action_data['v'])
-
-                query = SQL("INSERT INTO {}.{} (").format(Identifier(target_schema), Identifier(target_table))
-                query += SQL(','.join('{}' for _ in cols_to_insert)).format(*[Identifier(c) for c in cols_to_insert])
-                query += SQL(") VALUES (" + ','.join('%s' for _ in vals_to_insert) + ')')
-                query = cur.mogrify(query, vals_to_insert)
-                queries.append(query)
-
-            # ...and updates
-            for row in self.run_sql(SQL("SELECT * FROM {}.{} WHERE sg_action_kind = 2")
-                                            .format(Identifier(source_schema),
-                                                    Identifier(source_table))):
-                action_data = row[-1]
-                ri_vals = list(row[:-2])
-                cols_to_insert = action_data['c']
-                vals_to_insert = action_data['v']
-
-                query = SQL("UPDATE {}.{} SET ").format(Identifier(target_schema), Identifier(target_table))
-                query += SQL(', '.join("{} = %s" for _ in cols_to_insert)).format(
-                    *(Identifier(i) for i in cols_to_insert))
-                query += SQL(" WHERE ") + _generate_where_clause(target_schema, target_table, ri_cols)
-                queries.append(cur.mogrify(query, vals_to_insert + ri_vals))
-        return queries
+    def apply_diff_object(self, source_schema, source_table, target_schema, target_table, ignore_cols=None):
+        ri_data = self._prepare_ri_data(target_schema, target_table, ignore_cols)
+        query = self._generate_diff_application(source_schema, source_table, target_schema, target_table, ri_data)
+        self.run_sql(query)
 
     # Utilities to dump objects (SNAP/DIFF) into an external format.
     # We use a slightly ad hoc format: the schema (JSON) + a null byte + Postgres's copy_to
@@ -328,10 +344,13 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         # mounted remote.
         remote_engine.commit()
         self.delete_schema(REMOTE_TMP_SCHEMA)
-        mount_postgres(mountpoint=REMOTE_TMP_SCHEMA, server=remote_engine.conn_params[0],
-                       port=remote_engine.conn_params[1], username=remote_engine.conn_params[2],
-                       password=remote_engine.conn_params[3], dbname=remote_engine.conn_params[4],
-                       remote_schema=SPLITGRAPH_META_SCHEMA)
+
+        # In case the local engine isn't the same as the target (e.g. we're running from the FDW)
+        with switch_engine(self):
+            mount_postgres(mountpoint=REMOTE_TMP_SCHEMA, server=remote_engine.conn_params[0],
+                           port=remote_engine.conn_params[1], username=remote_engine.conn_params[2],
+                           password=remote_engine.conn_params[3], dbname=remote_engine.conn_params[4],
+                           remote_schema=SPLITGRAPH_META_SCHEMA)
         for i, obj in enumerate(objects):
             print("(%d/%d) %s..." % (i + 1, len(objects), obj))
             self.copy_table(SPLITGRAPH_META_SCHEMA, obj, REMOTE_TMP_SCHEMA, obj, with_pk_constraints=False,
@@ -345,12 +364,18 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
         server, port, user, pwd, dbname = remote_engine.conn_params
         self.delete_schema(REMOTE_TMP_SCHEMA)
-        mount_postgres(mountpoint=REMOTE_TMP_SCHEMA, server=server, port=port, username=user, password=pwd,
-                       dbname=dbname,
-                       remote_schema=SPLITGRAPH_META_SCHEMA)
+        logging.info("Mounting remote schema %s@%s:%s/%s/%s to %s...", user, server, port, dbname,
+                     SPLITGRAPH_META_SCHEMA, REMOTE_TMP_SCHEMA)
+
+        # In case the local engine isn't the same as the target (e.g. we're running from the FDW)
+        with switch_engine(self):
+            mount_postgres(mountpoint=REMOTE_TMP_SCHEMA, server=server, port=port, username=user, password=pwd,
+                           dbname=dbname,
+                           remote_schema=SPLITGRAPH_META_SCHEMA)
+
         try:
             for i, obj in enumerate(objects):
-                print("(%d/%d) %s..." % (i + 1, len(objects), obj))
+                logging.info("(%d/%d) Downloading %s...", i + 1, len(objects), obj)
                 # Foreign tables don't have PK constraints so we'll have to apply them manually.
                 self.copy_table(REMOTE_TMP_SCHEMA, obj, SPLITGRAPH_META_SCHEMA, obj,
                                 with_pk_constraints=False)
@@ -368,59 +393,53 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
 def _split_ri_cols(action, row_data, changed_fields, ri_cols):
     """
-    :return: `(ri_vals, non_ri_cols, non_ri_vals)`: a tuple of 3 lists:
-        * `ri_vals`: values identifying the replica identity (RI) of a given tuple (matching column names in `ri_cols`)
-        * `non_ri_cols`: column names not in the RI that have been changed/updated
-        * `non_ri_vals`: column values not in the RI that have been changed/updated (matching colnames in `non_ri_cols`)
+    :return: `(ri_data, non_ri_data)`: a tuple of 2 dictionaries:
+        * `ri_data`: maps column names in `ri_cols` to values identifying the replica identity (RI) of a given tuple
+        * `non_ri_data`: map of column names and values not in the RI that have been changed/updated
     """
-    non_ri_cols = []
-    non_ri_vals = []
-    ri_vals = [None] * len(ri_cols)
+    non_ri_data = {}
+    ri_data = {}
 
     if action == 'I':
         for cc, cv in row_data.items():
             if cc in ri_cols:
-                ri_vals[ri_cols.index(cc)] = cv
+                ri_data[cc] = cv
             else:
-                non_ri_cols.append(cc)
-                non_ri_vals.append(cv)
+                non_ri_data[cc] = cv
     elif action == 'D':
         for cc, cv in row_data.items():
             if cc in ri_cols:
-                ri_vals[ri_cols.index(cc)] = cv
+                ri_data[cc] = cv
     elif action == 'U':
         for cc, cv in row_data.items():
             if cc in ri_cols:
-                ri_vals[ri_cols.index(cc)] = cv
+                ri_data[cc] = cv
         for cc, cv in changed_fields.items():
             # Hmm: these might intersect with the RI values (e.g. when the whole tuple is the replica identity and
             # we're updating some of it)
-            non_ri_cols.append(cc)
-            non_ri_vals.append(cv)
+            non_ri_data[cc] = cv
 
-    return ri_vals, non_ri_cols, non_ri_vals
+    return ri_data, non_ri_data
 
 
-def _recalculate_disjoint_ri_cols(ri_cols, ri_vals, non_ri_cols, non_ri_vals, row_data):
+def _recalculate_disjoint_ri_cols(ri_cols, ri_data, non_ri_data, row_data):
     # If part of the PK has been updated (is in the non_ri_cols/vals), we have to instead
     # apply the update to the PK (ri_cols/vals) and recalculate the new full new tuple
     # (by applying the update to row_data).
-    new_nric = []
-    new_nriv = []
+    new_non_ri_data = {}
     row_data = row_data.copy()
 
-    for nrc, nrv in zip(non_ri_cols, non_ri_vals):
-        try:
-            ri_vals[ri_cols.index(nrc)] = nrv
-        except ValueError:
+    for nrc, nrv in non_ri_data.items():
+        if nrc in ri_cols:
+            ri_data[nrc] = nrv
+        else:
             row_data[nrc] = nrv
 
     for col, val in row_data.items():
         if col not in ri_cols:
-            new_nric.append(col)
-            new_nriv.append(val)
+            new_non_ri_data[col] = val
 
-    return ri_vals, new_nric, new_nriv
+    return ri_data, new_non_ri_data
 
 
 def _convert_audit_change(action, row_data, changed_fields, ri_cols):
@@ -429,22 +448,21 @@ def _convert_audit_change(action, row_data, changed_fields, ri_cols):
 
     :returns: [(pk, kind, extra data)] (more than 1 change might be emitted from a single audit entry).
     """
-    ri_vals, non_ri_cols, non_ri_vals = _split_ri_cols(action, row_data, changed_fields, ri_cols)
-    pk_changed = any(c in ri_cols for c in non_ri_cols)
+    ri_data, non_ri_data = _split_ri_cols(action, row_data, changed_fields, ri_cols)
+    pk_changed = any(c in ri_cols for c in non_ri_data)
     if pk_changed:
         assert action == 'U'
         # If it's an update that changed the PK (e.g. the table has no replica identity so we treat the whole
         # tuple as a primary key), then we turn it into a delete old tuple + insert new one.
-        result = [(tuple(ri_vals), 1, None)]
+        result = [(tuple(ri_data[c] for c in ri_cols), 1, None)]
 
         # Recalculate the new PK to be inserted + the new (full) tuple, otherwise if the whole
         # tuple hasn't been updated, we'll lose parts of the old row (see test_diff_conflation_on_commit[test_case2]).
-        ri_vals, non_ri_cols, non_ri_vals = _recalculate_disjoint_ri_cols(ri_cols, ri_vals,
-                                                                          non_ri_cols, non_ri_vals, row_data)
-        result.append((tuple(ri_vals), 0, {'c': non_ri_cols, 'v': non_ri_vals}))
+        ri_data, non_ri_data = _recalculate_disjoint_ri_cols(ri_cols, ri_data, non_ri_data, row_data)
+        result.append((tuple(ri_data[c] for c in ri_cols), 0, non_ri_data))
         return result
-    return [(tuple(ri_vals), _KIND[action],
-             {'c': non_ri_cols, 'v': non_ri_vals} if action in ('I', 'U') else None)]
+    return [(tuple(ri_data[c] for c in ri_cols), _KIND[action],
+             non_ri_data if action in ('I', 'U') else None)]
 
 
 _KIND = {'I': 0, 'D': 1, 'U': 2}

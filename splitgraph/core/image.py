@@ -9,6 +9,7 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphException
+from splitgraph.hooks.mount_handlers import init_fdw
 from ._common import set_tag, select, manage_audit, set_head
 from .table import Table
 
@@ -70,16 +71,22 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
                                        self.image_hash, table_name))
         if not objects:
             return None
-        return Table(self.repository, self, table_name, objects)
+        table_schema = self.engine.run_sql(SQL("SELECT table_schema FROM {}.tables WHERE namespace = %s "
+                                               "AND repository = %s AND image_hash = %s AND table_name = %s")
+                                           .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                                           (self.repository.namespace, self.repository.repository,
+                                            self.image_hash, table_name), return_shape=ResultShape.ONE_ONE)
+        return Table(self.repository, self, table_name, table_schema, objects)
 
     @manage_audit
-    def checkout(self, keep_downloaded_objects=True, force=False):
+    def checkout(self, force=False, layered=False):
         """
         Checks the image out, changing the current HEAD pointer. Raises an error
         if there are pending changes to its checkout.
 
-        :param keep_downloaded_objects: If False, deletes externally downloaded objects after they've been used.
         :param force: Discards all pending changes to the schema.
+        :param layered: If True, uses layered querying to check out the image (doesn't materialize tables
+            inside of it).
         """
         target_schema = self.repository.to_schema()
         if self.repository.has_pending_changes():
@@ -94,16 +101,38 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
         for table in self.engine.get_all_tables(target_schema):
             self.engine.delete_table(target_schema, table)
 
-        downloaded_object_ids = set()
-        for table in self.get_tables():
-            downloaded_object_ids |= self.get_table(table).materialize(table)
-
-        # Repoint the current HEAD for this repository to the new snap ID
+        if layered:
+            self._lq_checkout()
+        else:
+            for table in self.get_tables():
+                self.get_table(table).materialize(table)
         set_head(self.repository, self.image_hash)
 
-        if not keep_downloaded_objects:
-            logging.info("Removing %d downloaded objects from cache...", len(downloaded_object_ids))
-            self.repository.objects.delete_objects(downloaded_object_ids)
+    def _lq_checkout(self, target_schema=None):
+        """
+        Intended to be run on the sgr side. Initializes the FDW for all tables in a given image,
+        allowing to query them directly without materializing the tables.
+        """
+        # assumes that we got to the point in the normal checkout where we're about to materialize the tables
+        # (e.g. the schemata are cleared)
+        # Use a per-schema "foreign server" for layered queries for now
+        target_schema = target_schema or self.repository.to_schema()
+        server_id = '%s_lq_checkout_server' % target_schema
+        engine = self.repository.engine
+
+        init_fdw(engine, server_id=server_id, wrapper='multicorn',
+                 server_options={'wrapper': 'splitgraph.core.fdw_checkout.QueryingForeignDataWrapper',
+                                 'engine': engine.name,
+                                 'use_socket': 'True',
+                                 'namespace': self.repository.namespace,
+                                 'repository': self.repository.repository,
+                                 'image_hash': self.image_hash})
+
+        # It's easier to create the foreign tables from our side than to implement IMPORT FOREIGN SCHEMA by the FDW
+        for table_name in self.get_tables():
+            logging.info("Mounting %s:%s/%s into %s", self.repository.to_schema(), self.image_hash, table_name,
+                         target_schema)
+            self.get_table(table_name).materialize(table_name, target_schema, lq_server=server_id)
 
     def tag(self, tag, force=False):
         """

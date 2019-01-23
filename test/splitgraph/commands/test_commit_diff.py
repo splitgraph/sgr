@@ -1,7 +1,7 @@
-from datetime import date, datetime as dt
 from decimal import Decimal
 
 import pytest
+from datetime import date, datetime as dt
 
 from test.splitgraph.conftest import OUTPUT
 
@@ -12,7 +12,7 @@ def test_diff_head(pg_repo_local):
     pg_repo_local.engine.commit()  # otherwise the audit trigger won't see this
     change = pg_repo_local.diff('fruits', image_1=pg_repo_local.head.image_hash, image_2=None)
     # Added (3, mayonnaise); Deleted (1, 'apple')
-    assert change == [((3, 'mayonnaise'), 0, {'c': [], 'v': []}),
+    assert change == [((3, 'mayonnaise'), 0, {}),
                       ((1, 'apple'), 1, None)]
 
 
@@ -30,15 +30,26 @@ def test_commit_diff(include_snap, pg_repo_local):
     # After commit, we should be switched to the new commit hash and there should be no differences.
     assert pg_repo_local.head == new_head
     assert pg_repo_local.diff('fruits', image_1=new_head, image_2=None) == []
+
+    # Test object structure
+    table = pg_repo_local.head.get_table('fruits')
+    assert table.table_schema == [(1, 'fruit_id', 'integer', False), (2, 'name', 'character varying', False)]
+
+    obj = table.get_object('DIFF')
+    obj_meta = pg_repo_local.objects.get_object_meta([obj])[0]
+    # Check object size has been written
+    assert obj_meta[4] > 0
+
     assert new_head.comment == "test commit"
     change = pg_repo_local.diff('fruits', image_1=head, image_2=new_head)
     # pk (no PK here so the whole row) -- 0 for INS -- extra non-PK cols
     assert sorted(change) == [  # 1, apple deleted
         ((1, 'apple'), 1, None),
         # 2, orange deleted and 2, guitar added (PK (whole tuple) changed)
-        ((2, 'guitar'), 0, {'c': [], 'v': []}),
+        ((2, 'guitar'), 0, {}),
         ((2, 'orange'), 1, None),
-        ((3, 'mayonnaise'), 0, {"c": [], "v": []})]
+        ((3, 'mayonnaise'), 0, {})]
+
     assert pg_repo_local.diff('vegetables', image_1=head, image_2=new_head) == []
 
 
@@ -77,9 +88,9 @@ def test_multiple_mountpoint_commit_diff(include_snap, pg_repo_local, mg_repo_lo
 
     change = pg_repo_local.diff('fruits', image_1=head, image_2=new_head)
     assert change == [((1, 'apple'), 1, None),
-                      ((2, 'guitar'), 0, {'c': [], 'v': []}),
+                      ((2, 'guitar'), 0, {}),
                       ((2, 'orange'), 1, None),
-                      ((3, 'mayonnaise'), 0, {'c': [], 'v': []})]
+                      ((3, 'mayonnaise'), 0, {})]
 
     # PG has no pending changes, Mongo does
     assert mg_repo_local.head == mongo_head
@@ -138,11 +149,11 @@ def test_diff_across_far_commits(include_snap, pg_repo_local):
     new_head = pg_repo_local.commit(include_snap=include_snap)
 
     change = pg_repo_local.diff('fruits', head, new_head)
-    assert change == [((3, 'mayonnaise'), 0, {'c': [], 'v': []}),
+    assert change == [((3, 'mayonnaise'), 0, {}),
                       ((1, 'apple'), 1, None),
                       # The update is turned into an insert+delete since the PK has changed.
                       # Diff sorts it so that the insert comes first, but we'll be applying all deletes first anyway.
-                      ((2, 'guitar'), 0, {'c': [], 'v': []}),
+                      ((2, 'guitar'), 0, {}),
                       ((2, 'orange'), 1, None)]
     change_agg = pg_repo_local.diff('fruits', head, new_head, aggregate=True)
     assert change_agg == (2, 2, 0)
@@ -155,7 +166,7 @@ def test_non_ordered_inserts(include_snap, pg_repo_local):
     new_head = pg_repo_local.commit(include_snap=include_snap)
 
     change = pg_repo_local.diff('fruits', head, new_head)
-    assert change == [((3, 'mayonnaise'), 0, {'c': [], 'v': []})]
+    assert change == [((3, 'mayonnaise'), 0, {})]
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
@@ -177,7 +188,7 @@ def test_non_ordered_inserts_with_pk(include_snap, local_engine_empty):
     assert len(change) == 1
     assert change[0][0] == (1,)
     assert change[0][1] == 0
-    assert sorted(zip(change[0][2]['c'], change[0][2]['v'])) == [('b', 2), ('c', 3), ('d', 'four')]
+    assert change[0][2] == {'b': 2, 'c': 3, 'd': 'four'}
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
@@ -236,11 +247,18 @@ def test_update_packing_applying(pg_repo_local):
 
     pg_repo_local.run_sql("UPDATE fruits SET name = 'pineapple' WHERE fruit_id = 1")
     new_head = pg_repo_local.commit()
+
+    pg_repo_local.run_sql("UPDATE fruits SET name = 'kumquat' WHERE fruit_id = 2")
+    v_new_head = pg_repo_local.commit()
+
     old_head.checkout()
-    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id = 1") == [(1, 'apple')]
+    assert pg_repo_local.run_sql("SELECT * FROM fruits ORDER BY fruit_id") == [(1, 'apple'), (2, 'orange')]
 
     new_head.checkout()
-    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id = 1") == [(1, 'pineapple')]
+    assert pg_repo_local.run_sql("SELECT * FROM fruits ORDER BY fruit_id") == [(1, 'pineapple'), (2, 'orange')]
+
+    v_new_head.checkout()
+    assert pg_repo_local.run_sql("SELECT * FROM fruits ORDER BY fruit_id") == [(1, 'pineapple'), (2, 'kumquat')]
 
 
 def test_diff_staging_aggregation(pg_repo_local):
@@ -254,8 +272,8 @@ def test_diff_staging_aggregation(pg_repo_local):
 
     assert pg_repo_local.diff("fruits", old_head, None, aggregate=True) == (0, 0, 2)
     assert pg_repo_local.diff("fruits", old_head, None, aggregate=False) == [
-        ((1,), 2, {'c': ['name'], 'v': ['pineapple']}),
-        ((2,), 2, {'c': ['name'], 'v': ['mustard']})]
+        ((1,), 2, {'name': 'pineapple'}),
+        ((2,), 2, {'name': 'mustard'})]
 
 
 def test_diff_schema_change(pg_repo_local):
@@ -272,11 +290,11 @@ def test_diff_schema_change(pg_repo_local):
     # Can't detect an UPDATE since there's been a schema change (old table has no PK)
     assert pg_repo_local.diff("fruits", old_head, after_update, aggregate=True) == (1, 1, 0)
     assert pg_repo_local.diff("fruits", old_head, after_update, aggregate=False) == \
-           [((1, 'apple'), 1, None), ((1, 'pineapple'), 0, {'c': [], 'v': []})]
+           [((1, 'apple'), 1, None), ((1, 'pineapple'), 0, {})]
 
     # Again can't detect UPDATEs -- delete 2 rows, add two rows
     assert pg_repo_local.diff("fruits", old_head, None, aggregate=True) == (2, 2, 0)
     assert pg_repo_local.diff("fruits", old_head, None, aggregate=False) == [((1, 'apple'), 1, None),
                                                                              ((2, 'orange'), 1, None),
-                                                                             ((1, 'pineapple'), 0, {'c': [], 'v': []}),
-                                                                             ((2, 'mustard'), 0, {'c': [], 'v': []})]
+                                                                             ((1, 'pineapple'), 0, {}),
+                                                                             ((2, 'mustard'), 0, {})]

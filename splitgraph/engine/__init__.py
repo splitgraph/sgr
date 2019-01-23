@@ -112,9 +112,10 @@ class SQLEngine:
 
     def delete_table(self, schema, table):
         """Drop a table from a schema if it exists"""
-        self.run_sql(
-            SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(schema), Identifier(table)),
-            return_shape=ResultShape.NONE)
+        if self.get_table_type(schema, table) == 'BASE TABLE':
+            self.run_sql(SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(schema), Identifier(table)))
+        else:
+            self.run_sql(SQL("DROP FOREIGN TABLE IF EXISTS {}.{}").format(Identifier(schema), Identifier(table)))
 
     def delete_schema(self, schema):
         """Delete a schema if it exists, including all the tables in it."""
@@ -126,6 +127,15 @@ class SQLEngine:
         """Get all tables in a given schema."""
         return self.run_sql("SELECT table_name FROM information_schema.tables WHERE table_schema = %s", (schema,),
                             return_shape=ResultShape.MANY_ONE)
+
+    def get_table_type(self, schema, table):
+        return self.run_sql("SELECT table_type FROM information_schema.tables WHERE table_schema = %s"
+                            " AND table_name = %s", (schema, table),
+                            return_shape=ResultShape.ONE_ONE)
+
+    def get_table_size(self, schema, table):
+        """Return the table disk usage, in bytes."""
+        raise NotImplementedError()
 
     def get_primary_keys(self, schema, table):
         """Get a list of (column_name, column_type) denoting the primary keys of a given table."""
@@ -218,6 +228,10 @@ class SQLEngine:
     def initialize(self):
         """Does any required initialization of the engine"""
 
+    def lock_table(self, schema, table):
+        """Acquire an exclusive lock on a given table, released when the transaction commits / rolls back."""
+        raise NotImplementedError()
+
 
 class ChangeEngine(SQLEngine):
     """An SQL engine that can perform change tracking on a set of tables."""
@@ -225,7 +239,7 @@ class ChangeEngine(SQLEngine):
     def get_primary_keys(self, schema, table):
         raise NotImplementedError()
 
-    def run_sql(self, statement, arguments=(), return_shape=ResultShape.MANY_MANY):
+    def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY):
         raise NotImplementedError()
 
     def get_tracked_tables(self):
@@ -312,7 +326,7 @@ class ObjectEngine:
         """
         raise NotImplementedError()
 
-    def apply_diff_object(self, source_schema, source_table, target_schema, target_table):
+    def apply_diff_object(self, source_schema, source_table, target_schema, target_table, ignore_cols):
         """
         Apply a changeset stored in a table to a certain target table.
 
@@ -320,6 +334,21 @@ class ObjectEngine:
         :param source_table: Table the changeset is stored in
         :param target_schema: Schema to apply the changeset to
         :param target_table: Table to apply the changeset to
+        :param ignore_cols: Column names to exclude from any operations.
+        """
+        raise NotImplementedError()
+
+    def batch_apply_diff_objects(self, objects, target_schema, target_table, run_after_every=None,
+                                 run_after_every_args=None, ignore_cols=None):
+        """
+        Apply a list of changesets to a target table as a batch operation.
+
+        :param objects: List of tuples `(object_schema, object_table)` that the objects are stored in.
+        :param target_schema: Schema to apply the changeset to
+        :param target_table: Table to apply the changeset to
+        :param run_after_every: If specified, an extra SQL (Composable) query to run after every DIFF application.
+        :param run_after_every_args: Optional, a tuple of arguments to use with `run_after_every`.
+        :param ignore_cols: Column names to exclude from any operations.
         """
         raise NotImplementedError()
 
@@ -369,12 +398,13 @@ _ENGINE = 'LOCAL'
 _ENGINES = {}
 
 
-def get_engine(name=None):
+def get_engine(name=None, use_socket=False):
     """
     Get the current global engine or a named remote engine
 
     :param name: Name of the remote engine as specified in the config. If None, the current global engine
         is returned.
+    :param use_socket: Use a local UNIX socket instead of PG_HOST, PG_PORT for LOCAL engine connections.
     """
     if not name:
         if isinstance(_ENGINE, SQLEngine):
@@ -385,9 +415,13 @@ def get_engine(name=None):
         # and instantiate the actual Engine class.
         # As we only have PostgresEngine, we instantiate that.
         from .postgres.engine import PostgresEngine
-        _ENGINES[name] = PostgresEngine((PG_HOST, PG_PORT, PG_USER, PG_PWD, PG_DB)
-                                        if name == 'LOCAL' else get_remote_connection_params(name),
-                                        name=name)
+        if name == 'LOCAL':
+            if use_socket:
+                _ENGINES[name] = PostgresEngine((None, None, PG_USER, PG_PWD, PG_DB), name=name)
+            else:
+                _ENGINES[name] = PostgresEngine((PG_HOST, PG_PORT, PG_USER, PG_PWD, PG_DB), name=name)
+        else:
+            _ENGINES[name] = PostgresEngine(get_remote_connection_params(name), name=name)
     return _ENGINES[name]
 
 
@@ -418,5 +452,5 @@ def get_remote_connection_params(remote_name):
     :return: A tuple of (hostname, port, username, password, database)
     """
     pdict = CONFIG['remotes'][remote_name]
-    return (pdict['SG_ENGINE_HOST'], int(pdict['SG_ENGINE_PORT']), pdict['SG_ENGINE_USER'],
-            pdict['SG_ENGINE_PWD'], pdict['SG_ENGINE_DB_NAME'])
+    return (pdict['SG_ENGINE_HOST'] or None, int(pdict['SG_ENGINE_PORT']) if pdict['SG_ENGINE_PORT'] else None,
+            pdict['SG_ENGINE_USER'], pdict['SG_ENGINE_PWD'], pdict['SG_ENGINE_DB_NAME'])

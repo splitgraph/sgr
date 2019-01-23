@@ -2,16 +2,17 @@
 Common internal functions used by Splitgraph commands.
 """
 import logging
+
 import re
 from functools import wraps
-
 from psycopg2.sql import Identifier, SQL
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphException
 
-META_TABLES = ['images', 'tags', 'objects', 'tables', 'upstream', 'object_locations', 'info']
+META_TABLES = ['images', 'tags', 'objects', 'tables', 'upstream', 'object_locations', 'object_cache_status',
+               'snap_cache', 'snap_cache_misses', 'info']
 _PUBLISH_PREVIEW_SIZE = 100
 
 
@@ -142,12 +143,49 @@ def _create_metadata_schema(engine):
     # A tree of object parents. The parent of an object is not necessarily the object linked to
     # the parent commit that the object belongs to (e.g. if we imported the object from a different commit tree).
     # One object can have multiple parents (e.g. 1 SNAP and 1 DIFF).
+    # The size is the on-disk (in-database) size occupied by the object table as reported by the engine
+    # (not the size stored externally)
     engine.run_sql(SQL("""CREATE TABLE {}.{} (
                     object_id  VARCHAR NOT NULL,
                     namespace  VARCHAR NOT NULL,
+                    size       BIGINT,
                     format     VARCHAR NOT NULL,
                     parent_id  VARCHAR)""").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")),
                    return_shape=None)
+
+    # Keep track of objects that have been cached locally on the engine.
+    #
+    # refcount:  incremented when a component requests the object to be downloaded (for materialization
+    #            or a layered query). Decremented when the component has finished using the object.
+    #            (maybe consider a row-level lock on this table?)
+    # status:    0 if the object is remote, 1 if being downloaded, 2 if local.
+    # last_used: Timestamp (UTC) this object was last returned to be used in a layered query / materialization.
+    #
+    # Status currently isn't used: since we're locking the full cache table, there can be no inconsistencies with
+    # which objects are being downloaded/evicted. If we have a lock on the cache table and the object is there
+    # in the SPLITGRAPH_META_SCHEMA, it can be used and no other instance of the cache manager can attempt to delete it.
+    engine.run_sql(SQL("""CREATE TABLE {}.{} (
+                        object_id  VARCHAR NOT NULL PRIMARY KEY,
+                        refcount   INTEGER,
+                        status     SMALLINT,
+                        last_used  TIMESTAMP)""")
+                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status"),
+                           Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")), return_shape=None)
+
+    # Temporary SNAP cache to speed up layered querying: maps a DIFF object to a precomputed SNAP
+    # resulting from the traversal and materialization of that DIFF chain.
+    engine.run_sql(SQL("""CREATE TABLE {}.{} (
+                            diff_id VARCHAR NOT NULL PRIMARY KEY,
+                            snap_id VARCHAR NOT NULL,
+                            size    BIGINT)""")
+                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("snap_cache")), return_shape=None)
+
+    # Bookkeeping for the SNAP cache: records DIFF objects that are a beginning of a DIFF chain and had to be
+    # returned instead of a SNAP. These are candidates for temporary SNAP generation.
+    engine.run_sql(SQL("""CREATE TABLE {}.{} (
+                        diff_id VARCHAR NOT NULL,
+                        used_time TIMESTAMP)""")
+                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("snap_cache_misses")), return_shape=None)
 
     # Maps a given table at a given point in time to an "object ID" (either a full snapshot or a
     # delta to a previous table).
@@ -156,6 +194,7 @@ def _create_metadata_schema(engine):
                     repository VARCHAR NOT NULL,
                     image_hash VARCHAR NOT NULL,
                     table_name VARCHAR NOT NULL,
+                    table_schema JSON,
                     object_id  VARCHAR NOT NULL,
                     PRIMARY KEY (namespace, repository, image_hash, table_name, object_id),
                     CONSTRAINT tb_fk FOREIGN KEY (namespace, repository, image_hash) REFERENCES {}.{})""")
@@ -286,8 +325,7 @@ def slow_diff(repository, table_name, image_1, image_2, aggregate):
     if aggregate:
         return sum(1 for r in right if r not in left), sum(1 for r in left if r not in right), 0
     # Mimic the diff format returned by the DIFF-object-accumulating function
-    return [(r, 1, None) for r in left if r not in right] + \
-           [(r, 0, {'c': [], 'v': []}) for r in right if r not in left]
+    return [(r, 1, None) for r in left if r not in right] + [(r, 0, {}) for r in right if r not in left]
 
 
 def prepare_publish_data(image, repository, include_table_previews):
@@ -303,7 +341,7 @@ def prepare_publish_data(image, repository, include_table_previews):
                 previews[table_name] = engine.run_sql(SQL("SELECT * FROM {}.{} LIMIT %s").format(
                     Identifier(tmp_schema), Identifier(tmp_table)), (_PUBLISH_PREVIEW_SIZE,))
         else:
-            schema = image.get_table(table_name).get_schema()
+            schema = image.get_table(table_name).table_schema
         schemata[table_name] = [(cn, ct, pk) for _, cn, ct, pk in schema]
     return previews, schemata
 
@@ -331,7 +369,7 @@ def gather_sync_metadata(target, source):
                           image.provenance_data)
         # Get the meta for all objects we'll need to fetch.
         table_meta.extend(source.engine.run_sql(
-            SQL("""SELECT image_hash, table_name, object_id FROM {0}.tables
+            SQL("""SELECT image_hash, table_name, table_schema, object_id FROM {0}.tables
                        WHERE namespace = %s AND repository = %s AND image_hash = %s""")
                 .format(Identifier(SPLITGRAPH_META_SCHEMA)),
             (source.namespace, source.repository, image.image_hash)))
@@ -344,3 +382,14 @@ def gather_sync_metadata(target, source):
 
     object_locations = source.objects.get_external_object_locations(list(distinct_objects)) if distinct_objects else []
     return new_images, table_meta, object_locations, object_meta, tags
+
+
+def pretty_size(size):
+    size = float(size)
+    power = 2 ** 10
+    n = 0
+    while size > power:
+        size /= power
+        n += 1
+
+    return "%.2f %s" % (size, {0: '', 1: 'Ki', 2: 'Mi', 3: 'Gi', 4: 'Ti'}[n] + 'B')

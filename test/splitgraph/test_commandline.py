@@ -626,3 +626,18 @@ def test_examples(local_engine_empty):
     assert result.exit_code == 0
     assert 'FROM example/repo_1 IMPORT demo AS table_1' in result.stdout
     assert 'FROM example/repo_2:${IMAGE_2} IMPORT demo AS table_2' in result.stdout
+
+
+def test_commandline_lq_checkout(pg_repo_local):
+    runner = CliRunner()
+    # Uncheckout first
+    result = runner.invoke(checkout_c, [str(pg_repo_local), '-u', '-f'])
+    assert result.exit_code == 0
+    assert pg_repo_local.head is None
+    assert not get_engine().schema_exists(str(pg_repo_local))
+
+    result = runner.invoke(checkout_c, [str(pg_repo_local) + ':latest', '-l'])
+    assert result.exit_code == 0
+    assert pg_repo_local.head is not None
+    assert get_engine().schema_exists(str(pg_repo_local))
+    assert get_engine().get_table_type(str(pg_repo_local), 'fruits') == 'FOREIGN TABLE'
