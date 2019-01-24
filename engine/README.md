@@ -25,6 +25,12 @@ external databases (only mongo and postgres at the moment):
       to allow mounting of external postgres databases
     * [EnterpriseDB/mysql_fdw](https://github.com/EnterpriseDB/mysql_fdw.git)
        to allow mounting of MySQL (version 8) databases
+    * [Kozea/Multicorn](https://github.com/Kozea/Multicorn.git)
+      for a custom query handler that allows to query images without checking them
+      out (layered querying), as well as allow others to write custom
+      foreign data wrappers.
+* Installs the [Splitgraph command line client and library](https://github.com/splitgraph/splitgraph.git)
+    that is required for layered querying.
 
 ## Running the driver
 
@@ -92,6 +98,14 @@ mounting a volume), Postgres will only run these init scripts on the *first run*
 of the container, so if you want to add new scripts you will need to `docker rm`
 the container to force the initialization to run again.
 
+**Note on building the driver:** The Splitgraph command line client and library is imported in this repository
+as a Git submodule in the directory `splitgraph`. Do `git submodule update` before
+building the Docker image to fetch it. If you wish to install a different version of
+Splitgraph into the driver (note this is only relevant for layered querying,
+as normal Splitgraph functionality is driven by the `sgr` command line client), you
+can either check out a different commit in the submodule or copy your development
+version into `splitgraph`.
+
 ### Adding additional init scripts at build time by creating a new image
 
 Here is an example `Dockerfile` that extends `splitgraph/driver` and performs
@@ -150,6 +164,6 @@ And then `docker-compose up -d driver`
 
 ### More help
 
-- Read the [Splitgraph documentation](https://www.splitgraph.com/docs/)
+- Read the [Splitgraph documentation](https://www.splitgraph.com/docs/introduction)
 - Read the [docker postgres documentation](https://hub.docker.com/_/postgres/)
 - Submit an issue
