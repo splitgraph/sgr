@@ -152,6 +152,11 @@ def _create_metadata_schema(engine):
                     format     VARCHAR NOT NULL,
                     parent_id  VARCHAR)""").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")),
                    return_shape=None)
+    # As we don't have PKs here, we create a couple of indexes manually to make resolving tables faster.
+    engine.run_sql(SQL("""CREATE INDEX idx_splitgraph_meta_objects_parent ON {}.{} (parent_id)""")
+                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")))
+    engine.run_sql(SQL("""CREATE INDEX idx_splitgraph_meta_objects_object ON {}.{} (object_id)""")
+                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")))
 
     # Keep track of objects that have been cached locally on the engine.
     #
