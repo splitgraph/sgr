@@ -7,8 +7,8 @@ from pkgutil import get_data
 
 import itertools
 import psycopg2
-from psycopg2._json import Json
-from psycopg2.extras import execute_batch
+from psycopg2 import DatabaseError
+from psycopg2.extras import execute_batch, Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
@@ -63,7 +63,12 @@ class PsycopgEngine(SQLEngine):
 
     def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY):
         with self.connection.cursor() as cur:
-            cur.execute(statement, arguments)
+            try:
+                cur.execute(statement, arguments)
+            except DatabaseError:
+                self.rollback()
+                raise
+
             if cur.description is None:
                 return None
 
@@ -90,11 +95,15 @@ class PsycopgEngine(SQLEngine):
 
     def run_sql_batch(self, statement, arguments, schema=None):
         with self.connection.cursor() as cur:
-            if schema:
-                cur.execute("SET search_path to %s;", (schema,))
-            execute_batch(cur, statement, arguments, page_size=1000)
-            if schema:
-                cur.execute("SET search_path to public")
+            try:
+                if schema:
+                    cur.execute("SET search_path to %s;", (schema,))
+                execute_batch(cur, statement, arguments, page_size=1000)
+                if schema:
+                    cur.execute("SET search_path to public")
+            except DatabaseError:
+                self.rollback()
+                raise
 
     def get_table_size(self, schema, table):
         return self.run_sql(SQL("SELECT pg_relation_size('{}.{}')").format(Identifier(schema), Identifier(table)),

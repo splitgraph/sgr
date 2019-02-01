@@ -1,6 +1,5 @@
-from datetime import datetime as dt, timedelta
-
 import pytest
+from datetime import datetime as dt, timedelta
 
 from splitgraph.core import clone, select, ResultShape, SPLITGRAPH_META_SCHEMA
 from splitgraph.exceptions import SplitGraphException
@@ -311,12 +310,12 @@ def test_object_cache_snaps_eviction(local_engine_empty, pg_repo_remote):
             pass
     assert len(object_manager.get_downloaded_objects()) == 3
 
-    # Only space for 2 objects (we currently have 3), so a future cache interaction will trigger an eviction.
+    # Only space for 2 objects (we currently have 3), so a future download will trigger an eviction.
     object_manager.cache_size = 8192 * 2
 
-    # Check that one of the old objects gets evicted and the temporary SNAP remains.
+    # No download (cache occupancy only calculated at download time), so the old object still stays
     with object_manager.ensure_objects(fruits_v3) as (snap, diffs):
-        assert len(object_manager.get_downloaded_objects()) == 2
+        assert len(object_manager.get_downloaded_objects()) == 3
         assert snap != fruit_snap
 
     # Now, load vegetables_v2 (only results in 1 object, the original SNAP, being downloaded).

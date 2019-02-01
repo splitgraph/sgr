@@ -131,32 +131,35 @@ class ObjectManager:
         """
         return set(self.object_engine.run_sql(select("objects", "object_id"), return_shape=ResultShape.MANY_ONE))
 
-    def get_downloaded_objects(self):
+    def get_downloaded_objects(self, limit_to=None):
         """
         Gets a list of objects currently in the Splitgraph cache (i.e. not only existing externally.)
 
+        :param limit_to: If specified, only the objects in this list will be returned.
         :return: Set of object IDs.
         """
         # Minor normalization sadness here: this can return duplicate object IDs since
         # we might repeat them if different versions of the same table point to the same object ID.
         # Also, maybe we should consider looking at the cache status table instead.
-        permanent_objects = set(
-            self.object_engine.run_sql(
-                SQL("""SELECT information_schema.tables.table_name FROM information_schema.tables JOIN {}.tables
-                            ON information_schema.tables.table_name = {}.tables.object_id
-                            WHERE information_schema.tables.table_schema = %s""")
-                    .format(Identifier(SPLITGRAPH_META_SCHEMA),
-                            Identifier(SPLITGRAPH_META_SCHEMA)),
-                (SPLITGRAPH_META_SCHEMA,), return_shape=ResultShape.MANY_ONE))
-        temporary_objects = set(
-            self.object_engine.run_sql(
-                SQL("""SELECT information_schema.tables.table_name FROM information_schema.tables JOIN {}.snap_cache
-                            ON information_schema.tables.table_name = {}.snap_cache.snap_id
-                            WHERE information_schema.tables.table_schema = %s""")
-                    .format(Identifier(SPLITGRAPH_META_SCHEMA),
-                            Identifier(SPLITGRAPH_META_SCHEMA)),
-                (SPLITGRAPH_META_SCHEMA,), return_shape=ResultShape.MANY_ONE))
+        query = """SELECT information_schema.tables.table_name FROM information_schema.tables JOIN {0}.tables
+                            ON information_schema.tables.table_name = {0}.tables.object_id
+                            WHERE information_schema.tables.table_schema = %s"""
+        query_args = [SPLITGRAPH_META_SCHEMA]
+        if limit_to:
+            query += " AND {0}.tables.object_id IN (" + ",".join(itertools.repeat('%s', len(limit_to))) + ")"
+            query_args += list(limit_to)
 
+        permanent_objects = set(self.object_engine.run_sql(
+            SQL(query).format(Identifier(SPLITGRAPH_META_SCHEMA)), query_args, return_shape=ResultShape.MANY_ONE))
+
+        query = """SELECT information_schema.tables.table_name FROM information_schema.tables JOIN {0}.snap_cache
+                            ON information_schema.tables.table_name = {0}.snap_cache.snap_id
+                            WHERE information_schema.tables.table_schema = %s"""
+        if limit_to:
+            query += " AND {0}.snap_cache.snap_id IN (" + ",".join(itertools.repeat('%s', len(limit_to))) + ")"
+
+        temporary_objects = set(self.object_engine.run_sql(SQL(query).format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                                                           query_args, return_shape=ResultShape.MANY_ONE))
         return permanent_objects.union(temporary_objects)
 
     def get_external_object_locations(self, objects):
@@ -311,11 +314,12 @@ class ObjectManager:
         # This could be done with a recursive PG query in the future, but currently we just load the whole tree
         # and crawl it in memory.
         path = []
+        tree = object_tree()
         while object_id is not None:
             path.append(object_id)
-            for parent_id in object_tree[object_id][0]:
+            for parent_id in tree[object_id][0]:
                 # Check the _parent_'s format -- if it's a SNAP, we're done
-                if object_tree[parent_id][1] == 'SNAP':
+                if tree[parent_id][1] == 'SNAP':
                     return parent_id, path
                 cached_snap = self._get_snap_cache_for(parent_id)
                 if cached_snap is not None:
@@ -360,13 +364,23 @@ class ObjectManager:
         snap_cache = self._get_snap_cache()
         return sum(self._object_size(o, object_tree, snap_cache) for o in downloaded_objects)
 
+    def _get_lazy_loaded_object_tree(self):
+        object_tree = None
+
+        def f():
+            nonlocal object_tree
+            object_tree = object_tree or self.get_full_object_tree()
+            return object_tree
+
+        return f
+
     @contextmanager
     def ensure_objects(self, table):
         """
         Resolves the objects needed to materialize a given table and makes sure they are in the local
         splitgraph_meta schema.
 
-        Whilst inside this manager, the objects are guaranteed to exist. On exit from, the objects are marked as
+        Whilst inside this manager, the objects are guaranteed to exist. On exit from it, the objects are marked as
         unneeded and can be garbage collected.
 
         :param table: Table to materialize
@@ -383,7 +397,7 @@ class ObjectManager:
         #   * What happens if we crash when we're downloading these objects?
 
         # So, for now, we lock the whole cache status table. This means that multiple FDWs can't download objects
-        # at the same time, but we can try and saturate the download bandwidth. In the future, we can try mode
+        # at the same time, but we can try and saturate the download bandwidth. In the future, we can try more
         # granular row-level locking.
         logging.info("Resolving objects for table %s:%s:%s", table.repository, table.image.image_hash, table.table_name)
         self.object_engine.lock_table(SPLITGRAPH_META_SCHEMA, "object_cache_status")
@@ -391,8 +405,11 @@ class ObjectManager:
         # Resolve the table into a list of objects we want to fetch (one SNAP and optionally a list of DIFFs).
         # In the future, we can also take other things into account, such as how expensive it is to load a given object
         # (its size), location...
-        object_tree = self.get_full_object_tree()
+
+        # In the cache hit cases (the table is a single SNAP) we won't need to actually look at the object tree.
+        object_tree = self._get_lazy_loaded_object_tree()
         snap_cache = self._get_snap_cache()
+
         snap, diffs = self._get_image_object_path(table, object_tree)
 
         required_objects = diffs + [snap]
@@ -404,16 +421,18 @@ class ObjectManager:
 
         # Perform the actual download. If the table has no upstream but still has external locations, we download
         # just the external objects.
-        upstream = table.repository.get_upstream()
-        object_locations = self.get_external_object_locations(required_objects)
-        self.download_objects(upstream.objects if upstream else None, objects_to_fetch=to_fetch,
-                              object_locations=object_locations)
-        difference = set(to_fetch).difference(set(self.get_downloaded_objects()))
-        if difference:
-            logging.exception("Not all objects required to materialize %s:%s:%s have been fetched. Missing objects: %r",
-                              table.repository.to_schema(), table.image.image_hash, table.table_name, difference)
-            self.object_engine.rollback()
-            raise SplitGraphException()
+        if to_fetch:
+            upstream = table.repository.get_upstream()
+            object_locations = self.get_external_object_locations(required_objects)
+            self.download_objects(upstream.objects if upstream else None, objects_to_fetch=to_fetch,
+                                  object_locations=object_locations)
+            difference = set(to_fetch).difference(set(self.get_downloaded_objects()))
+            if difference:
+                logging.exception(
+                    "Not all objects required to materialize %s:%s:%s have been fetched. Missing objects: %r",
+                    table.repository.to_schema(), table.image.image_hash, table.table_name, difference)
+                self.object_engine.rollback()
+                raise SplitGraphException()
 
         if diffs:
             # We want to return a SNAP + a DIFF chain. See if a DIFF chain ending (starting?) with a given DIFF
@@ -481,21 +500,24 @@ class ObjectManager:
         :param snap_cache: Contents of the SNAP materialization cache
         :return: Set of objects to fetch
         """
-        downloaded_objects = self.get_downloaded_objects()
-        to_fetch = set(required_objects).difference(downloaded_objects)
-        required_space = sum(object_tree[o][2] for o in to_fetch)
-        current_occupied = sum(self._object_size(o, object_tree, snap_cache) for o in downloaded_objects)
-        logging.info("Need to download %d object(s) (%s), cache occupancy: %s/%s",
-                     len(to_fetch), pretty_size(required_space),
-                     pretty_size(current_occupied), pretty_size(self.cache_size))
-        # If the total cache size isn't large enough, there's nothing we can do without cooperating with the
-        # caller and seeing if they can use the objects one-by-one.
-        if required_space > self.cache_size:
-            raise SplitGraphException("Not enough space in the cache to download the required objects!")
-        if required_space > self.cache_size - current_occupied:
-            to_free = required_space + current_occupied - self.cache_size
-            logging.info("Need to free %s", pretty_size(to_free))
-            self.run_eviction(object_tree, required_objects, to_free)
+        objects_in_cache = self.get_downloaded_objects(limit_to=required_objects)
+        to_fetch = set(required_objects).difference(objects_in_cache)
+        if to_fetch:
+            tree = object_tree()
+
+            required_space = sum(tree[o][2] for o in to_fetch)
+            current_occupied = sum(self._object_size(o, tree, snap_cache) for o in self.get_downloaded_objects())
+            logging.info("Need to download %d object(s) (%s), cache occupancy: %s/%s",
+                         len(to_fetch), pretty_size(required_space),
+                         pretty_size(current_occupied), pretty_size(self.cache_size))
+            # If the total cache size isn't large enough, there's nothing we can do without cooperating with the
+            # caller and seeing if they can use the objects one-by-one.
+            if required_space > self.cache_size:
+                raise SplitGraphException("Not enough space in the cache to download the required objects!")
+            if required_space > self.cache_size - current_occupied:
+                to_free = required_space + current_occupied - self.cache_size
+                logging.info("Need to free %s", pretty_size(to_free))
+                self.run_eviction(tree, required_objects, to_free)
         return to_fetch
 
     def _claim_objects(self, objects):
