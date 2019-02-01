@@ -338,7 +338,7 @@ class ObjectManager:
                 return object_id, final_path
             if parent_id not in seen_objects:
                 continue
-            cached_snap = self._get_snap_cache_for(parent_id)
+            cached_snap = self._get_snap_cache_for(object_id)
             if cached_snap is not None:
                 return cached_snap, final_path
             final_path.append(object_id)
