@@ -80,9 +80,8 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         # For quals, the more elaborate ones (like table.id = table.name or similar) actually aren't passed here
         # at all and PG filters them out later on.
         qual_sql, qual_vals = self._quals_to_postgres(quals)
-        table_obj = self.repository.images[self.fdw_options['image_hash']].get_table(self.fdw_options['table'])
 
-        with ObjectManager(self.engine).ensure_objects(table_obj) as (snap, diffs):
+        with self.object_manager.ensure_objects(self.table) as (snap, diffs):
             log_to_postgres("Using SNAP %s, DIFFs %r to satisfy the query" % (snap, diffs), _PG_LOGLEVEL)
             if not diffs:
                 # If we only have the SNAP, we can just send SELECTs directly to it.
@@ -149,7 +148,6 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
                 self.engine.batch_apply_diff_objects([(SPLITGRAPH_META_SCHEMA, o) for o in diffs],
                                                      SPLITGRAPH_META_SCHEMA, staging_table,
                                                      ignore_cols=['sg_meta_keep_pk'])
-
         return self._run_select_from_staging(SPLITGRAPH_META_SCHEMA, staging_table, columns,
                                              drop_table=True)
 
@@ -185,4 +183,11 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
 
         # Try using a UNIX socket if the engine is local to us
         self.engine = get_engine(self.fdw_options['engine'], bool(self.fdw_options.get('use_socket', False)))
+
         self.repository = Repository(fdw_options['namespace'], self.fdw_options['repository'], self.engine)
+        self.table = self.repository.images[self.fdw_options['image_hash']].get_table(self.fdw_options['table'])
+
+        self.object_manager = ObjectManager(self.engine)
+        # Since the actual base objects required to resolve a table aren't likely to change (we don't allow overwriting
+        # history), there's no point in reusing it (though how do we find out the current occupied cache size?)
+        # self.object_tree = self.object_manager.get_full_object_tree()

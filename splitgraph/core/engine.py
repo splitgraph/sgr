@@ -34,11 +34,13 @@ def init_engine():  # pragma: no cover
 
     """
     # Initialize the engine
-    get_engine().initialize()
+    engine = get_engine()
+    engine.initialize()
 
     # Create splitgraph_meta
     logging.info("Ensuring metadata schema %s exists...", SPLITGRAPH_META_SCHEMA)
-    ensure_metadata_schema(get_engine())
+    ensure_metadata_schema(engine)
+    engine.commit()
 
 
 def repository_exists(repository):
