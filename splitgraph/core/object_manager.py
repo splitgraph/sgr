@@ -274,12 +274,11 @@ class ObjectManager:
                 known_objects.update(new_parents)
         return distinct_objects, object_meta
 
-    def _get_image_object_path(self, table, object_tree):
+    def _get_image_object_path(self, table):
         """
         Calculates a list of objects SNAP, DIFF, ... , DIFF that are used to reconstruct a table.
 
         :param table: Table object
-        :param object_tree: Full object tree
         :return: A tuple of (SNAP object, list of DIFF objects in reverse order (latest object first))
         """
 
@@ -309,24 +308,40 @@ class ObjectManager:
         if snap_id is not None:
             return snap_id, []
 
-        # Here, we have to follow the object tree up until we encounter a parent of type SNAP -- firing a query
-        # for every object is a massive bottleneck.
-        # This could be done with a recursive PG query in the future, but currently we just load the whole tree
-        # and crawl it in memory.
-        path = []
-        tree = object_tree()
-        while object_id is not None:
-            path.append(object_id)
-            for parent_id in tree[object_id][0]:
-                # Check the _parent_'s format -- if it's a SNAP, we're done
-                if tree[parent_id][1] == 'SNAP':
-                    return parent_id, path
-                cached_snap = self._get_snap_cache_for(parent_id)
-                if cached_snap is not None:
-                    # Found a SNAP that is equivalent to the full compressed DIFF chain, short-circuit.
-                    return cached_snap, path
-                object_id = parent_id
-                break  # Found 1 diff, will be added to the path at the next iteration.
+        # Use a recursive subquery to fetch a path through the object tree.
+        path = self.object_engine.run_sql(SQL(
+            """WITH RECURSIVE path AS (
+                SELECT object_id, format, parent_id FROM {0}.objects WHERE object_id = %s AND format = 'DIFF'
+                UNION ALL
+                    (WITH parents AS (SELECT o.object_id, o.format, o.parent_id
+                        FROM path p JOIN {0}.objects o ON p.parent_id = o.object_id)
+                    SELECT * FROM parents WHERE format = 'SNAP'
+                    UNION ALL
+                    SELECT * FROM parents WHERE format = 'DIFF'
+                        AND NOT EXISTS (SELECT * FROM parents WHERE format = 'SNAP')  
+                    ))
+            SELECT object_id, format, parent_id FROM path""").format(Identifier(SPLITGRAPH_META_SCHEMA)), (object_id,))
+        # If there's an object that has both a DIFF and a SNAP parent, it will be represented in the table as
+        # (object_id,      DIFF, diff_parent_id)
+        # (same_object_id, DIFF, snap_parent_id)
+        # so despite us stopping in the CTE when we reach a SNAP, the path will have those two duplicate
+        # entries. This is easy to fix though, as object with ID diff_parent_id won't actually be included
+        # in the path at all, so when we see an object with parent_id that's not in the path, we can delete it.
+
+        # In addition, we need to traverse the path anyway to see if we can short circuit a DIFF chain
+        # with a SNAP in the SNAP cache.
+        final_path = []
+        seen_objects = set(o[0] for o in path)
+
+        for object_id, object_format, parent_id in path:
+            if object_format == 'SNAP':
+                return object_id, final_path
+            if parent_id not in seen_objects:
+                continue
+            cached_snap = self._get_snap_cache_for(parent_id)
+            if cached_snap is not None:
+                return cached_snap, final_path
+            final_path.append(object_id)
 
         # We didn't find an actual snapshot for this table -- something's wrong with the object tree.
         raise SplitGraphException("Couldn't find a SNAP object for %s (malformed object tree)" % table)
@@ -410,7 +425,7 @@ class ObjectManager:
         object_tree = self._get_lazy_loaded_object_tree()
         snap_cache = self._get_snap_cache()
 
-        snap, diffs = self._get_image_object_path(table, object_tree)
+        snap, diffs = self._get_image_object_path(table)
 
         required_objects = diffs + [snap]
         try:

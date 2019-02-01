@@ -451,3 +451,20 @@ def test_object_cache_snaps_longer_chain(local_engine_empty, pg_repo_remote):
         assert tmp_snap in downloaded_objects
         assert tmp_snap_2 in downloaded_objects
         assert snap in downloaded_objects
+
+
+def test_object_cache_resolution_with_snaps(pg_repo_local):
+    # Test that if there's a SNAP in the object's history, it gets chosen by the object
+    # manager instead of the diff chain
+    pg_repo_local.images['latest'].checkout()
+    pg_repo_local.run_sql("INSERT INTO fruits VALUES (4, 'kumquat')")
+    img_1 = pg_repo_local.commit(include_snap=True)
+    pg_repo_local.run_sql("INSERT INTO fruits VALUES (5, 'zebra')")
+    img_2 = pg_repo_local.commit(include_snap=False)
+    pg_repo_local.run_sql("INSERT INTO fruits VALUES (6, 'ketchup')")
+    img_3 = pg_repo_local.commit(include_snap=False)
+
+    with pg_repo_local.objects.ensure_objects(pg_repo_local.images['latest'].get_table('fruits')) as (snap, diffs):
+        assert diffs == [img_2.get_table('fruits').get_object('DIFF'),
+                         img_3.get_table('fruits').get_object('DIFF')]
+        assert snap == img_1.get_table('fruits').get_object('SNAP')
