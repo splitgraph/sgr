@@ -97,7 +97,7 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
         # Maybe here we have to set these to None (anonymous) if the S3 host name doesn't match our own one.
         access_key = self.params.get('access_key', S3_ACCESS_KEY)
         secret_key = self.params.get('secret_key', S3_SECRET_KEY)
-        worker_threads = self.params.get('threads', 4)
+        worker_threads = self.params.get('threads', 16)
 
         pg_conn_lock = Lock()
 
