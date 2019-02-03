@@ -374,10 +374,16 @@ class ObjectManager:
         return snap_cache[object_id][1]
 
     def get_cache_occupancy(self):
-        downloaded_objects = self.get_downloaded_objects()
-        object_tree = self.get_full_object_tree()
-        snap_cache = self._get_snap_cache()
-        return sum(self._object_size(o, object_tree, snap_cache) for o in downloaded_objects)
+        """
+        :return: Space occupied by objects cached from external locations, in bytes.
+        """
+        return int(self.object_engine.run_sql(SQL("""
+        WITH o AS (SELECT DISTINCT object_id, size FROM {0}.objects)
+        SELECT COALESCE(SUM(size), 0) FROM (
+            SELECT SUM(o.size) AS size FROM {0}.object_cache_status oc JOIN o ON o.object_id = oc.object_id
+            UNION ALL
+            SELECT SUM(sc.size) AS size FROM {0}.snap_cache sc)_""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                                              return_shape=ResultShape.ONE_ONE))
 
     def _get_lazy_loaded_object_tree(self):
         object_tree = None
@@ -423,13 +429,11 @@ class ObjectManager:
 
         # In the cache hit cases (the table is a single SNAP) we won't need to actually look at the object tree.
         object_tree = self._get_lazy_loaded_object_tree()
-        snap_cache = self._get_snap_cache()
-
         snap, diffs = self._get_image_object_path(table)
 
         required_objects = diffs + [snap]
         try:
-            to_fetch = self._prepare_fetch_list(required_objects, object_tree, snap_cache)
+            to_fetch = self._prepare_fetch_list(required_objects, object_tree)
         except SplitGraphException:
             self.object_engine.rollback()
             raise
@@ -505,23 +509,20 @@ class ObjectManager:
         self._add_snap_cache(new_snap_id, diffs[0])
         return new_snap_id
 
-    def _prepare_fetch_list(self, required_objects, object_tree, snap_cache):
+    def _prepare_fetch_list(self, required_objects, object_tree):
         """
         Calculates the missing objects and ensures there's enough space in the cache
         to download them.
 
         :param required_objects: Iterable of object IDs that are required to be on the engine.
         :param object_tree: Object tree
-        :param snap_cache: Contents of the SNAP materialization cache
         :return: Set of objects to fetch
         """
-        objects_in_cache = self.get_downloaded_objects(limit_to=required_objects)
+        objects_in_cache = self.get_downloaded_objects()
         to_fetch = set(required_objects).difference(objects_in_cache)
         if to_fetch:
-            tree = object_tree()
-
-            required_space = sum(tree[o][2] for o in to_fetch)
-            current_occupied = sum(self._object_size(o, tree, snap_cache) for o in self.get_downloaded_objects())
+            required_space = sum(o[4] for o in self.get_object_meta(list(to_fetch)))
+            current_occupied = self.get_cache_occupancy()
             logging.info("Need to download %d object(s) (%s), cache occupancy: %s/%s",
                          len(to_fetch), pretty_size(required_space),
                          pretty_size(current_occupied), pretty_size(self.cache_size))
@@ -532,7 +533,7 @@ class ObjectManager:
             if required_space > self.cache_size - current_occupied:
                 to_free = required_space + current_occupied - self.cache_size
                 logging.info("Need to free %s", pretty_size(to_free))
-                self.run_eviction(tree, required_objects, to_free)
+                self.run_eviction(object_tree(), required_objects, to_free)
         return to_fetch
 
     def _claim_objects(self, objects):
