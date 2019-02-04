@@ -505,7 +505,7 @@ class ObjectManager:
         :param object_tree: Object tree
         :return: Set of objects to fetch
         """
-        objects_in_cache = self.get_downloaded_objects()
+        objects_in_cache = self.get_downloaded_objects(limit_to=required_objects)
         to_fetch = set(required_objects).difference(objects_in_cache)
         if to_fetch:
             required_space = sum(o[4] for o in self.get_object_meta(list(to_fetch)))
