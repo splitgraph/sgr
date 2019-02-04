@@ -68,7 +68,7 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
 
                 # End the transaction so that nothing else deadlocks (at this point we've returned
                 # all the data we needed to the runtime so nothing will be lost).
-                self.engine.rollback()
+                self.engine.commit()
                 return
 
     def execute(self, quals, columns, sortkeys=None):

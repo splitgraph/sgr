@@ -191,6 +191,8 @@ def _create_metadata_schema(engine):
                         diff_id VARCHAR NOT NULL,
                         used_time TIMESTAMP)""")
                    .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("snap_cache_misses")), return_shape=None)
+    engine.run_sql(SQL("CREATE INDEX idx_splitgraph_meta_snap_cache_misses_diff_id ON {}.{} (diff_id)")
+                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("snap_cache_misses")))
 
     # Maps a given table at a given point in time to an "object ID" (either a full snapshot or a
     # delta to a previous table).
