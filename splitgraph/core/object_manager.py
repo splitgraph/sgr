@@ -140,27 +140,14 @@ class ObjectManager:
         """
         # Minor normalization sadness here: this can return duplicate object IDs since
         # we might repeat them if different versions of the same table point to the same object ID.
-        # Also, maybe we should consider looking at the cache status table instead.
-        query = """SELECT information_schema.tables.table_name FROM information_schema.tables JOIN {0}.tables
-                            ON information_schema.tables.table_name = {0}.tables.object_id
-                            WHERE information_schema.tables.table_schema = %s"""
+        query = """SELECT pg_tables.tablename FROM pg_tables WHERE pg_tables.schemaname = %s"""
         query_args = [SPLITGRAPH_META_SCHEMA]
         if limit_to:
-            query += " AND {0}.tables.object_id IN (" + ",".join(itertools.repeat('%s', len(limit_to))) + ")"
+            query += " AND pg_tables.tablename IN (" + ",".join(itertools.repeat('%s', len(limit_to))) + ")"
             query_args += list(limit_to)
-
-        permanent_objects = set(self.object_engine.run_sql(
+        objects = set(self.object_engine.run_sql(
             SQL(query).format(Identifier(SPLITGRAPH_META_SCHEMA)), query_args, return_shape=ResultShape.MANY_ONE))
-
-        query = """SELECT information_schema.tables.table_name FROM information_schema.tables JOIN {0}.snap_cache
-                            ON information_schema.tables.table_name = {0}.snap_cache.snap_id
-                            WHERE information_schema.tables.table_schema = %s"""
-        if limit_to:
-            query += " AND {0}.snap_cache.snap_id IN (" + ",".join(itertools.repeat('%s', len(limit_to))) + ")"
-
-        temporary_objects = set(self.object_engine.run_sql(SQL(query).format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                                                           query_args, return_shape=ResultShape.MANY_ONE))
-        return permanent_objects.union(temporary_objects)
+        return objects.difference(META_TABLES)
 
     def get_external_object_locations(self, objects):
         """
@@ -445,7 +432,7 @@ class ObjectManager:
             object_locations = self.get_external_object_locations(required_objects)
             self.download_objects(upstream.objects if upstream else None, objects_to_fetch=to_fetch,
                                   object_locations=object_locations)
-            difference = set(to_fetch).difference(set(self.get_downloaded_objects()))
+            difference = set(to_fetch).difference(set(self.get_downloaded_objects(limit_to=to_fetch)))
             if difference:
                 logging.exception(
                     "Not all objects required to materialize %s:%s:%s have been fetched. Missing objects: %r",
