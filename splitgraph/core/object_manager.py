@@ -7,6 +7,7 @@ from random import getrandbits
 import itertools
 import math
 from datetime import datetime as dt, timedelta
+from psycopg2 import IntegrityError
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
@@ -15,6 +16,28 @@ from splitgraph.engine import ResultShape, switch_engine
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.external_objects import get_external_object_handler
 from ._common import META_TABLES, select, insert, pretty_size
+
+
+class Tracer:
+    """
+    Accumulates events and returns the times between them.
+    """
+
+    def __init__(self):
+        self.start_time = dt.now()
+        self.events = []
+
+    def log(self, event):
+        self.events.append((dt.now(), event))
+
+    def __str__(self):
+        result = ""
+        prev = self.start_time
+        for event_time, event in self.events:
+            result += "\n%s: %.3f" % (event, (event_time - prev).total_seconds())
+            prev = event_time
+        result += "\nTotal: %.3f" % (self.events[-1][0] - self.start_time).total_seconds()
+        return result[1:]
 
 
 class ObjectManager:
@@ -349,10 +372,6 @@ class ObjectManager:
         return {snap_id: (diff_id, size) for snap_id, diff_id, size
                 in self.object_engine.run_sql(select("snap_cache", "snap_id,diff_id,size"))}
 
-    def _add_snap_cache(self, snap_id, diff_id):
-        size = self.object_engine.get_table_size(SPLITGRAPH_META_SCHEMA, snap_id)
-        self.object_engine.run_sql(insert("snap_cache", ("snap_id", "diff_id", "size")), (snap_id, diff_id, size))
-
     @staticmethod
     def _object_size(object_id, object_tree, snap_cache):
         # An object can be either a real object or an ephemeral SNAP.
@@ -408,22 +427,32 @@ class ObjectManager:
         # at the same time, but we can try and saturate the download bandwidth. In the future, we can try more
         # granular row-level locking.
         logging.info("Resolving objects for table %s:%s:%s", table.repository, table.image.image_hash, table.table_name)
-        self.object_engine.lock_table(SPLITGRAPH_META_SCHEMA, "object_cache_status")
+
+        tracer = Tracer()
+
+        # can we move this here?
+        # self.object_engine.lock_table(SPLITGRAPH_META_SCHEMA, "object_cache_status")
+        # In the cache hit cases (the table is a single SNAP) we won't need to actually look at the object tree.
+        snap, diffs = self._get_image_object_path(table)
+        required_objects = diffs + [snap]
+
+        tracer.log('resolve_objects')
 
         # Resolve the table into a list of objects we want to fetch (one SNAP and optionally a list of DIFFs).
         # In the future, we can also take other things into account, such as how expensive it is to load a given object
         # (its size), location...
 
-        # In the cache hit cases (the table is a single SNAP) we won't need to actually look at the object tree.
-        object_tree = self._get_lazy_loaded_object_tree()
-        snap, diffs = self._get_image_object_path(table)
+        # Increase the refcount on all of the objects we're giving back to the caller so that others don't GC them.
+        logging.info("Claiming %d object(s)", len(required_objects))
+        self._claim_objects(required_objects)
+        tracer.log('claim_objects')
 
-        required_objects = diffs + [snap]
         try:
-            to_fetch = self._prepare_fetch_list(required_objects, object_tree)
+            to_fetch = self._prepare_fetch_list(required_objects)
         except SplitGraphException:
             self.object_engine.rollback()
             raise
+        tracer.log('prepare_fetch_list')
 
         # Perform the actual download. If the table has no upstream but still has external locations, we download
         # just the external objects.
@@ -439,6 +468,12 @@ class ObjectManager:
                     table.repository.to_schema(), table.image.image_hash, table.table_name, difference)
                 self.object_engine.rollback()
                 raise SplitGraphException()
+        tracer.log('fetch_objects')
+
+        # End the first phase (resolution and download) -- we commit here because we need a checkpoint to
+        # roll back to in _create_and_register_temporary_snap.
+        self.object_engine.commit()
+        tracer.log('stage_1_commit')
 
         if diffs:
             # We want to return a SNAP + a DIFF chain. See if a DIFF chain ending (starting?) with a given DIFF
@@ -453,7 +488,11 @@ class ObjectManager:
                 # yield it and then release the refcount.
                 diffs = []
                 snap = new_snap_id
+
+                self._release_objects(required_objects)
                 required_objects = [new_snap_id]
+                self._claim_objects(required_objects)
+        tracer.log('snap_cache')
 
         # Extra stuff: stats to gather:
         #   * Object cache misses
@@ -461,9 +500,7 @@ class ObjectManager:
         #   * Table usage
         #   * time spent downloading, materializing, using LQs
 
-        # Increase the refcount on all of the objects we're giving back to the caller so that others don't GC them.
-        logging.info("Claiming %d object(s)", len(required_objects))
-        self._claim_objects(required_objects)
+        logging.info("Yielding to the caller")
         try:
             # Release the lock and yield to the caller.
             self.object_engine.commit()
@@ -472,37 +509,58 @@ class ObjectManager:
             # Decrease the refcounts on the objects. Optionally, evict them.
             # If the caller crashes, we should still hit this and decrease the refcounts, but if the whole program
             # is terminated abnormally, we'll leak memory.
+            tracer.log('caller')
             self._release_objects(required_objects)
+            tracer.log('release_objects')
             logging.info("Releasing %d object(s)", len(required_objects))
+            logging.info("Timing stats for %s/%s/%s/%s: \n%s", table.repository.namespace, table.repository.repository,
+                         table.image.image_hash, table.table_name, tracer)
             self.object_engine.commit()
 
     def _create_and_register_temporary_snap(self, snap, diffs):
         # Maybe here we should give longer DIFF chains priority somehow?
+
+        # There's a race condition: we check if a temporary SNAP exists for a chain in the beginning,
+        # when we resolve objects -- but then can spend some time downloading objects. Whilst we are doing that,
+        # it's possible that something else has already created a SNAP and we'll get a PK error when trying to
+        # register it. So, we try to register it first -- if we won the race, then we'll insert the SNAP into the
+        # cache, the query will yield and we'll be able to actually create it. If not, we'll block until the other
+        # worker has created the SNAP and then fail with a PK error, at which point we just roll back and use the SNAP.
         new_snap_id = get_random_object_id()
-        logging.info("Generating a temporary SNAP %s for a DIFF chain starting with %s", new_snap_id, diffs[0])
-        # We'll need extra space to create the temporary SNAP: we can't always do it on the fly
-        # (e.g. by just taking the old base SNAP and applying new DIFFs to it) since that operation
-        # is destructive and some other users might be using this object.
-        # But we also can't anticipate how much space we'll need: we could have a 1000-row SNAP + a
-        # 1000-row DIFF that deletes all rows in that SNAP, so the result is an empty table. However, we
-        # are bounded from the top by the sum of the sizes of all intermediate objects.
-        # Nevertheless, we'll create the SNAP anyway and just keep it there, letting whoever else gets
-        # to access the cache next run eviction if they need it.
-        self.object_engine.copy_table(SPLITGRAPH_META_SCHEMA, snap, SPLITGRAPH_META_SCHEMA, new_snap_id,
-                                      with_pk_constraints=True)
-        logging.info("Applying %d DIFF object(s)..." % len(diffs))
-        self.object_engine.batch_apply_diff_objects([(SPLITGRAPH_META_SCHEMA, d) for d in reversed(diffs)],
-                                                    SPLITGRAPH_META_SCHEMA, new_snap_id)
-        self._add_snap_cache(new_snap_id, diffs[0])
+        try:
+            self.object_engine.run_sql(insert("snap_cache", ("snap_id", "diff_id", "size")), (new_snap_id, diffs[0], 0))
+            logging.info("Generating a temporary SNAP %s for a DIFF chain starting with %s", new_snap_id, diffs[0])
+            # We'll need extra space to create the temporary SNAP: we can't always do it on the fly
+            # (e.g. by just taking the old base SNAP and applying new DIFFs to it) since that operation
+            # is destructive and some other users might be using this object.
+            # But we also can't anticipate how much space we'll need: we could have a 1000-row SNAP + a
+            # 1000-row DIFF that deletes all rows in that SNAP, so the result is an empty table. However, we
+            # are bounded from the top by the sum of the sizes of all intermediate objects.
+            # Nevertheless, we'll create the SNAP anyway and just keep it there, letting whoever else gets
+            # to access the cache next run eviction if they need it.
+            self.object_engine.copy_table(SPLITGRAPH_META_SCHEMA, snap, SPLITGRAPH_META_SCHEMA, new_snap_id,
+                                          with_pk_constraints=True)
+            logging.info("Applying %d DIFF object(s)..." % len(diffs))
+            self.object_engine.batch_apply_diff_objects([(SPLITGRAPH_META_SCHEMA, d) for d in reversed(diffs)],
+                                                        SPLITGRAPH_META_SCHEMA, new_snap_id)
+            # We've created the SNAP -- now we need to record its size (can't do it straightaway because
+            # we use the INSERT statement to claim a lock).
+            size = self.object_engine.get_table_size(SPLITGRAPH_META_SCHEMA, new_snap_id)
+            self.object_engine.run_sql(SQL("UPDATE {}.snap_cache SET size = %s WHERE snap_id = %s")
+                                       .format(Identifier(SPLITGRAPH_META_SCHEMA)), (size, new_snap_id))
+        except IntegrityError:
+            self.object_engine.rollback()
+            new_snap_id = self._get_snap_cache_for(diffs[0])
+            logging.info("Using existing SNAP %s for a DIFF chain starting with %s", new_snap_id, diffs[0])
+
         return new_snap_id
 
-    def _prepare_fetch_list(self, required_objects, object_tree):
+    def _prepare_fetch_list(self, required_objects):
         """
         Calculates the missing objects and ensures there's enough space in the cache
         to download them.
 
         :param required_objects: Iterable of object IDs that are required to be on the engine.
-        :param object_tree: Object tree
         :return: Set of objects to fetch
         """
         objects_in_cache = self.get_downloaded_objects(limit_to=required_objects)
@@ -520,7 +578,7 @@ class ObjectManager:
             if required_space > self.cache_size - current_occupied:
                 to_free = required_space + current_occupied - self.cache_size
                 logging.info("Need to free %s", pretty_size(to_free))
-                self.run_eviction(object_tree(), required_objects, to_free)
+                self.run_eviction(self.get_full_object_tree(), required_objects, to_free)
         return to_fetch
 
     def _claim_objects(self, objects):
@@ -625,7 +683,7 @@ class ObjectManager:
         :param object_locations: List of custom object locations, encoded as tuples (object_id, object_url, protocol).
         """
 
-        existing_objects = self.get_downloaded_objects()
+        existing_objects = self.get_downloaded_objects(limit_to=objects_to_fetch)
         objects_to_fetch = list(set(o for o in objects_to_fetch if o not in existing_objects))
         if not objects_to_fetch:
             return
