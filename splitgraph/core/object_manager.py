@@ -391,16 +391,6 @@ class ObjectManager:
             SELECT SUM(sc.size) AS size FROM {0}.snap_cache sc)_""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
                                               return_shape=ResultShape.ONE_ONE))
 
-    def _get_lazy_loaded_object_tree(self):
-        object_tree = None
-
-        def f():
-            nonlocal object_tree
-            object_tree = object_tree or self.get_full_object_tree()
-            return object_tree
-
-        return f
-
     @contextmanager
     def ensure_objects(self, table):
         """
@@ -428,11 +418,9 @@ class ObjectManager:
         # granular row-level locking.
         logging.info("Resolving objects for table %s:%s:%s", table.repository, table.image.image_hash, table.table_name)
 
+        self.object_engine.run_sql("SET LOCAL synchronous_commit TO OFF")
         tracer = Tracer()
 
-        # can we move this here?
-        # self.object_engine.lock_table(SPLITGRAPH_META_SCHEMA, "object_cache_status")
-        # In the cache hit cases (the table is a single SNAP) we won't need to actually look at the object tree.
         snap, diffs = self._get_image_object_path(table)
         required_objects = diffs + [snap]
 
@@ -446,6 +434,9 @@ class ObjectManager:
         logging.info("Claiming %d object(s)", len(required_objects))
         self._claim_objects(required_objects)
         tracer.log('claim_objects')
+        # This also means that anybody else who tries to claim this set of objects will lock up until we're done with
+        # them (though note that if anything commits in the download step, these locks will get released and we'll
+        # be liable to be stepped on)
 
         try:
             to_fetch = self._prepare_fetch_list(required_objects)
@@ -474,6 +465,7 @@ class ObjectManager:
         # roll back to in _create_and_register_temporary_snap.
         self.object_engine.commit()
         tracer.log('stage_1_commit')
+        self.object_engine.run_sql("SET LOCAL synchronous_commit TO off")
 
         if diffs:
             # We want to return a SNAP + a DIFF chain. See if a DIFF chain ending (starting?) with a given DIFF
@@ -510,6 +502,7 @@ class ObjectManager:
             # If the caller crashes, we should still hit this and decrease the refcounts, but if the whole program
             # is terminated abnormally, we'll leak memory.
             tracer.log('caller')
+            self.object_engine.run_sql("SET LOCAL synchronous_commit TO off")
             self._release_objects(required_objects)
             tracer.log('release_objects')
             logging.info("Releasing %d object(s)", len(required_objects))
@@ -636,6 +629,17 @@ class ObjectManager:
         # Find deletion candidates: objects that we have locally, with refcount 0, that aren't in the whitelist.
         # Note this will also evict temporary materialized SNAPs: if an older version starts getting hit, the SNAP's
         # last_used timestamp will never get updated and it'll get evicted.
+
+        # We need to lock the table to make sure that our calculations of what we're about to delete are consistent.
+        # However, we can deadlock: we're already holding a lock on some objects and want to acquire an exclusive
+        # lock and so will wait for other workers to release their objects -- however, they might be waiting on us
+        # to release our objects.
+
+        # Hence, we commit the object refcount increase (so that others can't GC them), releasing the lock,
+        # and try to acquire the stronger lock.
+        self.object_engine.commit()
+        self.object_engine.lock_table(SPLITGRAPH_META_SCHEMA, "object_cache_status")
+
         candidates = [o for o in self.object_engine.run_sql(
             select("object_cache_status", "object_id,last_used", "refcount=0"),
             return_shape=ResultShape.MANY_MANY) if o[0] not in keep_objects]
@@ -672,6 +676,12 @@ class ObjectManager:
                                            ",".join(itertools.repeat("%s", len(to_delete))) + ")")
                                        .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("snap_cache")),
                                        to_delete)
+
+        # Release the exclusive lock and relock the objects we want instead once again (???)
+        self.object_engine.commit()
+        self.object_engine.run_sql("SET LOCAL synchronous_commit TO off;")
+        self._release_objects(keep_objects)
+        self._claim_objects(keep_objects)
 
     def download_objects(self, source, objects_to_fetch, object_locations):
         """
@@ -790,8 +800,12 @@ class ObjectManager:
 
         :param objects: A sequence of objects to be deleted
         """
-        for o in objects:
-            self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, o)
+        objects = list(objects)
+        for i in range(0, len(objects), 100):
+            query = SQL(";").join(SQL("DROP TABLE IF EXISTS {}.{}")
+                                  .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(o))
+                                  for o in objects[i:i + 100])
+            self.object_engine.run_sql(query)
             self.object_engine.commit()
 
 
