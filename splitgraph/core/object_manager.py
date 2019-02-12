@@ -387,6 +387,7 @@ class ObjectManager:
         WITH o AS (SELECT DISTINCT object_id, size FROM {0}.objects)
         SELECT COALESCE(SUM(size), 0) FROM (
             SELECT SUM(o.size) AS size FROM {0}.object_cache_status oc JOIN o ON o.object_id = oc.object_id
+            WHERE oc.ready = 't'
             UNION ALL
             SELECT SUM(sc.size) AS size FROM {0}.snap_cache sc)_""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
                                               return_shape=ResultShape.ONE_ONE))
@@ -459,6 +460,7 @@ class ObjectManager:
                     table.repository.to_schema(), table.image.image_hash, table.table_name, difference)
                 self.object_engine.rollback()
                 raise SplitGraphException()
+            self._set_ready_flags(to_fetch, is_ready=True)
         tracer.log('fetch_objects')
 
         # End the first phase (resolution and download) -- we commit here because we need a checkpoint to
@@ -484,6 +486,7 @@ class ObjectManager:
                 self._release_objects(required_objects)
                 required_objects = [new_snap_id]
                 self._claim_objects(required_objects)
+                self._set_ready_flags(required_objects, True)
         tracer.log('snap_cache')
 
         # Extra stuff: stats to gather:
@@ -575,22 +578,31 @@ class ObjectManager:
         return to_fetch
 
     def _claim_objects(self, objects):
-        """Adds objects to the cache_stats table, if they're not there already. If they are, increases their refcounts
-        and bumps their last used timestamp to now."""
+        """Adds objects to the cache_stats table, if they're not there already, marking them with ready=False
+        (which must be set to True by the end of the operation).
+        If they already exist, increases their refcounts and bumps their last used timestamp to now."""
         now = dt.utcnow()
-        self.object_engine.run_sql_batch(insert("object_cache_status", ("object_id", "status", "refcount", "last_used"))
+        self.object_engine.run_sql_batch(insert("object_cache_status", ("object_id", "ready", "refcount", "last_used"))
                                          + SQL("ON CONFLICT (object_id) DO UPDATE "
                                                "SET refcount = {0}.{1}.refcount + 1, "
-                                               "last_used = %s WHERE {0}.{1}.object_id = excluded.object_id")
+                                               "last_used = %s "
+                                               "WHERE {0}.{1}.object_id = excluded.object_id")
                                          .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status")),
-                                         [(object_id, 2, 1, now, now) for object_id in objects])
+                                         [(object_id, False, 1, now, now) for object_id in objects])
+
+    def _set_ready_flags(self, objects, is_ready=True):
+        if objects:
+            self.object_engine.run_sql(SQL("UPDATE {0}.object_cache_status SET ready = %s WHERE object_id IN (" +
+                                           ",".join(itertools.repeat("%s", len(objects))) + ")")
+                                       .format(Identifier(SPLITGRAPH_META_SCHEMA)), [is_ready] + list(objects))
 
     def _release_objects(self, objects):
         """Decreases objects' refcounts."""
-        self.object_engine.run_sql(SQL("UPDATE {}.{} SET refcount = refcount - 1 WHERE object_id IN (" +
-                                       ",".join(itertools.repeat("%s", len(objects))) + ")")
-                                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status")),
-                                   objects)
+        if objects:
+            self.object_engine.run_sql(SQL("UPDATE {}.{} SET refcount = refcount - 1 WHERE object_id IN (" +
+                                           ",".join(itertools.repeat("%s", len(objects))) + ")")
+                                       .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status")),
+                                       objects)
 
     def run_eviction(self, object_tree, keep_objects, required_space=None):
         """
