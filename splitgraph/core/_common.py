@@ -163,16 +163,12 @@ def _create_metadata_schema(engine):
     # refcount:  incremented when a component requests the object to be downloaded (for materialization
     #            or a layered query). Decremented when the component has finished using the object.
     #            (maybe consider a row-level lock on this table?)
-    # status:    0 if the object is remote, 1 if being downloaded, 2 if local.
+    # ready:     f if the object can't be used yet (is being downloaded), t if it can.
     # last_used: Timestamp (UTC) this object was last returned to be used in a layered query / materialization.
-    #
-    # Status currently isn't used: since we're locking the full cache table, there can be no inconsistencies with
-    # which objects are being downloaded/evicted. If we have a lock on the cache table and the object is there
-    # in the SPLITGRAPH_META_SCHEMA, it can be used and no other instance of the cache manager can attempt to delete it.
     engine.run_sql(SQL("""CREATE TABLE {}.{} (
                         object_id  VARCHAR NOT NULL PRIMARY KEY,
                         refcount   INTEGER,
-                        status     SMALLINT,
+                        ready      BOOLEAN,
                         last_used  TIMESTAMP)""")
                    .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status"),
                            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")), return_shape=None)
