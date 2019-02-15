@@ -16,7 +16,7 @@ parsimonious = "^0.8"
 minio = "^4"
 
 [tool.poetry.dev-dependencies]
-pytest = "^3.4"
+pytest = "^4.2"
 pyfakefs = "^3.5"
 pytest-cov = "^2.6"
 pytest-env = "^0.6"
