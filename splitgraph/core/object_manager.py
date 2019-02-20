@@ -1,12 +1,12 @@
 """Functions related to creating, deleting and keeping track of physical Splitgraph objects."""
+import itertools
 import logging
+import math
 from collections import defaultdict
 from contextlib import contextmanager
+from datetime import datetime as dt, timedelta
 from random import getrandbits
 
-import itertools
-import math
-from datetime import datetime as dt, timedelta
 from psycopg2 import IntegrityError
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
@@ -283,6 +283,17 @@ class ObjectManager:
                 object_meta.extend(parents_meta)
                 known_objects.update(new_parents)
         return distinct_objects, object_meta
+
+    def get_all_required_objects(self, object_id):
+        parents = self.object_engine.run_sql(SQL(
+            """WITH RECURSIVE parents AS (
+                SELECT object_id FROM {0}.objects WHERE object_id = %s
+                UNION ALL
+                    SELECT o.object_id, o.format, o.parent_id
+                        FROM parents p JOIN {0}.objects o ON p.parent_id = o.object_id)
+            SELECT object_id FROM parents""").format(Identifier(SPLITGRAPH_META_SCHEMA)), (object_id,),
+                                             return_shape=ResultShape.MANY_ONE)
+        return set(parents)
 
     def _get_image_object_path(self, table):
         """

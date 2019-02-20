@@ -178,6 +178,13 @@ class ImageManager:
                                     "AND image_hash IN (" + ','.join(itertools.repeat('%s', len(images))) + ")")
                                 .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table)), args)
 
+    def __iter__(self):
+        result = self.engine.run_sql(select("images", "image_hash",
+                                            "repository = %s AND AND namespace = %s"),
+                                     (self.repository.repository, self.repository.namespace),
+                                     return_shape=ResultShape.MANY_ONE)
+        return result.fetchall()
+
 
 class Repository:
     """
