@@ -1,8 +1,8 @@
 import json
+import subprocess
 from decimal import Decimal
 
 import pytest
-import subprocess
 
 from splitgraph import ResultShape
 from splitgraph.commandline import *
@@ -597,7 +597,8 @@ def test_init_new_db():
 
         # CliRunner doesn't run in a brand new process and by that point PG_DB has propagated
         # through a few modules that are difficult to patch out, so let's just shell out.
-        output = subprocess.check_output("SG_ENGINE_DB_NAME=testdb sgr init", shell=True, stderr=subprocess.STDOUT)
+        output = subprocess.check_output("SG_LOGLEVEL=INFO SG_ENGINE_DB_NAME=testdb sgr init", shell=True,
+                                         stderr=subprocess.STDOUT)
         output = output.decode('utf-8')
         assert "Creating database testdb" in output
         assert "Installing the audit trigger" in output

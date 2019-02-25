@@ -1,11 +1,11 @@
 """Default Splitgraph engine: uses PostgreSQL to store metadata and actual objects and an audit stored procedure
 to track changes, as well as the Postgres FDW interface to upload/download objects to/from other Postgres engines."""
 
+import itertools
 import json
 import logging
 from pkgutil import get_data
 
-import itertools
 import psycopg2
 from psycopg2 import DatabaseError
 from psycopg2.extras import execute_batch, Json
@@ -437,10 +437,9 @@ def _split_ri_cols(action, row_data, changed_fields, ri_cols):
         for cc, cv in row_data.items():
             if cc in ri_cols:
                 ri_data[cc] = cv
-        for cc, cv in changed_fields.items():
-            # Hmm: these might intersect with the RI values (e.g. when the whole tuple is the replica identity and
-            # we're updating some of it)
-            non_ri_data[cc] = cv
+        if changed_fields:
+            for cc, cv in changed_fields.items():
+                non_ri_data[cc] = cv
 
     return ri_data, non_ri_data
 
@@ -484,6 +483,8 @@ def _convert_audit_change(action, row_data, changed_fields, ri_cols):
         ri_data, non_ri_data = _recalculate_disjoint_ri_cols(ri_cols, ri_data, non_ri_data, row_data)
         result.append((tuple(ri_data[c] for c in ri_cols), 0, non_ri_data))
         return result
+    if action == 'U' and not non_ri_data:
+        return []
     return [(tuple(ri_data[c] for c in ri_cols), _KIND[action],
              non_ri_data if action in ('I', 'U') else None)]
 
