@@ -1,6 +1,7 @@
 """
 Miscellaneous image management sgr commands.
 """
+import sys
 
 import click
 
@@ -221,3 +222,12 @@ def config_c(no_shielding, config_format):
         print("\nExternal object handlers:\n" if not config_format else "[external_handlers]", end="")
         for handler_name, handler_func in CONFIG['external_handlers'].items():
             print(_kv_to_str(handler_name, handler_func))
+
+
+@click.command(name='dump')
+@click.argument('repository', type=Repository.from_schema)
+def dump_c(repository):
+    """
+    Dump a repository to SQL.
+    """
+    repository.dump(sys.stdout)

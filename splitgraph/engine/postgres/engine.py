@@ -12,6 +12,7 @@ from psycopg2.extras import execute_batch, Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
+from splitgraph.core._common import select
 from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.mount_handlers import mount_postgres
@@ -308,6 +309,19 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         query = self._generate_diff_application(source_schema, source_table, target_schema, target_table, ri_data)
         self.run_sql(query)
 
+    def dump_table_sql(self, schema, table_name, stream, columns='*', where='', where_args=None):
+        with self.connection.cursor() as cur:
+            cur.execute(select(table_name, columns, where, schema), where_args)
+            if cur.rowcount == 0:
+                return
+
+            stream.write(SQL("INSERT INTO {}.{} VALUES \n")
+                         .format(Identifier(schema), Identifier(table_name)).as_string(self.connection))
+            stream.write(',\n'.join(
+                cur.mogrify("(" + ','.join(itertools.repeat('%s', len(row))) + ")", _convert_vals(row)).decode('utf-8')
+                for row in cur))
+        stream.write(";\n")
+
     # Utilities to dump objects (SNAP/DIFF) into an external format.
     # We use a slightly ad hoc format: the schema (JSON) + a null byte + Postgres's copy_to
     # binary format (only contains data). There's probably some scope to make this more optimized, maybe
@@ -499,13 +513,11 @@ def _create_diff_table(conn, object_id, replica_identity_cols_types):
 
 
 def _convert_vals(vals):
-    """Psycopg returns jsonb objects as dicts but doesn't actually accept them directly
-    as a query param. Hence, we have to wrap them in the Json datatype when applying a DIFF
-    to a table."""
-    # This might become a bottleneck since we call this for every row in the diff + function
-    # calls are expensive in Python -- maybe there's a better way (e.g. tell psycopg to not convert
-    # things to dicts or apply diffs in-engine).
-    return [v if not isinstance(v, dict) else Json(v) for v in vals]
+    """Psycopg returns jsonb objects as dicts/lists but doesn't actually accept them directly
+    as a query param (or in the case of lists coerces them into an array.
+    Hence, we have to wrap them in the Json datatype when doing a dump + load."""
+    # This might become a bottleneck since we call this for every row in the table that's being dumped.
+    return [v if not isinstance(v, dict) and not isinstance(v, list) else Json(v) for v in vals]
 
 
 def _generate_where_clause(schema, table, cols, table_2=None, schema_2=None):
