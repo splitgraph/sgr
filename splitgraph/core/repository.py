@@ -2,12 +2,12 @@
 Public API for managing images in a Splitgraph repository.
 """
 
-import itertools
 import logging
 from contextlib import contextmanager
-from datetime import datetime
 from random import getrandbits
 
+import itertools
+from datetime import datetime
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
@@ -179,11 +179,10 @@ class ImageManager:
                                 .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table)), args)
 
     def __iter__(self):
-        result = self.engine.run_sql(select("images", "image_hash",
-                                            "repository = %s AND AND namespace = %s"),
-                                     (self.repository.repository, self.repository.namespace),
-                                     return_shape=ResultShape.MANY_ONE)
-        return result.fetchall()
+        return iter(self.engine.run_sql(select("images", "image_hash",
+                                               "repository = %s AND namespace = %s"),
+                                        (self.repository.repository, self.repository.namespace),
+                                        return_shape=ResultShape.MANY_ONE))
 
 
 class Repository:
@@ -510,6 +509,63 @@ class Repository:
         result = self.engine.run_sql(sql, arguments=arguments, return_shape=return_shape)
         self.engine.run_sql("SET search_path TO public")
         return result
+
+    def dump(self, stream):
+        """
+        Creates an SQL dump with the metadata required for the repository and all of its objects.
+
+        :param stream: Stream to dump the data into.
+        """
+        # First, go through the metadata tables required to reconstruct the repository.
+        stream.write("""--\n-- Metadata tables --\n--\n""")
+        self.engine.dump_table_sql(SPLITGRAPH_META_SCHEMA, 'images', stream, where="namespace = %s AND repository = %s",
+                                   where_args=(self.namespace, self.repository))
+        self.engine.dump_table_sql(SPLITGRAPH_META_SCHEMA, 'tables', stream, where="namespace = %s AND repository = %s",
+                                   where_args=(self.namespace, self.repository))
+        self.engine.dump_table_sql(SPLITGRAPH_META_SCHEMA, 'tags', stream,
+                                   where="namespace = %s AND repository = %s AND tag != 'HEAD'",
+                                   where_args=(self.namespace, self.repository))
+
+        # Get required objects
+        required_objects = set()
+        for image_hash in self.images:
+            image = self.images.by_hash(image_hash)
+            for table_name in image.get_tables():
+                for object_id, _ in image.get_table(table_name).objects:
+                    required_objects.add(object_id)
+
+        # Expand the required objects into a full set
+        all_required_objects = set()
+        for object_id in required_objects:
+            all_required_objects.update(self.objects.get_all_required_objects(object_id))
+
+        object_qual = "object_id IN (" + ",".join(itertools.repeat('%s', len(all_required_objects))) + ")"
+
+        stream.write("""--\n-- Object metadata --\n--\n""")
+        # To avoid conflicts, we just delete the object records if they already exist
+        with self.engine.connection.cursor() as cur:
+            for table_name in ("objects", "object_locations"):
+                stream.write(cur.mogrify(SQL("DELETE FROM {}.{} WHERE ")
+                                         .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table_name))
+                                         + SQL(object_qual), list(all_required_objects)).decode('utf-8'))
+                stream.write(";\n\n")
+                self.engine.dump_table_sql(SPLITGRAPH_META_SCHEMA, table_name, stream, where=object_qual,
+                                           where_args=list(all_required_objects))
+
+            stream.write("""--\n-- Object contents --\n--\n""")
+
+            # Finally, dump the actual objects
+            for object_id in all_required_objects:
+                stream.write(cur.mogrify(SQL("DROP TABLE IF EXISTS {}.{};\n")
+                                         .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)))
+                             .decode('utf-8'))
+                stream.write(cur.mogrify(
+                    self.engine.dump_table_creation(schema=SPLITGRAPH_META_SCHEMA, tables=[object_id],
+                                                    created_schema=SPLITGRAPH_META_SCHEMA))
+                             .decode('utf-8'))
+                stream.write(";\n")
+                self.engine.dump_table_sql(SPLITGRAPH_META_SCHEMA, object_id, stream)
+                stream.write("\n")
 
     # --- IMPORTING TABLES ---
 

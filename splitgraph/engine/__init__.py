@@ -198,6 +198,9 @@ class SQLEngine:
             query += SQL(")")
         self.run_sql(query, return_shape=ResultShape.NONE)
 
+    def dump_table_sql(self, schema, table_name, stream, columns='*', where='', where_args=None):
+        raise NotImplementedError()
+
     def get_column_names(self, schema, table_name):
         """Returns a list of all columns in a given table."""
         return self.run_sql("""SELECT column_name FROM information_schema.columns

@@ -1,8 +1,8 @@
 import json
-import subprocess
 from decimal import Decimal
 
 import pytest
+import subprocess
 
 from splitgraph import ResultShape
 from splitgraph.commandline import *
@@ -641,3 +641,30 @@ def test_commandline_lq_checkout(pg_repo_local):
     assert pg_repo_local.head is not None
     assert get_engine().schema_exists(str(pg_repo_local))
     assert get_engine().get_table_type(str(pg_repo_local), 'fruits') == 'FOREIGN TABLE'
+
+
+def test_commandline_dump_load(pg_repo_local):
+    pg_repo_local.run_sql("ALTER TABLE fruits ADD PRIMARY KEY (fruit_id)")
+    pg_repo_local.commit()
+    pg_repo_local.run_sql("INSERT INTO fruits VALUES (3, 'mayonnaise')")
+    pg_repo_local.commit()
+    pg_repo_local.run_sql("UPDATE fruits SET name = 'banana' WHERE fruit_id = 1")
+    pg_repo_local.commit()
+    pg_repo_local.head.tag('test_tag')
+
+    runner = CliRunner()
+    result = runner.invoke(dump_c, [str(pg_repo_local)], catch_exceptions=False)
+    assert result.exit_code == 0
+
+    dump = result.stdout
+
+    # Now delete the repo and try loading the dump to test it actually works.
+    pg_repo_local.rm()
+    pg_repo_local.objects.cleanup()
+
+    pg_repo_local.engine.run_sql(dump)
+
+    pg_repo_local.images['test_tag'].checkout()
+
+    assert pg_repo_local.run_sql("SELECT * FROM fruits ORDER BY fruit_id") \
+           == [(1, 'banana'), (2, 'orange'), (3, 'mayonnaise')]

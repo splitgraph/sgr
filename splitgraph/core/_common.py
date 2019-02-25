@@ -125,7 +125,7 @@ def _create_metadata_schema(engine):
                     created         TIMESTAMP,
                     comment         VARCHAR,
                     provenance_type VARCHAR,
-                    provenance_data JSON,
+                    provenance_data JSONB,
                     PRIMARY KEY (namespace, repository, image_hash))""").format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                                                 Identifier("images")),
                    return_shape=None)
@@ -197,7 +197,7 @@ def _create_metadata_schema(engine):
                     repository VARCHAR NOT NULL,
                     image_hash VARCHAR NOT NULL,
                     table_name VARCHAR NOT NULL,
-                    table_schema JSON,
+                    table_schema JSONB,
                     object_id  VARCHAR NOT NULL,
                     PRIMARY KEY (namespace, repository, image_hash, table_name, object_id),
                     CONSTRAINT tb_fk FOREIGN KEY (namespace, repository, image_hash) REFERENCES {}.{})""")
