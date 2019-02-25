@@ -1,6 +1,7 @@
 ; .sgconfig file used for testing
 
 [defaults]
+SG_LOGLEVEL=WARNING
 SG_NAMESPACE=splitgraph
 SG_ENGINE_HOST=localhost
 SG_ENGINE_PORT=5432

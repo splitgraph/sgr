@@ -1,4 +1,7 @@
 DEFAULTS = {
+    # Logging threshold (log messages not emitted below this). Accepted values are
+    # CRITICAL, ERROR, WARNING, INFO and DEBUG.
+    "SG_LOGLEVEL": "WARNING",
     "SG_NAMESPACE": "sg-default-ns",
     "SG_ENGINE_HOST": "localhost",
     "SG_ENGINE_PORT": 5432,
@@ -40,6 +43,7 @@ SENSITIVE_KEYS = [k for k in KEYS if '_PWD' in k]
     If you add/remove keys from DEFAULTS, make sure to do so here too.
 """
 ARGUMENT_KEY_MAP = {
+    "--loglevel": "SG_LOGLEVEL",
     "--namespace": "SG_NAMESPACE",
     "--engine-host": "SG_ENGINE_HOST",
     "--engine-port": "SG_ENGINE_PORT",

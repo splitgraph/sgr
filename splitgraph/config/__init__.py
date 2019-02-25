@@ -12,6 +12,8 @@
         4. DEFAULTS (see keys.py)
 
 """
+import logging
+
 from .config import create_config_dict
 
 CONFIG = create_config_dict()
@@ -23,3 +25,5 @@ PG_USER = CONFIG["SG_ENGINE_USER"]
 PG_PWD = CONFIG["SG_ENGINE_PWD"]
 SPLITGRAPH_META_SCHEMA = CONFIG["SG_META_SCHEMA"]
 REGISTRY_META_SCHEMA = "registry_meta"
+
+logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=CONFIG["SG_LOGLEVEL"])
