@@ -80,6 +80,7 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         # For quals, the more elaborate ones (like table.id = table.name or similar) actually aren't passed here
         # at all and PG filters them out later on.
         qual_sql, qual_vals = self._quals_to_postgres(quals)
+        log_to_postgres("quals: %r" % (quals,), _PG_LOGLEVEL)
 
         with self.object_manager.ensure_objects(self.table) as (snap, diffs):
             log_to_postgres("Using SNAP %s, DIFFs %r to satisfy the query" % (snap, diffs), _PG_LOGLEVEL)
@@ -188,6 +189,3 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         self.table = self.repository.images[self.fdw_options['image_hash']].get_table(self.fdw_options['table'])
 
         self.object_manager = ObjectManager(self.engine)
-        # Since the actual base objects required to resolve a table aren't likely to change (we don't allow overwriting
-        # history), there's no point in reusing it (though how do we find out the current occupied cache size?)
-        # self.object_tree = self.object_manager.get_full_object_tree()
