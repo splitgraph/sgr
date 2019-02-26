@@ -61,6 +61,9 @@ def test_layered_querying(pg_repo_local, include_snap, commit_after_every, inclu
     assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id = number") == []
     assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id = number + 1 ") == [(2, 'guitar', 1)]
 
+    # Make sure ANY works on integers (not converted to strings)
+    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id IN (1, 2)") == [(2, 'guitar', 1)]
+
 
 def _test_lazy_lq_checkout(pg_repo_local):
     assert len(pg_repo_local.objects.get_downloaded_objects()) == 0

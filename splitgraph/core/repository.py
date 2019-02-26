@@ -2,12 +2,12 @@
 Public API for managing images in a Splitgraph repository.
 """
 
+import itertools
 import logging
 from contextlib import contextmanager
+from datetime import datetime
 from random import getrandbits
 
-import itertools
-from datetime import datetime
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
