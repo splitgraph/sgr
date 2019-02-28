@@ -32,6 +32,9 @@ def test_layered_querying(pg_repo_local, include_snap, commit_after_every, inclu
     # Future: move the LQ tests to be local (instantiate the FDW with some mocks and send the same query requests)
     # since it's much easier to test them like that.
 
+    # TODO: the object manager on the engine actually creates a temporary SNAP halfway through this test
+    # so some of this isn't tested completely (DIFFs are ignored).
+
     prepare_lq_repo(pg_repo_local, include_snap, commit_after_every, include_pk)
     new_head = pg_repo_local.head
     # Discard the actual materialized table and query everything via FDW
@@ -61,8 +64,20 @@ def test_layered_querying(pg_repo_local, include_snap, commit_after_every, inclu
     assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id = number") == []
     assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id = number + 1 ") == [(2, 'guitar', 1)]
 
+
+def test_layered_querying_type_conversion(pg_repo_local):
+    # For type bigint, Multicorn for some reason converts quals to be strings. Test we can handle that.
+    prepare_lq_repo(pg_repo_local, include_snap=False, commit_after_every=False, include_pk=True)
+    pg_repo_local.run_sql(
+        "ALTER TABLE fruits ALTER COLUMN fruit_id TYPE bigint")
+    pg_repo_local.commit()
+    pg_repo_local.run_sql("INSERT INTO fruits VALUES (4, 'kumquat', 42)")
+    new_head = pg_repo_local.commit()
+    new_head.checkout(layered=True)
+
     # Make sure ANY works on integers (not converted to strings)
-    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id IN (1, 2)") == [(2, 'guitar', 1)]
+    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id IN (3, 4)") == [(3, 'mayonnaise', 1),
+                                                                                      (4, 'kumquat', 42)]
 
 
 def _test_lazy_lq_checkout(pg_repo_local):

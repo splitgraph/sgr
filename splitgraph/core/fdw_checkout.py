@@ -4,7 +4,6 @@ layered querying (read-only queries to Splitgraph tables without materialization
 import logging
 
 from psycopg2.sql import Identifier, SQL
-
 from splitgraph import SPLITGRAPH_META_SCHEMA, Repository, get_engine
 from splitgraph.core.object_manager import get_random_object_id, ObjectManager
 from splitgraph.engine.postgres.engine import _generate_where_clause
@@ -22,14 +21,27 @@ _PG_LOGLEVEL = logging.INFO
 class QueryingForeignDataWrapper(ForeignDataWrapper):
     """The actual Multicorn LQ FDW class"""
 
-    @staticmethod
-    def _quals_to_postgres(quals):
+    _TYPE_MAP = {k: v for ks, v in
+                 [(['integer', 'bigint', 'smallint'], int),
+                  (['numeric', 'real', 'double precision'], float)] for k in ks}
+
+    def _coerce_qual_type(self, column, value):
+        """For some types (like bigint), Multicorn passes qual values in as strings, which fails with Postgres
+           array operators because of type mismatch."""
+        for _, cname, ctype, _ in self.table.table_schema:
+            if cname == column:
+                if ctype in self._TYPE_MAP:
+                    return [self._TYPE_MAP[ctype](v) for v in value]
+                return value
+        return value
+
+    def _quals_to_postgres(self, quals):
         """Converts a list of Multicorn Quals to Postgres clauses (joined with AND)."""
 
         def _qual_to_pg(qual):
             # Returns a SQL object + a list of args to be mogrified into it.
             if qual.is_list_operator:
-                value = qual.value
+                value = self._coerce_qual_type(qual.field_name, qual.value)
                 operator = qual.operator[0] + ' ' + '%s' % ('ANY' if qual.list_any_or_all == ANY else 'ALL')
                 operator += '(ARRAY[' + ','.join('%s' for _ in range(len(value))) + '])'
             else:

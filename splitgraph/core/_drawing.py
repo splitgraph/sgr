@@ -54,7 +54,7 @@ def render_tree(repository):
     # Prepare the tree structure by loading the index from the db and flipping it
     children = defaultdict(list)
     base_node = None
-    head = repository.head.image_hash
+    head = repository.head.image_hash if repository.head else None
 
     # Get all commits in ascending time order
     all_images = repository.images()
