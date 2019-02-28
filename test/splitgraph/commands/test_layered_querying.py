@@ -25,44 +25,55 @@ def prepare_lq_repo(repo, include_snap, commit_after_every, include_pk):
         repo.commit(include_snap=include_snap)
 
 
-@pytest.mark.parametrize("include_snap", [True, False])
-@pytest.mark.parametrize("commit_after_every", [True, False])
-@pytest.mark.parametrize("include_pk", [True, False])
-def test_layered_querying(pg_repo_local, include_snap, commit_after_every, include_pk):
-    # Future: move the LQ tests to be local (instantiate the FDW with some mocks and send the same query requests)
-    # since it's much easier to test them like that.
+@pytest.mark.parametrize("test_case", [
+    ("SELECT * FROM fruits WHERE fruit_id = 3", [(3, 'mayonnaise', 1)]),
+    ("SELECT * FROM fruits WHERE fruit_id = 2", [(2, 'guitar', 1)]),
+    ("SELECT * FROM vegetables WHERE vegetable_id = 1", []),
+    ("SELECT * FROM fruits WHERE fruit_id = 1", []),
 
-    # TODO: the object manager on the engine actually creates a temporary SNAP halfway through this test
-    # so some of this isn't tested completely (DIFFs are ignored).
-
-    prepare_lq_repo(pg_repo_local, include_snap, commit_after_every, include_pk)
-    new_head = pg_repo_local.head
-    # Discard the actual materialized table and query everything via FDW
-    new_head.checkout(layered=True)
-
-    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id = 3") == [(3, 'mayonnaise', 1)]
-    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id = 2") == [(2, 'guitar', 1)]
-    assert pg_repo_local.run_sql("SELECT * FROM vegetables WHERE vegetable_id = 1") == []
-    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id = 1") == []
-
-    # Test some more esoteric qualifiers
     # EQ on string
-    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE name = 'guitar'") == [(2, 'guitar', 1)]
+    ("SELECT * FROM fruits WHERE name = 'guitar'", [(2, 'guitar', 1)]),
 
     # IN ( converted to =ANY(array([...]))
-    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE name IN ('guitar', 'mayonnaise') ORDER BY fruit_id") == \
-           [(2, 'guitar', 1), (3, 'mayonnaise', 1)]
+    ("SELECT * FROM fruits WHERE name IN ('guitar', 'mayonnaise') ORDER BY fruit_id",
+     [(2, 'guitar', 1), (3, 'mayonnaise', 1)]),
 
     # LIKE (operator ~~)
-    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE name LIKE '%uitar'") == [(2, 'guitar', 1)]
+    ("SELECT * FROM fruits WHERE name LIKE '%uitar'", [(2, 'guitar', 1)]),
 
     # Join between two FDWs
-    assert pg_repo_local.run_sql("SELECT * FROM fruits JOIN vegetables ON fruits.fruit_id = vegetables.vegetable_id")\
-           == [(2, 'guitar', 1, 2, 'carrot')]
+    ("SELECT * FROM fruits JOIN vegetables ON fruits.fruit_id = vegetables.vegetable_id",
+     [(2, 'guitar', 1, 2, 'carrot')]),
 
     # Expression in terms of another column
-    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id = number") == []
-    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id = number + 1 ") == [(2, 'guitar', 1)]
+    ("SELECT * FROM fruits WHERE fruit_id = number + 1 ", [(2, 'guitar', 1)]),
+])
+def test_layered_querying(pg_repo_local, test_case):
+    # Future: move the LQ tests to be local (instantiate the FDW with some mocks and send the same query requests)
+    # since it's much easier to test them like that.
+    # Reset the repo every time so that the object manager doesn't have a chance to cache the SNAP.
+
+    # Most of these tests are only interesting for the long DIFF chain case, so we don't include SNAPs here and
+    # have PKs on the tables.
+    prepare_lq_repo(pg_repo_local, include_snap=False, commit_after_every=True, include_pk=True)
+
+    # Discard the actual materialized table and query everything via FDW
+    new_head = pg_repo_local.head
+    new_head.checkout(layered=True)
+
+    query, expected = test_case
+    print("Query: %s, expected: %r" % test_case)
+    assert pg_repo_local.run_sql(query) == expected
+
+
+def test_layered_querying_against_snap(pg_repo_local):
+    # Test the case where the query goes directly to the SNAP.
+    prepare_lq_repo(pg_repo_local, include_snap=True, commit_after_every=False, include_pk=True)
+    new_head = pg_repo_local.head
+    new_head.checkout(layered=True)
+
+    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE name IN ('guitar', 'mayonnaise') ORDER BY fruit_id") \
+           == [(2, 'guitar', 1), (3, 'mayonnaise', 1)]
 
 
 def test_layered_querying_type_conversion(pg_repo_local):
