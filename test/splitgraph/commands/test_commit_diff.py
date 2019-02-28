@@ -1,9 +1,8 @@
+from datetime import date, datetime as dt
 from decimal import Decimal
 
 import pytest
-from datetime import date, datetime as dt
-
-from test.splitgraph.conftest import OUTPUT
+from test.splitgraph.conftest import OUTPUT, PG_DATA
 
 
 def test_diff_head(pg_repo_local):
@@ -51,6 +50,32 @@ def test_commit_diff(include_snap, pg_repo_local):
         ((3, 'mayonnaise'), 0, {})]
 
     assert pg_repo_local.diff('vegetables', image_1=head, image_2=new_head) == []
+
+
+def test_commit_snap_only(pg_repo_local):
+    pg_repo_local.run_sql("""INSERT INTO fruits VALUES (3, 'mayonnaise');
+        DELETE FROM fruits WHERE name = 'apple';
+        UPDATE fruits SET name = 'guitar' WHERE fruit_id = 2""")
+    pg_repo_local.commit(snap_only=True, comment="test commit")
+
+    # Test object structure
+    table = pg_repo_local.head.get_table('fruits')
+    assert table.get_object('DIFF') is None
+    assert table.get_object('SNAP') is not None
+
+
+@pytest.mark.xfail(reason="This currently doesn't work: need to commit the table explicitly with snap_only=True. "
+                          "PG DROP triggers are database-specific (we'd have to write a stored procedure that records "
+                          "the name/schema that has been dropped since last commit and then use that at commit time "
+                          "to see what should be recorded as SNAPs.")
+def test_drop_recreate_produces_snap(pg_repo_local):
+    # Drops both tables and creates them with the same schema -- check we detect that.
+    pg_repo_local.run_sql(PG_DATA)
+
+    # Check there are only SNAPs, no DIFFs.
+    table = pg_repo_local.head.get_table('fruits')
+    assert table.get_object('DIFF') is None
+    assert table.get_object('SNAP') is not None
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
