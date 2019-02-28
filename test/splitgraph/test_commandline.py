@@ -3,7 +3,6 @@ import subprocess
 from decimal import Decimal
 
 import pytest
-
 from splitgraph import ResultShape
 from splitgraph.commandline import *
 from splitgraph.commandline._common import image_spec_parser
@@ -82,7 +81,7 @@ def test_commandline_basics(pg_repo_local, mg_repo_local):
     check_diff([pg_repo_local])
 
     # sgr commit (with an extra snapshot
-    result = runner.invoke(commit_c, [str(pg_repo_local), '-m', 'Test commit', '-s'])
+    result = runner.invoke(commit_c, [str(pg_repo_local), '-m', 'Test commit', '--snap=INCLUDE'])
     assert result.exit_code == 0
     new_head = pg_repo_local.head
     assert new_head != old_head

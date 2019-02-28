@@ -6,10 +6,10 @@ import sys
 from collections import defaultdict
 
 import click
-
 from splitgraph import SplitGraphException
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.repository import Repository
+
 from ._common import image_spec_parser
 
 
@@ -55,11 +55,13 @@ def checkout_c(image_spec, force, uncheckout, layered):
 
 @click.command(name='commit')
 @click.argument('repository', type=Repository.from_schema)
-@click.option('-s', '--include-snap', default=False, is_flag=True,
-              help='Include the full table snapshots. This consumes more space, '
-                   'but makes checkouts faster.')
+@click.option('-s', '--snap', default='NONE', type=click.Choice(['NONE', 'INCLUDE', 'ONLY']),
+              help='NONE: only store the tables as DIFFs (delta compressed).\n'
+                   'INCLUDE: store the tables as DIFFs and SNAPs (full table snapshot). This consumes more space, '
+                   'but makes checkouts faster. \n'
+                   'ONLY: Only store the tables as SNAPs.')
 @click.option('-m', '--message', help='Optional commit message')
-def commit_c(repository, include_snap, message):
+def commit_c(repository, snap, message):
     """
     Commit changes to a checked-out Splitgraph repository.
 
@@ -67,7 +69,7 @@ def commit_c(repository, include_snap, message):
     this will delta compress the changes. For all other tables (or if ``-s`` has been passed), this will
     store them as full table snapshots.
     """
-    new_hash = repository.commit(include_snap=include_snap, comment=message).image_hash
+    new_hash = repository.commit(include_snap=snap == 'INCLUDE', comment=message, snap_only=snap == 'ONLY').image_hash
     print("Committed %s as %s." % (str(repository), new_hash[:12]))
 
 

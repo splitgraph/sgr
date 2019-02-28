@@ -10,9 +10,9 @@ from random import getrandbits
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
-
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.exceptions import SplitGraphException
+
 from ._common import manage_audit_triggers, set_head, manage_audit, select, insert, ensure_metadata_schema, \
     aggregate_changes, merged_diff, slow_diff, prepare_publish_data, gather_sync_metadata
 from .engine import repository_exists, lookup_repository, ResultShape, get_engine
@@ -391,7 +391,7 @@ class Repository:
         self.rm(unregister=False, uncheckout=True)
         self.head.delete_tag('HEAD')
 
-    def commit(self, image_hash=None, include_snap=False, comment=None):
+    def commit(self, image_hash=None, include_snap=False, comment=None, snap_only=False):
         """
         Commits all pending changes to a given repository, creating a new image.
 
@@ -399,6 +399,8 @@ class Repository:
         :param include_snap: If True, also creates a SNAP object with a full copy of the table. This will speed up
             checkouts, but consumes extra space.
         :param comment: Optional comment to add to the commit.
+        :param snap_only: If True, will only create a SNAP for the tables in the image and not DIFFs
+            (ignores `include_snap`).
         :return: The newly created Image object.
         """
 
@@ -414,14 +416,14 @@ class Repository:
             image_hash = "%0.2x" % getrandbits(256)
 
         self.images.add(head.image_hash if head else None, image_hash, comment=comment)
-        self._commit(head, image_hash, include_snap=include_snap)
+        self._commit(head, image_hash, include_snap=include_snap, snap_only=snap_only)
 
         set_head(self, image_hash)
         manage_audit_triggers(self.engine)
         self.engine.commit()
         return self.images.by_hash(image_hash)
 
-    def _commit(self, head, image_hash, include_snap=False):
+    def _commit(self, head, image_hash, include_snap=False, snap_only=False):
         """
         Reads the recorded pending changes to all tables in a given mountpoint, conflates them and possibly stores them
         as new object(s) as follows:
@@ -434,6 +436,7 @@ class Repository:
         :param head: Current HEAD image to base the commit on.
         :param image_hash: Hash of the image to commit changes under.
         :param include_snap: If True, also stores the table as a SNAP.
+        :param snap_only: If True, only stores the table as a SNAP.
         """
         target_schema = self.to_schema()
 
@@ -442,7 +445,7 @@ class Repository:
             table_info = head.get_table(table) if head else None
             # Table already exists at the current HEAD
 
-            if table_info:
+            if table_info and not snap_only:
                 # If there has been a schema change, we currently just snapshot the whole table.
                 # This is obviously wasteful (say if just one column has been added/dropped or we added a PK,
                 # but it's a starting point to support schema changes.
@@ -460,7 +463,7 @@ class Repository:
                         self.objects.register_table(self, table, image_hash, table_info.table_schema, prev_object_id)
 
             # If table created (or we want to store a snap anyway), copy the whole table over as well.
-            if not table_info or include_snap:
+            if not table_info or include_snap or snap_only:
                 self.objects.record_table_as_snap(self, table, image_hash)
 
         # Make sure that all pending changes have been discarded by this point (e.g. if we created just a snapshot for
