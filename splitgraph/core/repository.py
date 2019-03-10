@@ -343,6 +343,9 @@ class Repository:
             return  # make sure we don't fall through after the user is finished
         # See if the table snapshot already exists, otherwise reconstruct it
         table = self.images.by_hash(image_hash).get_table(table_name)
+
+        # TODO TF work this is only used by the diff() code path
+
         object_id = table.get_object('SNAP')
         if object_id is None:
             # Materialize the SNAP into a new object
@@ -416,6 +419,10 @@ class Repository:
             image_hash = "%0.2x" % getrandbits(256)
 
         self.images.add(head.image_hash if head else None, image_hash, comment=comment)
+
+        # TODO TF work: probably disallow tables being stored as both snaps and diffs since it adds
+        # a lot of complexity to the schema (an object can have multiple parents).
+
         self._commit(head, image_hash, include_snap=include_snap, snap_only=snap_only)
 
         set_head(self, image_hash)
@@ -450,6 +457,8 @@ class Repository:
                 # This is obviously wasteful (say if just one column has been added/dropped or we added a PK,
                 # but it's a starting point to support schema changes.
                 if table_info.table_schema != self.engine.get_full_table_schema(self.to_schema(), table):
+                    # TODO TF work: this mostly makes sense, if a table is new, we chunk it up and store as
+                    # multiple objects
                     self.objects.record_table_as_snap(self, table, image_hash)
                     continue
 
@@ -642,6 +651,8 @@ class Repository:
         if any(table_queries) and not foreign_tables:
             # If we want to run some queries against the source repository to create the new tables,
             # we have to materialize it fully.
+
+            # TODO TF work: try to LQ here since then we might download fewer tables
             image.checkout()
 
         # Materialize the actual tables in the target repository and register them.
@@ -659,6 +670,8 @@ class Repository:
                 elif foreign_tables:
                     self.engine.copy_table(source_repository.to_schema(), source_table, SPLITGRAPH_META_SCHEMA,
                                            object_id)
+                # TODO TF work this is where a lot of space wasting will come from; we should probably
+                # also do actual object hashing to avoid duplication for things like SELECT *
 
                 # Might not be necessary if we don't actually want to materialize the snapshot (wastes space).
                 self.objects.register_object(object_id, 'SNAP', namespace=self.namespace,
@@ -669,6 +682,7 @@ class Repository:
                 if do_checkout:
                     self.engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, self.to_schema(), target_table)
             else:
+                # TODO TF work: same here, just link to the same objects
                 table_obj = image.get_table(source_table)
                 for object_id, _ in table_obj.objects:
                     self.objects.register_table(self, target_table, target_hash, table_obj.table_schema, object_id)
@@ -871,6 +885,9 @@ class Repository:
         # Otherwise, check if image_1 is a parent of image_2, then we can merge all the diffs.
         # FIXME: we have to find if there's a path between two _objects_ representing these tables that's made out
         # of DIFFs.
+
+        # TODO TF work: this might become trickier if we can't just emit diffs (changes are lost because
+        # we conflated some things together etc)
         path = find_path(self, image_1.image_hash, (image_2 if image_2 is not None else self.head).image_hash)
         if path is not None:
             result = merged_diff(self, table_name, path, aggregate)

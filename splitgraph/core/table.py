@@ -1,7 +1,6 @@
 import logging
 
 from psycopg2.sql import SQL, Identifier
-
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 
 
@@ -14,6 +13,8 @@ class Table:
         self.image = image
         self.table_name = table_name
         self.table_schema = [tuple(entry) for entry in table_schema]
+
+        # TODO TF work maybe all the index crawling etc goes here
         self.objects = list(set(objects))
 
     def materialize(self, destination, destination_schema=None, lq_server=None):
@@ -37,6 +38,8 @@ class Table:
                                   with_pk_constraints=True)
                 if diffs:
                     logging.info("Applying %d DIFF object(s)..." % len(diffs))
+                    # TODO TF work: not sure if we want to have apply_diff/snap_objects in the engine interface
+                    # if really the fragments all have the same format
                     engine.batch_apply_diff_objects(
                         [(SPLITGRAPH_META_SCHEMA, d) for d in diffs], destination_schema, destination)
         else:

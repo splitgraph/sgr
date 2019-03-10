@@ -1,20 +1,20 @@
 """Functions related to creating, deleting and keeping track of physical Splitgraph objects."""
+import itertools
 import logging
+import math
 from collections import defaultdict
 from contextlib import contextmanager
+from datetime import datetime as dt, timedelta
 from random import getrandbits
 
-import itertools
-import math
-from datetime import datetime as dt, timedelta
 from psycopg2 import IntegrityError
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
-
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.engine import ResultShape, switch_engine
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.external_objects import get_external_object_handler
+
 from ._common import META_TABLES, select, insert, pretty_size
 
 
@@ -64,6 +64,12 @@ class ObjectManager:
         # downloading them).
         self.eviction_floor = float(CONFIG['SG_EVICTION_FLOOR']) * 1024 * 1024
 
+        # TODO TF work
+        # * we might keep this (but create temporary SNAPs based on quals in a single table --
+        #   we can have the last chunk of a table that's queried often stored as a SNAP and other ones
+        #   as SNAP + DIFFs)
+        # * or remove this
+
         # If we had to return a given DIFF more than or equal to `cache_misses_for_snap` times in the last
         # `cache_misses_lookback` seconds, the resolver creates a SNAP from the diff chain and returns
         # that instead. This is to replace layered querying with direct SNAP queries for popular tables.
@@ -71,6 +77,7 @@ class ObjectManager:
         self.cache_misses_for_snap = int(CONFIG['SG_SNAP_CACHE_MISSES'])
         self.cache_misses_lookback = int(CONFIG['SG_SNAP_CACHE_LOOKBACK'])
 
+    # TODO TF work this is only used in eviction and might need to be changed a lot.
     def get_full_object_tree(self):
         """Returns a dictionary (object_id -> [list of parents], SNAP/DIFF, size) with the full object tree
         in the engine"""
@@ -86,6 +93,7 @@ class ObjectManager:
 
         return result
 
+    # TODO TF work probably index the object here as well (get its min/max values)
     def register_object(self, object_id, object_format, namespace, parent_object=None):
         """
         Registers a Splitgraph object in the object tree
@@ -207,6 +215,13 @@ class ObjectManager:
             insert("tables", ("namespace", "repository", "image_hash", "table_name", "table_schema", "object_id")),
             (repository.namespace, repository.repository, image, table, Json(schema), object_id))
 
+    # TODO TF work
+    # * Most of the changes will be here
+    # * Add looking for the chunk boundaries and splitting the diff up
+    # * Add testing whether too many rows have been overwritten (unlinking the DIFF chain and creating a new SNAP)
+    # * Add conflating lots of small fragments together?
+    # * Convert the audit log changes into fragments (we probably disallow updates since they're difficult
+    #   to query)
     def record_table_as_diff(self, old_table, image_hash):
         """
         Flushes the pending changes from the audit table for a given table and records them,
@@ -243,6 +258,7 @@ class ObjectManager:
                 self.register_table(old_table.repository, old_table.table_name, image_hash,
                                     old_table.table_schema, prev_object_id)
 
+    # TODO TF work: chunk the table up and index the chunks.
     def record_table_as_snap(self, repository, table_name, image_hash):
         """
         Copies the full table verbatim into a new Splitgraph SNAP object, registering the new object.
@@ -264,6 +280,7 @@ class ObjectManager:
         table_schema = self.object_engine.get_full_table_schema(repository.to_schema(), table_name)
         self.register_table(repository, table_name, image_hash, table_schema, object_id)
 
+    # TODO TF work this probably stays
     def extract_recursive_object_meta(self, remote, table_meta):
         """Recursively crawl the a remote object manager in order to fetch all objects
         required to materialize tables specified in `table_meta` that don't yet exist on the local engine."""
@@ -295,6 +312,11 @@ class ObjectManager:
                                              return_shape=ResultShape.MANY_ONE)
         return set(parents)
 
+    # TODO a lot of pain here is because a single table can be stored both as a DIFF and as a SNAP
+    # even disregarding the SNAP cache; with fragments we'll have to pass a Multicorn-like qual object but it will
+    # let us filter down to very few pertinent fragments
+    # We'll probably still have to crawl down a DIFF chain unless we want to reenumerate all the chunks every
+    # version of a table consists of.
     def _get_image_object_path(self, table):
         """
         Calculates a list of objects SNAP, DIFF, ... , DIFF that are used to reconstruct a table.
@@ -433,6 +455,8 @@ class ObjectManager:
         self.object_engine.run_sql("SET LOCAL synchronous_commit TO OFF")
         tracer = Tracer()
 
+        # TODO TF work: returns multiple chunk groups (snaps/diffs) depending on how precise
+        # the quals are
         snap, diffs = self._get_image_object_path(table)
         required_objects = diffs + [snap]
 
@@ -526,6 +550,9 @@ class ObjectManager:
 
     def _create_and_register_temporary_snap(self, snap, diffs):
         # Maybe here we should give longer DIFF chains priority somehow?
+
+        # TODO TF work: this is partially the rechunking code (melding diffs back into snaps) but on the
+        # read side, not the write side. We might keep this (SNAP table regions that are queried often).
 
         # There's a race condition: we check if a temporary SNAP exists for a chain in the beginning,
         # when we resolve objects -- but then can spend some time downloading objects. Whilst we are doing that,
