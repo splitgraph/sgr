@@ -2,11 +2,10 @@
 Common internal functions used by Splitgraph commands.
 """
 import logging
-
 import re
 from functools import wraps
-from psycopg2.sql import Identifier, SQL
 
+from psycopg2.sql import Identifier, SQL
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphException
@@ -145,6 +144,12 @@ def _create_metadata_schema(engine):
     # One object can have multiple parents (e.g. 1 SNAP and 1 DIFF).
     # The size is the on-disk (in-database) size occupied by the object table as reported by the engine
     # (not the size stored externally)
+
+    # TODO TF work
+    # * Add the index here (min/max values for every column
+    # * Decide whether to have parents (base fragments don't overlap and have no parent;
+    #   other fragments overwrite parts of the base fragment but don't reach outside its boundaries)
+
     engine.run_sql(SQL("""CREATE TABLE {}.{} (
                     object_id  VARCHAR NOT NULL,
                     namespace  VARCHAR NOT NULL,
@@ -173,6 +178,8 @@ def _create_metadata_schema(engine):
                    .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status"),
                            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")), return_shape=None)
 
+    # TODO TF work this might not be needed at all
+
     # Temporary SNAP cache to speed up layered querying: maps a DIFF object to a precomputed SNAP
     # resulting from the traversal and materialization of that DIFF chain.
     engine.run_sql(SQL("""CREATE TABLE {}.{} (
@@ -189,6 +196,9 @@ def _create_metadata_schema(engine):
                    .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("snap_cache_misses")), return_shape=None)
     engine.run_sql(SQL("CREATE INDEX idx_splitgraph_meta_snap_cache_misses_diff_id ON {}.{} (diff_id)")
                    .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("snap_cache_misses")))
+
+    # TODO TF work
+    # Link a table to a list of objects (either all objects or the final non-base ones in a given fragment
 
     # Maps a given table at a given point in time to an "object ID" (either a full snapshot or a
     # delta to a previous table).

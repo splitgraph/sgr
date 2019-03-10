@@ -10,7 +10,6 @@ import psycopg2
 from psycopg2 import DatabaseError
 from psycopg2.extras import execute_batch, Json
 from psycopg2.sql import SQL, Identifier
-
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.core._common import select
 from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
@@ -271,7 +270,8 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
     def _generate_diff_application(source_schema, source_table, target_schema, target_table,
                                    ri_data):
         ri_cols, non_ri_cols, non_ri_types = ri_data
-
+        # TODO TF work: this might become much easier since every object is a list of upserts and deletes
+        # (no need to apply updates)
         # Generate deletions
         result = SQL("DELETE FROM {0}.{2} USING {1}.{3} WHERE {1}.{3}.sg_action_kind = 1").format(
             Identifier(target_schema), Identifier(source_schema), Identifier(target_table),

@@ -5,11 +5,11 @@ from collections import namedtuple
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
-
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.mount_handlers import init_fdw
+
 from ._common import set_tag, select, manage_audit, set_head
 from .table import Table
 
@@ -62,6 +62,9 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
         :param table_name: Name of the table
         :return: Table object or None
         """
+
+        # TODO TF work: list of objects (fragments) here
+
         objects = self.engine.run_sql(SQL("""SELECT {0}.tables.object_id, format FROM {0}.tables JOIN {0}.objects
                                               ON {0}.objects.object_id = {0}.tables.object_id
                                               WHERE {0}.tables.namespace = %s AND repository = %s AND image_hash = %s

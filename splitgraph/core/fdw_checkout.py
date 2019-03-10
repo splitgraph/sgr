@@ -94,6 +94,13 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         qual_sql, qual_vals = self._quals_to_postgres(quals)
         log_to_postgres("quals: %r" % (quals,), _PG_LOGLEVEL)
 
+        # TODO TF work:
+        # * LQ is easier with fragments: we use the object manager and pass it the quals
+        #   to filter which fragments we're interested in;
+        # * if only one fragment, then query it directly;
+        # * otherwise, upsert them onto each other filtering down (no need for another pass
+        #   to handle updates)
+
         with self.object_manager.ensure_objects(self.table) as (snap, diffs):
             log_to_postgres("Using SNAP %s, DIFFs %r to satisfy the query" % (snap, diffs), _PG_LOGLEVEL)
             if not diffs:
