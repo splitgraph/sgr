@@ -68,9 +68,8 @@ def test_object_cache_loading(local_engine_empty, pg_repo_remote):
     assert object_tree[fruit_snap] == ([], 'SNAP', 8192)
 
     # Resolve and download the old version: only one SNAP should be downloaded.
-    with object_manager.ensure_objects(fruits_v2) as (snap, diffs):
-        assert snap == fruit_snap
-        assert diffs == []
+    with object_manager.ensure_objects(fruits_v2) as required_objects:
+        assert required_objects == [fruit_snap]
 
         assert _get_refcount(object_manager, fruit_snap) == 1
         # fruit_diff not in the cache at all
@@ -82,9 +81,8 @@ def test_object_cache_loading(local_engine_empty, pg_repo_remote):
     assert len(object_manager.get_downloaded_objects()) == 1
 
     # Resolve and download the new version: will download the DIFF.
-    with object_manager.ensure_objects(fruits_v3) as (snap, diffs):
-        assert snap == fruit_snap
-        assert diffs == [fruit_diff]
+    with object_manager.ensure_objects(fruits_v3) as required_objects:
+        assert required_objects == [fruit_snap, fruit_diff]
 
         assert _get_refcount(object_manager, fruit_snap) == 1
         assert _get_refcount(object_manager, fruit_diff) == 1
@@ -115,14 +113,13 @@ def test_object_cache_eviction(local_engine_empty, pg_repo_remote):
     # Pretend that the cache has no space and try getting a different table
     # Free space is now 0, so we need to run eviction.
     object_manager.cache_size = 8192 * 2
-    with object_manager.ensure_objects(vegetables_v2) as (snap, diffs):
+    with object_manager.ensure_objects(vegetables_v2) as required_objects:
         current_objects = object_manager.get_downloaded_objects()
         assert len(current_objects) == 1
         assert fruit_snap not in current_objects
         assert fruit_diff not in current_objects
         assert vegetables_snap in current_objects
-        assert vegetables_snap == snap
-        assert diffs == []
+        assert required_objects == [vegetables_snap]
         assert object_manager.object_engine.table_exists(SPLITGRAPH_META_SCHEMA, vegetables_snap)
 
     assert _get_refcount(object_manager, vegetables_snap) == 0
@@ -261,16 +258,16 @@ def test_object_cache_snaps(local_engine_empty, pg_repo_remote):
 
     # First, ask the cache 4 times for a resolution (expect DIFF chain).
     for i in range(4):
-        with object_manager.ensure_objects(fruits_v3) as (snap, diffs):
+        with object_manager.ensure_objects(fruits_v3) as required_objects:
             assert object_manager._recent_snap_cache_misses(
                 fruit_diff, dt.utcnow() - timedelta(seconds=object_manager.cache_misses_lookback)) == i + 1
-            assert snap == fruit_snap
-            assert diffs == [fruit_diff]
+            assert required_objects == [fruit_snap, fruit_diff]
 
     # This time, the cache should give us a brand new SNAP.
-    with object_manager.ensure_objects(fruits_v3) as (tmp_snap, diffs):
+    with object_manager.ensure_objects(fruits_v3) as required_objects:
+        tmp_snap = required_objects[0]
         assert tmp_snap != fruit_snap
-        assert diffs == []
+        assert len(required_objects) == 1
         assert tmp_snap in object_manager.get_downloaded_objects()
         # The cache now contains the new SNAP, mapped to the fruits_v3's DIFF chain; the snap has the size 8192.
         assert object_manager._get_snap_cache() == {tmp_snap: (fruit_diff, 8192)}
@@ -281,9 +278,10 @@ def test_object_cache_snaps(local_engine_empty, pg_repo_remote):
         assert _get_refcount(object_manager, fruit_snap) == 0
 
     # Check that if we ask for a chain again, the same cached SNAP is returned.
-    with object_manager.ensure_objects(fruits_v3) as (snap, diffs):
-        assert snap == tmp_snap
-        assert diffs == []
+    with object_manager.ensure_objects(fruits_v3) as required_objects:
+        tmp_snap = required_objects[0]
+        assert tmp_snap != fruit_snap
+        assert len(required_objects) == 1
         assert len(object_manager.get_downloaded_objects()) == 3
 
         # Make sure the cache hasn't changed.
@@ -316,15 +314,15 @@ def test_object_cache_snaps_eviction(local_engine_empty, pg_repo_remote):
     object_manager.cache_size = 8192 * 2
 
     # No download (cache occupancy only calculated at download time), so the old object still stays
-    with object_manager.ensure_objects(fruits_v3) as (snap, diffs):
+    with object_manager.ensure_objects(fruits_v3) as required_objects:
         assert len(object_manager.get_downloaded_objects()) == 3
-        assert snap != fruit_snap
+        assert required_objects[0] != fruit_snap
 
     # Now, load vegetables_v2 (only results in 1 object, the original SNAP, being downloaded).
-    with object_manager.ensure_objects(vegetables_v2) as (snap, diffs):
+    with object_manager.ensure_objects(vegetables_v2) as required_objects:
         # Since the cached SNAP was slightly more recently used, the original fruit SNAP and DIFF will be evicted
         # instead.
-        assert snap == vegetables_snap
+        assert required_objects[0] == vegetables_snap
         downloaded_objects = object_manager.get_downloaded_objects()
         assert fruit_snap not in downloaded_objects
         assert fruit_diff not in downloaded_objects
@@ -394,34 +392,33 @@ def test_object_cache_snaps_longer_chain(local_engine_empty, pg_repo_remote):
 
     # First, test hitting the previous version (SNAP -> DIFF)
     for i in range(4):
-        with object_manager.ensure_objects(fruits_v3) as (snap, diffs):
-            assert snap == fruit_snap
-            assert diffs == [fruit_diff]
-    with object_manager.ensure_objects(fruits_v3) as (tmp_snap, diffs):
+        with object_manager.ensure_objects(fruits_v3) as required_objects:
+            assert required_objects == [fruit_snap, fruit_diff]
+    with object_manager.ensure_objects(fruits_v3) as required_objects:
+        tmp_snap = required_objects[0]
         assert tmp_snap != fruit_snap
-        assert diffs == []
+        assert len(required_objects) == 1
         assert _get_refcount(object_manager, tmp_snap) == 1
         assert _get_refcount(object_manager, fruit_diff) == 0
         assert _get_refcount(object_manager, fruit_snap) == 0
         assert object_manager._get_snap_cache() == {tmp_snap: (fruit_diff, 8192)}
 
     # Check the temporary snap is used in the resolution (even when it's not being created).
-    with object_manager.ensure_objects(fruits_v3) as (snap, diffs):
-        assert snap == tmp_snap
-        assert diffs == []
+    with object_manager.ensure_objects(fruits_v3) as required_objects:
+        assert required_objects == [tmp_snap]
 
     # Now test requesting the next version -- for the first 4 requests it should still return a DIFF
     # chain, but based on the cached SNAP (since then we only have 1 DIFF to apply instead of 2)
     for i in range(4):
-        with object_manager.ensure_objects(fruits_v4) as (snap, diffs):
-            assert snap == tmp_snap
-            assert diffs == [fruit_diff_2]
+        with object_manager.ensure_objects(fruits_v4) as required_objects:
+            assert required_objects == [tmp_snap, fruit_diff_2]
 
     # At this point the SNAP should be cached.
-    with object_manager.ensure_objects(fruits_v4) as (tmp_snap_2, diffs):
+    with object_manager.ensure_objects(fruits_v4) as required_objects:
+        tmp_snap_2 = required_objects[0]
         assert tmp_snap_2 != fruit_snap
         assert tmp_snap_2 != fruit_diff
-        assert diffs == []
+        assert len(required_objects) == 1
         assert _get_refcount(object_manager, tmp_snap_2) == 1
         assert _get_refcount(object_manager, tmp_snap) == 0
         assert _get_refcount(object_manager, fruit_diff) == 0
@@ -434,25 +431,23 @@ def test_object_cache_snaps_longer_chain(local_engine_empty, pg_repo_remote):
         assert len(object_manager.get_downloaded_objects()) == 5  # Original SNAP, 2 DIFFs and 2 derived SNAPs.
 
     # Test again this all still works after the cache has been populated
-    with object_manager.ensure_objects(fruits_v3) as (snap, diffs):
-        assert snap == tmp_snap
-        assert diffs == []
-    with object_manager.ensure_objects(fruits_v4) as (snap, diffs):
-        assert snap == tmp_snap_2
-        assert diffs == []
+    with object_manager.ensure_objects(fruits_v3) as required_objects:
+        assert required_objects == [tmp_snap]
+    with object_manager.ensure_objects(fruits_v4) as required_objects:
+        assert required_objects == [tmp_snap_2]
 
     # Test eviction as well -- make sure to get the original version of vegetables with just the SNAP
     # (the third image from the top).
     # Cache has space for 3 objects and since the 2 derived SNAPs were most recently used, they get to stay.
     object_manager.cache_size = 8192 * 3
     vegetables_v2 = pg_repo_local.images['latest'].get_log()[2].get_table('vegetables')
-    with object_manager.ensure_objects(vegetables_v2) as (snap, diffs):
-        assert diffs == []
+    with object_manager.ensure_objects(vegetables_v2) as required_objects:
+        assert len(required_objects) == 1
         downloaded_objects = object_manager.get_downloaded_objects()
         assert len(downloaded_objects) == 3
         assert tmp_snap in downloaded_objects
         assert tmp_snap_2 in downloaded_objects
-        assert snap in downloaded_objects
+        assert required_objects[0] in downloaded_objects
 
 
 def test_object_cache_resolution_with_snaps(pg_repo_local):
@@ -465,10 +460,11 @@ def test_object_cache_resolution_with_snaps(pg_repo_local):
     pg_repo_local.run_sql("INSERT INTO fruits VALUES (6, 'ketchup')")
     img_3 = pg_repo_local.commit()
 
-    with pg_repo_local.objects.ensure_objects(pg_repo_local.images['latest'].get_table('fruits')) as (snap, diffs):
-        assert diffs == [img_2.get_table('fruits').get_object('DIFF'),
-                         img_3.get_table('fruits').get_object('DIFF')]
-        assert snap == img_1.get_table('fruits').get_object('SNAP')
+    with pg_repo_local.objects.ensure_objects(pg_repo_local.images['latest'].get_table('fruits')) as required_objects:
+        assert required_objects == [
+            img_1.get_table('fruits').get_object('SNAP'),
+            img_2.get_table('fruits').get_object('DIFF'),
+            img_3.get_table('fruits').get_object('DIFF')]
 
 
 def test_object_manager_index_clause_generation(pg_repo_local):

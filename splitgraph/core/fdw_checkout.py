@@ -62,7 +62,7 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         There's no point in applying the quals since Postgres doesn't trust the FDW and will reapply them
         once again"""
         cur = self.engine.connection.cursor('sg_layered_query_cursor')
-        query = SQL("SELECT ") + SQL(','.join('{}' for _ in columns)).format(*[Identifier(c) for c in columns]) \
+        query = SQL("SELECT ") + SQL(',').join(Identifier(c) for c in columns) \
                 + SQL(" FROM {}.{}").format(Identifier(schema),
                                             Identifier(table))
         log_to_postgres("SELECT FROM STAGING: " + query.as_string(self.engine.connection), _PG_LOGLEVEL)
@@ -95,32 +95,17 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
 
         # TODO TF work: filtering based on quals when we have the index
 
-        with self.object_manager.ensure_objects(self.table) as (snap, diffs):
-            log_to_postgres("Using SNAP %s, DIFFs %r to satisfy the query" % (snap, diffs), _PG_LOGLEVEL)
-            if not diffs:
-                # If we only have the SNAP, we can just send SELECTs directly to it.
-                return self._run_select_from_staging(SPLITGRAPH_META_SCHEMA, snap, columns, drop_table=False)
+        with self.object_manager.ensure_objects(self.table) as required_objects:
+            log_to_postgres("Using fragments %r to satisfy the query" % (required_objects,), _PG_LOGLEVEL)
+            if len(required_objects) == 1:
+                # If one object has our answer, we can send queries directly to it
+                return self._run_select_from_staging(SPLITGRAPH_META_SCHEMA, required_objects[0], columns,
+                                                     drop_table=False)
 
             # Accumulate the query result in a temporary table.
-            staging_table = self._create_staging_table(snap)
+            staging_table = self._create_staging_table(required_objects[0])
 
-            ri_cols, _ = zip(*self.engine.get_change_key(SPLITGRAPH_META_SCHEMA, snap))
-            all_cols = self.engine.get_column_names(SPLITGRAPH_META_SCHEMA, snap)
-            all_cols_sql = SQL(','.join('{}' for _ in all_cols)).format(*[Identifier(c) for c in all_cols])
-
-            # 1) Add all rows from the SNAP satisfying the query
-            query = SQL("INSERT INTO {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(staging_table))
-            query += SQL(" (") + all_cols_sql + SQL(")")
-            query += SQL(" (SELECT ") + all_cols_sql
-            query += SQL(" FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(snap))
-            if quals:
-                query += SQL(" WHERE ") + qual_sql
-            query += SQL(")")
-            log_to_postgres(query.as_string(self.engine.connection), _PG_LOGLEVEL)
-            self.engine.run_sql(query, qual_vals)
-
-            # 2) Apply the diffs to the partially materialized table, making sure to discard rows that don't match
-            #    the qualifiers any more
+            # 2) Apply the fragments to the staging area, discarding rows that don't match the qualifiers any more.
             if quals:
                 discard_query = SQL("DELETE FROM {}.{} WHERE ").format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                                        Identifier(staging_table)) \
@@ -133,13 +118,13 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
                 #                                      run_after_every=discard_query,
                 #                                      run_after_every_args=qual_vals,
                 #                                      ignore_cols=['sg_meta_keep_pk'])
-                for diff in diffs:
-                    self.engine.apply_fragment(SPLITGRAPH_META_SCHEMA, diff, SPLITGRAPH_META_SCHEMA, staging_table)
+                for fragment in required_objects:
+                    self.engine.apply_fragment(SPLITGRAPH_META_SCHEMA, fragment, SPLITGRAPH_META_SCHEMA, staging_table)
                     self.engine.run_sql(discard_query, qual_vals)
 
             else:
-                for diff in diffs:
-                    self.engine.apply_fragment(SPLITGRAPH_META_SCHEMA, diff, SPLITGRAPH_META_SCHEMA, staging_table)
+                for fragment in required_objects:
+                    self.engine.apply_fragment(SPLITGRAPH_META_SCHEMA, fragment, SPLITGRAPH_META_SCHEMA, staging_table)
                 # self.engine.batch_apply_diff_objects([(SPLITGRAPH_META_SCHEMA, o) for o in diffs],
                 #                                      SPLITGRAPH_META_SCHEMA, staging_table,
                 #                                      ignore_cols=['sg_meta_keep_pk'])
