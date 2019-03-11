@@ -6,7 +6,6 @@ import logging
 from psycopg2.sql import Identifier, SQL
 from splitgraph import SPLITGRAPH_META_SCHEMA, Repository, get_engine
 from splitgraph.core.object_manager import get_random_object_id, ObjectManager
-from splitgraph.engine.postgres.engine import _generate_where_clause
 
 try:
     from multicorn import ForeignDataWrapper, ANY, ALL
@@ -94,12 +93,7 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         qual_sql, qual_vals = self._quals_to_postgres(quals)
         log_to_postgres("quals: %r" % (quals,), _PG_LOGLEVEL)
 
-        # TODO TF work:
-        # * LQ is easier with fragments: we use the object manager and pass it the quals
-        #   to filter which fragments we're interested in;
-        # * if only one fragment, then query it directly;
-        # * otherwise, upsert them onto each other filtering down (no need for another pass
-        #   to handle updates)
+        # TODO TF work: filtering based on quals when we have the index
 
         with self.object_manager.ensure_objects(self.table) as (snap, diffs):
             log_to_postgres("Using SNAP %s, DIFFs %r to satisfy the query" % (snap, diffs), _PG_LOGLEVEL)
@@ -110,64 +104,45 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
             # Accumulate the query result in a temporary table.
             staging_table = self._create_staging_table(snap)
 
-            # 1) First, insert all rows in the SNAP where the PK will be updated, marking them as sg_meta_keep_pk=True
-            #    (meaning we won't check them against the qualifiers until the very end).
             ri_cols, _ = zip(*self.engine.get_change_key(SPLITGRAPH_META_SCHEMA, snap))
             all_cols = self.engine.get_column_names(SPLITGRAPH_META_SCHEMA, snap)
             all_cols_sql = SQL(','.join('{}' for _ in all_cols)).format(*[Identifier(c) for c in all_cols])
 
-            # Faster route here: if all quals only touch the PK, we don't need to hold on to tuples that will
-            # eventually get updated (to see if they start satisfying the qualifiers again) since UPDATEs
-            # can't change PK by definition.
-            pk_only_quals = all(q.field_name in ri_cols for q in quals)
-
-            if not pk_only_quals:
-                for object_id in diffs:
-                    query = SQL("INSERT INTO {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                            Identifier(staging_table))
-                    query += SQL(" (") + all_cols_sql + SQL(",sg_meta_keep_pk)")
-                    # SELECT <snap_id>.col1, <snap_id>.col2, TRUE FROM <snap_id> join <object_id> on [pk_cols]
-                    query += SQL(" (SELECT ") + SQL(','.join('{}.{}' for _ in all_cols)).format(
-                        *[f for c in all_cols for f in (Identifier(snap), Identifier(c))]) \
-                             + SQL(",TRUE")
-                    query += SQL(" FROM {0}.{1} JOIN {0}.{2} ON ").format(
-                        Identifier(SPLITGRAPH_META_SCHEMA), Identifier(snap), Identifier(object_id))
-                    query += _generate_where_clause(schema=SPLITGRAPH_META_SCHEMA, table=snap, cols=ri_cols,
-                                                    table_2=object_id, schema_2=SPLITGRAPH_META_SCHEMA)
-                    query += SQL(" WHERE {}.sg_action_kind=2) ON CONFLICT DO NOTHING").format(Identifier(object_id))
-                    log_to_postgres(query.as_string(self.engine.connection), _PG_LOGLEVEL)
-                    self.engine.run_sql(query)
-
-            # 2) Add all rows from the SNAP satisfying the query (if they already exist in staging, skip them).
-            #    This time, set sg_meta_keep_pk to False (if they stop satisfying the qualifiers, they will be deleted).
+            # 1) Add all rows from the SNAP satisfying the query
             query = SQL("INSERT INTO {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(staging_table))
-            query += SQL(" (") + all_cols_sql + SQL(",sg_meta_keep_pk)")
-            query += SQL(" (SELECT ") + all_cols_sql + SQL(",FALSE")
+            query += SQL(" (") + all_cols_sql + SQL(")")
+            query += SQL(" (SELECT ") + all_cols_sql
             query += SQL(" FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(snap))
             if quals:
                 query += SQL(" WHERE ") + qual_sql
-            query += SQL(") ON CONFLICT DO NOTHING")
+            query += SQL(")")
             log_to_postgres(query.as_string(self.engine.connection), _PG_LOGLEVEL)
             self.engine.run_sql(query, qual_vals)
 
-            # 3) Apply the diffs to the partially materialized table, making sure to discard rows that don't match
+            # 2) Apply the diffs to the partially materialized table, making sure to discard rows that don't match
             #    the qualifiers any more
             if quals:
                 discard_query = SQL("DELETE FROM {}.{} WHERE ").format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                                        Identifier(staging_table)) \
-                                + SQL("sg_meta_keep_pk = FALSE AND NOT (") + qual_sql + SQL(")")
+                                + SQL("NOT (") + qual_sql + SQL(")")
 
                 # For the final diff, we don't need to apply any quals to the staging table since Postgres doesn't trust
                 # us and will apply them/do projections anyway.
-                self.engine.batch_apply_diff_objects([(SPLITGRAPH_META_SCHEMA, o) for o in diffs],
-                                                     SPLITGRAPH_META_SCHEMA, staging_table,
-                                                     run_after_every=discard_query,
-                                                     run_after_every_args=qual_vals,
-                                                     ignore_cols=['sg_meta_keep_pk'])
+                # self.engine.batch_apply_diff_objects([(SPLITGRAPH_META_SCHEMA, o) for o in diffs],
+                #                                      SPLITGRAPH_META_SCHEMA, staging_table,
+                #                                      run_after_every=discard_query,
+                #                                      run_after_every_args=qual_vals,
+                #                                      ignore_cols=['sg_meta_keep_pk'])
+                for diff in diffs:
+                    self.engine.apply_fragment(SPLITGRAPH_META_SCHEMA, diff, SPLITGRAPH_META_SCHEMA, staging_table)
+                    self.engine.run_sql(discard_query, qual_vals)
+
             else:
-                self.engine.batch_apply_diff_objects([(SPLITGRAPH_META_SCHEMA, o) for o in diffs],
-                                                     SPLITGRAPH_META_SCHEMA, staging_table,
-                                                     ignore_cols=['sg_meta_keep_pk'])
+                for diff in diffs:
+                    self.engine.apply_fragment(SPLITGRAPH_META_SCHEMA, diff, SPLITGRAPH_META_SCHEMA, staging_table)
+                # self.engine.batch_apply_diff_objects([(SPLITGRAPH_META_SCHEMA, o) for o in diffs],
+                #                                      SPLITGRAPH_META_SCHEMA, staging_table,
+                #                                      ignore_cols=['sg_meta_keep_pk'])
         return self._run_select_from_staging(SPLITGRAPH_META_SCHEMA, staging_table, columns,
                                              drop_table=True)
 
@@ -176,8 +151,6 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         log_to_postgres("Using staging table %s" % staging_table, _PG_LOGLEVEL)
         self.engine.run_sql(SQL("CREATE TABLE {0}.{1} AS SELECT * FROM {0}.{2} LIMIT 1 WITH NO DATA").format(
             Identifier(SPLITGRAPH_META_SCHEMA), Identifier(staging_table), Identifier(snap)))
-        self.engine.run_sql(SQL("ALTER TABLE {}.{} ADD COLUMN sg_meta_keep_pk BOOLEAN DEFAULT TRUE").format(
-            Identifier(SPLITGRAPH_META_SCHEMA), Identifier(staging_table)))
         pks = self.engine.get_primary_keys(SPLITGRAPH_META_SCHEMA, snap)
         if pks:
             self.engine.run_sql(SQL("ALTER TABLE {}.{} ADD PRIMARY KEY (").format(
