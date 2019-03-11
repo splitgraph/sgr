@@ -4,7 +4,8 @@ import logging
 import math
 from collections import defaultdict
 from contextlib import contextmanager
-from datetime import datetime as dt, timedelta
+from datetime import datetime as dt, timedelta, date
+from decimal import Decimal
 from random import getrandbits
 
 from psycopg2 import IntegrityError
@@ -12,10 +13,37 @@ from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.engine import ResultShape, switch_engine
+from splitgraph.engine.postgres.engine import SG_UD_FLAG
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.external_objects import get_external_object_handler
 
 from ._common import META_TABLES, select, insert, pretty_size
+
+# PG types we can run max/min on
+_PG_INDEXABLE_TYPES = [
+    "bigint",
+    "bigserial",
+    "bit",
+    "character",
+    "character varying",
+    "cidr",
+    "date",
+    "double precision",
+    "inet",
+    "integer",
+    "money",
+    "numeric",
+    "real",
+    "smallint",
+    "smallserial",
+    "serial",
+    "text",
+    "time",
+    "time without time zone",
+    "time with time zone",
+    "timestamp",
+    "timestamp without time zone",
+    "timestamp with time zone"]
 
 
 class Tracer:
@@ -93,10 +121,36 @@ class ObjectManager:
 
         return result
 
-    # TODO TF work probably index the object here as well (get its min/max values)
+    @staticmethod
+    def _coerce_decimal(val):
+        # Some values can't be stored in json so we turn them into strings
+        if isinstance(val, Decimal):
+            return str(val)
+        if isinstance(val, date):
+            return val.isoformat()
+        return val
+
+    def _generate_object_index(self, object_id):
+        """
+        Queries the max/min values of a given fragment for each column, used to speed up querying.
+
+        :param object_id: ID of an object
+        :return: Dict of {column_name: (min_val, max_val)}
+        """
+        # Maybe we should pass the column names in instead?
+        column_names = [c[1] for c in self.object_engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, object_id)
+                        if c[1] != SG_UD_FLAG and c[2] in _PG_INDEXABLE_TYPES]
+
+        query = SQL("SELECT ") + SQL(",").join(SQL("MIN({0}), MAX({0})").format(Identifier(c)) for c in column_names)
+        query += SQL(" FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id))
+        result = self.object_engine.run_sql(query, return_shape=ResultShape.ONE_MANY)
+
+        return {col: (self._coerce_decimal(cmin), self._coerce_decimal(cmax)) for col, cmin, cmax in
+                zip(column_names, result[0::2], result[1::2])}
+
     def register_object(self, object_id, object_format, namespace, parent_object=None):
         """
-        Registers a Splitgraph object in the object tree
+        Registers a Splitgraph object in the object tree and indexes it
 
         :param object_id: Object ID
         :param object_format: Format (SNAP or DIFF)
@@ -110,20 +164,23 @@ class ObjectManager:
             raise ValueError("SNAP objects can't have a parent!")
 
         object_size = self.object_engine.get_table_size(SPLITGRAPH_META_SCHEMA, object_id)
-        self.object_engine.run_sql(insert("objects", ("object_id", "format", "parent_id", "namespace", "size")),
-                                   (object_id, object_format, parent_object, namespace, object_size))
+        object_index = self._generate_object_index(object_id)
+        self.object_engine.run_sql(
+            insert("objects", ("object_id", "format", "parent_id", "namespace", "size", "index")),
+            (object_id, object_format, parent_object, namespace, object_size, object_index))
 
     def register_objects(self, object_meta, namespace=None):
         """
         Registers multiple Splitgraph objects in the tree. See `register_object` for more information.
 
-        :param object_meta: List of (object_id, format, parent_id, namespace, size).
+        :param object_meta: List of (object_id, format, parent_id, namespace, size, index).
         :param namespace: If specified, overrides the original object namespace, required
             in the case where the remote repository has a different namespace than the local one.
         """
         if namespace:
-            object_meta = [(o, f, p, namespace, s) for o, f, p, _, s in object_meta]
-        self.object_engine.run_sql_batch(insert("objects", ("object_id", "format", "parent_id", "namespace", "size")),
+            object_meta = [(o, f, p, namespace, s, i) for o, f, p, _, s, i in object_meta]
+        self.object_engine.run_sql_batch(
+            insert("objects", ("object_id", "format", "parent_id", "namespace", "size", "index")),
                                          object_meta)
 
     def register_tables(self, repository, table_meta):
@@ -194,9 +251,9 @@ class ObjectManager:
         Get metadata for multiple Splitgraph objects from the tree
 
         :param objects: List of objects to get metadata for.
-        :return: List of (object_id, format, parent_id, namespace, size).
+        :return: List of (object_id, format, parent_id, namespace, size, index).
         """
-        return self.object_engine.run_sql(select("objects", "object_id, format, parent_id, namespace, size",
+        return self.object_engine.run_sql(select("objects", "object_id, format, parent_id, namespace, size, index",
                                                  "object_id IN (" + ','.join('%s' for _ in objects) + ")"), objects)
 
     def register_table(self, repository, table, image, schema, object_id):
@@ -782,7 +839,7 @@ class ObjectManager:
         # Expand that since each object might have a parent it depends on.
         if primary_objects:
             while True:
-                new_parents = set(parent_id for _, _, parent_id, _, _ in self.get_object_meta(list(primary_objects))
+                new_parents = set(parent_id for _, _, parent_id, _, _, _ in self.get_object_meta(list(primary_objects))
                                   if parent_id not in primary_objects and parent_id is not None)
                 if not new_parents:
                     break
