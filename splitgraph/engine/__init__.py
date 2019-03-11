@@ -10,7 +10,6 @@ from contextlib import contextmanager
 from enum import Enum
 
 from psycopg2.sql import SQL, Identifier
-
 from splitgraph.config import CONFIG, PG_HOST, PG_PORT, PG_USER, PG_PWD, PG_DB
 
 
@@ -224,9 +223,14 @@ class SQLEngine:
                            AND table_name = %s
                            ORDER BY ordinal_position""", (schema, table_name))
 
+        def _convert_type(ctype):
+            # We don't keep a lot of type information, so e.g. char(5) gets turned into char
+            # which defaults into char(1).
+            return ctype if ctype != 'character' else 'varchar'
+
         # Do we need to make sure the PK has the same type + ordinal position here?
         pks = [pk for pk, _ in self.get_primary_keys(schema, table_name)]
-        return [(o, n, dt, (n in pks)) for o, n, dt in results]
+        return [(o, n, _convert_type(dt), (n in pks)) for o, n, dt in results]
 
     def initialize(self):
         """Does any required initialization of the engine"""

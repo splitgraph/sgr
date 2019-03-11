@@ -22,6 +22,7 @@ _PACKAGE = 'splitgraph'
 ROW_TRIGGER_NAME = "audit_trigger_row"
 STM_TRIGGER_NAME = "audit_trigger_stm"
 REMOTE_TMP_SCHEMA = "tmp_remote_data"
+SG_UD_FLAG = 'sg_ud_flag'
 
 
 class PsycopgEngine(SQLEngine):
@@ -242,6 +243,107 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                 SQL("VALUES (" + ','.join(itertools.repeat('%s', len(changeset[0]))) + ")")
 
         self.run_sql_batch(query, changeset)
+
+    def store_fragment(self, inserted, deleted, schema, table, source_schema, source_table):
+        # Add the upserted-deleted flag
+        # Deletes are tricky: we store the full value here because we're assuming they
+        # mostly don't happen and if they do, we will soon replace this fragment with a
+        # new one that doesn't have those rows at all.
+
+        schema_spec = self.get_full_table_schema(source_schema, source_table)
+        # Assuming the schema_spec has the whole tuple as PK if the table has no PK.
+        if all(not c[3] for c in schema_spec):
+            schema_spec = [(c[0], c[1], c[2], True) for c in schema_spec]
+        ri_cols = [c[1] for c in schema_spec if c[3]]
+        ri_types = [c[2] for c in schema_spec if c[3]]
+        non_ri_cols = [c[1] for c in schema_spec if not c[3]]
+        all_cols = ri_cols + non_ri_cols
+        self.create_table(schema, table, schema_spec=[(0, SG_UD_FLAG, 'boolean', False)] + schema_spec)
+
+        # Store upserts
+        # INSERT INTO target_table (sg_ud_flag, col1, col2...)
+        #   (SELECT true, t.col1, t.col2, ...
+        #    FROM VALUES ((pk1_1, pk1_2), (pk2_1, pk2_2)...)) v JOIN source_table t
+        #    ON v.pk1 = t.pk1::pk1_type AND v.pk2::pk2_type = t.pk2...
+        #    -- the cast is required since the audit trigger gives us strings for values of updated columns
+        #    -- and we're intending to join those with the PKs in the original table.
+        if inserted:
+            if non_ri_cols:
+                query = SQL("INSERT INTO {}.{} (").format(Identifier(schema), Identifier(table)) + \
+                        SQL(",").join(Identifier(c) for c in [SG_UD_FLAG] + all_cols) + SQL(")") + \
+                        SQL("(SELECT %s, ") + SQL(",").join(SQL("t.") + Identifier(c) for c in all_cols) + \
+                        SQL(" FROM (VALUES " +
+                            ','.join(
+                                itertools.repeat("(" + ','.join(itertools.repeat('%s', len(inserted[0]))) + ")",
+                                                 len(inserted)))
+                            + ")") + \
+                        SQL(" AS v (") + SQL(",").join(Identifier(c) for c in ri_cols) + SQL(")") + \
+                        SQL("JOIN {}.{} t").format(Identifier(source_schema), Identifier(source_table)) + \
+                        SQL(" ON ") + SQL(" AND ").join(SQL("t.{0} = v.{0}::%s" % r)
+                                                        .format(Identifier(c)) for c, r in zip(ri_cols, ri_types)) \
+                        + SQL(")")
+                # Flatten the args
+                args = [True] + [p for pk in inserted for p in pk]
+            else:
+                # If the whole tuple is the PK, there's no point joining on the actual source table
+                query = SQL("INSERT INTO {}.{} (").format(Identifier(schema), Identifier(table)) + \
+                        SQL(",").join(Identifier(c) for c in [SG_UD_FLAG] + ri_cols) + SQL(")") + \
+                        SQL("VALUES " +
+                            ','.join(
+                                itertools.repeat("(" + ','.join(itertools.repeat('%s', len(inserted[0]) + 1)) + ")",
+                                                 len(inserted))))
+                args = [p for pk in inserted for p in [True] + list(pk)]
+            self.run_sql(query, args)
+
+        # Store the deletes
+        # we don't actually have the old values here so we put NULLs but we probably waste space anyway
+        if deleted:
+            query = SQL("INSERT INTO {}.{} (").format(Identifier(schema), Identifier(table)) + \
+                    SQL(",").join(Identifier(c) for c in [SG_UD_FLAG] + ri_cols) + SQL(")") + \
+                    SQL("VALUES " +
+                        ','.join(itertools.repeat("(" + ','.join(itertools.repeat('%s', len(deleted[0]) + 1)) + ")",
+                                                  len(deleted))))
+            args = [p for pk in deleted for p in [False] + list(pk)]
+            self.run_sql(query, args)
+
+    def apply_fragment(self, source_schema, source_table, target_schema, target_table):
+        schema_spec = self.get_full_table_schema(target_schema, target_table)
+        # Assuming the schema_spec has the whole tuple as PK if the table has no PK.
+        if all(not c[3] for c in schema_spec):
+            schema_spec = [(c[0], c[1], c[2], True) for c in schema_spec]
+
+        ri_cols = [c[1] for c in schema_spec if c[3]]
+        non_ri_cols = [c[1] for c in schema_spec if not c[3]]
+        all_cols = ri_cols + non_ri_cols
+
+        # Apply upserts
+        # INSERT INTO target_table (col1, col2...)
+        #   (SELECT col1, col2, ...
+        #    FROM fragment_table WHERE sg_ud_flag = true)
+        #    ON CONFLICT (pks) DO UPDATE SET col1 = excluded.col1...
+        query = SQL("INSERT INTO {}.{} (").format(Identifier(target_schema), Identifier(target_table)) + \
+                SQL(",").join(Identifier(c) for c in all_cols) + SQL(")") + \
+                SQL("(SELECT ") + SQL(",").join(Identifier(c) for c in all_cols) + \
+                SQL(" FROM {}.{}").format(Identifier(source_schema), Identifier(source_table)) + \
+                SQL(" WHERE {} = true)").format(Identifier(SG_UD_FLAG))
+        if non_ri_cols:
+            query += SQL(" ON CONFLICT (") + SQL(',').join(map(Identifier, ri_cols)) + SQL(")")
+            if len(non_ri_cols) > 1:
+                query += SQL(" DO UPDATE SET (") + SQL(',').join(map(Identifier, non_ri_cols)) + SQL(") = (") \
+                         + SQL(',').join([SQL("EXCLUDED.") + Identifier(c) for c in non_ri_cols]) + SQL(")")
+            else:
+                # otherwise, we get a "source for a multiple-column UPDATE item must be a sub-SELECT or ROW()
+                # expression" error from pg.
+                query += SQL(" DO UPDATE SET {0} = EXCLUDED.{0}").format(Identifier(non_ri_cols[0]))
+        self.run_sql(query)
+
+        # Apply deletes
+        query = SQL("DELETE FROM {0}.{2} USING {1}.{3} WHERE {1}.{3}.{4} = false").format(
+            Identifier(target_schema), Identifier(source_schema), Identifier(target_table),
+            Identifier(source_table), Identifier(SG_UD_FLAG)) \
+                + SQL(" AND ") + _generate_where_clause(target_schema, target_table, ri_cols,
+                                                        source_table, source_schema)
+        self.run_sql(query)
 
     def batch_apply_diff_objects(self, objects, target_schema, target_table, run_after_every=None,
                                  run_after_every_args=None, ignore_cols=None):
