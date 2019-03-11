@@ -15,8 +15,8 @@ def test_diff_head(pg_repo_local):
                       ((1, 'apple'), 1, None)]
 
 
-@pytest.mark.parametrize("include_snap", [True, False])
-def test_commit_diff(include_snap, pg_repo_local):
+@pytest.mark.parametrize("snap_only", [True, False])
+def test_commit_diff(snap_only, pg_repo_local):
     assert (pg_repo_local.to_schema(), 'fruits') in pg_repo_local.engine.get_tracked_tables()
 
     pg_repo_local.run_sql("""INSERT INTO fruits VALUES (3, 'mayonnaise');
@@ -24,7 +24,7 @@ def test_commit_diff(include_snap, pg_repo_local):
         UPDATE fruits SET name = 'guitar' WHERE fruit_id = 2""")
 
     head = pg_repo_local.head.image_hash
-    new_head = pg_repo_local.commit(include_snap=include_snap, comment="test commit")
+    new_head = pg_repo_local.commit(snap_only=snap_only, comment="test commit")
 
     # After commit, we should be switched to the new commit hash and there should be no differences.
     assert pg_repo_local.head == new_head
@@ -34,7 +34,7 @@ def test_commit_diff(include_snap, pg_repo_local):
     table = pg_repo_local.head.get_table('fruits')
     assert table.table_schema == [(1, 'fruit_id', 'integer', False), (2, 'name', 'character varying', False)]
 
-    obj = table.get_object('DIFF')
+    obj = table.get_object('SNAP' if snap_only else 'DIFF')
     obj_meta = pg_repo_local.objects.get_object_meta([obj])[0]
     # Check object size has been written
     assert obj_meta[4] > 0
@@ -52,18 +52,6 @@ def test_commit_diff(include_snap, pg_repo_local):
     assert pg_repo_local.diff('vegetables', image_1=head, image_2=new_head) == []
 
 
-def test_commit_snap_only(pg_repo_local):
-    pg_repo_local.run_sql("""INSERT INTO fruits VALUES (3, 'mayonnaise');
-        DELETE FROM fruits WHERE name = 'apple';
-        UPDATE fruits SET name = 'guitar' WHERE fruit_id = 2""")
-    pg_repo_local.commit(snap_only=True, comment="test commit")
-
-    # Test object structure
-    table = pg_repo_local.head.get_table('fruits')
-    assert table.get_object('DIFF') is None
-    assert table.get_object('SNAP') is not None
-
-
 @pytest.mark.xfail(reason="This currently doesn't work: need to commit the table explicitly with snap_only=True. "
                           "PG DROP triggers are database-specific (we'd have to write a stored procedure that records "
                           "the name/schema that has been dropped since last commit and then use that at commit time "
@@ -78,26 +66,26 @@ def test_drop_recreate_produces_snap(pg_repo_local):
     assert table.get_object('SNAP') is not None
 
 
-@pytest.mark.parametrize("include_snap", [True, False])
-def test_commit_diff_remote(include_snap, pg_repo_remote):
+@pytest.mark.parametrize("snap_only", [True, False])
+def test_commit_diff_remote(snap_only, pg_repo_remote):
     # Rerun the previous test against the remote fixture to make sure it works without
     # dependencies on the get_engine()
-    test_commit_diff(include_snap, pg_repo_remote)
+    test_commit_diff(snap_only, pg_repo_remote)
 
 
-@pytest.mark.parametrize("include_snap", [True, False])
-def test_commit_on_empty(include_snap, pg_repo_local):
+@pytest.mark.parametrize("snap_only", [True, False])
+def test_commit_on_empty(snap_only, pg_repo_local):
     OUTPUT.init()
     OUTPUT.run_sql("CREATE TABLE test AS SELECT * FROM \"test/pg_mount\".fruits")
 
     # Make sure the pending changes get flushed anyway if we are only committing a snapshot.
     assert OUTPUT.diff('test', image_1=OUTPUT.head.image_hash, image_2=None) == True
-    OUTPUT.commit(include_snap=include_snap)
+    OUTPUT.commit(snap_only=snap_only)
     assert OUTPUT.diff('test', image_1=OUTPUT.head.image_hash, image_2=None) == []
 
 
-@pytest.mark.parametrize("include_snap", [True, False])
-def test_multiple_mountpoint_commit_diff(include_snap, pg_repo_local, mg_repo_local):
+@pytest.mark.parametrize("snap_only", [True, False])
+def test_multiple_mountpoint_commit_diff(snap_only, pg_repo_local, mg_repo_local):
     pg_repo_local.run_sql("""INSERT INTO fruits VALUES (3, 'mayonnaise');
         DELETE FROM fruits WHERE name = 'apple';
         UPDATE fruits SET name = 'guitar' WHERE fruit_id = 2;""")
@@ -109,7 +97,7 @@ def test_multiple_mountpoint_commit_diff(include_snap, pg_repo_local, mg_repo_lo
 
     head = pg_repo_local.head.image_hash
     mongo_head = mg_repo_local.head
-    new_head = pg_repo_local.commit(include_snap=include_snap)
+    new_head = pg_repo_local.commit(snap_only=snap_only)
 
     change = pg_repo_local.diff('fruits', image_1=head, image_2=new_head)
     assert sorted(change) == [((1, 'apple'), 1, None),
@@ -133,7 +121,7 @@ def test_multiple_mountpoint_commit_diff(include_snap, pg_repo_local, mg_repo_lo
     mg_repo_local.run_sql("UPDATE stuff SET duration = 15 WHERE name = 'James'")
     mg_repo_local.engine.commit()
     assert mg_repo_local.has_pending_changes()
-    new_mongo_head = mg_repo_local.commit(include_snap=include_snap)
+    new_mongo_head = mg_repo_local.commit(snap_only=snap_only)
     assert not mg_repo_local.has_pending_changes()
     assert not pg_repo_local.has_pending_changes()
 
@@ -161,17 +149,17 @@ def test_delete_all_diff(pg_repo_local):
     assert pg_repo_local.diff('fruits', new_head.parent_id, new_head) == expected_diff
 
 
-@pytest.mark.parametrize("include_snap", [True, False])
-def test_diff_across_far_commits(include_snap, pg_repo_local):
+@pytest.mark.parametrize("snap_only", [True, False])
+def test_diff_across_far_commits(snap_only, pg_repo_local):
     head = pg_repo_local.head.image_hash
     pg_repo_local.run_sql("INSERT INTO fruits VALUES (3, 'mayonnaise')")
-    pg_repo_local.commit(include_snap=include_snap)
+    pg_repo_local.commit(snap_only=snap_only)
 
     pg_repo_local.run_sql("DELETE FROM fruits WHERE name = 'apple'")
-    pg_repo_local.commit(include_snap=include_snap)
+    pg_repo_local.commit(snap_only=snap_only)
 
     pg_repo_local.run_sql("UPDATE fruits SET name = 'guitar' WHERE fruit_id = 2")
-    new_head = pg_repo_local.commit(include_snap=include_snap)
+    new_head = pg_repo_local.commit(snap_only=snap_only)
 
     change = pg_repo_local.diff('fruits', head, new_head)
     assert change == \
@@ -183,18 +171,18 @@ def test_diff_across_far_commits(include_snap, pg_repo_local):
     assert change_agg == (2, 2, 0)
 
 
-@pytest.mark.parametrize("include_snap", [True, False])
-def test_non_ordered_inserts(include_snap, pg_repo_local):
+@pytest.mark.parametrize("snap_only", [True, False])
+def test_non_ordered_inserts(snap_only, pg_repo_local):
     head = pg_repo_local.head.image_hash
     pg_repo_local.run_sql("INSERT INTO fruits (name, fruit_id) VALUES ('mayonnaise', 3)")
-    new_head = pg_repo_local.commit(include_snap=include_snap)
+    new_head = pg_repo_local.commit(snap_only=snap_only)
 
     change = pg_repo_local.diff('fruits', head, new_head)
     assert change == [((3, 'mayonnaise'), 0, {})]
 
 
-@pytest.mark.parametrize("include_snap", [True, False])
-def test_non_ordered_inserts_with_pk(include_snap, local_engine_empty):
+@pytest.mark.parametrize("snap_only", [True, False])
+def test_non_ordered_inserts_with_pk(snap_only, local_engine_empty):
     OUTPUT.init()
     OUTPUT.run_sql("""CREATE TABLE test
         (a int, 
@@ -204,7 +192,7 @@ def test_non_ordered_inserts_with_pk(include_snap, local_engine_empty):
     head = OUTPUT.commit()
 
     OUTPUT.run_sql("INSERT INTO test (a, d, b, c) VALUES (1, 'four', 2, 3)")
-    new_head = OUTPUT.commit(include_snap=include_snap)
+    new_head = OUTPUT.commit(snap_only=snap_only)
     head.checkout()
     new_head.checkout()
     assert OUTPUT.run_sql("SELECT * FROM test") == [(1, 2, 3, 'four')]
@@ -213,8 +201,8 @@ def test_non_ordered_inserts_with_pk(include_snap, local_engine_empty):
     assert change[0] == ((1, 2, 3, 'four'), 0, {})
 
 
-@pytest.mark.parametrize("include_snap", [True, False])
-def test_various_types(include_snap, local_engine_empty):
+@pytest.mark.parametrize("snap_only", [True, False])
+def test_various_types(snap_only, local_engine_empty):
     # Schema/data copied from the wal2json tests
     OUTPUT.init()
     OUTPUT.run_sql("""CREATE TABLE test
@@ -241,7 +229,7 @@ def test_various_types(include_snap, local_engine_empty):
         VALUES(1, 2, 3, 3.54, 876.563452345, 1.23, 'test', 'testtesttesttest', 'testtesttesttesttesttesttest',
         B'001110010101010', '2013-11-02 17:30:52', '2013-02-04', true, '{ "a": 123 }',
         'Old Old Parr'::tsvector);""")
-    new_head = OUTPUT.commit(include_snap=include_snap)
+    new_head = OUTPUT.commit(snap_only=snap_only)
     head.checkout()
     new_head.checkout()
     assert OUTPUT.run_sql("SELECT * FROM test") \

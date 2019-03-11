@@ -55,11 +55,8 @@ def checkout_c(image_spec, force, uncheckout, layered):
 
 @click.command(name='commit')
 @click.argument('repository', type=Repository.from_schema)
-@click.option('-s', '--snap', default='NONE', type=click.Choice(['NONE', 'INCLUDE', 'ONLY']),
-              help='NONE: only store the tables as DIFFs (delta compressed).\n'
-                   'INCLUDE: store the tables as DIFFs and SNAPs (full table snapshot). This consumes more space, '
-                   'but makes checkouts faster. \n'
-                   'ONLY: Only store the tables as SNAPs.')
+@click.option('-s', '--snap', default=False, is_flag=True,
+              help='Store the table as a full table snapshot. This consumes more space, but makes checkouts faster.')
 @click.option('-m', '--message', help='Optional commit message')
 def commit_c(repository, snap, message):
     """
@@ -69,7 +66,7 @@ def commit_c(repository, snap, message):
     this will delta compress the changes. For all other tables (or if ``-s`` has been passed), this will
     store them as full table snapshots.
     """
-    new_hash = repository.commit(include_snap=snap == 'INCLUDE', comment=message, snap_only=snap == 'ONLY').image_hash
+    new_hash = repository.commit(comment=message, snap_only=snap).image_hash
     print("Committed %s as %s." % (str(repository), new_hash[:12]))
 
 
