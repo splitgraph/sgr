@@ -617,7 +617,7 @@ class ObjectManager:
         try:
             # Release the lock and yield to the caller.
             self.object_engine.commit()
-            yield snap, list(reversed(diffs))
+            yield [snap] + list(reversed(diffs))
         finally:
             # Decrease the refcounts on the objects. Optionally, evict them.
             # If the caller crashes, we should still hit this and decrease the refcounts, but if the whole program

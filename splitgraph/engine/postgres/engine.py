@@ -316,6 +316,8 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         non_ri_cols = [c[1] for c in schema_spec if not c[3]]
         all_cols = ri_cols + non_ri_cols
 
+        # Check if the fragment we're applying has any deletes
+        has_ud_flag = any(c[1] == SG_UD_FLAG for c in self.get_full_table_schema(source_schema, source_table))
         # Apply upserts
         # INSERT INTO target_table (col1, col2...)
         #   (SELECT col1, col2, ...
@@ -324,8 +326,11 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         query = SQL("INSERT INTO {}.{} (").format(Identifier(target_schema), Identifier(target_table)) + \
                 SQL(",").join(Identifier(c) for c in all_cols) + SQL(")") + \
                 SQL("(SELECT ") + SQL(",").join(Identifier(c) for c in all_cols) + \
-                SQL(" FROM {}.{}").format(Identifier(source_schema), Identifier(source_table)) + \
-                SQL(" WHERE {} = true)").format(Identifier(SG_UD_FLAG))
+                SQL(" FROM {}.{}").format(Identifier(source_schema), Identifier(source_table))
+        if has_ud_flag:
+            query += SQL(" WHERE {} = true)").format(Identifier(SG_UD_FLAG))
+        else:
+            query += SQL(")")
         if non_ri_cols:
             query += SQL(" ON CONFLICT (") + SQL(',').join(map(Identifier, ri_cols)) + SQL(")")
             if len(non_ri_cols) > 1:
@@ -338,11 +343,12 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         self.run_sql(query)
 
         # Apply deletes
-        query = SQL("DELETE FROM {0}.{2} USING {1}.{3} WHERE {1}.{3}.{4} = false").format(
-            Identifier(target_schema), Identifier(source_schema), Identifier(target_table),
-            Identifier(source_table), Identifier(SG_UD_FLAG)) \
-                + SQL(" AND ") + _generate_where_clause(target_schema, target_table, ri_cols,
-                                                        source_table, source_schema)
+        if has_ud_flag:
+            query = SQL("DELETE FROM {0}.{2} USING {1}.{3} WHERE {1}.{3}.{4} = false").format(
+                Identifier(target_schema), Identifier(source_schema), Identifier(target_table),
+                Identifier(source_table), Identifier(SG_UD_FLAG)) \
+                    + SQL(" AND ") + _generate_where_clause(target_schema, target_table, ri_cols,
+                                                            source_table, source_schema)
         self.run_sql(query)
 
     def batch_apply_diff_objects(self, objects, target_schema, target_table, run_after_every=None,

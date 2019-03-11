@@ -33,14 +33,14 @@ class Table:
 
         if not lq_server:
             # Copy the given snap id over to "staging" and apply the DIFFS
-            with object_manager.ensure_objects(self) as (snap, diffs):
-                engine.copy_table(SPLITGRAPH_META_SCHEMA, snap, destination_schema, destination,
+            with object_manager.ensure_objects(self) as required_objects:
+                engine.copy_table(SPLITGRAPH_META_SCHEMA, required_objects[0], destination_schema, destination,
                                   with_pk_constraints=True)
-                if diffs:
-                    logging.info("Applying %d DIFF object(s)..." % len(diffs))
+                if len(required_objects) > 1:
+                    logging.info("Applying %d DIFF object(s)..." % (len(required_objects) - 1))
                     # TODO TF work: not sure if we want to have apply_diff/snap_objects in the engine interface
                     # if really the fragments all have the same format
-                    for diff in diffs:
+                    for diff in required_objects[1:]:
                         engine.apply_fragment(SPLITGRAPH_META_SCHEMA, diff, destination_schema, destination)
         else:
             query = SQL("CREATE FOREIGN TABLE {}.{} (") \
