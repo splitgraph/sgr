@@ -14,7 +14,7 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.exceptions import SplitGraphException
 
 from ._common import manage_audit_triggers, set_head, manage_audit, select, insert, ensure_metadata_schema, \
-    aggregate_changes, merged_diff, slow_diff, prepare_publish_data, gather_sync_metadata
+    aggregate_changes, slow_diff, prepare_publish_data, gather_sync_metadata
 from .engine import repository_exists, lookup_repository, ResultShape, get_engine
 from .image import Image, IMAGE_COLS
 from .object_manager import ObjectManager, get_random_object_id
@@ -882,27 +882,7 @@ class Repository:
                     set(image_2.get_table(table_name).objects):
                 return [] if not aggregate else (0, 0, 0)
 
-        # Otherwise, check if image_1 is a parent of image_2, then we can merge all the diffs.
-        # FIXME: we have to find if there's a path between two _objects_ representing these tables that's made out
-        # of DIFFs.
-
-        # TODO TF work: this might become trickier if we can't just emit diffs (changes are lost because
-        # we conflated some things together etc)
-        path = find_path(self, image_1.image_hash, (image_2 if image_2 is not None else self.head).image_hash)
-        if path is not None:
-            result = merged_diff(self, table_name, path, aggregate)
-            if result is None:
-                return slow_diff(self, table_name, _hash(image_1), _hash(image_2), aggregate)
-
-            # If snap_2 is staging, also include all changes that have happened since the last commit.
-            if image_2 is None:
-                changes = self.engine.get_pending_changes(self.to_schema(), table_name, aggregate=aggregate)
-                if aggregate:
-                    return aggregate_changes(changes, result)
-                result.extend(changes)
-            return result
-
-        # Finally, resort to manual diffing (images on different branches or reverse comparison order).
+        # We used to merge DIFF objects here but they don't exist (:(((()
         return slow_diff(self, table_name, _hash(image_1), _hash(image_2), aggregate)
 
 

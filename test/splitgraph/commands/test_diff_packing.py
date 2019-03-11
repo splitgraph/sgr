@@ -28,7 +28,7 @@ CASES = [
         # Insert + update changed into a single insert (same pk, different value)
         ("""INSERT INTO fruits VALUES (3, 'mayonnaise');
             UPDATE fruits SET name = 'mustard' WHERE fruit_id = 3""",
-         [((3,), 0, {'name': 'mustard'})]),
+         [((3, 'mustard'), 0, {})]),
         # Insert + update + delete did nothing
         ("""INSERT INTO fruits VALUES (4, 'kumquat');
             UPDATE fruits SET name = 'mustard' WHERE fruit_id = 4;
@@ -37,13 +37,12 @@ CASES = [
         # delete + reinsert same
         ("""DELETE FROM fruits WHERE fruit_id = 1;
             INSERT INTO fruits VALUES (1, 'apple')""",
-         # Currently the packer isn't aware that we rewrote the same value
-         [((1,), 2, {'name': 'apple'})]),
+         []),
         # Two updates
         ("""UPDATE fruits SET name = 'pineapple' WHERE fruit_id = 1;
             UPDATE fruits SET name = 'apple' WHERE fruit_id = 1""",
          # Same here
-         [((1,), 2, {'name': 'apple'})]),
+         []),
     ],
     [
         # Test a table with 2 PKs and 2 non-PK columns
@@ -62,8 +61,8 @@ CASES = [
         ("""UPDATE fruits SET pk2 = 2, col1 = 'val3' WHERE pk1 = 1""",
          # Since we delete one PK and insert another one, we need to reinsert the
          # full row (as opposed to just the values that were updated).
-         [((1, 1), 1, None),
-          ((1, 2), 0, {'col1': 'val3', 'col2': 'val2'})]),
+         [((1, 1, 'val1', 'val2'), 1, None),
+          ((1, 2, 'val3', 'val2'), 0, {})]),
     ],
     [
         # Same as previous, but without PKs

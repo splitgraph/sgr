@@ -40,8 +40,8 @@ class Table:
                     logging.info("Applying %d DIFF object(s)..." % len(diffs))
                     # TODO TF work: not sure if we want to have apply_diff/snap_objects in the engine interface
                     # if really the fragments all have the same format
-                    engine.batch_apply_diff_objects(
-                        [(SPLITGRAPH_META_SCHEMA, d) for d in diffs], destination_schema, destination)
+                    for diff in diffs:
+                        engine.apply_fragment(SPLITGRAPH_META_SCHEMA, diff, destination_schema, destination)
         else:
             query = SQL("CREATE FOREIGN TABLE {}.{} (") \
                 .format(Identifier(destination_schema), Identifier(self.table_name))

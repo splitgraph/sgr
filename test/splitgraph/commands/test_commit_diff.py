@@ -112,10 +112,10 @@ def test_multiple_mountpoint_commit_diff(include_snap, pg_repo_local, mg_repo_lo
     new_head = pg_repo_local.commit(include_snap=include_snap)
 
     change = pg_repo_local.diff('fruits', image_1=head, image_2=new_head)
-    assert change == [((1, 'apple'), 1, None),
-                      ((2, 'guitar'), 0, {}),
-                      ((2, 'orange'), 1, None),
-                      ((3, 'mayonnaise'), 0, {})]
+    assert sorted(change) == [((1, 'apple'), 1, None),
+                              ((2, 'guitar'), 0, {}),
+                              ((2, 'orange'), 1, None),
+                              ((3, 'mayonnaise'), 0, {})]
 
     # PG has no pending changes, Mongo does
     assert mg_repo_local.head == mongo_head
@@ -174,12 +174,11 @@ def test_diff_across_far_commits(include_snap, pg_repo_local):
     new_head = pg_repo_local.commit(include_snap=include_snap)
 
     change = pg_repo_local.diff('fruits', head, new_head)
-    assert change == [((3, 'mayonnaise'), 0, {}),
-                      ((1, 'apple'), 1, None),
-                      # The update is turned into an insert+delete since the PK has changed.
-                      # Diff sorts it so that the insert comes first, but we'll be applying all deletes first anyway.
-                      ((2, 'guitar'), 0, {}),
-                      ((2, 'orange'), 1, None)]
+    assert change == \
+           [((1, 'apple'), 1, None),
+            ((2, 'orange'), 1, None),
+            ((3, 'mayonnaise'), 0, {}),
+            ((2, 'guitar'), 0, {})]
     change_agg = pg_repo_local.diff('fruits', head, new_head, aggregate=True)
     assert change_agg == (2, 2, 0)
 
@@ -211,9 +210,7 @@ def test_non_ordered_inserts_with_pk(include_snap, local_engine_empty):
     assert OUTPUT.run_sql("SELECT * FROM test") == [(1, 2, 3, 'four')]
     change = OUTPUT.diff('test', head, new_head)
     assert len(change) == 1
-    assert change[0][0] == (1,)
-    assert change[0][1] == 0
-    assert change[0][2] == {'b': 2, 'c': 3, 'd': 'four'}
+    assert change[0] == ((1, 2, 3, 'four'), 0, {})
 
 
 @pytest.mark.parametrize("include_snap", [True, False])
@@ -295,10 +292,12 @@ def test_diff_staging_aggregation(pg_repo_local):
     pg_repo_local.commit()
     pg_repo_local.run_sql("UPDATE fruits SET name = 'mustard' WHERE fruit_id = 2")
 
-    assert pg_repo_local.diff("fruits", old_head, None, aggregate=True) == (0, 0, 2)
-    assert pg_repo_local.diff("fruits", old_head, None, aggregate=False) == [
-        ((1,), 2, {'name': 'pineapple'}),
-        ((2,), 2, {'name': 'mustard'})]
+    assert pg_repo_local.diff("fruits", old_head, None, aggregate=True) == (2, 2, 0)
+    assert pg_repo_local.diff("fruits", old_head, None, aggregate=False) == \
+           [((1, 'apple'), 1, None),
+            ((2, 'orange'), 1, None),
+            ((1, 'pineapple'), 0, {}),
+            ((2, 'mustard'), 0, {})]
 
 
 def test_diff_schema_change(pg_repo_local):

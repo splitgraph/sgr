@@ -233,18 +233,28 @@ class ObjectManager:
         object_id = get_random_object_id()
         engine = self.object_engine
         # Accumulate the diff in-memory. This might become a bottleneck in the future.
-        changeset = {}
-        for action, row_data, changed_fields in engine.get_pending_changes(old_table.repository.to_schema(),
-                                                                           old_table.table_name):
-            _conflate_changes(changeset, [(action, row_data, changed_fields)])
-        engine.discard_pending_changes(old_table.repository.to_schema(), old_table.table_name)
-        changeset = [tuple(list(pk) + [kind_data[0], Json(kind_data[1])]) for pk, kind_data in
-                     changeset.items()]
 
+        # Only care about PKs that have been upserted / deleted
+        # so we can get them and then run an insert select from
+        # but there's still the conflation problem (delete + update on same PK is still an upsert;
+        # make sure there aren't PK-changing updates (otherwise those are supposed to be a separate
+        # delete + update))
+
+        changeset = {}
+        for row_data, action, changed_fields in engine.get_pending_changes(old_table.repository.to_schema(),
+                                                                           old_table.table_name):
+            _conflate_changes(changeset, [(row_data, action, changed_fields)])
+        engine.discard_pending_changes(old_table.repository.to_schema(), old_table.table_name)
+
+        # This can be simplified: we don't need to load the whole changeset and conflate it just
+        # to find out which rows need to be copied over into the new object.
         if changeset:
-            engine.store_diff_object(changeset, SPLITGRAPH_META_SCHEMA, object_id,
-                                     change_key=engine.get_change_key(old_table.repository.to_schema(),
-                                                                      old_table.table_name))
+            upserted = [pk for pk, change in changeset.items() if change[0] in (0, 2)]
+            deleted = [pk for pk, change in changeset.items() if change[0] == 1]
+
+            engine.store_fragment(upserted, deleted, SPLITGRAPH_META_SCHEMA, object_id,
+                                  old_table.repository.to_schema(),
+                                  old_table.table_name)
             for parent_id, _ in old_table.objects:
                 self.register_object(
                     object_id, object_format='DIFF', namespace=old_table.repository.namespace, parent_object=parent_id)
@@ -575,8 +585,11 @@ class ObjectManager:
             self.object_engine.copy_table(SPLITGRAPH_META_SCHEMA, snap, SPLITGRAPH_META_SCHEMA, new_snap_id,
                                           with_pk_constraints=True)
             logging.info("Applying %d DIFF object(s)..." % len(diffs))
-            self.object_engine.batch_apply_diff_objects([(SPLITGRAPH_META_SCHEMA, d) for d in reversed(diffs)],
-                                                        SPLITGRAPH_META_SCHEMA, new_snap_id)
+            # self.object_engine.batch_apply_diff_objects([(SPLITGRAPH_META_SCHEMA, d) for d in reversed(diffs)],
+            #                                             SPLITGRAPH_META_SCHEMA, new_snap_id)
+
+            for diff in diffs:
+                self.object_engine.apply_fragment(SPLITGRAPH_META_SCHEMA, diff, SPLITGRAPH_META_SCHEMA, new_snap_id)
             # We've created the SNAP -- now we need to record its size (can't do it straightaway because
             # we use the INSERT statement to claim a lock).
             size = self.object_engine.get_table_size(SPLITGRAPH_META_SCHEMA, new_snap_id)
@@ -905,7 +918,6 @@ def _conflate_changes(changeset, new_changes):
             elif change_kind == 2:  # Update over insert/update: merge the two changes.
                 if old_change[0] == 0 or old_change[0] == 2:
                     old_change[1].update(change_data)
-                    # changeset[change_pk] = (old_change[0], new_data)
 
 
 def get_random_object_id():
