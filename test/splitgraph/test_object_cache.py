@@ -1,6 +1,6 @@
-import pytest
 from datetime import datetime as dt, timedelta
 
+import pytest
 from splitgraph.core import clone, select, ResultShape, SPLITGRAPH_META_SCHEMA
 from splitgraph.exceptions import SplitGraphException
 from test.splitgraph.commands.test_layered_querying import prepare_lq_repo
@@ -19,7 +19,7 @@ def _get_last_used(object_manager, object_id):
 def _setup_object_cache_test(pg_repo_remote, longer_chain=False):
     pg_repo_local = clone(pg_repo_remote)
     pg_repo_local.images['latest'].checkout()
-    prepare_lq_repo(pg_repo_local, include_snap=False, commit_after_every=False, include_pk=True)
+    prepare_lq_repo(pg_repo_local, commit_after_every=False, include_pk=True)
     if longer_chain:
         pg_repo_local.run_sql("INSERT INTO FRUITS VALUES (4, 'kumquat')")
         pg_repo_local.commit()
@@ -454,15 +454,14 @@ def test_object_cache_snaps_longer_chain(local_engine_empty, pg_repo_remote):
 
 
 def test_object_cache_resolution_with_snaps(pg_repo_local):
-    # Test that if there's a SNAP in the object's history, it gets chosen by the object
-    # manager instead of the diff chain
+    # Test that if there's a SNAP in the object's history, it gets chosen by the object manager correctly
     pg_repo_local.images['latest'].checkout()
     pg_repo_local.run_sql("INSERT INTO fruits VALUES (4, 'kumquat')")
-    img_1 = pg_repo_local.commit(include_snap=True)
+    img_1 = pg_repo_local.commit(snap_only=True)
     pg_repo_local.run_sql("INSERT INTO fruits VALUES (5, 'zebra')")
-    img_2 = pg_repo_local.commit(include_snap=False)
+    img_2 = pg_repo_local.commit()
     pg_repo_local.run_sql("INSERT INTO fruits VALUES (6, 'ketchup')")
-    img_3 = pg_repo_local.commit(include_snap=False)
+    img_3 = pg_repo_local.commit()
 
     with pg_repo_local.objects.ensure_objects(pg_repo_local.images['latest'].get_table('fruits')) as (snap, diffs):
         assert diffs == [img_2.get_table('fruits').get_object('DIFF'),

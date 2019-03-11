@@ -394,16 +394,13 @@ class Repository:
         self.rm(unregister=False, uncheckout=True)
         self.head.delete_tag('HEAD')
 
-    def commit(self, image_hash=None, include_snap=False, comment=None, snap_only=False):
+    def commit(self, image_hash=None, comment=None, snap_only=False):
         """
         Commits all pending changes to a given repository, creating a new image.
 
         :param image_hash: Hash of the commit. Chosen by random if unspecified.
-        :param include_snap: If True, also creates a SNAP object with a full copy of the table. This will speed up
-            checkouts, but consumes extra space.
         :param comment: Optional comment to add to the commit.
-        :param snap_only: If True, will only create a SNAP for the tables in the image and not DIFFs
-            (ignores `include_snap`).
+        :param snap_only: If True, will store the table as a full snapshot instead of delta compression
         :return: The newly created Image object.
         """
 
@@ -423,14 +420,14 @@ class Repository:
         # TODO TF work: probably disallow tables being stored as both snaps and diffs since it adds
         # a lot of complexity to the schema (an object can have multiple parents).
 
-        self._commit(head, image_hash, include_snap=include_snap, snap_only=snap_only)
+        self._commit(head, image_hash, snap_only=snap_only)
 
         set_head(self, image_hash)
         manage_audit_triggers(self.engine)
         self.engine.commit()
         return self.images.by_hash(image_hash)
 
-    def _commit(self, head, image_hash, include_snap=False, snap_only=False):
+    def _commit(self, head, image_hash, snap_only=False):
         """
         Reads the recorded pending changes to all tables in a given mountpoint, conflates them and possibly stores them
         as new object(s) as follows:
@@ -442,7 +439,6 @@ class Repository:
 
         :param head: Current HEAD image to base the commit on.
         :param image_hash: Hash of the image to commit changes under.
-        :param include_snap: If True, also stores the table as a SNAP.
         :param snap_only: If True, only stores the table as a SNAP.
         """
         target_schema = self.to_schema()
@@ -451,29 +447,26 @@ class Repository:
         for table in self.engine.get_all_tables(target_schema):
             table_info = head.get_table(table) if head else None
             # Table already exists at the current HEAD
-
-            if table_info and not snap_only:
-                # If there has been a schema change, we currently just snapshot the whole table.
-                # This is obviously wasteful (say if just one column has been added/dropped or we added a PK,
-                # but it's a starting point to support schema changes.
-                if table_info.table_schema != self.engine.get_full_table_schema(self.to_schema(), table):
-                    # TODO TF work: this mostly makes sense, if a table is new, we chunk it up and store as
-                    # multiple objects
-                    self.objects.record_table_as_snap(self, table, image_hash)
-                    continue
-
-                if table in changed_tables:
-                    self.objects.record_table_as_diff(table_info, image_hash)
-                else:
-                    # If the table wasn't changed, point the commit to the old table objects (including
-                    # any of snaps or diffs).
-                    # This feels slightly weird: are we denormalized here?
-                    for prev_object_id, _ in table_info.objects:
-                        self.objects.register_table(self, table, image_hash, table_info.table_schema, prev_object_id)
-
-            # If table created (or we want to store a snap anyway), copy the whole table over as well.
-            if not table_info or include_snap or snap_only:
+            if not table_info or snap_only:
                 self.objects.record_table_as_snap(self, table, image_hash)
+                continue
+
+            # If there has been a schema change, we currently just snapshot the whole table.
+            # This is obviously wasteful (say if just one column has been added/dropped or we added a PK,
+            # but it's a starting point to support schema changes.
+            if table_info.table_schema != self.engine.get_full_table_schema(self.to_schema(), table):
+                # TODO TF work: this mostly makes sense, if a table is new, we chunk it up and store as
+                # multiple objects
+                self.objects.record_table_as_snap(self, table, image_hash)
+                continue
+
+            if table in changed_tables:
+                self.objects.record_table_as_diff(table_info, image_hash)
+                continue
+
+            # If the table wasn't changed, point the image to the old table
+            for prev_object_id, _ in table_info.objects:
+                self.objects.register_table(self, table, image_hash, table_info.table_schema, prev_object_id)
 
         # Make sure that all pending changes have been discarded by this point (e.g. if we created just a snapshot for
         # some tables and didn't consume the audit log).

@@ -74,6 +74,8 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
                                        self.image_hash, table_name))
         if not objects:
             return None
+        # Currently, disallow more than 1 object (table stored as a SNAP or a DIFF).
+        assert len(objects) == 1
         table_schema = self.engine.run_sql(SQL("SELECT table_schema FROM {}.tables WHERE namespace = %s "
                                                "AND repository = %s AND image_hash = %s AND table_name = %s")
                                            .format(Identifier(SPLITGRAPH_META_SCHEMA)),

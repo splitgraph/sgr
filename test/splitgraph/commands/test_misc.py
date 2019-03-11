@@ -3,16 +3,16 @@ import pytest
 from splitgraph import SplitGraphException
 
 
-@pytest.mark.parametrize("include_snap", [True, False])
-def test_log_checkout(include_snap, pg_repo_local):
+@pytest.mark.parametrize("snap_only", [True, False])
+def test_log_checkout(snap_only, pg_repo_local):
     pg_repo_local.run_sql("INSERT INTO fruits VALUES (3, 'mayonnaise')")
 
     head = pg_repo_local.head
-    head_1 = pg_repo_local.commit(include_snap=include_snap)
+    head_1 = pg_repo_local.commit(snap_only=snap_only)
 
     pg_repo_local.run_sql("DELETE FROM fruits WHERE name = 'apple'")
 
-    head_2 = pg_repo_local.commit(include_snap=include_snap)
+    head_2 = pg_repo_local.commit(snap_only=snap_only)
 
     assert pg_repo_local.head == head_2
     # 4 images (last one is the empty 00000... image -- should try to avoid having that 0 image at all
@@ -29,15 +29,15 @@ def test_log_checkout(include_snap, pg_repo_local):
     assert pg_repo_local.run_sql("SELECT * FROM fruits") == [(2, 'orange'), (3, 'mayonnaise')]
 
 
-@pytest.mark.parametrize("include_snap", [True, False])
-def test_table_changes(include_snap, pg_repo_local):
+@pytest.mark.parametrize("snap_only", [True, False])
+def test_table_changes(snap_only, pg_repo_local):
     pg_repo_local.run_sql("CREATE TABLE fruits_copy AS SELECT * FROM fruits")
 
     head = pg_repo_local.head
     # Check that table addition has been detected
     assert pg_repo_local.diff('fruits_copy', image_1=head.image_hash, image_2=None) is True
 
-    head_1 = pg_repo_local.commit(include_snap=include_snap)
+    head_1 = pg_repo_local.commit(snap_only=snap_only)
     # Checkout the old head and make sure the table doesn't exist in it
     head.checkout()
     assert not pg_repo_local.engine.table_exists(pg_repo_local.to_schema(), 'fruits_copy')
@@ -53,7 +53,7 @@ def test_table_changes(include_snap, pg_repo_local):
 
     # Make sure the diff shows it's been removed and commit it
     assert pg_repo_local.diff('fruits', image_1=head_1, image_2=None) is False
-    head_2 = pg_repo_local.commit(include_snap=include_snap)
+    head_2 = pg_repo_local.commit(snap_only=snap_only)
 
     # Go through the 3 commits and ensure the table existence is maintained
     head.checkout()

@@ -151,16 +151,14 @@ def _create_metadata_schema(engine):
     #   other fragments overwrite parts of the base fragment but don't reach outside its boundaries)
 
     engine.run_sql(SQL("""CREATE TABLE {}.{} (
-                    object_id  VARCHAR NOT NULL,
+                    object_id  VARCHAR NOT NULL PRIMARY KEY,
                     namespace  VARCHAR NOT NULL,
                     size       BIGINT,
                     format     VARCHAR NOT NULL,
                     parent_id  VARCHAR)""").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")),
                    return_shape=None)
-    # As we don't have PKs here, we create a couple of indexes manually to make resolving tables faster.
+    # PK on object_id here (one object can't have more than 1 parent)
     engine.run_sql(SQL("""CREATE INDEX idx_splitgraph_meta_objects_parent ON {}.{} (parent_id)""")
-                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")))
-    engine.run_sql(SQL("""CREATE INDEX idx_splitgraph_meta_objects_object ON {}.{} (object_id)""")
                    .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")))
 
     # Keep track of objects that have been cached locally on the engine.

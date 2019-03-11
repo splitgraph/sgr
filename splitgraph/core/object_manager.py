@@ -169,9 +169,7 @@ class ObjectManager:
         :param limit_to: If specified, only the objects in this list will be returned.
         :return: Set of object IDs.
         """
-        # Minor normalization sadness here: this can return duplicate object IDs since
-        # we might repeat them if different versions of the same table point to the same object ID.
-        query = """SELECT pg_tables.tablename FROM pg_tables WHERE pg_tables.schemaname = %s"""
+        query = "SELECT pg_tables.tablename FROM pg_tables WHERE pg_tables.schemaname = %s"
         query_args = [SPLITGRAPH_META_SCHEMA]
         if limit_to:
             query += " AND pg_tables.tablename IN (" + ",".join(itertools.repeat('%s', len(limit_to))) + ")"
@@ -255,18 +253,17 @@ class ObjectManager:
             engine.store_fragment(upserted, deleted, SPLITGRAPH_META_SCHEMA, object_id,
                                   old_table.repository.to_schema(),
                                   old_table.table_name)
-            for parent_id, _ in old_table.objects:
-                self.register_object(
-                    object_id, object_format='DIFF', namespace=old_table.repository.namespace, parent_object=parent_id)
+            self.register_object(
+                object_id, object_format='DIFF', namespace=old_table.repository.namespace,
+                parent_object=old_table.objects[0][0])
 
             self.register_table(old_table.repository, old_table.table_name, image_hash,
                                 old_table.table_schema, object_id)
         else:
             # Changes in the audit log cancelled each other out. Delete the diff table and just point
-            # the commit to the old table objects.
-            for prev_object_id, _ in old_table.objects:
-                self.register_table(old_table.repository, old_table.table_name, image_hash,
-                                    old_table.table_schema, prev_object_id)
+            # the commit to the old table.
+            self.register_table(old_table.repository, old_table.table_name, image_hash,
+                                old_table.table_schema, old_table.objects[0][0])
 
     # TODO TF work: chunk the table up and index the chunks.
     def record_table_as_snap(self, repository, table_name, image_hash):
@@ -320,13 +317,8 @@ class ObjectManager:
                         FROM parents p JOIN {0}.objects o ON p.parent_id = o.object_id)
             SELECT object_id FROM parents""").format(Identifier(SPLITGRAPH_META_SCHEMA)), (object_id,),
                                              return_shape=ResultShape.MANY_ONE)
-        return set(parents)
+        return list(parents)
 
-    # TODO a lot of pain here is because a single table can be stored both as a DIFF and as a SNAP
-    # even disregarding the SNAP cache; with fragments we'll have to pass a Multicorn-like qual object but it will
-    # let us filter down to very few pertinent fragments
-    # We'll probably still have to crawl down a DIFF chain unless we want to reenumerate all the chunks every
-    # version of a table consists of.
     def _get_image_object_path(self, table):
         """
         Calculates a list of objects SNAP, DIFF, ... , DIFF that are used to reconstruct a table.
@@ -337,15 +329,7 @@ class ObjectManager:
 
         # * A SNAP for a given table is always the same size or smaller than the equivalent SNAP + DIFF chain
         #   used to materialize that table -- but the DIFF chain allows to materialize more versions of a table.
-        # * Currently an object can't have more than 1 DIFF parent (at most 1 DIFF and at most 1 SNAP)
-        #   since the only time we add objects to a table is on commit (where we link the object to the previous
-        #   table's objects and that table also is linked to at most 1 DIFF and at most 1 SNAP) and on import (where
-        #   we copy a table's object links).
-        #
-        #   OTOH this might be possible in the future where we'd coalesce multiple
-        #   DIFF objects into a single one taking us directly from one version of a table to another one several
-        #   jumps away.
-        #
+        # * Currently an object can't have more than 1 parent.
         #   Therefore, we don't actually yet have multiple resolution paths: all we can do is follow the DIFF chain
         #   (there's only one parent DIFF we can jump to) until we reach an object where we have a SNAP --
         #   cached locally, derived locally or stored remotely). Then we should always use that SNAP in
@@ -362,42 +346,16 @@ class ObjectManager:
             return snap_id, []
 
         # Use a recursive subquery to fetch a path through the object tree.
-        path = self.object_engine.run_sql(SQL(
-            """WITH RECURSIVE path AS (
-                SELECT object_id, format, parent_id FROM {0}.objects WHERE object_id = %s AND format = 'DIFF'
-                UNION ALL
-                    (WITH parents AS (SELECT o.object_id, o.format, o.parent_id
-                        FROM path p JOIN {0}.objects o ON p.parent_id = o.object_id)
-                    SELECT * FROM parents WHERE format = 'SNAP'
-                    UNION ALL
-                    SELECT * FROM parents WHERE format = 'DIFF'
-                        AND NOT EXISTS (SELECT * FROM parents WHERE format = 'SNAP')  
-                    ))
-            SELECT object_id, format, parent_id FROM path""").format(Identifier(SPLITGRAPH_META_SCHEMA)), (object_id,))
-        # If there's an object that has both a DIFF and a SNAP parent, it will be represented in the table as
-        # (object_id,      DIFF, diff_parent_id)
-        # (same_object_id, DIFF, snap_parent_id)
-        # so despite us stopping in the CTE when we reach a SNAP, the path will have those two duplicate
-        # entries. This is easy to fix though, as object with ID diff_parent_id won't actually be included
-        # in the path at all, so when we see an object with parent_id that's not in the path, we can delete it.
-
-        # In addition, we need to traverse the path anyway to see if we can short circuit a DIFF chain
-        # with a SNAP in the SNAP cache.
+        path = self.get_all_required_objects(object_id)
+        # Traverse the path to see if we can short circuit a DIFF chain with a SNAP in the SNAP cache.
         final_path = []
-        seen_objects = set(o[0] for o in path)
-
-        for object_id, object_format, parent_id in path:
-            if object_format == 'SNAP':
-                return object_id, final_path
-            if parent_id not in seen_objects:
-                continue
+        for object_id in path:
             cached_snap = self._get_snap_cache_for(object_id)
             if cached_snap is not None:
                 return cached_snap, final_path
             final_path.append(object_id)
+        return final_path[-1], final_path[:-1]
 
-        # We didn't find an actual snapshot for this table -- something's wrong with the object tree.
-        raise SplitGraphException("Couldn't find a SNAP object for %s (malformed object tree)" % table)
 
     def _store_snap_cache_miss(self, diff_id, timestamp):
         self.object_engine.run_sql(insert("snap_cache_misses", ("diff_id", "used_time")), (diff_id, timestamp))

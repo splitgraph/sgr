@@ -3,7 +3,7 @@ import pytest
 from splitgraph.core import clone
 
 
-def prepare_lq_repo(repo, include_snap, commit_after_every, include_pk):
+def prepare_lq_repo(repo, commit_after_every, include_pk, snap_only=False):
     OPS = ["INSERT INTO fruits VALUES (3, 'mayonnaise')",
            "DELETE FROM fruits WHERE name = 'apple'",
            "DELETE FROM vegetables WHERE vegetable_id = 1",
@@ -20,9 +20,9 @@ def prepare_lq_repo(repo, include_snap, commit_after_every, include_pk):
         print(o)
 
         if commit_after_every:
-            repo.commit(include_snap=include_snap)
+            repo.commit(snap_only=snap_only)
     if not commit_after_every:
-        repo.commit(include_snap=include_snap)
+        repo.commit(snap_only=snap_only)
 
 
 @pytest.mark.parametrize("test_case", [
@@ -55,7 +55,7 @@ def test_layered_querying(pg_repo_local, test_case):
 
     # Most of these tests are only interesting for the long DIFF chain case, so we don't include SNAPs here and
     # have PKs on the tables.
-    prepare_lq_repo(pg_repo_local, include_snap=False, commit_after_every=True, include_pk=True)
+    prepare_lq_repo(pg_repo_local, commit_after_every=True, include_pk=True)
 
     # Discard the actual materialized table and query everything via FDW
     new_head = pg_repo_local.head
@@ -68,7 +68,7 @@ def test_layered_querying(pg_repo_local, test_case):
 
 def test_layered_querying_against_snap(pg_repo_local):
     # Test the case where the query goes directly to the SNAP.
-    prepare_lq_repo(pg_repo_local, include_snap=True, commit_after_every=False, include_pk=True)
+    prepare_lq_repo(pg_repo_local, snap_only=True, commit_after_every=False, include_pk=True)
     new_head = pg_repo_local.head
     new_head.checkout(layered=True)
 
@@ -78,7 +78,7 @@ def test_layered_querying_against_snap(pg_repo_local):
 
 def test_layered_querying_type_conversion(pg_repo_local):
     # For type bigint, Multicorn for some reason converts quals to be strings. Test we can handle that.
-    prepare_lq_repo(pg_repo_local, include_snap=False, commit_after_every=False, include_pk=True)
+    prepare_lq_repo(pg_repo_local, commit_after_every=False, include_pk=True)
     pg_repo_local.run_sql(
         "ALTER TABLE fruits ALTER COLUMN fruit_id TYPE bigint")
     pg_repo_local.commit()
@@ -110,7 +110,7 @@ def test_lq_remote(local_engine_empty, pg_repo_remote):
     # cached objects (all are on the remote).
 
     # 1 DIFF on top of fruits, 1 DIFF on top of vegetables
-    prepare_lq_repo(pg_repo_remote, include_snap=False, commit_after_every=False, include_pk=True)
+    prepare_lq_repo(pg_repo_remote, commit_after_every=False, include_pk=True)
     pg_repo_local = clone(pg_repo_remote, download_all=False)
     _test_lazy_lq_checkout(pg_repo_local)
 
@@ -121,7 +121,7 @@ def test_lq_external(local_engine_empty, pg_repo_remote):
 
     pg_repo_local = clone(pg_repo_remote)
     pg_repo_local.images['latest'].checkout()
-    prepare_lq_repo(pg_repo_local, include_snap=False, commit_after_every=False, include_pk=True)
+    prepare_lq_repo(pg_repo_local, commit_after_every=False, include_pk=True)
 
     # Setup: upstream has the same repository as in the previous test but with no cached objects (all are external).
     remote = pg_repo_local.push(handler='S3', handler_options={})
@@ -145,7 +145,7 @@ def test_lq_external_snap_cache(local_engine_empty, pg_repo_remote):
     # Test that after hitting a table via LQ 5 times, the query gets satisfied via a SNAP instead.
     pg_repo_local = clone(pg_repo_remote)
     pg_repo_local.images['latest'].checkout()
-    prepare_lq_repo(pg_repo_local, include_snap=False, commit_after_every=False, include_pk=True)
+    prepare_lq_repo(pg_repo_local, commit_after_every=False, include_pk=True)
     pg_repo_local.run_sql("INSERT INTO fruits VALUES (4, 'kumquat')")
     pg_repo_local.commit()
     remote = pg_repo_local.push(handler='S3', handler_options={})

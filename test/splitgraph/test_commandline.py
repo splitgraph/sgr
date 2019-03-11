@@ -80,8 +80,8 @@ def test_commandline_basics(pg_repo_local, mg_repo_local):
     # sgr diff, HEAD -> current staging (0-param)
     check_diff([pg_repo_local])
 
-    # sgr commit (with an extra snapshot
-    result = runner.invoke(commit_c, [str(pg_repo_local), '-m', 'Test commit', '--snap=INCLUDE'])
+    # sgr commit as a SNAP
+    result = runner.invoke(commit_c, [str(pg_repo_local), '-m', 'Test commit', '--snap'])
     assert result.exit_code == 0
     new_head = pg_repo_local.head
     assert new_head != old_head
