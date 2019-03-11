@@ -2,8 +2,10 @@ from datetime import datetime as dt, timedelta
 
 import pytest
 from splitgraph.core import clone, select, ResultShape, SPLITGRAPH_META_SCHEMA
+from splitgraph.core.object_manager import ObjectManager
 from splitgraph.exceptions import SplitGraphException
 from test.splitgraph.commands.test_layered_querying import prepare_lq_repo
+from test.splitgraph.conftest import OUTPUT
 
 
 def _get_refcount(object_manager, object_id):
@@ -467,3 +469,100 @@ def test_object_cache_resolution_with_snaps(pg_repo_local):
         assert diffs == [img_2.get_table('fruits').get_object('DIFF'),
                          img_3.get_table('fruits').get_object('DIFF')]
         assert snap == img_1.get_table('fruits').get_object('SNAP')
+
+
+def test_object_manager_index_clause_generation(pg_repo_local):
+    om = ObjectManager(pg_repo_local)
+    column_types = {'a': 'int', 'b': 'int'}
+
+    def _assert_ic_result(quals, expected_clause, expected_args):
+        qual, args = om._quals_to_clause(quals, column_types)
+        assert qual.as_string(pg_repo_local.engine.connection) == expected_clause
+        assert args == expected_args
+
+    # Test basics: single clause, comparison
+    _assert_ic_result([[('a', '>', 5)]], '((NOT index ? %s OR (index #>> \'{"a",1}\')::int  > %s))', ('a', 5,))
+
+    # Two clauses in an OR-block, (in)equality
+    _assert_ic_result([[('a', '==', 5), ('b', '<>', 3)]],
+                      '((NOT index ? %s OR %s BETWEEN (index #>> \'{"a",0}\')::int '
+                      'AND (index #>> \'{"a",1}\')::int) OR '
+                      '(NOT index ? %s OR %s NOT BETWEEN (index #>> \'{"b",0}\')::int '
+                      'AND (index #>> \'{"b",1}\')::int))',
+                      ('a', 5, 'b', 3))
+
+    # Two clauses in an AND-block, check unknown operators
+    _assert_ic_result([[('a', '<', 3)], [('b', '~', 3)]],
+                      '((NOT index ? %s OR (index #>> \'{"a",0}\')::int < %s)) AND ((TRUE))',
+                      ('a', 3))
+
+
+def test_object_manager_object_filtering(local_engine_empty):
+    OUTPUT.init()
+    OUTPUT.run_sql("""CREATE TABLE test
+            (col1 int primary key,
+             col2 int,
+             col3 varchar,
+             col4 timestamp,
+             col5 json)""")
+
+    # First object is kind of normal: incrementing PK, a random col2, some text, some timestamps
+    OUTPUT.run_sql("INSERT INTO test VALUES (1, 5, 'aaaa', '2016-01-01 00:00:00', '{\"a\": 5}')")
+    OUTPUT.run_sql("INSERT INTO test VALUES (5, 3, 'bbbb', '2016-01-02 00:00:00', '{\"a\": 10}')")
+    OUTPUT.commit()
+    obj_1 = OUTPUT.head.get_table('test').objects[0][0]
+    # Sanity check on index for reference + easier debugging
+    assert OUTPUT.objects.get_object_meta([obj_1])[0][5] == \
+           {'col1': [1, 5],
+            'col2': [3, 5],
+            'col3': ['aaaa', 'bbbb'],
+            'col4': ['2016-01-01T00:00:00', '2016-01-02T00:00:00']}
+
+    # Second object: PK increments, ranges for col2 and col3 overlap, col4 has the same timestamps everywhere
+    OUTPUT.run_sql("INSERT INTO test VALUES (6, 1, 'abbb', '2015-12-30 00:00:00', '{\"a\": 5}')")
+    OUTPUT.run_sql("INSERT INTO test VALUES (10, 4, 'cccc', '2015-12-30 00:00:00', '{\"a\": 10}')")
+    OUTPUT.commit()
+    obj_2 = OUTPUT.head.get_table('test').objects[0][0]
+    assert OUTPUT.objects.get_object_meta([obj_2])[0][5] == {
+        'col1': [6, 10],
+        'col2': [1, 4],
+        'col3': ['abbb', 'cccc'],
+        'col4': ['2015-12-30T00:00:00', '2015-12-30T00:00:00']}
+
+    # Third object: just a single row
+    OUTPUT.run_sql("INSERT INTO test VALUES (11, 10, 'dddd', '2016-01-05 00:00:00', '{\"a\": 5}')")
+    OUTPUT.commit()
+    obj_3 = OUTPUT.head.get_table('test').objects[0][0]
+    assert OUTPUT.objects.get_object_meta([obj_3])[0][5] == {
+        'col1': [11, 11],
+        'col2': [10, 10],
+        'col3': ['dddd', 'dddd'],
+        'col4': ['2016-01-05T00:00:00', '2016-01-05T00:00:00']}
+
+    # Fourth object: PK increments, ranges for col2/col3 don't overlap, col4 spans obj_1's range
+    OUTPUT.run_sql("INSERT INTO test VALUES (12, 11, 'eeee', '2015-12-31 00:00:00', '{\"a\": 5}')")
+    OUTPUT.run_sql("INSERT INTO test VALUES (16, 15, 'ffff', '2016-01-04 00:00:00', '{\"a\": 10}')")
+    OUTPUT.commit()
+    obj_4 = OUTPUT.head.get_table('test').objects[0][0]
+    assert OUTPUT.objects.get_object_meta([obj_4])[0][5] == {
+        'col1': [12, 16],
+        'col2': [11, 15],
+        'col3': ['eeee', 'ffff'],
+        'col4': ['2015-12-31T00:00:00', '2016-01-04T00:00:00']}
+
+    # Now the actual test starts.
+
+    objects = [obj_1, obj_2, obj_3, obj_4]
+    om = OUTPUT.objects
+    column_types = {c[1]: c[2] for c in OUTPUT.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, obj_1)}
+
+    def _assert_filter_result(quals, expected):
+        assert set(om._filter_objects(objects, quals, column_types)) == set(expected)
+
+    # Test single quals on PK
+    _assert_filter_result([[('col1', '==', 3)]], [obj_1])
+    _assert_filter_result([[('col1', '<>', 3)]], [obj_2, obj_3, obj_4])
+    _assert_filter_result([[('col1', '>', 5)]], [obj_2, obj_3, obj_4])
+    _assert_filter_result([[('col1', '>=', 5)]], [obj_1, obj_2, obj_3, obj_4])
+    _assert_filter_result([[('col1', '<', 11)]], [obj_1, obj_2])
+    _assert_filter_result([[('col1', '<=', 11)]], [obj_1, obj_2, obj_3])
