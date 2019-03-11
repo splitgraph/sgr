@@ -271,12 +271,9 @@ class ObjectManager:
             (repository.namespace, repository.repository, image, table, Json(schema), object_id))
 
     # TODO TF work
-    # * Most of the changes will be here
     # * Add looking for the chunk boundaries and splitting the diff up
     # * Add testing whether too many rows have been overwritten (unlinking the DIFF chain and creating a new SNAP)
     # * Add conflating lots of small fragments together?
-    # * Convert the audit log changes into fragments (we probably disallow updates since they're difficult
-    #   to query)
     def record_table_as_diff(self, old_table, image_hash):
         """
         Flushes the pending changes from the audit table for a given table and records them,
@@ -307,6 +304,9 @@ class ObjectManager:
             upserted = [pk for pk, change in changeset.items() if change[0] in (0, 2)]
             deleted = [pk for pk, change in changeset.items() if change[0] == 1]
 
+            # Also we need to know the old values of the deleted rows since we're using them
+            # for the index
+
             engine.store_fragment(upserted, deleted, SPLITGRAPH_META_SCHEMA, object_id,
                                   old_table.repository.to_schema(),
                                   old_table.table_name)
@@ -322,7 +322,7 @@ class ObjectManager:
             self.register_table(old_table.repository, old_table.table_name, image_hash,
                                 old_table.table_schema, old_table.objects[0][0])
 
-    # TODO TF work: chunk the table up and index the chunks.
+    # TODO TF work: chunk the table up
     def record_table_as_snap(self, repository, table_name, image_hash):
         """
         Copies the full table verbatim into a new Splitgraph SNAP object, registering the new object.
@@ -450,8 +450,62 @@ class ObjectManager:
             SELECT SUM(sc.size) AS size FROM {0}.snap_cache sc)_""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
                                               return_shape=ResultShape.ONE_ONE))
 
+    def _qual_to_clause(self, qual, ctype):
+        """Convert our internal qual format into a WHERE clause that runs against an object's index entry.
+        Returns a Postgres clause (as a Composable) and a tuple of arguments to be mogrified into it."""
+        column_name, operator, value = qual
+
+        # Our index is essentially a bloom filter: it returns True if an object _might_ have rows
+        # that affect the result of a query with a given qual and False if it definitely doesn't.
+        # Hence, we can combine qualifiers in a similar Boolean way (proof?)
+
+        # If there's no index information for a given column, we have to assume it might match the qual.
+        query = SQL("NOT index ? %s OR ")
+        args = [column_name]
+
+        # If the column has to be greater than (or equal to) X, it only might exist in objects
+        # whose maximum value is greater than (or equal to) X.
+        if operator in ('>', '>='):
+            query += SQL("(index #>> '{{{},1}}')::" + ctype + "  " + operator + " %s").format((Identifier(column_name)))
+            args.append(value)
+        # Similar for smaller than, but here we check that the minimum value is smaller than X.
+        elif operator in ('<', '<='):
+            query += SQL("(index #>> '{{{},0}}')::" + ctype + " " + operator + " %s").format((Identifier(column_name)))
+            args.append(value)
+        elif operator in ('==', '<>'):
+            query += SQL("%s " + ("" if operator == "==" else "NOT ")
+                         + "BETWEEN (index #>> '{{{0},0}}')::" + ctype
+                         + " AND (index #>> '{{{0},1}}')::" + ctype).format((Identifier(column_name)))
+            args.append(value)
+        # Currently, we ignore the LIKE (~~) qualifier since we can only make a judgement when the % pattern is at
+        # the end of a string.
+        else:
+            # For all other operators, we don't know if they will match so we assume that they will.
+            return SQL('TRUE'), ()
+        return query, tuple(args)
+
+    def _quals_to_clause(self, quals, column_types):
+        def _internal_quals_to_clause(or_quals):
+            clauses, args = zip(*[self._qual_to_clause(q, column_types[q[0]]) for q in or_quals])
+            return SQL(" OR ").join(SQL("(") + c + SQL(")") for c in clauses), tuple([a for arg in args for a in arg])
+
+        clauses, args = zip(*[_internal_quals_to_clause(q) for q in quals])
+        return SQL(" AND ").join(SQL("(") + c + SQL(")") for c in clauses), tuple([a for arg in args for a in arg])
+
+    def _filter_objects(self, object_ids, quals, column_types):
+        # We need access to column types here since the objects might not have been fetched yet and so
+        # we can't look at their column types.
+        clause, args = self._quals_to_clause(quals, column_types)
+
+        query = SQL("SELECT object_id FROM {}.{} WHERE object_id IN (") \
+            .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects"))
+        query += SQL(",".join(itertools.repeat("%s", len(object_ids))) + ")")
+        query += SQL(" AND ") + clause
+
+        return self.object_engine.run_sql(query, list(object_ids) + list(args), return_shape=ResultShape.MANY_ONE)
+
     @contextmanager
-    def ensure_objects(self, table):
+    def ensure_objects(self, table, quals=None):
         """
         Resolves the objects needed to materialize a given table and makes sure they are in the local
         splitgraph_meta schema.
@@ -460,6 +514,14 @@ class ObjectManager:
         unneeded and can be garbage collected.
 
         :param table: Table to materialize
+        :param quals: Optional list of qualifiers in conjunctive normal form that will be matched against the index. If
+            specified, objects that definitely don't match these qualifiers will be dropped.
+
+            A list containing `[[qual_1, qual_2], [qual_3, qual_4]]` will be interpreted as
+            (qual_1 OR qual_2) AND (qual_3 OR qual_4).
+
+            Each qual is a tuple of `(column_name, operator, value)` where
+            `operator` can be one of `>`, `>=`, `<`, `<=`, `=`, `~~` (LIKE), `<>`.
         :return: (SNAP object ID, list of DIFFs to apply to the SNAP (can be empty))
         """
 
@@ -472,9 +534,6 @@ class ObjectManager:
         #     between us making that decision and increasing the refcount?
         #   * What happens if we crash when we're downloading these objects?
 
-        # So, for now, we lock the whole cache status table. This means that multiple FDWs can't download objects
-        # at the same time, but we can try and saturate the download bandwidth. In the future, we can try more
-        # granular row-level locking.
         logging.info("Resolving objects for table %s:%s:%s", table.repository, table.image.image_hash, table.table_name)
 
         self.object_engine.run_sql("SET LOCAL synchronous_commit TO OFF")
@@ -482,14 +541,13 @@ class ObjectManager:
 
         # TODO TF work: returns multiple chunk groups (snaps/diffs) depending on how precise
         # the quals are
+        # Resolve the table into a list of objects we want to fetch (one SNAP and optionally a list of DIFFs).
+        # In the future, we can also take other things into account, such as how expensive it is to load a given object
+        # (its size), location...
         snap, diffs = self._get_image_object_path(table)
         required_objects = diffs + [snap]
 
         tracer.log('resolve_objects')
-
-        # Resolve the table into a list of objects we want to fetch (one SNAP and optionally a list of DIFFs).
-        # In the future, we can also take other things into account, such as how expensive it is to load a given object
-        # (its size), location...
 
         # Increase the refcount on all of the objects we're giving back to the caller so that others don't GC them.
         logging.info("Claiming %d object(s)", len(required_objects))
