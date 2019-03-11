@@ -551,7 +551,6 @@ def test_object_manager_object_filtering(local_engine_empty):
         'col4': ['2015-12-31T00:00:00', '2016-01-04T00:00:00']}
 
     # Now the actual test starts.
-
     objects = [obj_1, obj_2, obj_3, obj_4]
     om = OUTPUT.objects
     column_types = {c[1]: c[2] for c in OUTPUT.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, obj_1)}
@@ -566,3 +565,45 @@ def test_object_manager_object_filtering(local_engine_empty):
     _assert_filter_result([[('col1', '>=', 5)]], [obj_1, obj_2, obj_3, obj_4])
     _assert_filter_result([[('col1', '<', 11)]], [obj_1, obj_2])
     _assert_filter_result([[('col1', '<=', 11)]], [obj_1, obj_2, obj_3])
+
+    # Test datetime quals
+    _assert_filter_result([[('col4', '>', '2015-12-31 00:00:00')]], [obj_1, obj_3, obj_4])
+    _assert_filter_result([[('col4', '>', dt(2015, 12, 31))]], [obj_1, obj_3, obj_4])
+    _assert_filter_result([[('col4', '<=', '2016-01-01 00:00:00')]], [obj_1, obj_2, obj_4])
+
+    # Test text column
+    # Unknown operator (that can't be pruned with the index) returns everything
+    _assert_filter_result([[('col3', '~~', 'eee%')]], [obj_1, obj_2, obj_3, obj_4])
+    _assert_filter_result([[('col3', '==', 'aaaa')]], [obj_1])
+    _assert_filter_result([[('col3', '==', 'accc')]], [obj_1, obj_2])
+
+    # Test combining quals
+
+    # (can't be pruned) OR (can be pruned) returns all since we don't know what will match the first clause
+    _assert_filter_result([[('col3', '~~', 'eee%'), ('col1', '==', 3)]], [obj_1, obj_2, obj_3, obj_4])
+
+    # (can't be pruned) AND (can be pruned) returns the same result as the second clause since if something definitely
+    # doesn't match the second clause, it won't match the AND.
+    _assert_filter_result([[('col3', '~~', 'eee%')], [('col1', '==', 3)]], [obj_1])
+
+    # (col1 > 5 AND col1 < 2)
+    _assert_filter_result([[('col1', '>', 5)], [('col1', '<', 2)]], [])
+
+    # (col1 > 5 OR col1 < 2)
+    _assert_filter_result([[('col1', '>', 5), ('col1', '<', 2)]], [obj_1, obj_2, obj_3, obj_4])
+
+    # (col1 > 10 (selects obj_3 and 4) OR col4 == 2016-01-01 12:00:00 (selects obj_1 and 4))
+    # AND col2 == 2 (selects obj_2)
+    # the first clause selects objs 1, 3, 4; second clause selects 2; intersecting them results in []
+    _assert_filter_result([[('col1', '>', 10)]], [obj_3, obj_4])
+    _assert_filter_result([[('col4', '==', '2016-01-01 12:00:00')]], [obj_1, obj_4])
+    _assert_filter_result([[('col2', '==', 2)]], [obj_2])
+
+    _assert_filter_result([[('col1', '>', 10), ('col4', '==', '2016-01-01 12:00:00')]], [obj_1, obj_3, obj_4])
+    _assert_filter_result([[('col1', '>', 10), ('col4', '==', '2016-01-01 12:00:00')],
+                           [('col2', '==', 2)]], [])
+
+    # Same as previous but the second clause is col3 = 'dddd' (selects only obj_3),
+    # hence the final result is just obj_3.
+    _assert_filter_result([[('col1', '>', 10), ('col4', '==', '2016-01-01 12:00:00')],
+                           [('col3', '==', 'dddd')]], [obj_3])

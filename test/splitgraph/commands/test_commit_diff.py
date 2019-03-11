@@ -268,6 +268,8 @@ def test_various_types(snap_only, local_engine_empty):
     if snap_only:
         expected['h'] = ['abcd      ', 'test      ']
 
+    # TODO add (and xfail) a test showing that deletions should also be included in the index.
+
     assert object_index == expected
 
 
