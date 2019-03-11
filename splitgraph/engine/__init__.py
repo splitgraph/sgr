@@ -226,7 +226,7 @@ class SQLEngine:
         def _convert_type(ctype):
             # We don't keep a lot of type information, so e.g. char(5) gets turned into char
             # which defaults into char(1).
-            return ctype if ctype != 'character' else 'varchar'
+            return ctype if ctype != 'character' else 'character varying'
 
         # Do we need to make sure the PK has the same type + ordinal position here?
         pks = [pk for pk, _ in self.get_primary_keys(schema, table_name)]

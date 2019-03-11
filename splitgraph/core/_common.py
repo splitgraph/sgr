@@ -146,7 +146,6 @@ def _create_metadata_schema(engine):
     # (not the size stored externally)
 
     # TODO TF work
-    # * Add the index here (min/max values for every column
     # * Decide whether to have parents (base fragments don't overlap and have no parent;
     #   other fragments overwrite parts of the base fragment but don't reach outside its boundaries)
 
@@ -155,6 +154,7 @@ def _create_metadata_schema(engine):
                     namespace  VARCHAR NOT NULL,
                     size       BIGINT,
                     format     VARCHAR NOT NULL,
+                    index      JSONB,
                     parent_id  VARCHAR)""").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")),
                    return_shape=None)
     # PK on object_id here (one object can't have more than 1 parent)

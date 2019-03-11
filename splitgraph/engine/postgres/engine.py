@@ -65,7 +65,7 @@ class PsycopgEngine(SQLEngine):
     def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY):
         with self.connection.cursor() as cur:
             try:
-                cur.execute(statement, arguments)
+                cur.execute(statement, _convert_vals(arguments) if arguments else None)
             except DatabaseError:
                 self.rollback()
                 raise
@@ -99,7 +99,7 @@ class PsycopgEngine(SQLEngine):
             try:
                 if schema:
                     cur.execute("SET search_path to %s;", (schema,))
-                execute_batch(cur, statement, arguments, page_size=1000)
+                execute_batch(cur, statement, [_convert_vals(a) for a in arguments], page_size=1000)
                 if schema:
                     cur.execute("SET search_path to public")
             except DatabaseError:

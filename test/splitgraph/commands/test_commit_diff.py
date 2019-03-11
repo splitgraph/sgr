@@ -229,13 +229,46 @@ def test_various_types(snap_only, local_engine_empty):
         VALUES(1, 2, 3, 3.54, 876.563452345, 1.23, 'test', 'testtesttesttest', 'testtesttesttesttesttesttest',
         B'001110010101010', '2013-11-02 17:30:52', '2013-02-04', true, '{ "a": 123 }',
         'Old Old Parr'::tsvector);""")
+
+    # Write another row to test min/max indexing on the resulting object
+    OUTPUT.run_sql(
+        """INSERT INTO test (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p)
+        VALUES(15, 22, 1, -1.23, 9.8811, 0.23, 'abcd', '0testtesttesttes', '0testtesttesttesttesttesttes',
+        B'111110011111111', '2016-01-01 01:01:05', '2011-11-11', false, '{ "b": 456 }',
+        'AAA AAA Bb '::tsvector);""")
+
     new_head = OUTPUT.commit(snap_only=snap_only)
     head.checkout()
     new_head.checkout()
     assert OUTPUT.run_sql("SELECT * FROM test") \
            == [(1, 1, 2, 3, Decimal('3.540'), 876.563, 1.23, 'test      ', 'testtesttesttest',
                 'testtesttesttesttesttesttest', '001110010101010', dt(2013, 11, 2, 17, 30, 52),
-                date(2013, 2, 4), True, {'a': 123}, "'Old' 'Parr'")]
+                date(2013, 2, 4), True, {'a': 123}, "'Old' 'Parr'"),
+               ((2, 15, 22, 1, Decimal('-1.230'), 9.8811, 0.23, 'abcd      ', '0testtesttesttes',
+                 '0testtesttesttesttesttesttes', '111110011111111', dt(2016, 1, 1, 1, 1, 5),
+                 date(2011, 11, 11), False, {'b': 456}, "'AAA' 'Bb'"))]
+
+    object_id = new_head.get_table('test').objects[0][0]
+    object_index = OUTPUT.objects.get_object_meta([object_id])[0][5]
+    expected = {'a': [1, 2],
+                'b': [1, 15],
+                'c': [2, 22],
+                'd': [1, 3],
+                'e': ['-1.230', '3.540'],
+                'f': [9.8811, 876.563],
+                'g': [0.23, 1.23],
+                'h': ['abcd', 'test'],
+                'i': ['0testtesttesttes', 'testtesttesttest'],
+                'j': ['0testtesttesttesttesttesttes', 'testtesttesttesttesttesttest'],
+                'l': ['2013-11-02T17:30:52', '2016-01-01T01:01:05'],
+                'm': ['2011-11-11', '2013-02-04']}
+
+    # Minor bug here: we turn char(10) into varchar for diff fragments since we don't keep track of the
+    # length of the type, but the SNAP does.
+    if snap_only:
+        expected['h'] = ['abcd      ', 'test      ']
+
+    assert object_index == expected
 
 
 def test_empty_diff_reuses_object(pg_repo_local):
