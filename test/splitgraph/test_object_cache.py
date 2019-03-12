@@ -533,8 +533,9 @@ def test_object_manager_object_filtering(local_engine_empty):
         'col3': ['dddd', 'dddd'],
         'col4': ['2016-01-05T00:00:00', '2016-01-05T00:00:00']}
 
-    # Fourth object: PK increments, ranges for col2/col3 don't overlap, col4 spans obj_1's range
+    # Fourth object: PK increments, ranges for col2/col3 don't overlap, col4 spans obj_1's range, we have a NULL.
     OUTPUT.run_sql("INSERT INTO test VALUES (12, 11, 'eeee', '2015-12-31 00:00:00', '{\"a\": 5}')")
+    OUTPUT.run_sql("INSERT INTO test VALUES (14, 13, 'ezzz', NULL, '{\"a\": 5}')")
     OUTPUT.run_sql("INSERT INTO test VALUES (16, 15, 'ffff', '2016-01-04 00:00:00', '{\"a\": 10}')")
     OUTPUT.commit()
     obj_4 = OUTPUT.head.get_table('test').objects[0][0]
@@ -560,6 +561,10 @@ def test_object_manager_object_filtering(local_engine_empty):
     _assert_filter_result([[('col1', '>=', 5)]], [obj_1, obj_2, obj_3, obj_4])
     _assert_filter_result([[('col1', '<', 11)]], [obj_1, obj_2])
     _assert_filter_result([[('col1', '<=', 11)]], [obj_1, obj_2, obj_3])
+
+    # Test NULL: we don't filter anything down since they aren't included in the index and
+    # we don't explicitly track down where they are.
+    _assert_filter_result([[('col4', 'IS', 'NULL')]], [obj_1, obj_2, obj_3, obj_4])
 
     # Test datetime quals
     _assert_filter_result([[('col4', '>', '2015-12-31 00:00:00')]], [obj_1, obj_3, obj_4])
