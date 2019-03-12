@@ -181,3 +181,55 @@ def test_lq_external_snap_cache(local_engine_empty, pg_repo_remote):
     # Check the SNAP cache contents
     assert list(pg_repo_local.objects._get_snap_cache().values()) == [
         (pg_repo_local.images['latest'].get_table('fruits').get_object('DIFF'), 8192)]
+
+
+@pytest.mark.parametrize("test_case", [
+    # Each test case is a: query, expected result, mask of which objects were downloaded
+    # Test single PK qual
+    ("SELECT * FROM fruits WHERE fruit_id = 4",
+     [(4, 'kumquat', 1)], (False, False, False, False, True)),
+    # Test range fetches 2 objects
+    ("SELECT * FROM fruits WHERE fruit_id >= 3",
+     [(3, 'mayonnaise', 1), (4, 'kumquat', 1)], (False, True, False, False, True)),
+    # Test the upsert fetches the original SNAP + the DIFF that overwrites it
+    ("SELECT * FROM fruits WHERE fruit_id = 2",
+     [(2, 'guitar', 1)], (True, False, False, True, False)),
+    # Same but also add a filter on the string column to exclude 'guitar'
+    #
+    # XXX this is wrong: the 'guitar' chunk should be still looked at since it overwrites
+    # the old value and the result of the query should be []
+    ("SELECT * FROM fruits WHERE fruit_id = 2 AND name > 'guitar'",
+     # expected: [], (True, False, False, True, False)),
+     [(2, 'orange', 1)], (True, False, False, False, False)),
+    # XXX this is also wrong: the deletion should be included in the index and fetched as well
+    ("SELECT * FROM fruits WHERE name = 'apple'",
+     # expected: [], (True, False, True, False, False)),
+     [(1, 'apple', 1)], (True, False, False, False, False)),
+])
+def test_lq_qual_filtering(local_engine_empty, pg_repo_remote, test_case):
+    # Test that LQ prunes the object list based on quals
+    # We can't really see that directly, so we check to see which objects it tries to download.
+    _prepare_fully_remote_repo(local_engine_empty, pg_repo_remote)
+
+    pg_repo_local = clone(pg_repo_remote, download_all=False)
+    pg_repo_local.images['latest'].checkout(layered=True)
+    assert len(pg_repo_local.objects.get_downloaded_objects()) == 0
+
+    # Objects in the test dataset, fruits table are:
+    # * initial SNAP
+    # * INS (3, mayonnaise)
+    # * DEL (1, apple)
+    # * UPS (2, guitar) (replaces 2, orange)
+    # * INS (4, kumquat)
+
+    query, expected, object_mask = test_case
+
+    # get_all_required_objects returns the path in the reverse order (most recent object first)
+    required_objects = pg_repo_local.objects.get_all_required_objects(
+        pg_repo_local.images['latest'].get_table('fruits').get_object('DIFF'))[::-1]
+    assert len(required_objects) == 5
+    expected_objects = [o for o, m in zip(required_objects, object_mask) if m]
+
+    assert pg_repo_local.run_sql(query) == expected
+    used_objects = pg_repo_local.objects.get_downloaded_objects()
+    assert set(expected_objects) == set(used_objects)
