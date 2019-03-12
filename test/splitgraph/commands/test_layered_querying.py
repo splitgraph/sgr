@@ -194,8 +194,9 @@ def test_lq_external_snap_cache(local_engine_empty, pg_repo_remote):
     # Test the upsert fetches the original SNAP + the DIFF that overwrites it
     ("SELECT * FROM fruits WHERE fruit_id = 2",
      [(2, 'guitar', 1)], (True, False, False, True, False)),
-    # Same but also add a filter on the string column to exclude 'guitar'
-    #
+    # Test NULLs don't break anything (even though we still look at all objects)
+    ("SELECT * FROM fruits WHERE name IS NULL", [], (True, True, True, True, True)),
+    # Same but also add a filter on the string column to exclude 'guitar'.
     # XXX this is wrong: the 'guitar' chunk should be still looked at since it overwrites
     # the old value and the result of the query should be []
     ("SELECT * FROM fruits WHERE fruit_id = 2 AND name > 'guitar'",

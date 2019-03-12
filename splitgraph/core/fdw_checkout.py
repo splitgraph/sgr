@@ -57,9 +57,14 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
 
         return SQL(" AND ").join(s for s in sql_objs), vals
 
-    def _quals_to_cnf(self, quals):
+    @staticmethod
+    def _quals_to_cnf(quals):
         def _qual_to_cnf(qual):
             if qual.is_list_operator:
+                if any(v is None for v in qual.value):
+                    # We don't keep track of NULLs so if we get a clause of type
+                    # col IN (1,2,3,NULL) we have to look at all objects to see if they contain a NULL.
+                    return [[]]
                 if qual.list_any_or_all == ANY:
                     # Convert col op ANY(ARRAY[a,b,c...]) into (col op a) OR (col op b)...
                     # which is one single AND clause of multiple ORs
@@ -69,9 +74,11 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
                     # which is multiple AND clauses of one OR each
                     return [[(qual.field_name, qual.operator[0], v)] for v in qual.value]
             else:
+                if qual.value is None:
+                    return [[]]
                 return [[(qual.field_name, qual.operator, qual.value)]]
 
-        return [q for qual in quals for q in _qual_to_cnf(qual)]
+        return [q for qual in quals for q in _qual_to_cnf(qual) if q != []]
 
     def _run_select_from_staging(self, schema, table, columns, drop_table=False):
         """Runs the actual select query against the partially materialized table.
