@@ -41,7 +41,7 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
             # Returns a SQL object + a list of args to be mogrified into it.
             if qual.is_list_operator:
                 value = self._coerce_qual_type(qual.field_name, qual.value)
-                operator = qual.operator[0] + ' ' + '%s' % ('ANY' if qual.list_any_or_all == ANY else 'ALL')
+                operator = qual.operator[0] + ' ' + ('ANY' if qual.list_any_or_all == ANY else 'ALL')
                 operator += '(ARRAY[' + ','.join('%s' for _ in range(len(value))) + '])'
             else:
                 operator = qual.operator + ' %s'
@@ -56,6 +56,22 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
             vals.extend(value)
 
         return SQL(" AND ").join(s for s in sql_objs), vals
+
+    def _quals_to_cnf(self, quals):
+        def _qual_to_cnf(qual):
+            if qual.is_list_operator:
+                if qual.list_any_or_all == ANY:
+                    # Convert col op ANY(ARRAY[a,b,c...]) into (col op a) OR (col op b)...
+                    # which is one single AND clause of multiple ORs
+                    return [[(qual.field_name, qual.operator[0], v) for v in qual.value]]
+                else:
+                    # Convert col op ALL(ARRAY[a,b,c...]) into (cop op a) AND (col op b)...
+                    # which is multiple AND clauses of one OR each
+                    return [[(qual.field_name, qual.operator[0], v)] for v in qual.value]
+            else:
+                return [[(qual.field_name, qual.operator, qual.value)]]
+
+        return [q for qual in quals for q in _qual_to_cnf(qual)]
 
     def _run_select_from_staging(self, schema, table, columns, drop_table=False):
         """Runs the actual select query against the partially materialized table.
@@ -91,11 +107,11 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         # For quals, the more elaborate ones (like table.id = table.name or similar) actually aren't passed here
         # at all and PG filters them out later on.
         qual_sql, qual_vals = self._quals_to_postgres(quals)
+        cnf_quals = self._quals_to_cnf(quals)
         log_to_postgres("quals: %r" % (quals,), _PG_LOGLEVEL)
+        log_to_postgres("CNF quals: %r" % (cnf_quals,), _PG_LOGLEVEL)
 
-        # TODO TF work: filtering based on quals when we have the index
-
-        with self.object_manager.ensure_objects(self.table) as required_objects:
+        with self.object_manager.ensure_objects(self.table, quals=cnf_quals) as required_objects:
             log_to_postgres("Using fragments %r to satisfy the query" % (required_objects,), _PG_LOGLEVEL)
             if len(required_objects) == 1:
                 # If one object has our answer, we can send queries directly to it
@@ -105,14 +121,12 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
             # Accumulate the query result in a temporary table.
             staging_table = self._create_staging_table(required_objects[0])
 
-            # 2) Apply the fragments to the staging area, discarding rows that don't match the qualifiers any more.
+            # Apply the fragments to the staging area, discarding rows that don't match the qualifiers any more.
             if quals:
                 discard_query = SQL("DELETE FROM {}.{} WHERE ").format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                                        Identifier(staging_table)) \
                                 + SQL("NOT (") + qual_sql + SQL(")")
 
-                # For the final diff, we don't need to apply any quals to the staging table since Postgres doesn't trust
-                # us and will apply them/do projections anyway.
                 # self.engine.batch_apply_diff_objects([(SPLITGRAPH_META_SCHEMA, o) for o in diffs],
                 #                                      SPLITGRAPH_META_SCHEMA, staging_table,
                 #                                      run_after_every=discard_query,
