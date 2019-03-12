@@ -546,8 +546,20 @@ class ObjectManager:
         # (its size), location...
         snap, diffs = self._get_image_object_path(table)
         required_objects = diffs + [snap]
-
         tracer.log('resolve_objects')
+
+        # Filter to see if we can discard any objects with the quals
+        if quals:
+            column_types = {c[1]: c[2] for c in table.table_schema}
+            filtered_objects = self._filter_objects(required_objects, quals, column_types)
+            if filtered_objects != required_objects:
+                required_objects = filtered_objects
+                objects_were_filtered = True
+            else:
+                objects_were_filtered = False
+        else:
+            objects_were_filtered = False
+        tracer.log('filter_objects')
 
         # Increase the refcount on all of the objects we're giving back to the caller so that others don't GC them.
         logging.info("Claiming %d object(s)", len(required_objects))
@@ -587,7 +599,7 @@ class ObjectManager:
         tracer.log('stage_1_commit')
         self.object_engine.run_sql("SET LOCAL synchronous_commit TO off")
 
-        if diffs:
+        if diffs and not objects_were_filtered:
             # We want to return a SNAP + a DIFF chain. See if a DIFF chain ending (starting?) with a given DIFF
             # has been requested too many times.
             now = dt.utcnow()
