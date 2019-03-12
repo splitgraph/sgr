@@ -480,12 +480,10 @@ def test_object_manager_index_clause_generation(pg_repo_local):
     _assert_ic_result([[('a', '>', 5)]], '((NOT index ? %s OR (index #>> \'{"a",1}\')::int  > %s))', ('a', 5,))
 
     # Two clauses in an OR-block, (in)equality
-    _assert_ic_result([[('a', '==', 5), ('b', '<>', 3)]],
+    _assert_ic_result([[('a', '=', 5), ('b', '<>', 3)]],
                       '((NOT index ? %s OR %s BETWEEN (index #>> \'{"a",0}\')::int '
-                      'AND (index #>> \'{"a",1}\')::int) OR '
-                      '(NOT index ? %s OR %s NOT BETWEEN (index #>> \'{"b",0}\')::int '
-                      'AND (index #>> \'{"b",1}\')::int))',
-                      ('a', 5, 'b', 3))
+                      'AND (index #>> \'{"a",1}\')::int) OR (TRUE))',
+                      ('a', 5))
 
     # Two clauses in an AND-block, check unknown operators
     _assert_ic_result([[('a', '<', 3)], [('b', '~', 3)]],
@@ -555,8 +553,9 @@ def test_object_manager_object_filtering(local_engine_empty):
         assert set(om._filter_objects(objects, quals, column_types)) == set(expected)
 
     # Test single quals on PK
-    _assert_filter_result([[('col1', '==', 3)]], [obj_1])
-    _assert_filter_result([[('col1', '<>', 3)]], [obj_2, obj_3, obj_4])
+    _assert_filter_result([[('col1', '=', 3)]], [obj_1])
+    # Even though obj_1 spans 3 (and might include 3 as a value), it might have values that aren't 3.
+    _assert_filter_result([[('col1', '<>', 3)]], [obj_1, obj_2, obj_3, obj_4])
     _assert_filter_result([[('col1', '>', 5)]], [obj_2, obj_3, obj_4])
     _assert_filter_result([[('col1', '>=', 5)]], [obj_1, obj_2, obj_3, obj_4])
     _assert_filter_result([[('col1', '<', 11)]], [obj_1, obj_2])
@@ -570,17 +569,17 @@ def test_object_manager_object_filtering(local_engine_empty):
     # Test text column
     # Unknown operator (that can't be pruned with the index) returns everything
     _assert_filter_result([[('col3', '~~', 'eee%')]], [obj_1, obj_2, obj_3, obj_4])
-    _assert_filter_result([[('col3', '==', 'aaaa')]], [obj_1])
-    _assert_filter_result([[('col3', '==', 'accc')]], [obj_1, obj_2])
+    _assert_filter_result([[('col3', '=', 'aaaa')]], [obj_1])
+    _assert_filter_result([[('col3', '=', 'accc')]], [obj_1, obj_2])
 
     # Test combining quals
 
     # (can't be pruned) OR (can be pruned) returns all since we don't know what will match the first clause
-    _assert_filter_result([[('col3', '~~', 'eee%'), ('col1', '==', 3)]], [obj_1, obj_2, obj_3, obj_4])
+    _assert_filter_result([[('col3', '~~', 'eee%'), ('col1', '=', 3)]], [obj_1, obj_2, obj_3, obj_4])
 
     # (can't be pruned) AND (can be pruned) returns the same result as the second clause since if something definitely
     # doesn't match the second clause, it won't match the AND.
-    _assert_filter_result([[('col3', '~~', 'eee%')], [('col1', '==', 3)]], [obj_1])
+    _assert_filter_result([[('col3', '~~', 'eee%')], [('col1', '=', 3)]], [obj_1])
 
     # (col1 > 5 AND col1 < 2)
     _assert_filter_result([[('col1', '>', 5)], [('col1', '<', 2)]], [])
@@ -592,14 +591,14 @@ def test_object_manager_object_filtering(local_engine_empty):
     # AND col2 == 2 (selects obj_2)
     # the first clause selects objs 1, 3, 4; second clause selects 2; intersecting them results in []
     _assert_filter_result([[('col1', '>', 10)]], [obj_3, obj_4])
-    _assert_filter_result([[('col4', '==', '2016-01-01 12:00:00')]], [obj_1, obj_4])
-    _assert_filter_result([[('col2', '==', 2)]], [obj_2])
+    _assert_filter_result([[('col4', '=', '2016-01-01 12:00:00')]], [obj_1, obj_4])
+    _assert_filter_result([[('col2', '=', 2)]], [obj_2])
 
-    _assert_filter_result([[('col1', '>', 10), ('col4', '==', '2016-01-01 12:00:00')]], [obj_1, obj_3, obj_4])
-    _assert_filter_result([[('col1', '>', 10), ('col4', '==', '2016-01-01 12:00:00')],
-                           [('col2', '==', 2)]], [])
+    _assert_filter_result([[('col1', '>', 10), ('col4', '=', '2016-01-01 12:00:00')]], [obj_1, obj_3, obj_4])
+    _assert_filter_result([[('col1', '>', 10), ('col4', '=', '2016-01-01 12:00:00')],
+                           [('col2', '=', 2)]], [])
 
     # Same as previous but the second clause is col3 = 'dddd' (selects only obj_3),
     # hence the final result is just obj_3.
-    _assert_filter_result([[('col1', '>', 10), ('col4', '==', '2016-01-01 12:00:00')],
-                           [('col3', '==', 'dddd')]], [obj_3])
+    _assert_filter_result([[('col1', '>', 10), ('col4', '=', '2016-01-01 12:00:00')],
+                           [('col3', '=', 'dddd')]], [obj_3])
