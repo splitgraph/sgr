@@ -472,13 +472,16 @@ class ObjectManager:
         elif operator in ('<', '<='):
             query += SQL("(index #>> '{{{},0}}')::" + ctype + " " + operator + " %s").format((Identifier(column_name)))
             args.append(value)
-        elif operator in ('==', '<>'):
-            query += SQL("%s " + ("" if operator == "==" else "NOT ")
-                         + "BETWEEN (index #>> '{{{0},0}}')::" + ctype
+        elif operator == '=':
+            query += SQL("%s BETWEEN (index #>> '{{{0},0}}')::" + ctype
                          + " AND (index #>> '{{{0},1}}')::" + ctype).format((Identifier(column_name)))
             args.append(value)
         # Currently, we ignore the LIKE (~~) qualifier since we can only make a judgement when the % pattern is at
         # the end of a string.
+        # For inequality, we can't really say when an object is definitely not pertinent to a qual:
+        #   * if a <> X and X is included in an object's range, the object still might have values that aren't X.
+        #   * if X isn't included in an object's range, the object definitely has values that aren't X so we have
+        #     to fetch it.
         else:
             # For all other operators, we don't know if they will match so we assume that they will.
             return SQL('TRUE'), ()
