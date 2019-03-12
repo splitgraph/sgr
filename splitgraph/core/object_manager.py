@@ -496,6 +496,7 @@ class ObjectManager:
         # We need access to column types here since the objects might not have been fetched yet and so
         # we can't look at their column types.
         clause, args = self._quals_to_clause(quals, column_types)
+        logging.info("_filter_objects: clause %r, args %r", clause, args)
 
         query = SQL("SELECT object_id FROM {}.{} WHERE object_id IN (") \
             .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects"))
@@ -545,18 +546,22 @@ class ObjectManager:
         # In the future, we can also take other things into account, such as how expensive it is to load a given object
         # (its size), location...
         snap, diffs = self._get_image_object_path(table)
-        required_objects = diffs + [snap]
+        required_objects = [snap] + list(reversed(diffs))
         tracer.log('resolve_objects')
 
         # Filter to see if we can discard any objects with the quals
         if quals:
             column_types = {c[1]: c[2] for c in table.table_schema}
             filtered_objects = self._filter_objects(required_objects, quals, column_types)
-            if filtered_objects != required_objects:
-                required_objects = filtered_objects
+            if set(filtered_objects) != set(required_objects):
+                logging.info("Qual filter: discarded %d/%d object(s)",
+                             len(required_objects) - len(filtered_objects), len(required_objects))
+                # Make sure to keep the order
+                required_objects = [r for r in required_objects if r in filtered_objects]
                 objects_were_filtered = True
             else:
                 objects_were_filtered = False
+                logging.info("Qual filter: discarded 0/%d objects", len(required_objects))
         else:
             objects_were_filtered = False
         tracer.log('filter_objects')
@@ -599,19 +604,18 @@ class ObjectManager:
         tracer.log('stage_1_commit')
         self.object_engine.run_sql("SET LOCAL synchronous_commit TO off")
 
-        if diffs and not objects_were_filtered:
+        if len(required_objects) > 1 and not objects_were_filtered:
             # We want to return a SNAP + a DIFF chain. See if a DIFF chain ending (starting?) with a given DIFF
             # has been requested too many times.
+            # For now, only try to do this if we didn't manage to drop parts of the chain out
             now = dt.utcnow()
             self._store_snap_cache_miss(diffs[0], now)
             if self._recent_snap_cache_misses(
                     diffs[0], now - timedelta(seconds=self.cache_misses_lookback)) >= self.cache_misses_for_snap:
-                new_snap_id = self._create_and_register_temporary_snap(snap, diffs)
+                new_snap_id = self._create_and_register_temporary_snap(required_objects[0], required_objects[1:])
                 # Instead of the old SNAP + DIFF chain, use the new SNAP (the rest will proceed in the same way:
                 # we'll increase the refcount and set the last used time on the SNAP instead of the full chain,
                 # yield it and then release the refcount.
-                diffs = []
-                snap = new_snap_id
 
                 self._release_objects(required_objects)
                 required_objects = [new_snap_id]
@@ -629,7 +633,7 @@ class ObjectManager:
         try:
             # Release the lock and yield to the caller.
             self.object_engine.commit()
-            yield [snap] + list(reversed(diffs))
+            yield required_objects
         finally:
             # Decrease the refcounts on the objects. Optionally, evict them.
             # If the caller crashes, we should still hit this and decrease the refcounts, but if the whole program
@@ -657,8 +661,9 @@ class ObjectManager:
         # worker has created the SNAP and then fail with a PK error, at which point we just roll back and use the SNAP.
         new_snap_id = get_random_object_id()
         try:
-            self.object_engine.run_sql(insert("snap_cache", ("snap_id", "diff_id", "size")), (new_snap_id, diffs[0], 0))
-            logging.info("Generating a temporary SNAP %s for a DIFF chain starting with %s", new_snap_id, diffs[0])
+            self.object_engine.run_sql(insert("snap_cache", ("snap_id", "diff_id", "size")),
+                                       (new_snap_id, diffs[-1], 0))
+            logging.info("Generating a temporary SNAP %s for a DIFF chain starting with %s", new_snap_id, diffs[-1])
             # We'll need extra space to create the temporary SNAP: we can't always do it on the fly
             # (e.g. by just taking the old base SNAP and applying new DIFFs to it) since that operation
             # is destructive and some other users might be using this object.

@@ -140,12 +140,11 @@ def test_lq_external(local_engine_empty, pg_repo_remote):
     _test_lazy_lq_checkout(pg_repo_local)
 
 
-def test_lq_external_snap_cache(local_engine_empty, pg_repo_remote):
+def _prepare_fully_remote_repo(local_engine_empty, pg_repo_remote):
     # Setup: same as external, with an extra DIFF on top of the fruits table.
-    # Test that after hitting a table via LQ 5 times, the query gets satisfied via a SNAP instead.
     pg_repo_local = clone(pg_repo_remote)
     pg_repo_local.images['latest'].checkout()
-    prepare_lq_repo(pg_repo_local, commit_after_every=False, include_pk=True)
+    prepare_lq_repo(pg_repo_local, commit_after_every=True, include_pk=True)
     pg_repo_local.run_sql("INSERT INTO fruits VALUES (4, 'kumquat')")
     pg_repo_local.commit()
     remote = pg_repo_local.push(handler='S3', handler_options={})
@@ -154,21 +153,31 @@ def test_lq_external_snap_cache(local_engine_empty, pg_repo_remote):
     pg_repo_remote.engine.commit()
     pg_repo_local.objects.cleanup()
 
-    # Actual test starts here.
+
+def test_lq_external_snap_cache(local_engine_empty, pg_repo_remote):
+    # Test that after hitting a table via LQ 5 times, the query gets satisfied via a SNAP instead.
+    _prepare_fully_remote_repo(local_engine_empty, pg_repo_remote)
+
     pg_repo_local = clone(pg_repo_remote, download_all=False)
     pg_repo_local.images['latest'].checkout(layered=True)
     assert len(pg_repo_local.objects.get_downloaded_objects()) == 0
 
     for _ in range(4):
-        assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id = 4") == [(4, 'kumquat', 1)]
+        assert pg_repo_local.run_sql("SELECT * FROM fruits ORDER BY fruit_id") == \
+               [(2, 'guitar', 1),
+                (3, 'mayonnaise', 1),
+                (4, 'kumquat', 1)]
         assert pg_repo_local.objects._get_snap_cache() == {}
-        # Downloaded objects: fruits -> 1 original SNAP and 2 DIFFs.
-        assert len(pg_repo_local.objects.get_downloaded_objects()) == 3
+        # Downloaded objects: fruits -> 1 original SNAP and 4 DIFFs.
+        assert len(pg_repo_local.objects.get_downloaded_objects()) == 5
 
     # Now the SNAP gets cached instead:
-    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id = 4") == [(4, 'kumquat', 1)]
+    assert pg_repo_local.run_sql("SELECT * FROM fruits ORDER BY fruit_id") == \
+           [(2, 'guitar', 1),
+            (3, 'mayonnaise', 1),
+            (4, 'kumquat', 1)]
     # Old 4 objects + temporary SNAP.
-    assert len(pg_repo_local.objects.get_downloaded_objects()) == 4
-    # Check that the DIFF is in the cache.
+    assert len(pg_repo_local.objects.get_downloaded_objects()) == 6
+    # Check the SNAP cache contents
     assert list(pg_repo_local.objects._get_snap_cache().values()) == [
         (pg_repo_local.images['latest'].get_table('fruits').get_object('DIFF'), 8192)]
