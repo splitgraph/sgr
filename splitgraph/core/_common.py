@@ -3,6 +3,7 @@ Common internal functions used by Splitgraph commands.
 """
 import logging
 import re
+from datetime import datetime
 from functools import wraps
 
 from psycopg2.sql import Identifier, SQL
@@ -404,3 +405,37 @@ def pretty_size(size):
         n += 1
 
     return "%.2f %s" % (size, {0: '', 1: 'Ki', 2: 'Mi', 3: 'Gi', 4: 'Ti'}[n] + 'B')
+
+
+def _parse_dt(string):
+    try:
+        return datetime.strptime(string, "%Y-%m-%dT%H:%M:%S.%f")
+    except ValueError:
+        return datetime.strptime(string, "%Y-%m-%dT%H:%M:%S")
+
+
+def _parse_date(string):
+    return datetime.strptime(string, "%Y-%m-%d").date()
+
+
+_TYPE_MAP = {k: v for ks, v in
+             [(['integer', 'bigint', 'smallint'], int),
+              (['numeric', 'real', 'double precision'], float),
+              (['timestamp', 'timestamp without time zone'], _parse_dt),
+              (['date'], _parse_date)]
+             for k in ks}
+
+
+def adapt(value, pg_type):
+    """
+    Coerces a value with a PG type into its Python equivalent. If the value is None, returns None.
+
+    :param value: Value
+    :param pg_type: Postgres datatype
+    :return: Coerced value.
+    """
+    if value is None:
+        return value
+    if pg_type in _TYPE_MAP:
+        return _TYPE_MAP[pg_type](value)
+    return value

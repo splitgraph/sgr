@@ -17,7 +17,7 @@ from splitgraph.engine.postgres.engine import SG_UD_FLAG
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.external_objects import get_external_object_handler
 
-from ._common import META_TABLES, select, insert, pretty_size
+from ._common import META_TABLES, select, insert, pretty_size, adapt
 
 # PG types we can run max/min on
 _PG_INDEXABLE_TYPES = [
@@ -122,7 +122,7 @@ class ObjectManager:
         return result
 
     @staticmethod
-    def _coerce_decimal(val):
+    def _coerce_val(val):
         # Some values can't be stored in json so we turn them into strings
         if isinstance(val, Decimal):
             return str(val)
@@ -130,25 +130,66 @@ class ObjectManager:
             return val.isoformat()
         return val
 
-    def _generate_object_index(self, object_id):
+    def _generate_object_index(self, object_id, changeset=None):
         """
         Queries the max/min values of a given fragment for each column, used to speed up querying.
 
         :param object_id: ID of an object
+        :param changeset: Optional, if specified, the old row values are included in the index.
         :return: Dict of {column_name: (min_val, max_val)}
         """
         # Maybe we should pass the column names in instead?
-        column_names = [c[1] for c in self.object_engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, object_id)
-                        if c[1] != SG_UD_FLAG and c[2] in _PG_INDEXABLE_TYPES]
+        columns = {c[1]: c[2] for c in self.object_engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, object_id)
+                   if c[1] != SG_UD_FLAG and c[2] in _PG_INDEXABLE_TYPES}
 
-        query = SQL("SELECT ") + SQL(",").join(SQL("MIN({0}), MAX({0})").format(Identifier(c)) for c in column_names)
+        query = SQL("SELECT ") + SQL(",").join(SQL("MIN({0}), MAX({0})").format(Identifier(c)) for c in columns)
         query += SQL(" FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id))
         result = self.object_engine.run_sql(query, return_shape=ResultShape.ONE_MANY)
 
-        return {col: (self._coerce_decimal(cmin), self._coerce_decimal(cmax)) for col, cmin, cmax in
-                zip(column_names, result[0::2], result[1::2])}
+        index = {col: (cmin, cmax) for col, cmin, cmax in zip(columns, result[0::2], result[1::2])}
 
-    def register_object(self, object_id, object_format, namespace, parent_object=None):
+        if changeset:
+            # Expand the index ranges to include the old row values in this chunk.
+            # Why is this necessary? Say we have a table of (key (PK), value) and a
+            # query "value = 42". Say we have 2 objects:
+            #
+            #   key | value
+            #   1   | 42
+            #
+            #   key | value
+            #   1   | 43   (UPDATED)
+            #
+            # If we don't include the old value that object 2 overwrote in the index, we'll disregard object 2
+            # when inspecting the index for that query (since there, "value" only spans [43, 43]) and give the
+            # wrong answer (1, 42) even though we should give (1, 43). Similarly with deletes: if the index for
+            # an object doesn't say "some of the values spanning this range are deleted in this chunk",
+            # we won't fetch the object.
+            #
+            # See test_lq_qual_filtering for these test cases.
+
+            # For DELETEs, we put NULLs in the non-PK columns; make sure we ignore them here.
+            def _min(a, b):
+                return b if a is None else (a if b is None else min(a, b))
+
+            def _max(a, b):
+                return b if a is None else (a if b is None else max(a, b))
+
+            for _, old_row in changeset.values():
+                for col, val in old_row.items():
+                    # Ignore columns that we aren't indexing because they have unsupported types.
+                    # Also ignore NULL values.
+                    if col not in columns or val is None:
+                        continue
+                    # The audit trigger stores the old row values as JSON so only supports strings and floats/ints.
+                    # Hence, we have to coerce them into the values returned by the index.
+                    val = adapt(val, columns[col])
+                    index[col] = (_min(index[col][0], val),
+                                  _max(index[col][1], val))
+
+        index = {k: (self._coerce_val(v[0]), self._coerce_val(v[1])) for k, v in index.items()}
+        return index
+
+    def register_object(self, object_id, object_format, namespace, parent_object=None, changeset=None):
         """
         Registers a Splitgraph object in the object tree and indexes it
 
@@ -157,6 +198,10 @@ class ObjectManager:
         :param namespace: Namespace that owns the object. In registry mode, only namespace owners can alter or delete
             objects.
         :param parent_object: Parent that the object depends on, if it's a DIFF object.
+        :param changeset: For DIFF objects, changeset that produced this object. Must be a dictionary of
+            {PK: (True for upserted/False for deleted, old row (if updated or deleted))}. The old values
+            are used to generate the min/max index for an object to know if it removes/updates some rows
+            that might be pertinent to a query.
         """
         if not parent_object and object_format != 'SNAP':
             raise ValueError("Non-SNAP objects can't have no parent!")
@@ -164,7 +209,7 @@ class ObjectManager:
             raise ValueError("SNAP objects can't have a parent!")
 
         object_size = self.object_engine.get_table_size(SPLITGRAPH_META_SCHEMA, object_id)
-        object_index = self._generate_object_index(object_id)
+        object_index = self._generate_object_index(object_id, changeset)
         self.object_engine.run_sql(
             insert("objects", ("object_id", "format", "parent_id", "namespace", "size", "index")),
             (object_id, object_format, parent_object, namespace, object_size, object_index))
@@ -284,35 +329,24 @@ class ObjectManager:
         """
         object_id = get_random_object_id()
         engine = self.object_engine
+
         # Accumulate the diff in-memory. This might become a bottleneck in the future.
-
-        # Only care about PKs that have been upserted / deleted
-        # so we can get them and then run an insert select from
-        # but there's still the conflation problem (delete + update on same PK is still an upsert;
-        # make sure there aren't PK-changing updates (otherwise those are supposed to be a separate
-        # delete + update))
-
         changeset = {}
-        for row_data, action, changed_fields in engine.get_pending_changes(old_table.repository.to_schema(),
-                                                                           old_table.table_name):
-            _conflate_changes(changeset, [(row_data, action, changed_fields)])
+        _conflate_changes(changeset, engine.get_pending_changes(old_table.repository.to_schema(),
+                                                                old_table.table_name))
         engine.discard_pending_changes(old_table.repository.to_schema(), old_table.table_name)
 
         # This can be simplified: we don't need to load the whole changeset and conflate it just
         # to find out which rows need to be copied over into the new object.
         if changeset:
-            upserted = [pk for pk, change in changeset.items() if change[0] in (0, 2)]
-            deleted = [pk for pk, change in changeset.items() if change[0] == 1]
-
-            # Also we need to know the old values of the deleted rows since we're using them
-            # for the index
-
+            upserted = [pk for pk, data in changeset.items() if data[0]]
+            deleted = [pk for pk, data in changeset.items() if not data[0]]
             engine.store_fragment(upserted, deleted, SPLITGRAPH_META_SCHEMA, object_id,
                                   old_table.repository.to_schema(),
                                   old_table.table_name)
             self.register_object(
                 object_id, object_format='DIFF', namespace=old_table.repository.namespace,
-                parent_object=old_table.objects[0][0])
+                parent_object=old_table.objects[0][0], changeset=changeset)
 
             self.register_table(old_table.repository, old_table.table_name, image_hash,
                                 old_table.table_schema, object_id)
@@ -501,6 +535,9 @@ class ObjectManager:
         clause, args = self._quals_to_clause(quals, column_types)
         logging.info("_filter_objects: clause %r, args %r", clause, args)
 
+        # If we don't include the removed items (e.g. the previous values of the deleted/updated rows)
+        # in the index, we have to instead fetch the whole chain starting from the first
+        # pertinent object
         query = SQL("SELECT object_id FROM {}.{} WHERE object_id IN (") \
             .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects"))
         query += SQL(",".join(itertools.repeat("%s", len(object_ids))) + ")")
@@ -985,32 +1022,32 @@ def _fetch_external_objects(engine, object_locations, objects_to_fetch, handler_
 def _conflate_changes(changeset, new_changes):
     """
     Updates a changeset to incorporate the new changes. Assumes that the new changes are non-pk changing
-    (e.g. PK-changing updates have been converted into a del + ins).
+    (i.e. PK-changing updates have been converted into a del + ins).
     """
-    for change_pk, change_kind, change_data in new_changes:
+    for change_pk, upserted, old_row in new_changes:
         old_change = changeset.get(change_pk)
         if not old_change:
-            changeset[change_pk] = (change_kind, change_data)
+            changeset[change_pk] = (upserted, old_row)
         else:
-            if change_kind == 0:
-                if old_change[0] == 1:  # Insert over delete: change to update
-                    if change_data == {}:
-                        del changeset[change_pk]
-                    else:
-                        changeset[change_pk] = (2, change_data)
+            if upserted and not old_row:
+                # INSERT -- can only happen over a DELETE. Mark the row as upserted; no need to keep track
+                # of the old row (since we have it).
+                changeset[change_pk] = (upserted, old_row)
+            if upserted and old_row:
+                # UPDATE -- can only happen over another UPDATE or over an INSERT.
+                # If it's over an UPDATE, we keep track of the old row; if it's over an INSERT,
+                # we can access the inserted row anyway so no point keeping track of it.
+                changeset[change_pk] = (upserted, old_change[1])
+            if not upserted:
+                # DELETE.
+                if old_change[1]:
+                    # If happened over an UPDATE, we need to remember the value that was there before the UPDATE.
+                    changeset[change_pk] = (upserted, old_change[1])
                 else:
-                    raise SplitGraphException("Malformed audit log: existing PK %s inserted." % str(change_pk))
-            elif change_kind == 1:  # Delete over insert/update: remove the old change
-                del changeset[change_pk]
-                if old_change[0] == 2:
-                    # If it was an update, also remove the old row.
-                    changeset[change_pk] = (1, change_data)
-                if old_change[0] == 1:
-                    # Delete over delete: can't happen.
-                    raise SplitGraphException("Malformed audit log: deleted PK %s deleted again" % str(change_pk))
-            elif change_kind == 2:  # Update over insert/update: merge the two changes.
-                if old_change[0] == 0 or old_change[0] == 2:
-                    old_change[1].update(change_data)
+                    # If happened over an INSERT, it's a no-op (changes cancel out).
+                    del changeset[change_pk]
+
+    return changeset
 
 
 def get_random_object_id():
