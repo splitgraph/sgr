@@ -197,15 +197,14 @@ def test_lq_external_snap_cache(local_engine_empty, pg_repo_remote):
     # Test NULLs don't break anything (even though we still look at all objects)
     ("SELECT * FROM fruits WHERE name IS NULL", [], (True, True, True, True, True)),
     # Same but also add a filter on the string column to exclude 'guitar'.
-    # XXX this is wrong: the 'guitar' chunk should be still looked at since it overwrites
-    # the old value and the result of the query should be []
+    # Make sure the chunk that updates 'orange' into 'guitar' is still fetched
+    # since it overwrites the old value (even though the updated value doesn't match the qual any more)
     ("SELECT * FROM fruits WHERE fruit_id = 2 AND name > 'guitar'",
-     # expected: [], (True, False, False, True, False)),
-     [(2, 'orange', 1)], (True, False, False, False, False)),
-    # XXX this is also wrong: the deletion should be included in the index and fetched as well
+     [], (True, False, False, True, False)),
+    # Similar here: the chunk that deletes 'apple' is supposed to have 'apple' included in its index
+    # and fetched as well.
     ("SELECT * FROM fruits WHERE name = 'apple'",
-     # expected: [], (True, False, True, False, False)),
-     [(1, 'apple', 1)], (True, False, False, False, False)),
+     [], (True, False, True, False, False)),
 ])
 def test_lq_qual_filtering(local_engine_empty, pg_repo_remote, test_case):
     # Test that LQ prunes the object list based on quals

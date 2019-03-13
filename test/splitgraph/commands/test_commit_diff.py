@@ -11,8 +11,7 @@ def test_diff_head(pg_repo_local):
     pg_repo_local.engine.commit()  # otherwise the audit trigger won't see this
     change = pg_repo_local.diff('fruits', image_1=pg_repo_local.head.image_hash, image_2=None)
     # Added (3, mayonnaise); Deleted (1, 'apple')
-    assert change == [((3, 'mayonnaise'), 0, {}),
-                      ((1, 'apple'), 1, None)]
+    assert sorted(change) == [((1, 'apple'), 1, None), ((3, 'mayonnaise'), 0, {})]
 
 
 @pytest.mark.parametrize("snap_only", [True, False])
@@ -201,8 +200,7 @@ def test_non_ordered_inserts_with_pk(snap_only, local_engine_empty):
     assert change[0] == ((1, 2, 3, 'four'), 0, {})
 
 
-@pytest.mark.parametrize("snap_only", [True, False])
-def test_various_types(snap_only, local_engine_empty):
+def _write_multitype_dataset(snap_only):
     # Schema/data copied from the wal2json tests
     OUTPUT.init()
     OUTPUT.run_sql("""CREATE TABLE test
@@ -238,8 +236,17 @@ def test_various_types(snap_only, local_engine_empty):
         'AAA AAA Bb '::tsvector);""")
 
     new_head = OUTPUT.commit(snap_only=snap_only)
+    # Check out the old/new image again to verify that writing the new image works
     head.checkout()
     new_head.checkout()
+
+    return new_head
+
+
+@pytest.mark.parametrize("snap_only", [True, False])
+def test_various_types(snap_only, local_engine_empty):
+    new_head = _write_multitype_dataset(snap_only)
+
     assert OUTPUT.run_sql("SELECT * FROM test") \
            == [(1, 1, 2, 3, Decimal('3.540'), 876.563, 1.23, 'test      ', 'testtesttesttest',
                 'testtesttesttesttesttesttest', '001110010101010', dt(2013, 11, 2, 17, 30, 52),
@@ -268,9 +275,51 @@ def test_various_types(snap_only, local_engine_empty):
     if snap_only:
         expected['h'] = ['abcd      ', 'test      ']
 
-    # TODO add (and xfail) a test showing that deletions should also be included in the index.
+    assert object_index == expected
+
+
+def test_various_types_with_deletion_index(local_engine_empty):
+    _write_multitype_dataset(snap_only=False)
+    # Insert a row, update a row and delete a row -- check the old rows are included in the index correctly.
+    OUTPUT.run_sql(
+        """INSERT INTO test (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p)
+        VALUES(16, 23, 2, 7.89, 10.01, 9.45, 'defg', '00esttesttesttes', '00esttesttesttesttesttesttes',
+        B'111110011111111', '2016-02-01 01:01:05.123456', '2012-12-12', false, '{ "b": 789 }',
+        'BBB BBB Cc '::tsvector);""")
+    OUTPUT.run_sql("DELETE FROM test WHERE b = 15")
+    OUTPUT.run_sql("UPDATE test SET m = '2019-01-01' WHERE m = '2013-02-04'")
+    new_head = OUTPUT.commit()
+
+    object_id = new_head.get_table('test').objects[0][0]
+    object_index = OUTPUT.objects.get_object_meta([object_id])[0][5]
+    # Deleted row for reference:
+    # 15, 22, 1, -1.23, 9.8811, 0.23, 'abcd', '0testtesttesttes', '0testtesttesttesttesttesttes',
+    #   B'111110011111111', '2016-01-01 01:01:05', '2011-11-11', false, '{ "b": 456 }',
+    #   'AAA AAA Bb '::tsvector
+    # Updated row for reference:
+    # 1, 2, 3, 3.54, 876.563452345, 1.23, 'test', 'testtesttesttest', 'testtesttesttesttesttesttest',
+    #   B'001110010101010', '2013-11-02 17:30:52', '2013-02-04', true, '{ "a": 123 }',
+    #   'Old Old Parr'::tsvector
+
+    # Make sure all rows are included since they were all affected + both old and new value for the update
+    expected = {'a': [1, 2],  # this one is a sequence so is kinda broken
+                'b': [1, 16],  # original values 1 (updated row), 15 (deleted row), 16 (inserted)
+                'c': [2, 23],  # 2 (U), 22 (D), 23 (I)
+                'd': [1, 3],  # 3 (U), 1 (D), 2 (I)
+                'e': [-1.23, '7.890'],  # 3.54 (U), -1.23 (D), 7.89 (I) -- also wtf is up with types?
+                'f': [9.8811, 876.563],  # 876.563 (U, numeric(5,3) so truncated), 9.8811 (D), 10.01 (I)
+                'g': [0.23, 9.45],  # 1.23 (U), 0.23 (D), 9.45 (I)
+                'h': ['abcd      ', 'test      '],  # test (U), abcd (D), defg (I)
+                'i': ['00esttesttesttes', 'testtesttesttest'],  # test... (U), 0tes... (D), 00te... (I)
+                # same as previous here
+                'j': ['00esttesttesttesttesttesttes', 'testtesttesttesttesttesttest'],
+                # 2013-11 (U), 2016-01 (D), 2016-02 (I)
+                'l': ['2013-11-02T17:30:52', '2016-02-01T01:01:05.123456'],
+                # 2013 (U, old value), 2016 (D), 2012 (I), 2019 (U, new value)
+                'm': ['2011-11-11', '2019-01-01']}
 
     assert object_index == expected
+
 
 
 def test_empty_diff_reuses_object(pg_repo_local):

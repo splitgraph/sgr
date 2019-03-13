@@ -864,10 +864,9 @@ class Repository:
         if not table_exists_at(self, table_name, image_2):
             return False
 
-        # Special case: if diffing HEAD and staging, then just return the current pending changes.
-        if image_1 == self.head and image_2 is None:
-            changes = self.engine.get_pending_changes(self.to_schema(), table_name, aggregate=aggregate)
-            return list(changes) if not aggregate else aggregate_changes(changes)
+        # Special case: if diffing HEAD and staging (with aggregation), we can return that directly.
+        if image_1 == self.head and image_2 is None and aggregate:
+            return aggregate_changes(self.engine.get_pending_changes(self.to_schema(), table_name, aggregate=True))
 
         # If the table is the same in the two images, short circuit as well.
         if image_2 is not None:
@@ -875,7 +874,8 @@ class Repository:
                     set(image_2.get_table(table_name).objects):
                 return [] if not aggregate else (0, 0, 0)
 
-        # We used to merge DIFF objects here but they don't exist (:(((()
+        # Materialize both tables and compare them side-by-side.
+        # TODO we can aggregate chunks in a similar way that LQ does it.
         return slow_diff(self, table_name, _hash(image_1), _hash(image_2), aggregate)
 
 

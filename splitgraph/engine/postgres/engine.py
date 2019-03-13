@@ -576,25 +576,28 @@ def _convert_audit_change(action, row_data, changed_fields, ri_cols):
     """
     Converts the audit log entry into Splitgraph's internal format.
 
-    :returns: [(pk, kind, extra data)] (more than 1 change might be emitted from a single audit entry).
+    :returns: [(pk, (True for upserted, False for deleted), (old row value if updated/deleted))].
+        More than 1 change might be emitted from a single audit entry.
     """
     ri_data, non_ri_data = _split_ri_cols(action, row_data, changed_fields, ri_cols)
     pk_changed = any(c in ri_cols for c in non_ri_data)
     if pk_changed:
         assert action == 'U'
         # If it's an update that changed the PK (e.g. the table has no replica identity so we treat the whole
-        # tuple as a primary key), then we turn it into a delete old tuple + insert new one.
-        result = [(tuple(ri_data[c] for c in ri_cols), 1, None)]
+        # tuple as a primary key), then we turn it into (old PK, DELETE, old row data); (new PK, INSERT, {})
 
         # Recalculate the new PK to be inserted + the new (full) tuple, otherwise if the whole
         # tuple hasn't been updated, we'll lose parts of the old row (see test_diff_conflation_on_commit[test_case2]).
+
+        result = [(tuple(ri_data[c] for c in ri_cols), False, row_data)]
+
         ri_data, non_ri_data = _recalculate_disjoint_ri_cols(ri_cols, ri_data, non_ri_data, row_data)
-        result.append((tuple(ri_data[c] for c in ri_cols), 0, non_ri_data))
+        result.append((tuple(ri_data[c] for c in ri_cols), True, {}))
         return result
     if action == 'U' and not non_ri_data:
+        # Nothing was actually updated -- don't emit an action
         return []
-    return [(tuple(ri_data[c] for c in ri_cols), _KIND[action],
-             non_ri_data if action in ('I', 'U') else None)]
+    return [(tuple(ri_data[c] for c in ri_cols), action in ('I', 'U'), row_data if action in ('U', 'D') else {})]
 
 
 _KIND = {'I': 0, 'D': 1, 'U': 2}
