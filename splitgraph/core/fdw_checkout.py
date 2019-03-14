@@ -115,16 +115,12 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
             # Accumulate the query result in a temporary table.
             staging_table = self._create_staging_table(required_objects[0])
 
-            # Apply the fragments to the staging area, discarding rows that don't match the qualifiers any more.
+            # Apply the fragments (just the parts that match the qualifiers) to the staging area
             if quals:
-                discard_query = SQL("DELETE FROM {}.{} WHERE ").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                       Identifier(staging_table)) \
-                                + SQL("NOT (") + qual_sql + SQL(")")
-
                 self.engine.batch_apply_fragments([(SPLITGRAPH_META_SCHEMA, o) for o in required_objects],
                                                   SPLITGRAPH_META_SCHEMA, staging_table,
-                                                  run_after_every=discard_query,
-                                                  run_after_every_args=qual_vals)
+                                                  extra_quals=qual_sql,
+                                                  extra_qual_args=qual_vals)
             else:
                 self.engine.batch_apply_fragments([(SPLITGRAPH_META_SCHEMA, o) for o in required_objects],
                                                   SPLITGRAPH_META_SCHEMA, staging_table)

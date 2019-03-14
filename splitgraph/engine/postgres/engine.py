@@ -304,62 +304,50 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         non_ri_cols, non_ri_types = zip(*non_ri_cols_types) if non_ri_cols_types else ((), ())
         return ri_cols, non_ri_cols, non_ri_types
 
-    def _generate_fragment_application(self, source_schema, source_table, target_schema, target_table, ri_data):
+    def _generate_fragment_application(self, source_schema, source_table,
+                                       target_schema, target_table, ri_data, extra_quals=None):
         ri_cols, non_ri_cols, ri_types = ri_data
         all_cols = ri_cols + non_ri_cols
 
-        # Check if the fragment we're applying has any deletes
+        # First, delete all PKs from staging that are mentioned in the new fragment. This conveniently
+        # covers both deletes and updates.
+        query = SQL("DELETE FROM {0}.{2} USING {1}.{3}").format(
+            Identifier(target_schema), Identifier(source_schema), Identifier(target_table),
+            Identifier(source_table)) + SQL(" WHERE ") + _generate_where_clause(target_schema, target_table, ri_cols,
+                                                                                source_table, source_schema)
+
+        # At this point, we can insert all rows directly since we won't have any conflicts.
+        # We can also apply extra qualifiers to only insert rows that match a certain query,
+        # which will result in fewer rows actually being written to the staging table.
         has_ud_flag = any(c[1] == SG_UD_FLAG for c in self.get_full_table_schema(source_schema, source_table))
-        # Apply upserts
         # INSERT INTO target_table (col1, col2...)
         #   (SELECT col1, col2, ...
-        #    FROM fragment_table WHERE sg_ud_flag = true)
-        #    ON CONFLICT (pks) DO UPDATE SET col1 = excluded.col1...
-        query = SQL("INSERT INTO {}.{} (").format(Identifier(target_schema), Identifier(target_table)) + \
-                SQL(",").join(Identifier(c) for c in all_cols) + SQL(")") + \
-                SQL("(SELECT ") + SQL(",").join(Identifier(c) for c in all_cols) + \
-                SQL(" FROM {}.{}").format(Identifier(source_schema), Identifier(source_table))
+        #    FROM fragment_table WHERE sg_ud_flag = true (AND optional quals))
+        query += SQL(";INSERT INTO {}.{} (").format(Identifier(target_schema), Identifier(target_table)) + \
+                 SQL(",").join(Identifier(c) for c in all_cols) + SQL(")") + \
+                 SQL("(SELECT ") + SQL(",").join(Identifier(c) for c in all_cols) + \
+                 SQL(" FROM {}.{}").format(Identifier(source_schema), Identifier(source_table))
+        extra_quals = [extra_quals] if extra_quals else []
         if has_ud_flag:
-            query += SQL(" WHERE {} = true)").format(Identifier(SG_UD_FLAG))
-        else:
-            query += SQL(")")
-        if non_ri_cols:
-            query += SQL(" ON CONFLICT (") + SQL(',').join(map(Identifier, ri_cols)) + SQL(")")
-            if len(non_ri_cols) > 1:
-                query += SQL(" DO UPDATE SET (") + SQL(',').join(map(Identifier, non_ri_cols)) + SQL(") = (") \
-                         + SQL(',').join([SQL("EXCLUDED.") + Identifier(c) for c in non_ri_cols]) + SQL(")")
-            else:
-                # otherwise, we get a "source for a multiple-column UPDATE item must be a sub-SELECT or ROW()
-                # expression" error from pg.
-                query += SQL(" DO UPDATE SET {0} = EXCLUDED.{0}").format(Identifier(non_ri_cols[0]))
-
-        # Apply deletes
-        if has_ud_flag:
-            query += SQL(";DELETE FROM {0}.{2} USING {1}.{3} WHERE {1}.{3}.{4} = false").format(
-                Identifier(target_schema), Identifier(source_schema), Identifier(target_table),
-                Identifier(source_table), Identifier(SG_UD_FLAG)) \
-                     + SQL(" AND ") + _generate_where_clause(target_schema, target_table, ri_cols,
-                                                            source_table, source_schema)
+            extra_quals.append(SQL("{} = true").format(Identifier(SG_UD_FLAG)))
+        if extra_quals:
+            query += SQL(" WHERE ") + SQL(" AND ").join(extra_quals)
+        query += SQL(")")
         return query
 
-    def apply_fragment(self, source_schema, source_table, target_schema, target_table):
+    def apply_fragment(self, source_schema, source_table, target_schema, target_table,
+                       extra_quals=None, extra_qual_args=None):
         ri_data = self._prepare_ri_data(target_schema, target_table)
         self.run_sql(self._generate_fragment_application(source_schema, source_table,
-                                                         target_schema, target_table, ri_data))
+                                                         target_schema, target_table, ri_data, extra_quals),
+                     extra_qual_args)
 
-    def batch_apply_fragments(self, objects, target_schema, target_table, run_after_every=None,
-                              run_after_every_args=None):
+    def batch_apply_fragments(self, objects, target_schema, target_table, extra_quals=None, extra_qual_args=None):
         ri_data = self._prepare_ri_data(target_schema, target_table)
-        if run_after_every:
-            query = SQL(";").join(q for ss, st in objects
-                                  for q in
-                                  (self._generate_fragment_application(ss, st, target_schema, target_table, ri_data),
-                                   run_after_every))
-            self.run_sql(query, run_after_every_args * len(objects))
-        else:
-            query = SQL(";").join(self._generate_fragment_application(ss, st, target_schema, target_table, ri_data)
-                                  for ss, st in objects)
-            self.run_sql(query)
+        query = SQL(";").join(self._generate_fragment_application(ss, st, target_schema, target_table,
+                                                                  ri_data, extra_quals)
+                              for ss, st in objects)
+        self.run_sql(query, (extra_qual_args * len(objects)) if extra_qual_args else None)
 
     def dump_table_sql(self, schema, table_name, stream, columns='*', where='', where_args=None):
         with self.connection.cursor() as cur:
