@@ -6,7 +6,7 @@ from splitgraph.core import clone
 def prepare_lq_repo(repo, commit_after_every, include_pk, snap_only=False):
     OPS = ["INSERT INTO fruits VALUES (3, 'mayonnaise')",
            "DELETE FROM fruits WHERE name = 'apple'",
-           "DELETE FROM vegetables WHERE vegetable_id = 1",
+           "DELETE FROM vegetables WHERE vegetable_id = 1;INSERT INTO vegetables VALUES (3, 'celery')",
            "UPDATE fruits SET name = 'guitar' WHERE fruit_id = 2"]
 
     repo.run_sql("ALTER TABLE fruits ADD COLUMN number NUMERIC DEFAULT 1")
@@ -43,7 +43,7 @@ def prepare_lq_repo(repo, commit_after_every, include_pk, snap_only=False):
 
     # Join between two FDWs
     ("SELECT * FROM fruits JOIN vegetables ON fruits.fruit_id = vegetables.vegetable_id",
-     [(2, 'guitar', 1, 2, 'carrot')]),
+     [(2, 'guitar', 1, 2, 'carrot'), (3, 'mayonnaise', 1, 3, 'celery')]),
 
     # Expression in terms of another column
     ("SELECT * FROM fruits WHERE fruit_id = number + 1 ", [(2, 'guitar', 1)]),
@@ -233,3 +233,20 @@ def test_lq_qual_filtering(local_engine_empty, pg_repo_remote, test_case):
     assert pg_repo_local.run_sql(query) == expected
     used_objects = pg_repo_local.objects.get_downloaded_objects()
     assert set(expected_objects) == set(used_objects)
+
+
+def test_lq_single_non_snap_object(local_engine_empty, pg_repo_remote):
+    # The object produced by
+    # "DELETE FROM vegetables WHERE vegetable_id = 1;INSERT INTO vegetables VALUES (3, 'celery')"
+    # has a deletion and an insertion. Check that an LQ that only uses that object
+    # doesn't return the extra upserted/deleted flag column.
+
+    _prepare_fully_remote_repo(local_engine_empty, pg_repo_remote)
+
+    pg_repo_local = clone(pg_repo_remote, download_all=False)
+    pg_repo_local.images['latest'].checkout(layered=True)
+
+    assert pg_repo_local.run_sql("SELECT * FROM vegetables WHERE vegetable_id = 3 AND name = 'celery'") \
+           == [(3, 'celery')]
+    used_objects = pg_repo_local.objects.get_downloaded_objects()
+    assert len(used_objects) == 1
