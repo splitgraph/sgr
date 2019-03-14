@@ -491,7 +491,7 @@ def test_object_manager_index_clause_generation(pg_repo_local):
                       ('a', 3))
 
 
-def test_object_manager_object_filtering(local_engine_empty):
+def _prepare_object_filtering_dataset():
     OUTPUT.init()
     OUTPUT.run_sql("""CREATE TABLE test
             (col1 int primary key,
@@ -545,8 +545,12 @@ def test_object_manager_object_filtering(local_engine_empty):
         'col3': ['eeee', 'ffff'],
         'col4': ['2015-12-31T00:00:00', '2016-01-04T00:00:00']}
 
-    # Now the actual test starts.
-    objects = [obj_1, obj_2, obj_3, obj_4]
+    return [obj_1, obj_2, obj_3, obj_4]
+
+
+def test_object_manager_object_filtering(local_engine_empty):
+    objects = _prepare_object_filtering_dataset()
+    obj_1, obj_2, obj_3, obj_4 = objects
     om = OUTPUT.objects
     column_types = {c[1]: c[2] for c in OUTPUT.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, obj_1)}
 
@@ -607,3 +611,31 @@ def test_object_manager_object_filtering(local_engine_empty):
     # hence the final result is just obj_3.
     _assert_filter_result([[('col1', '>', 10), ('col4', '=', '2016-01-01 12:00:00')],
                            [('col3', '=', 'dddd')]], [obj_3])
+
+
+def test_object_manager_object_filtering_end_to_end(local_engine_empty):
+    objects = _prepare_object_filtering_dataset()
+    obj_1, obj_2, obj_3, obj_4 = objects
+    om = OUTPUT.objects
+    table = OUTPUT.head.get_table('test')
+
+    with om.ensure_objects(table) as required_objects:
+        assert set(required_objects) == set(objects)
+
+    # Check the object manager filters the quals correctly and doesn't generate a temporary SNAP if not all objects
+    # in the chain are used.
+    for _ in range(5):
+        with om.ensure_objects(table, quals=[[('col1', '>', 10),
+                                              ('col4', '=', '2016-01-01 12:00:00')]]) as required_objects:
+            assert set(required_objects) == {obj_1, obj_3, obj_4}
+
+    # Check the object manager does create a temporary snap if all objects were used
+    # Since we've already has a DIFF cache miss in the beginning, we only need 4
+    # misses to generate a SNAP.
+    for _ in range(3):
+        with om.ensure_objects(table, quals=[[('col1', '>', 1)]]) as required_objects:
+            assert set(required_objects) == set(objects)
+
+    with om.ensure_objects(table, quals=[[('col1', '>', 1)]]) as required_objects:
+        assert len(required_objects) == 1
+        assert required_objects[0] not in objects

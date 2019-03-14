@@ -320,42 +320,40 @@ class ObjectEngine:
     Routines for storing/applying objects as well as sharing them with other engines.
     """
 
-    def store_diff_object(self, changeset, schema, table, change_key):
+    def store_fragment(self, inserted, deleted, schema, table, source_schema, source_table):
         """
-        Store a changeset in a table
+        Store a fragment of a changed table in another table
 
-        :param changeset: List of (pk, action (0 for Insert, 1 for Delete, 2 for Update), action_data)
-            where action_data is None for Delete and `{'c': [column_names], 'v': [column_values]}` that
-            have been inserted/updated otherwise.
-        :param schema: Schema to store the changeset in
-        :param table: Table to store the changeset in
-        :param change_key: Change key as returned by `get_change_key`
+        :param inserted: List of PKs that have been updated/inserted
+        :param deleted: List of PKs that have been deleted
+        :param schema: Schema to store the change in
+        :param table: Table to store the change in
+        :param source_schema: Schema the source table is located in
+        :param source_table: Name of the source table
         """
         raise NotImplementedError()
 
-    def apply_diff_object(self, source_schema, source_table, target_schema, target_table, ignore_cols):
+    def apply_fragment(self, source_schema, source_table, target_schema, target_table):
         """
-        Apply a changeset stored in a table to a certain target table.
+        Apply a stored fragment to another table
 
-        :param source_schema: Schema the changeset is stored in
-        :param source_table: Table the changeset is stored in
-        :param target_schema: Schema to apply the changeset to
-        :param target_table: Table to apply the changeset to
-        :param ignore_cols: Column names to exclude from any operations.
+        :param source_schema: Schema where the fragment is located
+        :param source_table: Table where the fragment is located
+        :param target_schema: Schema to apply the fragment to
+        :param target_table: Table to apply the fragment to
         """
         raise NotImplementedError()
 
-    def batch_apply_diff_objects(self, objects, target_schema, target_table, run_after_every=None,
-                                 run_after_every_args=None, ignore_cols=None):
+    def batch_apply_fragments(self, objects, target_schema, target_table, run_after_every=None,
+                              run_after_every_args=None):
         """
-        Apply a list of changesets to a target table as a batch operation.
+        Apply multiple fragments to a target table as a single-query batch operation.
 
         :param objects: List of tuples `(object_schema, object_table)` that the objects are stored in.
-        :param target_schema: Schema to apply the changeset to
-        :param target_table: Table to apply the changeset to
-        :param run_after_every: If specified, an extra SQL (Composable) query to run after every DIFF application.
+        :param target_schema: Schema to apply the fragment to
+        :param target_table: Table to apply the fragment to
+        :param run_after_every: If specified, an extra SQL (Composable) query to run after every fragment application.
         :param run_after_every_args: Optional, a tuple of arguments to use with `run_after_every`.
-        :param ignore_cols: Column names to exclude from any operations.
         """
         raise NotImplementedError()
 
