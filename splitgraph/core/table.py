@@ -37,11 +37,9 @@ class Table:
                 engine.copy_table(SPLITGRAPH_META_SCHEMA, required_objects[0], destination_schema, destination,
                                   with_pk_constraints=True)
                 if len(required_objects) > 1:
-                    logging.info("Applying %d DIFF object(s)..." % (len(required_objects) - 1))
-                    # TODO TF work: not sure if we want to have apply_diff/snap_objects in the engine interface
-                    # if really the fragments all have the same format
-                    for diff in required_objects[1:]:
-                        engine.apply_fragment(SPLITGRAPH_META_SCHEMA, diff, destination_schema, destination)
+                    logging.info("Applying %d fragment(s)..." % (len(required_objects) - 1))
+                    engine.batch_apply_fragments([(SPLITGRAPH_META_SCHEMA, d) for d in required_objects[1:]],
+                                                 destination_schema, destination)
         else:
             query = SQL("CREATE FOREIGN TABLE {}.{} (") \
                 .format(Identifier(destination_schema), Identifier(self.table_name))

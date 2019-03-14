@@ -121,21 +121,13 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
                                                                        Identifier(staging_table)) \
                                 + SQL("NOT (") + qual_sql + SQL(")")
 
-                # self.engine.batch_apply_diff_objects([(SPLITGRAPH_META_SCHEMA, o) for o in diffs],
-                #                                      SPLITGRAPH_META_SCHEMA, staging_table,
-                #                                      run_after_every=discard_query,
-                #                                      run_after_every_args=qual_vals,
-                #                                      ignore_cols=['sg_meta_keep_pk'])
-                for fragment in required_objects:
-                    self.engine.apply_fragment(SPLITGRAPH_META_SCHEMA, fragment, SPLITGRAPH_META_SCHEMA, staging_table)
-                    self.engine.run_sql(discard_query, qual_vals)
-
+                self.engine.batch_apply_fragments([(SPLITGRAPH_META_SCHEMA, o) for o in required_objects],
+                                                  SPLITGRAPH_META_SCHEMA, staging_table,
+                                                  run_after_every=discard_query,
+                                                  run_after_every_args=qual_vals)
             else:
-                for fragment in required_objects:
-                    self.engine.apply_fragment(SPLITGRAPH_META_SCHEMA, fragment, SPLITGRAPH_META_SCHEMA, staging_table)
-                # self.engine.batch_apply_diff_objects([(SPLITGRAPH_META_SCHEMA, o) for o in diffs],
-                #                                      SPLITGRAPH_META_SCHEMA, staging_table,
-                #                                      ignore_cols=['sg_meta_keep_pk'])
+                self.engine.batch_apply_fragments([(SPLITGRAPH_META_SCHEMA, o) for o in required_objects],
+                                                  SPLITGRAPH_META_SCHEMA, staging_table)
         return self._run_select_from_staging(SPLITGRAPH_META_SCHEMA, staging_table, columns,
                                              drop_table=True)
 

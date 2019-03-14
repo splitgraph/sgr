@@ -236,14 +236,6 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
 class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
     """An implementation of the Postgres engine for Splitgraph"""
 
-    def store_diff_object(self, changeset, schema, table, change_key):
-        _create_diff_table(self.connection, table, change_key)
-        query = SQL("INSERT INTO {}.{} ").format(Identifier(schema),
-                                                 Identifier(table)) + \
-                SQL("VALUES (" + ','.join(itertools.repeat('%s', len(changeset[0]))) + ")")
-
-        self.run_sql_batch(query, changeset)
-
     def store_fragment(self, inserted, deleted, schema, table, source_schema, source_table):
         # Add the upserted-deleted flag
         # Deletes are tricky: we store the full value here because we're assuming they
@@ -306,14 +298,14 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             args = [p for pk in deleted for p in [False] + list(pk)]
             self.run_sql(query, args)
 
-    def apply_fragment(self, source_schema, source_table, target_schema, target_table):
-        schema_spec = self.get_full_table_schema(target_schema, target_table)
-        # Assuming the schema_spec has the whole tuple as PK if the table has no PK.
-        if all(not c[3] for c in schema_spec):
-            schema_spec = [(c[0], c[1], c[2], True) for c in schema_spec]
+    def _prepare_ri_data(self, schema, table):
+        ri_cols, _ = zip(*self.get_change_key(schema, table))
+        non_ri_cols_types = [c for c in self.get_column_names_types(schema, table) if c[0] not in ri_cols]
+        non_ri_cols, non_ri_types = zip(*non_ri_cols_types) if non_ri_cols_types else ((), ())
+        return ri_cols, non_ri_cols, non_ri_types
 
-        ri_cols = [c[1] for c in schema_spec if c[3]]
-        non_ri_cols = [c[1] for c in schema_spec if not c[3]]
+    def _generate_fragment_application(self, source_schema, source_table, target_schema, target_table, ri_data):
+        ri_cols, non_ri_cols, ri_types = ri_data
         all_cols = ri_cols + non_ri_cols
 
         # Check if the fragment we're applying has any deletes
@@ -340,82 +332,34 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                 # otherwise, we get a "source for a multiple-column UPDATE item must be a sub-SELECT or ROW()
                 # expression" error from pg.
                 query += SQL(" DO UPDATE SET {0} = EXCLUDED.{0}").format(Identifier(non_ri_cols[0]))
-        self.run_sql(query)
 
         # Apply deletes
         if has_ud_flag:
-            query = SQL("DELETE FROM {0}.{2} USING {1}.{3} WHERE {1}.{3}.{4} = false").format(
+            query += SQL(";DELETE FROM {0}.{2} USING {1}.{3} WHERE {1}.{3}.{4} = false").format(
                 Identifier(target_schema), Identifier(source_schema), Identifier(target_table),
                 Identifier(source_table), Identifier(SG_UD_FLAG)) \
-                    + SQL(" AND ") + _generate_where_clause(target_schema, target_table, ri_cols,
+                     + SQL(" AND ") + _generate_where_clause(target_schema, target_table, ri_cols,
                                                             source_table, source_schema)
-        self.run_sql(query)
+        return query
 
-    def batch_apply_diff_objects(self, objects, target_schema, target_table, run_after_every=None,
-                                 run_after_every_args=None, ignore_cols=None):
-        ri_data = self._prepare_ri_data(target_schema, target_table, ignore_cols)
+    def apply_fragment(self, source_schema, source_table, target_schema, target_table):
+        ri_data = self._prepare_ri_data(target_schema, target_table)
+        self.run_sql(self._generate_fragment_application(source_schema, source_table,
+                                                         target_schema, target_table, ri_data))
+
+    def batch_apply_fragments(self, objects, target_schema, target_table, run_after_every=None,
+                              run_after_every_args=None):
+        ri_data = self._prepare_ri_data(target_schema, target_table)
         if run_after_every:
             query = SQL(";").join(q for ss, st in objects
                                   for q in
-                                  (self._generate_diff_application(ss, st, target_schema, target_table, ri_data),
+                                  (self._generate_fragment_application(ss, st, target_schema, target_table, ri_data),
                                    run_after_every))
             self.run_sql(query, run_after_every_args * len(objects))
         else:
-            query = SQL(";").join(self._generate_diff_application(ss, st, target_schema, target_table, ri_data)
+            query = SQL(";").join(self._generate_fragment_application(ss, st, target_schema, target_table, ri_data)
                                   for ss, st in objects)
             self.run_sql(query)
-
-    def _prepare_ri_data(self, schema, table, ignore_cols=None):
-        ignore_cols = ignore_cols or []
-        ri_cols, _ = zip(*self.get_change_key(schema, table))
-        ri_cols = [r for r in ri_cols if r not in ignore_cols]
-        non_ri_cols_types = [c for c in self.get_column_names_types(schema, table) if c[0] not in ri_cols
-                             and c[0] not in ignore_cols]
-        non_ri_cols, non_ri_types = zip(*non_ri_cols_types) if non_ri_cols_types else ((), ())
-        return ri_cols, non_ri_cols, non_ri_types
-
-    @staticmethod
-    def _generate_diff_application(source_schema, source_table, target_schema, target_table,
-                                   ri_data):
-        ri_cols, non_ri_cols, non_ri_types = ri_data
-        # TODO TF work: this might become much easier since every object is a list of upserts and deletes
-        # (no need to apply updates)
-        # Generate deletions
-        result = SQL("DELETE FROM {0}.{2} USING {1}.{3} WHERE {1}.{3}.sg_action_kind = 1").format(
-            Identifier(target_schema), Identifier(source_schema), Identifier(target_table),
-            Identifier(source_table)) + SQL(" AND ") + _generate_where_clause(target_schema, target_table, ri_cols,
-                                                                              source_table,
-                                                                              source_schema)
-        # Generate insertions
-        result += SQL(";INSERT INTO {}.{} ").format(Identifier(target_schema), Identifier(target_table)) \
-                  + SQL("(") + SQL(",").join(Identifier(c) for c in list(ri_cols) + list(non_ri_cols)) + SQL(")") \
-                  + SQL("(SELECT ") + SQL(",").join(SQL("s.") + Identifier(c) for c in list(ri_cols)) \
-                  + SQL("," if non_ri_cols else "") \
-                  + SQL(",").join(SQL("o.") + Identifier(c) for c in list(non_ri_cols)) \
-                  + SQL(" FROM {}.{} s, jsonb_populate_record(null::{}.{}, s.sg_action_data) o "
-                        "WHERE s.sg_action_kind = 0)") \
-                      .format(Identifier(source_schema), Identifier(source_table), Identifier(target_schema),
-                              Identifier(target_table))
-
-        # Generate updates
-        if non_ri_cols:
-            result += SQL(";UPDATE {}.{}").format(Identifier(target_schema), Identifier(target_table)) \
-                      + SQL("SET (") + SQL(",").join(Identifier(c) for c in list(non_ri_cols)) + SQL(")") \
-                      + SQL(" = (SELECT ") + SQL(",").join(SQL("o.") + Identifier(c) for c in list(non_ri_cols)) \
-                      + SQL(" FROM jsonb_populate_record(null::{2}.{3}, to_jsonb(t) || s.sg_action_data) o) "
-                            "FROM {0}.{1} s, {2}.{3} t") \
-                          .format(Identifier(source_schema), Identifier(source_table),
-                                  Identifier(target_schema), Identifier(target_table)) \
-                      + SQL(" WHERE s.sg_action_kind = 2 AND ") \
-                      + SQL(" AND ").join(SQL("s.{0} = t.{0} AND t.{0} = {1}.{2}.{0}")
-                                          .format(Identifier(c), Identifier(target_schema),
-                                                  Identifier(target_table)) for c in ri_cols)
-        return result
-
-    def apply_diff_object(self, source_schema, source_table, target_schema, target_table, ignore_cols=None):
-        ri_data = self._prepare_ri_data(target_schema, target_table, ignore_cols)
-        query = self._generate_diff_application(source_schema, source_table, target_schema, target_table, ri_data)
-        self.run_sql(query)
 
     def dump_table_sql(self, schema, table_name, stream, columns='*', where='', where_args=None):
         with self.connection.cursor() as cur:
@@ -601,27 +545,6 @@ def _convert_audit_change(action, row_data, changed_fields, ri_cols):
 
 
 _KIND = {'I': 0, 'D': 1, 'U': 2}
-
-
-def _create_diff_table(conn, object_id, replica_identity_cols_types):
-    """
-    Create a diff table into which we'll pack the conflated audit log actions.
-
-    :param object_id: table name to create
-    :param replica_identity_cols_types: multiple columns forming the table's PK (or all rows), PKd.
-    """
-    # sg_action_kind: 0, 1, 2 for insert/delete/update
-    # sg_action_data: extra data for insert and update.
-    with conn.cursor() as cur:
-        query = SQL("CREATE TABLE {}.{} (").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id))
-        query += SQL(',').join(SQL("{} %s" % col_type).format(Identifier(col_name))
-                               for col_name, col_type in replica_identity_cols_types + [('sg_action_kind', 'smallint'),
-                                                                                        ('sg_action_data', 'jsonb')])
-        query += SQL(", PRIMARY KEY (") + SQL(',').join(
-            SQL("{}").format(Identifier(c)) for c, _ in replica_identity_cols_types)
-        query += SQL("));")
-        cur.execute(query)
-        # RI is PK anyway, so has an index by default
 
 
 def _convert_vals(vals):

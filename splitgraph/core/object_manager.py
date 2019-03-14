@@ -714,12 +714,10 @@ class ObjectManager:
             # to access the cache next run eviction if they need it.
             self.object_engine.copy_table(SPLITGRAPH_META_SCHEMA, snap, SPLITGRAPH_META_SCHEMA, new_snap_id,
                                           with_pk_constraints=True)
-            logging.info("Applying %d DIFF object(s)..." % len(diffs))
-            # self.object_engine.batch_apply_diff_objects([(SPLITGRAPH_META_SCHEMA, d) for d in reversed(diffs)],
-            #                                             SPLITGRAPH_META_SCHEMA, new_snap_id)
+            logging.info("Applying %d fragment(s)..." % len(diffs))
+            self.object_engine.batch_apply_fragments([(SPLITGRAPH_META_SCHEMA, d) for d in diffs],
+                                                     SPLITGRAPH_META_SCHEMA, new_snap_id)
 
-            for diff in diffs:
-                self.object_engine.apply_fragment(SPLITGRAPH_META_SCHEMA, diff, SPLITGRAPH_META_SCHEMA, new_snap_id)
             # We've created the SNAP -- now we need to record its size (can't do it straightaway because
             # we use the INSERT statement to claim a lock).
             size = self.object_engine.get_table_size(SPLITGRAPH_META_SCHEMA, new_snap_id)
