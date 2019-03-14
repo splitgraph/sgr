@@ -333,7 +333,8 @@ class ObjectEngine:
         """
         raise NotImplementedError()
 
-    def apply_fragment(self, source_schema, source_table, target_schema, target_table):
+    def apply_fragment(self, source_schema, source_table, target_schema, target_table, extra_quals=None,
+                       extra_qual_args=None):
         """
         Apply a stored fragment to another table
 
@@ -341,19 +342,23 @@ class ObjectEngine:
         :param source_table: Table where the fragment is located
         :param target_schema: Schema to apply the fragment to
         :param target_table: Table to apply the fragment to
+        :param extra_quals: Optional, extra SQL (Composable) clauses to filter new rows in the fragment on
+            (e.g. SQL("a = %s"))
+        :param extra_qual_args: Optional, a tuple of arguments to use with `extra_quals`
         """
         raise NotImplementedError()
 
-    def batch_apply_fragments(self, objects, target_schema, target_table, run_after_every=None,
-                              run_after_every_args=None):
+    def batch_apply_fragments(self, objects, target_schema, target_table, extra_quals=None,
+                              extra_qual_args=None):
         """
         Apply multiple fragments to a target table as a single-query batch operation.
 
         :param objects: List of tuples `(object_schema, object_table)` that the objects are stored in.
         :param target_schema: Schema to apply the fragment to
         :param target_table: Table to apply the fragment to
-        :param run_after_every: If specified, an extra SQL (Composable) query to run after every fragment application.
-        :param run_after_every_args: Optional, a tuple of arguments to use with `run_after_every`.
+        :param extra_quals: Optional, extra SQL (Composable) clauses to filter new rows in the fragment on
+            (e.g. SQL("a = %s"))
+        :param extra_qual_args: Optional, a tuple of arguments to use with `extra_quals`
         """
         raise NotImplementedError()
 
