@@ -431,22 +431,23 @@ class ObjectManager:
         if object_id is not None:
             return object_id, []
 
+        # Load the snap cache and flip it so that it maps DIFFs to their cached SNAPs.
+        snap_cache = {v[0]: k for k, v in self._get_snap_cache().items()}
+
         object_id = table.get_object('DIFF')
-        snap_id = self._get_snap_cache_for(object_id)
-        if snap_id is not None:
-            return snap_id, []
+        if object_id in snap_cache:
+            return snap_cache[object_id], []
 
         # Use a recursive subquery to fetch a path through the object tree.
         path = self.get_all_required_objects(object_id)
         # Traverse the path to see if we can short circuit a DIFF chain with a SNAP in the SNAP cache.
         final_path = []
         for object_id in path:
-            cached_snap = self._get_snap_cache_for(object_id)
-            if cached_snap is not None:
-                return cached_snap, final_path
-            final_path.append(object_id)
+            try:
+                return snap_cache[object_id], final_path
+            except KeyError:
+                final_path.append(object_id)
         return final_path[-1], final_path[:-1]
-
 
     def _store_snap_cache_miss(self, diff_id, timestamp):
         self.object_engine.run_sql(insert("snap_cache_misses", ("diff_id", "used_time")), (diff_id, timestamp))
