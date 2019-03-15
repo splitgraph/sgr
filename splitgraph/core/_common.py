@@ -196,19 +196,15 @@ def _create_metadata_schema(engine):
     engine.run_sql(SQL("CREATE INDEX idx_splitgraph_meta_snap_cache_misses_diff_id ON {}.{} (diff_id)")
                    .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("snap_cache_misses")))
 
-    # TODO TF work
-    # Link a table to a list of objects (either all objects or the final non-base ones in a given fragment
-
-    # Maps a given table at a given point in time to an "object ID" (either a full snapshot or a
-    # delta to a previous table).
+    # Maps a given table at a given point in time to a list of fragments that it's assembled from.
     engine.run_sql(SQL("""CREATE TABLE {}.{} (
                     namespace  VARCHAR NOT NULL,
                     repository VARCHAR NOT NULL,
                     image_hash VARCHAR NOT NULL,
                     table_name VARCHAR NOT NULL,
                     table_schema JSONB,
-                    object_id  VARCHAR NOT NULL,
-                    PRIMARY KEY (namespace, repository, image_hash, table_name, object_id),
+                    object_ids  VARCHAR[] NOT NULL,
+                    PRIMARY KEY (namespace, repository, image_hash, table_name),
                     CONSTRAINT tb_fk FOREIGN KEY (namespace, repository, image_hash) REFERENCES {}.{})""")
                    .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("tables"),
                            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("images")),
@@ -295,34 +291,6 @@ def aggregate_changes(query_result, initial=None):
     return tuple(result)
 
 
-def merged_diff(repository, table_name, path, aggregate):
-    """
-    Calculate the diff between two versions of the same table by combining changes in DIFF objects.
-    """
-    result = [] if not aggregate else (0, 0, 0)
-    for image in reversed(path):
-        diff_id = repository.images.by_hash(image).get_table(table_name).get_object('DIFF')
-        if diff_id is None:
-            # There's a SNAP entry between the two images, meaning there has been a schema change.
-            # Hence we can't accumulate the DIFFs and have to resort to manual side-by-side diffing.
-            return None
-        if not aggregate:
-            # There's only one action applied to a tuple in a single diff, so the ordering doesn't matter.
-            for row in sorted(
-                    repository.engine.run_sql(SQL("SELECT * FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                                Identifier(diff_id)))):
-                pk = row[:-2]
-                action = row[-2]
-                action_data = row[-1]
-                result.append((pk, action, action_data))
-        else:
-            result = aggregate_changes(
-                repository.engine.run_sql(
-                    SQL("SELECT sg_action_kind, count(sg_action_kind) FROM {}.{} GROUP BY sg_action_kind")
-                        .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(diff_id))), result)
-    return result
-
-
 def slow_diff(repository, table_name, image_1, image_2, aggregate):
     """Materialize both tables and manually diff them"""
     with repository.materialized_table(table_name, image_1) as (mp_1, table_1):
@@ -381,7 +349,7 @@ def gather_sync_metadata(target, source):
                           image.provenance_data)
         # Get the meta for all objects we'll need to fetch.
         table_meta.extend(source.engine.run_sql(
-            SQL("""SELECT image_hash, table_name, table_schema, object_id FROM {0}.tables
+            SQL("""SELECT image_hash, table_name, table_schema, object_ids FROM {0}.tables
                        WHERE namespace = %s AND repository = %s AND image_hash = %s""")
                 .format(Identifier(SPLITGRAPH_META_SCHEMA)),
             (source.namespace, source.repository, image.image_hash)))

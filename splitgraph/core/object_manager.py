@@ -234,12 +234,12 @@ class ObjectManager:
         Objects must already be registered in the object tree.
 
         :param repository: Repository that the tables belong to.
-        :param table_meta: A list of (image_hash, table_name, table_schema, object_id).
+        :param table_meta: A list of (image_hash, table_name, table_schema, object_ids).
         """
         table_meta = [(repository.namespace, repository.repository,
                        o[0], o[1], Json(o[2]), o[3]) for o in table_meta]
         self.object_engine.run_sql_batch(
-            insert("tables", ("namespace", "repository", "image_hash", "table_name", "table_schema", "object_id")),
+            insert("tables", ("namespace", "repository", "image_hash", "table_name", "table_schema", "object_ids")),
             table_meta)
 
     def register_object_locations(self, object_locations):
@@ -301,7 +301,7 @@ class ObjectManager:
         return self.object_engine.run_sql(select("objects", "object_id, format, parent_id, namespace, size, index",
                                                  "object_id IN (" + ','.join('%s' for _ in objects) + ")"), objects)
 
-    def register_table(self, repository, table, image, schema, object_id):
+    def register_table(self, repository, table, image, schema, object_ids):
         """
         Registers the object that represents a Splitgraph table inside of an image.
 
@@ -309,11 +309,11 @@ class ObjectManager:
         :param table: Table name
         :param image: Image hash
         :param schema: Table schema
-        :param object_id: Object ID to register the table to.
+        :param object_ids: IDs of fragments that the table is composed of
         """
         self.object_engine.run_sql(
-            insert("tables", ("namespace", "repository", "image_hash", "table_name", "table_schema", "object_id")),
-            (repository.namespace, repository.repository, image, table, Json(schema), object_id))
+            insert("tables", ("namespace", "repository", "image_hash", "table_name", "table_schema", "object_ids")),
+            (repository.namespace, repository.repository, image, table, Json(schema), object_ids))
 
     # TODO TF work
     # * Add looking for the chunk boundaries and splitting the diff up
@@ -346,15 +346,15 @@ class ObjectManager:
                                   old_table.table_name)
             self.register_object(
                 object_id, object_format='DIFF', namespace=old_table.repository.namespace,
-                parent_object=old_table.objects[0][0], changeset=changeset)
+                parent_object=old_table.objects[0], changeset=changeset)
 
             self.register_table(old_table.repository, old_table.table_name, image_hash,
-                                old_table.table_schema, object_id)
+                                old_table.table_schema, [object_id])
         else:
             # Changes in the audit log cancelled each other out. Delete the diff table and just point
             # the commit to the old table.
             self.register_table(old_table.repository, old_table.table_name, image_hash,
-                                old_table.table_schema, old_table.objects[0][0])
+                                old_table.table_schema, old_table.objects)
 
     # TODO TF work: chunk the table up
     def record_table_as_snap(self, repository, table_name, image_hash):
@@ -365,25 +365,20 @@ class ObjectManager:
         :param table_name: Table name
         :param image_hash: Hash of the new image
         """
-        # Make sure the SNAP for this table doesn't already exist
-        table = repository.images.by_hash(image_hash).get_table(table_name)
-        if table and table.get_object('SNAP'):
-            return
-
         object_id = get_random_object_id()
         self.object_engine.copy_table(repository.to_schema(), table_name, SPLITGRAPH_META_SCHEMA, object_id,
                                       with_pk_constraints=True)
         self.register_object(object_id, object_format='SNAP', namespace=repository.namespace,
                              parent_object=None)
         table_schema = self.object_engine.get_full_table_schema(repository.to_schema(), table_name)
-        self.register_table(repository, table_name, image_hash, table_schema, object_id)
+        self.register_table(repository, table_name, image_hash, table_schema, [object_id])
 
     # TODO TF work this probably stays
     def extract_recursive_object_meta(self, remote, table_meta):
         """Recursively crawl the a remote object manager in order to fetch all objects
         required to materialize tables specified in `table_meta` that don't yet exist on the local engine."""
         existing_objects = self.get_existing_objects()
-        distinct_objects = set(o[3] for o in table_meta if o[3] not in existing_objects)
+        distinct_objects = set(o for os in table_meta for o in os[3] if o not in existing_objects)
         known_objects = set()
         object_meta = []
 
@@ -394,7 +389,7 @@ class ObjectManager:
             else:
                 parents_meta = remote.get_object_meta(new_parents)
                 distinct_objects.update(
-                    set(o[3] for o in parents_meta if o[3] is not None and o[3] not in existing_objects))
+                    set(o for os in parents_meta for o in os[3] if o not in existing_objects))
                 object_meta.extend(parents_meta)
                 known_objects.update(new_parents)
         return distinct_objects, object_meta
@@ -427,19 +422,11 @@ class ObjectManager:
         #   materialization/LQ (might be some argument whether we should still choose a remote SNAP over
         #   a completely local DIFF chain).
 
-        object_id = table.get_object('SNAP')
-        if object_id is not None:
-            return object_id, []
-
         # Load the snap cache and flip it so that it maps DIFFs to their cached SNAPs.
         snap_cache = {v[0]: k for k, v in self._get_snap_cache().items()}
 
-        object_id = table.get_object('DIFF')
-        if object_id in snap_cache:
-            return snap_cache[object_id], []
-
         # Use a recursive subquery to fetch a path through the object tree.
-        path = self.get_all_required_objects(object_id)
+        path = self.get_all_required_objects(table.objects[0])
         # Traverse the path to see if we can short circuit a DIFF chain with a SNAP in the SNAP cache.
         final_path = []
         for object_id in path:
@@ -946,9 +933,9 @@ class ObjectManager:
         their remote locations. Also deletes all objects not registered in the object_tree.
         """
         # First, get a list of all objects required by a table.
-        primary_objects = set(self.object_engine.run_sql(
-            SQL("SELECT DISTINCT (object_id) FROM {}.tables").format(Identifier(SPLITGRAPH_META_SCHEMA)),
-            return_shape=ResultShape.MANY_ONE))
+        primary_objects = set([o for os in self.object_engine.run_sql(
+            SQL("SELECT object_ids FROM {}.tables").format(Identifier(SPLITGRAPH_META_SCHEMA)),
+            return_shape=ResultShape.MANY_ONE) for o in os])
 
         # Expand that since each object might have a parent it depends on.
         if primary_objects:

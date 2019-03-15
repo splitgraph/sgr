@@ -341,36 +341,19 @@ class Repository:
             # No image hash -- just return the current staging table.
             yield self.to_schema(), table_name
             return  # make sure we don't fall through after the user is finished
-        # See if the table snapshot already exists, otherwise reconstruct it
+
         table = self.images.by_hash(image_hash).get_table(table_name)
-
-        # TODO TF work this is only used by the diff() code path
-
-        object_id = table.get_object('SNAP')
-        if object_id is None:
-            # Materialize the SNAP into a new object
-            new_id = get_random_object_id()
-            table.materialize(new_id, destination_schema=SPLITGRAPH_META_SCHEMA)
-            yield SPLITGRAPH_META_SCHEMA, new_id
-            # Maybe some cache management/expiry strategies here
-            self.objects.delete_objects([new_id])
-        else:
-            if self.engine.table_exists(SPLITGRAPH_META_SCHEMA, object_id):
-                yield SPLITGRAPH_META_SCHEMA, object_id
+        with self.objects.ensure_objects(table) as required_objects:
+            if len(required_objects) > 1:
+                new_id = get_random_object_id()
+                table.materialize(new_id, destination_schema=SPLITGRAPH_META_SCHEMA)
+                try:
+                    yield SPLITGRAPH_META_SCHEMA, new_id
+                finally:
+                    # Maybe some cache management/expiry strategies here
+                    self.objects.delete_objects([new_id])
             else:
-                # The SNAP object doesn't actually exist remotely, so we have to download it.
-                # An optimisation here: we could open an RO connection to the remote instead if the object
-                # does live there.
-                upstream = self.get_upstream()
-                if not upstream:
-                    raise SplitGraphException("SNAP %s from %s doesn't exist locally and no remote was found for it!"
-                                              % (object_id, str(self)))
-                object_locations = self.objects.get_external_object_locations([object_id])
-                self.objects.download_objects(upstream.engine, objects_to_fetch=[object_id],
-                                              object_locations=object_locations)
-                yield SPLITGRAPH_META_SCHEMA, object_id
-
-                self.objects.delete_objects([object_id])
+                yield SPLITGRAPH_META_SCHEMA, required_objects[0]
 
     @property
     def head(self):
@@ -465,8 +448,7 @@ class Repository:
                 continue
 
             # If the table wasn't changed, point the image to the old table
-            for prev_object_id, _ in table_info.objects:
-                self.objects.register_table(self, table, image_hash, table_info.table_schema, prev_object_id)
+            self.objects.register_table(self, table, image_hash, table_info.table_schema, table_info.objects)
 
         # Make sure that all pending changes have been discarded by this point (e.g. if we created just a snapshot for
         # some tables and didn't consume the audit log).
@@ -536,7 +518,7 @@ class Repository:
         for image_hash in self.images:
             image = self.images.by_hash(image_hash)
             for table_name in image.get_tables():
-                for object_id, _ in image.get_table(table_name).objects:
+                for object_id in image.get_table(table_name).objects:
                     required_objects.add(object_id)
 
         # Expand the required objects into a full set
@@ -671,21 +653,20 @@ class Repository:
                                              parent_object=None)
                 self.objects.register_table(self, target_table, target_hash,
                                             self.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, object_id),
-                                            object_id)
+                                            [object_id])
                 if do_checkout:
                     self.engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, self.to_schema(), target_table)
             else:
                 # TODO TF work: same here, just link to the same objects
                 table_obj = image.get_table(source_table)
-                for object_id, _ in table_obj.objects:
-                    self.objects.register_table(self, target_table, target_hash, table_obj.table_schema, object_id)
+                self.objects.register_table(self, target_table, target_hash, table_obj.table_schema, table_obj.objects)
                 if do_checkout:
                     table_obj.materialize(target_table, destination_schema=self.to_schema())
         # Register the existing tables at the new commit as well.
         if head is not None:
             # Maybe push this into the tables API (currently have to make 2 queries)
             engine.run_sql(SQL("""INSERT INTO {0}.tables (namespace, repository, image_hash, 
-                    table_name, table_schema, object_id) (SELECT %s, %s, %s, table_name, table_schema, object_id
+                    table_name, table_schema, object_ids) (SELECT %s, %s, %s, table_name, table_schema, object_ids
                     FROM {0}.tables WHERE namespace = %s AND repository = %s AND image_hash = %s)""")
                            .format(Identifier(SPLITGRAPH_META_SCHEMA)),
                            (self.namespace, self.repository, target_hash,

@@ -6,11 +6,11 @@ from collections import Counter
 from pprint import pprint
 
 import click
-
 from splitgraph import get_engine
 from splitgraph.core._drawing import render_tree
 from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.repository import Repository
+
 from ._common import image_spec_parser, pluralise
 
 
@@ -153,11 +153,11 @@ def show_c(image_spec, verbose):
         for t in image.get_tables():
             table_objects = image.get_table(t).objects
             if len(table_objects) == 1:
-                print("  %s: %s (%s)" % (t, table_objects[0][0], table_objects[0][1]))
+                print("  %s: %s" % (t, table_objects[0]))
             else:
                 print("  %s:" % t)
                 for obj in table_objects:
-                    print("    %s (%s)" % obj)
+                    print("    %s" % obj)
 
 
 @click.command(name='sql')
