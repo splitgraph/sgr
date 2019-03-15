@@ -67,15 +67,19 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
 
         return [q for qual in quals for q in _qual_to_cnf(qual) if q != []]
 
-    def _run_select_from_staging(self, schema, table, columns, drop_table=False):
+    def _run_select_from_staging(self, schema, table, columns, drop_table=False, qual_sql=None, qual_args=None):
         """Runs the actual select query against the partially materialized table.
-        There's no point in applying the quals since Postgres doesn't trust the FDW and will reapply them
-        once again"""
+        If qual_sql is passed, this will include it in the SELECT query. Despite that Postgres
+        will check our results again, this is still useful so that we don't pass all the rows
+        in the SNAP through the Python runtime."""
         cur = self.engine.connection.cursor('sg_layered_query_cursor')
         query = SQL("SELECT ") + SQL(',').join(Identifier(c) for c in columns) \
                 + SQL(" FROM {}.{}").format(Identifier(schema),
                                             Identifier(table))
-        log_to_postgres("SELECT FROM STAGING: " + query.as_string(self.engine.connection), _PG_LOGLEVEL)
+        if qual_args:
+            query += SQL(" WHERE ") + qual_sql
+            query = cur.mogrify(query, qual_args)
+        log_to_postgres("SELECT FROM STAGING: " + str(query), _PG_LOGLEVEL)
         cur.execute(query)
 
         while True:
@@ -107,10 +111,12 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
 
         with self.object_manager.ensure_objects(self.table, quals=cnf_quals) as required_objects:
             log_to_postgres("Using fragments %r to satisfy the query" % (required_objects,), _PG_LOGLEVEL)
+            if not required_objects:
+                return []
             if len(required_objects) == 1:
                 # If one object has our answer, we can send queries directly to it
                 return self._run_select_from_staging(SPLITGRAPH_META_SCHEMA, required_objects[0], columns,
-                                                     drop_table=False)
+                                                     drop_table=False, qual_sql=qual_sql, qual_args=qual_vals)
 
             # Accumulate the query result in a temporary table.
             staging_table = self._create_staging_table(required_objects[0])
