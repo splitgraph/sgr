@@ -65,17 +65,15 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
 
         # TODO TF work: list of objects (fragments) here
 
-        objects = self.engine.run_sql(SQL("""SELECT {0}.tables.object_id, format FROM {0}.tables JOIN {0}.objects
-                                              ON {0}.objects.object_id = {0}.tables.object_id
-                                              WHERE {0}.tables.namespace = %s AND repository = %s AND image_hash = %s
+        objects = self.engine.run_sql(SQL("""SELECT {0}.tables.object_ids FROM {0}.tables WHERE 
+                                             {0}.tables.namespace = %s AND repository = %s AND image_hash = %s
                                               AND table_name = %s""")
                                       .format(Identifier(SPLITGRAPH_META_SCHEMA)),
                                       (self.repository.namespace, self.repository.repository,
-                                       self.image_hash, table_name))
+                                       self.image_hash, table_name),
+                                      return_shape=ResultShape.ONE_ONE)
         if not objects:
             return None
-        # Currently, disallow more than 1 object (table stored as a SNAP or a DIFF).
-        assert len(objects) == 1
         table_schema = self.engine.run_sql(SQL("SELECT table_schema FROM {}.tables WHERE namespace = %s "
                                                "AND repository = %s AND image_hash = %s AND table_name = %s")
                                            .format(Identifier(SPLITGRAPH_META_SCHEMA)),

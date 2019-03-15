@@ -255,7 +255,7 @@ def test_various_types(snap_only, local_engine_empty):
                  '0testtesttesttesttesttesttes', '111110011111111', dt(2016, 1, 1, 1, 1, 5),
                  date(2011, 11, 11), False, {'b': 456}, "'AAA' 'Bb'"))]
 
-    object_id = new_head.get_table('test').objects[0][0]
+    object_id = new_head.get_table('test').objects[0]
     object_index = OUTPUT.objects.get_object_meta([object_id])[0][5]
     expected = {'a': [1, 2],
                 'b': [1, 15],
@@ -290,7 +290,7 @@ def test_various_types_with_deletion_index(local_engine_empty):
     OUTPUT.run_sql("UPDATE test SET m = '2019-01-01' WHERE m = '2013-02-04'")
     new_head = OUTPUT.commit()
 
-    object_id = new_head.get_table('test').objects[0][0]
+    object_id = new_head.get_table('test').objects[0]
     object_index = OUTPUT.objects.get_object_meta([object_id])[0][5]
     # Deleted row for reference:
     # 15, 22, 1, -1.23, 9.8811, 0.23, 'abcd', '0testtesttesttes', '0testtesttesttesttesttesttes',
@@ -321,7 +321,6 @@ def test_various_types_with_deletion_index(local_engine_empty):
     assert object_index == expected
 
 
-
 def test_empty_diff_reuses_object(pg_repo_local):
     head_1 = pg_repo_local.commit()
 
@@ -329,9 +328,7 @@ def test_empty_diff_reuses_object(pg_repo_local):
     table_meta_2 = head_1.get_table('fruits').objects
 
     assert table_meta_1 == table_meta_2
-    assert len(table_meta_2) == 1  # Only SNAP stored even if we didn't ask for it, since this is just a pointer
-    # to the previous version (which is a mount).
-    assert table_meta_1[0][1] == 'SNAP'
+    assert len(table_meta_2) == 1
 
 
 def test_update_packing_applying(pg_repo_local):

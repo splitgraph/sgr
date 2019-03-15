@@ -136,7 +136,7 @@ def test_commandline_basics(pg_repo_local, mg_repo_local):
     mushroom_objs = new_head.get_table('mushrooms').objects
 
     # Check verbose show also has the actual object IDs
-    for o, of in fruit_objs + mushroom_objs:
+    for o in fruit_objs + mushroom_objs:
         assert o in result.output
 
 

@@ -504,7 +504,7 @@ def _prepare_object_filtering_dataset():
     OUTPUT.run_sql("INSERT INTO test VALUES (1, 5, 'aaaa', '2016-01-01 00:00:00', '{\"a\": 5}')")
     OUTPUT.run_sql("INSERT INTO test VALUES (5, 3, 'bbbb', '2016-01-02 00:00:00', '{\"a\": 10}')")
     OUTPUT.commit()
-    obj_1 = OUTPUT.head.get_table('test').objects[0][0]
+    obj_1 = OUTPUT.head.get_table('test').objects[0]
     # Sanity check on index for reference + easier debugging
     assert OUTPUT.objects.get_object_meta([obj_1])[0][5] == \
            {'col1': [1, 5],
@@ -516,7 +516,7 @@ def _prepare_object_filtering_dataset():
     OUTPUT.run_sql("INSERT INTO test VALUES (6, 1, 'abbb', '2015-12-30 00:00:00', '{\"a\": 5}')")
     OUTPUT.run_sql("INSERT INTO test VALUES (10, 4, 'cccc', '2015-12-30 00:00:00', '{\"a\": 10}')")
     OUTPUT.commit()
-    obj_2 = OUTPUT.head.get_table('test').objects[0][0]
+    obj_2 = OUTPUT.head.get_table('test').objects[0]
     assert OUTPUT.objects.get_object_meta([obj_2])[0][5] == {
         'col1': [6, 10],
         'col2': [1, 4],
@@ -526,7 +526,7 @@ def _prepare_object_filtering_dataset():
     # Third object: just a single row
     OUTPUT.run_sql("INSERT INTO test VALUES (11, 10, 'dddd', '2016-01-05 00:00:00', '{\"a\": 5}')")
     OUTPUT.commit()
-    obj_3 = OUTPUT.head.get_table('test').objects[0][0]
+    obj_3 = OUTPUT.head.get_table('test').objects[0]
     assert OUTPUT.objects.get_object_meta([obj_3])[0][5] == {
         'col1': [11, 11],
         'col2': [10, 10],
@@ -538,7 +538,7 @@ def _prepare_object_filtering_dataset():
     OUTPUT.run_sql("INSERT INTO test VALUES (14, 13, 'ezzz', NULL, '{\"a\": 5}')")
     OUTPUT.run_sql("INSERT INTO test VALUES (16, 15, 'ffff', '2016-01-04 00:00:00', '{\"a\": 10}')")
     OUTPUT.commit()
-    obj_4 = OUTPUT.head.get_table('test').objects[0][0]
+    obj_4 = OUTPUT.head.get_table('test').objects[0]
     assert OUTPUT.objects.get_object_meta([obj_4])[0][5] == {
         'col1': [12, 16],
         'col2': [11, 15],

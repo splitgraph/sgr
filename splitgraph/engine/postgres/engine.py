@@ -535,12 +535,18 @@ def _convert_audit_change(action, row_data, changed_fields, ri_cols):
 _KIND = {'I': 0, 'D': 1, 'U': 2}
 
 
+def _should_be_json(v):
+    # Dicts/non-homogeneous lists should be stored as JSON
+    return
+
+
 def _convert_vals(vals):
     """Psycopg returns jsonb objects as dicts/lists but doesn't actually accept them directly
     as a query param (or in the case of lists coerces them into an array.
     Hence, we have to wrap them in the Json datatype when doing a dump + load."""
-    # This might become a bottleneck since we call this for every row in the table that's being dumped.
-    return [v if not isinstance(v, dict) and not isinstance(v, list) else Json(v) for v in vals]
+    return [Json(v) if isinstance(v, dict)
+                       or (isinstance(v, list) and len(v) > 0 and isinstance(v[0], (list, tuple)))
+            else v for v in vals]
 
 
 def _generate_where_clause(schema, table, cols, table_2=None, schema_2=None):
