@@ -91,23 +91,31 @@ class SQLEngine:
                             return_shape=ResultShape.NONE)
 
     def copy_table(self, source_schema, source_table, target_schema, target_table, with_pk_constraints=True,
-                   table_exists=False):
+                   table_exists=False, limit=None, offset=None):
         """Copy a table in the same engine, optionally applying primary key constraints as well."""
+        # TODO sort by PK too?
+        query_args = []
         if not table_exists:
-            query = SQL("CREATE TABLE {}.{} AS SELECT * FROM {}.{};").format(
+            query = SQL("CREATE TABLE {}.{} AS SELECT * FROM {}.{}").format(
                 Identifier(target_schema), Identifier(target_table),
                 Identifier(source_schema), Identifier(source_table))
         else:
-            query = SQL("INSERT INTO {}.{} SELECT * FROM {}.{};").format(
+            query = SQL("INSERT INTO {}.{} SELECT * FROM {}.{}").format(
                 Identifier(target_schema), Identifier(target_table),
                 Identifier(source_schema), Identifier(source_table))
+        if limit:
+            query += SQL(" LIMIT %s")
+            query_args.append(limit)
+        if offset:
+            query += SQL(" OFFSET %s")
+            query_args.append(offset)
         if with_pk_constraints:
             pks = self.get_primary_keys(source_schema, source_table)
             if pks:
-                query += SQL("ALTER TABLE {}.{} ADD PRIMARY KEY (").format(
+                query += SQL(";ALTER TABLE {}.{} ADD PRIMARY KEY (").format(
                     Identifier(target_schema), Identifier(target_table)) + SQL(',').join(
                     SQL("{}").format(Identifier(c)) for c, _ in pks) + SQL(")")
-        self.run_sql(query, return_shape=ResultShape.NONE)
+        self.run_sql(query, query_args, return_shape=ResultShape.NONE)
 
     def delete_table(self, schema, table):
         """Drop a table from a schema if it exists"""

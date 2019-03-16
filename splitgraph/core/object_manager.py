@@ -1,10 +1,11 @@
 """Functions related to creating, deleting and keeping track of physical Splitgraph objects."""
+import bisect
 import itertools
 import logging
 import math
 from collections import defaultdict
 from contextlib import contextmanager
-from datetime import datetime as dt, timedelta, date
+from datetime import datetime as dt, date
 from decimal import Decimal
 from random import getrandbits
 
@@ -316,7 +317,6 @@ class ObjectManager:
             (repository.namespace, repository.repository, image, table, Json(schema), object_ids))
 
     # TODO TF work
-    # * Add looking for the chunk boundaries and splitting the diff up
     # * Add testing whether too many rows have been overwritten (unlinking the DIFF chain and creating a new SNAP)
     # * Add conflating lots of small fragments together?
     def record_table_as_diff(self, old_table, image_hash):
@@ -327,7 +327,6 @@ class ObjectManager:
         :param old_table: Table object pointing to the current HEAD table
         :param image_hash: Image hash to store the table under
         """
-        object_id = get_random_object_id()
         engine = self.object_engine
 
         # Accumulate the diff in-memory. This might become a bottleneck in the future.
@@ -339,39 +338,118 @@ class ObjectManager:
         # This can be simplified: we don't need to load the whole changeset and conflate it just
         # to find out which rows need to be copied over into the new object.
         if changeset:
-            upserted = [pk for pk, data in changeset.items() if data[0]]
-            deleted = [pk for pk, data in changeset.items() if not data[0]]
-            engine.store_fragment(upserted, deleted, SPLITGRAPH_META_SCHEMA, object_id,
-                                  old_table.repository.to_schema(),
-                                  old_table.table_name)
-            self.register_object(
-                object_id, object_format='DIFF', namespace=old_table.repository.namespace,
-                parent_object=old_table.objects[0], changeset=changeset)
+            # Get all the top fragments that the current table depends on
+            top_fragments = old_table.objects
 
+            # Follow the chains down to the base fragments that we'll use to find the chunk boundaries
+            base_fragments = [self.get_all_required_objects(o)[-1] for o in top_fragments]
+
+            # Get the min/max PK values for every chunk
+            min_max = []
+            table_pks = self.object_engine.get_change_key(old_table.repository.to_schema(),
+                                                          old_table.table_name)
+            pk_sql = SQL(",").join(Identifier(p[0]) for p in table_pks)
+            for o in base_fragments:
+                query = SQL("SELECT ") + pk_sql + SQL(" FROM {}.{} ORDER BY ").format(
+                    Identifier(SPLITGRAPH_META_SCHEMA), Identifier(o))
+                frag_min = self.object_engine.run_sql(query + pk_sql + SQL(" LIMIT 1"),
+                                                      return_shape=ResultShape.ONE_MANY)
+                frag_max = self.object_engine.run_sql(query +
+                                                      SQL(",").join(Identifier(p[0]) + SQL(" DESC")
+                                                                    for p in table_pks)
+                                                      + SQL(" LIMIT 1"), return_shape=ResultShape.ONE_MANY)
+
+                min_max.append((frag_min, frag_max))
+
+            # maybe order min/max here
+            maxs = [m[1] for m in min_max]
+
+            changesets_by_segment = [{}] * len(maxs)
+            before_changesets = {}
+            after_changesets = {}
+
+            for pk, data in changeset.items():
+                if min_max[0][0] is None or pk < min_max[0][0]:
+                    before_changesets[pk] = data
+                    continue
+                if pk > min_max[-1][1]:
+                    after_changesets[pk] = data
+                    continue
+                # This change matches one of the chunks
+                # TODO make sure the types match up here (pk/output)
+                changesets_by_segment[bisect.bisect_left(maxs, pk)][pk] = data
+
+            # Register changes that match chunks
+            object_ids = []
+            for ix, sub_changeset in enumerate(changesets_by_segment):
+                # If chunk unchanged, link the table to the same fragment
+                if not sub_changeset:
+                    object_ids.append(top_fragments[ix])
+                object_id = get_random_object_id()
+                object_ids.append(object_id)
+                upserted = [pk for pk, data in sub_changeset.items() if data[0]]
+                deleted = [pk for pk, data in sub_changeset.items() if not data[0]]
+                engine.store_fragment(upserted, deleted, SPLITGRAPH_META_SCHEMA, object_id,
+                                      old_table.repository.to_schema(),
+                                      old_table.table_name)
+                self.register_object(
+                    object_id, object_format='DIFF', namespace=old_table.repository.namespace,
+                    parent_object=top_fragments[ix], changeset=sub_changeset)
+
+            # Register the changes that don't match chunks
+            for sub_changeset in (before_changesets, after_changesets):
+                if not sub_changeset:
+                    continue
+                object_id = get_random_object_id()
+                object_ids.append(object_id)
+                # As this fragment didn't match any other boundaries, it must be an insert
+                engine.store_fragment(list(sub_changeset.keys()), [], SPLITGRAPH_META_SCHEMA, object_id,
+                                      old_table.repository.to_schema(),
+                                      old_table.table_name)
+                # Technically this is a DIFF (since it has the UD column) but we ignore that col anyway?
+                self.register_object(
+                    object_id, object_format='SNAP', namespace=old_table.repository.namespace,
+                    parent_object=None, changeset=sub_changeset)
+
+            # Finally, link the table to the new set of objects
             self.register_table(old_table.repository, old_table.table_name, image_hash,
-                                old_table.table_schema, [object_id])
+                                old_table.table_schema, object_ids)
         else:
             # Changes in the audit log cancelled each other out. Delete the diff table and just point
             # the commit to the old table.
             self.register_table(old_table.repository, old_table.table_name, image_hash,
                                 old_table.table_schema, old_table.objects)
 
-    # TODO TF work: chunk the table up
-    def record_table_as_snap(self, repository, table_name, image_hash):
+    def record_table_as_snap(self, repository, table_name, image_hash, chunk_size=10000):
         """
         Copies the full table verbatim into a new Splitgraph SNAP object, registering the new object.
 
         :param repository: Repository
         :param table_name: Table name
         :param image_hash: Hash of the new image
+        :param chunk_size: If specified, splits the table into multiple objects with a given number of rows
         """
-        object_id = get_random_object_id()
-        self.object_engine.copy_table(repository.to_schema(), table_name, SPLITGRAPH_META_SCHEMA, object_id,
-                                      with_pk_constraints=True)
-        self.register_object(object_id, object_format='SNAP', namespace=repository.namespace,
-                             parent_object=None)
+        object_ids = []
+        table_size = self.object_engine.run_sql(SQL("SELECT COUNT (1) FROM {}.{}")
+                                                .format(Identifier(repository.to_schema()), Identifier(table_name)),
+                                                return_shape=ResultShape.ONE_ONE)
+        if chunk_size and table_size:
+            for offset in range(0, table_size, chunk_size):
+                object_id = get_random_object_id()
+                self.object_engine.copy_table(repository.to_schema(), table_name, SPLITGRAPH_META_SCHEMA, object_id,
+                                              with_pk_constraints=True, offset=offset, limit=chunk_size)
+                self.register_object(object_id, object_format='SNAP', namespace=repository.namespace,
+                                     parent_object=None)
+                object_ids.append(object_id)
+        else:
+            object_id = get_random_object_id()
+            self.object_engine.copy_table(repository.to_schema(), table_name, SPLITGRAPH_META_SCHEMA, object_id,
+                                          with_pk_constraints=True)
+            self.register_object(object_id, object_format='SNAP', namespace=repository.namespace,
+                                 parent_object=None)
+            object_ids = [object_id]
         table_schema = self.object_engine.get_full_table_schema(repository.to_schema(), table_name)
-        self.register_table(repository, table_name, image_hash, table_schema, [object_id])
+        self.register_table(repository, table_name, image_hash, table_schema, object_ids)
 
     # TODO TF work this probably stays
     def extract_recursive_object_meta(self, remote, table_meta):
@@ -407,10 +485,11 @@ class ObjectManager:
 
     def _get_image_object_path(self, table):
         """
-        Calculates a list of objects SNAP, DIFF, ... , DIFF that are used to reconstruct a table.
+        Calculates a set of paths used to reconstruct each region in a table.
 
         :param table: Table object
-        :return: A tuple of (SNAP object, list of DIFF objects in reverse order (latest object first))
+        :return: A list of lists of fragment IDs. Each list represents a fragment chain reconstructing a certain
+            area of the table when applied in that order.
         """
 
         # * A SNAP for a given table is always the same size or smaller than the equivalent SNAP + DIFF chain
@@ -425,16 +504,20 @@ class ObjectManager:
         # Load the snap cache and flip it so that it maps DIFFs to their cached SNAPs.
         snap_cache = {v[0]: k for k, v in self._get_snap_cache().items()}
 
-        # Use a recursive subquery to fetch a path through the object tree.
-        path = self.get_all_required_objects(table.objects[0])
-        # Traverse the path to see if we can short circuit a DIFF chain with a SNAP in the SNAP cache.
-        final_path = []
-        for object_id in path:
-            try:
-                return snap_cache[object_id], final_path
-            except KeyError:
-                final_path.append(object_id)
-        return final_path[-1], final_path[:-1]
+        paths = []
+        for top_object_id in table.objects:
+            # Use a recursive subquery to fetch a path through the object tree.
+            path = self.get_all_required_objects(top_object_id)
+            # Traverse the path to see if we can short circuit a DIFF chain with a SNAP in the SNAP cache.
+            final_path = []
+            for object_id in path:
+                try:
+                    paths.append([snap_cache[object_id]] + list(reversed(final_path)))
+                    continue
+                except KeyError:
+                    final_path.append(object_id)
+            paths.append(list(reversed(final_path)))
+        return paths
 
     def _store_snap_cache_miss(self, diff_id, timestamp):
         self.object_engine.run_sql(insert("snap_cache_misses", ("diff_id", "used_time")), (diff_id, timestamp))
@@ -551,7 +634,7 @@ class ObjectManager:
 
             Each qual is a tuple of `(column_name, operator, value)` where
             `operator` can be one of `>`, `>=`, `<`, `<=`, `=`, `~~` (LIKE), `<>`.
-        :return: (SNAP object ID, list of DIFFs to apply to the SNAP (can be empty))
+        :return: List of table fragments
         """
 
         # Main cache management issue here is concurrency: since we have multiple processes per connection on the
@@ -573,8 +656,9 @@ class ObjectManager:
         # Resolve the table into a list of objects we want to fetch (one SNAP and optionally a list of DIFFs).
         # In the future, we can also take other things into account, such as how expensive it is to load a given object
         # (its size), location...
-        snap, diffs = self._get_image_object_path(table)
-        required_objects = [snap] + list(reversed(diffs))
+        paths = self._get_image_object_path(table)
+
+        required_objects = list(set(o for path in paths for o in path))
         tracer.log('resolve_objects')
 
         # Filter to see if we can discard any objects with the quals
@@ -632,23 +716,23 @@ class ObjectManager:
         tracer.log('stage_1_commit')
         self.object_engine.run_sql("SET LOCAL synchronous_commit TO off")
 
-        if len(required_objects) > 1 and not objects_were_filtered:
-            # We want to return a SNAP + a DIFF chain. See if a DIFF chain ending (starting?) with a given DIFF
-            # has been requested too many times.
-            # For now, only try to do this if we didn't manage to drop parts of the chain out
-            now = dt.utcnow()
-            self._store_snap_cache_miss(diffs[0], now)
-            if self._recent_snap_cache_misses(
-                    diffs[0], now - timedelta(seconds=self.cache_misses_lookback)) >= self.cache_misses_for_snap:
-                new_snap_id = self._create_and_register_temporary_snap(required_objects[0], required_objects[1:])
-                # Instead of the old SNAP + DIFF chain, use the new SNAP (the rest will proceed in the same way:
-                # we'll increase the refcount and set the last used time on the SNAP instead of the full chain,
-                # yield it and then release the refcount.
-
-                self._release_objects(required_objects)
-                required_objects = [new_snap_id]
-                self._claim_objects(required_objects)
-                self._set_ready_flags(required_objects, True)
+        # if len(required_objects) > 1 and not objects_were_filtered:
+        #     # We want to return a SNAP + a DIFF chain. See if a DIFF chain ending (starting?) with a given DIFF
+        #     # has been requested too many times.
+        #     # For now, only try to do this if we didn't manage to drop parts of the chain out
+        #     now = dt.utcnow()
+        #     self._store_snap_cache_miss(diffs[0], now)
+        #     if self._recent_snap_cache_misses(
+        #             diffs[0], now - timedelta(seconds=self.cache_misses_lookback)) >= self.cache_misses_for_snap:
+        #         new_snap_id = self._create_and_register_temporary_snap(required_objects[0], required_objects[1:])
+        #         # Instead of the old SNAP + DIFF chain, use the new SNAP (the rest will proceed in the same way:
+        #         # we'll increase the refcount and set the last used time on the SNAP instead of the full chain,
+        #         # yield it and then release the refcount.
+        #
+        #         self._release_objects(required_objects)
+        #         required_objects = [new_snap_id]
+        #         self._claim_objects(required_objects)
+        #         self._set_ready_flags(required_objects, True)
         tracer.log('snap_cache')
 
         # Extra stuff: stats to gather:

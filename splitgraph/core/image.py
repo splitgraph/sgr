@@ -62,9 +62,6 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
         :param table_name: Name of the table
         :return: Table object or None
         """
-
-        # TODO TF work: list of objects (fragments) here
-
         objects = self.engine.run_sql(SQL("""SELECT {0}.tables.object_ids FROM {0}.tables WHERE 
                                              {0}.tables.namespace = %s AND repository = %s AND image_hash = %s
                                               AND table_name = %s""")
