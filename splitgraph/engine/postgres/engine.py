@@ -250,7 +250,9 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         ri_types = [c[2] for c in schema_spec if c[3]]
         non_ri_cols = [c[1] for c in schema_spec if not c[3]]
         all_cols = ri_cols + non_ri_cols
-        self.create_table(schema, table, schema_spec=[(0, SG_UD_FLAG, 'boolean', False)] + schema_spec)
+        # If no rows has been deleted, we don't need to add a special deletion flag to the fragment
+        self.create_table(schema, table,
+                          schema_spec=([(0, SG_UD_FLAG, 'boolean', False)] if deleted else []) + schema_spec)
 
         # Store upserts
         # INSERT INTO target_table (sg_ud_flag, col1, col2...)
@@ -262,8 +264,10 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         if inserted:
             if non_ri_cols:
                 query = SQL("INSERT INTO {}.{} (").format(Identifier(schema), Identifier(table)) + \
-                        SQL(",").join(Identifier(c) for c in [SG_UD_FLAG] + all_cols) + SQL(")") + \
-                        SQL("(SELECT %s, ") + SQL(",").join(SQL("t.") + Identifier(c) for c in all_cols) + \
+                        SQL(",").join(Identifier(c) for c in ([SG_UD_FLAG] if deleted else [])
+                                      + all_cols) + SQL(")") + \
+                        (SQL("(SELECT %s, ") if deleted else SQL("(SELECT ")) \
+                        + SQL(",").join(SQL("t.") + Identifier(c) for c in all_cols) + \
                         SQL(" FROM (VALUES " +
                             ','.join(
                                 itertools.repeat("(" + ','.join(itertools.repeat('%s', len(inserted[0]))) + ")",
@@ -275,16 +279,17 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                                                         .format(Identifier(c)) for c, r in zip(ri_cols, ri_types)) \
                         + SQL(")")
                 # Flatten the args
-                args = [True] + [p for pk in inserted for p in pk]
+                args = ([True] if deleted else []) + [p for pk in inserted for p in pk]
             else:
                 # If the whole tuple is the PK, there's no point joining on the actual source table
                 query = SQL("INSERT INTO {}.{} (").format(Identifier(schema), Identifier(table)) + \
                         SQL(",").join(Identifier(c) for c in [SG_UD_FLAG] + ri_cols) + SQL(")") + \
                         SQL("VALUES " +
                             ','.join(
-                                itertools.repeat("(" + ','.join(itertools.repeat('%s', len(inserted[0]) + 1)) + ")",
+                                itertools.repeat("(" + ','.join(itertools.repeat('%s', len(inserted[0])
+                                                                                 + (1 if deleted else 0))) + ")",
                                                  len(inserted))))
-                args = [p for pk in inserted for p in [True] + list(pk)]
+                args = [p for pk in inserted for p in ([True] if deleted else []) + list(pk)]
             self.run_sql(query, args)
 
         # Store the deletes
@@ -300,7 +305,8 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
     def _prepare_ri_data(self, schema, table):
         ri_cols, _ = zip(*self.get_change_key(schema, table))
-        non_ri_cols_types = [c for c in self.get_column_names_types(schema, table) if c[0] not in ri_cols]
+        non_ri_cols_types = [c for c in self.get_column_names_types(schema, table)
+                             if c[0] not in ri_cols and c[0] != SG_UD_FLAG]
         non_ri_cols, non_ri_types = zip(*non_ri_cols_types) if non_ri_cols_types else ((), ())
         return ri_cols, non_ri_cols, non_ri_types
 

@@ -200,7 +200,7 @@ def test_non_ordered_inserts_with_pk(snap_only, local_engine_empty):
     assert change[0] == ((1, 2, 3, 'four'), 0, {})
 
 
-def _write_multitype_dataset(snap_only):
+def _write_multitype_dataset():
     # Schema/data copied from the wal2json tests
     OUTPUT.init()
     OUTPUT.run_sql("""CREATE TABLE test
@@ -220,7 +220,6 @@ def _write_multitype_dataset(snap_only):
          n boolean not null,
          o json,
          p tsvector, PRIMARY KEY(b, c, d));""")
-    head = OUTPUT.commit()
 
     OUTPUT.run_sql(
         """INSERT INTO test (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p)
@@ -235,17 +234,15 @@ def _write_multitype_dataset(snap_only):
         B'111110011111111', '2016-01-01 01:01:05', '2011-11-11', false, '{ "b": 456 }',
         'AAA AAA Bb '::tsvector);""")
 
-    new_head = OUTPUT.commit(snap_only=snap_only)
-    # Check out the old/new image again to verify that writing the new image works
-    head.checkout()
+    new_head = OUTPUT.commit()
+    # Check out the new image again to verify that writing the new image works
     new_head.checkout()
 
     return new_head
 
 
-@pytest.mark.parametrize("snap_only", [True, False])
-def test_various_types(snap_only, local_engine_empty):
-    new_head = _write_multitype_dataset(snap_only)
+def test_various_types(local_engine_empty):
+    new_head = _write_multitype_dataset()
 
     assert OUTPUT.run_sql("SELECT * FROM test") \
            == [(1, 1, 2, 3, Decimal('3.540'), 876.563, 1.23, 'test      ', 'testtesttesttest',
@@ -264,22 +261,17 @@ def test_various_types(snap_only, local_engine_empty):
                 'e': ['-1.230', '3.540'],
                 'f': [9.8811, 876.563],
                 'g': [0.23, 1.23],
-                'h': ['abcd', 'test'],
+                'h': ['abcd      ', 'test      '],
                 'i': ['0testtesttesttes', 'testtesttesttest'],
                 'j': ['0testtesttesttesttesttesttes', 'testtesttesttesttesttesttest'],
                 'l': ['2013-11-02T17:30:52', '2016-01-01T01:01:05'],
                 'm': ['2011-11-11', '2013-02-04']}
 
-    # Minor bug here: we turn char(10) into varchar for diff fragments since we don't keep track of the
-    # length of the type, but the SNAP does.
-    if snap_only:
-        expected['h'] = ['abcd      ', 'test      ']
-
     assert object_index == expected
 
 
 def test_various_types_with_deletion_index(local_engine_empty):
-    _write_multitype_dataset(snap_only=False)
+    _write_multitype_dataset()
     # Insert a row, update a row and delete a row -- check the old rows are included in the index correctly.
     OUTPUT.run_sql(
         """INSERT INTO test (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p)
