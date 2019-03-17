@@ -283,7 +283,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             else:
                 # If the whole tuple is the PK, there's no point joining on the actual source table
                 query = SQL("INSERT INTO {}.{} (").format(Identifier(schema), Identifier(table)) + \
-                        SQL(",").join(Identifier(c) for c in [SG_UD_FLAG] + ri_cols) + SQL(")") + \
+                        SQL(",").join(Identifier(c) for c in ([SG_UD_FLAG] if deleted else []) + ri_cols) + SQL(")") + \
                         SQL("VALUES " +
                             ','.join(
                                 itertools.repeat("(" + ','.join(itertools.repeat('%s', len(inserted[0])
