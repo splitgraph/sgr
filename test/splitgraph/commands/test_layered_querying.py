@@ -223,10 +223,8 @@ def test_lq_qual_filtering(local_engine_empty, pg_repo_remote, test_case):
     # * INS (4, kumquat)
 
     query, expected, object_mask = test_case
-
-    # get_all_required_objects returns the path in the reverse order (most recent object first)
-    required_objects = pg_repo_local.objects.get_all_required_objects(
-        pg_repo_local.images['latest'].get_table('fruits').get_object('DIFF'))[::-1]
+    with pg_repo_local.objects.ensure_objects(pg_repo_local.images['latest'].get_table('fruits')) as required_objects:
+        pass
     assert len(required_objects) == 5
     expected_objects = [o for o, m in zip(required_objects, object_mask) if m]
 

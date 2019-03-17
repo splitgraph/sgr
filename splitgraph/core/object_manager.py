@@ -369,6 +369,8 @@ class ObjectManager:
             after_changesets = {}
 
             for pk, data in changeset.items():
+                # TODO make sure the types match up here (pk/output)
+                pk = tuple(adapt(v, p[1]) for v, p in zip(pk, table_pks))
                 if min_max[0][0] is None or pk < min_max[0][0]:
                     before_changesets[pk] = data
                     continue
@@ -376,7 +378,6 @@ class ObjectManager:
                     after_changesets[pk] = data
                     continue
                 # This change matches one of the chunks
-                # TODO make sure the types match up here (pk/output)
                 changesets_by_segment[bisect.bisect_left(maxs, pk)][pk] = data
 
             # Register changes that match chunks
