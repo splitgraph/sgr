@@ -50,7 +50,7 @@ def test_commit_diff(mode, pg_repo_local):
     table = pg_repo_local.head.get_table('fruits')
     assert table.table_schema == [(1, 'fruit_id', 'integer', False), (2, 'name', 'character varying', False)]
 
-    obj = table.get_object('SNAP' if mode == 'SNAP' else 'DIFF')
+    obj = table.objects[0]
     obj_meta = pg_repo_local.objects.get_object_meta([obj])[0]
     # Check object size has been written
     assert obj_meta[4] > 0

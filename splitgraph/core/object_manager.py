@@ -529,8 +529,8 @@ class ObjectManager:
             final_path = []
             for object_id in path:
                 try:
-                    paths.append([snap_cache[object_id]] + list(reversed(final_path)))
-                    continue
+                    final_path.append(snap_cache[object_id])
+                    break
                 except KeyError:
                     final_path.append(object_id)
             paths.append(list(reversed(final_path)))
