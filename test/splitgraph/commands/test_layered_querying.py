@@ -215,16 +215,20 @@ def test_lq_qual_filtering(local_engine_empty, pg_repo_remote, test_case):
     pg_repo_local.images['latest'].checkout(layered=True)
     assert len(pg_repo_local.objects.get_downloaded_objects()) == 0
 
-    # Objects in the test dataset, fruits table are:
+    # Objects in the test dataset, fruits table, in order of creation, are:
     # * initial SNAP
     # * INS (3, mayonnaise)
     # * DEL (1, apple)
     # * UPS (2, guitar) (replaces 2, orange)
     # * INS (4, kumquat)
 
+    # If we're splitting the changeset as per the chunk boundaries, the objects are returned in a different order
+    # when expanded: INS (3, mayonnaise) comes after DEL (1, apple) and UPS (2, guitar)
+    # since it doesn't span the original chunk (1, 2); INS (4, kumquat) comes last.
+
     query, expected, object_mask = test_case
-    with pg_repo_local.objects.ensure_objects(pg_repo_local.images['latest'].get_table('fruits')) as required_objects:
-        pass
+    required_objects = [o for path in pg_repo_local.objects._get_image_object_path(
+        pg_repo_local.head.get_table('fruits')) for o in path]
     assert len(required_objects) == 5
     expected_objects = [o for o, m in zip(required_objects, object_mask) if m]
 
