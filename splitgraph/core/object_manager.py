@@ -658,7 +658,7 @@ class ObjectManager:
         # (its size), location...
         paths = self._get_image_object_path(table)
 
-        required_objects = list(set(o for path in paths for o in path))
+        required_objects = [o for path in paths for o in path]
         tracer.log('resolve_objects')
 
         # Filter to see if we can discard any objects with the quals
