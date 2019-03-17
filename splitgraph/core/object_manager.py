@@ -5,7 +5,7 @@ import logging
 import math
 from collections import defaultdict
 from contextlib import contextmanager
-from datetime import datetime as dt, date
+from datetime import datetime as dt, date, timedelta
 from decimal import Decimal
 from random import getrandbits
 
@@ -319,14 +319,22 @@ class ObjectManager:
     # TODO TF work
     # * Add testing whether too many rows have been overwritten (unlinking the DIFF chain and creating a new SNAP)
     # * Add conflating lots of small fragments together?
-    def record_table_as_diff(self, old_table, image_hash):
+    def record_table_as_diff(self, old_table, image_hash, split_changeset=False):
         """
         Flushes the pending changes from the audit table for a given table and records them,
         registering the new objects.
 
         :param old_table: Table object pointing to the current HEAD table
         :param image_hash: Image hash to store the table under
+        :param split_changeset: See `Repository.commit` for reference
         """
+
+        # TODO does the reasoning in the docstring actually make sense? If the point is to, say, for a query
+        # (pk=5000) fetch 0 fragments instead of 1 small one, is it worth the cost of having 2 extra fragments?
+        # If a changeset is really large (e.g. update the first 1000 rows, update the last 1000 rows) then sure,
+        # this will help (for a query pk=5000 we don't need to fetch a 2000-row fragment) but maybe at that point
+        # it's time to rewrite the table altogether?
+
         engine = self.object_engine
 
         # Accumulate the diff in-memory. This might become a bottleneck in the future.
@@ -334,58 +342,32 @@ class ObjectManager:
         _conflate_changes(changeset, engine.get_pending_changes(old_table.repository.to_schema(),
                                                                 old_table.table_name))
         engine.discard_pending_changes(old_table.repository.to_schema(), old_table.table_name)
-
-        # This can be simplified: we don't need to load the whole changeset and conflate it just
-        # to find out which rows need to be copied over into the new object.
         if changeset:
             # Get all the top fragments that the current table depends on
             top_fragments = old_table.objects
 
-            # Follow the chains down to the base fragments that we'll use to find the chunk boundaries
-            base_fragments = [self.get_all_required_objects(o)[-1] for o in top_fragments]
+            if split_changeset:
+                # Follow the chains down to the base fragments that we'll use to find the chunk boundaries
+                base_fragments = [self.get_all_required_objects(o)[-1] for o in top_fragments]
 
-            # Get the min/max PK values for every chunk
-            min_max = []
-            table_pks = self.object_engine.get_change_key(old_table.repository.to_schema(),
-                                                          old_table.table_name)
-            pk_sql = SQL(",").join(Identifier(p[0]) for p in table_pks)
-            for o in base_fragments:
-                query = SQL("SELECT ") + pk_sql + SQL(" FROM {}.{} ORDER BY ").format(
-                    Identifier(SPLITGRAPH_META_SCHEMA), Identifier(o))
-                frag_min = self.object_engine.run_sql(query + pk_sql + SQL(" LIMIT 1"),
-                                                      return_shape=ResultShape.ONE_MANY)
-                frag_max = self.object_engine.run_sql(query +
-                                                      SQL(",").join(Identifier(p[0]) + SQL(" DESC")
-                                                                    for p in table_pks)
-                                                      + SQL(" LIMIT 1"), return_shape=ResultShape.ONE_MANY)
+                table_pks = self.object_engine.get_change_key(old_table.repository.to_schema(),
+                                                              old_table.table_name)
+                min_max = self._extract_min_max_pks(base_fragments, table_pks)
 
-                min_max.append((frag_min, frag_max))
-
-            # maybe order min/max here
-            maxs = [m[1] for m in min_max]
-
-            changesets_by_segment = [{}] * len(maxs)
-            before_changesets = {}
-            after_changesets = {}
-
-            for pk, data in changeset.items():
-                # TODO make sure the types match up here (pk/output)
-                pk = tuple(adapt(v, p[1]) for v, p in zip(pk, table_pks))
-                if min_max[0][0] is None or pk < min_max[0][0]:
-                    before_changesets[pk] = data
-                    continue
-                if pk > min_max[-1][1]:
-                    after_changesets[pk] = data
-                    continue
-                # This change matches one of the chunks
-                changesets_by_segment[bisect.bisect_left(maxs, pk)][pk] = data
+                matched, before, after = self._split_changeset(changeset, min_max, table_pks)
+            else:
+                # Link the change to the final region
+                matched = [{} for _ in range(len(top_fragments) - 1)] + [changeset]
+                before = {}
+                after = {}
 
             # Register changes that match chunks
             object_ids = []
-            for ix, sub_changeset in enumerate(changesets_by_segment):
+            for ix, sub_changeset in enumerate(matched):
                 # If chunk unchanged, link the table to the same fragment
                 if not sub_changeset:
                     object_ids.append(top_fragments[ix])
+                    continue
                 object_id = get_random_object_id()
                 object_ids.append(object_id)
                 upserted = [pk for pk, data in sub_changeset.items() if data[0]]
@@ -398,7 +380,7 @@ class ObjectManager:
                     parent_object=top_fragments[ix], changeset=sub_changeset)
 
             # Register the changes that don't match chunks
-            for sub_changeset in (before_changesets, after_changesets):
+            for sub_changeset in (before, after):
                 if not sub_changeset:
                     continue
                 object_id = get_random_object_id()
@@ -416,10 +398,44 @@ class ObjectManager:
             self.register_table(old_table.repository, old_table.table_name, image_hash,
                                 old_table.table_schema, object_ids)
         else:
-            # Changes in the audit log cancelled each other out. Delete the diff table and just point
-            # the commit to the old table.
+            # Changes in the audit log cancelled each other out. Point the image to the same old objects.
             self.register_table(old_table.repository, old_table.table_name, image_hash,
                                 old_table.table_schema, old_table.objects)
+
+    def _split_changeset(self, changeset, min_max, table_pks):
+        # maybe order min/max here
+        maxs = [m[1] for m in min_max]
+        changesets_by_segment = [{} for _ in range(len(min_max))]
+        before_changesets = {}
+        after_changesets = {}
+        for pk, data in changeset.items():
+            pk = tuple(adapt(v, p[1]) for v, p in zip(pk, table_pks))
+            if min_max[0][0] is None or pk < min_max[0][0]:
+                before_changesets[pk] = data
+                continue
+            if pk > min_max[-1][1]:
+                after_changesets[pk] = data
+                continue
+            # This change matches one of the chunks
+            changesets_by_segment[bisect.bisect_left(maxs, pk)][pk] = data
+        return changesets_by_segment, before_changesets, after_changesets
+
+    def _extract_min_max_pks(self, fragments, table_pks):
+        # Get the min/max PK values for every chunk
+        min_max = []
+        pk_sql = SQL(",").join(Identifier(p[0]) for p in table_pks)
+        for o in fragments:
+            query = SQL("SELECT ") + pk_sql + SQL(" FROM {}.{} ORDER BY ").format(
+                Identifier(SPLITGRAPH_META_SCHEMA), Identifier(o))
+            frag_min = self.object_engine.run_sql(query + pk_sql + SQL(" LIMIT 1"),
+                                                  return_shape=ResultShape.ONE_MANY)
+            frag_max = self.object_engine.run_sql(query +
+                                                  SQL(",").join(Identifier(p[0]) + SQL(" DESC")
+                                                                for p in table_pks)
+                                                  + SQL(" LIMIT 1"), return_shape=ResultShape.ONE_MANY)
+
+            min_max.append((frag_min, frag_max))
+        return min_max
 
     def record_table_as_snap(self, repository, table_name, image_hash, chunk_size=10000):
         """
@@ -717,30 +733,24 @@ class ObjectManager:
         tracer.log('stage_1_commit')
         self.object_engine.run_sql("SET LOCAL synchronous_commit TO off")
 
-        # if len(required_objects) > 1 and not objects_were_filtered:
-        #     # We want to return a SNAP + a DIFF chain. See if a DIFF chain ending (starting?) with a given DIFF
-        #     # has been requested too many times.
-        #     # For now, only try to do this if we didn't manage to drop parts of the chain out
-        #     now = dt.utcnow()
-        #     self._store_snap_cache_miss(diffs[0], now)
-        #     if self._recent_snap_cache_misses(
-        #             diffs[0], now - timedelta(seconds=self.cache_misses_lookback)) >= self.cache_misses_for_snap:
-        #         new_snap_id = self._create_and_register_temporary_snap(required_objects[0], required_objects[1:])
-        #         # Instead of the old SNAP + DIFF chain, use the new SNAP (the rest will proceed in the same way:
-        #         # we'll increase the refcount and set the last used time on the SNAP instead of the full chain,
-        #         # yield it and then release the refcount.
-        #
-        #         self._release_objects(required_objects)
-        #         required_objects = [new_snap_id]
-        #         self._claim_objects(required_objects)
-        #         self._set_ready_flags(required_objects, True)
-        tracer.log('snap_cache')
+        if len(required_objects) > 1 and len(paths) == 1 and not objects_were_filtered:
+            # We want to return a SNAP + a DIFF chain. See if a DIFF chain ending (starting?) with a given DIFF
+            # has been requested too many times.
+            # For now, only try to do this if we didn't manage to drop parts of the chain out
+            now = dt.utcnow()
+            self._store_snap_cache_miss(paths[0][-1], now)
+            if self._recent_snap_cache_misses(
+                    paths[0][-1], now - timedelta(seconds=self.cache_misses_lookback)) >= self.cache_misses_for_snap:
+                new_snap_id = self._create_and_register_temporary_snap(required_objects[0], required_objects[1:])
+                # Instead of the old SNAP + DIFF chain, use the new SNAP (the rest will proceed in the same way:
+                # we'll increase the refcount and set the last used time on the SNAP instead of the full chain,
+                # yield it and then release the refcount.
 
-        # Extra stuff: stats to gather:
-        #   * Object cache misses
-        #   * SNAP cache misses
-        #   * Table usage
-        #   * time spent downloading, materializing, using LQs
+                self._release_objects(required_objects)
+                required_objects = [new_snap_id]
+                self._claim_objects(required_objects)
+                self._set_ready_flags(required_objects, True)
+        tracer.log('snap_cache')
 
         logging.info("Yielding to the caller")
         try:

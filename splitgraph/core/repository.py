@@ -377,13 +377,24 @@ class Repository:
         self.rm(unregister=False, uncheckout=True)
         self.head.delete_tag('HEAD')
 
-    def commit(self, image_hash=None, comment=None, snap_only=False):
+    def commit(self, image_hash=None, comment=None, snap_only=False, chunk_size=10000, split_changeset=False):
         """
         Commits all pending changes to a given repository, creating a new image.
 
         :param image_hash: Hash of the commit. Chosen by random if unspecified.
         :param comment: Optional comment to add to the commit.
         :param snap_only: If True, will store the table as a full snapshot instead of delta compression
+        :param chunk_size: For tables that are stored as snapshots (new tables and where `snap_only` has been passed,
+            the table will be split into fragments of this many rows.
+        :param split_changeset: If True, splits the changeset into multiple fragments based on
+            the PK regions spanned by the current table fragments. For example, if the original table
+            consists of 2 fragments, first spanning rows 1-10000, second spanning rows 10001-20000 and the
+            change alters rows 1, 10001 and inserts a row with PK 20001, this will record the change as
+            3 fragments: one inheriting from the first original fragment, one inheriting from the second
+            and a brand new fragment. This increases the number of fragments in total but means that fewer rows
+            will need to be scanned to satisfy a query.
+            If False, the changeset will be stored as a single fragment inheriting from the last fragment in the
+            table.
         :return: The newly created Image object.
         """
 
@@ -403,14 +414,14 @@ class Repository:
         # TODO TF work: probably disallow tables being stored as both snaps and diffs since it adds
         # a lot of complexity to the schema (an object can have multiple parents).
 
-        self._commit(head, image_hash, snap_only=snap_only)
+        self._commit(head, image_hash, snap_only=snap_only, chunk_size=chunk_size, split_changeset=split_changeset)
 
         set_head(self, image_hash)
         manage_audit_triggers(self.engine)
         self.engine.commit()
         return self.images.by_hash(image_hash)
 
-    def _commit(self, head, image_hash, snap_only=False):
+    def _commit(self, head, image_hash, snap_only=False, chunk_size=10000, split_changeset=False):
         """
         Reads the recorded pending changes to all tables in a given mountpoint, conflates them and possibly stores them
         as new object(s) as follows:
@@ -423,28 +434,25 @@ class Repository:
         :param head: Current HEAD image to base the commit on.
         :param image_hash: Hash of the image to commit changes under.
         :param snap_only: If True, only stores the table as a SNAP.
+        :param chunk_size: Split SNAPs into chunks of this size (None to disable)
+        :param split_changeset: Split DIFFs to match SNAP boundaries
         """
         target_schema = self.to_schema()
 
         changed_tables = self.engine.get_changed_tables(target_schema)
         for table in self.engine.get_all_tables(target_schema):
             table_info = head.get_table(table) if head else None
-            # Table already exists at the current HEAD
-            if not table_info or snap_only:
-                self.objects.record_table_as_snap(self, table, image_hash)
-                continue
-
-            # If there has been a schema change, we currently just snapshot the whole table.
+            # Store as a full copy if this is a new table, there's been a schema change or we were told to.
             # This is obviously wasteful (say if just one column has been added/dropped or we added a PK,
             # but it's a starting point to support schema changes.
-            if table_info.table_schema != self.engine.get_full_table_schema(self.to_schema(), table):
-                # TODO TF work: this mostly makes sense, if a table is new, we chunk it up and store as
-                # multiple objects
-                self.objects.record_table_as_snap(self, table, image_hash)
+            if not table_info or snap_only \
+                    or table_info.table_schema != self.engine.get_full_table_schema(self.to_schema(), table):
+                self.objects.record_table_as_snap(self, table, image_hash, chunk_size=chunk_size)
                 continue
 
+            # If the table has changed, look at the audit log and store it as a delta.
             if table in changed_tables:
-                self.objects.record_table_as_diff(table_info, image_hash)
+                self.objects.record_table_as_diff(table_info, image_hash, split_changeset=split_changeset)
                 continue
 
             # If the table wasn't changed, point the image to the old table

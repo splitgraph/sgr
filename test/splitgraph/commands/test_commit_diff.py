@@ -14,8 +14,24 @@ def test_diff_head(pg_repo_local):
     assert sorted(change) == [((1, 'apple'), 1, None), ((3, 'mayonnaise'), 0, {})]
 
 
-@pytest.mark.parametrize("snap_only", [True, False])
-def test_commit_diff(snap_only, pg_repo_local):
+# Run some tests in multiple commit modes:
+# * SNAP: store as a full table snapshot
+# * DIFF: store as a single DIFF fragment
+# * DIFF_SPLIT: split a DIFF into multiple based on SNAP boundaries
+_COMMIT_MODES = ['SNAP', 'DIFF', 'DIFF_SPLIT']
+
+
+def _commit(repo, mode, **kwargs):
+    if mode == 'SNAP':
+        return repo.commit(snap_only=True, split_changeset=False, **kwargs)
+    if mode == 'DIFF':
+        return repo.commit(snap_only=False, split_changeset=False, **kwargs)
+    if mode == 'DIFF_SPLIT':
+        return repo.commit(snap_only=False, split_changeset=True, **kwargs)
+
+
+@pytest.mark.parametrize("mode", _COMMIT_MODES)
+def test_commit_diff(mode, pg_repo_local):
     assert (pg_repo_local.to_schema(), 'fruits') in pg_repo_local.engine.get_tracked_tables()
 
     pg_repo_local.run_sql("""INSERT INTO fruits VALUES (3, 'mayonnaise');
@@ -23,7 +39,8 @@ def test_commit_diff(snap_only, pg_repo_local):
         UPDATE fruits SET name = 'guitar' WHERE fruit_id = 2""")
 
     head = pg_repo_local.head.image_hash
-    new_head = pg_repo_local.commit(snap_only=snap_only, comment="test commit")
+
+    new_head = _commit(pg_repo_local, mode, comment="test commit")
 
     # After commit, we should be switched to the new commit hash and there should be no differences.
     assert pg_repo_local.head == new_head
@@ -33,7 +50,7 @@ def test_commit_diff(snap_only, pg_repo_local):
     table = pg_repo_local.head.get_table('fruits')
     assert table.table_schema == [(1, 'fruit_id', 'integer', False), (2, 'name', 'character varying', False)]
 
-    obj = table.get_object('SNAP' if snap_only else 'DIFF')
+    obj = table.get_object('SNAP' if mode == 'SNAP' else 'DIFF')
     obj_meta = pg_repo_local.objects.get_object_meta([obj])[0]
     # Check object size has been written
     assert obj_meta[4] > 0
@@ -65,11 +82,11 @@ def test_drop_recreate_produces_snap(pg_repo_local):
     assert table.get_object('SNAP') is not None
 
 
-@pytest.mark.parametrize("snap_only", [True, False])
-def test_commit_diff_remote(snap_only, pg_repo_remote):
+@pytest.mark.parametrize("mode", _COMMIT_MODES)
+def test_commit_diff_remote(mode, pg_repo_remote):
     # Rerun the previous test against the remote fixture to make sure it works without
     # dependencies on the get_engine()
-    test_commit_diff(snap_only, pg_repo_remote)
+    test_commit_diff(mode, pg_repo_remote)
 
 
 @pytest.mark.parametrize("snap_only", [True, False])
@@ -83,8 +100,8 @@ def test_commit_on_empty(snap_only, pg_repo_local):
     assert OUTPUT.diff('test', image_1=OUTPUT.head.image_hash, image_2=None) == []
 
 
-@pytest.mark.parametrize("snap_only", [True, False])
-def test_multiple_mountpoint_commit_diff(snap_only, pg_repo_local, mg_repo_local):
+@pytest.mark.parametrize("mode", _COMMIT_MODES)
+def test_multiple_mountpoint_commit_diff(mode, pg_repo_local, mg_repo_local):
     pg_repo_local.run_sql("""INSERT INTO fruits VALUES (3, 'mayonnaise');
         DELETE FROM fruits WHERE name = 'apple';
         UPDATE fruits SET name = 'guitar' WHERE fruit_id = 2;""")
@@ -96,7 +113,7 @@ def test_multiple_mountpoint_commit_diff(snap_only, pg_repo_local, mg_repo_local
 
     head = pg_repo_local.head.image_hash
     mongo_head = mg_repo_local.head
-    new_head = pg_repo_local.commit(snap_only=snap_only)
+    new_head = _commit(pg_repo_local, mode)
 
     change = pg_repo_local.diff('fruits', image_1=head, image_2=new_head)
     assert sorted(change) == [((1, 'apple'), 1, None),
@@ -120,7 +137,7 @@ def test_multiple_mountpoint_commit_diff(snap_only, pg_repo_local, mg_repo_local
     mg_repo_local.run_sql("UPDATE stuff SET duration = 15 WHERE name = 'James'")
     mg_repo_local.engine.commit()
     assert mg_repo_local.has_pending_changes()
-    new_mongo_head = mg_repo_local.commit(snap_only=snap_only)
+    new_mongo_head = _commit(mg_repo_local, mode)
     assert not mg_repo_local.has_pending_changes()
     assert not pg_repo_local.has_pending_changes()
 
@@ -148,24 +165,24 @@ def test_delete_all_diff(pg_repo_local):
     assert pg_repo_local.diff('fruits', new_head.parent_id, new_head) == expected_diff
 
 
-@pytest.mark.parametrize("snap_only", [True, False])
-def test_diff_across_far_commits(snap_only, pg_repo_local):
+@pytest.mark.parametrize("mode", _COMMIT_MODES)
+def test_diff_across_far_commits(mode, pg_repo_local):
     head = pg_repo_local.head.image_hash
     pg_repo_local.run_sql("INSERT INTO fruits VALUES (3, 'mayonnaise')")
-    pg_repo_local.commit(snap_only=snap_only)
+    _commit(pg_repo_local, mode)
 
     pg_repo_local.run_sql("DELETE FROM fruits WHERE name = 'apple'")
-    pg_repo_local.commit(snap_only=snap_only)
+    _commit(pg_repo_local, mode)
 
     pg_repo_local.run_sql("UPDATE fruits SET name = 'guitar' WHERE fruit_id = 2")
-    new_head = pg_repo_local.commit(snap_only=snap_only)
+    new_head = _commit(pg_repo_local, mode)
 
     change = pg_repo_local.diff('fruits', head, new_head)
-    assert change == \
+    assert sorted(change) == \
            [((1, 'apple'), 1, None),
+            ((2, 'guitar'), 0, {}),
             ((2, 'orange'), 1, None),
-            ((3, 'mayonnaise'), 0, {}),
-            ((2, 'guitar'), 0, {})]
+            ((3, 'mayonnaise'), 0, {})]
     change_agg = pg_repo_local.diff('fruits', head, new_head, aggregate=True)
     assert change_agg == (2, 2, 0)
 
