@@ -18,6 +18,53 @@ from splitgraph.hooks.external_objects import get_external_object_handler
 from ._common import META_TABLES, select, insert, pretty_size, Tracer
 
 
+def _qual_to_clause(qual, ctype):
+    """Convert our internal qual format into a WHERE clause that runs against an object's index entry.
+    Returns a Postgres clause (as a Composable) and a tuple of arguments to be mogrified into it."""
+    column_name, operator, value = qual
+
+    # Our index is essentially a bloom filter: it returns True if an object _might_ have rows
+    # that affect the result of a query with a given qual and False if it definitely doesn't.
+    # Hence, we can combine qualifiers in a similar Boolean way (proof?)
+
+    # If there's no index information for a given column, we have to assume it might match the qual.
+    query = SQL("NOT index ? %s OR ")
+    args = [column_name]
+
+    # If the column has to be greater than (or equal to) X, it only might exist in objects
+    # whose maximum value is greater than (or equal to) X.
+    if operator in ('>', '>='):
+        query += SQL("(index #>> '{{{},1}}')::" + ctype + "  " + operator + " %s").format((Identifier(column_name)))
+        args.append(value)
+    # Similar for smaller than, but here we check that the minimum value is smaller than X.
+    elif operator in ('<', '<='):
+        query += SQL("(index #>> '{{{},0}}')::" + ctype + " " + operator + " %s").format((Identifier(column_name)))
+        args.append(value)
+    elif operator == '=':
+        query += SQL("%s BETWEEN (index #>> '{{{0},0}}')::" + ctype
+                     + " AND (index #>> '{{{0},1}}')::" + ctype).format((Identifier(column_name)))
+        args.append(value)
+    # Currently, we ignore the LIKE (~~) qualifier since we can only make a judgement when the % pattern is at
+    # the end of a string.
+    # For inequality, we can't really say when an object is definitely not pertinent to a qual:
+    #   * if a <> X and X is included in an object's range, the object still might have values that aren't X.
+    #   * if X isn't included in an object's range, the object definitely has values that aren't X so we have
+    #     to fetch it.
+    else:
+        # For all other operators, we don't know if they will match so we assume that they will.
+        return SQL('TRUE'), ()
+    return query, tuple(args)
+
+
+def _quals_to_clause(quals, column_types):
+    def _internal_quals_to_clause(or_quals):
+        clauses, args = zip(*[_qual_to_clause(q, column_types[q[0]]) for q in or_quals])
+        return SQL(" OR ").join(SQL("(") + c + SQL(")") for c in clauses), tuple([a for arg in args for a in arg])
+
+    clauses, args = zip(*[_internal_quals_to_clause(q) for q in quals])
+    return SQL(" AND ").join(SQL("(") + c + SQL(")") for c in clauses), tuple([a for arg in args for a in arg])
+
+
 class ObjectManager(FragmentManager, MetadataManager):
     """Brings the multiple manager classes together and manages the object cache (downloading and uploading
     objects as required in order to fulfill certain queries)"""
@@ -150,55 +197,10 @@ class ObjectManager(FragmentManager, MetadataManager):
             SELECT SUM(sc.size) AS size FROM {0}.snap_cache sc)_""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
                                               return_shape=ResultShape.ONE_ONE))
 
-    def _qual_to_clause(self, qual, ctype):
-        """Convert our internal qual format into a WHERE clause that runs against an object's index entry.
-        Returns a Postgres clause (as a Composable) and a tuple of arguments to be mogrified into it."""
-        column_name, operator, value = qual
-
-        # Our index is essentially a bloom filter: it returns True if an object _might_ have rows
-        # that affect the result of a query with a given qual and False if it definitely doesn't.
-        # Hence, we can combine qualifiers in a similar Boolean way (proof?)
-
-        # If there's no index information for a given column, we have to assume it might match the qual.
-        query = SQL("NOT index ? %s OR ")
-        args = [column_name]
-
-        # If the column has to be greater than (or equal to) X, it only might exist in objects
-        # whose maximum value is greater than (or equal to) X.
-        if operator in ('>', '>='):
-            query += SQL("(index #>> '{{{},1}}')::" + ctype + "  " + operator + " %s").format((Identifier(column_name)))
-            args.append(value)
-        # Similar for smaller than, but here we check that the minimum value is smaller than X.
-        elif operator in ('<', '<='):
-            query += SQL("(index #>> '{{{},0}}')::" + ctype + " " + operator + " %s").format((Identifier(column_name)))
-            args.append(value)
-        elif operator == '=':
-            query += SQL("%s BETWEEN (index #>> '{{{0},0}}')::" + ctype
-                         + " AND (index #>> '{{{0},1}}')::" + ctype).format((Identifier(column_name)))
-            args.append(value)
-        # Currently, we ignore the LIKE (~~) qualifier since we can only make a judgement when the % pattern is at
-        # the end of a string.
-        # For inequality, we can't really say when an object is definitely not pertinent to a qual:
-        #   * if a <> X and X is included in an object's range, the object still might have values that aren't X.
-        #   * if X isn't included in an object's range, the object definitely has values that aren't X so we have
-        #     to fetch it.
-        else:
-            # For all other operators, we don't know if they will match so we assume that they will.
-            return SQL('TRUE'), ()
-        return query, tuple(args)
-
-    def _quals_to_clause(self, quals, column_types):
-        def _internal_quals_to_clause(or_quals):
-            clauses, args = zip(*[self._qual_to_clause(q, column_types[q[0]]) for q in or_quals])
-            return SQL(" OR ").join(SQL("(") + c + SQL(")") for c in clauses), tuple([a for arg in args for a in arg])
-
-        clauses, args = zip(*[_internal_quals_to_clause(q) for q in quals])
-        return SQL(" AND ").join(SQL("(") + c + SQL(")") for c in clauses), tuple([a for arg in args for a in arg])
-
     def _filter_objects(self, object_ids, quals, column_types):
         # We need access to column types here since the objects might not have been fetched yet and so
         # we can't look at their column types.
-        clause, args = self._quals_to_clause(quals, column_types)
+        clause, args = _quals_to_clause(quals, column_types)
         logging.info("_filter_objects: clause %r, args %r", clause, args)
 
         # If we don't include the removed items (e.g. the previous values of the deleted/updated rows)
@@ -291,7 +293,7 @@ class ObjectManager(FragmentManager, MetadataManager):
         # Perform the actual download. If the table has no upstream but still has external locations, we download
         # just the external objects.
         if to_fetch:
-            upstream = table.repository.get_upstream()
+            upstream = table.repository.upstream
             object_locations = self.get_external_object_locations(required_objects)
             self.download_objects(upstream.objects if upstream else None, objects_to_fetch=to_fetch,
                                   object_locations=object_locations)
@@ -375,9 +377,9 @@ class ObjectManager(FragmentManager, MetadataManager):
             # to access the cache next run eviction if they need it.
             self.object_engine.copy_table(SPLITGRAPH_META_SCHEMA, snap, SPLITGRAPH_META_SCHEMA, new_snap_id,
                                           with_pk_constraints=True)
-            logging.info("Applying %d fragment(s)..." % len(diffs))
-            self.object_engine.batch_apply_fragments([(SPLITGRAPH_META_SCHEMA, d) for d in diffs],
-                                                     SPLITGRAPH_META_SCHEMA, new_snap_id)
+            logging.info("Applying %d fragment(s)...", len(diffs))
+            self.object_engine.apply_fragments([(SPLITGRAPH_META_SCHEMA, d) for d in diffs],
+                                               SPLITGRAPH_META_SCHEMA, new_snap_id)
 
             # We've created the SNAP -- now we need to record its size (can't do it straightaway because
             # we use the INSERT statement to claim a lock).
@@ -606,9 +608,9 @@ class ObjectManager(FragmentManager, MetadataManager):
         their remote locations. Also deletes all objects not registered in the object_tree.
         """
         # First, get a list of all objects required by a table.
-        primary_objects = set([o for os in self.object_engine.run_sql(
+        primary_objects = {o for os in self.object_engine.run_sql(
             SQL("SELECT object_ids FROM {}.tables").format(Identifier(SPLITGRAPH_META_SCHEMA)),
-            return_shape=ResultShape.MANY_ONE) for o in os])
+            return_shape=ResultShape.MANY_ONE) for o in os}
 
         # Expand that since each object might have a parent it depends on.
         if primary_objects:
@@ -620,7 +622,7 @@ class ObjectManager(FragmentManager, MetadataManager):
                 else:
                     primary_objects.update(new_parents)
 
-        # Go through the tables that aren't mountpoint-dependent and delete entries there.
+        # Go through the tables that aren't repository-dependent and delete entries there.
         for table_name in ['objects', 'object_locations', 'object_cache_status']:
             query = SQL("DELETE FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table_name))
             if primary_objects:

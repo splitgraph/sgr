@@ -12,7 +12,9 @@ def get_arg_tuples():
         having to pass down variables from click just to get config values.
     """
 
-    sys_args = sys.argv[1:]
+    # This one is for when we are on the engine -- then sys.argv doesn't exist in embedded Python
+    # and importing the config fails
+    sys_args = sys.argv[1:] if hasattr(sys, 'argv') else ['']
 
     return [(a1, a2) for a1, a2 in zip(sys_args, sys_args[1:]) if a1 in ARG_KEYS]
 

@@ -29,6 +29,9 @@ def image_spec_parser(default='latest'):
 
 
 class Color:
+    """
+    An enumeration of console colors
+    """
     PURPLE = '\033[95m'
     CYAN = '\033[96m'
     DARKCYAN = '\033[36m'

@@ -7,7 +7,6 @@ import logging
 from importlib import import_module
 
 from psycopg2.sql import Identifier, SQL
-
 from splitgraph.config import PG_USER, CONFIG
 from splitgraph.core._common import ensure_metadata_schema
 from splitgraph.engine import get_engine
@@ -56,7 +55,7 @@ def init_fdw(engine, server_id, wrapper, server_options=None, user_options=None,
     if overwrite:
         engine.run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(server_id)))
 
-    create_server = SQL("CREATE SERVER IF NOT EXISTS {} FOREIGN DATA WRAPPER {}")\
+    create_server = SQL("CREATE SERVER IF NOT EXISTS {} FOREIGN DATA WRAPPER {}") \
         .format(Identifier(server_id), Identifier(wrapper))
 
     if server_options:

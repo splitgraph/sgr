@@ -4,7 +4,6 @@ Command line routines generating example data / Splitfiles
 from random import getrandbits
 
 import click
-
 from splitgraph.core import Repository, repository_exists, ResultShape, Identifier, SQL, select
 
 _DEMO_TABLE_SIZE = 10
@@ -26,10 +25,16 @@ SQL CREATE TABLE result AS SELECT table_1.key, table_1.value AS value_1,\\
 @click.group(name='example')
 def example():
     """Generate demo Splitgraph data."""
-    pass
 
 
 def generate_random_table(repository, table_name, size):
+    """
+    Creates a table with an integer primary key and a string value, filling it with random data.
+
+    :param repository: Checked-out Repository to create the table in.
+    :param table_name: Name of the table to generate
+    :param size: Number of rows in the table.
+    """
     repository.engine.create_table(repository.to_schema(), table_name, [(1, 'key', 'integer', True),
                                                                         (2, 'value', 'varchar', False)])
     repository.engine.run_sql_batch(SQL("INSERT INTO {} VALUES (%s, %s)").format(Identifier(table_name)),
@@ -38,6 +43,15 @@ def generate_random_table(repository, table_name, size):
 
 
 def alter_random_table(repository, table_name, rows_added, rows_deleted, rows_updated):
+    """
+    Alters the example table, adding/updating/deleting a certain number of rows.
+
+    :param repository: Checked-out Repository object.
+    :param table_name: Name of the table
+    :param rows_added: Number of rows to add
+    :param rows_deleted: Number of rows to remove
+    :param rows_updated: Number of rows to update
+    """
     keys = repository.run_sql(select(table_name, "key", schema=repository.to_schema()),
                               return_shape=ResultShape.MANY_ONE)
     last = repository.run_sql(select(table_name, "MAX(key)", schema=repository.to_schema()),

@@ -167,7 +167,7 @@ def test_upstream_management(pg_repo_local):
     result = runner.invoke(upstream_c, ["test/pg_mount", "--reset"])
     assert result.exit_code == 0
     assert "Deleted upstream for test/pg_mount" in result.output
-    assert pg_repo_local.get_upstream() is None
+    assert pg_repo_local.upstream is None
 
     # Reset it again
     result = runner.invoke(upstream_c, ["test/pg_mount", "--reset"])

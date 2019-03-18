@@ -312,7 +312,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
     def _generate_fragment_application(self, source_schema, source_table,
                                        target_schema, target_table, ri_data, extra_quals=None):
-        ri_cols, non_ri_cols, ri_types = ri_data
+        ri_cols, non_ri_cols, _ = ri_data
         all_cols = ri_cols + non_ri_cols
 
         # First, delete all PKs from staging that are mentioned in the new fragment. This conveniently
@@ -341,14 +341,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         query += SQL(")")
         return query
 
-    def apply_fragment(self, source_schema, source_table, target_schema, target_table,
-                       extra_quals=None, extra_qual_args=None):
-        ri_data = self._prepare_ri_data(target_schema, target_table)
-        self.run_sql(self._generate_fragment_application(source_schema, source_table,
-                                                         target_schema, target_table, ri_data, extra_quals),
-                     extra_qual_args)
-
-    def batch_apply_fragments(self, objects, target_schema, target_table, extra_quals=None, extra_qual_args=None):
+    def apply_fragments(self, objects, target_schema, target_table, extra_quals=None, extra_qual_args=None):
         ri_data = self._prepare_ri_data(target_schema, target_table)
         query = SQL(";").join(self._generate_fragment_application(ss, st, target_schema, target_table,
                                                                   ri_data, extra_quals)
@@ -422,8 +415,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                            remote_schema=SPLITGRAPH_META_SCHEMA)
         for i, obj in enumerate(objects):
             print("(%d/%d) %s..." % (i + 1, len(objects), obj))
-            self.copy_table(SPLITGRAPH_META_SCHEMA, obj, REMOTE_TMP_SCHEMA, obj, with_pk_constraints=False,
-                            table_exists=True)
+            self.copy_table(SPLITGRAPH_META_SCHEMA, obj, REMOTE_TMP_SCHEMA, obj, with_pk_constraints=False)
         self.connection.commit()
         self.delete_schema(REMOTE_TMP_SCHEMA)
 
@@ -446,8 +438,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             for i, obj in enumerate(objects):
                 logging.info("(%d/%d) Downloading %s...", i + 1, len(objects), obj)
                 # Foreign tables don't have PK constraints so we'll have to apply them manually.
-                self.copy_table(REMOTE_TMP_SCHEMA, obj, SPLITGRAPH_META_SCHEMA, obj,
-                                with_pk_constraints=False)
+                self.copy_table(REMOTE_TMP_SCHEMA, obj, SPLITGRAPH_META_SCHEMA, obj, with_pk_constraints=False)
                 # Get the PKs from the remote and apply them
                 source_pks = remote_engine.get_primary_keys(SPLITGRAPH_META_SCHEMA, obj)
                 if source_pks:
@@ -541,17 +532,12 @@ def _convert_audit_change(action, row_data, changed_fields, ri_cols):
 _KIND = {'I': 0, 'D': 1, 'U': 2}
 
 
-def _should_be_json(v):
-    # Dicts/non-homogeneous lists should be stored as JSON
-    return
-
-
 def _convert_vals(vals):
     """Psycopg returns jsonb objects as dicts/lists but doesn't actually accept them directly
     as a query param (or in the case of lists coerces them into an array.
     Hence, we have to wrap them in the Json datatype when doing a dump + load."""
     return [Json(v) if isinstance(v, dict)
-                       or (isinstance(v, list) and len(v) > 0 and isinstance(v[0], (list, tuple)))
+                       or (isinstance(v, list) and v and isinstance(v[0], (list, tuple)))
             else v for v in vals]
 
 

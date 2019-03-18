@@ -3,7 +3,7 @@ Common internal functions used by Splitgraph commands.
 """
 import logging
 import re
-from datetime import datetime, datetime as dt, date
+from datetime import datetime as dt, date
 from decimal import Decimal
 from functools import wraps
 
@@ -366,25 +366,29 @@ def gather_sync_metadata(target, source):
 
 
 def pretty_size(size):
+    """
+    Converts a size in bytes to its string representation (e.g. 1024 -> 1KiB)
+    :param size: Size in bytes
+    """
     size = float(size)
     power = 2 ** 10
-    n = 0
+    base = 0
     while size > power:
         size /= power
-        n += 1
+        base += 1
 
-    return "%.2f %s" % (size, {0: '', 1: 'Ki', 2: 'Mi', 3: 'Gi', 4: 'Ti'}[n] + 'B')
+    return "%.2f %s" % (size, {0: '', 1: 'Ki', 2: 'Mi', 3: 'Gi', 4: 'Ti'}[base] + 'B')
 
 
 def _parse_dt(string):
     try:
-        return datetime.strptime(string, "%Y-%m-%dT%H:%M:%S.%f")
+        return dt.strptime(string, "%Y-%m-%dT%H:%M:%S.%f")
     except ValueError:
-        return datetime.strptime(string, "%Y-%m-%dT%H:%M:%S")
+        return dt.strptime(string, "%Y-%m-%dT%H:%M:%S")
 
 
 def _parse_date(string):
-    return datetime.strptime(string, "%Y-%m-%d").date()
+    return dt.strptime(string, "%Y-%m-%d").date()
 
 
 _TYPE_MAP = {k: v for ks, v in
@@ -420,6 +424,10 @@ class Tracer:
         self.events = []
 
     def log(self, event):
+        """
+        Log an event at the current time
+        :param event: Event name
+        """
         self.events.append((dt.now(), event))
 
     def __str__(self):
@@ -433,7 +441,9 @@ class Tracer:
 
 
 def coerce_val_to_json(val):
-    # Some values can't be stored in json so we turn them into strings
+    """
+    Turn a Python value to a string/float that can be stored as JSON.
+    """
     if isinstance(val, Decimal):
         return str(val)
     if isinstance(val, date):

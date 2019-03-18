@@ -1,3 +1,7 @@
+"""
+Classes related to managing table/image/object metadata tables.
+"""
+
 from psycopg2.extras import Json
 
 from ._common import insert, select, ResultShape

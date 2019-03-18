@@ -5,7 +5,7 @@ tracking tables for changes and uploading/downloading tables to other remote eng
 By default, Splitgraph is backed by Postgres: see :mod:`splitgraph.engine.postgres` for an example of how to
 implement a different engine.
 """
-
+from abc import ABC
 from contextlib import contextmanager
 from enum import Enum
 
@@ -90,12 +90,12 @@ class SQLEngine:
         return self.run_sql(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(schema)),
                             return_shape=ResultShape.NONE)
 
-    def copy_table(self, source_schema, source_table, target_schema, target_table, with_pk_constraints=True,
-                   table_exists=False, limit=None, offset=None):
+    def copy_table(self, source_schema, source_table, target_schema, target_table, with_pk_constraints=True, limit=None,
+                   offset=None):
         """Copy a table in the same engine, optionally applying primary key constraints as well."""
         # TODO sort by PK too?
         query_args = []
-        if not table_exists:
+        if not self.table_exists(target_schema, target_table):
             query = SQL("CREATE TABLE {}.{} AS SELECT * FROM {}.{}").format(
                 Identifier(target_schema), Identifier(target_table),
                 Identifier(source_schema), Identifier(source_table))
@@ -248,14 +248,8 @@ class SQLEngine:
         raise NotImplementedError()
 
 
-class ChangeEngine(SQLEngine):
+class ChangeEngine(SQLEngine, ABC):
     """An SQL engine that can perform change tracking on a set of tables."""
-
-    def get_primary_keys(self, schema, table):
-        raise NotImplementedError()
-
-    def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY):
-        raise NotImplementedError()
 
     def get_tracked_tables(self):
         """
@@ -341,23 +335,8 @@ class ObjectEngine:
         """
         raise NotImplementedError()
 
-    def apply_fragment(self, source_schema, source_table, target_schema, target_table, extra_quals=None,
-                       extra_qual_args=None):
-        """
-        Apply a stored fragment to another table
-
-        :param source_schema: Schema where the fragment is located
-        :param source_table: Table where the fragment is located
-        :param target_schema: Schema to apply the fragment to
-        :param target_table: Table to apply the fragment to
-        :param extra_quals: Optional, extra SQL (Composable) clauses to filter new rows in the fragment on
-            (e.g. SQL("a = %s"))
-        :param extra_qual_args: Optional, a tuple of arguments to use with `extra_quals`
-        """
-        raise NotImplementedError()
-
-    def batch_apply_fragments(self, objects, target_schema, target_table, extra_quals=None,
-                              extra_qual_args=None):
+    def apply_fragments(self, objects, target_schema, target_table, extra_quals=None,
+                        extra_qual_args=None):
         """
         Apply multiple fragments to a target table as a single-query batch operation.
 
@@ -454,12 +433,12 @@ def switch_engine(engine):
     if not isinstance(engine, str) and not isinstance(engine, SQLEngine):
         raise ValueError("engine must be an engine name or an SQLEngine, not %r!" % type(engine))
     global _ENGINE
-    _PREV_ENGINE = _ENGINE
+    _prev_engine = _ENGINE
     try:
         _ENGINE = engine
         yield
     finally:
-        _ENGINE = _PREV_ENGINE
+        _ENGINE = _prev_engine
 
 
 def get_remote_connection_params(remote_name):

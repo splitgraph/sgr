@@ -11,13 +11,6 @@ following methods:
     lookup path.
 """
 
-# This one is for when we are on the engine -- then sys.argv doesn't exist in embedded Python
-# and importing the config fails
-import sys
-
-if not hasattr(sys, 'argv'):  # pragma: no cover
-    sys.argv = ['']
-
 from .engine import *
 from .registry import publish_tag, get_published_info, unpublish_repository, get_info_key, set_info_key
 from .repository import Repository, import_table_from_remote, clone

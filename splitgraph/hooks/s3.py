@@ -4,12 +4,11 @@ Plugin for uploading Splitgraph objects from the cache to an external S3-like ob
 import logging
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
 
 from minio import Minio
 from minio.error import (BucketAlreadyOwnedByYou,
                          BucketAlreadyExists)
-from threading import Lock
-
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.engine import get_engine
 from splitgraph.hooks.external_objects import ExternalObjectHandler

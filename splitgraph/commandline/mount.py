@@ -6,10 +6,9 @@ import json
 import re
 
 import click
-
 from splitgraph.hooks.mount_handlers import get_mount_handler, get_mount_handlers, mount
 
-_PARAM_REGEX = re.compile('^:param\s+(?P<type>\w+\s+)?(?P<param>\w+):\s+(?P<doc>.*)$', re.MULTILINE)
+_PARAM_REGEX = re.compile(r'^:param\s+(?P<type>\w+\s+)?(?P<param>\w+):\s+(?P<doc>.*)$', re.MULTILINE)
 # Mount handler function arguments that get parsed by other means (connection string) and aren't
 # included in the generated help text.
 _RESERVED_PARAMS = ['mountpoint', 'server', 'port', 'username', 'password']
@@ -92,5 +91,5 @@ def _make_mount_handler_command(handler_name):
 
 
 # Register all current mount handlers and turn them into Click subcommands.
-for handler_name in get_mount_handlers():
-    mount_c.add_command(_make_mount_handler_command(handler_name))
+for _handler_name in get_mount_handlers():
+    mount_c.add_command(_make_mount_handler_command(_handler_name))

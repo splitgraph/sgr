@@ -62,7 +62,7 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
         :param table_name: Name of the table
         :return: Table object or None
         """
-        objects = self.engine.run_sql(SQL("""SELECT {0}.tables.object_ids FROM {0}.tables WHERE 
+        objects = self.engine.run_sql(SQL("""SELECT {0}.tables.object_ids FROM {0}.tables WHERE
                                              {0}.tables.namespace = %s AND repository = %s AND image_hash = %s
                                               AND table_name = %s""")
                                       .format(Identifier(SPLITGRAPH_META_SCHEMA)),

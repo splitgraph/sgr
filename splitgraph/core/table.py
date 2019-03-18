@@ -1,3 +1,5 @@
+"""Table metadata-related classes."""
+
 import logging
 
 from psycopg2.sql import SQL, Identifier
@@ -37,9 +39,9 @@ class Table:
                 engine.copy_table(SPLITGRAPH_META_SCHEMA, required_objects[0], destination_schema, destination,
                                   with_pk_constraints=True)
                 if len(required_objects) > 1:
-                    logging.info("Applying %d fragment(s)..." % (len(required_objects) - 1))
-                    engine.batch_apply_fragments([(SPLITGRAPH_META_SCHEMA, d) for d in required_objects[1:]],
-                                                 destination_schema, destination)
+                    logging.info("Applying %d fragment(s)...", (len(required_objects) - 1))
+                    engine.apply_fragments([(SPLITGRAPH_META_SCHEMA, d) for d in required_objects[1:]],
+                                           destination_schema, destination)
         else:
             query = SQL("CREATE FOREIGN TABLE {}.{} (") \
                 .format(Identifier(destination_schema), Identifier(self.table_name))

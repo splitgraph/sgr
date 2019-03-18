@@ -1,3 +1,7 @@
+"""
+Routines related to storing tables as fragments.
+"""
+
 import bisect
 from random import getrandbits
 
@@ -309,7 +313,7 @@ class FragmentManager:
             for offset in range(0, table_size, chunk_size):
                 object_id = get_random_object_id()
                 self.object_engine.copy_table(repository.to_schema(), table_name, SPLITGRAPH_META_SCHEMA, object_id,
-                                              with_pk_constraints=True, offset=offset, limit=chunk_size)
+                                              with_pk_constraints=True, limit=chunk_size, offset=offset)
                 self.register_object(object_id, object_format='SNAP', namespace=repository.namespace,
                                      parent_object=None)
                 object_ids.append(object_id)
@@ -324,6 +328,11 @@ class FragmentManager:
         self.register_table(repository, table_name, image_hash, table_schema, object_ids)
 
     def get_all_required_objects(self, object_id):
+        """
+        Follow the parent chain of this object until a base object is reached.
+        :param object_id: Object ID to start the traversal on.
+        :return: List of [object ID, ID of its parent, ....]
+        """
         parents = self.object_engine.run_sql(SQL(
             """WITH RECURSIVE parents AS (
                 SELECT object_id, parent_id FROM {0}.objects WHERE object_id = %s
