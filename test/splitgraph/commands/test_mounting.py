@@ -12,7 +12,7 @@ MYSQL_MNT = Repository.from_schema("test/mysql_mount")
 def test_mount_unmount(local_engine_empty):
     _mount_postgres(PG_MNT)
     assert (1, 'apple') in get_engine().run_sql("""SELECT * FROM "test/pg_mount".fruits""")
-    PG_MNT.rm()
+    PG_MNT.delete()
     assert not get_engine().schema_exists(PG_MNT.to_schema())
 
 
@@ -25,7 +25,7 @@ def test_mount_mysql(local_engine_empty):
                            FROM "test/mysql_mount".mushrooms
                            WHERE friendly = 0""")
     finally:
-        MYSQL_MNT.rm()
+        MYSQL_MNT.delete()
 
 
 def test_cross_joins(local_engine_empty):

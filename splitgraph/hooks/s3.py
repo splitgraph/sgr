@@ -55,7 +55,7 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
         bucket = self.params.get('bucket', access_key)
         worker_threads = self.params.get('threads', 4)
 
-        logging.info("Uploading %d object(s) to %s/%s" % (len(objects), endpoint, bucket))
+        logging.info("Uploading %d object(s) to %s/%s", len(objects), endpoint, bucket)
         client = Minio(endpoint,
                        access_key=access_key,
                        secret_key=self.params.get('secret_key', S3_SECRET_KEY),
@@ -75,8 +75,8 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
                 tmp_path = tmpdir + '/' + object_id
 
                 with pg_conn_lock:
-                    with open(tmp_path, 'wb') as f:
-                        get_engine().dump_object(SPLITGRAPH_META_SCHEMA, object_id, f)
+                    with open(tmp_path, 'wb') as file:
+                        get_engine().dump_object(SPLITGRAPH_META_SCHEMA, object_id, file)
                 # Minio pushes can happen concurrently, no need to hold the lock here.
                 client.fput_object(bucket, object_id, tmp_path)
 

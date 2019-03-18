@@ -150,12 +150,12 @@ def show_c(image_spec, verbose):
     if verbose:
         print()
         print("Tables:")
-        for t in image.get_tables():
-            table_objects = image.get_table(t).objects
+        for table in image.get_tables():
+            table_objects = image.get_table(table).objects
             if len(table_objects) == 1:
-                print("  %s: %s" % (t, table_objects[0]))
+                print("  %s: %s" % (table, table_objects[0]))
             else:
-                print("  %s:" % t)
+                print("  %s:" % table)
                 for obj in table_objects:
                     print("    %s" % obj)
 

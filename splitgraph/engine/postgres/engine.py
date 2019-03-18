@@ -106,6 +106,19 @@ class PsycopgEngine(SQLEngine):
                 self.rollback()
                 raise
 
+    def dump_table_sql(self, schema, table_name, stream, columns='*', where='', where_args=None):
+        with self.connection.cursor() as cur:
+            cur.execute(select(table_name, columns, where, schema), where_args)
+            if cur.rowcount == 0:
+                return
+
+            stream.write(SQL("INSERT INTO {}.{} VALUES \n")
+                         .format(Identifier(schema), Identifier(table_name)).as_string(self.connection))
+            stream.write(',\n'.join(
+                cur.mogrify("(" + ','.join(itertools.repeat('%s', len(row))) + ")", _convert_vals(row)).decode('utf-8')
+                for row in cur))
+        stream.write(";\n")
+
     def get_table_size(self, schema, table):
         return self.run_sql(SQL("SELECT pg_relation_size('{}.{}')").format(Identifier(schema), Identifier(table)),
                             return_shape=ResultShape.ONE_ONE)
@@ -348,19 +361,6 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                               for ss, st in objects)
         self.run_sql(query, (extra_qual_args * len(objects)) if extra_qual_args else None)
 
-    def dump_table_sql(self, schema, table_name, stream, columns='*', where='', where_args=None):
-        with self.connection.cursor() as cur:
-            cur.execute(select(table_name, columns, where, schema), where_args)
-            if cur.rowcount == 0:
-                return
-
-            stream.write(SQL("INSERT INTO {}.{} VALUES \n")
-                         .format(Identifier(schema), Identifier(table_name)).as_string(self.connection))
-            stream.write(',\n'.join(
-                cur.mogrify("(" + ','.join(itertools.repeat('%s', len(row))) + ")", _convert_vals(row)).decode('utf-8')
-                for row in cur))
-        stream.write(";\n")
-
     # Utilities to dump objects (SNAP/DIFF) into an external format.
     # We use a slightly ad hoc format: the schema (JSON) + a null byte + Postgres's copy_to
     # binary format (only contains data). There's probably some scope to make this more optimized, maybe
@@ -378,10 +378,10 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         # Read until the delimiter separating a JSON schema from the Postgres copy_to dump.
         # Surely this is buffered?
         while True:
-            c = stream.read(1)
-            if c == b'\0':
+            char = stream.read(1)
+            if char == b'\0':
                 break
-            chars += c
+            chars += char
 
         schema_spec = json.loads(chars.decode('utf-8'))
         self.create_table(schema, table, schema_spec)
@@ -461,22 +461,22 @@ def _split_ri_cols(action, row_data, changed_fields, ri_cols):
     ri_data = {}
 
     if action == 'I':
-        for cc, cv in row_data.items():
-            if cc in ri_cols:
-                ri_data[cc] = cv
+        for column, value in row_data.items():
+            if column in ri_cols:
+                ri_data[column] = value
             else:
-                non_ri_data[cc] = cv
+                non_ri_data[column] = value
     elif action == 'D':
-        for cc, cv in row_data.items():
-            if cc in ri_cols:
-                ri_data[cc] = cv
+        for column, value in row_data.items():
+            if column in ri_cols:
+                ri_data[column] = value
     elif action == 'U':
-        for cc, cv in row_data.items():
-            if cc in ri_cols:
-                ri_data[cc] = cv
+        for column, value in row_data.items():
+            if column in ri_cols:
+                ri_data[column] = value
         if changed_fields:
-            for cc, cv in changed_fields.items():
-                non_ri_data[cc] = cv
+            for column, value in changed_fields.items():
+                non_ri_data[column] = value
 
     return ri_data, non_ri_data
 

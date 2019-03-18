@@ -75,7 +75,7 @@ def init_fdw(engine, server_id, wrapper, server_options=None, user_options=None,
         engine.run_sql(create_mapping, user_vals)
 
 
-def mount_postgres(mountpoint, server, port, username, password, dbname, remote_schema, tables=[]):
+def mount_postgres(mountpoint, server, port, username, password, dbname, remote_schema, tables=None):
     """
     Mount a Postgres database.
 
@@ -91,6 +91,8 @@ def mount_postgres(mountpoint, server, port, username, password, dbname, remote_
     :param remote_schema: Remote schema name.
     :param tables: Tables to mount (default all).
     """
+    if tables is None:
+        tables = []
     engine = get_engine()
     logging.info("Importing foreign Postgres schema...")
 
@@ -147,7 +149,7 @@ def mount_mongo(mountpoint, server, port, username, password, **table_spec):
         engine.run_sql(query, (db, coll))
 
 
-def mount_mysql(mountpoint, server, port, username, password, remote_schema, tables=[]):
+def mount_mysql(mountpoint, server, port, username, password, remote_schema, tables=None):
     """
     Mount a MySQL database.
 
@@ -162,6 +164,8 @@ def mount_mysql(mountpoint, server, port, username, password, remote_schema, tab
     :param remote_schema: Remote schema name.
     :param tables: Tables to mount (default all).
     """
+    if tables is None:
+        tables = []
     engine = get_engine()
     logging.info("Mounting foreign MySQL database...")
     server_id = mountpoint + '_server'
@@ -177,18 +181,6 @@ def mount_mysql(mountpoint, server, port, username, password, remote_schema, tab
     query += "FROM SERVER {} INTO {}"
     engine.run_sql(SQL(query).format(Identifier(remote_schema), Identifier(server_id),
                                      Identifier(mountpoint)), tables)
-
-
-# Register the mount handlers from the config.
-for handler_name, handler_func_name in CONFIG.get('mount_handlers', {}).items():
-    ix = handler_func_name.rindex('.')
-    try:
-        handler_func = getattr(import_module(handler_func_name[:ix]), handler_func_name[ix + 1:])
-        register_mount_handler(handler_name.lower(), handler_func)
-    except AttributeError as e:
-        raise SplitGraphException("Error loading custom mount handler {0}".format(handler_name), e)
-    except ImportError as e:
-        raise SplitGraphException("Error loading custom mount handler {0}".format(handler_name), e)
 
 
 def mount(mountpoint, mount_handler, handler_kwargs):
@@ -208,3 +200,19 @@ def mount(mountpoint, mount_handler, handler_kwargs):
     engine.run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(mountpoint + '_server')))
     mh_func(mountpoint, **handler_kwargs)
     engine.commit()
+
+
+def _register_default_handlers():
+    # Register the mount handlers from the config.
+    for handler_name, handler_func_name in CONFIG.get('mount_handlers', {}).items():
+        ix = handler_func_name.rindex('.')
+        try:
+            handler_func = getattr(import_module(handler_func_name[:ix]), handler_func_name[ix + 1:])
+            register_mount_handler(handler_name.lower(), handler_func)
+        except AttributeError as e:
+            raise SplitGraphException("Error loading custom mount handler {0}".format(handler_name)) from e
+        except ImportError as e:
+            raise SplitGraphException("Error loading custom mount handler {0}".format(handler_name)) from e
+
+
+_register_default_handlers()

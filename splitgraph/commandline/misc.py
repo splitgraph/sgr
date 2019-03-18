@@ -60,7 +60,7 @@ def rm_c(image_spec, remote, yes):
               + " %s will be deleted." % repository.to_schema())
         if not yes:
             click.confirm("Continue? ", abort=True)
-        repository.rm()
+        repository.delete()
     else:
         image = repository.images[image]
         images_to_delete = repository.images.get_all_child_images(image.image_hash)

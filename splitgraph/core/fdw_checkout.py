@@ -60,10 +60,10 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
                 # Convert col op ALL(ARRAY[a,b,c...]) into (cop op a) AND (col op b)...
                 # which is multiple AND clauses of one OR each
                 return [[(qual.field_name, qual.operator[0], v)] for v in qual.value]
-            else:
-                if qual.value is None:
-                    return [[]]
-                return [[(qual.field_name, qual.operator, qual.value)]]
+
+            if qual.value is None:
+                return [[]]
+            return [[(qual.field_name, qual.operator, qual.value)]]
 
         return [q for qual in quals for q in _qual_to_cnf(qual) if q != []]
 

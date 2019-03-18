@@ -11,7 +11,7 @@ from splitgraph.config.environment_config import get_environment_config_value
 from splitgraph.config.system_config import (
     get_explicit_config_file_location,
     get_explicit_config_file_dirs,
-    SG_CONFIG_FILE,
+    get_config_file,
     VALID_CONFIG_FILE_NAMES
 )
 from splitgraph.core.engine import _parse_paths_overrides
@@ -389,7 +389,7 @@ def test_get_explicit_config_file_non_existing_dirs_via_arg(fs):
 
 
 def test_SG_CONFIG_FILE_none_exists(fs):
-    assert SG_CONFIG_FILE() == None
+    assert get_config_file() == None
 
 
 @pytest.mark.parametrize('config_file_name', VALID_CONFIG_FILE_NAMES)
@@ -410,7 +410,7 @@ def test_SG_CONFIG_FILE_valid_names_home_sub_dir(fs, config_file_name):
         assert os.path.isdir(home_sub_dir)
         assert os.path.isfile(config_file)
 
-        assert SG_CONFIG_FILE() == config_file
+        assert get_config_file() == config_file
 
 
 @pytest.mark.parametrize('config_file_name', VALID_CONFIG_FILE_NAMES)
@@ -420,7 +420,7 @@ def test_SG_CONFIG_FILE_valid_names_cwd(fs, config_file_name):
 
     fs.create_file(fake_config_file)
 
-    assert SG_CONFIG_FILE() == fake_config_file
+    assert get_config_file() == fake_config_file
 
 
 @pytest.mark.parametrize('config_file_name', VALID_CONFIG_FILE_NAMES)
@@ -430,7 +430,7 @@ def test_SG_CONFIG_FILE_explicit_dir_supercedes_valid_names_cwd(fs, config_file_
 
     fs.create_file(fake_config_file)
 
-    assert SG_CONFIG_FILE() == fake_config_file
+    assert get_config_file() == fake_config_file
 
     exists_dir = '/var/some-dir-to-look-for-configs'
 
@@ -446,7 +446,7 @@ def test_SG_CONFIG_FILE_explicit_dir_supercedes_valid_names_cwd(fs, config_file_
     fs.create_file(explicit_config_file)
 
     with patch.object(sys, 'argv', mock_sysargv):
-        assert SG_CONFIG_FILE() == explicit_config_file
+        assert get_config_file() == explicit_config_file
 
 
 def _write_config_file(fs, lines):
@@ -487,7 +487,7 @@ def test_hoist_section():
         }
     }
 
-    new_config_dict = hoist_section(orig_config_dict, hoist_section='hoistableSection')
+    new_config_dict = hoist_section(orig_config_dict, section='hoistableSection')
 
     assert new_config_dict['OVERRIDE_THIS_ARBITRARY_KEY'] == 'foo'
     assert 'hoistableSection' not in new_config_dict.keys()

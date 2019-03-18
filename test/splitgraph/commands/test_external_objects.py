@@ -31,7 +31,7 @@ def test_s3_push_pull(local_engine_empty, pg_repo_remote, clean_minio):
 
     # Destroy the pulled mountpoint and recreate it again.
     assert len(PG_MNT.objects.get_downloaded_objects()) == 4
-    PG_MNT.rm()
+    PG_MNT.delete()
     # Make sure we don't have any leftover physical objects.
     PG_MNT.objects.cleanup()
     assert len(PG_MNT.objects.get_downloaded_objects()) == 0

@@ -2,7 +2,7 @@ from datetime import datetime as dt, timedelta
 
 import pytest
 from splitgraph.core import clone, select, ResultShape, SPLITGRAPH_META_SCHEMA
-from splitgraph.core.object_manager import ObjectManager
+from splitgraph.core.fragment_manager import _quals_to_clause
 from splitgraph.exceptions import SplitGraphException
 from test.splitgraph.commands.test_layered_querying import prepare_lq_repo
 from test.splitgraph.conftest import OUTPUT
@@ -29,7 +29,7 @@ def _setup_object_cache_test(pg_repo_remote, longer_chain=False):
     # Same setup as the LQ test in the beginning: we clone a repo from upstream, don't download anything, all
     # objects are on Minio.
     remote = pg_repo_local.push(handler='S3', handler_options={})
-    pg_repo_local.rm()
+    pg_repo_local.delete()
     pg_repo_remote.objects.delete_objects(remote.objects.get_downloaded_objects())
     pg_repo_remote.engine.commit()
     pg_repo_local.objects.cleanup()
@@ -366,7 +366,7 @@ def test_object_cache_snaps_cleanup_cleans(local_engine_empty, pg_repo_remote):
     for i in range(5):
         with object_manager.ensure_objects(fruits_v3):
             pass
-    pg_repo_local.rm()
+    pg_repo_local.delete()
     # This time, since the DIFF that the cached SNAP is linked to doesn't exist, the cache entry
     # and the actual SNAP should get deleted too.
 
@@ -468,7 +468,6 @@ def test_object_cache_resolution_with_snaps(pg_repo_local):
 
 
 def test_object_manager_index_clause_generation(pg_repo_local):
-    om = ObjectManager(pg_repo_local)
     column_types = {'a': 'int', 'b': 'int'}
 
     def _assert_ic_result(quals, expected_clause, expected_args):
@@ -555,7 +554,7 @@ def test_object_manager_object_filtering(local_engine_empty):
     column_types = {c[1]: c[2] for c in OUTPUT.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, obj_1)}
 
     def _assert_filter_result(quals, expected):
-        assert set(om._filter_objects(objects, quals, column_types)) == set(expected)
+        assert set(om.filter_fragments(objects, quals, column_types)) == set(expected)
 
     # Test single quals on PK
     _assert_filter_result([[('col1', '=', 3)]], [obj_1])

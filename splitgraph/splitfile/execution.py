@@ -91,11 +91,11 @@ def _execute_sql(node, output):
     node_contents = extract_nodes(node, ['non_newline'])[0].text
     if node.expr_name == 'sql_file':
         print("Loading the SQL commands from %s" % node_contents)
-        with open(node_contents, 'r') as f:
+        with open(node_contents, 'r') as file:
             # Possibly use a different method to calculate the image hash for commands originating from
             # SQL files instead?
             # Don't "canonicalize" it here to get rid of whitespace, just hash the whole file.
-            sql_command = f.read()
+            sql_command = file.read()
     else:
         sql_command = node_contents
     output_head = output.head.image_hash
@@ -123,7 +123,7 @@ def _execute_from(node, output):
         # did FROM (...) without AS repository
         if repository_exists(output):
             print("Clearing all output from %s" % str(output))
-            output.rm()
+            output.delete()
     if not repository_exists(output):
         output.init()
     if repo_source:
@@ -174,7 +174,7 @@ def _execute_import(node, output):
 def _execute_db_import(conn_string, fdw_name, fdw_params, table_names, target_mountpoint, table_aliases, table_queries):
     mount_handler = get_mount_handler(fdw_name)
     tmp_mountpoint = Repository.from_schema(fdw_name + '_tmp_staging')
-    tmp_mountpoint.rm()
+    tmp_mountpoint.delete()
     try:
         handler_kwargs = json.loads(fdw_params)
         handler_kwargs.update(dict(server=conn_string.group(3), port=int(conn_string.group(4)),
@@ -188,7 +188,7 @@ def _execute_db_import(conn_string, fdw_name, fdw_params, table_names, target_mo
                                         foreign_tables=True, table_queries=table_queries)
         target_mountpoint.images.by_hash(target_hash).set_provenance('MOUNT')
     finally:
-        tmp_mountpoint.rm()
+        tmp_mountpoint.delete()
 
 
 def _execute_repo_import(repository, table_names, tag_or_hash, target_repository, table_aliases, table_queries):
@@ -237,7 +237,7 @@ def _execute_repo_import(repository, table_names, tag_or_hash, target_repository
 
         _checkout_or_calculate_layer(target_repository, target_hash, _calc)
     finally:
-        tmp_repo.rm()
+        tmp_repo.delete()
 
 
 def _execute_custom(node, output):
@@ -249,13 +249,13 @@ def _execute_custom(node, output):
         raise SplitGraphException("Custom command {0} not found in the config! Make sure you add an entry to your"
                                   " config like so:\n  [commands]  \n{0}=path.to.command.Class".format(command))
 
-    ix = cmd_fq_class.rindex('.')
+    index = cmd_fq_class.rindex('.')
     try:
-        cmd_class = getattr(import_module(cmd_fq_class[:ix]), cmd_fq_class[ix + 1:])
+        cmd_class = getattr(import_module(cmd_fq_class[:index]), cmd_fq_class[index + 1:])
     except AttributeError as e:
-        raise SplitGraphException("Error loading custom command {0}".format(command), e)
+        raise SplitGraphException("Error loading custom command {0}".format(command)) from e
     except ImportError as e:
-        raise SplitGraphException("Error loading custom command {0}".format(command), e)
+        raise SplitGraphException("Error loading custom command {0}".format(command)) from e
 
     get_engine().run_sql("SET search_path TO %s", (output.to_schema(),))
     command = cmd_class()

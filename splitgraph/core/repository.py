@@ -75,8 +75,7 @@ class ImageManager:
                         "No current checked out revision found for %s. Check one out with \"sgr "
                         "checkout %s image_hash\"." % (schema, schema))
                 raise SplitGraphException("Tag %s not found in repository %s" % (tag, schema))
-            else:
-                return None
+            return None
         return self.by_hash(result)
 
     def by_hash(self, image_hash, raise_on_none=True):
@@ -245,7 +244,7 @@ class Repository:
         self.engine.run_sql(insert("tags", ("namespace", "repository", "image_hash", "tag")),
                             (self.namespace, self.repository, initial_image, "HEAD"))
 
-    def rm(self, unregister=True, uncheckout=True):
+    def delete(self, unregister=True, uncheckout=True):
         """
         Discards all changes to a given repository and optionally all of its history,
         as well as deleting the Postgres schema that it might be checked out into.
@@ -374,7 +373,7 @@ class Repository:
             logging.warning("%s has pending changes, discarding...", self.to_schema())
 
         # Delete the schema and remove the HEAD tag
-        self.rm(unregister=False, uncheckout=True)
+        self.delete(unregister=False, uncheckout=True)
         self.head.delete_tag('HEAD')
 
     def commit(self, image_hash=None, comment=None, snap_only=False, chunk_size=10000, split_changeset=False):
@@ -833,7 +832,7 @@ def import_table_from_remote(remote_repository, remote_tables, remote_image_hash
     target_repository.import_tables(target_tables, tmp_mountpoint, remote_tables, image_hash=remote_image_hash,
                                     target_hash=target_hash)
 
-    tmp_mountpoint.rm()
+    tmp_mountpoint.delete()
     target_repository.engine.commit()
 
 

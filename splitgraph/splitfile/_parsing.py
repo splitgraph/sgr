@@ -69,12 +69,12 @@ def preprocess(commands, params=None):
     if params is None:
         params = {}
     commands = commands.replace("\\\n", "")
-    for k, v in params.items():
+    for param, value in params.items():
         # Regex fun: if the replacement is '\1' + substitution (so that we put back the previously-consumed
         # possibly-escape character) and the substitution begins with a number (like an IP address),
         # then it gets treated as a match group (say, \11) which fails silently and adds weird gibberish
         # to the result.
-        commands = re.sub(r'([^\\])\${' + re.escape(k) + '}', r'\g<1>' + str(v), commands, flags=re.MULTILINE)
+        commands = re.sub(r'([^\\])\${' + re.escape(param) + '}', r'\g<1>' + str(value), commands, flags=re.MULTILINE)
     # Search for any unreplaced $-parameters
     unreplaced = set(re.findall(r'[^\\](\${\S+})', commands, flags=re.MULTILINE))
     if unreplaced:
@@ -105,9 +105,9 @@ def extract_nodes(node, types):
 
 def get_first_or_none(node_list, node_type):
     """Gets the first node of type node_type from node_list, returns None if it doesn't exist."""
-    for n in node_list:
-        if n.expr_name == node_type:
-            return n
+    for node in node_list:
+        if node.expr_name == node_type:
+            return node
     return None
 
 

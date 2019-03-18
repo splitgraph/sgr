@@ -8,7 +8,7 @@ from .environment_config import get_environment_config_value
 # require operations with the system, like checking if files exist.
 #
 # Don't forget to add each method definition to the object after defining it.
-SystemConfigGetters = {}
+SYSTEM_CONFIG_GETTERS = {}
 
 VALID_CONFIG_FILE_NAMES = [
     ".sgconfig",
@@ -23,8 +23,8 @@ def is_file(filename):
     return os.path.isfile(filename)
 
 
-def file_exists(_dir, fn):
-    return is_file(os.path.join(_dir, fn))
+def file_exists(_dir, filename):
+    return is_file(os.path.join(_dir, filename))
 
 
 def get_explicit_config_file_location():
@@ -122,7 +122,7 @@ def get_explicit_config_file_dirs():
     return existing_unique_dir_list
 
 
-def SG_CONFIG_FILE(default_return=None):
+def get_config_file(default_return=None):
     """
         Get the location of an existing SG_CONFIG_FILE on the system with
         a valid name. Do not attempt to parse the config file, just return
@@ -135,17 +135,15 @@ def SG_CONFIG_FILE(default_return=None):
     if explicit_location:
         return explicit_location
 
-    DEFAULT_VALID_DIRS = [
-        os.getcwd()
-    ]
+    valid_dirs = [os.getcwd()]
 
     if os.environ.get('HOME', None) and os.path.isdir(os.path.join(os.environ['HOME'], HOME_SUB_DIR)):
-        DEFAULT_VALID_DIRS.append(os.path.join(os.environ['HOME'], HOME_SUB_DIR))
+        valid_dirs.append(os.path.join(os.environ['HOME'], HOME_SUB_DIR))
 
     explicit_dirs = get_explicit_config_file_dirs()
 
     # Put explicit_dirs first to ensure higher priority given to explicit
-    valid_dirs = explicit_dirs + DEFAULT_VALID_DIRS
+    valid_dirs = explicit_dirs + valid_dirs
 
     matching_files = []
     for _dir in valid_dirs:
@@ -168,8 +166,8 @@ def SG_CONFIG_FILE(default_return=None):
 
 
 # Don't forget to do this for each method you want in the object
-SystemConfigGetters["SG_CONFIG_FILE"] = SG_CONFIG_FILE
+SYSTEM_CONFIG_GETTERS["SG_CONFIG_FILE"] = get_config_file
 
 
 def get_system_config_value(key, default_return=None):
-    return SystemConfigGetters.get(key, lambda: default_return)()
+    return SYSTEM_CONFIG_GETTERS.get(key, lambda: default_return)()
