@@ -114,12 +114,7 @@ class ObjectManager:
 
         result = {}
         for object_id, parent_id, object_format, size in query_result:
-            if object_id not in result:
-                result[object_id] = ([parent_id], object_format, size) if parent_id else ([], object_format, size)
-            else:
-                if parent_id:
-                    result[object_id][0].append(parent_id)
-
+            result[object_id] = parent_id, object_format, size
         return result
 
     @staticmethod
@@ -380,19 +375,27 @@ class ObjectManager:
                     parent_object=top_fragments[ix], changeset=sub_changeset)
 
             # Register the changes that don't match chunks
-            for sub_changeset in (before, after):
-                if not sub_changeset:
-                    continue
+            # TODO these are very similar, collapse into a loop
+            if before:
                 object_id = get_random_object_id()
-                object_ids.append(object_id)
+                object_ids = [object_id] + object_ids
                 # As this fragment didn't match any other boundaries, it must be an insert
-                engine.store_fragment(list(sub_changeset.keys()), [], SPLITGRAPH_META_SCHEMA, object_id,
+                engine.store_fragment(list(before.keys()), [], SPLITGRAPH_META_SCHEMA, object_id,
                                       old_table.repository.to_schema(),
                                       old_table.table_name)
                 # Technically this is a DIFF (since it has the UD column) but we ignore that col anyway?
                 self.register_object(
                     object_id, object_format='SNAP', namespace=old_table.repository.namespace,
-                    parent_object=None, changeset=sub_changeset)
+                    parent_object=None, changeset=before)
+            if after:
+                object_id = get_random_object_id()
+                object_ids.append(object_id)
+                engine.store_fragment(list(after.keys()), [], SPLITGRAPH_META_SCHEMA, object_id,
+                                      old_table.repository.to_schema(),
+                                      old_table.table_name)
+                self.register_object(
+                    object_id, object_format='SNAP', namespace=old_table.repository.namespace,
+                    parent_object=None, changeset=after)
 
             # Finally, link the table to the new set of objects
             self.register_table(old_table.repository, old_table.table_name, image_hash,
@@ -422,6 +425,23 @@ class ObjectManager:
 
     def _extract_min_max_pks(self, fragments, table_pks):
         # Get the min/max PK values for every chunk
+        # Why can't we use the index here? If the PK is composite, consider this example:
+        #
+        # (1, 1)   CHUNK 1
+        # (1, 2)   <- pk1: min 1, max 2; pk2: min1, max2 but (pk1, pk2): min (1, 1), max (2, 1)
+        # (2, 1)
+        # ------   CHUNK 2
+        # (2, 2)   <- pk1: min 2, max 2; pk2: min 2, max 2;
+        #
+        # Say we have a changeset doing UPDATE pk=(2,2). If we use the index by each part of the key separately,
+        # it fits both the first and the second chunk. This essentially means that chunks now overlap:
+        # we now have to apply chunk 2 (and everything inheriting from it) after chunk 1 (and everything that
+        # inherits from it) and make sure to attach the new fragment to chunk 2.
+        # This could be solved by including composite PKs in the index as well, not just individual columns.
+        # Currently, we assume the objects are local so doing this is mostly OK but that's a strong assumption
+        # (there isn't much preventing us from evicting objects once they've been used to materialize a table,
+        # so if we do that, we won't want to redownload them again just to find their boundaries).
+
         min_max = []
         pk_sql = SQL(",").join(Identifier(p[0]) for p in table_pks)
         for o in fragments:
@@ -542,10 +562,6 @@ class ObjectManager:
     def _recent_snap_cache_misses(self, diff_id, start):
         return self.object_engine.run_sql(select("snap_cache_misses", "COUNT(diff_id)",
                                                  "diff_id = %s AND used_time > %s"), (diff_id, start),
-                                          return_shape=ResultShape.ONE_ONE)
-
-    def _get_snap_cache_for(self, diff_id):
-        return self.object_engine.run_sql(select("snap_cache", "snap_id", "diff_id = %s"), (diff_id,),
                                           return_shape=ResultShape.ONE_ONE)
 
     def _get_snap_cache(self):

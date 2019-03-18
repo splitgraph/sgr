@@ -2,6 +2,8 @@ from datetime import date, datetime as dt
 from decimal import Decimal
 
 import pytest
+from psycopg2.sql import SQL, Identifier
+from splitgraph import SPLITGRAPH_META_SCHEMA, ResultShape, select
 from test.splitgraph.conftest import OUTPUT, PG_DATA
 
 
@@ -66,6 +68,165 @@ def test_commit_diff(mode, pg_repo_local):
         ((3, 'mayonnaise'), 0, {})]
 
     assert pg_repo_local.diff('vegetables', image_1=head, image_2=new_head) == []
+
+
+def test_commit_chunking(local_engine_empty):
+    OUTPUT.init()
+    OUTPUT.run_sql("CREATE TABLE test (key INTEGER PRIMARY KEY, value_1 VARCHAR, value_2 INTEGER)")
+    for i in range(11):
+        OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (i + 1, chr(ord('a') + i), i * 2))
+    head = OUTPUT.commit(chunk_size=5)
+
+    # Should produce 3 objects: PK 1..5, PK 6..10, PK 11
+    objects = head.get_table('test').objects
+    assert len(objects) == 3
+    object_meta = OUTPUT.objects.get_object_meta(objects)
+
+    for i, obj in enumerate(objects):
+        # Check object metadata
+        min_key = i * 5 + 1
+        max_key = min(i * 5 + 5, 11)
+
+        assert object_meta[i] == \
+               (obj,  # object ID
+                'SNAP',  # full-table snapshot (not a delta compressed chunk)
+                None,  # no parent
+                '',  # no namespace
+                8192,  # size reported by PG (can it change between platforms?)
+                # index
+                {'key': [min_key, max_key],
+                 'value_1': [chr(ord('a') + min_key - 1), chr(ord('a') + max_key - 1)],
+                 'value_2': [(min_key - 1) * 2, (max_key - 1) * 2]})
+
+        # Check object contents
+        assert local_engine_empty.run_sql(SQL("SELECT key FROM {}.{} ORDER BY key")
+                                          .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj)),
+                                          return_shape=ResultShape.MANY_ONE) == list(range(min_key, max_key + 1))
+
+
+def test_commit_diff_splitting(local_engine_empty):
+    # Similar setup to the chunking test
+    OUTPUT.init()
+    OUTPUT.run_sql("CREATE TABLE test (key INTEGER PRIMARY KEY, value_1 VARCHAR, value_2 INTEGER)")
+    for i in range(11):
+        OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (i + 1, chr(ord('a') + i), i * 2))
+    head = OUTPUT.commit(chunk_size=5)
+
+    # Store the IDs of the base fragments
+    base_objects = head.get_table('test').objects
+
+    # Create a change that affects multiple base fragments:
+    # INSERT PK 0 (goes before all fragments)
+    OUTPUT.run_sql("INSERT INTO test VALUES (0, 'zero', -1)")
+
+    # UPDATE the first fragment and delete a value from it
+    OUTPUT.run_sql("DELETE FROM test WHERE key = 4")
+    OUTPUT.run_sql("UPDATE test SET value_1 = 'UPDATED' WHERE key = 5")
+
+    # Second fragment -- UPDATE then DELETE (test that gets conflated into a single change)
+    OUTPUT.run_sql("UPDATE test SET value_1 = 'UPDATED' WHERE key = 6")
+    OUTPUT.run_sql("DELETE FROM test WHERE key = 6")
+
+    # INSERT a value after the last fragment (PK 12) -- should become a new fragment
+    OUTPUT.run_sql("INSERT INTO test VALUES (12, 'l', 22)")
+
+    # Now check the objects that were created.
+    new_head = OUTPUT.commit(split_changeset=True)
+    new_head.checkout()
+    new_objects = new_head.get_table('test').objects
+
+    # We expect 5 objects: one with PK 0, one with PKs 4 and 5 (updating the first base fragment),
+    # one with PK 6 (updating the second base fragment), one with PK 11 (same as the old fragment since it's
+    # unchanged) and one with PK 12.
+
+    # Check the old fragment with PK 11 is reused.
+    assert new_objects[3] == base_objects[2]
+    object_meta = {t[0]: t[1:] for t in OUTPUT.objects.get_object_meta(new_objects)}
+    # The new fragments should be at the beginning and the end of the table objects' list.
+    for new_object, expected in zip(new_objects,
+                                    [('SNAP', None, '', 8192,
+                                      {'key': [0, 0], 'value_1': ['zero', 'zero'], 'value_2': [-1, -1]}),
+                                     ('DIFF', base_objects[0], '', 8192,
+                                      # for value_1 we have old values for k=4,5 ('d', 'e') and new value
+                                      # for k=5 ('UPDATED') included here; same for value_2.
+                                      {'key': [4, 5], 'value_1': ['UPDATED', 'e'], 'value_2': [6, 8]}),
+                                     ('DIFF', base_objects[1], '', 8192,
+                                      # Turned into one deletion, old values included here
+                                      {'key': [6, 6], 'value_1': ['f', 'f'], 'value_2': [10, 10]}),
+                                     # Old fragment with just the pk=11
+                                     ('SNAP', None, '', 8192,
+                                      {'key': [11, 11], 'value_1': ['k', 'k'], 'value_2': [20, 20]}),
+                                     ('SNAP', None, '', 8192,
+                                      {'key': [12, 12], 'value_1': ['l', 'l'], 'value_2': [22, 22]})
+                                     ]):
+        assert object_meta[new_object] == expected
+
+    # Check the contents of the newly created objects.
+    assert OUTPUT.run_sql(select(new_objects[0])) == \
+           [(0, 'zero', -1)]  # No deletions in this fragment, so no deletion flag. New inserted value only.
+    assert OUTPUT.run_sql(select(new_objects[1])) == \
+           [(True, 5, 'UPDATED', 8),  # upserted=True, key, new_value_1, new_value_2
+            (False, 4, None, None)]  # upserted=False, key, None, None
+    assert OUTPUT.run_sql(select(new_objects[2])) == \
+           [(False, 6, None, None)]  # upserted=False, key, None, None
+    # No need to check new_objects[3] (since it's the same as the old fragment)
+    assert OUTPUT.run_sql(select(new_objects[4])) == \
+           [(12, 'l', 22)]
+
+
+def test_commit_diff_splitting_composite(local_engine_empty):
+    # Test splitting works correctly on composite PKs (see a big comment in _extract_min_max_pks for the explanation).
+    # Also test timestamp PKs at the same time.
+
+    OUTPUT.init()
+    OUTPUT.run_sql("CREATE TABLE test (key_1 TIMESTAMP, key_2 INTEGER, value VARCHAR, PRIMARY KEY (key_1, key_2))")
+    for i in range(10):
+        # Set up something like
+        # 1/1/2019, 1, '1'
+        # 1/1/2019, 2, '2'
+        # 1/1/2019, 3, '3'
+        # 2/1/2019, 1, '4'
+        # 2/1/2019, 2, '5'
+        # --- chunk boundary
+        # 2/1/2019, 3, '6'
+        # ...
+        # 4/1/2019, 1, '10'
+        OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)",
+                       (dt(2019, 1, i // 3 + 1), i % 3 + 1, str(i)))
+    head = OUTPUT.commit(chunk_size=5)
+    base_objects = head.get_table('test').objects
+    assert len(base_objects) == 2
+
+    # INSERT at 1/1/2019, 4 -- should match first chunk even though it doesn't exist in it.
+    OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (dt(2019, 1, 1), 4, 'NEW'))
+
+    # UPDATE 2/1/2019, 2 -- if we index by PK columns individually, it's ambiguous where
+    # this should fit (as both chunks span key_1=2/1/2019 and key_2=2) but it should go into the first
+    # chunk.
+    OUTPUT.run_sql("UPDATE test SET value = 'UPD' WHERE key_1 = %s AND key_2 = %s", (dt(2019, 1, 2), 2))
+
+    # INSERT a new value that comes after all chunks
+    OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (dt(2019, 1, 4), 2, 'NEW'))
+
+    new_head = OUTPUT.commit(split_changeset=True)
+    new_head.checkout()
+    new_objects = new_head.get_table('test').objects
+
+    assert len(new_objects) == 3
+    # First chunk: based on the old first chunk, contains the INSERT (1/1/2019, 4) and the UPDATE (2/1/2019, 2)
+    object_meta = {t[0]: t[1:] for t in OUTPUT.objects.get_object_meta(new_objects)}
+    assert object_meta[new_objects[0]] == \
+           ('DIFF', base_objects[0], '', 8192,
+            {'key_1': ['2019-01-01T00:00:00', '2019-01-02T00:00:00'],
+             # 'value' spans the old value (was '5'), the inserted value ('4') and the new updated value ('UPD').
+             'key_2': [2, 4], 'value': ['4', 'UPD']})
+    # The second chunk is reused.
+    assert new_objects[1] == base_objects[1]
+    # The third chunk is new, contains (4/1/2019, 2, NEW)
+    assert object_meta[new_objects[2]] == \
+           ('SNAP', None, '', 8192,
+            {'key_1': ['2019-01-04T00:00:00', '2019-01-04T00:00:00'],
+             'key_2': [2, 2], 'value': ['NEW', 'NEW']})
 
 
 @pytest.mark.xfail(reason="This currently doesn't work: need to commit the table explicitly with snap_only=True. "

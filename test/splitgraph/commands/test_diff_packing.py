@@ -43,6 +43,10 @@ CASES = [
             UPDATE fruits SET name = 'apple' WHERE fruit_id = 1""",
          # Same here
          []),
+        # Update + delete gets turned into a delete
+        ("""UPDATE fruits SET name = 'pineapple' WHERE fruit_id = 1;
+            DELETE FROM fruits WHERE fruit_id = 1""",
+         [((1, 'apple'), 1, None)]),
     ],
     [
         # Test a table with 2 PKs and 2 non-PK columns
