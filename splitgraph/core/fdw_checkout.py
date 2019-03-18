@@ -6,7 +6,8 @@ import logging
 from psycopg2.sql import Identifier, SQL
 from splitgraph import SPLITGRAPH_META_SCHEMA, Repository, get_engine
 from splitgraph.core._common import adapt
-from splitgraph.core.object_manager import get_random_object_id, ObjectManager
+from splitgraph.core.fragment_manager import get_random_object_id
+from splitgraph.core.object_manager import ObjectManager
 
 try:
     from multicorn import ForeignDataWrapper, ANY, ALL

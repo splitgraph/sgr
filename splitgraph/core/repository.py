@@ -11,13 +11,14 @@ from random import getrandbits
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from splitgraph.core.fragment_manager import get_random_object_id
 from splitgraph.exceptions import SplitGraphException
 
 from ._common import manage_audit_triggers, set_head, manage_audit, select, insert, ensure_metadata_schema, \
     aggregate_changes, slow_diff, prepare_publish_data, gather_sync_metadata
 from .engine import repository_exists, lookup_repository, ResultShape, get_engine
 from .image import Image, IMAGE_COLS
-from .object_manager import ObjectManager, get_random_object_id
+from .object_manager import ObjectManager
 from .registry import publish_tag
 
 
@@ -447,12 +448,12 @@ class Repository:
             # but it's a starting point to support schema changes.
             if not table_info or snap_only \
                     or table_info.table_schema != self.engine.get_full_table_schema(self.to_schema(), table):
-                self.objects.record_table_as_snap(self, table, image_hash, chunk_size=chunk_size)
+                self.objects.record_table_as_base(self, table, image_hash, chunk_size=chunk_size)
                 continue
 
             # If the table has changed, look at the audit log and store it as a delta.
             if table in changed_tables:
-                self.objects.record_table_as_diff(table_info, image_hash, split_changeset=split_changeset)
+                self.objects.record_table_as_patch(table_info, image_hash, split_changeset=split_changeset)
                 continue
 
             # If the table wasn't changed, point the image to the old table

@@ -1,6 +1,7 @@
 """
 Various common functions used by the command line interface.
 """
+
 from splitgraph.core.repository import Repository
 
 
