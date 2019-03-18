@@ -3,7 +3,8 @@ Common internal functions used by Splitgraph commands.
 """
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, datetime as dt, date
+from decimal import Decimal
 from functools import wraps
 
 from psycopg2.sql import Identifier, SQL
@@ -407,3 +408,34 @@ def adapt(value, pg_type):
     if pg_type in _TYPE_MAP:
         return _TYPE_MAP[pg_type](value)
     return value
+
+
+class Tracer:
+    """
+    Accumulates events and returns the times between them.
+    """
+
+    def __init__(self):
+        self.start_time = dt.now()
+        self.events = []
+
+    def log(self, event):
+        self.events.append((dt.now(), event))
+
+    def __str__(self):
+        result = ""
+        prev = self.start_time
+        for event_time, event in self.events:
+            result += "\n%s: %.3f" % (event, (event_time - prev).total_seconds())
+            prev = event_time
+        result += "\nTotal: %.3f" % (self.events[-1][0] - self.start_time).total_seconds()
+        return result[1:]
+
+
+def coerce_val_to_json(val):
+    # Some values can't be stored in json so we turn them into strings
+    if isinstance(val, Decimal):
+        return str(val)
+    if isinstance(val, date):
+        return val.isoformat()
+    return val
