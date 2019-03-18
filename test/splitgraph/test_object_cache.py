@@ -64,8 +64,8 @@ def test_object_cache_loading(local_engine_empty, pg_repo_remote):
     fruit_snap = fruits_v2.get_object('SNAP')
     # Reported by Postgres itself and stored by the engine in object_tree. Might really backfire on us on different
     # Postgres versions.
-    assert object_tree[fruit_diff] == ([fruit_snap], 'DIFF', 8192)
-    assert object_tree[fruit_snap] == ([], 'SNAP', 8192)
+    assert object_tree[fruit_diff] == (fruit_snap, 'DIFF', 8192)
+    assert object_tree[fruit_snap] == (None, 'SNAP', 8192)
 
     # Resolve and download the old version: only one SNAP should be downloaded.
     with object_manager.ensure_objects(fruits_v2) as required_objects:
