@@ -26,7 +26,7 @@ def _mount_postgres(repository):
           dict(server='pgorigin', port=5432, username='originro', password='originpass', dbname="origindb",
                remote_schema="public"))
     repository.import_tables([], R('tmp'), [], foreign_tables=True, do_checkout=True)
-    R('tmp').rm()
+    R('tmp').delete()
 
 
 def _mount_mongo(repository):
@@ -41,7 +41,7 @@ def _mount_mongo(repository):
                                            "happy": "boolean"
                                        }}))
     repository.import_tables([], R('tmp'), [], foreign_tables=True, do_checkout=True)
-    R('tmp').rm()
+    R('tmp').delete()
 
 
 def _mount_mysql(repository):
@@ -61,7 +61,7 @@ def healthcheck():
     # here since we don't touch the remote_engine but we don't run any tests against it until later on,
     # so it should have enough time to start up.
     for mountpoint in [PG_MNT, MG_MNT, MYSQL_MNT]:
-        mountpoint.rm()
+        mountpoint.delete()
     _mount_postgres(PG_MNT)
     _mount_mongo(MG_MNT)
     _mount_mysql(MYSQL_MNT)
@@ -74,7 +74,7 @@ def healthcheck():
                                     return_shape=ResultShape.ONE_ONE) is not None
     finally:
         for mountpoint in [PG_MNT, MG_MNT, MYSQL_MNT]:
-            mountpoint.rm()
+            mountpoint.delete()
 
 
 @pytest.fixture
@@ -82,9 +82,9 @@ def local_engine_empty():
     engine = get_engine()
     # A connection to the local engine that has nothing mounted on it.
     for mountpoint, _ in get_current_repositories(engine):
-        mountpoint.rm()
+        mountpoint.delete()
     for mountpoint in TEST_MOUNTPOINTS:
-        mountpoint.rm()
+        mountpoint.delete()
     ObjectManager(engine).cleanup()
     engine.commit()
     try:
@@ -92,9 +92,9 @@ def local_engine_empty():
     finally:
         engine.rollback()
         for mountpoint, _ in get_current_repositories(engine):
-            mountpoint.rm()
+            mountpoint.delete()
         for mountpoint in TEST_MOUNTPOINTS:
-            mountpoint.rm()
+            mountpoint.delete()
         ObjectManager(engine).cleanup()
         engine.commit()
 
@@ -171,7 +171,7 @@ def remote_engine():
     unpublish_repository(Repository('test', 'pg_mount', engine))
     unpublish_repository(Repository('testuser', 'pg_mount', engine))
     for mountpoint, _ in get_current_repositories(engine):
-        mountpoint.rm()
+        mountpoint.delete()
     ObjectManager(engine).cleanup()
     engine.commit()
     try:
@@ -179,7 +179,7 @@ def remote_engine():
     finally:
         engine.rollback()
         for mountpoint, _ in get_current_repositories(engine):
-            mountpoint.rm()
+            mountpoint.delete()
         ObjectManager(engine).cleanup()
         engine.commit()
         engine.close()

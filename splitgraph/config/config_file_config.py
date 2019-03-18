@@ -1,7 +1,7 @@
 from configparser import ConfigParser, ExtendedInterpolation
 
 
-def hoist_section(config_dict, hoist_section='defaults'):
+def hoist_section(config_dict, section='defaults'):
     """
         If a section exists called <hoist_section>, hoist it to the top level
         This is useful for overriding default configs from within a config file
@@ -13,14 +13,12 @@ def hoist_section(config_dict, hoist_section='defaults'):
         Return a new, updated copy of `config_dict`.
     """
 
-    if hoist_section not in config_dict.keys():
+    if section not in config_dict.keys():
         return config_dict
 
     hoisted_config_dict = config_dict.copy()
-
-    section_dict = config_dict[hoist_section].copy()
-
-    del hoisted_config_dict[hoist_section]
+    section_dict = config_dict[section].copy()
+    del hoisted_config_dict[section]
 
     for k, v in section_dict.items():
         hoisted_config_dict.update({k.upper(): v})

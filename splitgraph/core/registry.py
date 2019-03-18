@@ -144,8 +144,8 @@ def setup_registry_mode(engine):
     engine.run_sql(SQL("ALTER DEFAULT PRIVILEGES IN SCHEMA {} GRANT SELECT ON TABLES TO PUBLIC")
                    .format(Identifier(SPLITGRAPH_META_SCHEMA)))
 
-    for t in _RLS_TABLES:
-        _setup_rls_policies(engine, t)
+    for table in _RLS_TABLES:
+        _setup_rls_policies(engine, table)
 
     # Object_locations is different, since we have to refer to the objects table for the namespace of the object
     # whose location we're changing.
@@ -192,9 +192,9 @@ def toggle_registry_rls(engine, mode='ENABLE'):
     if mode not in ('ENABLE', 'DISABLE', 'FORCE'):
         raise ValueError()
 
-    for t in _RLS_TABLES:
+    for table in _RLS_TABLES:
         engine.run_sql(SQL("ALTER TABLE {}.{} %s ROW LEVEL SECURITY" % mode).format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                                    Identifier(t)),
+                                                                                    Identifier(table)),
                        return_shape=None)
     engine.run_sql(SQL("ALTER TABLE {}.{} %s ROW LEVEL SECURITY" % mode).format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                                                 Identifier("object_locations")),

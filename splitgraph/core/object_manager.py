@@ -18,53 +18,6 @@ from splitgraph.hooks.external_objects import get_external_object_handler
 from ._common import META_TABLES, select, insert, pretty_size, Tracer
 
 
-def _qual_to_clause(qual, ctype):
-    """Convert our internal qual format into a WHERE clause that runs against an object's index entry.
-    Returns a Postgres clause (as a Composable) and a tuple of arguments to be mogrified into it."""
-    column_name, operator, value = qual
-
-    # Our index is essentially a bloom filter: it returns True if an object _might_ have rows
-    # that affect the result of a query with a given qual and False if it definitely doesn't.
-    # Hence, we can combine qualifiers in a similar Boolean way (proof?)
-
-    # If there's no index information for a given column, we have to assume it might match the qual.
-    query = SQL("NOT index ? %s OR ")
-    args = [column_name]
-
-    # If the column has to be greater than (or equal to) X, it only might exist in objects
-    # whose maximum value is greater than (or equal to) X.
-    if operator in ('>', '>='):
-        query += SQL("(index #>> '{{{},1}}')::" + ctype + "  " + operator + " %s").format((Identifier(column_name)))
-        args.append(value)
-    # Similar for smaller than, but here we check that the minimum value is smaller than X.
-    elif operator in ('<', '<='):
-        query += SQL("(index #>> '{{{},0}}')::" + ctype + " " + operator + " %s").format((Identifier(column_name)))
-        args.append(value)
-    elif operator == '=':
-        query += SQL("%s BETWEEN (index #>> '{{{0},0}}')::" + ctype
-                     + " AND (index #>> '{{{0},1}}')::" + ctype).format((Identifier(column_name)))
-        args.append(value)
-    # Currently, we ignore the LIKE (~~) qualifier since we can only make a judgement when the % pattern is at
-    # the end of a string.
-    # For inequality, we can't really say when an object is definitely not pertinent to a qual:
-    #   * if a <> X and X is included in an object's range, the object still might have values that aren't X.
-    #   * if X isn't included in an object's range, the object definitely has values that aren't X so we have
-    #     to fetch it.
-    else:
-        # For all other operators, we don't know if they will match so we assume that they will.
-        return SQL('TRUE'), ()
-    return query, tuple(args)
-
-
-def _quals_to_clause(quals, column_types):
-    def _internal_quals_to_clause(or_quals):
-        clauses, args = zip(*[_qual_to_clause(q, column_types[q[0]]) for q in or_quals])
-        return SQL(" OR ").join(SQL("(") + c + SQL(")") for c in clauses), tuple([a for arg in args for a in arg])
-
-    clauses, args = zip(*[_internal_quals_to_clause(q) for q in quals])
-    return SQL(" AND ").join(SQL("(") + c + SQL(")") for c in clauses), tuple([a for arg in args for a in arg])
-
-
 class ObjectManager(FragmentManager, MetadataManager):
     """Brings the multiple manager classes together and manages the object cache (downloading and uploading
     objects as required in order to fulfill certain queries)"""
@@ -197,22 +150,6 @@ class ObjectManager(FragmentManager, MetadataManager):
             SELECT SUM(sc.size) AS size FROM {0}.snap_cache sc)_""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
                                               return_shape=ResultShape.ONE_ONE))
 
-    def _filter_objects(self, object_ids, quals, column_types):
-        # We need access to column types here since the objects might not have been fetched yet and so
-        # we can't look at their column types.
-        clause, args = _quals_to_clause(quals, column_types)
-        logging.info("_filter_objects: clause %r, args %r", clause, args)
-
-        # If we don't include the removed items (e.g. the previous values of the deleted/updated rows)
-        # in the index, we have to instead fetch the whole chain starting from the first
-        # pertinent object
-        query = SQL("SELECT object_id FROM {}.{} WHERE object_id IN (") \
-            .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects"))
-        query += SQL(",".join(itertools.repeat("%s", len(object_ids))) + ")")
-        query += SQL(" AND ") + clause
-
-        return self.object_engine.run_sql(query, list(object_ids) + list(args), return_shape=ResultShape.MANY_ONE)
-
     @contextmanager
     def ensure_objects(self, table, quals=None):
         """
@@ -223,14 +160,8 @@ class ObjectManager(FragmentManager, MetadataManager):
         unneeded and can be garbage collected.
 
         :param table: Table to materialize
-        :param quals: Optional list of qualifiers in conjunctive normal form that will be matched against the index. If
-            specified, objects that definitely don't match these qualifiers will be dropped.
-
-            A list containing `[[qual_1, qual_2], [qual_3, qual_4]]` will be interpreted as
-            (qual_1 OR qual_2) AND (qual_3 OR qual_4).
-
-            Each qual is a tuple of `(column_name, operator, value)` where
-            `operator` can be one of `>`, `>=`, `<`, `<=`, `=`, `~~` (LIKE), `<>`.
+        :param quals: Optional list of qualifiers to be passed to the fragment engine. Fragments that definitely do
+            not match these qualifiers will be dropped. See the docstring for `filter_fragments` for the format.
         :return: List of table fragments
         """
 
@@ -248,8 +179,6 @@ class ObjectManager(FragmentManager, MetadataManager):
         self.object_engine.run_sql("SET LOCAL synchronous_commit TO OFF")
         tracer = Tracer()
 
-        # TODO TF work: returns multiple chunk groups (snaps/diffs) depending on how precise
-        # the quals are
         # Resolve the table into a list of objects we want to fetch (one SNAP and optionally a list of DIFFs).
         # In the future, we can also take other things into account, such as how expensive it is to load a given object
         # (its size), location...
@@ -259,20 +188,7 @@ class ObjectManager(FragmentManager, MetadataManager):
         tracer.log('resolve_objects')
 
         # Filter to see if we can discard any objects with the quals
-        if quals:
-            column_types = {c[1]: c[2] for c in table.table_schema}
-            filtered_objects = self._filter_objects(required_objects, quals, column_types)
-            if set(filtered_objects) != set(required_objects):
-                logging.info("Qual filter: discarded %d/%d object(s)",
-                             len(required_objects) - len(filtered_objects), len(required_objects))
-                # Make sure to keep the order
-                required_objects = [r for r in required_objects if r in filtered_objects]
-                objects_were_filtered = True
-            else:
-                objects_were_filtered = False
-                logging.info("Qual filter: discarded 0/%d objects", len(required_objects))
-        else:
-            objects_were_filtered = False
+        objects_were_filtered, required_objects = self._filter_objects(required_objects, table, quals)
         tracer.log('filter_objects')
 
         # Increase the refcount on all of the objects we're giving back to the caller so that others don't GC them.
@@ -349,6 +265,23 @@ class ObjectManager(FragmentManager, MetadataManager):
             logging.info("Timing stats for %s/%s/%s/%s: \n%s", table.repository.namespace, table.repository.repository,
                          table.image.image_hash, table.table_name, tracer)
             self.object_engine.commit()
+
+    def _filter_objects(self, objects, table, quals):
+        if quals:
+            column_types = {c[1]: c[2] for c in table.table_schema}
+            filtered_objects = self.filter_fragments(objects, quals, column_types)
+            if set(filtered_objects) != set(objects):
+                logging.info("Qual filter: discarded %d/%d object(s)",
+                             len(objects) - len(filtered_objects), len(objects))
+                # Make sure to keep the order
+                objects = [r for r in objects if r in filtered_objects]
+                objects_were_filtered = True
+            else:
+                objects_were_filtered = False
+                logging.info("Qual filter: discarded 0/%d objects", len(objects))
+        else:
+            objects_were_filtered = False
+        return objects_were_filtered, objects
 
     def _create_and_register_temporary_snap(self, snap, diffs):
         # Maybe here we should give longer DIFF chains priority somehow?

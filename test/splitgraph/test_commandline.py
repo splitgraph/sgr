@@ -427,7 +427,7 @@ def test_mount_and_import(local_engine_empty):
         assert result.exit_code == 0
         assert MG_MNT.head.get_table('stuff_query')
     finally:
-        Repository('', 'tmp').rm()
+        Repository('', 'tmp').delete()
 
 
 def test_rm_repositories(pg_repo_local, pg_repo_remote):
@@ -659,7 +659,7 @@ def test_commandline_dump_load(pg_repo_local):
     dump = result.stdout
 
     # Now delete the repo and try loading the dump to test it actually works.
-    pg_repo_local.rm()
+    pg_repo_local.delete()
     pg_repo_local.objects.cleanup()
 
     pg_repo_local.engine.run_sql(dump)

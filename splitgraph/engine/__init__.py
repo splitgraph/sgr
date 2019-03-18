@@ -22,7 +22,7 @@ class ResultShape(Enum):
     MANY_MANY = 4  # e.g. [("row1_val1", "row1_val_2"), ("row2_val1", "row2_val_2"), ...]
 
 
-class SQLEngine:
+class SQLEngine(ABC):
     """Abstraction for a Splitgraph SQL backend. Requires any overriding classes to implement `run_sql` as well as
     a few other functions. Together with the `information_schema` (part of the SQL standard), this class uses those
     functions to implement some basic database management methods like listing, deleting, creating, dumping
@@ -136,6 +136,8 @@ class SQLEngine:
                             return_shape=ResultShape.MANY_ONE)
 
     def get_table_type(self, schema, table):
+        """Get the type of the table (BASE or FOREIGN)
+        """
         return self.run_sql("SELECT table_type FROM information_schema.tables WHERE table_schema = %s"
                             " AND table_name = %s", (schema, table),
                             return_shape=ResultShape.ONE_ONE)
@@ -206,6 +208,15 @@ class SQLEngine:
         self.run_sql(query, return_shape=ResultShape.NONE)
 
     def dump_table_sql(self, schema, table_name, stream, columns='*', where='', where_args=None):
+        """
+        Dump the table contents in the SQL format
+        :param schema: Schema the table is located in
+        :param table_name: Name of the table
+        :param stream: A file-like object to write the result into.
+        :param columns: SQL column spec. Default '*'.
+        :param where: Optional, an SQL WHERE clause
+        :param where_args: Arguments for the optional WHERE clause.
+        """
         raise NotImplementedError()
 
     def get_column_names(self, schema, table_name):

@@ -125,7 +125,7 @@ def test_lq_external(local_engine_empty, pg_repo_remote):
 
     # Setup: upstream has the same repository as in the previous test but with no cached objects (all are external).
     remote = pg_repo_local.push(handler='S3', handler_options={})
-    pg_repo_local.rm()
+    pg_repo_local.delete()
     pg_repo_remote.objects.delete_objects(remote.objects.get_downloaded_objects())
     pg_repo_remote.engine.commit()
     pg_repo_local.objects.cleanup()
@@ -148,7 +148,7 @@ def _prepare_fully_remote_repo(local_engine_empty, pg_repo_remote):
     pg_repo_local.run_sql("INSERT INTO fruits VALUES (4, 'kumquat')")
     pg_repo_local.commit()
     remote = pg_repo_local.push(handler='S3', handler_options={})
-    pg_repo_local.rm()
+    pg_repo_local.delete()
     pg_repo_remote.objects.delete_objects(remote.objects.get_downloaded_objects())
     pg_repo_remote.engine.commit()
     pg_repo_local.objects.cleanup()

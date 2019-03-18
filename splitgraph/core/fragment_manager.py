@@ -3,6 +3,7 @@ Routines related to storing tables as fragments.
 """
 
 import bisect
+import itertools
 from random import getrandbits
 
 from psycopg2.extras import Json
@@ -55,6 +56,15 @@ def _split_changeset(changeset, min_max, table_pks):
         # This change matches one of the chunks
         changesets_by_segment[bisect.bisect_left(maxs, pk)][pk] = data
     return changesets_by_segment, before_changesets, after_changesets
+
+
+# Custom min/max functions that ignore Nones
+def _min(a, b):
+    return b if a is None else (a if b is None else min(a, b))
+
+
+def _max(a, b):
+    return b if a is None else (a if b is None else max(a, b))
 
 
 class FragmentManager:
@@ -111,12 +121,6 @@ class FragmentManager:
             # See test_lq_qual_filtering for these test cases.
 
             # For DELETEs, we put NULLs in the non-PK columns; make sure we ignore them here.
-            def _min(a, b):
-                return b if a is None else (a if b is None else min(a, b))
-
-            def _max(a, b):
-                return b if a is None else (a if b is None else max(a, b))
-
             for _, old_row in changeset.values():
                 for col, val in old_row.items():
                     # Ignore columns that we aren't indexing because they have unsupported types.
@@ -171,6 +175,34 @@ class FragmentManager:
             insert("tables", ("namespace", "repository", "image_hash", "table_name", "table_schema", "object_ids")),
             (repository.namespace, repository.repository, image, table, Json(schema), object_ids))
 
+    def _store_changesets(self, table, changesets, parents):
+        """
+        Store and register multiple changesets as fragments, optionally linking them to the parent fragments.
+
+        :param table: Table object the changesets belong to
+        :param changesets: List of changeset dictionaries. For empty changesets, will return the parent fragment
+            in the list of resulting objects instead.
+        :param parents: List of parents to link each new fragment to.
+        :return: List of object IDs (created or existing for where the changeset was empty).
+        """
+        object_ids = []
+        for sub_changeset, parent in zip(changesets, parents):
+            if not sub_changeset:
+                if parent:
+                    object_ids.append(parent)
+                continue
+            object_id = get_random_object_id()
+            object_ids.append(object_id)
+            upserted = [pk for pk, data in sub_changeset.items() if data[0]]
+            deleted = [pk for pk, data in sub_changeset.items() if not data[0]]
+            self.object_engine.store_fragment(upserted, deleted, SPLITGRAPH_META_SCHEMA, object_id,
+                                              table.repository.to_schema(),
+                                              table.table_name)
+            self.register_object(
+                object_id, object_format='DIFF' if parent else 'SNAP', namespace=table.repository.namespace,
+                parent_object=parent, changeset=sub_changeset)
+        return object_ids
+
     def record_table_as_patch(self, old_table, image_hash, split_changeset=False):
         """
         Flushes the pending changes from the audit table for a given table and records them,
@@ -187,13 +219,11 @@ class FragmentManager:
         # this will help (for a query pk=5000 we don't need to fetch a 2000-row fragment) but maybe at that point
         # it's time to rewrite the table altogether?
 
-        engine = self.object_engine
-
         # Accumulate the diff in-memory. This might become a bottleneck in the future.
         changeset = {}
-        _conflate_changes(changeset, engine.get_pending_changes(old_table.repository.to_schema(),
-                                                                old_table.table_name))
-        engine.discard_pending_changes(old_table.repository.to_schema(), old_table.table_name)
+        _conflate_changes(changeset, self.object_engine.get_pending_changes(old_table.repository.to_schema(),
+                                                                            old_table.table_name))
+        self.object_engine.discard_pending_changes(old_table.repository.to_schema(), old_table.table_name)
         if changeset:
             # Get all the top fragments that the current table depends on
             top_fragments = old_table.objects
@@ -213,48 +243,11 @@ class FragmentManager:
                 before = {}
                 after = {}
 
-            # Register changes that match chunks
-            object_ids = []
-            for ix, sub_changeset in enumerate(matched):
-                # If chunk unchanged, link the table to the same fragment
-                if not sub_changeset:
-                    object_ids.append(top_fragments[ix])
-                    continue
-                object_id = get_random_object_id()
-                object_ids.append(object_id)
-                upserted = [pk for pk, data in sub_changeset.items() if data[0]]
-                deleted = [pk for pk, data in sub_changeset.items() if not data[0]]
-                engine.store_fragment(upserted, deleted, SPLITGRAPH_META_SCHEMA, object_id,
-                                      old_table.repository.to_schema(),
-                                      old_table.table_name)
-                self.register_object(
-                    object_id, object_format='DIFF', namespace=old_table.repository.namespace,
-                    parent_object=top_fragments[ix], changeset=sub_changeset)
-
-            # Register the changes that don't match chunks
-            # TODO these are very similar, collapse into a loop
-            if before:
-                object_id = get_random_object_id()
-                object_ids = [object_id] + object_ids
-                # As this fragment didn't match any other boundaries, it must be an insert
-                engine.store_fragment(list(before.keys()), [], SPLITGRAPH_META_SCHEMA, object_id,
-                                      old_table.repository.to_schema(),
-                                      old_table.table_name)
-                # Technically this is a DIFF (since it has the UD column) but we ignore that col anyway?
-                self.register_object(
-                    object_id, object_format='SNAP', namespace=old_table.repository.namespace,
-                    parent_object=None, changeset=before)
-            if after:
-                object_id = get_random_object_id()
-                object_ids.append(object_id)
-                engine.store_fragment(list(after.keys()), [], SPLITGRAPH_META_SCHEMA, object_id,
-                                      old_table.repository.to_schema(),
-                                      old_table.table_name)
-                self.register_object(
-                    object_id, object_format='SNAP', namespace=old_table.repository.namespace,
-                    parent_object=None, changeset=after)
-
-            # Finally, link the table to the new set of objects
+            # Store the changesets. For the parentless before/after changesets, only create them if they actually
+            # contain something.
+            object_ids = self._store_changesets(old_table, [before] + matched + [after],
+                                                [None] + top_fragments + [None])
+            # Finally, link the table to the new set of objects.
             self.register_table(old_table.repository, old_table.table_name, image_hash,
                                 old_table.table_schema, object_ids)
         else:
@@ -283,9 +276,9 @@ class FragmentManager:
 
         min_max = []
         pk_sql = SQL(",").join(Identifier(p[0]) for p in table_pks)
-        for o in fragments:
+        for fragment in fragments:
             query = SQL("SELECT ") + pk_sql + SQL(" FROM {}.{} ORDER BY ").format(
-                Identifier(SPLITGRAPH_META_SCHEMA), Identifier(o))
+                Identifier(SPLITGRAPH_META_SCHEMA), Identifier(fragment))
             frag_min = self.object_engine.run_sql(query + pk_sql + SQL(" LIMIT 1"),
                                                   return_shape=ResultShape.ONE_MANY)
             frag_max = self.object_engine.run_sql(query +
@@ -343,6 +336,39 @@ class FragmentManager:
                                              return_shape=ResultShape.MANY_ONE)
         return list(parents)
 
+    def filter_fragments(self, object_ids, quals, column_types):
+        """
+        Performs fuzzy filtering on the given object IDs using the index and a set of qualifiers, discarding
+        objects that definitely do not match the qualifiers.
+
+        :param object_ids: List of object IDs to filter.
+        :param quals: List of qualifiers in conjunctive normal form that will be matched against the index.
+            Objects that definitely don't match these qualifiers will be discarded.
+
+            A list containing `[[qual_1, qual_2], [qual_3, qual_4]]` will be interpreted as
+            (qual_1 OR qual_2) AND (qual_3 OR qual_4).
+
+            Each qual is a tuple of `(column_name, operator, value)` where
+            `operator` can be one of `>`, `>=`, `<`, `<=`, `=`.
+
+            For unknown operators, it will be assumed that all fragments might match that clause.
+        :param column_types: A dictionary mapping column names to their types.
+        :return: List of objects that might match the given qualifiers.
+        """
+        # We need access to column types here since the objects might not have been fetched yet and so
+        # we can't look at their column types.
+        clause, args = _quals_to_clause(quals, column_types)
+
+        # If we don't include the removed items (e.g. the previous values of the deleted/updated rows)
+        # in the index, we have to instead fetch the whole chain starting from the first
+        # pertinent object
+        query = SQL("SELECT object_id FROM {}.{} WHERE object_id IN (") \
+            .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects"))
+        query += SQL(",".join(itertools.repeat("%s", len(object_ids))) + ")")
+        query += SQL(" AND ") + clause
+
+        return self.object_engine.run_sql(query, list(object_ids) + list(args), return_shape=ResultShape.MANY_ONE)
+
 
 def _conflate_changes(changeset, new_changes):
     """
@@ -382,3 +408,50 @@ def get_random_object_id():
     # Make sure we're padded to 62 characters (otherwise if the random number generated is less than 2^247 we'll be
     # dropping characters from the hex format)
     return str.format('o{:062x}', getrandbits(248))
+
+
+def _qual_to_clause(qual, ctype):
+    """Convert our internal qual format into a WHERE clause that runs against an object's index entry.
+    Returns a Postgres clause (as a Composable) and a tuple of arguments to be mogrified into it."""
+    column_name, operator, value = qual
+
+    # Our index is essentially a bloom filter: it returns True if an object _might_ have rows
+    # that affect the result of a query with a given qual and False if it definitely doesn't.
+    # Hence, we can combine qualifiers in a similar Boolean way (proof?)
+
+    # If there's no index information for a given column, we have to assume it might match the qual.
+    query = SQL("NOT index ? %s OR ")
+    args = [column_name]
+
+    # If the column has to be greater than (or equal to) X, it only might exist in objects
+    # whose maximum value is greater than (or equal to) X.
+    if operator in ('>', '>='):
+        query += SQL("(index #>> '{{{},1}}')::" + ctype + "  " + operator + " %s").format((Identifier(column_name)))
+        args.append(value)
+    # Similar for smaller than, but here we check that the minimum value is smaller than X.
+    elif operator in ('<', '<='):
+        query += SQL("(index #>> '{{{},0}}')::" + ctype + " " + operator + " %s").format((Identifier(column_name)))
+        args.append(value)
+    elif operator == '=':
+        query += SQL("%s BETWEEN (index #>> '{{{0},0}}')::" + ctype
+                     + " AND (index #>> '{{{0},1}}')::" + ctype).format((Identifier(column_name)))
+        args.append(value)
+    # Currently, we ignore the LIKE (~~) qualifier since we can only make a judgement when the % pattern is at
+    # the end of a string.
+    # For inequality, we can't really say when an object is definitely not pertinent to a qual:
+    #   * if a <> X and X is included in an object's range, the object still might have values that aren't X.
+    #   * if X isn't included in an object's range, the object definitely has values that aren't X so we have
+    #     to fetch it.
+    else:
+        # For all other operators, we don't know if they will match so we assume that they will.
+        return SQL('TRUE'), ()
+    return query, tuple(args)
+
+
+def _quals_to_clause(quals, column_types):
+    def _internal_quals_to_clause(or_quals):
+        clauses, args = zip(*[_qual_to_clause(q, column_types[q[0]]) for q in or_quals])
+        return SQL(" OR ").join(SQL("(") + c + SQL(")") for c in clauses), tuple([a for arg in args for a in arg])
+
+    clauses, args = zip(*[_internal_quals_to_clause(q) for q in quals])
+    return SQL(" AND ").join(SQL("(") + c + SQL(")") for c in clauses), tuple([a for arg in args for a in arg])

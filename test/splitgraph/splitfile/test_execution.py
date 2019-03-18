@@ -125,7 +125,7 @@ def test_import_updating_splitfile_with_uploading(local_engine_empty, remote_eng
     remote_output = Repository(OUTPUT.namespace, OUTPUT.repository, remote_engine)
     OUTPUT.push(remote_output, handler='S3', handler_options={})
     # Unmount everything locally and cleanup
-    OUTPUT.rm()
+    OUTPUT.delete()
 
     # OUTPUT doesn't exist but we use its ObjectManager reference to access the global object
     # manager for the engine (maybe should inject it into local_engine/remote_engine instead)
@@ -162,7 +162,7 @@ def test_splitfile_end_to_end_with_uploading(local_engine_empty, remote_engine,
     OUTPUT.push(remote_repository=remote_output, handler='S3', handler_options={})
     # Unmount everything locally and cleanup
     for mountpoint, _ in get_current_repositories(local_engine_empty):
-        mountpoint.rm()
+        mountpoint.delete()
     OUTPUT.objects.cleanup()
 
     stage_2 = R('output_stage_2')
@@ -284,7 +284,7 @@ def test_from_remote(local_engine_empty, pg_repo_remote_multitag):
     # Now run the same splitfile but from the v2 of the remote (where row 1 has been removed from the fruits table)
     # First, remove the output mountpoint (the executor tries to fetch the commit 0000 from it otherwise which
     # doesn't exist).
-    OUTPUT.rm()
+    OUTPUT.delete()
     execute_commands(load_splitfile('from_remote.splitfile'), params={'TAG': 'v2'}, output=OUTPUT)
 
     assert OUTPUT.run_sql("SELECT * FROM join_table") == [(2, 'orange', 'carrot')]

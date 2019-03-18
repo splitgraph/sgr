@@ -58,7 +58,7 @@ def test_rls_push_own_delete_own(local_engine_empty, unprivileged_pg_repo, clean
 
     destination.push(handler='S3')
     # Test we can delete our own repo once we've pushed it
-    remote_destination.rm(uncheckout=False)
+    remote_destination.delete(uncheckout=False)
     assert len(remote_destination.images()) == 0
 
 
@@ -76,7 +76,7 @@ def test_rls_push_own_delete_own_different_namespaces(local_engine_empty, unpriv
 
     destination.push(handler='S3')
     # Test we can delete our own repo once we've pushed it
-    remote_destination.rm(uncheckout=False)
+    remote_destination.delete(uncheckout=False)
     assert len(remote_destination.images()) == 0
 
 
@@ -95,7 +95,7 @@ def test_rls_delete_others(unprivileged_pg_repo, unprivileged_remote_engine):
     # RLS doesn't actually raise an error for this, since it just appends the policy qualifier to the query.
     # Hence in this case this simply does nothing (the rows in "test" namespace aren't available for deletion).
 
-    unprivileged_pg_repo.rm(uncheckout=False)
+    unprivileged_pg_repo.delete(uncheckout=False)
     # Check that the policy worked by verifying that the repository still exists on the remote.
     assert len(unprivileged_pg_repo.images()) > 0
 

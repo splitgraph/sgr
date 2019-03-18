@@ -31,8 +31,8 @@ def _render_node(node_id, children, node_cols, max_col, mark_node='', node_width
     for col in range(node_cols[node_id] + 1, max_col + 1):
         # If there's a child in this column, draw an inverse T.
         child_found = False
-        for c in children[node_id]:
-            if node_cols[c] == col:
+        for child in children[node_id]:
+            if node_cols[child] == col:
                 child_found = True
                 # Draw a branch
                 if col == max_col:
