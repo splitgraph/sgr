@@ -2,7 +2,6 @@ from copy import copy
 
 import pytest
 from psycopg2._psycopg import ProgrammingError
-
 from splitgraph.core.registry import get_published_info, unpublish_repository, toggle_registry_rls
 from splitgraph.core.repository import Repository, clone
 from splitgraph.engine import get_engine
@@ -55,7 +54,7 @@ def test_rls_push_own_delete_own(local_engine_empty, unprivileged_pg_repo, clean
     # Test we can push to our namespace -- can't upload the object to the splitgraph_meta since we can't create
     # tables there
     remote_destination = Repository.from_template(destination, engine=unprivileged_pg_repo.engine)
-    destination.set_upstream(remote_destination)
+    destination.upstream = remote_destination
 
     destination.push(handler='S3')
     # Test we can delete our own repo once we've pushed it
@@ -73,7 +72,7 @@ def test_rls_push_own_delete_own_different_namespaces(local_engine_empty, unpriv
     destination.commit()
 
     remote_destination = Repository('testuser', 'pg_mount', unprivileged_pg_repo.engine)
-    destination.set_upstream(remote_destination)
+    destination.upstream = remote_destination
 
     destination.push(handler='S3')
     # Test we can delete our own repo once we've pushed it

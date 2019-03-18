@@ -6,7 +6,6 @@ import json
 import sys
 
 import click
-
 import splitgraph.engine
 import splitgraph.engine.postgres.engine
 from splitgraph.core.repository import clone, Repository
@@ -132,8 +131,8 @@ def upstream_c(repository, set_to, reset):
         raise click.BadParameter("Only one of --set and --reset can be specified!")
 
     if reset:
-        if repository.get_upstream():
-            repository.delete_upstream()
+        if repository.upstream:
+            del repository.upstream
             print("Deleted upstream for %s." % repository.to_schema())
         else:
             print("%s has no upstream to delete!" % repository.to_schema())
@@ -141,7 +140,7 @@ def upstream_c(repository, set_to, reset):
         return
 
     if set_to == ("", None):
-        upstream = repository.get_upstream()
+        upstream = repository.upstream
         if upstream:
             print("%s is tracking %s:%s." % (repository.to_schema(), upstream.engine.name, upstream.to_schema()))
         else:
@@ -153,5 +152,5 @@ def upstream_c(repository, set_to, reset):
         except KeyError:
             print("Remote engine '%s' does not exist in the configuration file!" % engine)
             sys.exit(1)
-        repository.set_upstream(remote_repo)
+        repository.upstream = remote_repo
         print("%s set to track %s:%s." % (repository.to_schema(), engine, remote_repo.to_schema()))

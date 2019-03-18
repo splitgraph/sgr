@@ -74,8 +74,7 @@ class ImageManager:
                     raise SplitGraphException(
                         "No current checked out revision found for %s. Check one out with \"sgr "
                         "checkout %s image_hash\"." % (schema, schema))
-                else:
-                    raise SplitGraphException("Tag %s not found in repository %s" % (tag, schema))
+                raise SplitGraphException("Tag %s not found in repository %s" % (tag, schema))
             else:
                 return None
         return self.by_hash(result)
@@ -97,8 +96,7 @@ class ImageManager:
         if not result:
             if raise_on_none:
                 raise SplitGraphException("No images starting with %s found!" % image_hash)
-            else:
-                return None
+            return None
         if len(result) > 1:
             result = "Multiple suitable candidates found: \n * " + "\n * ".join(result)
             raise SplitGraphException(result)
@@ -285,11 +283,10 @@ class Repository:
                                     (self.namespace, self.repository))
         self.engine.commit()
 
-    def get_upstream(self):
+    @property
+    def upstream(self):
         """
-        Gets the current upstream repository that a local repository tracks
-
-        :return: Remote Repository object (with a remote engine)
+        The remote upstream repository that this local repository tracks.
         """
         result = self.engine.run_sql(select("upstream", "remote_name, remote_namespace, remote_repository",
                                             "namespace = %s AND repository = %s"),
@@ -299,7 +296,8 @@ class Repository:
             return result
         return Repository(namespace=result[1], repository=result[2], engine=get_engine(result[0]))
 
-    def set_upstream(self, remote_repository):
+    @upstream.setter
+    def upstream(self, remote_repository):
         """
         Sets the upstream remote + repository that this repository tracks.
 
@@ -316,7 +314,8 @@ class Repository:
                             (self.namespace, self.repository, remote_repository.engine.name,
                              remote_repository.namespace, remote_repository.repository))
 
-    def delete_upstream(self):
+    @upstream.deleter
+    def upstream(self):
         """
         Deletes the upstream remote + repository for a local repository.
         """
@@ -622,11 +621,9 @@ class Repository:
 
     def _import_tables(self, image, tables, source_repository, target_hash, source_tables, do_checkout,
                        table_queries, foreign_tables):
-        engine = self.engine
-        engine.create_schema(self.to_schema())
-
         # This importing route only supported between local repos.
-        assert engine == source_repository.engine
+        assert self.engine == source_repository.engine
+        self.engine.create_schema(self.to_schema())
 
         head = self.head
         self.images.add(head.image_hash if head else None, target_hash,
@@ -643,26 +640,8 @@ class Repository:
         for source_table, target_table, is_query in zip(source_tables, tables, table_queries):
             if foreign_tables or is_query:
                 # For foreign tables/SELECT queries, we define a new object/table instead.
-                object_id = get_random_object_id()
-                if is_query:
-                    # is_query precedes foreign_tables: if we're importing using a query, we don't care if it's a
-                    # foreign table or not since we're storing it as a full snapshot.
-                    engine.run_sql_in(source_repository.to_schema(),
-                                      SQL("CREATE TABLE {}.{} AS ").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                           Identifier(object_id))
-                                      + SQL(source_table))
-                elif foreign_tables:
-                    self.engine.copy_table(source_repository.to_schema(), source_table, SPLITGRAPH_META_SCHEMA,
-                                           object_id)
-                # TODO TF work this is where a lot of space wasting will come from; we should probably
-                # also do actual object hashing to avoid duplication for things like SELECT *
-
-                # Might not be necessary if we don't actually want to materialize the snapshot (wastes space).
-                self.objects.register_object(object_id, 'SNAP', namespace=self.namespace,
-                                             parent_object=None)
-                self.objects.register_table(self, target_table, target_hash,
-                                            self.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, object_id),
-                                            [object_id])
+                object_id = self._import_new_table(source_repository, source_table, target_hash, target_table,
+                                                   is_query)
                 if do_checkout:
                     self.engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, self.to_schema(), target_table)
             else:
@@ -674,77 +653,38 @@ class Repository:
         # Register the existing tables at the new commit as well.
         if head is not None:
             # Maybe push this into the tables API (currently have to make 2 queries)
-            engine.run_sql(SQL("""INSERT INTO {0}.tables (namespace, repository, image_hash, 
+            self.engine.run_sql(SQL("""INSERT INTO {0}.tables (namespace, repository, image_hash,
                     table_name, table_schema, object_ids) (SELECT %s, %s, %s, table_name, table_schema, object_ids
                     FROM {0}.tables WHERE namespace = %s AND repository = %s AND image_hash = %s)""")
-                           .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                           (self.namespace, self.repository, target_hash,
-                            self.namespace, self.repository, head.image_hash))
+                                .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                                (self.namespace, self.repository, target_hash,
+                                 self.namespace, self.repository, head.image_hash))
         set_head(self, target_hash)
         return target_hash
 
-    # --- SYNCING WITH OTHER REPOSITORIES ---
-
-    def _sync(self, source, download=True, download_all=False, handler='DB', handler_options=None):
-        """
-        Generic routine for syncing two repositories: fetches images, hashes, objects and tags
-        on `source` that don't exist in this repository.
-
-        Common code between push and pull, since the only difference between those routines is that
-        uploading and downloading objects are different operations.
-
-        :param source: Source Repository object
-        :param download: If True, uses the download routines to download physical objects to self.
-            If False, uses the upload routines to get `source` to upload physical objects to self / external.
-        :param download_all: Whether to download all objects (pull option)
-        :param handler: Upload handler
-        :param handler_options: Upload handler options
-        """
-
-        if handler_options is None:
-            handler_options = {}
-
-        # Get the remote log and the list of objects we need to fetch.
-        logging.info("Gathering remote metadata...")
-        new_images, table_meta, object_locations, object_meta, tags = \
-            gather_sync_metadata(self, source)
-
-        if not new_images:
-            logging.info("Nothing to do.")
-            return
-
-        if download:
-            # Don't actually download any real objects until the user tries to check out a revision.
-            if download_all:
-                # Check which new objects we need to fetch/preregister.
-                # We might already have some objects prefetched
-                # (e.g. if a new version of the table is the same as the old version)
-                logging.info("Fetching remote objects...")
-                self.objects.download_objects(source.objects,
-                                              objects_to_fetch=list(set(o[0] for o in object_meta)),
-                                              object_locations=object_locations)
-
-            self.objects.register_objects(object_meta)
-            self.objects.register_object_locations(object_locations)
-            # Don't check anything out, keep the repo bare.
-            set_head(self, None)
+    def _import_new_table(self, source_repository, source_table, target_hash, target_table, is_query):
+        object_id = get_random_object_id()
+        if is_query:
+            # is_query precedes foreign_tables: if we're importing using a query, we don't care if it's a
+            # foreign table or not since we're storing it as a full snapshot.
+            self.engine.run_sql_in(source_repository.to_schema(),
+                                   SQL("CREATE TABLE {}.{} AS ").format(Identifier(SPLITGRAPH_META_SCHEMA),
+                                                                        Identifier(object_id))
+                                   + SQL(source_table))
         else:
-            new_uploads = source.objects.upload_objects(self.objects, list(set(o[0] for o in object_meta)),
-                                                        handler=handler, handler_params=handler_options)
-            # Here we have to register the new objects after the upload but before we store their external
-            # location (as the RLS for object_locations relies on the object metadata being in place)
-            self.objects.register_objects(object_meta, namespace=self.namespace)
-            self.objects.register_object_locations(object_locations + new_uploads)
-            source.objects.register_object_locations(new_uploads)
+            self.engine.copy_table(source_repository.to_schema(), source_table, SPLITGRAPH_META_SCHEMA,
+                                   object_id)
+        # TODO TF work this is where a lot of space wasting will come from; we should probably
+        # also do actual object hashing to avoid duplication for things like SELECT *
+        # Might not be necessary if we don't actually want to materialize the snapshot (wastes space).
+        self.objects.register_object(object_id, 'SNAP', namespace=self.namespace,
+                                     parent_object=None)
+        self.objects.register_table(self, target_table, target_hash,
+                                    self.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, object_id),
+                                    [object_id])
+        return object_id
 
-        # Register the new tables / tags.
-        self.objects.register_tables(self, table_meta)
-        self.set_tags(tags, force=False)
-
-        print(("Fetched" if download else "Uploaded") +
-              " metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta), len(table_meta),
-                                                                                  len([t for t in tags if
-                                                                                       t != 'HEAD'])))
+    # --- SYNCING WITH OTHER REPOSITORIES ---
 
     def push(self, remote_repository=None, handler='DB', handler_options=None):
         """
@@ -760,16 +700,16 @@ class Repository:
         ensure_metadata_schema(self.engine)
         # Maybe consider having a context manager for getting a remote engine instance
         # that auto-commits/closes when needed?
-        remote_repository = remote_repository or self.get_upstream()
+        remote_repository = remote_repository or self.upstream
         if not remote_repository:
             raise SplitGraphException("No remote repository specified and no upstream found for %s!" % self.to_schema())
 
         try:
-            remote_repository._sync(source=self, download=False, handler=handler,
-                                    handler_options=handler_options)
+            _sync(target=remote_repository, source=self, download=False,
+                  handler=handler, handler_options=handler_options)
 
-            if self.get_upstream() is None:
-                self.set_upstream(remote_repository)
+            if not self.upstream:
+                self.upstream = remote_repository
         finally:
             remote_repository.engine.commit()
             remote_repository.engine.close()
@@ -783,11 +723,10 @@ class Repository:
         :param download_all: If True, downloads all objects and stores them locally. Otherwise, will only download
             required objects when a table is checked out.
         """
-        upstream = self.get_upstream()
-        if not upstream:
+        if not self.upstream:
             raise SplitGraphException("No upstream found for repository %s!" % self.to_schema())
 
-        clone(remote_repository=upstream, local_repository=self, download_all=download_all)
+        clone(remote_repository=self.upstream, local_repository=self, download_all=download_all)
 
     def publish(self, tag, remote_repository=None, readme="", include_provenance=True,
                 include_table_previews=True):
@@ -800,7 +739,7 @@ class Repository:
         :param include_provenance: If False, doesn't include the dependencies of the image
         :param include_table_previews: Whether to include data previews for every table in the image.
         """
-        remote_repository = remote_repository or self.get_upstream()
+        remote_repository = remote_repository or self.upstream
         if not remote_repository:
             raise SplitGraphException("No remote repository specified and no upstream found for %s!" % self.to_schema())
 
@@ -915,6 +854,69 @@ def table_exists_at(repository, table_name, image=None):
         else bool(image.get_table(table_name))
 
 
+def _sync(target, source, download=True, download_all=False, handler='DB', handler_options=None):
+    """
+    Generic routine for syncing two repositories: fetches images, hashes, objects and tags
+    on `source` that don't exist in `target`.
+
+    Common code between push and pull, since the only difference between those routines is that
+    uploading and downloading objects are different operations.
+
+    :param target: Target Repository object
+    :param source: Source Repository object
+    :param download: If True, uses the download routines to download physical objects to self.
+        If False, uses the upload routines to get `source` to upload physical objects to self / external.
+    :param download_all: Whether to download all objects (pull option)
+    :param handler: Upload handler
+    :param handler_options: Upload handler options
+    """
+
+    if handler_options is None:
+        handler_options = {}
+
+    # Get the remote log and the list of objects we need to fetch.
+    logging.info("Gathering remote metadata...")
+    new_images, table_meta, object_locations, object_meta, tags = \
+        gather_sync_metadata(target, source)
+
+    if not new_images:
+        logging.info("Nothing to do.")
+        return
+
+    if download:
+        # Don't actually download any real objects until the user tries to check out a revision.
+        if download_all:
+            # Check which new objects we need to fetch/preregister.
+            # We might already have some objects prefetched
+            # (e.g. if a new version of the table is the same as the old version)
+            logging.info("Fetching remote objects...")
+            target.objects.download_objects(source.objects,
+                                            objects_to_fetch=list(set(o[0] for o in object_meta)),
+                                            object_locations=object_locations)
+
+        target.objects.register_objects(object_meta)
+        target.objects.register_object_locations(object_locations)
+        # Don't check anything out, keep the repo bare.
+        set_head(target, None)
+    else:
+        new_uploads = source.objects.upload_objects(target.objects, list(set(o[0] for o in object_meta)),
+                                                    handler=handler, handler_params=handler_options)
+        # Here we have to register the new objects after the upload but before we store their external
+        # location (as the RLS for object_locations relies on the object metadata being in place)
+        target.objects.register_objects(object_meta, namespace=target.namespace)
+        target.objects.register_object_locations(object_locations + new_uploads)
+        source.objects.register_object_locations(new_uploads)
+
+    # Register the new tables / tags.
+    target.objects.register_tables(target, table_meta)
+    target.set_tags(tags, force=False)
+
+    print(("Fetched" if download else "Uploaded") +
+          " metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta), len(table_meta),
+                                                                              len([t for t in tags if
+                                                                                   t != 'HEAD'])))
+
+
 def clone(remote_repository, local_repository=None, download_all=False):
     """
     Clones a remote Splitgraph repository or synchronizes remote changes with the local ones.
@@ -936,10 +938,10 @@ def clone(remote_repository, local_repository=None, download_all=False):
     if not local_repository:
         local_repository = Repository(remote_repository.namespace, remote_repository.repository)
 
-    local_repository._sync(remote_repository, download=True, download_all=download_all)
+    _sync(local_repository, remote_repository, download=True, download_all=download_all)
 
-    if local_repository.get_upstream() is None:
-        local_repository.set_upstream(remote_repository)
+    if not local_repository.upstream:
+        local_repository.upstream = remote_repository
 
     return local_repository
 

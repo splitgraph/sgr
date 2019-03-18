@@ -69,13 +69,17 @@ def register_upload_download_handler(name, handler_class):
     _EXTERNAL_OBJECT_HANDLERS[name] = handler_class
 
 
+def _register_default_handlers():
+    for handler_name, handler_class_name in CONFIG.get('external_handlers', {}).items():
+        ix = handler_class_name.rindex('.')
+        try:
+            handler_class = getattr(import_module(handler_class_name[:ix]), handler_class_name[ix + 1:])
+            register_upload_download_handler(handler_name, handler_class)
+        except AttributeError as e:
+            raise SplitGraphException("Error loading external object handler {0}".format(handler_name), e)
+        except ImportError as e:
+            raise SplitGraphException("Error loading external object handler {0}".format(handler_name), e)
+
+
 # Register the default object handlers from the config
-for handler_name, handler_class_name in CONFIG.get('external_handlers', {}).items():
-    ix = handler_class_name.rindex('.')
-    try:
-        handler_class = getattr(import_module(handler_class_name[:ix]), handler_class_name[ix + 1:])
-        register_upload_download_handler(handler_name, handler_class)
-    except AttributeError as e:
-        raise SplitGraphException("Error loading external object handler {0}".format(handler_name), e)
-    except ImportError as e:
-        raise SplitGraphException("Error loading external object handler {0}".format(handler_name), e)
+_register_default_handlers()

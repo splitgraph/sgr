@@ -472,7 +472,7 @@ def test_object_manager_index_clause_generation(pg_repo_local):
     column_types = {'a': 'int', 'b': 'int'}
 
     def _assert_ic_result(quals, expected_clause, expected_args):
-        qual, args = om._quals_to_clause(quals, column_types)
+        qual, args = _quals_to_clause(quals, column_types)
         assert qual.as_string(pg_repo_local.engine.connection) == expected_clause
         assert args == expected_args
 

@@ -4,10 +4,10 @@ Routines for managing Splitgraph engines, including looking up repositories and 
 import logging
 
 from psycopg2.sql import SQL, Identifier
-
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.engine import ResultShape, get_engine
 from splitgraph.exceptions import SplitGraphException
+
 from ._common import select, ensure_metadata_schema
 
 

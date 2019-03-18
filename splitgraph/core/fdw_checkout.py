@@ -10,7 +10,7 @@ from splitgraph.core.fragment_manager import get_random_object_id
 from splitgraph.core.object_manager import ObjectManager
 
 try:
-    from multicorn import ForeignDataWrapper, ANY, ALL
+    from multicorn import ForeignDataWrapper, ANY
     from multicorn.utils import log_to_postgres
 except ImportError:
     # Multicorn not installed (OK if we're not on the engine machine).
@@ -57,10 +57,9 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
                     # Convert col op ANY(ARRAY[a,b,c...]) into (col op a) OR (col op b)...
                     # which is one single AND clause of multiple ORs
                     return [[(qual.field_name, qual.operator[0], v) for v in qual.value]]
-                else:
-                    # Convert col op ALL(ARRAY[a,b,c...]) into (cop op a) AND (col op b)...
-                    # which is multiple AND clauses of one OR each
-                    return [[(qual.field_name, qual.operator[0], v)] for v in qual.value]
+                # Convert col op ALL(ARRAY[a,b,c...]) into (cop op a) AND (col op b)...
+                # which is multiple AND clauses of one OR each
+                return [[(qual.field_name, qual.operator[0], v)] for v in qual.value]
             else:
                 if qual.value is None:
                     return [[]]
@@ -124,13 +123,13 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
 
             # Apply the fragments (just the parts that match the qualifiers) to the staging area
             if quals:
-                self.engine.batch_apply_fragments([(SPLITGRAPH_META_SCHEMA, o) for o in required_objects],
-                                                  SPLITGRAPH_META_SCHEMA, staging_table,
-                                                  extra_quals=qual_sql,
-                                                  extra_qual_args=qual_vals)
+                self.engine.apply_fragments([(SPLITGRAPH_META_SCHEMA, o) for o in required_objects],
+                                            SPLITGRAPH_META_SCHEMA, staging_table,
+                                            extra_quals=qual_sql,
+                                            extra_qual_args=qual_vals)
             else:
-                self.engine.batch_apply_fragments([(SPLITGRAPH_META_SCHEMA, o) for o in required_objects],
-                                                  SPLITGRAPH_META_SCHEMA, staging_table)
+                self.engine.apply_fragments([(SPLITGRAPH_META_SCHEMA, o) for o in required_objects],
+                                            SPLITGRAPH_META_SCHEMA, staging_table)
         return self._run_select_from_staging(SPLITGRAPH_META_SCHEMA, staging_table, columns,
                                              drop_table=True)
 
