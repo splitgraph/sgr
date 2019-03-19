@@ -216,13 +216,11 @@ def test_import_with_custom_query(pg_repo_local, mg_repo_local):
         assert OUTPUT.run_sql("SELECT * FROM %s" % t) == c
 
     for t in tables:
-        # Tables with queries stored as snaps, actually imported tables share objects with test/pg_mount.
+        # Tables with queries stored as snaps (no parent), actually imported tables share objects with test/pg_mount.
         if t in ['my_fruits', 'o_vegetables']:
-            assert head.get_table(t).get_object('SNAP') is not None
-            assert head.get_table(t).get_object('DIFF') is None
+            assert OUTPUT.objects.get_object_meta(head.get_table(t).objects)[0][2] is None
         else:
-            assert head.get_table(t).get_object('SNAP') is None
-            assert head.get_table(t).get_object('DIFF') is not None
+            assert OUTPUT.objects.get_object_meta(head.get_table(t).objects)[0][2] is not None
 
 
 def test_import_mount(local_engine_empty):
@@ -243,8 +241,7 @@ def test_import_mount(local_engine_empty):
 
     # All imported tables stored as snapshots
     for t in tables:
-        assert head.get_table(t).get_object('SNAP') is not None
-        assert head.get_table(t).get_object('DIFF') is None
+        assert OUTPUT.objects.get_object_meta(head.get_table(t).objects)[0][2] is None
 
 
 def test_import_all(local_engine_empty):
@@ -309,12 +306,10 @@ def test_from_multistage(local_engine_empty, pg_repo_remote_multitag):
     # Check the final output ('output_stage_2'): it should only have one single table object (a SNAP with the join_table
     # from the first stage, OUTPUT.
     assert stage_2.run_sql("SELECT * FROM balanced_diet") == [(1, 'apple', 'potato'), (2, 'orange', 'carrot')]
-    head = stage_2.head
     # Check the commit is based on the original empty image.
     assert stage_2.head.parent_id == '0' * 64
     assert stage_2.head.get_tables() == ['balanced_diet']
-    assert stage_2.head.get_table('balanced_diet').get_object('SNAP') is not None
-    assert stage_2.head.get_table('balanced_diet').get_object('DIFF') is None
+    assert OUTPUT.objects.get_object_meta(stage_2.head.get_table('balanced_diet').objects)[0][2] is None
 
 
 def test_from_local(pg_repo_local):

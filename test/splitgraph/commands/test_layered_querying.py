@@ -180,7 +180,7 @@ def test_lq_external_snap_cache(local_engine_empty, pg_repo_remote):
     assert len(pg_repo_local.objects.get_downloaded_objects()) == 6
     # Check the SNAP cache contents
     assert list(pg_repo_local.objects._get_snap_cache().values()) == [
-        (pg_repo_local.images['latest'].get_table('fruits').get_object('DIFF'), 8192)]
+        (pg_repo_local.images['latest'].get_table('fruits').objects[0], 8192)]
 
 
 @pytest.mark.parametrize("test_case", [

@@ -239,8 +239,7 @@ def test_drop_recreate_produces_snap(pg_repo_local):
 
     # Check there are only SNAPs, no DIFFs.
     table = pg_repo_local.head.get_table('fruits')
-    assert table.get_object('DIFF') is None
-    assert table.get_object('SNAP') is not None
+    assert pg_repo_local.objects.get_object_meta(table.objects)[0][2] is None
 
 
 @pytest.mark.parametrize("mode", _COMMIT_MODES)
