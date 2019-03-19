@@ -831,16 +831,6 @@ def import_table_from_remote(remote_repository, remote_tables, remote_image_hash
     target_repository.engine.commit()
 
 
-def find_path(repository, hash_1, hash_2):
-    """If the two images are on the same path in the commit tree, returns that path."""
-    path = []
-    while hash_2 is not None:
-        path.append(hash_2)
-        hash_2 = repository.images.by_hash(hash_2).parent_id
-        if hash_2 == hash_1:
-            return path
-
-
 def table_exists_at(repository, table_name, image=None):
     """Determines whether a given table exists in a Splitgraph image without checking it out. If `image_hash` is None,
     determines whether the table exists in the current staging area."""
