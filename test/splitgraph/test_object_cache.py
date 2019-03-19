@@ -59,9 +59,9 @@ def test_object_cache_loading(local_engine_empty, pg_repo_remote):
     # Quick assertions on the objects and table sizes recorded by the engine, since we'll rely on them
     # to test eviction.
     assert len(fruits_v3.objects) == 1
-    fruit_diff = fruits_v3.get_object('DIFF')
+    fruit_diff = fruits_v3.objects[0]
     assert len(fruits_v2.objects) == 1
-    fruit_snap = fruits_v2.get_object('SNAP')
+    fruit_snap = fruits_v2.objects[0]
     # Reported by Postgres itself and stored by the engine in object_tree. Might really backfire on us on different
     # Postgres versions.
     assert object_tree[fruit_diff] == (fruit_snap, 'DIFF', 8192)
@@ -128,9 +128,9 @@ def test_object_cache_eviction(local_engine_empty, pg_repo_remote):
     fruits_v3 = pg_repo_local.images['latest'].get_table('fruits')
     fruits_v2 = pg_repo_local.images[pg_repo_local.images['latest'].parent_id].get_table('fruits')
     vegetables_v2 = pg_repo_local.images[pg_repo_local.images['latest'].parent_id].get_table('vegetables')
-    vegetables_snap = vegetables_v2.get_object('SNAP')
-    fruit_diff = fruits_v3.get_object('DIFF')
-    fruit_snap = fruits_v2.get_object('SNAP')
+    vegetables_snap = vegetables_v2.objects[0]
+    fruit_diff = fruits_v3.objects[0]
+    fruit_snap = fruits_v2.objects[0]
 
     # Check another test object has the same size
     assert object_manager.get_full_object_tree()[vegetables_snap][2] == 8192
@@ -180,9 +180,9 @@ def test_object_cache_nested(local_engine_empty, pg_repo_remote):
     fruits_v3 = pg_repo_local.images['latest'].get_table('fruits')
     fruits_v2 = pg_repo_local.images[pg_repo_local.images['latest'].parent_id].get_table('fruits')
     vegetables_v2 = pg_repo_local.images[pg_repo_local.images['latest'].parent_id].get_table('vegetables')
-    vegetables_snap = vegetables_v2.get_object('SNAP')
-    fruit_diff = fruits_v3.get_object('DIFF')
-    fruit_snap = fruits_v2.get_object('SNAP')
+    vegetables_snap = vegetables_v2.objects[0]
+    fruit_diff = fruits_v3.objects[0]
+    fruit_snap = fruits_v2.objects[0]
 
     with object_manager.ensure_objects(fruits_v3):
         with object_manager.ensure_objects(vegetables_v2):
@@ -210,12 +210,12 @@ def test_object_cache_eviction_priority(local_engine_empty, pg_repo_remote):
     object_manager = pg_repo_local.objects
     fruits_v2 = pg_repo_local.images[pg_repo_local.images['latest'].parent_id].get_table('fruits')
     fruits_v3 = pg_repo_local.images['latest'].get_table('fruits')
-    fruit_snap = fruits_v2.get_object('SNAP')
-    fruit_diff = fruits_v3.get_object('DIFF')
+    fruit_snap = fruits_v2.objects[0]
+    fruit_diff = fruits_v3.objects[0]
     vegetables_v2 = pg_repo_local.images[pg_repo_local.images['latest'].parent_id].get_table('vegetables')
     vegetables_v3 = pg_repo_local.images['latest'].get_table('vegetables')
-    vegetables_snap = vegetables_v2.get_object('SNAP')
-    vegetables_diff = vegetables_v3.get_object('DIFF')
+    vegetables_snap = vegetables_v2.objects[0]
+    vegetables_diff = vegetables_v3.objects[0]
 
     # Setup: the cache has enough space for 3 objects
     object_manager.cache_size = 8192 * 3
@@ -279,8 +279,8 @@ def test_object_cache_snaps(local_engine_empty, pg_repo_remote):
     object_manager = pg_repo_local.objects
     fruits_v2 = pg_repo_local.images[pg_repo_local.images['latest'].parent_id].get_table('fruits')
     fruits_v3 = pg_repo_local.images['latest'].get_table('fruits')
-    fruit_snap = fruits_v2.get_object('SNAP')
-    fruit_diff = fruits_v3.get_object('DIFF')
+    fruit_snap = fruits_v2.objects[0]
+    fruit_diff = fruits_v3.objects[0]
 
     assert object_manager._get_snap_cache() == {}
 
@@ -323,12 +323,12 @@ def test_object_cache_snaps_eviction(local_engine_empty, pg_repo_remote):
     object_manager = pg_repo_local.objects
     fruits_v2 = pg_repo_local.images[pg_repo_local.images['latest'].parent_id].get_table('fruits')
     fruits_v3 = pg_repo_local.images['latest'].get_table('fruits')
-    fruit_snap = fruits_v2.get_object('SNAP')
-    fruit_diff = fruits_v3.get_object('DIFF')
+    fruit_snap = fruits_v2.objects[0]
+    fruit_diff = fruits_v3.objects[0]
     vegetables_v2 = pg_repo_local.images[pg_repo_local.images['latest'].parent_id].get_table('vegetables')
     vegetables_v3 = pg_repo_local.images['latest'].get_table('vegetables')
-    vegetables_snap = vegetables_v2.get_object('SNAP')
-    vegetables_diff = vegetables_v3.get_object('DIFF')
+    vegetables_snap = vegetables_v2.objects[0]
+    vegetables_diff = vegetables_v3.objects[0]
 
     assert object_manager._get_snap_cache() == {}
 
@@ -412,9 +412,9 @@ def test_object_cache_snaps_longer_chain(local_engine_empty, pg_repo_remote):
     fruits_v2 = log[2].get_table('fruits')
     fruits_v3 = log[1].get_table('fruits')
     fruits_v4 = log[0].get_table('fruits')
-    fruit_snap = fruits_v2.get_object('SNAP')
-    fruit_diff = fruits_v3.get_object('DIFF')
-    fruit_diff_2 = fruits_v4.get_object('DIFF')
+    fruit_snap = fruits_v2.objects[0]
+    fruit_diff = fruits_v3.objects[0]
+    fruit_diff_2 = fruits_v4.objects[0]
 
     assert object_manager._get_snap_cache() == {}
 
@@ -490,9 +490,9 @@ def test_object_cache_resolution_with_snaps(pg_repo_local):
 
     with pg_repo_local.objects.ensure_objects(pg_repo_local.images['latest'].get_table('fruits')) as required_objects:
         assert required_objects == [
-            img_1.get_table('fruits').get_object('SNAP'),
-            img_2.get_table('fruits').get_object('DIFF'),
-            img_3.get_table('fruits').get_object('DIFF')]
+            img_1.get_table('fruits').objects[0],
+            img_2.get_table('fruits').objects[0],
+            img_3.get_table('fruits').objects[0]]
 
 
 def test_object_manager_index_clause_generation(pg_repo_local):

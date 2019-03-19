@@ -38,10 +38,9 @@ def test_schema_changes(pg_repo_local, test_case):
     head = pg_repo_local.head
     new_head = pg_repo_local.commit()
 
-    # Test that the new image only has a snap and the object storing the snap has the expected new schema
-    assert new_head.get_table('fruits').get_object('DIFF') is None
-    new_snap = new_head.get_table('fruits').get_object('SNAP')
-    assert new_snap is not None
+    # Test that the new image was stored as a snapshot with the new schema.
+    new_snap = new_head.get_table('fruits').objects[0]
+    assert pg_repo_local.objects.get_object_meta([new_snap])[0][2] is None  # no parent
     assert pg_repo_local.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, new_snap) == _reassign_ordinals(
         expected_new_schema)
 

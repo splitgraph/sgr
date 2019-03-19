@@ -50,21 +50,3 @@ class Table:
                 *(Identifier(cname) for _, cname, _, _ in self.table_schema))
             query += SQL(") SERVER {} OPTIONS (table %s)").format(Identifier(lq_server))
             engine.run_sql(query, (self.table_name,))
-
-    def get_object(self, object_type):
-        """
-        Get the physical object ID of a given type that this table is linked to
-
-        :param object_type: Either SNAP or DIFF
-        :return: Object ID or None if an object of such type doesn't exist
-        """
-
-        # TODO TF work this will become less meaningful -- currently only used by tests
-
-        object_meta = self.repository.objects.get_object_meta(self.objects)
-        if not object_meta:
-            return None
-
-        if object_meta[0][1] == object_type:
-            return self.objects[0]
-        return None
