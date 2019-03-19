@@ -154,35 +154,6 @@ def _prepare_fully_remote_repo(local_engine_empty, pg_repo_remote):
     pg_repo_local.objects.cleanup()
 
 
-def test_lq_external_snap_cache(local_engine_empty, pg_repo_remote):
-    # Test that after hitting a table via LQ 5 times, the query gets satisfied via a SNAP instead.
-    _prepare_fully_remote_repo(local_engine_empty, pg_repo_remote)
-
-    pg_repo_local = clone(pg_repo_remote, download_all=False)
-    pg_repo_local.images['latest'].checkout(layered=True)
-    assert len(pg_repo_local.objects.get_downloaded_objects()) == 0
-
-    for _ in range(4):
-        assert pg_repo_local.run_sql("SELECT * FROM fruits ORDER BY fruit_id") == \
-               [(2, 'guitar', 1),
-                (3, 'mayonnaise', 1),
-                (4, 'kumquat', 1)]
-        assert pg_repo_local.objects._get_snap_cache() == {}
-        # Downloaded objects: fruits -> 1 original SNAP and 4 DIFFs.
-        assert len(pg_repo_local.objects.get_downloaded_objects()) == 5
-
-    # Now the SNAP gets cached instead:
-    assert pg_repo_local.run_sql("SELECT * FROM fruits ORDER BY fruit_id") == \
-           [(2, 'guitar', 1),
-            (3, 'mayonnaise', 1),
-            (4, 'kumquat', 1)]
-    # Old 4 objects + temporary SNAP.
-    assert len(pg_repo_local.objects.get_downloaded_objects()) == 6
-    # Check the SNAP cache contents
-    assert list(pg_repo_local.objects._get_snap_cache().values()) == [
-        (pg_repo_local.images['latest'].get_table('fruits').objects[0], 8192)]
-
-
 @pytest.mark.parametrize("test_case", [
     # Each test case is a: query, expected result, mask of which objects were downloaded
     # Test single PK qual

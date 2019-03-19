@@ -12,8 +12,7 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphException
 
-META_TABLES = ['images', 'tags', 'objects', 'tables', 'upstream', 'object_locations', 'object_cache_status',
-               'snap_cache', 'snap_cache_misses', 'info']
+META_TABLES = ['images', 'tags', 'objects', 'tables', 'upstream', 'object_locations', 'object_cache_status', 'info']
 _PUBLISH_PREVIEW_SIZE = 100
 
 
@@ -179,23 +178,6 @@ def _create_metadata_schema(engine):
                         last_used  TIMESTAMP)""")
                    .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status"),
                            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")), return_shape=None)
-
-    # Temporary SNAP cache to speed up layered querying: maps a DIFF object to a precomputed SNAP
-    # resulting from the traversal and materialization of that DIFF chain.
-    engine.run_sql(SQL("""CREATE TABLE {}.{} (
-                            diff_id VARCHAR NOT NULL PRIMARY KEY,
-                            snap_id VARCHAR NOT NULL,
-                            size    BIGINT)""")
-                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("snap_cache")), return_shape=None)
-
-    # Bookkeeping for the SNAP cache: records DIFF objects that are a beginning of a DIFF chain and had to be
-    # returned instead of a SNAP. These are candidates for temporary SNAP generation.
-    engine.run_sql(SQL("""CREATE TABLE {}.{} (
-                        diff_id VARCHAR NOT NULL,
-                        used_time TIMESTAMP)""")
-                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("snap_cache_misses")), return_shape=None)
-    engine.run_sql(SQL("CREATE INDEX idx_splitgraph_meta_snap_cache_misses_diff_id ON {}.{} (diff_id)")
-                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("snap_cache_misses")))
 
     # Maps a given table at a given point in time to a list of fragments that it's assembled from.
     # Only the "top" fragments are listed here: to actually materialize a given table, the parent chain of every
