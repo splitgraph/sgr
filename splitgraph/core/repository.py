@@ -409,10 +409,6 @@ class Repository:
             image_hash = "%0.2x" % getrandbits(256)
 
         self.images.add(head.image_hash if head else None, image_hash, comment=comment)
-
-        # TODO TF work: probably disallow tables being stored as both snaps and diffs since it adds
-        # a lot of complexity to the schema (an object can have multiple parents).
-
         self._commit(head, image_hash, snap_only=snap_only, chunk_size=chunk_size, split_changeset=split_changeset)
 
         set_head(self, image_hash)
@@ -644,7 +640,6 @@ class Repository:
                 if do_checkout:
                     self.engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, self.to_schema(), target_table)
             else:
-                # TODO TF work: same here, just link to the same objects
                 table_obj = image.get_table(source_table)
                 self.objects.register_table(self, target_table, target_hash, table_obj.table_schema, table_obj.objects)
                 if do_checkout:

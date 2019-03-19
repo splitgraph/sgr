@@ -90,10 +90,9 @@ class SQLEngine(ABC):
         return self.run_sql(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(schema)),
                             return_shape=ResultShape.NONE)
 
-    def copy_table(self, source_schema, source_table, target_schema, target_table, with_pk_constraints=True, limit=None,
-                   offset=None):
+    def copy_table(self, source_schema, source_table, target_schema, target_table, with_pk_constraints=True,
+                   limit=None, offset=None, order_by_pk=False):
         """Copy a table in the same engine, optionally applying primary key constraints as well."""
-        # TODO sort by PK too?
         query_args = []
         if not self.table_exists(target_schema, target_table):
             query = SQL("CREATE TABLE {}.{} AS SELECT * FROM {}.{}").format(
@@ -103,15 +102,16 @@ class SQLEngine(ABC):
             query = SQL("INSERT INTO {}.{} SELECT * FROM {}.{}").format(
                 Identifier(target_schema), Identifier(target_table),
                 Identifier(source_schema), Identifier(source_table))
+        pks = self.get_primary_keys(source_schema, source_table)
+        if order_by_pk and pks:
+            query += SQL(" ORDER BY ") + SQL(",").join(Identifier(p[0]) for p in pks)
         if limit:
             query += SQL(" LIMIT %s")
             query_args.append(limit)
         if offset:
             query += SQL(" OFFSET %s")
             query_args.append(offset)
-        if with_pk_constraints:
-            pks = self.get_primary_keys(source_schema, source_table)
-            if pks:
+        if with_pk_constraints and pks:
                 query += SQL(";ALTER TABLE {}.{} ADD PRIMARY KEY (").format(
                     Identifier(target_schema), Identifier(target_table)) + SQL(',').join(
                     SQL("{}").format(Identifier(c)) for c, _ in pks) + SQL(")")

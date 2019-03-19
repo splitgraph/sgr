@@ -42,11 +42,13 @@ class ObjectManager(FragmentManager, MetadataManager):
         # downloading them).
         self.eviction_floor = float(CONFIG['SG_EVICTION_FLOOR']) * 1024 * 1024
 
-        # TODO TF work
-        # * we might keep this (but create temporary SNAPs based on quals in a single table --
-        #   we can have the last chunk of a table that's queried often stored as a SNAP and other ones
-        #   as SNAP + DIFFs)
-        # * or remove this
+        # TODO TF work: SNAP cache is less relevant if we have multiple fragments with indexes since the chances
+        # of having to fetch the whole chain are way lower (and we can answer any query with a few objects).
+        # We can either:
+        #  * remove this altogether
+        #  * move this into the part where we decide whether to add another patch on top of an existing fragment
+        #    or to create a brand new fragment
+        #  * create temporary SNAPs that cache some query results
 
         # If we had to return a given DIFF more than or equal to `cache_misses_for_snap` times in the last
         # `cache_misses_lookback` seconds, the resolver creates a SNAP from the diff chain and returns
@@ -55,7 +57,6 @@ class ObjectManager(FragmentManager, MetadataManager):
         self.cache_misses_for_snap = int(CONFIG['SG_SNAP_CACHE_MISSES'])
         self.cache_misses_lookback = int(CONFIG['SG_SNAP_CACHE_LOOKBACK'])
 
-    # TODO TF work this is only used in eviction and might need to be changed a lot.
     def get_full_object_tree(self):
         """Returns a dictionary (object_id -> parent, object_format, size) with the full object tree
         in the engine"""
@@ -230,22 +231,9 @@ class ObjectManager(FragmentManager, MetadataManager):
         self.object_engine.run_sql("SET LOCAL synchronous_commit TO off")
 
         if len(required_objects) > 1 and len(paths) == 1 and not objects_were_filtered:
-            # We want to return a SNAP + a DIFF chain. See if a DIFF chain ending (starting?) with a given DIFF
-            # has been requested too many times.
-            # For now, only try to do this if we didn't manage to drop parts of the chain out
-            now = dt.utcnow()
-            self._store_snap_cache_miss(paths[0][-1], now)
-            if self._recent_snap_cache_misses(
-                    paths[0][-1], now - timedelta(seconds=self.cache_misses_lookback)) >= self.cache_misses_for_snap:
-                new_snap_id = self._create_and_register_temporary_snap(required_objects[0], required_objects[1:])
-                # Instead of the old SNAP + DIFF chain, use the new SNAP (the rest will proceed in the same way:
-                # we'll increase the refcount and set the last used time on the SNAP instead of the full chain,
-                # yield it and then release the refcount.
-
-                self._release_objects(required_objects)
-                required_objects = [new_snap_id]
-                self._claim_objects(required_objects)
-                self._set_ready_flags(required_objects, True)
+            # In the pathological case that we didn't filter any objects and had to fetch the whole chain,
+            # record that and potentially collapse the chain into one object.
+            required_objects = self._manage_snap_cache(required_objects)
         tracer.log('snap_cache')
 
         logging.info("Yielding to the caller")
@@ -283,11 +271,13 @@ class ObjectManager(FragmentManager, MetadataManager):
             objects_were_filtered = False
         return objects_were_filtered, objects
 
-    def _create_and_register_temporary_snap(self, snap, diffs):
-        # Maybe here we should give longer DIFF chains priority somehow?
-
-        # TODO TF work: this is partially the rechunking code (melding diffs back into snaps) but on the
-        # read side, not the write side. We might keep this (SNAP table regions that are queried often).
+    def _manage_snap_cache(self, required_objects):
+        now = dt.utcnow()
+        self._store_snap_cache_miss(required_objects[-1], now)
+        if self._recent_snap_cache_misses(
+                required_objects[-1],
+                now - timedelta(seconds=self.cache_misses_lookback)) < self.cache_misses_for_snap:
+            return required_objects
 
         # There's a race condition: we check if a temporary SNAP exists for a chain in the beginning,
         # when we resolve objects -- but then can spend some time downloading objects. Whilst we are doing that,
@@ -298,8 +288,9 @@ class ObjectManager(FragmentManager, MetadataManager):
         new_snap_id = get_random_object_id()
         try:
             self.object_engine.run_sql(insert("snap_cache", ("snap_id", "diff_id", "size")),
-                                       (new_snap_id, diffs[-1], 0))
-            logging.info("Generating a temporary SNAP %s for a DIFF chain starting with %s", new_snap_id, diffs[-1])
+                                       (new_snap_id, required_objects[-1], 0))
+            logging.info("Generating a temporary SNAP %s for a DIFF chain starting with %s",
+                         new_snap_id, required_objects[-1])
             # We'll need extra space to create the temporary SNAP: we can't always do it on the fly
             # (e.g. by just taking the old base SNAP and applying new DIFFs to it) since that operation
             # is destructive and some other users might be using this object.
@@ -308,10 +299,10 @@ class ObjectManager(FragmentManager, MetadataManager):
             # are bounded from the top by the sum of the sizes of all intermediate objects.
             # Nevertheless, we'll create the SNAP anyway and just keep it there, letting whoever else gets
             # to access the cache next run eviction if they need it.
-            self.object_engine.copy_table(SPLITGRAPH_META_SCHEMA, snap, SPLITGRAPH_META_SCHEMA, new_snap_id,
-                                          with_pk_constraints=True)
-            logging.info("Applying %d fragment(s)...", len(diffs))
-            self.object_engine.apply_fragments([(SPLITGRAPH_META_SCHEMA, d) for d in diffs],
+            self.object_engine.copy_table(SPLITGRAPH_META_SCHEMA, required_objects[0],
+                                          SPLITGRAPH_META_SCHEMA, new_snap_id, with_pk_constraints=True)
+            logging.info("Applying %d fragment(s)...", len(required_objects) - 1)
+            self.object_engine.apply_fragments([(SPLITGRAPH_META_SCHEMA, d) for d in required_objects],
                                                SPLITGRAPH_META_SCHEMA, new_snap_id)
 
             # We've created the SNAP -- now we need to record its size (can't do it straightaway because
@@ -320,11 +311,24 @@ class ObjectManager(FragmentManager, MetadataManager):
             self.object_engine.run_sql(SQL("UPDATE {}.snap_cache SET size = %s WHERE snap_id = %s")
                                        .format(Identifier(SPLITGRAPH_META_SCHEMA)), (size, new_snap_id))
         except IntegrityError:
+            # This is in the case of a race condition where two concurrently running object managers have tried
+            # to create the same snapshot. In this case, rollback and try selecting the snap ID for that chain.
+            # This will block until the other engine has actually finished creating the snapshot.
             self.object_engine.rollback()
-            new_snap_id = [v for k, v in self._get_snap_cache().items() if v == diffs[0]][0]
-            logging.info("Using existing SNAP %s for a DIFF chain starting with %s", new_snap_id, diffs[0])
+            new_snap_id = self.object_engine.run_sql(select('snap_cache', 'snap_id', 'diff_id = %s'),
+                                                     (required_objects[-1],), return_shape=ResultShape.ONE_ONE)
+            logging.info("Using existing SNAP %s for a DIFF chain starting with %s", new_snap_id, required_objects[-1])
 
-        return new_snap_id
+        # Instead of the old SNAP + DIFF chain, use the new SNAP (the rest will proceed in the same way:
+        # we'll increase the refcount and set the last used time on the SNAP instead of the full chain,
+        # yield it and then release the refcount.
+
+        self._release_objects(required_objects)
+        required_objects = [new_snap_id]
+        self._claim_objects(required_objects)
+        self._set_ready_flags(required_objects, True)
+
+        return required_objects
 
     def _prepare_fetch_list(self, required_objects):
         """
@@ -405,9 +409,6 @@ class ObjectManager(FragmentManager, MetadataManager):
             time_factor = math.exp(-self.eviction_decay_constant * time_since_used)
             size_factor = object_size if object_size > self.eviction_floor else self.eviction_floor
             return time_factor * size_factor
-
-        # TODO should SNAPs have priority over DIFFs (since they give access to more potential table versions),
-        # but they kind of do since they are bigger.
 
         logging.info("Performing eviction...")
         # Maybe here we should also do the old cleanup (see if the objects aren't required
