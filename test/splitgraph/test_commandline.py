@@ -3,10 +3,11 @@ import subprocess
 from decimal import Decimal
 
 import pytest
-from splitgraph import ResultShape
+from splitgraph import ResultShape, insert
 from splitgraph.commandline import *
 from splitgraph.commandline._common import image_spec_parser
 from splitgraph.commandline.example import generate_c, alter_c, splitfile_c
+from splitgraph.commandline.image_info import object_c
 from splitgraph.config import PG_PWD, PG_USER
 from splitgraph.core._common import parse_connection_string, serialize_connection_string
 from splitgraph.core.engine import repository_exists
@@ -138,6 +139,51 @@ def test_commandline_basics(pg_repo_local, mg_repo_local):
     # Check verbose show also has the actual object IDs
     for o in fruit_objs + mushroom_objs:
         assert o in result.output
+
+
+def test_object_info(local_engine_empty):
+    runner = CliRunner()
+
+    q = insert("objects", ("object_id", "format", "parent_id", "namespace", "size", "index"))
+    local_engine_empty.run_sql(q, ("base_1", "SNAP", None, "ns1", 12345, {"col_1": [10, 20]}))
+    local_engine_empty.run_sql(q, ("patch_1", "DIFF", "base_1", "ns1", 6789, {"col_1": [10, 20]}))
+    local_engine_empty.run_sql(q, ("patch_2", "DIFF", "base_1", "ns1", 1011, {"col_1": [10, 20],
+                                                                              "col_2": ['bla', 'ble']}))
+    # base_1: external, cached locally
+    local_engine_empty.run_sql(insert("object_locations", ("object_id", "protocol", "location")),
+                               ("base_1", "HTTP", "example.com/objects/base_1.tgz"))
+    local_engine_empty.run_sql(insert("object_cache_status", ("object_id",)), ("base_1",))
+    local_engine_empty.run_sql("CREATE TABLE splitgraph_meta.base_1 (col_1 INTEGER)")
+
+    # patch_1: on the engine, uncached locally
+    # patch_2: created here, cached locally
+    local_engine_empty.run_sql("CREATE TABLE splitgraph_meta.patch_2 (col_1 INTEGER)")
+
+    result = runner.invoke(object_c, ["base_1"])
+    assert result.exit_code == 0
+    assert result.output == """Object ID: base_1
+
+Parent: None
+Namespace: ns1
+Format: SNAP
+Size: 12.06 KiB
+Column index:
+  col_1: [10, 20]
+
+Location: cached locally
+Original location: example.com/objects/base_1.tgz (HTTP)
+"""
+
+    result = runner.invoke(object_c, ["patch_1"])
+    assert result.exit_code == 0
+    assert "Location: remote engine" in result.output
+
+    result = runner.invoke(object_c, ["patch_2"])
+    assert result.exit_code == 0
+    assert "Location: created locally" in result.output
+
+
+
 
 
 def test_upstream_management(pg_repo_local):

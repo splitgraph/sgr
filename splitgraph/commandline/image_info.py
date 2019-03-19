@@ -6,9 +6,11 @@ from collections import Counter
 from pprint import pprint
 
 import click
-from splitgraph import get_engine
+from splitgraph import get_engine, select, ResultShape
+from splitgraph.core._common import pretty_size
 from splitgraph.core._drawing import render_tree
 from splitgraph.core.engine import get_current_repositories
+from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.repository import Repository
 
 from ._common import image_spec_parser, pluralise
@@ -158,6 +160,46 @@ def show_c(image_spec, verbose):
                 print("  %s:" % table)
                 for obj in table_objects:
                     print("    %s" % obj)
+
+
+@click.command(name='object')
+@click.argument('object_id', type=str)
+def object_c(object_id):
+    """
+    Show information about a Splitgraph object. Objects are building blocks of Splitgraph tables: each table consists
+    of multiple immutable objects that can partially overwrite each other.
+    """
+    object_manager = ObjectManager(get_engine())
+    object_meta = object_manager.get_object_meta([object_id])
+    if not object_meta:
+        raise click.BadParameter("Object %s does not exist!" % object_id)
+
+    _, object_format, parent_id, namespace, size, index = object_meta[0]
+    print("Object ID: %s" % object_id)
+    print()
+    print("Parent: %s" % parent_id)
+    print("Namespace: %s" % namespace)
+    print("Format: %s" % object_format)
+    print("Size: %s" % pretty_size(size))
+    print("Column index:")
+    for col_name, col_range in index.items():
+        print("  %s: [%r, %r]" % (col_name, col_range[0], col_range[1]))
+    print()
+    object_in_cache = object_manager.object_engine.run_sql(select("object_cache_status", "1", "object_id = %s"),
+                                                           (object_id,), return_shape=ResultShape.ONE_ONE)
+    object_downloaded = object_id in object_manager.get_downloaded_objects(limit_to=[object_id])
+    object_external = object_manager.get_external_object_locations([object_id])
+
+    if object_downloaded and not object_in_cache:
+        print("Location: created locally")
+    else:
+        original_location = ("%s (%s)" % (object_external[0][1], object_external[0][2])) if object_external \
+            else "remote engine"
+        if object_in_cache:
+            print("Location: cached locally")
+            print("Original location: " + original_location)
+        else:
+            print("Location: " + original_location)
 
 
 @click.command(name='sql')
