@@ -8,7 +8,7 @@ import click
 
 from splitgraph.commandline.example import example
 from splitgraph.commandline.image_creation import checkout_c, commit_c, tag_c, import_c
-from splitgraph.commandline.image_info import log_c, diff_c, show_c, sql_c, status_c
+from splitgraph.commandline.image_info import log_c, diff_c, show_c, sql_c, status_c, object_c
 from splitgraph.commandline.misc import rm_c, init_c, cleanup_c, config_c, prune_c, dump_c
 from splitgraph.commandline.mount import mount_c
 from splitgraph.commandline.push_pull import pull_c, clone_c, push_c, publish_c, upstream_c
@@ -51,6 +51,7 @@ cli.add_command(import_c)
 # Information
 cli.add_command(log_c)
 cli.add_command(diff_c)
+cli.add_command(object_c)
 cli.add_command(show_c)
 cli.add_command(sql_c)
 cli.add_command(status_c)
