@@ -212,9 +212,12 @@ class ObjectManager(FragmentManager, MetadataManager):
         if to_fetch:
             upstream = table.repository.upstream
             object_locations = self.get_external_object_locations(required_objects)
-            downloaded_objects = self.download_objects(upstream.objects if upstream else None,
-                                                       objects_to_fetch=to_fetch, object_locations=object_locations)
-            difference = set(to_fetch).difference(downloaded_objects)
+            self.download_objects(upstream.objects if upstream else None,
+                                  objects_to_fetch=to_fetch, object_locations=object_locations)
+            # Can't actually use the list of downloaded objects returned by the routine: if another instance of the
+            # object manager downloaded those objects between us compiling a list and performing the download,
+            # the downloaded objects won't be in the returned list.
+            difference = set(to_fetch).difference(self.get_downloaded_objects(limit_to=to_fetch))
             if difference:
                 error = "Not all objects required to materialize %s:%s:%s have been fetched. Missing objects: %r" % \
                         (table.repository.to_schema(), table.image.image_hash, table.table_name, difference)
