@@ -45,7 +45,7 @@ def checkout_c(image_spec, force, uncheckout, layered):
     repository, image = image_spec
 
     if uncheckout:
-        repository.uncheckout()
+        repository.uncheckout(force=force)
         print("Unchecked out %s." % (str(repository),))
     else:
         image = repository.images[image]

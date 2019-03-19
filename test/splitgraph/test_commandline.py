@@ -232,6 +232,12 @@ def test_commandline_tag_checkout(pg_repo_local):
     assert result.exit_code == 0
     assert not pg_repo_local.has_pending_changes()
 
+    # uncheckout with uncommitted changes
+    runner.invoke(sql_c, ["INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mayonnaise')"])
+    result = runner.invoke(checkout_c, [str(pg_repo_local), '-u'])
+    assert result.exit_code != 0
+    assert "test/pg_mount has pending changes!" in str(result.exc_info)
+
     # uncheckout
     result = runner.invoke(checkout_c, [str(pg_repo_local), '-u', '-f'])
     assert result.exit_code == 0
