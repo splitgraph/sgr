@@ -435,8 +435,12 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                            remote_schema=SPLITGRAPH_META_SCHEMA)
 
         try:
+            downloaded_objects = []
             for i, obj in enumerate(objects):
                 logging.info("(%d/%d) Downloading %s...", i + 1, len(objects), obj)
+                if not self.table_exists(REMOTE_TMP_SCHEMA, obj):
+                    logging.error("%s not found on the remote engine!", obj)
+                    continue
                 # Foreign tables don't have PK constraints so we'll have to apply them manually.
                 self.copy_table(REMOTE_TMP_SCHEMA, obj, SPLITGRAPH_META_SCHEMA, obj, with_pk_constraints=False)
                 # Get the PKs from the remote and apply them
@@ -447,8 +451,10 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                                  + SQL(',').join(SQL("{}").format(Identifier(c)) for c, _ in source_pks) + SQL(")"),
                                  return_shape=ResultShape.NONE)
                 self.connection.commit()
+                downloaded_objects.append(obj)
         finally:
             self.delete_schema(REMOTE_TMP_SCHEMA)
+        return downloaded_objects
 
 
 def _split_ri_cols(action, row_data, changed_fields, ri_cols):

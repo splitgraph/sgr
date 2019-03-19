@@ -211,15 +211,15 @@ class ObjectManager(FragmentManager, MetadataManager):
         if to_fetch:
             upstream = table.repository.upstream
             object_locations = self.get_external_object_locations(required_objects)
-            self.download_objects(upstream.objects if upstream else None, objects_to_fetch=to_fetch,
-                                  object_locations=object_locations)
-            difference = set(to_fetch).difference(set(self.get_downloaded_objects(limit_to=to_fetch)))
+            downloaded_objects = self.download_objects(upstream.objects if upstream else None,
+                                                       objects_to_fetch=to_fetch, object_locations=object_locations)
+            difference = set(to_fetch).difference(downloaded_objects)
             if difference:
-                logging.exception(
-                    "Not all objects required to materialize %s:%s:%s have been fetched. Missing objects: %r",
-                    table.repository.to_schema(), table.image.image_hash, table.table_name, difference)
+                error = "Not all objects required to materialize %s:%s:%s have been fetched. Missing objects: %r" % \
+                        (table.repository.to_schema(), table.image.image_hash, table.table_name, difference)
+                logging.error(error)
                 self.object_engine.rollback()
-                raise SplitGraphException()
+                raise SplitGraphException(error)
             self._set_ready_flags(to_fetch, is_ready=True)
         tracer.log('fetch_objects')
 
@@ -483,7 +483,7 @@ class ObjectManager(FragmentManager, MetadataManager):
         existing_objects = self.get_downloaded_objects(limit_to=objects_to_fetch)
         objects_to_fetch = list(set(o for o in objects_to_fetch if o not in existing_objects))
         if not objects_to_fetch:
-            return
+            return []
 
         total_size = sum(o[4] for o in self.get_object_meta(objects_to_fetch))
         logging.info("Fetching %d object(s), total size %s", len(objects_to_fetch), pretty_size(total_size))
@@ -494,10 +494,10 @@ class ObjectManager(FragmentManager, MetadataManager):
 
         remaining_objects_to_fetch = [o for o in objects_to_fetch if o not in external_objects]
         if not remaining_objects_to_fetch or not source:
-            return
+            return external_objects
 
-        self.object_engine.download_objects(remaining_objects_to_fetch, source.object_engine)
-        return
+        remote_objects = self.object_engine.download_objects(remaining_objects_to_fetch, source.object_engine)
+        return external_objects + remote_objects
 
     def upload_objects(self, target, objects_to_push, handler='DB', handler_params=None):
         """
