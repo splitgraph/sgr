@@ -141,15 +141,17 @@ def _create_metadata_schema(engine):
                            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("images")),
                    return_shape=None)
 
-    # A tree of object parents. The parent of an object is not necessarily the object linked to
-    # the parent commit that the object belongs to (e.g. if we imported the object from a different commit tree).
-    # One object can have multiple parents (e.g. 1 SNAP and 1 DIFF).
-    # The size is the on-disk (in-database) size occupied by the object table as reported by the engine
-    # (not the size stored externally)
-
-    # TODO TF work
-    # * Decide whether to have parents (base fragments don't overlap and have no parent;
-    #   other fragments overwrite parts of the base fragment but don't reach outside its boundaries)
+    # Object metadata.
+    # * object_id: ID of the object. Currently is random, might be an actual hash in the future.
+    # * namespace: Original namespace this object was created in. Only the users with write rights to a given namespace
+    #   can delete/alter this object's metadata.
+    # * size: the on-disk (in-database) size occupied by the object table as reported by the engine
+    #   (not the size stored externally).
+    # * format: Format of the object, SNAP for a full-table snapshot, DIFF for patch on top of another object.
+    # * parent_id: For a DIFF, the parent of an object. The parent is required in order to materialize (check out)
+    #   table pointed to by an object.
+    # * index: A JSON object mapping columns spanned by this object to their minimum and maximum values. Used to
+    #   discard and not download at all objects that definitely don't match a given query.
 
     engine.run_sql(SQL("""CREATE TABLE {}.{} (
                     object_id  VARCHAR NOT NULL PRIMARY KEY,
@@ -178,8 +180,6 @@ def _create_metadata_schema(engine):
                    .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status"),
                            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")), return_shape=None)
 
-    # TODO TF work this might not be needed at all
-
     # Temporary SNAP cache to speed up layered querying: maps a DIFF object to a precomputed SNAP
     # resulting from the traversal and materialization of that DIFF chain.
     engine.run_sql(SQL("""CREATE TABLE {}.{} (
@@ -198,6 +198,8 @@ def _create_metadata_schema(engine):
                    .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("snap_cache_misses")))
 
     # Maps a given table at a given point in time to a list of fragments that it's assembled from.
+    # Only the "top" fragments are listed here: to actually materialize a given table, the parent chain of every
+    # object in this list is crawled until the base object is reached.
     engine.run_sql(SQL("""CREATE TABLE {}.{} (
                     namespace  VARCHAR NOT NULL,
                     repository VARCHAR NOT NULL,

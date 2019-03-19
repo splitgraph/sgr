@@ -306,7 +306,8 @@ class FragmentManager:
             for offset in range(0, table_size, chunk_size):
                 object_id = get_random_object_id()
                 self.object_engine.copy_table(repository.to_schema(), table_name, SPLITGRAPH_META_SCHEMA, object_id,
-                                              with_pk_constraints=True, limit=chunk_size, offset=offset)
+                                              with_pk_constraints=True, limit=chunk_size, offset=offset,
+                                              order_by_pk=True)
                 self.register_object(object_id, object_format='SNAP', namespace=repository.namespace,
                                      parent_object=None)
                 object_ids.append(object_id)

@@ -104,6 +104,24 @@ def test_commit_chunking(local_engine_empty):
                                           return_shape=ResultShape.MANY_ONE) == list(range(min_key, max_key + 1))
 
 
+def test_commit_chunking_order(local_engine_empty):
+    # Same but make sure the chunks order by PK for more efficient indexing
+    OUTPUT.init()
+    OUTPUT.run_sql("CREATE TABLE test (key INTEGER PRIMARY KEY, value_1 VARCHAR, value_2 INTEGER)")
+    for i in range(10, -1, -1):
+        OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (i + 1, chr(ord('a') + i), i * 2))
+    head = OUTPUT.commit(chunk_size=5)
+
+    objects = head.get_table('test').objects
+    assert len(objects) == 3
+    for i, obj in enumerate(objects):
+        min_key = i * 5 + 1
+        max_key = min(i * 5 + 5, 11)
+        assert local_engine_empty.run_sql(SQL("SELECT key FROM {}.{} ORDER BY key")
+                                          .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj)),
+                                          return_shape=ResultShape.MANY_ONE) == list(range(min_key, max_key + 1))
+
+
 def test_commit_diff_splitting(local_engine_empty):
     # Similar setup to the chunking test
     OUTPUT.init()
