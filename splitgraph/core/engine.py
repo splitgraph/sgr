@@ -85,7 +85,7 @@ def lookup_repository(name, include_local=False):
             return candidate
         candidate.engine.close()
 
-    raise SplitGraphException("Unknown repository %s!" % name.to_schema())
+    raise SplitGraphException("Unknown repository %s!" % name)
 
 
 def get_current_repositories(engine):

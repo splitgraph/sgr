@@ -22,6 +22,9 @@ SG_S3_PWD=supersecure
 ; Look up repositories on the test remote engine.
 SG_REPO_LOOKUP=remote_engine
 
+; Test the lookup override works
+SG_REPO_LOOKUP_OVERRIDE=overridden/repo:LOCAL
+
 [remote: local]
 SG_ENGINE_HOST=${defaults:SG_ENGINE_HOST}
 SG_ENGINE_PORT=${defaults:SG_ENGINE_PORT}
