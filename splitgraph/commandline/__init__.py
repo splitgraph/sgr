@@ -85,4 +85,9 @@ try:
 
     cli.add_command(csv)
 except ImportError:
-    pass
+    @click.command(name="csv")
+    def csv_dummy():
+        """Import/export Splitgraph images in CSV format."""
+        print("Install the ""ingestion"" setuptools extra to enable this feature!")
+        exit(1)
+    cli.add_command(csv_dummy)
