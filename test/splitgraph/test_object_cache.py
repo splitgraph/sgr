@@ -172,6 +172,29 @@ def test_object_cache_eviction(local_engine_empty, pg_repo_remote):
     assert "Not enough space in the cache" in str(ex)
 
 
+def test_object_cache_locally_created_dont_get_evicted(local_engine_empty, pg_repo_remote):
+    # Test that the objects which were created locally are exempt from cache eviction/stats.
+    pg_repo_local = _setup_object_cache_test(pg_repo_remote)
+
+    object_manager = pg_repo_local.objects
+    fruits_v2 = pg_repo_local.images[pg_repo_local.images['latest'].parent_id].get_table('fruits')
+    head = pg_repo_local.images['latest']
+    head.checkout()
+    pg_repo_local.run_sql("INSERT INTO fruits VALUES (5, 'banana')")
+    new_head = pg_repo_local.commit()
+    fruits_v4 = new_head.get_table('fruits')
+    assert len(fruits_v4.objects) == 1
+
+    head.checkout()
+    new_head.checkout()
+
+    # Evict all objects -- check to see the one we created still exists.
+    object_manager.run_eviction(object_manager.get_full_object_tree(), keep_objects=[], required_space=None)
+    downloaded = object_manager.get_downloaded_objects()
+    assert len(downloaded) == 1
+    assert fruits_v4.objects[0] in downloaded
+
+
 def test_object_cache_nested(local_engine_empty, pg_repo_remote):
     # Test that we can have multiple groups of objects loaded at the same time.
     pg_repo_local = _setup_object_cache_test(pg_repo_remote)

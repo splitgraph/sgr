@@ -134,6 +134,10 @@ class ObjectManager(FragmentManager, MetadataManager):
 
         # Increase the refcount on all of the objects we're giving back to the caller so that others don't GC them.
         logging.info("Claiming %d object(s)", len(required_objects))
+
+        # here: only claim external objects (if an object exists locally and doesn't have an entry in the cache,
+        # don't add one)
+
         self._claim_objects(required_objects)
         tracer.log('claim_objects')
         # This also means that anybody else who tries to claim this set of objects will lock up until we're done with
@@ -229,17 +233,28 @@ class ObjectManager(FragmentManager, MetadataManager):
         return to_fetch
 
     def _claim_objects(self, objects):
-        """Adds objects to the cache_stats table, if they're not there already, marking them with ready=False
-        (which must be set to True by the end of the operation).
-        If they already exist, increases their refcounts and bumps their last used timestamp to now."""
+        """Increases refcounts and bumps the last used timestamp to now for cached objects.
+        For objects that aren't in the cache, checks that they don't already exist locally and then
+        adds them to the cache status table, marking them with ready=False
+        (which must be set to True by the end of the operation)."""
+        if not objects:
+            return
         now = dt.utcnow()
-        self.object_engine.run_sql_batch(insert("object_cache_status", ("object_id", "ready", "refcount", "last_used"))
-                                         + SQL("ON CONFLICT (object_id) DO UPDATE "
-                                               "SET refcount = {0}.{1}.refcount + 1, "
-                                               "last_used = %s "
-                                               "WHERE {0}.{1}.object_id = excluded.object_id")
-                                         .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status")),
-                                         [(object_id, False, 1, now, now) for object_id in objects])
+        # Objects that were created locally aren't supposed to be claimed here or have an entry in the cache.
+        # So, we first try to update cache entries to bump their refcount, see which ones we updated,
+        # subtract objects that we have locally and insert the remaining entries as new cache entries.
+
+        claimed = self.object_engine.run_sql(SQL("UPDATE {}.object_cache_status SET refcount = refcount + 1, "
+                                                 "last_used = %s WHERE object_id IN (")
+                                             .format(Identifier(SPLITGRAPH_META_SCHEMA))
+                                             + SQL(",".join(itertools.repeat("%s", len(objects)))) +
+                                             SQL(") RETURNING object_id"), [now] + objects,
+                                             return_shape=ResultShape.MANY_ONE)
+        claimed = claimed or []
+        remaining = set(objects).difference(set(claimed))
+        remaining = remaining.difference(set(self.get_downloaded_objects(limit_to=list(remaining))))
+        self.object_engine.run_sql_batch(insert("object_cache_status", ("object_id", "ready", "refcount", "last_used")),
+                                         [(object_id, False, 1, now) for object_id in remaining])
 
     def _set_ready_flags(self, objects, is_ready=True):
         if objects:
