@@ -525,9 +525,7 @@ class Repository:
                     required_objects.add(object_id)
 
         # Expand the required objects into a full set
-        all_required_objects = set()
-        for object_id in required_objects:
-            all_required_objects.update(self.objects.get_all_required_objects(object_id))
+        all_required_objects = set(self.objects.get_all_required_objects(required_objects))
 
         object_qual = "object_id IN (" + ",".join(itertools.repeat('%s', len(all_required_objects))) + ")"
 

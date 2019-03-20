@@ -198,8 +198,8 @@ def test_lq_qual_filtering(local_engine_empty, pg_repo_remote, test_case):
     # since it doesn't span the original chunk (1, 2); INS (4, kumquat) comes last.
 
     query, expected, object_mask = test_case
-    required_objects = [o for path in pg_repo_local.objects._get_image_object_path(
-        pg_repo_local.head.get_table('fruits')) for o in path]
+    required_objects = list(reversed(pg_repo_local.objects.get_all_required_objects(
+        pg_repo_local.head.get_table('fruits').objects)))
     assert len(required_objects) == 5
     expected_objects = [o for o, m in zip(required_objects, object_mask) if m]
 

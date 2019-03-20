@@ -230,7 +230,7 @@ class FragmentManager:
 
             if split_changeset:
                 # Follow the chains down to the base fragments that we'll use to find the chunk boundaries
-                base_fragments = [self.get_all_required_objects(o)[-1] for o in top_fragments]
+                base_fragments = [self.get_all_required_objects([o])[-1] for o in top_fragments]
 
                 table_pks = self.object_engine.get_change_key(old_table.repository.to_schema(),
                                                               old_table.table_name)
@@ -321,20 +321,20 @@ class FragmentManager:
         table_schema = self.object_engine.get_full_table_schema(repository.to_schema(), table_name)
         self.register_table(repository, table_name, image_hash, table_schema, object_ids)
 
-    def get_all_required_objects(self, object_id):
+    def get_all_required_objects(self, object_ids):
         """
-        Follow the parent chain of this object until a base object is reached.
-        :param object_id: Object ID to start the traversal on.
-        :return: List of [object ID, ID of its parent, ....]
+        Follow the parent chains of multiple objects until the base objects are reached.
+        :param object_ids: Object IDs to start the traversal on.
+        :return: Expanded chain. Parents of objects are guaranteed to come after those objects.
         """
         parents = self.object_engine.run_sql(SQL(
             """WITH RECURSIVE parents AS (
-                SELECT object_id, parent_id FROM {0}.objects WHERE object_id = %s
-                UNION ALL
+                SELECT object_id, parent_id FROM {0}.objects WHERE object_id IN ("""
+            + ",".join(itertools.repeat("%s", len(object_ids))) + """) UNION ALL
                     SELECT o.object_id, o.parent_id
                         FROM parents p JOIN {0}.objects o ON p.parent_id = o.object_id)
-            SELECT object_id FROM parents""").format(Identifier(SPLITGRAPH_META_SCHEMA)), (object_id,),
-                                             return_shape=ResultShape.MANY_ONE)
+            SELECT object_id FROM parents""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                                             object_ids, return_shape=ResultShape.MANY_ONE)
         return list(parents)
 
     def filter_fragments(self, object_ids, quals, column_types):
