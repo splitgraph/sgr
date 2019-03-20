@@ -96,11 +96,11 @@ def test_pandas_update_patch(ingestion_test_repo):
         (3, dt(2018, 12, 31, 23, 59, 49), 'mayonnaise'),
         (4, dt(2018, 12, 30, 0, 0), 'chandelier')]
 
-    # Even though we overwrite the timestamp, it's the same so the change gets removed by the audit trigger.
-    # The change to row 2 is discarded since the whole row is the same.
-    assert ingestion_test_repo.diff('test_table', old, new) == \
-           [((3,), 2, {'timestamp': '2018-12-31T23:59:49'}),
-            ((4,), 2, {'name': 'chandelier', 'timestamp': '2018-12-30T00:00:00'})]
+    assert sorted(ingestion_test_repo.diff('test_table', old, new)) == \
+           [((3, dt(2018, 1, 3, 0, 33, 33), 'mayonnaise'), 1, None),
+            ((3, dt(2018, 12, 31, 23, 59, 49), 'mayonnaise'), 0, {}),
+            ((4, dt(2018, 1, 4, 0, 44, 44), 'mustard'), 1, None),
+            ((4, dt(2018, 12, 30, 0, 0), 'chandelier'), 0, {})]
 
 
 def test_pandas_update_different_schema(ingestion_test_repo):
@@ -207,7 +207,9 @@ def test_pandas_read_roundtripping(ingestion_test_repo):
     df_to_table(df, ingestion_test_repo, 'test_table', if_exists='patch')
     new_2 = ingestion_test_repo.commit()
 
-    assert ingestion_test_repo.diff('test_table', new, new_2) == [((4,), 2, {'timestamp': '2018-01-01T01:01:01'})]
+    assert ingestion_test_repo.diff('test_table', new, new_2) == \
+           [((4, dt(2018, 12, 30, 0, 0), 'chandelier'), 1, None),
+            ((4, dt(2018, 1, 1, 1, 1, 1), 'chandelier'), 0, {})]
 
 
 def test_pandas_kv(ingestion_test_repo):

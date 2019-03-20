@@ -74,7 +74,7 @@ def test_export_lq(ingestion_test_repo):
                                os.path.join(INGESTION_RESOURCES, 'patch_df.csv'),
                                '-k', 'fruit_id', '-d', 'timestamp'])
     new = ingestion_test_repo.commit()
-    ingestion_test_repo.rm(uncheckout=True, unregister=False)
+    ingestion_test_repo.delete(uncheckout=True, unregister=False)
 
     # Check old value
     result = runner.invoke(csv_export, [str(ingestion_test_repo) + ':' + old.image_hash[:10],

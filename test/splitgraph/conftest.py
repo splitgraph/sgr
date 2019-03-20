@@ -225,9 +225,9 @@ def load_csv(fname):
 def ingestion_test_repo():
     repo = Repository.from_schema("test/ingestion")
     try:
-        repo.rm()
+        repo.delete()
         repo.objects.cleanup()
         repo.init()
         yield repo
     finally:
-        repo.rm()
+        repo.delete()
