@@ -2,7 +2,6 @@ import os
 
 import pytest
 from minio import Minio
-
 from splitgraph.core._common import ensure_metadata_schema
 from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.object_manager import ObjectManager
@@ -212,3 +211,23 @@ def clean_minio():
     yield
     # Comment this out if tests fail and you want to see what the hell went on in the bucket.
     _cleanup_minio()
+
+
+INGESTION_RESOURCES = os.path.join(os.path.dirname(__file__), '../resources/ingestion')
+
+
+def load_csv(fname):
+    with open(os.path.join(INGESTION_RESOURCES, fname), 'r') as f:
+        return f.read()
+
+
+@pytest.fixture
+def ingestion_test_repo():
+    repo = Repository.from_schema("test/ingestion")
+    try:
+        repo.rm()
+        repo.objects.cleanup()
+        repo.init()
+        yield repo
+    finally:
+        repo.rm()

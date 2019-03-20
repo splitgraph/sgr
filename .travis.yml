@@ -4,9 +4,9 @@ sudo: required
 python:
   - "3.6"
 install:
-  - poetry install
+  - poetry install -E ingestion
 script:
-  - poetry run pytest -sv
+  - poetry run pytest -v
 
 services:
   - docker
