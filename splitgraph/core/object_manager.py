@@ -67,21 +67,6 @@ class ObjectManager(FragmentManager, MetadataManager):
             SQL(query).format(Identifier(SPLITGRAPH_META_SCHEMA)), query_args, return_shape=ResultShape.MANY_ONE))
         return objects.difference(META_TABLES)
 
-    def _get_image_object_path(self, table):
-        """
-        Calculates a set of paths used to reconstruct each region in a table.
-
-        :param table: Table object
-        :return: A list of lists of fragment IDs. Each list represents a fragment chain reconstructing a certain
-            area of the table when applied in that order.
-        """
-
-        paths = []
-        for top_object_id in table.objects:
-            # Use a recursive subquery to fetch a path through the object tree.
-            paths.append(list(reversed(self.get_all_required_objects(top_object_id))))
-        return paths
-
     def get_cache_occupancy(self):
         """
         :return: Space occupied by objects cached from external locations, in bytes.
@@ -123,9 +108,7 @@ class ObjectManager(FragmentManager, MetadataManager):
         # Resolve the table into a list of objects we want to fetch.
         # In the future, we can also take other things into account, such as how expensive it is to load a given object
         # (its size), location...
-        paths = self._get_image_object_path(table)
-
-        required_objects = [o for path in paths for o in path]
+        required_objects = list(reversed(self.get_all_required_objects(table.objects)))
         tracer.log('resolve_objects')
 
         # Filter to see if we can discard any objects with the quals
