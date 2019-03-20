@@ -14,6 +14,9 @@ click = "^7"
 psycopg2-binary = "^2"
 parsimonious = "^0.8"
 minio = "^4"
+# Extra requirements for ingestion (CSV)
+pandas = { version = "^0.24.1", optional = true }
+sqlalchemy = { version = "^1.2", optional = true }
 
 [tool.poetry.dev-dependencies]
 pytest = "^4.3"
@@ -24,6 +27,9 @@ coveralls = "^1.7"
 pyinstaller = "^3.4"
 sphinx = "^1.8"
 sphinx_rtd_theme = "^0.4.2"
+
+[tool.poetry.extras]
+ingestion = ["pandas", "sqlalchemy"]
 
 [tool.poetry.scripts]
 sgr = "splitgraph.commandline:cli"

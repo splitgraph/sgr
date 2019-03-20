@@ -78,3 +78,11 @@ cli.add_command(rebuild_c)
 
 # Examples
 cli.add_command(example)
+
+# Try importing the CSV ingestion extras
+try:
+    from splitgraph.ingestion import csv
+
+    cli.add_command(csv)
+except ImportError:
+    pass
