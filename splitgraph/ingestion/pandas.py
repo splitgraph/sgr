@@ -1,5 +1,4 @@
 from io import StringIO
-from random import getrandbits
 
 import pandas as pd
 from pandas.io.sql import get_schema
@@ -57,17 +56,9 @@ def sql_to_df(sql, image=None, repository=None, use_lq=False, **kwargs):
         image.checkout(force=False)  # Make sure to fail if we have pending changes.
         return _sql_to_df(engine=image.engine, sql=sql, schema=image.repository.to_schema(), **kwargs)
 
-    # If we're using LQ, then create a quick tmp schema (won't download objects unless needed) and run the query.
-    tmp_schema = str.format('o{:032x}', getrandbits(128))
-    try:
-        image.engine.create_schema(tmp_schema)
-        image._lq_checkout(target_schema=tmp_schema)
-        image.engine.commit()  # Make sure the new tables are seen by the SQLAlchemy engine.
+    # If we're using LQ, then run the query against a tmp schema (won't download objects unless needed).
+    with image.query_schema() as tmp_schema:
         return _sql_to_df(engine=image.engine, sql=sql, schema=tmp_schema, **kwargs)
-    finally:
-        # TODO push this down as a context manager in the Image class
-        image.engine.run_sql(SQL("DROP SCHEMA IF EXISTS {} CASCADE; DROP SERVER IF EXISTS {} CASCADE;").format(
-            Identifier(tmp_schema), Identifier(tmp_schema + '_lq_checkout_server')))
 
 
 def _df_to_empty_table(engine, df, target_schema, target_table, use_ordinal_hack=False):
