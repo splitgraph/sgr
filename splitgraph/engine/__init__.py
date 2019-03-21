@@ -395,6 +395,7 @@ class ObjectEngine:
 
         :param objects: List of object IDs to download
         :param remote_engine: A remote ObjectEngine to download the objects from.
+
         :return List of object IDs that were downloaded.
         """
         raise NotImplementedError()

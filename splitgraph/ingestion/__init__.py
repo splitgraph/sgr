@@ -25,13 +25,13 @@ def csv_export(image_spec, query, file, layered):
 
     `sgr csv export noaa/climate "SELECT * FROM rainfall"`
 
-    Output everything in the currently checked-out "rainfall" table as CSV.
+    Output everything in the currently checked-out `"rainfall"` table as CSV.
 
-    `sgr csv export noaa/climate:dec_2018 "SELECT * FROM rainfall WHERE state = 'AZ'` -f dec_2018_az.csv
+    `sgr csv export noaa/climate:dec_2018 "SELECT * FROM rainfall WHERE state = 'AZ' -f dec_2018_az.csv`
 
-    Check out the `dec_2018` tag of `noaa/climate` and output values from "rainfall" for Arizona to `dec_2018_az.csv`
+    Check out the `dec_2018` tag of `noaa/climate` and output values from `"rainfall"` for Arizona to `dec_2018_az.csv`
 
-    `sgr csv export --layered noaa/climate:abcdef1234567890 "SELECT * FROM rainfall JOIN other_table ON..."
+    `sgr csv export --layered noaa/climate:abcdef1234567890 "SELECT * FROM rainfall JOIN other_table ON..."`
 
     Uses layered querying instead to execute a join on tables in a certain image (satisfying the query without
     having to check the image out).
