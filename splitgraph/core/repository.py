@@ -622,19 +622,20 @@ class Repository:
         self.images.add(head.image_hash if head else None, target_hash,
                         comment="Importing %s from %s" % (tables, source_repository))
 
-        if any(table_queries) and not foreign_tables:
-            # If we want to run some queries against the source repository to create the new tables,
-            # we have to materialize it fully.
-
-            # TODO TF work: try to LQ here since then we might download fewer tables
-            image.checkout()
-
         # Materialize the actual tables in the target repository and register them.
         for source_table, target_table, is_query in zip(source_tables, tables, table_queries):
-            if foreign_tables or is_query:
-                # For foreign tables/SELECT queries, we define a new object/table instead.
-                object_id = self._import_new_table(source_repository, source_table, target_hash, target_table,
-                                                   is_query)
+            # For foreign tables/SELECT queries, we define a new object/table instead.
+            if is_query and not foreign_tables:
+                # If we're importing a query from another Splitgraph image, we can use LQ to satisfy it.
+                # This could get executed for the whole import batch as opposed to for every import query
+                # but the overhead of setting up an LQ schema is fairly small.
+                with image.query_schema() as tmp_schema:
+                    object_id = self._import_new_table(tmp_schema, source_table, target_hash, target_table, is_query)
+                    if do_checkout:
+                        self.engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, self.to_schema(), target_table)
+            elif foreign_tables:
+                object_id = self._import_new_table(source_repository.to_schema(), source_table,
+                                                   target_hash, target_table, is_query)
                 if do_checkout:
                     self.engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, self.to_schema(), target_table)
             else:
@@ -654,17 +655,17 @@ class Repository:
         set_head(self, target_hash)
         return target_hash
 
-    def _import_new_table(self, source_repository, source_table, target_hash, target_table, is_query):
+    def _import_new_table(self, source_schema, source_table, target_hash, target_table, is_query):
         object_id = get_random_object_id()
         if is_query:
             # is_query precedes foreign_tables: if we're importing using a query, we don't care if it's a
             # foreign table or not since we're storing it as a full snapshot.
-            self.engine.run_sql_in(source_repository.to_schema(),
+            self.engine.run_sql_in(source_schema,
                                    SQL("CREATE TABLE {}.{} AS ").format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                                         Identifier(object_id))
                                    + SQL(source_table))
         else:
-            self.engine.copy_table(source_repository.to_schema(), source_table, SPLITGRAPH_META_SCHEMA,
+            self.engine.copy_table(source_schema, source_table, SPLITGRAPH_META_SCHEMA,
                                    object_id)
         # TODO TF work this is where a lot of space wasting will come from; we should probably
         # also do actual object hashing to avoid duplication for things like SELECT *
