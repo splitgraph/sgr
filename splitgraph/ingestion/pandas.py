@@ -1,3 +1,5 @@
+"""Routines that ingest/export CSV files to/from Splitgraph images using Pandas"""
+
 from io import StringIO
 
 import pandas as pd
