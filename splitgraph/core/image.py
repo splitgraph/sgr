@@ -2,6 +2,8 @@
 
 import logging
 from collections import namedtuple
+from contextlib import contextmanager
+from random import getrandbits
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
@@ -133,6 +135,24 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
             logging.info("Mounting %s:%s/%s into %s", self.repository.to_schema(), self.image_hash, table_name,
                          target_schema)
             self.get_table(table_name).materialize(table_name, target_schema, lq_server=server_id)
+
+    @contextmanager
+    def query_schema(self):
+        """
+        Creates a temporary schema with tables in this image mounted as foreign tables that can be accessed via
+        read-only layered querying. On exit from the context manager, the schema is discarded.
+
+        :return: The name of the schema the image is located in.
+        """
+        tmp_schema = str.format('o{:032x}', getrandbits(128))
+        try:
+            self.engine.create_schema(tmp_schema)
+            self._lq_checkout(target_schema=tmp_schema)
+            self.engine.commit()  # Make sure the new tables are seen by other connecitons
+            yield tmp_schema
+        finally:
+            self.engine.run_sql(SQL("DROP SCHEMA IF EXISTS {} CASCADE; DROP SERVER IF EXISTS {} CASCADE;").format(
+                Identifier(tmp_schema), Identifier(tmp_schema + '_lq_checkout_server')))
 
     def tag(self, tag, force=False):
         """
