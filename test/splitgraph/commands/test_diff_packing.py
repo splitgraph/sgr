@@ -7,7 +7,7 @@ CASES = [
     [  # Insert + update changed into a single insert
         ("""INSERT INTO fruits VALUES (3, 'mayonnaise');
         UPDATE fruits SET name = 'mustard' WHERE fruit_id = 3""",
-         [((3, 'mustard'), 0, {})]),
+         [(True, (3, 'mustard'))]),
         # Insert + update + delete did nothing (sequences not supported)
         ("""INSERT INTO fruits VALUES (4, 'kumquat');
         UPDATE fruits SET name = 'mustard' WHERE fruit_id = 4;
@@ -28,7 +28,7 @@ CASES = [
         # Insert + update changed into a single insert (same pk, different value)
         ("""INSERT INTO fruits VALUES (3, 'mayonnaise');
             UPDATE fruits SET name = 'mustard' WHERE fruit_id = 3""",
-         [((3, 'mustard'), 0, {})]),
+         [(True, (3, 'mustard'))]),
         # Insert + update + delete did nothing
         ("""INSERT INTO fruits VALUES (4, 'kumquat');
             UPDATE fruits SET name = 'mustard' WHERE fruit_id = 4;
@@ -46,7 +46,7 @@ CASES = [
         # Update + delete gets turned into a delete
         ("""UPDATE fruits SET name = 'pineapple' WHERE fruit_id = 1;
             DELETE FROM fruits WHERE fruit_id = 1""",
-         [((1, 'apple'), 1, None)]),
+         [(False, (1, 'apple'))]),
     ],
     [
         # Test a table with 2 PKs and 2 non-PK columns
@@ -57,16 +57,11 @@ CASES = [
             col2 VARCHAR,        
             PRIMARY KEY (pk1, pk2));
             INSERT INTO fruits VALUES (1, 1, 'val1', 'val2')""",
-         # We don't really care about this diff but worth noting it's produced by comparing two tables
-         # side-by-side since there's been a schema change. Hence it isn't aware that (1,1) is actually
-         # the PK for the new table and instead just dumps the whole row as a diff.
-         [((1, 'apple'), 1, None), ((2, 'orange'), 1, None), ((1, 1, 'val1', 'val2'), 0, {})]),
+         [(False, (1, 'apple')), (False, (2, 'orange')), (True, (1, 1, 'val1', 'val2'))]),
         # Test an update touching part of the PK and part of the contents
         ("""UPDATE fruits SET pk2 = 2, col1 = 'val3' WHERE pk1 = 1""",
-         # Since we delete one PK and insert another one, we need to reinsert the
-         # full row (as opposed to just the values that were updated).
-         [((1, 1, 'val1', 'val2'), 1, None),
-          ((1, 2, 'val3', 'val2'), 0, {})]),
+         [(False, (1, 1, 'val1', 'val2')),
+          (True, (1, 2, 'val3', 'val2'))]),
     ],
     [
         # Same as previous, but without PKs
@@ -77,11 +72,10 @@ CASES = [
         col2 VARCHAR);
         INSERT INTO fruits VALUES (1, 1, 'val1', 'val2')""",
          # Same here for the diff produced by this DDL
-         [((1, 'apple'), 1, None), ((2, 'orange'), 1, None), ((1, 1, 'val1', 'val2'), 0, {})]),
+         [(False, (1, 'apple')), (False, (2, 'orange')), (True, (1, 1, 'val1', 'val2'))]),
         ("""UPDATE fruits SET pk2 = 2, col1 = 'val3' WHERE pk1 = 1""",
-         # Full row is the PK, so we just enumerate the whole row for deletion/insertion.
-         [((1, 1, 'val1', 'val2'), 1, None),
-          ((1, 2, 'val3', 'val2'), 0, {})]),
+         [(False, (1, 1, 'val1', 'val2')),
+          (True, (1, 2, 'val3', 'val2'))]),
     ]
 ]
 

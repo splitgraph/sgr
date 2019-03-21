@@ -75,8 +75,8 @@ def test_commandline_basics(pg_repo_local, mg_repo_local):
         assert "vegetables: table removed"
         assert "mushrooms: table added"
         result = runner.invoke(diff_c, [str(a) for a in args] + ['-v'])
-        assert "(3, 'mayonnaise'): +" in result.output
-        assert "(1, 'apple'): -" in result.output
+        assert "+ (3, 'mayonnaise')" in result.output
+        assert "- (1, 'apple')" in result.output
 
     # sgr diff, HEAD -> current staging (0-param)
     check_diff([pg_repo_local])
@@ -109,8 +109,8 @@ def test_commandline_basics(pg_repo_local, mg_repo_local):
     result = runner.invoke(diff_c, [str(pg_repo_local), new_head.image_hash[:20], old_head.image_hash[:20], '-v'])
     # Since the images were flipped, here the result is that, since the row that was added
     # didn't exist in the first image, diff() thinks it was _removed_ and vice versa for the other row.
-    assert "(3, 'mayonnaise'): -" in result.output
-    assert "(1, 'apple'): +" in result.output
+    assert "- (3, 'mayonnaise')" in result.output
+    assert "+ (1, 'apple')" in result.output
 
     # sgr status with the new commit
     result = runner.invoke(status_c, [str(pg_repo_local)])

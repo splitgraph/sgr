@@ -97,10 +97,10 @@ def test_pandas_update_patch(ingestion_test_repo):
         (4, dt(2018, 12, 30, 0, 0), 'chandelier')]
 
     assert sorted(ingestion_test_repo.diff('test_table', old, new)) == \
-           [((3, dt(2018, 1, 3, 0, 33, 33), 'mayonnaise'), 1, None),
-            ((3, dt(2018, 12, 31, 23, 59, 49), 'mayonnaise'), 0, {}),
-            ((4, dt(2018, 1, 4, 0, 44, 44), 'mustard'), 1, None),
-            ((4, dt(2018, 12, 30, 0, 0), 'chandelier'), 0, {})]
+           [(False, (3, dt(2018, 1, 3, 0, 33, 33), 'mayonnaise')),
+            (False, (4, dt(2018, 1, 4, 0, 44, 44), 'mustard')),
+            (True, (3, dt(2018, 12, 31, 23, 59, 49), 'mayonnaise')),
+            (True, (4, dt(2018, 12, 30, 0, 0), 'chandelier'))]
 
 
 def test_pandas_update_different_schema(ingestion_test_repo):
@@ -208,8 +208,8 @@ def test_pandas_read_roundtripping(ingestion_test_repo):
     new_2 = ingestion_test_repo.commit()
 
     assert ingestion_test_repo.diff('test_table', new, new_2) == \
-           [((4, dt(2018, 12, 30, 0, 0), 'chandelier'), 1, None),
-            ((4, dt(2018, 1, 1, 1, 1, 1), 'chandelier'), 0, {})]
+           [(False, (4, dt(2018, 12, 30, 0, 0), 'chandelier')),
+            (True, (4, dt(2018, 1, 1, 1, 1, 1), 'chandelier'))]
 
 
 def test_pandas_kv(ingestion_test_repo):
