@@ -751,9 +751,8 @@ class Repository:
 
     def diff(self, table_name, image_1, image_2, aggregate=False):
         """
-        Compares the state of a table in different images. If the two images are on the same path in the commit tree,
-        it doesn't need to materialize any of the tables and simply aggregates their DIFF objects to produce a complete
-        changelog. Otherwise, it materializes both tables into a temporary space and compares them row-to-row.
+        Compares the state of a table in different images by materializing both tables into a temporary space
+        and comparing them row-to-row.
 
         :param table_name: Name of the table.
         :param image_1: First image hash / object. If None, uses the state of the current staging area.
@@ -761,16 +760,9 @@ class Repository:
         :param aggregate: If True, returns a tuple of integers denoting added, removed and updated rows between
             the two images.
         :return: If the table doesn't exist in one of the images, returns True if it was added and False if it was
-            removed.
-            If `aggregate` is True, returns the aggregation of changes as specified before.
-            Otherwise, returns a list of changes where each change is of the format
-            `(primary key, action_type, action_data)`:
-
-                * `action_type == 0` is Insert and the `action_data` contains a dictionary of non-PK columns and values
-                    inserted.
-                * `action_type == 1`: Delete, `action_data` is None.
-                * `action_type == 2`: Update, `action_data` is a dictionary of non-PK columns and their new values for
-                    that particular row.
+            removed. If `aggregate` is True, returns the aggregation of changes as specified before.
+            Otherwise, returns a list of changes where each change is a tuple of
+            `(True for added, False for removed, row contents)`.
         """
 
         if isinstance(image_1, str):

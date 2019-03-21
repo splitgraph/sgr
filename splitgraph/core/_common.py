@@ -289,8 +289,9 @@ def slow_diff(repository, table_name, image_1, image_2, aggregate):
 
     if aggregate:
         return sum(1 for r in right if r not in left), sum(1 for r in left if r not in right), 0
-    # Mimic the diff format returned by the DIFF-object-accumulating function
-    return [(r, 1, None) for r in left if r not in right] + [(r, 0, {}) for r in right if r not in left]
+
+    # Return format: list of [(False for deleted/True for inserted, full row)]
+    return [(False, r) for r in left if r not in right] + [(True, r) for r in right if r not in left]
 
 
 def prepare_publish_data(image, repository, include_table_previews):

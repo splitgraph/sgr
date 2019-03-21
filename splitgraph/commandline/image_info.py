@@ -85,10 +85,10 @@ def _emit_table_diff(table_name, diff_result, verbose):
     to_print = "%s: " % table_name
     if isinstance(diff_result, (list, tuple)):
         if verbose:
-            change_count = dict(Counter(d[1] for d in diff_result).most_common())
-            added = change_count.get(0, 0)
-            removed = change_count.get(1, 0)
-            updated = change_count.get(2, 0)
+            change_count = dict(Counter(d[0] for d in diff_result).most_common())
+            added = change_count.get(True, 0)
+            removed = change_count.get(False, 0)
+            updated = 0
         else:
             added, removed, updated = diff_result
 
@@ -104,8 +104,8 @@ def _emit_table_diff(table_name, diff_result, verbose):
         print(to_print + ', '.join(count) + '.')
 
         if verbose:
-            for pk, kind, change in diff_result:
-                print("%r: " % (pk,) + ['+', '-', 'U'][kind] + " %r" % change)
+            for added, row in diff_result:
+                print(("+" if added else "-") + " %r" % (row,))
     else:
         # Whole table was either added or removed
         print(to_print + ("table added" if diff_result else "table removed"))
