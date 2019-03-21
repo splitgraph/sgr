@@ -141,6 +141,35 @@ def test_commandline_basics(pg_repo_local, mg_repo_local):
         assert o in result.output
 
 
+def test_commandline_commit_chunk(pg_repo_local):
+    runner = CliRunner()
+    result = runner.invoke(commit_c, [str(pg_repo_local), '--snap', '--chunk-size=1'])
+    assert result.exit_code == 0
+
+    original_objects = pg_repo_local.head.get_table('fruits').objects
+    assert len(original_objects) == 2
+
+    runner.invoke(sql_c, ["UPDATE \"test/pg_mount\".fruits SET name = 'banana' WHERE fruit_id = 1;"
+                          "INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mayonnaise')"])
+
+    # Commit with no chunking
+    result = runner.invoke(commit_c, [str(pg_repo_local)])
+    assert result.exit_code == 0
+    new_objects = pg_repo_local.head.get_table('fruits').objects
+
+    # First object the same, second object is new
+    assert len(new_objects) == 2
+    assert new_objects[0] == original_objects[0]
+    assert new_objects[1] != original_objects[1]
+
+    runner.invoke(sql_c, ["UPDATE \"test/pg_mount\".fruits SET name = 'tomato' WHERE fruit_id = 1;"
+                          "INSERT INTO \"test/pg_mount\".fruits VALUES (4, 'kunquat')"])
+    result = runner.invoke(commit_c, [str(pg_repo_local), '--split-changesets'])
+    assert result.exit_code == 0
+    new_new_objects = pg_repo_local.head.get_table('fruits').objects
+    assert len(new_new_objects) == 3
+
+
 def test_object_info(local_engine_empty):
     runner = CliRunner()
 

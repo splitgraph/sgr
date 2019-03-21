@@ -57,16 +57,29 @@ def checkout_c(image_spec, force, uncheckout, layered):
 @click.argument('repository', type=Repository.from_schema)
 @click.option('-s', '--snap', default=False, is_flag=True,
               help='Store the table as a full table snapshot. This consumes more space, but makes checkouts faster.')
+@click.option('-c', '--chunk-size', default=None, type=int,
+              help='Split new tables into chunks of this many rows.')
+@click.option('-t', '--split-changesets', default=False, is_flag=True,
+              help='Split changesets for existing tables across original chunk boundaries.')
 @click.option('-m', '--message', help='Optional commit message')
-def commit_c(repository, snap, message):
+def commit_c(repository, snap, chunk_size, split_changesets, message):
     """
     Commit changes to a checked-out Splitgraph repository.
 
     This packages up all changes into a new image. Where a table hasn't been created or had its schema changed,
     this will delta compress the changes. For all other tables (or if ``-s`` has been passed), this will
     store them as full table snapshots.
+
+    When a table is stored as a full snapshot, `--chunk-size` sets the maximum size, in rows, of the fragments
+    that the table will be split into (default is no splitting).
+
+    If `--split-changesets` is passed, delta-compressed changes will also be split up according to the original
+    table chunk boundaries. For example, if there's a change to the first and the 20000th row of a table that was
+    originally committed with `--chunk-size=10000`, this will create 2 fragments: one based on the first chunk
+    and one on the second chunk of the table.
     """
-    new_hash = repository.commit(comment=message, snap_only=snap).image_hash
+    new_hash = repository.commit(comment=message, snap_only=snap,
+                                 chunk_size=chunk_size, split_changeset=split_changesets).image_hash
     print("Committed %s as %s." % (str(repository), new_hash[:12]))
 
 
