@@ -1,3 +1,5 @@
+"""Command line tools for ingesting/exporting Splitgraph images into other formats."""
+
 import click
 import pandas as pd
 from splitgraph import Repository

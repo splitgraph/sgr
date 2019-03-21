@@ -112,7 +112,7 @@ class ObjectManager(FragmentManager, MetadataManager):
         tracer.log('resolve_objects')
 
         # Filter to see if we can discard any objects with the quals
-        objects_were_filtered, required_objects = self._filter_objects(required_objects, table, quals)
+        required_objects = self._filter_objects(required_objects, table, quals)
         tracer.log('filter_objects')
 
         # Increase the refcount on all of the objects we're giving back to the caller so that others don't GC them.
@@ -176,18 +176,11 @@ class ObjectManager(FragmentManager, MetadataManager):
         if quals:
             column_types = {c[1]: c[2] for c in table.table_schema}
             filtered_objects = self.filter_fragments(objects, quals, column_types)
-            if set(filtered_objects) != set(objects):
-                logging.info("Qual filter: discarded %d/%d object(s)",
-                             len(objects) - len(filtered_objects), len(objects))
-                # Make sure to keep the order
-                objects = [r for r in objects if r in filtered_objects]
-                objects_were_filtered = True
-            else:
-                objects_were_filtered = False
-                logging.info("Qual filter: discarded 0/%d objects", len(objects))
-        else:
-            objects_were_filtered = False
-        return objects_were_filtered, objects
+            logging.info("Qual filter: discarded %d/%d object(s)",
+                         len(objects) - len(filtered_objects), len(objects))
+            # Make sure to keep the order
+            objects = [r for r in objects if r in filtered_objects]
+        return objects
 
     def _prepare_fetch_list(self, required_objects):
         """
