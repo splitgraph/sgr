@@ -166,8 +166,12 @@ def show_c(image_spec, verbose):
 @click.argument('object_id', type=str)
 def object_c(object_id):
     """
-    Show information about a Splitgraph object. Objects are building blocks of Splitgraph tables: each table consists
-    of multiple immutable objects that can partially overwrite each other.
+    Show information about a Splitgraph object.
+
+    Objects, or fragments, are building blocks of Splitgraph tables: each table consists of multiple immutable fragments
+    that can partially overwrite each other. Each fragment might have a parent that it depends on. In addition,
+    the smallest and largest values for every column are stored in the fragment's metadata. This information is used
+    to choose which objects to download in order to execute a query against a table.
     """
     object_manager = ObjectManager(get_engine())
     object_meta = object_manager.get_object_meta([object_id])
