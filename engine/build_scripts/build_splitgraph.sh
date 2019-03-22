@@ -8,5 +8,6 @@ cd /splitgraph
 
 ln -s /usr/bin/pip3 /usr/bin/pip
 # Install globally (otherwise we'll need to find a way to get Multicorn to see the venv)
+source $HOME/.poetry/env
 poetry config settings.virtualenvs.create false
 poetry install --no-dev
