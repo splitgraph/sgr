@@ -411,7 +411,7 @@ def get_random_object_id():
     return str.format('o{:062x}', getrandbits(248))
 
 
-def _qual_to_clause(qual, ctype):
+def _qual_to_index_clause(qual, ctype):
     """Convert our internal qual format into a WHERE clause that runs against an object's index entry.
     Returns a Postgres clause (as a Composable) and a tuple of arguments to be mogrified into it."""
     column_name, operator, value = qual
@@ -449,10 +449,30 @@ def _qual_to_clause(qual, ctype):
     return query, tuple(args)
 
 
-def _quals_to_clause(quals, column_types):
+def _qual_to_sql_clause(qual, ctype):
+    """Convert a qual to a normal SQL clause that can be run against the actual object rather than the index."""
+    column_name, operator, value = qual
+    return SQL("{}::" + ctype + " " + operator + " %s").format(Identifier(column_name)), (value,)
+
+
+def _quals_to_clause(quals, column_types, qual_to_clause=_qual_to_index_clause):
+    if not quals:
+        return SQL(""), ()
+
     def _internal_quals_to_clause(or_quals):
-        clauses, args = zip(*[_qual_to_clause(q, column_types[q[0]]) for q in or_quals])
+        clauses, args = zip(*[qual_to_clause(q, column_types[q[0]]) for q in or_quals])
         return SQL(" OR ").join(SQL("(") + c + SQL(")") for c in clauses), tuple([a for arg in args for a in arg])
 
     clauses, args = zip(*[_internal_quals_to_clause(q) for q in quals])
     return SQL(" AND ").join(SQL("(") + c + SQL(")") for c in clauses), tuple([a for arg in args for a in arg])
+
+
+def quals_to_sql(quals, column_types):
+    """
+    Convert a list of qualifiers in CNF to a fragment of a Postgres query
+    :param quals: Qualifiers in CNF
+    :param column_types: Dictionary of column names and their types
+    :return: SQL Composable object and a tuple of arguments to be mogrified into it.
+    """
+
+    return _quals_to_clause(quals, column_types, qual_to_clause=_qual_to_sql_clause)
