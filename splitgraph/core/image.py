@@ -110,7 +110,7 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
                 self.get_table(table).materialize(table)
         set_head(self.repository, self.image_hash)
 
-    def _lq_checkout(self, target_schema=None):
+    def _lq_checkout(self, target_schema=None, wrapper='splitgraph.core.fdw_checkout.QueryingForeignDataWrapper'):
         """
         Intended to be run on the sgr side. Initializes the FDW for all tables in a given image,
         allowing to query them directly without materializing the tables.
@@ -123,7 +123,7 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
         engine = self.repository.engine
 
         init_fdw(engine, server_id=server_id, wrapper='multicorn',
-                 server_options={'wrapper': 'splitgraph.core.fdw_checkout.QueryingForeignDataWrapper',
+                 server_options={'wrapper': wrapper,
                                  'engine': engine.name,
                                  'use_socket': 'True',
                                  'namespace': self.repository.namespace,
