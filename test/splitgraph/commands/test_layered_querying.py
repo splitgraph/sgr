@@ -81,7 +81,7 @@ def test_layered_querying_against_snap(pg_repo_local):
     new_head.checkout(layered=True)
 
     assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE name IN ('guitar', 'mayonnaise') ORDER BY fruit_id") \
-           == [(2, 'guitar', 1), (3, 'mayonnaise', 1)]
+           == [(2, 'guitar', 1, _DT), (3, 'mayonnaise', 1, _DT)]
 
 
 def test_layered_querying_type_conversion(pg_repo_local):
@@ -90,13 +90,14 @@ def test_layered_querying_type_conversion(pg_repo_local):
     pg_repo_local.run_sql(
         "ALTER TABLE fruits ALTER COLUMN fruit_id TYPE bigint")
     pg_repo_local.commit()
-    pg_repo_local.run_sql("INSERT INTO fruits VALUES (4, 'kumquat', 42)")
+    pg_repo_local.run_sql("INSERT INTO fruits VALUES (4, 'kumquat', 42, '2018-01-02T03:04:05')")
     new_head = pg_repo_local.commit()
     new_head.checkout(layered=True)
 
     # Make sure ANY works on integers (not converted to strings)
-    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id IN (3, 4)") == [(3, 'mayonnaise', 1),
-                                                                                      (4, 'kumquat', 42)]
+    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id IN (3, 4)") == [(3, 'mayonnaise', 1, _DT),
+                                                                                      (4, 'kumquat', 42,
+                                                                                       dt(2018, 1, 2, 3, 4, 5))]
 
 
 def _test_lazy_lq_checkout(pg_repo_local):
@@ -106,7 +107,7 @@ def _test_lazy_lq_checkout(pg_repo_local):
     assert len(pg_repo_local.objects.get_downloaded_objects()) == 0
     # Actual LQ still downloads the objects, but one by one.
     # Hit fruits -- 2 objects should be downloaded (the second SNAP and the actual DIFF -- old SNAP not downloaded)
-    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id = 2") == [(2, 'guitar', 1)]
+    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id = 2") == [(2, 'guitar', 1, _DT)]
     assert len(pg_repo_local.objects.get_downloaded_objects()) == 2
     # Hit vegetables -- 2 more objects should be downloaded
     assert pg_repo_local.run_sql("SELECT * FROM vegetables WHERE vegetable_id = 1") == []
@@ -166,13 +167,13 @@ def _prepare_fully_remote_repo(local_engine_empty, pg_repo_remote):
     # Each test case is a: query, expected result, mask of which objects were downloaded
     # Test single PK qual
     ("SELECT * FROM fruits WHERE fruit_id = 4",
-     [(4, 'kumquat', 1)], (False, False, False, False, True)),
+     [(4, 'kumquat', 1, _DT)], (False, False, False, False, True)),
     # Test range fetches 2 objects
     ("SELECT * FROM fruits WHERE fruit_id >= 3",
-     [(3, 'mayonnaise', 1), (4, 'kumquat', 1)], (False, True, False, False, True)),
+     [(3, 'mayonnaise', 1, _DT), (4, 'kumquat', 1, _DT)], (False, True, False, False, True)),
     # Test the upsert fetches the original SNAP + the DIFF that overwrites it
     ("SELECT * FROM fruits WHERE fruit_id = 2",
-     [(2, 'guitar', 1)], (True, False, False, True, False)),
+     [(2, 'guitar', 1, _DT)], (True, False, False, True, False)),
     # Test NULLs don't break anything (even though we still look at all objects)
     ("SELECT * FROM fruits WHERE name IS NULL", [], (True, True, True, True, True)),
     # Same but also add a filter on the string column to exclude 'guitar'.
