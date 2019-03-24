@@ -1,5 +1,6 @@
-import pytest
+from datetime import datetime as dt
 
+import pytest
 from splitgraph.core import clone
 
 
@@ -10,6 +11,7 @@ def prepare_lq_repo(repo, commit_after_every, include_pk, snap_only=False):
            "UPDATE fruits SET name = 'guitar' WHERE fruit_id = 2"]
 
     repo.run_sql("ALTER TABLE fruits ADD COLUMN number NUMERIC DEFAULT 1")
+    repo.run_sql("ALTER TABLE fruits ADD COLUMN timestamp TIMESTAMP DEFAULT '2019-01-01T12:00:00'")
     if include_pk:
         repo.run_sql("ALTER TABLE fruits ADD PRIMARY KEY (fruit_id)")
         repo.run_sql("ALTER TABLE vegetables ADD PRIMARY KEY (vegetable_id)")
@@ -25,28 +27,34 @@ def prepare_lq_repo(repo, commit_after_every, include_pk, snap_only=False):
         repo.commit(snap_only=snap_only)
 
 
+_DT = dt(2019, 1, 1, 12)
+
+
 @pytest.mark.parametrize("test_case", [
-    ("SELECT * FROM fruits WHERE fruit_id = 3", [(3, 'mayonnaise', 1)]),
-    ("SELECT * FROM fruits WHERE fruit_id = 2", [(2, 'guitar', 1)]),
+    ("SELECT * FROM fruits WHERE fruit_id = 3", [(3, 'mayonnaise', 1, _DT)]),
+    ("SELECT * FROM fruits WHERE fruit_id = 2", [(2, 'guitar', 1, _DT)]),
     ("SELECT * FROM vegetables WHERE vegetable_id = 1", []),
     ("SELECT * FROM fruits WHERE fruit_id = 1", []),
 
+    # Test quals on other types
+    ("SELECT * FROM fruits WHERE fruit_id = 3 AND timestamp > '2018-01-01T00:00:00'", [(3, 'mayonnaise', 1, _DT)]),
+
     # EQ on string
-    ("SELECT * FROM fruits WHERE name = 'guitar'", [(2, 'guitar', 1)]),
+    ("SELECT * FROM fruits WHERE name = 'guitar'", [(2, 'guitar', 1, _DT)]),
 
     # IN ( converted to =ANY(array([...]))
     ("SELECT * FROM fruits WHERE name IN ('guitar', 'mayonnaise') ORDER BY fruit_id",
-     [(2, 'guitar', 1), (3, 'mayonnaise', 1)]),
+     [(2, 'guitar', 1, _DT), (3, 'mayonnaise', 1, _DT)]),
 
     # LIKE (operator ~~)
-    ("SELECT * FROM fruits WHERE name LIKE '%uitar'", [(2, 'guitar', 1)]),
+    ("SELECT * FROM fruits WHERE name LIKE '%uitar'", [(2, 'guitar', 1, _DT)]),
 
     # Join between two FDWs
     ("SELECT * FROM fruits JOIN vegetables ON fruits.fruit_id = vegetables.vegetable_id",
-     [(2, 'guitar', 1, 2, 'carrot'), (3, 'mayonnaise', 1, 3, 'celery')]),
+     [(2, 'guitar', 1, _DT, 2, 'carrot'), (3, 'mayonnaise', 1, _DT, 3, 'celery')]),
 
     # Expression in terms of another column
-    ("SELECT * FROM fruits WHERE fruit_id = number + 1 ", [(2, 'guitar', 1)]),
+    ("SELECT * FROM fruits WHERE fruit_id = number + 1 ", [(2, 'guitar', 1, _DT)]),
 ])
 def test_layered_querying(pg_repo_local, test_case):
     # Future: move the LQ tests to be local (instantiate the FDW with some mocks and send the same query requests)

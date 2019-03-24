@@ -29,10 +29,7 @@ DEFAULTS = {
     # See splitgraph.core.object_manager for an explanation.
     "SG_EVICTION_DECAY": 0.002,
     "SG_EVICTION_FLOOR": 1,
-    # Times the object manager returns a DIFF chain in a given window of time before it materializes
-    # it instead (to speed up layered querying).
-    "SG_SNAP_CACHE_MISSES": 5,
-    "SG_SNAP_CACHE_LOOKBACK": 300
+    "SG_FDW_CLASS": "splitgraph.core.fdw_checkout.QueryingForeignDataWrapper",
 }
 
 KEYS = list(DEFAULTS.keys())
@@ -66,8 +63,7 @@ ARGUMENT_KEY_MAP = {
     "--object-cache-size": "SG_OBJECT_CACHE_SIZE",
     "--eviction-decay": "SG_EVICTION_DECAY",
     "--eviction-floor": "SG_EVICTION_FLOOR",
-    "--cache-misses-for-snap": "SG_SNAP_CACHE_MISSES",
-    "--cache-misses-lookback": "SG_SNAP_CACHE_LOOKBACK",
+    "--fdw-class": "SG_FDW_CLASS",
 }
 
 ARG_KEYS = list(ARGUMENT_KEY_MAP.keys())
