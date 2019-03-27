@@ -7,13 +7,13 @@ from contextlib import contextmanager
 from datetime import datetime as dt
 
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.core.fragment_manager import FragmentManager
 from splitgraph.core.metadata_manager import MetadataManager
 from splitgraph.engine import ResultShape, switch_engine
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.external_objects import get_external_object_handler
-
 from ._common import META_TABLES, select, insert, pretty_size, Tracer
 
 
@@ -117,9 +117,6 @@ class ObjectManager(FragmentManager, MetadataManager):
 
         # Increase the refcount on all of the objects we're giving back to the caller so that others don't GC them.
         logging.info("Claiming %d object(s)", len(required_objects))
-
-        # here: only claim external objects (if an object exists locally and doesn't have an entry in the cache,
-        # don't add one)
 
         self._claim_objects(required_objects)
         tracer.log('claim_objects')

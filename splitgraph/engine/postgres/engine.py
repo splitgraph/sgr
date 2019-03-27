@@ -10,6 +10,7 @@ import psycopg2
 from psycopg2 import DatabaseError
 from psycopg2.extras import execute_batch, Json
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.core._common import select
 from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
@@ -263,9 +264,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         ri_types = [c[2] for c in schema_spec if c[3]]
         non_ri_cols = [c[1] for c in schema_spec if not c[3]]
         all_cols = ri_cols + non_ri_cols
-        # If no rows has been deleted, we don't need to add a special deletion flag to the fragment
-        self.create_table(schema, table,
-                          schema_spec=([(0, SG_UD_FLAG, 'boolean', False)] if deleted else []) + schema_spec)
+        self.create_table(schema, table, schema_spec=([(0, SG_UD_FLAG, 'boolean', False)] + schema_spec))
 
         # Store upserts
         # INSERT INTO target_table (sg_ud_flag, col1, col2...)
@@ -277,10 +276,8 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         if inserted:
             if non_ri_cols:
                 query = SQL("INSERT INTO {}.{} (").format(Identifier(schema), Identifier(table)) + \
-                        SQL(",").join(Identifier(c) for c in ([SG_UD_FLAG] if deleted else [])
-                                      + all_cols) + SQL(")") + \
-                        (SQL("(SELECT %s, ") if deleted else SQL("(SELECT ")) \
-                        + SQL(",").join(SQL("t.") + Identifier(c) for c in all_cols) + \
+                        SQL(",").join(Identifier(c) for c in [SG_UD_FLAG] + all_cols) + SQL(")") + \
+                        SQL("(SELECT %s, ") + SQL(",").join(SQL("t.") + Identifier(c) for c in all_cols) + \
                         SQL(" FROM (VALUES " +
                             ','.join(
                                 itertools.repeat("(" + ','.join(itertools.repeat('%s', len(inserted[0]))) + ")",
@@ -292,17 +289,16 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                                                         .format(Identifier(c)) for c, r in zip(ri_cols, ri_types)) \
                         + SQL(")")
                 # Flatten the args
-                args = ([True] if deleted else []) + [p for pk in inserted for p in pk]
+                args = [True] + [p for pk in inserted for p in pk]
             else:
                 # If the whole tuple is the PK, there's no point joining on the actual source table
                 query = SQL("INSERT INTO {}.{} (").format(Identifier(schema), Identifier(table)) + \
-                        SQL(",").join(Identifier(c) for c in ([SG_UD_FLAG] if deleted else []) + ri_cols) + SQL(")") + \
+                        SQL(",").join(Identifier(c) for c in [SG_UD_FLAG] + ri_cols) + SQL(")") + \
                         SQL("VALUES " +
                             ','.join(
-                                itertools.repeat("(" + ','.join(itertools.repeat('%s', len(inserted[0])
-                                                                                 + (1 if deleted else 0))) + ")",
+                                itertools.repeat("(" + ','.join(itertools.repeat('%s', len(inserted[0]) + 1)) + ")",
                                                  len(inserted))))
-                args = [p for pk in inserted for p in ([True] if deleted else []) + list(pk)]
+                args = [p for pk in inserted for p in [True] + list(pk)]
             self.run_sql(query, args)
 
         # Store the deletes
@@ -338,7 +334,10 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         # At this point, we can insert all rows directly since we won't have any conflicts.
         # We can also apply extra qualifiers to only insert rows that match a certain query,
         # which will result in fewer rows actually being written to the staging table.
-        has_ud_flag = any(c[1] == SG_UD_FLAG for c in self.get_full_table_schema(source_schema, source_table))
+
+        # We need to see if the fragment has an update-deletion flag. Use a custom query instead of a more
+        # expensive get_full_table_schema().
+
         # INSERT INTO target_table (col1, col2...)
         #   (SELECT col1, col2, ...
         #    FROM fragment_table WHERE sg_ud_flag = true (AND optional quals))
@@ -347,8 +346,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                  SQL("(SELECT ") + SQL(",").join(Identifier(c) for c in all_cols) + \
                  SQL(" FROM {}.{}").format(Identifier(source_schema), Identifier(source_table))
         extra_quals = [extra_quals] if extra_quals else []
-        if has_ud_flag:
-            extra_quals.append(SQL("{} = true").format(Identifier(SG_UD_FLAG)))
+        extra_quals.append(SQL("{} = true").format(Identifier(SG_UD_FLAG)))
         if extra_quals:
             query += SQL(" WHERE ") + SQL(" AND ").join(extra_quals)
         query += SQL(")")

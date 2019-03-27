@@ -3,6 +3,7 @@ from decimal import Decimal
 
 import pytest
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph import SPLITGRAPH_META_SCHEMA, ResultShape, select
 from test.splitgraph.conftest import OUTPUT, PG_DATA
 
@@ -181,7 +182,7 @@ def test_commit_diff_splitting(local_engine_empty):
 
     # Check the contents of the newly created objects.
     assert OUTPUT.run_sql(select(new_objects[0])) == \
-           [(0, 'zero', -1)]  # No deletions in this fragment, so no deletion flag. New inserted value only.
+           [(True, 0, 'zero', -1)]  # upserted=True, key, new_value_1, new_value_2
     assert OUTPUT.run_sql(select(new_objects[1])) == \
            [(True, 5, 'UPDATED', 8),  # upserted=True, key, new_value_1, new_value_2
             (False, 4, None, None)]  # upserted=False, key, None, None
@@ -189,7 +190,7 @@ def test_commit_diff_splitting(local_engine_empty):
            [(False, 6, None, None)]  # upserted=False, key, None, None
     # No need to check new_objects[3] (since it's the same as the old fragment)
     assert OUTPUT.run_sql(select(new_objects[4])) == \
-           [(12, 'l', 22)]
+           [(True, 12, 'l', 22)]  # same
 
 
 def test_commit_diff_splitting_composite(local_engine_empty):

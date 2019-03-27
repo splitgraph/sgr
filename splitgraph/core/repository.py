@@ -10,10 +10,10 @@ from random import getrandbits
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.fragment_manager import get_random_object_id
 from splitgraph.exceptions import SplitGraphException
-
 from ._common import manage_audit_triggers, set_head, manage_audit, select, insert, ensure_metadata_schema, \
     aggregate_changes, slow_diff, prepare_publish_data, gather_sync_metadata
 from .engine import repository_exists, lookup_repository, ResultShape, get_engine
@@ -328,13 +328,11 @@ class Repository:
     @contextmanager
     def materialized_table(self, table_name, image_hash):
         """A context manager that returns a pointer to a read-only materialized table in a given image.
-        If the table is already stored as a SNAP, this doesn't use any extra space.
-        Otherwise, the table is materialized and deleted on exit from the context manager.
+        The table is deleted on exit from the context manager.
 
         :param table_name: Name of the table
         :param image_hash: Image hash to materialize
         :return: (schema, table_name) where the materialized table is located.
-            The table must not be changed, as it might be a pointer to a real SG SNAP object.
         """
         if image_hash is None:
             # No image hash -- just return the current staging table.
@@ -342,17 +340,14 @@ class Repository:
             return  # make sure we don't fall through after the user is finished
 
         table = self.images.by_hash(image_hash).get_table(table_name)
-        with self.objects.ensure_objects(table) as required_objects:
-            if len(required_objects) > 1:
-                new_id = get_random_object_id()
-                table.materialize(new_id, destination_schema=SPLITGRAPH_META_SCHEMA)
-                try:
-                    yield SPLITGRAPH_META_SCHEMA, new_id
-                finally:
-                    # Maybe some cache management/expiry strategies here
-                    self.objects.delete_objects([new_id])
-            else:
-                yield SPLITGRAPH_META_SCHEMA, required_objects[0]
+        # Materialize the table even if it's a single object to discard the upsert-delete flag.
+        new_id = get_random_object_id()
+        table.materialize(new_id, destination_schema=SPLITGRAPH_META_SCHEMA)
+        try:
+            yield SPLITGRAPH_META_SCHEMA, new_id
+        finally:
+            # Maybe some cache management/expiry strategies here
+            self.objects.delete_objects([new_id])
 
     @property
     def head(self):
