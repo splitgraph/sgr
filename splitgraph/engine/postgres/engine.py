@@ -353,7 +353,12 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         return query
 
     def apply_fragments(self, objects, target_schema, target_table, extra_quals=None, extra_qual_args=None):
-        ri_data = self._prepare_ri_data(target_schema, target_table)
+        if not objects:
+            return
+        # In the case where we're applying fragments into a temporary table, we can't find out its schema
+        # using normal methods. Hence, we assume that the fragments have the same schema and use that instead.
+        # This will break if our fragments only describe a subset of all columns (which they currently don't).
+        ri_data = self._prepare_ri_data(objects[0][0], objects[0][1])
         query = SQL(";").join(self._generate_fragment_application(ss, st, target_schema, target_table,
                                                                   ri_data, extra_quals)
                               for ss, st in objects)
