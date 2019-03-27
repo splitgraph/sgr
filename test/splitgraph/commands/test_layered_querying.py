@@ -1,6 +1,7 @@
 from datetime import datetime as dt
 
 import pytest
+
 from splitgraph.core import clone
 
 
@@ -232,3 +233,14 @@ def test_lq_single_non_snap_object(local_engine_empty, pg_repo_remote):
            == [(3, 'celery')]
     used_objects = pg_repo_local.objects.get_downloaded_objects()
     assert len(used_objects) == 1
+
+
+def test_direct_table_lq(pg_repo_local):
+    # Test LQ using the Table.query() call instead of the FDW
+    prepare_lq_repo(pg_repo_local, commit_after_every=True, include_pk=True)
+
+    new_head = pg_repo_local.head
+    table = new_head.get_table('fruits')
+
+    assert list(table.query(columns=['name', 'timestamp'], quals=[[('fruit_id', '=', '2')]])) \
+           == [{'name': 'guitar', 'timestamp': _DT}]
