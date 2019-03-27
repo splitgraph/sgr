@@ -387,7 +387,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             chars += char
 
         schema_spec = json.loads(chars.decode('utf-8'))
-        self.create_table(schema, table, schema_spec)
+        self.create_table(schema, table, schema_spec, unlogged=True)
 
         with self.connection.cursor() as cur:
             cur.copy_expert(SQL("COPY {}.{} FROM STDIN WITH (FORMAT 'binary')")
