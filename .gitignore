@@ -12,3 +12,4 @@ dist/
 .cache/
 
 .idea/
+pip-wheel-metadata
