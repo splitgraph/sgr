@@ -33,7 +33,7 @@ RETRY_DELAY_BASE = 0.01
 RETRY_DELAY_CAP = 10
 
 # Max number of retries before failing
-RETRY_AMOUNT = 15
+RETRY_AMOUNT = 20
 
 
 class PsycopgEngine(SQLEngine):

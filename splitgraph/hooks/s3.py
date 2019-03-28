@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from minio import Minio
 from minio.error import (BucketAlreadyOwnedByYou,
-                         BucketAlreadyExists)
+                         BucketAlreadyExists, MinioError)
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.engine import get_engine
@@ -102,7 +102,11 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
                            secret_key=secret_key,
                            secure=False)
             logging.info("%s -> %s", object_url, object_id)
-            object_response = client.get_object(bucket, remote_object)
+            try:
+                object_response = client.get_object(bucket, remote_object)
+            except MinioError:
+                logging.exception("Error downloading object %s", object_id)
+                return
             engine = get_engine()
             engine.load_object(SPLITGRAPH_META_SCHEMA, object_id, object_response)
 
