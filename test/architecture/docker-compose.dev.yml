@@ -1,0 +1,39 @@
+#
+# Sometimes you need to connect "sgr" to the test architecture. This will
+# install a "development" version of sgr that can be used exactly as if
+# from the command line on the host (via bind mount).
+#
+# Note: Be careful -- any edits you make to source code in the container will
+#       also be made on the host, since the source code is bind mounted.
+#
+# e.g. Equivalent of `sgr --help`:
+#
+# docker-compose -f docker-compose.yml -f docker-compose.dev.yml run sgr --help
+#
+# e.g. Open a bash shell that includes sgr:
+#
+# docker-compose -f docker-compose.yml -f docker-compose.dev.yml run sgr shell
+#
+# Any changes that you make to local_engine using this sgr will persist in
+# local_engine so long as long as it retains its data.
+#
+version: '3'
+services:
+  sgr:
+    image: splitgraphci/sgr-dev
+    restart: 'no'
+    build:
+      context: dev
+      dockerfile: Dockerfile.dev
+    environment:
+      - SG_CONFIG_FILE=/sgconfig/.sgconfig
+    volumes:
+      - ../../.:/src/splitgraph
+      - ./dev/.sgconfig:/sgconfig/.sgconfig
+      - venvs:/src/venvs
+    depends_on:
+      - local_engine
+      - remote_engine
+      - objectstorage
+volumes:
+  venvs:
