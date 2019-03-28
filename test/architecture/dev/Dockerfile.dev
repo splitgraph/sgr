@@ -1,0 +1,20 @@
+FROM python:3.6-slim
+
+# The source code for splitgraph goes here (root of the repository)
+VOLUME /src/splitgraph
+
+# The .sgconfig goes here, and its location should be set via env var
+VOLUME /sgconfig
+
+RUN apt-get update \
+    && apt-get install -y curl git \
+    && ( curl -sSL https://raw.githubusercontent.com/sdispater/poetry/master/get-poetry.py | python ) \
+    && mkdir -p /src/splitgraph \
+    && mkdir -p /sgconfig \
+    && ( echo "alias sgr='/root/.poetry/bin/poetry run sgr'" >> /root/.bashrc )
+
+ADD docker-entrypoint-dev.sh /src/entrypoint.sh
+
+WORKDIR /src/
+
+ENTRYPOINT ["sh", "/src/entrypoint.sh"]
