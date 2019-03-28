@@ -15,6 +15,7 @@ pushd "$REPO_ROOT_DIR" \
     && chmod +x docker-compose \
     && sudo mv docker-compose /usr/local/bin \
     && pip install poetry \
+    && poetry config settings.virtualenvs.create false \
     && popd \
     && exit 0
 

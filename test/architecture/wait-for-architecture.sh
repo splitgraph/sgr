@@ -27,8 +27,8 @@ _run_health_check() {
 }
 
 _attempt_init() {
-  ( _init_engines >/dev/null 2>&1 ; )\
-    && ( _run_health_check >/dev/null 2>&1 ; ) \
+  _init_engines \
+    && _run_health_check \
     && return 0
 }
 
