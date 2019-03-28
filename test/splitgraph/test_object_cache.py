@@ -1,6 +1,7 @@
 from datetime import datetime as dt
 
 import pytest
+
 from splitgraph.core import clone, select, ResultShape, SPLITGRAPH_META_SCHEMA
 from splitgraph.core.fragment_manager import _quals_to_clause
 from splitgraph.exceptions import SplitGraphException
@@ -100,17 +101,21 @@ def test_object_cache_non_existing_objects(local_engine_empty, pg_repo_remote):
     fruits_v3 = pg_repo_local.images['latest'].get_table('fruits')
     # Unlink an object so that the manager tries to find it on the remote, make sure we get a friendly
     # exception rather than a psycopg ProgrammingError
-    pg_repo_local.run_sql("DELETE FROM splitgraph_meta.object_locations WHERE object_id = %s", (fruits_v3.objects[-1],))
+    pg_repo_local.run_sql("DELETE FROM splitgraph_meta.object_locations WHERE object_id = %s", (fruits_v3.objects[0],))
     # Make sure to commit here -- otherwise the error rolls everything back.
     pg_repo_local.engine.commit()
     with pytest.raises(SplitGraphException) as e:
         with object_manager.ensure_objects(fruits_v3):
             pass
     assert "Missing objects: " in str(e)
-    assert fruits_v3.objects[-1] in str(e)
+    assert fruits_v3.objects[0] in str(e)
 
+    # Make sure the claims have been released on failure (not inserted into the table at all)
+    assert _get_refcount(object_manager, fruits_v3.objects[0]) is None
     # Now, also delete objects from Minio and make sure it's detected at download time
     object_manager.run_eviction(object_manager.get_full_object_tree(), keep_objects=[], required_space=None)
+
+    # Make sure the objects that have been downloaded
     assert len(object_manager.get_downloaded_objects()) == 0
     _cleanup_minio()
 

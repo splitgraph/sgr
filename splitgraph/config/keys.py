@@ -11,6 +11,8 @@ DEFAULTS = {
     "SG_ENGINE_ADMIN_USER": "sgr",
     "SG_ENGINE_ADMIN_PWD": "supersecure",
     "SG_ENGINE_POSTGRES_DB_NAME": "postgres",
+    # Size of the connection pool used to download/upload objects
+    "SG_ENGINE_POOL": 8,
     "SG_CONFIG_FILE": None,
     "SG_META_SCHEMA": "splitgraph_meta",
     "SG_CONFIG_DIRS": None,
@@ -50,6 +52,7 @@ ARGUMENT_KEY_MAP = {
     "--engine-admin-user": "SG_ENGINE_ADMIN_USER",
     "--engine-admin-pwd": "SG_ENGINE_ADMIN_PWD",
     "--engine-postgres-db-name": "SG_ENGINE_POSTGRES_DB_NAME",
+    "--engine-pool": "SG_ENGINE_POOL",
     "--config-file": "SG_CONFIG_FILE",
     "--meta-schema": "SG_META_SCHEMA",
     "--config-dirs": "SG_CONFIG_DIRS",

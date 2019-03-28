@@ -141,12 +141,19 @@ class ObjectManager(FragmentManager, MetadataManager):
             # Can't actually use the list of downloaded objects returned by the routine: if another instance of the
             # object manager downloaded those objects between us compiling a list and performing the download,
             # the downloaded objects won't be in the returned list.
-            difference = set(to_fetch).difference(self.get_downloaded_objects(limit_to=to_fetch))
+            downloaded = self.get_downloaded_objects(limit_to=to_fetch)
+            difference = list(set(to_fetch).difference(downloaded))
             if difference:
                 error = "Not all objects required to materialize %s:%s:%s have been fetched. Missing objects: %r" % \
                         (table.repository.to_schema(), table.image.image_hash, table.table_name, difference)
                 logging.error(error)
-                self.object_engine.rollback()
+                # Instead of deleting all objects in this batch, discard the cache data
+                # on the objects that failed, decrease the refcount on the objects that
+                # succeeded and mark them as ready.
+                self._delete_cache_entries(difference)
+                self._set_ready_flags(downloaded, is_ready=True)
+                self._release_objects(downloaded)
+                self.object_engine.commit()
                 raise SplitGraphException(error)
             self._set_ready_flags(to_fetch, is_ready=True)
         tracer.log('fetch_objects')
@@ -312,16 +319,19 @@ class ObjectManager(FragmentManager, MetadataManager):
         logging.info("Will delete %d object(s), total size %s", len(to_delete), pretty_size(freed_space))
         self.delete_objects(to_delete)
         if to_delete:
-            self.object_engine.run_sql(SQL("DELETE FROM {}.{} WHERE object_id IN (" +
-                                           ",".join(itertools.repeat("%s", len(to_delete))) + ")")
-                                       .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status")),
-                                       to_delete)
+            self._delete_cache_entries(to_delete)
 
         # Release the exclusive lock and relock the objects we want instead once again (???)
         self.object_engine.commit()
         self.object_engine.run_sql("SET LOCAL synchronous_commit TO off;")
         self._release_objects(keep_objects)
         self._claim_objects(keep_objects)
+
+    def _delete_cache_entries(self, to_delete):
+        self.object_engine.run_sql(SQL("DELETE FROM {}.{} WHERE object_id IN (" +
+                                       ",".join(itertools.repeat("%s", len(to_delete))) + ")")
+                                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status")),
+                                   to_delete)
 
     def download_objects(self, source, objects_to_fetch, object_locations):
         """

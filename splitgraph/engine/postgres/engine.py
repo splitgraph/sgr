@@ -5,10 +5,12 @@ import itertools
 import json
 import logging
 from pkgutil import get_data
+from threading import get_ident
 
 import psycopg2
 from psycopg2 import DatabaseError
 from psycopg2.extras import execute_batch, Json
+from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
@@ -35,33 +37,40 @@ class PsycopgEngine(SQLEngine):
         """
         self.conn_params = conn_params
         self.name = name
-        self._conn = None
+
+        # Connection pool used by the engine, keyed by the thread ID (so one connection gets
+        # claimed per thread). Usually, only one connection is used (for e.g. metadata management
+        # or performing checkouts/commits). Multiple connections are used when downloading/uploading
+        # objects from S3, since that is done in multiple threads and these connections are short-lived.
+        server, port, username, password, dbname = conn_params
+        self._pool = ThreadedConnectionPool(minconn=0, maxconn=CONFIG['SG_ENGINE_POOL'],
+                                            host=server, port=port, user=username, password=password, dbname=dbname)
 
     def __repr__(self):
         return "PostgresEngine %s (%s@%s:%s/%s)" % (self.name, self.conn_params[2], self.conn_params[0],
                                                     str(self.conn_params[1]), self.conn_params[4])
 
     def commit(self):
-        if self._conn and not self._conn.closed:
-            self._conn.commit()
+        conn = self.connection
+        conn.commit()
 
     def close(self):
-        if self._conn and not self._conn.closed:
-            self._conn.close()
+        conn = self.connection
+        conn.close()
+        self._pool.putconn(conn)
 
     def rollback(self):
-        if self._conn and not self._conn.closed:
-            self._conn.rollback()
+        conn = self.connection
+        conn.rollback()
+        self._pool.putconn(conn)
 
     def lock_table(self, schema, table):
         self.run_sql(SQL("LOCK TABLE {}.{} IN ACCESS EXCLUSIVE MODE").format(Identifier(schema), Identifier(table)))
 
     @property
     def connection(self):
-        """Engine-internal Psycopg connection. Will (re)open if closed/doesn't exist."""
-        if self._conn is None or self._conn.closed:
-            self._conn = make_conn(*self.conn_params)
-        return self._conn
+        """Engine-internal Psycopg connection."""
+        return self._pool.getconn(get_ident())
 
     def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY):
         with self.connection.cursor() as cur:
@@ -392,6 +401,10 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         with self.connection.cursor() as cur:
             cur.copy_expert(SQL("COPY {}.{} FROM STDIN WITH (FORMAT 'binary')")
                             .format(Identifier(schema), Identifier(table)), stream)
+        # NB this should only be done when the loader is running in a different thread, since
+        # otherwise this will also commit the transaction that's opened by the ObjectManager, messing
+        # with its refcounting.
+        self.commit()
 
     def upload_objects(self, objects, remote_engine):
         if not isinstance(remote_engine, PostgresEngine):

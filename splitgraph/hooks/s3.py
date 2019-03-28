@@ -4,11 +4,11 @@ Plugin for uploading Splitgraph objects from the cache to an external S3-like ob
 import logging
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
-from threading import Lock
 
 from minio import Minio
 from minio.error import (BucketAlreadyOwnedByYou,
                          BucketAlreadyExists)
+
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.engine import get_engine
 from splitgraph.hooks.external_objects import ExternalObjectHandler
@@ -62,10 +62,6 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
                        secure=False)
         _ensure_bucket(client, bucket)
 
-        # Psycopg connection objects are not threadsafe -- make sure two threads can't use it at the same time.
-        # In the future, we should replace this with a pg connection pool instead
-        pg_conn_lock = Lock()
-
         with tempfile.TemporaryDirectory() as tmpdir:
             def _do_upload(object_id):
                 # First cut: dump the object to file and then upload it using Minio
@@ -74,10 +70,8 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
                 # and we don't know its size in advance.
                 tmp_path = tmpdir + '/' + object_id
 
-                with pg_conn_lock:
-                    with open(tmp_path, 'wb') as file:
-                        get_engine().dump_object(SPLITGRAPH_META_SCHEMA, object_id, file)
-                # Minio pushes can happen concurrently, no need to hold the lock here.
+                with open(tmp_path, 'wb') as file:
+                    get_engine().dump_object(SPLITGRAPH_META_SCHEMA, object_id, file)
                 client.fput_object(bucket, object_id, tmp_path)
 
                 return '%s/%s/%s' % (endpoint, bucket, object_id)
@@ -98,8 +92,6 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
         secret_key = self.params.get('secret_key', S3_SECRET_KEY)
         worker_threads = self.params.get('threads', 16)
 
-        pg_conn_lock = Lock()
-
         def _do_download(obj_id_url):
             object_id, object_url = obj_id_url
             endpoint, bucket, remote_object = object_url.split('/')
@@ -107,11 +99,10 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
                            access_key=access_key,
                            secret_key=secret_key,
                            secure=False)
-
+            logging.info("%s -> %s", object_url, object_id)
             object_response = client.get_object(bucket, remote_object)
-
-            with pg_conn_lock:
-                get_engine().load_object(SPLITGRAPH_META_SCHEMA, object_id, object_response)
+            engine = get_engine()
+            engine.load_object(SPLITGRAPH_META_SCHEMA, object_id, object_response)
 
         with ThreadPoolExecutor(max_workers=worker_threads) as tpe:
             tpe.map(_do_download, objects)
