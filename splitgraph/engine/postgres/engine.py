@@ -4,6 +4,7 @@ to track changes, as well as the Postgres FDW interface to upload/download objec
 import itertools
 import json
 import logging
+import time
 from pkgutil import get_data
 from threading import get_ident
 
@@ -26,6 +27,13 @@ ROW_TRIGGER_NAME = "audit_trigger_row"
 STM_TRIGGER_NAME = "audit_trigger_stm"
 REMOTE_TMP_SCHEMA = "tmp_remote_data"
 SG_UD_FLAG = 'sg_ud_flag'
+
+# Retry on connection failures after sleeping for BASE, BASE * 2, BASE * 4,... CAP, CAP, CAP...
+RETRY_DELAY_BASE = 0.01
+RETRY_DELAY_CAP = 10
+
+# Max number of retries before failing
+RETRY_AMOUNT = 15
 
 
 class PsycopgEngine(SQLEngine):
@@ -70,7 +78,23 @@ class PsycopgEngine(SQLEngine):
     @property
     def connection(self):
         """Engine-internal Psycopg connection."""
-        return self._pool.getconn(get_ident())
+        delay = RETRY_DELAY_BASE
+        retries = 0
+        while True:
+            try:
+                return self._pool.getconn(get_ident())
+            except psycopg2.Error:
+                # The fast retrying is really used to claim connections from the pool, not to try to reconnect
+                # to the engine. Maybe it's worth even splitting the engine into something that's used for
+                # object storage (where having a pool + this is needed) and the metadata handler (where
+                # just 1 connection is enough)
+                if retries >= RETRY_AMOUNT:
+                    raise
+                retries += 1
+                logging.exception("Error connecting to the engine, sleeping %.2fs and retrying (%d/%d)...",
+                                  delay, retries, RETRY_AMOUNT)
+                time.sleep(delay)
+                delay = min(delay * 2, RETRY_DELAY_CAP)
 
     def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY):
         with self.connection.cursor() as cur:
@@ -385,6 +409,9 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             cur.copy_expert(SQL("COPY {}.{} TO STDOUT WITH (FORMAT 'binary')")
                             .format(Identifier(schema), Identifier(table)), stream)
 
+        self.commit()
+        self.close()
+
     def load_object(self, schema, table, stream):
         chars = b''
         # Read until the delimiter separating a JSON schema from the Postgres copy_to dump.
@@ -405,6 +432,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         # otherwise this will also commit the transaction that's opened by the ObjectManager, messing
         # with its refcounting.
         self.commit()
+        self.close()
 
     def upload_objects(self, objects, remote_engine):
         if not isinstance(remote_engine, PostgresEngine):

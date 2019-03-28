@@ -53,7 +53,7 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
         access_key = self.params.get('access_key', S3_ACCESS_KEY)
         endpoint = '%s:%s' % (self.params.get('host', S3_HOST), self.params.get('port', S3_PORT))
         bucket = self.params.get('bucket', access_key)
-        worker_threads = self.params.get('threads', 4)
+        worker_threads = self.params.get('threads', CONFIG['SG_ENGINE_POOL'] - 1)
 
         logging.info("Uploading %d object(s) to %s/%s", len(objects), endpoint, bucket)
         client = Minio(endpoint,
@@ -90,7 +90,9 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
         # Maybe here we have to set these to None (anonymous) if the S3 host name doesn't match our own one.
         access_key = self.params.get('access_key', S3_ACCESS_KEY)
         secret_key = self.params.get('secret_key', S3_SECRET_KEY)
-        worker_threads = self.params.get('threads', 16)
+        # By default, take up the whole connection pool with downloaders (less one connection for the main
+        # thread that handles metadata)
+        worker_threads = self.params.get('threads', CONFIG['SG_ENGINE_POOL'] - 1)
 
         def _do_download(obj_id_url):
             object_id, object_url = obj_id_url
@@ -105,4 +107,5 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
             engine.load_object(SPLITGRAPH_META_SCHEMA, object_id, object_response)
 
         with ThreadPoolExecutor(max_workers=worker_threads) as tpe:
-            tpe.map(_do_download, objects)
+            # Evaluate the results so that exceptions thrown by the downloader get raised
+            list(tpe.map(_do_download, objects))
