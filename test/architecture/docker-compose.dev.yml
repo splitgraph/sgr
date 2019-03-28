@@ -6,19 +6,23 @@
 # Note: Be careful -- any edits you make to source code in the container will
 #       also be made on the host, since the source code is bind mounted.
 #
-# e.g. Equivalent of `sgr --help`:
-#
-# docker-compose -f docker-compose.yml -f docker-compose.dev.yml run sgr --help
-#
-# e.g. Open a bash shell that includes sgr:
-#
-# docker-compose -f docker-compose.yml -f docker-compose.dev.yml run sgr shell
-#
 # Any changes that you make to local_engine using this sgr will persist in
 # local_engine so long as long as it retains its data.
 #
 version: '3'
 services:
+  # sgr
+  #
+  # A simple/"bare" sgr command that will only launch the bare minimum
+  # dependencies (local_engine, remote_engine, objectstorage). Not suitable
+  # for testing. If you need to have other dependencies up, start them manually
+  #
+  # [EXAMPLE] Equivalent of `sgr --help`:
+  # docker-compose -f docker-compose.yml -f docker-compose.dev.yml run sgr --help
+  #
+  # [EXAMPLE] Open a bash shell that includes sgr:
+  # docker-compose -f docker-compose.yml -f docker-compose.dev.yml run sgr shell
+  #
   sgr:
     image: splitgraphci/sgr-dev
     restart: 'no'
@@ -29,11 +33,46 @@ services:
       - SG_CONFIG_FILE=/sgconfig/.sgconfig
     volumes:
       - ../../.:/src/splitgraph
-      - ./dev/.sgconfig:/sgconfig/.sgconfig
+      - ./dev/docker-config/.:/sgconfig
       - venvs:/src/venvs
     depends_on:
       - local_engine
       - remote_engine
       - objectstorage
+
+  # test
+  #
+  # A simple command to run the test runner, entirely within the sgr dev
+  # docker container, speaking to other services via the docker network, thus
+  # avoiding the need to mangle /etc/hosts or port forward
+  #
+  # Shares the exit code of pytest, i.e. exit 0 means tests passed
+  #
+  # [EXAMPLE] Run the test suite.
+  # docker-compose -f docker-compose.yml -f docker-compose.dev.yml run test
+  #
+  # Any arguments will be passed through to pytest
+  #
+  # NOTE: In the docker container, pytest is configured to use the config from
+  #       test/architecture/dev/docker-config/pytest.dev.ini and NOT the default
+  #       [tools:pytest] config from setup.cfg
+  #
+  test:
+    image: splitgraphci/sgr-dev
+    command: test
+    restart: 'no'
+    environment:
+      - SG_CONFIG_FILE=/sgconfig/.sgconfig
+    volumes:
+      - ../../.:/src/splitgraph
+      - ./dev/docker-config/.:/sgconfig
+      - venvs:/src/venvs
+    depends_on:
+      - local_engine
+      - remote_engine
+      - objectstorage
+      - pgorigin
+      - mongoorigin
+      - mysqlorigin
 volumes:
   venvs:
