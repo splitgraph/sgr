@@ -11,10 +11,12 @@ RUN apt-get update \
     && ( curl -sSL https://raw.githubusercontent.com/sdispater/poetry/master/get-poetry.py | python ) \
     && mkdir -p /src/splitgraph \
     && mkdir -p /sgconfig \
-    && ( echo "alias sgr='/root/.poetry/bin/poetry run sgr'" >> /root/.bashrc )
+    && ( echo "alias poetry='/root/.poetry/bin/poetry'" >> /root/.bashrc ) \
+    && ( echo "alias sgr='/root/.poetry/bin/poetry run sgr'" >> /root/.bashrc ) \
+    && ( echo "alias pytest='/root/.poetry/bin/poetry run pytest -c /sgconfig/pytest.dev.ini'" >> /root/.bashrc )
 
 ADD docker-entrypoint-dev.sh /src/entrypoint.sh
 
-WORKDIR /src/
+WORKDIR /src/splitgraph
 
 ENTRYPOINT ["sh", "/src/entrypoint.sh"]
