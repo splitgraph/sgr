@@ -191,7 +191,7 @@ class SQLEngine(ABC):
         :param schema: Schema to create the table in
         :param table: Table name to create
         :param schema_spec: A list of (ordinal_position, column_name, data_type, is_pk) specifying the table schema
-        :param unlogged: If True, the table won't be reflected in the WAL.
+        :param unlogged: If True, the table won't be reflected in the WAL or scanned by the analyzer/autovacuum.
         """
 
         schema_spec = sorted(schema_spec)
@@ -207,6 +207,8 @@ class SQLEngine(ABC):
                 "))")
         else:
             query += SQL(")")
+        if unlogged:
+            query += SQL(" WITH(autovacuum_enabled=false)")
         self.run_sql(query, return_shape=ResultShape.NONE)
 
     def dump_table_sql(self, schema, table_name, stream, columns='*', where='', where_args=None):
