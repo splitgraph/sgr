@@ -1,0 +1,8 @@
+version: '3'
+services:
+  ci_pgorigin:
+    image: splitgraphci/pgorigin
+    build: ./src/pgorigin
+  ci_mongoorigin:
+    image: splitgraphci/mongoorigin
+    build: ./src/mongoorigin

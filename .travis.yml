@@ -11,15 +11,6 @@ script:
 services:
   - docker
 
-addons:
-  hosts:
-    # We need both the host and the local engine to be able to refer to the remote engine
-    # using the same connection string, hence we map remote_engine on the host to localhost
-    # (Docker networking takes care of wiring it up in the case of the container)
-    - remote_engine
-    # So that both the host and the engine can access it
-    - objectstorage
-
 env:
   global:
     - secure: "h3RGGiUxXzirelNuxyqbb5Qgqahg4aL2LCVXKaVkoq0SIGftHSHy4Hu0QEV8h5UGQIaXLIyMeNZcS5XPuYg0MBEz5mP0MJyUj4E9l/TJFSyKQHiFUjB34d16vf/xkSzCBMkNbOltNNKe4gonZhn3/I8uRMF9ZyfsoP1SC8B3B7+C7wCZhNS6hvFXG0+n9+HDQDsx6Tws0Oa28YHctzLcFp5mTCr+cBUGqJ1NphuOqAfsRzgj1poWt0uU2XysbcJ3nSBFrPWYjtgF7IFP/G0NqrYF7cQ60G4R9GhAbyPmrc7AF7NHfjrreu4+3199NMpSbQtumLWBIAxkhblSU7likiLEIVw3hIipNHXKnSiMXeGRlcNBMrb2vO57cTifhtwi7fzHHrsVOjnYANmCQHM+nDS7rj5j2hXPUmAr1Zw6AZ4HYGW0iL+79eB5IfyKRqc75/YPyRnYSDjz6oiwlGYWrAlgWnz3Nwa5/TcCNMA7u9N3Lml4P/Wly3aC/87yPa8gT0SM/KRfweslcx29JsRkxjeRfOe8cyejAvQonN/RFibdOo/CD02oNu3Bzp5EaNW0FY/cWDi4diq4ok+t5Z0ID1i6NXBd9xPqYJiWWNGnh5lNIi6N/flFomwJpocDiIInOWCF6+y/K6SrLV2pGCBlyItjhbC9rMO9FrOnO45QScA="
@@ -28,18 +19,10 @@ env:
     - BINARY_OUTPUT: sgr-linux
 
 before_install:
-  - curl -L https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-`uname -s`-`uname -m` > docker-compose
-  - chmod +x docker-compose
-  - sudo mv docker-compose /usr/local/bin
-  - pip install poetry
+  - "./.ci/before_install.sh"
 
 before_script:
-  # Stop the PG/MySQL that ship with Travis and run our own integration test
-  # SG engine/remote architecture instead.
-  - sudo /etc/init.d/postgresql stop
-  - sudo /etc/init.d/mysql stop
-  - sudo docker-compose --file test/architecture/docker-compose.yml up -d pgorigin mongoorigin mysqlorigin local_engine remote_engine objectstorage
-  - ./wait-for-test-architecture.sh
+  - "./.ci/before_script.sh"
 
 after_success:
   - poetry run coveralls
@@ -57,14 +40,7 @@ after_success:
 # * delete the release from pypi (won't be able to push the same version again)
 
 before_deploy:
-  # Create the single binary (currently linux only)
-  - poetry run pyinstaller -F splitgraph.spec
-  - mv dist/sgr dist/${BINARY_OUTPUT}
-  # Deploy to pypi
-  - poetry config repositories.testpypi https://test.pypi.org/legacy/
-  - poetry config http-basic.testpypi splitgraph $PYPI_PASSWORD
-  - poetry config http-basic.pypi splitgraph $PYPI_PASSWORD
-  - poetry build
+  - "./.ci/before_deploy.sh"
 deploy:
   - provider: releases
     api_key:

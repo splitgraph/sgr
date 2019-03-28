@@ -2,6 +2,7 @@
 
 THIS_DIR=$(cd -P -- "$(dirname -- "$0")" && pwd -P)
 TEST_DIR="${THIS_DIR}/.."
+REPO_ROOT_DIR="${TEST_DIR}/.."
 DEFAULT_SG_CONFIG_FILE="${TEST_DIR}/resources/.sgconfig"
 
 export SG_CONFIG_FILE=${SG_CONFIG_FILE-"${DEFAULT_SG_CONFIG_FILE}"}
@@ -18,8 +19,9 @@ _init_engines() {
 }
 
 _run_health_check() {
-    python -c "import test.splitgraph.conftest as c; c.healthcheck()" \
-      && return 0
+    pushd "$REPO_ROOT_DIR" \
+        && python -c "import test.splitgraph.conftest as c; c.healthcheck()" \
+        && return 0
 
     return 1
 }
