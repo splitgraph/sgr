@@ -233,8 +233,15 @@ class ObjectManager(FragmentManager, MetadataManager):
         claimed = claimed or []
         remaining = set(objects).difference(set(claimed))
         remaining = remaining.difference(set(self.get_downloaded_objects(limit_to=list(remaining))))
-        self.object_engine.run_sql_batch(insert("object_cache_status", ("object_id", "ready", "refcount", "last_used")),
-                                         [(object_id, False, 1, now) for object_id in remaining])
+
+        # Remaining: objects that are new to the cache and that we'll need to download. However, between us
+        # running the first query and now, somebody else might have started downloading them. Hence, when
+        # we try to insert them, we'll be blocked until the other engine finishes its download and commits
+        # the transaction -- then get an integrity error. So here, we do an update on conflict (again).
+        self.object_engine.run_sql_batch(
+            insert("object_cache_status", ("object_id", "ready", "refcount", "last_used"))
+            + SQL("ON CONFLICT (object_id) DO UPDATE SET refcount = EXCLUDED.refcount + 1, last_used = %s"),
+            [(object_id, False, 1, now, now) for object_id in remaining])
 
     def _set_ready_flags(self, objects, is_ready=True):
         if objects:
