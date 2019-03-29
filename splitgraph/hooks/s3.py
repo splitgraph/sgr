@@ -53,7 +53,7 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
         access_key = self.params.get('access_key', S3_ACCESS_KEY)
         endpoint = '%s:%s' % (self.params.get('host', S3_HOST), self.params.get('port', S3_PORT))
         bucket = self.params.get('bucket', access_key)
-        worker_threads = self.params.get('threads', CONFIG['SG_ENGINE_POOL'] - 1)
+        worker_threads = self.params.get('threads', int(CONFIG['SG_ENGINE_POOL']) - 1)
 
         logging.info("Uploading %d object(s) to %s/%s", len(objects), endpoint, bucket)
         client = Minio(endpoint,
@@ -92,7 +92,7 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
         secret_key = self.params.get('secret_key', S3_SECRET_KEY)
         # By default, take up the whole connection pool with downloaders (less one connection for the main
         # thread that handles metadata)
-        worker_threads = self.params.get('threads', CONFIG['SG_ENGINE_POOL'] - 1)
+        worker_threads = self.params.get('threads', int(CONFIG['SG_ENGINE_POOL']) - 1)
 
         def _do_download(obj_id_url):
             object_id, object_url = obj_id_url
