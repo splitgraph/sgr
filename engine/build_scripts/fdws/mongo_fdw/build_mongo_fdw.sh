@@ -25,8 +25,7 @@ cd mongo_fdw || {
 
 echo "Build mongo_fdw..."
 
-# roll back to Nov 2018 -- build breaks at next commit after this one, TODO investigate
-git checkout 83b7134
+git checkout 6d06a82b9071c2a8e92d80e07ef7f9d1c4e1e69d
 
 # Build the prerequisites
 ./autogen.sh --with-master

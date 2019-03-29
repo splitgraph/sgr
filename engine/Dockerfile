@@ -1,6 +1,5 @@
-FROM postgres:10.5
+FROM postgres:11.2
 
-# Make sure to just get the pg10 toolchain, otherwise the extensions build against pg11
 RUN apt-get update -qq && \
     apt-get install -y \
         build-essential \
@@ -14,7 +13,7 @@ RUN apt-get update -qq && \
         pkgconf \
         autoconf \
         libtool \
-        postgresql-server-dev-10 \
+        postgresql-server-dev-11 \
         libmongoc-1.0.0 \
         libmongoc-dev 
 
@@ -42,8 +41,6 @@ ENV POSTGRES_USER sgr
 COPY etc /etc/
 
 # Splitgraph core libraries (required for the layered querying FDW)
-RUN curl -sSL https://raw.githubusercontent.com/sdispater/poetry/master/get-poetry.py | python
-
 # Git submodule
 COPY splitgraph /splitgraph
 RUN ./build_scripts/build_splitgraph.sh
