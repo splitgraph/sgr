@@ -82,7 +82,11 @@ class PsycopgEngine(SQLEngine):
         retries = 0
         while True:
             try:
-                return self._pool.getconn(get_ident())
+                conn = self._pool.getconn(get_ident())
+                if conn.closed:
+                    self._pool.putconn(conn)
+                    conn = self._pool.getconn(get_ident())
+                return conn
             except psycopg2.Error:
                 # The fast retrying is really used to claim connections from the pool, not to try to reconnect
                 # to the engine. Maybe it's worth even splitting the engine into something that's used for
