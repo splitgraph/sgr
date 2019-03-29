@@ -120,7 +120,7 @@ class SQLEngine(ABC):
 
     def delete_table(self, schema, table):
         """Drop a table from a schema if it exists"""
-        if self.get_table_type(schema, table) != 'FOREIGN TABLE':
+        if self.get_table_type(schema, table) not in ('FOREIGN TABLE', 'FOREIGN'):
             self.run_sql(SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(schema), Identifier(table)))
         else:
             self.run_sql(SQL("DROP FOREIGN TABLE IF EXISTS {}.{}").format(Identifier(schema), Identifier(table)))

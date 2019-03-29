@@ -721,7 +721,7 @@ def test_commandline_lq_checkout(pg_repo_local):
     assert result.exit_code == 0
     assert pg_repo_local.head is not None
     assert get_engine().schema_exists(str(pg_repo_local))
-    assert get_engine().get_table_type(str(pg_repo_local), 'fruits') == 'FOREIGN TABLE'
+    assert get_engine().get_table_type(str(pg_repo_local), 'fruits') in ('FOREIGN TABLE', 'FOREIGN')
 
 
 def test_commandline_dump_load(pg_repo_local):
