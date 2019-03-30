@@ -235,12 +235,23 @@ def test_lq_single_non_snap_object(local_engine_empty, pg_repo_remote):
     assert len(used_objects) == 1
 
 
-def test_direct_table_lq(pg_repo_local):
+@pytest.mark.parametrize("test_case", [
+    # Normal quals
+    ([[('fruit_id', '=', '2')]], [{'name': 'guitar', 'timestamp': _DT}]),
+    # No quals
+    ([], [{'name': 'mayonnaise', 'timestamp': dt(2019, 1, 1, 12, 0)},
+          {'name': 'guitar', 'timestamp': dt(2019, 1, 1, 12, 0)}]),
+    # One fragment hit
+    ([[('fruit_id', '=', '3')]], [{'name': 'mayonnaise', 'timestamp': dt(2019, 1, 1, 12, 0)}]),
+    # No fragments hit
+    ([[('fruit_id', '=', '42')]], []),
+])
+def test_direct_table_lq(pg_repo_local, test_case):
     # Test LQ using the Table.query() call instead of the FDW
     prepare_lq_repo(pg_repo_local, commit_after_every=True, include_pk=True)
 
     new_head = pg_repo_local.head
     table = new_head.get_table('fruits')
 
-    assert list(table.query(columns=['name', 'timestamp'], quals=[[('fruit_id', '=', '2')]])) \
-           == [{'name': 'guitar', 'timestamp': _DT}]
+    quals, expected = test_case
+    assert list(table.query(columns=['name', 'timestamp'], quals=quals)) == expected

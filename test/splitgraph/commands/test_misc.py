@@ -96,3 +96,14 @@ def test_image_resolution(pg_repo_local):
         img = pg_repo_local.images['abcdef1234567890abcdef']
     with pytest.raises(SplitGraphException):
         img = pg_repo_local.images['some_weird_tag']
+
+
+def test_tag_errors(pg_repo_local):
+    pg_repo_local.uncheckout()
+    with pytest.raises(SplitGraphException) as e:
+        head = pg_repo_local.images.by_tag('HEAD')
+    assert "No current checked out revision found" in str(e)
+
+    with pytest.raises(SplitGraphException) as e:
+        tag = pg_repo_local.images.by_tag('notatag')
+    assert "Tag notatag not found" in str(e)
