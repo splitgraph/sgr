@@ -3,11 +3,7 @@ layered querying (read-only queries to Splitgraph tables without materialization
 
 import logging
 
-from psycopg2.sql import Identifier, SQL
-from splitgraph import SPLITGRAPH_META_SCHEMA, Repository, get_engine
-from splitgraph.core._common import adapt
-from splitgraph.core.fragment_manager import get_random_object_id
-from splitgraph.core.object_manager import ObjectManager
+from splitgraph import Repository, get_engine
 
 try:
     from multicorn import ForeignDataWrapper, ANY
@@ -16,34 +12,11 @@ except ImportError:
     # Multicorn not installed (OK if we're not on the engine machine).
     pass
 
-_PG_LOGLEVEL = logging.WARNING
+_PG_LOGLEVEL = logging.INFO
 
 
 class QueryingForeignDataWrapper(ForeignDataWrapper):
     """The actual Multicorn LQ FDW class"""
-
-    def _quals_to_postgres(self, quals):
-        """Converts a list of Multicorn Quals to Postgres clauses (joined with AND)."""
-
-        def _qual_to_pg(qual):
-            # Returns a SQL object + a list of args to be mogrified into it.
-            if qual.is_list_operator:
-                value = [adapt(v, self.column_types[qual.field_name]) for v in qual.value]
-                operator = qual.operator[0] + ' ' + ('ANY' if qual.list_any_or_all == ANY else 'ALL')
-                operator += '(ARRAY[' + ','.join('%s' for _ in range(len(value))) + '])'
-            else:
-                operator = qual.operator + ' %s'
-                value = [qual.value]
-            return Identifier(qual.field_name) + SQL(" " + operator), value
-
-        sql_objs = []
-        vals = []
-        for qual in quals:
-            sql, value = _qual_to_pg(qual)
-            sql_objs.append(sql)
-            vals.extend(value)
-
-        return SQL(" AND ").join(s for s in sql_objs), vals
 
     @staticmethod
     def _quals_to_cnf(quals):
@@ -67,35 +40,6 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
 
         return [q for qual in quals for q in _qual_to_cnf(qual) if q != []]
 
-    def _run_select_from_staging(self, schema, table, columns, drop_table=False, qual_sql=None, qual_args=None):
-        """Runs the actual select query against the partially materialized table.
-        If qual_sql is passed, this will include it in the SELECT query. Despite that Postgres
-        will check our results again, this is still useful so that we don't pass all the rows
-        in the SNAP through the Python runtime."""
-        cur = self.engine.connection.cursor('sg_layered_query_cursor')
-        query = SQL("SELECT ") + SQL(',').join(Identifier(c) for c in columns) \
-                + SQL(" FROM {}.{}").format(Identifier(schema),
-                                            Identifier(table))
-        if qual_args:
-            query += SQL(" WHERE ") + qual_sql
-            query = cur.mogrify(query, qual_args)
-        log_to_postgres("SELECT FROM STAGING: " + str(query), _PG_LOGLEVEL)
-        cur.execute(query)
-
-        while True:
-            try:
-                yield {c: v for c, v in zip(columns, next(cur))}
-            except StopIteration:
-                # When the cursor has been consumed, delete the staging table and close it.
-                cur.close()
-                if drop_table:
-                    self.engine.delete_table(schema, table)
-
-                # End the transaction so that nothing else deadlocks (at this point we've returned
-                # all the data we needed to the runtime so nothing will be lost).
-                self.engine.commit()
-                return
-
     def execute(self, quals, columns, sortkeys=None):
         """Main Multicorn entry point."""
 
@@ -104,46 +48,10 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         columns = list(columns)
         # For quals, the more elaborate ones (like table.id = table.name or similar) actually aren't passed here
         # at all and PG filters them out later on.
-        qual_sql, qual_vals = self._quals_to_postgres(quals)
         cnf_quals = self._quals_to_cnf(quals)
-        log_to_postgres("quals: %r" % (quals,), _PG_LOGLEVEL)
         log_to_postgres("CNF quals: %r" % (cnf_quals,), _PG_LOGLEVEL)
 
-        with self.object_manager.ensure_objects(self.table, quals=cnf_quals) as required_objects:
-            log_to_postgres("Using fragments %r to satisfy the query" % (required_objects,), _PG_LOGLEVEL)
-            if not required_objects:
-                return []
-            if len(required_objects) == 1:
-                # If one object has our answer, we can send queries directly to it
-                return self._run_select_from_staging(SPLITGRAPH_META_SCHEMA, required_objects[0], columns,
-                                                     drop_table=False, qual_sql=qual_sql, qual_args=qual_vals)
-
-            # Accumulate the query result in a temporary table.
-            staging_table = self._create_staging_table(required_objects[0])
-
-            # Apply the fragments (just the parts that match the qualifiers) to the staging area
-            if quals:
-                self.engine.apply_fragments([(SPLITGRAPH_META_SCHEMA, o) for o in required_objects],
-                                            SPLITGRAPH_META_SCHEMA, staging_table,
-                                            extra_quals=qual_sql,
-                                            extra_qual_args=qual_vals)
-            else:
-                self.engine.apply_fragments([(SPLITGRAPH_META_SCHEMA, o) for o in required_objects],
-                                            SPLITGRAPH_META_SCHEMA, staging_table)
-        return self._run_select_from_staging(SPLITGRAPH_META_SCHEMA, staging_table, columns,
-                                             drop_table=True)
-
-    def _create_staging_table(self, snap):
-        staging_table = get_random_object_id()
-        log_to_postgres("Using staging table %s" % staging_table, _PG_LOGLEVEL)
-        self.engine.run_sql(SQL("CREATE TABLE {0}.{1} AS SELECT * FROM {0}.{2} LIMIT 1 WITH NO DATA").format(
-            Identifier(SPLITGRAPH_META_SCHEMA), Identifier(staging_table), Identifier(snap)))
-        pks = self.engine.get_primary_keys(SPLITGRAPH_META_SCHEMA, snap)
-        if pks:
-            self.engine.run_sql(SQL("ALTER TABLE {}.{} ADD PRIMARY KEY (").format(
-                Identifier(SPLITGRAPH_META_SCHEMA), Identifier(staging_table)) + SQL(',').join(
-                SQL("{}").format(Identifier(c)) for c, _ in pks) + SQL(")"))
-        return staging_table
+        return self.table.query(columns, cnf_quals)
 
     def __init__(self, fdw_options, fdw_columns):
         """The foreign data wrapper is initialized on the first query.
@@ -163,9 +71,5 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
 
         # Try using a UNIX socket if the engine is local to us
         self.engine = get_engine(self.fdw_options['engine'], bool(self.fdw_options.get('use_socket', False)))
-
         self.repository = Repository(fdw_options['namespace'], self.fdw_options['repository'], self.engine)
         self.table = self.repository.images[self.fdw_options['image_hash']].get_table(self.fdw_options['table'])
-        self.column_types = {c[1]: c[2] for c in self.table.table_schema}
-
-        self.object_manager = ObjectManager(self.engine)

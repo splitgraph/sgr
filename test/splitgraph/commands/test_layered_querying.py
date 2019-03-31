@@ -1,3 +1,5 @@
+from datetime import datetime as dt
+
 import pytest
 
 from splitgraph.core import clone
@@ -10,6 +12,7 @@ def prepare_lq_repo(repo, commit_after_every, include_pk, snap_only=False):
            "UPDATE fruits SET name = 'guitar' WHERE fruit_id = 2"]
 
     repo.run_sql("ALTER TABLE fruits ADD COLUMN number NUMERIC DEFAULT 1")
+    repo.run_sql("ALTER TABLE fruits ADD COLUMN timestamp TIMESTAMP DEFAULT '2019-01-01T12:00:00'")
     if include_pk:
         repo.run_sql("ALTER TABLE fruits ADD PRIMARY KEY (fruit_id)")
         repo.run_sql("ALTER TABLE vegetables ADD PRIMARY KEY (vegetable_id)")
@@ -25,28 +28,34 @@ def prepare_lq_repo(repo, commit_after_every, include_pk, snap_only=False):
         repo.commit(snap_only=snap_only)
 
 
+_DT = dt(2019, 1, 1, 12)
+
+
 @pytest.mark.parametrize("test_case", [
-    ("SELECT * FROM fruits WHERE fruit_id = 3", [(3, 'mayonnaise', 1)]),
-    ("SELECT * FROM fruits WHERE fruit_id = 2", [(2, 'guitar', 1)]),
+    ("SELECT * FROM fruits WHERE fruit_id = 3", [(3, 'mayonnaise', 1, _DT)]),
+    ("SELECT * FROM fruits WHERE fruit_id = 2", [(2, 'guitar', 1, _DT)]),
     ("SELECT * FROM vegetables WHERE vegetable_id = 1", []),
     ("SELECT * FROM fruits WHERE fruit_id = 1", []),
 
+    # Test quals on other types
+    ("SELECT * FROM fruits WHERE fruit_id = 3 AND timestamp > '2018-01-01T00:00:00'", [(3, 'mayonnaise', 1, _DT)]),
+
     # EQ on string
-    ("SELECT * FROM fruits WHERE name = 'guitar'", [(2, 'guitar', 1)]),
+    ("SELECT * FROM fruits WHERE name = 'guitar'", [(2, 'guitar', 1, _DT)]),
 
     # IN ( converted to =ANY(array([...]))
     ("SELECT * FROM fruits WHERE name IN ('guitar', 'mayonnaise') ORDER BY fruit_id",
-     [(2, 'guitar', 1), (3, 'mayonnaise', 1)]),
+     [(2, 'guitar', 1, _DT), (3, 'mayonnaise', 1, _DT)]),
 
     # LIKE (operator ~~)
-    ("SELECT * FROM fruits WHERE name LIKE '%uitar'", [(2, 'guitar', 1)]),
+    ("SELECT * FROM fruits WHERE name LIKE '%uitar'", [(2, 'guitar', 1, _DT)]),
 
     # Join between two FDWs
     ("SELECT * FROM fruits JOIN vegetables ON fruits.fruit_id = vegetables.vegetable_id",
-     [(2, 'guitar', 1, 2, 'carrot'), (3, 'mayonnaise', 1, 3, 'celery')]),
+     [(2, 'guitar', 1, _DT, 2, 'carrot'), (3, 'mayonnaise', 1, _DT, 3, 'celery')]),
 
     # Expression in terms of another column
-    ("SELECT * FROM fruits WHERE fruit_id = number + 1 ", [(2, 'guitar', 1)]),
+    ("SELECT * FROM fruits WHERE fruit_id = number + 1 ", [(2, 'guitar', 1, _DT)]),
 ])
 def test_layered_querying(pg_repo_local, test_case):
     # Future: move the LQ tests to be local (instantiate the FDW with some mocks and send the same query requests)
@@ -73,7 +82,7 @@ def test_layered_querying_against_snap(pg_repo_local):
     new_head.checkout(layered=True)
 
     assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE name IN ('guitar', 'mayonnaise') ORDER BY fruit_id") \
-           == [(2, 'guitar', 1), (3, 'mayonnaise', 1)]
+           == [(2, 'guitar', 1, _DT), (3, 'mayonnaise', 1, _DT)]
 
 
 def test_layered_querying_type_conversion(pg_repo_local):
@@ -82,13 +91,14 @@ def test_layered_querying_type_conversion(pg_repo_local):
     pg_repo_local.run_sql(
         "ALTER TABLE fruits ALTER COLUMN fruit_id TYPE bigint")
     pg_repo_local.commit()
-    pg_repo_local.run_sql("INSERT INTO fruits VALUES (4, 'kumquat', 42)")
+    pg_repo_local.run_sql("INSERT INTO fruits VALUES (4, 'kumquat', 42, '2018-01-02T03:04:05')")
     new_head = pg_repo_local.commit()
     new_head.checkout(layered=True)
 
     # Make sure ANY works on integers (not converted to strings)
-    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id IN (3, 4)") == [(3, 'mayonnaise', 1),
-                                                                                      (4, 'kumquat', 42)]
+    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id IN (3, 4)") == [(3, 'mayonnaise', 1, _DT),
+                                                                                      (4, 'kumquat', 42,
+                                                                                       dt(2018, 1, 2, 3, 4, 5))]
 
 
 def _test_lazy_lq_checkout(pg_repo_local):
@@ -98,7 +108,7 @@ def _test_lazy_lq_checkout(pg_repo_local):
     assert len(pg_repo_local.objects.get_downloaded_objects()) == 0
     # Actual LQ still downloads the objects, but one by one.
     # Hit fruits -- 2 objects should be downloaded (the second SNAP and the actual DIFF -- old SNAP not downloaded)
-    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id = 2") == [(2, 'guitar', 1)]
+    assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id = 2") == [(2, 'guitar', 1, _DT)]
     assert len(pg_repo_local.objects.get_downloaded_objects()) == 2
     # Hit vegetables -- 2 more objects should be downloaded
     assert pg_repo_local.run_sql("SELECT * FROM vegetables WHERE vegetable_id = 1") == []
@@ -158,13 +168,13 @@ def _prepare_fully_remote_repo(local_engine_empty, pg_repo_remote):
     # Each test case is a: query, expected result, mask of which objects were downloaded
     # Test single PK qual
     ("SELECT * FROM fruits WHERE fruit_id = 4",
-     [(4, 'kumquat', 1)], (False, False, False, False, True)),
+     [(4, 'kumquat', 1, _DT)], (False, False, False, False, True)),
     # Test range fetches 2 objects
     ("SELECT * FROM fruits WHERE fruit_id >= 3",
-     [(3, 'mayonnaise', 1), (4, 'kumquat', 1)], (False, True, False, False, True)),
+     [(3, 'mayonnaise', 1, _DT), (4, 'kumquat', 1, _DT)], (False, True, False, False, True)),
     # Test the upsert fetches the original SNAP + the DIFF that overwrites it
     ("SELECT * FROM fruits WHERE fruit_id = 2",
-     [(2, 'guitar', 1)], (True, False, False, True, False)),
+     [(2, 'guitar', 1, _DT)], (True, False, False, True, False)),
     # Test NULLs don't break anything (even though we still look at all objects)
     ("SELECT * FROM fruits WHERE name IS NULL", [], (True, True, True, True, True)),
     # Same but also add a filter on the string column to exclude 'guitar'.
@@ -223,3 +233,25 @@ def test_lq_single_non_snap_object(local_engine_empty, pg_repo_remote):
            == [(3, 'celery')]
     used_objects = pg_repo_local.objects.get_downloaded_objects()
     assert len(used_objects) == 1
+
+
+@pytest.mark.parametrize("test_case", [
+    # Normal quals
+    ([[('fruit_id', '=', '2')]], [{'name': 'guitar', 'timestamp': _DT}]),
+    # No quals
+    ([], [{'name': 'mayonnaise', 'timestamp': dt(2019, 1, 1, 12, 0)},
+          {'name': 'guitar', 'timestamp': dt(2019, 1, 1, 12, 0)}]),
+    # One fragment hit
+    ([[('fruit_id', '=', '3')]], [{'name': 'mayonnaise', 'timestamp': dt(2019, 1, 1, 12, 0)}]),
+    # No fragments hit
+    ([[('fruit_id', '=', '42')]], []),
+])
+def test_direct_table_lq(pg_repo_local, test_case):
+    # Test LQ using the Table.query() call instead of the FDW
+    prepare_lq_repo(pg_repo_local, commit_after_every=True, include_pk=True)
+
+    new_head = pg_repo_local.head
+    table = new_head.get_table('fruits')
+
+    quals, expected = test_case
+    assert list(table.query(columns=['name', 'timestamp'], quals=quals)) == expected

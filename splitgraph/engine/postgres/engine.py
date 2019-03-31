@@ -4,12 +4,16 @@ to track changes, as well as the Postgres FDW interface to upload/download objec
 import itertools
 import json
 import logging
+import time
 from pkgutil import get_data
+from threading import get_ident
 
 import psycopg2
 from psycopg2 import DatabaseError
 from psycopg2.extras import execute_batch, Json
+from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.core._common import select
 from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
@@ -24,6 +28,13 @@ STM_TRIGGER_NAME = "audit_trigger_stm"
 REMOTE_TMP_SCHEMA = "tmp_remote_data"
 SG_UD_FLAG = 'sg_ud_flag'
 
+# Retry on connection failures after sleeping for BASE, BASE * 2, BASE * 4,... CAP, CAP, CAP...
+RETRY_DELAY_BASE = 0.01
+RETRY_DELAY_CAP = 10
+
+# Max number of retries before failing
+RETRY_AMOUNT = 20
+
 
 class PsycopgEngine(SQLEngine):
     """Postgres SQL engine backed by a Psycopg connection."""
@@ -34,33 +45,60 @@ class PsycopgEngine(SQLEngine):
         """
         self.conn_params = conn_params
         self.name = name
-        self._conn = None
+
+        # Connection pool used by the engine, keyed by the thread ID (so one connection gets
+        # claimed per thread). Usually, only one connection is used (for e.g. metadata management
+        # or performing checkouts/commits). Multiple connections are used when downloading/uploading
+        # objects from S3, since that is done in multiple threads and these connections are short-lived.
+        server, port, username, password, dbname = conn_params
+        self._pool = ThreadedConnectionPool(minconn=0, maxconn=CONFIG['SG_ENGINE_POOL'],
+                                            host=server, port=port, user=username, password=password, dbname=dbname)
 
     def __repr__(self):
         return "PostgresEngine %s (%s@%s:%s/%s)" % (self.name, self.conn_params[2], self.conn_params[0],
                                                     str(self.conn_params[1]), self.conn_params[4])
 
     def commit(self):
-        if self._conn and not self._conn.closed:
-            self._conn.commit()
+        conn = self.connection
+        conn.commit()
 
     def close(self):
-        if self._conn and not self._conn.closed:
-            self._conn.close()
+        conn = self.connection
+        conn.close()
+        self._pool.putconn(conn)
 
     def rollback(self):
-        if self._conn and not self._conn.closed:
-            self._conn.rollback()
+        conn = self.connection
+        conn.rollback()
+        self._pool.putconn(conn)
 
     def lock_table(self, schema, table):
         self.run_sql(SQL("LOCK TABLE {}.{} IN ACCESS EXCLUSIVE MODE").format(Identifier(schema), Identifier(table)))
 
     @property
     def connection(self):
-        """Engine-internal Psycopg connection. Will (re)open if closed/doesn't exist."""
-        if self._conn is None or self._conn.closed:
-            self._conn = make_conn(*self.conn_params)
-        return self._conn
+        """Engine-internal Psycopg connection."""
+        delay = RETRY_DELAY_BASE
+        retries = 0
+        while True:
+            try:
+                conn = self._pool.getconn(get_ident())
+                if conn.closed:
+                    self._pool.putconn(conn)
+                    conn = self._pool.getconn(get_ident())
+                return conn
+            except psycopg2.Error:
+                # The fast retrying is really used to claim connections from the pool, not to try to reconnect
+                # to the engine. Maybe it's worth even splitting the engine into something that's used for
+                # object storage (where having a pool + this is needed) and the metadata handler (where
+                # just 1 connection is enough)
+                if retries >= RETRY_AMOUNT:
+                    raise
+                retries += 1
+                logging.exception("Error connecting to the engine, sleeping %.2fs and retrying (%d/%d)...",
+                                  delay, retries, RETRY_AMOUNT)
+                time.sleep(delay)
+                delay = min(delay * 2, RETRY_DELAY_CAP)
 
     def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY):
         with self.connection.cursor() as cur:
@@ -263,9 +301,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         ri_types = [c[2] for c in schema_spec if c[3]]
         non_ri_cols = [c[1] for c in schema_spec if not c[3]]
         all_cols = ri_cols + non_ri_cols
-        # If no rows has been deleted, we don't need to add a special deletion flag to the fragment
-        self.create_table(schema, table,
-                          schema_spec=([(0, SG_UD_FLAG, 'boolean', False)] if deleted else []) + schema_spec)
+        self.create_table(schema, table, schema_spec=([(0, SG_UD_FLAG, 'boolean', False)] + schema_spec))
 
         # Store upserts
         # INSERT INTO target_table (sg_ud_flag, col1, col2...)
@@ -277,10 +313,8 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         if inserted:
             if non_ri_cols:
                 query = SQL("INSERT INTO {}.{} (").format(Identifier(schema), Identifier(table)) + \
-                        SQL(",").join(Identifier(c) for c in ([SG_UD_FLAG] if deleted else [])
-                                      + all_cols) + SQL(")") + \
-                        (SQL("(SELECT %s, ") if deleted else SQL("(SELECT ")) \
-                        + SQL(",").join(SQL("t.") + Identifier(c) for c in all_cols) + \
+                        SQL(",").join(Identifier(c) for c in [SG_UD_FLAG] + all_cols) + SQL(")") + \
+                        SQL("(SELECT %s, ") + SQL(",").join(SQL("t.") + Identifier(c) for c in all_cols) + \
                         SQL(" FROM (VALUES " +
                             ','.join(
                                 itertools.repeat("(" + ','.join(itertools.repeat('%s', len(inserted[0]))) + ")",
@@ -292,17 +326,16 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                                                         .format(Identifier(c)) for c, r in zip(ri_cols, ri_types)) \
                         + SQL(")")
                 # Flatten the args
-                args = ([True] if deleted else []) + [p for pk in inserted for p in pk]
+                args = [True] + [p for pk in inserted for p in pk]
             else:
                 # If the whole tuple is the PK, there's no point joining on the actual source table
                 query = SQL("INSERT INTO {}.{} (").format(Identifier(schema), Identifier(table)) + \
-                        SQL(",").join(Identifier(c) for c in ([SG_UD_FLAG] if deleted else []) + ri_cols) + SQL(")") + \
+                        SQL(",").join(Identifier(c) for c in [SG_UD_FLAG] + ri_cols) + SQL(")") + \
                         SQL("VALUES " +
                             ','.join(
-                                itertools.repeat("(" + ','.join(itertools.repeat('%s', len(inserted[0])
-                                                                                 + (1 if deleted else 0))) + ")",
+                                itertools.repeat("(" + ','.join(itertools.repeat('%s', len(inserted[0]) + 1)) + ")",
                                                  len(inserted))))
-                args = [p for pk in inserted for p in ([True] if deleted else []) + list(pk)]
+                args = [p for pk in inserted for p in [True] + list(pk)]
             self.run_sql(query, args)
 
         # Store the deletes
@@ -338,7 +371,10 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         # At this point, we can insert all rows directly since we won't have any conflicts.
         # We can also apply extra qualifiers to only insert rows that match a certain query,
         # which will result in fewer rows actually being written to the staging table.
-        has_ud_flag = any(c[1] == SG_UD_FLAG for c in self.get_full_table_schema(source_schema, source_table))
+
+        # We need to see if the fragment has an update-deletion flag. Use a custom query instead of a more
+        # expensive get_full_table_schema().
+
         # INSERT INTO target_table (col1, col2...)
         #   (SELECT col1, col2, ...
         #    FROM fragment_table WHERE sg_ud_flag = true (AND optional quals))
@@ -347,15 +383,19 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                  SQL("(SELECT ") + SQL(",").join(Identifier(c) for c in all_cols) + \
                  SQL(" FROM {}.{}").format(Identifier(source_schema), Identifier(source_table))
         extra_quals = [extra_quals] if extra_quals else []
-        if has_ud_flag:
-            extra_quals.append(SQL("{} = true").format(Identifier(SG_UD_FLAG)))
+        extra_quals.append(SQL("{} = true").format(Identifier(SG_UD_FLAG)))
         if extra_quals:
             query += SQL(" WHERE ") + SQL(" AND ").join(extra_quals)
         query += SQL(")")
         return query
 
     def apply_fragments(self, objects, target_schema, target_table, extra_quals=None, extra_qual_args=None):
-        ri_data = self._prepare_ri_data(target_schema, target_table)
+        if not objects:
+            return
+        # In the case where we're applying fragments into a temporary table, we can't find out its schema
+        # using normal methods. Hence, we assume that the fragments have the same schema and use that instead.
+        # This will break if our fragments only describe a subset of all columns (which they currently don't).
+        ri_data = self._prepare_ri_data(objects[0][0], objects[0][1])
         query = SQL(";").join(self._generate_fragment_application(ss, st, target_schema, target_table,
                                                                   ri_data, extra_quals)
                               for ss, st in objects)
@@ -373,6 +413,9 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             cur.copy_expert(SQL("COPY {}.{} TO STDOUT WITH (FORMAT 'binary')")
                             .format(Identifier(schema), Identifier(table)), stream)
 
+        self.commit()
+        self.close()
+
     def load_object(self, schema, table, stream):
         chars = b''
         # Read until the delimiter separating a JSON schema from the Postgres copy_to dump.
@@ -384,11 +427,16 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             chars += char
 
         schema_spec = json.loads(chars.decode('utf-8'))
-        self.create_table(schema, table, schema_spec)
+        self.create_table(schema, table, schema_spec, unlogged=True)
 
         with self.connection.cursor() as cur:
             cur.copy_expert(SQL("COPY {}.{} FROM STDIN WITH (FORMAT 'binary')")
                             .format(Identifier(schema), Identifier(table)), stream)
+        # NB this should only be done when the loader is running in a different thread, since
+        # otherwise this will also commit the transaction that's opened by the ObjectManager, messing
+        # with its refcounting.
+        self.commit()
+        self.close()
 
     def upload_objects(self, objects, remote_engine):
         if not isinstance(remote_engine, PostgresEngine):

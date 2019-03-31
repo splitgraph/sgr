@@ -4,11 +4,11 @@ Plugin for uploading Splitgraph objects from the cache to an external S3-like ob
 import logging
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
-from threading import Lock
 
 from minio import Minio
 from minio.error import (BucketAlreadyOwnedByYou,
-                         BucketAlreadyExists)
+                         BucketAlreadyExists, MinioError)
+
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.engine import get_engine
 from splitgraph.hooks.external_objects import ExternalObjectHandler
@@ -53,7 +53,7 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
         access_key = self.params.get('access_key', S3_ACCESS_KEY)
         endpoint = '%s:%s' % (self.params.get('host', S3_HOST), self.params.get('port', S3_PORT))
         bucket = self.params.get('bucket', access_key)
-        worker_threads = self.params.get('threads', 4)
+        worker_threads = self.params.get('threads', int(CONFIG['SG_ENGINE_POOL']) - 1)
 
         logging.info("Uploading %d object(s) to %s/%s", len(objects), endpoint, bucket)
         client = Minio(endpoint,
@@ -61,10 +61,6 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
                        secret_key=self.params.get('secret_key', S3_SECRET_KEY),
                        secure=False)
         _ensure_bucket(client, bucket)
-
-        # Psycopg connection objects are not threadsafe -- make sure two threads can't use it at the same time.
-        # In the future, we should replace this with a pg connection pool instead
-        pg_conn_lock = Lock()
 
         with tempfile.TemporaryDirectory() as tmpdir:
             def _do_upload(object_id):
@@ -74,10 +70,8 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
                 # and we don't know its size in advance.
                 tmp_path = tmpdir + '/' + object_id
 
-                with pg_conn_lock:
-                    with open(tmp_path, 'wb') as file:
-                        get_engine().dump_object(SPLITGRAPH_META_SCHEMA, object_id, file)
-                # Minio pushes can happen concurrently, no need to hold the lock here.
+                with open(tmp_path, 'wb') as file:
+                    get_engine().dump_object(SPLITGRAPH_META_SCHEMA, object_id, file)
                 client.fput_object(bucket, object_id, tmp_path)
 
                 return '%s/%s/%s' % (endpoint, bucket, object_id)
@@ -96,9 +90,9 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
         # Maybe here we have to set these to None (anonymous) if the S3 host name doesn't match our own one.
         access_key = self.params.get('access_key', S3_ACCESS_KEY)
         secret_key = self.params.get('secret_key', S3_SECRET_KEY)
-        worker_threads = self.params.get('threads', 16)
-
-        pg_conn_lock = Lock()
+        # By default, take up the whole connection pool with downloaders (less one connection for the main
+        # thread that handles metadata)
+        worker_threads = self.params.get('threads', int(CONFIG['SG_ENGINE_POOL']) - 1)
 
         def _do_download(obj_id_url):
             object_id, object_url = obj_id_url
@@ -107,11 +101,15 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
                            access_key=access_key,
                            secret_key=secret_key,
                            secure=False)
-
-            object_response = client.get_object(bucket, remote_object)
-
-            with pg_conn_lock:
-                get_engine().load_object(SPLITGRAPH_META_SCHEMA, object_id, object_response)
+            logging.info("%s -> %s", object_url, object_id)
+            try:
+                object_response = client.get_object(bucket, remote_object)
+            except MinioError:
+                logging.exception("Error downloading object %s", object_id)
+                return
+            engine = get_engine()
+            engine.load_object(SPLITGRAPH_META_SCHEMA, object_id, object_response)
 
         with ThreadPoolExecutor(max_workers=worker_threads) as tpe:
-            tpe.map(_do_download, objects)
+            # Evaluate the results so that exceptions thrown by the downloader get raised
+            list(tpe.map(_do_download, objects))

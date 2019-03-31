@@ -7,13 +7,13 @@ from contextlib import contextmanager
 from datetime import datetime as dt
 
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.core.fragment_manager import FragmentManager
 from splitgraph.core.metadata_manager import MetadataManager
 from splitgraph.engine import ResultShape, switch_engine
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.external_objects import get_external_object_handler
-
 from ._common import META_TABLES, select, insert, pretty_size, Tracer
 
 
@@ -118,9 +118,6 @@ class ObjectManager(FragmentManager, MetadataManager):
         # Increase the refcount on all of the objects we're giving back to the caller so that others don't GC them.
         logging.info("Claiming %d object(s)", len(required_objects))
 
-        # here: only claim external objects (if an object exists locally and doesn't have an entry in the cache,
-        # don't add one)
-
         self._claim_objects(required_objects)
         tracer.log('claim_objects')
         # This also means that anybody else who tries to claim this set of objects will lock up until we're done with
@@ -144,12 +141,19 @@ class ObjectManager(FragmentManager, MetadataManager):
             # Can't actually use the list of downloaded objects returned by the routine: if another instance of the
             # object manager downloaded those objects between us compiling a list and performing the download,
             # the downloaded objects won't be in the returned list.
-            difference = set(to_fetch).difference(self.get_downloaded_objects(limit_to=to_fetch))
+            downloaded = self.get_downloaded_objects(limit_to=to_fetch)
+            difference = list(set(to_fetch).difference(downloaded))
             if difference:
                 error = "Not all objects required to materialize %s:%s:%s have been fetched. Missing objects: %r" % \
                         (table.repository.to_schema(), table.image.image_hash, table.table_name, difference)
                 logging.error(error)
-                self.object_engine.rollback()
+                # Instead of deleting all objects in this batch, discard the cache data
+                # on the objects that failed, decrease the refcount on the objects that
+                # succeeded and mark them as ready.
+                self._delete_cache_entries(difference)
+                self._set_ready_flags(downloaded, is_ready=True)
+                self._release_objects(downloaded)
+                self.object_engine.commit()
                 raise SplitGraphException(error)
             self._set_ready_flags(to_fetch, is_ready=True)
         tracer.log('fetch_objects')
@@ -229,8 +233,15 @@ class ObjectManager(FragmentManager, MetadataManager):
         claimed = claimed or []
         remaining = set(objects).difference(set(claimed))
         remaining = remaining.difference(set(self.get_downloaded_objects(limit_to=list(remaining))))
-        self.object_engine.run_sql_batch(insert("object_cache_status", ("object_id", "ready", "refcount", "last_used")),
-                                         [(object_id, False, 1, now) for object_id in remaining])
+
+        # Remaining: objects that are new to the cache and that we'll need to download. However, between us
+        # running the first query and now, somebody else might have started downloading them. Hence, when
+        # we try to insert them, we'll be blocked until the other engine finishes its download and commits
+        # the transaction -- then get an integrity error. So here, we do an update on conflict (again).
+        self.object_engine.run_sql_batch(
+            insert("object_cache_status", ("object_id", "ready", "refcount", "last_used"))
+            + SQL("ON CONFLICT (object_id) DO UPDATE SET refcount = EXCLUDED.refcount + 1, last_used = %s"),
+            [(object_id, False, 1, now, now) for object_id in remaining])
 
     def _set_ready_flags(self, objects, is_ready=True):
         if objects:
@@ -315,16 +326,19 @@ class ObjectManager(FragmentManager, MetadataManager):
         logging.info("Will delete %d object(s), total size %s", len(to_delete), pretty_size(freed_space))
         self.delete_objects(to_delete)
         if to_delete:
-            self.object_engine.run_sql(SQL("DELETE FROM {}.{} WHERE object_id IN (" +
-                                           ",".join(itertools.repeat("%s", len(to_delete))) + ")")
-                                       .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status")),
-                                       to_delete)
+            self._delete_cache_entries(to_delete)
 
         # Release the exclusive lock and relock the objects we want instead once again (???)
         self.object_engine.commit()
         self.object_engine.run_sql("SET LOCAL synchronous_commit TO off;")
         self._release_objects(keep_objects)
         self._claim_objects(keep_objects)
+
+    def _delete_cache_entries(self, to_delete):
+        self.object_engine.run_sql(SQL("DELETE FROM {}.{} WHERE object_id IN (" +
+                                       ",".join(itertools.repeat("%s", len(to_delete))) + ")")
+                                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status")),
+                                   to_delete)
 
     def download_objects(self, source, objects_to_fetch, object_locations):
         """

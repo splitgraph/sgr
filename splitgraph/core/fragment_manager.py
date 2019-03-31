@@ -8,8 +8,8 @@ from random import getrandbits
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
-from splitgraph.engine.postgres.engine import SG_UD_FLAG
 
+from splitgraph.engine.postgres.engine import SG_UD_FLAG
 from ._common import adapt, SPLITGRAPH_META_SCHEMA, ResultShape, insert, coerce_val_to_json
 
 # PG types we can run max/min on
@@ -302,22 +302,25 @@ class FragmentManager:
         table_size = self.object_engine.run_sql(SQL("SELECT COUNT (1) FROM {}.{}")
                                                 .format(Identifier(repository.to_schema()), Identifier(table_name)),
                                                 return_shape=ResultShape.ONE_ONE)
-        if chunk_size and table_size:
-            for offset in range(0, table_size, chunk_size):
-                object_id = get_random_object_id()
-                self.object_engine.copy_table(repository.to_schema(), table_name, SPLITGRAPH_META_SCHEMA, object_id,
-                                              with_pk_constraints=True, limit=chunk_size, offset=offset,
-                                              order_by_pk=True)
-                self.register_object(object_id, object_format='SNAP', namespace=repository.namespace,
-                                     parent_object=None)
-                object_ids.append(object_id)
-        else:
+
+        def _insert_and_register_fragment(source_schema, source_table, limit=None, offset=None):
             object_id = get_random_object_id()
-            self.object_engine.copy_table(repository.to_schema(), table_name, SPLITGRAPH_META_SCHEMA, object_id,
-                                          with_pk_constraints=True)
+            self.object_engine.copy_table(source_schema, source_table, SPLITGRAPH_META_SCHEMA, object_id,
+                                          with_pk_constraints=True, limit=limit, offset=offset,
+                                          order_by_pk=(offset is not None))
+            self.object_engine.run_sql(SQL("ALTER TABLE {}.{} ADD COLUMN {} BOOLEAN DEFAULT TRUE")
+                                       .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id),
+                                               Identifier(SG_UD_FLAG)))
             self.register_object(object_id, object_format='SNAP', namespace=repository.namespace,
                                  parent_object=None)
-            object_ids = [object_id]
+            return object_id
+
+        if chunk_size and table_size:
+            for offset in range(0, table_size, chunk_size):
+                object_ids.append(_insert_and_register_fragment(repository.to_schema(), table_name,
+                                                                limit=chunk_size, offset=offset))
+        else:
+            object_ids.append(_insert_and_register_fragment(repository.to_schema(), table_name))
         table_schema = self.object_engine.get_full_table_schema(repository.to_schema(), table_name)
         self.register_table(repository, table_name, image_hash, table_schema, object_ids)
 
@@ -411,7 +414,7 @@ def get_random_object_id():
     return str.format('o{:062x}', getrandbits(248))
 
 
-def _qual_to_clause(qual, ctype):
+def _qual_to_index_clause(qual, ctype):
     """Convert our internal qual format into a WHERE clause that runs against an object's index entry.
     Returns a Postgres clause (as a Composable) and a tuple of arguments to be mogrified into it."""
     column_name, operator, value = qual
@@ -449,10 +452,30 @@ def _qual_to_clause(qual, ctype):
     return query, tuple(args)
 
 
-def _quals_to_clause(quals, column_types):
+def _qual_to_sql_clause(qual, ctype):
+    """Convert a qual to a normal SQL clause that can be run against the actual object rather than the index."""
+    column_name, operator, value = qual
+    return SQL("{}::" + ctype + " " + operator + " %s").format(Identifier(column_name)), (value,)
+
+
+def _quals_to_clause(quals, column_types, qual_to_clause=_qual_to_index_clause):
+    if not quals:
+        return SQL(""), ()
+
     def _internal_quals_to_clause(or_quals):
-        clauses, args = zip(*[_qual_to_clause(q, column_types[q[0]]) for q in or_quals])
+        clauses, args = zip(*[qual_to_clause(q, column_types[q[0]]) for q in or_quals])
         return SQL(" OR ").join(SQL("(") + c + SQL(")") for c in clauses), tuple([a for arg in args for a in arg])
 
     clauses, args = zip(*[_internal_quals_to_clause(q) for q in quals])
     return SQL(" AND ").join(SQL("(") + c + SQL(")") for c in clauses), tuple([a for arg in args for a in arg])
+
+
+def quals_to_sql(quals, column_types):
+    """
+    Convert a list of qualifiers in CNF to a fragment of a Postgres query
+    :param quals: Qualifiers in CNF
+    :param column_types: Dictionary of column names and their types
+    :return: SQL Composable object and a tuple of arguments to be mogrified into it.
+    """
+
+    return _quals_to_clause(quals, column_types, qual_to_clause=_qual_to_sql_clause)

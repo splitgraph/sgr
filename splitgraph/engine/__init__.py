@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from enum import Enum
 
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.config import CONFIG, PG_HOST, PG_PORT, PG_USER, PG_PWD, PG_DB
 
 
@@ -119,7 +120,7 @@ class SQLEngine(ABC):
 
     def delete_table(self, schema, table):
         """Drop a table from a schema if it exists"""
-        if self.get_table_type(schema, table) == 'BASE TABLE':
+        if self.get_table_type(schema, table) not in ('FOREIGN TABLE', 'FOREIGN'):
             self.run_sql(SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(schema), Identifier(table)))
         else:
             self.run_sql(SQL("DROP FOREIGN TABLE IF EXISTS {}.{}").format(Identifier(schema), Identifier(table)))
@@ -183,19 +184,20 @@ class SQLEngine(ABC):
             queries.append(query)
         return SQL(';').join(queries)
 
-    def create_table(self, schema, table, schema_spec):
+    def create_table(self, schema, table, schema_spec, unlogged=False):
         """
         Creates a table using a previously-dumped table schema spec
 
         :param schema: Schema to create the table in
         :param table: Table name to create
         :param schema_spec: A list of (ordinal_position, column_name, data_type, is_pk) specifying the table schema
+        :param unlogged: If True, the table won't be reflected in the WAL or scanned by the analyzer/autovacuum.
         """
 
         schema_spec = sorted(schema_spec)
 
         target = SQL("{}.{}").format(Identifier(schema), Identifier(table))
-        query = SQL("CREATE TABLE {} (").format(target) \
+        query = SQL("CREATE " + ("UNLOGGED" if unlogged else "") + " TABLE {} (").format(target) \
                 + SQL(','.join("{} %s " % ctype for _, _, ctype, _ in schema_spec)) \
                     .format(*(Identifier(cname) for _, cname, _, _ in schema_spec))
 
@@ -205,6 +207,8 @@ class SQLEngine(ABC):
                 "))")
         else:
             query += SQL(")")
+        if unlogged:
+            query += SQL(" WITH(autovacuum_enabled=false)")
         self.run_sql(query, return_shape=ResultShape.NONE)
 
     def dump_table_sql(self, schema, table_name, stream, columns='*', where='', where_args=None):

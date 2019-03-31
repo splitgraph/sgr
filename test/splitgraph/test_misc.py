@@ -1,10 +1,16 @@
 import pytest
+import psycopg2
 from splitgraph import SplitGraphException
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA
 from splitgraph.core._common import ensure_metadata_schema
 from splitgraph.core.engine import get_current_repositories, lookup_repository
 from splitgraph.core.registry import setup_registry_mode, get_published_info, _ensure_registry_schema
 from splitgraph.core.repository import Repository
+
+try:
+    from unittest import mock
+except ImportError:
+    import mock
 
 
 def test_metadata_schema(pg_repo_local):
@@ -42,3 +48,22 @@ def test_repo_lookup_override_fail():
     with pytest.raises(SplitGraphException) as e:
         lookup_repository("does/not_exist")
     assert "Unknown repository" in str(e)
+
+
+def test_engine_reconnect(local_engine_empty):
+    conn = local_engine_empty.connection
+    # Put the connection back into the pool without closing it
+    local_engine_empty.rollback()
+    # Close the connection ourselves (simulate a timeout/db going away)
+    conn.close()
+
+    assert local_engine_empty.run_sql("SELECT 1") == [(1,)]
+
+
+def test_engine_retry(local_engine_empty):
+    conn = local_engine_empty.connection
+
+    with mock.patch.object(local_engine_empty, '_pool') as pool:
+        pool.getconn.side_effect = [psycopg2.OperationalError, conn]
+        assert local_engine_empty.connection == conn
+        assert pool.getconn.call_count == 2

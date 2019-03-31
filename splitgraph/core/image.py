@@ -7,7 +7,7 @@ from random import getrandbits
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
-from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.mount_handlers import init_fdw
@@ -19,6 +19,7 @@ IMAGE_COLS = ["image_hash", "parent_id", "created", "comment", "provenance_type"
 _PROV_QUERY = SQL("""UPDATE {}.images SET provenance_type = %s, provenance_data = %s WHERE
                             namespace = %s AND repository = %s AND image_hash = %s""") \
     .format(Identifier(SPLITGRAPH_META_SCHEMA))
+FDW_CLASS = CONFIG['SG_FDW_CLASS']
 
 
 class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
@@ -110,7 +111,7 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
                 self.get_table(table).materialize(table)
         set_head(self.repository, self.image_hash)
 
-    def _lq_checkout(self, target_schema=None):
+    def _lq_checkout(self, target_schema=None, wrapper=FDW_CLASS):
         """
         Intended to be run on the sgr side. Initializes the FDW for all tables in a given image,
         allowing to query them directly without materializing the tables.
@@ -123,7 +124,7 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
         engine = self.repository.engine
 
         init_fdw(engine, server_id=server_id, wrapper='multicorn',
-                 server_options={'wrapper': 'splitgraph.core.fdw_checkout.QueryingForeignDataWrapper',
+                 server_options={'wrapper': wrapper,
                                  'engine': engine.name,
                                  'use_socket': 'True',
                                  'namespace': self.repository.namespace,

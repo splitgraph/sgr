@@ -1,6 +1,7 @@
 import pytest
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from splitgraph.engine.postgres.engine import SG_UD_FLAG
 
 TEST_CASES = [
     ("ALTER TABLE fruits DROP COLUMN name",
@@ -42,7 +43,7 @@ def test_schema_changes(pg_repo_local, test_case):
     new_snap = new_head.get_table('fruits').objects[0]
     assert pg_repo_local.objects.get_object_meta([new_snap])[0][2] is None  # no parent
     assert pg_repo_local.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, new_snap) == _reassign_ordinals(
-        expected_new_schema)
+        expected_new_schema) + [(len(expected_new_schema) + 1, SG_UD_FLAG, 'boolean', False)]
 
     head.checkout()
     assert pg_repo_local.engine.get_full_table_schema(pg_repo_local.to_schema(), 'fruits') == OLD_SCHEMA
