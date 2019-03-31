@@ -1,15 +1,9 @@
-FROM postgres:10.5
+FROM postgres:11.2
 
-# We need the mysql C client libs to link the FDW against.
-# We could install MySQL's apt repo deb package, but it's interactive, so it's easier
-# to just add the sources.list entry we want.
-RUN apt-key adv --keyserver pgp.mit.edu --recv-keys 5072E1F5
-RUN echo "deb http://repo.mysql.com/apt/debian/ stretch mysql-8.0" > /etc/apt/sources.list.d/mysql.list
-
-# Make sure to just get the pg10 toolchain, otherwise the extensions build against pg11
 RUN apt-get update -qq && \
     apt-get install -y \
         build-essential \
+        curl \
         wget \
         python3-pip \
         python3-venv \
@@ -19,15 +13,18 @@ RUN apt-get update -qq && \
         pkgconf \
         autoconf \
         libtool \
-        postgresql-server-dev-10 \
+        postgresql-server-dev-11 \
         libmongoc-1.0.0 \
-        libmongoc-dev \
-        libmysqlclient-dev \
-    && rm -rf /var/lib/apt/lists/*
+        libmongoc-dev 
+
+RUN wget https://dev.mysql.com/get/mysql-apt-config_0.8.12-1_all.deb
+RUN echo mysql-apt-config mysql-apt-config/select-server  select  mysql-8.0 | debconf-set-selections && \
+    echo mysql-apt-config mysql-apt-config/select-product select Apply | debconf-set-selections
+RUN DEBIAN_FRONTEND=noninteractive dpkg -i mysql-apt-config_0.8.12-1_all.deb
+RUN apt-get update -qq && apt-get install -y libmysqlclient-dev && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /build_scripts
 COPY build_scripts /build_scripts/
-RUN find /build_scripts -type f -name '*.sh' -exec chmod a+x {} \;
 
 # Mongo FDW
 RUN ./build_scripts/fdws/mongo_fdw/build_mongo_fdw.sh
@@ -44,8 +41,6 @@ ENV POSTGRES_USER sgr
 COPY etc /etc/
 
 # Splitgraph core libraries (required for the layered querying FDW)
-RUN pip3 install poetry
-
 # Git submodule
 COPY splitgraph /splitgraph
 RUN ./build_scripts/build_splitgraph.sh
