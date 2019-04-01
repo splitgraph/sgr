@@ -19,7 +19,7 @@ pandas = { version = "^0.24.1", optional = true }
 sqlalchemy = { version = "^1.2", optional = true }
 
 [tool.poetry.dev-dependencies]
-pytest = "^4.3"
+pytest = "^4.4"
 pyfakefs = "^3.5"
 pytest-cov = "^2.6"
 pytest-env = "^0.6"
