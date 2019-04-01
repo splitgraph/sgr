@@ -16,6 +16,12 @@ def test_mount_unmount(local_engine_empty):
     assert not get_engine().schema_exists(PG_MNT.to_schema())
 
 
+def test_mount_partial(local_engine_empty):
+    _mount_postgres(PG_MNT, tables=['fruits'])
+    assert get_engine().table_exists(PG_MNT.to_schema(), 'fruits')
+    assert not get_engine().table_exists(PG_MNT.to_schema(), 'vegetables')
+
+
 def test_mount_mysql(local_engine_empty):
     try:
         _mount_mysql(MYSQL_MNT)

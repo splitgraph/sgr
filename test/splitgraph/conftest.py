@@ -2,6 +2,7 @@ import os
 
 import pytest
 from minio import Minio
+
 from splitgraph.core._common import ensure_metadata_schema
 from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.object_manager import ObjectManager
@@ -21,10 +22,10 @@ MYSQL_MNT = R('test/mysql_mount')
 OUTPUT = R('output')
 
 
-def _mount_postgres(repository):
+def _mount_postgres(repository, tables=None):
     mount('tmp', "postgres_fdw",
           dict(server='pgorigin', port=5432, username='originro', password='originpass', dbname="origindb",
-               remote_schema="public"))
+               remote_schema="public", tables=tables))
     repository.import_tables([], R('tmp'), [], foreign_tables=True, do_checkout=True)
     R('tmp').delete()
 
