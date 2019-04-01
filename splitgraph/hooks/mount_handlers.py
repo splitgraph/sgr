@@ -7,6 +7,7 @@ import logging
 from importlib import import_module
 
 from psycopg2.sql import Identifier, SQL
+
 from splitgraph.config import PG_USER, CONFIG
 from splitgraph.core._common import ensure_metadata_schema
 from splitgraph.engine import get_engine
@@ -101,15 +102,18 @@ def mount_postgres(mountpoint, server, port, username, password, dbname, remote_
     init_fdw(engine, server_id, "postgres_fdw", {'host': server, 'port': str(port), 'dbname': dbname},
              {'user': username, 'password': password}, overwrite=False)
 
-    engine.run_sql(SQL("CREATE SCHEMA {}").format(Identifier(mountpoint)))
+    # Allow mounting tables into existing schemas
+    engine.run_sql(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(mountpoint)))
+    _import_foreign_schema(engine, mountpoint, remote_schema, server_id, tables)
 
+
+def _import_foreign_schema(engine, mountpoint, remote_schema, server_id, tables):
     # Construct a query: import schema limit to (%s, %s, ...) from server mountpoint_server into mountpoint
-    query = "IMPORT FOREIGN SCHEMA {} "
+    query = SQL("IMPORT FOREIGN SCHEMA {} ").format(Identifier(remote_schema))
     if tables:
-        query += "LIMIT TO (" + ",".join("%s" for _ in tables) + ") "
-    query += "FROM SERVER {} INTO {}"
-    engine.run_sql(SQL(query).format(Identifier(remote_schema), Identifier(server_id),
-                                     Identifier(mountpoint)), tables)
+        query += SQL("LIMIT TO (") + SQL(",").join(Identifier(t) for t in tables) + SQL(")")
+    query += SQL("FROM SERVER {} INTO {}").format(Identifier(server_id), Identifier(mountpoint))
+    engine.run_sql(query)
 
 
 def mount_mongo(mountpoint, server, port, username, password, **table_spec):
@@ -132,7 +136,7 @@ def mount_mongo(mountpoint, server, port, username, password, **table_spec):
     init_fdw(engine, server_id, "mongo_fdw", {"address": server, "port": str(port)},
              {"username": username, "password": password})
 
-    engine.run_sql(SQL("""CREATE SCHEMA {}""").format(Identifier(mountpoint)))
+    engine.run_sql(SQL("""CREATE SCHEMA IF NOT EXISTS {}""").format(Identifier(mountpoint)))
 
     # Parse the table spec
     # {table_name: {db: remote_db_name, coll: remote_collection_name, schema: {col1: type1, col2: type2...}}}
@@ -173,14 +177,8 @@ def mount_mysql(mountpoint, server, port, username, password, remote_schema, tab
     init_fdw(engine, server_id, "mysql_fdw", {"host": server, "port": str(port)},
              {"username": username, "password": password})
 
-    engine.run_sql(SQL("CREATE SCHEMA {}").format(Identifier(mountpoint)))
-
-    query = "IMPORT FOREIGN SCHEMA {} "
-    if tables:
-        query += "LIMIT TO (" + ",".join("%s" for _ in tables) + ") "
-    query += "FROM SERVER {} INTO {}"
-    engine.run_sql(SQL(query).format(Identifier(remote_schema), Identifier(server_id),
-                                     Identifier(mountpoint)), tables)
+    engine.run_sql(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(mountpoint)))
+    _import_foreign_schema(engine, mountpoint, remote_schema, server_id, tables)
 
 
 def mount(mountpoint, mount_handler, handler_kwargs):
