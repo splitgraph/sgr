@@ -4,10 +4,10 @@ usage() {
     echo
     echo "./scripts/build_ci_images.sh"
     echo
-    echo "Find services defined in this docker-compose beginning with ci_"
-    echo "and build them. As long as they have an image: directive to tag"
-    echo "them with splitgraphci/imgname, they will be tagged so that"
-    echo "scripts/publish_ci_images.sh can detect and publish them."
+    echo "Build the services in the docker-compose.ci.yml file As long as they "
+    echo "have an image: directive to tag them with splitgraphci/imgname, they "
+    echo "will be tagged so that scripts/publish_ci_images.sh can detect and"
+    echo "publish them."
     echo
 }
 
@@ -40,16 +40,6 @@ which docker-compose >/dev/null 2>&1|| {
     fatal_error "docker-compose is not installed or not in \$PATH";
 }
 
-get_ci_services() {
-    docker-compose config --services \
-        | grep '^ci_'
-}
+docker-compose -f docker-compose.ci.yml build && exit 0
 
-_log "Building CI services:"
-get_ci_services
-
-get_ci_services | xargs docker-compose build || { \
-    fatal_error "Failed to build CI services."
-}
-
-_log "Success."
+fatal_error "Build failed"

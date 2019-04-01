@@ -4,8 +4,7 @@ usage() {
     echo
     echo "./scripts/publish_ci_images.sh"
     echo
-    echo "Find image tags created by this docker-compose file that begin with"
-    echo "splitgraphci/ and push them to docker hub."
+    echo "Push the images in docker-compose.ci.yml to docker hub"
     echo
     echo "Script will print tag names and then prompt to login before pushing,"
     echo "so you have a chance to cancel it with ctrl+c if necessary."
@@ -46,7 +45,7 @@ which docker-compose >/dev/null 2>&1|| {
 # Get the CI image tags built from this docker-compose file, e.g.
 # splitgraphci/pgorigin
 get_ci_image_tags() {
-    docker-compose images -q \
+    docker-compose -f docker-compose.ci.yml images -q \
         | xargs docker inspect -f='{{.RepoTags}}' \
         | grep -Eo 'splitgraphci/(.*?):' \
         | cut -d ':' -f1
