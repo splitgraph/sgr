@@ -276,6 +276,8 @@ class ObjectManager(FragmentManager, MetadataManager):
 
     def _increase_cache_occupancy(self, objects):
         """Increase the cache occupancy by objects' total size."""
+        if not objects:
+            return
         total_size = sum(o[4] for o in self.get_object_meta(objects))
         self.object_engine.run_sql(SQL("UPDATE {}.object_cache_occupancy SET total_size = total_size + %s")
                                    .format(Identifier(SPLITGRAPH_META_SCHEMA)), (total_size,))
