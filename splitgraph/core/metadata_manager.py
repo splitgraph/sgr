@@ -13,8 +13,9 @@ class MetadataManager:
     with image, table and object information.
     """
 
-    def __init__(self, object_engine):
+    def __init__(self, object_engine, metadata_engine=None):
         self.object_engine = object_engine
+        self.metadata_engine = metadata_engine or object_engine
 
     def register_objects(self, object_meta, namespace=None):
         """
@@ -26,7 +27,7 @@ class MetadataManager:
         """
         if namespace:
             object_meta = [(o, f, p, namespace, s, i) for o, f, p, _, s, i in object_meta]
-        self.object_engine.run_sql_batch(
+        self.metadata_engine.run_sql_batch(
             insert("objects", ("object_id", "format", "parent_id", "namespace", "size", "index")),
             object_meta)
 
@@ -40,7 +41,7 @@ class MetadataManager:
         """
         table_meta = [(repository.namespace, repository.repository,
                        o[0], o[1], Json(o[2]), o[3]) for o in table_meta]
-        self.object_engine.run_sql_batch(
+        self.metadata_engine.run_sql_batch(
             insert("tables", ("namespace", "repository", "image_hash", "table_name", "table_schema", "object_ids")),
             table_meta)
 
@@ -52,11 +53,11 @@ class MetadataManager:
         :param object_locations: List of (object_id, location, protocol).
         """
         # Don't insert redundant objects here either.
-        existing_locations = self.object_engine.run_sql(select("object_locations", "object_id"),
-                                                        return_shape=ResultShape.MANY_ONE)
+        existing_locations = self.metadata_engine.run_sql(select("object_locations", "object_id"),
+                                                          return_shape=ResultShape.MANY_ONE)
         object_locations = [o for o in object_locations if o[0] not in existing_locations]
-        self.object_engine.run_sql_batch(insert("object_locations", ("object_id", "location", "protocol")),
-                                         object_locations)
+        self.metadata_engine.run_sql_batch(insert("object_locations", ("object_id", "location", "protocol")),
+                                           object_locations)
 
     def get_existing_objects(self):
         """
@@ -64,7 +65,7 @@ class MetadataManager:
 
         :return: Set of object IDs.
         """
-        return set(self.object_engine.run_sql(select("objects", "object_id"), return_shape=ResultShape.MANY_ONE))
+        return set(self.metadata_engine.run_sql(select("objects", "object_id"), return_shape=ResultShape.MANY_ONE))
 
     def get_external_object_locations(self, objects):
         """
@@ -73,9 +74,9 @@ class MetadataManager:
         :param objects: List of objects stored externally.
         :return: List of (object_id, location, protocol).
         """
-        return self.object_engine.run_sql(select("object_locations", "object_id, location, protocol",
-                                                 "object_id IN (" + ','.join('%s' for _ in objects) + ")"),
-                                          objects)
+        return self.metadata_engine.run_sql(select("object_locations", "object_id, location, protocol",
+                                                   "object_id IN (" + ','.join('%s' for _ in objects) + ")"),
+                                            objects)
 
     def get_object_meta(self, objects):
         """
@@ -84,8 +85,8 @@ class MetadataManager:
         :param objects: List of objects to get metadata for.
         :return: List of (object_id, format, parent_id, namespace, size, index).
         """
-        return self.object_engine.run_sql(select("objects", "object_id, format, parent_id, namespace, size, index",
-                                                 "object_id IN (" + ','.join('%s' for _ in objects) + ")"), objects)
+        return self.metadata_engine.run_sql(select("objects", "object_id, format, parent_id, namespace, size, index",
+                                                   "object_id IN (" + ','.join('%s' for _ in objects) + ")"), objects)
 
     def extract_recursive_object_meta(self, remote, table_meta):
         """Recursively crawl the a remote object manager in order to fetch all objects

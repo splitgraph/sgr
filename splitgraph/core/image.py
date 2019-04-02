@@ -7,11 +7,11 @@ from random import getrandbits
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.mount_handlers import init_fdw
-
 from ._common import set_tag, select, manage_audit, set_head
 from .table import Table
 
@@ -22,7 +22,7 @@ _PROV_QUERY = SQL("""UPDATE {}.images SET provenance_type = %s, provenance_data 
 FDW_CLASS = CONFIG['SG_FDW_CLASS']
 
 
-class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
+class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine', 'object_engine'])):
     """
     Represents a Splitgraph image. Should't be created directly, use Image-loading methods in the
     :class:`splitgraph.core.repository.Repository` class instead.
@@ -30,6 +30,7 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
 
     def __new__(cls, *args, **kwargs):
         kwargs['engine'] = kwargs['repository'].engine
+        kwargs['object_engine'] = kwargs['repository'].object_engine
         self = super(Image, cls).__new__(cls, *args, **kwargs)
         return self
 
@@ -97,12 +98,12 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
                 raise SplitGraphException("{0} has pending changes! Pass force=True or do sgr checkout -f {0}:HEAD"
                                           .format(target_schema))
             logging.warning("%s has pending changes, discarding...", target_schema)
-            self.engine.discard_pending_changes(target_schema)
+            self.object_engine.discard_pending_changes(target_schema)
 
         # Drop all current tables in staging
-        self.engine.create_schema(target_schema)
-        for table in self.engine.get_all_tables(target_schema):
-            self.engine.delete_table(target_schema, table)
+        self.object_engine.create_schema(target_schema)
+        for table in self.object_engine.get_all_tables(target_schema):
+            self.object_engine.delete_table(target_schema, table)
 
         if layered:
             self._lq_checkout()
@@ -122,10 +123,12 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
         target_schema = target_schema or self.repository.to_schema()
         server_id = '%s_lq_checkout_server' % target_schema
         engine = self.repository.engine
+        object_engine = self.repository.object_engine
 
-        init_fdw(engine, server_id=server_id, wrapper='multicorn',
+        init_fdw(object_engine, server_id=server_id, wrapper='multicorn',
                  server_options={'wrapper': wrapper,
                                  'engine': engine.name,
+                                 'object_engine': object_engine.name,
                                  'use_socket': 'True',
                                  'namespace': self.repository.namespace,
                                  'repository': self.repository.repository,
@@ -147,12 +150,13 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine'])):
         """
         tmp_schema = str.format('o{:032x}', getrandbits(128))
         try:
-            self.engine.create_schema(tmp_schema)
+            self.object_engine.create_schema(tmp_schema)
             self._lq_checkout(target_schema=tmp_schema)
-            self.engine.commit()  # Make sure the new tables are seen by other connecitons
+            self.object_engine.commit()  # Make sure the new tables are seen by other connecitons
             yield tmp_schema
         finally:
-            self.engine.run_sql(SQL("DROP SCHEMA IF EXISTS {} CASCADE; DROP SERVER IF EXISTS {} CASCADE;").format(
+            self.object_engine.run_sql(
+                SQL("DROP SCHEMA IF EXISTS {} CASCADE; DROP SERVER IF EXISTS {} CASCADE;").format(
                 Identifier(tmp_schema), Identifier(tmp_schema + '_lq_checkout_server')))
 
     def tag(self, tag, force=False):

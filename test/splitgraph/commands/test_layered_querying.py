@@ -2,7 +2,9 @@ from datetime import datetime as dt
 
 import pytest
 
-from splitgraph.core import clone
+from splitgraph import Repository
+from splitgraph.core import clone, ResultShape
+from splitgraph.core._common import META_TABLES
 
 
 def prepare_lq_repo(repo, commit_after_every, include_pk, snap_only=False):
@@ -255,3 +257,36 @@ def test_direct_table_lq(pg_repo_local, test_case):
 
     quals, expected = test_case
     assert list(table.query(columns=['name', 'timestamp'], quals=quals)) == expected
+
+
+def test_multiengine_flow(local_engine_empty, pg_repo_remote):
+    # Test querying by using the remote engine as a metadata store and the local engine as an object store.
+    _prepare_fully_remote_repo(local_engine_empty, pg_repo_remote)
+    pg_repo_local = Repository.from_template(pg_repo_remote, object_engine=local_engine_empty)
+
+    pg_repo_local.images['latest'].checkout(layered=True)
+
+    # Take one of the test cases we ran in test_lq_qual_filtering that exercises index lookups,
+    # LQs, object downloads and make sure that the correct engines are used
+    result = pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id >= 3")
+    assert result == [(3, 'mayonnaise', 1, _DT), (4, 'kumquat', 1, _DT)]
+
+    # Test cache occupancy calculations work only using the object engine
+    assert pg_repo_local.objects.get_cache_occupancy() == 8192 * 2
+
+    # 2 objects downloaded from S3 to satisfy the query -- on the local engine
+    assert local_engine_empty.run_sql("SELECT COUNT(1) FROM splitgraph_meta.object_cache_status",
+                                      return_shape=ResultShape.ONE_ONE) == 2
+    assert len(set(local_engine_empty.get_all_tables('splitgraph_meta')).difference(set(META_TABLES))) == 2
+
+    # Test the local engine doesn't actually have any metadata stored on it.
+    for table in META_TABLES:
+        if table != 'object_cache_status':
+            assert local_engine_empty.run_sql("SELECT COUNT(1) FROM splitgraph_meta." + table,
+                                              return_shape=ResultShape.ONE_ONE) == 0
+
+    # remote engine untouched
+    assert pg_repo_remote.engine.run_sql("SELECT COUNT(1) FROM splitgraph_meta.object_cache_status",
+                                         return_shape=ResultShape.ONE_ONE) == 0
+    assert len(pg_repo_remote.objects.get_downloaded_objects()) == 0
+    assert len(set(pg_repo_remote.engine.get_all_tables('splitgraph_meta')).difference(set(META_TABLES))) == 0

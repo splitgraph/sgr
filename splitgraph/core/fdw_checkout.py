@@ -70,6 +70,12 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         self.fdw_columns = fdw_columns
 
         # Try using a UNIX socket if the engine is local to us
-        self.engine = get_engine(self.fdw_options['engine'], bool(self.fdw_options.get('use_socket', False)))
-        self.repository = Repository(fdw_options['namespace'], self.fdw_options['repository'], self.engine)
-        self.table = self.repository.images[self.fdw_options['image_hash']].get_table(self.fdw_options['table'])
+        engine = get_engine(self.fdw_options['engine'], bool(self.fdw_options.get('use_socket', False)))
+        if 'object_engine' in self.fdw_options:
+            object_engine = get_engine(self.fdw_options['object_engine'],
+                                       bool(self.fdw_options.get('use_socket', False)))
+        else:
+            object_engine = engine
+        repository = Repository(fdw_options['namespace'], self.fdw_options['repository'],
+                                engine=engine, object_engine=object_engine)
+        self.table = repository.images[self.fdw_options['image_hash']].get_table(self.fdw_options['table'])
