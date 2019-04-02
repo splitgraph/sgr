@@ -73,6 +73,13 @@ class ObjectManager(FragmentManager, MetadataManager):
         """
         :return: Space occupied by objects cached from external locations, in bytes.
         """
+        return int(self.object_engine.run_sql(SQL("SELECT total_size FROM {}.object_cache_occupancy")
+                                              .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                                              return_shape=ResultShape.ONE_ONE))
+
+    def _recalculate_cache_occupancy(self):
+        """A slower way of getting cache occupancy that actually goes through all objects in the cache status table
+        and sums up their size."""
         return int(self.object_engine.run_sql(SQL("SELECT COALESCE(sum(pg_relation_size("
                                                   "quote_ident(p.schemaname) || '.' || quote_ident(p.tablename))), 0)"
                                                   " FROM pg_tables p JOIN {0}.object_cache_status oc"
@@ -141,8 +148,10 @@ class ObjectManager(FragmentManager, MetadataManager):
         if to_fetch:
             upstream = table.repository.upstream
             object_locations = self.get_external_object_locations(required_objects)
-            self.download_objects(upstream.objects if upstream else None,
-                                  objects_to_fetch=to_fetch, object_locations=object_locations)
+            downloaded_by_us = self.download_objects(upstream.objects if upstream else None,
+                                                     objects_to_fetch=to_fetch, object_locations=object_locations)
+            # No matter what, claim the space required by the newly downloaded objects.
+            self._increase_cache_occupancy(downloaded_by_us)
             # Can't actually use the list of downloaded objects returned by the routine: if another instance of the
             # object manager downloaded those objects between us compiling a list and performing the download,
             # the downloaded objects won't be in the returned list.
@@ -262,6 +271,17 @@ class ObjectManager(FragmentManager, MetadataManager):
                                        .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status")),
                                        objects)
 
+    def _increase_cache_occupancy(self, objects):
+        """Increase the cache occupancy by objects' total size."""
+        total_size = sum(o[4] for o in self.get_object_meta(objects))
+        self.object_engine.run_sql(SQL("UPDATE {}.object_cache_occupancy SET total_size = total_size + %s")
+                                   .format(Identifier(SPLITGRAPH_META_SCHEMA)), (total_size,))
+
+    def _decrease_cache_occupancy(self, size_freed):
+        """Decrease the cache occupancy by a given size."""
+        self.object_engine.run_sql(SQL("UPDATE {}.object_cache_occupancy SET total_size = total_size - %s")
+                                   .format(Identifier(SPLITGRAPH_META_SCHEMA)), (size_freed,))
+
     def run_eviction(self, object_tree, keep_objects, required_space=None):
         """
         Delete enough objects with zero reference count (only those, since we guarantee that whilst refcount is >0,
@@ -329,9 +349,10 @@ class ObjectManager(FragmentManager, MetadataManager):
                     break
 
         logging.info("Will delete %d object(s), total size %s", len(to_delete), pretty_size(freed_space))
-        self.delete_objects(to_delete)
         if to_delete:
+            self.delete_objects(to_delete)
             self._delete_cache_entries(to_delete)
+            self._decrease_cache_occupancy(freed_space)
 
         # Release the exclusive lock and relock the objects we want instead once again (???)
         self.object_engine.commit()
@@ -447,6 +468,10 @@ class ObjectManager(FragmentManager, MetadataManager):
 
         to_delete = tables_in_meta.difference(primary_objects)
         self.delete_objects(to_delete)
+
+        # Recalculate the object cache occupancy
+        self.object_engine.run_sql(SQL("UPDATE {}.object_cache_occupancy SET total_size = %s")
+                                   .format(Identifier(SPLITGRAPH_META_SCHEMA)), (self._recalculate_cache_occupancy(),))
         return to_delete
 
     def delete_objects(self, objects):

@@ -115,8 +115,8 @@ def test_object_cache_non_existing_objects(local_engine_empty, pg_repo_remote):
     # Now, also delete objects from Minio and make sure it's detected at download time
     object_manager.run_eviction(object_manager.get_full_object_tree(), keep_objects=[], required_space=None)
 
-    # Make sure the objects that have been downloaded
     assert len(object_manager.get_downloaded_objects()) == 0
+    assert object_manager.get_cache_occupancy() == 0
     _cleanup_minio()
 
     with pytest.raises(SplitGraphException) as e:
@@ -141,16 +141,18 @@ def test_object_cache_eviction(local_engine_empty, pg_repo_remote):
     assert object_manager.get_full_object_tree()[vegetables_snap][2] == 8192
 
     # Load the fruits objects into the cache
-    object_manager.ensure_objects(fruits_v3)
+    with object_manager.ensure_objects(fruits_v3):
+        assert object_manager.get_cache_occupancy() == 8192 * 2
 
     # Pretend that the cache has no space and try getting a different table
     # Free space is now 0, so we need to run eviction.
     object_manager.cache_size = 8192 * 2
     with object_manager.ensure_objects(vegetables_v2) as required_objects:
         current_objects = object_manager.get_downloaded_objects()
-        assert len(current_objects) == 1
+        assert len(current_objects) == 2  # vegetables_v2 downloaded, one of fruits fragments remains.
+        assert object_manager.get_cache_occupancy() == 8192 * 2
         assert fruit_snap not in current_objects
-        assert fruit_diff not in current_objects
+        assert fruit_diff in current_objects
         assert vegetables_snap in current_objects
         assert required_objects == [vegetables_snap]
         assert object_manager.object_engine.table_exists(SPLITGRAPH_META_SCHEMA, vegetables_snap)
@@ -169,6 +171,7 @@ def test_object_cache_eviction(local_engine_empty, pg_repo_remote):
     # Delete all objects
     object_manager.run_eviction(object_manager.get_full_object_tree(), [], None)
     assert len(object_manager.get_downloaded_objects()) == 0
+    assert object_manager.get_cache_occupancy() == 0
 
     # Loading the next version (DIFF + SNAP) (not enough space for 2 objects).
     with pytest.raises(SplitGraphException) as ex:
@@ -193,6 +196,10 @@ def test_object_cache_locally_created_dont_get_evicted(local_engine_empty, pg_re
     head.checkout()
     new_head.checkout()
 
+    # Despite that we have objects on the engine, they don't count towards the full cache occupancy
+    assert len(object_manager.get_downloaded_objects()) == 5
+    assert object_manager.get_cache_occupancy() == 8192 * 4  # 5 objects on the engine, 1 of them was created locally.
+
     # Evict all objects -- check to see the one we created still exists.
     object_manager.run_eviction(object_manager.get_full_object_tree(), keep_objects=[], required_space=None)
     downloaded = object_manager.get_downloaded_objects()
@@ -213,7 +220,9 @@ def test_object_cache_nested(local_engine_empty, pg_repo_remote):
     fruit_snap = fruits_v2.objects[0]
 
     with object_manager.ensure_objects(fruits_v3):
+        assert object_manager.get_cache_occupancy() == 8192 * 2
         with object_manager.ensure_objects(vegetables_v2):
+            assert object_manager.get_cache_occupancy() == 8192 * 3
             assert _get_refcount(object_manager, fruit_diff) == 1
             assert _get_refcount(object_manager, fruit_snap) == 1
             assert _get_refcount(object_manager, vegetables_snap) == 1
