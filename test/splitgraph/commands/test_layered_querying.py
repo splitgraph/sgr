@@ -164,6 +164,7 @@ def _prepare_fully_remote_repo(local_engine_empty, pg_repo_remote):
     pg_repo_remote.objects.delete_objects(remote.objects.get_downloaded_objects())
     pg_repo_remote.engine.commit()
     pg_repo_local.objects.cleanup()
+    pg_repo_local.object_engine.commit()
 
 
 @pytest.mark.parametrize("test_case", [
@@ -281,7 +282,7 @@ def test_multiengine_flow(local_engine_empty, pg_repo_remote):
 
     # Test the local engine doesn't actually have any metadata stored on it.
     for table in META_TABLES:
-        if table != 'object_cache_status':
+        if table not in ('object_cache_status', 'object_cache_occupancy'):
             assert local_engine_empty.run_sql("SELECT COUNT(1) FROM splitgraph_meta." + table,
                                               return_shape=ResultShape.ONE_ONE) == 0
 

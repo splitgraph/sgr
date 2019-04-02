@@ -176,6 +176,7 @@ class ObjectManager(FragmentManager, MetadataManager):
         try:
             # Release the lock and yield to the caller.
             self.object_engine.commit()
+            self.metadata_engine.commit()
             yield required_objects
         finally:
             # Decrease the refcounts on the objects. Optionally, evict them.
@@ -189,6 +190,8 @@ class ObjectManager(FragmentManager, MetadataManager):
             logging.info("Timing stats for %s/%s/%s/%s: \n%s", table.repository.namespace, table.repository.repository,
                          table.image.image_hash, table.table_name, tracer)
             self.object_engine.commit()
+            # Release the metadata tables as well
+            self.metadata_engine.commit()
 
     def _filter_objects(self, objects, table, quals):
         if quals:

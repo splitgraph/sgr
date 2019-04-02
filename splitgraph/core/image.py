@@ -139,6 +139,7 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine', 'object_en
             logging.info("Mounting %s:%s/%s into %s", self.repository.to_schema(), self.image_hash, table_name,
                          target_schema)
             self.get_table(table_name).materialize(table_name, target_schema, lq_server=server_id)
+        object_engine.commit()
 
     @contextmanager
     def query_schema(self):
