@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 main() {
-    ( install_latest_sgr && clear_pycache_files ) || return 1
+    # Clear pycache files before (be considerate to us) and after (be considerate to the host)
+    ( clear_pycache_files && install_latest_sgr && clear_pycache_files ) || return 1
     return 0
 }
 
