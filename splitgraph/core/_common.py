@@ -8,6 +8,7 @@ from decimal import Decimal
 from functools import wraps
 
 from psycopg2.sql import Identifier, SQL
+
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphException
@@ -282,10 +283,10 @@ def slow_diff(repository, table_name, image_1, image_2, aggregate):
         with repository.materialized_table(table_name, image_2) as (mp_2, table_2):
             # Check both tables out at the same time since then table_2 calculation can be based
             # on table_1's snapshot.
-            left = repository.engine.run_sql(SQL("SELECT * FROM {}.{}").format(Identifier(mp_1),
-                                                                               Identifier(table_1)))
-            right = repository.engine.run_sql(SQL("SELECT * FROM {}.{}").format(Identifier(mp_2),
-                                                                                Identifier(table_2)))
+            left = repository.object_engine.run_sql(SQL("SELECT * FROM {}.{}").format(Identifier(mp_1),
+                                                                                      Identifier(table_1)))
+            right = repository.object_engine.run_sql(SQL("SELECT * FROM {}.{}").format(Identifier(mp_2),
+                                                                                       Identifier(table_2)))
 
     if aggregate:
         return sum(1 for r in right if r not in left), sum(1 for r in left if r not in right), 0
@@ -302,7 +303,7 @@ def prepare_publish_data(image, repository, include_table_previews):
         if include_table_previews:
             logging.info("Generating preview for %s...", table_name)
             with repository.materialized_table(table_name, image.image_hash) as (tmp_schema, tmp_table):
-                engine = repository.engine
+                engine = repository.object_engine
                 schema = engine.get_full_table_schema(tmp_schema, tmp_table)
                 previews[table_name] = engine.run_sql(SQL("SELECT * FROM {}.{} LIMIT %s").format(
                     Identifier(tmp_schema), Identifier(tmp_table)), (_PUBLISH_PREVIEW_SIZE,))

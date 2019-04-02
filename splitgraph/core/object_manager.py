@@ -21,12 +21,14 @@ class ObjectManager(FragmentManager, MetadataManager):
     """Brings the multiple manager classes together and manages the object cache (downloading and uploading
     objects as required in order to fulfill certain queries)"""
 
-    def __init__(self, object_engine):
+    def __init__(self, object_engine, metadata_engine=None):
         """
         :param object_engine: An ObjectEngine that will be used as a backing store for the
             objects.
+        :param metadata_engine: An SQLEngine that will be used to store/query metadata for Splitgraph
+            images and objects. By default, `object_engine` is used.
         """
-        super().__init__(object_engine)
+        super().__init__(object_engine, metadata_engine or object_engine)
 
         # Cache size in bytes
         self.cache_size = float(CONFIG['SG_OBJECT_CACHE_SIZE']) * 1024 * 1024
@@ -44,7 +46,7 @@ class ObjectManager(FragmentManager, MetadataManager):
     def get_full_object_tree(self):
         """Returns a dictionary (object_id -> parent, object_format, size) with the full object tree
         in the engine"""
-        query_result = self.object_engine.run_sql(select("objects", "object_id,parent_id,format,size"))
+        query_result = self.metadata_engine.run_sql(select("objects", "object_id,parent_id,format,size"))
 
         result = {}
         for object_id, parent_id, object_format, size in query_result:
@@ -71,9 +73,12 @@ class ObjectManager(FragmentManager, MetadataManager):
         """
         :return: Space occupied by objects cached from external locations, in bytes.
         """
-        return int(self.object_engine.run_sql(SQL("""
-            SELECT COALESCE(SUM(o.size), 0) FROM {0}.object_cache_status oc JOIN {0}.objects o
-            ON o.object_id = oc.object_id WHERE oc.ready = 't'""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
+        return int(self.object_engine.run_sql(SQL("SELECT COALESCE(sum(pg_relation_size("
+                                                  "quote_ident(p.schemaname) || '.' || quote_ident(p.tablename))), 0)"
+                                                  " FROM pg_tables p JOIN {0}.object_cache_status oc"
+                                                  " ON p.tablename = oc.object_id"
+                                                  " WHERE oc.ready = 't' AND p.schemaname = %s")
+                                              .format(Identifier(SPLITGRAPH_META_SCHEMA)), (SPLITGRAPH_META_SCHEMA,),
                                               return_shape=ResultShape.ONE_ONE))
 
     @contextmanager
@@ -411,7 +416,7 @@ class ObjectManager(FragmentManager, MetadataManager):
         their remote locations. Also deletes all objects not registered in the object_tree.
         """
         # First, get a list of all objects required by a table.
-        primary_objects = {o for os in self.object_engine.run_sql(
+        primary_objects = {o for os in self.metadata_engine.run_sql(
             SQL("SELECT object_ids FROM {}.tables").format(Identifier(SPLITGRAPH_META_SCHEMA)),
             return_shape=ResultShape.MANY_ONE) for o in os}
 
@@ -430,7 +435,10 @@ class ObjectManager(FragmentManager, MetadataManager):
             query = SQL("DELETE FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table_name))
             if primary_objects:
                 query += SQL(" WHERE object_id NOT IN (" + ','.join('%s' for _ in range(len(primary_objects))) + ")")
-            self.object_engine.run_sql(query, list(primary_objects))
+            if table_name == 'object_cache_status':
+                self.object_engine.run_sql(query, list(primary_objects))
+            else:
+                self.metadata_engine.run_sql(query, list(primary_objects))
 
         # Go through the physical objects and delete them as well
         # This is slightly dirty, but since the info about the objects was deleted on rm, we just say that

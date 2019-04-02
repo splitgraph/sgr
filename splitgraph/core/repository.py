@@ -188,23 +188,29 @@ class Repository:
     Splitgraph repository API
     """
 
-    def __init__(self, namespace, repository, engine=None):
+    def __init__(self, namespace, repository, engine=None, object_engine=None):
         self.namespace = namespace
         self.repository = repository
 
         self.engine = engine or get_engine()
+        # Add an option to use a different engine class for storing cached table fragments (e.g. a different
+        # PostgreSQL connection or even a different database engine altogether).
+        self.object_engine = object_engine or self.engine
         ensure_metadata_schema(self.engine)
         self.images = ImageManager(self)
 
         # consider making this an injected/a singleton for a given engine
         # since it's global for the whole engine but calls (e.g. repo.objects.cleanup()) make it
         # look like it's the manager for objects related to a repo.
-        self.objects = ObjectManager(self.engine)
+        self.objects = ObjectManager(object_engine=self.object_engine, metadata_engine=self.engine)
 
     @classmethod
-    def from_template(cls, template, namespace=None, repository=None, engine=None):
+    def from_template(cls, template, namespace=None, repository=None, engine=None, object_engine=None):
         """Create a Repository from an existing one replacing some of its attributes."""
-        return cls(namespace or template.namespace, repository or template.repository, engine or template.engine)
+        # If engine has been overridden but not object_engine, also override the object_engine (maintain
+        # the intended behaviour of overriding engine repointing the whole repository)
+        return cls(namespace or template.namespace, repository or template.repository, engine or template.engine,
+                   object_engine or engine or template.object_engine)
 
     @classmethod
     def from_schema(cls, schema):
@@ -222,7 +228,8 @@ class Repository:
         return self.namespace + "/" + self.repository if self.namespace else self.repository
 
     def __repr__(self):
-        return "Repository " + self.to_schema() + " on " + self.engine.name
+        return "Repository " + self.to_schema() + " on " + self.engine.name \
+               + " (object engine " + self.object_engine.name + ")"
 
     __str__ = to_schema
 
@@ -236,7 +243,7 @@ class Repository:
         """
         Initializes an empty repo with an initial commit (hash 0000...)
         """
-        self.engine.create_schema(self.to_schema())
+        self.object_engine.create_schema(self.to_schema())
         initial_image = '0' * 64
         self.engine.run_sql(insert("images", ("image_hash", "namespace", "repository", "parent_id", "created")),
                             (initial_image, self.namespace, self.repository, None, datetime.now()))
@@ -261,15 +268,15 @@ class Repository:
         if uncheckout:
             # If we're talking to a bare repo / a remote that doesn't have checked out repositories,
             # there's no point in touching the audit trigger.
-            self.engine.discard_pending_changes(self.to_schema())
+            self.object_engine.discard_pending_changes(self.to_schema())
 
             # Dispose of the foreign servers (LQ FDW, other FDWs) for this schema if it exists (otherwise its connection
             # won't be recycled and we can get deadlocked).
-            self.engine.run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(
+            self.object_engine.run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(
                 Identifier('%s_lq_checkout_server' % self.to_schema())))
-            self.engine.run_sql(
+            self.object_engine.run_sql(
                 SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(self.to_schema() + '_server')))
-            self.engine.run_sql(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(self.to_schema())))
+            self.object_engine.run_sql(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(self.to_schema())))
 
         if unregister:
             meta_tables = ["tables", "tags", "images"]
@@ -394,9 +401,8 @@ class Repository:
 
         logging.info("Committing %s...", self.to_schema())
 
-        ensure_metadata_schema(self.engine)
-        self.engine.commit()
-        manage_audit_triggers(self.engine)
+        self.object_engine.commit()
+        manage_audit_triggers(self.object_engine)
 
         # HEAD can be None (if this is the first commit in this repository)
         head = self.head
@@ -408,6 +414,7 @@ class Repository:
 
         set_head(self, image_hash)
         manage_audit_triggers(self.engine)
+        self.object_engine.commit()
         self.engine.commit()
         return self.images.by_hash(image_hash)
 
@@ -429,14 +436,14 @@ class Repository:
         """
         target_schema = self.to_schema()
 
-        changed_tables = self.engine.get_changed_tables(target_schema)
-        for table in self.engine.get_all_tables(target_schema):
+        changed_tables = self.object_engine.get_changed_tables(target_schema)
+        for table in self.object_engine.get_all_tables(target_schema):
             table_info = head.get_table(table) if head else None
             # Store as a full copy if this is a new table, there's been a schema change or we were told to.
             # This is obviously wasteful (say if just one column has been added/dropped or we added a PK,
             # but it's a starting point to support schema changes.
             if not table_info or snap_only \
-                    or table_info.table_schema != self.engine.get_full_table_schema(self.to_schema(), table):
+                    or table_info.table_schema != self.object_engine.get_full_table_schema(self.to_schema(), table):
                 self.objects.record_table_as_base(self, table, image_hash, chunk_size=chunk_size)
                 continue
 
@@ -451,7 +458,7 @@ class Repository:
         # Make sure that all pending changes have been discarded by this point (e.g. if we created just a snapshot for
         # some tables and didn't consume the audit log).
         # NB if we allow partial commits, this will have to be changed (only discard for committed tables).
-        self.engine.discard_pending_changes(target_schema)
+        self.object_engine.discard_pending_changes(target_schema)
 
     def has_pending_changes(self):
         """
@@ -461,7 +468,7 @@ class Repository:
         if not head:
             # If the repo isn't checked out, no point checking for changes.
             return False
-        for table in self.engine.get_all_tables(self.to_schema()):
+        for table in self.object_engine.get_all_tables(self.to_schema()):
             if self.diff(table, head.image_hash, None, aggregate=True) != (0, 0, 0):
                 return True
         return False
@@ -490,9 +497,9 @@ class Repository:
 
     def run_sql(self, sql, arguments=None, return_shape=ResultShape.MANY_MANY):
         """Execute an arbitrary SQL statement inside of this repository's checked out schema."""
-        self.engine.run_sql("SET search_path TO %s", (self.to_schema(),))
-        result = self.engine.run_sql(sql, arguments=arguments, return_shape=return_shape)
-        self.engine.run_sql("SET search_path TO public")
+        self.object_engine.run_sql("SET search_path TO %s", (self.to_schema(),))
+        result = self.object_engine.run_sql(sql, arguments=arguments, return_shape=return_shape)
+        self.object_engine.run_sql("SET search_path TO public")
         return result
 
     def dump(self, stream):
@@ -543,11 +550,11 @@ class Repository:
                                          .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)))
                              .decode('utf-8'))
                 stream.write(cur.mogrify(
-                    self.engine.dump_table_creation(schema=SPLITGRAPH_META_SCHEMA, tables=[object_id],
-                                                    created_schema=SPLITGRAPH_META_SCHEMA))
+                    self.object_engine.dump_table_creation(schema=SPLITGRAPH_META_SCHEMA, tables=[object_id],
+                                                           created_schema=SPLITGRAPH_META_SCHEMA))
                              .decode('utf-8'))
                 stream.write(";\n")
-                self.engine.dump_table_sql(SPLITGRAPH_META_SCHEMA, object_id, stream)
+                self.object_engine.dump_table_sql(SPLITGRAPH_META_SCHEMA, object_id, stream)
                 stream.write("\n")
 
     # --- IMPORTING TABLES ---
@@ -589,7 +596,7 @@ class Repository:
 
         if not source_tables:
             source_tables = image.get_tables() if not foreign_tables \
-                else source_repository.engine.get_all_tables(source_repository.to_schema())
+                else source_repository.object_engine.get_all_tables(source_repository.to_schema())
         if not tables:
             if table_queries:
                 raise ValueError("target_tables has to be defined if table_queries is True!")
@@ -599,7 +606,7 @@ class Repository:
         if len(tables) != len(source_tables) or len(source_tables) != len(table_queries):
             raise ValueError("tables, source_tables and table_queries have mismatching lengths!")
 
-        existing_tables = self.engine.get_all_tables(self.to_schema())
+        existing_tables = self.object_engine.get_all_tables(self.to_schema())
         clashing = [t for t in tables if t in existing_tables]
         if clashing:
             raise ValueError("Table(s) %r already exist(s) at %s!" % (clashing, self))
@@ -611,7 +618,8 @@ class Repository:
                        table_queries, foreign_tables):
         # This importing route only supported between local repos.
         assert self.engine == source_repository.engine
-        self.engine.create_schema(self.to_schema())
+        assert self.object_engine == source_repository.object_engine
+        self.object_engine.create_schema(self.to_schema())
 
         head = self.head
         self.images.add(head.image_hash if head else None, target_hash,
@@ -627,12 +635,12 @@ class Repository:
                 with image.query_schema() as tmp_schema:
                     object_id = self._import_new_table(tmp_schema, source_table, target_hash, target_table, is_query)
                     if do_checkout:
-                        self.engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, self.to_schema(), target_table)
+                        self.object_engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, self.to_schema(), target_table)
             elif foreign_tables:
                 object_id = self._import_new_table(source_repository.to_schema(), source_table,
                                                    target_hash, target_table, is_query)
                 if do_checkout:
-                    self.engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, self.to_schema(), target_table)
+                    self.object_engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, self.to_schema(), target_table)
             else:
                 table_obj = image.get_table(source_table)
                 self.objects.register_table(self, target_table, target_hash, table_obj.table_schema, table_obj.objects)
@@ -655,20 +663,20 @@ class Repository:
         if is_query:
             # is_query precedes foreign_tables: if we're importing using a query, we don't care if it's a
             # foreign table or not since we're storing it as a full snapshot.
-            self.engine.run_sql_in(source_schema,
-                                   SQL("CREATE TABLE {}.{} AS ").format(Identifier(SPLITGRAPH_META_SCHEMA),
+            self.object_engine.run_sql_in(source_schema,
+                                          SQL("CREATE TABLE {}.{} AS ").format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                                         Identifier(object_id))
-                                   + SQL(source_table))
+                                          + SQL(source_table))
         else:
-            self.engine.copy_table(source_schema, source_table, SPLITGRAPH_META_SCHEMA,
-                                   object_id)
+            self.object_engine.copy_table(source_schema, source_table, SPLITGRAPH_META_SCHEMA,
+                                          object_id)
         # TODO TF work this is where a lot of space wasting will come from; we should probably
         # also do actual object hashing to avoid duplication for things like SELECT *
         # Might not be necessary if we don't actually want to materialize the snapshot (wastes space).
         self.objects.register_object(object_id, 'SNAP', namespace=self.namespace,
                                      parent_object=None)
         self.objects.register_table(self, target_table, target_hash,
-                                    self.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, object_id),
+                                    self.object_engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, object_id),
                                     [object_id])
         return object_id
 
@@ -685,7 +693,6 @@ class Repository:
         :param handler_options: Extra options to pass to the handler. For example, see
             :class:`splitgraph.hooks.s3.S3ExternalObjectHandler`.
         """
-        ensure_metadata_schema(self.engine)
         # Maybe consider having a context manager for getting a remote engine instance
         # that auto-commits/closes when needed?
         remote_repository = remote_repository or self.upstream
@@ -775,7 +782,8 @@ class Repository:
 
         # Special case: if diffing HEAD and staging (with aggregation), we can return that directly.
         if image_1 == self.head and image_2 is None and aggregate:
-            return aggregate_changes(self.engine.get_pending_changes(self.to_schema(), table_name, aggregate=True))
+            return aggregate_changes(self.object_engine.get_pending_changes(
+                self.to_schema(), table_name, aggregate=True))
 
         # If the table is the same in the two images, short circuit as well.
         if image_2 is not None:
@@ -815,12 +823,13 @@ def import_table_from_remote(remote_repository, remote_tables, remote_image_hash
 
     tmp_mountpoint.delete()
     target_repository.engine.commit()
+    target_repository.object_engine.commit()
 
 
 def table_exists_at(repository, table_name, image=None):
     """Determines whether a given table exists in a Splitgraph image without checking it out. If `image_hash` is None,
     determines whether the table exists in the current staging area."""
-    return repository.engine.table_exists(repository.to_schema(), table_name) if image is None \
+    return repository.object_engine.table_exists(repository.to_schema(), table_name) if image is None \
         else bool(image.get_table(table_name))
 
 

@@ -80,8 +80,9 @@ class FragmentManager:
     that are required for a given query.
     """
 
-    def __init__(self, object_engine):
+    def __init__(self, object_engine, metadata_engine=None):
         self.object_engine = object_engine
+        self.metadata_engine = metadata_engine or object_engine
 
     def _generate_object_index(self, object_id, changeset=None):
         """
@@ -157,7 +158,7 @@ class FragmentManager:
 
         object_size = self.object_engine.get_table_size(SPLITGRAPH_META_SCHEMA, object_id)
         object_index = self._generate_object_index(object_id, changeset)
-        self.object_engine.run_sql(
+        self.metadata_engine.run_sql(
             insert("objects", ("object_id", "format", "parent_id", "namespace", "size", "index")),
             (object_id, object_format, parent_object, namespace, object_size, object_index))
 
@@ -171,7 +172,7 @@ class FragmentManager:
         :param schema: Table schema
         :param object_ids: IDs of fragments that the table is composed of
         """
-        self.object_engine.run_sql(
+        self.metadata_engine.run_sql(
             insert("tables", ("namespace", "repository", "image_hash", "table_name", "table_schema", "object_ids")),
             (repository.namespace, repository.repository, image, table, Json(schema), object_ids))
 
@@ -330,14 +331,14 @@ class FragmentManager:
         :param object_ids: Object IDs to start the traversal on.
         :return: Expanded chain. Parents of objects are guaranteed to come after those objects.
         """
-        parents = self.object_engine.run_sql(SQL(
+        parents = self.metadata_engine.run_sql(SQL(
             """WITH RECURSIVE parents AS (
                 SELECT object_id, parent_id FROM {0}.objects WHERE object_id IN ("""
             + ",".join(itertools.repeat("%s", len(object_ids))) + """) UNION ALL
                     SELECT o.object_id, o.parent_id
                         FROM parents p JOIN {0}.objects o ON p.parent_id = o.object_id)
             SELECT object_id FROM parents""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                                             object_ids, return_shape=ResultShape.MANY_ONE)
+                                               object_ids, return_shape=ResultShape.MANY_ONE)
         return list(parents)
 
     def filter_fragments(self, object_ids, quals, column_types):
@@ -371,7 +372,7 @@ class FragmentManager:
         query += SQL(",".join(itertools.repeat("%s", len(object_ids))) + ")")
         query += SQL(" AND ") + clause
 
-        return self.object_engine.run_sql(query, list(object_ids) + list(args), return_shape=ResultShape.MANY_ONE)
+        return self.metadata_engine.run_sql(query, list(object_ids) + list(args), return_shape=ResultShape.MANY_ONE)
 
 
 def _conflate_changes(changeset, new_changes):

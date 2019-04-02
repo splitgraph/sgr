@@ -32,7 +32,7 @@ class Table:
         :param lq_server: If set, sets up a layered querying FDW for the table instead using this foreign server.
         """
         destination_schema = destination_schema or self.repository.to_schema()
-        engine = self.repository.engine
+        engine = self.repository.object_engine
         object_manager = self.repository.objects
         engine.delete_table(destination_schema, destination)
 
@@ -71,7 +71,6 @@ class Table:
         sql_quals, sql_qual_vals = quals_to_sql(quals, column_types={c[1]: c[2] for c in self.table_schema})
 
         object_manager = self.repository.objects
-        engine = self.repository.engine
         with object_manager.ensure_objects(self, quals=quals) as required_objects:
             logging.info("Using fragments %r to satisfy the query", required_objects)
             if not required_objects:
@@ -85,6 +84,7 @@ class Table:
             staging_table = self._create_staging_table(required_objects[0])
 
             # Apply the fragments (just the parts that match the qualifiers) to the staging area
+            engine = self.repository.object_engine
             if quals:
                 engine.apply_fragments([(SPLITGRAPH_META_SCHEMA, o) for o in required_objects],
                                        "pg_temp", staging_table,
@@ -98,7 +98,7 @@ class Table:
 
     def _create_staging_table(self, snap):
         staging_table = get_random_object_id()
-        engine = self.repository.engine
+        engine = self.repository.object_engine
 
         logging.info("Using staging table %s", staging_table)
         engine.run_sql(SQL("CREATE TEMPORARY TABLE {1} "
@@ -116,7 +116,7 @@ class Table:
         If qual_sql is passed, this will include it in the SELECT query. Despite that Postgres
         will check our results again, this is still useful so that we don't pass all the rows
         in the SNAP through the Python runtime."""
-        engine = self.repository.engine
+        engine = self.repository.object_engine
 
         cur = engine.connection.cursor('sg_layered_query_cursor')
         query = SQL("SELECT ") + SQL(',').join(Identifier(c) for c in columns) \
