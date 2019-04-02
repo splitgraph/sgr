@@ -18,6 +18,7 @@ REPO_ROOT_DIR="${TEST_DIR}/.."
 pushd "$REPO_ROOT_DIR" \
     && pushd "${ARCHITECTURE_DIR}" \
     && docker-compose pull \
+    && docker-compose down -v \
     && docker-compose build \
     && docker-compose up -d --force-recreate --remove-orphans \
     && popd \
