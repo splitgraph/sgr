@@ -149,31 +149,37 @@ def test_object_cache_eviction(local_engine_empty, pg_repo_remote):
     object_manager.cache_size = 8192 * 2
     with object_manager.ensure_objects(vegetables_v2) as required_objects:
         current_objects = object_manager.get_downloaded_objects()
-        assert len(current_objects) == 2  # vegetables_v2 downloaded, one of fruits fragments remains.
+        assert len(current_objects) == 2  # vegetables_v2 downloaded
         assert object_manager.get_cache_occupancy() == 8192 * 2
-        assert fruit_snap not in current_objects
-        assert fruit_diff in current_objects
+
+        # One of fruits' fragments remains: since they were both used at the same time and have
+        # the same size, it's arbitrary which one gets evicted.
+
+        # This is the first time in my life I'm using xor for boolean logic rather than bit twiddling.
+        assert (fruit_diff in current_objects) ^ (fruit_snap in current_objects)
         assert vegetables_snap in current_objects
         assert required_objects == [vegetables_snap]
         assert object_manager.object_engine.table_exists(SPLITGRAPH_META_SCHEMA, vegetables_snap)
 
     assert _get_refcount(object_manager, vegetables_snap) == 0
 
-    # Now, let's try squeezing the cache even more so that there's only space for one object.
-    object_manager.cache_size = 8192
-    with object_manager.ensure_objects(fruits_v2):
-        # We only need to load the original SNAP here, so we're fine.
-        assert object_manager.object_engine.table_exists(SPLITGRAPH_META_SCHEMA, fruit_snap)
-        assert not object_manager.object_engine.table_exists(SPLITGRAPH_META_SCHEMA, vegetables_snap)
-        assert not object_manager.object_engine.table_exists(SPLITGRAPH_META_SCHEMA, fruit_diff)
-        assert len(object_manager.get_downloaded_objects()) == 1
-
-    # Delete all objects
+    # Delete all objects and re-load the fruits table
     object_manager.run_eviction(object_manager.get_full_object_tree(), [], None)
     assert len(object_manager.get_downloaded_objects()) == 0
     assert object_manager.get_cache_occupancy() == 0
+    with object_manager.ensure_objects(fruits_v3):
+        pass
+
+    # Now, let's try squeezing the cache even more so that there's only space for one object.
+    object_manager.cache_size = 8192
+    with object_manager.ensure_objects(vegetables_v2):
+        assert not object_manager.object_engine.table_exists(SPLITGRAPH_META_SCHEMA, fruit_snap)
+        assert object_manager.object_engine.table_exists(SPLITGRAPH_META_SCHEMA, vegetables_snap)
+        assert not object_manager.object_engine.table_exists(SPLITGRAPH_META_SCHEMA, fruit_diff)
+        assert len(object_manager.get_downloaded_objects()) == 1
 
     # Loading the next version (DIFF + SNAP) (not enough space for 2 objects).
+    object_manager.run_eviction(object_manager.get_full_object_tree(), [], None)
     with pytest.raises(SplitGraphException) as ex:
         with object_manager.ensure_objects(fruits_v3):
             pass
