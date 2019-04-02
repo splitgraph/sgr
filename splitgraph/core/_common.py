@@ -13,7 +13,9 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphException
 
-META_TABLES = ['images', 'tags', 'objects', 'tables', 'upstream', 'object_locations', 'object_cache_status', 'info']
+META_TABLES = ['images', 'tags', 'objects', 'tables', 'upstream', 'object_locations', 'object_cache_status',
+               'object_cache_occupancy', 'info']
+OBJECT_MANAGER_TABLES = ['object_cache_status', 'object_cache_occupancy']
 _PUBLISH_PREVIEW_SIZE = 100
 
 
@@ -178,7 +180,11 @@ def _create_metadata_schema(engine):
                         ready      BOOLEAN,
                         last_used  TIMESTAMP)""")
                    .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status"),
-                           Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")), return_shape=None)
+                           Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")))
+
+    # Size of all objects cached on the engine (existing externally and downloaded for a materialization/LQ)
+    engine.run_sql(SQL("""CREATE TABLE {0}.{1} (total_size BIGINT); INSERT INTO {0}.{1} VALUES (0)""")
+                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_occupancy")))
 
     # Maps a given table at a given point in time to a list of fragments that it's assembled from.
     # Only the "top" fragments are listed here: to actually materialize a given table, the parent chain of every
