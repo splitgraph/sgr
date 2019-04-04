@@ -132,9 +132,6 @@ class ObjectManager(FragmentManager, MetadataManager):
 
         self._claim_objects(required_objects)
         tracer.log('claim_objects')
-        # This also means that anybody else who tries to claim this set of objects will lock up until we're done with
-        # them (though note that if anything commits in the download step, these locks will get released and we'll
-        # be liable to be stepped on)
 
         try:
             to_fetch = self._prepare_fetch_list(required_objects)
@@ -147,14 +144,11 @@ class ObjectManager(FragmentManager, MetadataManager):
         # just the external objects.
         if to_fetch:
             upstream = table.repository.upstream
-            object_locations = self.get_external_object_locations(required_objects)
+            object_locations = self.get_external_object_locations(to_fetch)
             downloaded_by_us = self.download_objects(upstream.objects if upstream else None,
                                                      objects_to_fetch=to_fetch, object_locations=object_locations)
             # No matter what, claim the space required by the newly downloaded objects.
             self._increase_cache_occupancy(downloaded_by_us)
-            # Can't actually use the list of downloaded objects returned by the routine: if another instance of the
-            # object manager downloaded those objects between us compiling a list and performing the download,
-            # the downloaded objects won't be in the returned list.
             downloaded = self.get_downloaded_objects(limit_to=to_fetch)
             difference = list(set(to_fetch).difference(downloaded))
             if difference:
@@ -211,9 +205,29 @@ class ObjectManager(FragmentManager, MetadataManager):
         :param required_objects: Iterable of object IDs that are required to be on the engine.
         :return: Set of objects to fetch
         """
-        objects_in_cache = self.get_downloaded_objects(limit_to=required_objects)
-        to_fetch = set(required_objects).difference(objects_in_cache)
+        to_fetch = self.object_engine.run_sql(select("object_cache_status", "object_id", "ready = 'f'"),
+                                              return_shape=ResultShape.MANY_ONE)
         if to_fetch:
+            # If we need to download anything, take out an exclusive lock on the cache since we might
+            # need to run eviction and don't want multiple managers trying to download the same things.
+            # This used to be more granular (allow multiple managers downloading objects) but was resulting
+            # in fun concurrency bugs and deadlocks that I don't have the willpower to investigate further
+            # right now (e.g. two managers trying to download the same objects at the same time after one of them
+            # runs cache eviction and releases some locks -- or two managers trying to free the same amount
+            # of space in the cache for the same set of objects).
+
+            # Since we already hold a row-level lock on some objects in the cache, we have to release it first and
+            # lock the full table then -- but this means someone else might start downloading the objects that
+            # we claimed. So, once we acquire the lock, we recalculate the fetch list again to see what
+            # we're supposed to be fetching.
+            self.object_engine.commit()
+            self.object_engine.lock_table(SPLITGRAPH_META_SCHEMA, 'object_cache_status')
+            to_fetch = self.object_engine.run_sql(select("object_cache_status", "object_id", "ready = 'f'"),
+                                                  return_shape=ResultShape.MANY_ONE)
+            # If someone else downloaded all the objects we need, there's no point in holding the lock.
+            if not to_fetch:
+                self.object_engine.commit()
+                return to_fetch
             required_space = sum(o[4] for o in self.get_object_meta(list(to_fetch)))
             current_occupied = self.get_cache_occupancy()
             logging.info("Need to download %d object(s) (%s), cache occupancy: %s/%s",
@@ -319,16 +333,6 @@ class ObjectManager(FragmentManager, MetadataManager):
 
         # Find deletion candidates: objects that we have locally, with refcount 0, that aren't in the whitelist.
 
-        # We need to lock the table to make sure that our calculations of what we're about to delete are consistent.
-        # However, we can deadlock: we're already holding a lock on some objects and want to acquire an exclusive
-        # lock and so will wait for other workers to release their objects -- however, they might be waiting on us
-        # to release our objects.
-
-        # Hence, we commit the object refcount increase (so that others can't GC them), releasing the lock,
-        # and try to acquire the stronger lock.
-        self.object_engine.commit()
-        self.object_engine.lock_table(SPLITGRAPH_META_SCHEMA, "object_cache_status")
-
         candidates = [o for o in self.object_engine.run_sql(
             select("object_cache_status", "object_id,last_used", "refcount=0"),
             return_shape=ResultShape.MANY_MANY) if o[0] not in keep_objects]
@@ -359,12 +363,6 @@ class ObjectManager(FragmentManager, MetadataManager):
             self._delete_cache_entries(to_delete)
             self._decrease_cache_occupancy(freed_space)
 
-        # Release the exclusive lock and relock the objects we want instead once again (???)
-        self.object_engine.commit()
-        self.object_engine.run_sql("SET LOCAL synchronous_commit TO off;")
-        self._release_objects(keep_objects)
-        self._claim_objects(keep_objects)
-
     def _delete_cache_entries(self, to_delete):
         self.object_engine.run_sql(SQL("DELETE FROM {}.{} WHERE object_id IN (" +
                                        ",".join(itertools.repeat("%s", len(to_delete))) + ")")
@@ -382,6 +380,7 @@ class ObjectManager(FragmentManager, MetadataManager):
         """
 
         existing_objects = self.get_downloaded_objects(limit_to=objects_to_fetch)
+        logging.info("Need to fetch %r, already exist: %r", objects_to_fetch, existing_objects)
         objects_to_fetch = list(set(o for o in objects_to_fetch if o not in existing_objects))
         if not objects_to_fetch:
             return []
