@@ -43,6 +43,12 @@ class ObjectManager(FragmentManager, MetadataManager):
         # downloading them).
         self.eviction_floor = float(CONFIG['SG_EVICTION_FLOOR']) * 1024 * 1024
 
+        # Fraction of the cache size to free when eviction is run (the greater value of this amount and the
+        # amount needed to download required objects is actually freed). Eviction is an expensive operation
+        # (it pauses concurrent downloads) so increasing this makes eviction happen less often at the cost
+        # of more possible cache misses.
+        self.eviction_min_fraction = float(CONFIG['SG_EVICTION_MIN_FRACTION'])
+
     def get_full_object_tree(self):
         """Returns a dictionary (object_id -> parent, object_format, size) with the full object tree
         in the engine"""
@@ -241,6 +247,11 @@ class ObjectManager(FragmentManager, MetadataManager):
                 to_free = required_space + current_occupied - self.cache_size
                 logging.info("Need to free %s", pretty_size(to_free))
                 self.run_eviction(required_objects, to_free)
+            self.object_engine.commit()
+            # Finally, after we're done with eviction, relock the objects that we're supposed to be downloading.
+            to_fetch = self.object_engine.run_sql(select("object_cache_status", "object_id",
+                                                         "ready = 'f' FOR UPDATE"),
+                                                  return_shape=ResultShape.MANY_ONE)
         return to_fetch
 
     def _claim_objects(self, objects):
@@ -343,9 +354,14 @@ class ObjectManager(FragmentManager, MetadataManager):
             # Just delete everything with refcount 0.
             to_delete = [o[0] for o in candidates]
             freed_space = sum(object_sizes.values())
+            logging.info("Will delete %d object(s), total size %s", len(to_delete), pretty_size(freed_space))
         else:
             if required_space > sum(object_sizes.values()):
                 raise SplitGraphException("Not enough space will be reclaimed after eviction!")
+
+            # Since we can free the minimum required amount of space, see if we can free even more as
+            # per our settings (if we can't, we'll just delete as much as we can instead of failing).
+            required_space = max(required_space, int(self.eviction_min_fraction * self.cache_size))
 
             # Sort them by deletion priority (lowest is smallest expected retrieval cost -- more likely to delete)
             to_delete = []
@@ -353,22 +369,25 @@ class ObjectManager(FragmentManager, MetadataManager):
                                 key=lambda o: _eviction_score(object_sizes[o[0]], o[1]))
             freed_space = 0
             # Keep adding deletion candidates until we've freed enough space.
-            for object_id, _ in candidates:
+            last_useds = []
+            for object_id, last_used in candidates:
+                last_useds.append(last_used)
                 to_delete.append(object_id)
                 freed_space += object_sizes[object_id]
                 if freed_space >= required_space:
                     break
+            logging.info("Will delete %d object(s) last used between %s and %s, total size %s",
+                         len(to_delete), min(last_useds).isoformat(), max(last_useds).isoformat(),
+                         pretty_size(freed_space))
 
-        logging.info("Will delete %d object(s), total size %s", len(to_delete), pretty_size(freed_space))
         if to_delete:
             # NB delete_objects commits as well, releasing the lock. Make sure to do all bookkeeping first so that
             # other object managers in this function think that the objects have been deleted and don't try to delete
-            # them again. Finally, relock the table at the end of all of this.
+            # them again.
             self._delete_cache_entries(to_delete)
             self._decrease_cache_occupancy(freed_space)
             self.delete_objects(to_delete)
-            logging.info("Eviction done. Cache occupancy: %s, real %s", pretty_size(self.get_cache_occupancy()))
-            self.object_engine.lock_table(SPLITGRAPH_META_SCHEMA, 'object_cache_status')
+            logging.info("Eviction done. Cache occupancy: %s", pretty_size(self.get_cache_occupancy()))
 
     def _delete_cache_entries(self, to_delete):
         self.object_engine.run_sql(SQL("DELETE FROM {}.{} WHERE object_id IN (" +

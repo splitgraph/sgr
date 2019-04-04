@@ -186,6 +186,26 @@ def test_object_cache_eviction(local_engine_empty, pg_repo_remote):
     assert "Not enough space in the cache" in str(ex)
 
 
+def test_object_cache_eviction_fraction(local_engine_empty, pg_repo_remote):
+    pg_repo_local = _setup_object_cache_test(pg_repo_remote)
+
+    object_manager = pg_repo_local.objects
+    fruits_v3 = pg_repo_local.images['latest'].get_table('fruits')
+    vegetables_v2 = pg_repo_local.images[pg_repo_local.images['latest'].parent_id].get_table('vegetables')
+
+    # Load the fruits objects into the cache
+    with object_manager.ensure_objects(fruits_v3):
+        assert object_manager.get_cache_occupancy() == 8192 * 2
+
+    # Set the eviction fraction to 0.5 (clean out > half the cache in any case) and try downloading just one object.
+    object_manager.cache_size = 8192 * 2
+    object_manager.eviction_min_fraction = 0.75
+
+    with object_manager.ensure_objects(vegetables_v2):
+        # Only one object should be in the cache since we evicted cache_size * 0.75 = 2 objects
+        assert object_manager.get_cache_occupancy() == 8192
+
+
 def test_object_cache_locally_created_dont_get_evicted(local_engine_empty, pg_repo_remote):
     # Test that the objects which were created locally are exempt from cache eviction/stats.
     pg_repo_local = _setup_object_cache_test(pg_repo_remote)

@@ -31,6 +31,7 @@ DEFAULTS = {
     # See splitgraph.core.object_manager for an explanation.
     "SG_EVICTION_DECAY": 0.002,
     "SG_EVICTION_FLOOR": 1,
+    "SG_EVICTION_MIN_FRACTION": 0.05,
     "SG_FDW_CLASS": "splitgraph.core.fdw_checkout.QueryingForeignDataWrapper",
 }
 
@@ -66,6 +67,7 @@ ARGUMENT_KEY_MAP = {
     "--object-cache-size": "SG_OBJECT_CACHE_SIZE",
     "--eviction-decay": "SG_EVICTION_DECAY",
     "--eviction-floor": "SG_EVICTION_FLOOR",
+    "--eviction-fraction": "SG_EVICTION_MIN_FRACTION",
     "--fdw-class": "SG_FDW_CLASS",
 }
 
