@@ -240,7 +240,7 @@ class ObjectManager(FragmentManager, MetadataManager):
             if required_space > self.cache_size - current_occupied:
                 to_free = required_space + current_occupied - self.cache_size
                 logging.info("Need to free %s", pretty_size(to_free))
-                self.run_eviction(self.get_full_object_tree(), required_objects, to_free)
+                self.run_eviction(required_objects, to_free)
         return to_fetch
 
     def _claim_objects(self, objects):
@@ -301,12 +301,11 @@ class ObjectManager(FragmentManager, MetadataManager):
         self.object_engine.run_sql(SQL("UPDATE {}.object_cache_occupancy SET total_size = total_size - %s")
                                    .format(Identifier(SPLITGRAPH_META_SCHEMA)), (size_freed,))
 
-    def run_eviction(self, object_tree, keep_objects, required_space=None):
+    def run_eviction(self, keep_objects, required_space=None):
         """
         Delete enough objects with zero reference count (only those, since we guarantee that whilst refcount is >0,
         the object stays alive) to free at least `required_space` in the cache.
 
-        :param object_tree: Object tree dictionary
         :param keep_objects: List of objects (besides those with nonzero refcount) that can't be deleted.
         :param required_space: Space, in bytes, to free. If the routine can't free at least this much space,
             it shall raise an exception. If None, removes all eligible objects.
@@ -337,31 +336,39 @@ class ObjectManager(FragmentManager, MetadataManager):
             select("object_cache_status", "object_id,last_used", "refcount=0"),
             return_shape=ResultShape.MANY_MANY) if o[0] not in keep_objects]
 
+        object_meta = self.get_object_meta([o[0] for o in candidates]) if candidates else []
+        object_sizes = {o[0]: o[4] for o in object_meta}
+
         if required_space is None:
             # Just delete everything with refcount 0.
             to_delete = [o[0] for o in candidates]
-            freed_space = sum(object_tree[o][2] for o in to_delete)
+            freed_space = sum(object_sizes.values())
         else:
-            if required_space > sum(object_tree[o[0]][2] for o in candidates):
+            if required_space > sum(object_sizes.values()):
                 raise SplitGraphException("Not enough space will be reclaimed after eviction!")
 
             # Sort them by deletion priority (lowest is smallest expected retrieval cost -- more likely to delete)
             to_delete = []
             candidates = sorted(candidates,
-                                key=lambda o: _eviction_score(object_tree[o[0]][2], o[1]))
+                                key=lambda o: _eviction_score(object_sizes[o[0]], o[1]))
             freed_space = 0
             # Keep adding deletion candidates until we've freed enough space.
             for object_id, _ in candidates:
                 to_delete.append(object_id)
-                freed_space += object_tree[object_id][2]
+                freed_space += object_sizes[object_id]
                 if freed_space >= required_space:
                     break
 
         logging.info("Will delete %d object(s), total size %s", len(to_delete), pretty_size(freed_space))
         if to_delete:
-            self.delete_objects(to_delete)
+            # NB delete_objects commits as well, releasing the lock. Make sure to do all bookkeeping first so that
+            # other object managers in this function think that the objects have been deleted and don't try to delete
+            # them again. Finally, relock the table at the end of all of this.
             self._delete_cache_entries(to_delete)
             self._decrease_cache_occupancy(freed_space)
+            self.delete_objects(to_delete)
+            logging.info("Eviction done. Cache occupancy: %s, real %s", pretty_size(self.get_cache_occupancy()))
+            self.object_engine.lock_table(SPLITGRAPH_META_SCHEMA, 'object_cache_status')
 
     def _delete_cache_entries(self, to_delete):
         self.object_engine.run_sql(SQL("DELETE FROM {}.{} WHERE object_id IN (" +
