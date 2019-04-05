@@ -36,9 +36,9 @@ _wait_for_test_architecture() {
     local counter=0
     while true ; do
 
-        if test $counter -eq 15 ; then
+        if test $counter -eq 20 ; then
             echo
-            echo "FATAL: Could not connect to test-architecture after 10 tries"
+            echo "FATAL: Could not connect to test-architecture after 20 tries"
             exit 1
         fi
 
