@@ -43,6 +43,12 @@ class ObjectManager(FragmentManager, MetadataManager):
         # downloading them).
         self.eviction_floor = float(CONFIG['SG_EVICTION_FLOOR']) * 1024 * 1024
 
+        # Fraction of the cache size to free when eviction is run (the greater value of this amount and the
+        # amount needed to download required objects is actually freed). Eviction is an expensive operation
+        # (it pauses concurrent downloads) so increasing this makes eviction happen less often at the cost
+        # of more possible cache misses.
+        self.eviction_min_fraction = float(CONFIG['SG_EVICTION_MIN_FRACTION'])
+
     def get_full_object_tree(self):
         """Returns a dictionary (object_id -> parent, object_format, size) with the full object tree
         in the engine"""
@@ -132,9 +138,6 @@ class ObjectManager(FragmentManager, MetadataManager):
 
         self._claim_objects(required_objects)
         tracer.log('claim_objects')
-        # This also means that anybody else who tries to claim this set of objects will lock up until we're done with
-        # them (though note that if anything commits in the download step, these locks will get released and we'll
-        # be liable to be stepped on)
 
         try:
             to_fetch = self._prepare_fetch_list(required_objects)
@@ -147,14 +150,11 @@ class ObjectManager(FragmentManager, MetadataManager):
         # just the external objects.
         if to_fetch:
             upstream = table.repository.upstream
-            object_locations = self.get_external_object_locations(required_objects)
+            object_locations = self.get_external_object_locations(to_fetch)
             downloaded_by_us = self.download_objects(upstream.objects if upstream else None,
                                                      objects_to_fetch=to_fetch, object_locations=object_locations)
             # No matter what, claim the space required by the newly downloaded objects.
             self._increase_cache_occupancy(downloaded_by_us)
-            # Can't actually use the list of downloaded objects returned by the routine: if another instance of the
-            # object manager downloaded those objects between us compiling a list and performing the download,
-            # the downloaded objects won't be in the returned list.
             downloaded = self.get_downloaded_objects(limit_to=to_fetch)
             difference = list(set(to_fetch).difference(downloaded))
             if difference:
@@ -211,9 +211,29 @@ class ObjectManager(FragmentManager, MetadataManager):
         :param required_objects: Iterable of object IDs that are required to be on the engine.
         :return: Set of objects to fetch
         """
-        objects_in_cache = self.get_downloaded_objects(limit_to=required_objects)
-        to_fetch = set(required_objects).difference(objects_in_cache)
+        to_fetch = self.object_engine.run_sql(select("object_cache_status", "object_id", "ready = 'f'"),
+                                              return_shape=ResultShape.MANY_ONE)
         if to_fetch:
+            # If we need to download anything, take out an exclusive lock on the cache since we might
+            # need to run eviction and don't want multiple managers trying to download the same things.
+            # This used to be more granular (allow multiple managers downloading objects) but was resulting
+            # in fun concurrency bugs and deadlocks that I don't have the willpower to investigate further
+            # right now (e.g. two managers trying to download the same objects at the same time after one of them
+            # runs cache eviction and releases some locks -- or two managers trying to free the same amount
+            # of space in the cache for the same set of objects).
+
+            # Since we already hold a row-level lock on some objects in the cache, we have to release it first and
+            # lock the full table then -- but this means someone else might start downloading the objects that
+            # we claimed. So, once we acquire the lock, we recalculate the fetch list again to see what
+            # we're supposed to be fetching.
+            self.object_engine.commit()
+            self.object_engine.lock_table(SPLITGRAPH_META_SCHEMA, 'object_cache_status')
+            to_fetch = self.object_engine.run_sql(select("object_cache_status", "object_id", "ready = 'f'"),
+                                                  return_shape=ResultShape.MANY_ONE)
+            # If someone else downloaded all the objects we need, there's no point in holding the lock.
+            if not to_fetch:
+                self.object_engine.commit()
+                return to_fetch
             required_space = sum(o[4] for o in self.get_object_meta(list(to_fetch)))
             current_occupied = self.get_cache_occupancy()
             logging.info("Need to download %d object(s) (%s), cache occupancy: %s/%s",
@@ -226,7 +246,12 @@ class ObjectManager(FragmentManager, MetadataManager):
             if required_space > self.cache_size - current_occupied:
                 to_free = required_space + current_occupied - self.cache_size
                 logging.info("Need to free %s", pretty_size(to_free))
-                self.run_eviction(self.get_full_object_tree(), required_objects, to_free)
+                self.run_eviction(required_objects, to_free)
+            self.object_engine.commit()
+            # Finally, after we're done with eviction, relock the objects that we're supposed to be downloading.
+            to_fetch = self.object_engine.run_sql(select("object_cache_status", "object_id",
+                                                         "ready = 'f' FOR UPDATE"),
+                                                  return_shape=ResultShape.MANY_ONE)
         return to_fetch
 
     def _claim_objects(self, objects):
@@ -287,12 +312,11 @@ class ObjectManager(FragmentManager, MetadataManager):
         self.object_engine.run_sql(SQL("UPDATE {}.object_cache_occupancy SET total_size = total_size - %s")
                                    .format(Identifier(SPLITGRAPH_META_SCHEMA)), (size_freed,))
 
-    def run_eviction(self, object_tree, keep_objects, required_space=None):
+    def run_eviction(self, keep_objects, required_space=None):
         """
         Delete enough objects with zero reference count (only those, since we guarantee that whilst refcount is >0,
         the object stays alive) to free at least `required_space` in the cache.
 
-        :param object_tree: Object tree dictionary
         :param keep_objects: List of objects (besides those with nonzero refcount) that can't be deleted.
         :param required_space: Space, in bytes, to free. If the routine can't free at least this much space,
             it shall raise an exception. If None, removes all eligible objects.
@@ -319,51 +343,51 @@ class ObjectManager(FragmentManager, MetadataManager):
 
         # Find deletion candidates: objects that we have locally, with refcount 0, that aren't in the whitelist.
 
-        # We need to lock the table to make sure that our calculations of what we're about to delete are consistent.
-        # However, we can deadlock: we're already holding a lock on some objects and want to acquire an exclusive
-        # lock and so will wait for other workers to release their objects -- however, they might be waiting on us
-        # to release our objects.
-
-        # Hence, we commit the object refcount increase (so that others can't GC them), releasing the lock,
-        # and try to acquire the stronger lock.
-        self.object_engine.commit()
-        self.object_engine.lock_table(SPLITGRAPH_META_SCHEMA, "object_cache_status")
-
         candidates = [o for o in self.object_engine.run_sql(
             select("object_cache_status", "object_id,last_used", "refcount=0"),
             return_shape=ResultShape.MANY_MANY) if o[0] not in keep_objects]
 
+        object_meta = self.get_object_meta([o[0] for o in candidates]) if candidates else []
+        object_sizes = {o[0]: o[4] for o in object_meta}
+
         if required_space is None:
             # Just delete everything with refcount 0.
             to_delete = [o[0] for o in candidates]
-            freed_space = sum(object_tree[o][2] for o in to_delete)
+            freed_space = sum(object_sizes.values())
+            logging.info("Will delete %d object(s), total size %s", len(to_delete), pretty_size(freed_space))
         else:
-            if required_space > sum(object_tree[o[0]][2] for o in candidates):
+            if required_space > sum(object_sizes.values()):
                 raise SplitGraphException("Not enough space will be reclaimed after eviction!")
+
+            # Since we can free the minimum required amount of space, see if we can free even more as
+            # per our settings (if we can't, we'll just delete as much as we can instead of failing).
+            required_space = max(required_space, int(self.eviction_min_fraction * self.cache_size))
 
             # Sort them by deletion priority (lowest is smallest expected retrieval cost -- more likely to delete)
             to_delete = []
             candidates = sorted(candidates,
-                                key=lambda o: _eviction_score(object_tree[o[0]][2], o[1]))
+                                key=lambda o: _eviction_score(object_sizes[o[0]], o[1]))
             freed_space = 0
             # Keep adding deletion candidates until we've freed enough space.
-            for object_id, _ in candidates:
+            last_useds = []
+            for object_id, last_used in candidates:
+                last_useds.append(last_used)
                 to_delete.append(object_id)
-                freed_space += object_tree[object_id][2]
+                freed_space += object_sizes[object_id]
                 if freed_space >= required_space:
                     break
+            logging.info("Will delete %d object(s) last used between %s and %s, total size %s",
+                         len(to_delete), min(last_useds).isoformat(), max(last_useds).isoformat(),
+                         pretty_size(freed_space))
 
-        logging.info("Will delete %d object(s), total size %s", len(to_delete), pretty_size(freed_space))
         if to_delete:
-            self.delete_objects(to_delete)
+            # NB delete_objects commits as well, releasing the lock. Make sure to do all bookkeeping first so that
+            # other object managers in this function think that the objects have been deleted and don't try to delete
+            # them again.
             self._delete_cache_entries(to_delete)
             self._decrease_cache_occupancy(freed_space)
-
-        # Release the exclusive lock and relock the objects we want instead once again (???)
-        self.object_engine.commit()
-        self.object_engine.run_sql("SET LOCAL synchronous_commit TO off;")
-        self._release_objects(keep_objects)
-        self._claim_objects(keep_objects)
+            self.delete_objects(to_delete)
+            logging.info("Eviction done. Cache occupancy: %s", pretty_size(self.get_cache_occupancy()))
 
     def _delete_cache_entries(self, to_delete):
         self.object_engine.run_sql(SQL("DELETE FROM {}.{} WHERE object_id IN (" +
@@ -382,6 +406,7 @@ class ObjectManager(FragmentManager, MetadataManager):
         """
 
         existing_objects = self.get_downloaded_objects(limit_to=objects_to_fetch)
+        logging.info("Need to fetch %r, already exist: %r", objects_to_fetch, existing_objects)
         objects_to_fetch = list(set(o for o in objects_to_fetch if o not in existing_objects))
         if not objects_to_fetch:
             return []

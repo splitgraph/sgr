@@ -73,7 +73,8 @@ class PsycopgEngine(SQLEngine):
         self._pool.putconn(conn)
 
     def lock_table(self, schema, table):
-        self.run_sql(SQL("LOCK TABLE {}.{} IN ACCESS EXCLUSIVE MODE").format(Identifier(schema), Identifier(table)))
+        # Allow SELECTs but not writes to a given table.
+        self.run_sql(SQL("LOCK TABLE {}.{} IN EXCLUSIVE MODE").format(Identifier(schema), Identifier(table)))
 
     @property
     def connection(self):

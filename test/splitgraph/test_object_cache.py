@@ -113,7 +113,7 @@ def test_object_cache_non_existing_objects(local_engine_empty, pg_repo_remote):
     # Make sure the claims have been released on failure (not inserted into the table at all)
     assert _get_refcount(object_manager, fruits_v3.objects[0]) is None
     # Now, also delete objects from Minio and make sure it's detected at download time
-    object_manager.run_eviction(object_manager.get_full_object_tree(), keep_objects=[], required_space=None)
+    object_manager.run_eviction(keep_objects=[], required_space=None)
 
     assert len(object_manager.get_downloaded_objects()) == 0
     assert object_manager.get_cache_occupancy() == 0
@@ -164,7 +164,7 @@ def test_object_cache_eviction(local_engine_empty, pg_repo_remote):
     assert _get_refcount(object_manager, vegetables_snap) == 0
 
     # Delete all objects and re-load the fruits table
-    object_manager.run_eviction(object_manager.get_full_object_tree(), [], None)
+    object_manager.run_eviction([], None)
     assert len(object_manager.get_downloaded_objects()) == 0
     assert object_manager.get_cache_occupancy() == 0
     with object_manager.ensure_objects(fruits_v3):
@@ -179,11 +179,31 @@ def test_object_cache_eviction(local_engine_empty, pg_repo_remote):
         assert len(object_manager.get_downloaded_objects()) == 1
 
     # Loading the next version (DIFF + SNAP) (not enough space for 2 objects).
-    object_manager.run_eviction(object_manager.get_full_object_tree(), [], None)
+    object_manager.run_eviction([], None)
     with pytest.raises(SplitGraphException) as ex:
         with object_manager.ensure_objects(fruits_v3):
             pass
     assert "Not enough space in the cache" in str(ex)
+
+
+def test_object_cache_eviction_fraction(local_engine_empty, pg_repo_remote):
+    pg_repo_local = _setup_object_cache_test(pg_repo_remote)
+
+    object_manager = pg_repo_local.objects
+    fruits_v3 = pg_repo_local.images['latest'].get_table('fruits')
+    vegetables_v2 = pg_repo_local.images[pg_repo_local.images['latest'].parent_id].get_table('vegetables')
+
+    # Load the fruits objects into the cache
+    with object_manager.ensure_objects(fruits_v3):
+        assert object_manager.get_cache_occupancy() == 8192 * 2
+
+    # Set the eviction fraction to 0.5 (clean out > half the cache in any case) and try downloading just one object.
+    object_manager.cache_size = 8192 * 2
+    object_manager.eviction_min_fraction = 0.75
+
+    with object_manager.ensure_objects(vegetables_v2):
+        # Only one object should be in the cache since we evicted cache_size * 0.75 = 2 objects
+        assert object_manager.get_cache_occupancy() == 8192
 
 
 def test_object_cache_locally_created_dont_get_evicted(local_engine_empty, pg_repo_remote):
@@ -207,7 +227,7 @@ def test_object_cache_locally_created_dont_get_evicted(local_engine_empty, pg_re
     assert object_manager.get_cache_occupancy() == 8192 * 4  # 5 objects on the engine, 1 of them was created locally.
 
     # Evict all objects -- check to see the one we created still exists.
-    object_manager.run_eviction(object_manager.get_full_object_tree(), keep_objects=[], required_space=None)
+    object_manager.run_eviction(keep_objects=[], required_space=None)
     downloaded = object_manager.get_downloaded_objects()
     assert len(downloaded) == 1
     assert fruits_v4.objects[0] in downloaded
@@ -235,7 +255,7 @@ def test_object_cache_nested(local_engine_empty, pg_repo_remote):
             assert len(object_manager.get_downloaded_objects()) == 3
 
     # Now evict everything from the cache.
-    object_manager.run_eviction(object_manager.get_full_object_tree(), keep_objects=[], required_space=None)
+    object_manager.run_eviction(keep_objects=[], required_space=None)
     assert len(object_manager.get_downloaded_objects()) == 0
 
     object_manager.cache_size = 8192 * 2
