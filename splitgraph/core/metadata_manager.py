@@ -87,23 +87,3 @@ class MetadataManager:
         """
         return self.metadata_engine.run_sql(select("objects", "object_id, format, parent_id, namespace, size, index",
                                                    "object_id IN (" + ','.join('%s' for _ in objects) + ")"), objects)
-
-    def extract_recursive_object_meta(self, remote, table_meta):
-        """Recursively crawl the a remote object manager in order to fetch all objects
-        required to materialize tables specified in `table_meta` that don't yet exist on the local engine."""
-        existing_objects = self.get_existing_objects()
-        distinct_objects = set(o for os in table_meta for o in os[3] if o not in existing_objects)
-        known_objects = set()
-        object_meta = []
-
-        while True:
-            new_parents = [o for o in distinct_objects if o not in known_objects]
-            if not new_parents:
-                break
-            else:
-                parents_meta = remote.get_object_meta(new_parents)
-                distinct_objects.update(
-                    set(o for os in parents_meta for o in os[3] if o not in existing_objects))
-                object_meta.extend(parents_meta)
-                known_objects.update(new_parents)
-        return distinct_objects, object_meta

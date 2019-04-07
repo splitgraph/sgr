@@ -5,7 +5,7 @@ Functions for communicating with the remote Splitgraph catalog
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.config import REGISTRY_META_SCHEMA, SPLITGRAPH_META_SCHEMA
+from splitgraph.config import REGISTRY_META_SCHEMA, SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.core._common import select, insert
 from splitgraph.engine import ResultShape
 
@@ -136,6 +136,8 @@ def setup_registry_mode(engine):
         # Grant everything by default -- RLS will supersede these.
         engine.run_sql(SQL("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA {} TO PUBLIC")
                        .format(Identifier(schema)))
+
+    engine.run_sql(SQL("GRANT USAGE ON SCHEMA {} TO PUBLIC").format(Identifier(SPLITGRAPH_API_SCHEMA)))
 
     engine.run_sql(SQL("REVOKE INSERT, DELETE, UPDATE ON TABLE {}.info FROM PUBLIC").format(
         Identifier(SPLITGRAPH_META_SCHEMA)))

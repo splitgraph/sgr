@@ -354,10 +354,18 @@ def gather_sync_metadata(target, source):
     existing_tags = [t for s, t in target.get_all_hashes_tags()]
     tags = {t: s for s, t in source.get_all_hashes_tags() if t not in existing_tags}
 
-    # Crawl the object tree to get the IDs and other metadata for all required objects.
-    distinct_objects, object_meta = target.objects.extract_recursive_object_meta(source.objects, table_meta)
+    # Get the top objects required by all new tables (without their dependencies)
+    top_objects = list({o for table in table_meta for o in table[3]})
 
-    object_locations = source.objects.get_external_object_locations(list(distinct_objects)) if distinct_objects else []
+    # Expand this list to include the objects' parents etc
+    existing_objects = target.objects.get_existing_objects()
+    new_objects = [o for o in source.objects.get_all_required_objects(top_objects) if o not in existing_objects]
+    if new_objects:
+        object_meta = source.objects.get_object_meta(new_objects)
+        object_locations = source.objects.get_external_object_locations(new_objects)
+    else:
+        object_meta = []
+        object_locations = []
     return new_images, table_meta, object_locations, object_meta, tags
 
 

@@ -20,7 +20,7 @@ BEGIN
    WHERE i.namespace = _namespace and i.repository = _repository
    ORDER BY created ASC;
 END
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY INVOKER;
 
 CREATE OR REPLACE FUNCTION splitgraph_api.get_object_path(object_ids varchar[]) RETURNS varchar[] AS $$
 BEGIN
@@ -30,4 +30,17 @@ BEGIN
             FROM parents p JOIN splitgraph_meta.objects o ON p.parent_id = o.object_id)
         SELECT object_id FROM parents);
 END
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY INVOKER;
+
+CREATE OR REPLACE FUNCTION splitgraph_api.get_tables(_namespace varchar, _repository varchar, _image_hash varchar)
+  RETURNS TABLE (
+    table_name VARCHAR,
+    table_schema JSONB,
+    object_ids VARCHAR[]) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT t.table_name, t.table_schema, t.object_ids
+  FROM splitgraph_meta.tables t
+  WHERE t.namespace = _namespace AND t.repository = _repository AND t._image_hash = image_hash
+END
+$$ LANGUAGE plpgsql SECURITY INVOKER;

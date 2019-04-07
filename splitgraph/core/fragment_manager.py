@@ -9,6 +9,7 @@ from random import getrandbits
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph.config import SPLITGRAPH_API_SCHEMA
 from splitgraph.engine.postgres.engine import SG_UD_FLAG
 from ._common import adapt, SPLITGRAPH_META_SCHEMA, ResultShape, insert, coerce_val_to_json
 
@@ -331,14 +332,10 @@ class FragmentManager:
         :param object_ids: Object IDs to start the traversal on.
         :return: Expanded chain. Parents of objects are guaranteed to come after those objects.
         """
-        parents = self.metadata_engine.run_sql(SQL(
-            """WITH RECURSIVE parents AS (
-                SELECT object_id, parent_id FROM {0}.objects WHERE object_id IN ("""
-            + ",".join(itertools.repeat("%s", len(object_ids))) + """) UNION ALL
-                    SELECT o.object_id, o.parent_id
-                        FROM parents p JOIN {0}.objects o ON p.parent_id = o.object_id)
-            SELECT object_id FROM parents""").format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                                               object_ids, return_shape=ResultShape.MANY_ONE)
+        parents = self.metadata_engine.run_sql(
+            SQL("SELECT {}.get_object_path(%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
+            (object_ids,), return_shape=ResultShape.ONE_ONE)
+
         return list(parents)
 
     def filter_fragments(self, object_ids, quals, column_types):
