@@ -66,6 +66,37 @@ BEGIN
 END
 $$ LANGUAGE plpgsql SECURITY INVOKER;
 
+-- get_object_meta(object_ids): get metadata for objects
+CREATE OR REPLACE FUNCTION splitgraph_api.get_object_meta(object_ids varchar[])
+  RETURNS TABLE (
+    object_id VARCHAR,
+    format    VARCHAR,
+    parent_id VARCHAR,
+    namespace VARCHAR,
+    size      BIGINT,
+    index     JSONB) AS $$
+BEGIN
+   RETURN QUERY
+   SELECT o.object_id, o.format, o.parent_id, o.namespace, o.size, o.index
+   FROM splitgraph_meta.objects o
+   WHERE o.object_id = ANY(object_ids);
+END
+$$ LANGUAGE plpgsql SECURITY INVOKER;
+
+-- get_object_locations(object_ids): get external locations for objects
+CREATE OR REPLACE FUNCTION splitgraph_api.get_object_locations(object_ids varchar[])
+  RETURNS TABLE (
+    object_id VARCHAR,
+    location  VARCHAR,
+    protocol  VARCHAR) AS $$
+BEGIN
+   RETURN QUERY
+   SELECT o.object_id, o.location, o.protocol
+   FROM splitgraph_meta.object_locations o
+   WHERE o.object_id = ANY(object_ids);
+END
+$$ LANGUAGE plpgsql SECURITY INVOKER;
+
 
 --
 -- TABLE API

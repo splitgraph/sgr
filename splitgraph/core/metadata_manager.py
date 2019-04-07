@@ -87,9 +87,8 @@ class MetadataManager:
         :param objects: List of objects stored externally.
         :return: List of (object_id, location, protocol).
         """
-        return self.metadata_engine.run_sql(select("object_locations", "object_id, location, protocol",
-                                                   "object_id IN (" + ','.join('%s' for _ in objects) + ")"),
-                                            objects)
+        return self.metadata_engine.run_sql(select("get_object_locations", "object_id, location, protocol",
+                                                   schema=SPLITGRAPH_API_SCHEMA, table_args="(%s)"), (objects,))
 
     def get_object_meta(self, objects):
         """
@@ -98,5 +97,7 @@ class MetadataManager:
         :param objects: List of objects to get metadata for.
         :return: List of (object_id, format, parent_id, namespace, size, index).
         """
-        return self.metadata_engine.run_sql(select("objects", "object_id, format, parent_id, namespace, size, index",
-                                                   "object_id IN (" + ','.join('%s' for _ in objects) + ")"), objects)
+
+        return self.metadata_engine.run_sql(select("get_object_meta",
+                                                   "object_id, format, parent_id, namespace, size, index",
+                                                   schema=SPLITGRAPH_API_SCHEMA, table_args="(%s)"), (objects,))
