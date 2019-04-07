@@ -441,10 +441,8 @@ class ObjectManager(FragmentManager, MetadataManager):
         if handler_params is None:
             handler_params = {}
 
-        # Get objects that exist on the remote engine
-        existing_objects = target.get_existing_objects()
-
-        objects_to_push = list(set(o for o in objects_to_push if o not in existing_objects))
+        # Check which objects we need to push out
+        objects_to_push = target.get_new_objects(objects_to_push)
         if not objects_to_push:
             logging.info("Nothing to upload.")
             return []

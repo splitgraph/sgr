@@ -142,9 +142,9 @@ def test_lq_external(local_engine_empty, pg_repo_remote):
     pg_repo_remote.engine.commit()
     pg_repo_local.objects.cleanup()
 
-    assert len(pg_repo_local.objects.get_existing_objects()) == 0
+    assert len(pg_repo_local.objects.get_all_objects()) == 0
     assert len(pg_repo_local.objects.get_downloaded_objects()) == 0
-    assert len(remote.objects.get_existing_objects()) == 6
+    assert len(remote.objects.get_all_objects()) == 6
     assert len(remote.objects.get_downloaded_objects()) == 0
 
     # Proceed as per the previous test

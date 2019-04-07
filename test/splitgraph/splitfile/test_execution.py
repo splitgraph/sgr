@@ -119,7 +119,7 @@ def test_import_updating_splitfile_with_uploading(local_engine_empty, remote_eng
     execute_commands(load_splitfile('import_and_update.splitfile'), output=OUTPUT)
     head = OUTPUT.head
 
-    assert len(OUTPUT.objects.get_existing_objects()) == 4  # Two original tables + two updates
+    assert len(OUTPUT.objects.get_all_objects()) == 4  # Two original tables + two updates
 
     # Push with upload. Have to specify the remote repo.
     remote_output = Repository(OUTPUT.namespace, OUTPUT.repository, remote_engine)
@@ -130,12 +130,12 @@ def test_import_updating_splitfile_with_uploading(local_engine_empty, remote_eng
     # OUTPUT doesn't exist but we use its ObjectManager reference to access the global object
     # manager for the engine (maybe should inject it into local_engine/remote_engine instead)
     OUTPUT.objects.cleanup()
-    assert not OUTPUT.objects.get_existing_objects()
+    assert not OUTPUT.objects.get_all_objects()
 
     clone(OUTPUT.to_schema(), download_all=False)
 
     assert not OUTPUT.objects.get_downloaded_objects()
-    existing_objects = list(OUTPUT.objects.get_existing_objects())
+    existing_objects = list(OUTPUT.objects.get_all_objects())
     assert len(existing_objects) == 4  # Two original tables + two updates
     # Only 2 objects are stored externally (the other two have been on the remote the whole time)
     assert len(OUTPUT.objects.get_external_object_locations(existing_objects)) == 2

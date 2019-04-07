@@ -481,8 +481,8 @@ class Repository:
 
         :return: List of (image_hash, tag)
         """
-        return self.engine.run_sql(select("tags", "image_hash, tag", "namespace = %s AND repository = %s"),
-                                   (self.namespace, self.repository,))
+        return self.engine.run_sql(select("get_tagged_images", "image_hash, tag", schema=SPLITGRAPH_API_SCHEMA,
+                                          table_args="(%s,%s)"), (self.namespace, self.repository))
 
     def set_tags(self, tags, force=False):
         """

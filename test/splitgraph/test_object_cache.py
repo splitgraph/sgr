@@ -37,9 +37,9 @@ def _setup_object_cache_test(pg_repo_remote, longer_chain=False):
     pg_repo_local = clone(pg_repo_remote, download_all=False)
 
     # 6 objects in the tree (SNAP -> SNAP -> DIFF for both tables)
-    assert len(pg_repo_local.objects.get_existing_objects()) == 6 if not longer_chain else 7
+    assert len(pg_repo_local.objects.get_all_objects()) == 6 if not longer_chain else 7
     assert len(pg_repo_local.objects.get_downloaded_objects()) == 0
-    assert len(remote.objects.get_existing_objects()) == 6 if not longer_chain else 7
+    assert len(remote.objects.get_all_objects()) == 6 if not longer_chain else 7
     assert len(remote.objects.get_downloaded_objects()) == 0
 
     # Nothing has yet been downloaded (cache entries only for externally downloaded things)

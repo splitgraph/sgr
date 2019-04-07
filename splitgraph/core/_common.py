@@ -9,7 +9,7 @@ from functools import wraps
 
 from psycopg2.sql import Identifier, SQL
 
-from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphException
 
@@ -345,11 +345,10 @@ def gather_sync_metadata(target, source):
         image = source_images[image_hash]
         new_images.append(image)
         # Get the meta for all objects we'll need to fetch.
-        table_meta.extend(source.engine.run_sql(
-            SQL("""SELECT image_hash, table_name, table_schema, object_ids FROM {0}.tables
-                       WHERE namespace = %s AND repository = %s AND image_hash = %s""")
-                .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-            (source.namespace, source.repository, image.image_hash)))
+        table_meta.extend([(image_hash,) + t for t in
+                           source.engine.run_sql(select("get_tables", "table_name, table_schema, object_ids",
+                                                        schema=SPLITGRAPH_API_SCHEMA, table_args="(%s,%s,%s)"),
+                                                 (source.namespace, source.repository, image_hash))])
     # Get the tags too
     existing_tags = [t for s, t in target.get_all_hashes_tags()]
     tags = {t: s for s, t in source.get_all_hashes_tags() if t not in existing_tags}
@@ -358,8 +357,7 @@ def gather_sync_metadata(target, source):
     top_objects = list({o for table in table_meta for o in table[3]})
 
     # Expand this list to include the objects' parents etc
-    existing_objects = target.objects.get_existing_objects()
-    new_objects = [o for o in source.objects.get_all_required_objects(top_objects) if o not in existing_objects]
+    new_objects = target.objects.get_new_objects(source.objects.get_all_required_objects(top_objects))
     if new_objects:
         object_meta = source.objects.get_object_meta(new_objects)
         object_locations = source.objects.get_external_object_locations(new_objects)

@@ -52,7 +52,7 @@ def test_pulls_with_lazy_object_downloads(local_engine_empty, pg_repo_remote):
 
     PG_MNT.images.by_hash(remote_head.image_hash).checkout()
     assert len(PG_MNT.objects.get_downloaded_objects()) == 2  # Original fruits and vegetables tables.
-    assert PG_MNT.objects.get_downloaded_objects() == PG_MNT.objects.get_existing_objects()
+    assert PG_MNT.objects.get_downloaded_objects() == PG_MNT.objects.get_all_objects()
 
     # In the meantime, make two branches off of origin (a total of 3 commits)
     pg_repo_remote.run_sql("INSERT INTO fruits VALUES (3, 'mayonnaise')")
@@ -65,7 +65,7 @@ def test_pulls_with_lazy_object_downloads(local_engine_empty, pg_repo_remote):
     # Pull from upstream.
     PG_MNT.pull(download_all=False)
     # Make sure we have the pointers to the three versions of the fruits table + the original vegetables
-    assert len(PG_MNT.objects.get_existing_objects()) == 4
+    assert len(PG_MNT.objects.get_all_objects()) == 4
 
     # Also make sure still only have the objects with the original fruits + vegetables tables
     assert len(PG_MNT.objects.get_downloaded_objects()) == 2
@@ -77,7 +77,7 @@ def test_pulls_with_lazy_object_downloads(local_engine_empty, pg_repo_remote):
 
     PG_MNT.images.by_hash(right.image_hash).checkout()
     assert len(PG_MNT.objects.get_downloaded_objects()) == 4  # now have 2 versions of fruits + 1 vegetables
-    assert PG_MNT.objects.get_downloaded_objects() == PG_MNT.objects.get_existing_objects()
+    assert PG_MNT.objects.get_downloaded_objects() == PG_MNT.objects.get_all_objects()
 
 
 def test_push(local_engine_empty, pg_repo_remote):
@@ -95,7 +95,7 @@ def test_push(local_engine_empty, pg_repo_remote):
     PG_MNT.push(remote_repository=pg_repo_remote)
 
     # See if the original mountpoint got updated.
-    assert len(pg_repo_remote.objects.get_existing_objects()) == 3
+    assert len(pg_repo_remote.objects.get_all_objects()) == 3
 
     pg_repo_remote.images.by_hash(head_1.image_hash).checkout()
     assert pg_repo_remote.run_sql("SELECT * FROM fruits") == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]

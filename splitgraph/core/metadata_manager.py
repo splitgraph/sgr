@@ -3,7 +3,9 @@ Classes related to managing table/image/object metadata tables.
 """
 
 from psycopg2.extras import Json
+from psycopg2.sql import SQL, Identifier
 
+from splitgraph.config import SPLITGRAPH_API_SCHEMA
 from ._common import insert, select, ResultShape
 
 
@@ -59,13 +61,24 @@ class MetadataManager:
         self.metadata_engine.run_sql_batch(insert("object_locations", ("object_id", "location", "protocol")),
                                            object_locations)
 
-    def get_existing_objects(self):
+    def get_all_objects(self):
         """
         Gets all objects currently in the Splitgraph tree.
 
         :return: Set of object IDs.
         """
         return set(self.metadata_engine.run_sql(select("objects", "object_id"), return_shape=ResultShape.MANY_ONE))
+
+    def get_new_objects(self, object_ids):
+        """
+        Get object IDs from the passed list that don't exist in the tree.
+
+        :param object_ids: List of objects to check
+        :return: List of unknown object IDs.
+        """
+        return self.metadata_engine.run_sql(
+            SQL("SELECT {}.get_new_objects(%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
+            (object_ids,), return_shape=ResultShape.ONE_ONE)
 
     def get_external_object_locations(self, objects):
         """
