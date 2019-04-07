@@ -14,8 +14,8 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.core.fragment_manager import get_random_object_id
 from splitgraph.exceptions import SplitGraphException
-from ._common import manage_audit_triggers, set_head, manage_audit, select, insert, ensure_metadata_schema, \
-    aggregate_changes, slow_diff, prepare_publish_data, gather_sync_metadata
+from ._common import manage_audit_triggers, set_head, manage_audit, select, insert, aggregate_changes, slow_diff, \
+    prepare_publish_data, gather_sync_metadata
 from .engine import repository_exists, lookup_repository, ResultShape, get_engine
 from .image import Image, IMAGE_COLS
 from .object_manager import ObjectManager
@@ -56,15 +56,16 @@ class ImageManager:
 
         if tag == 'latest':
             # Special case, return the latest commit from the repository.
-            result = engine.run_sql(select("images", ','.join(IMAGE_COLS), "namespace = %s AND repository = %s")
-                                    + SQL(" ORDER BY created DESC LIMIT 1"),
-                                    (self.repository.namespace, self.repository.repository,),
-                                    return_shape=ResultShape.ONE_MANY)
+            result = self.engine.run_sql(select("get_images", ','.join(IMAGE_COLS), schema=SPLITGRAPH_API_SCHEMA,
+                                                table_args="(%s,%s)") + SQL(" ORDER BY created DESC LIMIT 1"),
+                                         (self.repository.namespace, self.repository.repository),
+                                         return_shape=ResultShape.ONE_MANY)
             if result is None:
                 raise SplitGraphException("No images found in %s!", self.repository.to_schema())
             return self._make_image(result)
 
-        result = engine.run_sql(select("tags", "image_hash", "namespace = %s AND repository = %s AND tag = %s"),
+        result = engine.run_sql(select("get_tagged_images", "image_hash", "tag = %s",
+                                       schema=SPLITGRAPH_API_SCHEMA, table_args="(%s,%s)"),
                                 (self.repository.namespace, self.repository.repository, tag),
                                 return_shape=ResultShape.ONE_ONE)
         if result is None:
@@ -87,10 +88,9 @@ class ImageManager:
         :param raise_on_none: Whether to raise if the image doesn't exist.
         :return: Image object or None
         """
-        result = self.engine.run_sql(select("images", ','.join(IMAGE_COLS),
-                                            "repository = %s AND image_hash LIKE %s AND namespace = %s"),
-                                     (self.repository.repository, image_hash.lower() + '%',
-                                      self.repository.namespace),
+        result = self.engine.run_sql(select("get_images", ','.join(IMAGE_COLS), schema=SPLITGRAPH_API_SCHEMA,
+                                            table_args="(%s, %s)", where="image_hash LIKE %s"),
+                                     (self.repository.namespace, self.repository.repository, image_hash.lower() + '%'),
                                      return_shape=ResultShape.MANY_MANY)
         if not result:
             if raise_on_none:
@@ -176,10 +176,7 @@ class ImageManager:
                                 .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table)), args)
 
     def __iter__(self):
-        return iter(self.engine.run_sql(select("images", "image_hash",
-                                               "repository = %s AND namespace = %s"),
-                                        (self.repository.repository, self.repository.namespace),
-                                        return_shape=ResultShape.MANY_ONE))
+        return iter(self())
 
 
 class Repository:
@@ -195,7 +192,6 @@ class Repository:
         # Add an option to use a different engine class for storing cached table fragments (e.g. a different
         # PostgreSQL connection or even a different database engine altogether).
         self.object_engine = object_engine or self.engine
-        ensure_metadata_schema(self.engine)
         self.images = ImageManager(self)
 
         # consider making this an injected/a singleton for a given engine
@@ -278,13 +274,15 @@ class Repository:
             self.object_engine.run_sql(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(self.to_schema())))
 
         if unregister:
-            meta_tables = ["tables", "tags", "images"]
+            # Use the API call in case we're deleting a remote repository.
+            self.engine.run_sql(SQL("SELECT {}.delete_repository(%s,%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
+                                (self.namespace, self.repository))
+
+            # On local repos, also forget about the repository's upstream.
             if self.engine.table_exists(SPLITGRAPH_META_SCHEMA, 'upstream'):
-                meta_tables.append("upstream")
-            for meta_table in meta_tables:
                 self.engine.run_sql(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s")
                                     .format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                            Identifier(meta_table)),
+                                            Identifier('upstream')),
                                     (self.namespace, self.repository))
         self.engine.commit()
 
@@ -663,7 +661,7 @@ class Repository:
             # foreign table or not since we're storing it as a full snapshot.
             self.object_engine.run_sql_in(source_schema,
                                           SQL("CREATE TABLE {}.{} AS ").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                        Identifier(object_id))
+                                                                               Identifier(object_id))
                                           + SQL(source_table))
         else:
             self.object_engine.copy_table(source_schema, source_table, SPLITGRAPH_META_SCHEMA,
@@ -847,7 +845,6 @@ def _sync(target, source, download=True, download_all=False, handler='DB', handl
     :param handler: Upload handler
     :param handler_options: Upload handler options
     """
-
     if handler_options is None:
         handler_options = {}
 
