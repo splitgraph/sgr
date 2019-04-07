@@ -274,10 +274,14 @@ def test_commandline_tag_checkout(pg_repo_local):
     assert result.exit_code == 0
     assert pg_repo_local.images['v1'].image_hash == old_head
 
-    # sgr tag <mountpoint> with the same tag -- expect an error
+    # sgr tag <mountpoint> with the same tag -- should move the tag to current HEAD again
     result = runner.invoke(tag_c, [str(pg_repo_local), 'v1'])
-    assert result.exit_code != 0
-    assert 'Tag v1 already exists' in str(result.exc_info)
+    assert result.exit_code == 0
+    assert pg_repo_local.images['v1'].image_hash == new_head
+
+    # Tag the old head again
+    result = runner.invoke(tag_c, [str(pg_repo_local) + ':' + old_head[:10], 'v1'])
+    assert result.exit_code == 0
 
     # list tags
     result = runner.invoke(tag_c, [str(pg_repo_local)])

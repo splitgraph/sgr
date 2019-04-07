@@ -483,16 +483,15 @@ class Repository:
         return self.engine.run_sql(select("get_tagged_images", "image_hash, tag", schema=SPLITGRAPH_API_SCHEMA,
                                           table_args="(%s,%s)"), (self.namespace, self.repository))
 
-    def set_tags(self, tags, force=False):
+    def set_tags(self, tags):
         """
         Sets tags for multiple images.
 
         :param tags: List of (image_hash, tag)
-        :param force: Whether to remove the old tag if an image with this tag already exists.
         """
         for tag, image_id in tags.items():
             if tag != 'HEAD':
-                self.images.by_hash(image_id).tag(tag, force)
+                self.images.by_hash(image_id).tag(tag)
 
     def run_sql(self, sql, arguments=None, return_shape=ResultShape.MANY_MANY):
         """Execute an arbitrary SQL statement inside of this repository's checked out schema."""
@@ -891,7 +890,7 @@ def _sync(target, source, download=True, download_all=False, handler='DB', handl
 
     # Register the new tables / tags.
     target.objects.register_tables(target, table_meta)
-    target.set_tags(tags, force=False)
+    target.set_tags(tags)
 
     print(("Fetched" if download else "Uploaded") +
           " metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta), len(table_meta),
