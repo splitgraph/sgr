@@ -516,8 +516,7 @@ class Repository:
 
         # Get required objects
         required_objects = set()
-        for image_hash in self.images:
-            image = self.images.by_hash(image_hash)
+        for image in self.images:
             for table_name in image.get_tables():
                 for object_id in image.get_table(table_name).objects:
                     required_objects.add(object_id)

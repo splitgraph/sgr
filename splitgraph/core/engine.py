@@ -6,7 +6,7 @@ import logging
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCHEMA
-from splitgraph.engine import get_engine
+from splitgraph.engine import get_engine, ResultShape
 from splitgraph.exceptions import SplitGraphException
 from ._common import select, ensure_metadata_schema
 
@@ -51,7 +51,8 @@ def repository_exists(repository):
     """
     return repository.engine.run_sql(SQL("SELECT 1 FROM {}.get_images(%s,%s)")
                                      .format(Identifier(SPLITGRAPH_API_SCHEMA)),
-                                     (repository.namespace, repository.repository)) is not None
+                                     (repository.namespace, repository.repository),
+                                     return_shape=ResultShape.ONE_ONE) is not None
 
 
 def lookup_repository(name, include_local=False):
