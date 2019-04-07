@@ -204,12 +204,14 @@ def _create_metadata_schema(engine):
     # in S3/some FTP/HTTP server/torrent etc.
     # Lookup path to resolve an object on checkout: local -> this table -> remote (so that we don't bombard
     # the remote with queries for tables that may have been uploaded to a different place).
-    engine.run_sql(SQL("""CREATE TABLE {}.{} (
+    engine.run_sql(SQL("""CREATE TABLE {0}.{1} (
                     object_id          VARCHAR NOT NULL,
                     location           VARCHAR NOT NULL,
                     protocol           VARCHAR NOT NULL,
-                    PRIMARY KEY (object_id))""").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                        Identifier("object_locations")),
+                    PRIMARY KEY (object_id),
+                    CONSTRAINT ol_fk FOREIGN KEY (object_id) REFERENCES {0}.{2})
+                    """).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_locations"),
+                                Identifier("objects")),
                    return_shape=None)
 
     # Miscellaneous key-value information for this engine (e.g. whether uploading objects is permitted etc).

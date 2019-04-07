@@ -480,7 +480,7 @@ class ObjectManager(FragmentManager, MetadataManager):
                     primary_objects.update(new_parents)
 
         # Go through the tables that aren't repository-dependent and delete entries there.
-        for table_name in ['objects', 'object_locations', 'object_cache_status']:
+        for table_name in ['object_locations', 'object_cache_status', 'objects']:
             query = SQL("DELETE FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table_name))
             if primary_objects:
                 query += SQL(" WHERE object_id NOT IN (" + ','.join('%s' for _ in range(len(primary_objects))) + ")")
