@@ -6,7 +6,7 @@ from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import REGISTRY_META_SCHEMA, SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
-from splitgraph.core._common import select, insert
+from splitgraph.core._common import select
 from splitgraph.engine import ResultShape
 
 
@@ -50,10 +50,8 @@ def publish_tag(repository, tag, image_hash, published, provenance, readme, sche
     :param schemata: Dict mapping table name to a list of (column name, column type)
     :param previews: Dict mapping table name to a list of tuples with a preview
     """
-    repository.engine.run_sql(insert("images",
-                                     ['namespace', 'repository', 'tag', 'image_hash', 'published',
-                                      'provenance', 'readme', 'schemata', 'previews'],
-                                     REGISTRY_META_SCHEMA),
+    repository.engine.run_sql(SQL("SELECT {}.publish_image(%s,%s,%s,%s,%s,%s,%s,%s,%s)")
+                              .format(Identifier(SPLITGRAPH_API_SCHEMA)),
                               (repository.namespace, repository.repository, tag, image_hash,
                                published, Json(provenance), readme, Json(schemata),
                                Json(previews)))
@@ -67,10 +65,10 @@ def get_published_info(repository, tag):
     :param tag: Image tag
     :return: A tuple of (image_hash, published_timestamp, provenance, readme, table schemata, previews)
     """
-    return repository.engine.run_sql(select("images",
+    return repository.engine.run_sql(select("get_published_image",
                                             'image_hash,published,provenance,readme,schemata,previews',
-                                            "namespace = %s AND repository = %s AND tag = %s",
-                                            REGISTRY_META_SCHEMA), (repository.namespace, repository.repository, tag),
+                                            table_args="(%s,%s,%s)", schema=SPLITGRAPH_API_SCHEMA),
+                                     (repository.namespace, repository.repository, tag),
                                      return_shape=ResultShape.ONE_MANY)
 
 
@@ -80,8 +78,7 @@ def unpublish_repository(repository):
 
     :param repository: Repository to unpublish
     """
-    repository.engine.run_sql(SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s")
-                              .format(Identifier(REGISTRY_META_SCHEMA), Identifier("images")),
+    repository.engine.run_sql(SQL("SELECT {}.unpublish_repository(%s,%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
                               (repository.namespace, repository.repository))
 
 
@@ -111,9 +108,6 @@ def set_info_key(engine, key, value):
                    .format(Identifier(SPLITGRAPH_META_SCHEMA)), (key, value))
 
 
-_RLS_TABLES = ['images', 'tags', 'objects', 'tables']
-
-
 def setup_registry_mode(engine):
     """
     Drops tables in splitgraph_meta that aren't pertinent to the registry + sets up access policies/RLS:
@@ -135,8 +129,8 @@ def setup_registry_mode(engine):
 
     for schema in (SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA, SPLITGRAPH_API_SCHEMA):
         engine.run_sql(SQL("REVOKE CREATE ON SCHEMA {} FROM PUBLIC").format(Identifier(schema)))
-        # Allow schema usage (including splitgraph_meta) but don't actually allow writing to
-        # tables. This is so that users can still download objects that are stored directly
+        # Allow schema usage (including splitgraph_meta) but don't actually allow writing to/reading from
+        # meta tables. This is so that users can still download objects that are stored directly
         # on the registry.
         engine.run_sql(SQL("GRANT USAGE ON SCHEMA {} TO PUBLIC").format(Identifier(schema)))
 
@@ -144,7 +138,8 @@ def setup_registry_mode(engine):
     engine.run_sql(SQL("ALTER DEFAULT PRIVILEGES IN SCHEMA {} GRANT SELECT ON TABLES TO PUBLIC")
                    .format(Identifier(SPLITGRAPH_META_SCHEMA)))
 
-    # Set up RLS policies on the registry schema
+    # Set up RLS policies on the registry schema -- not exercised directly since all access is via the SQL API
+    # but still in place for the future.
     _setup_rls_policies(engine, "images", schema=REGISTRY_META_SCHEMA)
 
     set_info_key(engine, "registry_mode", "true")
@@ -184,13 +179,5 @@ def toggle_registry_rls(engine, mode='ENABLE'):
     if mode not in ('ENABLE', 'DISABLE', 'FORCE'):
         raise ValueError()
 
-    for table in _RLS_TABLES:
-        engine.run_sql(SQL("ALTER TABLE {}.{} %s ROW LEVEL SECURITY" % mode).format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                                    Identifier(table)),
-                       return_shape=None)
-    engine.run_sql(SQL("ALTER TABLE {}.{} %s ROW LEVEL SECURITY" % mode).format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                                Identifier("object_locations")),
-                   return_shape=None)
     engine.run_sql(SQL("ALTER TABLE {}.{} %s ROW LEVEL SECURITY" % mode).format(Identifier(REGISTRY_META_SCHEMA),
-                                                                                Identifier("images")),
-                   return_shape=None)
+                                                                                Identifier("images")))

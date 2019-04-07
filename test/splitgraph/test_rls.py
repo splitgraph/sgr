@@ -2,7 +2,10 @@ from copy import copy
 
 import pytest
 from psycopg2._psycopg import ProgrammingError
+from psycopg2.sql import SQL, Identifier
 
+from splitgraph import SPLITGRAPH_META_SCHEMA
+from splitgraph.core._common import META_TABLES, select
 from splitgraph.core.registry import get_published_info, unpublish_repository, toggle_registry_rls
 from splitgraph.core.repository import Repository, clone
 from splitgraph.engine import get_engine
@@ -137,12 +140,26 @@ def test_rls_publish_unpublish_others(local_engine_empty, pg_repo_remote, unpriv
     # Publish into the "test" namespace as someone who doesn't have access to it.
     with pytest.raises(ProgrammingError) as e:
         PG_MNT.publish('my_tag', remote_repository=unprivileged_pg_repo, readme="my_readme")
-    assert 'new row violates row-level security policy for table "images"' in str(e.value)
+    assert 'You do not have access to this namespace!' in str(e.value)
 
     # Publish as the admin user
     PG_MNT.publish('my_tag', remote_repository=pg_repo_remote, readme="my_readme")
 
-    # Try to delete as the remote user -- should fail (no error raised since the RLS just doesn't make
-    # those rows available for deletion)
-    unpublish_repository(unprivileged_pg_repo)
+    # Try to delete as the remote user -- should fail
+    with pytest.raises(ProgrammingError) as e:
+        unpublish_repository(unprivileged_pg_repo)
+    assert 'You do not have access to this namespace!' in str(e.value)
     assert get_published_info(unprivileged_pg_repo, 'my_tag') is not None
+
+
+def test_rls_no_direct_table_access(unprivileged_pg_repo):
+    # Canary to check users can't manipulate splitgraph_meta tables directly
+    for table in META_TABLES:
+        with pytest.raises(ProgrammingError) as e:
+            unprivileged_pg_repo.engine.run_sql(select(table, "1"))
+        assert "permission denied for table" in str(e)
+
+        with pytest.raises(ProgrammingError) as e:
+            unprivileged_pg_repo.engine.run_sql(SQL("DELETE FROM {}.{} WHERE 1 = 2")
+                                                .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table)))
+        assert "permission denied for table" in str(e)

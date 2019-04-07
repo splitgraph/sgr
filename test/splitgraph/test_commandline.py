@@ -3,13 +3,14 @@ import subprocess
 from decimal import Decimal
 
 import pytest
-from splitgraph import ResultShape, insert
+
+from splitgraph import ResultShape
 from splitgraph.commandline import *
 from splitgraph.commandline._common import image_spec_parser
 from splitgraph.commandline.example import generate_c, alter_c, splitfile_c
 from splitgraph.commandline.image_info import object_c
 from splitgraph.config import PG_PWD, PG_USER
-from splitgraph.core._common import parse_connection_string, serialize_connection_string
+from splitgraph.core._common import parse_connection_string, serialize_connection_string, insert
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.registry import get_published_info
 from splitgraph.core.repository import Repository
