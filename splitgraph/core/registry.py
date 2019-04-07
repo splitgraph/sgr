@@ -144,15 +144,7 @@ def setup_registry_mode(engine):
     engine.run_sql(SQL("ALTER DEFAULT PRIVILEGES IN SCHEMA {} GRANT SELECT ON TABLES TO PUBLIC")
                    .format(Identifier(SPLITGRAPH_META_SCHEMA)))
 
-    for table in _RLS_TABLES:
-        _setup_rls_policies(engine, table)
-
-    # Object_locations is different, since we have to refer to the objects table for the namespace of the object
-    # whose location we're changing.
-    test_query = """(EXISTS (SELECT object_id FROM {0}.objects
-                        WHERE {0}.objects.namespace = current_user
-                        AND object_id = {0}.{1}.object_id))"""
-    _setup_rls_policies(engine, "object_locations", condition=test_query)
+    # Set up RLS policies on the registry schema
     _setup_rls_policies(engine, "images", schema=REGISTRY_META_SCHEMA)
 
     set_info_key(engine, "registry_mode", "true")

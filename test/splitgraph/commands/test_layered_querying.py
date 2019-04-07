@@ -3,8 +3,9 @@ from datetime import datetime as dt
 import pytest
 
 from splitgraph import Repository
-from splitgraph.core import clone, ResultShape
+from splitgraph.core import clone
 from splitgraph.core._common import META_TABLES
+from splitgraph.engine import ResultShape
 
 
 def prepare_lq_repo(repo, commit_after_every, include_pk, snap_only=False):

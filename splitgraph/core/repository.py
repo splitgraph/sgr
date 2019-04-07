@@ -15,8 +15,8 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.core.fragment_manager import get_random_object_id
 from splitgraph.exceptions import SplitGraphException
 from ._common import manage_audit_triggers, set_head, manage_audit, select, insert, aggregate_changes, slow_diff, \
-    prepare_publish_data, gather_sync_metadata
-from .engine import repository_exists, lookup_repository, ResultShape, get_engine
+    prepare_publish_data, gather_sync_metadata, ResultShape
+from .engine import repository_exists, lookup_repository, get_engine
 from .image import Image, IMAGE_COLS
 from .object_manager import ObjectManager
 from .registry import publish_tag

@@ -167,7 +167,6 @@ CREATE OR REPLACE FUNCTION splitgraph_api.add_object_location(_object_id varchar
 DECLARE namespace VARCHAR;
 BEGIN
     namespace = (SELECT o.namespace FROM splitgraph_meta.objects o WHERE o.object_id = _object_id);
-    RAISE WARNING 'checking privilege (%) current user (%)', namespace, session_user;
     PERFORM splitgraph_api.check_privilege(namespace);
     INSERT INTO splitgraph_meta.object_locations(object_id, location, protocol)
     VALUES (_object_id, location, protocol);

@@ -2,8 +2,9 @@ from datetime import datetime as dt
 
 import pytest
 
-from splitgraph.core import clone, select, ResultShape, SPLITGRAPH_META_SCHEMA
+from splitgraph.core import clone, select, SPLITGRAPH_META_SCHEMA
 from splitgraph.core.fragment_manager import _quals_to_clause
+from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphException
 from test.splitgraph.commands.test_layered_querying import prepare_lq_repo
 from test.splitgraph.conftest import OUTPUT, _cleanup_minio
