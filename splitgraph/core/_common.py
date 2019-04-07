@@ -331,15 +331,15 @@ def gather_sync_metadata(target, source):
     target_images = {i.image_hash: i for i in target.images()}
     source_images = {i.image_hash: i for i in source.images()}
 
-    # We assume here that none of the target image hashes have changed (are immutable) since otherwise the target
-    # would have created a new images
+    # Currently, images can't be altered once pushed out. We intend to relax this: same image hash means
+    # same contents and same tables but the composition of an image can change (if we refragment a table
+    # so that querying it is faster).
     table_meta = []
-    new_images = [i for i in source_images if i not in target_images]
-    for image_hash in new_images:
+    new_images = []
+    new_image_hashes = [i for i in source_images if i not in target_images]
+    for image_hash in new_image_hashes:
         image = source_images[image_hash]
-        # This is not batched but there shouldn't be that many entries here anyway.
-        target.images.add(image.parent_id, image.image_hash, image.created, image.comment, image.provenance_type,
-                          image.provenance_data)
+        new_images.append(image)
         # Get the meta for all objects we'll need to fetch.
         table_meta.extend(source.engine.run_sql(
             SQL("""SELECT image_hash, table_name, table_schema, object_ids FROM {0}.tables

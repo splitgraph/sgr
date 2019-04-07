@@ -11,7 +11,7 @@ from random import getrandbits
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.core.fragment_manager import get_random_object_id
 from splitgraph.exceptions import SplitGraphException
 from ._common import manage_audit_triggers, set_head, manage_audit, select, insert, ensure_metadata_schema, \
@@ -861,6 +861,10 @@ def _sync(target, source, download=True, download_all=False, handler='DB', handl
     if not new_images:
         logging.info("Nothing to do.")
         return
+
+    for image in new_images:
+        target.images.add(image.parent_id, image.image_hash, image.created, image.comment, image.provenance_type,
+                          image.provenance_data)
 
     if download:
         # Don't actually download any real objects until the user tries to check out a revision.
