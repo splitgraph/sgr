@@ -14,7 +14,7 @@ from test.splitgraph.conftest import PG_MNT, REMOTE_ENGINE
 UNPRIVILEGED = 'unprivileged_remote_engine'
 
 
-def _init_rls_test(remote_engine):
+def _init_security_test(remote_engine):
     toggle_registry_rls(remote_engine, 'ENABLE')
     remote_engine.commit()
 
@@ -22,7 +22,7 @@ def _init_rls_test(remote_engine):
 @pytest.fixture()
 def unprivileged_remote_engine(remote_engine):
     """Temporarily adds an unprivileged remote engine"""
-    _init_rls_test(remote_engine)
+    _init_security_test(remote_engine)
     from splitgraph.engine import CONFIG
     CONFIG['remotes'][UNPRIVILEGED] = copy(CONFIG['remotes'][REMOTE_ENGINE])
     CONFIG['remotes'][UNPRIVILEGED]['SG_ENGINE_USER'] = 'testuser'
@@ -43,11 +43,11 @@ def unprivileged_pg_repo(pg_repo_remote, unprivileged_remote_engine):
     return Repository.from_template(pg_repo_remote, engine=unprivileged_remote_engine)
 
 
-def test_rls_pull_public(local_engine_empty, unprivileged_pg_repo):
+def test_pull_public(local_engine_empty, unprivileged_pg_repo):
     clone(unprivileged_pg_repo)
 
 
-def test_rls_push_own_delete_own(local_engine_empty, unprivileged_pg_repo, clean_minio):
+def test_push_own_delete_own(local_engine_empty, unprivileged_pg_repo, clean_minio):
     destination = Repository(namespace='testuser', repository='pg_mount')
     clone(unprivileged_pg_repo, local_repository=destination)
 
@@ -66,7 +66,7 @@ def test_rls_push_own_delete_own(local_engine_empty, unprivileged_pg_repo, clean
     assert len(remote_destination.images()) == 0
 
 
-def test_rls_push_own_delete_own_different_namespaces(local_engine_empty, unprivileged_pg_repo, clean_minio):
+def test_push_own_delete_own_different_namespaces(local_engine_empty, unprivileged_pg_repo, clean_minio):
     # Same as previous but we clone into test/pg_mount and push to our own namespace
     # to check that the objects we push get their namespaces rewritten to be testuser, not test.
     destination = clone(unprivileged_pg_repo)
@@ -84,7 +84,7 @@ def test_rls_push_own_delete_own_different_namespaces(local_engine_empty, unpriv
     assert len(remote_destination.images()) == 0
 
 
-def test_rls_push_others(local_engine_empty, unprivileged_pg_repo):
+def test_push_others(local_engine_empty, unprivileged_pg_repo):
     clone(unprivileged_pg_repo)
     PG_MNT.images['latest'].checkout()
     PG_MNT.run_sql("""UPDATE fruits SET name = 'banana' WHERE fruit_id = 1""")
@@ -95,7 +95,7 @@ def test_rls_push_others(local_engine_empty, unprivileged_pg_repo):
     assert 'You do not have access to this namespace!' in str(e.value)
 
 
-def test_rls_delete_others(unprivileged_pg_repo, unprivileged_remote_engine):
+def test_delete_others(unprivileged_pg_repo, unprivileged_remote_engine):
     with pytest.raises(ProgrammingError) as e:
         unprivileged_pg_repo.delete(uncheckout=False)
     assert 'You do not have access to this namespace!' in str(e.value)
@@ -104,7 +104,7 @@ def test_rls_delete_others(unprivileged_pg_repo, unprivileged_remote_engine):
     assert len(unprivileged_pg_repo.images()) > 0
 
 
-def test_rls_impersonate_external_object(unprivileged_pg_repo, unprivileged_remote_engine):
+def test_impersonate_external_object(unprivileged_pg_repo, unprivileged_remote_engine):
     sample_object = unprivileged_pg_repo.images['latest'].get_table('fruits').objects[0]
     assert sample_object is not None
 
@@ -115,7 +115,7 @@ def test_rls_impersonate_external_object(unprivileged_pg_repo, unprivileged_remo
     assert 'You do not have access to this namespace!' in str(e.value)
 
 
-def test_rls_publish_unpublish_own(local_engine_empty, pg_repo_remote, unprivileged_remote_engine):
+def test_publish_unpublish_own(local_engine_empty, pg_repo_remote, unprivileged_remote_engine):
     clone(pg_repo_remote, download_all=True)
     PG_MNT.images['latest'].tag('my_tag')
     target_repo = Repository(namespace='testuser', repository='pg_mount', engine=unprivileged_remote_engine)
@@ -130,8 +130,8 @@ def test_rls_publish_unpublish_own(local_engine_empty, pg_repo_remote, unprivile
     assert get_published_info(target_repo, 'my_tag') is None
 
 
-def test_rls_publish_unpublish_others(local_engine_empty, pg_repo_remote, unprivileged_pg_repo,
-                                      unprivileged_remote_engine):
+def test_publish_unpublish_others(local_engine_empty, pg_repo_remote, unprivileged_pg_repo,
+                                  unprivileged_remote_engine):
     # Tag the remote repo as an admin user and try to publish as an unprivileged one
     pg_repo_remote.images['latest'].tag('my_tag')
     pg_repo_remote.engine.commit()
@@ -152,7 +152,7 @@ def test_rls_publish_unpublish_others(local_engine_empty, pg_repo_remote, unpriv
     assert get_published_info(unprivileged_pg_repo, 'my_tag') is not None
 
 
-def test_rls_no_direct_table_access(unprivileged_pg_repo):
+def test_no_direct_table_access(unprivileged_pg_repo):
     # Canary to check users can't manipulate splitgraph_meta tables directly
     for table in META_TABLES:
         with pytest.raises(ProgrammingError) as e:
