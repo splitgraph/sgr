@@ -6,7 +6,7 @@ from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_API_SCHEMA
-from ._common import insert, select, ResultShape
+from ._common import select, ResultShape
 
 
 class MetadataManager:
@@ -30,7 +30,7 @@ class MetadataManager:
         if namespace:
             object_meta = [(o, f, p, namespace, s, i) for o, f, p, _, s, i in object_meta]
         self.metadata_engine.run_sql_batch(
-            insert("objects", ("object_id", "format", "parent_id", "namespace", "size", "index")),
+            SQL("SELECT {}.add_object(%s,%s,%s,%s,%s,%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
             object_meta)
 
     def register_tables(self, repository, table_meta):
@@ -44,7 +44,7 @@ class MetadataManager:
         table_meta = [(repository.namespace, repository.repository,
                        o[0], o[1], Json(o[2]), o[3]) for o in table_meta]
         self.metadata_engine.run_sql_batch(
-            insert("tables", ("namespace", "repository", "image_hash", "table_name", "table_schema", "object_ids")),
+            SQL("SELECT {}.add_table(%s,%s,%s,%s,%s,%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
             table_meta)
 
     def register_object_locations(self, object_locations):
@@ -54,12 +54,9 @@ class MetadataManager:
 
         :param object_locations: List of (object_id, location, protocol).
         """
-        # Don't insert redundant objects here either.
-        existing_locations = self.metadata_engine.run_sql(select("object_locations", "object_id"),
-                                                          return_shape=ResultShape.MANY_ONE)
-        object_locations = [o for o in object_locations if o[0] not in existing_locations]
-        self.metadata_engine.run_sql_batch(insert("object_locations", ("object_id", "location", "protocol")),
-                                           object_locations)
+        self.metadata_engine.run_sql_batch(
+            SQL("SELECT {}.add_object_location(%s,%s,%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
+            object_locations)
 
     def get_all_objects(self):
         """

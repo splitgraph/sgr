@@ -160,14 +160,14 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine', 'object_en
                 SQL("DROP SCHEMA IF EXISTS {} CASCADE; DROP SERVER IF EXISTS {} CASCADE;").format(
                 Identifier(tmp_schema), Identifier(tmp_schema + '_lq_checkout_server')))
 
-    def tag(self, tag, force=False):
+    def tag(self, tag):
         """
-        Tags a given image. All tags are unique inside of a repository.
+        Tags a given image. All tags are unique inside of a repository. If a tag already exists, it's removed
+        from the previous image and given to the new image.
 
         :param tag: Tag to set. 'latest' and 'HEAD' are reserved tags.
-        :param force: Whether to remove the old tag if an image with this tag already exists.
         """
-        set_tag(self.repository, self.image_hash, tag, force)
+        set_tag(self.repository, self.image_hash, tag)
 
     def get_tags(self):
         """Lists all tags that this image has."""

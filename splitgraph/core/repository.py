@@ -149,11 +149,10 @@ class ImageManager:
             (one of None, FROM, MOUNT, IMPORT, SQL)
         :param provenance_data: Extra provenance data (dictionary).
         """
-        self.engine.run_sql(
-            insert("images", ("image_hash", "namespace", "repository", "parent_id", "created", "comment",
-                              "provenance_type", "provenance_data")),
-            (image, self.repository.namespace, self.repository.repository, parent_id, created or datetime.now(),
-             comment, provenance_type, Json(provenance_data)))
+        self.engine.run_sql(SQL("SELECT {}.add_image(%s, %s, %s, %s, %s, %s, %s, %s)")
+                            .format(Identifier(SPLITGRAPH_API_SCHEMA)),
+                            (self.repository.namespace, self.repository.repository, image, parent_id,
+                             created or datetime.now(), comment, provenance_type, Json(provenance_data)))
 
     def delete(self, images):
         """

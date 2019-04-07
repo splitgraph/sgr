@@ -41,6 +41,28 @@ BEGIN
 END
 $$ LANGUAGE plpgsql SECURITY INVOKER;
 
+-- Consider merging writes to all tables into one big routine (e.g. also include a list of tables here, which
+-- will get added to the tables table)
+-- add_image(namespace, repository, image_hash, parent_id, created, comment, provenance_type, provenance_data)
+CREATE OR REPLACE FUNCTION splitgraph_api.add_image(
+    namespace varchar, repository varchar, image_hash varchar, parent_id varchar, created timestamp, comment varchar,
+    provenance_type varchar, provenance_data jsonb) RETURNS void AS $$
+BEGIN
+    INSERT INTO splitgraph_meta.images(namespace, repository, image_hash, parent_id, created, comment,
+        provenance_type, provenance_data)
+    VALUES (namespace, repository, image_hash, parent_id, created, comment, provenance_type, provenance_data);
+END
+$$ LANGUAGE plpgsql SECURITY INVOKER;
+
+-- tag_image (namespace, repository, image_hash, tag)
+CREATE OR REPLACE FUNCTION splitgraph_api.tag_image(
+    _namespace varchar, _repository varchar, _image_hash varchar, _tag varchar) RETURNS void AS $$
+BEGIN
+    INSERT INTO splitgraph_meta.tags(namespace, repository, image_hash, tag)
+    VALUES (_namespace, _repository, _image_hash, _tag)
+    ON CONFLICT (namespace, repository, tag) DO UPDATE SET image_hash = EXCLUDED.image_hash;
+END
+$$ LANGUAGE plpgsql SECURITY INVOKER;
 
 --
 -- OBJECT API
@@ -97,6 +119,24 @@ BEGIN
 END
 $$ LANGUAGE plpgsql SECURITY INVOKER;
 
+-- add_object(object_id, format, parent_id, namespace, size, index)
+CREATE OR REPLACE FUNCTION splitgraph_api.add_object(object_id varchar, format varchar, parent_id varchar,
+    namespace varchar, size bigint, index jsonb) RETURNS void AS $$
+BEGIN
+    INSERT INTO splitgraph_meta.objects(object_id, format, parent_id, namespace, size, index)
+    VALUES (object_id, format, parent_id, namespace, size, index);
+END
+$$ LANGUAGE plpgsql SECURITY INVOKER;
+
+-- add_object_location(object_id, location, protocol)
+CREATE OR REPLACE FUNCTION splitgraph_api.add_object_location(object_id varchar, location varchar, protocol varchar)
+    RETURNS void AS $$
+BEGIN
+    INSERT INTO splitgraph_meta.object_locations(object_id, location, protocol)
+    VALUES (object_id, location, protocol);
+END
+$$ LANGUAGE plpgsql SECURITY INVOKER;
+
 
 --
 -- TABLE API
@@ -114,5 +154,17 @@ BEGIN
   SELECT t.table_name, t.table_schema, t.object_ids
   FROM splitgraph_meta.tables t
   WHERE t.namespace = _namespace AND t.repository = _repository AND t.image_hash = _image_hash;
+END
+$$ LANGUAGE plpgsql SECURITY INVOKER;
+
+-- add_table(namespace, repository, table_name, table_schema, object_ids) -- add a table to an existing image.
+-- Technically, we shouldn't allow this to be done once the image has been created (so maybe that idea with only having
+-- two API calls: once to register the objects and one to register the images+tables might work?)
+CREATE OR REPLACE FUNCTION splitgraph_api.add_table(
+    namespace varchar, repository varchar, image_hash varchar, table_name varchar,
+    table_schema jsonb, object_ids varchar[]) RETURNS void AS $$
+BEGIN
+    INSERT INTO splitgraph_meta.tables(namespace, repository, image_hash, table_name, table_schema, object_ids)
+    VALUES (namespace, repository, image_hash, table_name, table_schema, object_ids);
 END
 $$ LANGUAGE plpgsql SECURITY INVOKER;

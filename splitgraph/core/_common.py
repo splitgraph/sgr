@@ -11,7 +11,6 @@ from psycopg2.sql import Identifier, SQL
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.engine import ResultShape
-from splitgraph.exceptions import SplitGraphException
 
 META_TABLES = ['images', 'tags', 'objects', 'tables', 'upstream', 'object_locations', 'object_cache_status',
                'object_cache_occupancy', 'info']
@@ -19,29 +18,16 @@ OBJECT_MANAGER_TABLES = ['object_cache_status', 'object_cache_occupancy']
 _PUBLISH_PREVIEW_SIZE = 100
 
 
-def set_tag(repository, image_hash, tag, force=False):
+def set_tag(repository, image_hash, tag):
     """Internal function -- add a tag to an image."""
     engine = repository.engine
-    if engine.run_sql(select("tags", "1", "namespace = %s AND repository = %s AND tag = %s"),
-                      (repository.namespace, repository.repository, tag),
-                      return_shape=ResultShape.ONE_ONE) is None:
-        engine.run_sql(insert("tags", ("image_hash", "namespace", "repository", "tag")),
-                       (image_hash, repository.namespace, repository.repository, tag),
-                       return_shape=None)
-    else:
-        if force:
-            engine.run_sql(SQL("UPDATE {}.tags SET image_hash = %s "
-                               "WHERE namespace = %s AND repository = %s AND tag = %s")
-                           .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                           (image_hash, repository.namespace, repository.repository, tag),
-                           return_shape=None)
-        else:
-            raise SplitGraphException("Tag %s already exists in %s!" % (tag, repository.to_schema()))
+    engine.run_sql(SQL("SELECT {}.tag_image(%s,%s,%s,%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
+                   (repository.namespace, repository.repository, image_hash, tag))
 
 
 def set_head(repository, image):
     """Sets the HEAD pointer of a given repository to a given image. Shouldn't be used directly."""
-    set_tag(repository, image, 'HEAD', force=True)
+    set_tag(repository, image, 'HEAD')
 
 
 def manage_audit_triggers(engine):
