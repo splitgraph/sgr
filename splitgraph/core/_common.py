@@ -235,7 +235,7 @@ def _create_metadata_schema(engine):
                    return_shape=None)
 
 
-def select(table, columns='*', where='', schema=SPLITGRAPH_META_SCHEMA):
+def select(table, columns='*', where='', schema=SPLITGRAPH_META_SCHEMA, table_args=None):
     """
     A generic SQL SELECT constructor to simplify metadata access queries so that we don't have to repeat the same
     identifiers everywhere.
@@ -244,9 +244,13 @@ def select(table, columns='*', where='', schema=SPLITGRAPH_META_SCHEMA):
     :param columns: Columns to select as a string. WARN: concatenated directly without any formatting.
     :param where: If specified, added to the query with a "WHERE" keyword. WARN also concatenated directly.
     :param schema: Defaults to SPLITGRAPH_META_SCHEMA.
+    :param table_args: If specified, appends to the FROM clause after the table specification,
+        for example, SELECT * FROM "splitgraph_api"."get_images" (%s, %s) ...
     :return: A psycopg2.sql.SQL object with the query.
     """
     query = SQL("SELECT " + columns + " FROM {}.{}").format(Identifier(schema), Identifier(table))
+    if table_args:
+        query += SQL(table_args)
     if where:
         query += SQL(" WHERE " + where)
     return query
