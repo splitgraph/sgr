@@ -2,6 +2,7 @@ from copy import copy
 
 import pytest
 from psycopg2._psycopg import ProgrammingError
+
 from splitgraph.core.registry import get_published_info, unpublish_repository, toggle_registry_rls
 from splitgraph.core.repository import Repository, clone
 from splitgraph.engine import get_engine
@@ -87,28 +88,28 @@ def test_rls_push_others(local_engine_empty, unprivileged_pg_repo):
     PG_MNT.commit()
 
     with pytest.raises(ProgrammingError) as e:
-        PG_MNT.push(remote_repository=unprivileged_pg_repo)
-    assert 'new row violates row-level security policy for table "images"' in str(e.value)
+        PG_MNT.push(remote_repository=unprivileged_pg_repo, handler='S3')
+    assert 'You do not have access to this namespace!' in str(e.value)
 
 
 def test_rls_delete_others(unprivileged_pg_repo, unprivileged_remote_engine):
-    # RLS doesn't actually raise an error for this, since it just appends the policy qualifier to the query.
-    # Hence in this case this simply does nothing (the rows in "test" namespace aren't available for deletion).
+    with pytest.raises(ProgrammingError) as e:
+        unprivileged_pg_repo.delete(uncheckout=False)
+    assert 'You do not have access to this namespace!' in str(e.value)
 
-    unprivileged_pg_repo.delete(uncheckout=False)
-    # Check that the policy worked by verifying that the repository still exists on the remote.
+    # Check the repository still exists on the remote.
     assert len(unprivileged_pg_repo.images()) > 0
 
 
 def test_rls_impersonate_external_object(unprivileged_pg_repo, unprivileged_remote_engine):
-    sample_object = unprivileged_pg_repo.images['latest'].get_table('fruits').objects[0][0]
+    sample_object = unprivileged_pg_repo.images['latest'].get_table('fruits').objects[0]
     assert sample_object is not None
 
     # Try to impersonate the owner of the "test" namespace and add a different external link to
     # an object that they own.
     with pytest.raises(ProgrammingError) as e:
         unprivileged_pg_repo.objects.register_object_locations([(sample_object, 'fake_location', 'S3')])
-    assert 'new row violates row-level security policy for table "object_locations"' in str(e.value)
+    assert 'You do not have access to this namespace!' in str(e.value)
 
 
 def test_rls_publish_unpublish_own(local_engine_empty, pg_repo_remote, unprivileged_remote_engine):
