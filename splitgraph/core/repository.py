@@ -30,7 +30,7 @@ class ImageManager:
         self.engine = repository.engine
 
     def __call__(self):
-        """Get all Image objects in the repository."""
+        """Get all Image objects in the repository, ordered by their creation time (earliest first)."""
         result = []
         for image in self.engine.run_sql(select("get_images", ','.join(IMAGE_COLS), schema=SPLITGRAPH_API_SCHEMA,
                                                 table_args="(%s, %s)"),

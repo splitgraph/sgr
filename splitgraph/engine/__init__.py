@@ -122,6 +122,8 @@ class SQLEngine(ABC):
         """Drop a table from a schema if it exists"""
         if self.get_table_type(schema, table) not in ('FOREIGN TABLE', 'FOREIGN'):
             self.run_sql(SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(schema), Identifier(table)))
+        else:
+            self.run_sql(SQL("DROP FOREIGN TABLE IF EXISTS {}.{}").format(Identifier(schema), Identifier(table)))
 
     def delete_schema(self, schema):
         """Delete a schema if it exists, including all the tables in it."""
@@ -149,13 +151,13 @@ class SQLEngine(ABC):
         """Get a list of (column_name, column_type) denoting the primary keys of a given table."""
         raise NotImplementedError()
 
-    def dump_table_creation(self, schema, tables, created_schema=None):
+    def dump_table_creation(self, schema, tables, created_schema):
         """
         Dumps the basic table schema (column names, data types, is_nullable) for one or more tables into SQL statements.
 
         :param schema: Schema to dump tables from
         :param tables: Tables to dump
-        :param created_schema: If not None, specifies the new schema that the tables will be created under.
+        :param created_schema: The new schema that the tables will be created under.
         :return: An SQL statement that reconstructs the schema for the given tables.
         """
         queries = []
@@ -164,10 +166,7 @@ class SQLEngine(ABC):
             cols = self.run_sql("""SELECT column_name, data_type, is_nullable
                            FROM information_schema.columns
                            WHERE table_name = %s AND table_schema = %s""", (table, schema))
-            if created_schema:
-                target = SQL("{}.{}").format(Identifier(created_schema), Identifier(table))
-            else:
-                target = Identifier(table)
+            target = SQL("{}.{}").format(Identifier(created_schema), Identifier(table))
             query = SQL("CREATE TABLE {} (").format(target) + SQL(','.join(
                 "{} %s " % ctype + ("NOT NULL" if not cnull else "") for _, ctype, cnull in cols)).format(
                 *(Identifier(cname) for cname, _, _ in cols))
@@ -220,13 +219,6 @@ class SQLEngine(ABC):
         :param where_args: Arguments for the optional WHERE clause.
         """
         raise NotImplementedError()
-
-    def get_column_names(self, schema, table_name):
-        """Returns a list of all columns in a given table."""
-        return self.run_sql("""SELECT column_name FROM information_schema.columns
-                           WHERE table_schema = %s
-                           AND table_name = %s
-                           ORDER BY ordinal_position""", (schema, table_name), return_shape=ResultShape.MANY_ONE)
 
     def get_column_names_types(self, schema, table_name):
         """Returns a list of (column, type) in a given table."""

@@ -82,6 +82,7 @@ class FragmentManager:
     """
 
     def __init__(self, object_engine, metadata_engine=None):
+        super().__init__(object_engine, metadata_engine)
         self.object_engine = object_engine
         self.metadata_engine = metadata_engine or object_engine
 

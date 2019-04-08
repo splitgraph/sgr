@@ -94,6 +94,8 @@ class MetadataManager:
         :param objects: List of objects to get metadata for.
         :return: List of (object_id, format, parent_id, namespace, size, index).
         """
+        if not objects:
+            return []
 
         return self.metadata_engine.run_sql(select("get_object_meta",
                                                    "object_id, format, parent_id, namespace, size, index",

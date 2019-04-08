@@ -231,7 +231,8 @@ class ObjectManager(FragmentManager, MetadataManager):
             to_fetch = self.object_engine.run_sql(select("object_cache_status", "object_id", "ready = 'f'"),
                                                   return_shape=ResultShape.MANY_ONE)
             # If someone else downloaded all the objects we need, there's no point in holding the lock.
-            if not to_fetch:
+            # This is tricky to test with a single process.
+            if not to_fetch:  # pragma: no cover
                 self.object_engine.commit()
                 return to_fetch
             required_space = sum(o[4] for o in self.get_object_meta(list(to_fetch)))
@@ -416,7 +417,7 @@ class ObjectManager(FragmentManager, MetadataManager):
 
         # We don't actually seem to pass extra handler parameters when downloading objects since
         # we can have multiple handlers in this batch.
-        external_objects = _fetch_external_objects(self.object_engine, object_locations, objects_to_fetch, {})
+        external_objects = _fetch_external_objects(self.object_engine, object_locations, {})
 
         remaining_objects_to_fetch = [o for o in objects_to_fetch if o not in external_objects]
         if not remaining_objects_to_fetch or not source:
@@ -471,13 +472,7 @@ class ObjectManager(FragmentManager, MetadataManager):
 
         # Expand that since each object might have a parent it depends on.
         if primary_objects:
-            while True:
-                new_parents = set(parent_id for _, _, parent_id, _, _, _ in self.get_object_meta(list(primary_objects))
-                                  if parent_id not in primary_objects and parent_id is not None)
-                if not new_parents:
-                    break
-                else:
-                    primary_objects.update(new_parents)
+            primary_objects = self.get_all_required_objects(list(primary_objects))
 
         # Go through the tables that aren't repository-dependent and delete entries there.
         for table_name in ['object_locations', 'object_cache_status', 'objects']:
@@ -517,13 +512,12 @@ class ObjectManager(FragmentManager, MetadataManager):
             self.object_engine.commit()
 
 
-def _fetch_external_objects(engine, object_locations, objects_to_fetch, handler_params):
+def _fetch_external_objects(engine, object_locations, handler_params):
     non_remote_objects = []
     non_remote_by_method = defaultdict(list)
     for object_id, object_url, protocol in object_locations:
-        if object_id in objects_to_fetch:
-            non_remote_by_method[protocol].append((object_id, object_url))
-            non_remote_objects.append(object_id)
+        non_remote_by_method[protocol].append((object_id, object_url))
+        non_remote_objects.append(object_id)
     if non_remote_objects:
         logging.info("Fetching external objects...")
         for method, objects in non_remote_by_method.items():
