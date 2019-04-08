@@ -8,7 +8,7 @@ from random import getrandbits
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCHEMA
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.mount_handlers import init_fdw
@@ -60,26 +60,18 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine', 'object_en
     def get_table(self, table_name):
         """
         Returns a Table object representing a version of a given table.
-        Contains a list of objects that the table is linked to: a DIFF object (beginning a chain of DIFFs that
-        describe a table), a SNAP object (a full table copy), or both.
+        Contains a list of objects that the table is linked to and the table's schema.
 
         :param table_name: Name of the table
         :return: Table object or None
         """
-        objects = self.engine.run_sql(SQL("""SELECT {0}.tables.object_ids FROM {0}.tables WHERE
-                                             {0}.tables.namespace = %s AND repository = %s AND image_hash = %s
-                                              AND table_name = %s""")
-                                      .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                                      (self.repository.namespace, self.repository.repository,
-                                       self.image_hash, table_name),
-                                      return_shape=ResultShape.ONE_ONE)
-        if not objects:
+        result = self.engine.run_sql(select("get_tables", "table_schema,object_ids", "table_name = %s",
+                                            table_args="(%s,%s,%s)", schema=SPLITGRAPH_API_SCHEMA),
+                                     (self.repository.namespace, self.repository.repository,
+                                      self.image_hash, table_name), return_shape=ResultShape.ONE_MANY)
+        if not result:
             return None
-        table_schema = self.engine.run_sql(SQL("SELECT table_schema FROM {}.tables WHERE namespace = %s "
-                                               "AND repository = %s AND image_hash = %s AND table_name = %s")
-                                           .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                                           (self.repository.namespace, self.repository.repository,
-                                            self.image_hash, table_name), return_shape=ResultShape.ONE_ONE)
+        table_schema, objects = result
         return Table(self.repository, self, table_name, table_schema, objects)
 
     @manage_audit
@@ -160,14 +152,14 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine', 'object_en
                 SQL("DROP SCHEMA IF EXISTS {} CASCADE; DROP SERVER IF EXISTS {} CASCADE;").format(
                 Identifier(tmp_schema), Identifier(tmp_schema + '_lq_checkout_server')))
 
-    def tag(self, tag, force=False):
+    def tag(self, tag):
         """
-        Tags a given image. All tags are unique inside of a repository.
+        Tags a given image. All tags are unique inside of a repository. If a tag already exists, it's removed
+        from the previous image and given to the new image.
 
         :param tag: Tag to set. 'latest' and 'HEAD' are reserved tags.
-        :param force: Whether to remove the old tag if an image with this tag already exists.
         """
-        set_tag(self.repository, self.image_hash, tag, force)
+        set_tag(self.repository, self.image_hash, tag)
 
     def get_tags(self):
         """Lists all tags that this image has."""

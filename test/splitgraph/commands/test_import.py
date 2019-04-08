@@ -76,7 +76,7 @@ def test_import_from_remote(local_engine_empty, pg_repo_remote):
     local_objects = OUTPUT.objects
 
     assert len(local_objects.get_downloaded_objects()) == 2
-    assert len(local_objects.get_existing_objects()) == 2
+    assert len(local_objects.get_all_objects()) == 2
     assert local_engine_empty.get_all_tables(OUTPUT.to_schema()) == ['test']
 
     # Import the 'fruits' table from the origin.

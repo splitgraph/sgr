@@ -20,8 +20,8 @@ def test_s3_push_pull(local_engine_empty, pg_repo_remote, clean_minio):
 
     # Check that the actual objects don't exist on the remote but are instead registered with an URL.
     # All the objects on pgcache were registered remotely
-    objects = pg_repo_remote.objects.get_existing_objects()
-    local_objects = PG_MNT.objects.get_existing_objects()
+    objects = pg_repo_remote.objects.get_all_objects()
+    local_objects = PG_MNT.objects.get_all_objects()
     assert all(o in objects for o in local_objects)
     # Two non-local objects in the local engine, both registered as non-local on the remote engine.
     ext_objects_orig = PG_MNT.objects.get_external_object_locations(list(objects))
@@ -49,4 +49,4 @@ def test_s3_push_pull(local_engine_empty, pg_repo_remote, clean_minio):
     right.checkout()
     assert len(PG_MNT.objects.get_downloaded_objects()) == 4
     # Only now we actually have all the objects materialized.
-    assert PG_MNT.objects.get_downloaded_objects() == PG_MNT.objects.get_existing_objects()
+    assert PG_MNT.objects.get_downloaded_objects() == PG_MNT.objects.get_all_objects()

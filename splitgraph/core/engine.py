@@ -4,10 +4,10 @@ Routines for managing Splitgraph engines, including looking up repositories and 
 import logging
 
 from psycopg2.sql import SQL, Identifier
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
-from splitgraph.engine import ResultShape, get_engine
-from splitgraph.exceptions import SplitGraphException
 
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCHEMA
+from splitgraph.engine import get_engine, ResultShape
+from splitgraph.exceptions import SplitGraphException
 from ._common import select, ensure_metadata_schema
 
 
@@ -49,12 +49,8 @@ def repository_exists(repository):
 
     :param repository: Repository object
     """
-    return repository.engine.run_sql(SQL("SELECT 1 FROM {}.images WHERE namespace = %s AND repository = %s")
-                                     .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                                     (repository.namespace, repository.repository),
-                                     return_shape=ResultShape.ONE_ONE) is not None or \
-           repository.engine.run_sql(SQL("SELECT 1 FROM {}.tags WHERE namespace = %s AND repository = %s")
-                                     .format(Identifier(SPLITGRAPH_META_SCHEMA)),
+    return repository.engine.run_sql(SQL("SELECT 1 FROM {}.get_images(%s,%s)")
+                                     .format(Identifier(SPLITGRAPH_API_SCHEMA)),
                                      (repository.namespace, repository.repository),
                                      return_shape=ResultShape.ONE_ONE) is not None
 

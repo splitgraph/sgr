@@ -3,8 +3,9 @@ from datetime import datetime as dt
 import pytest
 
 from splitgraph import Repository
-from splitgraph.core import clone, ResultShape
+from splitgraph.core import clone
 from splitgraph.core._common import META_TABLES
+from splitgraph.engine import ResultShape
 
 
 def prepare_lq_repo(repo, commit_after_every, include_pk, snap_only=False):
@@ -142,9 +143,9 @@ def test_lq_external(local_engine_empty, pg_repo_remote):
     pg_repo_remote.engine.commit()
     pg_repo_local.objects.cleanup()
 
-    assert len(pg_repo_local.objects.get_existing_objects()) == 0
+    assert len(pg_repo_local.objects.get_all_objects()) == 0
     assert len(pg_repo_local.objects.get_downloaded_objects()) == 0
-    assert len(remote.objects.get_existing_objects()) == 6
+    assert len(remote.objects.get_all_objects()) == 6
     assert len(remote.objects.get_downloaded_objects()) == 0
 
     # Proceed as per the previous test

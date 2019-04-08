@@ -3,13 +3,14 @@ import subprocess
 from decimal import Decimal
 
 import pytest
-from splitgraph import ResultShape, insert
+
+from splitgraph import ResultShape
 from splitgraph.commandline import *
 from splitgraph.commandline._common import image_spec_parser
 from splitgraph.commandline.example import generate_c, alter_c, splitfile_c
 from splitgraph.commandline.image_info import object_c
 from splitgraph.config import PG_PWD, PG_USER
-from splitgraph.core._common import parse_connection_string, serialize_connection_string
+from splitgraph.core._common import parse_connection_string, serialize_connection_string, insert
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.registry import get_published_info
 from splitgraph.core.repository import Repository
@@ -274,10 +275,14 @@ def test_commandline_tag_checkout(pg_repo_local):
     assert result.exit_code == 0
     assert pg_repo_local.images['v1'].image_hash == old_head
 
-    # sgr tag <mountpoint> with the same tag -- expect an error
+    # sgr tag <mountpoint> with the same tag -- should move the tag to current HEAD again
     result = runner.invoke(tag_c, [str(pg_repo_local), 'v1'])
-    assert result.exit_code != 0
-    assert 'Tag v1 already exists' in str(result.exc_info)
+    assert result.exit_code == 0
+    assert pg_repo_local.images['v1'].image_hash == new_head
+
+    # Tag the old head again
+    result = runner.invoke(tag_c, [str(pg_repo_local) + ':' + old_head[:10], 'v1'])
+    assert result.exit_code == 0
 
     # list tags
     result = runner.invoke(tag_c, [str(pg_repo_local)])

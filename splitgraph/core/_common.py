@@ -9,9 +9,8 @@ from functools import wraps
 
 from psycopg2.sql import Identifier, SQL
 
-from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.engine import ResultShape
-from splitgraph.exceptions import SplitGraphException
 
 META_TABLES = ['images', 'tags', 'objects', 'tables', 'upstream', 'object_locations', 'object_cache_status',
                'object_cache_occupancy', 'info']
@@ -19,29 +18,16 @@ OBJECT_MANAGER_TABLES = ['object_cache_status', 'object_cache_occupancy']
 _PUBLISH_PREVIEW_SIZE = 100
 
 
-def set_tag(repository, image_hash, tag, force=False):
+def set_tag(repository, image_hash, tag):
     """Internal function -- add a tag to an image."""
     engine = repository.engine
-    if engine.run_sql(select("tags", "1", "namespace = %s AND repository = %s AND tag = %s"),
-                      (repository.namespace, repository.repository, tag),
-                      return_shape=ResultShape.ONE_ONE) is None:
-        engine.run_sql(insert("tags", ("image_hash", "namespace", "repository", "tag")),
-                       (image_hash, repository.namespace, repository.repository, tag),
-                       return_shape=None)
-    else:
-        if force:
-            engine.run_sql(SQL("UPDATE {}.tags SET image_hash = %s "
-                               "WHERE namespace = %s AND repository = %s AND tag = %s")
-                           .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                           (image_hash, repository.namespace, repository.repository, tag),
-                           return_shape=None)
-        else:
-            raise SplitGraphException("Tag %s already exists in %s!" % (tag, repository.to_schema()))
+    engine.run_sql(SQL("SELECT {}.tag_image(%s,%s,%s,%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
+                   (repository.namespace, repository.repository, image_hash, tag))
 
 
 def set_head(repository, image):
     """Sets the HEAD pointer of a given repository to a given image. Shouldn't be used directly."""
-    set_tag(repository, image, 'HEAD', force=True)
+    set_tag(repository, image, 'HEAD')
 
 
 def manage_audit_triggers(engine):
@@ -218,12 +204,14 @@ def _create_metadata_schema(engine):
     # in S3/some FTP/HTTP server/torrent etc.
     # Lookup path to resolve an object on checkout: local -> this table -> remote (so that we don't bombard
     # the remote with queries for tables that may have been uploaded to a different place).
-    engine.run_sql(SQL("""CREATE TABLE {}.{} (
+    engine.run_sql(SQL("""CREATE TABLE {0}.{1} (
                     object_id          VARCHAR NOT NULL,
                     location           VARCHAR NOT NULL,
                     protocol           VARCHAR NOT NULL,
-                    PRIMARY KEY (object_id))""").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                        Identifier("object_locations")),
+                    PRIMARY KEY (object_id),
+                    CONSTRAINT ol_fk FOREIGN KEY (object_id) REFERENCES {0}.{2})
+                    """).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_locations"),
+                                Identifier("objects")),
                    return_shape=None)
 
     # Miscellaneous key-value information for this engine (e.g. whether uploading objects is permitted etc).
@@ -235,7 +223,7 @@ def _create_metadata_schema(engine):
                    return_shape=None)
 
 
-def select(table, columns='*', where='', schema=SPLITGRAPH_META_SCHEMA):
+def select(table, columns='*', where='', schema=SPLITGRAPH_META_SCHEMA, table_args=None):
     """
     A generic SQL SELECT constructor to simplify metadata access queries so that we don't have to repeat the same
     identifiers everywhere.
@@ -244,9 +232,13 @@ def select(table, columns='*', where='', schema=SPLITGRAPH_META_SCHEMA):
     :param columns: Columns to select as a string. WARN: concatenated directly without any formatting.
     :param where: If specified, added to the query with a "WHERE" keyword. WARN also concatenated directly.
     :param schema: Defaults to SPLITGRAPH_META_SCHEMA.
+    :param table_args: If specified, appends to the FROM clause after the table specification,
+        for example, SELECT * FROM "splitgraph_api"."get_images" (%s, %s) ...
     :return: A psycopg2.sql.SQL object with the query.
     """
     query = SQL("SELECT " + columns + " FROM {}.{}").format(Identifier(schema), Identifier(table))
+    if table_args:
+        query += SQL(table_args)
     if where:
         query += SQL(" WHERE " + where)
     return query
@@ -331,29 +323,35 @@ def gather_sync_metadata(target, source):
     target_images = {i.image_hash: i for i in target.images()}
     source_images = {i.image_hash: i for i in source.images()}
 
-    # We assume here that none of the target image hashes have changed (are immutable) since otherwise the target
-    # would have created a new images
+    # Currently, images can't be altered once pushed out. We intend to relax this: same image hash means
+    # same contents and same tables but the composition of an image can change (if we refragment a table
+    # so that querying it is faster).
     table_meta = []
-    new_images = [i for i in source_images if i not in target_images]
-    for image_hash in new_images:
+    new_images = []
+    new_image_hashes = [i for i in source_images if i not in target_images]
+    for image_hash in new_image_hashes:
         image = source_images[image_hash]
-        # This is not batched but there shouldn't be that many entries here anyway.
-        target.images.add(image.parent_id, image.image_hash, image.created, image.comment, image.provenance_type,
-                          image.provenance_data)
+        new_images.append(image)
         # Get the meta for all objects we'll need to fetch.
-        table_meta.extend(source.engine.run_sql(
-            SQL("""SELECT image_hash, table_name, table_schema, object_ids FROM {0}.tables
-                       WHERE namespace = %s AND repository = %s AND image_hash = %s""")
-                .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-            (source.namespace, source.repository, image.image_hash)))
+        table_meta.extend([(image_hash,) + t for t in
+                           source.engine.run_sql(select("get_tables", "table_name, table_schema, object_ids",
+                                                        schema=SPLITGRAPH_API_SCHEMA, table_args="(%s,%s,%s)"),
+                                                 (source.namespace, source.repository, image_hash))])
     # Get the tags too
     existing_tags = [t for s, t in target.get_all_hashes_tags()]
     tags = {t: s for s, t in source.get_all_hashes_tags() if t not in existing_tags}
 
-    # Crawl the object tree to get the IDs and other metadata for all required objects.
-    distinct_objects, object_meta = target.objects.extract_recursive_object_meta(source.objects, table_meta)
+    # Get the top objects required by all new tables (without their dependencies)
+    top_objects = list({o for table in table_meta for o in table[3]})
 
-    object_locations = source.objects.get_external_object_locations(list(distinct_objects)) if distinct_objects else []
+    # Expand this list to include the objects' parents etc
+    new_objects = target.objects.get_new_objects(source.objects.get_all_required_objects(top_objects))
+    if new_objects:
+        object_meta = source.objects.get_object_meta(new_objects)
+        object_locations = source.objects.get_external_object_locations(new_objects)
+    else:
+        object_meta = []
+        object_locations = []
     return new_images, table_meta, object_locations, object_meta, tags
 
 

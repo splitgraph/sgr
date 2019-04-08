@@ -22,6 +22,7 @@ from splitgraph.hooks.mount_handlers import mount_postgres
 
 _AUDIT_SCHEMA = 'audit'
 _AUDIT_TRIGGER = 'resources/audit_trigger.sql'
+_PUSH_PULL = 'resources/push_pull.sql'
 _PACKAGE = 'splitgraph'
 ROW_TRIGGER_NAME = "audit_trigger_row"
 STM_TRIGGER_NAME = "audit_trigger_stm"
@@ -184,6 +185,11 @@ class PsycopgEngine(SQLEngine):
                     cur.execute(SQL("CREATE DATABASE {}").format(Identifier(pg_db)))
                 else:
                     logging.info("Database %s already exists, skipping", pg_db)
+
+        # Install the push/pull API functions
+        logging.info("Installing the push/pull API functions...")
+        push_pull = get_data(_PACKAGE, _PUSH_PULL)
+        self.run_sql(push_pull.decode('utf-8'), return_shape=ResultShape.NONE)
 
         # Install the audit trigger if it doesn't exist
         if not self.schema_exists(_AUDIT_SCHEMA):

@@ -3,8 +3,10 @@ Classes related to managing table/image/object metadata tables.
 """
 
 from psycopg2.extras import Json
+from psycopg2.sql import SQL, Identifier
 
-from ._common import insert, select, ResultShape
+from splitgraph.config import SPLITGRAPH_API_SCHEMA
+from ._common import select, ResultShape
 
 
 class MetadataManager:
@@ -28,7 +30,7 @@ class MetadataManager:
         if namespace:
             object_meta = [(o, f, p, namespace, s, i) for o, f, p, _, s, i in object_meta]
         self.metadata_engine.run_sql_batch(
-            insert("objects", ("object_id", "format", "parent_id", "namespace", "size", "index")),
+            SQL("SELECT {}.add_object(%s,%s,%s,%s,%s,%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
             object_meta)
 
     def register_tables(self, repository, table_meta):
@@ -42,7 +44,7 @@ class MetadataManager:
         table_meta = [(repository.namespace, repository.repository,
                        o[0], o[1], Json(o[2]), o[3]) for o in table_meta]
         self.metadata_engine.run_sql_batch(
-            insert("tables", ("namespace", "repository", "image_hash", "table_name", "table_schema", "object_ids")),
+            SQL("SELECT {}.add_table(%s,%s,%s,%s,%s,%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
             table_meta)
 
     def register_object_locations(self, object_locations):
@@ -52,20 +54,28 @@ class MetadataManager:
 
         :param object_locations: List of (object_id, location, protocol).
         """
-        # Don't insert redundant objects here either.
-        existing_locations = self.metadata_engine.run_sql(select("object_locations", "object_id"),
-                                                          return_shape=ResultShape.MANY_ONE)
-        object_locations = [o for o in object_locations if o[0] not in existing_locations]
-        self.metadata_engine.run_sql_batch(insert("object_locations", ("object_id", "location", "protocol")),
-                                           object_locations)
+        self.metadata_engine.run_sql_batch(
+            SQL("SELECT {}.add_object_location(%s,%s,%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
+            object_locations)
 
-    def get_existing_objects(self):
+    def get_all_objects(self):
         """
         Gets all objects currently in the Splitgraph tree.
 
         :return: Set of object IDs.
         """
         return set(self.metadata_engine.run_sql(select("objects", "object_id"), return_shape=ResultShape.MANY_ONE))
+
+    def get_new_objects(self, object_ids):
+        """
+        Get object IDs from the passed list that don't exist in the tree.
+
+        :param object_ids: List of objects to check
+        :return: List of unknown object IDs.
+        """
+        return self.metadata_engine.run_sql(
+            SQL("SELECT {}.get_new_objects(%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
+            (object_ids,), return_shape=ResultShape.ONE_ONE)
 
     def get_external_object_locations(self, objects):
         """
@@ -74,9 +84,8 @@ class MetadataManager:
         :param objects: List of objects stored externally.
         :return: List of (object_id, location, protocol).
         """
-        return self.metadata_engine.run_sql(select("object_locations", "object_id, location, protocol",
-                                                   "object_id IN (" + ','.join('%s' for _ in objects) + ")"),
-                                            objects)
+        return self.metadata_engine.run_sql(select("get_object_locations", "object_id, location, protocol",
+                                                   schema=SPLITGRAPH_API_SCHEMA, table_args="(%s)"), (objects,))
 
     def get_object_meta(self, objects):
         """
@@ -85,25 +94,9 @@ class MetadataManager:
         :param objects: List of objects to get metadata for.
         :return: List of (object_id, format, parent_id, namespace, size, index).
         """
-        return self.metadata_engine.run_sql(select("objects", "object_id, format, parent_id, namespace, size, index",
-                                                   "object_id IN (" + ','.join('%s' for _ in objects) + ")"), objects)
+        if not objects:
+            return []
 
-    def extract_recursive_object_meta(self, remote, table_meta):
-        """Recursively crawl the a remote object manager in order to fetch all objects
-        required to materialize tables specified in `table_meta` that don't yet exist on the local engine."""
-        existing_objects = self.get_existing_objects()
-        distinct_objects = set(o for os in table_meta for o in os[3] if o not in existing_objects)
-        known_objects = set()
-        object_meta = []
-
-        while True:
-            new_parents = [o for o in distinct_objects if o not in known_objects]
-            if not new_parents:
-                break
-            else:
-                parents_meta = remote.get_object_meta(new_parents)
-                distinct_objects.update(
-                    set(o for os in parents_meta for o in os[3] if o not in existing_objects))
-                object_meta.extend(parents_meta)
-                known_objects.update(new_parents)
-        return distinct_objects, object_meta
+        return self.metadata_engine.run_sql(select("get_object_meta",
+                                                   "object_id, format, parent_id, namespace, size, index",
+                                                   schema=SPLITGRAPH_API_SCHEMA, table_args="(%s)"), (objects,))

@@ -6,10 +6,10 @@ import sys
 from collections import defaultdict
 
 import click
+
 from splitgraph import SplitGraphException
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.repository import Repository
-
 from ._common import image_spec_parser
 
 
@@ -86,9 +86,8 @@ def commit_c(repository, snap, chunk_size, split_changesets, message):
 @click.command(name='tag')
 @click.argument('image_spec', type=image_spec_parser(default=None))
 @click.argument('tag', required=False)
-@click.option('-f', '--force', required=False, is_flag=True, help="Overwrite the tag if it already exists.")
 @click.option('-r', '--remove', required=False, is_flag=True, help="Remove the tag instead.")
-def tag_c(image_spec, tag, force, remove):
+def tag_c(image_spec, tag, remove):
     """
     Manage tags on images.
 
@@ -108,7 +107,7 @@ def tag_c(image_spec, tag, force, remove):
     ``sgr tag noaa/climate:abcdef1234567890 my_new_tag``
 
     Tag the image ``noaa/climate:abcdef1234567890...`` with ``my_new_tag``. If the tag already exists, this will
-    raise an error, unless ``-f`` is passed, which will overwrite the tag.
+    overwrite the tag.
 
     ``sgr tag noaa/climate my_new_tag``
 
@@ -151,7 +150,7 @@ def tag_c(image_spec, tag, force, remove):
     else:
         image = repository.images[image]
 
-    image.tag(tag, force)
+    image.tag(tag)
     print("Tagged %s:%s with %s." % (str(repository), image.image_hash, tag))
 
 
