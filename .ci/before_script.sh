@@ -12,7 +12,7 @@ pushd "$REPO_ROOT_DIR" \
     && ( sudo /etc/init.d/mysql stop || true ; ) \
     && pushd "${ARCHITECTURE_DIR}" \
     && docker-compose pull \
-    && docker-compose build \
+    && docker-compose build --parallel \
     && docker-compose up -d \
     && popd \
     && echo "Wait for test architecture..." \
