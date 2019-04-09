@@ -125,6 +125,11 @@ class SQLEngine(ABC):
         else:
             self.run_sql(SQL("DROP FOREIGN TABLE IF EXISTS {}.{}").format(Identifier(schema), Identifier(table)))
 
+    def rename_table(self, schema, table, new_table):
+        """Rename a table"""
+        self.run_sql(SQL("ALTER TABLE {}.{} RENAME TO {}").format(Identifier(schema), Identifier(table),
+                                                                  Identifier(new_table)))
+
     def delete_schema(self, schema):
         """Delete a schema if it exists, including all the tables in it."""
         self.run_sql(

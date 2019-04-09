@@ -99,10 +99,20 @@ class Digest:
         self.shorts = shorts
 
     @classmethod
+    def empty(cls):
+        return cls((0,) * 16)
+
+    @classmethod
     def from_memoryview(cls, memory):
         """Create a Digest from a 256-bit memoryview/bytearray."""
         # Unpack the buffer as 16 signed big-endian shortints.
         return cls(struct.unpack('>16H', memory))
+
+    @classmethod
+    def from_hex(cls, hex_string):
+        """Create a Digest from a 64-characters (256-bit) hexadecimal string"""
+        assert len(hex_string) == 64
+        return cls(tuple(int(hex_string[i:i + 4], base=16) for i in range(0, 64, 4)))
 
     # In these routines, we treat each hash as a vector of 16 2-byte integers and do component-wise addition.
     # To simulate the wraparound behaviour of C shorts, throw away all remaining bits after the action.
@@ -230,6 +240,44 @@ class FragmentManager(MetadataManager):
             insert("tables", ("namespace", "repository", "image_hash", "table_name", "table_schema", "object_ids")),
             (repository.namespace, repository.repository, image, table, Json(schema), object_ids))
 
+    def _hash_old_changeset_values(self, changeset, table_schema):
+        """
+        Since we're not storing the values of the deleted rows (and we don't have access to them in the staging table
+        because they've been deleted), we have to hash them in Python. This involves mimicking the return value of
+        `SELECT t::text FROM table t`.
+
+        :param changeset: Map PK -> (upserted/deleted, Map col -> old val)
+        :param table_schema: List (ordinal, column, type, is_pk)
+        :return: `Digest` object.
+        """
+        has_pk = any(c[3] for c in table_schema)
+        # By default (e.g. for changesets where nothing was deleted) we use a 0 hash (since adding it to any other
+        # hash has no effect).
+        result = Digest.empty()
+        for pk, data in changeset.items():
+            if not data[1]:
+                # No old row: new value has been inserted.
+                continue
+            if not has_pk:
+                row = pk
+            else:
+                # Turn the changeset into an actual row in the correct order
+                pk_index = 0
+                row = []
+                for _, column_name, _, is_pk in sorted(table_schema):
+                    if not is_pk:
+                        if column_name not in data[1]:
+                            import pdb;
+                            pdb.set_trace()
+                        row.append(data[1][column_name])
+                    else:
+                        row.append(pk[pk_index])
+                        pk_index += 1
+
+            row_string = '(' + ','.join(str(coerce_val_to_json(v)) for v in row) + ')'
+            result += Digest.from_hex(sha256(row_string.encode('ascii')).hexdigest())
+        return result
+
     def _store_changesets(self, table, changesets, parents):
         """
         Store and register multiple changesets as fragments, optionally linking them to the parent fragments.
@@ -246,13 +294,40 @@ class FragmentManager(MetadataManager):
                 if parent:
                     object_ids.append(parent)
                 continue
-            object_id = get_random_object_id()
-            object_ids.append(object_id)
+
+            # Store the fragment in a temporary location and then find out its hash and rename to the actual target.
+            # Optimisation: in the future, we can hash the upserted rows that we need preemptively and possibly
+            # avoid storing the object altogether if it's a duplicate.
+            tmp_object_id = get_random_object_id()
             upserted = [pk for pk, data in sub_changeset.items() if data[0]]
             deleted = [pk for pk, data in sub_changeset.items() if not data[0]]
-            self.object_engine.store_fragment(upserted, deleted, SPLITGRAPH_META_SCHEMA, object_id,
+            self.object_engine.store_fragment(upserted, deleted, SPLITGRAPH_META_SCHEMA, tmp_object_id,
                                               table.repository.to_schema(),
                                               table.table_name)
+
+            deletion_hash = self._hash_old_changeset_values(sub_changeset, table.table_schema)
+
+            # Digest inserted rows
+            columns_sql = SQL(",").join(SQL("o.") + Identifier(c[1]) for c in table.table_schema)
+            digest_query = SQL("SELECT digest((") + columns_sql + SQL(")::text, 'sha256'::text) FROM {}.{} o") \
+                .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(tmp_object_id)) \
+                           + SQL(" WHERE o.{} = true").format(Identifier(SG_UD_FLAG))
+            row_digests = self.object_engine.run_sql(digest_query, return_shape=ResultShape.MANY_ONE)
+            insertion_hash = reduce(operator.add, (Digest.from_memoryview(r) for r in row_digests), Digest.empty())
+
+            # We currently don't store the insertion/deletion hashes at all.
+            content_hash = (insertion_hash - deletion_hash).hex()
+            schema_hash = sha256(str(table.table_schema).encode('ascii')).hexdigest()
+            object_id = "o" + sha256((content_hash + schema_hash).encode('ascii')).hexdigest()[:-2]
+
+            object_ids.append(object_id)
+            if not self.get_new_objects([object_id]):
+                # If an object with this ID already exists, delete the temporary table, don't register it and move on.
+                logging.info("Reusing object %s for table %s/%s", object_id, table.repository, table.table_name)
+                self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
+                continue
+
+            self.object_engine.rename_table(SPLITGRAPH_META_SCHEMA, tmp_object_id, object_id)
             self.register_object(
                 object_id, object_format='DIFF' if parent else 'SNAP', namespace=table.repository.namespace,
                 parent_object=parent, changeset=sub_changeset)
@@ -273,12 +348,6 @@ class FragmentManager(MetadataManager):
         # If a changeset is really large (e.g. update the first 1000 rows, update the last 1000 rows) then sure,
         # this will help (for a query pk=5000 we don't need to fetch a 2000-row fragment) but maybe at that point
         # it's time to rewrite the table altogether?
-
-        # TODO hashing a fragment is lthash(added rows) - lthash(removed rows)
-        # first, see if some of the table regions still map to the same hashes or some hashes that we've already seen.
-
-        # otherwise: every fragment needs to be hashes, so put it in a temporary area (weirdness with hashing
-        # things that have been deleted)
 
         # Accumulate the diff in-memory. This might become a bottleneck in the future.
         changeset = {}
