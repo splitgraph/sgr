@@ -347,6 +347,7 @@ def gather_sync_metadata(target, source):
     # Expand this list to include the objects' parents etc
     new_objects = target.objects.get_new_objects(source.objects.get_all_required_objects(top_objects))
     if new_objects:
+        new_objects = list(set(new_objects))
         object_meta = source.objects.get_object_meta(new_objects)
         object_locations = source.objects.get_external_object_locations(new_objects)
     else:

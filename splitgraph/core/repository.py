@@ -869,18 +869,16 @@ def _sync(target, source, download=True, download_all=False, handler='DB', handl
                           image.provenance_data)
 
     if download:
-        # Don't actually download any real objects until the user tries to check out a revision.
+        target.objects.register_objects(object_meta)
+        target.objects.register_object_locations(object_locations)
+        # Don't actually download any real objects until the user tries to check out a revision, unless
+        # they want to do it in advance.
         if download_all:
-            # Check which new objects we need to fetch/preregister.
-            # We might already have some objects prefetched
-            # (e.g. if a new version of the table is the same as the old version)
             logging.info("Fetching remote objects...")
             target.objects.download_objects(source.objects,
                                             objects_to_fetch=list(set(o[0] for o in object_meta)),
                                             object_locations=object_locations)
 
-        target.objects.register_objects(object_meta)
-        target.objects.register_object_locations(object_locations)
         # Don't check anything out, keep the repo bare.
         set_head(target, None)
     else:
