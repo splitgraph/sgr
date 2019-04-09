@@ -4,12 +4,17 @@ Routines related to storing tables as fragments.
 
 import bisect
 import itertools
+import logging
+import operator
+import struct
+from functools import reduce
 from random import getrandbits
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_API_SCHEMA
+from splitgraph.core.metadata_manager import MetadataManager
 from splitgraph.engine.postgres.engine import SG_UD_FLAG
 from ._common import adapt, SPLITGRAPH_META_SCHEMA, ResultShape, insert, coerce_val_to_json
 
@@ -322,8 +327,9 @@ class FragmentManager:
             for offset in range(0, table_size, chunk_size):
                 object_ids.append(_insert_and_register_fragment(repository.to_schema(), table_name,
                                                                 limit=chunk_size, offset=offset))
-        else:
+        elif table_size:
             object_ids.append(_insert_and_register_fragment(repository.to_schema(), table_name))
+        # If table_size == 0, then we don't link it to any objects and simply store its schema
         table_schema = self.object_engine.get_full_table_schema(repository.to_schema(), table_name)
         self.register_table(repository, table_name, image_hash, table_schema, object_ids)
 

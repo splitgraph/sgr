@@ -13,6 +13,7 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.core.fragment_manager import get_random_object_id
+from splitgraph.engine.postgres.engine import SG_UD_FLAG
 from splitgraph.exceptions import SplitGraphException
 from ._common import manage_audit_triggers, set_head, manage_audit, select, insert, aggregate_changes, slow_diff, \
     prepare_publish_data, gather_sync_metadata, ResultShape
@@ -631,11 +632,18 @@ class Repository:
                     object_id = self._import_new_table(tmp_schema, source_table, target_hash, target_table, is_query)
                     if do_checkout:
                         self.object_engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, self.to_schema(), target_table)
+                    self.object_engine.run_sql(SQL("ALTER TABLE {}.{} ADD COLUMN {} BOOLEAN DEFAULT TRUE")
+                                               .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id),
+                                                       Identifier(SG_UD_FLAG)))
             elif foreign_tables:
                 object_id = self._import_new_table(source_repository.to_schema(), source_table,
                                                    target_hash, target_table, is_query)
                 if do_checkout:
                     self.object_engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, self.to_schema(), target_table)
+
+                self.object_engine.run_sql(SQL("ALTER TABLE {}.{} ADD COLUMN {} BOOLEAN DEFAULT TRUE")
+                                           .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id),
+                                                   Identifier(SG_UD_FLAG)))
             else:
                 table_obj = image.get_table(source_table)
                 self.objects.register_table(self, target_table, target_hash, table_obj.table_schema, table_obj.objects)

@@ -6,7 +6,6 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.fragment_manager import get_random_object_id, quals_to_sql
-from splitgraph.engine.postgres.engine import SG_UD_FLAG
 
 
 class Table:
@@ -39,15 +38,10 @@ class Table:
         if not lq_server:
             # Copy the given snap id over to "staging" and apply the DIFFS
             with object_manager.ensure_objects(self) as required_objects:
-                engine.copy_table(SPLITGRAPH_META_SCHEMA, required_objects[0], destination_schema, destination,
-                                  with_pk_constraints=True)
-                # Make sure we don't include the update-delete flag
-                engine.run_sql(SQL("ALTER TABLE {}.{} DROP COLUMN IF EXISTS {}")
-                               .format(Identifier(destination_schema), Identifier(destination),
-                                       Identifier(SG_UD_FLAG)))
-                if len(required_objects) > 1:
-                    logging.info("Applying %d fragment(s)...", (len(required_objects) - 1))
-                    engine.apply_fragments([(SPLITGRAPH_META_SCHEMA, d) for d in required_objects[1:]],
+                engine.create_table(schema=destination_schema, table=destination, schema_spec=self.table_schema)
+                if len(required_objects) > 0:
+                    logging.info("Applying %d fragment(s)...", (len(required_objects)))
+                    engine.apply_fragments([(SPLITGRAPH_META_SCHEMA, d) for d in required_objects],
                                            destination_schema, destination)
         else:
             query = SQL("CREATE FOREIGN TABLE {}.{} (") \

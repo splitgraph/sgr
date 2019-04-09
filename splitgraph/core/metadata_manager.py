@@ -96,7 +96,9 @@ class MetadataManager:
         """
         if not objects:
             return []
+        result = {o[0]: o[1:] for o in self.metadata_engine.run_sql(
+            select("get_object_meta", "object_id, format, parent_id, namespace, size, index",
+                   schema=SPLITGRAPH_API_SCHEMA, table_args="(%s)"), (objects,))}
+        # Make sure to return the results in the same order they were requested.
 
-        return self.metadata_engine.run_sql(select("get_object_meta",
-                                                   "object_id, format, parent_id, namespace, size, index",
-                                                   schema=SPLITGRAPH_API_SCHEMA, table_args="(%s)"), (objects,))
+        return [(o,) + result[o] for o in objects]

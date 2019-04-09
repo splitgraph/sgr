@@ -358,6 +358,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
     def _prepare_ri_data(self, schema, table):
         ri_cols, _ = zip(*self.get_change_key(schema, table))
+        ri_cols = tuple(r for r in ri_cols if r != SG_UD_FLAG)
         non_ri_cols_types = [c for c in self.get_column_names_types(schema, table)
                              if c[0] not in ri_cols and c[0] != SG_UD_FLAG]
         non_ri_cols, non_ri_types = zip(*non_ri_cols_types) if non_ri_cols_types else ((), ())
