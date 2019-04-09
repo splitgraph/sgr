@@ -240,20 +240,10 @@ class FragmentManager(MetadataManager):
             insert("tables", ("namespace", "repository", "image_hash", "table_name", "table_schema", "object_ids")),
             (repository.namespace, repository.repository, image, table, Json(schema), object_ids))
 
-    def _hash_old_changeset_values(self, changeset, table_schema):
-        """
-        Since we're not storing the values of the deleted rows (and we don't have access to them in the staging table
-        because they've been deleted), we have to hash them in Python. This involves mimicking the return value of
-        `SELECT t::text FROM table t`.
-
-        :param changeset: Map PK -> (upserted/deleted, Map col -> old val)
-        :param table_schema: List (ordinal, column, type, is_pk)
-        :return: `Digest` object.
-        """
+    @staticmethod
+    def _extract_deleted_rows(changeset, table_schema):
         has_pk = any(c[3] for c in table_schema)
-        # By default (e.g. for changesets where nothing was deleted) we use a 0 hash (since adding it to any other
-        # hash has no effect).
-        result = Digest.empty()
+        rows = []
         for pk, data in changeset.items():
             if not data[1]:
                 # No old row: new value has been inserted.
@@ -266,17 +256,38 @@ class FragmentManager(MetadataManager):
                 row = []
                 for _, column_name, _, is_pk in sorted(table_schema):
                     if not is_pk:
-                        if column_name not in data[1]:
-                            import pdb;
-                            pdb.set_trace()
                         row.append(data[1][column_name])
                     else:
                         row.append(pk[pk_index])
                         pk_index += 1
+            rows.append(row)
+        return rows
 
-            row_string = '(' + ','.join(str(coerce_val_to_json(v)) for v in row) + ')'
-            result += Digest.from_hex(sha256(row_string.encode('ascii')).hexdigest())
-        return result
+    def _hash_old_changeset_values(self, changeset, table_schema):
+        """
+        Since we're not storing the values of the deleted rows (and we don't have access to them in the staging table
+        because they've been deleted), we have to hash them in Python. This involves mimicking the return value of
+        `SELECT t::text FROM table t`.
+
+        :param changeset: Map PK -> (upserted/deleted, Map col -> old val)
+        :param table_schema: List (ordinal, column, type, is_pk)
+        :return: `Digest` object.
+        """
+        rows = self._extract_deleted_rows(changeset, table_schema)
+        if not rows:
+            return Digest.empty()
+
+        # Horror alert: we hash newly created tables by essentially calling digest(row::text) in Postgres and
+        # we don't really know how it turns some types to strings. So instead we give Postgres all of its deleted
+        # rows back and ask it to hash them for us in the same way.
+        inner_tuple = "(" + ','.join('%s::' + c[2] for c in table_schema) + ")"
+        query = "SELECT digest(o::text, 'sha256') FROM VALUES (" \
+                + ",".join(itertools.repeat(inner_tuple, len(rows))) + ") o"
+
+        # By default (e.g. for changesets where nothing was deleted) we use a 0 hash (since adding it to any other
+        # hash has no effect).
+        digests = self.object_engine.run_sql(query, [o for row in rows for o in row], return_shape=ResultShape.MANY_ONE)
+        return reduce(operator.add, (Digest.from_memoryview(d[0]) for d in digests), Digest.empty())
 
     def _store_changesets(self, table, changesets, parents):
         """

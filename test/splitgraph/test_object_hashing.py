@@ -123,3 +123,97 @@ def test_base_fragment_reused_chunking(local_engine_empty):
     assert table_3.objects[0] == table_1.objects[0]
     assert table_3.objects[1] != table_1.objects[1]
     assert table_3.objects[2] == table_1.objects[2]
+
+
+def test_diff_fragment_hashing(pg_repo_local):
+    pg_repo_local.run_sql("DELETE FROM fruits WHERE fruit_id = 1")
+    pg_repo_local.run_sql("UPDATE fruits SET name = 'kumquat' WHERE fruit_id = 2")
+    pg_repo_local.commit()
+    fruits_v2 = pg_repo_local.head.get_table('fruits')
+
+    expected_object = 'oa4436fec80c4d3ee5052c4f954b555ddf2e139c108e6c854ebd86e201817fb'
+    assert fruits_v2.objects == [expected_object]
+
+    om = pg_repo_local.objects
+
+    insertion_hash = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, expected_object)
+    assert insertion_hash.hex() == '71a5c6d67b2466cb57cb8c05aa39400af342dfd4027ae5f333c97265710da844'
+
+    # The homomorphic hash of all deleted rows: we can't yet access it directly but we can recalculate it
+    # since we know which rows were deleted
+    deleted_rows = ['(1,apple)', '(2,orange)']
+    deletion_hash = reduce(operator.add, (Digest.from_hex(sha256(d.encode('ascii')).hexdigest()) for d in deleted_rows))
+
+    # Fun fact: since we effectively replaced all rows in the original fragment, the deletion hash is the same
+    # as the insertion hash of the original fragment.
+    assert deletion_hash.hex() == 'c01cce6c17bde5b999147b43c6133b11872298842a7388a0b82aee834e9454b0'
+
+    schema_hash = sha256(str(fruits_v2.table_schema).encode('ascii')).hexdigest()
+    assert schema_hash == '3e022317e6dd31edb92c18a464dab55750ca16d5f4f111d383b1bdbc53ded5b5'
+
+    # Full hash (less two last bytes) is the same as the object ID.
+    full_hash = 'a4436fec80c4d3ee5052c4f954b555ddf2e139c108e6c854ebd86e201817fb28'
+    assert sha256(((insertion_hash - deletion_hash).hex() + schema_hash).encode('ascii')).hexdigest() == full_hash
+
+    # Check the actual content hash of the final table. Since the whole of the old fragment got replaced,
+    # the hash should be old_insertion_hash - deletion_hash + new_insertion_hash == new_insertion_hash
+    assert om.calculate_content_hash(pg_repo_local.to_schema(), 'fruits') == insertion_hash.hex()
+
+
+def test_diff_fragment_hashing_long_chain(local_engine_empty):
+    OUTPUT.init()
+    OUTPUT.run_sql("CREATE TABLE test (key TIMESTAMP PRIMARY KEY, val1 INTEGER, val2 VARCHAR, val3 NUMERIC)")
+    OUTPUT.run_sql("INSERT INTO TEST VALUES ('2019-01-01 01:01:01.111', 1, 'one', 1.1),"
+                   "('2019-01-02 02:02:02.222', 2, 'two', 2.2),"
+                   "('2019-01-03 03:03:03.333', 3, 'three', 3.3),"
+                   "('2019-01-04 04:04:04.444', 4, 'four', 4.4)")
+    OUTPUT.commit()
+    base = OUTPUT.head.get_table('test')
+
+    OUTPUT.run_sql("DELETE FROM test WHERE key = '2019-01-03';INSERT INTO test VALUES ('2019-01-05', 5, 'five', 5.5)")
+    OUTPUT.commit()
+    v1 = OUTPUT.head.get_table('test')
+
+    OUTPUT.run_sql("UPDATE test SET val2 = 'UPDATED', val1 = 42 WHERE key = '2019-01-02'")
+    OUTPUT.commit()
+    v2 = OUTPUT.head.get_table('test')
+
+    OUTPUT.run_sql("UPDATE test SET val2 = 'UPDATED AGAIN', val1 = 43 WHERE key = '2019-01-02'")
+    OUTPUT.commit()
+    v3 = OUTPUT.head.get_table('test')
+
+    om = OUTPUT.objects
+    final_hash = OUTPUT.objects.calculate_content_hash(OUTPUT.to_schema(), 'test')
+
+    schema_hash = sha256(str(base.table_schema).encode('ascii')).hexdigest()
+
+    # Check that the final hash can be assembled out of intermediate objects' insertion and deletion hashes
+
+    ins_hash_base = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, base.objects[0])
+    assert 'o' + sha256((ins_hash_base.hex() + schema_hash).encode('ascii')).hexdigest()[:-2] == base.objects[0]
+
+    ins_hash_v1 = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, v1.objects[0])
+    # TODO:
+    # * fix this
+    # * add a test with some DIFFs being reused (eg make the same change to the same table several times)
+    # * add the hashes into the object manifest (objects table)
+    # * add snap hashing into the import routines (splitfiles/mounting)
+    # * add tests for import routines
+    # * figure out digest() not being available from the commandline
+
+    del_hash_v1 = Digest.from_hex(sha256('(2019-01-03 03:03:03.333,3,three,3.3)'.encode('ascii')).hexdigest())
+    assert 'o' + sha256(((ins_hash_v1 - del_hash_v1).hex() + schema_hash).encode('ascii')).hexdigest()[:-2] \
+           == v1.objects[0]
+
+    ins_hash_v2 = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, v2.objects[0])
+    del_hash_v2 = Digest.from_hex(sha256('(2019-01-02 00:00:00.000,2,two,2.2)'.encode('ascii')).hexdigest())
+    assert 'o' + sha256(((ins_hash_v2 - del_hash_v2).hex() + schema_hash).encode('ascii')).hexdigest()[:-2] \
+           == v2.objects[0]
+
+    ins_hash_v3 = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, v3.objects[0])
+    del_hash_v3 = Digest.from_hex(sha256('(2019-01-02 00:00:00.000,42,UPDATED,2.2)'.encode('ascii')).hexdigest())
+    assert 'o' + sha256(((ins_hash_v3 - del_hash_v3).hex() + schema_hash).encode('ascii')).hexdigest()[:-2] \
+           == v3.objects[0]
+
+    assert (ins_hash_base + ins_hash_v1 + ins_hash_v2 + ins_hash_v3 - del_hash_v1 - del_hash_v2 - del_hash_v3).hex() \
+           == final_hash
