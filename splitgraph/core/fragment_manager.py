@@ -8,6 +8,7 @@ import logging
 import operator
 import struct
 from functools import reduce
+from hashlib import sha256
 from random import getrandbits
 
 from psycopg2.extras import Json
@@ -73,7 +74,53 @@ def _max(a, b):
     return b if a is None else (a if b is None else max(a, b))
 
 
-class FragmentManager:
+class Digest:
+    """
+    Homomorphic hashing similar to LtHash (but limited to being backed by 256-bit hashes). The main property is that
+    for any rows A, B, LtHash(A) + LtHash(B) = LtHash(A+B). This is done by construction: we simply hash individual
+    rows and then do bit-wise addition / subtraction of individual hashes to come up with the full table hash.
+
+    Hence, the content hash of any Splitgraph table fragment is the sum of hashes of its added rows minus the sum
+    of hashes of its deleted rows (including the old values of the rows that have been updated). This has a very
+    useful implication: the hash of a full Splitgraph table is equal to the sum of hashes of its individual fragments.
+
+    This property can be used to simplify deduplication: for example, finding our
+    """
+
+    def __init__(self, shorts):
+        """
+        Create a Digest instance.
+
+        :param shorts: Tuple of 16 2-byte integers.
+        """
+        # Shorts: tuple of 16 2-byte integers
+        assert isinstance(shorts, tuple)
+        assert len(shorts) == 16
+        self.shorts = shorts
+
+    @classmethod
+    def from_memoryview(cls, memory):
+        """Create a Digest from a 256-bit memoryview/bytearray."""
+        # Unpack the buffer as 16 signed big-endian shortints.
+        return cls(struct.unpack('>16H', memory))
+
+    # In these routines, we treat each hash as a vector of 16 2-byte integers and do component-wise addition.
+    # To simulate the wraparound behaviour of C shorts, throw away all remaining bits after the action.
+    def __add__(self, other):
+        return Digest(tuple((l + r) & 0xff for l, r in zip(self.shorts, other.shorts)))
+
+    def __sub__(self, other):
+        return Digest(tuple((l - r) & 0xff for l, r in zip(self.shorts, other.shorts)))
+
+    def __neg__(self):
+        return Digest(tuple(-v & 0xff for v in self.shorts))
+
+    def hex(self):
+        """Convert the hash into a hexadecimal value."""
+        return struct.pack('>16H', *self.shorts).hex()
+
+
+class FragmentManager(MetadataManager):
     """
     A storage engine for Splitgraph tables. Each table can be stored as one or more immutable fragments that can
     optionally overwrite each other. When a new table is created, it's split up into multiple base fragments. When
@@ -227,6 +274,12 @@ class FragmentManager:
         # this will help (for a query pk=5000 we don't need to fetch a 2000-row fragment) but maybe at that point
         # it's time to rewrite the table altogether?
 
+        # TODO hashing a fragment is lthash(added rows) - lthash(removed rows)
+        # first, see if some of the table regions still map to the same hashes or some hashes that we've already seen.
+
+        # otherwise: every fragment needs to be hashes, so put it in a temporary area (weirdness with hashing
+        # things that have been deleted)
+
         # Accumulate the diff in-memory. This might become a bottleneck in the future.
         changeset = {}
         _conflate_changes(changeset, self.object_engine.get_pending_changes(old_table.repository.to_schema(),
@@ -297,6 +350,26 @@ class FragmentManager:
             min_max.append((frag_min, frag_max))
         return min_max
 
+    def calculate_content_hash(self, schema, table, limit=None, offset=None):
+        """
+        Calculates the homomorphic hash of table contents.
+
+        :param schema: Schema the table belongs to
+        :param table: Name of the table
+        :param limit: If specified, the amount of rows in the table to fetch
+        :param offset: If specified, the offset in the table
+        :return: A 64-character (256-bit) hexadecimal string with the content hash of the table.
+        """
+        digest_query = SQL("SELECT digest(o::text, 'sha256'::text) FROM {}.{} o") \
+            .format(Identifier(schema), Identifier(table))
+        if offset is not None:
+            row_digests = self.object_engine.run_sql(digest_query + SQL(" LIMIT %s OFFSET %s"), (limit, offset),
+                                                     return_shape=ResultShape.MANY_ONE)
+        else:
+            row_digests = self.object_engine.run_sql(digest_query, return_shape=ResultShape.MANY_ONE)
+
+        return reduce(operator.add, (Digest.from_memoryview(r) for r in row_digests)).hex()
+
     def record_table_as_base(self, repository, table_name, image_hash, chunk_size=10000):
         """
         Copies the full table verbatim into one or more new base fragments and registers them.
@@ -312,7 +385,24 @@ class FragmentManager:
                                                 return_shape=ResultShape.ONE_ONE)
 
         def _insert_and_register_fragment(source_schema, source_table, limit=None, offset=None):
-            object_id = get_random_object_id()
+            content_hash = self.calculate_content_hash(source_schema, source_table, limit, offset)
+
+            # Fragments can't be reused in tables with different schemas even if the contents match (e.g. '1' vs 1).
+            # Hence, include the table schema in the object ID as well.
+            schema_hash = sha256(
+                str(self.object_engine.get_full_table_schema(source_schema, source_table)).encode('ascii')) \
+                .hexdigest()
+
+            # Object IDs are also used to key tables in Postgres so they can't be more than 63 characters.
+            # In addition, table names can't start with a number so we have to drop 2 characters from the 64-character
+            # hash and append an "o".
+            object_id = "o" + sha256((content_hash + schema_hash).encode('ascii')).hexdigest()[:-2]
+
+            # If we already have an object with this ID (and hence hash), reuse it.
+            if not self.get_new_objects([object_id]):
+                logging.info("Reusing object %s for table %s/%s", object_id, source_schema, source_table)
+                return object_id
+
             self.object_engine.copy_table(source_schema, source_table, SPLITGRAPH_META_SCHEMA, object_id,
                                           with_pk_constraints=True, limit=limit, offset=offset,
                                           order_by_pk=(offset is not None))

@@ -199,6 +199,9 @@ class PsycopgEngine(SQLEngine):
         else:
             logging.info("Skipping the audit trigger as it's already installed")
 
+        # Start up the pgcrypto extension (required for hashing fragments)
+        self.run_sql("CREATE EXTENSION IF NOT EXISTS pgcrypto")
+
     def delete_database(self, database):
         """
         Helper function to drop a database using the admin connection
