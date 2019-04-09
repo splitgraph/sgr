@@ -117,13 +117,13 @@ class Digest:
     # In these routines, we treat each hash as a vector of 16 2-byte integers and do component-wise addition.
     # To simulate the wraparound behaviour of C shorts, throw away all remaining bits after the action.
     def __add__(self, other):
-        return Digest(tuple((l + r) & 0xff for l, r in zip(self.shorts, other.shorts)))
+        return Digest(tuple((l + r) & 0xffff for l, r in zip(self.shorts, other.shorts)))
 
     def __sub__(self, other):
-        return Digest(tuple((l - r) & 0xff for l, r in zip(self.shorts, other.shorts)))
+        return Digest(tuple((l - r) & 0xffff for l, r in zip(self.shorts, other.shorts)))
 
     def __neg__(self):
-        return Digest(tuple(-v & 0xff for v in self.shorts))
+        return Digest(tuple(-v & 0xffff for v in self.shorts))
 
     def hex(self):
         """Convert the hash into a hexadecimal value."""
@@ -305,15 +305,9 @@ class FragmentManager(MetadataManager):
                                               table.repository.to_schema(),
                                               table.table_name)
 
+            # Digest the rows.
             deletion_hash = self._hash_old_changeset_values(sub_changeset, table.table_schema)
-
-            # Digest inserted rows
-            columns_sql = SQL(",").join(SQL("o.") + Identifier(c[1]) for c in table.table_schema)
-            digest_query = SQL("SELECT digest((") + columns_sql + SQL(")::text, 'sha256'::text) FROM {}.{} o") \
-                .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(tmp_object_id)) \
-                           + SQL(" WHERE o.{} = true").format(Identifier(SG_UD_FLAG))
-            row_digests = self.object_engine.run_sql(digest_query, return_shape=ResultShape.MANY_ONE)
-            insertion_hash = reduce(operator.add, (Digest.from_memoryview(r) for r in row_digests), Digest.empty())
+            insertion_hash = self.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, tmp_object_id)
 
             # We currently don't store the insertion/deletion hashes at all.
             content_hash = (insertion_hash - deletion_hash).hex()
@@ -332,6 +326,21 @@ class FragmentManager(MetadataManager):
                 object_id, object_format='DIFF' if parent else 'SNAP', namespace=table.repository.namespace,
                 parent_object=parent, changeset=sub_changeset)
         return object_ids
+
+    def calculate_fragment_insertion_hash(self, schema, table):
+        """
+        Calculate the homomorphic hash of just the rows that a given fragment inserts
+        :param schema: Schema the fragment is stored in.
+        :param table: Name of the table the fragment is stored in.
+        :return: A `Digest` object
+        """
+        table_schema = self.object_engine.get_full_table_schema(schema, table)
+        columns_sql = SQL(",").join(SQL("o.") + Identifier(c[1]) for c in table_schema if c[1] != SG_UD_FLAG)
+        digest_query = SQL("SELECT digest((") + columns_sql + SQL(")::text, 'sha256'::text) FROM {}.{} o") \
+            .format(Identifier(schema), Identifier(table)) + SQL(" WHERE o.{} = true").format(Identifier(SG_UD_FLAG))
+        row_digests = self.object_engine.run_sql(digest_query, return_shape=ResultShape.MANY_ONE)
+        insertion_hash = reduce(operator.add, (Digest.from_memoryview(r) for r in row_digests), Digest.empty())
+        return insertion_hash
 
     def record_table_as_patch(self, old_table, image_hash, split_changeset=False):
         """
@@ -431,6 +440,9 @@ class FragmentManager(MetadataManager):
         """
         digest_query = SQL("SELECT digest(o::text, 'sha256'::text) FROM {}.{} o") \
             .format(Identifier(schema), Identifier(table))
+        pks = self.object_engine.get_primary_keys(schema, table)
+        if pks:
+            digest_query += SQL(" ORDER BY ") + SQL(",").join(Identifier(p[0]) for p in pks)
         if offset is not None:
             row_digests = self.object_engine.run_sql(digest_query + SQL(" LIMIT %s OFFSET %s"), (limit, offset),
                                                      return_shape=ResultShape.MANY_ONE)
@@ -469,7 +481,8 @@ class FragmentManager(MetadataManager):
 
             # If we already have an object with this ID (and hence hash), reuse it.
             if not self.get_new_objects([object_id]):
-                logging.info("Reusing object %s for table %s/%s", object_id, source_schema, source_table)
+                logging.info("Reusing object %s for table %s/%s limit %r offset %d", object_id, source_schema,
+                             source_table, limit, offset)
                 return object_id
 
             self.object_engine.copy_table(source_schema, source_table, SPLITGRAPH_META_SCHEMA, object_id,
