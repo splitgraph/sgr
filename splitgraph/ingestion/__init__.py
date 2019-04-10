@@ -2,9 +2,9 @@
 
 import click
 import pandas as pd
+
 from splitgraph import Repository
 from splitgraph.commandline._common import image_spec_parser
-
 from .pandas import sql_to_df, df_to_table
 
 

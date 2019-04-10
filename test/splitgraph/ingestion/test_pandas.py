@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 from pandas.compat import StringIO
 from pandas.util.testing import assert_frame_equal
+
 from splitgraph import SplitGraphException
 from splitgraph.ingestion.pandas import df_to_table, sql_to_df
 from test.splitgraph.conftest import load_csv, INGESTION_RESOURCES

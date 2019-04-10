@@ -91,4 +91,6 @@ except ImportError:
         """Import/export Splitgraph images in CSV format."""
         print("Install the ""ingestion"" setuptools extra to enable this feature!")
         exit(1)
+
+
     cli.add_command(csv_dummy)

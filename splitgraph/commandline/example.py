@@ -5,8 +5,8 @@ from random import getrandbits
 
 import click
 
-from splitgraph.engine import ResultShape
 from splitgraph.core import Repository, repository_exists, Identifier, SQL, select
+from splitgraph.engine import ResultShape
 
 _DEMO_TABLE_SIZE = 10
 _DEMO_CHANGE_SIZE = 2

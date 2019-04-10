@@ -198,7 +198,8 @@ def test_object_info(local_engine_empty):
     local_engine_empty.run_sql(q, ("base_1", "SNAP", None, "ns1", 12345, 'HASH1', 'HASH2', {"col_1": [10, 20]}))
     local_engine_empty.run_sql(q, ("patch_1", "DIFF", "base_1", "ns1", 6789, 'HASH1', 'HASH2', {"col_1": [10, 20]}))
     local_engine_empty.run_sql(q, ("patch_2", "DIFF", "base_1", "ns1", 1011, 'HASH1', 'HASH2', {"col_1": [10, 20],
-                                                                              "col_2": ['bla', 'ble']}))
+                                                                                                "col_2": ['bla',
+                                                                                                          'ble']}))
     # base_1: external, cached locally
     local_engine_empty.run_sql(insert("object_locations", ("object_id", "protocol", "location")),
                                ("base_1", "HTTP", "example.com/objects/base_1.tgz"))

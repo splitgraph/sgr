@@ -6,6 +6,7 @@ import json
 import re
 
 import click
+
 from splitgraph.hooks.mount_handlers import get_mount_handler, get_mount_handlers, mount
 
 _PARAM_REGEX = re.compile(r'^:param\s+(?P<type>\w+\s+)?(?P<param>\w+):\s+(?P<doc>.*)$', re.MULTILINE)
