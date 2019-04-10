@@ -281,13 +281,13 @@ class FragmentManager(MetadataManager):
         # we don't really know how it turns some types to strings. So instead we give Postgres all of its deleted
         # rows back and ask it to hash them for us in the same way.
         inner_tuple = "(" + ','.join('%s::' + c[2] for c in table_schema) + ")"
-        query = "SELECT digest(o::text, 'sha256') FROM VALUES (" \
+        query = "SELECT digest(o::text, 'sha256') FROM (VALUES " \
                 + ",".join(itertools.repeat(inner_tuple, len(rows))) + ") o"
 
         # By default (e.g. for changesets where nothing was deleted) we use a 0 hash (since adding it to any other
         # hash has no effect).
         digests = self.object_engine.run_sql(query, [o for row in rows for o in row], return_shape=ResultShape.MANY_ONE)
-        return reduce(operator.add, (Digest.from_memoryview(d[0]) for d in digests), Digest.empty())
+        return reduce(operator.add, map(Digest.from_memoryview, digests), Digest.empty())
 
     def _store_changesets(self, table, changesets, parents):
         """
@@ -315,7 +315,6 @@ class FragmentManager(MetadataManager):
             self.object_engine.store_fragment(upserted, deleted, SPLITGRAPH_META_SCHEMA, tmp_object_id,
                                               table.repository.to_schema(),
                                               table.table_name)
-
             # Digest the rows.
             deletion_hash = self._hash_old_changeset_values(sub_changeset, table.table_schema)
             insertion_hash = self.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, tmp_object_id)

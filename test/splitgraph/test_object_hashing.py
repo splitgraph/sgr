@@ -170,15 +170,16 @@ def test_diff_fragment_hashing_long_chain(local_engine_empty):
     OUTPUT.commit()
     base = OUTPUT.head.get_table('test')
 
-    OUTPUT.run_sql("DELETE FROM test WHERE key = '2019-01-03';INSERT INTO test VALUES ('2019-01-05', 5, 'five', 5.5)")
+    OUTPUT.run_sql("DELETE FROM test WHERE key = '2019-01-03 03:03:03.333';"
+                   "INSERT INTO test VALUES ('2019-01-05', 5, 'five', 5.5)")
     OUTPUT.commit()
     v1 = OUTPUT.head.get_table('test')
 
-    OUTPUT.run_sql("UPDATE test SET val2 = 'UPDATED', val1 = 42 WHERE key = '2019-01-02'")
+    OUTPUT.run_sql("UPDATE test SET val2 = 'UPDATED', val1 = 42 WHERE key = '2019-01-02 02:02:02.222'")
     OUTPUT.commit()
     v2 = OUTPUT.head.get_table('test')
 
-    OUTPUT.run_sql("UPDATE test SET val2 = 'UPDATED AGAIN', val1 = 43 WHERE key = '2019-01-02'")
+    OUTPUT.run_sql("UPDATE test SET val2 = 'UPDATED AGAIN', val1 = 43 WHERE key = '2019-01-02 02:02:02.222'")
     OUTPUT.commit()
     v3 = OUTPUT.head.get_table('test')
 
@@ -193,27 +194,33 @@ def test_diff_fragment_hashing_long_chain(local_engine_empty):
     assert 'o' + sha256((ins_hash_base.hex() + schema_hash).encode('ascii')).hexdigest()[:-2] == base.objects[0]
 
     ins_hash_v1 = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, v1.objects[0])
-    # TODO:
-    # * fix this
-    # * add a test with some DIFFs being reused (eg make the same change to the same table several times)
-    # * add the hashes into the object manifest (objects table)
-    # * add snap hashing into the import routines (splitfiles/mounting)
-    # * add tests for import routines
-    # * figure out digest() not being available from the commandline
 
-    del_hash_v1 = Digest.from_hex(sha256('(2019-01-03 03:03:03.333,3,three,3.3)'.encode('ascii')).hexdigest())
+    # timestamp cast to text in a tuple is wrapped with double quotes in PG.
+    # As long as hashing is consistent (this happens with all engines no matter what their conventions are),
+    # we don't really mind but this might cause some weird issues later with verifying hashes/deduplication.
+    del_hash_v1 = Digest.from_hex(sha256('("2019-01-03 03:03:03.333",3,three,3.3)'.encode('ascii')).hexdigest())
+    assert del_hash_v1.hex() == 'b12a93d54ba7ff1c2e26c92f01ac9c9d7716242eb47344d57c89b481227f5298'
+
     assert 'o' + sha256(((ins_hash_v1 - del_hash_v1).hex() + schema_hash).encode('ascii')).hexdigest()[:-2] \
            == v1.objects[0]
 
     ins_hash_v2 = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, v2.objects[0])
-    del_hash_v2 = Digest.from_hex(sha256('(2019-01-02 00:00:00.000,2,two,2.2)'.encode('ascii')).hexdigest())
+    del_hash_v2 = Digest.from_hex(sha256('("2019-01-02 02:02:02.222",2,two,2.2)'.encode('ascii')).hexdigest())
+    assert del_hash_v2.hex() == '88e01be43523057d192b2fd65e69f651a9515b7e30d17a9fb852926b71e3bdff'
     assert 'o' + sha256(((ins_hash_v2 - del_hash_v2).hex() + schema_hash).encode('ascii')).hexdigest()[:-2] \
            == v2.objects[0]
 
     ins_hash_v3 = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, v3.objects[0])
-    del_hash_v3 = Digest.from_hex(sha256('(2019-01-02 00:00:00.000,42,UPDATED,2.2)'.encode('ascii')).hexdigest())
+    del_hash_v3 = Digest.from_hex(sha256('("2019-01-02 02:02:02.222",42,UPDATED,2.2)'.encode('ascii')).hexdigest())
     assert 'o' + sha256(((ins_hash_v3 - del_hash_v3).hex() + schema_hash).encode('ascii')).hexdigest()[:-2] \
            == v3.objects[0]
 
     assert (ins_hash_base + ins_hash_v1 + ins_hash_v2 + ins_hash_v3 - del_hash_v1 - del_hash_v2 - del_hash_v3).hex() \
            == final_hash
+
+    # TODO:
+    # * add a test with some DIFFs being reused (eg make the same change to the same table several times)
+    # * add the hashes into the object manifest (objects table)
+    # * add snap hashing into the import routines (splitfiles/mounting)
+    # * add tests for import routines
+    # * figure out digest() not being available from the commandline
