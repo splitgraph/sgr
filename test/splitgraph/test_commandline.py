@@ -83,6 +83,25 @@ def test_commandline_basics(pg_repo_local, mg_repo_local):
     check_diff([pg_repo_local])
 
     # sgr commit as a SNAP
+    # This is weird: at this point, the pgcrypto extension exists
+    #   (from this same connection (pg_repo_local.engine.connection) doing CREATE EXTENSION causes an error) but
+    #   calling digest() fails saying the function doesn't exist (ultimately `calculate_content_hash` fails, but also
+    #   reproducible by setting a breakpoint here and doing
+    #       pg_repo_local.engine.run_sql("SELECT digest('bla', 'sha256')")).
+    #  * This happens unless a rollback() is issued (even if it's issued straight after a connection commit).
+    #  * `pg_repo_local.engine.connection` is the same connection object as the one used by `calculate_content_hash`.
+    #  * If there's a set_trace() here and the commit is done from the commandline in a different shell
+    #    (after committing this connection), that commit succeeds but invoking the next line here fails anyway.
+    #  * This happens if the commit is done using the API instead of the click invoker as well (doing
+    #    pg_repo_local.commit(comment='Test commit', snap_only=True))
+    #  * This is not because this is the first test in the splitgraph suite that uses the engine (running
+    #    pytest -k test_commandline_commit_chunk works)
+    #
+    # It seems like something's wrong with this connection object. As a temporary (?) workaround, commit the connection
+    # and issue a rollback here, which seems to fix things.
+
+    pg_repo_local.engine.commit()
+    pg_repo_local.engine.rollback()
     result = runner.invoke(commit_c, [str(pg_repo_local), '-m', 'Test commit', '--snap'])
     assert result.exit_code == 0
     new_head = pg_repo_local.head
