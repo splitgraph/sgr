@@ -217,10 +217,11 @@ def test_import_with_custom_query(pg_repo_local, mg_repo_local):
 
     for t in tables:
         # Tables with queries stored as snaps (no parent), actually imported tables share objects with test/pg_mount.
+        objects = head.get_table(t).objects
         if t in ['my_fruits', 'o_vegetables']:
-            assert OUTPUT.objects.get_object_meta(head.get_table(t).objects)[0][2] is None
+            assert OUTPUT.objects.get_object_meta(objects)[objects[0]].parent_id is None
         else:
-            assert OUTPUT.objects.get_object_meta(head.get_table(t).objects)[0][2] is not None
+            assert OUTPUT.objects.get_object_meta(objects)[objects[0]].parent_id is not None
 
 
 def test_import_mount(local_engine_empty):
@@ -241,7 +242,8 @@ def test_import_mount(local_engine_empty):
 
     # All imported tables stored as snapshots
     for t in tables:
-        assert OUTPUT.objects.get_object_meta(head.get_table(t).objects)[0][2] is None
+        objects = head.get_table(t).objects
+        assert OUTPUT.objects.get_object_meta(objects)[objects[0]].parent_id is None
 
 
 def test_import_all(local_engine_empty):
@@ -309,7 +311,8 @@ def test_from_multistage(local_engine_empty, pg_repo_remote_multitag):
     # Check the commit is based on the original empty image.
     assert stage_2.head.parent_id == '0' * 64
     assert stage_2.head.get_tables() == ['balanced_diet']
-    assert OUTPUT.objects.get_object_meta(stage_2.head.get_table('balanced_diet').objects)[0][2] is None
+    obj = stage_2.head.get_table('balanced_diet').objects[0]
+    assert OUTPUT.objects.get_object_meta([obj])[obj].parent_id is None
 
 
 def test_from_local(pg_repo_local):

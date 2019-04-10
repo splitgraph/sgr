@@ -59,6 +59,7 @@ def test_base_fragment_hashing(pg_repo_local):
 
     insertion_hash = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, expected_object).hex()
     assert insertion_hash == 'c01cce6c17bde5b999147b43c6133b11872298842a7388a0b82aee834e9454b0'
+    assert insertion_hash == om.get_object_meta([expected_object])[expected_object].insertion_hash
 
     schema_hash = sha256(str(fruits.table_schema).encode('ascii')).hexdigest()
     assert schema_hash == '3e022317e6dd31edb92c18a464dab55750ca16d5f4f111d383b1bdbc53ded5b5'
@@ -138,6 +139,7 @@ def test_diff_fragment_hashing(pg_repo_local):
 
     insertion_hash = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, expected_object)
     assert insertion_hash.hex() == '71a5c6d67b2466cb57cb8c05aa39400af342dfd4027ae5f333c97265710da844'
+    assert insertion_hash.hex() == om.get_object_meta([expected_object])[expected_object].insertion_hash
 
     # The homomorphic hash of all deleted rows: we can't yet access it directly but we can recalculate it
     # since we know which rows were deleted
@@ -147,6 +149,7 @@ def test_diff_fragment_hashing(pg_repo_local):
     # Fun fact: since we effectively replaced all rows in the original fragment, the deletion hash is the same
     # as the insertion hash of the original fragment.
     assert deletion_hash.hex() == 'c01cce6c17bde5b999147b43c6133b11872298842a7388a0b82aee834e9454b0'
+    assert deletion_hash.hex() == om.get_object_meta([expected_object])[expected_object].deletion_hash
 
     schema_hash = sha256(str(fruits_v2.table_schema).encode('ascii')).hexdigest()
     assert schema_hash == '3e022317e6dd31edb92c18a464dab55750ca16d5f4f111d383b1bdbc53ded5b5'
@@ -201,19 +204,33 @@ def test_diff_fragment_hashing_long_chain(local_engine_empty):
     del_hash_v1 = Digest.from_hex(sha256('("2019-01-03 03:03:03.333",3,three,3.3)'.encode('ascii')).hexdigest())
     assert del_hash_v1.hex() == 'b12a93d54ba7ff1c2e26c92f01ac9c9d7716242eb47344d57c89b481227f5298'
 
+    # Check that the object metadata contains the same hashes.
+    v1_meta = om.get_object_meta(v1.objects)[v1.objects[0]]
+    assert ins_hash_v1.hex() == v1_meta.insertion_hash
+    assert del_hash_v1.hex() == v1_meta.deletion_hash
+
     assert 'o' + sha256(((ins_hash_v1 - del_hash_v1).hex() + schema_hash).encode('ascii')).hexdigest()[:-2] \
            == v1.objects[0]
 
     ins_hash_v2 = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, v2.objects[0])
     del_hash_v2 = Digest.from_hex(sha256('("2019-01-02 02:02:02.222",2,two,2.2)'.encode('ascii')).hexdigest())
     assert del_hash_v2.hex() == '88e01be43523057d192b2fd65e69f651a9515b7e30d17a9fb852926b71e3bdff'
+    assert ins_hash_v2.hex() == om.get_object_meta(v2.objects)[v2.objects[0]].insertion_hash
     assert 'o' + sha256(((ins_hash_v2 - del_hash_v2).hex() + schema_hash).encode('ascii')).hexdigest()[:-2] \
            == v2.objects[0]
+
+    v2_meta = om.get_object_meta(v2.objects)[v2.objects[0]]
+    assert ins_hash_v2.hex() == v2_meta.insertion_hash
+    assert del_hash_v2.hex() == v2_meta.deletion_hash
 
     ins_hash_v3 = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, v3.objects[0])
     del_hash_v3 = Digest.from_hex(sha256('("2019-01-02 02:02:02.222",42,UPDATED,2.2)'.encode('ascii')).hexdigest())
     assert 'o' + sha256(((ins_hash_v3 - del_hash_v3).hex() + schema_hash).encode('ascii')).hexdigest()[:-2] \
            == v3.objects[0]
+
+    v3_meta = om.get_object_meta(v3.objects)[v3.objects[0]]
+    assert ins_hash_v3.hex() == v3_meta.insertion_hash
+    assert del_hash_v3.hex() == v3_meta.deletion_hash
 
     assert (ins_hash_base + ins_hash_v1 + ins_hash_v2 + ins_hash_v3 - del_hash_v1 - del_hash_v2 - del_hash_v3).hex() \
            == final_hash
@@ -282,6 +299,3 @@ def test_import_query_reuses_hash(pg_repo_local):
     assert v2.get_table('fruits_all').objects == v1.get_table('fruits_all').objects
     assert v2.get_table('fruits_one').objects == v1.get_table('fruits_one').objects
     assert len(OUTPUT.objects.get_all_objects()) == 3  # No new objects have been created.
-
-# TODO:
-# * add the hashes into the object manifest (objects table)

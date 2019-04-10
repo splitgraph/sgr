@@ -14,9 +14,9 @@ from random import getrandbits
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_API_SCHEMA
-from splitgraph.core.metadata_manager import MetadataManager
+from splitgraph.core.metadata_manager import MetadataManager, Object
 from splitgraph.engine.postgres.engine import SG_UD_FLAG
-from ._common import adapt, SPLITGRAPH_META_SCHEMA, ResultShape, insert, coerce_val_to_json
+from ._common import adapt, SPLITGRAPH_META_SCHEMA, ResultShape, coerce_val_to_json
 
 # PG types we can run max/min on
 _PG_INDEXABLE_TYPES = [
@@ -200,7 +200,8 @@ class FragmentManager(MetadataManager):
         index = {k: (coerce_val_to_json(v[0]), coerce_val_to_json(v[1])) for k, v in index.items()}
         return index
 
-    def _register_object(self, object_id, object_format, namespace, parent_object=None, changeset=None):
+    def _register_object(self, object_id, object_format, namespace, insertion_hash, deletion_hash,
+                         parent_object=None, changeset=None):
         """
         Registers a Splitgraph object in the object tree and indexes it
 
@@ -208,6 +209,8 @@ class FragmentManager(MetadataManager):
         :param object_format: Format (SNAP or DIFF)
         :param namespace: Namespace that owns the object. In registry mode, only namespace owners can alter or delete
             objects.
+        :param insertion_hash: Homomorphic hash of all rows inserted by this fragment
+        :param deletion_hash: Homomorphic hash of the old values of all rows deleted by this fragment
         :param parent_object: Parent that the object depends on, if it's a DIFF object.
         :param changeset: For DIFF objects, changeset that produced this object. Must be a dictionary of
             {PK: (True for upserted/False for deleted, old row (if updated or deleted))}. The old values
@@ -221,9 +224,9 @@ class FragmentManager(MetadataManager):
 
         object_size = self.object_engine.get_table_size(SPLITGRAPH_META_SCHEMA, object_id)
         object_index = self._generate_object_index(object_id, changeset)
-        self.metadata_engine.run_sql(
-            insert("objects", ("object_id", "format", "parent_id", "namespace", "size", "index")),
-            (object_id, object_format, parent_object, namespace, object_size, object_index))
+        self.register_objects([Object(object_id=object_id, format=object_format, parent_id=parent_object,
+                                      namespace=namespace, size=object_size, insertion_hash=insertion_hash,
+                                      deletion_hash=deletion_hash, index=object_index)])
 
     @staticmethod
     def _extract_deleted_rows(changeset, table_schema):
@@ -319,7 +322,8 @@ class FragmentManager(MetadataManager):
             self.object_engine.rename_table(SPLITGRAPH_META_SCHEMA, tmp_object_id, object_id)
             self._register_object(
                 object_id, object_format='DIFF' if parent else 'SNAP', namespace=table.repository.namespace,
-                parent_object=parent, changeset=sub_changeset)
+                parent_object=parent, changeset=sub_changeset,
+                insertion_hash=insertion_hash.hex(), deletion_hash=deletion_hash.hex())
         return object_ids
 
     def calculate_fragment_insertion_hash(self, schema, table):
@@ -493,7 +497,7 @@ class FragmentManager(MetadataManager):
                                        .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id),
                                                Identifier(SG_UD_FLAG)))
             self._register_object(object_id, object_format='SNAP', namespace=repository.namespace,
-                                  parent_object=None)
+                                  parent_object=None, insertion_hash=content_hash, deletion_hash='0' * 64)
             return object_id
 
         if chunk_size and table_size:

@@ -1,10 +1,13 @@
+import operator
 from datetime import date, datetime as dt
 from decimal import Decimal
+from functools import reduce
 
 import pytest
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph import SPLITGRAPH_META_SCHEMA, ResultShape, select
+from splitgraph.core.fragment_manager import Digest
 from test.splitgraph.conftest import OUTPUT, PG_DATA
 
 
@@ -54,9 +57,9 @@ def test_commit_diff(mode, pg_repo_local):
     assert table.table_schema == [(1, 'fruit_id', 'integer', False), (2, 'name', 'character varying', False)]
 
     obj = table.objects[0]
-    obj_meta = pg_repo_local.objects.get_object_meta([obj])[0]
+    obj_meta = pg_repo_local.objects.get_object_meta([obj])[obj]
     # Check object size has been written
-    assert obj_meta[4] > 0
+    assert obj_meta.size > 0
 
     assert new_head.comment == "test commit"
     change = pg_repo_local.diff('fruits', image_1=head, image_2=new_head)
@@ -88,12 +91,16 @@ def test_commit_chunking(local_engine_empty):
         min_key = i * 5 + 1
         max_key = min(i * 5 + 5, 11)
 
-        assert object_meta[i] == \
+        assert object_meta[obj] == \
                (obj,  # object ID
                 'SNAP',  # full-table snapshot (not a delta compressed chunk)
                 None,  # no parent
                 '',  # no namespace
                 8192,  # size reported by PG (can it change between platforms?)
+                # Don't check the insertion hash in this test
+                object_meta[obj].insertion_hash,
+                # Object didn't delete anything, so the deletion hash is zero.
+                '0' * 64,
                 # index
                 {'key': [min_key, max_key],
                  'value_1': [chr(ord('a') + min_key - 1), chr(ord('a') + max_key - 1)],
@@ -160,24 +167,37 @@ def test_commit_diff_splitting(local_engine_empty):
 
     # Check the old fragment with PK 11 is reused.
     assert new_objects[3] == base_objects[2]
-    object_meta = {t[0]: t[1:] for t in OUTPUT.objects.get_object_meta(new_objects)}
+    object_meta = OUTPUT.objects.get_object_meta(new_objects)
     # The new fragments should be at the beginning and the end of the table objects' list.
-    for new_object, expected in zip(new_objects,
-                                    [('SNAP', None, '', 8192,
-                                      {'key': [0, 0], 'value_1': ['zero', 'zero'], 'value_2': [-1, -1]}),
-                                     ('DIFF', base_objects[0], '', 8192,
-                                      # for value_1 we have old values for k=4,5 ('d', 'e') and new value
-                                      # for k=5 ('UPDATED') included here; same for value_2.
-                                      {'key': [4, 5], 'value_1': ['UPDATED', 'e'], 'value_2': [6, 8]}),
-                                     ('DIFF', base_objects[1], '', 8192,
-                                      # Turned into one deletion, old values included here
-                                      {'key': [6, 6], 'value_1': ['f', 'f'], 'value_2': [10, 10]}),
-                                     # Old fragment with just the pk=11
-                                     ('SNAP', None, '', 8192,
-                                      {'key': [11, 11], 'value_1': ['k', 'k'], 'value_2': [20, 20]}),
-                                     ('SNAP', None, '', 8192,
-                                      {'key': [12, 12], 'value_1': ['l', 'l'], 'value_2': [22, 22]})
-                                     ]):
+    expected_meta = [(new_objects[0], 'SNAP', None, '', 8192,
+                      '3cfbe8fa6fc546264936e29f402d7263510481c88a8d27190d82b3d5830cbcbf',
+                      # no deletions in this fragment
+                      '0000000000000000000000000000000000000000000000000000000000000000',
+                      {'key': [0, 0], 'value_1': ['zero', 'zero'], 'value_2': [-1, -1]}),
+                     (new_objects[1], 'DIFF', base_objects[0], '', 8192,
+                      '470425e8c107fff67264f9f812dfe211c7e625edf651947b8476f60392c57281',
+                      'e3eb6db305d889d3a69e3d8efa0931853c00fca75c0aeddd8f2fa2d6fd2443d6',
+                      # for value_1 we have old values for k=4,5 ('d', 'e') and new value
+                      # for k=5 ('UPDATED') included here; same for value_2.
+                      {'key': [4, 5], 'value_1': ['UPDATED', 'e'], 'value_2': [6, 8]}),
+                     (new_objects[2], 'DIFF', base_objects[1], '', 8192,
+                      # UPD + DEL conflated so nothing gets inserted by this fragment
+                      '0000000000000000000000000000000000000000000000000000000000000000',
+                      'd7df15e62c1c8799ef3a3677e3eb7661cedf898d73449a80251b93c501b5bdeb',
+                      # Turned into one deletion, old values included here
+                      {'key': [6, 6], 'value_1': ['f', 'f'], 'value_2': [10, 10]}),
+                     # Old fragment with just the pk=11
+                     (new_objects[3], 'SNAP', None, '', 8192,
+                      '6950e38c81c51685d617e98c7e2cf98d34630940c33e9259bc01339cca9c9418',
+                      # No deletions here
+                      '0000000000000000000000000000000000000000000000000000000000000000',
+                      {'key': [11, 11], 'value_1': ['k', 'k'], 'value_2': [20, 20]}),
+                     (new_objects[4], 'SNAP', None, '', 8192,
+                      '96f0a7394f3839b048b492b789f7d57cf976345b04938a69d82b3512f72c3e9e',
+                      '0000000000000000000000000000000000000000000000000000000000000000',
+                      {'key': [12, 12], 'value_1': ['l', 'l'], 'value_2': [22, 22]})
+                     ]
+    for new_object, expected in zip(new_objects, expected_meta):
         assert object_meta[new_object] == expected
 
     # Check the contents of the newly created objects.
@@ -191,6 +211,20 @@ def test_commit_diff_splitting(local_engine_empty):
     # No need to check new_objects[3] (since it's the same as the old fragment)
     assert OUTPUT.run_sql(select(new_objects[4])) == \
            [(True, 12, 'l', 22)]  # same
+
+    # Also check that the insertion - deletion hashes of objects add up to the final content hash of the materialized
+    # table.
+    table_hash = OUTPUT.objects.calculate_content_hash(OUTPUT.to_schema(), 'test')
+
+    required_objects = OUTPUT.objects.get_all_required_objects(new_objects)
+
+    # defensive guard -- can a fragment be reused in multiple contexts during the materialization
+    # of one table?
+    assert len(set(required_objects)) == len(required_objects)
+    all_meta = OUTPUT.objects.get_object_meta(required_objects)
+    hash_sum = reduce(operator.add, (Digest.from_hex(o.insertion_hash) - Digest.from_hex(o.deletion_hash)
+                                     for o in all_meta.values()))
+    assert hash_sum.hex() == table_hash == '08598e27c62b61d308ed073c46b4473878aeae00d043a849365fbfe7cbc5a579'
 
 
 def test_commit_diff_splitting_composite(local_engine_empty):
@@ -233,9 +267,13 @@ def test_commit_diff_splitting_composite(local_engine_empty):
 
     assert len(new_objects) == 3
     # First chunk: based on the old first chunk, contains the INSERT (1/1/2019, 4) and the UPDATE (2/1/2019, 2)
-    object_meta = {t[0]: t[1:] for t in OUTPUT.objects.get_object_meta(new_objects)}
+    object_meta = OUTPUT.objects.get_object_meta(new_objects)
     assert object_meta[new_objects[0]] == \
-           ('DIFF', base_objects[0], '', 8192,
+           (new_objects[0], 'DIFF', base_objects[0], '', 8192,
+            # Hashes here just copypasted from the test output, see test_object_hashing for actual tests that
+            # test each part of hash generation
+            '00964b1b5db0d6e8d42b48462e9021ed626a773380345a1f4fee5c205d7d4beb',
+            '0c8c07c66327f4493c716ceafd4bf70b692a1d6fe7cb1b88e1d683a4ea0bc4e8',
             {'key_1': ['2019-01-01T00:00:00', '2019-01-02T00:00:00'],
              # 'value' spans the old value (was '5'), the inserted value ('4') and the new updated value ('UPD').
              'key_2': [2, 4], 'value': ['4', 'UPD']})
@@ -243,7 +281,10 @@ def test_commit_diff_splitting_composite(local_engine_empty):
     assert new_objects[1] == base_objects[1]
     # The third chunk is new, contains (4/1/2019, 2, NEW)
     assert object_meta[new_objects[2]] == \
-           ('SNAP', None, '', 8192,
+           (new_objects[2], 'SNAP', None, '', 8192,
+            '8c92b3ea89234b06cf53c2bad9d6e1d49dc561dc8c0100ee63c0b9ce1eeb0750',
+            # Nothing deleted, so the deletion hash is 0
+            '0000000000000000000000000000000000000000000000000000000000000000',
             {'key_1': ['2019-01-04T00:00:00', '2019-01-04T00:00:00'],
              'key_2': [2, 2], 'value': ['NEW', 'NEW']})
 
@@ -258,7 +299,7 @@ def test_drop_recreate_produces_snap(pg_repo_local):
 
     # Check there are only SNAPs, no DIFFs.
     table = pg_repo_local.head.get_table('fruits')
-    assert pg_repo_local.objects.get_object_meta(table.objects)[0][2] is None
+    assert pg_repo_local.objects.get_object_meta(table.objects)[table.objects[0]].parent_id is None
 
 
 @pytest.mark.parametrize("mode", _COMMIT_MODES)
@@ -449,7 +490,7 @@ def test_various_types(local_engine_empty):
                  date(2011, 11, 11), False, {'b': 456}, "'AAA' 'Bb'"))]
 
     object_id = new_head.get_table('test').objects[0]
-    object_index = OUTPUT.objects.get_object_meta([object_id])[0][5]
+    object_index = OUTPUT.objects.get_object_meta([object_id])[object_id].index
     expected = {'a': [1, 2],
                 'b': [1, 15],
                 'c': [2, 22],
@@ -479,7 +520,7 @@ def test_various_types_with_deletion_index(local_engine_empty):
     new_head = OUTPUT.commit()
 
     object_id = new_head.get_table('test').objects[0]
-    object_index = OUTPUT.objects.get_object_meta([object_id])[0][5]
+    object_index = OUTPUT.objects.get_object_meta([object_id])[object_id].index
     # Deleted row for reference:
     # 15, 22, 1, -1.23, 9.8811, 0.23, 'abcd', '0testtesttesttes', '0testtesttesttesttesttesttes',
     #   B'111110011111111', '2016-01-01 01:01:05', '2011-11-11', false, '{ "b": 456 }',

@@ -123,15 +123,17 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 -- get_object_meta(object_ids): get metadata for objects
 CREATE OR REPLACE FUNCTION splitgraph_api.get_object_meta(object_ids varchar[])
   RETURNS TABLE (
-    object_id VARCHAR,
-    format    VARCHAR,
-    parent_id VARCHAR,
-    namespace VARCHAR,
-    size      BIGINT,
-    index     JSONB) AS $$
+    object_id      VARCHAR,
+    format         VARCHAR,
+    parent_id      VARCHAR,
+    namespace      VARCHAR,
+    size           BIGINT,
+    insertion_hash VARCHAR(64),
+    deletion_hash  VARCHAR(64),
+    index          JSONB) AS $$
 BEGIN
    RETURN QUERY
-   SELECT o.object_id, o.format, o.parent_id, o.namespace, o.size, o.index
+   SELECT o.object_id, o.format, o.parent_id, o.namespace, o.size, o.insertion_hash, o.deletion_hash, o.index
    FROM splitgraph_meta.objects o
    WHERE o.object_id = ANY(object_ids);
 END
@@ -151,13 +153,15 @@ BEGIN
 END
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 
--- add_object(object_id, format, parent_id, namespace, size, index)
+-- add_object(object_id, format, parent_id, namespace, size, insertion_hash, deletion_hash, index)
 CREATE OR REPLACE FUNCTION splitgraph_api.add_object(object_id varchar, format varchar, parent_id varchar,
-    namespace varchar, size bigint, index jsonb) RETURNS void AS $$
+    namespace varchar, size bigint, insertion_hash varchar(64),
+    deletion_hash varchar(64), index jsonb) RETURNS void AS $$
 BEGIN
     PERFORM splitgraph_api.check_privilege(namespace);
-    INSERT INTO splitgraph_meta.objects(object_id, format, parent_id, namespace, size, index)
-    VALUES (object_id, format, parent_id, namespace, size, index);
+    INSERT INTO splitgraph_meta.objects(object_id, format, parent_id, namespace, size,
+        insertion_hash, deletion_hash, index)
+    VALUES (object_id, format, parent_id, namespace, size, insertion_hash, deletion_hash, index);
 END
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 

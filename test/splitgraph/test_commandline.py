@@ -12,6 +12,7 @@ from splitgraph.commandline.image_info import object_c
 from splitgraph.config import PG_PWD, PG_USER
 from splitgraph.core._common import parse_connection_string, serialize_connection_string, insert
 from splitgraph.core.engine import repository_exists
+from splitgraph.core.metadata_manager import OBJECT_COLS
 from splitgraph.core.registry import get_published_info
 from splitgraph.core.repository import Repository
 from splitgraph.hooks.mount_handlers import get_mount_handlers
@@ -193,10 +194,10 @@ def test_commandline_commit_chunk(pg_repo_local):
 def test_object_info(local_engine_empty):
     runner = CliRunner()
 
-    q = insert("objects", ("object_id", "format", "parent_id", "namespace", "size", "index"))
-    local_engine_empty.run_sql(q, ("base_1", "SNAP", None, "ns1", 12345, {"col_1": [10, 20]}))
-    local_engine_empty.run_sql(q, ("patch_1", "DIFF", "base_1", "ns1", 6789, {"col_1": [10, 20]}))
-    local_engine_empty.run_sql(q, ("patch_2", "DIFF", "base_1", "ns1", 1011, {"col_1": [10, 20],
+    q = insert("objects", OBJECT_COLS)
+    local_engine_empty.run_sql(q, ("base_1", "SNAP", None, "ns1", 12345, 'HASH1', 'HASH2', {"col_1": [10, 20]}))
+    local_engine_empty.run_sql(q, ("patch_1", "DIFF", "base_1", "ns1", 6789, 'HASH1', 'HASH2', {"col_1": [10, 20]}))
+    local_engine_empty.run_sql(q, ("patch_2", "DIFF", "base_1", "ns1", 1011, 'HASH1', 'HASH2', {"col_1": [10, 20],
                                                                               "col_2": ['bla', 'ble']}))
     # base_1: external, cached locally
     local_engine_empty.run_sql(insert("object_locations", ("object_id", "protocol", "location")),
@@ -216,6 +217,8 @@ Parent: None
 Namespace: ns1
 Format: SNAP
 Size: 12.06 KiB
+Insertion hash: HASH1
+Deletion hash: HASH2
 Column index:
   col_1: [10, 20]
 
@@ -230,9 +233,6 @@ Original location: example.com/objects/base_1.tgz (HTTP)
     result = runner.invoke(object_c, ["patch_2"])
     assert result.exit_code == 0
     assert "Location: created locally" in result.output
-
-
-
 
 
 def test_upstream_management(pg_repo_local):

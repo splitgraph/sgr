@@ -851,7 +851,6 @@ def _sync(target, source, download=True, download_all=False, handler='DB', handl
     logging.info("Gathering remote metadata...")
     new_images, table_meta, object_locations, object_meta, tags = \
         gather_sync_metadata(target, source)
-
     if not new_images:
         logging.info("Nothing to do.")
         return
@@ -861,24 +860,24 @@ def _sync(target, source, download=True, download_all=False, handler='DB', handl
                           image.provenance_data)
 
     if download:
-        target.objects.register_objects(object_meta)
+        target.objects.register_objects(list(object_meta.values()))
         target.objects.register_object_locations(object_locations)
         # Don't actually download any real objects until the user tries to check out a revision, unless
         # they want to do it in advance.
         if download_all:
             logging.info("Fetching remote objects...")
             target.objects.download_objects(source.objects,
-                                            objects_to_fetch=list(set(o[0] for o in object_meta)),
+                                            objects_to_fetch=list(object_meta.keys()),
                                             object_locations=object_locations)
 
         # Don't check anything out, keep the repo bare.
         set_head(target, None)
     else:
-        new_uploads = source.objects.upload_objects(target.objects, list(set(o[0] for o in object_meta)),
+        new_uploads = source.objects.upload_objects(target.objects, list(object_meta.keys()),
                                                     handler=handler, handler_params=handler_options)
         # Here we have to register the new objects after the upload but before we store their external
         # location (as the RLS for object_locations relies on the object metadata being in place)
-        target.objects.register_objects(object_meta, namespace=target.namespace)
+        target.objects.register_objects(list(object_meta.values()), namespace=target.namespace)
         target.objects.register_object_locations(object_locations + new_uploads)
         source.objects.register_object_locations(new_uploads)
 

@@ -374,7 +374,7 @@ def _prepare_object_filtering_dataset():
     OUTPUT.commit()
     obj_1 = OUTPUT.head.get_table('test').objects[0]
     # Sanity check on index for reference + easier debugging
-    assert OUTPUT.objects.get_object_meta([obj_1])[0][5] == \
+    assert OUTPUT.objects.get_object_meta([obj_1])[obj_1].index == \
            {'col1': [1, 5],
             'col2': [3, 5],
             'col3': ['aaaa', 'bbbb'],
@@ -385,7 +385,7 @@ def _prepare_object_filtering_dataset():
     OUTPUT.run_sql("INSERT INTO test VALUES (10, 4, 'cccc', '2015-12-30 00:00:00', '{\"a\": 10}')")
     OUTPUT.commit()
     obj_2 = OUTPUT.head.get_table('test').objects[0]
-    assert OUTPUT.objects.get_object_meta([obj_2])[0][5] == {
+    assert OUTPUT.objects.get_object_meta([obj_2])[obj_2].index == {
         'col1': [6, 10],
         'col2': [1, 4],
         'col3': ['abbb', 'cccc'],
@@ -395,7 +395,7 @@ def _prepare_object_filtering_dataset():
     OUTPUT.run_sql("INSERT INTO test VALUES (11, 10, 'dddd', '2016-01-05 00:00:00', '{\"a\": 5}')")
     OUTPUT.commit()
     obj_3 = OUTPUT.head.get_table('test').objects[0]
-    assert OUTPUT.objects.get_object_meta([obj_3])[0][5] == {
+    assert OUTPUT.objects.get_object_meta([obj_3])[obj_3].index == {
         'col1': [11, 11],
         'col2': [10, 10],
         'col3': ['dddd', 'dddd'],
@@ -407,7 +407,7 @@ def _prepare_object_filtering_dataset():
     OUTPUT.run_sql("INSERT INTO test VALUES (16, 15, 'ffff', '2016-01-04 00:00:00', '{\"a\": 10}')")
     OUTPUT.commit()
     obj_4 = OUTPUT.head.get_table('test').objects[0]
-    assert OUTPUT.objects.get_object_meta([obj_4])[0][5] == {
+    assert OUTPUT.objects.get_object_meta([obj_4])[obj_4].index == {
         'col1': [12, 16],
         'col2': [11, 15],
         'col3': ['eeee', 'ffff'],
