@@ -461,7 +461,8 @@ class FragmentManager(MetadataManager):
 
         return reduce(operator.add, (Digest.from_memoryview(r) for r in row_digests)).hex()
 
-    def record_table_as_base(self, repository, table_name, image_hash, chunk_size=10000):
+    def record_table_as_base(self, repository, table_name, image_hash, chunk_size=10000, source_schema=None,
+                             source_table=None):
         """
         Copies the full table verbatim into one or more new base fragments and registers them.
 
@@ -469,10 +470,15 @@ class FragmentManager(MetadataManager):
         :param table_name: Table name
         :param image_hash: Hash of the new image
         :param chunk_size: If specified, splits the table into multiple objects with a given number of rows
+        :param source_schema: Override the schema the source table is stored in
+        :param source_table: Override the name of the table the source is stored in
         """
         object_ids = []
+        source_schema = source_schema or repository.to_schema()
+        source_table = source_table or table_name
+
         table_size = self.object_engine.run_sql(SQL("SELECT COUNT (1) FROM {}.{}")
-                                                .format(Identifier(repository.to_schema()), Identifier(table_name)),
+                                                .format(Identifier(source_schema), Identifier(source_table)),
                                                 return_shape=ResultShape.ONE_ONE)
 
         def _insert_and_register_fragment(source_schema, source_table, limit=None, offset=None):
@@ -507,12 +513,12 @@ class FragmentManager(MetadataManager):
 
         if chunk_size and table_size:
             for offset in range(0, table_size, chunk_size):
-                object_ids.append(_insert_and_register_fragment(repository.to_schema(), table_name,
+                object_ids.append(_insert_and_register_fragment(source_schema, source_table,
                                                                 limit=chunk_size, offset=offset))
         elif table_size:
-            object_ids.append(_insert_and_register_fragment(repository.to_schema(), table_name))
+            object_ids.append(_insert_and_register_fragment(source_schema, source_table))
         # If table_size == 0, then we don't link it to any objects and simply store its schema
-        table_schema = self.object_engine.get_full_table_schema(repository.to_schema(), table_name)
+        table_schema = self.object_engine.get_full_table_schema(source_schema, source_table)
         self.register_table(repository, table_name, image_hash, table_schema, object_ids)
 
     def get_all_required_objects(self, object_ids):

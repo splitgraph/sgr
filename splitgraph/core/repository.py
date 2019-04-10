@@ -13,7 +13,6 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.core.fragment_manager import get_random_object_id
-from splitgraph.engine.postgres.engine import SG_UD_FLAG
 from splitgraph.exceptions import SplitGraphException
 from ._common import manage_audit_triggers, set_head, manage_audit, select, insert, aggregate_changes, slow_diff, \
     prepare_publish_data, gather_sync_metadata, ResultShape
@@ -629,21 +628,11 @@ class Repository:
                 # This could get executed for the whole import batch as opposed to for every import query
                 # but the overhead of setting up an LQ schema is fairly small.
                 with image.query_schema() as tmp_schema:
-                    object_id = self._import_new_table(tmp_schema, source_table, target_hash, target_table, is_query)
-                    if do_checkout:
-                        self.object_engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, self.to_schema(), target_table)
-                    self.object_engine.run_sql(SQL("ALTER TABLE {}.{} ADD COLUMN {} BOOLEAN DEFAULT TRUE")
-                                               .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id),
-                                                       Identifier(SG_UD_FLAG)))
+                    self._import_new_table(tmp_schema, source_table, target_hash, target_table, is_query,
+                                           do_checkout)
             elif foreign_tables:
-                object_id = self._import_new_table(source_repository.to_schema(), source_table,
-                                                   target_hash, target_table, is_query)
-                if do_checkout:
-                    self.object_engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, self.to_schema(), target_table)
-
-                self.object_engine.run_sql(SQL("ALTER TABLE {}.{} ADD COLUMN {} BOOLEAN DEFAULT TRUE")
-                                           .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id),
-                                                   Identifier(SG_UD_FLAG)))
+                self._import_new_table(source_repository.to_schema(), source_table,
+                                       target_hash, target_table, is_query, do_checkout)
             else:
                 table_obj = image.get_table(source_table)
                 self.objects.register_table(self, target_table, target_hash, table_obj.table_schema, table_obj.objects)
@@ -661,27 +650,29 @@ class Repository:
         set_head(self, target_hash)
         return target_hash
 
-    def _import_new_table(self, source_schema, source_table, target_hash, target_table, is_query):
-        object_id = get_random_object_id()
+    def _import_new_table(self, source_schema, source_table, target_hash, target_table, is_query, do_checkout):
+        # First, import the query (or the foreign table) into a temporary table.
+        tmp_object_id = get_random_object_id()
         if is_query:
             # is_query precedes foreign_tables: if we're importing using a query, we don't care if it's a
             # foreign table or not since we're storing it as a full snapshot.
             self.object_engine.run_sql_in(source_schema,
                                           SQL("CREATE TABLE {}.{} AS ").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                               Identifier(object_id))
+                                                                               Identifier(tmp_object_id))
                                           + SQL(source_table))
         else:
             self.object_engine.copy_table(source_schema, source_table, SPLITGRAPH_META_SCHEMA,
-                                          object_id)
-        # TODO TF work this is where a lot of space wasting will come from; we should probably
-        # also do actual object hashing to avoid duplication for things like SELECT *
-        # Might not be necessary if we don't actually want to materialize the snapshot (wastes space).
-        self.objects.register_object(object_id, 'SNAP', namespace=self.namespace,
-                                     parent_object=None)
-        self.objects.register_table(self, target_table, target_hash,
-                                    self.object_engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, object_id),
-                                    [object_id])
-        return object_id
+                                          tmp_object_id)
+
+        # This is kind of a waste: if the table is indeed new (and fits in one chunk), the fragment manager will copy it
+        # over once again and give it the new object ID. Maybe the fragment manager could rename the table in this case.
+        actual_objects = self.objects.record_table_as_base(self, target_table, target_hash,
+                                                           source_schema=SPLITGRAPH_META_SCHEMA,
+                                                           source_table=tmp_object_id)
+        self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
+        if do_checkout:
+            self.images.by_hash(target_hash).get_table(target_table).materialize(target_table, self.to_schema())
+        return actual_objects
 
     # --- SYNCING WITH OTHER REPOSITORIES ---
 

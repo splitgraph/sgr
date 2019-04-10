@@ -2,9 +2,9 @@ import operator
 from functools import reduce
 from hashlib import sha256
 
-from splitgraph import SPLITGRAPH_META_SCHEMA
+from splitgraph import SPLITGRAPH_META_SCHEMA, execute_commands, Repository
 from splitgraph.core.fragment_manager import Digest
-from test.splitgraph.conftest import OUTPUT, PG_DATA
+from test.splitgraph.conftest import OUTPUT, PG_DATA, load_splitfile
 
 TEST_ROWS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine']
 TEST_ROW_HASHES = [sha256(r.encode('ascii')).hexdigest() for r in TEST_ROWS]
@@ -218,9 +218,71 @@ def test_diff_fragment_hashing_long_chain(local_engine_empty):
     assert (ins_hash_base + ins_hash_v1 + ins_hash_v2 + ins_hash_v3 - del_hash_v1 - del_hash_v2 - del_hash_v3).hex() \
            == final_hash
 
-    # TODO:
-    # * add a test with some DIFFs being reused (eg make the same change to the same table several times)
-    # * add the hashes into the object manifest (objects table)
-    # * add snap hashing into the import routines (splitfiles/mounting)
-    # * add tests for import routines
-    # * figure out digest() not being available from the commandline
+
+def test_diff_fragment_hashing_reused(pg_repo_local):
+    base = pg_repo_local.head
+    query = "DELETE FROM fruits WHERE fruit_id = 1;" \
+            "INSERT INTO fruits VALUES (3, 'kumquat');" \
+            "UPDATE fruits SET name = 'mustard' WHERE fruit_id = 2"
+    pg_repo_local.run_sql(query)
+    v1 = pg_repo_local.commit()
+
+    base.checkout()
+    pg_repo_local.run_sql(query)
+    v2 = pg_repo_local.commit()
+
+    assert v1.image_hash != v2.image_hash
+    assert v1.get_table('fruits').objects == v2.get_table('fruits').objects
+    assert len(pg_repo_local.objects.get_all_objects()) == 3  # The original fruits and vegetables + the one common diff
+
+
+def test_import_splitfile_reuses_hash(local_engine_empty):
+    # Create two repositories and run the same Splitfile that loads some data from a mounted database.
+    # Check that the same contents result in the same hash and no extra objects being created
+    output_2 = Repository.from_schema('output_2')
+
+    execute_commands(load_splitfile('import_from_mounted_db.splitfile'), output=OUTPUT)
+    execute_commands(load_splitfile('import_from_mounted_db.splitfile'), output=output_2)
+
+    head = OUTPUT.head
+    assert head.get_table('my_fruits').objects == ['o71ba35a5bbf8ac7779d8fe32226aaacc298773e154a4f84e9aabf829238fb1']
+    assert head.get_table('o_vegetables').objects == ['o70e726f4bf18547242722600c4723dceaaede27db8fa5e9e6d7ec39187dd86']
+    assert head.get_table('vegetables').objects == ['ob474d04a80c611fc043e8303517ac168444dc7518af60e4ccc56b3b0986470']
+    assert head.get_table('all_fruits').objects == ['o0e742bd2ea4927f5193a2c68f8d4c51ea018b1ef3e3005a50727147d2cf57b']
+
+    head_2 = output_2.head
+    assert head_2.get_table('my_fruits').objects == head.get_table('my_fruits').objects
+    assert head_2.get_table('o_vegetables').objects == head.get_table('o_vegetables').objects
+    assert head_2.get_table('vegetables').objects == head.get_table('vegetables').objects
+    assert head_2.get_table('all_fruits').objects == head.get_table('all_fruits').objects
+
+
+def test_import_query_reuses_hash(pg_repo_local):
+    OUTPUT.init()
+    base = OUTPUT.head
+    # Run two imports: one importing all rows from `fruits` (will reuse the original `fruits` object),
+    # one importing just the first row (new hash, won't be reused).
+    ih_v1 = OUTPUT.import_tables(source_repository=pg_repo_local,
+                                 source_tables=['SELECT * FROM fruits', 'SELECT * FROM fruits WHERE fruit_id = 1'],
+                                 tables=['fruits_all', 'fruits_one'],
+                                 do_checkout=False,
+                                 table_queries=[True, True])
+    v1 = OUTPUT.images.by_hash(ih_v1)
+    assert v1.get_table('fruits_all').objects == pg_repo_local.head.get_table('fruits').objects
+    assert len(OUTPUT.objects.get_all_objects()) == 3  # Original fruits and vegetables + the 1-row import
+
+    # Run the same set of imports again: this time both query results already exist and will be reused.
+    base.checkout()
+    ih_v2 = OUTPUT.import_tables(source_repository=pg_repo_local,
+                                 source_tables=['SELECT * FROM fruits', 'SELECT * FROM fruits WHERE fruit_id = 1'],
+                                 tables=['fruits_all', 'fruits_one'],
+                                 do_checkout=False,
+                                 table_queries=[True, True])
+    v2 = OUTPUT.images.by_hash(ih_v2)
+    assert v2.get_table('fruits_all').objects == v1.get_table('fruits_all').objects
+    assert v2.get_table('fruits_one').objects == v1.get_table('fruits_one').objects
+    assert len(OUTPUT.objects.get_all_objects()) == 3  # No new objects have been created.
+
+# TODO:
+# * add the hashes into the object manifest (objects table)
+# * figure out digest() not being available from the commandline
