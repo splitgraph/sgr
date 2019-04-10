@@ -367,7 +367,8 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         non_ri_cols, non_ri_types = zip(*non_ri_cols_types) if non_ri_cols_types else ((), ())
         return ri_cols, non_ri_cols, non_ri_types
 
-    def _generate_fragment_application(self, source_schema, source_table,
+    @staticmethod
+    def _generate_fragment_application(source_schema, source_table,
                                        target_schema, target_table, ri_data, extra_quals=None):
         ri_cols, non_ri_cols, _ = ri_data
         all_cols = ri_cols + non_ri_cols

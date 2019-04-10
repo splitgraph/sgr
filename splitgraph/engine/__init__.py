@@ -113,9 +113,9 @@ class SQLEngine(ABC):
             query += SQL(" OFFSET %s")
             query_args.append(offset)
         if with_pk_constraints and pks:
-                query += SQL(";ALTER TABLE {}.{} ADD PRIMARY KEY (").format(
-                    Identifier(target_schema), Identifier(target_table)) + SQL(',').join(
-                    SQL("{}").format(Identifier(c)) for c, _ in pks) + SQL(")")
+            query += SQL(";ALTER TABLE {}.{} ADD PRIMARY KEY (").format(
+                Identifier(target_schema), Identifier(target_table)) + SQL(',').join(
+                SQL("{}").format(Identifier(c)) for c, _ in pks) + SQL(")")
         self.run_sql(query, query_args, return_shape=ResultShape.NONE)
 
     def delete_table(self, schema, table):

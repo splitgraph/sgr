@@ -65,12 +65,12 @@ def _split_changeset(changeset, min_max, table_pks):
 
 
 # Custom min/max functions that ignore Nones
-def _min(a, b):
-    return b if a is None else (a if b is None else min(a, b))
+def _min(left, right):
+    return right if left is None else (left if right is None else min(left, right))
 
 
-def _max(a, b):
-    return b if a is None else (a if b is None else max(a, b))
+def _max(left, right):
+    return right if left is None else (left if right is None else max(left, right))
 
 
 class Digest:
@@ -99,6 +99,7 @@ class Digest:
 
     @classmethod
     def empty(cls):
+        """Return an empty Digest instance such that for any Digest D, D + empty == D - empty == D"""
         return cls((0,) * 16)
 
     @classmethod
@@ -297,20 +298,10 @@ class FragmentManager(MetadataManager):
             # Store the fragment in a temporary location and then find out its hash and rename to the actual target.
             # Optimisation: in the future, we can hash the upserted rows that we need preemptively and possibly
             # avoid storing the object altogether if it's a duplicate.
-            tmp_object_id = get_random_object_id()
-            upserted = [pk for pk, data in sub_changeset.items() if data[0]]
-            deleted = [pk for pk, data in sub_changeset.items() if not data[0]]
-            self.object_engine.store_fragment(upserted, deleted, SPLITGRAPH_META_SCHEMA, tmp_object_id,
-                                              table.repository.to_schema(),
-                                              table.table_name)
-            # Digest the rows.
-            deletion_hash = self._hash_old_changeset_values(sub_changeset, table.table_schema)
-            insertion_hash = self.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, tmp_object_id)
+            tmp_object_id = self._store_changeset(sub_changeset, table)
 
-            # We currently don't store the insertion/deletion hashes at all.
-            content_hash = (insertion_hash - deletion_hash).hex()
-            schema_hash = sha256(str(table.table_schema).encode('ascii')).hexdigest()
-            object_id = "o" + sha256((content_hash + schema_hash).encode('ascii')).hexdigest()[:-2]
+            deletion_hash, insertion_hash, object_id = self._get_patch_fragment_hashes(sub_changeset, table,
+                                                                                       tmp_object_id)
 
             object_ids.append(object_id)
             if not self.get_new_objects([object_id]):
@@ -325,6 +316,24 @@ class FragmentManager(MetadataManager):
                 parent_object=parent, changeset=sub_changeset,
                 insertion_hash=insertion_hash.hex(), deletion_hash=deletion_hash.hex())
         return object_ids
+
+    def _get_patch_fragment_hashes(self, sub_changeset, table, tmp_object_id):
+        # Digest the rows.
+        deletion_hash = self._hash_old_changeset_values(sub_changeset, table.table_schema)
+        insertion_hash = self.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, tmp_object_id)
+        content_hash = (insertion_hash - deletion_hash).hex()
+        schema_hash = sha256(str(table.table_schema).encode('ascii')).hexdigest()
+        object_id = "o" + sha256((content_hash + schema_hash).encode('ascii')).hexdigest()[:-2]
+        return deletion_hash, insertion_hash, object_id
+
+    def _store_changeset(self, sub_changeset, table):
+        tmp_object_id = get_random_object_id()
+        upserted = [pk for pk, data in sub_changeset.items() if data[0]]
+        deleted = [pk for pk, data in sub_changeset.items() if not data[0]]
+        self.object_engine.store_fragment(upserted, deleted, SPLITGRAPH_META_SCHEMA, tmp_object_id,
+                                          table.repository.to_schema(),
+                                          table.table_name)
+        return tmp_object_id
 
     def calculate_fragment_insertion_hash(self, schema, table):
         """
@@ -588,9 +597,9 @@ def _conflate_changes(changeset, new_changes):
 
 
 def get_random_object_id():
-    """Assign each table a random ID that it will be stored as. Note that postgres limits table names to 63 characters,
-    so the IDs shall be 248-bit strings, hex-encoded, + a letter prefix since Postgres doesn't seem to support table
-    names starting with a digit."""
+    """Generate a random ID for temporary/staging objects that haven't had their ID calculated yet.
+    Note that Postgres limits table names to 63 characters, so the IDs shall be 248-bit strings, hex-encoded,
+    + a letter prefix since Postgres doesn't seem to support table names starting with a digit."""
     # Make sure we're padded to 62 characters (otherwise if the random number generated is less than 2^247 we'll be
     # dropping characters from the hex format)
     return str.format('o{:062x}', getrandbits(248))
@@ -599,7 +608,7 @@ def get_random_object_id():
 def _qual_to_index_clause(qual, ctype):
     """Convert our internal qual format into a WHERE clause that runs against an object's index entry.
     Returns a Postgres clause (as a Composable) and a tuple of arguments to be mogrified into it."""
-    column_name, operator, value = qual
+    column_name, qual_op, value = qual
 
     # Our index is essentially a bloom filter: it returns True if an object _might_ have rows
     # that affect the result of a query with a given qual and False if it definitely doesn't.
@@ -611,14 +620,14 @@ def _qual_to_index_clause(qual, ctype):
 
     # If the column has to be greater than (or equal to) X, it only might exist in objects
     # whose maximum value is greater than (or equal to) X.
-    if operator in ('>', '>='):
-        query += SQL("(index #>> '{{{},1}}')::" + ctype + "  " + operator + " %s").format((Identifier(column_name)))
+    if qual_op in ('>', '>='):
+        query += SQL("(index #>> '{{{},1}}')::" + ctype + "  " + qual_op + " %s").format((Identifier(column_name)))
         args.append(value)
     # Similar for smaller than, but here we check that the minimum value is smaller than X.
-    elif operator in ('<', '<='):
-        query += SQL("(index #>> '{{{},0}}')::" + ctype + " " + operator + " %s").format((Identifier(column_name)))
+    elif qual_op in ('<', '<='):
+        query += SQL("(index #>> '{{{},0}}')::" + ctype + " " + qual_op + " %s").format((Identifier(column_name)))
         args.append(value)
-    elif operator == '=':
+    elif qual_op == '=':
         query += SQL("%s BETWEEN (index #>> '{{{0},0}}')::" + ctype
                      + " AND (index #>> '{{{0},1}}')::" + ctype).format((Identifier(column_name)))
         args.append(value)
@@ -636,8 +645,8 @@ def _qual_to_index_clause(qual, ctype):
 
 def _qual_to_sql_clause(qual, ctype):
     """Convert a qual to a normal SQL clause that can be run against the actual object rather than the index."""
-    column_name, operator, value = qual
-    return SQL("{}::" + ctype + " " + operator + " %s").format(Identifier(column_name)), (value,)
+    column_name, qual_op, value = qual
+    return SQL("{}::" + ctype + " " + qual_op + " %s").format(Identifier(column_name)), (value,)
 
 
 def _quals_to_clause(quals, column_types, qual_to_clause=_qual_to_index_clause):

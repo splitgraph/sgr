@@ -61,7 +61,7 @@ class ImageManager:
                                          (self.repository.namespace, self.repository.repository),
                                          return_shape=ResultShape.ONE_MANY)
             if result is None:
-                raise SplitGraphException("No images found in %s!", self.repository.to_schema())
+                raise SplitGraphException("No images found in %s!" % self.repository.to_schema())
             return self._make_image(result)
 
         result = engine.run_sql(select("get_tagged_images", "image_hash", "tag = %s",

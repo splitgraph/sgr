@@ -39,7 +39,7 @@ class Table:
             # Copy the given snap id over to "staging" and apply the DIFFS
             with object_manager.ensure_objects(self) as required_objects:
                 engine.create_table(schema=destination_schema, table=destination, schema_spec=self.table_schema)
-                if len(required_objects) > 0:
+                if required_objects:
                     logging.info("Applying %d fragment(s)...", (len(required_objects)))
                     engine.apply_fragments([(SPLITGRAPH_META_SCHEMA, d) for d in required_objects],
                                            destination_schema, destination)

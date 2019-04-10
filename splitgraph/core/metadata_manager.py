@@ -15,7 +15,6 @@ OBJECT_COLS = ['object_id', 'format', 'parent_id', 'namespace', 'size', 'inserti
 
 class Object(namedtuple('Object', OBJECT_COLS)):
     """Represents a Splitgraph object that tables are composed of."""
-    pass
 
 
 class MetadataManager:
