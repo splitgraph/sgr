@@ -285,4 +285,3 @@ def test_import_query_reuses_hash(pg_repo_local):
 
 # TODO:
 # * add the hashes into the object manifest (objects table)
-# * figure out digest() not being available from the commandline

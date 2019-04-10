@@ -11,7 +11,6 @@ from functools import reduce
 from hashlib import sha256
 from random import getrandbits
 
-from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_API_SCHEMA
@@ -84,7 +83,7 @@ class Digest:
     of hashes of its deleted rows (including the old values of the rows that have been updated). This has a very
     useful implication: the hash of a full Splitgraph table is equal to the sum of hashes of its individual fragments.
 
-    This property can be used to simplify deduplication: for example, finding our
+    This property can be used to simplify deduplication.
     """
 
     def __init__(self, shorts):
@@ -201,7 +200,7 @@ class FragmentManager(MetadataManager):
         index = {k: (coerce_val_to_json(v[0]), coerce_val_to_json(v[1])) for k, v in index.items()}
         return index
 
-    def register_object(self, object_id, object_format, namespace, parent_object=None, changeset=None):
+    def _register_object(self, object_id, object_format, namespace, parent_object=None, changeset=None):
         """
         Registers a Splitgraph object in the object tree and indexes it
 
@@ -225,20 +224,6 @@ class FragmentManager(MetadataManager):
         self.metadata_engine.run_sql(
             insert("objects", ("object_id", "format", "parent_id", "namespace", "size", "index")),
             (object_id, object_format, parent_object, namespace, object_size, object_index))
-
-    def register_table(self, repository, table, image, schema, object_ids):
-        """
-        Registers the object that represents a Splitgraph table inside of an image.
-
-        :param repository: Repository
-        :param table: Table name
-        :param image: Image hash
-        :param schema: Table schema
-        :param object_ids: IDs of fragments that the table is composed of
-        """
-        self.metadata_engine.run_sql(
-            insert("tables", ("namespace", "repository", "image_hash", "table_name", "table_schema", "object_ids")),
-            (repository.namespace, repository.repository, image, table, Json(schema), object_ids))
 
     @staticmethod
     def _extract_deleted_rows(changeset, table_schema):
@@ -332,7 +317,7 @@ class FragmentManager(MetadataManager):
                 continue
 
             self.object_engine.rename_table(SPLITGRAPH_META_SCHEMA, tmp_object_id, object_id)
-            self.register_object(
+            self._register_object(
                 object_id, object_format='DIFF' if parent else 'SNAP', namespace=table.repository.namespace,
                 parent_object=parent, changeset=sub_changeset)
         return object_ids
@@ -397,12 +382,12 @@ class FragmentManager(MetadataManager):
             object_ids = self._store_changesets(old_table, [before] + matched + [after],
                                                 [None] + top_fragments + [None])
             # Finally, link the table to the new set of objects.
-            self.register_table(old_table.repository, old_table.table_name, image_hash,
-                                old_table.table_schema, object_ids)
+            self.register_tables(old_table.repository, [(image_hash, old_table.table_name,
+                                                         old_table.table_schema, object_ids)])
         else:
             # Changes in the audit log cancelled each other out. Point the image to the same old objects.
-            self.register_table(old_table.repository, old_table.table_name, image_hash,
-                                old_table.table_schema, old_table.objects)
+            self.register_tables(old_table.repository, [(image_hash, old_table.table_name,
+                                                         old_table.table_schema, old_table.objects)])
 
     def _extract_min_max_pks(self, fragments, table_pks):
         # Get the min/max PK values for every chunk
@@ -507,8 +492,8 @@ class FragmentManager(MetadataManager):
             self.object_engine.run_sql(SQL("ALTER TABLE {}.{} ADD COLUMN {} BOOLEAN DEFAULT TRUE")
                                        .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id),
                                                Identifier(SG_UD_FLAG)))
-            self.register_object(object_id, object_format='SNAP', namespace=repository.namespace,
-                                 parent_object=None)
+            self._register_object(object_id, object_format='SNAP', namespace=repository.namespace,
+                                  parent_object=None)
             return object_id
 
         if chunk_size and table_size:
@@ -519,7 +504,7 @@ class FragmentManager(MetadataManager):
             object_ids.append(_insert_and_register_fragment(source_schema, source_table))
         # If table_size == 0, then we don't link it to any objects and simply store its schema
         table_schema = self.object_engine.get_full_table_schema(source_schema, source_table)
-        self.register_table(repository, table_name, image_hash, table_schema, object_ids)
+        self.register_tables(repository, [(image_hash, table_name, table_schema, object_ids)])
 
     def get_all_required_objects(self, object_ids):
         """

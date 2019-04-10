@@ -450,7 +450,7 @@ class Repository:
                 continue
 
             # If the table wasn't changed, point the image to the old table
-            self.objects.register_table(self, table, image_hash, table_info.table_schema, table_info.objects)
+            self.objects.register_tables(self, [(image_hash, table, table_info.table_schema, table_info.objects)])
 
         # Make sure that all pending changes have been discarded by this point (e.g. if we created just a snapshot for
         # some tables and didn't consume the audit log).
@@ -635,7 +635,8 @@ class Repository:
                                        target_hash, target_table, is_query, do_checkout)
             else:
                 table_obj = image.get_table(source_table)
-                self.objects.register_table(self, target_table, target_hash, table_obj.table_schema, table_obj.objects)
+                self.objects.register_tables(self,
+                                             [(target_hash, target_table, table_obj.table_schema, table_obj.objects)])
                 if do_checkout:
                     table_obj.materialize(target_table, destination_schema=self.to_schema())
         # Register the existing tables at the new commit as well.
