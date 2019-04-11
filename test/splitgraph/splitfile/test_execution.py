@@ -305,7 +305,7 @@ def test_from_multistage(local_engine_empty, pg_repo_remote_multitag):
     # Produces two repositories: output and output_stage_2
     execute_commands(load_splitfile('from_remote_multistage.splitfile'), params={'TAG': 'v1'})
 
-    # Check the final output ('output_stage_2'): it should only have one single table object (a SNAP with the join_table
+    # Check the final output ('output_stage_2'): it should only have one single fragment (join_table
     # from the first stage, OUTPUT.
     assert stage_2.run_sql("SELECT * FROM balanced_diet") == [(1, 'apple', 'potato'), (2, 'orange', 'carrot')]
     # Check the commit is based on the original empty image.

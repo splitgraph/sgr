@@ -420,16 +420,16 @@ class Repository:
         Reads the recorded pending changes to all tables in a given mountpoint, conflates them and possibly stores them
         as new object(s) as follows:
 
-            * If a table has been created or there has been a schema change, it's only stored as a SNAP (full snapshot).
+            * If a table has been created or there has been a schema change, it's only stored as a full snapshot.
             * If a table hasn't changed since the last revision, no new objects are created and it's linked to the
                 previous objects belonging to the last revision.
-            * Otherwise, the table is stored as a conflated (1 change per PK) DIFF object and an optional SNAP.
+            * Otherwise, the table is stored as a conflated (1 change per PK) patch.
 
         :param head: Current HEAD image to base the commit on.
         :param image_hash: Hash of the image to commit changes under.
-        :param snap_only: If True, only stores the table as a SNAP.
-        :param chunk_size: Split SNAPs into chunks of this size (None to disable)
-        :param split_changeset: Split DIFFs to match SNAP boundaries
+        :param snap_only: If True, only stores the table as a snapshot.
+        :param chunk_size: Split table snapshots into chunks of this size (None to disable)
+        :param split_changeset: Split deltas to match original table snapshot boundaries
         """
         target_schema = self.to_schema()
 
@@ -568,7 +568,7 @@ class Repository:
         :param source_tables: List of tables to import. If empty, imports all tables.
         :param image_hash: Image hash in the source repository to import tables from.
             Uses the current source HEAD by default.
-        :param foreign_tables: If True, copies all source tables to create a series of new SNAP objects instead of
+        :param foreign_tables: If True, copies all source tables to create a series of new snapshots instead of
             treating them as Splitgraph-versioned tables. This is useful for adding brand new tables
             (for example, from an FDW-mounted table).
         :param do_checkout: If False, doesn't materialize the tables in the target mountpoint.

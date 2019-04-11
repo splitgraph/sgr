@@ -83,7 +83,7 @@ def test_commandline_basics(pg_repo_local, mg_repo_local):
     # sgr diff, HEAD -> current staging (0-param)
     check_diff([pg_repo_local])
 
-    # sgr commit as a SNAP
+    # sgr commit as a full snapshot
     # This is weird: at this point, the pgcrypto extension exists
     #   (from this same connection (pg_repo_local.engine.connection) doing CREATE EXTENSION causes an error) but
     #   calling digest() fails saying the function doesn't exist (ultimately `calculate_content_hash` fails, but also
@@ -120,8 +120,7 @@ def test_commandline_basics(pg_repo_local, mg_repo_local):
     # sgr diff, just the new head -- assumes the diff on top of the old head.
     check_diff([pg_repo_local, new_head.image_hash[:20]])
 
-    # sgr diff, reverse order -- actually checks the two tables out and materializes them since there isn't a
-    # path of DIFF objects between them.
+    # sgr diff, reverse order -- actually materializes two tables to compare them
     result = runner.invoke(diff_c, [str(pg_repo_local), new_head.image_hash[:20], old_head.image_hash[:20]])
     assert "added 1 row" in result.output
     assert "removed 1 row" in result.output
@@ -195,9 +194,9 @@ def test_object_info(local_engine_empty):
     runner = CliRunner()
 
     q = insert("objects", OBJECT_COLS)
-    local_engine_empty.run_sql(q, ("base_1", "SNAP", None, "ns1", 12345, 'HASH1', 'HASH2', {"col_1": [10, 20]}))
-    local_engine_empty.run_sql(q, ("patch_1", "DIFF", "base_1", "ns1", 6789, 'HASH1', 'HASH2', {"col_1": [10, 20]}))
-    local_engine_empty.run_sql(q, ("patch_2", "DIFF", "base_1", "ns1", 1011, 'HASH1', 'HASH2', {"col_1": [10, 20],
+    local_engine_empty.run_sql(q, ("base_1", "FRAG", None, "ns1", 12345, 'HASH1', 'HASH2', {"col_1": [10, 20]}))
+    local_engine_empty.run_sql(q, ("patch_1", "FRAG", "base_1", "ns1", 6789, 'HASH1', 'HASH2', {"col_1": [10, 20]}))
+    local_engine_empty.run_sql(q, ("patch_2", "FRAG", "base_1", "ns1", 1011, 'HASH1', 'HASH2', {"col_1": [10, 20],
                                                                                                 "col_2": ['bla',
                                                                                                           'ble']}))
     # base_1: external, cached locally
@@ -216,7 +215,7 @@ def test_object_info(local_engine_empty):
 
 Parent: None
 Namespace: ns1
-Format: SNAP
+Format: FRAG
 Size: 12.06 KiB
 Insertion hash: HASH1
 Deletion hash: HASH2

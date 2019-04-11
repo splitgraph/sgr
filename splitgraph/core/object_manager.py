@@ -49,16 +49,6 @@ class ObjectManager(FragmentManager, MetadataManager):
         # of more possible cache misses.
         self.eviction_min_fraction = float(CONFIG['SG_EVICTION_MIN_FRACTION'])
 
-    def get_full_object_tree(self):
-        """Returns a dictionary (object_id -> parent, object_format, size) with the full object tree
-        in the engine"""
-        query_result = self.metadata_engine.run_sql(select("objects", "object_id,parent_id,format,size"))
-
-        result = {}
-        for object_id, parent_id, object_format, size in query_result:
-            result[object_id] = parent_id, object_format, size
-        return result
-
     def get_downloaded_objects(self, limit_to=None):
         """
         Gets a list of objects currently in the Splitgraph cache (i.e. not only existing externally.)

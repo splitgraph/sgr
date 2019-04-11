@@ -147,9 +147,11 @@ def _create_metadata_schema(engine):
     #   can delete/alter this object's metadata.
     # * size: the on-disk (in-database) size occupied by the object table as reported by the engine
     #   (not the size stored externally).
-    # * format: Format of the object. SNAP for a full-table snapshot, DIFF for patch on top of another object.
-    # * parent_id: For a DIFF, the parent of an object. The parent is required in order to materialize (check out)
-    #   table pointed to by an object.
+    # * format: Format of the object. Currently, only FRAG (splitting the table into multiple chunks that can partially
+    #     overwrite each other) is supported.
+    # * parent_id: The parent of an object that the object partially overwrites. When a table is materialized, the
+    #     parent of an object is first copied into the staging area and then the child object is applied on top of it
+    #     (essentially, a breadth-first traversal of the object tree).
     # * index: A JSON object mapping columns spanned by this object to their minimum and maximum values. Used to
     #   discard and not download at all objects that definitely don't match a given query.
 
@@ -282,7 +284,7 @@ def ensure_metadata_schema(engine):
 
 
 def aggregate_changes(query_result, initial=None):
-    """Add a DIFF object to the aggregated diff result"""
+    """Add a changeset to the aggregated diff result"""
     result = list(initial) if initial else [0, 0, 0]
     for kind, kind_count in query_result:
         result[kind] += kind_count

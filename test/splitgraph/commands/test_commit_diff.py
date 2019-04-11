@@ -93,7 +93,7 @@ def test_commit_chunking(local_engine_empty):
 
         assert object_meta[obj] == \
                (obj,  # object ID
-                'SNAP',  # full-table snapshot (not a delta compressed chunk)
+                'FRAG',  # fragment format
                 None,  # no parent
                 '',  # no namespace
                 8192,  # size reported by PG (can it change between platforms?)
@@ -169,30 +169,30 @@ def test_commit_diff_splitting(local_engine_empty):
     assert new_objects[3] == base_objects[2]
     object_meta = OUTPUT.objects.get_object_meta(new_objects)
     # The new fragments should be at the beginning and the end of the table objects' list.
-    expected_meta = [(new_objects[0], 'SNAP', None, '', 8192,
+    expected_meta = [(new_objects[0], 'FRAG', None, '', 8192,
                       '3cfbe8fa6fc546264936e29f402d7263510481c88a8d27190d82b3d5830cbcbf',
                       # no deletions in this fragment
                       '0000000000000000000000000000000000000000000000000000000000000000',
                       {'key': [0, 0], 'value_1': ['zero', 'zero'], 'value_2': [-1, -1]}),
-                     (new_objects[1], 'DIFF', base_objects[0], '', 8192,
+                     (new_objects[1], 'FRAG', base_objects[0], '', 8192,
                       '470425e8c107fff67264f9f812dfe211c7e625edf651947b8476f60392c57281',
                       'e3eb6db305d889d3a69e3d8efa0931853c00fca75c0aeddd8f2fa2d6fd2443d6',
                       # for value_1 we have old values for k=4,5 ('d', 'e') and new value
                       # for k=5 ('UPDATED') included here; same for value_2.
                       {'key': [4, 5], 'value_1': ['UPDATED', 'e'], 'value_2': [6, 8]}),
-                     (new_objects[2], 'DIFF', base_objects[1], '', 8192,
+                     (new_objects[2], 'FRAG', base_objects[1], '', 8192,
                       # UPD + DEL conflated so nothing gets inserted by this fragment
                       '0000000000000000000000000000000000000000000000000000000000000000',
                       'd7df15e62c1c8799ef3a3677e3eb7661cedf898d73449a80251b93c501b5bdeb',
                       # Turned into one deletion, old values included here
                       {'key': [6, 6], 'value_1': ['f', 'f'], 'value_2': [10, 10]}),
                      # Old fragment with just the pk=11
-                     (new_objects[3], 'SNAP', None, '', 8192,
+                     (new_objects[3], 'FRAG', None, '', 8192,
                       '6950e38c81c51685d617e98c7e2cf98d34630940c33e9259bc01339cca9c9418',
                       # No deletions here
                       '0000000000000000000000000000000000000000000000000000000000000000',
                       {'key': [11, 11], 'value_1': ['k', 'k'], 'value_2': [20, 20]}),
-                     (new_objects[4], 'SNAP', None, '', 8192,
+                     (new_objects[4], 'FRAG', None, '', 8192,
                       '96f0a7394f3839b048b492b789f7d57cf976345b04938a69d82b3512f72c3e9e',
                       '0000000000000000000000000000000000000000000000000000000000000000',
                       {'key': [12, 12], 'value_1': ['l', 'l'], 'value_2': [22, 22]})
@@ -269,7 +269,7 @@ def test_commit_diff_splitting_composite(local_engine_empty):
     # First chunk: based on the old first chunk, contains the INSERT (1/1/2019, 4) and the UPDATE (2/1/2019, 2)
     object_meta = OUTPUT.objects.get_object_meta(new_objects)
     assert object_meta[new_objects[0]] == \
-           (new_objects[0], 'DIFF', base_objects[0], '', 8192,
+           (new_objects[0], 'FRAG', base_objects[0], '', 8192,
             # Hashes here just copypasted from the test output, see test_object_hashing for actual tests that
             # test each part of hash generation
             '00964b1b5db0d6e8d42b48462e9021ed626a773380345a1f4fee5c205d7d4beb',
@@ -281,7 +281,7 @@ def test_commit_diff_splitting_composite(local_engine_empty):
     assert new_objects[1] == base_objects[1]
     # The third chunk is new, contains (4/1/2019, 2, NEW)
     assert object_meta[new_objects[2]] == \
-           (new_objects[2], 'SNAP', None, '', 8192,
+           (new_objects[2], 'FRAG', None, '', 8192,
             '8c92b3ea89234b06cf53c2bad9d6e1d49dc561dc8c0100ee63c0b9ce1eeb0750',
             # Nothing deleted, so the deletion hash is 0
             '0000000000000000000000000000000000000000000000000000000000000000',
@@ -289,17 +289,12 @@ def test_commit_diff_splitting_composite(local_engine_empty):
              'key_2': [2, 2], 'value': ['NEW', 'NEW']})
 
 
-@pytest.mark.xfail(reason="This currently doesn't work: need to commit the table explicitly with snap_only=True. "
-                          "PG DROP triggers are database-specific (we'd have to write a stored procedure that records "
-                          "the name/schema that has been dropped since last commit and then use that at commit time "
-                          "to see what should be recorded as SNAPs.")
 def test_drop_recreate_produces_snap(pg_repo_local):
     # Drops both tables and creates them with the same schema -- check we detect that.
+    old_objects = pg_repo_local.head.get_table('fruits').objects
     pg_repo_local.run_sql(PG_DATA)
 
-    # Check there are only SNAPs, no DIFFs.
-    table = pg_repo_local.head.get_table('fruits')
-    assert pg_repo_local.objects.get_object_meta(table.objects)[table.objects[0]].parent_id is None
+    assert pg_repo_local.head.get_table('fruits').objects == old_objects
 
 
 @pytest.mark.parametrize("mode", _COMMIT_MODES)
@@ -561,7 +556,7 @@ def test_empty_diff_reuses_object(pg_repo_local):
 
 
 def test_update_packing_applying(pg_repo_local):
-    # Set fruit_id to be the PK first so that an UPDATE operation is stored in the DIFF.
+    # Set fruit_id to be the PK first so that an UPDATE operation is stored in the patch.
     pg_repo_local.run_sql("ALTER TABLE fruits ADD PRIMARY KEY (fruit_id)")
     old_head = pg_repo_local.commit()
 
@@ -582,7 +577,7 @@ def test_update_packing_applying(pg_repo_local):
 
 
 def test_diff_staging_aggregation(pg_repo_local):
-    # Test diff from HEAD~1 to the current staging area (accumulate actual DIFF object with the pending changes)
+    # Test diff from HEAD~1 to the current staging area (accumulate actual fragment with the pending changes)
     pg_repo_local.run_sql("ALTER TABLE fruits ADD PRIMARY KEY (fruit_id)")
     old_head = pg_repo_local.commit()
 
@@ -599,8 +594,7 @@ def test_diff_staging_aggregation(pg_repo_local):
 
 
 def test_diff_schema_change(pg_repo_local):
-    # Test diff when there's been a schema change and so we stored an intermediate object
-    # as a SNAP.
+    # Test diff when there's been a schema change and so we stored the table as a full snapshot.
     old_head = pg_repo_local.head.image_hash
     pg_repo_local.run_sql("ALTER TABLE fruits ADD PRIMARY KEY (fruit_id)")
     pg_repo_local.commit()

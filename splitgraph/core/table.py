@@ -36,7 +36,7 @@ class Table:
         engine.delete_table(destination_schema, destination)
 
         if not lq_server:
-            # Copy the given snap id over to "staging" and apply the DIFFS
+            # Materialize by applying fragments to one another in their dependency order.
             with object_manager.ensure_objects(self) as required_objects:
                 engine.create_table(schema=destination_schema, table=destination, schema_spec=self.table_schema)
                 if required_objects:
@@ -109,7 +109,7 @@ class Table:
         """Runs the actual select query against the partially materialized table.
         If qual_sql is passed, this will include it in the SELECT query. Despite that Postgres
         will check our results again, this is still useful so that we don't pass all the rows
-        in the SNAP through the Python runtime."""
+        in the fragment(s) through the Python runtime."""
         engine = self.repository.object_engine
 
         cur = engine.connection.cursor('sg_layered_query_cursor')

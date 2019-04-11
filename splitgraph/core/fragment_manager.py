@@ -201,31 +201,24 @@ class FragmentManager(MetadataManager):
         index = {k: (coerce_val_to_json(v[0]), coerce_val_to_json(v[1])) for k, v in index.items()}
         return index
 
-    def _register_object(self, object_id, object_format, namespace, insertion_hash, deletion_hash,
-                         parent_object=None, changeset=None):
+    def _register_object(self, object_id, namespace, insertion_hash, deletion_hash, parent_object=None, changeset=None):
         """
         Registers a Splitgraph object in the object tree and indexes it
 
         :param object_id: Object ID
-        :param object_format: Format (SNAP or DIFF)
         :param namespace: Namespace that owns the object. In registry mode, only namespace owners can alter or delete
             objects.
         :param insertion_hash: Homomorphic hash of all rows inserted by this fragment
         :param deletion_hash: Homomorphic hash of the old values of all rows deleted by this fragment
-        :param parent_object: Parent that the object depends on, if it's a DIFF object.
-        :param changeset: For DIFF objects, changeset that produced this object. Must be a dictionary of
+        :param parent_object: Parent that the object depends on (if it's a patch).
+        :param changeset: For patches, changeset that produced this object. Must be a dictionary of
             {PK: (True for upserted/False for deleted, old row (if updated or deleted))}. The old values
             are used to generate the min/max index for an object to know if it removes/updates some rows
             that might be pertinent to a query.
         """
-        if not parent_object and object_format != 'SNAP':
-            raise ValueError("Non-SNAP objects can't have no parent!")
-        if parent_object and object_format == 'SNAP':
-            raise ValueError("SNAP objects can't have a parent!")
-
         object_size = self.object_engine.get_table_size(SPLITGRAPH_META_SCHEMA, object_id)
         object_index = self._generate_object_index(object_id, changeset)
-        self.register_objects([Object(object_id=object_id, format=object_format, parent_id=parent_object,
+        self.register_objects([Object(object_id=object_id, format='FRAG', parent_id=parent_object,
                                       namespace=namespace, size=object_size, insertion_hash=insertion_hash,
                                       deletion_hash=deletion_hash, index=object_index)])
 
@@ -311,10 +304,8 @@ class FragmentManager(MetadataManager):
                 continue
 
             self.object_engine.rename_table(SPLITGRAPH_META_SCHEMA, tmp_object_id, object_id)
-            self._register_object(
-                object_id, object_format='DIFF' if parent else 'SNAP', namespace=table.repository.namespace,
-                parent_object=parent, changeset=sub_changeset,
-                insertion_hash=insertion_hash.hex(), deletion_hash=deletion_hash.hex())
+            self._register_object(object_id, namespace=table.repository.namespace, insertion_hash=insertion_hash.hex(),
+                                  deletion_hash=deletion_hash.hex(), parent_object=parent, changeset=sub_changeset)
         return object_ids
 
     def _get_patch_fragment_hashes(self, sub_changeset, table, tmp_object_id):
@@ -505,8 +496,8 @@ class FragmentManager(MetadataManager):
             self.object_engine.run_sql(SQL("ALTER TABLE {}.{} ADD COLUMN {} BOOLEAN DEFAULT TRUE")
                                        .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id),
                                                Identifier(SG_UD_FLAG)))
-            self._register_object(object_id, object_format='SNAP', namespace=repository.namespace,
-                                  parent_object=None, insertion_hash=content_hash, deletion_hash='0' * 64)
+            self._register_object(object_id, namespace=repository.namespace, insertion_hash=content_hash,
+                                  deletion_hash='0' * 64, parent_object=None)
             return object_id
 
         if chunk_size and table_size:

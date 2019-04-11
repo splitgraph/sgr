@@ -63,10 +63,10 @@ _DT = dt(2019, 1, 1, 12)
 def test_layered_querying(pg_repo_local, test_case):
     # Future: move the LQ tests to be local (instantiate the FDW with some mocks and send the same query requests)
     # since it's much easier to test them like that.
-    # Reset the repo every time so that the object manager doesn't have a chance to cache the SNAP.
 
-    # Most of these tests are only interesting for the long DIFF chain case, so we don't include SNAPs here and
-    # have PKs on the tables.
+    # Most of these tests are only interesting for where there are multiple fragments, so we have PKs on tables
+    # and store them as deltas.
+
     prepare_lq_repo(pg_repo_local, commit_after_every=True, include_pk=True)
 
     # Discard the actual materialized table and query everything via FDW
@@ -78,8 +78,8 @@ def test_layered_querying(pg_repo_local, test_case):
     assert pg_repo_local.run_sql(query) == expected
 
 
-def test_layered_querying_against_snap(pg_repo_local):
-    # Test the case where the query goes directly to the SNAP.
+def test_layered_querying_against_single_fragment(pg_repo_local):
+    # Test the case where the query is satisfied by a single fragment.
     prepare_lq_repo(pg_repo_local, snap_only=True, commit_after_every=False, include_pk=True)
     new_head = pg_repo_local.head
     new_head.checkout(layered=True)
@@ -110,7 +110,7 @@ def _test_lazy_lq_checkout(pg_repo_local):
     pg_repo_local.images['latest'].checkout(layered=True)
     assert len(pg_repo_local.objects.get_downloaded_objects()) == 0
     # Actual LQ still downloads the objects, but one by one.
-    # Hit fruits -- 2 objects should be downloaded (the second SNAP and the actual DIFF -- old SNAP not downloaded)
+    # Hit fruits -- 2 objects should be downloaded (one fragment and a patch on top of it but not the very first one)
     assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id = 2") == [(2, 'guitar', 1, _DT)]
     assert len(pg_repo_local.objects.get_downloaded_objects()) == 2
     # Hit vegetables -- 2 more objects should be downloaded
@@ -122,7 +122,7 @@ def test_lq_remote(local_engine_empty, pg_repo_remote):
     # Test layered querying works when we initialize it on a cloned repo that doesn't have any
     # cached objects (all are on the remote).
 
-    # 1 DIFF on top of fruits, 1 DIFF on top of vegetables
+    # 1 patch on top of fruits, 1 patch on top of vegetables
     prepare_lq_repo(pg_repo_remote, commit_after_every=False, include_pk=True)
     pg_repo_local = clone(pg_repo_remote, download_all=False)
     _test_lazy_lq_checkout(pg_repo_local)
@@ -154,7 +154,7 @@ def test_lq_external(local_engine_empty, pg_repo_remote):
 
 
 def _prepare_fully_remote_repo(local_engine_empty, pg_repo_remote):
-    # Setup: same as external, with an extra DIFF on top of the fruits table.
+    # Setup: same as external, with an extra patch on top of the fruits table.
     pg_repo_local = clone(pg_repo_remote)
     pg_repo_local.images['latest'].checkout()
     prepare_lq_repo(pg_repo_local, commit_after_every=True, include_pk=True)
@@ -176,7 +176,7 @@ def _prepare_fully_remote_repo(local_engine_empty, pg_repo_remote):
     # Test range fetches 2 objects
     ("SELECT * FROM fruits WHERE fruit_id >= 3",
      [(3, 'mayonnaise', 1, _DT), (4, 'kumquat', 1, _DT)], (False, True, False, False, True)),
-    # Test the upsert fetches the original SNAP + the DIFF that overwrites it
+    # Test the upsert fetches the original fragment as well as one that overwrites it
     ("SELECT * FROM fruits WHERE fruit_id = 2",
      [(2, 'guitar', 1, _DT)], (True, False, False, True, False)),
     # Test NULLs don't break anything (even though we still look at all objects)
@@ -201,7 +201,7 @@ def test_lq_qual_filtering(local_engine_empty, pg_repo_remote, test_case):
     assert len(pg_repo_local.objects.get_downloaded_objects()) == 0
 
     # Objects in the test dataset, fruits table, in order of creation, are:
-    # * initial SNAP
+    # * initial fragment
     # * INS (3, mayonnaise)
     # * DEL (1, apple)
     # * UPS (2, guitar) (replaces 2, orange)

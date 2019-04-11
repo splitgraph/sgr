@@ -413,7 +413,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                               for ss, st in objects)
         self.run_sql(query, (extra_qual_args * len(objects)) if extra_qual_args else None)
 
-    # Utilities to dump objects (SNAP/DIFF) into an external format.
+    # Utilities to dump objects into an external format.
     # We use a slightly ad hoc format: the schema (JSON) + a null byte + Postgres's copy_to
     # binary format (only contains data). There's probably some scope to make this more optimized, maybe
     # we should look into columnar on-disk formats (Parquet/Avro) but we currently just want to get the objects
