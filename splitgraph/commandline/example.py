@@ -1,7 +1,7 @@
 """
 Command line routines generating example data / Splitfiles
 """
-from random import getrandbits
+from hashlib import sha256
 
 import click
 
@@ -29,9 +29,14 @@ def example():
     """Generate demo Splitgraph data."""
 
 
-def generate_random_table(repository, table_name, size):
+def _hash(val):
+    """Use deterministic values to showcase reusing fragments."""
+    return sha256(str(val).encode('ascii')).hexdigest()
+
+
+def generate_table(repository, table_name, size):
     """
-    Creates a table with an integer primary key and a string value, filling it with random data.
+    Creates a table with an integer primary key and a string value.
 
     :param repository: Checked-out Repository to create the table in.
     :param table_name: Name of the table to generate
@@ -40,11 +45,11 @@ def generate_random_table(repository, table_name, size):
     repository.engine.create_table(repository.to_schema(), table_name, [(1, 'key', 'integer', True),
                                                                         (2, 'value', 'varchar', False)])
     repository.engine.run_sql_batch(SQL("INSERT INTO {} VALUES (%s, %s)").format(Identifier(table_name)),
-                                    [(i, "%0.2x" % getrandbits(256)) for i in range(size)],
+                                    [(i, _hash(i)) for i in range(size)],
                                     schema=repository.to_schema())
 
 
-def alter_random_table(repository, table_name, rows_added, rows_deleted, rows_updated):
+def alter_table(repository, table_name, rows_added, rows_deleted, rows_updated):
     """
     Alters the example table, adding/updating/deleting a certain number of rows.
 
@@ -68,15 +73,13 @@ def alter_random_table(repository, table_name, rows_added, rows_deleted, rows_up
     # Update next N rows
     print("Updating %d rows..." % rows_updated)
     repository.engine.run_sql_batch(SQL("UPDATE {} SET value = %s WHERE key = %s").format(Identifier(table_name)),
-                                    [("%0.2x" % getrandbits(256), k)
-                                     for k in keys[rows_updated:rows_updated * 2]],
+                                    [(_hash(k) + "_UPDATED", k) for k in keys[rows_updated:rows_updated * 2]],
                                     schema=repository.to_schema())
 
     # Insert rows at the end
     print("Adding %d rows..." % rows_added)
     repository.engine.run_sql_batch(SQL("INSERT INTO {} VALUES (%s, %s)").format(Identifier(table_name)),
-                                    [(k, "%0.2x" % getrandbits(256))
-                                     for k in range(last + 1, last + rows_added + 1)],
+                                    [(k, _hash(k)) for k in range(last + 1, last + rows_added + 1)],
                                     schema=repository.to_schema())
 
 
@@ -92,8 +95,8 @@ def generate_c(repository):
         raise click.ClickException("Repository %s already exists, use sgr rm to delete it!" % repository.to_schema())
 
     repository.init()
-    # Insert some random data
-    generate_random_table(repository, 'demo', size=_DEMO_TABLE_SIZE)
+    # Insert some data
+    generate_table(repository, 'demo', size=_DEMO_TABLE_SIZE)
 
     image = repository.commit()
     print("Generated %s:%s with %s rows, image hash %s." % (repository.to_schema(), 'demo', _DEMO_TABLE_SIZE,
@@ -110,7 +113,7 @@ def alter_c(repository):
 
     :param repository: Generated demo repository.
     """
-    alter_random_table(repository, 'demo', _DEMO_CHANGE_SIZE, _DEMO_CHANGE_SIZE, _DEMO_CHANGE_SIZE)
+    alter_table(repository, 'demo', _DEMO_CHANGE_SIZE, _DEMO_CHANGE_SIZE, _DEMO_CHANGE_SIZE)
 
 
 @click.command(name='splitfile')
