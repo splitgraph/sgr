@@ -41,7 +41,7 @@ def test_schema_changes(pg_repo_local, test_case):
 
     # Test that the new image was stored as a snapshot with the new schema.
     new_snap = new_head.get_table('fruits').objects[0]
-    assert pg_repo_local.objects.get_object_meta([new_snap])[0][2] is None  # no parent
+    assert pg_repo_local.objects.get_object_meta([new_snap])[new_snap].parent_id is None  # no parent
     assert pg_repo_local.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, new_snap) == _reassign_ordinals(
         expected_new_schema) + [(len(expected_new_schema) + 1, SG_UD_FLAG, 'boolean', False)]
 

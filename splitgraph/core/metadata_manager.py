@@ -1,12 +1,20 @@
 """
 Classes related to managing table/image/object metadata tables.
 """
+import itertools
+from collections import namedtuple
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_API_SCHEMA
 from ._common import select, ResultShape
+
+OBJECT_COLS = ['object_id', 'format', 'parent_id', 'namespace', 'size', 'insertion_hash', 'deletion_hash', 'index']
+
+
+class Object(namedtuple('Object', OBJECT_COLS)):
+    """Represents a Splitgraph object that tables are composed of."""
 
 
 class MetadataManager:
@@ -19,19 +27,20 @@ class MetadataManager:
         self.object_engine = object_engine
         self.metadata_engine = metadata_engine or object_engine
 
-    def register_objects(self, object_meta, namespace=None):
+    def register_objects(self, objects, namespace=None):
         """
-        Registers multiple Splitgraph objects in the tree. See `register_object` for more information.
+        Registers multiple Splitgraph objects in the tree.
 
-        :param object_meta: List of (object_id, format, parent_id, namespace, size, index).
+        :param objects: List of `Object` objects.
         :param namespace: If specified, overrides the original object namespace, required
             in the case where the remote repository has a different namespace than the local one.
         """
-        if namespace:
-            object_meta = [(o, f, p, namespace, s, i) for o, f, p, _, s, i in object_meta]
+        object_meta = [tuple(namespace if namespace and a == 'namespace'
+                             else getattr(o, a) for a in OBJECT_COLS) for o in objects]
+
         self.metadata_engine.run_sql_batch(
-            SQL("SELECT {}.add_object(%s,%s,%s,%s,%s,%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
-            object_meta)
+            SQL("SELECT {}.add_object(" + ','.join(itertools.repeat('%s', len(OBJECT_COLS))) + ")")
+                .format(Identifier(SPLITGRAPH_API_SCHEMA)), object_meta)
 
     def register_tables(self, repository, table_meta):
         """
@@ -81,7 +90,7 @@ class MetadataManager:
         """
         Gets external locations for objects.
 
-        :param objects: List of objects stored externally.
+        :param objects: List of object IDs stored externally.
         :return: List of (object_id, location, protocol).
         """
         return self.metadata_engine.run_sql(select("get_object_locations", "object_id, location, protocol",
@@ -92,11 +101,12 @@ class MetadataManager:
         Get metadata for multiple Splitgraph objects from the tree
 
         :param objects: List of objects to get metadata for.
-        :return: List of (object_id, format, parent_id, namespace, size, index).
+        :return: Dictionary of object_id -> Object
         """
         if not objects:
-            return []
+            return {}
 
-        return self.metadata_engine.run_sql(select("get_object_meta",
-                                                   "object_id, format, parent_id, namespace, size, index",
-                                                   schema=SPLITGRAPH_API_SCHEMA, table_args="(%s)"), (objects,))
+        metadata = self.metadata_engine.run_sql(select("get_object_meta", ','.join(OBJECT_COLS),
+                                                       schema=SPLITGRAPH_API_SCHEMA, table_args="(%s)"), (objects,))
+        result = [Object(*m) for m in metadata]
+        return {o.object_id: o for o in result}

@@ -150,7 +150,7 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine', 'object_en
         finally:
             self.object_engine.run_sql(
                 SQL("DROP SCHEMA IF EXISTS {} CASCADE; DROP SERVER IF EXISTS {} CASCADE;").format(
-                Identifier(tmp_schema), Identifier(tmp_schema + '_lq_checkout_server')))
+                    Identifier(tmp_schema), Identifier(tmp_schema + '_lq_checkout_server')))
 
     def tag(self, tag):
         """

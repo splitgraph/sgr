@@ -6,7 +6,6 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.fragment_manager import get_random_object_id, quals_to_sql
-from splitgraph.engine.postgres.engine import SG_UD_FLAG
 
 
 class Table:
@@ -37,17 +36,12 @@ class Table:
         engine.delete_table(destination_schema, destination)
 
         if not lq_server:
-            # Copy the given snap id over to "staging" and apply the DIFFS
+            # Materialize by applying fragments to one another in their dependency order.
             with object_manager.ensure_objects(self) as required_objects:
-                engine.copy_table(SPLITGRAPH_META_SCHEMA, required_objects[0], destination_schema, destination,
-                                  with_pk_constraints=True)
-                # Make sure we don't include the update-delete flag
-                engine.run_sql(SQL("ALTER TABLE {}.{} DROP COLUMN IF EXISTS {}")
-                               .format(Identifier(destination_schema), Identifier(destination),
-                                       Identifier(SG_UD_FLAG)))
-                if len(required_objects) > 1:
-                    logging.info("Applying %d fragment(s)...", (len(required_objects) - 1))
-                    engine.apply_fragments([(SPLITGRAPH_META_SCHEMA, d) for d in required_objects[1:]],
+                engine.create_table(schema=destination_schema, table=destination, schema_spec=self.table_schema)
+                if required_objects:
+                    logging.info("Applying %d fragment(s)...", (len(required_objects)))
+                    engine.apply_fragments([(SPLITGRAPH_META_SCHEMA, d) for d in required_objects],
                                            destination_schema, destination)
         else:
             query = SQL("CREATE FOREIGN TABLE {}.{} (") \
@@ -115,7 +109,7 @@ class Table:
         """Runs the actual select query against the partially materialized table.
         If qual_sql is passed, this will include it in the SELECT query. Despite that Postgres
         will check our results again, this is still useful so that we don't pass all the rows
-        in the SNAP through the Python runtime."""
+        in the fragment(s) through the Python runtime."""
         engine = self.repository.object_engine
 
         cur = engine.connection.cursor('sg_layered_query_cursor')

@@ -61,7 +61,7 @@ class ImageManager:
                                          (self.repository.namespace, self.repository.repository),
                                          return_shape=ResultShape.ONE_MANY)
             if result is None:
-                raise SplitGraphException("No images found in %s!", self.repository.to_schema())
+                raise SplitGraphException("No images found in %s!" % self.repository.to_schema())
             return self._make_image(result)
 
         result = engine.run_sql(select("get_tagged_images", "image_hash", "tag = %s",
@@ -420,16 +420,16 @@ class Repository:
         Reads the recorded pending changes to all tables in a given mountpoint, conflates them and possibly stores them
         as new object(s) as follows:
 
-            * If a table has been created or there has been a schema change, it's only stored as a SNAP (full snapshot).
+            * If a table has been created or there has been a schema change, it's only stored as a full snapshot.
             * If a table hasn't changed since the last revision, no new objects are created and it's linked to the
                 previous objects belonging to the last revision.
-            * Otherwise, the table is stored as a conflated (1 change per PK) DIFF object and an optional SNAP.
+            * Otherwise, the table is stored as a conflated (1 change per PK) patch.
 
         :param head: Current HEAD image to base the commit on.
         :param image_hash: Hash of the image to commit changes under.
-        :param snap_only: If True, only stores the table as a SNAP.
-        :param chunk_size: Split SNAPs into chunks of this size (None to disable)
-        :param split_changeset: Split DIFFs to match SNAP boundaries
+        :param snap_only: If True, only stores the table as a snapshot.
+        :param chunk_size: Split table snapshots into chunks of this size (None to disable)
+        :param split_changeset: Split deltas to match original table snapshot boundaries
         """
         target_schema = self.to_schema()
 
@@ -450,7 +450,7 @@ class Repository:
                 continue
 
             # If the table wasn't changed, point the image to the old table
-            self.objects.register_table(self, table, image_hash, table_info.table_schema, table_info.objects)
+            self.objects.register_tables(self, [(image_hash, table, table_info.table_schema, table_info.objects)])
 
         # Make sure that all pending changes have been discarded by this point (e.g. if we created just a snapshot for
         # some tables and didn't consume the audit log).
@@ -568,7 +568,7 @@ class Repository:
         :param source_tables: List of tables to import. If empty, imports all tables.
         :param image_hash: Image hash in the source repository to import tables from.
             Uses the current source HEAD by default.
-        :param foreign_tables: If True, copies all source tables to create a series of new SNAP objects instead of
+        :param foreign_tables: If True, copies all source tables to create a series of new snapshots instead of
             treating them as Splitgraph-versioned tables. This is useful for adding brand new tables
             (for example, from an FDW-mounted table).
         :param do_checkout: If False, doesn't materialize the tables in the target mountpoint.
@@ -628,17 +628,15 @@ class Repository:
                 # This could get executed for the whole import batch as opposed to for every import query
                 # but the overhead of setting up an LQ schema is fairly small.
                 with image.query_schema() as tmp_schema:
-                    object_id = self._import_new_table(tmp_schema, source_table, target_hash, target_table, is_query)
-                    if do_checkout:
-                        self.object_engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, self.to_schema(), target_table)
+                    self._import_new_table(tmp_schema, source_table, target_hash, target_table, is_query,
+                                           do_checkout)
             elif foreign_tables:
-                object_id = self._import_new_table(source_repository.to_schema(), source_table,
-                                                   target_hash, target_table, is_query)
-                if do_checkout:
-                    self.object_engine.copy_table(SPLITGRAPH_META_SCHEMA, object_id, self.to_schema(), target_table)
+                self._import_new_table(source_repository.to_schema(), source_table,
+                                       target_hash, target_table, is_query, do_checkout)
             else:
                 table_obj = image.get_table(source_table)
-                self.objects.register_table(self, target_table, target_hash, table_obj.table_schema, table_obj.objects)
+                self.objects.register_tables(self,
+                                             [(target_hash, target_table, table_obj.table_schema, table_obj.objects)])
                 if do_checkout:
                     table_obj.materialize(target_table, destination_schema=self.to_schema())
         # Register the existing tables at the new commit as well.
@@ -653,27 +651,29 @@ class Repository:
         set_head(self, target_hash)
         return target_hash
 
-    def _import_new_table(self, source_schema, source_table, target_hash, target_table, is_query):
-        object_id = get_random_object_id()
+    def _import_new_table(self, source_schema, source_table, target_hash, target_table, is_query, do_checkout):
+        # First, import the query (or the foreign table) into a temporary table.
+        tmp_object_id = get_random_object_id()
         if is_query:
             # is_query precedes foreign_tables: if we're importing using a query, we don't care if it's a
             # foreign table or not since we're storing it as a full snapshot.
             self.object_engine.run_sql_in(source_schema,
                                           SQL("CREATE TABLE {}.{} AS ").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                               Identifier(object_id))
+                                                                               Identifier(tmp_object_id))
                                           + SQL(source_table))
         else:
             self.object_engine.copy_table(source_schema, source_table, SPLITGRAPH_META_SCHEMA,
-                                          object_id)
-        # TODO TF work this is where a lot of space wasting will come from; we should probably
-        # also do actual object hashing to avoid duplication for things like SELECT *
-        # Might not be necessary if we don't actually want to materialize the snapshot (wastes space).
-        self.objects.register_object(object_id, 'SNAP', namespace=self.namespace,
-                                     parent_object=None)
-        self.objects.register_table(self, target_table, target_hash,
-                                    self.object_engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, object_id),
-                                    [object_id])
-        return object_id
+                                          tmp_object_id)
+
+        # This is kind of a waste: if the table is indeed new (and fits in one chunk), the fragment manager will copy it
+        # over once again and give it the new object ID. Maybe the fragment manager could rename the table in this case.
+        actual_objects = self.objects.record_table_as_base(self, target_table, target_hash,
+                                                           source_schema=SPLITGRAPH_META_SCHEMA,
+                                                           source_table=tmp_object_id)
+        self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
+        if do_checkout:
+            self.images.by_hash(target_hash).get_table(target_table).materialize(target_table, self.to_schema())
+        return actual_objects
 
     # --- SYNCING WITH OTHER REPOSITORIES ---
 
@@ -851,7 +851,6 @@ def _sync(target, source, download=True, download_all=False, handler='DB', handl
     logging.info("Gathering remote metadata...")
     new_images, table_meta, object_locations, object_meta, tags = \
         gather_sync_metadata(target, source)
-
     if not new_images:
         logging.info("Nothing to do.")
         return
@@ -861,26 +860,24 @@ def _sync(target, source, download=True, download_all=False, handler='DB', handl
                           image.provenance_data)
 
     if download:
-        # Don't actually download any real objects until the user tries to check out a revision.
+        target.objects.register_objects(list(object_meta.values()))
+        target.objects.register_object_locations(object_locations)
+        # Don't actually download any real objects until the user tries to check out a revision, unless
+        # they want to do it in advance.
         if download_all:
-            # Check which new objects we need to fetch/preregister.
-            # We might already have some objects prefetched
-            # (e.g. if a new version of the table is the same as the old version)
             logging.info("Fetching remote objects...")
             target.objects.download_objects(source.objects,
-                                            objects_to_fetch=list(set(o[0] for o in object_meta)),
+                                            objects_to_fetch=list(object_meta.keys()),
                                             object_locations=object_locations)
 
-        target.objects.register_objects(object_meta)
-        target.objects.register_object_locations(object_locations)
         # Don't check anything out, keep the repo bare.
         set_head(target, None)
     else:
-        new_uploads = source.objects.upload_objects(target.objects, list(set(o[0] for o in object_meta)),
+        new_uploads = source.objects.upload_objects(target.objects, list(object_meta.keys()),
                                                     handler=handler, handler_params=handler_options)
         # Here we have to register the new objects after the upload but before we store their external
         # location (as the RLS for object_locations relies on the object metadata being in place)
-        target.objects.register_objects(object_meta, namespace=target.namespace)
+        target.objects.register_objects(list(object_meta.values()), namespace=target.namespace)
         target.objects.register_object_locations(object_locations + new_uploads)
         source.objects.register_object_locations(new_uploads)
 

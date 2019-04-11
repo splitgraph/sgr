@@ -199,6 +199,9 @@ class PsycopgEngine(SQLEngine):
         else:
             logging.info("Skipping the audit trigger as it's already installed")
 
+        # Start up the pgcrypto extension (required for hashing fragments)
+        self.run_sql("CREATE EXTENSION IF NOT EXISTS pgcrypto")
+
     def delete_database(self, database):
         """
         Helper function to drop a database using the admin connection
@@ -358,12 +361,14 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
     def _prepare_ri_data(self, schema, table):
         ri_cols, _ = zip(*self.get_change_key(schema, table))
+        ri_cols = tuple(r for r in ri_cols if r != SG_UD_FLAG)
         non_ri_cols_types = [c for c in self.get_column_names_types(schema, table)
                              if c[0] not in ri_cols and c[0] != SG_UD_FLAG]
         non_ri_cols, non_ri_types = zip(*non_ri_cols_types) if non_ri_cols_types else ((), ())
         return ri_cols, non_ri_cols, non_ri_types
 
-    def _generate_fragment_application(self, source_schema, source_table,
+    @staticmethod
+    def _generate_fragment_application(source_schema, source_table,
                                        target_schema, target_table, ri_data, extra_quals=None):
         ri_cols, non_ri_cols, _ = ri_data
         all_cols = ri_cols + non_ri_cols
@@ -408,7 +413,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                               for ss, st in objects)
         self.run_sql(query, (extra_qual_args * len(objects)) if extra_qual_args else None)
 
-    # Utilities to dump objects (SNAP/DIFF) into an external format.
+    # Utilities to dump objects into an external format.
     # We use a slightly ad hoc format: the schema (JSON) + a null byte + Postgres's copy_to
     # binary format (only contains data). There's probably some scope to make this more optimized, maybe
     # we should look into columnar on-disk formats (Parquet/Avro) but we currently just want to get the objects

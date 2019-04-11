@@ -5,9 +5,10 @@ from io import StringIO
 import pandas as pd
 from pandas.io.sql import get_schema
 from psycopg2.sql import Identifier, SQL
+from sqlalchemy import create_engine
+
 from splitgraph import SplitGraphException
 from splitgraph.core.image import Image
-from sqlalchemy import create_engine
 
 
 def _get_sqlalchemy_engine(engine):

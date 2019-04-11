@@ -49,16 +49,6 @@ class ObjectManager(FragmentManager, MetadataManager):
         # of more possible cache misses.
         self.eviction_min_fraction = float(CONFIG['SG_EVICTION_MIN_FRACTION'])
 
-    def get_full_object_tree(self):
-        """Returns a dictionary (object_id -> parent, object_format, size) with the full object tree
-        in the engine"""
-        query_result = self.metadata_engine.run_sql(select("objects", "object_id,parent_id,format,size"))
-
-        result = {}
-        for object_id, parent_id, object_format, size in query_result:
-            result[object_id] = parent_id, object_format, size
-        return result
-
     def get_downloaded_objects(self, limit_to=None):
         """
         Gets a list of objects currently in the Splitgraph cache (i.e. not only existing externally.)
@@ -235,7 +225,7 @@ class ObjectManager(FragmentManager, MetadataManager):
             if not to_fetch:  # pragma: no cover
                 self.object_engine.commit()
                 return to_fetch
-            required_space = sum(o[4] for o in self.get_object_meta(list(to_fetch)))
+            required_space = sum(o.size for o in self.get_object_meta(list(to_fetch)).values())
             current_occupied = self.get_cache_occupancy()
             logging.info("Need to download %d object(s) (%s), cache occupancy: %s/%s",
                          len(to_fetch), pretty_size(required_space),
@@ -304,7 +294,7 @@ class ObjectManager(FragmentManager, MetadataManager):
         """Increase the cache occupancy by objects' total size."""
         if not objects:
             return
-        total_size = sum(o[4] for o in self.get_object_meta(objects))
+        total_size = sum(o.size for o in self.get_object_meta(objects).values())
         self.object_engine.run_sql(SQL("UPDATE {}.object_cache_occupancy SET total_size = total_size + %s")
                                    .format(Identifier(SPLITGRAPH_META_SCHEMA)), (total_size,))
 
@@ -348,8 +338,8 @@ class ObjectManager(FragmentManager, MetadataManager):
             select("object_cache_status", "object_id,last_used", "refcount=0"),
             return_shape=ResultShape.MANY_MANY) if o[0] not in keep_objects]
 
-        object_meta = self.get_object_meta([o[0] for o in candidates]) if candidates else []
-        object_sizes = {o[0]: o[4] for o in object_meta}
+        object_meta = self.get_object_meta([o[0] for o in candidates]) if candidates else {}
+        object_sizes = {o.object_id: o.size for o in object_meta.values()}
 
         if required_space is None:
             # Just delete everything with refcount 0.
@@ -412,7 +402,7 @@ class ObjectManager(FragmentManager, MetadataManager):
         if not objects_to_fetch:
             return []
 
-        total_size = sum(o[4] for o in self.get_object_meta(objects_to_fetch))
+        total_size = sum(o.size for o in self.get_object_meta(objects_to_fetch).values())
         logging.info("Fetching %d object(s), total size %s", len(objects_to_fetch), pretty_size(total_size))
 
         # We don't actually seem to pass extra handler parameters when downloading objects since
@@ -447,7 +437,7 @@ class ObjectManager(FragmentManager, MetadataManager):
         if not objects_to_push:
             logging.info("Nothing to upload.")
             return []
-        total_size = sum(o[4] for o in self.get_object_meta(objects_to_push))
+        total_size = sum(o.size for o in self.get_object_meta(objects_to_push).values())
         logging.info("Uploading %d object(s), total size %s", len(objects_to_push), pretty_size(total_size))
 
         if handler == 'DB':

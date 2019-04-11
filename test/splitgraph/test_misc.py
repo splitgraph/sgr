@@ -1,5 +1,6 @@
-import pytest
 import psycopg2
+import pytest
+
 from splitgraph import SplitGraphException
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA
 from splitgraph.core._common import ensure_metadata_schema

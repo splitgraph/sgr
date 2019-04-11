@@ -12,6 +12,7 @@ from splitgraph.commandline.image_info import object_c
 from splitgraph.config import PG_PWD, PG_USER
 from splitgraph.core._common import parse_connection_string, serialize_connection_string, insert
 from splitgraph.core.engine import repository_exists
+from splitgraph.core.metadata_manager import OBJECT_COLS
 from splitgraph.core.registry import get_published_info
 from splitgraph.core.repository import Repository
 from splitgraph.hooks.mount_handlers import get_mount_handlers
@@ -82,7 +83,26 @@ def test_commandline_basics(pg_repo_local, mg_repo_local):
     # sgr diff, HEAD -> current staging (0-param)
     check_diff([pg_repo_local])
 
-    # sgr commit as a SNAP
+    # sgr commit as a full snapshot
+    # This is weird: at this point, the pgcrypto extension exists
+    #   (from this same connection (pg_repo_local.engine.connection) doing CREATE EXTENSION causes an error) but
+    #   calling digest() fails saying the function doesn't exist (ultimately `calculate_content_hash` fails, but also
+    #   reproducible by setting a breakpoint here and doing
+    #       pg_repo_local.engine.run_sql("SELECT digest('bla', 'sha256')")).
+    #  * This happens unless a rollback() is issued (even if it's issued straight after a connection commit).
+    #  * `pg_repo_local.engine.connection` is the same connection object as the one used by `calculate_content_hash`.
+    #  * If there's a set_trace() here and the commit is done from the commandline in a different shell
+    #    (after committing this connection), that commit succeeds but invoking the next line here fails anyway.
+    #  * This happens if the commit is done using the API instead of the click invoker as well (doing
+    #    pg_repo_local.commit(comment='Test commit', snap_only=True))
+    #  * This is not because this is the first test in the splitgraph suite that uses the engine (running
+    #    pytest -k test_commandline_commit_chunk works)
+    #
+    # It seems like something's wrong with this connection object. As a temporary (?) workaround, commit the connection
+    # and issue a rollback here, which seems to fix things.
+
+    pg_repo_local.engine.commit()
+    pg_repo_local.engine.rollback()
     result = runner.invoke(commit_c, [str(pg_repo_local), '-m', 'Test commit', '--snap'])
     assert result.exit_code == 0
     new_head = pg_repo_local.head
@@ -100,8 +120,7 @@ def test_commandline_basics(pg_repo_local, mg_repo_local):
     # sgr diff, just the new head -- assumes the diff on top of the old head.
     check_diff([pg_repo_local, new_head.image_hash[:20]])
 
-    # sgr diff, reverse order -- actually checks the two tables out and materializes them since there isn't a
-    # path of DIFF objects between them.
+    # sgr diff, reverse order -- actually materializes two tables to compare them
     result = runner.invoke(diff_c, [str(pg_repo_local), new_head.image_hash[:20], old_head.image_hash[:20]])
     assert "added 1 row" in result.output
     assert "removed 1 row" in result.output
@@ -174,11 +193,12 @@ def test_commandline_commit_chunk(pg_repo_local):
 def test_object_info(local_engine_empty):
     runner = CliRunner()
 
-    q = insert("objects", ("object_id", "format", "parent_id", "namespace", "size", "index"))
-    local_engine_empty.run_sql(q, ("base_1", "SNAP", None, "ns1", 12345, {"col_1": [10, 20]}))
-    local_engine_empty.run_sql(q, ("patch_1", "DIFF", "base_1", "ns1", 6789, {"col_1": [10, 20]}))
-    local_engine_empty.run_sql(q, ("patch_2", "DIFF", "base_1", "ns1", 1011, {"col_1": [10, 20],
-                                                                              "col_2": ['bla', 'ble']}))
+    q = insert("objects", OBJECT_COLS)
+    local_engine_empty.run_sql(q, ("base_1", "FRAG", None, "ns1", 12345, 'HASH1', 'HASH2', {"col_1": [10, 20]}))
+    local_engine_empty.run_sql(q, ("patch_1", "FRAG", "base_1", "ns1", 6789, 'HASH1', 'HASH2', {"col_1": [10, 20]}))
+    local_engine_empty.run_sql(q, ("patch_2", "FRAG", "base_1", "ns1", 1011, 'HASH1', 'HASH2', {"col_1": [10, 20],
+                                                                                                "col_2": ['bla',
+                                                                                                          'ble']}))
     # base_1: external, cached locally
     local_engine_empty.run_sql(insert("object_locations", ("object_id", "protocol", "location")),
                                ("base_1", "HTTP", "example.com/objects/base_1.tgz"))
@@ -195,8 +215,10 @@ def test_object_info(local_engine_empty):
 
 Parent: None
 Namespace: ns1
-Format: SNAP
+Format: FRAG
 Size: 12.06 KiB
+Insertion hash: HASH1
+Deletion hash: HASH2
 Column index:
   col_1: [10, 20]
 
@@ -211,9 +233,6 @@ Original location: example.com/objects/base_1.tgz (HTTP)
     result = runner.invoke(object_c, ["patch_2"])
     assert result.exit_code == 0
     assert "Location: created locally" in result.output
-
-
-
 
 
 def test_upstream_management(pg_repo_local):

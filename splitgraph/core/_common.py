@@ -70,7 +70,7 @@ def manage_audit(func):
         try:
             ensure_metadata_schema(repository.engine)
             manage_audit_triggers(repository.engine)
-            func(self, *args, **kwargs)
+            return func(self, *args, **kwargs)
         finally:
             self.engine.commit()
             manage_audit_triggers(repository.engine)
@@ -119,8 +119,8 @@ def _create_metadata_schema(engine):
                                                                                 Identifier("images")),
                    return_shape=None)
     engine.run_sql(SQL("""CREATE TABLE {}.{} (
-                    namespace       VARCHAR NOT NULL,
-                    repository      VARCHAR NOT NULL,
+                    namespace  VARCHAR NOT NULL,
+                    repository VARCHAR NOT NULL,
                     image_hash VARCHAR,
                     tag        VARCHAR,
                     PRIMARY KEY (namespace, repository, tag),
@@ -130,23 +130,43 @@ def _create_metadata_schema(engine):
                    return_shape=None)
 
     # Object metadata.
-    # * object_id: ID of the object. Currently is random, might be an actual hash in the future.
+    # * object_id: ID of the object, calculated as sha256((insertion_hash - deletion_hash) + sha256(table_schema)
+    #   + parent_id (if exists)).
+    #     (-) is the vector hash subtraction operator (see `fragment_manager.Digest`)
+    #     (+) is normal string concatenation
+    #     table_schema is str(table_schema) of the table this fragment belongs to (as specified in the `tables` table)
+    #       that encodes the column order, types, names and whether they're the primary key.
+    #   The parent_id is included in the hash so that fragments with the same contents aren't portable between
+    #     different parents (otherwise we can have issues where the same fragment with the same parent chain will be
+    #     reused for different tables, giving wrong results: see test_diff_fragment_hashing_reused_twice).
+    # * insertion_hash: the homomorphic hash of all rows inserted or upserted by this fragment (sum of sha256 hashes
+    #     of every row). Can be verified by running `FragmentManager.calculate_fragment_insertion_hash`.
+    # * deletion_hash: the homomorphic hash of the old values of all rows that were deleted or updated by this fragment.
+    #     This can't be verified directly by looking at the fragment (since it only contains the PKs of its deleted
+    #     rows): fetching all the fragments this fragment depends on is required.
+    #     insertion_hash - deletion hash form the content hash of this fragment.
+    #     Homomorphic hashing in this case has the property that the sum of content hashes of individual fragments
+    #     is equal to the content hash of the final materialized table.
     # * namespace: Original namespace this object was created in. Only the users with write rights to a given namespace
     #   can delete/alter this object's metadata.
     # * size: the on-disk (in-database) size occupied by the object table as reported by the engine
     #   (not the size stored externally).
-    # * format: Format of the object, SNAP for a full-table snapshot, DIFF for patch on top of another object.
-    # * parent_id: For a DIFF, the parent of an object. The parent is required in order to materialize (check out)
-    #   table pointed to by an object.
+    # * format: Format of the object. Currently, only FRAG (splitting the table into multiple chunks that can partially
+    #     overwrite each other) is supported.
+    # * parent_id: The parent of an object that the object partially overwrites. When a table is materialized, the
+    #     parent of an object is first copied into the staging area and then the child object is applied on top of it
+    #     (essentially, a breadth-first traversal of the object tree).
     # * index: A JSON object mapping columns spanned by this object to their minimum and maximum values. Used to
     #   discard and not download at all objects that definitely don't match a given query.
 
     engine.run_sql(SQL("""CREATE TABLE {}.{} (
-                    object_id  VARCHAR NOT NULL PRIMARY KEY,
-                    namespace  VARCHAR NOT NULL,
-                    size       BIGINT,
-                    format     VARCHAR NOT NULL,
-                    index      JSONB,
+                    object_id      VARCHAR NOT NULL PRIMARY KEY,
+                    namespace      VARCHAR NOT NULL,
+                    size           BIGINT,
+                    format         VARCHAR NOT NULL,
+                    index          JSONB,
+                    insertion_hash VARCHAR(64),
+                    deletion_hash  VARCHAR(64),
                     parent_id  VARCHAR)""").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")),
                    return_shape=None)
     # PK on object_id here (one object can't have more than 1 parent)
@@ -268,7 +288,7 @@ def ensure_metadata_schema(engine):
 
 
 def aggregate_changes(query_result, initial=None):
-    """Add a DIFF object to the aggregated diff result"""
+    """Add a changeset to the aggregated diff result"""
     result = list(initial) if initial else [0, 0, 0]
     for kind, kind_count in query_result:
         result[kind] += kind_count
@@ -347,10 +367,11 @@ def gather_sync_metadata(target, source):
     # Expand this list to include the objects' parents etc
     new_objects = target.objects.get_new_objects(source.objects.get_all_required_objects(top_objects))
     if new_objects:
+        new_objects = list(set(new_objects))
         object_meta = source.objects.get_object_meta(new_objects)
         object_locations = source.objects.get_external_object_locations(new_objects)
     else:
-        object_meta = []
+        object_meta = {}
         object_locations = []
     return new_images, table_meta, object_locations, object_meta, tags
 

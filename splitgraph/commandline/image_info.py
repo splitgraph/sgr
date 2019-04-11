@@ -6,13 +6,13 @@ from collections import Counter
 from pprint import pprint
 
 import click
+
 from splitgraph import get_engine, select, ResultShape
 from splitgraph.core._common import pretty_size
 from splitgraph.core._drawing import render_tree
 from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.repository import Repository
-
 from ._common import image_spec_parser, pluralise
 
 
@@ -178,15 +178,17 @@ def object_c(object_id):
     if not object_meta:
         raise click.BadParameter("Object %s does not exist!" % object_id)
 
-    _, object_format, parent_id, namespace, size, index = object_meta[0]
+    sg_object = object_meta[object_id]
     print("Object ID: %s" % object_id)
     print()
-    print("Parent: %s" % parent_id)
-    print("Namespace: %s" % namespace)
-    print("Format: %s" % object_format)
-    print("Size: %s" % pretty_size(size))
+    print("Parent: %s" % sg_object.parent_id)
+    print("Namespace: %s" % sg_object.namespace)
+    print("Format: %s" % sg_object.format)
+    print("Size: %s" % pretty_size(sg_object.size))
+    print("Insertion hash: %s" % sg_object.insertion_hash)
+    print("Deletion hash: %s" % sg_object.deletion_hash)
     print("Column index:")
-    for col_name, col_range in index.items():
+    for col_name, col_range in sg_object.index.items():
         print("  %s: [%r, %r]" % (col_name, col_range[0], col_range[1]))
     print()
     object_in_cache = object_manager.object_engine.run_sql(select("object_cache_status", "1", "object_id = %s"),

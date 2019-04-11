@@ -37,7 +37,8 @@ def _setup_object_cache_test(pg_repo_remote, longer_chain=False):
     pg_repo_local.objects.cleanup()
     pg_repo_local = clone(pg_repo_remote, download_all=False)
 
-    # 6 objects in the tree (SNAP -> SNAP -> DIFF for both tables)
+    # 6 objects in the tree (original fragment, new base fragment and a patch on top of that fragment
+    # for both tables)
     assert len(pg_repo_local.objects.get_all_objects()) == 6 if not longer_chain else 7
     assert len(pg_repo_local.objects.get_downloaded_objects()) == 0
     assert len(remote.objects.get_all_objects()) == 6 if not longer_chain else 7
@@ -54,7 +55,6 @@ def test_object_cache_loading(local_engine_empty, pg_repo_remote):
     pg_repo_local = _setup_object_cache_test(pg_repo_remote)
 
     object_manager = pg_repo_local.objects
-    object_tree = object_manager.get_full_object_tree()
     fruits_v3 = pg_repo_local.images['latest'].get_table('fruits')
     fruits_v2 = pg_repo_local.images[pg_repo_local.images['latest'].parent_id].get_table('fruits')
 
@@ -64,12 +64,16 @@ def test_object_cache_loading(local_engine_empty, pg_repo_remote):
     fruit_diff = fruits_v3.objects[0]
     assert len(fruits_v2.objects) == 1
     fruit_snap = fruits_v2.objects[0]
+
+    object_meta = object_manager.get_object_meta([fruit_diff, fruit_snap])
     # Reported by Postgres itself and stored by the engine in object_tree. Might really backfire on us on different
     # Postgres versions.
-    assert object_tree[fruit_diff] == (fruit_snap, 'DIFF', 8192)
-    assert object_tree[fruit_snap] == (None, 'SNAP', 8192)
+    assert object_meta[fruit_diff].parent_id == fruit_snap
+    assert object_meta[fruit_diff].size == 8192
+    assert object_meta[fruit_snap].parent_id is None
+    assert object_meta[fruit_snap].size == 8192
 
-    # Resolve and download the old version: only one SNAP should be downloaded.
+    # Resolve and download the old version: only one fragment should be downloaded.
     with object_manager.ensure_objects(fruits_v2) as required_objects:
         assert required_objects == [fruit_snap]
 
@@ -82,7 +86,7 @@ def test_object_cache_loading(local_engine_empty, pg_repo_remote):
     assert _get_refcount(object_manager, fruit_diff) is None
     assert len(object_manager.get_downloaded_objects()) == 1
 
-    # Resolve and download the new version: will download the DIFF.
+    # Resolve and download the new version: will download the patch.
     with object_manager.ensure_objects(fruits_v3) as required_objects:
         assert required_objects == [fruit_snap, fruit_diff]
 
@@ -139,7 +143,7 @@ def test_object_cache_eviction(local_engine_empty, pg_repo_remote):
     fruit_snap = fruits_v2.objects[0]
 
     # Check another test object has the same size
-    assert object_manager.get_full_object_tree()[vegetables_snap][2] == 8192
+    assert object_manager.get_object_meta([vegetables_snap])[vegetables_snap].size == 8192
 
     # Load the fruits objects into the cache
     with object_manager.ensure_objects(fruits_v3):
@@ -179,7 +183,7 @@ def test_object_cache_eviction(local_engine_empty, pg_repo_remote):
         assert not object_manager.object_engine.table_exists(SPLITGRAPH_META_SCHEMA, fruit_diff)
         assert len(object_manager.get_downloaded_objects()) == 1
 
-    # Loading the next version (DIFF + SNAP) (not enough space for 2 objects).
+    # Loading the next version: not enough space for 2 objects.
     object_manager.run_eviction([], None)
     with pytest.raises(SplitGraphException) as ex:
         with object_manager.ensure_objects(fruits_v3):
@@ -298,9 +302,9 @@ def test_object_cache_eviction_priority(local_engine_empty, pg_repo_remote):
         assert vegetables_snap not in current_objects
         assert vegetables_diff not in current_objects
 
-    # Slightly later: fetch just the old version (the SNAP)
+    # Slightly later: fetch just the old version (the original single fragment)
     with object_manager.ensure_objects(fruits_v2):
-        # Make sure the timestamp for the SNAP has been bumped.
+        # Make sure the timestamp for the fragment has been bumped.
         lu_2 = _get_last_used(object_manager, fruit_snap)
         assert _get_last_used(object_manager, fruit_diff) == lu_1
         assert lu_2 > lu_1
@@ -321,8 +325,8 @@ def test_object_cache_eviction_priority(local_engine_empty, pg_repo_remote):
         assert lu_3 > lu_2
         assert _get_last_used(object_manager, vegetables_diff) == lu_3
 
-        # The fruit SNAP was used more recently than the DIFF and they both have the same size,
-        # so the SNAP will stay.
+        # The first fruit fragment was used more recently than the patch and they both have the same size,
+        # so the original fragment will stay.
         current_objects = object_manager.get_downloaded_objects()
         assert fruit_snap in current_objects
         assert fruit_diff not in current_objects
@@ -374,7 +378,7 @@ def _prepare_object_filtering_dataset():
     OUTPUT.commit()
     obj_1 = OUTPUT.head.get_table('test').objects[0]
     # Sanity check on index for reference + easier debugging
-    assert OUTPUT.objects.get_object_meta([obj_1])[0][5] == \
+    assert OUTPUT.objects.get_object_meta([obj_1])[obj_1].index == \
            {'col1': [1, 5],
             'col2': [3, 5],
             'col3': ['aaaa', 'bbbb'],
@@ -385,7 +389,7 @@ def _prepare_object_filtering_dataset():
     OUTPUT.run_sql("INSERT INTO test VALUES (10, 4, 'cccc', '2015-12-30 00:00:00', '{\"a\": 10}')")
     OUTPUT.commit()
     obj_2 = OUTPUT.head.get_table('test').objects[0]
-    assert OUTPUT.objects.get_object_meta([obj_2])[0][5] == {
+    assert OUTPUT.objects.get_object_meta([obj_2])[obj_2].index == {
         'col1': [6, 10],
         'col2': [1, 4],
         'col3': ['abbb', 'cccc'],
@@ -395,7 +399,7 @@ def _prepare_object_filtering_dataset():
     OUTPUT.run_sql("INSERT INTO test VALUES (11, 10, 'dddd', '2016-01-05 00:00:00', '{\"a\": 5}')")
     OUTPUT.commit()
     obj_3 = OUTPUT.head.get_table('test').objects[0]
-    assert OUTPUT.objects.get_object_meta([obj_3])[0][5] == {
+    assert OUTPUT.objects.get_object_meta([obj_3])[obj_3].index == {
         'col1': [11, 11],
         'col2': [10, 10],
         'col3': ['dddd', 'dddd'],
@@ -407,7 +411,7 @@ def _prepare_object_filtering_dataset():
     OUTPUT.run_sql("INSERT INTO test VALUES (16, 15, 'ffff', '2016-01-04 00:00:00', '{\"a\": 10}')")
     OUTPUT.commit()
     obj_4 = OUTPUT.head.get_table('test').objects[0]
-    assert OUTPUT.objects.get_object_meta([obj_4])[0][5] == {
+    assert OUTPUT.objects.get_object_meta([obj_4])[obj_4].index == {
         'col1': [12, 16],
         'col2': [11, 15],
         'col3': ['eeee', 'ffff'],

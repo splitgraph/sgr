@@ -6,6 +6,7 @@ import re
 import shlex
 
 from parsimonious import Grammar
+
 from splitgraph.exceptions import SplitGraphException
 
 SPLITFILE_GRAMMAR = Grammar(r"""

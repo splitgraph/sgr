@@ -25,7 +25,7 @@ def checkout_c(image_spec, force, uncheckout, layered):
 
     This downloads the required physical objects and materializes all tables, unless ``-l`` or ``--layered`` is passed,
     in which case the objects are downloaded and a foreign data wrapper is set up on the engine to satisfy read-only
-    queries by combining results from each table's DIFF objects.
+    queries by combining results from each table's fragments.
 
     Tables checked out in this way are still presented as normal Postgres tables and can queried in the same way.
     Since the tables aren't materialized, layered querying is faster to set up, but since each query now results in a

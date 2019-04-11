@@ -33,7 +33,7 @@ def cli():
 #   (e.g. "Commit a Splitgraph schema" instead of "Commits a Splitgraph schema".)
 
 # Possible extra commands:
-# * sgr squash namespace/repo:image: takes an image, turns all of its objects into SNAPs and creates
+# * sgr squash namespace/repo:image: takes an image, turns all of its objects into snapshots and creates
 #   a new image (useful for publishing?)
 # * sgr reset namespace/repo:image: similar to a git "soft reset": moves the HEAD pointer to the target
 #   and restages all changes between the new target and the old HEAD.
@@ -91,4 +91,6 @@ except ImportError:
         """Import/export Splitgraph images in CSV format."""
         print("Install the ""ingestion"" setuptools extra to enable this feature!")
         exit(1)
+
+
     cli.add_command(csv_dummy)

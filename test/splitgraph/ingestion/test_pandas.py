@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 from pandas.compat import StringIO
 from pandas.util.testing import assert_frame_equal
+
 from splitgraph import SplitGraphException
 from splitgraph.ingestion.pandas import df_to_table, sql_to_df
 from test.splitgraph.conftest import load_csv, INGESTION_RESOURCES
@@ -76,7 +77,7 @@ def test_pandas_update_replace(ingestion_test_repo):
         (3, dt(2018, 12, 31, 23, 59, 49), 'mayonnaise'),
         (4, dt(2018, 12, 30, 0, 0), 'chandelier')]
 
-    # Since the table was replaced, we store it as a SNAP instead of a DIFF.
+    # Since the table was replaced, we store it as a new snapshot instead of a patch.
     assert len(ingestion_test_repo.images['latest'].get_table('test_table').objects) == 1
 
 
@@ -203,7 +204,7 @@ def test_pandas_read_roundtripping(ingestion_test_repo):
     # Pandas update syntax: update index 4 (fruit ID) to have a new timestamp.
     df.at[4, 'timestamp'] = dt(2018, 1, 1, 1, 1, 1)
 
-    # Write the whole df back in patch mode -- despite that, the DIFF will only contain the updated cell.
+    # Write the whole df back in patch mode -- despite that, the changeset will only contain the updated cell.
     df_to_table(df, ingestion_test_repo, 'test_table', if_exists='patch')
     new_2 = ingestion_test_repo.commit()
 
