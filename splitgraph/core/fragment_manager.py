@@ -294,7 +294,7 @@ class FragmentManager(MetadataManager):
             tmp_object_id = self._store_changeset(sub_changeset, table)
 
             deletion_hash, insertion_hash, object_id = self._get_patch_fragment_hashes(sub_changeset, table,
-                                                                                       tmp_object_id)
+                                                                                       tmp_object_id, parent)
 
             object_ids.append(object_id)
             if not self.get_new_objects([object_id]):
@@ -308,13 +308,13 @@ class FragmentManager(MetadataManager):
                                   deletion_hash=deletion_hash.hex(), parent_object=parent, changeset=sub_changeset)
         return object_ids
 
-    def _get_patch_fragment_hashes(self, sub_changeset, table, tmp_object_id):
+    def _get_patch_fragment_hashes(self, sub_changeset, table, tmp_object_id, parent_id):
         # Digest the rows.
         deletion_hash = self._hash_old_changeset_values(sub_changeset, table.table_schema)
         insertion_hash = self.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, tmp_object_id)
         content_hash = (insertion_hash - deletion_hash).hex()
         schema_hash = sha256(str(table.table_schema).encode('ascii')).hexdigest()
-        object_id = "o" + sha256((content_hash + schema_hash).encode('ascii')).hexdigest()[:-2]
+        object_id = "o" + sha256((content_hash + schema_hash + (parent_id or "")).encode('ascii')).hexdigest()[:-2]
         return deletion_hash, insertion_hash, object_id
 
     def _store_changeset(self, sub_changeset, table):

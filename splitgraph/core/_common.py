@@ -130,11 +130,15 @@ def _create_metadata_schema(engine):
                    return_shape=None)
 
     # Object metadata.
-    # * object_id: ID of the object, calculated as sha256((insertion_hash - deletion_hash) + sha256(table_schema)).
+    # * object_id: ID of the object, calculated as sha256((insertion_hash - deletion_hash) + sha256(table_schema)
+    #   + parent_id (if exists)).
     #     (-) is the vector hash subtraction operator (see `fragment_manager.Digest`)
     #     (+) is normal string concatenation
     #     table_schema is str(table_schema) of the table this fragment belongs to (as specified in the `tables` table)
     #       that encodes the column order, types, names and whether they're the primary key.
+    #   The parent_id is included in the hash so that fragments with the same contents aren't portable between
+    #     different parents (otherwise we can have issues where the same fragment with the same parent chain will be
+    #     reused for different tables, giving wrong results: see test_diff_fragment_hashing_reused_twice).
     # * insertion_hash: the homomorphic hash of all rows inserted or upserted by this fragment (sum of sha256 hashes
     #     of every row). Can be verified by running `FragmentManager.calculate_fragment_insertion_hash`.
     # * deletion_hash: the homomorphic hash of the old values of all rows that were deleted or updated by this fragment.

@@ -132,7 +132,7 @@ def test_diff_fragment_hashing(pg_repo_local):
     pg_repo_local.commit()
     fruits_v2 = pg_repo_local.head.get_table('fruits')
 
-    expected_object = 'oa4436fec80c4d3ee5052c4f954b555ddf2e139c108e6c854ebd86e201817fb'
+    expected_object = 'o66847afe022814a2ca3eef87c0c4e09cacf01a9d4c7d9e7e6c2292a2e5f07d'
     assert fruits_v2.objects == [expected_object]
 
     om = pg_repo_local.objects
@@ -209,15 +209,15 @@ def test_diff_fragment_hashing_long_chain(local_engine_empty):
     assert ins_hash_v1.hex() == v1_meta.insertion_hash
     assert del_hash_v1.hex() == v1_meta.deletion_hash
 
-    assert 'o' + sha256(((ins_hash_v1 - del_hash_v1).hex() + schema_hash).encode('ascii')).hexdigest()[:-2] \
-           == v1.objects[0]
+    assert 'o' + sha256(((ins_hash_v1 - del_hash_v1).hex() +
+                         schema_hash + base.objects[0]).encode('ascii')).hexdigest()[:-2] == v1.objects[0]
 
     ins_hash_v2 = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, v2.objects[0])
     del_hash_v2 = Digest.from_hex(sha256('("2019-01-02 02:02:02.222",2,two,2.2)'.encode('ascii')).hexdigest())
     assert del_hash_v2.hex() == '88e01be43523057d192b2fd65e69f651a9515b7e30d17a9fb852926b71e3bdff'
     assert ins_hash_v2.hex() == om.get_object_meta(v2.objects)[v2.objects[0]].insertion_hash
-    assert 'o' + sha256(((ins_hash_v2 - del_hash_v2).hex() + schema_hash).encode('ascii')).hexdigest()[:-2] \
-           == v2.objects[0]
+    assert 'o' + sha256(((ins_hash_v2 - del_hash_v2).hex() +
+                         schema_hash + v1.objects[0]).encode('ascii')).hexdigest()[:-2] == v2.objects[0]
 
     v2_meta = om.get_object_meta(v2.objects)[v2.objects[0]]
     assert ins_hash_v2.hex() == v2_meta.insertion_hash
@@ -225,8 +225,8 @@ def test_diff_fragment_hashing_long_chain(local_engine_empty):
 
     ins_hash_v3 = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, v3.objects[0])
     del_hash_v3 = Digest.from_hex(sha256('("2019-01-02 02:02:02.222",42,UPDATED,2.2)'.encode('ascii')).hexdigest())
-    assert 'o' + sha256(((ins_hash_v3 - del_hash_v3).hex() + schema_hash).encode('ascii')).hexdigest()[:-2] \
-           == v3.objects[0]
+    assert 'o' + sha256(((ins_hash_v3 - del_hash_v3).hex() +
+                         schema_hash + v2.objects[0]).encode('ascii')).hexdigest()[:-2] == v3.objects[0]
 
     v3_meta = om.get_object_meta(v3.objects)[v3.objects[0]]
     assert ins_hash_v3.hex() == v3_meta.insertion_hash
@@ -251,6 +251,30 @@ def test_diff_fragment_hashing_reused(pg_repo_local):
     assert v1.image_hash != v2.image_hash
     assert v1.get_table('fruits').objects == v2.get_table('fruits').objects
     assert len(pg_repo_local.objects.get_all_objects()) == 3  # The original fruits and vegetables + the one common diff
+
+
+def test_diff_fragment_hashing_reused_twice(pg_repo_local):
+    # Check that if the same change (UPDATE id=2) with the same old values is performed on top
+    # of different tables (one with a row id=3, one without), we can still check both out.
+
+    base_1 = pg_repo_local.head
+    pg_repo_local.run_sql("INSERT INTO fruits VALUES (3, 'kumquat')")
+    base_2 = pg_repo_local.commit()
+
+    base_1.checkout()
+    pg_repo_local.run_sql("UPDATE fruits SET name = 'mustard' WHERE fruit_id = 2")
+    v1 = pg_repo_local.commit()
+
+    base_2.checkout()
+    pg_repo_local.run_sql("UPDATE fruits SET name = 'mustard' WHERE fruit_id = 2")
+    v2 = pg_repo_local.commit()
+
+    v1.checkout()
+    assert pg_repo_local.run_sql("SELECT * FROM fruits ORDER BY fruit_id") == [(1, 'apple'), (2, 'mustard')]
+
+    v2.checkout()
+    assert pg_repo_local.run_sql("SELECT * FROM fruits ORDER BY fruit_id") == \
+           [(1, 'apple'), (2, 'mustard'), (3, 'kumquat')]
 
 
 def test_import_splitfile_reuses_hash(local_engine_empty):
