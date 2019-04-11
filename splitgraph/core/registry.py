@@ -117,6 +117,7 @@ def setup_registry_mode(engine):
     * Normal users can't access the splitgraph_meta schema directly: they're only supposed to be able to
       talk to it via stored procedures in splitgraph_api. Those procedures are set up with SECURITY INVOKER
       (run with those users' credentials) and what they can access is further restricted by RLS:
+
       * images/tables/tags meta tables: can only create/update/delete records where the namespace = user ID
       * objects/object_location tables: same. An object (piece of data) becomes owned by the user that creates
         it and still remains so even if someone else's image starts using it. Hence, the original owner can delete
