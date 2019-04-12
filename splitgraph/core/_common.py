@@ -30,14 +30,19 @@ def set_head(repository, image):
     set_tag(repository, image, 'HEAD')
 
 
-def manage_audit_triggers(engine):
+def manage_audit_triggers(engine, object_engine=None):
     """Does bookkeeping on audit triggers / audit table:
 
         * Detect tables that are being audited that don't need to be any more
           (e.g. they've been unmounted)
         * Drop audit triggers for those and delete all audit info for them
         * Set up audit triggers for new tables
+
+    :param engine: Metadata engine with information about images and their checkout state
+    :param object_engine: Object engine where the checked-out table and the audit triggers are located.
     """
+
+    object_engine = object_engine or engine
 
     from splitgraph.core.engine import get_current_repositories
     repos_tables = [(r.to_schema(), t) for r, head in get_current_repositories(engine) if head is not None
@@ -48,10 +53,10 @@ def manage_audit_triggers(engine):
     to_track = [t for t in repos_tables if t not in tracked_tables]
 
     if to_untrack:
-        engine.untrack_tables(to_untrack)
+        object_engine.untrack_tables(to_untrack)
 
     if to_track:
-        engine.track_tables(to_track)
+        object_engine.track_tables(to_track)
 
 
 def manage_audit(func):
@@ -69,11 +74,11 @@ def manage_audit(func):
             repository = self
         try:
             ensure_metadata_schema(repository.engine)
-            manage_audit_triggers(repository.engine)
+            manage_audit_triggers(repository.engine, repository.object_engine)
             return func(self, *args, **kwargs)
         finally:
             self.engine.commit()
-            manage_audit_triggers(repository.engine)
+            manage_audit_triggers(repository.engine, repository.object_engine)
 
     return wrapped
 

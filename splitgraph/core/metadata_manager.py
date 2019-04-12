@@ -107,6 +107,7 @@ class MetadataManager:
             return {}
 
         metadata = self.metadata_engine.run_sql(select("get_object_meta", ','.join(OBJECT_COLS),
-                                                       schema=SPLITGRAPH_API_SCHEMA, table_args="(%s)"), (objects,))
+                                                       schema=SPLITGRAPH_API_SCHEMA, table_args="(%s)"),
+                                                (list(objects),))
         result = [Object(*m) for m in metadata]
         return {o.object_id: o for o in result}

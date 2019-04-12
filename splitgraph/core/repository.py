@@ -399,7 +399,7 @@ class Repository:
         logging.info("Committing %s...", self.to_schema())
 
         self.object_engine.commit()
-        manage_audit_triggers(self.object_engine)
+        manage_audit_triggers(self.engine, self.object_engine)
 
         # HEAD can be None (if this is the first commit in this repository)
         head = self.head
@@ -410,7 +410,7 @@ class Repository:
         self._commit(head, image_hash, snap_only=snap_only, chunk_size=chunk_size, split_changeset=split_changeset)
 
         set_head(self, image_hash)
-        manage_audit_triggers(self.engine)
+        manage_audit_triggers(self.engine, self.object_engine)
         self.object_engine.commit()
         self.engine.commit()
         return self.images.by_hash(image_hash)
