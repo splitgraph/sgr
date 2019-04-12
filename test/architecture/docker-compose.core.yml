@@ -1,40 +1,7 @@
+# Compose file with just the architecture required for the core tests.
+
 version: '3'
 services:
-  pgorigin:
-    image: splitgraphci/pgorigin
-    environment:
-      - ORIGIN_USER=originro
-      - ORIGIN_PASS=originpass
-      - ORIGIN_PG_DB=origindb
-    expose:
-      - 5432
-    volumes:
-      - ./data/pgorigin:/src
-  mongoorigin:
-    image: splitgraphci/mongoorigin
-    ports:
-      - '0.0.0.0:27017:27017'
-    environment:
-      - ORIGIN_USER=originro
-      - ORIGIN_PASS=originpass
-      - ORIGIN_MONGO_DB=origindb
-    expose:
-      - 27017
-    volumes:
-      - ./data/mongoorigin:/src
-  mysqlorigin:
-    image: mysql:8.0.13
-    ports:
-      - '0.0.0.0:3306:3306'
-    environment:
-      - MYSQL_DATABASE=mysqlschema
-      - MYSQL_ROOT_PASSWORD=supersecure
-      - MYSQL_USER=originuser
-      - MYSQL_PASSWORD=originpass
-    expose:
-      - 3306
-    volumes:
-      - ./data/mysqlorigin/setup.sql:/docker-entrypoint-initdb.d/setup.sql:ro
   local_engine:
     image: splitgraph/driver
     ports:
