@@ -57,10 +57,16 @@ TEST_MOUNTPOINTS = [PG_MNT, PG_MNT_PULL, OUTPUT, MG_MNT,
 
 
 def healthcheck():
-    # A pre-flight check before we run the tests to make sure the test architecture has been brought up:
-    # the local_engine and the two origins (tested by mounting). There's still an implicit race condition
-    # here since we don't touch the remote_engine but we don't run any tests against it until later on,
-    # so it should have enough time to start up.
+    # A pre-flight check for most tests: check that the local and the remote engine fixtures are up and
+    # running.
+    get_current_repositories(get_engine())
+    get_current_repositories(get_engine('remote_engine'))
+
+
+def healthcheck_mounting():
+    # A pre-flight check for heavier tests that also ensures the three origin databases that we mount for FDW tests
+    # are up. Tests that require one of these databases to be up are marked with @pytest.mark.mounting and can be
+    # excluded with `poetry run pytest -m "not mounting"`.
     for mountpoint in [PG_MNT, MG_MNT, MYSQL_MNT]:
         mountpoint.delete()
     _mount_postgres(PG_MNT)

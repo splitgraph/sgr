@@ -5,9 +5,16 @@ TEST_DIR="${THIS_DIR}/.."
 REPO_ROOT_DIR="${TEST_DIR}/.."
 DEFAULT_SG_CONFIG_FILE="${TEST_DIR}/resources/.sgconfig"
 
+if [[ "$1" == "--mounting" ]]; then
+    echo "Wait for mounting architecture to be up"
+    HEALTHCHECK="import test.splitgraph.conftest as c; c.healthcheck_mounting()"
+else
+    echo "Wait for core architecture to be up"
+    HEALTHCHECK="import test.splitgraph.conftest as c; c.healthcheck()"
+fi
+
 export SG_CONFIG_FILE=${SG_CONFIG_FILE-"${DEFAULT_SG_CONFIG_FILE}"}
 
-echo "Wait for architecture to be up"
 echo "Using config file at $SG_CONFIG_FILE ..."
 
 _init_engines() {
@@ -20,7 +27,7 @@ _init_engines() {
 
 _run_health_check() {
     pushd "$REPO_ROOT_DIR" \
-        && python -c "import test.splitgraph.conftest as c; c.healthcheck()" \
+        && python -c "$HEALTHCHECK" \
         && return 0
 
     return 1

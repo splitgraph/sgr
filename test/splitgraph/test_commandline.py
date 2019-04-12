@@ -353,6 +353,7 @@ def test_commandline_tag_checkout(pg_repo_local):
     assert pg_repo_local.images.by_tag('v1', raise_on_none=False) is None
 
 
+@pytest.mark.mounting
 def test_misc_mountpoint_management(pg_repo_local, mg_repo_local):
     runner = CliRunner()
 
@@ -388,6 +389,7 @@ def test_misc_mountpoint_management(pg_repo_local, mg_repo_local):
     assert mg_repo_local.run_sql("SELECT duration from stuff WHERE name = 'James'") == [(Decimal(2),)]
 
 
+@pytest.mark.mounting
 def test_import(pg_repo_local, mg_repo_local):
     runner = CliRunner()
     head = pg_repo_local.head
@@ -508,6 +510,7 @@ def test_splitfile_rebuild_update(local_engine_empty, pg_repo_remote_multitag):
     assert OUTPUT.images() == curr_commits
 
 
+@pytest.mark.mounting
 def test_mount_and_import(local_engine_empty):
     runner = CliRunner()
     try:
