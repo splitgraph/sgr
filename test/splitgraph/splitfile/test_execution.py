@@ -28,6 +28,7 @@ def test_splitfile_preprocessor_escaping():
     assert 'tag-v1-whatever' in commands
 
 
+@pytest.mark.mounting
 def test_basic_splitfile(pg_repo_local, mg_repo_local):
     execute_commands(load_splitfile('create_table.splitfile'), output=OUTPUT)
     log = list(reversed(OUTPUT.head.get_log()))
@@ -42,6 +43,7 @@ def test_basic_splitfile(pg_repo_local, mg_repo_local):
     assert OUTPUT.run_sql("SELECT * FROM my_fruits") == [(1, 'pineapple'), (2, 'banana')]
 
 
+@pytest.mark.mounting
 def test_update_without_import_splitfile(pg_repo_local, mg_repo_local):
     # Test that correct commits are produced by executing an splitfile (both against newly created and already
     # existing tables on an existing mountpoint)
@@ -55,6 +57,7 @@ def test_update_without_import_splitfile(pg_repo_local, mg_repo_local):
     assert OUTPUT.run_sql("SELECT * FROM my_fruits") == [(1, 'pineapple')]
 
 
+@pytest.mark.mounting
 def test_local_import_splitfile(pg_repo_local, mg_repo_local):
     execute_commands(load_splitfile('import_local.splitfile'), output=OUTPUT)
     head = OUTPUT.head
@@ -69,6 +72,7 @@ def test_local_import_splitfile(pg_repo_local, mg_repo_local):
     assert not OUTPUT.engine.table_exists(OUTPUT.to_schema(), 'fruits')
 
 
+@pytest.mark.mounting
 def test_advanced_splitfile(pg_repo_local, mg_repo_local):
     execute_commands(load_splitfile('import_local_multiple_with_queries.splitfile'), output=OUTPUT)
 
@@ -86,6 +90,7 @@ def test_advanced_splitfile(pg_repo_local, mg_repo_local):
     assert OUTPUT.run_sql("SELECT * FROM my_fruits") == [(2, 'orange')]
 
 
+@pytest.mark.mounting
 def test_splitfile_cached(pg_repo_local, mg_repo_local):
     # Check that no new commits/snaps are created if we rerun the same splitfile
     execute_commands(load_splitfile('import_local_multiple_with_queries.splitfile'), output=OUTPUT)
@@ -144,6 +149,7 @@ def test_import_updating_splitfile_with_uploading(local_engine_empty, remote_eng
     assert OUTPUT.run_sql("SELECT fruit_id, name FROM my_fruits") == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]
 
 
+@pytest.mark.mounting
 def test_splitfile_end_to_end_with_uploading(local_engine_empty, remote_engine,
                                              pg_repo_remote_multitag, mg_repo_remote):
     # An end-to-end test:
@@ -171,6 +177,7 @@ def test_splitfile_end_to_end_with_uploading(local_engine_empty, remote_engine,
     assert stage_2.run_sql("SELECT id, name, fruit, vegetable FROM diet") == [(2, 'James', 'orange', 'carrot')]
 
 
+@pytest.mark.mounting
 def test_splitfile_schema_changes(pg_repo_local, mg_repo_local):
     execute_commands(load_splitfile('schema_changes.splitfile'), output=OUTPUT)
     old_output_head = OUTPUT.head
@@ -189,6 +196,7 @@ def test_splitfile_schema_changes(pg_repo_local, mg_repo_local):
     assert OUTPUT.run_sql("SELECT * FROM spirit_fruits") == [('James', 'orange', 12), ('Alex', 'mayonnaise', 22)]
 
 
+@pytest.mark.mounting
 def test_import_with_custom_query(pg_repo_local, mg_repo_local):
     # Mostly a lazy way for the test to distinguish between the importer storing the results of a query as a snap
     # and pointing the commit history to the diff for unchanged objects.
@@ -224,6 +232,7 @@ def test_import_with_custom_query(pg_repo_local, mg_repo_local):
             assert OUTPUT.objects.get_object_meta(objects)[objects[0]].parent_id is not None
 
 
+@pytest.mark.mounting
 def test_import_mount(local_engine_empty):
     execute_commands(load_splitfile('import_from_mounted_db.splitfile'), output=OUTPUT)
 
@@ -246,6 +255,7 @@ def test_import_mount(local_engine_empty):
         assert OUTPUT.objects.get_object_meta(objects)[objects[0]].parent_id is None
 
 
+@pytest.mark.mounting
 def test_import_all(local_engine_empty):
     execute_commands(load_splitfile('import_all_from_mounted.splitfile'), output=OUTPUT)
 
@@ -331,6 +341,7 @@ def test_from_local(pg_repo_local):
     assert OUTPUT.run_sql("SELECT * FROM join_table") == [(1, 'apple', 'potato'), (2, 'orange', 'carrot')]
 
 
+@pytest.mark.mounting
 def test_splitfile_with_external_sql(pg_repo_local, pg_repo_remote, mg_repo_local):
     # Tests are running from root so we pass in the path to the SQL manually to the splitfile.
     execute_commands(load_splitfile('external_sql.splitfile'),

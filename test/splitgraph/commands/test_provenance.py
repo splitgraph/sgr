@@ -1,3 +1,5 @@
+import pytest
+
 from splitgraph.splitfile import execute_commands
 from splitgraph.splitfile.execution import rebuild_image
 from test.splitgraph.conftest import OUTPUT, load_splitfile
@@ -40,6 +42,7 @@ def test_splitfile_recreate_custom_from(local_engine_empty, pg_repo_remote_multi
                                   "JOIN vegetables                                ON fruit_id = vegetable_id"]
 
 
+@pytest.mark.mounting
 def test_splitfile_incomplete_provenance(local_engine_empty, pg_repo_remote_multitag):
     # This splitfile has a MOUNT as its first command. We're expecting image_hash_to_splitfile to base the result
     # on the image created by MOUNT and not regenerate the MOUNT command.

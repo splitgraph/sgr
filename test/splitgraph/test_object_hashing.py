@@ -2,6 +2,8 @@ import operator
 from functools import reduce
 from hashlib import sha256
 
+import pytest
+
 from splitgraph import SPLITGRAPH_META_SCHEMA, execute_commands, Repository
 from splitgraph.core.fragment_manager import Digest
 from test.splitgraph.conftest import OUTPUT, PG_DATA, load_splitfile
@@ -277,6 +279,7 @@ def test_diff_fragment_hashing_reused_twice(pg_repo_local):
            [(1, 'apple'), (2, 'mustard'), (3, 'kumquat')]
 
 
+@pytest.mark.mounting
 def test_import_splitfile_reuses_hash(local_engine_empty):
     # Create two repositories and run the same Splitfile that loads some data from a mounted database.
     # Check that the same contents result in the same hash and no extra objects being created

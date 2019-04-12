@@ -315,6 +315,7 @@ def test_commit_on_empty(snap_only, pg_repo_local):
     assert OUTPUT.diff('test', image_1=OUTPUT.head.image_hash, image_2=None) == []
 
 
+@pytest.mark.mounting
 @pytest.mark.parametrize("mode", _COMMIT_MODES)
 def test_multiple_mountpoint_commit_diff(mode, pg_repo_local, mg_repo_local):
     pg_repo_local.run_sql("""INSERT INTO fruits VALUES (3, 'mayonnaise');
