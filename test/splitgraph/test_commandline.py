@@ -4,9 +4,9 @@ from decimal import Decimal
 
 import pytest
 
-from splitgraph import ResultShape
+from splitgraph import ResultShape, get_engine
 from splitgraph.commandline import *
-from splitgraph.commandline._common import image_spec_parser
+from splitgraph.commandline._common import ImageType
 from splitgraph.commandline.example import generate_c, alter_c, splitfile_c
 from splitgraph.commandline.image_info import object_c
 from splitgraph.config import PG_PWD, PG_USER
@@ -29,12 +29,12 @@ from click.testing import CliRunner
 
 
 def test_image_spec_parsing():
-    assert image_spec_parser()('test/pg_mount') == (Repository('test', 'pg_mount'), 'latest')
-    assert image_spec_parser(default='HEAD')('test/pg_mount') == (Repository('test', 'pg_mount'), 'HEAD')
-    assert image_spec_parser()('test/pg_mount:some_tag') == (Repository('test', 'pg_mount'), 'some_tag')
-    assert image_spec_parser()('pg_mount') == (Repository('', 'pg_mount'), 'latest')
-    assert image_spec_parser()('pg_mount:some_tag') == (Repository('', 'pg_mount'), 'some_tag')
-    assert image_spec_parser(default='HEAD')('pg_mount:some_tag') == (Repository('', 'pg_mount'), 'some_tag')
+    assert ImageType()('test/pg_mount') == (Repository('test', 'pg_mount'), 'latest')
+    assert ImageType(default='HEAD')('test/pg_mount') == (Repository('test', 'pg_mount'), 'HEAD')
+    assert ImageType()('test/pg_mount:some_tag') == (Repository('test', 'pg_mount'), 'some_tag')
+    assert ImageType()('pg_mount') == (Repository('', 'pg_mount'), 'latest')
+    assert ImageType()('pg_mount:some_tag') == (Repository('', 'pg_mount'), 'some_tag')
+    assert ImageType(default='HEAD')('pg_mount:some_tag') == (Repository('', 'pg_mount'), 'some_tag')
 
 
 def test_conn_string_parsing():

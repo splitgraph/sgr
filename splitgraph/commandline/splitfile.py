@@ -4,7 +4,6 @@ sgr commands related to building and rebuilding Splitfiles.
 
 import click
 
-from splitgraph.splitfile import execute_commands, rebuild_image
 from ._common import ImageType, RepositoryType
 
 
@@ -40,6 +39,9 @@ def build_c(splitfile, args, output_repository):
     """
     args = {k: v for k, v in args}
     print("Executing Splitfile %s with arguments %r" % (splitfile.name, args))
+
+    # Inline import: importing it at every sgr invocation takes extra time because of compiling the Splitfile grammar.
+    from splitgraph.splitfile import execute_commands
     execute_commands(splitfile.read(), args, output=output_repository)
 
 
@@ -148,4 +150,5 @@ def rebuild_c(image_spec, update, against):
     print("Rerunning %s:%s against:" % (str(repository), image.image_hash))
     print('\n'.join("%s:%s" % rs for rs in new_images.items()))
 
+    from splitgraph.splitfile import rebuild_image
     rebuild_image(image, new_images)
