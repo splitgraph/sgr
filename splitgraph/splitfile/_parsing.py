@@ -33,7 +33,7 @@ SPLITFILE_GRAMMAR = Grammar(r"""
     # "identifier" anyway. This is so that the grammar is slightly more readable. 
 
     handler = identifier
-    repository = ~"[_a-zA-Z0-9\-/]+"
+    repository = ~"[_a-zA-Z0-9-/]+"
     table_name = identifier
     table_alias = identifier
     tag_or_hash = identifier
@@ -51,7 +51,7 @@ SPLITFILE_GRAMMAR = Grammar(r"""
     non_single_quote = ~"(\\\\\\'|[^'])*"
 
     no_db_conn_string = ~"(\S+):(\S+)@(.+):(\d+)"
-    identifier = ~"[_a-zA-Z0-9\-]+"
+    identifier = ~"[_a-zA-Z0-9-]+"
     space = ~"\s*"
 """)
 

@@ -46,7 +46,7 @@ def manage_audit_triggers(engine, object_engine=None):
 
     from splitgraph.core.engine import get_current_repositories
     repos_tables = [(r.to_schema(), t) for r, head in get_current_repositories(engine) if head is not None
-                    for t in set(engine.get_all_tables(r.to_schema())) & set(head.get_tables())]
+                    for t in set(object_engine.get_all_tables(r.to_schema())) & set(head.get_tables())]
     tracked_tables = engine.get_tracked_tables()
 
     to_untrack = [t for t in tracked_tables if t not in repos_tables]
