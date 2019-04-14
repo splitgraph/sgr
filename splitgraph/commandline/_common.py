@@ -1,31 +1,39 @@
 """
 Various common functions used by the command line interface.
 """
+import click
 
-from splitgraph.core.repository import Repository
 
+class ImageType(click.ParamType):
+    name = 'Image'
 
-def image_spec_parser(default='latest'):
-    """
-    Makes a parser that extracts the full image specification (repository and hash/tag).
+    def __init__(self, default='latest'):
+        """
+        Makes a parser that extracts the full image specification (repository and hash/tag).
 
-    Image specification must have the format [NAMESPACE/]REPOSITORY[:HASH_OR_TAG].
+        Image specification must have the format [NAMESPACE/]REPOSITORY[:HASH_OR_TAG].
 
-    The parser returns a tuple of (repository object, tag or hash).
+        The parser returns a tuple of (repository object, tag or hash).
 
-    :param default: Default tag/hash for image where it's not specified.
-    """
+        :param default: Default tag/hash for image where it's not specified.
+        """
+        self.default = default
 
-    def image_spec(spec):
-        repo_image = spec.split(':')
+    def convert(self, value, param, ctx):
+        repo_image = value.split(':')
 
         if len(repo_image) == 2:
             tag_or_hash = repo_image[1]
         else:
-            tag_or_hash = default
-        return Repository.from_schema(repo_image[0]), tag_or_hash
+            tag_or_hash = self.default
+        return RepositoryType(repo_image[0]), tag_or_hash
 
-    return image_spec
+
+class RepositoryType(click.ParamType):
+    name = "Repository"
+
+    def convert(self, value, param, ctx):
+        return RepositoryType(value)
 
 
 class Color:

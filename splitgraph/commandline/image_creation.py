@@ -8,13 +8,12 @@ from collections import defaultdict
 import click
 
 from splitgraph import SplitGraphException
+from splitgraph.commandline._common import ImageType, RepositoryType
 from splitgraph.core.engine import repository_exists
-from splitgraph.core.repository import Repository
-from ._common import image_spec_parser
 
 
 @click.command(name='checkout')
-@click.argument('image_spec', type=image_spec_parser(default='HEAD'))
+@click.argument('image_spec', type=ImageType(default='HEAD'))
 @click.option('-f', '--force', help="Discard all pending changes to the schema", is_flag=True, default=False)
 @click.option('-u', '--uncheckout', help="Delete the checked out copy instead", is_flag=True, default=False)
 @click.option('-l', '--layered', help="Don't materialize the tables, use layered querying instead.",
@@ -54,7 +53,7 @@ def checkout_c(image_spec, force, uncheckout, layered):
 
 
 @click.command(name='commit')
-@click.argument('repository', type=Repository.from_schema)
+@click.argument('repository', type=RepositoryType())
 @click.option('-s', '--snap', default=False, is_flag=True,
               help='Store the table as a full table snapshot. This consumes more space, but makes checkouts faster.')
 @click.option('-c', '--chunk-size', default=None, type=int,
@@ -84,7 +83,7 @@ def commit_c(repository, snap, chunk_size, split_changesets, message):
 
 
 @click.command(name='tag')
-@click.argument('image_spec', type=image_spec_parser(default=None))
+@click.argument('image_spec', type=ImageType(default=None))
 @click.argument('tag', required=False)
 @click.option('-r', '--remove', required=False, is_flag=True, help="Remove the tag instead.")
 def tag_c(image_spec, tag, remove):
@@ -155,9 +154,9 @@ def tag_c(image_spec, tag, remove):
 
 
 @click.command(name='import')
-@click.argument('image_spec', type=image_spec_parser())
+@click.argument('image_spec', type=ImageType())
 @click.argument('table_or_query')
-@click.argument('target_repository', type=Repository.from_schema)
+@click.argument('target_repository', type=RepositoryType())
 @click.argument('target_table', required=False)
 def import_c(image_spec, table_or_query, target_repository, target_table):
     """

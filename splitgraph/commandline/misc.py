@@ -11,11 +11,11 @@ from splitgraph.core.engine import init_engine, repository_exists
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.repository import Repository
 from splitgraph.engine import get_engine
-from ._common import image_spec_parser
+from ._common import ImageType, RepositoryType
 
 
 @click.command(name='rm')
-@click.argument('image_spec', type=image_spec_parser(default=None))
+@click.argument('image_spec', type=ImageType(default=None))
 @click.option('-r', '--remote', help="Perform the deletion on a remote instead, specified by its alias")
 @click.option('-y', '--yes', help="Agree to deletion without confirmation", is_flag=True, default=False)
 def rm_c(image_spec, remote, yes):
@@ -89,7 +89,7 @@ def rm_c(image_spec, remote, yes):
 
 
 @click.command(name='prune')
-@click.argument('repository', type=Repository.from_schema)
+@click.argument('repository', type=RepositoryType())
 @click.option('-r', '--remote', help="Perform the deletion on a remote instead, specified by its alias")
 @click.option('-y', '--yes', help="Agree to deletion without confirmation", is_flag=True, default=False)
 def prune_c(repository, remote, yes):
@@ -129,7 +129,7 @@ def prune_c(repository, remote, yes):
 
 
 @click.command(name='init')
-@click.argument('repository', type=Repository.from_schema, required=False, default=None)
+@click.argument('repository', type=RepositoryType(), required=False, default=None)
 def init_c(repository):
     """
     Initialize a new repository/engine.
@@ -225,7 +225,7 @@ def config_c(no_shielding, config_format):
 
 
 @click.command(name='dump')
-@click.argument('repository', type=Repository.from_schema)
+@click.argument('repository', type=RepositoryType())
 def dump_c(repository):
     """
     Dump a repository to SQL.

@@ -13,11 +13,12 @@ from splitgraph.commandline.misc import rm_c, init_c, cleanup_c, config_c, prune
 from splitgraph.commandline.mount import mount_c
 from splitgraph.commandline.push_pull import pull_c, clone_c, push_c, publish_c, upstream_c
 from splitgraph.commandline.splitfile import build_c, provenance_c, rebuild_c
-from splitgraph.engine import get_engine
+from splitgraph.ingestion import csv
 
 
 def _commit_connection(_):
     """Commit and close the PG connection when the application finishes."""
+    from splitgraph.engine import get_engine
     get_engine().commit()
     get_engine().close()
 
@@ -80,17 +81,5 @@ cli.add_command(rebuild_c)
 # Examples
 cli.add_command(example)
 
-# Try importing the CSV ingestion extras
-try:
-    from splitgraph.ingestion import csv
-
-    cli.add_command(csv)
-except ImportError:
-    @click.command(name="csv")
-    def csv_dummy():
-        """Import/export Splitgraph images in CSV format."""
-        print("Install the ""ingestion"" setuptools extra to enable this feature!")
-        exit(1)
-
-
-    cli.add_command(csv_dummy)
+# CSV
+cli.add_command(csv)

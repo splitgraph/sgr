@@ -4,9 +4,8 @@ sgr commands related to building and rebuilding Splitfiles.
 
 import click
 
-from splitgraph.core.repository import Repository
 from splitgraph.splitfile import execute_commands, rebuild_image
-from ._common import image_spec_parser
+from ._common import ImageType, RepositoryType
 
 
 @click.command(name='build')
@@ -15,7 +14,7 @@ from ._common import image_spec_parser
               help='Parameters to be substituted into the Splitfile. All parameters mentioned in the file'
                    ' must be specified in order for the Splitfile to be executed.')
 @click.option('-o', '--output-repository', help='Repository to store the result in.',
-              type=Repository.from_schema)
+              type=RepositoryType())
 def build_c(splitfile, args, output_repository):
     """
     Build Splitgraph images.
@@ -45,7 +44,7 @@ def build_c(splitfile, args, output_repository):
 
 
 @click.command(name='provenance')
-@click.argument('image_spec', type=image_spec_parser())
+@click.argument('image_spec', type=ImageType())
 @click.option('-f', '--full', required=False, is_flag=True, help='Recreate the Splitfile used to create this image')
 @click.option('-e', '--error-on-end', required=False, default=True, is_flag=True,
               help='If False, bases the recreated Splitfile on the last image where the provenance chain breaks')
@@ -109,9 +108,9 @@ def provenance_c(image_spec, full, error_on_end):
 
 
 @click.command(name='rebuild')
-@click.argument('image_spec', type=image_spec_parser())
+@click.argument('image_spec', type=ImageType())
 @click.option('-u', '--update', is_flag=True, help='Rederive the image against the latest version of all dependencies.')
-@click.option('-a', '--against', multiple=True, type=image_spec_parser(),
+@click.option('-a', '--against', multiple=True, type=ImageType(),
               help='Images to substitute into the reconstructed Splitfile, of the form'
                    ' [NAMESPACE/]REPOSITORY[:HASH_OR_TAG]. Default tag is \'latest\'.')
 def rebuild_c(image_spec, update, against):
