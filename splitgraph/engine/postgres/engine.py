@@ -15,7 +15,7 @@ from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
-from splitgraph.core._common import select
+from splitgraph.core._common import select, ensure_metadata_schema
 from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.mount_handlers import mount_postgres
@@ -164,16 +164,26 @@ class PsycopgEngine(SQLEngine):
                             return_shape=ResultShape.ONE_ONE)
 
     def _admin_conn(self):
-        return psycopg2.connect(dbname=CONFIG['SG_ENGINE_POSTGRES_DB_NAME'],
-                                user=CONFIG['SG_ENGINE_ADMIN_USER'],
-                                password=CONFIG['SG_ENGINE_ADMIN_PWD'],
+        return psycopg2.connect(dbname=CONFIG['remotes'][self.name]['SG_ENGINE_POSTGRES_DB_NAME'],
+                                user=CONFIG['remotes'][self.name]['SG_ENGINE_ADMIN_USER'],
+                                password=CONFIG['remotes'][self.name]['SG_ENGINE_ADMIN_PWD'],
                                 host=self.conn_params[0],
                                 port=self.conn_params[1])
 
     def initialize(self):
         """Create the Splitgraph Postgres database and install the audit trigger"""
+
+        ensure_metadata_schema(self)
+
+        print({"dbname": CONFIG['remotes'][self.name]['SG_ENGINE_POSTGRES_DB_NAME'],
+                "user": CONFIG['remotes'][self.name]['SG_ENGINE_ADMIN_USER'],
+                "password": CONFIG['remotes'][self.name]['SG_ENGINE_ADMIN_PWD'],
+                "host": self.conn_params[0],
+                "port": self.conn_params[1]})
+
         # Use the connection to the "postgres" database to create the actual PG_DB
         with self._admin_conn() as admin_conn:
+            print(admin_conn)
             # CREATE DATABASE can't run inside of tx
             pg_db = self.conn_params[4]
 

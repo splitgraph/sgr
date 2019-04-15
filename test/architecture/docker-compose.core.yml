@@ -19,22 +19,22 @@ services:
       # the remote_engine / Minio handler that we use locally.
       - ../resources/.sgconfig:/.sgconfig
       - ../../:/splitgraph
-  remote_engine:
-    build:
-      context: ./src/
-      dockerfile: remote_engine/Dockerfile
-    ports:
-      - '0.0.0.0:5431:5431'
-    environment:
-      - POSTGRES_USER=sgr
-      - POSTGRES_PASSWORD=supersecure
-      - POSTGRES_DB=splitgraph
-      - PGPORT=5431
-    volumes:
-      - ./data/remote_engine/setup.sql:/docker-entrypoint-initdb.d/setup.sql
-      - ../../:/splitgraph
-    expose:
-      - 5431
+  # remote_engine:
+  #   build:
+  #     context: ./src/
+  #     dockerfile: remote_engine/Dockerfile
+  #   ports:
+  #     - '0.0.0.0:5431:5431'
+  #   environment:
+  #     - POSTGRES_USER=sgr
+  #     - POSTGRES_PASSWORD=supersecure
+  #     - POSTGRES_DB=splitgraph
+  #     - PGPORT=5431
+  #   volumes:
+  #     - ./data/remote_engine/setup.sql:/docker-entrypoint-initdb.d/setup.sql
+  #     - ../../:/splitgraph
+  #   expose:
+  #     - 5431
   # Name without an underscore because Minio client really wants to be compliant with the RFC
   objectstorage:
     image: minio/minio

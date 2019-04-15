@@ -39,13 +39,13 @@ SG_META_SCHEMA=${defaults:SG_META_SCHEMA}
 [remote: remote_engine]
 SG_ENGINE_HOST=remote_engine
 SG_ENGINE_PORT=5431
-SG_ENGINE_DB_NAME=${defaults:SG_ENGINE_DB_NAME}
-SG_ENGINE_USER=${defaults:SG_ENGINE_USER}
-SG_ENGINE_PWD=${defaults:SG_ENGINE_PWD}
-SG_ENGINE_ADMIN_USER=${defaults:SG_ENGINE_ADMIN_USER}
-SG_ENGINE_ADMIN_PWD=${defaults:SG_ENGINE_ADMIN_PWD}
-SG_ENGINE_POSTGRES_DB_NAME=${defaults:SG_ENGINE_POSTGRES_DB_NAME}
-SG_META_SCHEMA=${defaults:SG_META_SCHEMA}
+SG_ENGINE_DB_NAME=sgregistry
+SG_ENGINE_USER=sgadmin
+SG_ENGINE_PWD=supersecure
+SG_ENGINE_ADMIN_USER=sgadmin
+SG_ENGINE_ADMIN_PWD=supersecure
+SG_ENGINE_POSTGRES_DB_NAME=sgregistry
+SG_META_SCHEMA=splitgraph_meta
 
 [commands]
 DUMMY=test.splitgraph.splitfile.test_custom_commands.DummyCommand
