@@ -406,7 +406,10 @@ class ObjectEngine:
 
 
 # Name of the current global engine, 'LOCAL' for the local.
-_ENGINE = 'LOCAL'
+# Can be overridden via normal configuration routes, e.g.
+# $ SG_ENGINE=remote_engine sgr init
+# will initialize the remote engine instead.
+_ENGINE = CONFIG['SG_ENGINE'] or 'LOCAL'
 
 # Map of engine names -> Engine instances
 _ENGINES = {}
@@ -441,7 +444,6 @@ def get_engine(name=None, use_socket=False):
 
 
 # TODO
-# * allow switching engine from commandline / envvar
 # * add unprivileged engine into the config
 
 @contextmanager
