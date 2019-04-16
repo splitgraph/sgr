@@ -6,6 +6,8 @@ DEFAULTS = {
     # CRITICAL, ERROR, WARNING, INFO and DEBUG.
     "SG_LOGLEVEL": "WARNING",
     "SG_NAMESPACE": "sg-default-ns",
+    "SG_ENGINE_FDW_HOST": "localhost",
+    "SG_ENGINE_FDW_PORT": 5432,
     "SG_ENGINE_HOST": "localhost",
     "SG_ENGINE_PORT": 5432,
     "SG_ENGINE_DB_NAME": "splitgraph",
@@ -49,6 +51,8 @@ ARGUMENT_KEY_MAP = {
     "--engine": "SG_ENGINE",
     "--loglevel": "SG_LOGLEVEL",
     "--namespace": "SG_NAMESPACE",
+    "--engine-fdw-host": "SG_ENGINE_FDW_HOST",
+    "--engine-fdw-port": "SG_ENGINE_FDW_PORT",
     "--engine-host": "SG_ENGINE_HOST",
     "--engine-port": "SG_ENGINE_PORT",
     "--engine-db-name": "SG_ENGINE_DB_NAME",

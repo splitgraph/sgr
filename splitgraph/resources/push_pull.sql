@@ -9,6 +9,17 @@ CREATE SCHEMA splitgraph_api;
 ---
 -- Privilege checking
 ---
+
+-- splitgraph_api.get_current_username()
+-- Return the session_user of the current connection (default get_current_username() implementation)
+CREATE OR REPLACE FUNCTION splitgraph_api.get_current_username()
+RETURNS text AS $$
+BEGIN
+    RETURN session_user;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
 CREATE OR REPLACE FUNCTION splitgraph_api.check_privilege(namespace varchar) RETURNS void AS $$
 BEGIN
     IF (SELECT usesuper FROM pg_user WHERE usename = session_user) THEN
@@ -18,7 +29,7 @@ BEGIN
     -- Here "current_user" is the definer, "session_user" is the caller and we can access another session variable
     -- to establish identity.
     -- Use IS DISTINCT FROM rather than != to catch namespace=NULL
-    IF session_user IS DISTINCT FROM namespace THEN
+    IF splitgraph_api.get_current_username() IS DISTINCT FROM namespace THEN
         RAISE insufficient_privilege USING MESSAGE = 'You do not have access to this namespace!';
     END IF;
 END;

@@ -16,7 +16,7 @@ from splitgraph.config import CONFIG
 # List of config flags that are extracted from the global configuration and passed to a given engine
 _ENGINE_SPECIFIC_CONFIG = ['SG_ENGINE_HOST', 'SG_ENGINE_PORT', 'SG_ENGINE_USER', 'SG_ENGINE_PWD',
                            'SG_ENGINE_DB_NAME', 'SG_ENGINE_POSTGRES_DB_NAME', 'SG_ENGINE_ADMIN_USER',
-                           'SG_ENGINE_ADMIN_PWD']
+                           'SG_ENGINE_ADMIN_PWD', 'SG_ENGINE_FDW_HOST', 'SG_ENGINE_FDW_PORT']
 
 
 class ResultShape(Enum):

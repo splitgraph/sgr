@@ -32,7 +32,7 @@ def accumulate_lists(config_dict):
 
         Because  ConfigParser does not support nesting, we implement our own
         syntax via the key names of sections. The ':' character can be used in
-        section names to specify the left and right key. Example:
+        section names to specify the left and right key. Example::
 
             .ini config             new config_dict
 

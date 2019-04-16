@@ -489,8 +489,8 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         # used to populate --help)
         user = remote_engine.conn_params['SG_ENGINE_USER']
         pwd = remote_engine.conn_params['SG_ENGINE_PWD']
-        host = remote_engine.conn_params['SG_ENGINE_HOST']
-        port = remote_engine.conn_params['SG_ENGINE_PORT']
+        host = remote_engine.conn_params['SG_ENGINE_FDW_HOST']
+        port = remote_engine.conn_params['SG_ENGINE_FDW_PORT']
         dbname = remote_engine.conn_params['SG_ENGINE_DB_NAME']
 
         logging.info("Mounting remote schema %s@%s:%s/%s/%s to %s...", user, host, port, dbname,
