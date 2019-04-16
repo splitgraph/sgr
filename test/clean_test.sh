@@ -14,18 +14,20 @@
 TEST_DIR=$(cd -P -- "$(dirname -- "$0")" && pwd -P)
 ARCHITECTURE_DIR="${TEST_DIR}/architecture"
 REPO_ROOT_DIR="${TEST_DIR}/.."
+CORE_ARCHITECTURE="docker-compose.core.yml"
+MOUNTING_ARCHITECTURE="docker-compose.mounting.yml"
 
 pushd "$REPO_ROOT_DIR" \
     && pushd "${ARCHITECTURE_DIR}" \
-    && docker-compose pull \
-    && docker-compose down -v \
-    && docker-compose build \
-    && docker-compose up -d --force-recreate --remove-orphans \
+    && docker-compose -f $CORE_ARCHITECTURE -f $MOUNTING_ARCHITECTURE pull \
+    && docker-compose -f $CORE_ARCHITECTURE -f $MOUNTING_ARCHITECTURE down -v \
+    && docker-compose -f $CORE_ARCHITECTURE -f $MOUNTING_ARCHITECTURE build \
+    && docker-compose -f $CORE_ARCHITECTURE -f $MOUNTING_ARCHITECTURE up -d --force-recreate --remove-orphans \
     && popd \
     && echo "Wait for test architecture..." \
     && pushd "${ARCHITECTURE_DIR}" \
-    && ./wait-for-architecture.sh \
-    && docker-compose -f docker-compose.yml -f docker-compose.dev.yml run test \
+    && ./wait-for-architecture.sh --mounting \
+    && docker-compose -f $CORE_ARCHITECTURE -f $MOUNTING_ARCHITECTURE -f docker-compose.dev.yml run test \
     && echo "Tests passed" \
     && popd \
     && exit 0
