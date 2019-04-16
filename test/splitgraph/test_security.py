@@ -25,12 +25,12 @@ def unprivileged_remote_engine(remote_engine):
     _init_security_test(remote_engine)
     from splitgraph.engine import CONFIG
     CONFIG['remotes'][UNPRIVILEGED] = copy(CONFIG['remotes'][REMOTE_ENGINE])
-    CONFIG['remotes'][UNPRIVILEGED]['SG_ENGINE_USER'] = 'alice'
-    CONFIG['remotes'][UNPRIVILEGED]['SG_ENGINE_PWD'] = 'alicepw'
+    CONFIG['remotes'][UNPRIVILEGED]['SG_ENGINE_USER'] = 'testuser'
+    CONFIG['remotes'][UNPRIVILEGED]['SG_ENGINE_PWD'] = 'testpassword'
     E = get_engine(UNPRIVILEGED)
     try:
-        assert E.conn_params[2] == 'alice'
-        assert E.conn_params[3] == 'alicepw'
+        assert E.conn_params['SG_ENGINE_USER'] == 'testuser'
+        assert E.conn_params['SG_ENGINE_PWD'] == 'testpassword'
         yield E
     finally:
         E.rollback()
@@ -48,7 +48,7 @@ def test_pull_public(local_engine_empty, unprivileged_pg_repo):
 
 
 def test_push_own_delete_own(local_engine_empty, unprivileged_pg_repo, clean_minio):
-    destination = Repository(namespace='alice', repository='pg_mount')
+    destination = Repository(namespace='testuser', repository='pg_mount')
     clone(unprivileged_pg_repo, local_repository=destination)
 
     destination.images['latest'].checkout()
@@ -68,14 +68,14 @@ def test_push_own_delete_own(local_engine_empty, unprivileged_pg_repo, clean_min
 
 def test_push_own_delete_own_different_namespaces(local_engine_empty, unprivileged_pg_repo, clean_minio):
     # Same as previous but we clone into test/pg_mount and push to our own namespace
-    # to check that the objects we push get their namespaces rewritten to be alice, not test.
+    # to check that the objects we push get their namespaces rewritten to be testuser, not test.
     destination = clone(unprivileged_pg_repo)
 
     destination.images['latest'].checkout()
     destination.run_sql("""UPDATE fruits SET name = 'banana' WHERE fruit_id = 1""")
     destination.commit()
 
-    remote_destination = Repository('alice', 'pg_mount', unprivileged_pg_repo.engine)
+    remote_destination = Repository('testuser', 'pg_mount', unprivileged_pg_repo.engine)
     destination.upstream = remote_destination
 
     destination.push(handler='S3')
@@ -118,7 +118,7 @@ def test_impersonate_external_object(unprivileged_pg_repo, unprivileged_remote_e
 def test_publish_unpublish_own(local_engine_empty, pg_repo_remote, unprivileged_remote_engine):
     clone(pg_repo_remote, download_all=True)
     PG_MNT.images['latest'].tag('my_tag')
-    target_repo = Repository(namespace='alice', repository='pg_mount', engine=unprivileged_remote_engine)
+    target_repo = Repository(namespace='testuser', repository='pg_mount', engine=unprivileged_remote_engine)
 
     PG_MNT.push(remote_repository=target_repo)
 

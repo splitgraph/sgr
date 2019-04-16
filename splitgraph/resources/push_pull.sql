@@ -13,7 +13,6 @@ CREATE OR REPLACE FUNCTION splitgraph_api.check_privilege(namespace varchar) RET
 BEGIN
     IF (SELECT usesuper FROM pg_user WHERE usename = session_user) THEN
         -- Superusers bypass everything
-        RAISE WARNING 'PgBouncer auth request: %', "sgr.cookie";
         RETURN;
     END IF;
     -- Here "current_user" is the definer, "session_user" is the caller and we can access another session variable

@@ -11,7 +11,12 @@ from enum import Enum
 
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.config import CONFIG, PG_HOST, PG_PORT, PG_USER, PG_PWD, PG_DB
+from splitgraph.config import CONFIG
+
+# List of config flags that are extracted from the global configuration and passed to a given engine
+_ENGINE_SPECIFIC_CONFIG = ['SG_ENGINE_HOST', 'SG_ENGINE_PORT', 'SG_ENGINE_USER', 'SG_ENGINE_PWD',
+                           'SG_ENGINE_DB_NAME', 'SG_ENGINE_POSTGRES_DB_NAME', 'SG_ENGINE_ADMIN_USER',
+                           'SG_ENGINE_ADMIN_PWD']
 
 
 class ResultShape(Enum):
@@ -425,14 +430,19 @@ def get_engine(name=None, use_socket=False):
         # As we only have PostgresEngine, we instantiate that.
         from .postgres.engine import PostgresEngine
         if name == 'LOCAL':
+            conn_params = {c: CONFIG[c] for c in _ENGINE_SPECIFIC_CONFIG}
             if use_socket:
-                _ENGINES[name] = PostgresEngine((None, None, PG_USER, PG_PWD, PG_DB), name=name)
-            else:
-                _ENGINES[name] = PostgresEngine((PG_HOST, PG_PORT, PG_USER, PG_PWD, PG_DB), name=name)
+                conn_params['SG_ENGINE_HOST'] = None
+                conn_params['SG_ENGINE_PORT'] = None
         else:
-            _ENGINES[name] = PostgresEngine(get_remote_connection_params(name), name=name)
+            conn_params = {c: CONFIG['remotes'][name][c] for c in _ENGINE_SPECIFIC_CONFIG}
+        _ENGINES[name] = PostgresEngine(conn_params=conn_params, name=name)
     return _ENGINES[name]
 
+
+# TODO
+# * allow switching engine from commandline / envvar
+# * add unprivileged engine into the config
 
 @contextmanager
 def switch_engine(engine):

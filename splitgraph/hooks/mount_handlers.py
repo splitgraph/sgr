@@ -9,7 +9,6 @@ from importlib import import_module
 from psycopg2.sql import Identifier, SQL
 
 from splitgraph.config import PG_USER, CONFIG
-from splitgraph.core._common import ensure_metadata_schema
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitGraphException
 
@@ -190,7 +189,6 @@ def mount(mountpoint, mount_handler, handler_kwargs):
     :param handler_kwargs: Dictionary of options to pass to the mount handler.
     """
     engine = get_engine()
-    ensure_metadata_schema(engine)
     mh_func = get_mount_handler(mount_handler)
     logging.info("Connecting to remote server...")
 

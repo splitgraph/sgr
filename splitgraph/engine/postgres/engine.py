@@ -5,6 +5,7 @@ import itertools
 import json
 import logging
 import time
+from contextlib import contextmanager
 from pkgutil import get_data
 from threading import get_ident
 
@@ -42,7 +43,7 @@ class PsycopgEngine(SQLEngine):
 
     def __init__(self, conn_params, name):
         """
-        :param conn_params: Tuple of (server, port, username, password, dbname)
+        :param conn_params: Dictionary of connection params as stored in the config.
         """
         self.conn_params = conn_params
         self.name = name
@@ -51,13 +52,19 @@ class PsycopgEngine(SQLEngine):
         # claimed per thread). Usually, only one connection is used (for e.g. metadata management
         # or performing checkouts/commits). Multiple connections are used when downloading/uploading
         # objects from S3, since that is done in multiple threads and these connections are short-lived.
-        server, port, username, password, dbname = conn_params
-        self._pool = ThreadedConnectionPool(minconn=0, maxconn=CONFIG['SG_ENGINE_POOL'],
+        server, port, username, password, dbname = \
+            (conn_params['SG_ENGINE_HOST'], conn_params['SG_ENGINE_PORT'], conn_params['SG_ENGINE_USER'],
+             conn_params['SG_ENGINE_PWD'], conn_params['SG_ENGINE_DB_NAME'])
+
+        self._pool = ThreadedConnectionPool(minconn=0, maxconn=conn_params.get('SG_ENGINE_POOL',
+                                                                               CONFIG['SG_ENGINE_POOL']),
                                             host=server, port=port, user=username, password=password, dbname=dbname)
 
     def __repr__(self):
-        return "PostgresEngine %s (%s@%s:%s/%s)" % (self.name, self.conn_params[2], self.conn_params[0],
-                                                    str(self.conn_params[1]), self.conn_params[4])
+        return "PostgresEngine %s (%s@%s:%s/%s)" % (self.name, self.conn_params['SG_ENGINE_USER'],
+                                                    self.conn_params['SG_ENGINE_HOST'],
+                                                    str(self.conn_params['SG_ENGINE_PORT']),
+                                                    self.conn_params['SG_ENGINE_DB_NAME'])
 
     def commit(self):
         conn = self.connection
@@ -164,28 +171,20 @@ class PsycopgEngine(SQLEngine):
                             return_shape=ResultShape.ONE_ONE)
 
     def _admin_conn(self):
-        return psycopg2.connect(dbname=CONFIG['remotes'][self.name]['SG_ENGINE_POSTGRES_DB_NAME'],
-                                user=CONFIG['remotes'][self.name]['SG_ENGINE_ADMIN_USER'],
-                                password=CONFIG['remotes'][self.name]['SG_ENGINE_ADMIN_PWD'],
-                                host=self.conn_params[0],
-                                port=self.conn_params[1])
+        return psycopg2.connect(dbname=self.conn_params['SG_ENGINE_POSTGRES_DB_NAME'],
+                                user=self.conn_params['SG_ENGINE_ADMIN_USER'],
+                                password=self.conn_params['SG_ENGINE_ADMIN_PWD'],
+                                host=self.conn_params['SG_ENGINE_HOST'],
+                                port=self.conn_params['SG_ENGINE_PORT'])
 
     def initialize(self):
         """Create the Splitgraph Postgres database and install the audit trigger"""
-
-        ensure_metadata_schema(self)
-
-        print({"dbname": CONFIG['remotes'][self.name]['SG_ENGINE_POSTGRES_DB_NAME'],
-                "user": CONFIG['remotes'][self.name]['SG_ENGINE_ADMIN_USER'],
-                "password": CONFIG['remotes'][self.name]['SG_ENGINE_ADMIN_PWD'],
-                "host": self.conn_params[0],
-                "port": self.conn_params[1]})
+        logging.info("Initializing engine %r...", self)
 
         # Use the connection to the "postgres" database to create the actual PG_DB
         with self._admin_conn() as admin_conn:
-            print(admin_conn)
             # CREATE DATABASE can't run inside of tx
-            pg_db = self.conn_params[4]
+            pg_db = self.conn_params['SG_ENGINE_DB_NAME']
 
             admin_conn.autocommit = True
             with admin_conn.cursor() as cur:
@@ -196,6 +195,8 @@ class PsycopgEngine(SQLEngine):
                 else:
                     logging.info("Database %s already exists, skipping", pg_db)
 
+        logging.info("Ensuring the metadata schema at %s exists...", SPLITGRAPH_META_SCHEMA)
+        ensure_metadata_schema(self)
         # Install the push/pull API functions
         logging.info("Installing the push/pull API functions...")
         push_pull = get_data(_PACKAGE, _PUSH_PULL)
@@ -475,44 +476,47 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         # Have to commit the remote connection here since otherwise we won't see the new tables in the
         # mounted remote.
         remote_engine.commit()
-        self.delete_schema(REMOTE_TMP_SCHEMA)
+        with self._mount_remote_engine(remote_engine) as remote_schema:
+            for i, obj in enumerate(objects):
+                print("(%d/%d) %s..." % (i + 1, len(objects), obj))
+                self.copy_table(SPLITGRAPH_META_SCHEMA, obj, remote_schema, obj, with_pk_constraints=False)
+            self.connection.commit()
 
-        # In case the local engine isn't the same as the target (e.g. we're running from the FDW)
-        with switch_engine(self):
-            mount_postgres(mountpoint=REMOTE_TMP_SCHEMA, server=remote_engine.conn_params[0],
-                           port=remote_engine.conn_params[1], username=remote_engine.conn_params[2],
-                           password=remote_engine.conn_params[3], dbname=remote_engine.conn_params[4],
-                           remote_schema=SPLITGRAPH_META_SCHEMA)
-        for i, obj in enumerate(objects):
-            print("(%d/%d) %s..." % (i + 1, len(objects), obj))
-            self.copy_table(SPLITGRAPH_META_SCHEMA, obj, REMOTE_TMP_SCHEMA, obj, with_pk_constraints=False)
-        self.connection.commit()
+    @contextmanager
+    def _mount_remote_engine(self, remote_engine):
+        # Switch the global engine to "self" instead of LOCAL since `mount_postgres` uses the global engine
+        # (we can't easily pass args into it as it's also invoked from the command line with its arguments
+        # used to populate --help)
+        user = remote_engine.conn_params['SG_ENGINE_USER']
+        pwd = remote_engine.conn_params['SG_ENGINE_PWD']
+        host = remote_engine.conn_params['SG_ENGINE_HOST']
+        port = remote_engine.conn_params['SG_ENGINE_PORT']
+        dbname = remote_engine.conn_params['SG_ENGINE_DB_NAME']
+
+        logging.info("Mounting remote schema %s@%s:%s/%s/%s to %s...", user, host, port, dbname,
+                     SPLITGRAPH_META_SCHEMA, REMOTE_TMP_SCHEMA)
         self.delete_schema(REMOTE_TMP_SCHEMA)
+        with switch_engine(self):
+            mount_postgres(mountpoint=REMOTE_TMP_SCHEMA, server=host, port=port, username=user, password=pwd,
+                           dbname=dbname, remote_schema=SPLITGRAPH_META_SCHEMA)
+        try:
+            yield REMOTE_TMP_SCHEMA
+        finally:
+            self.delete_schema(REMOTE_TMP_SCHEMA)
 
     def download_objects(self, objects, remote_engine):
         # Instead of connecting and pushing queries to it from the Python client, we just mount the remote mountpoint
-        # into a temporary space (without any checking out) and SELECT the required data into our local tables.
+        # into a temporary space (without any checking out) and SELECT the  required data into our local tables.
 
-        server, port, user, pwd, dbname = remote_engine.conn_params
-        self.delete_schema(REMOTE_TMP_SCHEMA)
-        logging.info("Mounting remote schema %s@%s:%s/%s/%s to %s...", user, server, port, dbname,
-                     SPLITGRAPH_META_SCHEMA, REMOTE_TMP_SCHEMA)
-
-        # In case the local engine isn't the same as the target (e.g. we're running from the FDW)
-        with switch_engine(self):
-            mount_postgres(mountpoint=REMOTE_TMP_SCHEMA, server=server, port=port, username=user, password=pwd,
-                           dbname=dbname,
-                           remote_schema=SPLITGRAPH_META_SCHEMA)
-
-        try:
+        with self._mount_remote_engine(remote_engine) as remote_schema:
             downloaded_objects = []
             for i, obj in enumerate(objects):
                 logging.info("(%d/%d) Downloading %s...", i + 1, len(objects), obj)
-                if not self.table_exists(REMOTE_TMP_SCHEMA, obj):
+                if not self.table_exists(remote_schema, obj):
                     logging.error("%s not found on the remote engine!", obj)
                     continue
                 # Foreign tables don't have PK constraints so we'll have to apply them manually.
-                self.copy_table(REMOTE_TMP_SCHEMA, obj, SPLITGRAPH_META_SCHEMA, obj, with_pk_constraints=False)
+                self.copy_table(remote_schema, obj, SPLITGRAPH_META_SCHEMA, obj, with_pk_constraints=False)
                 # Get the PKs from the remote and apply them
                 source_pks = remote_engine.get_primary_keys(SPLITGRAPH_META_SCHEMA, obj)
                 if source_pks:
@@ -522,9 +526,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                                  return_shape=ResultShape.NONE)
                 self.connection.commit()
                 downloaded_objects.append(obj)
-        finally:
-            self.delete_schema(REMOTE_TMP_SCHEMA)
-        return downloaded_objects
+            return downloaded_objects
 
 
 def _split_ri_cols(action, row_data, changed_fields, ri_cols):
