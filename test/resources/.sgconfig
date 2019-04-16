@@ -25,27 +25,34 @@ SG_REPO_LOOKUP=remote_engine
 ; Test the lookup override works
 SG_REPO_LOOKUP_OVERRIDE=overridden/repo:LOCAL
 
-[remote: local]
-SG_ENGINE_HOST=${defaults:SG_ENGINE_HOST}
-SG_ENGINE_PORT=${defaults:SG_ENGINE_PORT}
-SG_ENGINE_DB_NAME=${defaults:SG_ENGINE_DB_NAME}
-SG_ENGINE_USER=${defaults:SG_ENGINE_USER}
-SG_ENGINE_PWD=${defaults:SG_ENGINE_PWD}
-SG_ENGINE_ADMIN_USER=${defaults:SG_ENGINE_ADMIN_USER}
-SG_ENGINE_ADMIN_PWD=${defaults:SG_ENGINE_ADMIN_PWD}
-SG_ENGINE_POSTGRES_DB_NAME=${defaults:SG_ENGINE_POSTGRES_DB_NAME}
-SG_META_SCHEMA=${defaults:SG_META_SCHEMA}
-
 [remote: remote_engine]
 SG_ENGINE_HOST=remote_engine
 SG_ENGINE_PORT=5431
-SG_ENGINE_DB_NAME=${defaults:SG_ENGINE_DB_NAME}
-SG_ENGINE_USER=${defaults:SG_ENGINE_USER}
-SG_ENGINE_PWD=${defaults:SG_ENGINE_PWD}
-SG_ENGINE_ADMIN_USER=${defaults:SG_ENGINE_ADMIN_USER}
-SG_ENGINE_ADMIN_PWD=${defaults:SG_ENGINE_ADMIN_PWD}
-SG_ENGINE_POSTGRES_DB_NAME=${defaults:SG_ENGINE_POSTGRES_DB_NAME}
-SG_META_SCHEMA=${defaults:SG_META_SCHEMA}
+SG_ENGINE_FDW_HOST=remote_engine
+SG_ENGINE_FDW_PORT=5431
+SG_ENGINE_DB_NAME=splitgraph
+SG_ENGINE_USER=sgr
+SG_ENGINE_PWD=supersecure
+SG_ENGINE_ADMIN_USER=sgr
+SG_ENGINE_ADMIN_PWD=supersecure
+SG_ENGINE_POSTGRES_DB_NAME=postgres
+SG_META_SCHEMA=splitgraph_meta
+
+; Used in security tests. We currently rely on remote_engine being accessed as a superuser for the rest of the
+; test suite: only in test/splitgraph/test_security.py do we use this engine to test accessing a remote engine
+; as an unprivileged user.
+[remote: unprivileged_remote_engine]
+SG_ENGINE_HOST=remote_engine
+SG_ENGINE_PORT=5431
+SG_ENGINE_FDW_HOST=remote_engine
+SG_ENGINE_FDW_PORT=5431
+SG_ENGINE_DB_NAME=splitgraph
+SG_ENGINE_USER=testuser
+SG_ENGINE_PWD=testpassword
+SG_ENGINE_ADMIN_USER=
+SG_ENGINE_ADMIN_PWD=
+SG_ENGINE_POSTGRES_DB_NAME=postgres
+SG_META_SCHEMA=splitgraph_meta
 
 [commands]
 DUMMY=test.splitgraph.splitfile.test_custom_commands.DummyCommand

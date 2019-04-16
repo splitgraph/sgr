@@ -84,7 +84,7 @@ def rm_c(image_spec, remote, yes):
             click.confirm("Continue? ", abort=True)
 
         repository.images.delete(images_to_delete)
-        repository.engine.commit()
+        repository.commit_engines()
         print("Success.")
 
 
@@ -124,7 +124,7 @@ def prune_c(repository, remote, yes):
         click.confirm("Continue? ", abort=True)
 
     repository.images.delete(dangling_images)
-    repository.engine.commit()
+    repository.commit_engines()
     print("Success.")
 
 

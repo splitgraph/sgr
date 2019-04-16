@@ -73,11 +73,10 @@ def manage_audit(func):
         else:
             repository = self
         try:
-            ensure_metadata_schema(repository.engine)
             manage_audit_triggers(repository.engine, repository.object_engine)
             return func(self, *args, **kwargs)
         finally:
-            self.engine.commit()
+            repository.commit_engines()
             manage_audit_triggers(repository.engine, repository.object_engine)
 
     return wrapped

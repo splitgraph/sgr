@@ -33,7 +33,7 @@ def test_schema_changes(pg_repo_local, test_case):
 
     assert pg_repo_local.engine.get_full_table_schema(pg_repo_local.to_schema(), 'fruits') == OLD_SCHEMA
     pg_repo_local.run_sql(action)
-    pg_repo_local.engine.commit()
+    pg_repo_local.commit_engines()
     assert pg_repo_local.engine.get_full_table_schema(pg_repo_local.to_schema(), 'fruits') == expected_new_schema
 
     head = pg_repo_local.head

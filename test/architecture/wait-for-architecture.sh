@@ -18,8 +18,8 @@ export SG_CONFIG_FILE=${SG_CONFIG_FILE-"${DEFAULT_SG_CONFIG_FILE}"}
 echo "Using config file at $SG_CONFIG_FILE ..."
 
 _init_engines() {
-  ( SG_ENGINE_HOST=local_engine SG_ENGINE_PORT=5432 sgr init ) \
-    && ( SG_ENGINE_HOST=remote_engine SG_ENGINE_PORT=5431 sgr init ) \
+  ( SG_ENGINE=LOCAL sgr init ) \
+    && ( SG_ENGINE=remote_engine sgr init ) \
     && return 0
 
   return 1

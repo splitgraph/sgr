@@ -233,6 +233,14 @@ class Repository:
 
     # --- GENERAL REPOSITORY MANAGEMENT ---
 
+    def commit_engines(self):
+        """
+        Commit the underlying transactions on both engines that the repository uses.
+        """
+        self.engine.commit()
+        if self.engine != self.object_engine:
+            self.object_engine.commit()
+
     @manage_audit
     def init(self):
         """
@@ -817,8 +825,7 @@ def import_table_from_remote(remote_repository, remote_tables, remote_image_hash
                                     target_hash=target_hash)
 
     tmp_mountpoint.delete()
-    target_repository.engine.commit()
-    target_repository.object_engine.commit()
+    target_repository.commit_engines()
 
 
 def table_exists_at(repository, table_name, image=None):
@@ -884,6 +891,9 @@ def _sync(target, source, download=True, download_all=False, handler='DB', handl
     # Register the new tables / tags.
     target.objects.register_tables(target, table_meta)
     target.set_tags(tags)
+
+    target.commit_engines()
+    source.commit_engines()
 
     print(("Fetched" if download else "Uploaded") +
           " metadata for %d object(s), %d table version(s) and %d tag(s)." % (len(object_meta), len(table_meta),

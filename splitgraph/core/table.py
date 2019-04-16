@@ -132,7 +132,5 @@ class Table:
 
                 # End the transaction so that nothing else deadlocks (at this point we've returned
                 # all the data we needed to the runtime so nothing will be lost).
-                engine.commit()
-                # Release the metadata tables as well
-                self.repository.engine.commit()
+                self.repository.commit_engines()
                 return

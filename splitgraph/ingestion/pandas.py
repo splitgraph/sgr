@@ -12,7 +12,10 @@ from splitgraph.core.image import Image
 
 
 def _get_sqlalchemy_engine(engine):
-    server, port, username, password, dbname = engine.conn_params
+    server, port, username, password, dbname = \
+        (engine.conn_params['SG_ENGINE_HOST'], engine.conn_params['SG_ENGINE_PORT'],
+         engine.conn_params['SG_ENGINE_USER'], engine.conn_params['SG_ENGINE_PWD'],
+         engine.conn_params['SG_ENGINE_DB_NAME'])
     return create_engine('postgresql://%s:%s@%s:%s/%s' % (username, password, server, port, dbname))
 
 
@@ -143,7 +146,7 @@ def df_to_table(df, repository, table, if_exists='patch'):
             repository.engine.delete_table(schema, table)
         _df_to_empty_table(repository.engine, df, schema, table, use_ordinal_hack=if_exists == 'replace')
         _df_to_table_fast(repository.engine, df, schema, table)
-        repository.engine.commit()
+        repository.commit_engines()
         return
 
     # If we've reached this point, the table exists and we're patching values into it. Ingest the table
@@ -187,6 +190,6 @@ def df_to_table(df, repository, table, if_exists='patch'):
             query += SQL(" DO NOTHING")
 
         repository.engine.run_sql(query)
-        repository.engine.commit()
+        repository.commit_engines()
     finally:
         repository.engine.delete_table(schema, tmp_table)

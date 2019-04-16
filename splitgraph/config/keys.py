@@ -1,8 +1,13 @@
 DEFAULTS = {
+    # Name of the engine that the sgr client uses (can be overridden to make
+    # the default global engine point to e.g the remote engine).
+    "SG_ENGINE": None,
     # Logging threshold (log messages not emitted below this). Accepted values are
     # CRITICAL, ERROR, WARNING, INFO and DEBUG.
     "SG_LOGLEVEL": "WARNING",
     "SG_NAMESPACE": "sg-default-ns",
+    "SG_ENGINE_FDW_HOST": "localhost",
+    "SG_ENGINE_FDW_PORT": 5432,
     "SG_ENGINE_HOST": "localhost",
     "SG_ENGINE_PORT": 5432,
     "SG_ENGINE_DB_NAME": "splitgraph",
@@ -43,8 +48,11 @@ SENSITIVE_KEYS = [k for k in KEYS if '_PWD' in k]
     If you add/remove keys from DEFAULTS, make sure to do so here too.
 """
 ARGUMENT_KEY_MAP = {
+    "--engine": "SG_ENGINE",
     "--loglevel": "SG_LOGLEVEL",
     "--namespace": "SG_NAMESPACE",
+    "--engine-fdw-host": "SG_ENGINE_FDW_HOST",
+    "--engine-fdw-port": "SG_ENGINE_FDW_PORT",
     "--engine-host": "SG_ENGINE_HOST",
     "--engine-port": "SG_ENGINE_PORT",
     "--engine-db-name": "SG_ENGINE_DB_NAME",

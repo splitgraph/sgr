@@ -91,7 +91,6 @@ def get_current_repositories(engine):
     :param engine: Engine
     :return: List of (Repository object, current HEAD image)
     """
-    ensure_metadata_schema(engine)
     from splitgraph.core.repository import Repository
 
     all_repositories = [Repository(n, r, engine) for n, r in
