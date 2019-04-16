@@ -714,6 +714,20 @@ def test_init_new_db():
         get_engine().delete_database('testdb')
 
 
+def test_init_override_engine():
+    # Doesn't really test that all of the overridden engine's config makes it into the Engine object that
+    # initialize() is called on but that's tested implicitly throughout the rest of the suite: here, since
+    # initialize() logs the engine it uses, check that the remote engine is being initialized.
+
+    # Inject the config here. If this check_output breaks (with something like "KeyError: 'remotes' not in CONFIG"),
+    # this path is probably the culprit.
+    output = subprocess.check_output("SG_CONFIG_FILE=%s SG_LOGLEVEL=INFO SG_ENGINE=remote_engine sgr init"
+                                     % os.path.join(os.path.dirname(__file__), '../resources/.sgconfig'), shell=True,
+                                     stderr=subprocess.STDOUT)
+    output = output.decode('utf-8')
+    assert str(get_engine('remote_engine')) in output
+
+
 def test_examples(local_engine_empty):
     # Test the example-generating commands used in the quickstart
 
