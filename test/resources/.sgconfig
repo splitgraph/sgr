@@ -36,6 +36,20 @@ SG_ENGINE_ADMIN_PWD=supersecure
 SG_ENGINE_POSTGRES_DB_NAME=postgres
 SG_META_SCHEMA=splitgraph_meta
 
+; Used in security tests. We currently rely on remote_engine being accessed as a superuser for the rest of the
+; test suite: only in test/splitgraph/test_security.py do we use this engine to test accessing a remote engine
+; as an unprivileged user.
+[remote: unprivileged_remote_engine]
+SG_ENGINE_HOST=remote_engine
+SG_ENGINE_PORT=5431
+SG_ENGINE_DB_NAME=splitgraph
+SG_ENGINE_USER=testuser
+SG_ENGINE_PWD=testpassword
+SG_ENGINE_ADMIN_USER=
+SG_ENGINE_ADMIN_PWD=
+SG_ENGINE_POSTGRES_DB_NAME=postgres
+SG_META_SCHEMA=splitgraph_meta
+
 [commands]
 DUMMY=test.splitgraph.splitfile.test_custom_commands.DummyCommand
 BOBBYTABLES=test.splitgraph.splitfile.test_custom_commands.CalcHashTestCommand

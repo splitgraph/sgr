@@ -192,6 +192,24 @@ def remote_engine():
         engine.close()
 
 
+@pytest.fixture()
+def unprivileged_remote_engine(remote_engine):
+    toggle_registry_rls(remote_engine, 'ENABLE')
+    # Assuption: unprivileged_remote_engine is the same server as remote_engine but with an
+    # unprivileged user.
+    engine = get_engine('unprivileged_remote_engine')
+    try:
+        yield engine
+    finally:
+        engine.rollback()
+        engine.close()
+
+
+@pytest.fixture()
+def unprivileged_pg_repo(pg_repo_remote, unprivileged_remote_engine):
+    return Repository.from_template(pg_repo_remote, engine=unprivileged_remote_engine)
+
+
 SPLITFILE_ROOT = os.path.join(os.path.dirname(__file__), '../resources/')
 
 

@@ -14,7 +14,7 @@ def test_pull_public(local_engine_empty, unprivileged_pg_repo):
 
 
 def test_push_own_delete_own(local_engine_empty, unprivileged_pg_repo, clean_minio):
-    destination = Repository(namespace='testuser', repository='pg_mount')
+    destination = Repository.from_template(unprivileged_pg_repo, engine=local_engine_empty)
     clone(unprivileged_pg_repo, local_repository=destination)
 
     destination.images['latest'].checkout()
@@ -23,7 +23,9 @@ def test_push_own_delete_own(local_engine_empty, unprivileged_pg_repo, clean_min
 
     # Test we can push to our namespace -- can't upload the object to the splitgraph_meta since we can't create
     # tables there
-    remote_destination = Repository.from_template(destination, engine=unprivileged_pg_repo.engine)
+    remote_destination = Repository.from_template(destination,
+                                                  namespace=unprivileged_pg_repo.engine.conn_params['SG_ENGINE_USER'],
+                                                  engine=unprivileged_pg_repo.engine)
     destination.upstream = remote_destination
 
     destination.push(handler='S3')
@@ -34,17 +36,24 @@ def test_push_own_delete_own(local_engine_empty, unprivileged_pg_repo, clean_min
 
 def test_push_own_delete_own_different_namespaces(local_engine_empty, unprivileged_pg_repo, clean_minio):
     # Same as previous but we clone into test/pg_mount and push to our own namespace
-    # to check that the objects we push get their namespaces rewritten to be testuser, not test.
+    # to check that the objects we push get their namespaces rewritten to be the unprivileged user, not test.
     destination = clone(unprivileged_pg_repo)
 
     destination.images['latest'].checkout()
     destination.run_sql("""UPDATE fruits SET name = 'banana' WHERE fruit_id = 1""")
     destination.commit()
 
-    remote_destination = Repository('testuser', 'pg_mount', unprivileged_pg_repo.engine)
+    remote_destination = Repository.from_template(unprivileged_pg_repo,
+                                                  namespace=unprivileged_pg_repo.engine.conn_params['SG_ENGINE_USER'],
+                                                  engine=unprivileged_pg_repo.engine)
     destination.upstream = remote_destination
 
     destination.push(handler='S3')
+
+    object_id = destination.head.get_table('fruits').objects[0]
+    assert remote_destination.objects.get_object_meta([object_id])[object_id].namespace == \
+           unprivileged_pg_repo.engine.conn_params['SG_ENGINE_USER']
+
     # Test we can delete our own repo once we've pushed it
     remote_destination.delete(uncheckout=False)
     assert len(remote_destination.images()) == 0
@@ -84,7 +93,9 @@ def test_impersonate_external_object(unprivileged_pg_repo, unprivileged_remote_e
 def test_publish_unpublish_own(local_engine_empty, pg_repo_remote, unprivileged_remote_engine):
     clone(pg_repo_remote, download_all=True)
     PG_MNT.images['latest'].tag('my_tag')
-    target_repo = Repository(namespace='testuser', repository='pg_mount', engine=unprivileged_remote_engine)
+    target_repo = Repository.from_template(pg_repo_remote,
+                                           namespace=unprivileged_remote_engine.conn_params['SG_ENGINE_USER'],
+                                           engine=unprivileged_remote_engine)
 
     PG_MNT.push(remote_repository=target_repo)
 

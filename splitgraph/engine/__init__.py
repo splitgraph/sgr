@@ -443,9 +443,6 @@ def get_engine(name=None, use_socket=False):
     return _ENGINES[name]
 
 
-# TODO
-# * add unprivileged engine into the config
-
 @contextmanager
 def switch_engine(engine):
     """
