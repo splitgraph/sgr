@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 from decimal import Decimal
 
@@ -101,7 +102,7 @@ def test_commandline_basics(pg_repo_local, mg_repo_local):
     # It seems like something's wrong with this connection object. As a temporary (?) workaround, commit the connection
     # and issue a rollback here, which seems to fix things.
 
-    pg_repo_local.engine.commit()
+    pg_repo_local.commit_engines()
     pg_repo_local.engine.rollback()
     result = runner.invoke(commit_c, [str(pg_repo_local), '-m', 'Test commit', '--snap'])
     assert result.exit_code == 0
@@ -452,7 +453,7 @@ def test_pull_push(pg_repo_local, pg_repo_remote):
     assert pg_repo_local.head.get_table('fruits')
 
     pg_repo_local.head.tag('v1')
-    pg_repo_local.engine.commit()
+    pg_repo_local.commit_engines()
     result = runner.invoke(publish_c, [str(pg_repo_local), 'v1', '-r', SPLITFILE_ROOT + 'README.md'])
     assert result.exit_code == 0
     image_hash, published_dt, deps, readme, schemata, previews = get_published_info(pg_repo_remote, 'v1')
@@ -635,7 +636,7 @@ def test_prune(pg_repo_local_multitag, pg_repo_remote_multitag):
     # that used to be 'v2' now isn't tagged so it will be a candidate for removal (but not the v1 image).
     remote_v2 = pg_repo_remote_multitag.images['v2']
     remote_v2.delete_tag('v2')
-    pg_repo_remote_multitag.engine.commit()
+    pg_repo_remote_multitag.commit_engines()
 
     result = runner.invoke(prune_c, [str(pg_repo_remote_multitag), '-r', 'remote_engine'], input='n\n')
     assert result.exit_code == 1  # Because "n" aborted the command
@@ -648,7 +649,7 @@ def test_prune(pg_repo_local_multitag, pg_repo_remote_multitag):
     # now both images aren't tagged so will get removed.
     remote_v1 = pg_repo_remote_multitag.images['v1']
     remote_v1.delete_tag('v1')
-    pg_repo_remote_multitag.engine.commit()
+    pg_repo_remote_multitag.commit_engines()
     result = runner.invoke(prune_c, [str(pg_repo_remote_multitag), '-r', 'remote_engine', '-y'])
     assert result.exit_code == 0
     assert remote_v2.image_hash in result.output

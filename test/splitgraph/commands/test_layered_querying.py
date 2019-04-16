@@ -140,7 +140,7 @@ def test_lq_external(local_engine_empty, pg_repo_remote):
     remote = pg_repo_local.push(handler='S3', handler_options={})
     pg_repo_local.delete()
     pg_repo_remote.objects.delete_objects(remote.objects.get_downloaded_objects())
-    pg_repo_remote.engine.commit()
+    pg_repo_remote.commit_engines()
     pg_repo_local.objects.cleanup()
 
     assert len(pg_repo_local.objects.get_all_objects()) == 0
@@ -163,9 +163,9 @@ def _prepare_fully_remote_repo(local_engine_empty, pg_repo_remote):
     remote = pg_repo_local.push(handler='S3', handler_options={})
     pg_repo_local.delete()
     pg_repo_remote.objects.delete_objects(remote.objects.get_downloaded_objects())
-    pg_repo_remote.engine.commit()
+    pg_repo_remote.commit_engines()
     pg_repo_local.objects.cleanup()
-    pg_repo_local.object_engine.commit()
+    pg_repo_local.commit_engines()
 
 
 @pytest.mark.parametrize("test_case", [

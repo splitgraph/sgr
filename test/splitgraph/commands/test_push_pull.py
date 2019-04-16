@@ -32,7 +32,7 @@ def test_pull(local_engine_empty, pg_repo_remote, download_all):
 
     # Since the pull procedure initializes a new connection, we have to commit our changes
     # in order to see them.
-    pg_repo_remote.engine.commit()
+    pg_repo_remote.commit_engines()
     PG_MNT.pull()
     head_1 = PG_MNT.images.by_hash(head_1.image_hash)
 

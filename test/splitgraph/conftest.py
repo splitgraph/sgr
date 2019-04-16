@@ -124,7 +124,7 @@ def make_multitag_pg_repo(pg_repo):
     pg_repo.head.tag('v1')
     pg_repo.run_sql("DELETE FROM fruits WHERE fruit_id = 1")
     pg_repo.commit().tag('v2')
-    pg_repo.engine.commit()
+    pg_repo.commit_engines()
     return pg_repo
 
 

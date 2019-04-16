@@ -14,7 +14,7 @@ from test.splitgraph.conftest import OUTPUT, PG_DATA
 def test_diff_head(pg_repo_local):
     pg_repo_local.run_sql("""INSERT INTO fruits VALUES (3, 'mayonnaise');
         DELETE FROM fruits WHERE name = 'apple'""")
-    pg_repo_local.engine.commit()  # otherwise the audit trigger won't see this
+    pg_repo_local.commit_engines()  # otherwise the audit trigger won't see this
     change = pg_repo_local.diff('fruits', image_1=pg_repo_local.head.image_hash, image_2=None)
     # Added (3, mayonnaise); Deleted (1, 'apple')
     assert sorted(change) == [(False, (1, 'apple')), (True, (3, 'mayonnaise'))]
@@ -323,7 +323,7 @@ def test_multiple_mountpoint_commit_diff(mode, pg_repo_local, mg_repo_local):
         UPDATE fruits SET name = 'guitar' WHERE fruit_id = 2;""")
     mg_repo_local.run_sql("UPDATE stuff SET duration = 11 WHERE name = 'James'")
     # Both repositories have pending changes if we commit the PG connection.
-    pg_repo_local.engine.commit()
+    pg_repo_local.commit_engines()
     assert mg_repo_local.has_pending_changes()
     assert pg_repo_local.has_pending_changes()
 
@@ -351,7 +351,7 @@ def test_multiple_mountpoint_commit_diff(mode, pg_repo_local, mg_repo_local):
 
     # Update and commit
     mg_repo_local.run_sql("UPDATE stuff SET duration = 15 WHERE name = 'James'")
-    mg_repo_local.engine.commit()
+    mg_repo_local.commit_engines()
     assert mg_repo_local.has_pending_changes()
     new_mongo_head = _commit(mg_repo_local, mode)
     assert not mg_repo_local.has_pending_changes()
@@ -368,7 +368,7 @@ def test_multiple_mountpoint_commit_diff(mode, pg_repo_local, mg_repo_local):
 
 def test_delete_all_diff(pg_repo_local):
     pg_repo_local.run_sql("DELETE FROM fruits")
-    pg_repo_local.engine.commit()
+    pg_repo_local.commit_engines()
     assert pg_repo_local.has_pending_changes()
     expected_diff = [(False, (1, 'apple')), (False, (2, 'orange'))]
 

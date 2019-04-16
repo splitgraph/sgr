@@ -1,46 +1,12 @@
-from copy import copy
-
 import pytest
 from psycopg2._psycopg import ProgrammingError
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph import SPLITGRAPH_META_SCHEMA
 from splitgraph.core._common import META_TABLES, select
-from splitgraph.core.registry import get_published_info, unpublish_repository, toggle_registry_rls
+from splitgraph.core.registry import get_published_info, unpublish_repository
 from splitgraph.core.repository import Repository, clone
-from splitgraph.engine import get_engine
-from test.splitgraph.conftest import PG_MNT, REMOTE_ENGINE
-
-UNPRIVILEGED = 'unprivileged_remote_engine'
-
-
-def _init_security_test(remote_engine):
-    toggle_registry_rls(remote_engine, 'ENABLE')
-    remote_engine.commit()
-
-
-@pytest.fixture()
-def unprivileged_remote_engine(remote_engine):
-    """Temporarily adds an unprivileged remote engine"""
-    _init_security_test(remote_engine)
-    from splitgraph.engine import CONFIG
-    CONFIG['remotes'][UNPRIVILEGED] = copy(CONFIG['remotes'][REMOTE_ENGINE])
-    CONFIG['remotes'][UNPRIVILEGED]['SG_ENGINE_USER'] = 'testuser'
-    CONFIG['remotes'][UNPRIVILEGED]['SG_ENGINE_PWD'] = 'testpassword'
-    E = get_engine(UNPRIVILEGED)
-    try:
-        assert E.conn_params['SG_ENGINE_USER'] == 'testuser'
-        assert E.conn_params['SG_ENGINE_PWD'] == 'testpassword'
-        yield E
-    finally:
-        E.rollback()
-        E.close()
-        del CONFIG['remotes'][UNPRIVILEGED]
-
-
-@pytest.fixture()
-def unprivileged_pg_repo(pg_repo_remote, unprivileged_remote_engine):
-    return Repository.from_template(pg_repo_remote, engine=unprivileged_remote_engine)
+from test.splitgraph.conftest import PG_MNT
 
 
 def test_pull_public(local_engine_empty, unprivileged_pg_repo):
@@ -134,7 +100,7 @@ def test_publish_unpublish_others(local_engine_empty, pg_repo_remote, unprivileg
                                   unprivileged_remote_engine):
     # Tag the remote repo as an admin user and try to publish as an unprivileged one
     pg_repo_remote.images['latest'].tag('my_tag')
-    pg_repo_remote.engine.commit()
+    pg_repo_remote.commit_engines()
     clone(unprivileged_pg_repo, download_all=True)
 
     # Publish into the "test" namespace as someone who doesn't have access to it.

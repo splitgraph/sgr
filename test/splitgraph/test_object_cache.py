@@ -33,7 +33,7 @@ def _setup_object_cache_test(pg_repo_remote, longer_chain=False):
     remote = pg_repo_local.push(handler='S3', handler_options={})
     pg_repo_local.delete()
     pg_repo_remote.objects.delete_objects(remote.objects.get_downloaded_objects())
-    pg_repo_remote.engine.commit()
+    pg_repo_remote.commit_engines()
     pg_repo_local.objects.cleanup()
     pg_repo_local = clone(pg_repo_remote, download_all=False)
 
@@ -108,7 +108,7 @@ def test_object_cache_non_existing_objects(local_engine_empty, pg_repo_remote):
     # exception rather than a psycopg ProgrammingError
     pg_repo_local.run_sql("DELETE FROM splitgraph_meta.object_locations WHERE object_id = %s", (fruits_v3.objects[0],))
     # Make sure to commit here -- otherwise the error rolls everything back.
-    pg_repo_local.engine.commit()
+    pg_repo_local.commit_engines()
     with pytest.raises(SplitGraphException) as e:
         with object_manager.ensure_objects(fruits_v3):
             pass
