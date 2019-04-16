@@ -1,11 +1,13 @@
 """Command line tools for ingesting/exporting Splitgraph images into other formats."""
 
 import click
-import pandas as pd
 
-from splitgraph import Repository
-from splitgraph.commandline._common import image_spec_parser
-from .pandas import sql_to_df, df_to_table
+from splitgraph.commandline._common import ImageType, RepositoryType
+
+
+# This commandline entry point doesn't actually import splitgraph.ingestion directly
+# as it pulls in Pandas (which can take a second) -- instead it lazily imports it ai
+# invocation time and asks the user to install the ingestion extra if Pandas isn't found.
 
 
 @click.group(name='csv')
@@ -14,7 +16,7 @@ def csv():
 
 
 @click.command(name='export')
-@click.argument('image_spec', type=image_spec_parser(default=None))
+@click.argument('image_spec', type=ImageType(default=None))
 @click.argument('query')
 @click.option('-f', '--file', type=click.File('w'), default='-', help="File name to export to, default stdout.")
 @click.option('-l', '--layered', help="Don't materialize the tables, use layered querying instead.",
@@ -38,13 +40,18 @@ def csv_export(image_spec, query, file, layered):
     Uses layered querying instead to execute a join on tables in a certain image (satisfying the query without
     having to check the image out).
     """
-    repository, image = image_spec
-    df = sql_to_df(query, image=image, repository=repository, use_lq=layered)
-    df.to_csv(file, index=df.index.names != [None])
+    try:
+        from .pandas import sql_to_df
+        repository, image = image_spec
+        df = sql_to_df(query, image=image, repository=repository, use_lq=layered)
+        df.to_csv(file, index=df.index.names != [None])
+    except ImportError:
+        print("Install the ""ingestion"" setuptools extra to enable this feature!")
+        exit(1)
 
 
 @click.command(name='import')
-@click.argument('repository', type=Repository.from_schema)
+@click.argument('repository', type=RepositoryType())
 @click.argument('table')
 @click.option('-f', '--file', type=click.File('r'), default='-', help="File name to import data from, default stdin.")
 @click.option('-r', '--replace', default=False, is_flag=True, help="Replace the table if it already exists.")
@@ -68,10 +75,16 @@ def csv_import(repository, table, file, replace, primary_key, datetime):
     # read_csv is a monster of a function, perhaps we should expose some of its configs here.
     # The reason we don't ingest directly into the engine by using COPY FROM STDIN is so that we can let Pandas do
     # some type inference/preprocessing on the CSV.
-    df = pd.read_csv(file, index_col=primary_key, parse_dates=list(datetime) if datetime else False,
-                     infer_datetime_format=True)
-    print("Read %d line(s)" % len(df))
-    df_to_table(df, repository, table, if_exists='replace' if replace else 'patch')
+    try:
+        import pandas as pd
+        from .pandas import df_to_table
+        df = pd.read_csv(file, index_col=primary_key, parse_dates=list(datetime) if datetime else False,
+                         infer_datetime_format=True)
+        print("Read %d line(s)" % len(df))
+        df_to_table(df, repository, table, if_exists='replace' if replace else 'patch')
+    except ImportError:
+        print("Install the ""ingestion"" setuptools extra to enable this feature!")
+        exit(1)
 
 
 csv.add_command(csv_export)

@@ -9,11 +9,12 @@ import click
 
 import splitgraph.engine
 import splitgraph.engine.postgres.engine
+from splitgraph.commandline._common import RepositoryType
 from splitgraph.core.repository import clone, Repository
 
 
 @click.command(name='pull')
-@click.argument('repository', type=Repository.from_schema)
+@click.argument('repository', type=RepositoryType())
 @click.option('-d', '--download-all', help='Download all objects immediately instead on checkout.')
 def pull_c(repository, download_all):
     """
@@ -23,8 +24,8 @@ def pull_c(repository, download_all):
 
 
 @click.command(name='clone')
-@click.argument('remote_repository', type=Repository.from_schema)
-@click.argument('local_repository', required=False, type=Repository.from_schema)
+@click.argument('remote_repository', type=RepositoryType())
+@click.argument('local_repository', required=False, type=RepositoryType())
 @click.option('-r', '--remote', help='Alias or full connection string for the remote engine')
 @click.option('-d', '--download-all', help='Download all objects immediately instead on checkout.',
               default=False, is_flag=True)
@@ -47,8 +48,8 @@ def clone_c(remote_repository, local_repository, remote, download_all):
 
 
 @click.command(name='push')
-@click.argument('repository', type=Repository.from_schema)
-@click.argument('remote_repository', required=False, type=Repository.from_schema)
+@click.argument('repository', type=RepositoryType())
+@click.argument('remote_repository', required=False, type=RepositoryType())
 @click.option('-r', '--remote', help='Alias or full connection string for the remote engine')
 @click.option('-h', '--upload-handler', help='Upload handler', default='DB')
 @click.option('-o', '--upload-handler-options', help='Upload handler parameters', default="{}")
@@ -77,7 +78,7 @@ def push_c(repository, remote_repository, remote, upload_handler, upload_handler
 
 
 @click.command(name='publish')
-@click.argument('repository', type=Repository.from_schema)
+@click.argument('repository', type=RepositoryType())
 @click.argument('tag')
 @click.option('-r', '--readme', type=click.File('r'))
 @click.option('--skip-provenance', is_flag=True, help="Don't include provenance in the published information.")
@@ -98,10 +99,9 @@ def publish_c(repository, tag, readme, skip_provenance, skip_previews):
 
 
 @click.command(name='upstream')
-@click.argument('repository', type=Repository.from_schema)
+@click.argument('repository', type=RepositoryType())
 @click.option('-s', '--set', 'set_to',
-              help="Set the upstream to a engine alias + repository", type=(str,
-                                                                            Repository.from_schema),
+              help="Set the upstream to a engine alias + repository", type=(str, RepositoryType()),
               default=("", None))
 @click.option('-r', '--reset', help="Delete the upstream", is_flag=True, default=False)
 def upstream_c(repository, set_to, reset):

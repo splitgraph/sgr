@@ -427,14 +427,12 @@ class FragmentManager(MetadataManager):
             min_max.append((frag_min, frag_max))
         return min_max
 
-    def calculate_content_hash(self, schema, table, limit=None, offset=None):
+    def calculate_content_hash(self, schema, table):
         """
         Calculates the homomorphic hash of table contents.
 
         :param schema: Schema the table belongs to
         :param table: Name of the table
-        :param limit: If specified, the amount of rows in the table to fetch
-        :param offset: If specified, the offset in the table
         :return: A 64-character (256-bit) hexadecimal string with the content hash of the table.
         """
         digest_query = SQL("SELECT digest(o::text, 'sha256'::text) FROM {}.{} o") \
@@ -442,11 +440,7 @@ class FragmentManager(MetadataManager):
         pks = self.object_engine.get_primary_keys(schema, table)
         if pks:
             digest_query += SQL(" ORDER BY ") + SQL(",").join(Identifier(p[0]) for p in pks)
-        if offset is not None:
-            row_digests = self.object_engine.run_sql(digest_query + SQL(" LIMIT %s OFFSET %s"), (limit, offset),
-                                                     return_shape=ResultShape.MANY_ONE)
-        else:
-            row_digests = self.object_engine.run_sql(digest_query, return_shape=ResultShape.MANY_ONE)
+        row_digests = self.object_engine.run_sql(digest_query, return_shape=ResultShape.MANY_ONE)
 
         return reduce(operator.add, (Digest.from_memoryview(r) for r in row_digests)).hex()
 
@@ -471,7 +465,14 @@ class FragmentManager(MetadataManager):
                                                 return_shape=ResultShape.ONE_ONE)
 
         def _insert_and_register_fragment(source_schema, source_table, limit=None, offset=None):
-            content_hash = self.calculate_content_hash(source_schema, source_table, limit, offset)
+            # Store the fragment in a temporary location first and hash that (much faster since PG doesn't need
+            # to go through the source table multiple times for every offset)
+            tmp_object_id = get_random_object_id()
+
+            self.object_engine.copy_table(source_schema, source_table, SPLITGRAPH_META_SCHEMA, tmp_object_id,
+                                          with_pk_constraints=True, limit=limit, offset=offset,
+                                          order_by_pk=(offset is not None))
+            content_hash = self.calculate_content_hash(SPLITGRAPH_META_SCHEMA, tmp_object_id)
 
             # Fragments can't be reused in tables with different schemas even if the contents match (e.g. '1' vs 1).
             # Hence, include the table schema in the object ID as well.
@@ -488,11 +489,10 @@ class FragmentManager(MetadataManager):
             if not self.get_new_objects([object_id]):
                 logging.info("Reusing object %s for table %s/%s limit %r offset %d", object_id, source_schema,
                              source_table, limit, offset)
+                self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
                 return object_id
 
-            self.object_engine.copy_table(source_schema, source_table, SPLITGRAPH_META_SCHEMA, object_id,
-                                          with_pk_constraints=True, limit=limit, offset=offset,
-                                          order_by_pk=(offset is not None))
+            self.object_engine.rename_table(SPLITGRAPH_META_SCHEMA, tmp_object_id, object_id)
             self.object_engine.run_sql(SQL("ALTER TABLE {}.{} ADD COLUMN {} BOOLEAN DEFAULT TRUE")
                                        .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id),
                                                Identifier(SG_UD_FLAG)))

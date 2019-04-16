@@ -5,7 +5,8 @@ from hashlib import sha256
 
 import click
 
-from splitgraph.core import Repository, repository_exists, Identifier, SQL, select
+from splitgraph.commandline._common import RepositoryType
+from splitgraph.core import repository_exists, Identifier, SQL, select
 from splitgraph.engine import ResultShape
 
 _DEMO_TABLE_SIZE = 10
@@ -84,7 +85,7 @@ def alter_table(repository, table_name, rows_added, rows_deleted, rows_updated):
 
 
 @click.command(name='generate')
-@click.argument('repository', type=Repository.from_schema)
+@click.argument('repository', type=RepositoryType())
 def generate_c(repository):
     """
     Generate a repository with some example data.
@@ -104,7 +105,7 @@ def generate_c(repository):
 
 
 @click.command(name='alter')
-@click.argument('repository', type=Repository.from_schema)
+@click.argument('repository', type=RepositoryType())
 def alter_c(repository):
     """
     Alter the table in an example repository.
@@ -117,8 +118,8 @@ def alter_c(repository):
 
 
 @click.command(name='splitfile')
-@click.argument('repository_1', type=Repository.from_schema)
-@click.argument('repository_2', type=Repository.from_schema)
+@click.argument('repository_1', type=RepositoryType())
+@click.argument('repository_2', type=RepositoryType())
 def splitfile_c(repository_1, repository_2):
     """
     Generate a sample Splitfile.

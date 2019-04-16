@@ -4,8 +4,9 @@ from hashlib import sha256
 
 import pytest
 
-from splitgraph import SPLITGRAPH_META_SCHEMA, execute_commands, Repository
+from splitgraph import SPLITGRAPH_META_SCHEMA, Repository
 from splitgraph.core.fragment_manager import Digest
+from splitgraph.splitfile import execute_commands
 from test.splitgraph.conftest import OUTPUT, PG_DATA, load_splitfile
 
 TEST_ROWS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine']
