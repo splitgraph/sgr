@@ -5,6 +5,7 @@ import logging
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 
+import urllib3
 from minio import Minio
 from minio.error import (BucketAlreadyOwnedByYou,
                          BucketAlreadyExists, MinioError)
@@ -106,6 +107,10 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
                 object_response = client.get_object(bucket, remote_object)
             except MinioError:
                 logging.exception("Error downloading object %s", object_id)
+                return
+            except urllib3.exceptions.RequestError:
+                # Some connection errors aren't caught by MinioError
+                logging.exception("URLLib error downloading object %s", object_id)
                 return
             engine = get_engine()
             engine.load_object(SPLITGRAPH_META_SCHEMA, object_id, object_response)
