@@ -23,7 +23,7 @@ _LOOKUP_PATH, _LOOKUP_PATH_OVERRIDE = \
     _parse_paths_overrides(CONFIG['SG_REPO_LOOKUP'], CONFIG['SG_REPO_LOOKUP_OVERRIDE'])
 
 
-def init_engine():  # pragma: no cover
+def init_engine(skip_audit=False):  # pragma: no cover
     # Method exercised in test_commandline.test_init_new_db but in
     # an external process
     """
@@ -32,15 +32,13 @@ def init_engine():  # pragma: no cover
         * performing any required engine-custom initialization
         * creating the metadata tables
 
+    :param skip_audit: If True, skips installing audit triggers.
     """
     # Initialize the engine
     engine = get_engine()
-    engine.initialize()
-
-    # Create splitgraph_meta
-    logging.info("Ensuring metadata schema %s exists...", SPLITGRAPH_META_SCHEMA)
-    ensure_metadata_schema(engine)
+    engine.initialize(skip_audit=skip_audit)
     engine.commit()
+    print("Engine %r initialized." % engine)
 
 
 def repository_exists(repository):

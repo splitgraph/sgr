@@ -12,7 +12,7 @@ from splitgraph.commandline.example import generate_c, alter_c, splitfile_c
 from splitgraph.commandline.image_info import object_c
 from splitgraph.config import PG_PWD, PG_USER
 from splitgraph.core._common import parse_connection_string, serialize_connection_string, insert
-from splitgraph.core.engine import repository_exists
+from splitgraph.core.engine import repository_exists, init_engine
 from splitgraph.core.metadata_manager import OBJECT_COLS
 from splitgraph.core.registry import get_published_info
 from splitgraph.core.repository import Repository
@@ -712,6 +712,21 @@ def test_init_new_db():
         assert "Installing the audit trigger" in output
     finally:
         get_engine().delete_database('testdb')
+
+
+def test_init_skip_audit():
+    # Test engine initialization where we don't install an audit trigger
+    runner = CliRunner()
+    engine = get_engine()
+    try:
+        engine.run_sql("DROP SCHEMA IF EXISTS audit CASCADE")
+        assert not engine.schema_exists('audit')
+        result = runner.invoke(init_c, ['--skip-audit'])
+        assert result.exit_code == 0
+        assert not engine.schema_exists('audit')
+    finally:
+        init_engine(skip_audit=False)
+        assert engine.schema_exists('audit')
 
 
 def test_init_override_engine():

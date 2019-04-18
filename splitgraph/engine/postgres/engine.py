@@ -177,7 +177,7 @@ class PsycopgEngine(SQLEngine):
                                 host=self.conn_params['SG_ENGINE_HOST'],
                                 port=self.conn_params['SG_ENGINE_PORT'])
 
-    def initialize(self):
+    def initialize(self, skip_audit=False):
         """Create the Splitgraph Postgres database and install the audit trigger"""
         logging.info("Initializing engine %r...", self)
 
@@ -202,13 +202,16 @@ class PsycopgEngine(SQLEngine):
         push_pull = get_data(_PACKAGE, _PUSH_PULL)
         self.run_sql(push_pull.decode('utf-8'), return_shape=ResultShape.NONE)
 
-        # Install the audit trigger if it doesn't exist
-        if not self.schema_exists(_AUDIT_SCHEMA):
-            logging.info("Installing the audit trigger...")
-            audit_trigger = get_data(_PACKAGE, _AUDIT_TRIGGER)
-            self.run_sql(audit_trigger.decode('utf-8'), return_shape=ResultShape.NONE)
+        if skip_audit:
+            logging.info("Skipping installation of the audit trigger as specified.")
         else:
-            logging.info("Skipping the audit trigger as it's already installed")
+            # Install the audit trigger if it doesn't exist
+            if not self.schema_exists(_AUDIT_SCHEMA):
+                logging.info("Installing the audit trigger...")
+                audit_trigger = get_data(_PACKAGE, _AUDIT_TRIGGER)
+                self.run_sql(audit_trigger.decode('utf-8'), return_shape=ResultShape.NONE)
+            else:
+                logging.info("Skipping the audit trigger as it's already installed.")
 
         # Start up the pgcrypto extension (required for hashing fragments)
         self.run_sql("CREATE EXTENSION IF NOT EXISTS pgcrypto")
