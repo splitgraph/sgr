@@ -445,13 +445,22 @@ class Tracer:
         """
         self.events.append((dt.now(), event))
 
-    def __str__(self):
-        result = ""
+    def get_durations(self):
+        result = []
         prev = self.start_time
         for event_time, event in self.events:
-            result += "\n%s: %.3f" % (event, (event_time - prev).total_seconds())
+            result.append((event, (event_time - prev).total_seconds()))
             prev = event_time
-        result += "\nTotal: %.3f" % (self.events[-1][0] - self.start_time).total_seconds()
+        return result
+
+    def get_total_time(self):
+        return (self.events[-1][0] - self.start_time).total_seconds()
+
+    def __str__(self):
+        result = ""
+        for event, duration in self.get_durations():
+            result += "\n%s: %.3f" % (event, duration)
+        result += "\nTotal: %.3f" % self.get_total_time()
         return result[1:]
 
 
