@@ -65,7 +65,7 @@ def push_c(repository, remote_repository, remote, upload_handler, upload_handler
       * Remote repository: ``remote_repository`` argument, then the upstream configured for the repository, then
         the same name as the repository.
 
-    ``-h`` and ``-o`` allow to upload the objects to somewhere else other than the external drivers. Currently,
+    ``-h`` and ``-o`` allow to upload the objects to somewhere else other than the external engines. Currently,
     uploading to an S3-compatible host via Minio is supported: see :mod:`splitgraph.hooks.s3` for information
     on handler options and how to register a new upload handler.
     """
