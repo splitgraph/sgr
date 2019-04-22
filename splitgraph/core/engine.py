@@ -57,7 +57,7 @@ def repository_exists(repository):
 
 def lookup_repository(name, include_local=False):
     """
-    Queries the SG drivers on the lookup path to locate one hosting the given repository.
+    Queries the SG engines on the lookup path to locate one hosting the given repository.
 
     :param name: Repository name
     :param include_local: If True, also queries the local engine
