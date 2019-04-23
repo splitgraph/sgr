@@ -564,7 +564,7 @@ class Repository:
 
     @manage_audit
     def import_tables(self, tables, source_repository, source_tables, image_hash=None, foreign_tables=False,
-                      do_checkout=True, target_hash=None, table_queries=None):
+                      do_checkout=True, target_hash=None, table_queries=None, parent_hash=None):
         """
         Creates a new commit in target_repository with one or more tables linked to already-existing tables.
         After this operation, the HEAD of the target repository moves to the new commit and the new tables are
@@ -579,12 +579,15 @@ class Repository:
         :param foreign_tables: If True, copies all source tables to create a series of new snapshots instead of
             treating them as Splitgraph-versioned tables. This is useful for adding brand new tables
             (for example, from an FDW-mounted table).
-        :param do_checkout: If False, doesn't materialize the tables in the target mountpoint.
+        :param do_checkout: If False, doesn't check out the newly created image.
         :param target_hash: Hash of the new image that tables is recorded under. If None, gets chosen at random.
         :param table_queries: If not [], it's treated as a Boolean mask showing which entries in the `tables` list are
             instead SELECT SQL queries that form the target table. The queries have to be non-schema qualified and work
             only against tables in the source repository. Each target table created is the result of the respective SQL
             query. This is committed as a new snapshot.
+        :param parent_hash: If not None, must be the hash of the image to base the new image on.
+            Existing tables from the parent image are preserved in the new image. If None, the current repository
+            HEAD is used.
         :return: Hash that the new image was stored under.
         """
         # Sanitize/validate the parameters and call the internal function.
@@ -609,23 +612,27 @@ class Repository:
         if len(tables) != len(source_tables) or len(source_tables) != len(table_queries):
             raise ValueError("tables, source_tables and table_queries have mismatching lengths!")
 
-        existing_tables = self.object_engine.get_all_tables(self.to_schema())
+        if parent_hash:
+            existing_tables = self.images[parent_hash].get_tables()
+        else:
+            parent_hash = self.head.image_hash if self.head else None
+            existing_tables = self.object_engine.get_all_tables(self.to_schema())
         clashing = [t for t in tables if t in existing_tables]
         if clashing:
             raise ValueError("Table(s) %r already exist(s) at %s!" % (clashing, self))
 
         return self._import_tables(image, tables, source_repository, target_hash, source_tables, do_checkout,
-                                   table_queries, foreign_tables)
+                                   table_queries, foreign_tables, parent_hash)
 
     def _import_tables(self, image, tables, source_repository, target_hash, source_tables, do_checkout,
-                       table_queries, foreign_tables):
+                       table_queries, foreign_tables, base_hash):
         # This importing route only supported between local repos.
         assert self.engine == source_repository.engine
         assert self.object_engine == source_repository.object_engine
-        self.object_engine.create_schema(self.to_schema())
+        if do_checkout:
+            self.object_engine.create_schema(self.to_schema())
 
-        head = self.head
-        self.images.add(head.image_hash if head else None, target_hash,
+        self.images.add(base_hash, target_hash,
                         comment="Importing %s from %s" % (tables, source_repository))
 
         # Materialize the actual tables in the target repository and register them.
@@ -648,15 +655,16 @@ class Repository:
                 if do_checkout:
                     table_obj.materialize(target_table, destination_schema=self.to_schema())
         # Register the existing tables at the new commit as well.
-        if head is not None:
+        if base_hash is not None:
             # Maybe push this into the tables API (currently have to make 2 queries)
             self.engine.run_sql(SQL("""INSERT INTO {0}.tables (namespace, repository, image_hash,
                     table_name, table_schema, object_ids) (SELECT %s, %s, %s, table_name, table_schema, object_ids
                     FROM {0}.tables WHERE namespace = %s AND repository = %s AND image_hash = %s)""")
                                 .format(Identifier(SPLITGRAPH_META_SCHEMA)),
                                 (self.namespace, self.repository, target_hash,
-                                 self.namespace, self.repository, head.image_hash))
-        set_head(self, target_hash)
+                                 self.namespace, self.repository, base_hash))
+        if do_checkout:
+            set_head(self, target_hash)
         return target_hash
 
     def _import_new_table(self, source_schema, source_table, target_hash, target_table, is_query, do_checkout):

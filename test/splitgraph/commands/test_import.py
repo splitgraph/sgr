@@ -119,3 +119,30 @@ def test_import_and_update(local_engine_empty, pg_repo_remote):
 
     new_head_2.checkout()
     assert OUTPUT.run_sql("SELECT * FROM fruits") == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]
+
+
+def test_import_bare(pg_repo_local):
+    # Check import without checking anything out, just by manipulating metadata and running LQs against
+    # source images.
+
+    # Create a new schema and import 'fruits'
+    OUTPUT.init()
+    # Make sure the existing table is preserved.
+    OUTPUT.run_sql("CREATE TABLE sentinel (key INTEGER)")
+    OUTPUT.commit()
+    pg_repo_local.uncheckout()
+    OUTPUT.uncheckout()
+
+    OUTPUT.import_tables(tables=['imported_fruits'], source_repository=pg_repo_local,
+                         image_hash=pg_repo_local.images['latest'].image_hash,
+                         source_tables=['SELECT * FROM fruits WHERE fruit_id = 1'],
+                         parent_hash=OUTPUT.images['latest'].image_hash,
+                         do_checkout=False,
+                         table_queries=[True])
+
+    assert OUTPUT.head is None
+    assert pg_repo_local.head is None
+
+    assert sorted(OUTPUT.images['latest'].get_tables()) == ['imported_fruits', 'sentinel']
+    assert list(OUTPUT.images['latest'].get_table('imported_fruits').query(columns=['name'], quals=[])) \
+           == [{'name': 'apple'}]
