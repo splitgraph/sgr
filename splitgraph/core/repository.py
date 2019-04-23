@@ -423,10 +423,10 @@ class Repository:
         self.engine.commit()
         return self.images.by_hash(image_hash)
 
-    def _commit(self, head, image_hash, snap_only=False, chunk_size=10000, split_changeset=False):
+    def _commit(self, head, image_hash, snap_only=False, chunk_size=10000, split_changeset=False, schema=None):
         """
-        Reads the recorded pending changes to all tables in a given mountpoint, conflates them and possibly stores them
-        as new object(s) as follows:
+        Reads the recorded pending changes to all tables in a given checked-out image,
+        conflates them and possibly stores them as new object(s) as follows:
 
             * If a table has been created or there has been a schema change, it's only stored as a full snapshot.
             * If a table hasn't changed since the last revision, no new objects are created and it's linked to the
@@ -438,23 +438,25 @@ class Repository:
         :param snap_only: If True, only stores the table as a snapshot.
         :param chunk_size: Split table snapshots into chunks of this size (None to disable)
         :param split_changeset: Split deltas to match original table snapshot boundaries
+        :param schema: Schema that the image is checked out into. By default, `namespace/repository` is used.
         """
-        target_schema = self.to_schema()
+        schema = schema or self.to_schema()
 
-        changed_tables = self.object_engine.get_changed_tables(target_schema)
-        for table in self.object_engine.get_all_tables(target_schema):
+        changed_tables = self.object_engine.get_changed_tables(schema)
+        for table in self.object_engine.get_all_tables(schema):
             table_info = head.get_table(table) if head else None
             # Store as a full copy if this is a new table, there's been a schema change or we were told to.
             # This is obviously wasteful (say if just one column has been added/dropped or we added a PK,
             # but it's a starting point to support schema changes.
             if not table_info or snap_only \
-                    or table_info.table_schema != self.object_engine.get_full_table_schema(self.to_schema(), table):
-                self.objects.record_table_as_base(self, table, image_hash, chunk_size=chunk_size)
+                    or table_info.table_schema != self.object_engine.get_full_table_schema(schema, table):
+                self.objects.record_table_as_base(self, table, image_hash, chunk_size=chunk_size,
+                                                  source_schema=schema)
                 continue
 
             # If the table has changed, look at the audit log and store it as a delta.
             if table in changed_tables:
-                self.objects.record_table_as_patch(table_info, image_hash, split_changeset=split_changeset)
+                self.objects.record_table_as_patch(table_info, schema, image_hash, split_changeset=split_changeset)
                 continue
 
             # If the table wasn't changed, point the image to the old table
@@ -463,7 +465,7 @@ class Repository:
         # Make sure that all pending changes have been discarded by this point (e.g. if we created just a snapshot for
         # some tables and didn't consume the audit log).
         # NB if we allow partial commits, this will have to be changed (only discard for committed tables).
-        self.object_engine.discard_pending_changes(target_schema)
+        self.object_engine.discard_pending_changes(schema)
 
     def has_pending_changes(self):
         """

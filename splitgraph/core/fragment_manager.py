@@ -271,7 +271,7 @@ class FragmentManager(MetadataManager):
         digests = self.object_engine.run_sql(query, [o for row in rows for o in row], return_shape=ResultShape.MANY_ONE)
         return reduce(operator.add, map(Digest.from_memoryview, digests), Digest.empty())
 
-    def _store_changesets(self, table, changesets, parents):
+    def _store_changesets(self, table, changesets, parents, schema):
         """
         Store and register multiple changesets as fragments, optionally linking them to the parent fragments.
 
@@ -279,6 +279,7 @@ class FragmentManager(MetadataManager):
         :param changesets: List of changeset dictionaries. For empty changesets, will return the parent fragment
             in the list of resulting objects instead.
         :param parents: List of parents to link each new fragment to.
+        :param schema: Schema the table is checked out into.
         :return: List of object IDs (created or existing for where the changeset was empty).
         """
         object_ids = []
@@ -291,7 +292,7 @@ class FragmentManager(MetadataManager):
             # Store the fragment in a temporary location and then find out its hash and rename to the actual target.
             # Optimisation: in the future, we can hash the upserted rows that we need preemptively and possibly
             # avoid storing the object altogether if it's a duplicate.
-            tmp_object_id = self._store_changeset(sub_changeset, table)
+            tmp_object_id = self._store_changeset(sub_changeset, table.table_name, schema)
 
             deletion_hash, insertion_hash, object_id = self._get_patch_fragment_hashes(sub_changeset, table,
                                                                                        tmp_object_id, parent)
@@ -317,13 +318,12 @@ class FragmentManager(MetadataManager):
         object_id = "o" + sha256((content_hash + schema_hash + (parent_id or "")).encode('ascii')).hexdigest()[:-2]
         return deletion_hash, insertion_hash, object_id
 
-    def _store_changeset(self, sub_changeset, table):
+    def _store_changeset(self, sub_changeset, table, schema):
         tmp_object_id = get_random_object_id()
         upserted = [pk for pk, data in sub_changeset.items() if data[0]]
         deleted = [pk for pk, data in sub_changeset.items() if not data[0]]
         self.object_engine.store_fragment(upserted, deleted, SPLITGRAPH_META_SCHEMA, tmp_object_id,
-                                          table.repository.to_schema(),
-                                          table.table_name)
+                                          schema, table)
         return tmp_object_id
 
     def calculate_fragment_insertion_hash(self, schema, table):
@@ -341,12 +341,13 @@ class FragmentManager(MetadataManager):
         insertion_hash = reduce(operator.add, (Digest.from_memoryview(r) for r in row_digests), Digest.empty())
         return insertion_hash
 
-    def record_table_as_patch(self, old_table, image_hash, split_changeset=False):
+    def record_table_as_patch(self, old_table, schema, image_hash, split_changeset=False):
         """
         Flushes the pending changes from the audit table for a given table and records them,
         registering the new objects.
 
         :param old_table: Table object pointing to the current HEAD table
+        :param schema: Schema the table is checked out into.
         :param image_hash: Image hash to store the table under
         :param split_changeset: See `Repository.commit` for reference
         """
@@ -359,9 +360,8 @@ class FragmentManager(MetadataManager):
 
         # Accumulate the diff in-memory. This might become a bottleneck in the future.
         changeset = {}
-        _conflate_changes(changeset, self.object_engine.get_pending_changes(old_table.repository.to_schema(),
-                                                                            old_table.table_name))
-        self.object_engine.discard_pending_changes(old_table.repository.to_schema(), old_table.table_name)
+        _conflate_changes(changeset, self.object_engine.get_pending_changes(schema, old_table.table_name))
+        self.object_engine.discard_pending_changes(schema, old_table.table_name)
         if changeset:
             # Get all the top fragments that the current table depends on
             top_fragments = old_table.objects
@@ -370,8 +370,7 @@ class FragmentManager(MetadataManager):
                 # Follow the chains down to the base fragments that we'll use to find the chunk boundaries
                 base_fragments = [self.get_all_required_objects([o])[-1] for o in top_fragments]
 
-                table_pks = self.object_engine.get_change_key(old_table.repository.to_schema(),
-                                                              old_table.table_name)
+                table_pks = self.object_engine.get_change_key(schema, old_table.table_name)
                 min_max = self._extract_min_max_pks(base_fragments, table_pks)
 
                 matched, before, after = _split_changeset(changeset, min_max, table_pks)
@@ -384,7 +383,7 @@ class FragmentManager(MetadataManager):
             # Store the changesets. For the parentless before/after changesets, only create them if they actually
             # contain something.
             object_ids = self._store_changesets(old_table, [before] + matched + [after],
-                                                [None] + top_fragments + [None])
+                                                [None] + top_fragments + [None], schema)
             # Finally, link the table to the new set of objects.
             self.register_tables(old_table.repository, [(image_hash, old_table.table_name,
                                                          old_table.table_schema, object_ids)])
