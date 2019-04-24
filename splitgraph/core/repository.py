@@ -12,9 +12,12 @@ from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
+from splitgraph.core import select
+from splitgraph.core._common import insert
 from splitgraph.core.fragment_manager import get_random_object_id
+from splitgraph.core.sql import validate_import_sql
 from splitgraph.exceptions import SplitGraphException
-from ._common import manage_audit_triggers, set_head, manage_audit, select, insert, aggregate_changes, slow_diff, \
+from ._common import manage_audit_triggers, set_head, manage_audit, aggregate_changes, slow_diff, \
     prepare_publish_data, gather_sync_metadata, ResultShape
 from .engine import repository_exists, lookup_repository, get_engine
 from .image import Image, IMAGE_COLS
@@ -675,6 +678,7 @@ class Repository:
         if is_query:
             # is_query precedes foreign_tables: if we're importing using a query, we don't care if it's a
             # foreign table or not since we're storing it as a full snapshot.
+            validate_import_sql(source_table)
             self.object_engine.run_sql_in(source_schema,
                                           SQL("CREATE TABLE {}.{} AS ").format(Identifier(SPLITGRAPH_META_SCHEMA),
                                                                                Identifier(tmp_object_id))

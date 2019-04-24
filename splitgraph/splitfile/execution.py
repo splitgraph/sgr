@@ -10,6 +10,7 @@ from random import getrandbits
 from splitgraph.config import CONFIG
 from splitgraph.core.engine import repository_exists, lookup_repository
 from splitgraph.core.repository import Repository, clone
+from splitgraph.core.sql import validate_splitfile_sql
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitGraphException
 from splitgraph.hooks.mount_handlers import get_mount_handler
@@ -97,6 +98,7 @@ def _execute_sql(node, output):
             sql_command = file.read()
     else:
         sql_command = node_contents
+    validate_splitfile_sql(sql_command)
     output_head = output.head.image_hash
     target_hash = _combine_hashes([output_head, sha256(sql_command.encode('utf-8')).hexdigest()])
 
