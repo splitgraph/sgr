@@ -340,6 +340,34 @@ def test_object_cache_eviction_priority(local_engine_empty, pg_repo_remote):
         assert "Not enough space will be reclaimed" in str(ex)
 
 
+def test_object_cache_make_external(pg_repo_local, clean_minio):
+    # Test marking objects as external and uploading them to S3
+    all_objects = list(sorted(pg_repo_local.objects.get_all_objects()))
+
+    # Objects are local and don't exist externally: running eviction does nothing and local objects
+    # don't count towards cache occupancy.
+    pg_repo_local.objects.run_eviction(keep_objects=[], required_space=None)
+    assert list(sorted(pg_repo_local.objects.get_downloaded_objects())) == all_objects
+    assert pg_repo_local.objects.get_cache_occupancy() == 0
+
+    # Mark objects as external and upload them
+    pg_repo_local.objects.make_objects_external(all_objects, handler='S3', handler_params={})
+    assert pg_repo_local.objects.get_cache_occupancy() == 8192 * 2
+    assert pg_repo_local.objects._recalculate_cache_occupancy() == 8192 * 2
+
+    pg_repo_local.objects.run_eviction(keep_objects=[], required_space=None)
+    assert pg_repo_local.objects.get_cache_occupancy() == 0
+    assert pg_repo_local.objects._recalculate_cache_occupancy() == 0
+    assert not pg_repo_local.objects.get_downloaded_objects()
+
+    # Download the objects again
+    with pg_repo_local.objects.ensure_objects(pg_repo_local.images['latest'].get_table('fruits')) as obs1:
+        with pg_repo_local.objects.ensure_objects(pg_repo_local.images['latest'].get_table('vegetables')) as obs2:
+            assert pg_repo_local.objects.get_cache_occupancy() == 8192 * 2
+            assert pg_repo_local.objects._recalculate_cache_occupancy() == 8192 * 2
+            assert list(sorted(pg_repo_local.objects.get_downloaded_objects())) == all_objects
+
+
 def test_object_manager_index_clause_generation(pg_repo_local):
     column_types = {'a': 'int', 'b': 'int'}
 

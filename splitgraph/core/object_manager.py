@@ -183,6 +183,42 @@ class ObjectManager(FragmentManager, MetadataManager):
             # Release the metadata tables as well
             self.metadata_engine.commit()
 
+    def make_objects_external(self, objects, handler, handler_params):
+        """
+        Uploads local objects to an external location and marks them as being cached locally (thus making it possible
+        to evict or swap them out).
+
+        :param objects: Object IDs to upload. Will do nothing for objects that already exist externally.
+        :param handler: Object handler
+        :param handler_params: Extra handler parameters
+        """
+        # Get objects that haven't been uploaded
+        uploaded_objects = [o[0] for o in self.get_external_object_locations(objects)]
+        new_objects = [o for o in objects if o not in uploaded_objects]
+
+        if not new_objects:
+            return
+
+        # Insert the objects into the cache status table (marking them as not ready)
+        now = dt.now()
+        self.object_engine.run_sql_batch(
+            insert("object_cache_status", ("object_id", "ready", "refcount", "last_used")),
+            [(object_id, False, 1, now) for object_id in new_objects])
+
+        # Perform the actual upload
+        external_handler = get_external_object_handler(handler, handler_params)
+        with switch_engine(self.object_engine):
+            uploaded = external_handler.upload_objects(new_objects)
+        locations = [(oid, url, handler) for oid, url in zip(new_objects, uploaded)]
+        self.register_object_locations(locations)
+
+        # Increase the cache occupancy since the objects can now be evicted.
+        self._increase_cache_occupancy(new_objects)
+
+        # Mark the objects as ready and decrease their refcounts.
+        self._set_ready_flags(new_objects, True)
+        self._release_objects(new_objects)
+
     def _filter_objects(self, objects, table, quals):
         if quals:
             column_types = {c[1]: c[2] for c in table.table_schema}
