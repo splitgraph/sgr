@@ -34,9 +34,10 @@ class SQLEngine(ABC):
     functions to implement some basic database management methods like listing, deleting, creating, dumping
     and loading tables."""
 
-    def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY):
+    def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY, named=False):
         """Run an arbitrary SQL statement with some arguments, return an iterator of results.
-        If the statement doesn't return any results, return None."""
+        If the statement doesn't return any results, return None. If named=True, return named
+        tuples when possible."""
         raise NotImplementedError()
 
     def commit(self):
