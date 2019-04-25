@@ -202,8 +202,14 @@ class ObjectManager(FragmentManager, MetadataManager):
         # Insert the objects into the cache status table (marking them as not ready)
         now = dt.now()
         self.object_engine.run_sql_batch(
-            insert("object_cache_status", ("object_id", "ready", "refcount", "last_used")),
+            insert("object_cache_status", ("object_id", "ready", "refcount", "last_used"))
+            + SQL("ON CONFLICT DO NOTHING"),
             [(object_id, False, 1, now) for object_id in new_objects])
+
+        # Grab the objects that we're supposed to be uploading.
+        new_objects = self.object_engine.run_sql(select("object_cache_status", "object_id",
+                                                        "ready = 'f' FOR UPDATE"),
+                                                 return_shape=ResultShape.MANY_ONE)
 
         # Perform the actual upload
         external_handler = get_external_object_handler(handler, handler_params)
