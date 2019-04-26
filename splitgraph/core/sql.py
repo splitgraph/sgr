@@ -6,31 +6,54 @@ from splitgraph.exceptions import UnsupportedSQLException
 
 
 def _validate_range_var(node):
-    if 'schemaname' in node.attribute_names:
+    if "schemaname" in node.attribute_names:
         raise UnsupportedSQLException("Table names must not be schema-qualified!")
 
 
 # Whitelist of permitted AST nodes. When crawling the parse tree, a node not in this list fails validation. If a node
 # is in this list, the crawler continues down the tree.
 _IMPORT_SQL_PERMITTED_NODES = [
-    'RawStmt', 'SelectStmt', 'ResTarget', 'ColumnRef', 'A_Star', 'String', 'A_Expr', 'A_Const',
-    'Integer', 'JoinExpr', 'SortBy', 'NullTest', 'BoolExpr', 'CoalesceExpr',
-    'RangeFunction', 'TypeCast', 'TypeName', 'SubLink', 'WithClause',
-    'CommonTableExpr', 'A_ArrayExpr', 'Float'
+    "RawStmt",
+    "SelectStmt",
+    "ResTarget",
+    "ColumnRef",
+    "A_Star",
+    "String",
+    "A_Expr",
+    "A_Const",
+    "Integer",
+    "JoinExpr",
+    "SortBy",
+    "NullTest",
+    "BoolExpr",
+    "CoalesceExpr",
+    "RangeFunction",
+    "TypeCast",
+    "TypeName",
+    "SubLink",
+    "WithClause",
+    "CommonTableExpr",
+    "A_ArrayExpr",
+    "Float",
 ]
 
 _SPLITFILE_SQL_PERMITTED_NODES = _IMPORT_SQL_PERMITTED_NODES + [
-    'InsertStmt', 'UpdateStmt', 'DeleteStmt',
-    'CreateStmt', 'CreateTableAsStmt', 'IntoClause',
-    'AlterTableStmt', 'AlterTableCmd', 'DropStmt',
-    'ColumnDef', 'Constraint'
+    "InsertStmt",
+    "UpdateStmt",
+    "DeleteStmt",
+    "CreateStmt",
+    "CreateTableAsStmt",
+    "IntoClause",
+    "AlterTableStmt",
+    "AlterTableCmd",
+    "DropStmt",
+    "ColumnDef",
+    "Constraint",
 ]
 
 # Nodes in this list have extra validators that are supposed to return None or raise an Exception if they
 # fail validation.
-_SQL_VALIDATORS = {
-    'RangeVar': _validate_range_var
-}
+_SQL_VALIDATORS = {"RangeVar": _validate_range_var}
 
 
 def _validate_node(node, permitted_nodes, node_validators):
@@ -41,8 +64,8 @@ def _validate_node(node, permitted_nodes, node_validators):
         node_validators[node_class](node)
     elif node_class not in permitted_nodes:
         message = "Unsupported statement type %s" % node_class
-        if isinstance(node['location'], Scalar):
-            message += " near character %d" % node['location'].value
+        if isinstance(node["location"], Scalar):
+            message += " near character %d" % node["location"].value
         raise UnsupportedSQLException(message + "!")
 
 
@@ -61,7 +84,9 @@ def validate_splitfile_sql(sql):
     """
     tree = Node(parse_sql(sql))
     for node in tree.traverse():
-        _validate_node(node, permitted_nodes=_SPLITFILE_SQL_PERMITTED_NODES, node_validators=_SQL_VALIDATORS)
+        _validate_node(
+            node, permitted_nodes=_SPLITFILE_SQL_PERMITTED_NODES, node_validators=_SQL_VALIDATORS
+        )
 
 
 def validate_import_sql(sql):
@@ -77,7 +102,11 @@ def validate_import_sql(sql):
 
     tree = Node(parse_sql(sql))
     if len(tree) != 1:
-        raise UnsupportedSQLException("The query is supposed to consist of only one SELECT statement!")
+        raise UnsupportedSQLException(
+            "The query is supposed to consist of only one SELECT statement!"
+        )
 
     for node in tree.traverse():
-        _validate_node(node, permitted_nodes=_IMPORT_SQL_PERMITTED_NODES, node_validators=_SQL_VALIDATORS)
+        _validate_node(
+            node, permitted_nodes=_IMPORT_SQL_PERMITTED_NODES, node_validators=_SQL_VALIDATORS
+        )

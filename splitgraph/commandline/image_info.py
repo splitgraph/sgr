@@ -15,9 +15,9 @@ from splitgraph.core.object_manager import ObjectManager
 from ._common import ImageType, pluralise, RepositoryType
 
 
-@click.command(name='log')
-@click.argument('repository', type=RepositoryType())
-@click.option('-t', '--tree', is_flag=True)
+@click.command(name="log")
+@click.argument("repository", type=RepositoryType())
+@click.option("-t", "--tree", is_flag=True)
 def log_c(repository, tree):
     """
     Show the history of a Splitgraph repository.
@@ -34,17 +34,29 @@ def log_c(repository, tree):
         head = repository.head
         log = head.get_log()
         for entry in log:
-            print("%s %s %s %s" % ("H->" if entry == head else "   ", entry.image_hash, entry.created,
-                                   entry.comment or ""))
+            print(
+                "%s %s %s %s"
+                % (
+                    "H->" if entry == head else "   ",
+                    entry.image_hash,
+                    entry.created,
+                    entry.comment or "",
+                )
+            )
 
 
-@click.command(name='diff')
-@click.option('-v', '--verbose', default=False, is_flag=True,
-              help='Include the actual differences rather than just the total number of updated rows.')
-@click.option('-t', '--table-name', help='Show the differences for a single table.')
-@click.argument('repository', type=RepositoryType())
-@click.argument('tag_or_hash_1', required=False)
-@click.argument('tag_or_hash_2', required=False)
+@click.command(name="diff")
+@click.option(
+    "-v",
+    "--verbose",
+    default=False,
+    is_flag=True,
+    help="Include the actual differences rather than just the total number of updated rows.",
+)
+@click.option("-t", "--table-name", help="Show the differences for a single table.")
+@click.argument("repository", type=RepositoryType())
+@click.argument("tag_or_hash_1", required=False)
+@click.argument("tag_or_hash_2", required=False)
 def diff_c(verbose, table_name, repository, tag_or_hash_1, tag_or_hash_2):
     """
     Show differences between two Splitgraph images.
@@ -66,10 +78,14 @@ def diff_c(verbose, table_name, repository, tag_or_hash_1, tag_or_hash_2):
     """
     tag_or_hash_1, tag_or_hash_2 = _get_actual_hashes(repository, tag_or_hash_1, tag_or_hash_2)
 
-    diffs = {table_name: repository.diff(table_name, tag_or_hash_1, tag_or_hash_2, aggregate=not verbose)
-             for table_name in
-             ([table_name] if table_name else sorted(
-                 repository.engine.get_all_tables(repository.to_schema())))}
+    diffs = {
+        table_name: repository.diff(table_name, tag_or_hash_1, tag_or_hash_2, aggregate=not verbose)
+        for table_name in (
+            [table_name]
+            if table_name
+            else sorted(repository.engine.get_all_tables(repository.to_schema()))
+        )
+    }
 
     if tag_or_hash_2 is None:
         print("Between %s and the current working copy: " % tag_or_hash_1[:12])
@@ -93,14 +109,14 @@ def _emit_table_diff(table_name, diff_result, verbose):
 
         count = []
         if added:
-            count.append("added " + pluralise('row', added))
+            count.append("added " + pluralise("row", added))
         if removed:
-            count.append("removed " + pluralise('row', removed))
+            count.append("removed " + pluralise("row", removed))
         if updated:
-            count.append("updated " + pluralise('row', removed))
+            count.append("updated " + pluralise("row", removed))
         if added + removed + updated == 0:
-            count = ['no changes']
-        print(to_print + ', '.join(count) + '.')
+            count = ["no changes"]
+        print(to_print + ", ".join(count) + ".")
 
         if verbose:
             for added, row in diff_result:
@@ -128,10 +144,15 @@ def _get_actual_hashes(repository, image_1, image_2):
     return image_1, image_2
 
 
-@click.command(name='show')
-@click.argument('image_spec', type=ImageType(default='HEAD'))
-@click.option('-v', '--verbose', default=False, is_flag=True,
-              help='Also show all tables in this image and the objects they map to.')
+@click.command(name="show")
+@click.argument("image_spec", type=ImageType(default="HEAD"))
+@click.option(
+    "-v",
+    "--verbose",
+    default=False,
+    is_flag=True,
+    help="Also show all tables in this image and the objects they map to.",
+)
 def show_c(image_spec, verbose):
     """
     Show information about a Splitgraph image. This includes its parent, comment and creation time.
@@ -161,8 +182,8 @@ def show_c(image_spec, verbose):
                     print("    %s" % obj)
 
 
-@click.command(name='object')
-@click.argument('object_id', type=str)
+@click.command(name="object")
+@click.argument("object_id", type=str)
 def object_c(object_id):
     """
     Show information about a Splitgraph object.
@@ -190,16 +211,22 @@ def object_c(object_id):
     for col_name, col_range in sg_object.index.items():
         print("  %s: [%r, %r]" % (col_name, col_range[0], col_range[1]))
     print()
-    object_in_cache = object_manager.object_engine.run_sql(select("object_cache_status", "1", "object_id = %s"),
-                                                           (object_id,), return_shape=ResultShape.ONE_ONE)
+    object_in_cache = object_manager.object_engine.run_sql(
+        select("object_cache_status", "1", "object_id = %s"),
+        (object_id,),
+        return_shape=ResultShape.ONE_ONE,
+    )
     object_downloaded = object_id in object_manager.get_downloaded_objects(limit_to=[object_id])
     object_external = object_manager.get_external_object_locations([object_id])
 
     if object_downloaded and not object_in_cache:
         print("Location: created locally")
     else:
-        original_location = ("%s (%s)" % (object_external[0][1], object_external[0][2])) if object_external \
+        original_location = (
+            ("%s (%s)" % (object_external[0][1], object_external[0][2]))
+            if object_external
             else "remote engine"
+        )
         if object_in_cache:
             print("Location: cached locally")
             print("Original location: " + original_location)
@@ -207,10 +234,10 @@ def object_c(object_id):
             print("Location: " + original_location)
 
 
-@click.command(name='sql')
-@click.argument('sql')
-@click.option('-s', '--schema', help='Run SQL against this schema.')
-@click.option('-a', '--show-all', is_flag=True, help='Returns all results of the query.')
+@click.command(name="sql")
+@click.argument("sql")
+@click.option("-s", "--schema", help="Run SQL against this schema.")
+@click.option("-a", "--show-all", is_flag=True, help="Returns all results of the query.")
 def sql_c(sql, schema, show_all):
     """
     Run an SQL statement against the Splitgraph engine.
@@ -237,8 +264,8 @@ def sql_c(sql, schema, show_all):
         pprint(results)
 
 
-@click.command(name='status')
-@click.argument('repository', required=False, type=RepositoryType())
+@click.command(name="status")
+@click.argument("repository", required=False, type=RepositoryType())
 def status_c(repository):
     """
     Show the status of the Splitgraph engine. If a repository is passed, show information about

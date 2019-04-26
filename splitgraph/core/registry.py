@@ -16,7 +16,9 @@ def _create_registry_schema(engine):
     in the catalog.
     """
     engine.run_sql(SQL("CREATE SCHEMA {}").format(Identifier(REGISTRY_META_SCHEMA)))
-    engine.run_sql(SQL("""CREATE TABLE {}.{} (
+    engine.run_sql(
+        SQL(
+            """CREATE TABLE {}.{} (
                         namespace  VARCHAR NOT NULL,
                         repository VARCHAR NOT NULL,
                         tag        VARCHAR NOT NULL,
@@ -26,13 +28,20 @@ def _create_registry_schema(engine):
                         readme     VARCHAR,
                         schemata   JSON,
                         previews   JSON,
-                        PRIMARY KEY (namespace, repository, tag))""").format(Identifier(REGISTRY_META_SCHEMA),
-                                                                             Identifier("images")))
+                        PRIMARY KEY (namespace, repository, tag))"""
+        ).format(Identifier(REGISTRY_META_SCHEMA), Identifier("images"))
+    )
 
 
 def _ensure_registry_schema(engine):
-    if engine.run_sql("SELECT 1 FROM information_schema.schemata WHERE schema_name = %s", (REGISTRY_META_SCHEMA,),
-                      return_shape=ResultShape.ONE_ONE) is None:
+    if (
+        engine.run_sql(
+            "SELECT 1 FROM information_schema.schemata WHERE schema_name = %s",
+            (REGISTRY_META_SCHEMA,),
+            return_shape=ResultShape.ONE_ONE,
+        )
+        is None
+    ):
         _create_registry_schema(engine)
 
 
@@ -50,11 +59,22 @@ def publish_tag(repository, tag, image_hash, published, provenance, readme, sche
     :param schemata: Dict mapping table name to a list of (column name, column type)
     :param previews: Dict mapping table name to a list of tuples with a preview
     """
-    repository.engine.run_sql(SQL("SELECT {}.publish_image(%s,%s,%s,%s,%s,%s,%s,%s,%s)")
-                              .format(Identifier(SPLITGRAPH_API_SCHEMA)),
-                              (repository.namespace, repository.repository, tag, image_hash,
-                               published, Json(provenance), readme, Json(schemata),
-                               Json(previews)))
+    repository.engine.run_sql(
+        SQL("SELECT {}.publish_image(%s,%s,%s,%s,%s,%s,%s,%s,%s)").format(
+            Identifier(SPLITGRAPH_API_SCHEMA)
+        ),
+        (
+            repository.namespace,
+            repository.repository,
+            tag,
+            image_hash,
+            published,
+            Json(provenance),
+            readme,
+            Json(schemata),
+            Json(previews),
+        ),
+    )
 
 
 def get_published_info(repository, tag):
@@ -65,11 +85,16 @@ def get_published_info(repository, tag):
     :param tag: Image tag
     :return: A tuple of (image_hash, published_timestamp, provenance, readme, table schemata, previews)
     """
-    return repository.engine.run_sql(select("get_published_image",
-                                            'image_hash,published,provenance,readme,schemata,previews',
-                                            table_args="(%s,%s,%s)", schema=SPLITGRAPH_API_SCHEMA),
-                                     (repository.namespace, repository.repository, tag),
-                                     return_shape=ResultShape.ONE_MANY)
+    return repository.engine.run_sql(
+        select(
+            "get_published_image",
+            "image_hash,published,provenance,readme,schemata,previews",
+            table_args="(%s,%s,%s)",
+            schema=SPLITGRAPH_API_SCHEMA,
+        ),
+        (repository.namespace, repository.repository, tag),
+        return_shape=ResultShape.ONE_MANY,
+    )
 
 
 def unpublish_repository(repository):
@@ -78,8 +103,10 @@ def unpublish_repository(repository):
 
     :param repository: Repository to unpublish
     """
-    repository.engine.run_sql(SQL("SELECT {}.unpublish_repository(%s,%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
-                              (repository.namespace, repository.repository))
+    repository.engine.run_sql(
+        SQL("SELECT {}.unpublish_repository(%s,%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
+        (repository.namespace, repository.repository),
+    )
 
 
 def get_info_key(engine, key):
@@ -89,9 +116,11 @@ def get_info_key(engine, key):
     :param engine: Engine
     :param key: Key to get
     """
-    return engine.run_sql(SQL("SELECT value FROM {}.info WHERE key = %s")
-                          .format(Identifier(SPLITGRAPH_META_SCHEMA)), (key,),
-                          return_shape=ResultShape.ONE_ONE)
+    return engine.run_sql(
+        SQL("SELECT value FROM {}.info WHERE key = %s").format(Identifier(SPLITGRAPH_META_SCHEMA)),
+        (key,),
+        return_shape=ResultShape.ONE_ONE,
+    )
 
 
 def set_info_key(engine, key, value):
@@ -103,9 +132,13 @@ def set_info_key(engine, key, value):
     :param value: New value for the key
     """
 
-    engine.run_sql(SQL("INSERT INTO {0}.info (key, value) VALUES (%s, %s)"
-                       " ON CONFLICT (key) DO UPDATE SET value = excluded.value WHERE info.key = excluded.key")
-                   .format(Identifier(SPLITGRAPH_META_SCHEMA)), (key, value))
+    engine.run_sql(
+        SQL(
+            "INSERT INTO {0}.info (key, value) VALUES (%s, %s)"
+            " ON CONFLICT (key) DO UPDATE SET value = excluded.value WHERE info.key = excluded.key"
+        ).format(Identifier(SPLITGRAPH_META_SCHEMA)),
+        (key, value),
+    )
 
 
 def setup_registry_mode(engine):
@@ -125,7 +158,7 @@ def setup_registry_mode(engine):
 
     """
 
-    if get_info_key(engine, "registry_mode") == 'true':
+    if get_info_key(engine, "registry_mode") == "true":
         return
 
     for schema in (SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA, SPLITGRAPH_API_SCHEMA):
@@ -136,8 +169,11 @@ def setup_registry_mode(engine):
         engine.run_sql(SQL("GRANT USAGE ON SCHEMA {} TO PUBLIC").format(Identifier(schema)))
 
     # Allow everyone to read objects that have been uploaded
-    engine.run_sql(SQL("ALTER DEFAULT PRIVILEGES IN SCHEMA {} GRANT SELECT ON TABLES TO PUBLIC")
-                   .format(Identifier(SPLITGRAPH_META_SCHEMA)))
+    engine.run_sql(
+        SQL("ALTER DEFAULT PRIVILEGES IN SCHEMA {} GRANT SELECT ON TABLES TO PUBLIC").format(
+            Identifier(SPLITGRAPH_META_SCHEMA)
+        )
+    )
 
     # Set up RLS policies on the registry schema -- not exercised directly since all access is via the SQL API
     # but still in place for the future.
@@ -149,26 +185,45 @@ def setup_registry_mode(engine):
 def _setup_rls_policies(engine, table, schema=SPLITGRAPH_META_SCHEMA, condition=None):
     condition = condition or "({0}.{1}.namespace = current_user)"
 
-    engine.run_sql(SQL("ALTER TABLE {}.{} ENABLE ROW LEVEL SECURITY").format(Identifier(schema),
-                                                                             Identifier(table)))
-    for flavour in 'SIUD':
-        engine.run_sql(SQL("DROP POLICY IF EXISTS {2} ON {0}.{1}")
-                       .format(Identifier(schema), Identifier(table), Identifier(table + '_' + flavour)))
-    engine.run_sql(SQL("""CREATE POLICY {2} ON {0}.{1} FOR SELECT USING (true)""")
-                   .format(Identifier(schema), Identifier(table), Identifier(table + '_S')))
-    engine.run_sql(SQL("""CREATE POLICY {2} ON {0}.{1} FOR INSERT WITH CHECK """)
-                   .format(Identifier(schema), Identifier(table), Identifier(table + '_I'))
-                   + SQL(condition).format(Identifier(schema), Identifier(table)))
-    engine.run_sql(SQL("CREATE POLICY {2} ON {0}.{1} FOR UPDATE USING ")
-                   .format(Identifier(schema), Identifier(table), Identifier(table + '_U'))
-                   + SQL(condition).format(Identifier(schema), Identifier(table))
-                   + SQL(" WITH CHECK ") + SQL(condition).format(Identifier(schema), Identifier(table)))
-    engine.run_sql(SQL("CREATE POLICY {2} ON {0}.{1} FOR DELETE USING ")
-                   .format(Identifier(schema), Identifier(table), Identifier(table + '_D'))
-                   + SQL(condition).format(Identifier(schema), Identifier(table)))
+    engine.run_sql(
+        SQL("ALTER TABLE {}.{} ENABLE ROW LEVEL SECURITY").format(
+            Identifier(schema), Identifier(table)
+        )
+    )
+    for flavour in "SIUD":
+        engine.run_sql(
+            SQL("DROP POLICY IF EXISTS {2} ON {0}.{1}").format(
+                Identifier(schema), Identifier(table), Identifier(table + "_" + flavour)
+            )
+        )
+    engine.run_sql(
+        SQL("""CREATE POLICY {2} ON {0}.{1} FOR SELECT USING (true)""").format(
+            Identifier(schema), Identifier(table), Identifier(table + "_S")
+        )
+    )
+    engine.run_sql(
+        SQL("""CREATE POLICY {2} ON {0}.{1} FOR INSERT WITH CHECK """).format(
+            Identifier(schema), Identifier(table), Identifier(table + "_I")
+        )
+        + SQL(condition).format(Identifier(schema), Identifier(table))
+    )
+    engine.run_sql(
+        SQL("CREATE POLICY {2} ON {0}.{1} FOR UPDATE USING ").format(
+            Identifier(schema), Identifier(table), Identifier(table + "_U")
+        )
+        + SQL(condition).format(Identifier(schema), Identifier(table))
+        + SQL(" WITH CHECK ")
+        + SQL(condition).format(Identifier(schema), Identifier(table))
+    )
+    engine.run_sql(
+        SQL("CREATE POLICY {2} ON {0}.{1} FOR DELETE USING ").format(
+            Identifier(schema), Identifier(table), Identifier(table + "_D")
+        )
+        + SQL(condition).format(Identifier(schema), Identifier(table))
+    )
 
 
-def toggle_registry_rls(engine, mode='ENABLE'):
+def toggle_registry_rls(engine, mode="ENABLE"):
     """
     Switches row-level security on the registry, restricting write access to metadata tables
     to owners of relevant repositories/objects.
@@ -177,8 +232,11 @@ def toggle_registry_rls(engine, mode='ENABLE'):
     :param mode: ENABLE, DISABLE or FORCE (enable for superusers/table owners)
     """
 
-    if mode not in ('ENABLE', 'DISABLE', 'FORCE'):
+    if mode not in ("ENABLE", "DISABLE", "FORCE"):
         raise ValueError()
 
-    engine.run_sql(SQL("ALTER TABLE {}.{} %s ROW LEVEL SECURITY" % mode).format(Identifier(REGISTRY_META_SCHEMA),
-                                                                                Identifier("images")))
+    engine.run_sql(
+        SQL("ALTER TABLE {}.{} %s ROW LEVEL SECURITY" % mode).format(
+            Identifier(REGISTRY_META_SCHEMA), Identifier("images")
+        )
+    )

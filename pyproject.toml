@@ -9,7 +9,7 @@ homepage = "https://www.splitgraph.com"
 repository = "https://github.com/splitgraph/splitgraph"
 
 [tool.poetry.dependencies]
-python = "^3.5"
+python = "^3.6"
 click = "^7"
 psycopg2-binary = "^2"
 parsimonious = "^0.8"
@@ -29,6 +29,7 @@ pyinstaller = "^3.4"
 sphinx = "^2.0"
 sphinx_rtd_theme = "^0.4.2"
 pylint = "^2.3"
+black = { version = "*", allows-prereleases = true }
 
 [tool.poetry.extras]
 ingestion = ["pandas", "sqlalchemy"]

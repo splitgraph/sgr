@@ -57,20 +57,26 @@ def get_external_object_handler(name, handler_params):
         handler_class = _EXTERNAL_OBJECT_HANDLERS[name]
         return handler_class(handler_params)
     except KeyError:
-        external_handlers = CONFIG.get('external_handlers', {})
+        external_handlers = CONFIG.get("external_handlers", {})
         if name not in external_handlers:
             raise SplitGraphException("Protocol %s is not supported!" % name)
         else:
             handler_class_name = external_handlers[name]
-            index = handler_class_name.rindex('.')
+            index = handler_class_name.rindex(".")
             try:
-                handler_class = getattr(import_module(handler_class_name[:index]), handler_class_name[index + 1:])
+                handler_class = getattr(
+                    import_module(handler_class_name[:index]), handler_class_name[index + 1 :]
+                )
                 register_upload_download_handler(name, handler_class)
                 return handler_class(handler_params)
             except AttributeError as e:
-                raise SplitGraphException("Error loading external object handler {0}".format(name)) from e
+                raise SplitGraphException(
+                    "Error loading external object handler {0}".format(name)
+                ) from e
             except ImportError as e:
-                raise SplitGraphException("Error loading external object handler {0}".format(name)) from e
+                raise SplitGraphException(
+                    "Error loading external object handler {0}".format(name)
+                ) from e
 
 
 def register_upload_download_handler(name, handler_class):
@@ -78,5 +84,7 @@ def register_upload_download_handler(name, handler_class):
     signatures of the handler functions."""
     global _EXTERNAL_OBJECT_HANDLERS
     if name in _EXTERNAL_OBJECT_HANDLERS:
-        raise SplitGraphException("Cannot register a protocol handler %s as it already exists!" % name)
+        raise SplitGraphException(
+            "Cannot register a protocol handler %s as it already exists!" % name
+        )
     _EXTERNAL_OBJECT_HANDLERS[name] = handler_class

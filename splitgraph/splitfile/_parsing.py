@@ -9,7 +9,8 @@ from parsimonious import Grammar
 
 from splitgraph.exceptions import SplitGraphException
 
-SPLITFILE_GRAMMAR = Grammar(r"""
+SPLITFILE_GRAMMAR = Grammar(
+    r"""
     commands = space command space (newline space command space)*
     command = comment / import / from / sql_file / sql / custom 
     comment = space "#" non_newline
@@ -53,7 +54,8 @@ SPLITFILE_GRAMMAR = Grammar(r"""
     no_db_conn_string = ~"(\S+):(\S+)@(.+):(\d+)"
     identifier = ~"[_a-zA-Z0-9-]+"
     space = ~"\s*"
-""")
+"""
+)
 
 
 def preprocess(commands, params=None):
@@ -75,13 +77,18 @@ def preprocess(commands, params=None):
         # possibly-escape character) and the substitution begins with a number (like an IP address),
         # then it gets treated as a match group (say, \11) which fails silently and adds weird gibberish
         # to the result.
-        commands = re.sub(r'([^\\])\${' + re.escape(param) + '}', r'\g<1>' + str(value), commands, flags=re.MULTILINE)
+        commands = re.sub(
+            r"([^\\])\${" + re.escape(param) + "}",
+            r"\g<1>" + str(value),
+            commands,
+            flags=re.MULTILINE,
+        )
     # Search for any unreplaced $-parameters
-    unreplaced = set(re.findall(r'[^\\](\${\S+})', commands, flags=re.MULTILINE))
+    unreplaced = set(re.findall(r"[^\\](\${\S+})", commands, flags=re.MULTILINE))
     if unreplaced:
-        raise SplitGraphException("Unknown values for parameters " + ', '.join(unreplaced) + '!')
+        raise SplitGraphException("Unknown values for parameters " + ", ".join(unreplaced) + "!")
     # Finally, replace the escaped $
-    return commands.replace('\\$', '$')
+    return commands.replace("\\$", "$")
 
 
 def parse_commands(commands, params=None):
@@ -90,7 +97,11 @@ def parse_commands(commands, params=None):
         params = {}
     commands = preprocess(commands, params)
     parse_tree = SPLITFILE_GRAMMAR.parse(commands)
-    return [n.children[0] for n in extract_nodes(parse_tree, ['command']) if n.children[0].expr_name != 'comment']
+    return [
+        n.children[0]
+        for n in extract_nodes(parse_tree, ["command"])
+        if n.children[0].expr_name != "comment"
+    ]
 
 
 def extract_nodes(node, types):
@@ -114,12 +125,12 @@ def get_first_or_none(node_list, node_type):
 
 def _parse_table_alias(table_node):
     """Extracts the table name (or a query forming the table) and its alias from the parse tree."""
-    table_name_alias = extract_nodes(table_node, ['identifier', 'non_curly_brace'])
+    table_name_alias = extract_nodes(table_node, ["identifier", "non_curly_brace"])
     table_name = table_name_alias[0].match.group(0)
-    table_is_query = table_name_alias[0].expr_name == 'non_curly_brace'
+    table_is_query = table_name_alias[0].expr_name == "non_curly_brace"
     if table_is_query:
         # Unescape the closing curly brace that marked the end of the query
-        table_name = table_name.replace('\\}', '}')
+        table_name = table_name.replace("\\}", "}")
     if len(table_name_alias) > 1:
         table_alias = table_name_alias[1].match.group(0)
         return table_name, table_alias, table_is_query
@@ -132,15 +143,16 @@ def parse_image_spec(remote_repo_node):
     :param remote_repo_node: Parse node with the specification
     :return: Tuple of (repository object, tag or hash)
     """
-    repo_nodes = extract_nodes(remote_repo_node, ['repository', 'identifier', 'image_hash'])
+    repo_nodes = extract_nodes(remote_repo_node, ["repository", "identifier", "image_hash"])
     # Avoid cyclic imports
     from splitgraph.core.repository import Repository
+
     repository = Repository.from_schema(repo_nodes[0].match.group(0))
     # See if we got given a tag / hash (the executor will try to interpret it as both).
     if len(repo_nodes) == 2:
         tag_or_hash = repo_nodes[1].match.group(0)
     else:
-        tag_or_hash = 'latest'
+        tag_or_hash = "latest"
     return repository, tag_or_hash
 
 
@@ -151,7 +163,7 @@ def extract_all_table_aliases(node):
     :return: Three lists: table names, table aliases (can be the same as table names), whether table names are
         actually SQL queries defining data to insert.
     """
-    tables = extract_nodes(node, ['table'])
+    tables = extract_nodes(node, ["table"])
     if not tables:
         # No tables specified (imports all tables from the mounted db / repo)
         return [], [], []
@@ -160,7 +172,7 @@ def extract_all_table_aliases(node):
 
 def parse_custom_command(node):
     """Splits the parse tree node (CMD arg1 --arg2 "arg 3") into a tuple (command, args)."""
-    repo_nodes = extract_nodes(node, ['identifier', 'non_newline'])
+    repo_nodes = extract_nodes(node, ["identifier", "non_newline"])
     command = repo_nodes[0].match.group(0)
     # Use the sh-like lexer to split args up so that e.g. 'arg1 --arg2 "arg 3"' turns into ['arg1', '--arg2', 'arg 3']
     return command, shlex.split(repo_nodes[1].match.group(0))

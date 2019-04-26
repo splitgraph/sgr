@@ -35,7 +35,9 @@ def test_validate_select_cols():
 
 
 def test_validate_join():
-    succeeds_on_both("SELECT a, b FROM my_table JOIN my_other_table ON my_table.a = my_other_table.a WHERE a > 5")
+    succeeds_on_both(
+        "SELECT a, b FROM my_table JOIN my_other_table ON my_table.a = my_other_table.a WHERE a > 5"
+    )
 
 
 def test_validate_bool():
@@ -75,12 +77,16 @@ def test_validate_types():
 
 
 def test_validate_with():
-    succeeds_on_both("WITH t_a (a) AS (SELECT a FROM table_1) "
-                     "SELECT * FROM my_table JOIN t_a ON my_table.a = t_a.a")
+    succeeds_on_both(
+        "WITH t_a (a) AS (SELECT a FROM table_1) "
+        "SELECT * FROM my_table JOIN t_a ON my_table.a = t_a.a"
+    )
 
 
 def test_validate_exists():
-    succeeds_on_both("SELECT a FROM table_1 WHERE EXISTS (SELECT 1 FROM table_2 WHERE table_2.a = table_1.a)")
+    succeeds_on_both(
+        "SELECT a FROM table_1 WHERE EXISTS (SELECT 1 FROM table_2 WHERE table_2.a = table_1.a)"
+    )
 
 
 def test_validate_in():
@@ -96,8 +102,9 @@ def test_validate_insert():
 
 
 def test_validate_insert_multiple():
-    succeeds_on_sql_fails_on_import("INSERT INTO my_table (a, b) VALUES (3, 4);"
-                                    "INSERT INTO my_table VALUES (5, 6);")
+    succeeds_on_sql_fails_on_import(
+        "INSERT INTO my_table (a, b) VALUES (3, 4);" "INSERT INTO my_table VALUES (5, 6);"
+    )
 
 
 def test_validate_delete():
@@ -109,7 +116,9 @@ def test_validate_update():
 
 
 def test_validate_add_column():
-    succeeds_on_sql_fails_on_import("ALTER TABLE table_1 ADD COLUMN col1 TIMESTAMP DEFAULT '2012-01-01'")
+    succeeds_on_sql_fails_on_import(
+        "ALTER TABLE table_1 ADD COLUMN col1 TIMESTAMP DEFAULT '2012-01-01'"
+    )
 
 
 def test_validate_delete_column():
@@ -121,7 +130,9 @@ def test_validate_drop_table():
 
 
 def test_validate_create_table():
-    succeeds_on_sql_fails_on_import("CREATE TABLE table_1 (key INTEGER PRIMARY KEY, value VARCHAR, value_2 JSON)")
+    succeeds_on_sql_fails_on_import(
+        "CREATE TABLE table_1 (key INTEGER PRIMARY KEY, value VARCHAR, value_2 JSON)"
+    )
 
 
 def test_validate_create_table_as():
@@ -133,15 +144,15 @@ def test_validate_multiple_selects():
 
 
 def test_validate_no_create_schema():
-    fails_on_both('CREATE SCHEMA test')
+    fails_on_both("CREATE SCHEMA test")
 
 
 def test_validate_no_lock_table():
-    fails_on_both('LOCK TABLE table1 IN EXCLUSIVE MODE')
+    fails_on_both("LOCK TABLE table1 IN EXCLUSIVE MODE")
 
 
 def test_validate_no_information_schema():
-    fails_on_both('SELECT * FROM information_schema.tables')
+    fails_on_both("SELECT * FROM information_schema.tables")
 
 
 def test_validate_no_schema():

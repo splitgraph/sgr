@@ -9,13 +9,15 @@ import click
 
 from splitgraph.hooks.mount_handlers import get_mount_handler, get_mount_handlers, mount
 
-_PARAM_REGEX = re.compile(r'^:param\s+(?P<type>\w+\s+)?(?P<param>\w+):\s+(?P<doc>.*)$', re.MULTILINE)
+_PARAM_REGEX = re.compile(
+    r"^:param\s+(?P<type>\w+\s+)?(?P<param>\w+):\s+(?P<doc>.*)$", re.MULTILINE
+)
 # Mount handler function arguments that get parsed by other means (connection string) and aren't
 # included in the generated help text.
-_RESERVED_PARAMS = ['mountpoint', 'server', 'port', 'username', 'password']
+_RESERVED_PARAMS = ["mountpoint", "server", "port", "username", "password"]
 
 
-@click.group(name='mount')
+@click.group(name="mount")
 def mount_c():
     """
     Mount foreign databases as Postgres schemas.
@@ -38,19 +40,19 @@ def _generate_handler_help(docstring):
     # use it to construct a custom help string with the extra JSON-formatted (for now)
     # parameters that the mount handler takes.
     try:
-        help_text, handler_params = docstring.split('\b')
+        help_text, handler_params = docstring.split("\b")
 
         handler_help_text = "JSON-encoded dictionary of handler options:\n\n"
 
         formatted_params = []
-        for line in handler_params.split(':param'):
+        for line in handler_params.split(":param"):
             # drop empty strings...
             line = line.strip()
             if not line:
                 continue
             try:
                 # and params that are accounted for (e.g. connection string parsed separately)
-                param_name = line[:line.index(':')]
+                param_name = line[: line.index(":")]
                 if param_name in _RESERVED_PARAMS:
                     continue
             except ValueError:
@@ -71,20 +73,29 @@ def _make_mount_handler_command(handler_name):
     handler = get_mount_handler(handler_name)
     help_text, handler_options_help = _generate_handler_help(handler.__doc__)
 
-    params = [click.Argument(['schema']),
-              click.Option(('--connection', '-c'),
-                           help='Connection string in the form username:password@server:port'),
-              click.Option(('--handler-options', '-o'),
-                           help=handler_options_help, default='{}')]
+    params = [
+        click.Argument(["schema"]),
+        click.Option(
+            ("--connection", "-c"),
+            help="Connection string in the form username:password@server:port",
+        ),
+        click.Option(("--handler-options", "-o"), help=handler_options_help, default="{}"),
+    ]
 
     def _callback(schema, connection, handler_options):
-        match = re.match(r'(\S+):(\S+)@(.+):(\d+)', connection)
+        match = re.match(r"(\S+):(\S+)@(.+):(\d+)", connection)
         # In the future, we could turn all of these options into actual Click options,
         # but then we'd also have to parse the docstring deeper to find out the types the function
         # requires, how to serialize them etc etc. Idea for a click-contrib addon perhaps?
         handler_options = json.loads(handler_options)
-        handler_options.update(dict(server=match.group(3), port=int(match.group(4)),
-                                    username=match.group(1), password=match.group(2)))
+        handler_options.update(
+            dict(
+                server=match.group(3),
+                port=int(match.group(4)),
+                username=match.group(1),
+                password=match.group(2),
+            )
+        )
         mount(schema, mount_handler=handler_name, handler_kwargs=handler_options)
 
     cmd = click.Command(handler_name, params=params, callback=_callback, help=help_text)

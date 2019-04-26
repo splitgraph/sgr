@@ -15,11 +15,12 @@ def lazy_get_config_value(key, default_return=None):
     """
 
     return (
-            get_argument_config_value(key, None)
-            or get_environment_config_value(key, None)
-            or get_system_config_value(key, None)
-            or get_default_config_value(key, None)
-            or default_return)
+        get_argument_config_value(key, None)
+        or get_environment_config_value(key, None)
+        or get_system_config_value(key, None)
+        or get_default_config_value(key, None)
+        or default_return
+    )
 
 
 def update_config_dict_from_arguments(config_dict):
@@ -30,8 +31,11 @@ def update_config_dict_from_arguments(config_dict):
         Return updated copy of config_dict.
     """
     new_config_dict = config_dict.copy()
-    argument_config_dict = {k: get_argument_config_value(k, None) for k in KEYS if
-                            get_argument_config_value(k) is not None}
+    argument_config_dict = {
+        k: get_argument_config_value(k, None)
+        for k in KEYS
+        if get_argument_config_value(k) is not None
+    }
     new_config_dict.update(argument_config_dict)
     return new_config_dict
 
@@ -45,8 +49,11 @@ def update_config_dict_from_env_vars(config_dict):
     """
 
     new_config_dict = config_dict.copy()
-    argument_config_dict = {k: get_environment_config_value(k, None) for k in KEYS if
-                            get_environment_config_value(k) is not None}
+    argument_config_dict = {
+        k: get_environment_config_value(k, None)
+        for k in KEYS
+        if get_environment_config_value(k) is not None
+    }
     new_config_dict.update(argument_config_dict)
 
     return new_config_dict
@@ -74,7 +81,7 @@ def create_config_dict():
 
     config_dict = {k: lazy_get_config_value(k) for k in KEYS}
 
-    sg_config_file = config_dict.get('SG_CONFIG_FILE', None)
+    sg_config_file = config_dict.get("SG_CONFIG_FILE", None)
 
     # if not sg_config_file:
     #     return config_dict

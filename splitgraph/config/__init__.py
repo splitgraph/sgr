@@ -28,4 +28,6 @@ REGISTRY_META_SCHEMA = "registry_meta"
 SPLITGRAPH_API_SCHEMA = "splitgraph_api"
 
 # Log timestamp and PID. By default we only log WARNINGs in the command line interface.
-logging.basicConfig(format='%(asctime)s [%(process)d] %(levelname)s %(message)s', level=CONFIG["SG_LOGLEVEL"])
+logging.basicConfig(
+    format="%(asctime)s [%(process)d] %(levelname)s %(message)s", level=CONFIG["SG_LOGLEVEL"]
+)

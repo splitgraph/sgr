@@ -12,22 +12,33 @@ from psycopg2.sql import Identifier, SQL
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.engine import ResultShape
 
-META_TABLES = ['images', 'tags', 'objects', 'tables', 'upstream', 'object_locations', 'object_cache_status',
-               'object_cache_occupancy', 'info']
-OBJECT_MANAGER_TABLES = ['object_cache_status', 'object_cache_occupancy']
+META_TABLES = [
+    "images",
+    "tags",
+    "objects",
+    "tables",
+    "upstream",
+    "object_locations",
+    "object_cache_status",
+    "object_cache_occupancy",
+    "info",
+]
+OBJECT_MANAGER_TABLES = ["object_cache_status", "object_cache_occupancy"]
 _PUBLISH_PREVIEW_SIZE = 100
 
 
 def set_tag(repository, image_hash, tag):
     """Internal function -- add a tag to an image."""
     engine = repository.engine
-    engine.run_sql(SQL("SELECT {}.tag_image(%s,%s,%s,%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
-                   (repository.namespace, repository.repository, image_hash, tag))
+    engine.run_sql(
+        SQL("SELECT {}.tag_image(%s,%s,%s,%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
+        (repository.namespace, repository.repository, image_hash, tag),
+    )
 
 
 def set_head(repository, image):
     """Sets the HEAD pointer of a given repository to a given image. Shouldn't be used directly."""
-    set_tag(repository, image, 'HEAD')
+    set_tag(repository, image, "HEAD")
 
 
 def manage_audit_triggers(engine, object_engine=None):
@@ -45,8 +56,13 @@ def manage_audit_triggers(engine, object_engine=None):
     object_engine = object_engine or engine
 
     from splitgraph.core.engine import get_current_repositories
-    repos_tables = [(r.to_schema(), t) for r, head in get_current_repositories(engine) if head is not None
-                    for t in set(object_engine.get_all_tables(r.to_schema())) & set(head.get_tables())]
+
+    repos_tables = [
+        (r.to_schema(), t)
+        for r, head in get_current_repositories(engine)
+        if head is not None
+        for t in set(object_engine.get_all_tables(r.to_schema())) & set(head.get_tables())
+    ]
     tracked_tables = engine.get_tracked_tables()
 
     to_untrack = [t for t in tracked_tables if t not in repos_tables]
@@ -68,6 +84,7 @@ def manage_audit(func):
     @wraps(func)
     def wrapped(self, *args, **kwargs):
         from .image import Image
+
         if isinstance(self, Image):
             repository = self.repository
         else:
@@ -86,7 +103,7 @@ def parse_connection_string(conn_string):
     """
     :return: a tuple (server, port, username, password, dbname)
     """
-    match = re.match(r'(\S+):(\S+)@(.+):(\d+)/(\S+)', conn_string)
+    match = re.match(r"(\S+):(\S+)@(.+):(\d+)/(\S+)", conn_string)
     if not match:
         raise ValueError("Connection string doesn't match the format!")
     return match.group(3), int(match.group(4)), match.group(1), match.group(2), match.group(5)
@@ -96,7 +113,7 @@ def serialize_connection_string(server, port, username, password, dbname):
     """
     Serializes a tuple into a Splitgraph engine connection string.
     """
-    return '%s:%s@%s:%s/%s' % (username, password, server, port, dbname)
+    return "%s:%s@%s:%s/%s" % (username, password, server, port, dbname)
 
 
 def _create_metadata_schema(engine):
@@ -110,7 +127,9 @@ def _create_metadata_schema(engine):
     """
     engine.run_sql(SQL("CREATE SCHEMA {}").format(Identifier(SPLITGRAPH_META_SCHEMA)))
     # maybe FK parent_id on image_hash. NULL there means this is the repo root.
-    engine.run_sql(SQL("""CREATE TABLE {}.{} (
+    engine.run_sql(
+        SQL(
+            """CREATE TABLE {}.{} (
                     namespace       VARCHAR NOT NULL,
                     repository      VARCHAR NOT NULL,
                     image_hash      VARCHAR NOT NULL,
@@ -119,19 +138,27 @@ def _create_metadata_schema(engine):
                     comment         VARCHAR,
                     provenance_type VARCHAR,
                     provenance_data JSONB,
-                    PRIMARY KEY (namespace, repository, image_hash))""").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                                Identifier("images")),
-                   return_shape=None)
-    engine.run_sql(SQL("""CREATE TABLE {}.{} (
+                    PRIMARY KEY (namespace, repository, image_hash))"""
+        ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("images")),
+        return_shape=None,
+    )
+    engine.run_sql(
+        SQL(
+            """CREATE TABLE {}.{} (
                     namespace  VARCHAR NOT NULL,
                     repository VARCHAR NOT NULL,
                     image_hash VARCHAR,
                     tag        VARCHAR,
                     PRIMARY KEY (namespace, repository, tag),
-                    CONSTRAINT sh_fk FOREIGN KEY (namespace, repository, image_hash) REFERENCES {}.{})""")
-                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("tags"),
-                           Identifier(SPLITGRAPH_META_SCHEMA), Identifier("images")),
-                   return_shape=None)
+                    CONSTRAINT sh_fk FOREIGN KEY (namespace, repository, image_hash) REFERENCES {}.{})"""
+        ).format(
+            Identifier(SPLITGRAPH_META_SCHEMA),
+            Identifier("tags"),
+            Identifier(SPLITGRAPH_META_SCHEMA),
+            Identifier("images"),
+        ),
+        return_shape=None,
+    )
 
     # Object metadata.
     # * object_id: ID of the object, calculated as sha256((insertion_hash - deletion_hash) + sha256(table_schema)
@@ -163,7 +190,9 @@ def _create_metadata_schema(engine):
     # * index: A JSON object mapping columns spanned by this object to their minimum and maximum values. Used to
     #   discard and not download at all objects that definitely don't match a given query.
 
-    engine.run_sql(SQL("""CREATE TABLE {}.{} (
+    engine.run_sql(
+        SQL(
+            """CREATE TABLE {}.{} (
                     object_id      VARCHAR NOT NULL PRIMARY KEY,
                     namespace      VARCHAR NOT NULL,
                     size           BIGINT,
@@ -171,11 +200,16 @@ def _create_metadata_schema(engine):
                     index          JSONB,
                     insertion_hash VARCHAR(64),
                     deletion_hash  VARCHAR(64),
-                    parent_id  VARCHAR)""").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")),
-                   return_shape=None)
+                    parent_id  VARCHAR)"""
+        ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")),
+        return_shape=None,
+    )
     # PK on object_id here (one object can't have more than 1 parent)
-    engine.run_sql(SQL("""CREATE INDEX idx_splitgraph_meta_objects_parent ON {}.{} (parent_id)""")
-                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")))
+    engine.run_sql(
+        SQL("""CREATE INDEX idx_splitgraph_meta_objects_parent ON {}.{} (parent_id)""").format(
+            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")
+        )
+    )
 
     # Keep track of objects that have been cached locally on the engine.
     #
@@ -184,22 +218,34 @@ def _create_metadata_schema(engine):
     #            (maybe consider a row-level lock on this table?)
     # ready:     f if the object can't be used yet (is being downloaded), t if it can.
     # last_used: Timestamp (UTC) this object was last returned to be used in a layered query / materialization.
-    engine.run_sql(SQL("""CREATE TABLE {}.{} (
+    engine.run_sql(
+        SQL(
+            """CREATE TABLE {}.{} (
                         object_id  VARCHAR NOT NULL PRIMARY KEY,
                         refcount   INTEGER,
                         ready      BOOLEAN,
-                        last_used  TIMESTAMP)""")
-                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status"),
-                           Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")))
+                        last_used  TIMESTAMP)"""
+        ).format(
+            Identifier(SPLITGRAPH_META_SCHEMA),
+            Identifier("object_cache_status"),
+            Identifier(SPLITGRAPH_META_SCHEMA),
+            Identifier("objects"),
+        )
+    )
 
     # Size of all objects cached on the engine (existing externally and downloaded for a materialization/LQ)
-    engine.run_sql(SQL("""CREATE TABLE {0}.{1} (total_size BIGINT); INSERT INTO {0}.{1} VALUES (0)""")
-                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_occupancy")))
+    engine.run_sql(
+        SQL("""CREATE TABLE {0}.{1} (total_size BIGINT); INSERT INTO {0}.{1} VALUES (0)""").format(
+            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_occupancy")
+        )
+    )
 
     # Maps a given table at a given point in time to a list of fragments that it's assembled from.
     # Only the "top" fragments are listed here: to actually materialize a given table, the parent chain of every
     # object in this list is crawled until the base object is reached.
-    engine.run_sql(SQL("""CREATE TABLE {}.{} (
+    engine.run_sql(
+        SQL(
+            """CREATE TABLE {}.{} (
                     namespace  VARCHAR NOT NULL,
                     repository VARCHAR NOT NULL,
                     image_hash VARCHAR NOT NULL,
@@ -207,47 +253,65 @@ def _create_metadata_schema(engine):
                     table_schema JSONB,
                     object_ids  VARCHAR[] NOT NULL,
                     PRIMARY KEY (namespace, repository, image_hash, table_name),
-                    CONSTRAINT tb_fk FOREIGN KEY (namespace, repository, image_hash) REFERENCES {}.{})""")
-                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("tables"),
-                           Identifier(SPLITGRAPH_META_SCHEMA), Identifier("images")),
-                   return_shape=None)
+                    CONSTRAINT tb_fk FOREIGN KEY (namespace, repository, image_hash) REFERENCES {}.{})"""
+        ).format(
+            Identifier(SPLITGRAPH_META_SCHEMA),
+            Identifier("tables"),
+            Identifier(SPLITGRAPH_META_SCHEMA),
+            Identifier("images"),
+        ),
+        return_shape=None,
+    )
 
     # Keep track of what the remotes for a given repository are (by default, we create an "origin" remote
     # on initial pull)
-    engine.run_sql(SQL("""CREATE TABLE {}.{} (
+    engine.run_sql(
+        SQL(
+            """CREATE TABLE {}.{} (
                     namespace          VARCHAR NOT NULL,
                     repository         VARCHAR NOT NULL,
                     remote_name        VARCHAR NOT NULL,
                     remote_namespace   VARCHAR NOT NULL,
                     remote_repository  VARCHAR NOT NULL,
-                    PRIMARY KEY (namespace, repository))""").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                                    Identifier("upstream")),
-                   return_shape=None)
+                    PRIMARY KEY (namespace, repository))"""
+        ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("upstream")),
+        return_shape=None,
+    )
 
     # Map objects to their locations for when they don't live on the remote or the local machine but instead
     # in S3/some FTP/HTTP server/torrent etc.
     # Lookup path to resolve an object on checkout: local -> this table -> remote (so that we don't bombard
     # the remote with queries for tables that may have been uploaded to a different place).
-    engine.run_sql(SQL("""CREATE TABLE {0}.{1} (
+    engine.run_sql(
+        SQL(
+            """CREATE TABLE {0}.{1} (
                     object_id          VARCHAR NOT NULL,
                     location           VARCHAR NOT NULL,
                     protocol           VARCHAR NOT NULL,
                     PRIMARY KEY (object_id),
                     CONSTRAINT ol_fk FOREIGN KEY (object_id) REFERENCES {0}.{2})
-                    """).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_locations"),
-                                Identifier("objects")),
-                   return_shape=None)
+                    """
+        ).format(
+            Identifier(SPLITGRAPH_META_SCHEMA),
+            Identifier("object_locations"),
+            Identifier("objects"),
+        ),
+        return_shape=None,
+    )
 
     # Miscellaneous key-value information for this engine (e.g. whether uploading objects is permitted etc).
-    engine.run_sql(SQL("""CREATE TABLE {}.{} (
+    engine.run_sql(
+        SQL(
+            """CREATE TABLE {}.{} (
                     key   VARCHAR NOT NULL,
                     value VARCHAR NOT NULL,
-                    PRIMARY KEY (key))""").format(Identifier(SPLITGRAPH_META_SCHEMA),
-                                                  Identifier("info")),
-                   return_shape=None)
+                    PRIMARY KEY (key))"""
+        ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("info")),
+        return_shape=None,
+    )
 
 
-def select(table, columns='*', where='', schema=SPLITGRAPH_META_SCHEMA, table_args=None):
+def select(table, columns="*", where="", schema=SPLITGRAPH_META_SCHEMA, table_args=None):
     """
     A generic SQL SELECT constructor to simplify metadata access queries so that we don't have to repeat the same
     identifiers everywhere.
@@ -279,15 +343,20 @@ def insert(table, columns, schema=SPLITGRAPH_META_SCHEMA):
     """
     query = SQL("INSERT INTO {}.{}").format(Identifier(schema), Identifier(table))
     query += SQL("(" + ",".join("{}" for _ in columns) + ")").format(*map(Identifier, columns))
-    query += SQL("VALUES (" + ','.join("%s" for _ in columns) + ")")
+    query += SQL("VALUES (" + ",".join("%s" for _ in columns) + ")")
     return query
 
 
 def ensure_metadata_schema(engine):
     """Create the metadata schema if it doesn't exist"""
-    if engine.run_sql(
-            "SELECT 1 FROM information_schema.schemata WHERE schema_name = %s", (SPLITGRAPH_META_SCHEMA,),
-            return_shape=ResultShape.ONE_ONE) is None:
+    if (
+        engine.run_sql(
+            "SELECT 1 FROM information_schema.schemata WHERE schema_name = %s",
+            (SPLITGRAPH_META_SCHEMA,),
+            return_shape=ResultShape.ONE_ONE,
+        )
+        is None
+    ):
         _create_metadata_schema(engine)
 
 
@@ -305,16 +374,20 @@ def slow_diff(repository, table_name, image_1, image_2, aggregate):
         with repository.materialized_table(table_name, image_2) as (mp_2, table_2):
             # Check both tables out at the same time since then table_2 calculation can be based
             # on table_1's snapshot.
-            left = repository.object_engine.run_sql(SQL("SELECT * FROM {}.{}").format(Identifier(mp_1),
-                                                                                      Identifier(table_1)))
-            right = repository.object_engine.run_sql(SQL("SELECT * FROM {}.{}").format(Identifier(mp_2),
-                                                                                       Identifier(table_2)))
+            left = repository.object_engine.run_sql(
+                SQL("SELECT * FROM {}.{}").format(Identifier(mp_1), Identifier(table_1))
+            )
+            right = repository.object_engine.run_sql(
+                SQL("SELECT * FROM {}.{}").format(Identifier(mp_2), Identifier(table_2))
+            )
 
     if aggregate:
         return sum(1 for r in right if r not in left), sum(1 for r in left if r not in right), 0
 
     # Return format: list of [(False for deleted/True for inserted, full row)]
-    return [(False, r) for r in left if r not in right] + [(True, r) for r in right if r not in left]
+    return [(False, r) for r in left if r not in right] + [
+        (True, r) for r in right if r not in left
+    ]
 
 
 def prepare_publish_data(image, repository, include_table_previews):
@@ -324,11 +397,18 @@ def prepare_publish_data(image, repository, include_table_previews):
     for table_name in image.get_tables():
         if include_table_previews:
             logging.info("Generating preview for %s...", table_name)
-            with repository.materialized_table(table_name, image.image_hash) as (tmp_schema, tmp_table):
+            with repository.materialized_table(table_name, image.image_hash) as (
+                tmp_schema,
+                tmp_table,
+            ):
                 engine = repository.object_engine
                 schema = engine.get_full_table_schema(tmp_schema, tmp_table)
-                previews[table_name] = engine.run_sql(SQL("SELECT * FROM {}.{} LIMIT %s").format(
-                    Identifier(tmp_schema), Identifier(tmp_table)), (_PUBLISH_PREVIEW_SIZE,))
+                previews[table_name] = engine.run_sql(
+                    SQL("SELECT * FROM {}.{} LIMIT %s").format(
+                        Identifier(tmp_schema), Identifier(tmp_table)
+                    ),
+                    (_PUBLISH_PREVIEW_SIZE,),
+                )
         else:
             schema = image.get_table(table_name).table_schema
         schemata[table_name] = [(cn, ct, pk) for _, cn, ct, pk in schema]
@@ -357,10 +437,20 @@ def gather_sync_metadata(target, source):
         image = source_images[image_hash]
         new_images.append(image)
         # Get the meta for all objects we'll need to fetch.
-        table_meta.extend([(image_hash,) + t for t in
-                           source.engine.run_sql(select("get_tables", "table_name, table_schema, object_ids",
-                                                        schema=SPLITGRAPH_API_SCHEMA, table_args="(%s,%s,%s)"),
-                                                 (source.namespace, source.repository, image_hash))])
+        table_meta.extend(
+            [
+                (image_hash,) + t
+                for t in source.engine.run_sql(
+                    select(
+                        "get_tables",
+                        "table_name, table_schema, object_ids",
+                        schema=SPLITGRAPH_API_SCHEMA,
+                        table_args="(%s,%s,%s)",
+                    ),
+                    (source.namespace, source.repository, image_hash),
+                )
+            ]
+        )
     # Get the tags too
     existing_tags = [t for s, t in target.get_all_hashes_tags()]
     tags = {t: s for s, t in source.get_all_hashes_tags() if t not in existing_tags}
@@ -369,7 +459,9 @@ def gather_sync_metadata(target, source):
     top_objects = list({o for table in table_meta for o in table[3]})
 
     # Expand this list to include the objects' parents etc
-    new_objects = target.objects.get_new_objects(source.objects.get_all_required_objects(top_objects))
+    new_objects = target.objects.get_new_objects(
+        source.objects.get_all_required_objects(top_objects)
+    )
     if new_objects:
         new_objects = list(set(new_objects))
         object_meta = source.objects.get_object_meta(new_objects)
@@ -392,7 +484,7 @@ def pretty_size(size):
         size /= power
         base += 1
 
-    return "%.2f %s" % (size, {0: '', 1: 'Ki', 2: 'Mi', 3: 'Gi', 4: 'Ti'}[base] + 'B')
+    return "%.2f %s" % (size, {0: "", 1: "Ki", 2: "Mi", 3: "Gi", 4: "Ti"}[base] + "B")
 
 
 def _parse_dt(string):
@@ -406,12 +498,16 @@ def _parse_date(string):
     return dt.strptime(string, "%Y-%m-%d").date()
 
 
-_TYPE_MAP = {k: v for ks, v in
-             [(['integer', 'bigint', 'smallint'], int),
-              (['numeric', 'real', 'double precision'], float),
-              (['timestamp', 'timestamp without time zone'], _parse_dt),
-              (['date'], _parse_date)]
-             for k in ks}
+_TYPE_MAP = {
+    k: v
+    for ks, v in [
+        (["integer", "bigint", "smallint"], int),
+        (["numeric", "real", "double precision"], float),
+        (["timestamp", "timestamp without time zone"], _parse_dt),
+        (["date"], _parse_date),
+    ]
+    for k in ks
+}
 
 
 def adapt(value, pg_type):

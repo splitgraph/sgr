@@ -42,7 +42,8 @@ _PG_INDEXABLE_TYPES = [
     "time with time zone",
     "timestamp",
     "timestamp without time zone",
-    "timestamp with time zone"]
+    "timestamp with time zone",
+]
 
 
 def _split_changeset(changeset, min_max, table_pks):
@@ -106,28 +107,28 @@ class Digest:
     def from_memoryview(cls, memory):
         """Create a Digest from a 256-bit memoryview/bytearray."""
         # Unpack the buffer as 16 signed big-endian shortints.
-        return cls(struct.unpack('>16H', memory))
+        return cls(struct.unpack(">16H", memory))
 
     @classmethod
     def from_hex(cls, hex_string):
         """Create a Digest from a 64-characters (256-bit) hexadecimal string"""
         assert len(hex_string) == 64
-        return cls(tuple(int(hex_string[i:i + 4], base=16) for i in range(0, 64, 4)))
+        return cls(tuple(int(hex_string[i : i + 4], base=16) for i in range(0, 64, 4)))
 
     # In these routines, we treat each hash as a vector of 16 2-byte integers and do component-wise addition.
     # To simulate the wraparound behaviour of C shorts, throw away all remaining bits after the action.
     def __add__(self, other):
-        return Digest(tuple((l + r) & 0xffff for l, r in zip(self.shorts, other.shorts)))
+        return Digest(tuple((l + r) & 0xFFFF for l, r in zip(self.shorts, other.shorts)))
 
     def __sub__(self, other):
-        return Digest(tuple((l - r) & 0xffff for l, r in zip(self.shorts, other.shorts)))
+        return Digest(tuple((l - r) & 0xFFFF for l, r in zip(self.shorts, other.shorts)))
 
     def __neg__(self):
-        return Digest(tuple(-v & 0xffff for v in self.shorts))
+        return Digest(tuple(-v & 0xFFFF for v in self.shorts))
 
     def hex(self):
         """Convert the hash into a hexadecimal value."""
-        return struct.pack('>16H', *self.shorts).hex()
+        return struct.pack(">16H", *self.shorts).hex()
 
 
 class FragmentManager(MetadataManager):
@@ -157,11 +158,18 @@ class FragmentManager(MetadataManager):
         :return: Dict of {column_name: (min_val, max_val)}
         """
         # Maybe we should pass the column names in instead?
-        columns = {c[1]: c[2] for c in self.object_engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, object_id)
-                   if c[1] != SG_UD_FLAG and c[2] in _PG_INDEXABLE_TYPES}
+        columns = {
+            c[1]: c[2]
+            for c in self.object_engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, object_id)
+            if c[1] != SG_UD_FLAG and c[2] in _PG_INDEXABLE_TYPES
+        }
 
-        query = SQL("SELECT ") + SQL(",").join(SQL("MIN({0}), MAX({0})").format(Identifier(c)) for c in columns)
-        query += SQL(" FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id))
+        query = SQL("SELECT ") + SQL(",").join(
+            SQL("MIN({0}), MAX({0})").format(Identifier(c)) for c in columns
+        )
+        query += SQL(" FROM {}.{}").format(
+            Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)
+        )
         result = self.object_engine.run_sql(query, return_shape=ResultShape.ONE_MANY)
 
         index = {col: (cmin, cmax) for col, cmin, cmax in zip(columns, result[0::2], result[1::2])}
@@ -195,13 +203,20 @@ class FragmentManager(MetadataManager):
                     # The audit trigger stores the old row values as JSON so only supports strings and floats/ints.
                     # Hence, we have to coerce them into the values returned by the index.
                     val = adapt(val, columns[col])
-                    index[col] = (_min(index[col][0], val),
-                                  _max(index[col][1], val))
+                    index[col] = (_min(index[col][0], val), _max(index[col][1], val))
 
         index = {k: (coerce_val_to_json(v[0]), coerce_val_to_json(v[1])) for k, v in index.items()}
         return index
 
-    def _register_object(self, object_id, namespace, insertion_hash, deletion_hash, parent_object=None, changeset=None):
+    def _register_object(
+        self,
+        object_id,
+        namespace,
+        insertion_hash,
+        deletion_hash,
+        parent_object=None,
+        changeset=None,
+    ):
         """
         Registers a Splitgraph object in the object tree and indexes it
 
@@ -218,9 +233,20 @@ class FragmentManager(MetadataManager):
         """
         object_size = self.object_engine.get_table_size(SPLITGRAPH_META_SCHEMA, object_id)
         object_index = self._generate_object_index(object_id, changeset)
-        self.register_objects([Object(object_id=object_id, format='FRAG', parent_id=parent_object,
-                                      namespace=namespace, size=object_size, insertion_hash=insertion_hash,
-                                      deletion_hash=deletion_hash, index=object_index)])
+        self.register_objects(
+            [
+                Object(
+                    object_id=object_id,
+                    format="FRAG",
+                    parent_id=parent_object,
+                    namespace=namespace,
+                    size=object_size,
+                    insertion_hash=insertion_hash,
+                    deletion_hash=deletion_hash,
+                    index=object_index,
+                )
+            ]
+        )
 
     @staticmethod
     def _extract_deleted_rows(changeset, table_schema):
@@ -262,13 +288,18 @@ class FragmentManager(MetadataManager):
         # Horror alert: we hash newly created tables by essentially calling digest(row::text) in Postgres and
         # we don't really know how it turns some types to strings. So instead we give Postgres all of its deleted
         # rows back and ask it to hash them for us in the same way.
-        inner_tuple = "(" + ','.join('%s::' + c[2] for c in table_schema) + ")"
-        query = "SELECT digest(o::text, 'sha256') FROM (VALUES " \
-                + ",".join(itertools.repeat(inner_tuple, len(rows))) + ") o"
+        inner_tuple = "(" + ",".join("%s::" + c[2] for c in table_schema) + ")"
+        query = (
+            "SELECT digest(o::text, 'sha256') FROM (VALUES "
+            + ",".join(itertools.repeat(inner_tuple, len(rows)))
+            + ") o"
+        )
 
         # By default (e.g. for changesets where nothing was deleted) we use a 0 hash (since adding it to any other
         # hash has no effect).
-        digests = self.object_engine.run_sql(query, [o for row in rows for o in row], return_shape=ResultShape.MANY_ONE)
+        digests = self.object_engine.run_sql(
+            query, [o for row in rows for o in row], return_shape=ResultShape.MANY_ONE
+        )
         return reduce(operator.add, map(Digest.from_memoryview, digests), Digest.empty())
 
     def _store_changesets(self, table, changesets, parents, schema):
@@ -294,36 +325,56 @@ class FragmentManager(MetadataManager):
             # avoid storing the object altogether if it's a duplicate.
             tmp_object_id = self._store_changeset(sub_changeset, table.table_name, schema)
 
-            deletion_hash, insertion_hash, object_id = self._get_patch_fragment_hashes(sub_changeset, table,
-                                                                                       tmp_object_id, parent)
+            deletion_hash, insertion_hash, object_id = self._get_patch_fragment_hashes(
+                sub_changeset, table, tmp_object_id, parent
+            )
 
             object_ids.append(object_id)
             if not self.get_new_objects([object_id]):
                 # If an object with this ID already exists, delete the temporary table, don't register it and move on.
-                logging.info("Reusing object %s for table %s/%s", object_id, table.repository, table.table_name)
+                logging.info(
+                    "Reusing object %s for table %s/%s",
+                    object_id,
+                    table.repository,
+                    table.table_name,
+                )
                 self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
                 continue
 
             self.object_engine.rename_table(SPLITGRAPH_META_SCHEMA, tmp_object_id, object_id)
-            self._register_object(object_id, namespace=table.repository.namespace, insertion_hash=insertion_hash.hex(),
-                                  deletion_hash=deletion_hash.hex(), parent_object=parent, changeset=sub_changeset)
+            self._register_object(
+                object_id,
+                namespace=table.repository.namespace,
+                insertion_hash=insertion_hash.hex(),
+                deletion_hash=deletion_hash.hex(),
+                parent_object=parent,
+                changeset=sub_changeset,
+            )
         return object_ids
 
     def _get_patch_fragment_hashes(self, sub_changeset, table, tmp_object_id, parent_id):
         # Digest the rows.
         deletion_hash = self._hash_old_changeset_values(sub_changeset, table.table_schema)
-        insertion_hash = self.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, tmp_object_id)
+        insertion_hash = self.calculate_fragment_insertion_hash(
+            SPLITGRAPH_META_SCHEMA, tmp_object_id
+        )
         content_hash = (insertion_hash - deletion_hash).hex()
-        schema_hash = sha256(str(table.table_schema).encode('ascii')).hexdigest()
-        object_id = "o" + sha256((content_hash + schema_hash + (parent_id or "")).encode('ascii')).hexdigest()[:-2]
+        schema_hash = sha256(str(table.table_schema).encode("ascii")).hexdigest()
+        object_id = (
+            "o"
+            + sha256((content_hash + schema_hash + (parent_id or "")).encode("ascii")).hexdigest()[
+                :-2
+            ]
+        )
         return deletion_hash, insertion_hash, object_id
 
     def _store_changeset(self, sub_changeset, table, schema):
         tmp_object_id = get_random_object_id()
         upserted = [pk for pk, data in sub_changeset.items() if data[0]]
         deleted = [pk for pk, data in sub_changeset.items() if not data[0]]
-        self.object_engine.store_fragment(upserted, deleted, SPLITGRAPH_META_SCHEMA, tmp_object_id,
-                                          schema, table)
+        self.object_engine.store_fragment(
+            upserted, deleted, SPLITGRAPH_META_SCHEMA, tmp_object_id, schema, table
+        )
         return tmp_object_id
 
     def calculate_fragment_insertion_hash(self, schema, table):
@@ -334,11 +385,21 @@ class FragmentManager(MetadataManager):
         :return: A `Digest` object
         """
         table_schema = self.object_engine.get_full_table_schema(schema, table)
-        columns_sql = SQL(",").join(SQL("o.") + Identifier(c[1]) for c in table_schema if c[1] != SG_UD_FLAG)
-        digest_query = SQL("SELECT digest((") + columns_sql + SQL(")::text, 'sha256'::text) FROM {}.{} o") \
-            .format(Identifier(schema), Identifier(table)) + SQL(" WHERE o.{} = true").format(Identifier(SG_UD_FLAG))
+        columns_sql = SQL(",").join(
+            SQL("o.") + Identifier(c[1]) for c in table_schema if c[1] != SG_UD_FLAG
+        )
+        digest_query = (
+            SQL("SELECT digest((")
+            + columns_sql
+            + SQL(")::text, 'sha256'::text) FROM {}.{} o").format(
+                Identifier(schema), Identifier(table)
+            )
+            + SQL(" WHERE o.{} = true").format(Identifier(SG_UD_FLAG))
+        )
         row_digests = self.object_engine.run_sql(digest_query, return_shape=ResultShape.MANY_ONE)
-        insertion_hash = reduce(operator.add, (Digest.from_memoryview(r) for r in row_digests), Digest.empty())
+        insertion_hash = reduce(
+            operator.add, (Digest.from_memoryview(r) for r in row_digests), Digest.empty()
+        )
         return insertion_hash
 
     def record_table_as_patch(self, old_table, schema, image_hash, split_changeset=False):
@@ -360,7 +421,9 @@ class FragmentManager(MetadataManager):
 
         # Accumulate the diff in-memory. This might become a bottleneck in the future.
         changeset = {}
-        _conflate_changes(changeset, self.object_engine.get_pending_changes(schema, old_table.table_name))
+        _conflate_changes(
+            changeset, self.object_engine.get_pending_changes(schema, old_table.table_name)
+        )
         self.object_engine.discard_pending_changes(schema, old_table.table_name)
         if changeset:
             # Get all the top fragments that the current table depends on
@@ -382,15 +445,20 @@ class FragmentManager(MetadataManager):
 
             # Store the changesets. For the parentless before/after changesets, only create them if they actually
             # contain something.
-            object_ids = self._store_changesets(old_table, [before] + matched + [after],
-                                                [None] + top_fragments + [None], schema)
+            object_ids = self._store_changesets(
+                old_table, [before] + matched + [after], [None] + top_fragments + [None], schema
+            )
             # Finally, link the table to the new set of objects.
-            self.register_tables(old_table.repository, [(image_hash, old_table.table_name,
-                                                         old_table.table_schema, object_ids)])
+            self.register_tables(
+                old_table.repository,
+                [(image_hash, old_table.table_name, old_table.table_schema, object_ids)],
+            )
         else:
             # Changes in the audit log cancelled each other out. Point the image to the same old objects.
-            self.register_tables(old_table.repository, [(image_hash, old_table.table_name,
-                                                         old_table.table_schema, old_table.objects)])
+            self.register_tables(
+                old_table.repository,
+                [(image_hash, old_table.table_name, old_table.table_schema, old_table.objects)],
+            )
 
     def _extract_min_max_pks(self, fragments, table_pks):
         # Get the min/max PK values for every chunk
@@ -414,14 +482,22 @@ class FragmentManager(MetadataManager):
         min_max = []
         pk_sql = SQL(",").join(Identifier(p[0]) for p in table_pks)
         for fragment in fragments:
-            query = SQL("SELECT ") + pk_sql + SQL(" FROM {}.{} ORDER BY ").format(
-                Identifier(SPLITGRAPH_META_SCHEMA), Identifier(fragment))
-            frag_min = self.object_engine.run_sql(query + pk_sql + SQL(" LIMIT 1"),
-                                                  return_shape=ResultShape.ONE_MANY)
-            frag_max = self.object_engine.run_sql(query +
-                                                  SQL(",").join(Identifier(p[0]) + SQL(" DESC")
-                                                                for p in table_pks)
-                                                  + SQL(" LIMIT 1"), return_shape=ResultShape.ONE_MANY)
+            query = (
+                SQL("SELECT ")
+                + pk_sql
+                + SQL(" FROM {}.{} ORDER BY ").format(
+                    Identifier(SPLITGRAPH_META_SCHEMA), Identifier(fragment)
+                )
+            )
+            frag_min = self.object_engine.run_sql(
+                query + pk_sql + SQL(" LIMIT 1"), return_shape=ResultShape.ONE_MANY
+            )
+            frag_max = self.object_engine.run_sql(
+                query
+                + SQL(",").join(Identifier(p[0]) + SQL(" DESC") for p in table_pks)
+                + SQL(" LIMIT 1"),
+                return_shape=ResultShape.ONE_MANY,
+            )
 
             min_max.append((frag_min, frag_max))
         return min_max
@@ -434,8 +510,9 @@ class FragmentManager(MetadataManager):
         :param table: Name of the table
         :return: A 64-character (256-bit) hexadecimal string with the content hash of the table.
         """
-        digest_query = SQL("SELECT digest(o::text, 'sha256'::text) FROM {}.{} o") \
-            .format(Identifier(schema), Identifier(table))
+        digest_query = SQL("SELECT digest(o::text, 'sha256'::text) FROM {}.{} o").format(
+            Identifier(schema), Identifier(table)
+        )
         pks = self.object_engine.get_primary_keys(schema, table)
         if pks:
             digest_query += SQL(" ORDER BY ") + SQL(",").join(Identifier(p[0]) for p in pks)
@@ -443,8 +520,15 @@ class FragmentManager(MetadataManager):
 
         return reduce(operator.add, (Digest.from_memoryview(r) for r in row_digests)).hex()
 
-    def record_table_as_base(self, repository, table_name, image_hash, chunk_size=10000, source_schema=None,
-                             source_table=None):
+    def record_table_as_base(
+        self,
+        repository,
+        table_name,
+        image_hash,
+        chunk_size=10000,
+        source_schema=None,
+        source_table=None,
+    ):
         """
         Copies the full table verbatim into one or more new base fragments and registers them.
 
@@ -459,50 +543,80 @@ class FragmentManager(MetadataManager):
         source_schema = source_schema or repository.to_schema()
         source_table = source_table or table_name
 
-        table_size = self.object_engine.run_sql(SQL("SELECT COUNT (1) FROM {}.{}")
-                                                .format(Identifier(source_schema), Identifier(source_table)),
-                                                return_shape=ResultShape.ONE_ONE)
+        table_size = self.object_engine.run_sql(
+            SQL("SELECT COUNT (1) FROM {}.{}").format(
+                Identifier(source_schema), Identifier(source_table)
+            ),
+            return_shape=ResultShape.ONE_ONE,
+        )
 
         def _insert_and_register_fragment(source_schema, source_table, limit=None, offset=None):
             # Store the fragment in a temporary location first and hash that (much faster since PG doesn't need
             # to go through the source table multiple times for every offset)
             tmp_object_id = get_random_object_id()
 
-            self.object_engine.copy_table(source_schema, source_table, SPLITGRAPH_META_SCHEMA, tmp_object_id,
-                                          with_pk_constraints=True, limit=limit, offset=offset,
-                                          order_by_pk=(offset is not None))
+            self.object_engine.copy_table(
+                source_schema,
+                source_table,
+                SPLITGRAPH_META_SCHEMA,
+                tmp_object_id,
+                with_pk_constraints=True,
+                limit=limit,
+                offset=offset,
+                order_by_pk=(offset is not None),
+            )
             content_hash = self.calculate_content_hash(SPLITGRAPH_META_SCHEMA, tmp_object_id)
 
             # Fragments can't be reused in tables with different schemas even if the contents match (e.g. '1' vs 1).
             # Hence, include the table schema in the object ID as well.
             schema_hash = sha256(
-                str(self.object_engine.get_full_table_schema(source_schema, source_table)).encode('ascii')) \
-                .hexdigest()
+                str(self.object_engine.get_full_table_schema(source_schema, source_table)).encode(
+                    "ascii"
+                )
+            ).hexdigest()
 
             # Object IDs are also used to key tables in Postgres so they can't be more than 63 characters.
             # In addition, table names can't start with a number so we have to drop 2 characters from the 64-character
             # hash and append an "o".
-            object_id = "o" + sha256((content_hash + schema_hash).encode('ascii')).hexdigest()[:-2]
+            object_id = "o" + sha256((content_hash + schema_hash).encode("ascii")).hexdigest()[:-2]
 
             # If we already have an object with this ID (and hence hash), reuse it.
             if not self.get_new_objects([object_id]):
-                logging.info("Reusing object %s for table %s/%s limit %r offset %d", object_id, source_schema,
-                             source_table, limit, offset)
+                logging.info(
+                    "Reusing object %s for table %s/%s limit %r offset %d",
+                    object_id,
+                    source_schema,
+                    source_table,
+                    limit,
+                    offset,
+                )
                 self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
                 return object_id
 
             self.object_engine.rename_table(SPLITGRAPH_META_SCHEMA, tmp_object_id, object_id)
-            self.object_engine.run_sql(SQL("ALTER TABLE {}.{} ADD COLUMN {} BOOLEAN DEFAULT TRUE")
-                                       .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id),
-                                               Identifier(SG_UD_FLAG)))
-            self._register_object(object_id, namespace=repository.namespace, insertion_hash=content_hash,
-                                  deletion_hash='0' * 64, parent_object=None)
+            self.object_engine.run_sql(
+                SQL("ALTER TABLE {}.{} ADD COLUMN {} BOOLEAN DEFAULT TRUE").format(
+                    Identifier(SPLITGRAPH_META_SCHEMA),
+                    Identifier(object_id),
+                    Identifier(SG_UD_FLAG),
+                )
+            )
+            self._register_object(
+                object_id,
+                namespace=repository.namespace,
+                insertion_hash=content_hash,
+                deletion_hash="0" * 64,
+                parent_object=None,
+            )
             return object_id
 
         if chunk_size and table_size:
             for offset in range(0, table_size, chunk_size):
-                object_ids.append(_insert_and_register_fragment(source_schema, source_table,
-                                                                limit=chunk_size, offset=offset))
+                object_ids.append(
+                    _insert_and_register_fragment(
+                        source_schema, source_table, limit=chunk_size, offset=offset
+                    )
+                )
         elif table_size:
             object_ids.append(_insert_and_register_fragment(source_schema, source_table))
         # If table_size == 0, then we don't link it to any objects and simply store its schema
@@ -517,7 +631,9 @@ class FragmentManager(MetadataManager):
         """
         parents = self.metadata_engine.run_sql(
             SQL("SELECT {}.get_object_path(%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
-            (object_ids,), return_shape=ResultShape.ONE_ONE)
+            (object_ids,),
+            return_shape=ResultShape.ONE_ONE,
+        )
 
         return list(parents)
 
@@ -547,12 +663,15 @@ class FragmentManager(MetadataManager):
         # If we don't include the removed items (e.g. the previous values of the deleted/updated rows)
         # in the index, we have to instead fetch the whole chain starting from the first
         # pertinent object
-        query = SQL("SELECT object_id FROM {}.{} WHERE object_id IN (") \
-            .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects"))
+        query = SQL("SELECT object_id FROM {}.{} WHERE object_id IN (").format(
+            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")
+        )
         query += SQL(",".join(itertools.repeat("%s", len(object_ids))) + ")")
         query += SQL(" AND ") + clause
 
-        return self.metadata_engine.run_sql(query, list(object_ids) + list(args), return_shape=ResultShape.MANY_ONE)
+        return self.metadata_engine.run_sql(
+            query, list(object_ids) + list(args), return_shape=ResultShape.MANY_ONE
+        )
 
 
 def _conflate_changes(changeset, new_changes):
@@ -592,7 +711,7 @@ def get_random_object_id():
     + a letter prefix since Postgres doesn't seem to support table names starting with a digit."""
     # Make sure we're padded to 62 characters (otherwise if the random number generated is less than 2^247 we'll be
     # dropping characters from the hex format)
-    return str.format('o{:062x}', getrandbits(248))
+    return str.format("o{:062x}", getrandbits(248))
 
 
 def _qual_to_index_clause(qual, ctype):
@@ -610,16 +729,24 @@ def _qual_to_index_clause(qual, ctype):
 
     # If the column has to be greater than (or equal to) X, it only might exist in objects
     # whose maximum value is greater than (or equal to) X.
-    if qual_op in ('>', '>='):
-        query += SQL("(index #>> '{{{},1}}')::" + ctype + "  " + qual_op + " %s").format((Identifier(column_name)))
+    if qual_op in (">", ">="):
+        query += SQL("(index #>> '{{{},1}}')::" + ctype + "  " + qual_op + " %s").format(
+            (Identifier(column_name))
+        )
         args.append(value)
     # Similar for smaller than, but here we check that the minimum value is smaller than X.
-    elif qual_op in ('<', '<='):
-        query += SQL("(index #>> '{{{},0}}')::" + ctype + " " + qual_op + " %s").format((Identifier(column_name)))
+    elif qual_op in ("<", "<="):
+        query += SQL("(index #>> '{{{},0}}')::" + ctype + " " + qual_op + " %s").format(
+            (Identifier(column_name))
+        )
         args.append(value)
-    elif qual_op == '=':
-        query += SQL("%s BETWEEN (index #>> '{{{0},0}}')::" + ctype
-                     + " AND (index #>> '{{{0},1}}')::" + ctype).format((Identifier(column_name)))
+    elif qual_op == "=":
+        query += SQL(
+            "%s BETWEEN (index #>> '{{{0},0}}')::"
+            + ctype
+            + " AND (index #>> '{{{0},1}}')::"
+            + ctype
+        ).format((Identifier(column_name)))
         args.append(value)
     # Currently, we ignore the LIKE (~~) qualifier since we can only make a judgement when the % pattern is at
     # the end of a string.
@@ -629,7 +756,7 @@ def _qual_to_index_clause(qual, ctype):
     #     to fetch it.
     else:
         # For all other operators, we don't know if they will match so we assume that they will.
-        return SQL('TRUE'), ()
+        return SQL("TRUE"), ()
     return query, tuple(args)
 
 
@@ -645,10 +772,16 @@ def _quals_to_clause(quals, column_types, qual_to_clause=_qual_to_index_clause):
 
     def _internal_quals_to_clause(or_quals):
         clauses, args = zip(*[qual_to_clause(q, column_types[q[0]]) for q in or_quals])
-        return SQL(" OR ").join(SQL("(") + c + SQL(")") for c in clauses), tuple([a for arg in args for a in arg])
+        return (
+            SQL(" OR ").join(SQL("(") + c + SQL(")") for c in clauses),
+            tuple([a for arg in args for a in arg]),
+        )
 
     clauses, args = zip(*[_internal_quals_to_clause(q) for q in quals])
-    return SQL(" AND ").join(SQL("(") + c + SQL(")") for c in clauses), tuple([a for arg in args for a in arg])
+    return (
+        SQL(" AND ").join(SQL("(") + c + SQL(")") for c in clauses),
+        tuple([a for arg in args for a in arg]),
+    )
 
 
 def quals_to_sql(quals, column_types):

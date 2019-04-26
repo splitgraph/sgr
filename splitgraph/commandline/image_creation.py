@@ -12,12 +12,21 @@ from splitgraph.commandline._common import ImageType, RepositoryType
 from splitgraph.core.engine import repository_exists
 
 
-@click.command(name='checkout')
-@click.argument('image_spec', type=ImageType(default='HEAD'))
-@click.option('-f', '--force', help="Discard all pending changes to the schema", is_flag=True, default=False)
-@click.option('-u', '--uncheckout', help="Delete the checked out copy instead", is_flag=True, default=False)
-@click.option('-l', '--layered', help="Don't materialize the tables, use layered querying instead.",
-              is_flag=True, default=False)
+@click.command(name="checkout")
+@click.argument("image_spec", type=ImageType(default="HEAD"))
+@click.option(
+    "-f", "--force", help="Discard all pending changes to the schema", is_flag=True, default=False
+)
+@click.option(
+    "-u", "--uncheckout", help="Delete the checked out copy instead", is_flag=True, default=False
+)
+@click.option(
+    "-l",
+    "--layered",
+    help="Don't materialize the tables, use layered querying instead.",
+    is_flag=True,
+    default=False,
+)
 def checkout_c(image_spec, force, uncheckout, layered):
     """
     Check out a Splitgraph image into a Postgres schema.
@@ -52,15 +61,30 @@ def checkout_c(image_spec, force, uncheckout, layered):
         print("Checked out %s:%s." % (str(repository), image.image_hash[:12]))
 
 
-@click.command(name='commit')
-@click.argument('repository', type=RepositoryType())
-@click.option('-s', '--snap', default=False, is_flag=True,
-              help='Store the table as a full table snapshot. This consumes more space, but makes checkouts faster.')
-@click.option('-c', '--chunk-size', default=None, type=int,
-              help='Split new tables into chunks of this many rows.')
-@click.option('-t', '--split-changesets', default=False, is_flag=True,
-              help='Split changesets for existing tables across original chunk boundaries.')
-@click.option('-m', '--message', help='Optional commit message')
+@click.command(name="commit")
+@click.argument("repository", type=RepositoryType())
+@click.option(
+    "-s",
+    "--snap",
+    default=False,
+    is_flag=True,
+    help="Store the table as a full table snapshot. This consumes more space, but makes checkouts faster.",
+)
+@click.option(
+    "-c",
+    "--chunk-size",
+    default=None,
+    type=int,
+    help="Split new tables into chunks of this many rows.",
+)
+@click.option(
+    "-t",
+    "--split-changesets",
+    default=False,
+    is_flag=True,
+    help="Split changesets for existing tables across original chunk boundaries.",
+)
+@click.option("-m", "--message", help="Optional commit message")
 def commit_c(repository, snap, chunk_size, split_changesets, message):
     """
     Commit changes to a checked-out Splitgraph repository.
@@ -77,15 +101,16 @@ def commit_c(repository, snap, chunk_size, split_changesets, message):
     originally committed with `--chunk-size=10000`, this will create 2 fragments: one based on the first chunk
     and one on the second chunk of the table.
     """
-    new_hash = repository.commit(comment=message, snap_only=snap,
-                                 chunk_size=chunk_size, split_changeset=split_changesets).image_hash
+    new_hash = repository.commit(
+        comment=message, snap_only=snap, chunk_size=chunk_size, split_changeset=split_changesets
+    ).image_hash
     print("Committed %s as %s." % (str(repository), new_hash[:12]))
 
 
-@click.command(name='tag')
-@click.argument('image_spec', type=ImageType(default=None))
-@click.argument('tag', required=False)
-@click.option('-r', '--remove', required=False, is_flag=True, help="Remove the tag instead.")
+@click.command(name="tag")
+@click.argument("image_spec", type=ImageType(default=None))
+@click.argument("tag", required=False)
+@click.option("-r", "--remove", required=False, is_flag=True, help="Remove the tag instead.")
 def tag_c(image_spec, tag, remove):
     """
     Manage tags on images.
@@ -121,8 +146,10 @@ def tag_c(image_spec, tag, remove):
     if remove:
         # In this case the tag must be a part of the image spec.
         if tag is not None or image is None:
-            raise click.BadArgumentUsage("Use sgr tag --remove %s:TAG_TO_DELETE" % repository.to_schema())
-        if image in ('latest', 'HEAD'):
+            raise click.BadArgumentUsage(
+                "Use sgr tag --remove %s:TAG_TO_DELETE" % repository.to_schema()
+            )
+        if image in ("latest", "HEAD"):
             raise click.BadArgumentUsage("%s is a reserved tag!" % image)
         repository.images[image].delete_tag(image)
         return
@@ -136,12 +163,12 @@ def tag_c(image_spec, tag, remove):
             for img, tags in tag_dict.items():
                 # Sometimes HEAD is none (if we've just cloned the repo)
                 if img:
-                    print("%s: %s" % (img[:12], ', '.join(tags)))
+                    print("%s: %s" % (img[:12], ", ".join(tags)))
         else:
-            print(', '.join(tag_dict[repository.images[image].image_hash]))
+            print(", ".join(tag_dict[repository.images[image].image_hash]))
         return
 
-    if tag == 'HEAD':
+    if tag == "HEAD":
         raise SplitGraphException("HEAD is a reserved tag!")
 
     if image is None:
@@ -153,11 +180,11 @@ def tag_c(image_spec, tag, remove):
     print("Tagged %s:%s with %s." % (str(repository), image.image_hash, tag))
 
 
-@click.command(name='import')
-@click.argument('image_spec', type=ImageType())
-@click.argument('table_or_query')
-@click.argument('target_repository', type=RepositoryType())
-@click.argument('target_table', required=False)
+@click.command(name="import")
+@click.argument("image_spec", type=ImageType())
+@click.argument("table_or_query")
+@click.argument("target_repository", type=RepositoryType())
+@click.argument("target_table", required=False)
 def import_c(image_spec, table_or_query, target_repository, target_table):
     """
     Import tables into a Splitgraph repository.
@@ -206,9 +233,22 @@ def import_c(image_spec, table_or_query, target_repository, target_table):
         print("TARGET_TABLE is required when the source is a query!")
         sys.exit(1)
 
-    target_repository.import_tables([target_table] if target_table else [], repository, [table_or_query],
-                                    image_hash=image.image_hash if image else None, foreign_tables=foreign_table,
-                                    table_queries=[] if not is_query else [True])
+    target_repository.import_tables(
+        [target_table] if target_table else [],
+        repository,
+        [table_or_query],
+        image_hash=image.image_hash if image else None,
+        foreign_tables=foreign_table,
+        table_queries=[] if not is_query else [True],
+    )
 
-    print("%s:%s has been imported from %s:%s%s" % (str(target_repository), target_table, str(repository),
-                                                    table_or_query, (' (%s)' % image.image_hash[:12] if image else '')))
+    print(
+        "%s:%s has been imported from %s:%s%s"
+        % (
+            str(target_repository),
+            target_table,
+            str(repository),
+            table_or_query,
+            (" (%s)" % image.image_hash[:12] if image else ""),
+        )
+    )

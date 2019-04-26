@@ -31,23 +31,23 @@ class ObjectManager(FragmentManager, MetadataManager):
         super().__init__(object_engine, metadata_engine or object_engine)
 
         # Cache size in bytes
-        self.cache_size = float(CONFIG['SG_OBJECT_CACHE_SIZE']) * 1024 * 1024
+        self.cache_size = float(CONFIG["SG_OBJECT_CACHE_SIZE"]) * 1024 * 1024
 
         # 0 to infinity; higher means objects with smaller sizes are more likely to
         # get evicted than objects that haven't been used for a while.
         # Currently calculated so that an object that hasn't been accessed for 5 minutes has the same
         # removal priority as an object twice its size that's just been accessed.
-        self.eviction_decay_constant = float(CONFIG['SG_EVICTION_DECAY'])
+        self.eviction_decay_constant = float(CONFIG["SG_EVICTION_DECAY"])
 
         # Objects smaller than this size are assumed to have this size (to simulate the latency of
         # downloading them).
-        self.eviction_floor = float(CONFIG['SG_EVICTION_FLOOR']) * 1024 * 1024
+        self.eviction_floor = float(CONFIG["SG_EVICTION_FLOOR"]) * 1024 * 1024
 
         # Fraction of the cache size to free when eviction is run (the greater value of this amount and the
         # amount needed to download required objects is actually freed). Eviction is an expensive operation
         # (it pauses concurrent downloads) so increasing this makes eviction happen less often at the cost
         # of more possible cache misses.
-        self.eviction_min_fraction = float(CONFIG['SG_EVICTION_MIN_FRACTION'])
+        self.eviction_min_fraction = float(CONFIG["SG_EVICTION_MIN_FRACTION"])
 
     def get_downloaded_objects(self, limit_to=None):
         """
@@ -59,30 +59,50 @@ class ObjectManager(FragmentManager, MetadataManager):
         query = "SELECT pg_tables.tablename FROM pg_tables WHERE pg_tables.schemaname = %s"
         query_args = [SPLITGRAPH_META_SCHEMA]
         if limit_to:
-            query += " AND pg_tables.tablename IN (" + ",".join(itertools.repeat('%s', len(limit_to))) + ")"
+            query += (
+                " AND pg_tables.tablename IN ("
+                + ",".join(itertools.repeat("%s", len(limit_to)))
+                + ")"
+            )
             query_args += list(limit_to)
-        objects = set(self.object_engine.run_sql(
-            SQL(query).format(Identifier(SPLITGRAPH_META_SCHEMA)), query_args, return_shape=ResultShape.MANY_ONE))
+        objects = set(
+            self.object_engine.run_sql(
+                SQL(query).format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                query_args,
+                return_shape=ResultShape.MANY_ONE,
+            )
+        )
         return objects.difference(META_TABLES)
 
     def get_cache_occupancy(self):
         """
         :return: Space occupied by objects cached from external locations, in bytes.
         """
-        return int(self.object_engine.run_sql(SQL("SELECT total_size FROM {}.object_cache_occupancy")
-                                              .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                                              return_shape=ResultShape.ONE_ONE))
+        return int(
+            self.object_engine.run_sql(
+                SQL("SELECT total_size FROM {}.object_cache_occupancy").format(
+                    Identifier(SPLITGRAPH_META_SCHEMA)
+                ),
+                return_shape=ResultShape.ONE_ONE,
+            )
+        )
 
     def _recalculate_cache_occupancy(self):
         """A slower way of getting cache occupancy that actually goes through all objects in the cache status table
         and sums up their size."""
-        return int(self.object_engine.run_sql(SQL("SELECT COALESCE(sum(pg_relation_size("
-                                                  "quote_ident(p.schemaname) || '.' || quote_ident(p.tablename))), 0)"
-                                                  " FROM pg_tables p JOIN {0}.object_cache_status oc"
-                                                  " ON p.tablename = oc.object_id"
-                                                  " WHERE oc.ready = 't' AND p.schemaname = %s")
-                                              .format(Identifier(SPLITGRAPH_META_SCHEMA)), (SPLITGRAPH_META_SCHEMA,),
-                                              return_shape=ResultShape.ONE_ONE))
+        return int(
+            self.object_engine.run_sql(
+                SQL(
+                    "SELECT COALESCE(sum(pg_relation_size("
+                    "quote_ident(p.schemaname) || '.' || quote_ident(p.tablename))), 0)"
+                    " FROM pg_tables p JOIN {0}.object_cache_status oc"
+                    " ON p.tablename = oc.object_id"
+                    " WHERE oc.ready = 't' AND p.schemaname = %s"
+                ).format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                (SPLITGRAPH_META_SCHEMA,),
+                return_shape=ResultShape.ONE_ONE,
+            )
+        )
 
     @contextmanager
     def ensure_objects(self, table, quals=None):
@@ -108,7 +128,12 @@ class ObjectManager(FragmentManager, MetadataManager):
         #     between us making that decision and increasing the refcount?
         #   * What happens if we crash when we're downloading these objects?
 
-        logging.info("Resolving objects for table %s:%s:%s", table.repository, table.image.image_hash, table.table_name)
+        logging.info(
+            "Resolving objects for table %s:%s:%s",
+            table.repository,
+            table.image.image_hash,
+            table.table_name,
+        )
 
         self.object_engine.run_sql("SET LOCAL synchronous_commit TO OFF")
         tracer = Tracer()
@@ -117,39 +142,49 @@ class ObjectManager(FragmentManager, MetadataManager):
         # In the future, we can also take other things into account, such as how expensive it is to load a given object
         # (its size), location...
         required_objects = list(reversed(self.get_all_required_objects(table.objects)))
-        tracer.log('resolve_objects')
+        tracer.log("resolve_objects")
 
         # Filter to see if we can discard any objects with the quals
         required_objects = self._filter_objects(required_objects, table, quals)
-        tracer.log('filter_objects')
+        tracer.log("filter_objects")
 
         # Increase the refcount on all of the objects we're giving back to the caller so that others don't GC them.
         logging.info("Claiming %d object(s)", len(required_objects))
 
         self._claim_objects(required_objects)
-        tracer.log('claim_objects')
+        tracer.log("claim_objects")
 
         try:
             to_fetch = self._prepare_fetch_list(required_objects)
         except SplitGraphException:
             self.object_engine.rollback()
             raise
-        tracer.log('prepare_fetch_list')
+        tracer.log("prepare_fetch_list")
 
         # Perform the actual download. If the table has no upstream but still has external locations, we download
         # just the external objects.
         if to_fetch:
             upstream = table.repository.upstream
             object_locations = self.get_external_object_locations(to_fetch)
-            downloaded_by_us = self.download_objects(upstream.objects if upstream else None,
-                                                     objects_to_fetch=to_fetch, object_locations=object_locations)
+            downloaded_by_us = self.download_objects(
+                upstream.objects if upstream else None,
+                objects_to_fetch=to_fetch,
+                object_locations=object_locations,
+            )
             # No matter what, claim the space required by the newly downloaded objects.
             self._increase_cache_occupancy(downloaded_by_us)
             downloaded = self.get_downloaded_objects(limit_to=to_fetch)
             difference = list(set(to_fetch).difference(downloaded))
             if difference:
-                error = "Not all objects required to materialize %s:%s:%s have been fetched. Missing objects: %r" % \
-                        (table.repository.to_schema(), table.image.image_hash, table.table_name, difference)
+                error = (
+                    "Not all objects required to materialize %s:%s:%s have been fetched. Missing objects: %r"
+                    % (
+                        table.repository.to_schema(),
+                        table.image.image_hash,
+                        table.table_name,
+                        difference,
+                    )
+                )
                 logging.error(error)
                 # Instead of deleting all objects in this batch, discard the cache data
                 # on the objects that failed, decrease the refcount on the objects that
@@ -160,7 +195,7 @@ class ObjectManager(FragmentManager, MetadataManager):
                 self.object_engine.commit()
                 raise SplitGraphException(error)
             self._set_ready_flags(to_fetch, is_ready=True)
-        tracer.log('fetch_objects')
+        tracer.log("fetch_objects")
 
         logging.info("Yielding to the caller")
         try:
@@ -172,13 +207,19 @@ class ObjectManager(FragmentManager, MetadataManager):
             # Decrease the refcounts on the objects. Optionally, evict them.
             # If the caller crashes, we should still hit this and decrease the refcounts, but if the whole program
             # is terminated abnormally, we'll leak memory.
-            tracer.log('caller')
+            tracer.log("caller")
             self.object_engine.run_sql("SET LOCAL synchronous_commit TO off")
             self._release_objects(required_objects)
-            tracer.log('release_objects')
+            tracer.log("release_objects")
             logging.info("Releasing %d object(s)", len(required_objects))
-            logging.info("Timing stats for %s/%s/%s/%s: \n%s", table.repository.namespace, table.repository.repository,
-                         table.image.image_hash, table.table_name, tracer)
+            logging.info(
+                "Timing stats for %s/%s/%s/%s: \n%s",
+                table.repository.namespace,
+                table.repository.repository,
+                table.image.image_hash,
+                table.table_name,
+                tracer,
+            )
             self.object_engine.commit()
             # Release the metadata tables as well
             self.metadata_engine.commit()
@@ -204,12 +245,14 @@ class ObjectManager(FragmentManager, MetadataManager):
         self.object_engine.run_sql_batch(
             insert("object_cache_status", ("object_id", "ready", "refcount", "last_used"))
             + SQL("ON CONFLICT DO NOTHING"),
-            [(object_id, False, 1, now) for object_id in new_objects])
+            [(object_id, False, 1, now) for object_id in new_objects],
+        )
 
         # Grab the objects that we're supposed to be uploading.
-        new_objects = self.object_engine.run_sql(select("object_cache_status", "object_id",
-                                                        "ready = 'f' FOR UPDATE"),
-                                                 return_shape=ResultShape.MANY_ONE)
+        new_objects = self.object_engine.run_sql(
+            select("object_cache_status", "object_id", "ready = 'f' FOR UPDATE"),
+            return_shape=ResultShape.MANY_ONE,
+        )
 
         # Perform the actual upload
         external_handler = get_external_object_handler(handler, handler_params)
@@ -229,8 +272,11 @@ class ObjectManager(FragmentManager, MetadataManager):
         if quals:
             column_types = {c[1]: c[2] for c in table.table_schema}
             filtered_objects = self.filter_fragments(objects, quals, column_types)
-            logging.info("Qual filter: discarded %d/%d object(s)",
-                         len(objects) - len(filtered_objects), len(objects))
+            logging.info(
+                "Qual filter: discarded %d/%d object(s)",
+                len(objects) - len(filtered_objects),
+                len(objects),
+            )
             # Make sure to keep the order
             objects = [r for r in objects if r in filtered_objects]
         return objects
@@ -243,8 +289,10 @@ class ObjectManager(FragmentManager, MetadataManager):
         :param required_objects: Iterable of object IDs that are required to be on the engine.
         :return: Set of objects to fetch
         """
-        to_fetch = self.object_engine.run_sql(select("object_cache_status", "object_id", "ready = 'f'"),
-                                              return_shape=ResultShape.MANY_ONE)
+        to_fetch = self.object_engine.run_sql(
+            select("object_cache_status", "object_id", "ready = 'f'"),
+            return_shape=ResultShape.MANY_ONE,
+        )
         if to_fetch:
             # If we need to download anything, take out an exclusive lock on the cache since we might
             # need to run eviction and don't want multiple managers trying to download the same things.
@@ -259,9 +307,11 @@ class ObjectManager(FragmentManager, MetadataManager):
             # we claimed. So, once we acquire the lock, we recalculate the fetch list again to see what
             # we're supposed to be fetching.
             self.object_engine.commit()
-            self.object_engine.lock_table(SPLITGRAPH_META_SCHEMA, 'object_cache_status')
-            to_fetch = self.object_engine.run_sql(select("object_cache_status", "object_id", "ready = 'f'"),
-                                                  return_shape=ResultShape.MANY_ONE)
+            self.object_engine.lock_table(SPLITGRAPH_META_SCHEMA, "object_cache_status")
+            to_fetch = self.object_engine.run_sql(
+                select("object_cache_status", "object_id", "ready = 'f'"),
+                return_shape=ResultShape.MANY_ONE,
+            )
             # If someone else downloaded all the objects we need, there's no point in holding the lock.
             # This is tricky to test with a single process.
             if not to_fetch:  # pragma: no cover
@@ -269,22 +319,29 @@ class ObjectManager(FragmentManager, MetadataManager):
                 return to_fetch
             required_space = sum(o.size for o in self.get_object_meta(list(to_fetch)).values())
             current_occupied = self.get_cache_occupancy()
-            logging.info("Need to download %d object(s) (%s), cache occupancy: %s/%s",
-                         len(to_fetch), pretty_size(required_space),
-                         pretty_size(current_occupied), pretty_size(self.cache_size))
+            logging.info(
+                "Need to download %d object(s) (%s), cache occupancy: %s/%s",
+                len(to_fetch),
+                pretty_size(required_space),
+                pretty_size(current_occupied),
+                pretty_size(self.cache_size),
+            )
             # If the total cache size isn't large enough, there's nothing we can do without cooperating with the
             # caller and seeing if they can use the objects one-by-one.
             if required_space > self.cache_size:
-                raise SplitGraphException("Not enough space in the cache to download the required objects!")
+                raise SplitGraphException(
+                    "Not enough space in the cache to download the required objects!"
+                )
             if required_space > self.cache_size - current_occupied:
                 to_free = required_space + current_occupied - self.cache_size
                 logging.info("Need to free %s", pretty_size(to_free))
                 self.run_eviction(required_objects, to_free)
             self.object_engine.commit()
             # Finally, after we're done with eviction, relock the objects that we're supposed to be downloading.
-            to_fetch = self.object_engine.run_sql(select("object_cache_status", "object_id",
-                                                         "ready = 'f' FOR UPDATE"),
-                                                  return_shape=ResultShape.MANY_ONE)
+            to_fetch = self.object_engine.run_sql(
+                select("object_cache_status", "object_id", "ready = 'f' FOR UPDATE"),
+                return_shape=ResultShape.MANY_ONE,
+            )
         return to_fetch
 
     def _claim_objects(self, objects):
@@ -299,12 +356,16 @@ class ObjectManager(FragmentManager, MetadataManager):
         # So, we first try to update cache entries to bump their refcount, see which ones we updated,
         # subtract objects that we have locally and insert the remaining entries as new cache entries.
 
-        claimed = self.object_engine.run_sql(SQL("UPDATE {}.object_cache_status SET refcount = refcount + 1, "
-                                                 "last_used = %s WHERE object_id IN (")
-                                             .format(Identifier(SPLITGRAPH_META_SCHEMA))
-                                             + SQL(",".join(itertools.repeat("%s", len(objects)))) +
-                                             SQL(") RETURNING object_id"), [now] + objects,
-                                             return_shape=ResultShape.MANY_ONE)
+        claimed = self.object_engine.run_sql(
+            SQL(
+                "UPDATE {}.object_cache_status SET refcount = refcount + 1, "
+                "last_used = %s WHERE object_id IN ("
+            ).format(Identifier(SPLITGRAPH_META_SCHEMA))
+            + SQL(",".join(itertools.repeat("%s", len(objects))))
+            + SQL(") RETURNING object_id"),
+            [now] + objects,
+            return_shape=ResultShape.MANY_ONE,
+        )
         claimed = claimed or []
         remaining = set(objects).difference(set(claimed))
         remaining = remaining.difference(set(self.get_downloaded_objects(limit_to=list(remaining))))
@@ -315,35 +376,55 @@ class ObjectManager(FragmentManager, MetadataManager):
         # the transaction -- then get an integrity error. So here, we do an update on conflict (again).
         self.object_engine.run_sql_batch(
             insert("object_cache_status", ("object_id", "ready", "refcount", "last_used"))
-            + SQL("ON CONFLICT (object_id) DO UPDATE SET refcount = EXCLUDED.refcount + 1, last_used = %s"),
-            [(object_id, False, 1, now, now) for object_id in remaining])
+            + SQL(
+                "ON CONFLICT (object_id) DO UPDATE SET refcount = EXCLUDED.refcount + 1, last_used = %s"
+            ),
+            [(object_id, False, 1, now, now) for object_id in remaining],
+        )
 
     def _set_ready_flags(self, objects, is_ready=True):
         if objects:
-            self.object_engine.run_sql(SQL("UPDATE {0}.object_cache_status SET ready = %s WHERE object_id IN (" +
-                                           ",".join(itertools.repeat("%s", len(objects))) + ")")
-                                       .format(Identifier(SPLITGRAPH_META_SCHEMA)), [is_ready] + list(objects))
+            self.object_engine.run_sql(
+                SQL(
+                    "UPDATE {0}.object_cache_status SET ready = %s WHERE object_id IN ("
+                    + ",".join(itertools.repeat("%s", len(objects)))
+                    + ")"
+                ).format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                [is_ready] + list(objects),
+            )
 
     def _release_objects(self, objects):
         """Decreases objects' refcounts."""
         if objects:
-            self.object_engine.run_sql(SQL("UPDATE {}.{} SET refcount = refcount - 1 WHERE object_id IN (" +
-                                           ",".join(itertools.repeat("%s", len(objects))) + ")")
-                                       .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status")),
-                                       objects)
+            self.object_engine.run_sql(
+                SQL(
+                    "UPDATE {}.{} SET refcount = refcount - 1 WHERE object_id IN ("
+                    + ",".join(itertools.repeat("%s", len(objects)))
+                    + ")"
+                ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status")),
+                objects,
+            )
 
     def _increase_cache_occupancy(self, objects):
         """Increase the cache occupancy by objects' total size."""
         if not objects:
             return
         total_size = sum(o.size for o in self.get_object_meta(objects).values())
-        self.object_engine.run_sql(SQL("UPDATE {}.object_cache_occupancy SET total_size = total_size + %s")
-                                   .format(Identifier(SPLITGRAPH_META_SCHEMA)), (total_size,))
+        self.object_engine.run_sql(
+            SQL("UPDATE {}.object_cache_occupancy SET total_size = total_size + %s").format(
+                Identifier(SPLITGRAPH_META_SCHEMA)
+            ),
+            (total_size,),
+        )
 
     def _decrease_cache_occupancy(self, size_freed):
         """Decrease the cache occupancy by a given size."""
-        self.object_engine.run_sql(SQL("UPDATE {}.object_cache_occupancy SET total_size = total_size - %s")
-                                   .format(Identifier(SPLITGRAPH_META_SCHEMA)), (size_freed,))
+        self.object_engine.run_sql(
+            SQL("UPDATE {}.object_cache_occupancy SET total_size = total_size - %s").format(
+                Identifier(SPLITGRAPH_META_SCHEMA)
+            ),
+            (size_freed,),
+        )
 
     def run_eviction(self, keep_objects, required_space=None):
         """
@@ -376,9 +457,14 @@ class ObjectManager(FragmentManager, MetadataManager):
 
         # Find deletion candidates: objects that we have locally, with refcount 0, that aren't in the whitelist.
 
-        candidates = [o for o in self.object_engine.run_sql(
-            select("object_cache_status", "object_id,last_used", "refcount=0"),
-            return_shape=ResultShape.MANY_MANY) if o[0] not in keep_objects]
+        candidates = [
+            o
+            for o in self.object_engine.run_sql(
+                select("object_cache_status", "object_id,last_used", "refcount=0"),
+                return_shape=ResultShape.MANY_MANY,
+            )
+            if o[0] not in keep_objects
+        ]
 
         object_meta = self.get_object_meta([o[0] for o in candidates]) if candidates else {}
         object_sizes = {o.object_id: o.size for o in object_meta.values()}
@@ -387,7 +473,9 @@ class ObjectManager(FragmentManager, MetadataManager):
             # Just delete everything with refcount 0.
             to_delete = [o[0] for o in candidates]
             freed_space = sum(object_sizes.values())
-            logging.info("Will delete %d object(s), total size %s", len(to_delete), pretty_size(freed_space))
+            logging.info(
+                "Will delete %d object(s), total size %s", len(to_delete), pretty_size(freed_space)
+            )
         else:
             if required_space > sum(object_sizes.values()):
                 raise SplitGraphException("Not enough space will be reclaimed after eviction!")
@@ -398,8 +486,7 @@ class ObjectManager(FragmentManager, MetadataManager):
 
             # Sort them by deletion priority (lowest is smallest expected retrieval cost -- more likely to delete)
             to_delete = []
-            candidates = sorted(candidates,
-                                key=lambda o: _eviction_score(object_sizes[o[0]], o[1]))
+            candidates = sorted(candidates, key=lambda o: _eviction_score(object_sizes[o[0]], o[1]))
             freed_space = 0
             # Keep adding deletion candidates until we've freed enough space.
             last_useds = []
@@ -409,9 +496,13 @@ class ObjectManager(FragmentManager, MetadataManager):
                 freed_space += object_sizes[object_id]
                 if freed_space >= required_space:
                     break
-            logging.info("Will delete %d object(s) last used between %s and %s, total size %s",
-                         len(to_delete), min(last_useds).isoformat(), max(last_useds).isoformat(),
-                         pretty_size(freed_space))
+            logging.info(
+                "Will delete %d object(s) last used between %s and %s, total size %s",
+                len(to_delete),
+                min(last_useds).isoformat(),
+                max(last_useds).isoformat(),
+                pretty_size(freed_space),
+            )
 
         if to_delete:
             # NB delete_objects commits as well, releasing the lock. Make sure to do all bookkeeping first so that
@@ -420,13 +511,19 @@ class ObjectManager(FragmentManager, MetadataManager):
             self._delete_cache_entries(to_delete)
             self._decrease_cache_occupancy(freed_space)
             self.delete_objects(to_delete)
-            logging.info("Eviction done. Cache occupancy: %s", pretty_size(self.get_cache_occupancy()))
+            logging.info(
+                "Eviction done. Cache occupancy: %s", pretty_size(self.get_cache_occupancy())
+            )
 
     def _delete_cache_entries(self, to_delete):
-        self.object_engine.run_sql(SQL("DELETE FROM {}.{} WHERE object_id IN (" +
-                                       ",".join(itertools.repeat("%s", len(to_delete))) + ")")
-                                   .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status")),
-                                   to_delete)
+        self.object_engine.run_sql(
+            SQL(
+                "DELETE FROM {}.{} WHERE object_id IN ("
+                + ",".join(itertools.repeat("%s", len(to_delete)))
+                + ")"
+            ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_status")),
+            to_delete,
+        )
 
     def download_objects(self, source, objects_to_fetch, object_locations):
         """
@@ -445,7 +542,9 @@ class ObjectManager(FragmentManager, MetadataManager):
             return []
 
         total_size = sum(o.size for o in self.get_object_meta(objects_to_fetch).values())
-        logging.info("Fetching %d object(s), total size %s", len(objects_to_fetch), pretty_size(total_size))
+        logging.info(
+            "Fetching %d object(s), total size %s", len(objects_to_fetch), pretty_size(total_size)
+        )
 
         # We don't actually seem to pass extra handler parameters when downloading objects since
         # we can have multiple handlers in this batch.
@@ -455,10 +554,12 @@ class ObjectManager(FragmentManager, MetadataManager):
         if not remaining_objects_to_fetch or not source:
             return external_objects
 
-        remote_objects = self.object_engine.download_objects(remaining_objects_to_fetch, source.object_engine)
+        remote_objects = self.object_engine.download_objects(
+            remaining_objects_to_fetch, source.object_engine
+        )
         return external_objects + remote_objects
 
-    def upload_objects(self, target, objects_to_push, handler='DB', handler_params=None):
+    def upload_objects(self, target, objects_to_push, handler="DB", handler_params=None):
         """
         Uploads physical objects to the remote or some other external location.
 
@@ -480,9 +581,11 @@ class ObjectManager(FragmentManager, MetadataManager):
             logging.info("Nothing to upload.")
             return []
         total_size = sum(o.size for o in self.get_object_meta(objects_to_push).values())
-        logging.info("Uploading %d object(s), total size %s", len(objects_to_push), pretty_size(total_size))
+        logging.info(
+            "Uploading %d object(s), total size %s", len(objects_to_push), pretty_size(total_size)
+        )
 
-        if handler == 'DB':
+        if handler == "DB":
             self.object_engine.upload_objects(objects_to_push, target.object_engine)
             # We assume that if the object doesn't have an explicit location, it lives on the remote.
             return []
@@ -498,20 +601,31 @@ class ObjectManager(FragmentManager, MetadataManager):
         their remote locations. Also deletes all objects not registered in the object_tree.
         """
         # First, get a list of all objects required by a table.
-        primary_objects = {o for os in self.metadata_engine.run_sql(
-            SQL("SELECT object_ids FROM {}.tables").format(Identifier(SPLITGRAPH_META_SCHEMA)),
-            return_shape=ResultShape.MANY_ONE) for o in os}
+        primary_objects = {
+            o
+            for os in self.metadata_engine.run_sql(
+                SQL("SELECT object_ids FROM {}.tables").format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                return_shape=ResultShape.MANY_ONE,
+            )
+            for o in os
+        }
 
         # Expand that since each object might have a parent it depends on.
         if primary_objects:
             primary_objects = self.get_all_required_objects(list(primary_objects))
 
         # Go through the tables that aren't repository-dependent and delete entries there.
-        for table_name in ['object_locations', 'object_cache_status', 'objects']:
-            query = SQL("DELETE FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table_name))
+        for table_name in ["object_locations", "object_cache_status", "objects"]:
+            query = SQL("DELETE FROM {}.{}").format(
+                Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table_name)
+            )
             if primary_objects:
-                query += SQL(" WHERE object_id NOT IN (" + ','.join('%s' for _ in range(len(primary_objects))) + ")")
-            if table_name == 'object_cache_status':
+                query += SQL(
+                    " WHERE object_id NOT IN ("
+                    + ",".join("%s" for _ in range(len(primary_objects)))
+                    + ")"
+                )
+            if table_name == "object_cache_status":
                 self.object_engine.run_sql(query, list(primary_objects))
             else:
                 self.metadata_engine.run_sql(query, list(primary_objects))
@@ -519,14 +633,22 @@ class ObjectManager(FragmentManager, MetadataManager):
         # Go through the physical objects and delete them as well
         # This is slightly dirty, but since the info about the objects was deleted on rm, we just say that
         # anything in splitgraph_meta that's not a system table is fair game.
-        tables_in_meta = {c for c in self.object_engine.get_all_tables(SPLITGRAPH_META_SCHEMA) if c not in META_TABLES}
+        tables_in_meta = {
+            c
+            for c in self.object_engine.get_all_tables(SPLITGRAPH_META_SCHEMA)
+            if c not in META_TABLES
+        }
 
         to_delete = tables_in_meta.difference(primary_objects)
         self.delete_objects(to_delete)
 
         # Recalculate the object cache occupancy
-        self.object_engine.run_sql(SQL("UPDATE {}.object_cache_occupancy SET total_size = %s")
-                                   .format(Identifier(SPLITGRAPH_META_SCHEMA)), (self._recalculate_cache_occupancy(),))
+        self.object_engine.run_sql(
+            SQL("UPDATE {}.object_cache_occupancy SET total_size = %s").format(
+                Identifier(SPLITGRAPH_META_SCHEMA)
+            ),
+            (self._recalculate_cache_occupancy(),),
+        )
         return to_delete
 
     def delete_objects(self, objects):
@@ -537,9 +659,12 @@ class ObjectManager(FragmentManager, MetadataManager):
         """
         objects = list(objects)
         for i in range(0, len(objects), 100):
-            query = SQL(";").join(SQL("DROP TABLE IF EXISTS {}.{}")
-                                  .format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(o))
-                                  for o in objects[i:i + 100])
+            query = SQL(";").join(
+                SQL("DROP TABLE IF EXISTS {}.{}").format(
+                    Identifier(SPLITGRAPH_META_SCHEMA), Identifier(o)
+                )
+                for o in objects[i : i + 100]
+            )
             self.object_engine.run_sql(query)
             self.object_engine.commit()
 

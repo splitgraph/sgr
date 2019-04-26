@@ -7,13 +7,19 @@ import click
 from ._common import ImageType, RepositoryType
 
 
-@click.command(name='build')
-@click.argument('splitfile', type=click.File('r'))
-@click.option('-a', '--args', multiple=True, type=(str, str),
-              help='Parameters to be substituted into the Splitfile. All parameters mentioned in the file'
-                   ' must be specified in order for the Splitfile to be executed.')
-@click.option('-o', '--output-repository', help='Repository to store the result in.',
-              type=RepositoryType())
+@click.command(name="build")
+@click.argument("splitfile", type=click.File("r"))
+@click.option(
+    "-a",
+    "--args",
+    multiple=True,
+    type=(str, str),
+    help="Parameters to be substituted into the Splitfile. All parameters mentioned in the file"
+    " must be specified in order for the Splitfile to be executed.",
+)
+@click.option(
+    "-o", "--output-repository", help="Repository to store the result in.", type=RepositoryType()
+)
 def build_c(splitfile, args, output_repository):
     """
     Build Splitgraph images.
@@ -42,14 +48,27 @@ def build_c(splitfile, args, output_repository):
 
     # Inline import: importing it at every sgr invocation takes extra time because of compiling the Splitfile grammar.
     from splitgraph.splitfile import execute_commands
+
     execute_commands(splitfile.read(), args, output=output_repository)
 
 
-@click.command(name='provenance')
-@click.argument('image_spec', type=ImageType())
-@click.option('-f', '--full', required=False, is_flag=True, help='Recreate the Splitfile used to create this image')
-@click.option('-e', '--error-on-end', required=False, default=True, is_flag=True,
-              help='If False, bases the recreated Splitfile on the last image where the provenance chain breaks')
+@click.command(name="provenance")
+@click.argument("image_spec", type=ImageType())
+@click.option(
+    "-f",
+    "--full",
+    required=False,
+    is_flag=True,
+    help="Recreate the Splitfile used to create this image",
+)
+@click.option(
+    "-e",
+    "--error-on-end",
+    required=False,
+    default=True,
+    is_flag=True,
+    help="If False, bases the recreated Splitfile on the last image where the provenance chain breaks",
+)
 def provenance_c(image_spec, full, error_on_end):
     """
     Reconstruct the provenance of an image.
@@ -102,19 +121,29 @@ def provenance_c(image_spec, full, error_on_end):
     if full:
         splitfile_commands = image.to_splitfile(err_on_end=error_on_end)
         print("# Splitfile commands used to recreate %s:%s" % (str(repository), image.image_hash))
-        print('\n'.join(splitfile_commands))
+        print("\n".join(splitfile_commands))
     else:
         result = image.provenance()
         print("%s:%s depends on:" % (str(repository), image.image_hash))
-        print('\n'.join("%s:%s" % rs for rs in result))
+        print("\n".join("%s:%s" % rs for rs in result))
 
 
-@click.command(name='rebuild')
-@click.argument('image_spec', type=ImageType())
-@click.option('-u', '--update', is_flag=True, help='Rederive the image against the latest version of all dependencies.')
-@click.option('-a', '--against', multiple=True, type=ImageType(),
-              help='Images to substitute into the reconstructed Splitfile, of the form'
-                   ' [NAMESPACE/]REPOSITORY[:HASH_OR_TAG]. Default tag is \'latest\'.')
+@click.command(name="rebuild")
+@click.argument("image_spec", type=ImageType())
+@click.option(
+    "-u",
+    "--update",
+    is_flag=True,
+    help="Rederive the image against the latest version of all dependencies.",
+)
+@click.option(
+    "-a",
+    "--against",
+    multiple=True,
+    type=ImageType(),
+    help="Images to substitute into the reconstructed Splitfile, of the form"
+    " [NAMESPACE/]REPOSITORY[:HASH_OR_TAG]. Default tag is 'latest'.",
+)
 def rebuild_c(image_spec, update, against):
     """
     Rebuild images against different dependencies.
@@ -143,12 +172,16 @@ def rebuild_c(image_spec, update, against):
     # This doesn't require us at this point to have pulled all the dependencies: the Splitfile executor will do it
     # after we feed in the reconstructed and patched Splitfile.
     deps = {k: v for k, v in image.provenance()}
-    new_images = {repo: repl_image for repo, repl_image in against} if not update \
-        else {repo: 'latest' for repo, _ in deps.items()}
+    new_images = (
+        {repo: repl_image for repo, repl_image in against}
+        if not update
+        else {repo: "latest" for repo, _ in deps.items()}
+    )
     deps.update(new_images)
 
     print("Rerunning %s:%s against:" % (str(repository), image.image_hash))
-    print('\n'.join("%s:%s" % rs for rs in new_images.items()))
+    print("\n".join("%s:%s" % rs for rs in new_images.items()))
 
     from splitgraph.splitfile import rebuild_image
+
     rebuild_image(image, new_images)
