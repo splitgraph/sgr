@@ -128,8 +128,11 @@ class PsycopgEngine(SQLEngine):
                 time.sleep(delay)
                 delay = min(delay * 2, RETRY_DELAY_CAP)
 
-    def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY):
-        with self.connection.cursor() as cur:
+    def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY, named=False):
+
+        cursor_kwargs = { "cursor_factory": psycopg2.extras.NamedTupleCursor } if named else {}
+
+        with self.connection.cursor(**cursor_kwargs) as cur:
             try:
                 cur.execute(statement, _convert_vals(arguments) if arguments else None)
             except DatabaseError:
