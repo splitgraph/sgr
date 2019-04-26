@@ -1,7 +1,7 @@
 from configparser import ConfigParser, ExtendedInterpolation
 
 
-def hoist_section(config_dict, section='defaults'):
+def hoist_section(config_dict, section="defaults"):
     """
         If a section exists called <hoist_section>, hoist it to the top level
         This is useful for overriding default configs from within a config file
@@ -62,17 +62,14 @@ def accumulate_lists(config_dict):
 
     new_dict = config_dict.copy()
 
-    accumulatable = {
-        'remote': 'remotes',
-        'origin': 'origins'
-    }
+    accumulatable = {"remote": "remotes", "origin": "origins"}
 
     accumulatable_keys = accumulatable.keys()
 
     accumulated = {}
 
     def key_matches(k):
-        return k.split(':')[0] in accumulatable_keys
+        return k.split(":")[0] in accumulatable_keys
 
     matching_keys = [k for k in new_dict.keys() if key_matches(k)]
 
@@ -83,10 +80,10 @@ def accumulate_lists(config_dict):
         keys_to_delete.append(key)
 
         # e.g. "remote"
-        left_key = key.split(':')[0]
+        left_key = key.split(":")[0]
 
         # e.g. "remote1" (to be used as a key in the new dict)
-        right_key = ''.join(key.split(':')[1:]).strip()
+        right_key = "".join(key.split(":")[1:]).strip()
 
         list_key = accumulatable[left_key]
         new_item = new_dict[key].copy()
@@ -128,6 +125,7 @@ def transform_config_dict(config_dict, **kwargs):
 #         # else:
 #         #     return expanded
 
+
 def get_config_dict_from_file(sg_file, **kwargs):
     # TODO
     # config = ConfigParser(interpolation=EnvInterpolation())
@@ -137,9 +135,7 @@ def get_config_dict_from_file(sg_file, **kwargs):
     config.optionxform = lambda option: option.upper()
     config.read(sg_file)
 
-    config_dict = {
-        s: dict(config.items(s, False)) for s in config.sections()
-    }
+    config_dict = {s: dict(config.items(s, False)) for s in config.sections()}
 
     return config_dict
 

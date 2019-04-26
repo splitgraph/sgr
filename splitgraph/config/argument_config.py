@@ -14,7 +14,7 @@ def get_arg_tuples():
 
     # This one is for when we are on the engine -- then sys.argv doesn't exist in embedded Python
     # and importing the config fails
-    sys_args = sys.argv[1:] if hasattr(sys, 'argv') else ['']
+    sys_args = sys.argv[1:] if hasattr(sys, "argv") else [""]
 
     return [(a1, a2) for a1, a2 in zip(sys_args, sys_args[1:]) if a1 in ARG_KEYS]
 
@@ -37,6 +37,6 @@ def get_argument_config_value(key, default_return=None):
     if num_matching_values == 0:
         return default_return
 
-    sys.stderr.write('Warning: multiple values specified for %s \n' % key)
-    sys.stderr.write('Using %s \n' % matching_values[0])
+    sys.stderr.write("Warning: multiple values specified for %s \n" % key)
+    sys.stderr.write("Using %s \n" % matching_values[0])
     return matching_values[0]

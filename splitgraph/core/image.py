@@ -16,21 +16,22 @@ from ._common import set_tag, select, manage_audit, set_head
 from .table import Table
 
 IMAGE_COLS = ["image_hash", "parent_id", "created", "comment", "provenance_type", "provenance_data"]
-_PROV_QUERY = SQL("""UPDATE {}.images SET provenance_type = %s, provenance_data = %s WHERE
-                            namespace = %s AND repository = %s AND image_hash = %s""") \
-    .format(Identifier(SPLITGRAPH_META_SCHEMA))
-FDW_CLASS = CONFIG['SG_FDW_CLASS']
+_PROV_QUERY = SQL(
+    """UPDATE {}.images SET provenance_type = %s, provenance_data = %s WHERE
+                            namespace = %s AND repository = %s AND image_hash = %s"""
+).format(Identifier(SPLITGRAPH_META_SCHEMA))
+FDW_CLASS = CONFIG["SG_FDW_CLASS"]
 
 
-class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine', 'object_engine'])):
+class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_engine"])):
     """
     Represents a Splitgraph image. Should't be created directly, use Image-loading methods in the
     :class:`splitgraph.core.repository.Repository` class instead.
     """
 
     def __new__(cls, *args, **kwargs):
-        kwargs['engine'] = kwargs['repository'].engine
-        kwargs['object_engine'] = kwargs['repository'].object_engine
+        kwargs["engine"] = kwargs["repository"].engine
+        kwargs["object_engine"] = kwargs["repository"].object_engine
         self = super(Image, cls).__new__(cls, *args, **kwargs)
         return self
 
@@ -41,11 +42,14 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine', 'object_en
         """Gets the parent and a list of children of a given image."""
         parent = self.parent_id
 
-        children = self.engine.run_sql(SQL("""SELECT image_hash FROM {}.images
-                WHERE namespace = %s AND repository = %s AND parent_id = %s""")
-                                       .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                                       (self.repository.namespace, self.repository.repository, self.image_hash),
-                                       return_shape=ResultShape.MANY_ONE)
+        children = self.engine.run_sql(
+            SQL(
+                """SELECT image_hash FROM {}.images
+                WHERE namespace = %s AND repository = %s AND parent_id = %s"""
+            ).format(Identifier(SPLITGRAPH_META_SCHEMA)),
+            (self.repository.namespace, self.repository.repository, self.image_hash),
+            return_shape=ResultShape.MANY_ONE,
+        )
         return parent, children
 
     def get_tables(self):
@@ -53,9 +57,12 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine', 'object_en
         Gets the names of all tables inside of an image.
         """
         return self.engine.run_sql(
-            select('tables', 'table_name', 'namespace = %s AND repository = %s AND image_hash = %s'),
+            select(
+                "tables", "table_name", "namespace = %s AND repository = %s AND image_hash = %s"
+            ),
             (self.repository.namespace, self.repository.repository, self.image_hash),
-            return_shape=ResultShape.MANY_ONE)
+            return_shape=ResultShape.MANY_ONE,
+        )
 
     def get_table(self, table_name):
         """
@@ -65,10 +72,17 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine', 'object_en
         :param table_name: Name of the table
         :return: Table object or None
         """
-        result = self.engine.run_sql(select("get_tables", "table_schema,object_ids", "table_name = %s",
-                                            table_args="(%s,%s,%s)", schema=SPLITGRAPH_API_SCHEMA),
-                                     (self.repository.namespace, self.repository.repository,
-                                      self.image_hash, table_name), return_shape=ResultShape.ONE_MANY)
+        result = self.engine.run_sql(
+            select(
+                "get_tables",
+                "table_schema,object_ids",
+                "table_name = %s",
+                table_args="(%s,%s,%s)",
+                schema=SPLITGRAPH_API_SCHEMA,
+            ),
+            (self.repository.namespace, self.repository.repository, self.image_hash, table_name),
+            return_shape=ResultShape.ONE_MANY,
+        )
         if not result:
             return None
         table_schema, objects = result
@@ -87,8 +101,11 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine', 'object_en
         target_schema = self.repository.to_schema()
         if self.repository.has_pending_changes():
             if not force:
-                raise SplitGraphException("{0} has pending changes! Pass force=True or do sgr checkout -f {0}:HEAD"
-                                          .format(target_schema))
+                raise SplitGraphException(
+                    "{0} has pending changes! Pass force=True or do sgr checkout -f {0}:HEAD".format(
+                        target_schema
+                    )
+                )
             logging.warning("%s has pending changes, discarding...", target_schema)
             self.object_engine.discard_pending_changes(target_schema)
 
@@ -113,23 +130,34 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine', 'object_en
         # (e.g. the schemata are cleared)
         # Use a per-schema "foreign server" for layered queries for now
         target_schema = target_schema or self.repository.to_schema()
-        server_id = '%s_lq_checkout_server' % target_schema
+        server_id = "%s_lq_checkout_server" % target_schema
         engine = self.repository.engine
         object_engine = self.repository.object_engine
 
-        init_fdw(object_engine, server_id=server_id, wrapper='multicorn',
-                 server_options={'wrapper': wrapper,
-                                 'engine': engine.name,
-                                 'object_engine': object_engine.name,
-                                 'use_socket': 'True',
-                                 'namespace': self.repository.namespace,
-                                 'repository': self.repository.repository,
-                                 'image_hash': self.image_hash})
+        init_fdw(
+            object_engine,
+            server_id=server_id,
+            wrapper="multicorn",
+            server_options={
+                "wrapper": wrapper,
+                "engine": engine.name,
+                "object_engine": object_engine.name,
+                "use_socket": "True",
+                "namespace": self.repository.namespace,
+                "repository": self.repository.repository,
+                "image_hash": self.image_hash,
+            },
+        )
 
         # It's easier to create the foreign tables from our side than to implement IMPORT FOREIGN SCHEMA by the FDW
         for table_name in self.get_tables():
-            logging.info("Mounting %s:%s/%s into %s", self.repository.to_schema(), self.image_hash, table_name,
-                         target_schema)
+            logging.info(
+                "Mounting %s:%s/%s into %s",
+                self.repository.to_schema(),
+                self.image_hash,
+                table_name,
+                target_schema,
+            )
             self.get_table(table_name).materialize(table_name, target_schema, lq_server=server_id)
         object_engine.commit()
 
@@ -141,7 +169,7 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine', 'object_en
 
         :return: The name of the schema the image is located in.
         """
-        tmp_schema = str.format('o{:032x}', getrandbits(128))
+        tmp_schema = str.format("o{:032x}", getrandbits(128))
         try:
             self.object_engine.create_schema(tmp_schema)
             self._lq_checkout(target_schema=tmp_schema)
@@ -150,7 +178,9 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine', 'object_en
         finally:
             self.object_engine.run_sql(
                 SQL("DROP SCHEMA IF EXISTS {} CASCADE; DROP SERVER IF EXISTS {} CASCADE;").format(
-                    Identifier(tmp_schema), Identifier(tmp_schema + '_lq_checkout_server')))
+                    Identifier(tmp_schema), Identifier(tmp_schema + "_lq_checkout_server")
+                )
+            )
 
     def tag(self, tag):
         """
@@ -175,10 +205,13 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine', 'object_en
         # Does checks to make sure the tag actually exists, will raise otherwise
         self.repository.images.by_tag(tag)
 
-        self.engine.run_sql(SQL("DELETE FROM {}.tags WHERE namespace = %s AND repository = %s AND tag = %s")
-                            .format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                            (self.repository.namespace, self.repository.repository, tag),
-                            return_shape=None)
+        self.engine.run_sql(
+            SQL("DELETE FROM {}.tags WHERE namespace = %s AND repository = %s AND tag = %s").format(
+                Identifier(SPLITGRAPH_META_SCHEMA)
+            ),
+            (self.repository.namespace, self.repository.repository, tag),
+            return_shape=None,
+        )
 
     def get_log(self):
         """Repeatedly gets the parent of a given image until it reaches the bottom."""
@@ -203,17 +236,24 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine', 'object_en
         splitfile_commands = []
         image = self
         while True:
-            image_hash, parent, prov_type, prov_data = image.image_hash, image.parent_id, \
-                                                       image.provenance_type, image.provenance_data
-            if prov_type in ('IMPORT', 'SQL', 'FROM'):
+            image_hash, parent, prov_type, prov_data = (
+                image.image_hash,
+                image.parent_id,
+                image.provenance_type,
+                image.provenance_data,
+            )
+            if prov_type in ("IMPORT", "SQL", "FROM"):
                 splitfile_commands.append(
-                    _prov_command_to_splitfile(prov_type, prov_data, image_hash, source_replacement))
-                if prov_type == 'FROM':
+                    _prov_command_to_splitfile(prov_type, prov_data, image_hash, source_replacement)
+                )
+                if prov_type == "FROM":
                     break
-            elif prov_type in (None, 'MOUNT') and parent:
+            elif prov_type in (None, "MOUNT") and parent:
                 if err_on_end:
-                    raise SplitGraphException("Image %s is linked to its parent with provenance %s"
-                                              " that can't be reproduced!" % (image_hash, prov_type))
+                    raise SplitGraphException(
+                        "Image %s is linked to its parent with provenance %s"
+                        " that can't be reproduced!" % (image_hash, prov_type)
+                    )
                 splitfile_commands.append("FROM %s:%s" % (image.repository, image_hash))
                 break
             if not parent:
@@ -230,25 +270,43 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine', 'object_en
         :return: List of (repository, image_hash)
         """
         from splitgraph.core.repository import Repository
+
         result = set()
         image = self
         while True:
-            parent, prov_type, prov_data = image.parent_id, image.provenance_type, image.provenance_data
-            if prov_type == 'IMPORT':
-                result.add((Repository(prov_data['source_namespace'], prov_data['source']), prov_data['source_hash']))
-            if prov_type == 'FROM':
+            parent, prov_type, prov_data = (
+                image.parent_id,
+                image.provenance_type,
+                image.provenance_data,
+            )
+            if prov_type == "IMPORT":
+                result.add(
+                    (
+                        Repository(prov_data["source_namespace"], prov_data["source"]),
+                        prov_data["source_hash"],
+                    )
+                )
+            if prov_type == "FROM":
                 # If we reached "FROM", then that's the first statement in the image build process (as it bases the
                 # build on a completely different base image). Otherwise, let's say we have several versions of the
                 # source repo and base some Splitfile builds on each of them sequentially. In that case, the newest
                 # build will have all of the previous FROM statements in it (since we clone the upstream commit history
                 # locally and then add the FROM ... provenance data into it).
-                result.add((Repository(prov_data['source_namespace'], prov_data['source']), image.image_hash))
+                result.add(
+                    (
+                        Repository(prov_data["source_namespace"], prov_data["source"]),
+                        image.image_hash,
+                    )
+                )
                 break
             if parent is None:
                 break
-            if prov_type in (None, 'MOUNT'):
-                logging.warning("Image %s has provenance type %s, which means it might not be rederiveable.",
-                                image.image_hash[:12], prov_type)
+            if prov_type in (None, "MOUNT"):
+                logging.warning(
+                    "Image %s has provenance type %s, which means it might not be rederiveable.",
+                    image.image_hash[:12],
+                    prov_type,
+                )
             image = self.repository.images.by_hash(parent)
         return list(result)
 
@@ -261,30 +319,65 @@ class Image(namedtuple('Image', IMAGE_COLS + ['repository', 'engine', 'object_en
         :param kwargs: Extra provenance-specific arguments
         """
         if provenance_type == "IMPORT":
-            self.engine.run_sql(_PROV_QUERY,
-                                ("IMPORT", Json({
-                                    'source': kwargs['source_repository'].repository,
-                                    'source_namespace': kwargs['source_repository'].namespace,
-                                    'source_hash': kwargs['source_hash'],
-                                    'tables': kwargs['tables'],
-                                    'table_aliases': kwargs['table_aliases'],
-                                    'table_queries': kwargs['table_queries']}),
-                                 self.repository.namespace, self.repository.repository, self.image_hash))
+            self.engine.run_sql(
+                _PROV_QUERY,
+                (
+                    "IMPORT",
+                    Json(
+                        {
+                            "source": kwargs["source_repository"].repository,
+                            "source_namespace": kwargs["source_repository"].namespace,
+                            "source_hash": kwargs["source_hash"],
+                            "tables": kwargs["tables"],
+                            "table_aliases": kwargs["table_aliases"],
+                            "table_queries": kwargs["table_queries"],
+                        }
+                    ),
+                    self.repository.namespace,
+                    self.repository.repository,
+                    self.image_hash,
+                ),
+            )
         elif provenance_type == "SQL":
-            self.engine.run_sql(_PROV_QUERY,
-                                ('SQL', Json(kwargs['sql']),
-                                 self.repository.namespace, self.repository.repository, self.image_hash))
+            self.engine.run_sql(
+                _PROV_QUERY,
+                (
+                    "SQL",
+                    Json(kwargs["sql"]),
+                    self.repository.namespace,
+                    self.repository.repository,
+                    self.image_hash,
+                ),
+            )
         elif provenance_type == "MOUNT":
             # We don't store the details of images that come from an sgr MOUNT command
             # since those are assumed to be based on an inaccessible db.
-            self.engine.run_sql(_PROV_QUERY,
-                                ('MOUNT', None,
-                                 self.repository.namespace, self.repository.repository, self.image_hash))
+            self.engine.run_sql(
+                _PROV_QUERY,
+                (
+                    "MOUNT",
+                    None,
+                    self.repository.namespace,
+                    self.repository.repository,
+                    self.image_hash,
+                ),
+            )
         elif provenance_type == "FROM":
-            self.engine.run_sql(_PROV_QUERY,
-                                ('FROM', Json({'source': kwargs['source'].repository,
-                                               'source_namespace': kwargs['source'].namespace}),
-                                 self.repository.namespace, self.repository.repository, self.image_hash))
+            self.engine.run_sql(
+                _PROV_QUERY,
+                (
+                    "FROM",
+                    Json(
+                        {
+                            "source": kwargs["source"].repository,
+                            "source_namespace": kwargs["source"].namespace,
+                        }
+                    ),
+                    self.repository.namespace,
+                    self.repository.repository,
+                    self.image_hash,
+                ),
+            )
         else:
             raise ValueError("Provenance type %s not supported!" % provenance_type)
 
@@ -303,13 +396,20 @@ def _prov_command_to_splitfile(prov_type, prov_data, image_hash, source_replacem
     from splitgraph.core.repository import Repository
 
     if prov_type == "IMPORT":
-        repo, image = Repository(prov_data['source_namespace'], prov_data['source']), prov_data['source_hash']
+        repo, image = (
+            Repository(prov_data["source_namespace"], prov_data["source"]),
+            prov_data["source_hash"],
+        )
         result = "FROM %s:%s IMPORT " % (str(repo), source_replacement.get(repo, image))
-        result += ", ".join("%s AS %s" % (tn if not q else "{" + tn.replace("}", "\\}") + "}", ta) for tn, ta, q
-                            in zip(prov_data['tables'], prov_data['table_aliases'], prov_data['table_queries']))
+        result += ", ".join(
+            "%s AS %s" % (tn if not q else "{" + tn.replace("}", "\\}") + "}", ta)
+            for tn, ta, q in zip(
+                prov_data["tables"], prov_data["table_aliases"], prov_data["table_queries"]
+            )
+        )
         return result
     if prov_type == "FROM":
-        repo = Repository(prov_data['source_namespace'], prov_data['source'])
+        repo = Repository(prov_data["source_namespace"], prov_data["source"])
         return "FROM %s:%s" % (str(repo), source_replacement.get(repo, image_hash))
     if prov_type == "SQL":
         return "SQL " + prov_data.replace("\n", "\\\n")

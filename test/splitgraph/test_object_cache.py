@@ -11,18 +11,24 @@ from test.splitgraph.conftest import OUTPUT, _cleanup_minio
 
 
 def _get_refcount(object_manager, object_id):
-    return object_manager.object_engine.run_sql(select("object_cache_status", "refcount", "object_id = %s"),
-                                                (object_id,), return_shape=ResultShape.ONE_ONE)
+    return object_manager.object_engine.run_sql(
+        select("object_cache_status", "refcount", "object_id = %s"),
+        (object_id,),
+        return_shape=ResultShape.ONE_ONE,
+    )
 
 
 def _get_last_used(object_manager, object_id):
-    return object_manager.object_engine.run_sql(select("object_cache_status", "last_used", "object_id = %s"),
-                                                (object_id,), return_shape=ResultShape.ONE_ONE)
+    return object_manager.object_engine.run_sql(
+        select("object_cache_status", "last_used", "object_id = %s"),
+        (object_id,),
+        return_shape=ResultShape.ONE_ONE,
+    )
 
 
 def _setup_object_cache_test(pg_repo_remote, longer_chain=False):
     pg_repo_local = clone(pg_repo_remote)
-    pg_repo_local.images['latest'].checkout()
+    pg_repo_local.images["latest"].checkout()
     prepare_lq_repo(pg_repo_local, commit_after_every=False, include_pk=True)
     if longer_chain:
         pg_repo_local.run_sql("INSERT INTO FRUITS VALUES (4, 'kumquat')")
@@ -30,7 +36,7 @@ def _setup_object_cache_test(pg_repo_remote, longer_chain=False):
 
     # Same setup as the LQ test in the beginning: we clone a repo from upstream, don't download anything, all
     # objects are on Minio.
-    remote = pg_repo_local.push(handler='S3', handler_options={})
+    remote = pg_repo_local.push(handler="S3", handler_options={})
     pg_repo_local.delete()
     pg_repo_remote.objects.delete_objects(remote.objects.get_downloaded_objects())
     pg_repo_remote.commit_engines()
@@ -45,7 +51,9 @@ def _setup_object_cache_test(pg_repo_remote, longer_chain=False):
     assert len(remote.objects.get_downloaded_objects()) == 0
 
     # Nothing has yet been downloaded (cache entries only for externally downloaded things)
-    assert len(pg_repo_local.engine.run_sql("SELECT * FROM splitgraph_meta.object_cache_status")) == 0
+    assert (
+        len(pg_repo_local.engine.run_sql("SELECT * FROM splitgraph_meta.object_cache_status")) == 0
+    )
 
     return pg_repo_local
 
@@ -55,8 +63,8 @@ def test_object_cache_loading(local_engine_empty, pg_repo_remote):
     pg_repo_local = _setup_object_cache_test(pg_repo_remote)
 
     object_manager = pg_repo_local.objects
-    fruits_v3 = pg_repo_local.images['latest'].get_table('fruits')
-    fruits_v2 = pg_repo_local.images[pg_repo_local.images['latest'].parent_id].get_table('fruits')
+    fruits_v3 = pg_repo_local.images["latest"].get_table("fruits")
+    fruits_v2 = pg_repo_local.images[pg_repo_local.images["latest"].parent_id].get_table("fruits")
 
     # Quick assertions on the objects and table sizes recorded by the engine, since we'll rely on them
     # to test eviction.
@@ -103,10 +111,12 @@ def test_object_cache_non_existing_objects(local_engine_empty, pg_repo_remote):
     pg_repo_local = _setup_object_cache_test(pg_repo_remote)
     object_manager = pg_repo_local.objects
 
-    fruits_v3 = pg_repo_local.images['latest'].get_table('fruits')
+    fruits_v3 = pg_repo_local.images["latest"].get_table("fruits")
     # Unlink an object so that the manager tries to find it on the remote, make sure we get a friendly
     # exception rather than a psycopg ProgrammingError
-    pg_repo_local.run_sql("DELETE FROM splitgraph_meta.object_locations WHERE object_id = %s", (fruits_v3.objects[0],))
+    pg_repo_local.run_sql(
+        "DELETE FROM splitgraph_meta.object_locations WHERE object_id = %s", (fruits_v3.objects[0],)
+    )
     # Make sure to commit here -- otherwise the error rolls everything back.
     pg_repo_local.commit_engines()
     with pytest.raises(SplitGraphException) as e:
@@ -135,9 +145,11 @@ def test_object_cache_eviction(local_engine_empty, pg_repo_remote):
     pg_repo_local = _setup_object_cache_test(pg_repo_remote)
 
     object_manager = pg_repo_local.objects
-    fruits_v3 = pg_repo_local.images['latest'].get_table('fruits')
-    fruits_v2 = pg_repo_local.images[pg_repo_local.images['latest'].parent_id].get_table('fruits')
-    vegetables_v2 = pg_repo_local.images[pg_repo_local.images['latest'].parent_id].get_table('vegetables')
+    fruits_v3 = pg_repo_local.images["latest"].get_table("fruits")
+    fruits_v2 = pg_repo_local.images[pg_repo_local.images["latest"].parent_id].get_table("fruits")
+    vegetables_v2 = pg_repo_local.images[pg_repo_local.images["latest"].parent_id].get_table(
+        "vegetables"
+    )
     vegetables_snap = vegetables_v2.objects[0]
     fruit_diff = fruits_v3.objects[0]
     fruit_snap = fruits_v2.objects[0]
@@ -195,8 +207,10 @@ def test_object_cache_eviction_fraction(local_engine_empty, pg_repo_remote):
     pg_repo_local = _setup_object_cache_test(pg_repo_remote)
 
     object_manager = pg_repo_local.objects
-    fruits_v3 = pg_repo_local.images['latest'].get_table('fruits')
-    vegetables_v2 = pg_repo_local.images[pg_repo_local.images['latest'].parent_id].get_table('vegetables')
+    fruits_v3 = pg_repo_local.images["latest"].get_table("fruits")
+    vegetables_v2 = pg_repo_local.images[pg_repo_local.images["latest"].parent_id].get_table(
+        "vegetables"
+    )
 
     # Load the fruits objects into the cache
     with object_manager.ensure_objects(fruits_v3):
@@ -216,12 +230,12 @@ def test_object_cache_locally_created_dont_get_evicted(local_engine_empty, pg_re
     pg_repo_local = _setup_object_cache_test(pg_repo_remote)
 
     object_manager = pg_repo_local.objects
-    fruits_v2 = pg_repo_local.images[pg_repo_local.images['latest'].parent_id].get_table('fruits')
-    head = pg_repo_local.images['latest']
+    fruits_v2 = pg_repo_local.images[pg_repo_local.images["latest"].parent_id].get_table("fruits")
+    head = pg_repo_local.images["latest"]
     head.checkout()
     pg_repo_local.run_sql("INSERT INTO fruits VALUES (5, 'banana')")
     new_head = pg_repo_local.commit()
-    fruits_v4 = new_head.get_table('fruits')
+    fruits_v4 = new_head.get_table("fruits")
     assert len(fruits_v4.objects) == 1
 
     head.checkout()
@@ -229,7 +243,9 @@ def test_object_cache_locally_created_dont_get_evicted(local_engine_empty, pg_re
 
     # Despite that we have objects on the engine, they don't count towards the full cache occupancy
     assert len(object_manager.get_downloaded_objects()) == 5
-    assert object_manager.get_cache_occupancy() == 8192 * 4  # 5 objects on the engine, 1 of them was created locally.
+    assert (
+        object_manager.get_cache_occupancy() == 8192 * 4
+    )  # 5 objects on the engine, 1 of them was created locally.
 
     # Evict all objects -- check to see the one we created still exists.
     object_manager.run_eviction(keep_objects=[], required_space=None)
@@ -243,9 +259,11 @@ def test_object_cache_nested(local_engine_empty, pg_repo_remote):
     pg_repo_local = _setup_object_cache_test(pg_repo_remote)
 
     object_manager = pg_repo_local.objects
-    fruits_v3 = pg_repo_local.images['latest'].get_table('fruits')
-    fruits_v2 = pg_repo_local.images[pg_repo_local.images['latest'].parent_id].get_table('fruits')
-    vegetables_v2 = pg_repo_local.images[pg_repo_local.images['latest'].parent_id].get_table('vegetables')
+    fruits_v3 = pg_repo_local.images["latest"].get_table("fruits")
+    fruits_v2 = pg_repo_local.images[pg_repo_local.images["latest"].parent_id].get_table("fruits")
+    vegetables_v2 = pg_repo_local.images[pg_repo_local.images["latest"].parent_id].get_table(
+        "vegetables"
+    )
     vegetables_snap = vegetables_v2.objects[0]
     fruit_diff = fruits_v3.objects[0]
     fruit_snap = fruits_v2.objects[0]
@@ -276,12 +294,14 @@ def test_object_cache_eviction_priority(local_engine_empty, pg_repo_remote):
     pg_repo_local = _setup_object_cache_test(pg_repo_remote)
 
     object_manager = pg_repo_local.objects
-    fruits_v2 = pg_repo_local.images[pg_repo_local.images['latest'].parent_id].get_table('fruits')
-    fruits_v3 = pg_repo_local.images['latest'].get_table('fruits')
+    fruits_v2 = pg_repo_local.images[pg_repo_local.images["latest"].parent_id].get_table("fruits")
+    fruits_v3 = pg_repo_local.images["latest"].get_table("fruits")
     fruit_snap = fruits_v2.objects[0]
     fruit_diff = fruits_v3.objects[0]
-    vegetables_v2 = pg_repo_local.images[pg_repo_local.images['latest'].parent_id].get_table('vegetables')
-    vegetables_v3 = pg_repo_local.images['latest'].get_table('vegetables')
+    vegetables_v2 = pg_repo_local.images[pg_repo_local.images["latest"].parent_id].get_table(
+        "vegetables"
+    )
+    vegetables_v3 = pg_repo_local.images["latest"].get_table("vegetables")
     vegetables_snap = vegetables_v2.objects[0]
     vegetables_diff = vegetables_v3.objects[0]
 
@@ -340,8 +360,40 @@ def test_object_cache_eviction_priority(local_engine_empty, pg_repo_remote):
         assert "Not enough space will be reclaimed" in str(ex)
 
 
+def test_object_cache_make_external(pg_repo_local, clean_minio):
+    # Test marking objects as external and uploading them to S3
+    all_objects = list(sorted(pg_repo_local.objects.get_all_objects()))
+
+    # Objects are local and don't exist externally: running eviction does nothing and local objects
+    # don't count towards cache occupancy.
+    pg_repo_local.objects.run_eviction(keep_objects=[], required_space=None)
+    assert list(sorted(pg_repo_local.objects.get_downloaded_objects())) == all_objects
+    assert pg_repo_local.objects.get_cache_occupancy() == 0
+
+    # Mark objects as external and upload them
+    pg_repo_local.objects.make_objects_external(all_objects, handler="S3", handler_params={})
+    assert pg_repo_local.objects.get_cache_occupancy() == 8192 * 2
+    assert pg_repo_local.objects._recalculate_cache_occupancy() == 8192 * 2
+
+    pg_repo_local.objects.run_eviction(keep_objects=[], required_space=None)
+    assert pg_repo_local.objects.get_cache_occupancy() == 0
+    assert pg_repo_local.objects._recalculate_cache_occupancy() == 0
+    assert not pg_repo_local.objects.get_downloaded_objects()
+
+    # Download the objects again
+    with pg_repo_local.objects.ensure_objects(
+        pg_repo_local.images["latest"].get_table("fruits")
+    ) as obs1:
+        with pg_repo_local.objects.ensure_objects(
+            pg_repo_local.images["latest"].get_table("vegetables")
+        ) as obs2:
+            assert pg_repo_local.objects.get_cache_occupancy() == 8192 * 2
+            assert pg_repo_local.objects._recalculate_cache_occupancy() == 8192 * 2
+            assert list(sorted(pg_repo_local.objects.get_downloaded_objects())) == all_objects
+
+
 def test_object_manager_index_clause_generation(pg_repo_local):
-    column_types = {'a': 'int', 'b': 'int'}
+    column_types = {"a": "int", "b": "int"}
 
     def _assert_ic_result(quals, expected_clause, expected_args):
         qual, args = _quals_to_clause(quals, column_types)
@@ -349,73 +401,85 @@ def test_object_manager_index_clause_generation(pg_repo_local):
         assert args == expected_args
 
     # Test basics: single clause, comparison
-    _assert_ic_result([[('a', '>', 5)]], '((NOT index ? %s OR (index #>> \'{"a",1}\')::int  > %s))', ('a', 5,))
+    _assert_ic_result(
+        [[("a", ">", 5)]], "((NOT index ? %s OR (index #>> '{\"a\",1}')::int  > %s))", ("a", 5)
+    )
 
     # Two clauses in an OR-block, (in)equality
-    _assert_ic_result([[('a', '=', 5), ('b', '<>', 3)]],
-                      '((NOT index ? %s OR %s BETWEEN (index #>> \'{"a",0}\')::int '
-                      'AND (index #>> \'{"a",1}\')::int) OR (TRUE))',
-                      ('a', 5))
+    _assert_ic_result(
+        [[("a", "=", 5), ("b", "<>", 3)]],
+        "((NOT index ? %s OR %s BETWEEN (index #>> '{\"a\",0}')::int "
+        "AND (index #>> '{\"a\",1}')::int) OR (TRUE))",
+        ("a", 5),
+    )
 
     # Two clauses in an AND-block, check unknown operators
-    _assert_ic_result([[('a', '<', 3)], [('b', '~', 3)]],
-                      '((NOT index ? %s OR (index #>> \'{"a",0}\')::int < %s)) AND ((TRUE))',
-                      ('a', 3))
+    _assert_ic_result(
+        [[("a", "<", 3)], [("b", "~", 3)]],
+        "((NOT index ? %s OR (index #>> '{\"a\",0}')::int < %s)) AND ((TRUE))",
+        ("a", 3),
+    )
 
 
 def _prepare_object_filtering_dataset():
     OUTPUT.init()
-    OUTPUT.run_sql("""CREATE TABLE test
+    OUTPUT.run_sql(
+        """CREATE TABLE test
             (col1 int primary key,
              col2 int,
              col3 varchar,
              col4 timestamp,
-             col5 json)""")
+             col5 json)"""
+    )
 
     # First object is kind of normal: incrementing PK, a random col2, some text, some timestamps
     OUTPUT.run_sql("INSERT INTO test VALUES (1, 5, 'aaaa', '2016-01-01 00:00:00', '{\"a\": 5}')")
     OUTPUT.run_sql("INSERT INTO test VALUES (5, 3, 'bbbb', '2016-01-02 00:00:00', '{\"a\": 10}')")
     OUTPUT.commit()
-    obj_1 = OUTPUT.head.get_table('test').objects[0]
+    obj_1 = OUTPUT.head.get_table("test").objects[0]
     # Sanity check on index for reference + easier debugging
-    assert OUTPUT.objects.get_object_meta([obj_1])[obj_1].index == \
-           {'col1': [1, 5],
-            'col2': [3, 5],
-            'col3': ['aaaa', 'bbbb'],
-            'col4': ['2016-01-01T00:00:00', '2016-01-02T00:00:00']}
+    assert OUTPUT.objects.get_object_meta([obj_1])[obj_1].index == {
+        "col1": [1, 5],
+        "col2": [3, 5],
+        "col3": ["aaaa", "bbbb"],
+        "col4": ["2016-01-01T00:00:00", "2016-01-02T00:00:00"],
+    }
 
     # Second object: PK increments, ranges for col2 and col3 overlap, col4 has the same timestamps everywhere
     OUTPUT.run_sql("INSERT INTO test VALUES (6, 1, 'abbb', '2015-12-30 00:00:00', '{\"a\": 5}')")
     OUTPUT.run_sql("INSERT INTO test VALUES (10, 4, 'cccc', '2015-12-30 00:00:00', '{\"a\": 10}')")
     OUTPUT.commit()
-    obj_2 = OUTPUT.head.get_table('test').objects[0]
+    obj_2 = OUTPUT.head.get_table("test").objects[0]
     assert OUTPUT.objects.get_object_meta([obj_2])[obj_2].index == {
-        'col1': [6, 10],
-        'col2': [1, 4],
-        'col3': ['abbb', 'cccc'],
-        'col4': ['2015-12-30T00:00:00', '2015-12-30T00:00:00']}
+        "col1": [6, 10],
+        "col2": [1, 4],
+        "col3": ["abbb", "cccc"],
+        "col4": ["2015-12-30T00:00:00", "2015-12-30T00:00:00"],
+    }
 
     # Third object: just a single row
     OUTPUT.run_sql("INSERT INTO test VALUES (11, 10, 'dddd', '2016-01-05 00:00:00', '{\"a\": 5}')")
     OUTPUT.commit()
-    obj_3 = OUTPUT.head.get_table('test').objects[0]
+    obj_3 = OUTPUT.head.get_table("test").objects[0]
     assert OUTPUT.objects.get_object_meta([obj_3])[obj_3].index == {
-        'col1': [11, 11],
-        'col2': [10, 10],
-        'col3': ['dddd', 'dddd'],
-        'col4': ['2016-01-05T00:00:00', '2016-01-05T00:00:00']}
+        "col1": [11, 11],
+        "col2": [10, 10],
+        "col3": ["dddd", "dddd"],
+        "col4": ["2016-01-05T00:00:00", "2016-01-05T00:00:00"],
+    }
 
     # Fourth object: PK increments, ranges for col2/col3 don't overlap, col4 spans obj_1's range, we have a NULL.
     OUTPUT.run_sql("INSERT INTO test VALUES (12, 11, 'eeee', '2015-12-31 00:00:00', '{\"a\": 5}')")
     OUTPUT.run_sql("INSERT INTO test VALUES (14, 13, 'ezzz', NULL, '{\"a\": 5}')")
     OUTPUT.run_sql("INSERT INTO test VALUES (16, 15, 'ffff', '2016-01-04 00:00:00', '{\"a\": 10}')")
     OUTPUT.commit()
-    obj_4 = OUTPUT.head.get_table('test').objects[0]
+    obj_4 = OUTPUT.head.get_table("test").objects[0]
     assert OUTPUT.objects.get_object_meta([obj_4])[obj_4].index == {
-        'col1': [12, 16],
-        'col2': [11, 15],
-        'col3': ['eeee', 'ffff'],
-        'col4': ['2015-12-31T00:00:00', '2016-01-04T00:00:00']}
+        "col1": [12, 16],
+        "col2": [11, 15],
+        "col3": ["eeee", "ffff"],
+        "col4": ["2015-12-31T00:00:00", "2016-01-04T00:00:00"],
+    }
 
     return [obj_1, obj_2, obj_3, obj_4]
 
@@ -424,78 +488,88 @@ def test_object_manager_object_filtering(local_engine_empty):
     objects = _prepare_object_filtering_dataset()
     obj_1, obj_2, obj_3, obj_4 = objects
     om = OUTPUT.objects
-    column_types = {c[1]: c[2] for c in OUTPUT.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, obj_1)}
+    column_types = {
+        c[1]: c[2] for c in OUTPUT.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, obj_1)
+    }
 
     def _assert_filter_result(quals, expected):
         assert set(om.filter_fragments(objects, quals, column_types)) == set(expected)
 
     # Test single quals on PK
-    _assert_filter_result([[('col1', '=', 3)]], [obj_1])
+    _assert_filter_result([[("col1", "=", 3)]], [obj_1])
     # Even though obj_1 spans 3 (and might include 3 as a value), it might have values that aren't 3.
-    _assert_filter_result([[('col1', '<>', 3)]], [obj_1, obj_2, obj_3, obj_4])
-    _assert_filter_result([[('col1', '>', 5)]], [obj_2, obj_3, obj_4])
-    _assert_filter_result([[('col1', '>=', 5)]], [obj_1, obj_2, obj_3, obj_4])
-    _assert_filter_result([[('col1', '<', 11)]], [obj_1, obj_2])
-    _assert_filter_result([[('col1', '<=', 11)]], [obj_1, obj_2, obj_3])
+    _assert_filter_result([[("col1", "<>", 3)]], [obj_1, obj_2, obj_3, obj_4])
+    _assert_filter_result([[("col1", ">", 5)]], [obj_2, obj_3, obj_4])
+    _assert_filter_result([[("col1", ">=", 5)]], [obj_1, obj_2, obj_3, obj_4])
+    _assert_filter_result([[("col1", "<", 11)]], [obj_1, obj_2])
+    _assert_filter_result([[("col1", "<=", 11)]], [obj_1, obj_2, obj_3])
 
     # Test NULL: we don't filter anything down since they aren't included in the index and
     # we don't explicitly track down where they are.
-    _assert_filter_result([[('col4', 'IS', 'NULL')]], [obj_1, obj_2, obj_3, obj_4])
+    _assert_filter_result([[("col4", "IS", "NULL")]], [obj_1, obj_2, obj_3, obj_4])
 
     # Test datetime quals
-    _assert_filter_result([[('col4', '>', '2015-12-31 00:00:00')]], [obj_1, obj_3, obj_4])
-    _assert_filter_result([[('col4', '>', dt(2015, 12, 31))]], [obj_1, obj_3, obj_4])
-    _assert_filter_result([[('col4', '<=', '2016-01-01 00:00:00')]], [obj_1, obj_2, obj_4])
+    _assert_filter_result([[("col4", ">", "2015-12-31 00:00:00")]], [obj_1, obj_3, obj_4])
+    _assert_filter_result([[("col4", ">", dt(2015, 12, 31))]], [obj_1, obj_3, obj_4])
+    _assert_filter_result([[("col4", "<=", "2016-01-01 00:00:00")]], [obj_1, obj_2, obj_4])
 
     # Test text column
     # Unknown operator (that can't be pruned with the index) returns everything
-    _assert_filter_result([[('col3', '~~', 'eee%')]], [obj_1, obj_2, obj_3, obj_4])
-    _assert_filter_result([[('col3', '=', 'aaaa')]], [obj_1])
-    _assert_filter_result([[('col3', '=', 'accc')]], [obj_1, obj_2])
+    _assert_filter_result([[("col3", "~~", "eee%")]], [obj_1, obj_2, obj_3, obj_4])
+    _assert_filter_result([[("col3", "=", "aaaa")]], [obj_1])
+    _assert_filter_result([[("col3", "=", "accc")]], [obj_1, obj_2])
 
     # Test combining quals
 
     # (can't be pruned) OR (can be pruned) returns all since we don't know what will match the first clause
-    _assert_filter_result([[('col3', '~~', 'eee%'), ('col1', '=', 3)]], [obj_1, obj_2, obj_3, obj_4])
+    _assert_filter_result(
+        [[("col3", "~~", "eee%"), ("col1", "=", 3)]], [obj_1, obj_2, obj_3, obj_4]
+    )
 
     # (can't be pruned) AND (can be pruned) returns the same result as the second clause since if something definitely
     # doesn't match the second clause, it won't match the AND.
-    _assert_filter_result([[('col3', '~~', 'eee%')], [('col1', '=', 3)]], [obj_1])
+    _assert_filter_result([[("col3", "~~", "eee%")], [("col1", "=", 3)]], [obj_1])
 
     # (col1 > 5 AND col1 < 2)
-    _assert_filter_result([[('col1', '>', 5)], [('col1', '<', 2)]], [])
+    _assert_filter_result([[("col1", ">", 5)], [("col1", "<", 2)]], [])
 
     # (col1 > 5 OR col1 < 2)
-    _assert_filter_result([[('col1', '>', 5), ('col1', '<', 2)]], [obj_1, obj_2, obj_3, obj_4])
+    _assert_filter_result([[("col1", ">", 5), ("col1", "<", 2)]], [obj_1, obj_2, obj_3, obj_4])
 
     # (col1 > 10 (selects obj_3 and 4) OR col4 == 2016-01-01 12:00:00 (selects obj_1 and 4))
     # AND col2 == 2 (selects obj_2)
     # the first clause selects objs 1, 3, 4; second clause selects 2; intersecting them results in []
-    _assert_filter_result([[('col1', '>', 10)]], [obj_3, obj_4])
-    _assert_filter_result([[('col4', '=', '2016-01-01 12:00:00')]], [obj_1, obj_4])
-    _assert_filter_result([[('col2', '=', 2)]], [obj_2])
+    _assert_filter_result([[("col1", ">", 10)]], [obj_3, obj_4])
+    _assert_filter_result([[("col4", "=", "2016-01-01 12:00:00")]], [obj_1, obj_4])
+    _assert_filter_result([[("col2", "=", 2)]], [obj_2])
 
-    _assert_filter_result([[('col1', '>', 10), ('col4', '=', '2016-01-01 12:00:00')]], [obj_1, obj_3, obj_4])
-    _assert_filter_result([[('col1', '>', 10), ('col4', '=', '2016-01-01 12:00:00')],
-                           [('col2', '=', 2)]], [])
+    _assert_filter_result(
+        [[("col1", ">", 10), ("col4", "=", "2016-01-01 12:00:00")]], [obj_1, obj_3, obj_4]
+    )
+    _assert_filter_result(
+        [[("col1", ">", 10), ("col4", "=", "2016-01-01 12:00:00")], [("col2", "=", 2)]], []
+    )
 
     # Same as previous but the second clause is col3 = 'dddd' (selects only obj_3),
     # hence the final result is just obj_3.
-    _assert_filter_result([[('col1', '>', 10), ('col4', '=', '2016-01-01 12:00:00')],
-                           [('col3', '=', 'dddd')]], [obj_3])
+    _assert_filter_result(
+        [[("col1", ">", 10), ("col4", "=", "2016-01-01 12:00:00")], [("col3", "=", "dddd")]],
+        [obj_3],
+    )
 
 
 def test_object_manager_object_filtering_end_to_end(local_engine_empty):
     objects = _prepare_object_filtering_dataset()
     obj_1, obj_2, obj_3, obj_4 = objects
     om = OUTPUT.objects
-    table = OUTPUT.head.get_table('test')
+    table = OUTPUT.head.get_table("test")
 
     with om.ensure_objects(table) as required_objects:
         assert set(required_objects) == set(objects)
 
     # Check the object manager filters the quals correctly
     for _ in range(5):
-        with om.ensure_objects(table, quals=[[('col1', '>', 10),
-                                              ('col4', '=', '2016-01-01 12:00:00')]]) as required_objects:
+        with om.ensure_objects(
+            table, quals=[[("col1", ">", 10), ("col4", "=", "2016-01-01 12:00:00")]]
+        ) as required_objects:
             assert set(required_objects) == {obj_1, obj_3, obj_4}

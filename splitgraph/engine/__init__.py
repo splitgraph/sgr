@@ -14,13 +14,23 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.config import CONFIG
 
 # List of config flags that are extracted from the global configuration and passed to a given engine
-_ENGINE_SPECIFIC_CONFIG = ['SG_ENGINE_HOST', 'SG_ENGINE_PORT', 'SG_ENGINE_USER', 'SG_ENGINE_PWD',
-                           'SG_ENGINE_DB_NAME', 'SG_ENGINE_POSTGRES_DB_NAME', 'SG_ENGINE_ADMIN_USER',
-                           'SG_ENGINE_ADMIN_PWD', 'SG_ENGINE_FDW_HOST', 'SG_ENGINE_FDW_PORT']
+_ENGINE_SPECIFIC_CONFIG = [
+    "SG_ENGINE_HOST",
+    "SG_ENGINE_PORT",
+    "SG_ENGINE_USER",
+    "SG_ENGINE_PWD",
+    "SG_ENGINE_DB_NAME",
+    "SG_ENGINE_POSTGRES_DB_NAME",
+    "SG_ENGINE_ADMIN_USER",
+    "SG_ENGINE_ADMIN_PWD",
+    "SG_ENGINE_FDW_HOST",
+    "SG_ENGINE_FDW_PORT",
+]
 
 
 class ResultShape(Enum):
     """Shape that the result of a query will be coerced to"""
+
     NONE = 0  # No result expected
     ONE_ONE = 1  # e.g. "row1_val1"
     ONE_MANY = 2  # e.g. ("row1_val1", "row1_val_2")
@@ -79,9 +89,15 @@ class SQLEngine(ABC):
         :param schema: Schema name
         :param table_name: Table name
         """
-        return self.run_sql("""SELECT table_name from information_schema.tables
-                           WHERE table_schema = %s AND table_name = %s""", (schema, table_name[:63]),
-                            ResultShape.ONE_ONE) is not None
+        return (
+            self.run_sql(
+                """SELECT table_name from information_schema.tables
+                           WHERE table_schema = %s AND table_name = %s""",
+                (schema, table_name[:63]),
+                ResultShape.ONE_ONE,
+            )
+            is not None
+        )
 
     def schema_exists(self, schema):
         """
@@ -89,26 +105,50 @@ class SQLEngine(ABC):
 
         :param schema: Schema name
         """
-        return self.run_sql("""SELECT 1 from information_schema.schemata
-                           WHERE schema_name = %s""", (schema,), return_shape=ResultShape.ONE_ONE) is not None
+        return (
+            self.run_sql(
+                """SELECT 1 from information_schema.schemata
+                           WHERE schema_name = %s""",
+                (schema,),
+                return_shape=ResultShape.ONE_ONE,
+            )
+            is not None
+        )
 
     def create_schema(self, schema):
         """Create a schema if it doesn't exist"""
-        return self.run_sql(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(schema)),
-                            return_shape=ResultShape.NONE)
+        return self.run_sql(
+            SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(schema)),
+            return_shape=ResultShape.NONE,
+        )
 
-    def copy_table(self, source_schema, source_table, target_schema, target_table, with_pk_constraints=True,
-                   limit=None, offset=None, order_by_pk=False):
+    def copy_table(
+        self,
+        source_schema,
+        source_table,
+        target_schema,
+        target_table,
+        with_pk_constraints=True,
+        limit=None,
+        offset=None,
+        order_by_pk=False,
+    ):
         """Copy a table in the same engine, optionally applying primary key constraints as well."""
         query_args = []
         if not self.table_exists(target_schema, target_table):
             query = SQL("CREATE TABLE {}.{} AS SELECT * FROM {}.{}").format(
-                Identifier(target_schema), Identifier(target_table),
-                Identifier(source_schema), Identifier(source_table))
+                Identifier(target_schema),
+                Identifier(target_table),
+                Identifier(source_schema),
+                Identifier(source_table),
+            )
         else:
             query = SQL("INSERT INTO {}.{} SELECT * FROM {}.{}").format(
-                Identifier(target_schema), Identifier(target_table),
-                Identifier(source_schema), Identifier(source_table))
+                Identifier(target_schema),
+                Identifier(target_table),
+                Identifier(source_schema),
+                Identifier(source_table),
+            )
         pks = self.get_primary_keys(source_schema, source_table)
         if order_by_pk and pks:
             query += SQL(" ORDER BY ") + SQL(",").join(Identifier(p[0]) for p in pks)
@@ -119,40 +159,60 @@ class SQLEngine(ABC):
             query += SQL(" OFFSET %s")
             query_args.append(offset)
         if with_pk_constraints and pks:
-            query += SQL(";ALTER TABLE {}.{} ADD PRIMARY KEY (").format(
-                Identifier(target_schema), Identifier(target_table)) + SQL(',').join(
-                SQL("{}").format(Identifier(c)) for c, _ in pks) + SQL(")")
+            query += (
+                SQL(";ALTER TABLE {}.{} ADD PRIMARY KEY (").format(
+                    Identifier(target_schema), Identifier(target_table)
+                )
+                + SQL(",").join(SQL("{}").format(Identifier(c)) for c, _ in pks)
+                + SQL(")")
+            )
         self.run_sql(query, query_args, return_shape=ResultShape.NONE)
 
     def delete_table(self, schema, table):
         """Drop a table from a schema if it exists"""
-        if self.get_table_type(schema, table) not in ('FOREIGN TABLE', 'FOREIGN'):
-            self.run_sql(SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(schema), Identifier(table)))
+        if self.get_table_type(schema, table) not in ("FOREIGN TABLE", "FOREIGN"):
+            self.run_sql(
+                SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(schema), Identifier(table))
+            )
         else:
-            self.run_sql(SQL("DROP FOREIGN TABLE IF EXISTS {}.{}").format(Identifier(schema), Identifier(table)))
+            self.run_sql(
+                SQL("DROP FOREIGN TABLE IF EXISTS {}.{}").format(
+                    Identifier(schema), Identifier(table)
+                )
+            )
 
     def rename_table(self, schema, table, new_table):
         """Rename a table"""
-        self.run_sql(SQL("ALTER TABLE {}.{} RENAME TO {}").format(Identifier(schema), Identifier(table),
-                                                                  Identifier(new_table)))
+        self.run_sql(
+            SQL("ALTER TABLE {}.{} RENAME TO {}").format(
+                Identifier(schema), Identifier(table), Identifier(new_table)
+            )
+        )
 
     def delete_schema(self, schema):
         """Delete a schema if it exists, including all the tables in it."""
         self.run_sql(
             SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(schema)),
-            return_shape=ResultShape.NONE)
+            return_shape=ResultShape.NONE,
+        )
 
     def get_all_tables(self, schema):
         """Get all tables in a given schema."""
-        return self.run_sql("SELECT table_name FROM information_schema.tables WHERE table_schema = %s", (schema,),
-                            return_shape=ResultShape.MANY_ONE)
+        return self.run_sql(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema = %s",
+            (schema,),
+            return_shape=ResultShape.MANY_ONE,
+        )
 
     def get_table_type(self, schema, table):
         """Get the type of the table (BASE or FOREIGN)
         """
-        return self.run_sql("SELECT table_type FROM information_schema.tables WHERE table_schema = %s"
-                            " AND table_name = %s", (schema, table),
-                            return_shape=ResultShape.ONE_ONE)
+        return self.run_sql(
+            "SELECT table_type FROM information_schema.tables WHERE table_schema = %s"
+            " AND table_name = %s",
+            (schema, table),
+            return_shape=ResultShape.ONE_ONE,
+        )
 
     def get_table_size(self, schema, table):
         """Return the table disk usage, in bytes."""
@@ -174,23 +234,31 @@ class SQLEngine(ABC):
         queries = []
 
         for table in tables:
-            cols = self.run_sql("""SELECT column_name, data_type, is_nullable
+            cols = self.run_sql(
+                """SELECT column_name, data_type, is_nullable
                            FROM information_schema.columns
-                           WHERE table_name = %s AND table_schema = %s""", (table, schema))
+                           WHERE table_name = %s AND table_schema = %s""",
+                (table, schema),
+            )
             target = SQL("{}.{}").format(Identifier(created_schema), Identifier(table))
-            query = SQL("CREATE TABLE {} (").format(target) + SQL(','.join(
-                "{} %s " % ctype + ("NOT NULL" if not cnull else "") for _, ctype, cnull in cols)).format(
-                *(Identifier(cname) for cname, _, _ in cols))
+            query = SQL("CREATE TABLE {} (").format(target) + SQL(
+                ",".join(
+                    "{} %s " % ctype + ("NOT NULL" if not cnull else "") for _, ctype, cnull in cols
+                )
+            ).format(*(Identifier(cname) for cname, _, _ in cols))
 
             pks = self.get_primary_keys(schema, table)
             if pks:
-                query += SQL(", PRIMARY KEY (") + SQL(',').join(SQL("{}").format(Identifier(c)) for c, _ in pks) + SQL(
-                    "))")
+                query += (
+                    SQL(", PRIMARY KEY (")
+                    + SQL(",").join(SQL("{}").format(Identifier(c)) for c, _ in pks)
+                    + SQL("))")
+                )
             else:
                 query += SQL(")")
 
             queries.append(query)
-        return SQL(';').join(queries)
+        return SQL(";").join(queries)
 
     def create_table(self, schema, table, schema_spec, unlogged=False):
         """
@@ -205,21 +273,26 @@ class SQLEngine(ABC):
         schema_spec = sorted(schema_spec)
 
         target = SQL("{}.{}").format(Identifier(schema), Identifier(table))
-        query = SQL("CREATE " + ("UNLOGGED" if unlogged else "") + " TABLE {} (").format(target) \
-                + SQL(','.join("{} %s " % ctype for _, _, ctype, _ in schema_spec)) \
-                    .format(*(Identifier(cname) for _, cname, _, _ in schema_spec))
+        query = SQL("CREATE " + ("UNLOGGED" if unlogged else "") + " TABLE {} (").format(
+            target
+        ) + SQL(",".join("{} %s " % ctype for _, _, ctype, _ in schema_spec)).format(
+            *(Identifier(cname) for _, cname, _, _ in schema_spec)
+        )
 
         pk_cols = [cname for _, cname, _, is_pk in schema_spec if is_pk]
         if pk_cols:
-            query += SQL(", PRIMARY KEY (") + SQL(',').join(SQL("{}").format(Identifier(c)) for c in pk_cols) + SQL(
-                "))")
+            query += (
+                SQL(", PRIMARY KEY (")
+                + SQL(",").join(SQL("{}").format(Identifier(c)) for c in pk_cols)
+                + SQL("))")
+            )
         else:
             query += SQL(")")
         if unlogged:
             query += SQL(" WITH(autovacuum_enabled=false)")
         self.run_sql(query, return_shape=ResultShape.NONE)
 
-    def dump_table_sql(self, schema, table_name, stream, columns='*', where='', where_args=None):
+    def dump_table_sql(self, schema, table_name, stream, columns="*", where="", where_args=None):
         """
         Dump the table contents in the SQL format
         :param schema: Schema the table is located in
@@ -233,31 +306,40 @@ class SQLEngine(ABC):
 
     def get_column_names_types(self, schema, table_name):
         """Returns a list of (column, type) in a given table."""
-        return self.run_sql("""SELECT column_name, data_type FROM information_schema.columns
+        return self.run_sql(
+            """SELECT column_name, data_type FROM information_schema.columns
                            WHERE table_schema = %s
-                           AND table_name = %s""", (schema, table_name))
+                           AND table_name = %s""",
+            (schema, table_name),
+        )
 
     def get_full_table_schema(self, schema, table_name):
         """
         Generates a list of (column ordinal, name, data type, is_pk), used to detect schema changes like columns being
         dropped/added/renamed or type changes.
         """
-        results = self.run_sql("""SELECT ordinal_position, column_name, data_type FROM information_schema.columns
+        results = self.run_sql(
+            """SELECT ordinal_position, column_name, data_type FROM information_schema.columns
                            WHERE table_schema = %s
                            AND table_name = %s
-                           ORDER BY ordinal_position""", (schema, table_name))
+                           ORDER BY ordinal_position""",
+            (schema, table_name),
+        )
 
         def _convert_type(ctype):
             # We don't keep a lot of type information, so e.g. char(5) gets turned into char
             # which defaults into char(1).
-            return ctype if ctype != 'character' else 'character varying'
+            return ctype if ctype != "character" else "character varying"
 
         # Do we need to make sure the PK has the same type + ordinal position here?
         pks = [pk for pk, _ in self.get_primary_keys(schema, table_name)]
         return [(o, n, _convert_type(dt), (n in pks)) for o, n, dt in results]
 
-    def initialize(self):
-        """Does any required initialization of the engine"""
+    def initialize(self, skip_audit=False):
+        """Does any required initialization of the engine
+
+        :param skip_audit: If True, skips installation of audit triggers for engines that don't need change tracking.
+        """
 
     def lock_table(self, schema, table):
         """Acquire an exclusive lock on a given table, released when the transaction commits / rolls back."""
@@ -351,8 +433,9 @@ class ObjectEngine:
         """
         raise NotImplementedError()
 
-    def apply_fragments(self, objects, target_schema, target_table, extra_quals=None,
-                        extra_qual_args=None):
+    def apply_fragments(
+        self, objects, target_schema, target_table, extra_quals=None, extra_qual_args=None
+    ):
         """
         Apply multiple fragments to a target table as a single-query batch operation.
 
@@ -410,7 +493,7 @@ class ObjectEngine:
 # Can be overridden via normal configuration routes, e.g.
 # $ SG_ENGINE=remote_engine sgr init
 # will initialize the remote engine instead.
-_ENGINE = CONFIG['SG_ENGINE'] or 'LOCAL'
+_ENGINE = CONFIG["SG_ENGINE"] or "LOCAL"
 
 # Map of engine names -> Engine instances
 _ENGINES = {}
@@ -433,13 +516,14 @@ def get_engine(name=None, use_socket=False):
         # and instantiate the actual Engine class.
         # As we only have PostgresEngine, we instantiate that.
         from .postgres.engine import PostgresEngine
-        if name == 'LOCAL':
+
+        if name == "LOCAL":
             conn_params = {c: CONFIG[c] for c in _ENGINE_SPECIFIC_CONFIG}
             if use_socket:
-                conn_params['SG_ENGINE_HOST'] = None
-                conn_params['SG_ENGINE_PORT'] = None
+                conn_params["SG_ENGINE_HOST"] = None
+                conn_params["SG_ENGINE_PORT"] = None
         else:
-            conn_params = {c: CONFIG['remotes'][name][c] for c in _ENGINE_SPECIFIC_CONFIG}
+            conn_params = {c: CONFIG["remotes"][name][c] for c in _ENGINE_SPECIFIC_CONFIG}
         _ENGINES[name] = PostgresEngine(conn_params=conn_params, name=name)
     return _ENGINES[name]
 
@@ -470,6 +554,11 @@ def get_remote_connection_params(remote_name):
     :param remote_name: Name of the remote. Must be specified in the config file.
     :return: A tuple of (hostname, port, username, password, database)
     """
-    pdict = CONFIG['remotes'][remote_name]
-    return (pdict['SG_ENGINE_HOST'] or None, int(pdict['SG_ENGINE_PORT']) if pdict['SG_ENGINE_PORT'] else None,
-            pdict['SG_ENGINE_USER'], pdict['SG_ENGINE_PWD'], pdict['SG_ENGINE_DB_NAME'])
+    pdict = CONFIG["remotes"][remote_name]
+    return (
+        pdict["SG_ENGINE_HOST"] or None,
+        int(pdict["SG_ENGINE_PORT"]) if pdict["SG_ENGINE_PORT"] else None,
+        pdict["SG_ENGINE_USER"],
+        pdict["SG_ENGINE_PWD"],
+        pdict["SG_ENGINE_DB_NAME"],
+    )

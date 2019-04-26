@@ -14,10 +14,14 @@ from splitgraph.engine import get_engine
 from ._common import ImageType, RepositoryType
 
 
-@click.command(name='rm')
-@click.argument('image_spec', type=ImageType(default=None))
-@click.option('-r', '--remote', help="Perform the deletion on a remote instead, specified by its alias")
-@click.option('-y', '--yes', help="Agree to deletion without confirmation", is_flag=True, default=False)
+@click.command(name="rm")
+@click.argument("image_spec", type=ImageType(default=None))
+@click.option(
+    "-r", "--remote", help="Perform the deletion on a remote instead, specified by its alias"
+)
+@click.option(
+    "-y", "--yes", help="Agree to deletion without confirmation", is_flag=True, default=False
+)
 def rm_c(image_spec, remote, yes):
     """
     Delete schemas, repositories or images.
@@ -54,10 +58,12 @@ def rm_c(image_spec, remote, yes):
     """
 
     repository, image = image_spec
-    repository = Repository.from_template(repository, engine=get_engine(remote or 'LOCAL'))
+    repository = Repository.from_template(repository, engine=get_engine(remote or "LOCAL"))
     if not image:
-        print(("Repository" if repository_exists(repository) else "Postgres schema")
-              + " %s will be deleted." % repository.to_schema())
+        print(
+            ("Repository" if repository_exists(repository) else "Postgres schema")
+            + " %s will be deleted." % repository.to_schema()
+        )
         if not yes:
             click.confirm("Continue? ", abort=True)
         repository.delete()
@@ -74,12 +80,14 @@ def rm_c(image_spec, remote, yes):
         print("\n".join(sorted(tags_to_delete)))
         print("Total: %d" % len(tags_to_delete))
 
-        if 'HEAD' in tags_to_delete:
+        if "HEAD" in tags_to_delete:
             # If we're deleting an image that we currently have checked out,
             # we need to make sure the rest of the metadata (e.g. current state of the audit table) is consistent,
             # it's better to disallow these deletions completely.
-            raise SplitGraphException("Deletion will affect a checked-out image! Check out a different branch "
-                                      "or do sgr checkout -u %s!" % repository.to_schema())
+            raise SplitGraphException(
+                "Deletion will affect a checked-out image! Check out a different branch "
+                "or do sgr checkout -u %s!" % repository.to_schema()
+            )
         if not yes:
             click.confirm("Continue? ", abort=True)
 
@@ -88,10 +96,14 @@ def rm_c(image_spec, remote, yes):
         print("Success.")
 
 
-@click.command(name='prune')
-@click.argument('repository', type=RepositoryType())
-@click.option('-r', '--remote', help="Perform the deletion on a remote instead, specified by its alias")
-@click.option('-y', '--yes', help="Agree to deletion without confirmation", is_flag=True, default=False)
+@click.command(name="prune")
+@click.argument("repository", type=RepositoryType())
+@click.option(
+    "-r", "--remote", help="Perform the deletion on a remote instead, specified by its alias"
+)
+@click.option(
+    "-y", "--yes", help="Agree to deletion without confirmation", is_flag=True, default=False
+)
 def prune_c(repository, remote, yes):
     """
     Cleanup dangling images from a repository.
@@ -106,11 +118,13 @@ def prune_c(repository, remote, yes):
     This does not delete any physical objects that the deleted repository/images depend on:
     use ``sgr cleanup`` to do that.
     """
-    repository = Repository.from_template(repository, engine=get_engine(remote or 'LOCAL'))
+    repository = Repository.from_template(repository, engine=get_engine(remote or "LOCAL"))
 
     all_images = set(image.image_hash for image in repository.images())
     all_tagged_images = {i for i, t in repository.get_all_hashes_tags()}
-    dangling_images = all_images.difference(repository.images.get_all_parent_images(all_tagged_images))
+    dangling_images = all_images.difference(
+        repository.images.get_all_parent_images(all_tagged_images)
+    )
 
     if not dangling_images:
         print("Nothing to do.")
@@ -128,31 +142,41 @@ def prune_c(repository, remote, yes):
     print("Success.")
 
 
-@click.command(name='init')
-@click.argument('repository', type=RepositoryType(), required=False, default=None)
-def init_c(repository):
+@click.command(name="init")
+@click.argument("repository", type=RepositoryType(), required=False, default=None)
+@click.option("--skip-audit", default=False, is_flag=True)
+def init_c(repository, skip_audit):
     """
     Initialize a new repository/engine.
 
     Examples:
 
-    ``sgr init``
+    `sgr init`
 
     Initializes the current local Splitgraph engine by writing some bookkeeping information.
     This is required for the rest of sgr to work.
+
+    `sgr init --skip-audit`
+
+    Initializes a Splitgraph engine without installing audit triggers: this is useful for engines that aren't
+    intended to be used for image checkouts.
 
     ``sgr init new/repo``
 
     Creates a single image with the hash ``00000...`` in ``new/repo``
     """
     if repository:
+        if skip_audit:
+            raise click.BadOptionUsage(
+                "--skip-audit unsupported when initializing a new repository!"
+            )
         repository.init()
         print("Initialized empty repository %s" % str(repository))
     else:
-        init_engine()
+        init_engine(skip_audit=skip_audit)
 
 
-@click.command(name='cleanup')
+@click.command(name="cleanup")
 def cleanup_c():
     """
     Prune unneeded objects from the engine.
@@ -163,11 +187,21 @@ def cleanup_c():
     print("Deleted %d physical object(s)" % len(deleted))
 
 
-@click.command(name='config')
-@click.option('-s', '--no-shielding', is_flag=True, default=False,
-              help='If set, doesn''t replace sensitive values (like passwords) with asterisks')
-@click.option('-c', '--config-format', is_flag=True, default=False,
-              help='Output configuration in the Splitgraph config file format')
+@click.command(name="config")
+@click.option(
+    "-s",
+    "--no-shielding",
+    is_flag=True,
+    default=False,
+    help="If set, doesn" "t replace sensitive values (like passwords) with asterisks",
+)
+@click.option(
+    "-c",
+    "--config-format",
+    is_flag=True,
+    default=False,
+    help="Output configuration in the Splitgraph config file format",
+)
 def config_c(no_shielding, config_format):
     """
     Print the current Splitgraph configuration.
@@ -186,9 +220,9 @@ def config_c(no_shielding, config_format):
 
     def _kv_to_str(key, value):
         if not value:
-            value_str = ''
+            value_str = ""
         elif key in SENSITIVE_KEYS and not no_shielding:
-            value_str = value[0] + '*******'
+            value_str = value[0] + "*******"
         else:
             value_str = value
         return "%s=%s" % (key, value_str)
@@ -200,32 +234,34 @@ def config_c(no_shielding, config_format):
 
     # Print hoisted remotes
     print("\nCurrent registered remote engines:\n" if not config_format else "", end="")
-    for remote in CONFIG.get('remotes', []):
+    for remote in CONFIG.get("remotes", []):
         print(("\n[remote: %s]" if config_format else "\n%s:") % remote)
-        for key, value in CONFIG['remotes'][remote].items():
+        for key, value in CONFIG["remotes"][remote].items():
             print(_kv_to_str(key, value))
 
     # Print Splitfile commands
-    if 'commands' in CONFIG:
+    if "commands" in CONFIG:
         print("\nSplitfile command plugins:\n" if not config_format else "[commands]", end="")
-        for command_name, command_class in CONFIG['commands'].items():
+        for command_name, command_class in CONFIG["commands"].items():
             print(_kv_to_str(command_name, command_class))
 
     # Print mount handlers
-    if 'mount_handlers' in CONFIG:
+    if "mount_handlers" in CONFIG:
         print("\nFDW Mount handlers:\n" if not config_format else "[mount_handlers]", end="")
-        for handler_name, handler_func in CONFIG['mount_handlers'].items():
+        for handler_name, handler_func in CONFIG["mount_handlers"].items():
             print(_kv_to_str(handler_name, handler_func.lower()))
 
     # Print external object handlers
-    if 'external_handlers' in CONFIG:
-        print("\nExternal object handlers:\n" if not config_format else "[external_handlers]", end="")
-        for handler_name, handler_func in CONFIG['external_handlers'].items():
+    if "external_handlers" in CONFIG:
+        print(
+            "\nExternal object handlers:\n" if not config_format else "[external_handlers]", end=""
+        )
+        for handler_name, handler_func in CONFIG["external_handlers"].items():
             print(_kv_to_str(handler_name, handler_func))
 
 
-@click.command(name='dump')
-@click.argument('repository', type=RepositoryType())
+@click.command(name="dump")
+@click.argument("repository", type=RepositoryType())
 def dump_c(repository):
     """
     Dump a repository to SQL.

@@ -7,7 +7,7 @@ def test_s3_push_pull(local_engine_empty, pg_repo_remote, clean_minio):
 
     clone(pg_repo_remote, local_repository=PG_MNT, download_all=False)
     # Add a couple of commits, this time on the cloned copy.
-    head = PG_MNT.images['latest']
+    head = PG_MNT.images["latest"]
     head.checkout()
     PG_MNT.run_sql("INSERT INTO fruits VALUES (3, 'mayonnaise')")
     left = PG_MNT.commit()
@@ -16,7 +16,7 @@ def test_s3_push_pull(local_engine_empty, pg_repo_remote, clean_minio):
     right = PG_MNT.commit()
 
     # Push to origin, but this time upload the actual objects instead.
-    PG_MNT.push(remote_repository=pg_repo_remote, handler='S3', handler_options={})
+    PG_MNT.push(remote_repository=pg_repo_remote, handler="S3", handler_options={})
 
     # Check that the actual objects don't exist on the remote but are instead registered with an URL.
     # All the objects on pgcache were registered remotely
@@ -44,7 +44,9 @@ def test_s3_push_pull(local_engine_empty, pg_repo_remote, clean_minio):
 
     # Check out left commit: since it only depends on the root, we should download just the new version of fruits.
     left.checkout()
-    assert len(PG_MNT.objects.get_downloaded_objects()) == 3  # now have 2 versions of fruits + 1 vegetables
+    assert (
+        len(PG_MNT.objects.get_downloaded_objects()) == 3
+    )  # now have 2 versions of fruits + 1 vegetables
 
     right.checkout()
     assert len(PG_MNT.objects.get_downloaded_objects()) == 4

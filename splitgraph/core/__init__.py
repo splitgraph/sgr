@@ -12,5 +12,11 @@ following methods:
 """
 
 from .engine import *
-from .registry import publish_tag, get_published_info, unpublish_repository, get_info_key, set_info_key
+from .registry import (
+    publish_tag,
+    get_published_info,
+    unpublish_repository,
+    get_info_key,
+    set_info_key,
+)
 from .repository import Repository, import_table_from_remote, clone
