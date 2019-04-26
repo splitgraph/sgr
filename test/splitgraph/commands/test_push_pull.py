@@ -20,14 +20,19 @@ def test_pull(local_engine_empty, pg_repo_remote, download_all):
     head_1 = pg_repo_remote.commit()
 
     # Canary to make sure everything got committed on the remote
-    assert pg_repo_remote.diff('fruits', remote_head.image_hash, head_1, aggregate=False) \
-           == [(True, (3, 'mayonnaise'))]
+    assert pg_repo_remote.diff("fruits", remote_head.image_hash, head_1, aggregate=False) == [
+        (True, (3, "mayonnaise"))
+    ]
 
     # Check that the fruits table changed on the original repository
-    assert pg_repo_remote.run_sql("SELECT * FROM fruits") == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]
+    assert pg_repo_remote.run_sql("SELECT * FROM fruits") == [
+        (1, "apple"),
+        (2, "orange"),
+        (3, "mayonnaise"),
+    ]
 
     # ...and check it's unchanged on the pulled one.
-    assert PG_MNT.run_sql("SELECT * FROM fruits") == [(1, 'apple'), (2, 'orange')]
+    assert PG_MNT.run_sql("SELECT * FROM fruits") == [(1, "apple"), (2, "orange")]
     assert PG_MNT.images.by_hash(head_1.image_hash, raise_on_none=False) is None
 
     # Since the pull procedure initializes a new connection, we have to commit our changes
@@ -39,7 +44,11 @@ def test_pull(local_engine_empty, pg_repo_remote, download_all):
     # Check out the newly-pulled commit and verify it has the same data.
     head_1.checkout()
 
-    assert PG_MNT.run_sql("SELECT * FROM fruits") == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]
+    assert PG_MNT.run_sql("SELECT * FROM fruits") == [
+        (1, "apple"),
+        (2, "orange"),
+        (3, "mayonnaise"),
+    ]
     assert PG_MNT.head == head_1
 
 
@@ -51,7 +60,9 @@ def test_pulls_with_lazy_object_downloads(local_engine_empty, pg_repo_remote):
     remote_head = pg_repo_remote.head
 
     PG_MNT.images.by_hash(remote_head.image_hash).checkout()
-    assert len(PG_MNT.objects.get_downloaded_objects()) == 2  # Original fruits and vegetables tables.
+    assert (
+        len(PG_MNT.objects.get_downloaded_objects()) == 2
+    )  # Original fruits and vegetables tables.
     assert PG_MNT.objects.get_downloaded_objects() == PG_MNT.objects.get_all_objects()
 
     # In the meantime, make two branches off of origin (a total of 3 commits)
@@ -73,10 +84,14 @@ def test_pulls_with_lazy_object_downloads(local_engine_empty, pg_repo_remote):
     # Check out left commit: since it only depends on the root, we should download just the new version of fruits.
     PG_MNT.images.by_hash(left.image_hash).checkout()
 
-    assert len(PG_MNT.objects.get_downloaded_objects()) == 3  # now have 2 versions of fruits + 1 vegetables
+    assert (
+        len(PG_MNT.objects.get_downloaded_objects()) == 3
+    )  # now have 2 versions of fruits + 1 vegetables
 
     PG_MNT.images.by_hash(right.image_hash).checkout()
-    assert len(PG_MNT.objects.get_downloaded_objects()) == 4  # now have 2 versions of fruits + 1 vegetables
+    assert (
+        len(PG_MNT.objects.get_downloaded_objects()) == 4
+    )  # now have 2 versions of fruits + 1 vegetables
     assert PG_MNT.objects.get_downloaded_objects() == PG_MNT.objects.get_all_objects()
 
 
@@ -98,4 +113,8 @@ def test_push(local_engine_empty, pg_repo_remote):
     assert len(pg_repo_remote.objects.get_all_objects()) == 3
 
     pg_repo_remote.images.by_hash(head_1.image_hash).checkout()
-    assert pg_repo_remote.run_sql("SELECT * FROM fruits") == [(1, 'apple'), (2, 'orange'), (3, 'mayonnaise')]
+    assert pg_repo_remote.run_sql("SELECT * FROM fruits") == [
+        (1, "apple"),
+        (2, "orange"),
+        (3, "mayonnaise"),
+    ]

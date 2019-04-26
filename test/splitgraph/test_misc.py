@@ -5,7 +5,11 @@ from splitgraph import SplitGraphException
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA
 from splitgraph.core._common import ensure_metadata_schema
 from splitgraph.core.engine import get_current_repositories, lookup_repository
-from splitgraph.core.registry import setup_registry_mode, get_published_info, _ensure_registry_schema
+from splitgraph.core.registry import (
+    setup_registry_mode,
+    get_published_info,
+    _ensure_registry_schema,
+)
 from splitgraph.core.repository import Repository
 
 try:
@@ -31,7 +35,7 @@ def test_registry_schema(remote_engine):
         remote_engine.delete_schema(REGISTRY_META_SCHEMA)
         _ensure_registry_schema(remote_engine)
         setup_registry_mode(remote_engine)
-        assert get_published_info(Repository('test', 'pg_mount', remote_engine), 'latest') is None
+        assert get_published_info(Repository("test", "pg_mount", remote_engine), "latest") is None
     finally:
         remote_engine.rollback()
 
@@ -64,7 +68,7 @@ def test_engine_reconnect(local_engine_empty):
 def test_engine_retry(local_engine_empty):
     conn = local_engine_empty.connection
 
-    with mock.patch.object(local_engine_empty, '_pool') as pool:
+    with mock.patch.object(local_engine_empty, "_pool") as pool:
         pool.getconn.side_effect = [psycopg2.OperationalError, conn]
         assert local_engine_empty.connection == conn
         assert pool.getconn.call_count == 2

@@ -10,13 +10,9 @@ from .environment_config import get_environment_config_value
 # Don't forget to add each method definition to the object after defining it.
 SYSTEM_CONFIG_GETTERS = {}
 
-VALID_CONFIG_FILE_NAMES = [
-    ".sgconfig",
-    ".sgrc",
-    ".splitgraph.config"
-]
+VALID_CONFIG_FILE_NAMES = [".sgconfig", ".sgrc", ".splitgraph.config"]
 
-HOME_SUB_DIR = '.splitgraph'
+HOME_SUB_DIR = ".splitgraph"
 
 
 def is_file(filename):
@@ -45,17 +41,16 @@ def get_explicit_config_file_location():
         Print a warning if location is set but points to non-existing file.
     """
 
-    key = 'SG_CONFIG_FILE'
+    key = "SG_CONFIG_FILE"
 
-    explicit_location = (
-            get_argument_config_value(key, None)
-            or get_environment_config_value(key, None)
+    explicit_location = get_argument_config_value(key, None) or get_environment_config_value(
+        key, None
     )
 
     if explicit_location and is_file(explicit_location):
         return explicit_location
     if explicit_location and not is_file(explicit_location):
-        sys.stderr.write('Warning: %s = %s is not a file' % (key, explicit_location))
+        sys.stderr.write("Warning: %s = %s is not a file" % (key, explicit_location))
 
     return None
 
@@ -83,20 +78,18 @@ def get_explicit_config_file_dirs():
         Print a warning if any paths to not exist.
     """
 
-    plural_key = 'SG_CONFIG_DIRS'
-    single_key = 'SG_CONFIG_DIR'
+    plural_key = "SG_CONFIG_DIRS"
+    single_key = "SG_CONFIG_DIR"
 
-    explicit_plural_string = (
-            get_argument_config_value(plural_key, None)
-            or get_environment_config_value(plural_key, None)
-    )
+    explicit_plural_string = get_argument_config_value(
+        plural_key, None
+    ) or get_environment_config_value(plural_key, None)
 
-    explicit_single_string = (
-            get_argument_config_value(single_key, None)
-            or get_environment_config_value(single_key, None)
-    )
+    explicit_single_string = get_argument_config_value(
+        single_key, None
+    ) or get_environment_config_value(single_key, None)
 
-    explicit_plural_list = explicit_plural_string.split(':') if explicit_plural_string else []
+    explicit_plural_list = explicit_plural_string.split(":") if explicit_plural_string else []
     explicit_single_list = [explicit_single_string] if explicit_single_string else []
     explicit_dir_list = explicit_plural_list + explicit_single_list
     unique_explicit_dir_list = list(set(explicit_dir_list))
@@ -104,10 +97,7 @@ def get_explicit_config_file_dirs():
     if len(unique_explicit_dir_list) != len(explicit_dir_list):
         num_duplicates = len(explicit_dir_list) - len(unique_explicit_dir_list)
 
-        sys.stderr.write(
-            'Warning: %d duplicate SG_CONFIG_DIRS values found.\n'
-            % num_duplicates
-        )
+        sys.stderr.write("Warning: %d duplicate SG_CONFIG_DIRS values found.\n" % num_duplicates)
 
     existing_unique_dir_list = [d for d in unique_explicit_dir_list if os.path.isdir(d)]
 
@@ -115,8 +105,7 @@ def get_explicit_config_file_dirs():
         num_non_existing = len(unique_explicit_dir_list) - len(existing_unique_dir_list)
 
         sys.stderr.write(
-            'Warning: %d non-existing SG_CONFIG_DIRS values found.\n'
-            % num_non_existing
+            "Warning: %d non-existing SG_CONFIG_DIRS values found.\n" % num_non_existing
         )
 
     return existing_unique_dir_list
@@ -137,8 +126,10 @@ def get_config_file(default_return=None):
 
     valid_dirs = [os.getcwd()]
 
-    if os.environ.get('HOME', None) and os.path.isdir(os.path.join(os.environ['HOME'], HOME_SUB_DIR)):
-        valid_dirs.append(os.path.join(os.environ['HOME'], HOME_SUB_DIR))
+    if os.environ.get("HOME", None) and os.path.isdir(
+        os.path.join(os.environ["HOME"], HOME_SUB_DIR)
+    ):
+        valid_dirs.append(os.path.join(os.environ["HOME"], HOME_SUB_DIR))
 
     explicit_dirs = get_explicit_config_file_dirs()
 
@@ -147,7 +138,13 @@ def get_config_file(default_return=None):
 
     matching_files = []
     for _dir in valid_dirs:
-        matching_files.extend([os.path.join(_dir, name) for name in VALID_CONFIG_FILE_NAMES if file_exists(_dir, name)])
+        matching_files.extend(
+            [
+                os.path.join(_dir, name)
+                for name in VALID_CONFIG_FILE_NAMES
+                if file_exists(_dir, name)
+            ]
+        )
 
     num_matching_files = len(matching_files)
 
@@ -156,7 +153,7 @@ def get_config_file(default_return=None):
 
         if num_matching_files > 1:
             sys.stderr.write(
-                'Warning: %d splitgraph config files found. \n Using %s \n'
+                "Warning: %d splitgraph config files found. \n Using %s \n"
                 % (num_matching_files, first_matching_file)
             )
 

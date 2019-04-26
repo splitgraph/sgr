@@ -20,11 +20,16 @@ def _calc_columns(children, start):
     return dfs(start)
 
 
-def _render_node(node_id, children, node_cols, max_col, mark_node='', node_width=8, col_width=12):
+def _render_node(node_id, children, node_cols, max_col, mark_node="", node_width=8, col_width=12):
     # First, render all the edges that come before the node
     line = ("│" + " " * (col_width - 1)) * node_cols[node_id]
     # Then, render the node itself.
-    line += "├─" + node_id[:node_width] + mark_node + " " * (col_width - node_width - 2 - len(mark_node))
+    line += (
+        "├─"
+        + node_id[:node_width]
+        + mark_node
+        + " " * (col_width - node_width - 2 - len(mark_node))
+    )
     # Finally, render all the edges on the right of the node.
     children_cols = set(node_cols[c] for c in children[node_id])
 
@@ -43,7 +48,7 @@ def _render_node(node_id, children, node_cols, max_col, mark_node='', node_width
         if not child_found:
             # Otherwise, pad it with dashes.
             if not children_cols or col >= max(children_cols):
-                line += '│' + " " * (col_width - 1)
+                line += "│" + " " * (col_width - 1)
             else:
                 line += "─" * col_width
     print(line)
@@ -70,5 +75,10 @@ def render_tree(repository):
     node_cols = _calc_columns(children, base_node)
 
     for image in reversed(all_images):
-        _render_node(image.image_hash, children, node_cols, mark_node=' H' if image.image_hash == head else '',
-                     max_col=max(node_cols.values()))
+        _render_node(
+            image.image_hash,
+            children,
+            node_cols,
+            mark_node=" H" if image.image_hash == head else "",
+            max_col=max(node_cols.values()),
+        )

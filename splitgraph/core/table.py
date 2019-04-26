@@ -38,17 +38,23 @@ class Table:
         if not lq_server:
             # Materialize by applying fragments to one another in their dependency order.
             with object_manager.ensure_objects(self) as required_objects:
-                engine.create_table(schema=destination_schema, table=destination, schema_spec=self.table_schema)
+                engine.create_table(
+                    schema=destination_schema, table=destination, schema_spec=self.table_schema
+                )
                 if required_objects:
                     logging.info("Applying %d fragment(s)...", (len(required_objects)))
-                    engine.apply_fragments([(SPLITGRAPH_META_SCHEMA, d) for d in required_objects],
-                                           destination_schema, destination)
+                    engine.apply_fragments(
+                        [(SPLITGRAPH_META_SCHEMA, d) for d in required_objects],
+                        destination_schema,
+                        destination,
+                    )
         else:
-            query = SQL("CREATE FOREIGN TABLE {}.{} (") \
-                .format(Identifier(destination_schema), Identifier(self.table_name))
-            query += SQL(','.join(
-                "{} %s " % ctype for _, _, ctype, _ in self.table_schema)).format(
-                *(Identifier(cname) for _, cname, _, _ in self.table_schema))
+            query = SQL("CREATE FOREIGN TABLE {}.{} (").format(
+                Identifier(destination_schema), Identifier(self.table_name)
+            )
+            query += SQL(",".join("{} %s " % ctype for _, _, ctype, _ in self.table_schema)).format(
+                *(Identifier(cname) for _, cname, _, _ in self.table_schema)
+            )
             query += SQL(") SERVER {} OPTIONS (table %s)").format(Identifier(lq_server))
             engine.run_sql(query, (self.table_name,))
 
@@ -62,7 +68,9 @@ class Table:
         :return: List of tuples of results
         """
 
-        sql_quals, sql_qual_vals = quals_to_sql(quals, column_types={c[1]: c[2] for c in self.table_schema})
+        sql_quals, sql_qual_vals = quals_to_sql(
+            quals, column_types={c[1]: c[2] for c in self.table_schema}
+        )
 
         object_manager = self.repository.objects
         with object_manager.ensure_objects(self, quals=quals) as required_objects:
@@ -71,8 +79,14 @@ class Table:
                 return []
             if len(required_objects) == 1:
                 # If one object has our answer, we can send queries directly to it
-                return self._run_select_from_staging(SPLITGRAPH_META_SCHEMA, required_objects[0], columns,
-                                                     drop_table=False, qual_sql=sql_quals, qual_args=sql_qual_vals)
+                return self._run_select_from_staging(
+                    SPLITGRAPH_META_SCHEMA,
+                    required_objects[0],
+                    columns,
+                    drop_table=False,
+                    qual_sql=sql_quals,
+                    qual_args=sql_qual_vals,
+                )
 
             # Accumulate the query result in a temporary table.
             staging_table = self._create_staging_table(required_objects[0])
@@ -80,42 +94,59 @@ class Table:
             # Apply the fragments (just the parts that match the qualifiers) to the staging area
             engine = self.repository.object_engine
             if quals:
-                engine.apply_fragments([(SPLITGRAPH_META_SCHEMA, o) for o in required_objects],
-                                       "pg_temp", staging_table,
-                                       extra_quals=sql_quals,
-                                       extra_qual_args=sql_qual_vals)
+                engine.apply_fragments(
+                    [(SPLITGRAPH_META_SCHEMA, o) for o in required_objects],
+                    "pg_temp",
+                    staging_table,
+                    extra_quals=sql_quals,
+                    extra_qual_args=sql_qual_vals,
+                )
             else:
-                engine.apply_fragments([(SPLITGRAPH_META_SCHEMA, o) for o in required_objects],
-                                       "pg_temp", staging_table)
-        return self._run_select_from_staging("pg_temp", staging_table, columns,
-                                             drop_table=True)
+                engine.apply_fragments(
+                    [(SPLITGRAPH_META_SCHEMA, o) for o in required_objects],
+                    "pg_temp",
+                    staging_table,
+                )
+        return self._run_select_from_staging("pg_temp", staging_table, columns, drop_table=True)
 
     def _create_staging_table(self, snap):
         staging_table = get_random_object_id()
         engine = self.repository.object_engine
 
         logging.info("Using staging table %s", staging_table)
-        engine.run_sql(SQL("CREATE TEMPORARY TABLE {1} "
-                           "AS SELECT * FROM {0}.{2} LIMIT 1 WITH NO DATA").format(
-            Identifier(SPLITGRAPH_META_SCHEMA), Identifier(staging_table), Identifier(snap)))
+        engine.run_sql(
+            SQL(
+                "CREATE TEMPORARY TABLE {1} " "AS SELECT * FROM {0}.{2} LIMIT 1 WITH NO DATA"
+            ).format(
+                Identifier(SPLITGRAPH_META_SCHEMA), Identifier(staging_table), Identifier(snap)
+            )
+        )
         pks = engine.get_primary_keys(SPLITGRAPH_META_SCHEMA, snap)
         if pks:
-            engine.run_sql(SQL("ALTER TABLE {}.{} ADD PRIMARY KEY (").format(
-                Identifier("pg_temp"), Identifier(staging_table)) + SQL(',').join(
-                SQL("{}").format(Identifier(c)) for c, _ in pks) + SQL(")"))
+            engine.run_sql(
+                SQL("ALTER TABLE {}.{} ADD PRIMARY KEY (").format(
+                    Identifier("pg_temp"), Identifier(staging_table)
+                )
+                + SQL(",").join(SQL("{}").format(Identifier(c)) for c, _ in pks)
+                + SQL(")")
+            )
         return staging_table
 
-    def _run_select_from_staging(self, schema, table, columns, drop_table=False, qual_sql=None, qual_args=None):
+    def _run_select_from_staging(
+        self, schema, table, columns, drop_table=False, qual_sql=None, qual_args=None
+    ):
         """Runs the actual select query against the partially materialized table.
         If qual_sql is passed, this will include it in the SELECT query. Despite that Postgres
         will check our results again, this is still useful so that we don't pass all the rows
         in the fragment(s) through the Python runtime."""
         engine = self.repository.object_engine
 
-        cur = engine.connection.cursor('sg_layered_query_cursor')
-        query = SQL("SELECT ") + SQL(',').join(Identifier(c) for c in columns) \
-                + SQL(" FROM {}.{}").format(Identifier(schema),
-                                            Identifier(table))
+        cur = engine.connection.cursor("sg_layered_query_cursor")
+        query = (
+            SQL("SELECT ")
+            + SQL(",").join(Identifier(c) for c in columns)
+            + SQL(" FROM {}.{}").format(Identifier(schema), Identifier(table))
+        )
         if qual_args:
             query += SQL(" WHERE ") + qual_sql
             query = cur.mogrify(query, qual_args)

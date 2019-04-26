@@ -42,7 +42,7 @@ DEFAULTS = {
 
 KEYS = list(DEFAULTS.keys())
 # Keys whose contents we don't print fully
-SENSITIVE_KEYS = [k for k in KEYS if '_PWD' in k]
+SENSITIVE_KEYS = [k for k in KEYS if "_PWD" in k]
 
 """ Warning: Every key in DEFAULTS must have a key in ARGUMENT_KEY_MAP
     If you add/remove keys from DEFAULTS, make sure to do so here too.

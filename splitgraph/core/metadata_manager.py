@@ -10,10 +10,19 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.config import SPLITGRAPH_API_SCHEMA
 from ._common import select, ResultShape
 
-OBJECT_COLS = ['object_id', 'format', 'parent_id', 'namespace', 'size', 'insertion_hash', 'deletion_hash', 'index']
+OBJECT_COLS = [
+    "object_id",
+    "format",
+    "parent_id",
+    "namespace",
+    "size",
+    "insertion_hash",
+    "deletion_hash",
+    "index",
+]
 
 
-class Object(namedtuple('Object', OBJECT_COLS)):
+class Object(namedtuple("Object", OBJECT_COLS)):
     """Represents a Splitgraph object that tables are composed of."""
 
 
@@ -35,12 +44,19 @@ class MetadataManager:
         :param namespace: If specified, overrides the original object namespace, required
             in the case where the remote repository has a different namespace than the local one.
         """
-        object_meta = [tuple(namespace if namespace and a == 'namespace'
-                             else getattr(o, a) for a in OBJECT_COLS) for o in objects]
+        object_meta = [
+            tuple(
+                namespace if namespace and a == "namespace" else getattr(o, a) for a in OBJECT_COLS
+            )
+            for o in objects
+        ]
 
         self.metadata_engine.run_sql_batch(
-            SQL("SELECT {}.add_object(" + ','.join(itertools.repeat('%s', len(OBJECT_COLS))) + ")")
-                .format(Identifier(SPLITGRAPH_API_SCHEMA)), object_meta)
+            SQL(
+                "SELECT {}.add_object(" + ",".join(itertools.repeat("%s", len(OBJECT_COLS))) + ")"
+            ).format(Identifier(SPLITGRAPH_API_SCHEMA)),
+            object_meta,
+        )
 
     def register_tables(self, repository, table_meta):
         """
@@ -50,11 +66,14 @@ class MetadataManager:
         :param repository: Repository that the tables belong to.
         :param table_meta: A list of (image_hash, table_name, table_schema, object_ids).
         """
-        table_meta = [(repository.namespace, repository.repository,
-                       o[0], o[1], Json(o[2]), o[3]) for o in table_meta]
+        table_meta = [
+            (repository.namespace, repository.repository, o[0], o[1], Json(o[2]), o[3])
+            for o in table_meta
+        ]
         self.metadata_engine.run_sql_batch(
             SQL("SELECT {}.add_table(%s,%s,%s,%s,%s,%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
-            table_meta)
+            table_meta,
+        )
 
     def register_object_locations(self, object_locations):
         """
@@ -64,8 +83,11 @@ class MetadataManager:
         :param object_locations: List of (object_id, location, protocol).
         """
         self.metadata_engine.run_sql_batch(
-            SQL("SELECT {}.add_object_location(%s,%s,%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
-            object_locations)
+            SQL("SELECT {}.add_object_location(%s,%s,%s)").format(
+                Identifier(SPLITGRAPH_API_SCHEMA)
+            ),
+            object_locations,
+        )
 
     def get_all_objects(self):
         """
@@ -73,7 +95,11 @@ class MetadataManager:
 
         :return: Set of object IDs.
         """
-        return set(self.metadata_engine.run_sql(select("objects", "object_id"), return_shape=ResultShape.MANY_ONE))
+        return set(
+            self.metadata_engine.run_sql(
+                select("objects", "object_id"), return_shape=ResultShape.MANY_ONE
+            )
+        )
 
     def get_new_objects(self, object_ids):
         """
@@ -84,7 +110,9 @@ class MetadataManager:
         """
         return self.metadata_engine.run_sql(
             SQL("SELECT {}.get_new_objects(%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
-            (object_ids,), return_shape=ResultShape.ONE_ONE)
+            (object_ids,),
+            return_shape=ResultShape.ONE_ONE,
+        )
 
     def get_external_object_locations(self, objects):
         """
@@ -93,8 +121,15 @@ class MetadataManager:
         :param objects: List of object IDs stored externally.
         :return: List of (object_id, location, protocol).
         """
-        return self.metadata_engine.run_sql(select("get_object_locations", "object_id, location, protocol",
-                                                   schema=SPLITGRAPH_API_SCHEMA, table_args="(%s)"), (objects,))
+        return self.metadata_engine.run_sql(
+            select(
+                "get_object_locations",
+                "object_id, location, protocol",
+                schema=SPLITGRAPH_API_SCHEMA,
+                table_args="(%s)",
+            ),
+            (objects,),
+        )
 
     def get_object_meta(self, objects):
         """
@@ -106,8 +141,14 @@ class MetadataManager:
         if not objects:
             return {}
 
-        metadata = self.metadata_engine.run_sql(select("get_object_meta", ','.join(OBJECT_COLS),
-                                                       schema=SPLITGRAPH_API_SCHEMA, table_args="(%s)"),
-                                                (list(objects),))
+        metadata = self.metadata_engine.run_sql(
+            select(
+                "get_object_meta",
+                ",".join(OBJECT_COLS),
+                schema=SPLITGRAPH_API_SCHEMA,
+                table_args="(%s)",
+            ),
+            (list(objects),),
+        )
         result = [Object(*m) for m in metadata]
         return {o.object_id: o for o in result}

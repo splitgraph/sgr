@@ -10,17 +10,28 @@ from splitgraph.commandline._common import ImageType, RepositoryType
 # invocation time and asks the user to install the ingestion extra if Pandas isn't found.
 
 
-@click.group(name='csv')
+@click.group(name="csv")
 def csv():
     """Import/export Splitgraph images in CSV format."""
 
 
-@click.command(name='export')
-@click.argument('image_spec', type=ImageType(default=None))
-@click.argument('query')
-@click.option('-f', '--file', type=click.File('w'), default='-', help="File name to export to, default stdout.")
-@click.option('-l', '--layered', help="Don't materialize the tables, use layered querying instead.",
-              is_flag=True, default=False)
+@click.command(name="export")
+@click.argument("image_spec", type=ImageType(default=None))
+@click.argument("query")
+@click.option(
+    "-f",
+    "--file",
+    type=click.File("w"),
+    default="-",
+    help="File name to export to, default stdout.",
+)
+@click.option(
+    "-l",
+    "--layered",
+    help="Don't materialize the tables, use layered querying instead.",
+    is_flag=True,
+    default=False,
+)
 def csv_export(image_spec, query, file, layered):
     """
     Export the result of a query as CSV.
@@ -42,23 +53,42 @@ def csv_export(image_spec, query, file, layered):
     """
     try:
         from splitgraph.ingestion.pandas import sql_to_df
+
         repository, image = image_spec
         df = sql_to_df(query, image=image, repository=repository, use_lq=layered)
         df.to_csv(file, index=df.index.names != [None])
     except ImportError:
-        print("Install the ""ingestion"" setuptools extra to enable this feature!")
+        print("Install the " "ingestion" " setuptools extra to enable this feature!")
         exit(1)
 
 
-@click.command(name='import')
-@click.argument('repository', type=RepositoryType())
-@click.argument('table')
-@click.option('-f', '--file', type=click.File('r'), default='-', help="File name to import data from, default stdin.")
-@click.option('-r', '--replace', default=False, is_flag=True, help="Replace the table if it already exists.")
-@click.option('-k', '--primary-key',
-              multiple=True, help="Use the specified column(s) as primary key(s)", default=False)
-@click.option('-d', '--datetime',
-              multiple=True, help="Try to parse the specified column(s) as timestamps.", default=False)
+@click.command(name="import")
+@click.argument("repository", type=RepositoryType())
+@click.argument("table")
+@click.option(
+    "-f",
+    "--file",
+    type=click.File("r"),
+    default="-",
+    help="File name to import data from, default stdin.",
+)
+@click.option(
+    "-r", "--replace", default=False, is_flag=True, help="Replace the table if it already exists."
+)
+@click.option(
+    "-k",
+    "--primary-key",
+    multiple=True,
+    help="Use the specified column(s) as primary key(s)",
+    default=False,
+)
+@click.option(
+    "-d",
+    "--datetime",
+    multiple=True,
+    help="Try to parse the specified column(s) as timestamps.",
+    default=False,
+)
 def csv_import(repository, table, file, replace, primary_key, datetime):
     """
     Import a CSV file into a checked-out Splitgraph repository. This doesn't create a new image, use `sgr commit`
@@ -78,12 +108,17 @@ def csv_import(repository, table, file, replace, primary_key, datetime):
     try:
         import pandas as pd
         from splitgraph.ingestion.pandas import df_to_table
-        df = pd.read_csv(file, index_col=primary_key, parse_dates=list(datetime) if datetime else False,
-                         infer_datetime_format=True)
+
+        df = pd.read_csv(
+            file,
+            index_col=primary_key,
+            parse_dates=list(datetime) if datetime else False,
+            infer_datetime_format=True,
+        )
         print("Read %d line(s)" % len(df))
-        df_to_table(df, repository, table, if_exists='replace' if replace else 'patch')
+        df_to_table(df, repository, table, if_exists="replace" if replace else "patch")
     except ImportError:
-        print("Install the ""ingestion"" setuptools extra to enable this feature!")
+        print("Install the " "ingestion" " setuptools extra to enable this feature!")
         exit(1)
 
 

@@ -7,7 +7,7 @@ RUN curl -sSL https://raw.githubusercontent.com/sdispater/poetry/master/get-poet
 RUN mkdir /splitgraph
 COPY . /splitgraph
 
-RUN $HOME/.poetry/bin/poetry config settings.virtualenvs.create false
+RUN $HOME/.poetry/bin/poetry config settings.virtualenvs.create true
 RUN cd /splitgraph && $HOME/.poetry/bin/poetry install --no-dev
 
 # The pip-wheel-metadata is supposed to be temporary. For downstream image builds, Poetry tries to reinstall Splitgraph
