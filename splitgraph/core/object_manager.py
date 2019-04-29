@@ -237,6 +237,13 @@ class ObjectManager(FragmentManager, MetadataManager):
         uploaded_objects = [o[0] for o in self.get_external_object_locations(objects)]
         new_objects = [o for o in objects if o not in uploaded_objects]
 
+        logging.info(
+            "%d object(s) of %d haven't been uploaded yet: %r",
+            len(new_objects),
+            len(objects),
+            new_objects,
+        )
+
         if not new_objects:
             return
 
@@ -249,10 +256,11 @@ class ObjectManager(FragmentManager, MetadataManager):
         )
 
         # Grab the objects that we're supposed to be uploading.
-        new_objects = self.object_engine.run_sql(
+        claimed_objects = self.object_engine.run_sql(
             select("object_cache_status", "object_id", "ready = 'f' FOR UPDATE"),
             return_shape=ResultShape.MANY_ONE,
         )
+        new_objects = [o for o in new_objects if o in claimed_objects]
 
         # Perform the actual upload
         external_handler = get_external_object_handler(handler, handler_params)
