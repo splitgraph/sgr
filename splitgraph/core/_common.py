@@ -93,7 +93,7 @@ def manage_audit(func):
             manage_audit_triggers(repository.engine, repository.object_engine)
             return func(self, *args, **kwargs)
         finally:
-            repository.commit_engines()
+            repository.object_engine.commit()
             manage_audit_triggers(repository.engine, repository.object_engine)
 
     return wrapped
