@@ -310,7 +310,7 @@ version = "1.3.3"
 category = "main"
 description = "NumPy is the fundamental package for array computing with Python."
 name = "numpy"
-optional = false
+optional = true
 python-versions = ">=2.7,!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*"
 version = "1.16.3"
 
@@ -330,7 +330,7 @@ six = "*"
 category = "main"
 description = "Powerful data structures for data analysis, time series, and statistics"
 name = "pandas"
-optional = false
+optional = true
 python-versions = ">=2.7,!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*"
 version = "0.24.2"
 
@@ -662,7 +662,7 @@ version = "1.1.3"
 category = "main"
 description = "Database Abstraction Library"
 name = "sqlalchemy"
-optional = false
+optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 version = "1.3.3"
 
