@@ -369,6 +369,37 @@ def test_commit_diff_splitting_composite(local_engine_empty):
     )
 
 
+def test_updating_newly_inserted_changeset(pg_repo_local):
+    OUTPUT.init()
+    OUTPUT.run_sql("CREATE TABLE test (key INTEGER PRIMARY KEY, value_1 VARCHAR, value_2 INTEGER)")
+    for i in range(5):
+        OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (i + 1, chr(ord("a") + i), i * 2))
+    OUTPUT.commit(chunk_size=None)
+
+    for i in range(5, 10):
+        OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (i + 1, chr(ord("a") + i), i * 2))
+    OUTPUT.commit()
+    # Here, we commit with split_changeset=False, so the new object has the previous one as its parent.
+    # Note that this means that the boundaries of this region don't match the boundaries of the parent
+    # object (since there has been an insert)
+    assert OUTPUT.head.get_table("test").objects == [
+        "oa8c87018f27a6dacd616eebe6034884140b6d6eabc152746457580b8d16ee8"
+    ]
+
+    OUTPUT.run_sql("UPDATE test SET value_1 = 'UPDATED' WHERE key = 8")
+    OUTPUT.commit(split_changeset=True)
+
+    # The update (of key 8) is supposed to have the 5--9 insertion as its parent but it doesn't: since the
+    # boundary for that region is still assumed to be 0--5, this new update is registered as not having
+    # a parent and so, during materialization, comes first in the sequence and can be overwritten
+    # by an earlier object (TODO this is wrong).
+    table = OUTPUT.head.get_table("test")
+    assert table.objects == [
+        "oa8c87018f27a6dacd616eebe6034884140b6d6eabc152746457580b8d16ee8",
+        "o969d6cef86c4024ba82cb0df26220574f7e1de3246a63c8092ac394d702706",
+    ]
+
+
 def test_drop_recreate_produces_snap(pg_repo_local):
     # Drops both tables and creates them with the same schema -- check we detect that.
     old_objects = pg_repo_local.head.get_table("fruits").objects
