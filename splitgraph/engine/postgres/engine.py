@@ -130,7 +130,7 @@ class PsycopgEngine(SQLEngine):
 
     def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY, named=False):
 
-        cursor_kwargs = { "cursor_factory": psycopg2.extras.NamedTupleCursor } if named else {}
+        cursor_kwargs = {"cursor_factory": psycopg2.extras.NamedTupleCursor} if named else {}
 
         with self.connection.cursor(**cursor_kwargs) as cur:
             try:

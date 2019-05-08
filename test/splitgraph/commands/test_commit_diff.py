@@ -369,12 +369,15 @@ def test_commit_diff_splitting_composite(local_engine_empty):
     )
 
 
-def test_updating_newly_inserted_changeset(pg_repo_local):
+def test_commit_mode_change(pg_repo_local):
     OUTPUT.init()
     OUTPUT.run_sql("CREATE TABLE test (key INTEGER PRIMARY KEY, value_1 VARCHAR, value_2 INTEGER)")
     for i in range(5):
         OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (i + 1, chr(ord("a") + i), i * 2))
     OUTPUT.commit(chunk_size=None)
+    assert OUTPUT.head.get_table("test").objects == [
+        "oab9901c63e816f8e3d47366740a76323f168fbe5d5b25eed6b8f4755c37e10"
+    ]
 
     for i in range(5, 10):
         OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (i + 1, chr(ord("a") + i), i * 2))
@@ -391,11 +394,23 @@ def test_updating_newly_inserted_changeset(pg_repo_local):
 
     # The update (of key 8) is supposed to have the 5--9 insertion as its parent but it doesn't: since the
     # boundary for that region is still assumed to be 0--5, this new update is registered as not having
-    # a parent and so, during materialization, comes first in the sequence and can be overwritten
-    # by an earlier object (TODO this is wrong).
+    # a parent. We hence have to make sure that fragments that come later in the table objects' list
+    # end up later in the expanded list as well.
     table = OUTPUT.head.get_table("test")
     assert table.objects == [
         "oa8c87018f27a6dacd616eebe6034884140b6d6eabc152746457580b8d16ee8",
+        "o969d6cef86c4024ba82cb0df26220574f7e1de3246a63c8092ac394d702706",
+    ]
+
+    # Make sure that get_all_required_objects returns the objects in the correct order (parents come
+    # before objects that overwrite them and the order in table.objects is preserved).
+    assert OUTPUT.objects.get_all_required_objects(table.objects) == [
+        # The original 0--5 insertion goes first
+        "oab9901c63e816f8e3d47366740a76323f168fbe5d5b25eed6b8f4755c37e10",
+        # The 5--9 insertion goes next
+        "oa8c87018f27a6dacd616eebe6034884140b6d6eabc152746457580b8d16ee8",
+        # Finally, the key=8 update (even though it doesn't have a parent,
+        # it comes second in table.objects)
         "o969d6cef86c4024ba82cb0df26220574f7e1de3246a63c8092ac394d702706",
     ]
 

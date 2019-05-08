@@ -73,6 +73,7 @@ def test_engine_retry(local_engine_empty):
         assert local_engine_empty.connection == conn
         assert pool.getconn.call_count == 2
 
+
 def test_run_sql_namedtuple(local_engine_empty):
     many_many_result = local_engine_empty.run_sql("SELECT 1 as foo, 2 as bar", named=True)
     assert len(many_many_result) == 1
@@ -81,7 +82,9 @@ def test_run_sql_namedtuple(local_engine_empty):
     assert many_many_result[0].bar == 2
     assert many_many_result[0][1] == 2
 
-    one_many_result = local_engine_empty.run_sql("SELECT 1 as foo, 2 as bar", named=True, return_shape=ResultShape.ONE_MANY)
+    one_many_result = local_engine_empty.run_sql(
+        "SELECT 1 as foo, 2 as bar", named=True, return_shape=ResultShape.ONE_MANY
+    )
     assert one_many_result.foo == 1
     assert one_many_result[0] == 1
     assert one_many_result.bar == 2

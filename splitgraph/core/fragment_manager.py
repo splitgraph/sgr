@@ -431,7 +431,7 @@ class FragmentManager(MetadataManager):
 
             if split_changeset:
                 # Follow the chains down to the base fragments that we'll use to find the chunk boundaries
-                base_fragments = [self.get_all_required_objects([o])[-1] for o in top_fragments]
+                base_fragments = [self.get_all_required_objects([o])[0] for o in top_fragments]
 
                 table_pks = self.object_engine.get_change_key(schema, old_table.table_name)
                 min_max = self._extract_min_max_pks(base_fragments, table_pks)
@@ -627,7 +627,8 @@ class FragmentManager(MetadataManager):
         """
         Follow the parent chains of multiple objects until the base objects are reached.
         :param object_ids: Object IDs to start the traversal on.
-        :return: Expanded chain. Parents of objects are guaranteed to come after those objects.
+        :return: Expanded chain. Parents of objects are guaranteed to come before those objects and
+            the order in the `object_ids` array is preserved.
         """
         parents = self.metadata_engine.run_sql(
             SQL("SELECT {}.get_object_path(%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),

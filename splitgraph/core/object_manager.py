@@ -141,7 +141,7 @@ class ObjectManager(FragmentManager, MetadataManager):
         # Resolve the table into a list of objects we want to fetch.
         # In the future, we can also take other things into account, such as how expensive it is to load a given object
         # (its size), location...
-        required_objects = list(reversed(self.get_all_required_objects(table.objects)))
+        required_objects = list(self.get_all_required_objects(table.objects))
         tracer.log("resolve_objects")
 
         # Filter to see if we can discard any objects with the quals

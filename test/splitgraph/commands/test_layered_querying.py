@@ -223,26 +223,26 @@ def test_lq_qual_filtering(local_engine_empty, pg_repo_remote, test_case):
     pg_repo_local.images["latest"].checkout(layered=True)
     assert len(pg_repo_local.objects.get_downloaded_objects()) == 0
 
-    # Objects in the test dataset, fruits table, in order of creation, are:
-    # * initial fragment
-    # * INS (3, mayonnaise)
-    # * DEL (1, apple)
-    # * UPS (2, guitar) (replaces 2, orange)
-    # * INS (4, kumquat)
-
-    # If we're splitting the changeset as per the chunk boundaries, the objects are returned in a different order
-    # when expanded: INS (3, mayonnaise) comes after DEL (1, apple) and UPS (2, guitar)
-    # since it doesn't span the original chunk (1, 2); INS (4, kumquat) comes last.
-
     query, expected, object_mask = test_case
     required_objects = list(
-        reversed(
-            pg_repo_local.objects.get_all_required_objects(
-                pg_repo_local.head.get_table("fruits").objects
-            )
+        pg_repo_local.objects.get_all_required_objects(
+            pg_repo_local.head.get_table("fruits").objects
         )
     )
     assert len(required_objects) == 5
+    assert required_objects == [
+        # Initial fragment
+        "of22f20503d3bf17c7449b545d68ebcee887ed70089f0342c4bff38862c0dc5",
+        # DEL (1, apple)
+        "oa32db57247f1d5cea7c0ac7df3cf0a74fe552cf9fd07078612c774e8f3472f",
+        # UPS (2, guitar), replaces (2, orange)
+        "ofb935b4decb6062665d8d583d1c266f88dfddad8705d6a33eff1aa8ac1e767",
+        # INS (3, mayonnaise)
+        "occfcd55402d9ca3d3d7fa18dd56227d56df4151888a9518c9103b3bac0ee8c",
+        # INS (4, kumquat)
+        "o75dd055ad2465eb1c3f4e03c6f772c48d87029ef6f141fd4cf3d198e5b247f",
+    ]
+
     expected_objects = [o for o, m in zip(required_objects, object_mask) if m]
 
     assert pg_repo_local.run_sql(query) == expected
