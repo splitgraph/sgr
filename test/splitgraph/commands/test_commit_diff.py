@@ -379,39 +379,48 @@ def test_commit_mode_change(pg_repo_local):
         "oab9901c63e816f8e3d47366740a76323f168fbe5d5b25eed6b8f4755c37e10"
     ]
 
-    for i in range(5, 10):
+    # Insert expanding the fragment both to the left and to the right
+    for i in [-2, -1, 5, 6]:
         OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (i + 1, chr(ord("a") + i), i * 2))
+
     OUTPUT.commit()
     # Here, we commit with split_changeset=False, so the new object has the previous one as its parent.
     # Note that this means that the boundaries of this region don't match the boundaries of the parent
     # object (since there has been an insert)
     assert OUTPUT.head.get_table("test").objects == [
-        "oa8c87018f27a6dacd616eebe6034884140b6d6eabc152746457580b8d16ee8"
+        "o951f5d35a5540e1f7183b4d2937251973589c4db1b00e52aeaa77211260030"
     ]
 
-    OUTPUT.run_sql("UPDATE test SET value_1 = 'UPDATED' WHERE key = 8")
+    OUTPUT.run_sql("UPDATE test SET value_1 = 'UPDATED' WHERE key = 6")
+    OUTPUT.run_sql("UPDATE test SET value_1 = 'UPDATED' WHERE key = -1")
     OUTPUT.commit(split_changeset=True)
 
-    # The update (of key 8) is supposed to have the 5--9 insertion as its parent but it doesn't: since the
-    # boundary for that region is still assumed to be 0--5, this new update is registered as not having
-    # a parent. We hence have to make sure that fragments that come later in the table objects' list
-    # end up later in the expanded list as well.
+    # The update (of key 6) is supposed to have the (-2, -1, 5, 6) insertion as its parent but it doesn't:
+    # since the boundary for that region is still assumed to be 0--5, this new update is registered as
+    # not having a parent. We hence have to make sure that fragments that come later in the table objects'
+    # list end up later in the expanded list as well.
     table = OUTPUT.head.get_table("test")
     assert table.objects == [
-        "oa8c87018f27a6dacd616eebe6034884140b6d6eabc152746457580b8d16ee8",
-        "o969d6cef86c4024ba82cb0df26220574f7e1de3246a63c8092ac394d702706",
+        # Left (key=-1 update)
+        "oe8b3d2ce9bfbe9ba741674f0d676f5af35fcffd2517432f4328e10a0f1fc4b",
+        # Original chunk preserved
+        "o951f5d35a5540e1f7183b4d2937251973589c4db1b00e52aeaa77211260030",
+        # Right (key=6 update)
+        "o1b7f695a89cc2592ee7a5e110648dda5232c9942a173c08080136803bd3de3",
     ]
 
     # Make sure that get_all_required_objects returns the objects in the correct order (parents come
-    # before objects that overwrite them and the order in table.objects is preserved).
+    # before objects that overwrite them and the order in table.objects is preserved). In addition, make sure
+    # that more shallow objects (in this case, the two updates) come last.
     assert OUTPUT.objects.get_all_required_objects(table.objects) == [
         # The original 0--5 insertion goes first
         "oab9901c63e816f8e3d47366740a76323f168fbe5d5b25eed6b8f4755c37e10",
-        # The 5--9 insertion goes next
-        "oa8c87018f27a6dacd616eebe6034884140b6d6eabc152746457580b8d16ee8",
-        # Finally, the key=8 update (even though it doesn't have a parent,
-        # it comes second in table.objects)
-        "o969d6cef86c4024ba82cb0df26220574f7e1de3246a63c8092ac394d702706",
+        # The (-2, -1, 5, 6) insertion goes next
+        "o951f5d35a5540e1f7183b4d2937251973589c4db1b00e52aeaa77211260030",
+        # left (key=1) update -- after the insertion so it doesn't get overwritten.
+        "oe8b3d2ce9bfbe9ba741674f0d676f5af35fcffd2517432f4328e10a0f1fc4b",
+        # Right (key=6 update)
+        "o1b7f695a89cc2592ee7a5e110648dda5232c9942a173c08080136803bd3de3",
     ]
 
 
