@@ -30,7 +30,7 @@ sphinx = "^2.0"
 sphinx_rtd_theme = "^0.4.2"
 pylint = "^2.3"
 black = { version = "*", allows-prereleases = true }
-pre-commit = "^1.15"
+pre-commit = "^1.16"
 
 [tool.poetry.extras]
 ingestion = ["pandas", "sqlalchemy"]
