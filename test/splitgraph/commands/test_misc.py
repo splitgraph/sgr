@@ -1,6 +1,6 @@
 import pytest
 
-from splitgraph import SplitGraphException
+from splitgraph.exceptions import ImageNotFoundError
 
 
 @pytest.mark.parametrize("snap_only", [True, False])
@@ -96,18 +96,18 @@ def test_image_resolution(pg_repo_local):
     head = pg_repo_local.head
     assert pg_repo_local.images[head.image_hash[:10]] == head
     assert pg_repo_local.images["latest"] == head
-    with pytest.raises(SplitGraphException):
+    with pytest.raises(ImageNotFoundError):
         img = pg_repo_local.images["abcdef1234567890abcdef"]
-    with pytest.raises(SplitGraphException):
+    with pytest.raises(ImageNotFoundError):
         img = pg_repo_local.images["some_weird_tag"]
 
 
 def test_tag_errors(pg_repo_local):
     pg_repo_local.uncheckout()
-    with pytest.raises(SplitGraphException) as e:
+    with pytest.raises(ImageNotFoundError) as e:
         head = pg_repo_local.images.by_tag("HEAD")
     assert "No current checked out revision found" in str(e)
 
-    with pytest.raises(SplitGraphException) as e:
+    with pytest.raises(ImageNotFoundError) as e:
         tag = pg_repo_local.images.by_tag("notatag")
     assert "Tag notatag not found" in str(e)

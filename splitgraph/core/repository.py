@@ -10,13 +10,13 @@ from random import getrandbits
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
-
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.core import select
 from splitgraph.core._common import insert
 from splitgraph.core.fragment_manager import get_random_object_id
 from splitgraph.core.sql import validate_import_sql
-from splitgraph.exceptions import SplitGraphException
+from splitgraph.exceptions import ImageNotFoundError, CheckoutError
+
 from ._common import (
     manage_audit_triggers,
     set_head,
@@ -69,7 +69,7 @@ class ImageManager:
         """
         engine = self.engine
         if not repository_exists(self.repository) and raise_on_none:
-            raise SplitGraphException("%s does not exist!" % str(self))
+            raise ImageNotFoundError("%s does not exist!" % str(self))
 
         if tag == "latest":
             # Special case, return the latest commit from the repository.
@@ -85,7 +85,7 @@ class ImageManager:
                 return_shape=ResultShape.ONE_MANY,
             )
             if result is None:
-                raise SplitGraphException("No images found in %s!" % self.repository.to_schema())
+                raise ImageNotFoundError("No images found in %s!" % self.repository.to_schema())
             return self._make_image(result)
 
         result = engine.run_sql(
@@ -103,11 +103,11 @@ class ImageManager:
             if raise_on_none:
                 schema = self.repository.to_schema()
                 if tag == "HEAD":
-                    raise SplitGraphException(
+                    raise ImageNotFoundError(
                         'No current checked out revision found for %s. Check one out with "sgr '
                         'checkout %s image_hash".' % (schema, schema)
                     )
-                raise SplitGraphException("Tag %s not found in repository %s" % (tag, schema))
+                raise ImageNotFoundError("Tag %s not found in repository %s" % (tag, schema))
             return None
         return self.by_hash(result)
 
@@ -133,11 +133,11 @@ class ImageManager:
         )
         if not result:
             if raise_on_none:
-                raise SplitGraphException("No images starting with %s found!" % image_hash)
+                raise ImageNotFoundError("No images starting with %s found!" % image_hash)
             return None
         if len(result) > 1:
             result = "Multiple suitable candidates found: \n * " + "\n * ".join(result)
-            raise SplitGraphException(result)
+            raise ImageNotFoundError(result)
         return self._make_image(result[0])
 
     def __getitem__(self, key):
@@ -482,7 +482,7 @@ class Repository:
         """
         if self.has_pending_changes():
             if not force:
-                raise SplitGraphException(
+                raise CheckoutError(
                     "{0} has pending changes! Pass force=True or do sgr checkout -f {0}:HEAD".format(
                         self.to_schema()
                     )
@@ -960,7 +960,7 @@ class Repository:
         # that auto-commits/closes when needed?
         remote_repository = remote_repository or self.upstream
         if not remote_repository:
-            raise SplitGraphException(
+            raise ValueError(
                 "No remote repository specified and no upstream found for %s!" % self.to_schema()
             )
 
@@ -989,7 +989,7 @@ class Repository:
             required objects when a table is checked out.
         """
         if not self.upstream:
-            raise SplitGraphException("No upstream found for repository %s!" % self.to_schema())
+            raise ValueError("No upstream found for repository %s!" % self.to_schema())
 
         clone(remote_repository=self.upstream, local_repository=self, download_all=download_all)
 
@@ -1012,7 +1012,7 @@ class Repository:
         """
         remote_repository = remote_repository or self.upstream
         if not remote_repository:
-            raise SplitGraphException(
+            raise ValueError(
                 "No remote repository specified and no upstream found for %s!" % self.to_schema()
             )
 

@@ -11,14 +11,14 @@ from threading import get_ident
 
 import psycopg2
 from psycopg2 import DatabaseError
+from psycopg2.errors import UndefinedTable
 from psycopg2.extras import execute_batch, Json
 from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.sql import SQL, Identifier
-
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
-from splitgraph.core._common import select, ensure_metadata_schema
+from splitgraph.core._common import select, ensure_metadata_schema, META_TABLES
 from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
-from splitgraph.exceptions import SplitGraphException
+from splitgraph.exceptions import UninitializedEngineError, ObjectNotFoundError, ObjectCacheError
 from splitgraph.hooks.mount_handlers import mount_postgres
 
 _AUDIT_SCHEMA = "audit"
@@ -135,8 +135,26 @@ class PsycopgEngine(SQLEngine):
         with self.connection.cursor(**cursor_kwargs) as cur:
             try:
                 cur.execute(statement, _convert_vals(arguments) if arguments else None)
-            except DatabaseError:
+            except DatabaseError as e:
                 self.rollback()
+                # Go through some more common errors (like the engine not being initialized) and raise
+                # more specific Splitgraph exceptions.
+                if isinstance(e, UndefinedTable):
+                    # This is not a neat way to do this but other methods involve placing wrappers around
+                    # anything that sends queries to splitgraph_meta or audit schemas.
+                    if "audit." in str(e):
+                        raise UninitializedEngineError(
+                            "Audit triggers not found on the engine. Has the engine been initialized?",
+                            e,
+                        )
+                    for meta_table in META_TABLES:
+                        if "splitgraph_meta.%s" % meta_table in str(e):
+                            raise UninitializedEngineError(
+                                "splitgraph_meta not found on the engine. Has the engine been initialized?",
+                                e,
+                            )
+                    else:
+                        raise ObjectNotFoundError(e)
                 raise
 
             if cur.description is None:
@@ -600,8 +618,8 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
     def upload_objects(self, objects, remote_engine):
         if not isinstance(remote_engine, PostgresEngine):
-            raise SplitGraphException(
-                "Remote engine isn't a Postgres engine, object uploading " "is unsupported for now!"
+            raise ObjectCacheError(
+                "Remote engine isn't a Postgres engine, object uploading is unsupported for now!"
             )
 
         # Since we can't get remote to mount us, we instead use normal SQL statements

@@ -2,7 +2,7 @@ import pytest
 
 from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.repository import clone, Repository
-from splitgraph.exceptions import SplitGraphException
+from splitgraph.exceptions import SplitfileError
 from splitgraph.splitfile._parsing import preprocess
 from splitgraph.splitfile.execution import execute_commands
 from test.splitgraph.conftest import OUTPUT, SPLITFILE_ROOT, load_splitfile
@@ -12,7 +12,7 @@ R = Repository.from_schema
 
 
 def test_splitfile_preprocessor_missing_params():
-    with pytest.raises(SplitGraphException) as e:
+    with pytest.raises(SplitfileError) as e:
         preprocess(PARSING_TEST_SPLITFILE, params={})
     assert "${TAG}" in str(e.value)
     assert "${ESCAPED}" not in str(e.value)

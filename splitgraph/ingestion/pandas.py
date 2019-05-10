@@ -5,10 +5,9 @@ from io import StringIO
 import pandas as pd
 from pandas.io.sql import get_schema
 from psycopg2.sql import Identifier, SQL
-from sqlalchemy import create_engine
-
-from splitgraph import SplitGraphException
 from splitgraph.core.image import Image
+from splitgraph.exceptions import CheckoutError
+from sqlalchemy import create_engine
 
 
 def _get_sqlalchemy_engine(engine):
@@ -162,7 +161,7 @@ def df_to_table(df, repository, table, if_exists="patch"):
     schema = repository.to_schema()
 
     if not repository.head:
-        raise SplitGraphException("Repository %s isn't checked out!" % schema)
+        raise CheckoutError("Repository %s isn't checked out!" % schema)
 
     table_exists = repository.engine.table_exists(schema, table)
     if not table_exists or (table_exists and if_exists == "replace"):
@@ -191,7 +190,7 @@ def df_to_table(df, repository, table, if_exists="patch"):
         target_schema = repository.engine.get_full_table_schema(schema, table)
 
         if not _schema_compatible(source_schema, target_schema):
-            raise SplitGraphException(
+            raise ValueError(
                 "Schema changes are unsupported with if_exists='patch'!"
                 "\nSource schema: %r\nTarget schema: %r" % (source_schema, target_schema)
             )

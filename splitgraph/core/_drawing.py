@@ -4,7 +4,7 @@ Routines for rendering a Splitgraph repository as a tree of images
 """
 from collections import defaultdict
 
-from splitgraph.exceptions import SplitGraphException
+from splitgraph.exceptions import SplitGraphError
 
 
 def _calc_columns(children, start):
@@ -69,7 +69,7 @@ def render_tree(repository):
         children[image.parent_id].append(image.image_hash)
 
     if base_node is None:
-        raise SplitGraphException("Something is seriously wrong with the index.")
+        raise SplitGraphError("Something is seriously wrong with the index.")
 
     # Calculate the column in which each node should be displayed.
     node_cols = _calc_columns(children, base_node)

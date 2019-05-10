@@ -1,11 +1,10 @@
 from datetime import datetime as dt
 
 import pytest
-
 from splitgraph.core import clone, select, SPLITGRAPH_META_SCHEMA
 from splitgraph.core.fragment_manager import _quals_to_clause
 from splitgraph.engine import ResultShape
-from splitgraph.exceptions import SplitGraphException
+from splitgraph.exceptions import ObjectCacheError
 from test.splitgraph.commands.test_layered_querying import prepare_lq_repo
 from test.splitgraph.conftest import OUTPUT, _cleanup_minio
 
@@ -119,7 +118,7 @@ def test_object_cache_non_existing_objects(local_engine_empty, pg_repo_remote):
     )
     # Make sure to commit here -- otherwise the error rolls everything back.
     pg_repo_local.commit_engines()
-    with pytest.raises(SplitGraphException) as e:
+    with pytest.raises(ObjectCacheError) as e:
         with object_manager.ensure_objects(fruits_v3):
             pass
     assert "Missing objects: " in str(e)
@@ -134,7 +133,7 @@ def test_object_cache_non_existing_objects(local_engine_empty, pg_repo_remote):
     assert object_manager.get_cache_occupancy() == 0
     _cleanup_minio()
 
-    with pytest.raises(SplitGraphException) as e:
+    with pytest.raises(ObjectCacheError) as e:
         with object_manager.ensure_objects(fruits_v3):
             pass
     assert "Missing objects: " in str(e)
@@ -197,7 +196,7 @@ def test_object_cache_eviction(local_engine_empty, pg_repo_remote):
 
     # Loading the next version: not enough space for 2 objects.
     object_manager.run_eviction([], None)
-    with pytest.raises(SplitGraphException) as ex:
+    with pytest.raises(ObjectCacheError) as ex:
         with object_manager.ensure_objects(fruits_v3):
             pass
     assert "Not enough space in the cache" in str(ex)
@@ -284,7 +283,7 @@ def test_object_cache_nested(local_engine_empty, pg_repo_remote):
     object_manager.cache_size = 8192 * 2
     with object_manager.ensure_objects(fruits_v3):
         # Now the fruits objects are being used and so we can't reclaim that space and have to raise an error.
-        with pytest.raises(SplitGraphException) as ex:
+        with pytest.raises(ObjectCacheError) as ex:
             with object_manager.ensure_objects(vegetables_v2):
                 pass
         assert "Not enough space will be reclaimed" in str(ex)
@@ -353,7 +352,7 @@ def test_object_cache_eviction_priority(local_engine_empty, pg_repo_remote):
         assert vegetables_snap in current_objects
         assert vegetables_diff in current_objects
 
-        with pytest.raises(SplitGraphException) as ex:
+        with pytest.raises(ObjectCacheError) as ex:
             # Try to load all 4 objects in the same time: should fail.
             with object_manager.ensure_objects(fruits_v3):
                 pass

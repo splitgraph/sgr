@@ -7,13 +7,13 @@ from contextlib import contextmanager
 from datetime import datetime as dt
 
 from psycopg2.sql import SQL, Identifier
-
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.core.fragment_manager import FragmentManager
 from splitgraph.core.metadata_manager import MetadataManager
 from splitgraph.engine import ResultShape, switch_engine
-from splitgraph.exceptions import SplitGraphException
+from splitgraph.exceptions import SplitGraphError, ObjectCacheError
 from splitgraph.hooks.external_objects import get_external_object_handler
+
 from ._common import META_TABLES, select, insert, pretty_size, Tracer
 
 
@@ -156,7 +156,7 @@ class ObjectManager(FragmentManager, MetadataManager):
 
         try:
             to_fetch = self._prepare_fetch_list(required_objects)
-        except SplitGraphException:
+        except SplitGraphError:
             self.object_engine.rollback()
             raise
         tracer.log("prepare_fetch_list")
@@ -193,7 +193,7 @@ class ObjectManager(FragmentManager, MetadataManager):
                 self._set_ready_flags(downloaded, is_ready=True)
                 self._release_objects(downloaded)
                 self.object_engine.commit()
-                raise SplitGraphException(error)
+                raise ObjectCacheError(error)
             self._set_ready_flags(to_fetch, is_ready=True)
         tracer.log("fetch_objects")
 
@@ -337,7 +337,7 @@ class ObjectManager(FragmentManager, MetadataManager):
             # If the total cache size isn't large enough, there's nothing we can do without cooperating with the
             # caller and seeing if they can use the objects one-by-one.
             if required_space > self.cache_size:
-                raise SplitGraphException(
+                raise ObjectCacheError(
                     "Not enough space in the cache to download the required objects!"
                 )
             if required_space > self.cache_size - current_occupied:
@@ -486,7 +486,7 @@ class ObjectManager(FragmentManager, MetadataManager):
             )
         else:
             if required_space > sum(object_sizes.values()):
-                raise SplitGraphException("Not enough space will be reclaimed after eviction!")
+                raise ObjectCacheError("Not enough space will be reclaimed after eviction!")
 
             # Since we can free the minimum required amount of space, see if we can free even more as
             # per our settings (if we can't, we'll just delete as much as we can instead of failing).

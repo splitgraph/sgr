@@ -7,11 +7,11 @@ from random import getrandbits
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
-
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCHEMA
 from splitgraph.engine import ResultShape
-from splitgraph.exceptions import SplitGraphException
+from splitgraph.exceptions import SplitGraphError
 from splitgraph.hooks.mount_handlers import init_fdw
+
 from ._common import set_tag, select, manage_audit, set_head
 from .table import Table
 
@@ -101,7 +101,7 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
         target_schema = self.repository.to_schema()
         if self.repository.has_pending_changes():
             if not force:
-                raise SplitGraphException(
+                raise SplitGraphError(
                     "{0} has pending changes! Pass force=True or do sgr checkout -f {0}:HEAD".format(
                         target_schema
                     )
@@ -250,7 +250,7 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
                     break
             elif prov_type in (None, "MOUNT") and parent:
                 if err_on_end:
-                    raise SplitGraphException(
+                    raise SplitGraphError(
                         "Image %s is linked to its parent with provenance %s"
                         " that can't be reproduced!" % (image_hash, prov_type)
                     )
@@ -413,4 +413,4 @@ def _prov_command_to_splitfile(prov_type, prov_data, image_hash, source_replacem
         return "FROM %s:%s" % (str(repo), source_replacement.get(repo, image_hash))
     if prov_type == "SQL":
         return "SQL " + prov_data.replace("\n", "\\\n")
-    raise SplitGraphException("Cannot reconstruct provenance %s!" % prov_type)
+    raise SplitGraphError("Cannot reconstruct provenance %s!" % prov_type)

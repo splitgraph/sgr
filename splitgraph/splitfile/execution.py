@@ -12,8 +12,9 @@ from splitgraph.core.engine import repository_exists, lookup_repository
 from splitgraph.core.repository import Repository, clone
 from splitgraph.core.sql import validate_splitfile_sql
 from splitgraph.engine import get_engine
-from splitgraph.exceptions import SplitGraphException
+from splitgraph.exceptions import ImageNotFoundError, SplitfileError
 from splitgraph.hooks.mount_handlers import get_mount_handler
+
 from ._parsing import (
     parse_commands,
     extract_nodes,
@@ -36,7 +37,7 @@ def _checkout_or_calculate_layer(output, image_hash, calc_func):
     try:
         output.images.by_hash(image_hash).checkout()
         print(" ---> Using cache")
-    except SplitGraphException:
+    except ImageNotFoundError:
         calc_func()
     print(" ---> %s" % image_hash[:12])
 
@@ -143,10 +144,8 @@ def _execute_from(node, output):
 
         if source_repo.engine.name == "LOCAL":
             # For local repositories, make sure to update them if they've an upstream
-            try:
+            if source_repo.upstream:
                 source_repo.pull()
-            except SplitGraphException:
-                pass
 
         # Get the target snap ID from the source repo: otherwise, if the tag is, say, 'latest' and
         # the output has just had the base commit (000...) created in it, that commit will be the latest.
@@ -159,7 +158,7 @@ def _execute_from(node, output):
         # In this case, if AS repository has been specified, it's already been initialized. If not, this command
         # literally does nothing
         if not output_node:
-            raise SplitGraphException("FROM EMPTY without AS (repository) does nothing!")
+            raise SplitfileError("FROM EMPTY without AS (repository) does nothing!")
     return output
 
 
@@ -244,10 +243,8 @@ def _execute_repo_import(
             source_mountpoint = tmp_repo
         else:
             # For local repositories, first try to pull them to see if they are clones of a remote.
-            try:
+            if source_repo.upstream:
                 source_repo.pull()
-            except SplitGraphException:
-                pass
             source_hash = source_repo.images[tag_or_hash].image_hash
             source_mountpoint = source_repo
         output_head = target_repository.head.image_hash
@@ -289,7 +286,7 @@ def _execute_custom(node, output):
     # Locate the command in the config file and instantiate it.
     cmd_fq_class = CONFIG.get("commands", {}).get(command)
     if not cmd_fq_class:
-        raise SplitGraphException(
+        raise SplitfileError(
             "Custom command {0} not found in the config! Make sure you add an entry to your"
             " config like so:\n  [commands]  \n{0}=path.to.command.Class".format(command)
         )
@@ -298,9 +295,9 @@ def _execute_custom(node, output):
     try:
         cmd_class = getattr(import_module(cmd_fq_class[:index]), cmd_fq_class[index + 1 :])
     except AttributeError as e:
-        raise SplitGraphException("Error loading custom command {0}".format(command)) from e
+        raise SplitfileError("Error loading custom command {0}".format(command)) from e
     except ImportError as e:
-        raise SplitGraphException("Error loading custom command {0}".format(command)) from e
+        raise SplitfileError("Error loading custom command {0}".format(command)) from e
 
     get_engine().run_sql("SET search_path TO %s", (output.to_schema(),))
     command = cmd_class()
@@ -315,7 +312,7 @@ def _execute_custom(node, output):
             output.images.by_hash(image_hash).checkout()
             print(" ---> Using cache")
             return
-        except SplitGraphException:
+        except ImageNotFoundError:
             pass
 
     print(" Executing custom command...")
@@ -328,7 +325,7 @@ def _execute_custom(node, output):
     # Check just in case if the new hash produced by the command already exists.
     try:
         output.images.by_hash(image_hash).checkout()
-    except SplitGraphException:
+    except ImageNotFoundError:
         # Full command as a commit comment
         output.commit(image_hash, comment=node.text)
         # Worth storing provenance here anyway?

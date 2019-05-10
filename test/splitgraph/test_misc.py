@@ -1,7 +1,6 @@
 import psycopg2
 import pytest
 
-from splitgraph import SplitGraphException
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA
 from splitgraph.core._common import ensure_metadata_schema
 from splitgraph.core.engine import get_current_repositories, lookup_repository, ResultShape
@@ -11,6 +10,7 @@ from splitgraph.core.registry import (
     _ensure_registry_schema,
 )
 from splitgraph.core.repository import Repository
+from splitgraph.exceptions import RepositoryNotFoundError
 
 try:
     from unittest import mock
@@ -50,7 +50,7 @@ def test_repo_lookup_override(remote_engine):
 
 
 def test_repo_lookup_override_fail():
-    with pytest.raises(SplitGraphException) as e:
+    with pytest.raises(RepositoryNotFoundError) as e:
         lookup_repository("does/not_exist")
     assert "Unknown repository" in str(e)
 
