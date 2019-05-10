@@ -10,7 +10,7 @@ from splitgraph.core.registry import (
     _ensure_registry_schema,
 )
 from splitgraph.core.repository import Repository
-from splitgraph.exceptions import RepositoryNotFoundError
+from splitgraph.exceptions import RepositoryNotFoundError, UninitializedEngineError
 
 try:
     from unittest import mock
@@ -89,3 +89,23 @@ def test_run_sql_namedtuple(local_engine_empty):
     assert one_many_result[0] == 1
     assert one_many_result.bar == 2
     assert one_many_result[1] == 2
+
+
+def test_uninitialized_engine_error(local_engine_empty):
+    # Test things like the audit triggers/splitgraph meta schema missing raise
+    # uninitialized engine errors rather than generic SQL errors.
+    try:
+        local_engine_empty.run_sql("DROP SCHEMA splitgraph_meta CASCADE")
+        with pytest.raises(UninitializedEngineError) as e:
+            lookup_repository("some/repo", include_local=True)
+        assert "splitgraph_meta" in str(e)
+        local_engine_empty.initialize()
+        local_engine_empty.commit()
+
+        local_engine_empty.run_sql("DROP SCHEMA audit CASCADE")
+        with pytest.raises(UninitializedEngineError) as e:
+            local_engine_empty.discard_pending_changes("some/repo")
+        assert "Audit triggers" in str(e)
+    finally:
+        local_engine_empty.initialize()
+        local_engine_empty.commit()

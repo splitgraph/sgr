@@ -1,7 +1,8 @@
 from datetime import datetime as dt
 
 import pytest
-from splitgraph.core import clone, select, SPLITGRAPH_META_SCHEMA
+from splitgraph import SPLITGRAPH_META_SCHEMA
+from splitgraph.core import clone, select
 from splitgraph.core.fragment_manager import _quals_to_clause
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import ObjectCacheError
