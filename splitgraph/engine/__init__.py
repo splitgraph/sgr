@@ -27,6 +27,22 @@ _ENGINE_SPECIFIC_CONFIG = [
     "SG_ENGINE_FDW_PORT",
 ]
 
+# Some engine config keys default to values of other keys if unspecified.
+_ENGINE_CONFIG_DEFAULTS = {
+    "SG_ENGINE_FDW_HOST": "SG_ENGINE_HOST",
+    "SG_ENGINE_FDW_PORT": "SG_ENGINE_PORT",
+}
+
+
+def _prepare_engine_config(config_dict):
+    result = {}
+    for key in _ENGINE_SPECIFIC_CONFIG:
+        if key in _ENGINE_CONFIG_DEFAULTS:
+            result[key] = config_dict[_ENGINE_CONFIG_DEFAULTS[key]]
+        if key in config_dict:
+            result[key] = config_dict[key]
+    return result
+
 
 class ResultShape(Enum):
     """Shape that the result of a query will be coerced to"""
@@ -518,12 +534,12 @@ def get_engine(name=None, use_socket=False):
         from .postgres.engine import PostgresEngine
 
         if name == "LOCAL":
-            conn_params = {c: CONFIG[c] for c in _ENGINE_SPECIFIC_CONFIG}
+            conn_params = _prepare_engine_config(CONFIG)
             if use_socket:
                 conn_params["SG_ENGINE_HOST"] = None
                 conn_params["SG_ENGINE_PORT"] = None
         else:
-            conn_params = {c: CONFIG["remotes"][name][c] for c in _ENGINE_SPECIFIC_CONFIG}
+            conn_params = _prepare_engine_config(CONFIG["remotes"][name])
         _ENGINES[name] = PostgresEngine(conn_params=conn_params, name=name)
     return _ENGINES[name]
 

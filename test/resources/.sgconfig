@@ -28,8 +28,6 @@ SG_REPO_LOOKUP_OVERRIDE=overridden/repo:LOCAL
 [remote: remote_engine]
 SG_ENGINE_HOST=remote_engine
 SG_ENGINE_PORT=5431
-SG_ENGINE_FDW_HOST=remote_engine
-SG_ENGINE_FDW_PORT=5431
 SG_ENGINE_DB_NAME=splitgraph
 SG_ENGINE_USER=sgr
 SG_ENGINE_PWD=supersecure
