@@ -378,6 +378,11 @@ class ObjectManager(FragmentManager, MetadataManager):
         remaining = set(objects).difference(set(claimed))
         remaining = remaining.difference(set(self.get_downloaded_objects(limit_to=list(remaining))))
 
+        # Since we send multiple queries, each claiming a single remaining object, we can deadlock here
+        # with another object manager instance. Hence, we sort the list of objects so that we claim them
+        # in a consistent order between all instances.
+        remaining = sorted(remaining)
+
         # Remaining: objects that are new to the cache and that we'll need to download. However, between us
         # running the first query and now, somebody else might have started downloading them. Hence, when
         # we try to insert them, we'll be blocked until the other engine finishes its download and commits

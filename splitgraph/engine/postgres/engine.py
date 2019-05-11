@@ -144,15 +144,13 @@ class PsycopgEngine(SQLEngine):
                     # anything that sends queries to splitgraph_meta or audit schemas.
                     if "audit." in str(e):
                         raise UninitializedEngineError(
-                            "Audit triggers not found on the engine. Has the engine been initialized?",
-                            e,
-                        )
+                            "Audit triggers not found on the engine. Has the engine been initialized?"
+                        ) from e
                     for meta_table in META_TABLES:
                         if "splitgraph_meta.%s" % meta_table in str(e):
                             raise UninitializedEngineError(
-                                "splitgraph_meta not found on the engine. Has the engine been initialized?",
-                                e,
-                            )
+                                "splitgraph_meta not found on the engine. Has the engine been initialized?"
+                            ) from e
                     else:
                         raise ObjectNotFoundError(e)
                 raise
