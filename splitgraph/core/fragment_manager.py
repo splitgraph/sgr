@@ -11,7 +11,7 @@ from functools import reduce
 from hashlib import sha256
 from random import getrandbits
 
-from psycopg2.errors import DuplicateTable
+from psycopg2.errors import DuplicateTable, UniqueViolation
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_API_SCHEMA
@@ -339,6 +339,14 @@ class FragmentManager(MetadataManager):
                     self.object_engine.rename_table(
                         SPLITGRAPH_META_SCHEMA, tmp_object_id, object_id
                     )
+                    self._register_object(
+                        object_id,
+                        namespace=table.repository.namespace,
+                        insertion_hash=insertion_hash.hex(),
+                        deletion_hash=deletion_hash.hex(),
+                        parent_object=parent,
+                        changeset=sub_changeset,
+                    )
                 except DuplicateTable:
                     # If an object with this ID already exists, delete the temporary table,
                     # don't register it and move on.
@@ -350,15 +358,16 @@ class FragmentManager(MetadataManager):
                     )
                     self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
                     continue
+                except UniqueViolation:
+                    logging.info(
+                        "Reusing object %s for table %s/%s",
+                        object_id,
+                        table.repository,
+                        table.table_name,
+                    )
+                    self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
+                    continue
 
-            self._register_object(
-                object_id,
-                namespace=table.repository.namespace,
-                insertion_hash=insertion_hash.hex(),
-                deletion_hash=deletion_hash.hex(),
-                parent_object=parent,
-                changeset=sub_changeset,
-            )
         return object_ids
 
     def _get_patch_fragment_hashes(self, sub_changeset, table, tmp_object_id, parent_id):
@@ -607,20 +616,33 @@ class FragmentManager(MetadataManager):
                     self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
                     return object_id
 
-            self.object_engine.run_sql(
-                SQL("ALTER TABLE {}.{} ADD COLUMN {} BOOLEAN DEFAULT TRUE").format(
-                    Identifier(SPLITGRAPH_META_SCHEMA),
-                    Identifier(object_id),
-                    Identifier(SG_UD_FLAG),
+                self.object_engine.run_sql(
+                    SQL("ALTER TABLE {}.{} ADD COLUMN {} BOOLEAN DEFAULT TRUE").format(
+                        Identifier(SPLITGRAPH_META_SCHEMA),
+                        Identifier(object_id),
+                        Identifier(SG_UD_FLAG),
+                    )
                 )
-            )
-            self._register_object(
-                object_id,
-                namespace=repository.namespace,
-                insertion_hash=content_hash,
-                deletion_hash="0" * 64,
-                parent_object=None,
-            )
+                try:
+                    self._register_object(
+                        object_id,
+                        namespace=repository.namespace,
+                        insertion_hash=content_hash,
+                        deletion_hash="0" * 64,
+                        parent_object=None,
+                    )
+                except UniqueViolation:
+                    # Someone registered this object (perhaps a concurrent pull) already.
+                    logging.info(
+                        "Reusing object %s for table %s/%s limit %r offset %d",
+                        object_id,
+                        source_schema,
+                        source_table,
+                        limit,
+                        offset,
+                    )
+                    self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, object_id)
+
             return object_id
 
         if chunk_size and table_size:
