@@ -60,6 +60,26 @@ class SQLEngine(ABC):
     functions to implement some basic database management methods like listing, deleting, creating, dumping
     and loading tables."""
 
+    def __init__(self):
+        self._savepoint_stack = []
+
+    @contextmanager
+    def savepoint(self, name):
+        """At the beginning of this context manager, a savepoint is initialized and any database
+        error that occurs in run_sql results in a rollback to this savepoint rather than the
+        rollback of the whole transaction. At exit, the savepoint is released."""
+        self.run_sql(SQL("SAVEPOINT ") + Identifier(name))
+        self._savepoint_stack.append(name)
+        try:
+            yield
+            # Don't catch any exceptions here: the implementer's run_sql method is supposed
+            # to do that and roll back to the savepoint.
+        finally:
+            # If the savepoint wasn't rolled back to, release it.
+            if self._savepoint_stack and self._savepoint_stack[-1] == name:
+                self._savepoint_stack.pop()
+                self.run_sql(SQL("RELEASE SAVEPOINT ") + Identifier(name))
+
     def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY, named=False):
         """Run an arbitrary SQL statement with some arguments, return an iterator of results.
         If the statement doesn't return any results, return None. If named=True, return named

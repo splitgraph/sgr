@@ -15,6 +15,7 @@ from psycopg2.errors import UndefinedTable
 from psycopg2.extras import execute_batch, Json
 from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.core._common import select, ensure_metadata_schema, META_TABLES
 from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
@@ -45,6 +46,8 @@ class PsycopgEngine(SQLEngine):
         """
         :param conn_params: Dictionary of connection params as stored in the config.
         """
+        super().__init__()
+
         self.conn_params = conn_params
         self.name = name
 
@@ -89,9 +92,12 @@ class PsycopgEngine(SQLEngine):
         self._pool.putconn(conn)
 
     def rollback(self):
-        conn = self.connection
-        conn.rollback()
-        self._pool.putconn(conn)
+        if self._savepoint_stack:
+            self.run_sql(SQL("ROLLBACK TO ") + Identifier(self._savepoint_stack.pop()))
+        else:
+            conn = self.connection
+            conn.rollback()
+            self._pool.putconn(conn)
 
     def lock_table(self, schema, table):
         # Allow SELECTs but not writes to a given table.
@@ -136,6 +142,7 @@ class PsycopgEngine(SQLEngine):
             try:
                 cur.execute(statement, _convert_vals(arguments) if arguments else None)
             except DatabaseError as e:
+                # Rollback the transaction (to a savepoint if we're inside the savepoint() context manager)
                 self.rollback()
                 # Go through some more common errors (like the engine not being initialized) and raise
                 # more specific Splitgraph exceptions.

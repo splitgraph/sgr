@@ -7,13 +7,13 @@ from contextlib import contextmanager
 from datetime import datetime as dt
 
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.core.fragment_manager import FragmentManager
 from splitgraph.core.metadata_manager import MetadataManager
 from splitgraph.engine import ResultShape, switch_engine
 from splitgraph.exceptions import SplitGraphError, ObjectCacheError
 from splitgraph.hooks.external_objects import get_external_object_handler
-
 from ._common import META_TABLES, select, insert, pretty_size, Tracer
 
 
@@ -246,6 +246,10 @@ class ObjectManager(FragmentManager, MetadataManager):
 
         if not new_objects:
             return
+
+        # Similar to claim_objects, make sure we don't deadlock with other uploaders
+        # by keeping a consistent order.
+        new_objects = sorted(new_objects)
 
         # Insert the objects into the cache status table (marking them as not ready)
         now = dt.now()

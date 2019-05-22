@@ -11,6 +11,7 @@ from functools import reduce
 from hashlib import sha256
 from random import getrandbits
 
+from psycopg2.errors import DuplicateTable
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_API_SCHEMA
@@ -330,18 +331,26 @@ class FragmentManager(MetadataManager):
             )
 
             object_ids.append(object_id)
-            if not self.get_new_objects([object_id]):
-                # If an object with this ID already exists, delete the temporary table, don't register it and move on.
-                logging.info(
-                    "Reusing object %s for table %s/%s",
-                    object_id,
-                    table.repository,
-                    table.table_name,
-                )
-                self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
-                continue
 
-            self.object_engine.rename_table(SPLITGRAPH_META_SCHEMA, tmp_object_id, object_id)
+            # Wrap this rename in a SAVEPOINT so that if the table already exists,
+            # the error doesn't roll back the whole transaction (us creating and registering all other objects).
+            with self.object_engine.savepoint("object_rename"):
+                try:
+                    self.object_engine.rename_table(
+                        SPLITGRAPH_META_SCHEMA, tmp_object_id, object_id
+                    )
+                except DuplicateTable:
+                    # If an object with this ID already exists, delete the temporary table,
+                    # don't register it and move on.
+                    logging.info(
+                        "Reusing object %s for table %s/%s",
+                        object_id,
+                        table.repository,
+                        table.table_name,
+                    )
+                    self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
+                    continue
+
             self._register_object(
                 object_id,
                 namespace=table.repository.namespace,
@@ -580,20 +589,24 @@ class FragmentManager(MetadataManager):
             # hash and append an "o".
             object_id = "o" + sha256((content_hash + schema_hash).encode("ascii")).hexdigest()[:-2]
 
-            # If we already have an object with this ID (and hence hash), reuse it.
-            if not self.get_new_objects([object_id]):
-                logging.info(
-                    "Reusing object %s for table %s/%s limit %r offset %d",
-                    object_id,
-                    source_schema,
-                    source_table,
-                    limit,
-                    offset,
-                )
-                self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
-                return object_id
+            with self.object_engine.savepoint("object_rename"):
+                try:
+                    self.object_engine.rename_table(
+                        SPLITGRAPH_META_SCHEMA, tmp_object_id, object_id
+                    )
+                except DuplicateTable:
+                    # If we already have an object with this ID (and hence hash), reuse it.
+                    logging.info(
+                        "Reusing object %s for table %s/%s limit %r offset %d",
+                        object_id,
+                        source_schema,
+                        source_table,
+                        limit,
+                        offset,
+                    )
+                    self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
+                    return object_id
 
-            self.object_engine.rename_table(SPLITGRAPH_META_SCHEMA, tmp_object_id, object_id)
             self.object_engine.run_sql(
                 SQL("ALTER TABLE {}.{} ADD COLUMN {} BOOLEAN DEFAULT TRUE").format(
                     Identifier(SPLITGRAPH_META_SCHEMA),
