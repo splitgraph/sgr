@@ -486,39 +486,60 @@ class ObjectManager(FragmentManager, MetadataManager):
         object_meta = self.get_object_meta([o[0] for o in candidates]) if candidates else {}
         object_sizes = {o.object_id: o.size for o in object_meta.values()}
 
+        # Also delete objects that don't have a metadata entry at all
+        orphaned_objects = [o[0] for o in candidates if o[0] not in object_sizes]
+        orphaned_object_sizes = {
+            o: self.object_engine.get_table_size(SPLITGRAPH_META_SCHEMA, o)
+            for o in orphaned_objects
+        }
+        if orphaned_objects:
+            logging.info(
+                "Found %d orphaned object(s), total size %s: %s",
+                len(orphaned_objects),
+                pretty_size(sum(orphaned_object_sizes.values())),
+                orphaned_objects,
+            )
+
         if required_space is None:
             # Just delete everything with refcount 0.
             to_delete = [o[0] for o in candidates]
-            freed_space = sum(object_sizes.values())
+            freed_space = sum(object_sizes.values()) + sum(orphaned_object_sizes.values())
             logging.info(
                 "Will delete %d object(s), total size %s", len(to_delete), pretty_size(freed_space)
             )
         else:
-            if required_space > sum(object_sizes.values()):
+            if required_space > sum(object_sizes.values()) + sum(orphaned_object_sizes.values()):
                 raise ObjectCacheError("Not enough space will be reclaimed after eviction!")
 
             # Since we can free the minimum required amount of space, see if we can free even more as
             # per our settings (if we can't, we'll just delete as much as we can instead of failing).
             required_space = max(required_space, int(self.eviction_min_fraction * self.cache_size))
 
-            # Sort them by deletion priority (lowest is smallest expected retrieval cost -- more likely to delete)
-            to_delete = []
-            candidates = sorted(candidates, key=lambda o: _eviction_score(object_sizes[o[0]], o[1]))
-            freed_space = 0
+            # Delete all orphaned objects first
+            to_delete = orphaned_objects
+            last_useds = [o[1] for o in candidates if o[0] in orphaned_objects]
+            freed_space = sum(orphaned_object_sizes.values())
+
+            # Sort candidates by deletion priority (lowest is smallest expected retrieval cost -- more likely to delete)
+            candidates = sorted(
+                [o for o in candidates if o[0] not in orphaned_objects],
+                key=lambda o: _eviction_score(object_sizes[o[0]], o[1]),
+            )
+
             # Keep adding deletion candidates until we've freed enough space.
-            last_useds = []
             for object_id, last_used in candidates:
+                if freed_space >= required_space:
+                    break
                 last_useds.append(last_used)
                 to_delete.append(object_id)
                 freed_space += object_sizes[object_id]
-                if freed_space >= required_space:
-                    break
             logging.info(
-                "Will delete %d object(s) last used between %s and %s, total size %s",
+                "Will delete %d object(s) last used between %s and %s, total size %s: %s",
                 len(to_delete),
                 min(last_useds).isoformat(),
                 max(last_useds).isoformat(),
                 pretty_size(freed_space),
+                to_delete,
             )
 
         if to_delete:

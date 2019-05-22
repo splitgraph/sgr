@@ -1,3 +1,4 @@
+import itertools
 from datetime import datetime as dt
 
 import pytest
@@ -252,6 +253,40 @@ def test_object_cache_locally_created_dont_get_evicted(local_engine_empty, pg_re
     downloaded = object_manager.get_downloaded_objects()
     assert len(downloaded) == 1
     assert fruits_v4.objects[0] in downloaded
+
+
+def test_object_cache_eviction_orphaned(local_engine_empty, pg_repo_remote):
+    # Test that objects that become orphaned (no entry in the objects table) get evicted first.
+    pg_repo_local = _setup_object_cache_test(pg_repo_remote)
+
+    object_manager = pg_repo_local.objects
+    fruits_v3 = pg_repo_local.images["latest"].get_table("fruits")
+
+    with object_manager.ensure_objects(fruits_v3):
+        assert object_manager.get_cache_occupancy() == 8192 * 2
+        assert object_manager._recalculate_cache_occupancy() == 8192 * 2
+
+    # Delete the image and objects that it's made out of (outside of the normal ObjectManager.cleanup())
+    pg_repo_local.images.delete([pg_repo_local.images["latest"].image_hash])
+
+    pg_repo_local.object_engine.run_sql(
+        "DELETE FROM splitgraph_meta.object_locations WHERE object_id IN ("
+        + ",".join(itertools.repeat("%s", len(fruits_v3.objects)))
+        + ")",
+        fruits_v3.objects,
+    )
+    pg_repo_local.object_engine.run_sql(
+        "DELETE FROM splitgraph_meta.objects WHERE object_id IN ("
+        + ",".join(itertools.repeat("%s", len(fruits_v3.objects)))
+        + ")",
+        fruits_v3.objects,
+    )
+
+    # Make sure the eviction works deleting orphaned objects as well.
+    object_manager.run_eviction(keep_objects=[], required_space=0)
+
+    assert object_manager.get_cache_occupancy() == 0
+    assert object_manager._recalculate_cache_occupancy() == 0
 
 
 def test_object_cache_nested(local_engine_empty, pg_repo_remote):
