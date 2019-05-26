@@ -339,14 +339,6 @@ class FragmentManager(MetadataManager):
                     self.object_engine.rename_table(
                         SPLITGRAPH_META_SCHEMA, tmp_object_id, object_id
                     )
-                    self._register_object(
-                        object_id,
-                        namespace=table.repository.namespace,
-                        insertion_hash=insertion_hash.hex(),
-                        deletion_hash=deletion_hash.hex(),
-                        parent_object=parent,
-                        changeset=sub_changeset,
-                    )
                 except DuplicateTable:
                     # If an object with this ID already exists, delete the temporary table,
                     # don't register it and move on.
@@ -358,6 +350,20 @@ class FragmentManager(MetadataManager):
                     )
                     self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
                     continue
+
+            # Same here: if we are being called as part of a commit and an object
+            # already exists, we'll roll back everything that the caller has done
+            # (e.g. registering the new image).
+            with self.metadata_engine.savepoint("object_register"):
+                try:
+                    self._register_object(
+                        object_id,
+                        namespace=table.repository.namespace,
+                        insertion_hash=insertion_hash.hex(),
+                        deletion_hash=deletion_hash.hex(),
+                        parent_object=parent,
+                        changeset=sub_changeset,
+                    )
                 except UniqueViolation:
                     logging.info(
                         "Reusing object %s for table %s/%s",
@@ -572,6 +578,14 @@ class FragmentManager(MetadataManager):
             # Store the fragment in a temporary location first and hash that (much faster since PG doesn't need
             # to go through the source table multiple times for every offset)
             tmp_object_id = get_random_object_id()
+            logging.info(
+                "Using temporary table %s for %s/%s limit %r offset %r",
+                tmp_object_id,
+                source_schema,
+                source_table,
+                limit,
+                offset,
+            )
 
             self.object_engine.copy_table(
                 source_schema,
@@ -623,6 +637,8 @@ class FragmentManager(MetadataManager):
                         Identifier(SG_UD_FLAG),
                     )
                 )
+
+            with self.metadata_engine.savepoint("object_register"):
                 try:
                     self._register_object(
                         object_id,
