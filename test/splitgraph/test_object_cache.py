@@ -2,6 +2,7 @@ import itertools
 from datetime import datetime as dt
 
 import pytest
+
 from splitgraph import SPLITGRAPH_META_SCHEMA
 from splitgraph.core import clone, select
 from splitgraph.core.fragment_manager import _quals_to_clause
@@ -242,11 +243,11 @@ def test_object_cache_locally_created_dont_get_evicted(local_engine_empty, pg_re
     head.checkout()
     new_head.checkout()
 
-    # Despite that we have objects on the engine, they don't count towards the full cache occupancy
+    # Despite that we have objects on the engine, they don't count towards the full cache occupancy.
+    # 5 objects on the engine, 1 of them was created locally.
     assert len(object_manager.get_downloaded_objects()) == 5
-    assert (
-        object_manager.get_cache_occupancy() == 8192 * 4
-    )  # 5 objects on the engine, 1 of them was created locally.
+    assert object_manager.get_cache_occupancy() == 8192 * 4
+    assert object_manager.get_total_object_size() == 8192 * 5
 
     # Evict all objects -- check to see the one we created still exists.
     object_manager.run_eviction(keep_objects=[], required_space=None)

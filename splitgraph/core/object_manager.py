@@ -104,6 +104,24 @@ class ObjectManager(FragmentManager, MetadataManager):
             )
         )
 
+    def get_total_object_size(self):
+        """
+        :return: Space occupied by all objects on the engine, in bytes.
+        """
+        return int(
+            self.object_engine.run_sql(
+                SQL(
+                    "SELECT COALESCE(sum(pg_relation_size("
+                    "quote_ident(p.schemaname) || '.' || quote_ident(p.tablename))), 0)"
+                    " FROM pg_tables p WHERE p.schemaname = %s AND p.tablename NOT IN ("
+                    + ",".join(itertools.repeat("%s", len(META_TABLES)))
+                    + ")"
+                ).format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                [SPLITGRAPH_META_SCHEMA] + META_TABLES,
+                return_shape=ResultShape.ONE_ONE,
+            )
+        )
+
     @contextmanager
     def ensure_objects(self, table, quals=None):
         """
@@ -279,6 +297,11 @@ class ObjectManager(FragmentManager, MetadataManager):
         # Mark the objects as ready and decrease their refcounts.
         self._set_ready_flags(new_objects, True)
         self._release_objects(new_objects)
+
+        # Perform eviction in case we've reached the capacity of the cache
+        excess = self.get_cache_occupancy() - self.cache_size
+        if excess > 0:
+            self.run_eviction(keep_objects=[], required_space=excess)
 
     def _filter_objects(self, objects, table, quals):
         if quals:
