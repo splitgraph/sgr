@@ -26,6 +26,12 @@ MG_MNT = R("test_mg_mount")
 MYSQL_MNT = R("test/mysql_mount")
 OUTPUT = R("output")
 
+# On-disk size taken up by an empty table.
+# Includes pg_relation_size(table).
+
+# Doesn't include all components, see PostgresEngine.get_table_size for explanation.
+MIN_OBJECT_SIZE = 8192
+
 
 def _mount_postgres(repository, tables=None):
     mount(

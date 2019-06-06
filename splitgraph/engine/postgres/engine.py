@@ -224,8 +224,16 @@ class PsycopgEngine(SQLEngine):
         stream.write(";\n")
 
     def get_table_size(self, schema, table):
+        # NB this excludes some components of the total on-disk table size:
+        #   pg_relation_size(table, 'fsm')  -- free space map
+        #   pg_relation_size(table, 'vm')   -- visibility map
+        #   pg_relation_size(table, 'init') -- initialization fork (???)
+        #   pg_indexes_size(table) -- indexes (this is bad, they do take up a lot of space)
+        # which don't seem to roundtrip (pg_total_relation_size seems to change
+        # when uploading the object to Minio and then redownloading it again?)
+
         return self.run_sql(
-            SQL("SELECT pg_relation_size('{}.{}')").format(Identifier(schema), Identifier(table)),
+            SQL("SELECT pg_relation_size('{0}.{1}')").format(Identifier(schema), Identifier(table)),
             return_shape=ResultShape.ONE_ONE,
         )
 

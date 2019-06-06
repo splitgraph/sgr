@@ -6,6 +6,7 @@ from splitgraph import Repository
 from splitgraph.core import clone
 from splitgraph.core._common import META_TABLES
 from splitgraph.engine import ResultShape
+from test.splitgraph.conftest import MIN_OBJECT_SIZE
 
 
 def prepare_lq_repo(repo, commit_after_every, include_pk, snap_only=False):
@@ -311,7 +312,7 @@ def test_multiengine_flow(local_engine_empty, pg_repo_remote):
     assert result == [(3, "mayonnaise", 1, _DT), (4, "kumquat", 1, _DT)]
 
     # Test cache occupancy calculations work only using the object engine
-    assert pg_repo_local.objects.get_cache_occupancy() == 8192 * 2
+    assert pg_repo_local.objects.get_cache_occupancy() == MIN_OBJECT_SIZE * 2
 
     # 2 objects downloaded from S3 to satisfy the query -- on the local engine
     assert (

@@ -8,7 +8,7 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph import SPLITGRAPH_META_SCHEMA, ResultShape, select
 from splitgraph.core.fragment_manager import Digest
-from test.splitgraph.conftest import OUTPUT, PG_DATA
+from test.splitgraph.conftest import OUTPUT, PG_DATA, MIN_OBJECT_SIZE
 
 
 def test_diff_head(pg_repo_local):
@@ -104,7 +104,7 @@ def test_commit_chunking(local_engine_empty):
             "FRAG",  # fragment format
             None,  # no parent
             "",  # no namespace
-            8192,  # size reported by PG (can it change between platforms?)
+            MIN_OBJECT_SIZE,
             # Don't check the insertion hash in this test
             object_meta[obj].insertion_hash,
             # Object didn't delete anything, so the deletion hash is zero.
@@ -192,7 +192,7 @@ def test_commit_diff_splitting(local_engine_empty):
             "FRAG",
             None,
             "",
-            8192,
+            MIN_OBJECT_SIZE,
             "3cfbe8fa6fc546264936e29f402d7263510481c88a8d27190d82b3d5830cbcbf",
             # no deletions in this fragment
             "0000000000000000000000000000000000000000000000000000000000000000",
@@ -203,7 +203,7 @@ def test_commit_diff_splitting(local_engine_empty):
             "FRAG",
             base_objects[0],
             "",
-            8192,
+            MIN_OBJECT_SIZE,
             "470425e8c107fff67264f9f812dfe211c7e625edf651947b8476f60392c57281",
             "e3eb6db305d889d3a69e3d8efa0931853c00fca75c0aeddd8f2fa2d6fd2443d6",
             # for value_1 we have old values for k=4,5 ('d', 'e') and new value
@@ -215,7 +215,7 @@ def test_commit_diff_splitting(local_engine_empty):
             "FRAG",
             base_objects[1],
             "",
-            8192,
+            MIN_OBJECT_SIZE,
             # UPD + DEL conflated so nothing gets inserted by this fragment
             "0000000000000000000000000000000000000000000000000000000000000000",
             "d7df15e62c1c8799ef3a3677e3eb7661cedf898d73449a80251b93c501b5bdeb",
@@ -228,7 +228,7 @@ def test_commit_diff_splitting(local_engine_empty):
             "FRAG",
             None,
             "",
-            8192,
+            MIN_OBJECT_SIZE,
             "6950e38c81c51685d617e98c7e2cf98d34630940c33e9259bc01339cca9c9418",
             # No deletions here
             "0000000000000000000000000000000000000000000000000000000000000000",
@@ -239,7 +239,7 @@ def test_commit_diff_splitting(local_engine_empty):
             "FRAG",
             None,
             "",
-            8192,
+            MIN_OBJECT_SIZE,
             "96f0a7394f3839b048b492b789f7d57cf976345b04938a69d82b3512f72c3e9e",
             "0000000000000000000000000000000000000000000000000000000000000000",
             {"key": [12, 12], "value_1": ["l", "l"], "value_2": [22, 22]},
@@ -337,7 +337,7 @@ def test_commit_diff_splitting_composite(local_engine_empty):
         "FRAG",
         base_objects[0],
         "",
-        8192,
+        MIN_OBJECT_SIZE,
         # Hashes here just copypasted from the test output, see test_object_hashing for actual tests that
         # test each part of hash generation
         "00964b1b5db0d6e8d42b48462e9021ed626a773380345a1f4fee5c205d7d4beb",
@@ -357,7 +357,7 @@ def test_commit_diff_splitting_composite(local_engine_empty):
         "FRAG",
         None,
         "",
-        8192,
+        MIN_OBJECT_SIZE,
         "8c92b3ea89234b06cf53c2bad9d6e1d49dc561dc8c0100ee63c0b9ce1eeb0750",
         # Nothing deleted, so the deletion hash is 0
         "0000000000000000000000000000000000000000000000000000000000000000",
