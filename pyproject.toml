@@ -26,7 +26,7 @@ pytest-cov = "^2.6"
 pytest-env = "^0.6"
 coveralls = "^1.7"
 pyinstaller = "^3.4"
-sphinx = "^2.0"
+sphinx = "^2.1"
 sphinx_rtd_theme = "^0.4.2"
 pylint = "^2.3"
 black = { version = "*", allows-prereleases = true }
