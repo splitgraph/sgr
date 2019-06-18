@@ -66,7 +66,7 @@ def test_commit_diff(mode, pg_repo_local):
     obj = table.objects[0]
     obj_meta = pg_repo_local.objects.get_object_meta([obj])[obj]
     # Check object size has been written
-    assert obj_meta.size > 0
+    assert obj_meta.size == MIN_OBJECT_SIZE
 
     assert new_head.comment == "test commit"
     change = pg_repo_local.diff("fruits", image_1=head, image_2=new_head)

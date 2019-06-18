@@ -64,4 +64,4 @@ mongo_fdw=splitgraph.hooks.mount_handlers.mount_mongo
 mysql_fdw=splitgraph.hooks.mount_handlers.mount_mysql
 
 [external_handlers]
-S3=splitgraph.hooks.s3.S3ExternalObjectHandler
+S3=splitgraph.core.cstore.CStoreS3ExternalObjectHandler

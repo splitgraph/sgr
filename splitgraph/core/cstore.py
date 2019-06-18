@@ -1,4 +1,5 @@
 """Routines related to storing objects on the local engine as Citus CStore files"""
+import json
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
@@ -8,7 +9,8 @@ from minio import Minio
 from minio.error import MinioError
 from psycopg2.sql import Identifier, SQL
 
-from splitgraph import SPLITGRAPH_META_SCHEMA, CONFIG, get_engine
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
+from splitgraph.engine import get_engine
 from splitgraph.hooks.s3 import (
     S3_ACCESS_KEY,
     S3_HOST,
@@ -22,15 +24,23 @@ CSTORE_ROOT = "/var/lib/splitgraph/objects"
 CSTORE_SERVER = "cstore_server"
 
 
-def mount_object(engine, object_name, schema=SPLITGRAPH_META_SCHEMA, table=None):
+def mount_object(engine, object_name, schema=SPLITGRAPH_META_SCHEMA, table=None, schema_spec=None):
     table = table or object_name
 
-    # TODO how to figure out table schema
+    if not schema_spec:
+        with open(os.path.join(CSTORE_ROOT, object_name + ".schema")) as f:
+            schema_spec = json.load(f)
 
-    query = SQL(
-        "CREATE FOREIGN TABLE {}.{} SERVER %s OPTIONS (compression %s, filename %s)"
-    ).format(Identifier(schema), Identifier(table))
-    engine.run_sql(query, (CSTORE_SERVER, "pglz", os.path.join(CSTORE_ROOT), object_name))
+    query = SQL("CREATE FOREIGN TABLE {}.{} (").format(Identifier(schema), Identifier(table))
+    query += SQL(",".join("{} %s " % ctype for _, _, ctype, _ in schema_spec)).format(
+        *(Identifier(cname) for _, cname, _, _ in schema_spec)
+    )
+
+    # foreign tables/cstore don't support PKs
+    query += SQL(") SERVER {} OPTIONS (compression %s, filename %s)").format(
+        Identifier(CSTORE_SERVER)
+    )
+    engine.run_sql(query, ("pglz", os.path.join(CSTORE_ROOT, object_name)))
 
 
 def store_object(engine, source_schema, source_table, object_name):
@@ -43,9 +53,10 @@ def store_object(engine, source_schema, source_table, object_name):
     :param source_table: Name of the staging table
     :param object_name: Name of the object
     """
+    schema_spec = engine.get_full_table_schema(source_schema, source_table)
 
     # Mount the object first
-    mount_object(engine, object_name)
+    mount_object(engine, object_name, schema_spec=schema_spec)
 
     # Insert the data into the new Citus table.
     engine.run_sql(
@@ -57,7 +68,33 @@ def store_object(engine, source_schema, source_table, object_name):
         )
     )
 
+    # Also store the table schema in a file
+    with open(os.path.join(CSTORE_ROOT, object_name + ".schema"), "w") as f:
+        json.dump(schema_spec, f)
+
     engine.delete_table(source_schema, source_table)
+
+
+def _remove(path):
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+
+
+def delete_objects(engine, object_ids):
+    unmount_query = SQL(";").join(
+        SQL("DROP FOREIGN TABLE {}.{}").format(
+            Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)
+        )
+        for object_id in object_ids
+    )
+    engine.run_sql(unmount_query)
+
+    for object_id in object_ids:
+        _remove(os.path.join(CSTORE_ROOT, object_id))
+        _remove(os.path.join(CSTORE_ROOT, object_id + ".footer"))
+        _remove(os.path.join(CSTORE_ROOT, object_id + ".schema"))
 
 
 # Downloading/uploading objects to/from S3.
@@ -93,6 +130,7 @@ class CStoreS3ExternalObjectHandler(S3ExternalObjectHandler):
 
             client.fput_object(bucket, object_id, object_path)
             client.fput_object(bucket, object_id + ".footer", object_path + ".footer")
+            client.fput_object(bucket, object_id + ".schema", object_path + ".schema")
 
             return "%s/%s/%s" % (endpoint, bucket, object_id)
 
@@ -124,6 +162,7 @@ class CStoreS3ExternalObjectHandler(S3ExternalObjectHandler):
             try:
                 client.fget_object(bucket, remote_object, object_path)
                 client.fget_object(bucket, remote_object + ".footer", object_path + ".footer")
+                client.fget_object(bucket, remote_object + ".schema", object_path + ".schema")
             except MinioError:
                 logging.exception("Error downloading object %s", object_id)
                 return

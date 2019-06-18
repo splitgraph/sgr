@@ -572,10 +572,9 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
     ):
         if not objects:
             return
-        # In the case where we're applying fragments into a temporary table, we can't find out its schema
-        # using normal methods. Hence, we assume that the fragments have the same schema and use that instead.
-        # This will break if our fragments only describe a subset of all columns (which they currently don't).
-        ri_data = self._prepare_ri_data(objects[0][0], objects[0][1])
+        # Assume that the target table already has the required schema (including PKs)
+        # and use that to generate queries to apply fragments.
+        ri_data = self._prepare_ri_data(target_schema, target_table)
         query = SQL(";").join(
             self._generate_fragment_application(
                 ss, st, target_schema, target_table, ri_data, extra_quals

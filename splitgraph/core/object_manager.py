@@ -9,6 +9,7 @@ from datetime import datetime as dt
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
+from splitgraph.core import cstore
 from splitgraph.core.fragment_manager import FragmentManager
 from splitgraph.core.metadata_manager import MetadataManager
 from splitgraph.engine import ResultShape, switch_engine
@@ -56,14 +57,10 @@ class ObjectManager(FragmentManager, MetadataManager):
         :param limit_to: If specified, only the objects in this list will be returned.
         :return: Set of object IDs.
         """
-        query = "SELECT pg_tables.tablename FROM pg_tables WHERE pg_tables.schemaname = %s"
+        query = "SELECT table_name FROM information_schema.tables WHERE table_schema = %s AND table_type = 'FOREIGN'"
         query_args = [SPLITGRAPH_META_SCHEMA]
         if limit_to:
-            query += (
-                " AND pg_tables.tablename IN ("
-                + ",".join(itertools.repeat("%s", len(limit_to)))
-                + ")"
-            )
+            query += " AND table_name IN (" + ",".join(itertools.repeat("%s", len(limit_to))) + ")"
             query_args += list(limit_to)
         objects = set(
             self.object_engine.run_sql(
@@ -720,13 +717,32 @@ class ObjectManager(FragmentManager, MetadataManager):
         """
         objects = list(objects)
         for i in range(0, len(objects), 100):
-            query = SQL(";").join(
-                SQL("DROP TABLE IF EXISTS {}.{}").format(
-                    Identifier(SPLITGRAPH_META_SCHEMA), Identifier(o)
-                )
-                for o in objects[i : i + 100]
+            to_delete = objects[i : i + 100]
+            table_types = self.object_engine.run_sql(
+                SQL(
+                    "SELECT table_name, table_type FROM information_schema.tables "
+                    "WHERE table_schema = %s AND table_name IN ("
+                    + ",".join(itertools.repeat("%s", len(to_delete)))
+                    + ")"
+                ),
+                [SPLITGRAPH_META_SCHEMA] + to_delete,
             )
-            self.object_engine.run_sql(query)
+
+            base_tables = [tn for tn, tt in table_types if tt == "BASE TABLE"]
+            foreign_tables = [tn for tn, tt in table_types if tt == "FOREIGN"]
+
+            if base_tables:
+                self.object_engine.run_sql(
+                    SQL(";").join(
+                        SQL("DROP TABLE {}.{}").format(
+                            Identifier(SPLITGRAPH_META_SCHEMA), Identifier(t)
+                        )
+                        for t in base_tables
+                    )
+                )
+            if foreign_tables:
+                cstore.delete_objects(self.object_engine, foreign_tables)
+
             self.object_engine.commit()
 
 

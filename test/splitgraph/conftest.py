@@ -30,7 +30,10 @@ OUTPUT = R("output")
 # Includes pg_relation_size(table).
 
 # Doesn't include all components, see PostgresEngine.get_table_size for explanation.
-MIN_OBJECT_SIZE = 8192
+MIN_OBJECT_SIZE = 8192 * 2
+
+# temporary (foreign tables have 0 size)
+MIN_OBJECT_SIZE = 0
 
 
 def _mount_postgres(repository, tables=None):

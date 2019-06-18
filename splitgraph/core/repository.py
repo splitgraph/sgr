@@ -10,13 +10,13 @@ from random import getrandbits
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.core import select
 from splitgraph.core._common import insert
 from splitgraph.core.fragment_manager import get_random_object_id
 from splitgraph.core.sql import validate_import_sql
 from splitgraph.exceptions import ImageNotFoundError, CheckoutError
-
 from ._common import (
     manage_audit_triggers,
     set_head,
@@ -466,7 +466,8 @@ class Repository:
             yield SPLITGRAPH_META_SCHEMA, new_id
         finally:
             # Maybe some cache management/expiry strategies here
-            self.objects.delete_objects([new_id])
+            self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, new_id)
+            self.object_engine.commit()
 
     @property
     def head(self):

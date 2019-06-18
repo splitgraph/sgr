@@ -17,9 +17,13 @@ export SG_CONFIG_FILE=${SG_CONFIG_FILE-"${DEFAULT_SG_CONFIG_FILE}"}
 
 echo "Using config file at $SG_CONFIG_FILE ..."
 
+# At engine initialization, we also create the directory that's shared
+# between the host and the engine (for object storage).
+
 _init_engines() {
   ( SG_ENGINE=LOCAL sgr init ) \
     && ( SG_ENGINE=remote_engine sgr init ) \
+    && mkdir -p /var/lib/splitgraph/objects \
     && return 0
 
   return 1

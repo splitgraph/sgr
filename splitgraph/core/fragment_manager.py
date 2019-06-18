@@ -15,6 +15,7 @@ from psycopg2.errors import DuplicateTable, UniqueViolation
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_API_SCHEMA
+from splitgraph.core import cstore
 from splitgraph.core.metadata_manager import MetadataManager, Object
 from splitgraph.engine.postgres.engine import SG_UD_FLAG
 from ._common import adapt, SPLITGRAPH_META_SCHEMA, ResultShape, coerce_val_to_json
@@ -336,8 +337,11 @@ class FragmentManager(MetadataManager):
             # the error doesn't roll back the whole transaction (us creating and registering all other objects).
             with self.object_engine.savepoint("object_rename"):
                 try:
-                    self.object_engine.rename_table(
-                        SPLITGRAPH_META_SCHEMA, tmp_object_id, object_id
+                    cstore.store_object(
+                        self.object_engine,
+                        source_schema=SPLITGRAPH_META_SCHEMA,
+                        source_table=tmp_object_id,
+                        object_name=object_id,
                     )
                 except DuplicateTable:
                     # If an object with this ID already exists, delete the temporary table,
@@ -613,9 +617,21 @@ class FragmentManager(MetadataManager):
             object_id = "o" + sha256((content_hash + schema_hash).encode("ascii")).hexdigest()[:-2]
 
             with self.object_engine.savepoint("object_rename"):
+
+                self.object_engine.run_sql(
+                    SQL("ALTER TABLE {}.{} ADD COLUMN {} BOOLEAN DEFAULT TRUE").format(
+                        Identifier(SPLITGRAPH_META_SCHEMA),
+                        Identifier(tmp_object_id),
+                        Identifier(SG_UD_FLAG),
+                    )
+                )
+
                 try:
-                    self.object_engine.rename_table(
-                        SPLITGRAPH_META_SCHEMA, tmp_object_id, object_id
+                    cstore.store_object(
+                        self.object_engine,
+                        source_schema=SPLITGRAPH_META_SCHEMA,
+                        source_table=tmp_object_id,
+                        object_name=object_id,
                     )
                 except DuplicateTable:
                     # If we already have an object with this ID (and hence hash), reuse it.
@@ -629,14 +645,6 @@ class FragmentManager(MetadataManager):
                     )
                     self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
                     return object_id
-
-                self.object_engine.run_sql(
-                    SQL("ALTER TABLE {}.{} ADD COLUMN {} BOOLEAN DEFAULT TRUE").format(
-                        Identifier(SPLITGRAPH_META_SCHEMA),
-                        Identifier(object_id),
-                        Identifier(SG_UD_FLAG),
-                    )
-                )
 
             with self.metadata_engine.savepoint("object_register"):
                 try:
