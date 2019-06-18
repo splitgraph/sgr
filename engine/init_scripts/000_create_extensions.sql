@@ -2,3 +2,5 @@ CREATE EXTENSION postgres_fdw;
 CREATE EXTENSION mongo_fdw;
 CREATE EXTENSION mysql_fdw;
 CREATE EXTENSION multicorn;
+CREATE EXTENSION cstore_fdw;
+CREATE SERVER cstore_server FOREIGN DATA WRAPPER cstore_fdw;
