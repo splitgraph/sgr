@@ -25,6 +25,7 @@ _ENGINE_SPECIFIC_CONFIG = [
     "SG_ENGINE_ADMIN_PWD",
     "SG_ENGINE_FDW_HOST",
     "SG_ENGINE_FDW_PORT",
+    "SG_ENGINE_OBJECT_PATH",
 ]
 
 # Some engine config keys default to values of other keys if unspecified.

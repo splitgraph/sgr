@@ -19,6 +19,7 @@ services:
       # the remote_engine / Minio handler that we use locally.
       - ../resources/.sgconfig:/.sgconfig
       - ../../:/splitgraph
+      - /var/lib/splitgraph/objects:/var/lib/splitgraph/objects
   remote_engine:
     build:
       context: ./src/
@@ -33,7 +34,7 @@ services:
     volumes:
       - ./data/remote_engine/setup.sql:/docker-entrypoint-initdb.d/setup.sql
       - ../../:/splitgraph
-      - /var/lib/splitgraph/objects:/var/lib/splitgraph/objects
+      - /var/lib/splitgraph/objects_remote:/var/lib/splitgraph/objects_remote
     expose:
       - 5431
   # Name without an underscore because Minio client really wants to be compliant with the RFC

@@ -12,6 +12,7 @@ SG_ENGINE_ADMIN_USER=sgr
 SG_ENGINE_ADMIN_PWD=supersecure
 SG_ENGINE_POSTGRES_DB_NAME=postgres
 SG_META_SCHEMA=splitgraph_meta
+SG_ENGINE_OBJECT_PATH=/var/lib/splitgraph/objects
 
 ; Must be accessible from both the host and the actual engine container
 SG_S3_HOST=objectstorage
@@ -35,6 +36,7 @@ SG_ENGINE_ADMIN_USER=sgr
 SG_ENGINE_ADMIN_PWD=supersecure
 SG_ENGINE_POSTGRES_DB_NAME=postgres
 SG_META_SCHEMA=splitgraph_meta
+SG_ENGINE_OBJECT_PATH=/var/lib/splitgraph/objects_remote
 
 ; Used in security tests. We currently rely on remote_engine being accessed as a superuser for the rest of the
 ; test suite: only in test/splitgraph/test_security.py do we use this engine to test accessing a remote engine

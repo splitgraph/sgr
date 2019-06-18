@@ -20,7 +20,6 @@ from splitgraph.hooks.s3 import (
     S3ExternalObjectHandler,
 )
 
-CSTORE_ROOT = "/var/lib/splitgraph/objects"
 CSTORE_SERVER = "cstore_server"
 
 
@@ -28,7 +27,9 @@ def mount_object(engine, object_name, schema=SPLITGRAPH_META_SCHEMA, table=None,
     table = table or object_name
 
     if not schema_spec:
-        with open(os.path.join(CSTORE_ROOT, object_name + ".schema")) as f:
+        with open(
+            os.path.join(engine.conn_params["SG_ENGINE_OBJECT_PATH"], object_name + ".schema")
+        ) as f:
             schema_spec = json.load(f)
 
     query = SQL("CREATE FOREIGN TABLE {}.{} (").format(Identifier(schema), Identifier(table))
@@ -40,7 +41,9 @@ def mount_object(engine, object_name, schema=SPLITGRAPH_META_SCHEMA, table=None,
     query += SQL(") SERVER {} OPTIONS (compression %s, filename %s)").format(
         Identifier(CSTORE_SERVER)
     )
-    engine.run_sql(query, ("pglz", os.path.join(CSTORE_ROOT, object_name)))
+    engine.run_sql(
+        query, ("pglz", os.path.join(engine.conn_params["SG_ENGINE_OBJECT_PATH"], object_name))
+    )
 
 
 def store_object(engine, source_schema, source_table, object_name):
@@ -69,7 +72,9 @@ def store_object(engine, source_schema, source_table, object_name):
     )
 
     # Also store the table schema in a file
-    with open(os.path.join(CSTORE_ROOT, object_name + ".schema"), "w") as f:
+    with open(
+        os.path.join(engine.conn_params["SG_ENGINE_OBJECT_PATH"], object_name + ".schema"), "w"
+    ) as f:
         json.dump(schema_spec, f)
 
     engine.delete_table(source_schema, source_table)
@@ -92,9 +97,10 @@ def delete_objects(engine, object_ids):
     engine.run_sql(unmount_query)
 
     for object_id in object_ids:
-        _remove(os.path.join(CSTORE_ROOT, object_id))
-        _remove(os.path.join(CSTORE_ROOT, object_id + ".footer"))
-        _remove(os.path.join(CSTORE_ROOT, object_id + ".schema"))
+        object_path = os.path.join(engine.conn_params["SG_ENGINE_OBJECT_PATH"], object_id)
+        _remove(object_path)
+        _remove(object_path + ".footer")
+        _remove(object_path + ".schema")
 
 
 # Downloading/uploading objects to/from S3.
@@ -124,9 +130,10 @@ class CStoreS3ExternalObjectHandler(S3ExternalObjectHandler):
             secure=False,
         )
         _ensure_bucket(client, bucket)
+        engine = get_engine()
 
         def _do_upload(object_id):
-            object_path = os.path.join(CSTORE_ROOT, object_id)
+            object_path = os.path.join(engine.conn_params["SG_ENGINE_OBJECT_PATH"], object_id)
 
             client.fput_object(bucket, object_id, object_path)
             client.fput_object(bucket, object_id + ".footer", object_path + ".footer")
@@ -151,13 +158,14 @@ class CStoreS3ExternalObjectHandler(S3ExternalObjectHandler):
         # By default, take up the whole connection pool with downloaders (less one connection for the main
         # thread that handles metadata)
         worker_threads = self.params.get("threads", int(CONFIG["SG_ENGINE_POOL"]) - 1)
+        engine = get_engine()
 
         def _do_download(obj_id_url):
             object_id, object_url = obj_id_url
             endpoint, bucket, remote_object = object_url.split("/")
             client = Minio(endpoint, access_key=access_key, secret_key=secret_key, secure=False)
             logging.info("%s -> %s", object_url, object_id)
-            object_path = os.path.join(CSTORE_ROOT, object_id)
+            object_path = os.path.join(engine.conn_params["SG_ENGINE_OBJECT_PATH"], object_id)
 
             try:
                 client.fget_object(bucket, remote_object, object_path)
@@ -170,7 +178,6 @@ class CStoreS3ExternalObjectHandler(S3ExternalObjectHandler):
                 # Some connection errors aren't caught by MinioError
                 logging.exception("URLLib error downloading object %s", object_id)
                 return
-            engine = get_engine()
             mount_object(engine, object_id)
 
         with ThreadPoolExecutor(max_workers=worker_threads) as tpe:
