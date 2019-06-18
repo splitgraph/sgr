@@ -11,14 +11,15 @@ from threading import get_ident
 
 import psycopg2
 from psycopg2 import DatabaseError
+from psycopg2.errors import UndefinedTable
 from psycopg2.extras import execute_batch, Json
 from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
-from splitgraph.core._common import select, ensure_metadata_schema
+from splitgraph.core._common import select, ensure_metadata_schema, META_TABLES
 from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
-from splitgraph.exceptions import SplitGraphException
+from splitgraph.exceptions import UninitializedEngineError, ObjectNotFoundError, ObjectCacheError
 from splitgraph.hooks.mount_handlers import mount_postgres
 
 _AUDIT_SCHEMA = "audit"
@@ -45,6 +46,8 @@ class PsycopgEngine(SQLEngine):
         """
         :param conn_params: Dictionary of connection params as stored in the config.
         """
+        super().__init__()
+
         self.conn_params = conn_params
         self.name = name
 
@@ -89,9 +92,12 @@ class PsycopgEngine(SQLEngine):
         self._pool.putconn(conn)
 
     def rollback(self):
-        conn = self.connection
-        conn.rollback()
-        self._pool.putconn(conn)
+        if self._savepoint_stack:
+            self.run_sql(SQL("ROLLBACK TO ") + Identifier(self._savepoint_stack.pop()))
+        else:
+            conn = self.connection
+            conn.rollback()
+            self._pool.putconn(conn)
 
     def lock_table(self, schema, table):
         # Allow SELECTs but not writes to a given table.
@@ -130,13 +136,30 @@ class PsycopgEngine(SQLEngine):
 
     def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY, named=False):
 
-        cursor_kwargs = { "cursor_factory": psycopg2.extras.NamedTupleCursor } if named else {}
+        cursor_kwargs = {"cursor_factory": psycopg2.extras.NamedTupleCursor} if named else {}
 
         with self.connection.cursor(**cursor_kwargs) as cur:
             try:
                 cur.execute(statement, _convert_vals(arguments) if arguments else None)
-            except DatabaseError:
+            except DatabaseError as e:
+                # Rollback the transaction (to a savepoint if we're inside the savepoint() context manager)
                 self.rollback()
+                # Go through some more common errors (like the engine not being initialized) and raise
+                # more specific Splitgraph exceptions.
+                if isinstance(e, UndefinedTable):
+                    # This is not a neat way to do this but other methods involve placing wrappers around
+                    # anything that sends queries to splitgraph_meta or audit schemas.
+                    if "audit." in str(e):
+                        raise UninitializedEngineError(
+                            "Audit triggers not found on the engine. Has the engine been initialized?"
+                        ) from e
+                    for meta_table in META_TABLES:
+                        if "splitgraph_meta.%s" % meta_table in str(e):
+                            raise UninitializedEngineError(
+                                "splitgraph_meta not found on the engine. Has the engine been initialized?"
+                            ) from e
+                    else:
+                        raise ObjectNotFoundError(e)
                 raise
 
             if cur.description is None:
@@ -201,8 +224,16 @@ class PsycopgEngine(SQLEngine):
         stream.write(";\n")
 
     def get_table_size(self, schema, table):
+        # NB this excludes some components of the total on-disk table size:
+        #   pg_relation_size(table, 'fsm')  -- free space map
+        #   pg_relation_size(table, 'vm')   -- visibility map
+        #   pg_relation_size(table, 'init') -- initialization fork (???)
+        #   pg_indexes_size(table) -- indexes (this is bad, they do take up a lot of space)
+        # which don't seem to roundtrip (pg_total_relation_size seems to change
+        # when uploading the object to Minio and then redownloading it again?)
+
         return self.run_sql(
-            SQL("SELECT pg_relation_size('{}.{}')").format(Identifier(schema), Identifier(table)),
+            SQL("SELECT pg_relation_size('{0}.{1}')").format(Identifier(schema), Identifier(table)),
             return_shape=ResultShape.ONE_ONE,
         )
 
@@ -600,8 +631,8 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
     def upload_objects(self, objects, remote_engine):
         if not isinstance(remote_engine, PostgresEngine):
-            raise SplitGraphException(
-                "Remote engine isn't a Postgres engine, object uploading " "is unsupported for now!"
+            raise ObjectCacheError(
+                "Remote engine isn't a Postgres engine, object uploading is unsupported for now!"
             )
 
         # Since we can't get remote to mount us, we instead use normal SQL statements

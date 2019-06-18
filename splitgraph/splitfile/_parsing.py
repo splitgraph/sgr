@@ -6,8 +6,7 @@ import re
 import shlex
 
 from parsimonious import Grammar
-
-from splitgraph.exceptions import SplitGraphException
+from splitgraph.exceptions import SplitfileError
 
 SPLITFILE_GRAMMAR = Grammar(
     r"""
@@ -86,7 +85,7 @@ def preprocess(commands, params=None):
     # Search for any unreplaced $-parameters
     unreplaced = set(re.findall(r"[^\\](\${\S+})", commands, flags=re.MULTILINE))
     if unreplaced:
-        raise SplitGraphException("Unknown values for parameters " + ", ".join(unreplaced) + "!")
+        raise SplitfileError("Unknown values for parameters " + ", ".join(unreplaced) + "!")
     # Finally, replace the escaped $
     return commands.replace("\\$", "$")
 

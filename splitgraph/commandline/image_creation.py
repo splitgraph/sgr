@@ -6,8 +6,6 @@ import sys
 from collections import defaultdict
 
 import click
-
-from splitgraph import SplitGraphException
 from splitgraph.commandline._common import ImageType, RepositoryType
 from splitgraph.core.engine import repository_exists
 
@@ -169,7 +167,7 @@ def tag_c(image_spec, tag, remove):
         return
 
     if tag == "HEAD":
-        raise SplitGraphException("HEAD is a reserved tag!")
+        raise click.BadArgumentUsage("HEAD is a reserved tag!")
 
     if image is None:
         image = repository.head

@@ -1,7 +1,7 @@
 import pytest
 
 from splitgraph.core.sql import validate_splitfile_sql, validate_import_sql
-from splitgraph.exceptions import UnsupportedSQLException
+from splitgraph.exceptions import UnsupportedSQLError
 
 
 def succeeds_on_both(sql):
@@ -10,15 +10,15 @@ def succeeds_on_both(sql):
 
 
 def fails_on_both(sql):
-    with pytest.raises(UnsupportedSQLException) as e:
+    with pytest.raises(UnsupportedSQLError) as e:
         validate_splitfile_sql(sql)
-    with pytest.raises(UnsupportedSQLException) as e:
+    with pytest.raises(UnsupportedSQLError) as e:
         validate_import_sql(sql)
 
 
 def succeeds_on_sql_fails_on_import(sql):
     validate_splitfile_sql(sql)
-    with pytest.raises(UnsupportedSQLException) as e:
+    with pytest.raises(UnsupportedSQLError) as e:
         validate_import_sql(sql)
 
 

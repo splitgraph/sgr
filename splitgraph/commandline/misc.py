@@ -4,13 +4,14 @@ Miscellaneous image management sgr commands.
 import sys
 
 import click
-
-from splitgraph import SplitGraphException, CONFIG
+from splitgraph import CONFIG
 from splitgraph.config.keys import KEYS, SENSITIVE_KEYS
 from splitgraph.core.engine import init_engine, repository_exists
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.repository import Repository
 from splitgraph.engine import get_engine
+from splitgraph.exceptions import CheckoutError
+
 from ._common import ImageType, RepositoryType
 
 
@@ -84,7 +85,7 @@ def rm_c(image_spec, remote, yes):
             # If we're deleting an image that we currently have checked out,
             # we need to make sure the rest of the metadata (e.g. current state of the audit table) is consistent,
             # it's better to disallow these deletions completely.
-            raise SplitGraphException(
+            raise CheckoutError(
                 "Deletion will affect a checked-out image! Check out a different branch "
                 "or do sgr checkout -u %s!" % repository.to_schema()
             )

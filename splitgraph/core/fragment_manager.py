@@ -11,6 +11,7 @@ from functools import reduce
 from hashlib import sha256
 from random import getrandbits
 
+from psycopg2.errors import DuplicateTable, UniqueViolation
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_API_SCHEMA
@@ -330,26 +331,49 @@ class FragmentManager(MetadataManager):
             )
 
             object_ids.append(object_id)
-            if not self.get_new_objects([object_id]):
-                # If an object with this ID already exists, delete the temporary table, don't register it and move on.
-                logging.info(
-                    "Reusing object %s for table %s/%s",
-                    object_id,
-                    table.repository,
-                    table.table_name,
-                )
-                self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
-                continue
 
-            self.object_engine.rename_table(SPLITGRAPH_META_SCHEMA, tmp_object_id, object_id)
-            self._register_object(
-                object_id,
-                namespace=table.repository.namespace,
-                insertion_hash=insertion_hash.hex(),
-                deletion_hash=deletion_hash.hex(),
-                parent_object=parent,
-                changeset=sub_changeset,
-            )
+            # Wrap this rename in a SAVEPOINT so that if the table already exists,
+            # the error doesn't roll back the whole transaction (us creating and registering all other objects).
+            with self.object_engine.savepoint("object_rename"):
+                try:
+                    self.object_engine.rename_table(
+                        SPLITGRAPH_META_SCHEMA, tmp_object_id, object_id
+                    )
+                except DuplicateTable:
+                    # If an object with this ID already exists, delete the temporary table,
+                    # don't register it and move on.
+                    logging.info(
+                        "Reusing object %s for table %s/%s",
+                        object_id,
+                        table.repository,
+                        table.table_name,
+                    )
+                    self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
+                    continue
+
+            # Same here: if we are being called as part of a commit and an object
+            # already exists, we'll roll back everything that the caller has done
+            # (e.g. registering the new image).
+            with self.metadata_engine.savepoint("object_register"):
+                try:
+                    self._register_object(
+                        object_id,
+                        namespace=table.repository.namespace,
+                        insertion_hash=insertion_hash.hex(),
+                        deletion_hash=deletion_hash.hex(),
+                        parent_object=parent,
+                        changeset=sub_changeset,
+                    )
+                except UniqueViolation:
+                    logging.info(
+                        "Reusing object %s for table %s/%s",
+                        object_id,
+                        table.repository,
+                        table.table_name,
+                    )
+                    self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
+                    continue
+
         return object_ids
 
     def _get_patch_fragment_hashes(self, sub_changeset, table, tmp_object_id, parent_id):
@@ -431,7 +455,7 @@ class FragmentManager(MetadataManager):
 
             if split_changeset:
                 # Follow the chains down to the base fragments that we'll use to find the chunk boundaries
-                base_fragments = [self.get_all_required_objects([o])[-1] for o in top_fragments]
+                base_fragments = [self.get_all_required_objects([o])[0] for o in top_fragments]
 
                 table_pks = self.object_engine.get_change_key(schema, old_table.table_name)
                 min_max = self._extract_min_max_pks(base_fragments, table_pks)
@@ -554,6 +578,14 @@ class FragmentManager(MetadataManager):
             # Store the fragment in a temporary location first and hash that (much faster since PG doesn't need
             # to go through the source table multiple times for every offset)
             tmp_object_id = get_random_object_id()
+            logging.info(
+                "Using temporary table %s for %s/%s limit %r offset %r",
+                tmp_object_id,
+                source_schema,
+                source_table,
+                limit,
+                offset,
+            )
 
             self.object_engine.copy_table(
                 source_schema,
@@ -580,34 +612,53 @@ class FragmentManager(MetadataManager):
             # hash and append an "o".
             object_id = "o" + sha256((content_hash + schema_hash).encode("ascii")).hexdigest()[:-2]
 
-            # If we already have an object with this ID (and hence hash), reuse it.
-            if not self.get_new_objects([object_id]):
-                logging.info(
-                    "Reusing object %s for table %s/%s limit %r offset %d",
-                    object_id,
-                    source_schema,
-                    source_table,
-                    limit,
-                    offset,
-                )
-                self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
-                return object_id
+            with self.object_engine.savepoint("object_rename"):
+                try:
+                    self.object_engine.rename_table(
+                        SPLITGRAPH_META_SCHEMA, tmp_object_id, object_id
+                    )
+                except DuplicateTable:
+                    # If we already have an object with this ID (and hence hash), reuse it.
+                    logging.info(
+                        "Reusing object %s for table %s/%s limit %r offset %d",
+                        object_id,
+                        source_schema,
+                        source_table,
+                        limit,
+                        offset,
+                    )
+                    self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
+                    return object_id
 
-            self.object_engine.rename_table(SPLITGRAPH_META_SCHEMA, tmp_object_id, object_id)
-            self.object_engine.run_sql(
-                SQL("ALTER TABLE {}.{} ADD COLUMN {} BOOLEAN DEFAULT TRUE").format(
-                    Identifier(SPLITGRAPH_META_SCHEMA),
-                    Identifier(object_id),
-                    Identifier(SG_UD_FLAG),
+                self.object_engine.run_sql(
+                    SQL("ALTER TABLE {}.{} ADD COLUMN {} BOOLEAN DEFAULT TRUE").format(
+                        Identifier(SPLITGRAPH_META_SCHEMA),
+                        Identifier(object_id),
+                        Identifier(SG_UD_FLAG),
+                    )
                 )
-            )
-            self._register_object(
-                object_id,
-                namespace=repository.namespace,
-                insertion_hash=content_hash,
-                deletion_hash="0" * 64,
-                parent_object=None,
-            )
+
+            with self.metadata_engine.savepoint("object_register"):
+                try:
+                    self._register_object(
+                        object_id,
+                        namespace=repository.namespace,
+                        insertion_hash=content_hash,
+                        deletion_hash="0" * 64,
+                        parent_object=None,
+                    )
+                except UniqueViolation:
+                    # Someone registered this object (perhaps a concurrent pull) already.
+                    logging.info(
+                        "Reusing object %s for table %s/%s limit %r offset %d",
+                        object_id,
+                        source_schema,
+                        source_table,
+                        limit,
+                        offset,
+                    )
+                    self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, object_id)
+
             return object_id
 
         if chunk_size and table_size:
@@ -627,7 +678,8 @@ class FragmentManager(MetadataManager):
         """
         Follow the parent chains of multiple objects until the base objects are reached.
         :param object_ids: Object IDs to start the traversal on.
-        :return: Expanded chain. Parents of objects are guaranteed to come after those objects.
+        :return: Expanded chain. Parents of objects are guaranteed to come before those objects and
+            the order in the `object_ids` array is preserved.
         """
         parents = self.metadata_engine.run_sql(
             SQL("SELECT {}.get_object_path(%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),

@@ -1,7 +1,6 @@
 import psycopg2
 import pytest
 
-from splitgraph import SplitGraphException
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA
 from splitgraph.core._common import ensure_metadata_schema
 from splitgraph.core.engine import get_current_repositories, lookup_repository, ResultShape
@@ -11,6 +10,7 @@ from splitgraph.core.registry import (
     _ensure_registry_schema,
 )
 from splitgraph.core.repository import Repository
+from splitgraph.exceptions import RepositoryNotFoundError, UninitializedEngineError
 
 try:
     from unittest import mock
@@ -50,7 +50,7 @@ def test_repo_lookup_override(remote_engine):
 
 
 def test_repo_lookup_override_fail():
-    with pytest.raises(SplitGraphException) as e:
+    with pytest.raises(RepositoryNotFoundError) as e:
         lookup_repository("does/not_exist")
     assert "Unknown repository" in str(e)
 
@@ -73,6 +73,7 @@ def test_engine_retry(local_engine_empty):
         assert local_engine_empty.connection == conn
         assert pool.getconn.call_count == 2
 
+
 def test_run_sql_namedtuple(local_engine_empty):
     many_many_result = local_engine_empty.run_sql("SELECT 1 as foo, 2 as bar", named=True)
     assert len(many_many_result) == 1
@@ -81,8 +82,30 @@ def test_run_sql_namedtuple(local_engine_empty):
     assert many_many_result[0].bar == 2
     assert many_many_result[0][1] == 2
 
-    one_many_result = local_engine_empty.run_sql("SELECT 1 as foo, 2 as bar", named=True, return_shape=ResultShape.ONE_MANY)
+    one_many_result = local_engine_empty.run_sql(
+        "SELECT 1 as foo, 2 as bar", named=True, return_shape=ResultShape.ONE_MANY
+    )
     assert one_many_result.foo == 1
     assert one_many_result[0] == 1
     assert one_many_result.bar == 2
     assert one_many_result[1] == 2
+
+
+def test_uninitialized_engine_error(local_engine_empty):
+    # Test things like the audit triggers/splitgraph meta schema missing raise
+    # uninitialized engine errors rather than generic SQL errors.
+    try:
+        local_engine_empty.run_sql("DROP SCHEMA splitgraph_meta CASCADE")
+        with pytest.raises(UninitializedEngineError) as e:
+            lookup_repository("some/repo", include_local=True)
+        assert "splitgraph_meta" in str(e)
+        local_engine_empty.initialize()
+        local_engine_empty.commit()
+
+        local_engine_empty.run_sql("DROP SCHEMA audit CASCADE")
+        with pytest.raises(UninitializedEngineError) as e:
+            local_engine_empty.discard_pending_changes("some/repo")
+        assert "Audit triggers" in str(e)
+    finally:
+        local_engine_empty.initialize()
+        local_engine_empty.commit()

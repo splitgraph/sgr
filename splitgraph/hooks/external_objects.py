@@ -4,7 +4,7 @@ Hooks for registering handlers to upload/download objects from external location
 from importlib import import_module
 
 from splitgraph.config import CONFIG
-from splitgraph.exceptions import SplitGraphException
+from splitgraph.exceptions import ExternalHandlerError
 
 _EXTERNAL_OBJECT_HANDLERS = {}
 
@@ -59,7 +59,7 @@ def get_external_object_handler(name, handler_params):
     except KeyError:
         external_handlers = CONFIG.get("external_handlers", {})
         if name not in external_handlers:
-            raise SplitGraphException("Protocol %s is not supported!" % name)
+            raise ExternalHandlerError("Protocol %s is not supported!" % name)
         else:
             handler_class_name = external_handlers[name]
             index = handler_class_name.rindex(".")
@@ -70,11 +70,11 @@ def get_external_object_handler(name, handler_params):
                 register_upload_download_handler(name, handler_class)
                 return handler_class(handler_params)
             except AttributeError as e:
-                raise SplitGraphException(
+                raise ExternalHandlerError(
                     "Error loading external object handler {0}".format(name)
                 ) from e
             except ImportError as e:
-                raise SplitGraphException(
+                raise ExternalHandlerError(
                     "Error loading external object handler {0}".format(name)
                 ) from e
 
@@ -84,7 +84,7 @@ def register_upload_download_handler(name, handler_class):
     signatures of the handler functions."""
     global _EXTERNAL_OBJECT_HANDLERS
     if name in _EXTERNAL_OBJECT_HANDLERS:
-        raise SplitGraphException(
+        raise ExternalHandlerError(
             "Cannot register a protocol handler %s as it already exists!" % name
         )
     _EXTERNAL_OBJECT_HANDLERS[name] = handler_class

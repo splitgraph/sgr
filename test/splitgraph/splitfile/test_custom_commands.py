@@ -7,7 +7,7 @@ try:
 except ImportError:
     from mock import patch
 from psycopg2.sql import Identifier, SQL
-from splitgraph.exceptions import SplitGraphException
+from splitgraph.exceptions import SplitfileError
 from splitgraph.splitfile import execute_commands
 from splitgraph.splitfile.execution import _combine_hashes
 from splitgraph.hooks.splitfile_commands import PluginCommand
@@ -95,20 +95,20 @@ def test_calc_hash_short_circuit(pg_repo_local):
 
 def test_custom_command_errors(pg_repo_local):
     # Test we raise for undefined commands
-    with pytest.raises(SplitGraphException) as e:
+    with pytest.raises(SplitfileError) as e:
         execute_commands(
             load_splitfile("custom_command_dummy.splitfile").replace("DUMMY", "NOP"), output=OUTPUT
         )
     assert "Custom command NOP not found in the config!" in str(e.value)
 
     # Test we raise for commands that can't be imported
-    with pytest.raises(SplitGraphException) as e:
+    with pytest.raises(SplitfileError) as e:
         execute_commands(
             load_splitfile("custom_command_dummy.splitfile").replace("DUMMY", "BROKEN1"),
             output=OUTPUT,
         )
     assert "Error loading custom command BROKEN1" in str(e.value)
-    with pytest.raises(SplitGraphException) as e:
+    with pytest.raises(SplitfileError) as e:
         execute_commands(
             load_splitfile("custom_command_dummy.splitfile").replace("DUMMY", "BROKEN2"),
             output=OUTPUT,

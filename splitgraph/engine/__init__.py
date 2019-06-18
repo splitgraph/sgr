@@ -27,6 +27,22 @@ _ENGINE_SPECIFIC_CONFIG = [
     "SG_ENGINE_FDW_PORT",
 ]
 
+# Some engine config keys default to values of other keys if unspecified.
+_ENGINE_CONFIG_DEFAULTS = {
+    "SG_ENGINE_FDW_HOST": "SG_ENGINE_HOST",
+    "SG_ENGINE_FDW_PORT": "SG_ENGINE_PORT",
+}
+
+
+def _prepare_engine_config(config_dict):
+    result = {}
+    for key in _ENGINE_SPECIFIC_CONFIG:
+        if key in _ENGINE_CONFIG_DEFAULTS:
+            result[key] = config_dict[_ENGINE_CONFIG_DEFAULTS[key]]
+        if key in config_dict:
+            result[key] = config_dict[key]
+    return result
+
 
 class ResultShape(Enum):
     """Shape that the result of a query will be coerced to"""
@@ -43,6 +59,26 @@ class SQLEngine(ABC):
     a few other functions. Together with the `information_schema` (part of the SQL standard), this class uses those
     functions to implement some basic database management methods like listing, deleting, creating, dumping
     and loading tables."""
+
+    def __init__(self):
+        self._savepoint_stack = []
+
+    @contextmanager
+    def savepoint(self, name):
+        """At the beginning of this context manager, a savepoint is initialized and any database
+        error that occurs in run_sql results in a rollback to this savepoint rather than the
+        rollback of the whole transaction. At exit, the savepoint is released."""
+        self.run_sql(SQL("SAVEPOINT ") + Identifier(name))
+        self._savepoint_stack.append(name)
+        try:
+            yield
+            # Don't catch any exceptions here: the implementer's run_sql method is supposed
+            # to do that and roll back to the savepoint.
+        finally:
+            # If the savepoint wasn't rolled back to, release it.
+            if self._savepoint_stack and self._savepoint_stack[-1] == name:
+                self._savepoint_stack.pop()
+                self.run_sql(SQL("RELEASE SAVEPOINT ") + Identifier(name))
 
     def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY, named=False):
         """Run an arbitrary SQL statement with some arguments, return an iterator of results.
@@ -518,12 +554,12 @@ def get_engine(name=None, use_socket=False):
         from .postgres.engine import PostgresEngine
 
         if name == "LOCAL":
-            conn_params = {c: CONFIG[c] for c in _ENGINE_SPECIFIC_CONFIG}
+            conn_params = _prepare_engine_config(CONFIG)
             if use_socket:
                 conn_params["SG_ENGINE_HOST"] = None
                 conn_params["SG_ENGINE_PORT"] = None
         else:
-            conn_params = {c: CONFIG["remotes"][name][c] for c in _ENGINE_SPECIFIC_CONFIG}
+            conn_params = _prepare_engine_config(CONFIG["remotes"][name])
         _ENGINES[name] = PostgresEngine(conn_params=conn_params, name=name)
     return _ENGINES[name]
 

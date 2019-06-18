@@ -12,7 +12,7 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.core.fragment_manager import FragmentManager
 from splitgraph.core.metadata_manager import MetadataManager
 from splitgraph.engine import ResultShape, switch_engine
-from splitgraph.exceptions import SplitGraphException
+from splitgraph.exceptions import SplitGraphError, ObjectCacheError
 from splitgraph.hooks.external_objects import get_external_object_handler
 from ._common import META_TABLES, select, insert, pretty_size, Tracer
 
@@ -104,6 +104,24 @@ class ObjectManager(FragmentManager, MetadataManager):
             )
         )
 
+    def get_total_object_size(self):
+        """
+        :return: Space occupied by all objects on the engine, in bytes.
+        """
+        return int(
+            self.object_engine.run_sql(
+                SQL(
+                    "SELECT COALESCE(sum(pg_relation_size("
+                    "quote_ident(p.schemaname) || '.' || quote_ident(p.tablename))), 0)"
+                    " FROM pg_tables p WHERE p.schemaname = %s AND p.tablename NOT IN ("
+                    + ",".join(itertools.repeat("%s", len(META_TABLES)))
+                    + ")"
+                ).format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                [SPLITGRAPH_META_SCHEMA] + META_TABLES,
+                return_shape=ResultShape.ONE_ONE,
+            )
+        )
+
     @contextmanager
     def ensure_objects(self, table, quals=None):
         """
@@ -141,7 +159,7 @@ class ObjectManager(FragmentManager, MetadataManager):
         # Resolve the table into a list of objects we want to fetch.
         # In the future, we can also take other things into account, such as how expensive it is to load a given object
         # (its size), location...
-        required_objects = list(reversed(self.get_all_required_objects(table.objects)))
+        required_objects = list(self.get_all_required_objects(table.objects))
         tracer.log("resolve_objects")
 
         # Filter to see if we can discard any objects with the quals
@@ -156,7 +174,7 @@ class ObjectManager(FragmentManager, MetadataManager):
 
         try:
             to_fetch = self._prepare_fetch_list(required_objects)
-        except SplitGraphException:
+        except SplitGraphError:
             self.object_engine.rollback()
             raise
         tracer.log("prepare_fetch_list")
@@ -193,7 +211,7 @@ class ObjectManager(FragmentManager, MetadataManager):
                 self._set_ready_flags(downloaded, is_ready=True)
                 self._release_objects(downloaded)
                 self.object_engine.commit()
-                raise SplitGraphException(error)
+                raise ObjectCacheError(error)
             self._set_ready_flags(to_fetch, is_ready=True)
         tracer.log("fetch_objects")
 
@@ -237,8 +255,19 @@ class ObjectManager(FragmentManager, MetadataManager):
         uploaded_objects = [o[0] for o in self.get_external_object_locations(objects)]
         new_objects = [o for o in objects if o not in uploaded_objects]
 
+        logging.info(
+            "%d object(s) of %d haven't been uploaded yet: %r",
+            len(new_objects),
+            len(objects),
+            new_objects,
+        )
+
         if not new_objects:
             return
+
+        # Similar to claim_objects, make sure we don't deadlock with other uploaders
+        # by keeping a consistent order.
+        new_objects = sorted(new_objects)
 
         # Insert the objects into the cache status table (marking them as not ready)
         now = dt.now()
@@ -249,10 +278,11 @@ class ObjectManager(FragmentManager, MetadataManager):
         )
 
         # Grab the objects that we're supposed to be uploading.
-        new_objects = self.object_engine.run_sql(
+        claimed_objects = self.object_engine.run_sql(
             select("object_cache_status", "object_id", "ready = 'f' FOR UPDATE"),
             return_shape=ResultShape.MANY_ONE,
         )
+        new_objects = [o for o in new_objects if o in claimed_objects]
 
         # Perform the actual upload
         external_handler = get_external_object_handler(handler, handler_params)
@@ -267,6 +297,11 @@ class ObjectManager(FragmentManager, MetadataManager):
         # Mark the objects as ready and decrease their refcounts.
         self._set_ready_flags(new_objects, True)
         self._release_objects(new_objects)
+
+        # Perform eviction in case we've reached the capacity of the cache
+        excess = self.get_cache_occupancy() - self.cache_size
+        if excess > 0:
+            self.run_eviction(keep_objects=[], required_space=excess)
 
     def _filter_objects(self, objects, table, quals):
         if quals:
@@ -329,7 +364,7 @@ class ObjectManager(FragmentManager, MetadataManager):
             # If the total cache size isn't large enough, there's nothing we can do without cooperating with the
             # caller and seeing if they can use the objects one-by-one.
             if required_space > self.cache_size:
-                raise SplitGraphException(
+                raise ObjectCacheError(
                     "Not enough space in the cache to download the required objects!"
                 )
             if required_space > self.cache_size - current_occupied:
@@ -369,6 +404,11 @@ class ObjectManager(FragmentManager, MetadataManager):
         claimed = claimed or []
         remaining = set(objects).difference(set(claimed))
         remaining = remaining.difference(set(self.get_downloaded_objects(limit_to=list(remaining))))
+
+        # Since we send multiple queries, each claiming a single remaining object, we can deadlock here
+        # with another object manager instance. Hence, we sort the list of objects so that we claim them
+        # in a consistent order between all instances.
+        remaining = sorted(remaining)
 
         # Remaining: objects that are new to the cache and that we'll need to download. However, between us
         # running the first query and now, somebody else might have started downloading them. Hence, when
@@ -469,39 +509,60 @@ class ObjectManager(FragmentManager, MetadataManager):
         object_meta = self.get_object_meta([o[0] for o in candidates]) if candidates else {}
         object_sizes = {o.object_id: o.size for o in object_meta.values()}
 
+        # Also delete objects that don't have a metadata entry at all
+        orphaned_objects = [o[0] for o in candidates if o[0] not in object_sizes]
+        orphaned_object_sizes = {
+            o: self.object_engine.get_table_size(SPLITGRAPH_META_SCHEMA, o)
+            for o in orphaned_objects
+        }
+        if orphaned_objects:
+            logging.info(
+                "Found %d orphaned object(s), total size %s: %s",
+                len(orphaned_objects),
+                pretty_size(sum(orphaned_object_sizes.values())),
+                orphaned_objects,
+            )
+
         if required_space is None:
             # Just delete everything with refcount 0.
             to_delete = [o[0] for o in candidates]
-            freed_space = sum(object_sizes.values())
+            freed_space = sum(object_sizes.values()) + sum(orphaned_object_sizes.values())
             logging.info(
                 "Will delete %d object(s), total size %s", len(to_delete), pretty_size(freed_space)
             )
         else:
-            if required_space > sum(object_sizes.values()):
-                raise SplitGraphException("Not enough space will be reclaimed after eviction!")
+            if required_space > sum(object_sizes.values()) + sum(orphaned_object_sizes.values()):
+                raise ObjectCacheError("Not enough space will be reclaimed after eviction!")
 
             # Since we can free the minimum required amount of space, see if we can free even more as
             # per our settings (if we can't, we'll just delete as much as we can instead of failing).
             required_space = max(required_space, int(self.eviction_min_fraction * self.cache_size))
 
-            # Sort them by deletion priority (lowest is smallest expected retrieval cost -- more likely to delete)
-            to_delete = []
-            candidates = sorted(candidates, key=lambda o: _eviction_score(object_sizes[o[0]], o[1]))
-            freed_space = 0
+            # Delete all orphaned objects first
+            to_delete = orphaned_objects
+            last_useds = [o[1] for o in candidates if o[0] in orphaned_objects]
+            freed_space = sum(orphaned_object_sizes.values())
+
+            # Sort candidates by deletion priority (lowest is smallest expected retrieval cost -- more likely to delete)
+            candidates = sorted(
+                [o for o in candidates if o[0] not in orphaned_objects],
+                key=lambda o: _eviction_score(object_sizes[o[0]], o[1]),
+            )
+
             # Keep adding deletion candidates until we've freed enough space.
-            last_useds = []
             for object_id, last_used in candidates:
+                if freed_space >= required_space:
+                    break
                 last_useds.append(last_used)
                 to_delete.append(object_id)
                 freed_space += object_sizes[object_id]
-                if freed_space >= required_space:
-                    break
             logging.info(
-                "Will delete %d object(s) last used between %s and %s, total size %s",
+                "Will delete %d object(s) last used between %s and %s, total size %s: %s",
                 len(to_delete),
                 min(last_useds).isoformat(),
                 max(last_useds).isoformat(),
                 pretty_size(freed_space),
+                to_delete,
             )
 
         if to_delete:

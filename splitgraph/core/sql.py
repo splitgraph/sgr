@@ -2,12 +2,12 @@
 from pglast import Node, parse_sql
 from pglast.node import Scalar
 
-from splitgraph.exceptions import UnsupportedSQLException
+from splitgraph.exceptions import UnsupportedSQLError
 
 
 def _validate_range_var(node):
     if "schemaname" in node.attribute_names:
-        raise UnsupportedSQLException("Table names must not be schema-qualified!")
+        raise UnsupportedSQLError("Table names must not be schema-qualified!")
 
 
 # Whitelist of permitted AST nodes. When crawling the parse tree, a node not in this list fails validation. If a node
@@ -66,7 +66,7 @@ def _validate_node(node, permitted_nodes, node_validators):
         message = "Unsupported statement type %s" % node_class
         if isinstance(node["location"], Scalar):
             message += " near character %d" % node["location"].value
-        raise UnsupportedSQLException(message + "!")
+        raise UnsupportedSQLError(message + "!")
 
 
 def validate_splitfile_sql(sql):
@@ -102,9 +102,7 @@ def validate_import_sql(sql):
 
     tree = Node(parse_sql(sql))
     if len(tree) != 1:
-        raise UnsupportedSQLException(
-            "The query is supposed to consist of only one SELECT statement!"
-        )
+        raise UnsupportedSQLError("The query is supposed to consist of only one SELECT statement!")
 
     for node in tree.traverse():
         _validate_node(

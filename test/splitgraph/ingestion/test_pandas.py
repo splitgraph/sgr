@@ -5,8 +5,6 @@ import pandas as pd
 import pytest
 from pandas.compat import StringIO
 from pandas.util.testing import assert_frame_equal
-
-from splitgraph import SplitGraphException
 from splitgraph.ingestion.pandas import df_to_table, sql_to_df
 from test.splitgraph.conftest import load_csv, INGESTION_RESOURCES
 
@@ -131,7 +129,7 @@ def test_pandas_update_different_schema(ingestion_test_repo):
     # Delete the 'timestamp' column
     truncated_df = upd_df_1["timestamp"]
 
-    with pytest.raises(SplitGraphException) as e:
+    with pytest.raises(ValueError) as e:
         df_to_table(truncated_df, ingestion_test_repo, "test_table", if_exists="patch")
         assert "Schema changes are unsupported" in str(e)
 
@@ -139,7 +137,7 @@ def test_pandas_update_different_schema(ingestion_test_repo):
     renamed_df = upd_df_1.copy()
     renamed_df.columns = ["timestamp", "name_rename"]
 
-    with pytest.raises(SplitGraphException) as e:
+    with pytest.raises(ValueError) as e:
         df_to_table(renamed_df, ingestion_test_repo, "test_table", if_exists="patch")
         assert "Schema changes are unsupported" in str(e)
 

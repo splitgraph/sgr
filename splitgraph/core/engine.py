@@ -1,14 +1,13 @@
 """
 Routines for managing Splitgraph engines, including looking up repositories and managing objects.
 """
-import logging
 
 from psycopg2.sql import SQL, Identifier
-
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCHEMA
+from splitgraph.config import CONFIG, SPLITGRAPH_API_SCHEMA
 from splitgraph.engine import get_engine, ResultShape
-from splitgraph.exceptions import SplitGraphException
-from ._common import select, ensure_metadata_schema
+from splitgraph.exceptions import RepositoryNotFoundError
+
+from ._common import select
 
 
 def _parse_paths_overrides(lookup_path, override_path):
@@ -89,7 +88,7 @@ def lookup_repository(name, include_local=False):
             return candidate
         candidate.engine.close()
 
-    raise SplitGraphException("Unknown repository %s!" % name)
+    raise RepositoryNotFoundError("Unknown repository %s!" % name)
 
 
 def get_current_repositories(engine):

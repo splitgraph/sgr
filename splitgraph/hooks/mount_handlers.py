@@ -7,10 +7,9 @@ import logging
 from importlib import import_module
 
 from psycopg2.sql import Identifier, SQL
-
 from splitgraph.config import PG_USER, CONFIG
 from splitgraph.engine import get_engine
-from splitgraph.exceptions import SplitGraphException
+from splitgraph.exceptions import MountHandlerError
 
 _MOUNT_HANDLERS = {}
 
@@ -21,7 +20,7 @@ def get_mount_handler(mount_handler):
     try:
         return _MOUNT_HANDLERS[mount_handler]
     except KeyError:
-        raise SplitGraphException("Mount handler %s not supported!" % mount_handler)
+        raise MountHandlerError("Mount handler %s not supported!" % mount_handler)
 
 
 def get_mount_handlers():
@@ -33,7 +32,7 @@ def register_mount_handler(name, mount_function):
     """Returns a mount function under a given name. See `get_mount_handler` for the mount handler spec."""
     global _MOUNT_HANDLERS
     if name in _MOUNT_HANDLERS:
-        raise SplitGraphException("Cannot register a mount handler %s as it already exists!" % name)
+        raise MountHandlerError("Cannot register a mount handler %s as it already exists!" % name)
     _MOUNT_HANDLERS[name] = mount_function
 
 
@@ -51,7 +50,7 @@ def init_fdw(engine, server_id, wrapper, server_options=None, user_options=None,
     from splitgraph.engine.postgres.engine import PostgresEngine
 
     if not isinstance(engine, PostgresEngine):
-        raise SplitGraphException("Only PostgresEngines support mounting via FDW!")
+        raise MountHandlerError("Only PostgresEngines support mounting via FDW!")
 
     if overwrite:
         engine.run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(server_id)))
@@ -241,11 +240,11 @@ def _register_default_handlers():
             )
             register_mount_handler(handler_name.lower(), handler_func)
         except AttributeError as e:
-            raise SplitGraphException(
+            raise MountHandlerError(
                 "Error loading custom mount handler {0}".format(handler_name)
             ) from e
         except ImportError as e:
-            raise SplitGraphException(
+            raise MountHandlerError(
                 "Error loading custom mount handler {0}".format(handler_name)
             ) from e
 
