@@ -297,7 +297,7 @@ class SQLEngine(ABC):
             queries.append(query)
         return SQL(";").join(queries)
 
-    def create_table(self, schema, table, schema_spec, unlogged=False):
+    def create_table(self, schema, table, schema_spec, unlogged=False, temporary=False):
         """
         Creates a table using a previously-dumped table schema spec
 
@@ -305,15 +305,27 @@ class SQLEngine(ABC):
         :param table: Table name to create
         :param schema_spec: A list of (ordinal_position, column_name, data_type, is_pk) specifying the table schema
         :param unlogged: If True, the table won't be reflected in the WAL or scanned by the analyzer/autovacuum.
+        :param temporary: If True, a temporary table is created (the schema parameter is ignored)
         """
+
+        flavour = ""
+        if unlogged:
+            flavour = "UNLOGGED"
+        if temporary:
+            flavour = "TEMPORARY"
 
         schema_spec = sorted(schema_spec)
 
-        target = SQL("{}.{}").format(Identifier(schema), Identifier(table))
-        query = SQL("CREATE " + ("UNLOGGED" if unlogged else "") + " TABLE {} (").format(
-            target
-        ) + SQL(",".join("{} %s " % ctype for _, _, ctype, _ in schema_spec)).format(
-            *(Identifier(cname) for _, cname, _, _ in schema_spec)
+        if temporary:
+            target = Identifier(table)
+        else:
+            target = SQL("{}.{}").format(Identifier(schema), Identifier(table))
+        query = (
+            SQL("CREATE " + flavour + " TABLE ")
+            + target
+            + SQL(" (" + ",".join("{} %s " % ctype for _, _, ctype, _ in schema_spec)).format(
+                *(Identifier(cname) for _, cname, _, _ in schema_spec)
+            )
         )
 
         pk_cols = [cname for _, cname, _, is_pk in schema_spec if is_pk]
@@ -471,7 +483,13 @@ class ObjectEngine:
         raise NotImplementedError()
 
     def apply_fragments(
-        self, objects, target_schema, target_table, extra_quals=None, extra_qual_args=None
+        self,
+        objects,
+        target_schema,
+        target_table,
+        extra_quals=None,
+        extra_qual_args=None,
+        schema_spec=None,
     ):
         """
         Apply multiple fragments to a target table as a single-query batch operation.
@@ -482,6 +500,8 @@ class ObjectEngine:
         :param extra_quals: Optional, extra SQL (Composable) clauses to filter new rows in the fragment on
             (e.g. SQL("a = %s"))
         :param extra_qual_args: Optional, a tuple of arguments to use with `extra_quals`
+        :param schema_spec: Optional, list of (ordinal, column_name, column_type, is_pk).
+            If not specified, uses the schema of target_table.
         """
         raise NotImplementedError()
 

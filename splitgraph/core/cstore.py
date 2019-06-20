@@ -4,18 +4,15 @@ import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
 
-import urllib3
-from minio import Minio
-from minio.error import MinioError
+from psycopg2.errors import DatabaseError
 from psycopg2.sql import Identifier, SQL
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
-from splitgraph.engine import get_engine
+from splitgraph.engine import get_engine, ResultShape
 from splitgraph.hooks.s3 import (
     S3_ACCESS_KEY,
     S3_HOST,
     S3_PORT,
-    _ensure_bucket,
     S3_SECRET_KEY,
     S3ExternalObjectHandler,
 )
@@ -27,10 +24,13 @@ def mount_object(engine, object_name, schema=SPLITGRAPH_META_SCHEMA, table=None,
     table = table or object_name
 
     if not schema_spec:
-        with open(
-            os.path.join(engine.conn_params["SG_ENGINE_OBJECT_PATH"], object_name + ".schema")
-        ) as f:
-            schema_spec = json.load(f)
+        schema_spec = json.loads(
+            engine.run_sql(
+                "SELECT splitgraph_get_object_schema(%s)",
+                (object_name,),
+                return_shape=ResultShape.ONE_ONE,
+            )
+        )
 
     query = SQL("CREATE FOREIGN TABLE {}.{} (").format(Identifier(schema), Identifier(table))
     query += SQL(",".join("{} %s " % ctype for _, _, ctype, _ in schema_spec)).format(
@@ -72,19 +72,10 @@ def store_object(engine, source_schema, source_table, object_name):
     )
 
     # Also store the table schema in a file
-    with open(
-        os.path.join(engine.conn_params["SG_ENGINE_OBJECT_PATH"], object_name + ".schema"), "w"
-    ) as f:
-        json.dump(schema_spec, f)
-
+    engine.run_sql(
+        "SELECT splitgraph_set_object_schema(%s, %s)", (object_name, json.dumps(schema_spec))
+    )
     engine.delete_table(source_schema, source_table)
-
-
-def _remove(path):
-    try:
-        os.remove(path)
-    except FileNotFoundError:
-        pass
 
 
 def delete_objects(engine, object_ids):
@@ -95,12 +86,7 @@ def delete_objects(engine, object_ids):
         for object_id in object_ids
     )
     engine.run_sql(unmount_query)
-
-    for object_id in object_ids:
-        object_path = os.path.join(engine.conn_params["SG_ENGINE_OBJECT_PATH"], object_id)
-        _remove(object_path)
-        _remove(object_path + ".footer")
-        _remove(object_path + ".schema")
+    engine.run_sql_batch("SELECT splitgraph_delete_object_files(%s)", [(o,) for o in object_ids])
 
 
 # Downloading/uploading objects to/from S3.
@@ -123,23 +109,14 @@ class CStoreS3ExternalObjectHandler(S3ExternalObjectHandler):
         worker_threads = self.params.get("threads", int(CONFIG["SG_ENGINE_POOL"]) - 1)
 
         logging.info("Uploading %d object(s) to %s/%s", len(objects), endpoint, bucket)
-        client = Minio(
-            endpoint,
-            access_key=access_key,
-            secret_key=self.params.get("secret_key", S3_SECRET_KEY),
-            secure=False,
-        )
-        _ensure_bucket(client, bucket)
         engine = get_engine()
 
         def _do_upload(object_id):
-            object_path = os.path.join(engine.conn_params["SG_ENGINE_OBJECT_PATH"], object_id)
-
-            client.fput_object(bucket, object_id, object_path)
-            client.fput_object(bucket, object_id + ".footer", object_path + ".footer")
-            client.fput_object(bucket, object_id + ".schema", object_path + ".schema")
-
-            return "%s/%s/%s" % (endpoint, bucket, object_id)
+            return engine.run_sql(
+                "SELECT splitgraph_upload_object(%s, %s, %s, %s)",
+                (object_id, endpoint, access_key, self.params.get("secret_key", S3_SECRET_KEY)),
+                return_shape=ResultShape.ONE_ONE,
+            )
 
         with ThreadPoolExecutor(max_workers=worker_threads) as tpe:
             urls = tpe.map(_do_upload, objects)
@@ -162,23 +139,18 @@ class CStoreS3ExternalObjectHandler(S3ExternalObjectHandler):
 
         def _do_download(obj_id_url):
             object_id, object_url = obj_id_url
-            endpoint, bucket, remote_object = object_url.split("/")
-            client = Minio(endpoint, access_key=access_key, secret_key=secret_key, secure=False)
             logging.info("%s -> %s", object_url, object_id)
-            object_path = os.path.join(engine.conn_params["SG_ENGINE_OBJECT_PATH"], object_id)
 
             try:
-                client.fget_object(bucket, remote_object, object_path)
-                client.fget_object(bucket, remote_object + ".footer", object_path + ".footer")
-                client.fget_object(bucket, remote_object + ".schema", object_path + ".schema")
-            except MinioError:
+                engine.run_sql(
+                    "SELECT splitgraph_download_object(%s, %s, %s, %s)",
+                    (object_id, object_url, access_key, secret_key),
+                )
+            except DatabaseError:
                 logging.exception("Error downloading object %s", object_id)
                 return
-            except urllib3.exceptions.RequestError:
-                # Some connection errors aren't caught by MinioError
-                logging.exception("URLLib error downloading object %s", object_id)
-                return
             mount_object(engine, object_id)
+            engine.commit()
 
         with ThreadPoolExecutor(max_workers=worker_threads) as tpe:
             # Evaluate the results so that exceptions thrown by the downloader get raised

@@ -17,6 +17,7 @@ from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
+from splitgraph.core import cstore
 from splitgraph.core._common import select, ensure_metadata_schema, META_TABLES
 from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
 from splitgraph.exceptions import UninitializedEngineError, ObjectNotFoundError, ObjectCacheError
@@ -25,6 +26,7 @@ from splitgraph.hooks.mount_handlers import mount_postgres
 _AUDIT_SCHEMA = "audit"
 _AUDIT_TRIGGER = "resources/audit_trigger.sql"
 _PUSH_PULL = "resources/push_pull.sql"
+_CSTORE = "resources/cstore.sql"
 _PACKAGE = "splitgraph"
 ROW_TRIGGER_NAME = "audit_trigger_row"
 STM_TRIGGER_NAME = "audit_trigger_stm"
@@ -271,6 +273,10 @@ class PsycopgEngine(SQLEngine):
         push_pull = get_data(_PACKAGE, _PUSH_PULL)
         self.run_sql(push_pull.decode("utf-8"), return_shape=ResultShape.NONE)
 
+        logging.info("Installing CStore management functions...")
+        cstore = get_data(_PACKAGE, _CSTORE)
+        self.run_sql(cstore.decode("utf-8"), return_shape=ResultShape.NONE)
+
         if skip_audit:
             logging.info("Skipping installation of the audit trigger as specified.")
         else:
@@ -509,22 +515,21 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             args = [p for pk in deleted for p in [False] + list(pk)]
             self.run_sql(query, args)
 
-    def _prepare_ri_data(self, schema, table):
-        ri_cols, _ = zip(*self.get_change_key(schema, table))
-        ri_cols = tuple(r for r in ri_cols if r != SG_UD_FLAG)
-        non_ri_cols_types = [
-            c
-            for c in self.get_column_names_types(schema, table)
-            if c[0] not in ri_cols and c[0] != SG_UD_FLAG
-        ]
-        non_ri_cols, non_ri_types = zip(*non_ri_cols_types) if non_ri_cols_types else ((), ())
-        return ri_cols, non_ri_cols, non_ri_types
+    @staticmethod
+    def _schema_spec_to_cols(schema_spec):
+        pk_cols = [p[1] for p in schema_spec if p[3]]
+        non_pk_cols = [p[1] for p in schema_spec if not p[3]]
+
+        if not pk_cols:
+            return pk_cols + non_pk_cols, []
+        else:
+            return pk_cols, non_pk_cols
 
     @staticmethod
     def _generate_fragment_application(
-        source_schema, source_table, target_schema, target_table, ri_data, extra_quals=None
+        source_schema, source_table, target_schema, target_table, cols, extra_quals=None
     ):
-        ri_cols, non_ri_cols, _ = ri_data
+        ri_cols, non_ri_cols = cols
         all_cols = ri_cols + non_ri_cols
 
         # First, delete all PKs from staging that are mentioned in the new fragment. This conveniently
@@ -568,16 +573,23 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         return query
 
     def apply_fragments(
-        self, objects, target_schema, target_table, extra_quals=None, extra_qual_args=None
+        self,
+        objects,
+        target_schema,
+        target_table,
+        extra_quals=None,
+        extra_qual_args=None,
+        schema_spec=None,
     ):
         if not objects:
             return
+        schema_spec = schema_spec or self.get_full_table_schema(target_schema, target_table)
         # Assume that the target table already has the required schema (including PKs)
         # and use that to generate queries to apply fragments.
-        ri_data = self._prepare_ri_data(target_schema, target_table)
+        cols = self._schema_spec_to_cols(schema_spec)
         query = SQL(";").join(
             self._generate_fragment_application(
-                ss, st, target_schema, target_table, ri_data, extra_quals
+                ss, st, target_schema, target_table, cols, extra_quals
             )
             for ss, st in objects
         )
@@ -634,24 +646,22 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                 "Remote engine isn't a Postgres engine, object uploading is unsupported for now!"
             )
 
-        # Since we can't get remote to mount us, we instead use normal SQL statements
-        # to create new tables remotely, then mount them and write into them from our side.
-        # Is there seriously no better way to do this?
-        # This also includes applying our table's FK constraints.
-        create = self.dump_table_creation(
-            schema=SPLITGRAPH_META_SCHEMA, tables=objects, created_schema=SPLITGRAPH_META_SCHEMA
-        )
-        remote_engine.run_sql(create, return_shape=ResultShape.NONE)
-        # Have to commit the remote connection here since otherwise we won't see the new tables in the
-        # mounted remote.
-        remote_engine.commit()
-        with self._mount_remote_engine(remote_engine) as remote_schema:
-            for i, obj in enumerate(objects):
-                print("(%d/%d) %s..." % (i + 1, len(objects), obj))
-                self.copy_table(
-                    SPLITGRAPH_META_SCHEMA, obj, remote_schema, obj, with_pk_constraints=False
-                )
-            self.connection.commit()
+        raise NotImplementedError("actually we're not uploading anything right now")
+
+        # by the way, this is completely silly and is only intended to get the local
+        # 2-engine setup working: in the real world, we won't have access to the remote
+        # engine's storage -- perhaps we should drop direct uploading altogether and
+        # require people to use S3 throughout.
+        # import pdb; pdb.set_trace()
+        # for i, obj in enumerate(objects):
+        #     print("(%d/%d) %s..." % (i + 1, len(objects), obj))
+        #     src = os.path.join(self.conn_params['SG_ENGINE_OBJECT_PATH'], obj)
+        #     dst = os.path.join(remote_engine.conn_params['SG_ENGINE_OBJECT_PATH'], obj)
+        #     shutil.copyfile(src, dst)
+        #     shutil.copyfile(src + ".footer", dst + ".footer")
+        #     shutil.copyfile(src + ".schema", dst + ".schema")
+        #
+        #     cstore.mount_object(remote_engine, obj)
 
     @contextmanager
     def _mount_remote_engine(self, remote_engine):
@@ -700,21 +710,13 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                 if not self.table_exists(remote_schema, obj):
                     logging.error("%s not found on the remote engine!", obj)
                     continue
-                # Foreign tables don't have PK constraints so we'll have to apply them manually.
+
+                # Create the CStore table on the engine and copy the contents of the object into it.
+                schema_spec = remote_engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, obj)
+                cstore.mount_object(self, obj, schema_spec=schema_spec)
                 self.copy_table(
                     remote_schema, obj, SPLITGRAPH_META_SCHEMA, obj, with_pk_constraints=False
                 )
-                # Get the PKs from the remote and apply them
-                source_pks = remote_engine.get_primary_keys(SPLITGRAPH_META_SCHEMA, obj)
-                if source_pks:
-                    self.run_sql(
-                        SQL("ALTER TABLE {}.{} ADD PRIMARY KEY (").format(
-                            Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj)
-                        )
-                        + SQL(",").join(SQL("{}").format(Identifier(c)) for c, _ in source_pks)
-                        + SQL(")"),
-                        return_shape=ResultShape.NONE,
-                    )
                 self.connection.commit()
                 downloaded_objects.append(obj)
             return downloaded_objects

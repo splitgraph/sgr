@@ -89,7 +89,7 @@ class Table:
                 )
 
             # Accumulate the query result in a temporary table.
-            staging_table = self._create_staging_table(required_objects[0])
+            staging_table = self._create_staging_table()
 
             # Apply the fragments (just the parts that match the qualifiers) to the staging area
             engine = self.repository.object_engine
@@ -100,36 +100,24 @@ class Table:
                     staging_table,
                     extra_quals=sql_quals,
                     extra_qual_args=sql_qual_vals,
+                    schema_spec=self.table_schema,
                 )
             else:
                 engine.apply_fragments(
                     [(SPLITGRAPH_META_SCHEMA, o) for o in required_objects],
                     "pg_temp",
                     staging_table,
+                    schema_spec=self.table_schema,
                 )
         return self._run_select_from_staging("pg_temp", staging_table, columns, drop_table=True)
 
-    def _create_staging_table(self, snap):
+    def _create_staging_table(self):
         staging_table = get_random_object_id()
-        engine = self.repository.object_engine
 
         logging.info("Using staging table %s", staging_table)
-        engine.run_sql(
-            SQL(
-                "CREATE TEMPORARY TABLE {1} " "AS SELECT * FROM {0}.{2} LIMIT 1 WITH NO DATA"
-            ).format(
-                Identifier(SPLITGRAPH_META_SCHEMA), Identifier(staging_table), Identifier(snap)
-            )
+        self.repository.object_engine.create_table(
+            schema=None, table=staging_table, schema_spec=self.table_schema, temporary=True
         )
-        pks = engine.get_primary_keys(SPLITGRAPH_META_SCHEMA, snap)
-        if pks:
-            engine.run_sql(
-                SQL("ALTER TABLE {}.{} ADD PRIMARY KEY (").format(
-                    Identifier("pg_temp"), Identifier(staging_table)
-                )
-                + SQL(",").join(SQL("{}").format(Identifier(c)) for c, _ in pks)
-                + SQL(")")
-            )
         return staging_table
 
     def _run_select_from_staging(
