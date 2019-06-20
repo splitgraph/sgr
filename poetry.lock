@@ -311,7 +311,7 @@ version = "1.3.3"
 category = "main"
 description = "NumPy is the fundamental package for array computing with Python."
 name = "numpy"
-optional = true
+optional = false
 python-versions = ">=2.7,!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*"
 version = "1.16.4"
 
@@ -331,7 +331,7 @@ six = "*"
 category = "main"
 description = "Powerful data structures for data analysis, time series, and statistics"
 name = "pandas"
-optional = true
+optional = false
 python-versions = ">=2.7,!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*"
 version = "0.24.2"
 
@@ -584,7 +584,7 @@ description = "Python documentation generator"
 name = "sphinx"
 optional = false
 python-versions = ">=3.5"
-version = "2.1.1"
+version = "2.1.2"
 
 [package.dependencies]
 Jinja2 = ">=2.3"
@@ -668,7 +668,7 @@ version = "1.1.3"
 category = "main"
 description = "Database Abstraction Library"
 name = "sqlalchemy"
-optional = true
+optional = false
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 version = "1.3.4"
 
@@ -733,7 +733,7 @@ version = "0.5.1"
 ingestion = ["pandas", "sqlalchemy"]
 
 [metadata]
-content-hash = "4047828cb037883875594846b577541cbceb5a6dc6b91c20d94f17ad612c9468"
+content-hash = "7834d6578c712a5ce627ac37ef62502aadf93a73e3146cf2d238271b74ec56e5"
 python-versions = "^3.6"
 
 [metadata.hashes]
@@ -794,7 +794,7 @@ pyyaml = ["57acc1d8533cbe51f6662a55434f0dbecfa2b9eaf115bede8f6fd00115a0c0d3", "5
 requests = ["11e007a8a2aa0323f5a921e9e6a2d7e4e67d9877e85773fba9ba6419025cbeb4", "9cf5292fcd0f598c671cfc1e0d7d1a7f13bb8085e9a590f48c010551dc6c4b31"]
 six = ["3350809f0555b11f552448330d0b52d5f24c91a322ea4a15ef22629740f3761c", "d16a0141ec1a18405cd4ce8b4613101da75da0e9a7aec5bdd4fa804d0e0eba73"]
 snowballstemmer = ["919f26a68b2c17a7634da993d91339e288964f93c274f1343e3bbbe2096e1128", "9f3bcd3c401c3e862ec0ebe6d2c069ebc012ce142cce209c098ccb5b09136e89"]
-sphinx = ["15143166e786c7faa76fa990d3b6b38ebffe081ef81cffd1d656b07f3b28a1fa", "5fd62ba64235d77a81554d47ff6b17578171b6dbbc992221e9ebc684898fff59"]
+sphinx = ["22538e1bbe62b407cf5a8aabe1bb15848aa66bb79559f42f5202bbce6b757a69", "f9a79e746b87921cabc3baa375199c6076d1270cee53915dbd24fdbeaaacc427"]
 sphinx-rtd-theme = ["00cf895504a7895ee433807c62094cf1e95f065843bf3acd17037c3e9a2becd4", "728607e34d60456d736cc7991fd236afb828b21b82f956c5ea75f94c8414040a"]
 sphinxcontrib-applehelp = ["edaa0ab2b2bc74403149cb0209d6775c96de797dfd5b5e2a71981309efab3897", "fb8dee85af95e5c30c91f10e7eb3c8967308518e0f7488a2828ef7bc191d0d5d"]
 sphinxcontrib-devhelp = ["6c64b077937330a9128a4da74586e8c2130262f014689b4b89e2d08ee7294a34", "9512ecb00a2b0821a146736b39f7aeb90759834b07e81e8cc23a9c70bacb9981"]
