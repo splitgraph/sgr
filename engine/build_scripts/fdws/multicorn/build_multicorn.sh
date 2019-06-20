@@ -8,5 +8,5 @@ git checkout 99ea772c4adf801d4178eb3854036d52bbce0aaa
 # Not merged because of some issues with regression tests?
 git cherry-pick e85bdec8009778302d632ad4cb0349858d16436e
 
-PYTHON_OVERRIDE=python3 make install
+PYTHON_OVERRIDE=python3.6 make install
 
