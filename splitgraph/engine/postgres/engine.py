@@ -6,6 +6,7 @@ import json
 import logging
 import time
 from contextlib import contextmanager
+from io import BytesIO
 from pkgutil import get_data
 from threading import get_ident
 
@@ -646,22 +647,39 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                 "Remote engine isn't a Postgres engine, object uploading is unsupported for now!"
             )
 
-        raise NotImplementedError("actually we're not uploading anything right now")
-
-        # by the way, this is completely silly and is only intended to get the local
-        # 2-engine setup working: in the real world, we won't have access to the remote
-        # engine's storage -- perhaps we should drop direct uploading altogether and
-        # require people to use S3 throughout.
-        # import pdb; pdb.set_trace()
-        # for i, obj in enumerate(objects):
-        #     print("(%d/%d) %s..." % (i + 1, len(objects), obj))
-        #     src = os.path.join(self.conn_params['SG_ENGINE_OBJECT_PATH'], obj)
-        #     dst = os.path.join(remote_engine.conn_params['SG_ENGINE_OBJECT_PATH'], obj)
-        #     shutil.copyfile(src, dst)
-        #     shutil.copyfile(src + ".footer", dst + ".footer")
-        #     shutil.copyfile(src + ".schema", dst + ".schema")
+        # We don't have direct access to the remote engine's storage and we also
+        # can't use the old method of first creating a CStore table remotely and then
+        # mounting it via FDW (because this is done on two separate connections, after
+        # the table is created and committed on the first one, it can't be written into.
         #
-        #     cstore.mount_object(remote_engine, obj)
+        # So we have to do a slower method of dumping the table into binary
+        # and then piping that binary into the remote engine.
+        #
+        # Perhaps we should drop direct uploading altogether and require people to use S3 throughout.
+
+        for i, obj in enumerate(objects):
+            print("(%d/%d) %s..." % (i + 1, len(objects), obj))
+            schema_spec = cstore.get_object_schema(self, obj)
+            cstore.mount_object(remote_engine, obj, schema_spec=schema_spec)
+
+            stream = BytesIO()
+            with self.connection.cursor() as cur:
+                cur.copy_expert(
+                    SQL("COPY {}.{} TO STDOUT WITH (FORMAT 'binary')").format(
+                        Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj)
+                    ),
+                    stream,
+                )
+            stream.seek(0)
+            with remote_engine.connection.cursor() as cur:
+                cur.copy_expert(
+                    SQL("COPY {}.{} FROM STDIN WITH (FORMAT 'binary')").format(
+                        Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj)
+                    ),
+                    stream,
+                )
+            cstore.set_object_schema(remote_engine, obj, schema_spec)
+            remote_engine.commit()
 
     @contextmanager
     def _mount_remote_engine(self, remote_engine):

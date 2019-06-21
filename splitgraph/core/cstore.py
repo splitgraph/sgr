@@ -20,17 +20,30 @@ from splitgraph.hooks.s3 import (
 CSTORE_SERVER = "cstore_server"
 
 
-def mount_object(engine, object_name, schema=SPLITGRAPH_META_SCHEMA, table=None, schema_spec=None):
-    table = table or object_name
-
-    if not schema_spec:
-        schema_spec = json.loads(
+def get_object_schema(engine, object_name):
+    return [
+        tuple(t)
+        for t in json.loads(
             engine.run_sql(
                 "SELECT splitgraph_get_object_schema(%s)",
                 (object_name,),
                 return_shape=ResultShape.ONE_ONE,
             )
         )
+    ]
+
+
+def set_object_schema(engine, object_name, schema_spec):
+    engine.run_sql(
+        "SELECT splitgraph_set_object_schema(%s, %s)", (object_name, json.dumps(schema_spec))
+    )
+
+
+def mount_object(engine, object_name, schema=SPLITGRAPH_META_SCHEMA, table=None, schema_spec=None):
+    table = table or object_name
+
+    if not schema_spec:
+        schema_spec = get_object_schema(engine, object_name)
 
     query = SQL("CREATE FOREIGN TABLE {}.{} (").format(Identifier(schema), Identifier(table))
     query += SQL(",".join("{} %s " % ctype for _, _, ctype, _ in schema_spec)).format(
@@ -72,9 +85,7 @@ def store_object(engine, source_schema, source_table, object_name):
     )
 
     # Also store the table schema in a file
-    engine.run_sql(
-        "SELECT splitgraph_set_object_schema(%s, %s)", (object_name, json.dumps(schema_spec))
-    )
+    set_object_schema(engine, object_name, schema_spec)
     engine.delete_table(source_schema, source_table)
 
 

@@ -108,8 +108,8 @@ class ObjectManager(FragmentManager, MetadataManager):
         return int(
             self.object_engine.run_sql(
                 SQL(
-                    "SELECT COALESCE(sum(pg_relation_size("
-                    "quote_ident(p.schemaname) || '.' || quote_ident(p.tablename))), 0)"
+                    "SELECT COALESCE(sum(pg_relation_size(quote_ident(p.schemaname) "
+                    "|| '.' || quote_ident(p.tablename))), 0)"
                     " FROM pg_tables p WHERE p.schemaname = %s AND p.tablename NOT IN ("
                     + ",".join(itertools.repeat("%s", len(META_TABLES)))
                     + ")"
@@ -118,6 +118,28 @@ class ObjectManager(FragmentManager, MetadataManager):
                 return_shape=ResultShape.ONE_ONE,
             )
         )
+
+    def dump_all_object_sizes(self):
+        all_objects = self.get_downloaded_objects()
+        flavours = ["main", "vm", "fsm", "init"]
+        result = "\n"
+        for object in all_objects:
+            sizes = self.object_engine.run_sql(
+                SQL(
+                    "SELECT "
+                    + ",".join(
+                        "pg_relation_size('{0}.{1}', '%s')" % flavour for flavour in flavours
+                    )
+                    + ", pg_indexes_size('{0}.{1}')"
+                ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object)),
+                return_shape=ResultShape.ONE_MANY,
+            )
+
+            result += "%s:" % object
+            for flavour, size in zip(flavours, sizes):
+                result += "  - %s: %s" % (flavour, pretty_size(size))
+            result += "  indexes: %s\n" % pretty_size(sizes[-1])
+        return result
 
     @contextmanager
     def ensure_objects(self, table, quals=None):
@@ -508,10 +530,7 @@ class ObjectManager(FragmentManager, MetadataManager):
 
         # Also delete objects that don't have a metadata entry at all
         orphaned_objects = [o[0] for o in candidates if o[0] not in object_sizes]
-        orphaned_object_sizes = {
-            o: self.object_engine.get_table_size(SPLITGRAPH_META_SCHEMA, o)
-            for o in orphaned_objects
-        }
+        orphaned_object_sizes = {o: self.get_object_size(self, o) for o in orphaned_objects}
         if orphaned_objects:
             logging.info(
                 "Found %d orphaned object(s), total size %s: %s",

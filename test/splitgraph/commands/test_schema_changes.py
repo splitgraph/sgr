@@ -1,6 +1,5 @@
 import pytest
 
-from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.engine.postgres.engine import SG_UD_FLAG
 
 TEST_CASES = [
@@ -60,11 +59,9 @@ def test_schema_changes(pg_repo_local, test_case):
     assert (
         pg_repo_local.objects.get_object_meta([new_snap])[new_snap].parent_id is None
     )  # no parent
-    assert pg_repo_local.engine.get_full_table_schema(
-        SPLITGRAPH_META_SCHEMA, new_snap
-    ) == _reassign_ordinals(expected_new_schema) + [
-        (len(expected_new_schema) + 1, SG_UD_FLAG, "boolean", False)
-    ]
+    assert pg_repo_local.objects.get_object_schema(new_snap) == _reassign_ordinals(
+        expected_new_schema
+    ) + [(len(expected_new_schema) + 1, SG_UD_FLAG, "boolean", False)]
 
     head.checkout()
     assert (

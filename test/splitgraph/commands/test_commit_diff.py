@@ -679,7 +679,7 @@ def test_various_types(local_engine_empty):
         "e": ["-1.230", "3.540"],
         "f": [9.8811, 876.563],
         "g": [0.23, 1.23],
-        "h": ["abcd      ", "test      "],
+        "h": ["abcd", "test"],
         "i": ["0testtesttesttes", "testtesttesttest"],
         "j": ["0testtesttesttesttesttesttes", "testtesttesttesttesttesttest"],
         "l": ["2013-11-02T17:30:52", "2016-01-01T01:01:05"],

@@ -99,3 +99,16 @@ $BODY$
 $BODY$
 LANGUAGE plpython3u VOLATILE;
 
+
+CREATE OR REPLACE FUNCTION splitgraph_get_object_size(object_id varchar) RETURNS int AS
+$BODY$
+    import os.path
+
+    SG_ENGINE_OBJECT_PATH = "/var/lib/splitgraph/objects"
+
+    object_path = os.path.join(SG_ENGINE_OBJECT_PATH, object_id)
+    return os.path.getsize(object_path) + \
+        os.path.getsize(object_path + ".footer") + \
+        os.path.getsize(object_path + ".schema")
+$BODY$
+LANGUAGE plpython3u VOLATILE;

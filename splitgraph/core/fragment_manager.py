@@ -233,7 +233,7 @@ class FragmentManager(MetadataManager):
             are used to generate the min/max index for an object to know if it removes/updates some rows
             that might be pertinent to a query.
         """
-        object_size = self.object_engine.get_table_size(SPLITGRAPH_META_SCHEMA, object_id)
+        object_size = self.get_object_size(object_id)
         object_index = self._generate_object_index(object_id, changeset)
         self.register_objects(
             [
@@ -487,6 +487,14 @@ class FragmentManager(MetadataManager):
                 old_table.repository,
                 [(image_hash, old_table.table_name, old_table.table_schema, old_table.objects)],
             )
+
+    def get_object_size(self, object_id):
+        return self.object_engine.run_sql(
+            "SELECT splitgraph_get_object_size(%s)", (object_id,), return_shape=ResultShape.ONE_ONE
+        )
+
+    def get_object_schema(self, object_id):
+        return cstore.get_object_schema(self.object_engine, object_id)
 
     def _extract_min_max_pks(self, fragments, table_pks):
         # Get the min/max PK values for every chunk
