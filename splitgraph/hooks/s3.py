@@ -2,15 +2,14 @@
 Plugin for uploading Splitgraph objects from the cache to an external S3-like object store
 """
 import logging
-import tempfile
 from concurrent.futures import ThreadPoolExecutor
 
-import urllib3
-from minio import Minio
-from minio.error import BucketAlreadyOwnedByYou, BucketAlreadyExists, MinioError
+from minio.error import BucketAlreadyOwnedByYou, BucketAlreadyExists
+from psycopg2 import DatabaseError
 
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
-from splitgraph.engine import get_engine
+from splitgraph.config import CONFIG
+from splitgraph.core import cstore
+from splitgraph.engine import get_engine, ResultShape
 from splitgraph.hooks.external_objects import ExternalObjectHandler
 
 S3_HOST = CONFIG["SG_S3_HOST"]
@@ -27,6 +26,12 @@ def _ensure_bucket(client, bucket):
         pass
     except BucketAlreadyExists:
         pass
+
+
+# Downloading/uploading objects to/from S3.
+# In the beginning, let's say that we just mount all objects as soon as they are downloaded -- otherwise
+# we introduce another distinction between objects that are mounted in splitgraph_meta and objects that
+# just exist on a hard drive somewhere.
 
 
 class S3ExternalObjectHandler(ExternalObjectHandler):
@@ -52,35 +57,22 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
         """
         access_key = self.params.get("access_key", S3_ACCESS_KEY)
         endpoint = "%s:%s" % (self.params.get("host", S3_HOST), self.params.get("port", S3_PORT))
+        # NB bucket isn't actually used -- we use access key in the engine-side stored proc
         bucket = self.params.get("bucket", access_key)
         worker_threads = self.params.get("threads", int(CONFIG["SG_ENGINE_POOL"]) - 1)
 
         logging.info("Uploading %d object(s) to %s/%s", len(objects), endpoint, bucket)
-        client = Minio(
-            endpoint,
-            access_key=access_key,
-            secret_key=self.params.get("secret_key", S3_SECRET_KEY),
-            secure=False,
-        )
-        _ensure_bucket(client, bucket)
+        engine = get_engine()
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        def _do_upload(object_id):
+            return engine.run_sql(
+                "SELECT splitgraph_upload_object(%s, %s, %s, %s)",
+                (object_id, endpoint, access_key, self.params.get("secret_key", S3_SECRET_KEY)),
+                return_shape=ResultShape.ONE_ONE,
+            )
 
-            def _do_upload(object_id):
-                # First cut: dump the object to file and then upload it using Minio
-                # We can't seem to currently be able to pipe the object directly, since the S3 API
-                # required content-length to be sent before the actual object gets uploaded
-                # and we don't know its size in advance.
-                tmp_path = tmpdir + "/" + object_id
-
-                with open(tmp_path, "wb") as file:
-                    get_engine().dump_object(SPLITGRAPH_META_SCHEMA, object_id, file)
-                client.fput_object(bucket, object_id, tmp_path)
-
-                return "%s/%s/%s" % (endpoint, bucket, object_id)
-
-            with ThreadPoolExecutor(max_workers=worker_threads) as tpe:
-                urls = tpe.map(_do_upload, objects)
+        with ThreadPoolExecutor(max_workers=worker_threads) as tpe:
+            urls = tpe.map(_do_upload, objects)
 
         return urls
 
@@ -96,23 +88,22 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
         # By default, take up the whole connection pool with downloaders (less one connection for the main
         # thread that handles metadata)
         worker_threads = self.params.get("threads", int(CONFIG["SG_ENGINE_POOL"]) - 1)
+        engine = get_engine()
 
         def _do_download(obj_id_url):
             object_id, object_url = obj_id_url
-            endpoint, bucket, remote_object = object_url.split("/")
-            client = Minio(endpoint, access_key=access_key, secret_key=secret_key, secure=False)
             logging.info("%s -> %s", object_url, object_id)
+
             try:
-                object_response = client.get_object(bucket, remote_object)
-            except MinioError:
+                engine.run_sql(
+                    "SELECT splitgraph_download_object(%s, %s, %s, %s)",
+                    (object_id, object_url, access_key, secret_key),
+                )
+            except DatabaseError:
                 logging.exception("Error downloading object %s", object_id)
                 return
-            except urllib3.exceptions.RequestError:
-                # Some connection errors aren't caught by MinioError
-                logging.exception("URLLib error downloading object %s", object_id)
-                return
-            engine = get_engine()
-            engine.load_object(SPLITGRAPH_META_SCHEMA, object_id, object_response)
+            cstore.mount_object(engine, object_id)
+            engine.commit()
 
         with ThreadPoolExecutor(max_workers=worker_threads) as tpe:
             # Evaluate the results so that exceptions thrown by the downloader get raised
