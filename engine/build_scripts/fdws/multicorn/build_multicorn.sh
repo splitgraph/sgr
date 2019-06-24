@@ -14,4 +14,9 @@ git cherry-pick e85bdec8009778302d632ad4cb0349858d16436e
 # thus plpy doesn't get imported which breaks plpython functions (???)
 git cherry-pick 485c5c6c0dae58b5c6dd093809d83f09fc56f8d4
 
+# Apply our patch to this patch that schema-qualifies the call to check_plpython3u
+# since in some contexts (like executing Splitfiles) we change the search_path
+# to be just the schema an image is checked out into.
+git apply /build_scripts/fdws/multicorn/schema_qualify_check.patch
+
 PYTHON_OVERRIDE=python3 make install
