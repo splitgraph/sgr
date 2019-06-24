@@ -51,4 +51,6 @@ def test_s3_push_pull(local_engine_empty, pg_repo_remote, clean_minio):
     right.checkout()
     assert len(PG_MNT.objects.get_downloaded_objects()) == 4
     # Only now we actually have all the objects materialized.
-    assert PG_MNT.objects.get_downloaded_objects() == PG_MNT.objects.get_all_objects()
+    assert sorted(PG_MNT.objects.get_downloaded_objects()) == sorted(
+        PG_MNT.objects.get_all_objects()
+    )

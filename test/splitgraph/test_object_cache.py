@@ -9,7 +9,12 @@ from splitgraph.core.fragment_manager import _quals_to_clause
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import ObjectCacheError
 from test.splitgraph.commands.test_layered_querying import prepare_lq_repo
-from test.splitgraph.conftest import OUTPUT, _cleanup_minio, MIN_OBJECT_SIZE
+from test.splitgraph.conftest import (
+    OUTPUT,
+    _cleanup_minio,
+    SMALL_OBJECT_SIZE,
+    _assert_cache_occupancy,
+)
 
 
 def _get_refcount(object_manager, object_id):
@@ -76,12 +81,8 @@ def test_object_cache_loading(local_engine_empty, pg_repo_remote):
     fruit_snap = fruits_v2.objects[0]
 
     object_meta = object_manager.get_object_meta([fruit_diff, fruit_snap])
-    # Reported by Postgres itself and stored by the engine in object_tree. Might really backfire on us on different
-    # Postgres versions.
     assert object_meta[fruit_diff].parent_id == fruit_snap
-    assert object_meta[fruit_diff].size == MIN_OBJECT_SIZE
     assert object_meta[fruit_snap].parent_id is None
-    assert object_meta[fruit_snap].size == MIN_OBJECT_SIZE
 
     # Resolve and download the old version: only one fragment should be downloaded.
     with object_manager.ensure_objects(fruits_v2) as required_objects:
@@ -156,22 +157,19 @@ def test_object_cache_eviction(local_engine_empty, pg_repo_remote):
     fruit_diff = fruits_v3.objects[0]
     fruit_snap = fruits_v2.objects[0]
 
-    # Check another test object has the same size
-    assert (
-        object_manager.get_object_meta([vegetables_snap])[vegetables_snap].size == MIN_OBJECT_SIZE
-    )
-
     # Load the fruits objects into the cache
     with object_manager.ensure_objects(fruits_v3):
-        assert object_manager.get_cache_occupancy() == MIN_OBJECT_SIZE * 2
+        assert len(object_manager.get_downloaded_objects()) == 2
+        _assert_cache_occupancy(object_manager, 2)
 
     # Pretend that the cache has no space and try getting a different table
-    # Free space is now 0, so we need to run eviction.
-    object_manager.cache_size = MIN_OBJECT_SIZE * 2
+    # Free space is now 150 bytes (not enough for another object), so
+    # we need to run eviction.
+    object_manager.cache_size = object_manager.get_cache_occupancy() + 150
     with object_manager.ensure_objects(vegetables_v2) as required_objects:
         current_objects = object_manager.get_downloaded_objects()
         assert len(current_objects) == 2  # vegetables_v2 downloaded
-        assert object_manager.get_cache_occupancy() == MIN_OBJECT_SIZE * 2
+        _assert_cache_occupancy(object_manager, 2)
 
         # One of fruits' fragments remains: since they were both used at the same time and have
         # the same size, it's arbitrary which one gets evicted.
@@ -187,12 +185,14 @@ def test_object_cache_eviction(local_engine_empty, pg_repo_remote):
     # Delete all objects and re-load the fruits table
     object_manager.run_eviction([], None)
     assert len(object_manager.get_downloaded_objects()) == 0
-    assert object_manager.get_cache_occupancy() == 0
+    _assert_cache_occupancy(object_manager, 0)
     with object_manager.ensure_objects(fruits_v3):
         pass
 
     # Now, let's try squeezing the cache even more so that there's only space for one object.
-    object_manager.cache_size = MIN_OBJECT_SIZE
+    object_manager.cache_size = object_manager.get_object_meta([vegetables_snap])[
+        vegetables_snap
+    ].size
     with object_manager.ensure_objects(vegetables_v2):
         assert not object_manager.object_engine.table_exists(SPLITGRAPH_META_SCHEMA, fruit_snap)
         assert object_manager.object_engine.table_exists(SPLITGRAPH_META_SCHEMA, vegetables_snap)
@@ -218,15 +218,15 @@ def test_object_cache_eviction_fraction(local_engine_empty, pg_repo_remote):
 
     # Load the fruits objects into the cache
     with object_manager.ensure_objects(fruits_v3):
-        assert object_manager.get_cache_occupancy() == MIN_OBJECT_SIZE * 2
+        _assert_cache_occupancy(object_manager, 2)
 
     # Set the eviction fraction to 0.5 (clean out > half the cache in any case) and try downloading just one object.
-    object_manager.cache_size = MIN_OBJECT_SIZE * 2
+    object_manager.cache_size = SMALL_OBJECT_SIZE * 2 + 300
     object_manager.eviction_min_fraction = 0.75
 
     with object_manager.ensure_objects(vegetables_v2):
         # Only one object should be in the cache since we evicted cache_size * 0.75 = 2 objects
-        assert object_manager.get_cache_occupancy() == MIN_OBJECT_SIZE
+        _assert_cache_occupancy(object_manager, 1)
 
 
 def test_object_cache_locally_created_dont_get_evicted(local_engine_empty, pg_repo_remote):
@@ -248,9 +248,10 @@ def test_object_cache_locally_created_dont_get_evicted(local_engine_empty, pg_re
     # Despite that we have objects on the engine, they don't count towards the full cache occupancy.
     # 5 objects on the engine, 1 of them was created locally.
     assert len(object_manager.get_downloaded_objects()) == 5
-    assert object_manager.get_cache_occupancy() == MIN_OBJECT_SIZE * 4
-    assert object_manager._recalculate_cache_occupancy() == MIN_OBJECT_SIZE * 4
-    assert object_manager.get_total_object_size() == MIN_OBJECT_SIZE * 5
+    _assert_cache_occupancy(object_manager, 4)
+
+    cache_occupancy = object_manager.get_cache_occupancy()
+    assert object_manager.get_total_object_size() > cache_occupancy
 
     # Evict all objects -- check to see the one we created still exists.
     object_manager.run_eviction(keep_objects=[], required_space=None)
@@ -267,8 +268,7 @@ def test_object_cache_eviction_orphaned(local_engine_empty, pg_repo_remote):
     fruits_v3 = pg_repo_local.images["latest"].get_table("fruits")
 
     with object_manager.ensure_objects(fruits_v3):
-        assert object_manager.get_cache_occupancy() == MIN_OBJECT_SIZE * 2
-        assert object_manager._recalculate_cache_occupancy() == MIN_OBJECT_SIZE * 2
+        _assert_cache_occupancy(object_manager, 2)
 
     # Delete the image and objects that it's made out of (outside of the normal ObjectManager.cleanup())
     pg_repo_local.images.delete([pg_repo_local.images["latest"].image_hash])
@@ -289,8 +289,7 @@ def test_object_cache_eviction_orphaned(local_engine_empty, pg_repo_remote):
     # Make sure the eviction works deleting orphaned objects as well.
     object_manager.run_eviction(keep_objects=[], required_space=0)
 
-    assert object_manager.get_cache_occupancy() == 0
-    assert object_manager._recalculate_cache_occupancy() == 0
+    _assert_cache_occupancy(object_manager, 0)
 
 
 def test_object_cache_nested(local_engine_empty, pg_repo_remote):
@@ -308,9 +307,10 @@ def test_object_cache_nested(local_engine_empty, pg_repo_remote):
     fruit_snap = fruits_v2.objects[0]
 
     with object_manager.ensure_objects(fruits_v3):
-        assert object_manager.get_cache_occupancy() == MIN_OBJECT_SIZE * 2
+        assert len(object_manager.get_downloaded_objects()) == 2
+        _assert_cache_occupancy(object_manager, 2)
         with object_manager.ensure_objects(vegetables_v2):
-            assert object_manager.get_cache_occupancy() == MIN_OBJECT_SIZE * 3
+            _assert_cache_occupancy(object_manager, 3)
             assert _get_refcount(object_manager, fruit_diff) == 1
             assert _get_refcount(object_manager, fruit_snap) == 1
             assert _get_refcount(object_manager, vegetables_snap) == 1
@@ -320,7 +320,7 @@ def test_object_cache_nested(local_engine_empty, pg_repo_remote):
     object_manager.run_eviction(keep_objects=[], required_space=None)
     assert len(object_manager.get_downloaded_objects()) == 0
 
-    object_manager.cache_size = MIN_OBJECT_SIZE * 2
+    object_manager.cache_size = SMALL_OBJECT_SIZE * 2 + 300
     with object_manager.ensure_objects(fruits_v3):
         # Now the fruits objects are being used and so we can't reclaim that space and have to raise an error.
         with pytest.raises(ObjectCacheError) as ex:
@@ -345,7 +345,8 @@ def test_object_cache_eviction_priority(local_engine_empty, pg_repo_remote):
     vegetables_diff = vegetables_v3.objects[0]
 
     # Setup: the cache has enough space for 3 objects
-    object_manager.cache_size = MIN_OBJECT_SIZE * 3
+    # (each object is within 100 bytes of SMALL_OBJECT_SIZE)
+    object_manager.cache_size = SMALL_OBJECT_SIZE * 3 + 300
 
     # Can't use time-freezing methods (e.g. freezegun) here since we interact with the Minio server which timestamps
     # everything with the actual current time and kindly tells us to go away when we show up from the past and ask
@@ -411,12 +412,10 @@ def test_object_cache_make_external(pg_repo_local, clean_minio):
 
     # Mark objects as external and upload them
     pg_repo_local.objects.make_objects_external(all_objects, handler="S3", handler_params={})
-    assert pg_repo_local.objects.get_cache_occupancy() == MIN_OBJECT_SIZE * 2
-    assert pg_repo_local.objects._recalculate_cache_occupancy() == MIN_OBJECT_SIZE * 2
+    _assert_cache_occupancy(pg_repo_local.objects, 2)
 
     pg_repo_local.objects.run_eviction(keep_objects=[], required_space=None)
-    assert pg_repo_local.objects.get_cache_occupancy() == 0
-    assert pg_repo_local.objects._recalculate_cache_occupancy() == 0
+    _assert_cache_occupancy(pg_repo_local.objects, 0)
     assert not pg_repo_local.objects.get_downloaded_objects()
 
     # Download the objects again
@@ -426,8 +425,7 @@ def test_object_cache_make_external(pg_repo_local, clean_minio):
         with pg_repo_local.objects.ensure_objects(
             pg_repo_local.images["latest"].get_table("vegetables")
         ) as obs2:
-            assert pg_repo_local.objects.get_cache_occupancy() == MIN_OBJECT_SIZE * 2
-            assert pg_repo_local.objects._recalculate_cache_occupancy() == MIN_OBJECT_SIZE * 2
+            _assert_cache_occupancy(pg_repo_local.objects, 2)
             assert list(sorted(pg_repo_local.objects.get_downloaded_objects())) == all_objects
 
 

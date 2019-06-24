@@ -490,7 +490,9 @@ class FragmentManager(MetadataManager):
 
     def get_object_size(self, object_id):
         return self.object_engine.run_sql(
-            "SELECT splitgraph_get_object_size(%s)", (object_id,), return_shape=ResultShape.ONE_ONE
+            "SELECT splitgraph_api.get_object_size(%s)",
+            (object_id,),
+            return_shape=ResultShape.ONE_ONE,
         )
 
     def get_object_schema(self, object_id):

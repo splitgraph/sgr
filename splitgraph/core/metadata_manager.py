@@ -93,12 +93,10 @@ class MetadataManager:
         """
         Gets all objects currently in the Splitgraph tree.
 
-        :return: Set of object IDs.
+        :return: List of object IDs.
         """
-        return set(
-            self.metadata_engine.run_sql(
-                select("objects", "object_id"), return_shape=ResultShape.MANY_ONE
-            )
+        return self.metadata_engine.run_sql(
+            select("objects", "object_id"), return_shape=ResultShape.MANY_ONE
         )
 
     def get_new_objects(self, object_ids):

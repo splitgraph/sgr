@@ -8,7 +8,8 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph import SPLITGRAPH_META_SCHEMA, ResultShape, select
 from splitgraph.core.fragment_manager import Digest
-from test.splitgraph.conftest import OUTPUT, PG_DATA, MIN_OBJECT_SIZE
+from splitgraph.core.metadata_manager import OBJECT_COLS
+from test.splitgraph.conftest import OUTPUT, PG_DATA, SMALL_OBJECT_SIZE
 
 
 def test_diff_head(pg_repo_local):
@@ -66,7 +67,7 @@ def test_commit_diff(mode, pg_repo_local):
     obj = table.objects[0]
     obj_meta = pg_repo_local.objects.get_object_meta([obj])[obj]
     # Check object size has been written
-    assert obj_meta.size == MIN_OBJECT_SIZE
+    assert obj_meta.size >= 0
 
     assert new_head.comment == "test commit"
     change = pg_repo_local.diff("fruits", image_1=head, image_2=new_head)
@@ -80,6 +81,24 @@ def test_commit_diff(mode, pg_repo_local):
     ]
 
     assert pg_repo_local.diff("vegetables", image_1=head, image_2=new_head) == []
+
+
+def _compare_object_meta(meta, expected, size_tolerance=150):
+    """Check that the object metadata is as expected -- everything
+    must be exactly equal apart from size which can vary within `size_tolerance`."""
+
+    if len(meta) != len(expected):
+        return False
+
+    size_index = OBJECT_COLS.index("size")
+    for i in range(len(meta)):
+        if i == size_index:
+            if abs(meta[i] - expected[i]) > size_tolerance:
+                return False
+        else:
+            if meta[i] != expected[i]:
+                return False
+    return True
 
 
 def test_commit_chunking(local_engine_empty):
@@ -99,22 +118,25 @@ def test_commit_chunking(local_engine_empty):
         min_key = i * 5 + 1
         max_key = min(i * 5 + 5, 11)
 
-        assert object_meta[obj] == (
-            obj,  # object ID
-            "FRAG",  # fragment format
-            None,  # no parent
-            "",  # no namespace
-            MIN_OBJECT_SIZE,
-            # Don't check the insertion hash in this test
-            object_meta[obj].insertion_hash,
-            # Object didn't delete anything, so the deletion hash is zero.
-            "0" * 64,
-            # index
-            {
-                "key": [min_key, max_key],
-                "value_1": [chr(ord("a") + min_key - 1), chr(ord("a") + max_key - 1)],
-                "value_2": [(min_key - 1) * 2, (max_key - 1) * 2],
-            },
+        assert _compare_object_meta(
+            object_meta[obj],
+            (
+                obj,  # object ID
+                "FRAG",  # fragment format
+                None,  # no parent
+                "",  # no namespace
+                SMALL_OBJECT_SIZE,
+                # Don't check the insertion hash in this test
+                object_meta[obj].insertion_hash,
+                # Object didn't delete anything, so the deletion hash is zero.
+                "0" * 64,
+                # index
+                {
+                    "key": [min_key, max_key],
+                    "value_1": [chr(ord("a") + min_key - 1), chr(ord("a") + max_key - 1)],
+                    "value_2": [(min_key - 1) * 2, (max_key - 1) * 2],
+                },
+            ),
         )
 
         # Check object contents
@@ -192,7 +214,7 @@ def test_commit_diff_splitting(local_engine_empty):
             "FRAG",
             None,
             "",
-            MIN_OBJECT_SIZE,
+            SMALL_OBJECT_SIZE,
             "3cfbe8fa6fc546264936e29f402d7263510481c88a8d27190d82b3d5830cbcbf",
             # no deletions in this fragment
             "0000000000000000000000000000000000000000000000000000000000000000",
@@ -203,7 +225,7 @@ def test_commit_diff_splitting(local_engine_empty):
             "FRAG",
             base_objects[0],
             "",
-            MIN_OBJECT_SIZE,
+            SMALL_OBJECT_SIZE,
             "470425e8c107fff67264f9f812dfe211c7e625edf651947b8476f60392c57281",
             "e3eb6db305d889d3a69e3d8efa0931853c00fca75c0aeddd8f2fa2d6fd2443d6",
             # for value_1 we have old values for k=4,5 ('d', 'e') and new value
@@ -215,7 +237,7 @@ def test_commit_diff_splitting(local_engine_empty):
             "FRAG",
             base_objects[1],
             "",
-            MIN_OBJECT_SIZE,
+            SMALL_OBJECT_SIZE,
             # UPD + DEL conflated so nothing gets inserted by this fragment
             "0000000000000000000000000000000000000000000000000000000000000000",
             "d7df15e62c1c8799ef3a3677e3eb7661cedf898d73449a80251b93c501b5bdeb",
@@ -228,7 +250,7 @@ def test_commit_diff_splitting(local_engine_empty):
             "FRAG",
             None,
             "",
-            MIN_OBJECT_SIZE,
+            SMALL_OBJECT_SIZE,
             "6950e38c81c51685d617e98c7e2cf98d34630940c33e9259bc01339cca9c9418",
             # No deletions here
             "0000000000000000000000000000000000000000000000000000000000000000",
@@ -239,14 +261,14 @@ def test_commit_diff_splitting(local_engine_empty):
             "FRAG",
             None,
             "",
-            MIN_OBJECT_SIZE,
+            SMALL_OBJECT_SIZE,
             "96f0a7394f3839b048b492b789f7d57cf976345b04938a69d82b3512f72c3e9e",
             "0000000000000000000000000000000000000000000000000000000000000000",
             {"key": [12, 12], "value_1": ["l", "l"], "value_2": [22, 22]},
         ),
     ]
     for new_object, expected in zip(new_objects, expected_meta):
-        assert object_meta[new_object] == expected
+        assert _compare_object_meta(object_meta[new_object], expected)
 
     # Check the contents of the newly created objects.
     assert OUTPUT.run_sql(select(new_objects[0])) == [
@@ -332,40 +354,46 @@ def test_commit_diff_splitting_composite(local_engine_empty):
     assert len(new_objects) == 3
     # First chunk: based on the old first chunk, contains the INSERT (1/1/2019, 4) and the UPDATE (2/1/2019, 2)
     object_meta = OUTPUT.objects.get_object_meta(new_objects)
-    assert object_meta[new_objects[0]] == (
-        new_objects[0],
-        "FRAG",
-        base_objects[0],
-        "",
-        MIN_OBJECT_SIZE,
-        # Hashes here just copypasted from the test output, see test_object_hashing for actual tests that
-        # test each part of hash generation
-        "00964b1b5db0d6e8d42b48462e9021ed626a773380345a1f4fee5c205d7d4beb",
-        "0c8c07c66327f4493c716ceafd4bf70b692a1d6fe7cb1b88e1d683a4ea0bc4e8",
-        {
-            "key_1": ["2019-01-01T00:00:00", "2019-01-02T00:00:00"],
-            # 'value' spans the old value (was '5'), the inserted value ('4') and the new updated value ('UPD').
-            "key_2": [2, 4],
-            "value": ["4", "UPD"],
-        },
+    assert _compare_object_meta(
+        object_meta[new_objects[0]],
+        (
+            new_objects[0],
+            "FRAG",
+            base_objects[0],
+            "",
+            SMALL_OBJECT_SIZE,
+            # Hashes here just copypasted from the test output, see test_object_hashing for actual tests that
+            # test each part of hash generation
+            "00964b1b5db0d6e8d42b48462e9021ed626a773380345a1f4fee5c205d7d4beb",
+            "0c8c07c66327f4493c716ceafd4bf70b692a1d6fe7cb1b88e1d683a4ea0bc4e8",
+            {
+                "key_1": ["2019-01-01T00:00:00", "2019-01-02T00:00:00"],
+                # 'value' spans the old value (was '5'), the inserted value ('4') and the new updated value ('UPD').
+                "key_2": [2, 4],
+                "value": ["4", "UPD"],
+            },
+        ),
     )
     # The second chunk is reused.
     assert new_objects[1] == base_objects[1]
     # The third chunk is new, contains (4/1/2019, 2, NEW)
-    assert object_meta[new_objects[2]] == (
-        new_objects[2],
-        "FRAG",
-        None,
-        "",
-        MIN_OBJECT_SIZE,
-        "8c92b3ea89234b06cf53c2bad9d6e1d49dc561dc8c0100ee63c0b9ce1eeb0750",
-        # Nothing deleted, so the deletion hash is 0
-        "0000000000000000000000000000000000000000000000000000000000000000",
-        {
-            "key_1": ["2019-01-04T00:00:00", "2019-01-04T00:00:00"],
-            "key_2": [2, 2],
-            "value": ["NEW", "NEW"],
-        },
+    assert _compare_object_meta(
+        object_meta[new_objects[2]],
+        (
+            new_objects[2],
+            "FRAG",
+            None,
+            "",
+            SMALL_OBJECT_SIZE,
+            "8c92b3ea89234b06cf53c2bad9d6e1d49dc561dc8c0100ee63c0b9ce1eeb0750",
+            # Nothing deleted, so the deletion hash is 0
+            "0000000000000000000000000000000000000000000000000000000000000000",
+            {
+                "key_1": ["2019-01-04T00:00:00", "2019-01-04T00:00:00"],
+                "key_2": [2, 2],
+                "value": ["NEW", "NEW"],
+            },
+        ),
     )
 
 

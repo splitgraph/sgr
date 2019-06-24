@@ -15,7 +15,7 @@ def get_object_schema(engine, object_name):
         tuple(t)
         for t in json.loads(
             engine.run_sql(
-                "SELECT splitgraph_get_object_schema(%s)",
+                "SELECT splitgraph_api.get_object_schema(%s)",
                 (object_name,),
                 return_shape=ResultShape.ONE_ONE,
             )
@@ -25,28 +25,70 @@ def get_object_schema(engine, object_name):
 
 def set_object_schema(engine, object_name, schema_spec):
     engine.run_sql(
-        "SELECT splitgraph_set_object_schema(%s, %s)", (object_name, json.dumps(schema_spec))
+        "SELECT splitgraph_api.set_object_schema(%s, %s)", (object_name, json.dumps(schema_spec))
     )
 
 
-def mount_object(engine, object_name, schema=SPLITGRAPH_META_SCHEMA, table=None, schema_spec=None):
-    table = table or object_name
-
+def _dump_object_creation(engine, object_name, schema, schema_spec=None):
     if not schema_spec:
         schema_spec = get_object_schema(engine, object_name)
-
-    query = SQL("CREATE FOREIGN TABLE {}.{} (").format(Identifier(schema), Identifier(table))
+    query = SQL("CREATE FOREIGN TABLE {}.{} (").format(Identifier(schema), Identifier(object_name))
     query += SQL(",".join("{} %s " % ctype for _, _, ctype, _ in schema_spec)).format(
         *(Identifier(cname) for _, cname, _, _ in schema_spec)
     )
-
     # foreign tables/cstore don't support PKs
     query += SQL(") SERVER {} OPTIONS (compression %s, filename %s)").format(
         Identifier(CSTORE_SERVER)
     )
-    engine.run_sql(
-        query, ("pglz", os.path.join(engine.conn_params["SG_ENGINE_OBJECT_PATH"], object_name))
+
+    with engine.connection.cursor() as cur:
+        return cur.mogrify(
+            query, ("pglz", os.path.join(engine.conn_params["SG_ENGINE_OBJECT_PATH"], object_name))
+        )
+
+
+def dump_object(engine, object_name, stream, schema=SPLITGRAPH_META_SCHEMA):
+    """Dump a CStore object into SQL"""
+    schema_spec = get_object_schema(engine, object_name)
+    stream.write(
+        _dump_object_creation(engine, object_name, schema=schema, schema_spec=schema_spec).decode(
+            "utf-8"
+        )
     )
+    stream.write(";\n")
+    with engine.connection.cursor() as cur:
+        # Since we can't write into the CStore table directly, we first load the data
+        # into a temporary table and then insert that data into the CStore table.
+        stream.write(
+            engine.dump_table_creation(
+                None, "cstore_tmp_ingestion", schema_spec, temporary=True
+            ).as_string(cur)
+        )
+        stream.write(";\n")
+        engine.dump_table_sql(
+            SPLITGRAPH_META_SCHEMA,
+            object_name,
+            stream,
+            target_schema="pg_temp",
+            target_table="cstore_tmp_ingestion",
+        )
+        stream.write(
+            SQL("INSERT INTO {}.{} (SELECT * FROM pg_temp.cstore_tmp_ingestion);\n")
+            .format(Identifier(schema), Identifier(object_name))
+            .as_string(cur)
+        )
+        stream.write(
+            cur.mogrify(
+                "SELECT splitgraph_api.set_object_schema(%s, %s);\n",
+                (object_name, json.dumps(schema_spec)),
+            ).decode("utf-8")
+        )
+        stream.write("DROP TABLE pg_temp.cstore_tmp_ingestion;\n")
+
+
+def mount_object(engine, object_name, schema=SPLITGRAPH_META_SCHEMA, schema_spec=None):
+    query = _dump_object_creation(engine, object_name, schema, schema_spec)
+    engine.run_sql(query)
 
 
 def store_object(engine, source_schema, source_table, object_name):
@@ -87,4 +129,6 @@ def delete_objects(engine, object_ids):
         for object_id in object_ids
     )
     engine.run_sql(unmount_query)
-    engine.run_sql_batch("SELECT splitgraph_delete_object_files(%s)", [(o,) for o in object_ids])
+    engine.run_sql_batch(
+        "SELECT splitgraph_api.delete_object_files(%s)", [(o,) for o in object_ids]
+    )

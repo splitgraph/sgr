@@ -57,19 +57,13 @@ class ObjectManager(FragmentManager, MetadataManager):
         :param limit_to: If specified, only the objects in this list will be returned.
         :return: Set of object IDs.
         """
-        query = "SELECT table_name FROM information_schema.tables WHERE table_schema = %s AND table_type = 'FOREIGN'"
-        query_args = [SPLITGRAPH_META_SCHEMA]
-        if limit_to:
-            query += " AND table_name IN (" + ",".join(itertools.repeat("%s", len(limit_to))) + ")"
-            query_args += list(limit_to)
-        objects = set(
-            self.object_engine.run_sql(
-                SQL(query).format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                query_args,
-                return_shape=ResultShape.MANY_ONE,
-            )
+        objects = self.object_engine.run_sql(
+            "SELECT splitgraph_api.list_objects()", return_shape=ResultShape.ONE_ONE
         )
-        return objects.difference(META_TABLES)
+        if not limit_to:
+            return objects
+        else:
+            return [o for o in objects if o in limit_to]
 
     def get_cache_occupancy(self):
         """
@@ -90,11 +84,11 @@ class ObjectManager(FragmentManager, MetadataManager):
         return int(
             self.object_engine.run_sql(
                 SQL(
-                    "SELECT COALESCE(sum(pg_relation_size("
-                    "quote_ident(p.schemaname) || '.' || quote_ident(p.tablename))), 0)"
-                    " FROM pg_tables p JOIN {0}.object_cache_status oc"
-                    " ON p.tablename = oc.object_id"
-                    " WHERE oc.ready = 't' AND p.schemaname = %s"
+                    "SELECT COALESCE(sum(splitgraph_api.get_object_size("
+                    "quote_ident(t.table_name))), 0)"
+                    " FROM information_schema.tables t JOIN {0}.object_cache_status oc"
+                    " ON t.table_name = oc.object_id"
+                    " WHERE oc.ready = 't' AND t.table_schema = %s"
                 ).format(Identifier(SPLITGRAPH_META_SCHEMA)),
                 (SPLITGRAPH_META_SCHEMA,),
                 return_shape=ResultShape.ONE_ONE,
@@ -108,9 +102,10 @@ class ObjectManager(FragmentManager, MetadataManager):
         return int(
             self.object_engine.run_sql(
                 SQL(
-                    "SELECT COALESCE(sum(pg_relation_size(quote_ident(p.schemaname) "
-                    "|| '.' || quote_ident(p.tablename))), 0)"
-                    " FROM pg_tables p WHERE p.schemaname = %s AND p.tablename NOT IN ("
+                    "SELECT COALESCE(sum(splitgraph_api.get_object_size("
+                    "quote_ident(t.table_name))), 0)"
+                    " FROM information_schema.tables t"
+                    " WHERE t.table_schema = %s AND t.table_name NOT IN ("
                     + ",".join(itertools.repeat("%s", len(META_TABLES)))
                     + ")"
                 ).format(Identifier(SPLITGRAPH_META_SCHEMA)),
@@ -118,28 +113,6 @@ class ObjectManager(FragmentManager, MetadataManager):
                 return_shape=ResultShape.ONE_ONE,
             )
         )
-
-    def dump_all_object_sizes(self):
-        all_objects = self.get_downloaded_objects()
-        flavours = ["main", "vm", "fsm", "init"]
-        result = "\n"
-        for object in all_objects:
-            sizes = self.object_engine.run_sql(
-                SQL(
-                    "SELECT "
-                    + ",".join(
-                        "pg_relation_size('{0}.{1}', '%s')" % flavour for flavour in flavours
-                    )
-                    + ", pg_indexes_size('{0}.{1}')"
-                ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object)),
-                return_shape=ResultShape.ONE_MANY,
-            )
-
-            result += "%s:" % object
-            for flavour, size in zip(flavours, sizes):
-                result += "  - %s: %s" % (flavour, pretty_size(size))
-            result += "  indexes: %s\n" % pretty_size(sizes[-1])
-        return result
 
     @contextmanager
     def ensure_objects(self, table, quals=None):
@@ -530,7 +503,7 @@ class ObjectManager(FragmentManager, MetadataManager):
 
         # Also delete objects that don't have a metadata entry at all
         orphaned_objects = [o[0] for o in candidates if o[0] not in object_sizes]
-        orphaned_object_sizes = {o: self.get_object_size(self, o) for o in orphaned_objects}
+        orphaned_object_sizes = {o: self.get_object_size(o) for o in orphaned_objects}
         if orphaned_objects:
             logging.info(
                 "Found %d orphaned object(s), total size %s: %s",

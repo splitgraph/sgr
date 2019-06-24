@@ -12,7 +12,7 @@ from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
-from splitgraph.core import select
+from splitgraph.core import select, cstore
 from splitgraph.core._common import insert
 from splitgraph.core.fragment_manager import get_random_object_id
 from splitgraph.core.sql import validate_import_sql
@@ -728,22 +728,14 @@ class Repository:
             for object_id in all_required_objects:
                 stream.write(
                     cur.mogrify(
-                        SQL("DROP TABLE IF EXISTS {}.{};\n").format(
+                        SQL("DROP FOREIGN TABLE IF EXISTS {}.{};\n").format(
                             Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)
                         )
                     ).decode("utf-8")
                 )
-                stream.write(
-                    cur.mogrify(
-                        self.object_engine.dump_table_creation(
-                            schema=SPLITGRAPH_META_SCHEMA,
-                            tables=[object_id],
-                            created_schema=SPLITGRAPH_META_SCHEMA,
-                        )
-                    ).decode("utf-8")
+                cstore.dump_object(
+                    self.object_engine, object_id, stream, schema=SPLITGRAPH_META_SCHEMA
                 )
-                stream.write(";\n")
-                self.object_engine.dump_table_sql(SPLITGRAPH_META_SCHEMA, object_id, stream)
                 stream.write("\n")
 
     # --- IMPORTING TABLES ---

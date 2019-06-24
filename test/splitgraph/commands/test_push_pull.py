@@ -63,7 +63,9 @@ def test_pulls_with_lazy_object_downloads(local_engine_empty, pg_repo_remote):
     assert (
         len(PG_MNT.objects.get_downloaded_objects()) == 2
     )  # Original fruits and vegetables tables.
-    assert PG_MNT.objects.get_downloaded_objects() == PG_MNT.objects.get_all_objects()
+    assert sorted(PG_MNT.objects.get_downloaded_objects()) == sorted(
+        PG_MNT.objects.get_all_objects()
+    )
 
     # In the meantime, make two branches off of origin (a total of 3 commits)
     pg_repo_remote.run_sql("INSERT INTO fruits VALUES (3, 'mayonnaise')")
@@ -92,7 +94,9 @@ def test_pulls_with_lazy_object_downloads(local_engine_empty, pg_repo_remote):
     assert (
         len(PG_MNT.objects.get_downloaded_objects()) == 4
     )  # now have 2 versions of fruits + 1 vegetables
-    assert PG_MNT.objects.get_downloaded_objects() == PG_MNT.objects.get_all_objects()
+    assert sorted(PG_MNT.objects.get_downloaded_objects()) == sorted(
+        PG_MNT.objects.get_all_objects()
+    )
 
 
 def test_push(local_engine_empty, pg_repo_remote):

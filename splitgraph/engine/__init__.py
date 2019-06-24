@@ -259,55 +259,18 @@ class SQLEngine(ABC):
         """Get a list of (column_name, column_type) denoting the primary keys of a given table."""
         raise NotImplementedError()
 
-    def dump_table_creation(self, schema, tables, created_schema):
+    @staticmethod
+    def dump_table_creation(schema, table, schema_spec, unlogged=False, temporary=False):
         """
-        Dumps the basic table schema (column names, data types, is_nullable) for one or more tables into SQL statements.
-
-        :param schema: Schema to dump tables from
-        :param tables: Tables to dump
-        :param created_schema: The new schema that the tables will be created under.
-        :return: An SQL statement that reconstructs the schema for the given tables.
-        """
-        queries = []
-
-        for table in tables:
-            cols = self.run_sql(
-                """SELECT column_name, data_type, is_nullable
-                           FROM information_schema.columns
-                           WHERE table_name = %s AND table_schema = %s""",
-                (table, schema),
-            )
-            target = SQL("{}.{}").format(Identifier(created_schema), Identifier(table))
-            query = SQL("CREATE TABLE {} (").format(target) + SQL(
-                ",".join(
-                    "{} %s " % ctype + ("NOT NULL" if not cnull else "") for _, ctype, cnull in cols
-                )
-            ).format(*(Identifier(cname) for cname, _, _ in cols))
-
-            pks = self.get_primary_keys(schema, table)
-            if pks:
-                query += (
-                    SQL(", PRIMARY KEY (")
-                    + SQL(",").join(SQL("{}").format(Identifier(c)) for c, _ in pks)
-                    + SQL("))")
-                )
-            else:
-                query += SQL(")")
-
-            queries.append(query)
-        return SQL(";").join(queries)
-
-    def create_table(self, schema, table, schema_spec, unlogged=False, temporary=False):
-        """
-        Creates a table using a previously-dumped table schema spec
+        Dumps the DDL for a table using a previously-dumped table schema spec
 
         :param schema: Schema to create the table in
         :param table: Table name to create
         :param schema_spec: A list of (ordinal_position, column_name, data_type, is_pk) specifying the table schema
         :param unlogged: If True, the table won't be reflected in the WAL or scanned by the analyzer/autovacuum.
         :param temporary: If True, a temporary table is created (the schema parameter is ignored)
+        :return: An SQL statement that reconstructs the table schema.
         """
-
         flavour = ""
         if unlogged:
             flavour = "UNLOGGED"
@@ -336,12 +299,37 @@ class SQLEngine(ABC):
                 + SQL("))")
             )
         else:
-            query += SQL(")")
+            query += SQL(");")
         if unlogged:
-            query += SQL(" WITH(autovacuum_enabled=false)")
-        self.run_sql(query, return_shape=ResultShape.NONE)
+            query += SQL(" WITH(autovacuum_enabled=false);")
+        return query
 
-    def dump_table_sql(self, schema, table_name, stream, columns="*", where="", where_args=None):
+    def create_table(self, schema, table, schema_spec, unlogged=False, temporary=False):
+        """
+        Creates a table using a previously-dumped table schema spec
+
+        :param schema: Schema to create the table in
+        :param table: Table name to create
+        :param schema_spec: A list of (ordinal_position, column_name, data_type, is_pk) specifying the table schema
+        :param unlogged: If True, the table won't be reflected in the WAL or scanned by the analyzer/autovacuum.
+        :param temporary: If True, a temporary table is created (the schema parameter is ignored)
+        """
+        self.run_sql(
+            self.dump_table_creation(schema, table, schema_spec, unlogged, temporary),
+            return_shape=ResultShape.NONE,
+        )
+
+    def dump_table_sql(
+        self,
+        schema,
+        table_name,
+        stream,
+        columns="*",
+        where="",
+        where_args=None,
+        target_schema=None,
+        target_table=None,
+    ):
         """
         Dump the table contents in the SQL format
         :param schema: Schema the table is located in
@@ -350,6 +338,8 @@ class SQLEngine(ABC):
         :param columns: SQL column spec. Default '*'.
         :param where: Optional, an SQL WHERE clause
         :param where_args: Arguments for the optional WHERE clause.
+        :param target_schema: Schema to create the table in (default same as `schema`)
+        :param target_table: Name of the table to insert data into (default same as `table_name`)
         """
         raise NotImplementedError()
 

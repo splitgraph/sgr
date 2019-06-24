@@ -1,4 +1,7 @@
-CREATE OR REPLACE FUNCTION splitgraph_upload_object(object_id varchar, endpoint varchar, access_key varchar, secret_key varchar) RETURNS varchar AS
+CREATE EXTENSION IF NOT EXISTS plpython3u;
+CREATE SCHEMA IF NOT EXISTS splitgraph_api;
+
+CREATE OR REPLACE FUNCTION splitgraph_api.upload_object(object_id varchar, endpoint varchar, access_key varchar, secret_key varchar) RETURNS varchar AS
 $BODY$
     import os.path
     from minio import Minio
@@ -33,7 +36,7 @@ $BODY$
 LANGUAGE plpython3u VOLATILE;
 
 
-CREATE OR REPLACE FUNCTION splitgraph_download_object(object_id varchar, url varchar, access_key varchar, secret_key varchar) RETURNS void AS
+CREATE OR REPLACE FUNCTION splitgraph_api.download_object(object_id varchar, url varchar, access_key varchar, secret_key varchar) RETURNS void AS
 $BODY$
     import os.path
     from minio import Minio
@@ -56,7 +59,7 @@ $BODY$
 LANGUAGE plpython3u VOLATILE;
 
 
-CREATE OR REPLACE FUNCTION splitgraph_set_object_schema(object_id varchar, schema varchar) RETURNS void AS
+CREATE OR REPLACE FUNCTION splitgraph_api.set_object_schema(object_id varchar, schema varchar) RETURNS void AS
 $BODY$
     import os.path
 
@@ -68,7 +71,7 @@ $BODY$
 LANGUAGE plpython3u VOLATILE;
 
 
-CREATE OR REPLACE FUNCTION splitgraph_get_object_schema(object_id varchar) RETURNS varchar AS
+CREATE OR REPLACE FUNCTION splitgraph_api.get_object_schema(object_id varchar) RETURNS varchar AS
 $BODY$
     import os.path
 
@@ -80,7 +83,7 @@ $BODY$
 LANGUAGE plpython3u VOLATILE;
 
 
-CREATE OR REPLACE FUNCTION splitgraph_delete_object_files(object_id varchar) RETURNS void AS
+CREATE OR REPLACE FUNCTION splitgraph_api.delete_object_files(object_id varchar) RETURNS void AS
 $BODY$
     import os.path
 
@@ -100,7 +103,7 @@ $BODY$
 LANGUAGE plpython3u VOLATILE;
 
 
-CREATE OR REPLACE FUNCTION splitgraph_get_object_size(object_id varchar) RETURNS int AS
+CREATE OR REPLACE FUNCTION splitgraph_api.get_object_size(object_id varchar) RETURNS int AS
 $BODY$
     import os.path
 
@@ -110,5 +113,19 @@ $BODY$
     return os.path.getsize(object_path) + \
         os.path.getsize(object_path + ".footer") + \
         os.path.getsize(object_path + ".schema")
+$BODY$
+LANGUAGE plpython3u VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION splitgraph_api.list_objects() RETURNS varchar[] AS
+$BODY$
+    import os
+
+    SG_ENGINE_OBJECT_PATH = "/var/lib/splitgraph/objects"
+
+    # Crude but faster than listing foreign tables (and hopefully consistent).
+
+    files = os.listdir(SG_ENGINE_OBJECT_PATH)
+    return [f for f in files if not f.endswith(".schema") and not f.endswith(".footer")]
 $BODY$
 LANGUAGE plpython3u VOLATILE;

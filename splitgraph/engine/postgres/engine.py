@@ -205,7 +205,20 @@ class PsycopgEngine(SQLEngine):
                 self.rollback()
                 raise
 
-    def dump_table_sql(self, schema, table_name, stream, columns="*", where="", where_args=None):
+    def dump_table_sql(
+        self,
+        schema,
+        table_name,
+        stream,
+        columns="*",
+        where="",
+        where_args=None,
+        target_schema=None,
+        target_table=None,
+    ):
+        target_schema = target_schema or schema
+        target_table = target_table or table_name
+
         with self.connection.cursor() as cur:
             cur.execute(select(table_name, columns, where, schema), where_args)
             if cur.rowcount == 0:
@@ -213,7 +226,7 @@ class PsycopgEngine(SQLEngine):
 
             stream.write(
                 SQL("INSERT INTO {}.{} VALUES \n")
-                .format(Identifier(schema), Identifier(table_name))
+                .format(Identifier(target_schema), Identifier(target_table))
                 .as_string(self.connection)
             )
             stream.write(

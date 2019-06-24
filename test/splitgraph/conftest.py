@@ -26,14 +26,10 @@ MG_MNT = R("test_mg_mount")
 MYSQL_MNT = R("test/mysql_mount")
 OUTPUT = R("output")
 
-# On-disk size taken up by an empty table.
-# Includes pg_relation_size(table).
-
-# Doesn't include all components, see PostgresEngine.get_table_size for explanation.
-MIN_OBJECT_SIZE = 8192 * 2
-
-# temporary (foreign tables have 0 size)
-MIN_OBJECT_SIZE = 0
+# Rough on-disk size taken up by a small (<10 rows) object that we
+# use in tests. Includes the actual CStore file, the footer and the
+# object's schema (serialized into JSON).
+SMALL_OBJECT_SIZE = 350
 
 
 def _mount_postgres(repository, tables=None):
@@ -321,3 +317,15 @@ def ingestion_test_repo():
         yield repo
     finally:
         repo.delete()
+
+
+def _assert_cache_occupancy(object_manager, number_of_objects):
+    """With object sizes varying, we can't exactly assert the cache
+    occupancy without putting a bunch of magic constants all over the tests.
+    Hence, we assume that all of our small test objects (<10 rows) are within
+    150 bytes of SMALL_OBJECT_SIZE and check that the current cache
+    occupancy values are consistent with that."""
+
+    cache_occupancy = object_manager.get_cache_occupancy()
+    assert abs(cache_occupancy - SMALL_OBJECT_SIZE * number_of_objects) <= 150 * number_of_objects
+    assert cache_occupancy == object_manager._recalculate_cache_occupancy()

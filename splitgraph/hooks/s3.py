@@ -66,7 +66,7 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
 
         def _do_upload(object_id):
             return engine.run_sql(
-                "SELECT splitgraph_upload_object(%s, %s, %s, %s)",
+                "SELECT splitgraph_api.upload_object(%s, %s, %s, %s)",
                 (object_id, endpoint, access_key, self.params.get("secret_key", S3_SECRET_KEY)),
                 return_shape=ResultShape.ONE_ONE,
             )
@@ -96,7 +96,7 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
 
             try:
                 engine.run_sql(
-                    "SELECT splitgraph_download_object(%s, %s, %s, %s)",
+                    "SELECT splitgraph_api.download_object(%s, %s, %s, %s)",
                     (object_id, object_url, access_key, secret_key),
                 )
             except DatabaseError:
