@@ -748,6 +748,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                 self.copy_table(
                     remote_schema, obj, SPLITGRAPH_META_SCHEMA, obj, with_pk_constraints=False
                 )
+                cstore.set_object_schema(self, obj, schema_spec=schema_spec)
                 self.connection.commit()
                 downloaded_objects.append(obj)
             return downloaded_objects
