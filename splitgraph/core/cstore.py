@@ -123,7 +123,7 @@ def store_object(engine, source_schema, source_table, object_name):
 
 def delete_objects(engine, object_ids):
     unmount_query = SQL(";").join(
-        SQL("DROP FOREIGN TABLE {}.{}").format(
+        SQL("DROP FOREIGN TABLE IF EXISTS {}.{}").format(
             Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)
         )
         for object_id in object_ids

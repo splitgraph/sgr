@@ -688,6 +688,7 @@ class ObjectManager(FragmentManager, MetadataManager):
             for c in self.object_engine.get_all_tables(SPLITGRAPH_META_SCHEMA)
             if c not in META_TABLES
         }
+        tables_in_meta.update(self.get_downloaded_objects())
 
         to_delete = tables_in_meta.difference(primary_objects)
         self.delete_objects(to_delete)
@@ -721,7 +722,10 @@ class ObjectManager(FragmentManager, MetadataManager):
             )
 
             base_tables = [tn for tn, tt in table_types if tt == "BASE TABLE"]
-            foreign_tables = [tn for tn, tt in table_types if tt == "FOREIGN"]
+            # Try deleting CStore-mounted objects regardless of whether they're
+            # in splitgraph_meta as foreign tables (there might be cases
+            # where they are in /var/lib/splitgraph/objects but not mounted)
+            foreign_tables = [tn for tn in to_delete if tn not in base_tables]
 
             if base_tables:
                 self.object_engine.run_sql(
