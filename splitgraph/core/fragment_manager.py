@@ -473,8 +473,10 @@ class FragmentManager(MetadataManager):
 
             # Store the changesets. For the parentless before/after changesets, only create them if they actually
             # contain something.
+            # NB test_commit_diff::test_commit_mode_change: in case the before/after changesets actually
+            # overwrite something that we didn't detect, push them to be later in the application order.
             object_ids = self._store_changesets(
-                old_table, [before] + matched + [after], [None] + top_fragments + [None], schema
+                old_table, matched + [before, after], top_fragments + [None, None], schema
             )
             # Finally, link the table to the new set of objects.
             self.register_tables(
@@ -699,13 +701,23 @@ class FragmentManager(MetadataManager):
         :return: Expanded chain. Parents of objects are guaranteed to come before those objects and
             the order in the `object_ids` array is preserved.
         """
+        original_order = {o: i for i, o in enumerate(object_ids)}
+
         parents = self.metadata_engine.run_sql(
-            SQL("SELECT {}.get_object_path(%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
+            SQL("SELECT object_id, original_object_id from {}.get_object_path(%s)").format(
+                Identifier(SPLITGRAPH_API_SCHEMA)
+            ),
             (object_ids,),
-            return_shape=ResultShape.ONE_ONE,
         )
 
-        return list(parents)
+        # Sort the resultant array so that objects that earlier items in the
+        # `object_ids` list depend on come earlier themselves.
+        return [
+            object_id
+            for object_id, _ in sorted(
+                parents, key=lambda object_reason: original_order[object_reason[1]]
+            )
+        ]
 
     def filter_fragments(self, object_ids, quals, column_types):
         """

@@ -111,18 +111,23 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 -- OBJECT API
 --
 
--- get_object_path(object_ids): list all objects that object_ids depend on, recursively
-CREATE OR REPLACE FUNCTION splitgraph_api.get_object_path(object_ids varchar[]) RETURNS varchar[] AS $$
+-- get_object_path(object_ids): list all objects that object_ids depend on, recursively.
+-- Returns a table with object IDs as well as which object from the original array
+-- caused this object to be included.
+CREATE OR REPLACE FUNCTION splitgraph_api.get_object_path(object_ids varchar[])
+  RETURNS TABLE (
+    object_id VARCHAR,
+    original_object_id VARCHAR) AS $$
 DECLARE result varchar[];
 BEGIN
     -- Something weird happens if this function is invoked exactly five times and the execution
     -- time goes from ~6ms to ~100ms. Possibly something to do with the query planner?
-    EXECUTE 'SELECT ARRAY(WITH RECURSIVE parents AS'
-        ' (SELECT object_id, parent_id, 0 as depth FROM splitgraph_meta.objects WHERE object_id = ANY($1)'
-        '    UNION ALL SELECT o.object_id, o.parent_id, p.depth + 1'
+    RETURN QUERY EXECUTE 'WITH RECURSIVE parents AS'
+        ' (SELECT object_id, parent_id, 0 AS depth, object_id AS original_object_id '
+        ' FROM splitgraph_meta.objects WHERE object_id = ANY($1)'
+        '    UNION ALL SELECT o.object_id, o.parent_id, p.depth + 1, p.original_object_id'
         '    FROM parents p JOIN splitgraph_meta.objects o ON p.parent_id = o.object_id)'
-        ' SELECT object_id FROM parents ORDER BY depth DESC)' USING object_ids INTO result;
-    RETURN result;
+        ' SELECT object_id, original_object_id FROM parents ORDER BY depth DESC' USING object_ids;
 END
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 

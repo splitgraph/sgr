@@ -205,23 +205,12 @@ def test_commit_diff_splitting(local_engine_empty):
     # unchanged) and one with PK 12.
 
     # Check the old fragment with PK 11 is reused.
-    assert new_objects[3] == base_objects[2]
+    assert new_objects[2] == base_objects[2]
     object_meta = OUTPUT.objects.get_object_meta(new_objects)
-    # The new fragments should be at the beginning and the end of the table objects' list.
+    # The new fragments should be at the end of the table objects' list.
     expected_meta = [
         (
             new_objects[0],
-            "FRAG",
-            None,
-            "",
-            SMALL_OBJECT_SIZE,
-            "3cfbe8fa6fc546264936e29f402d7263510481c88a8d27190d82b3d5830cbcbf",
-            # no deletions in this fragment
-            "0000000000000000000000000000000000000000000000000000000000000000",
-            {"key": [0, 0], "value_1": ["zero", "zero"], "value_2": [-1, -1]},
-        ),
-        (
-            new_objects[1],
             "FRAG",
             base_objects[0],
             "",
@@ -233,7 +222,7 @@ def test_commit_diff_splitting(local_engine_empty):
             {"key": [4, 5], "value_1": ["UPDATED", "e"], "value_2": [6, 8]},
         ),
         (
-            new_objects[2],
+            new_objects[1],
             "FRAG",
             base_objects[1],
             "",
@@ -246,7 +235,7 @@ def test_commit_diff_splitting(local_engine_empty):
         ),
         # Old fragment with just the pk=11
         (
-            new_objects[3],
+            new_objects[2],
             "FRAG",
             None,
             "",
@@ -255,6 +244,17 @@ def test_commit_diff_splitting(local_engine_empty):
             # No deletions here
             "0000000000000000000000000000000000000000000000000000000000000000",
             {"key": [11, 11], "value_1": ["k", "k"], "value_2": [20, 20]},
+        ),
+        (
+            new_objects[3],
+            "FRAG",
+            None,
+            "",
+            SMALL_OBJECT_SIZE,
+            "3cfbe8fa6fc546264936e29f402d7263510481c88a8d27190d82b3d5830cbcbf",
+            # no deletions in this fragment
+            "0000000000000000000000000000000000000000000000000000000000000000",
+            {"key": [0, 0], "value_1": ["zero", "zero"], "value_2": [-1, -1]},
         ),
         (
             new_objects[4],
@@ -272,16 +272,16 @@ def test_commit_diff_splitting(local_engine_empty):
 
     # Check the contents of the newly created objects.
     assert OUTPUT.run_sql(select(new_objects[0])) == [
-        (True, 0, "zero", -1)
-    ]  # upserted=True, key, new_value_1, new_value_2
-    assert OUTPUT.run_sql(select(new_objects[1])) == [
         (True, 5, "UPDATED", 8),  # upserted=True, key, new_value_1, new_value_2
         (False, 4, None, None),
     ]  # upserted=False, key, None, None
-    assert OUTPUT.run_sql(select(new_objects[2])) == [
+    assert OUTPUT.run_sql(select(new_objects[1])) == [
         (False, 6, None, None)
     ]  # upserted=False, key, None, None
-    # No need to check new_objects[3] (since it's the same as the old fragment)
+    # No need to check new_objects[2] (since it's the same as the old fragment)
+    assert OUTPUT.run_sql(select(new_objects[3])) == [
+        (True, 0, "zero", -1)
+    ]  # upserted=True, key, new_value_1, new_value_2
     assert OUTPUT.run_sql(select(new_objects[4])) == [(True, 12, "l", 22)]  # same
 
     # Also check that the insertion - deletion hashes of objects add up to the final content hash of the materialized
@@ -429,14 +429,13 @@ def test_commit_mode_change(pg_repo_local):
     # list end up later in the expanded list as well.
     table = OUTPUT.head.get_table("test")
     assert table.objects == [
-        # Left (key=-1 update)
-        "oe8b3d2ce9bfbe9ba741674f0d676f5af35fcffd2517432f4328e10a0f1fc4b",
         # Original chunk preserved
         "o951f5d35a5540e1f7183b4d2937251973589c4db1b00e52aeaa77211260030",
+        # Left (key=-1 update)
+        "oe8b3d2ce9bfbe9ba741674f0d676f5af35fcffd2517432f4328e10a0f1fc4b",
         # Right (key=6 update)
         "o1b7f695a89cc2592ee7a5e110648dda5232c9942a173c08080136803bd3de3",
     ]
-
     # Make sure that get_all_required_objects returns the objects in the correct order (parents come
     # before objects that overwrite them and the order in table.objects is preserved). In addition, make sure
     # that more shallow objects (in this case, the two updates) come last.
