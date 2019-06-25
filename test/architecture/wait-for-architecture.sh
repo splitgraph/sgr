@@ -23,8 +23,6 @@ echo "Using config file at $SG_CONFIG_FILE ..."
 _init_engines() {
   ( SG_ENGINE=LOCAL sgr init ) \
     && ( SG_ENGINE=remote_engine sgr init ) \
-    && mkdir -p /var/lib/splitgraph/objects \
-    && mkdir -p /var/lib/splitgraph/objects_remote \
     && return 0
 
   return 1
