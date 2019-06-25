@@ -1,8 +1,11 @@
+from datetime import datetime as dt
+from unittest.mock import patch
+
 import psycopg2
 import pytest
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA
-from splitgraph.core._common import ensure_metadata_schema
+from splitgraph.core._common import ensure_metadata_schema, Tracer
 from splitgraph.core.engine import get_current_repositories, lookup_repository, ResultShape
 from splitgraph.core.registry import (
     setup_registry_mode,
@@ -109,3 +112,24 @@ def test_uninitialized_engine_error(local_engine_empty):
     finally:
         local_engine_empty.initialize()
         local_engine_empty.commit()
+
+
+def test_tracer():
+    with patch("splitgraph.core._common.dt") as datetime:
+        datetime.now.return_value = dt(2019, 1, 1)
+        tracer = Tracer()
+
+        datetime.now.return_value = dt(2019, 1, 1, 0, 0, 1)
+        tracer.log("event_1")
+
+        datetime.now.return_value = dt(2019, 1, 1, 0, 0, 30)
+        tracer.log("event_2")
+
+    assert tracer.get_total_time() == 30
+    assert tracer.get_durations() == [("event_1", 1.0), ("event_2", 29.0)]
+    assert (
+        str(tracer)
+        == """event_1: 1.000
+event_2: 29.000
+Total: 30.000"""
+    )
