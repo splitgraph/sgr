@@ -3,7 +3,7 @@
 version: '3'
 services:
   local_engine:
-    image: splitgraph/engine
+    image: splitgraph/engine:cstore
     ports:
       - '0.0.0.0:5432:5432'
     environment:
