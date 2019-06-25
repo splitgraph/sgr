@@ -12,7 +12,7 @@ from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
-from splitgraph.core import select, cstore
+from splitgraph.core import select
 from splitgraph.core._common import insert
 from splitgraph.core.fragment_manager import get_random_object_id
 from splitgraph.core.sql import validate_import_sql
@@ -733,9 +733,7 @@ class Repository:
                         )
                     ).decode("utf-8")
                 )
-                cstore.dump_object(
-                    self.object_engine, object_id, stream, schema=SPLITGRAPH_META_SCHEMA
-                )
+                self.object_engine.dump_object(object_id, stream, schema=SPLITGRAPH_META_SCHEMA)
                 stream.write("\n")
 
     # --- IMPORTING TABLES ---

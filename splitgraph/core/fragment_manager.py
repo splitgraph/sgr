@@ -15,7 +15,6 @@ from psycopg2.errors import DuplicateTable, UniqueViolation
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_API_SCHEMA
-from splitgraph.core import cstore
 from splitgraph.core.metadata_manager import MetadataManager, Object
 from splitgraph.engine.postgres.engine import SG_UD_FLAG
 from ._common import adapt, SPLITGRAPH_META_SCHEMA, ResultShape, coerce_val_to_json
@@ -233,7 +232,7 @@ class FragmentManager(MetadataManager):
             are used to generate the min/max index for an object to know if it removes/updates some rows
             that might be pertinent to a query.
         """
-        object_size = self.get_object_size(object_id)
+        object_size = self.object_engine.get_object_size(object_id)
         object_index = self._generate_object_index(object_id, changeset)
         self.register_objects(
             [
@@ -337,11 +336,10 @@ class FragmentManager(MetadataManager):
             # the error doesn't roll back the whole transaction (us creating and registering all other objects).
             with self.object_engine.savepoint("object_rename"):
                 try:
-                    cstore.store_object(
-                        self.object_engine,
+                    self.object_engine.store_object(
+                        object_id=object_id,
                         source_schema=SPLITGRAPH_META_SCHEMA,
                         source_table=tmp_object_id,
-                        object_name=object_id,
                     )
                 except DuplicateTable:
                     # If an object with this ID already exists, delete the temporary table,
@@ -490,16 +488,6 @@ class FragmentManager(MetadataManager):
                 [(image_hash, old_table.table_name, old_table.table_schema, old_table.objects)],
             )
 
-    def get_object_size(self, object_id):
-        return self.object_engine.run_sql(
-            "SELECT splitgraph_api.get_object_size(%s)",
-            (object_id,),
-            return_shape=ResultShape.ONE_ONE,
-        )
-
-    def get_object_schema(self, object_id):
-        return cstore.get_object_schema(self.object_engine, object_id)
-
     def _extract_min_max_pks(self, fragments, table_pks):
         # Get the min/max PK values for every chunk
         # Why can't we use the index here? If the PK is composite, consider this example:
@@ -639,11 +627,10 @@ class FragmentManager(MetadataManager):
                 )
 
                 try:
-                    cstore.store_object(
-                        self.object_engine,
+                    self.object_engine.store_object(
+                        object_id=object_id,
                         source_schema=SPLITGRAPH_META_SCHEMA,
                         source_table=tmp_object_id,
-                        object_name=object_id,
                     )
                 except DuplicateTable:
                     # If we already have an object with this ID (and hence hash), reuse it.

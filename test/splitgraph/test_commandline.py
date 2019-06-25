@@ -11,7 +11,6 @@ from splitgraph.commandline._common import ImageType
 from splitgraph.commandline.example import generate_c, alter_c, splitfile_c
 from splitgraph.commandline.image_info import object_c
 from splitgraph.config import PG_PWD, PG_USER
-from splitgraph.core import cstore
 from splitgraph.core._common import parse_connection_string, serialize_connection_string, insert
 from splitgraph.core.engine import repository_exists, init_engine
 from splitgraph.core.metadata_manager import OBJECT_COLS
@@ -248,11 +247,11 @@ def test_object_info(local_engine_empty):
         ("base_1", "HTTP", "example.com/objects/base_1.tgz"),
     )
     local_engine_empty.run_sql(insert("object_cache_status", ("object_id",)), ("base_1",))
-    cstore.mount_object(local_engine_empty, "base_1", schema_spec=[(1, "col_1", "integer", False)])
+    local_engine_empty._mount_object("base_1", schema_spec=[(1, "col_1", "integer", False)])
 
     # patch_1: on the engine, uncached locally
     # patch_2: created here, cached locally
-    cstore.mount_object(local_engine_empty, "patch_2", schema_spec=[(1, "col_1", "integer", False)])
+    local_engine_empty._mount_object("patch_2", schema_spec=[(1, "col_1", "integer", False)])
 
     result = runner.invoke(object_c, ["base_1"])
     assert result.exit_code == 0

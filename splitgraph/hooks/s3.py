@@ -4,11 +4,9 @@ Plugin for uploading Splitgraph objects from the cache to an external S3-like ob
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
-from minio.error import BucketAlreadyOwnedByYou, BucketAlreadyExists
 from psycopg2 import DatabaseError
 
 from splitgraph.config import CONFIG
-from splitgraph.core import cstore
 from splitgraph.engine import get_engine, ResultShape
 from splitgraph.hooks.external_objects import ExternalObjectHandler
 
@@ -16,16 +14,6 @@ S3_HOST = CONFIG["SG_S3_HOST"]
 S3_PORT = CONFIG["SG_S3_PORT"]
 S3_ACCESS_KEY = CONFIG["SG_S3_KEY"]
 S3_SECRET_KEY = CONFIG["SG_S3_PWD"]
-
-
-def _ensure_bucket(client, bucket):
-    # Make a bucket with the make_bucket API call.
-    try:
-        client.make_bucket(bucket)
-    except BucketAlreadyOwnedByYou:
-        pass
-    except BucketAlreadyExists:
-        pass
 
 
 # Downloading/uploading objects to/from S3.
@@ -57,7 +45,6 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
         """
         access_key = self.params.get("access_key", S3_ACCESS_KEY)
         endpoint = "%s:%s" % (self.params.get("host", S3_HOST), self.params.get("port", S3_PORT))
-        # NB bucket isn't actually used -- we use access key in the engine-side stored proc
         bucket = self.params.get("bucket", access_key)
         worker_threads = self.params.get("threads", int(CONFIG["SG_ENGINE_POOL"]) - 1)
 
@@ -66,8 +53,14 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
 
         def _do_upload(object_id):
             return engine.run_sql(
-                "SELECT splitgraph_api.upload_object(%s, %s, %s, %s)",
-                (object_id, endpoint, access_key, self.params.get("secret_key", S3_SECRET_KEY)),
+                "SELECT splitgraph_api.upload_object(%s, %s, %s, %s, %s)",
+                (
+                    object_id,
+                    endpoint,
+                    bucket,
+                    access_key,
+                    self.params.get("secret_key", S3_SECRET_KEY),
+                ),
                 return_shape=ResultShape.ONE_ONE,
             )
 
@@ -102,8 +95,14 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
             except DatabaseError:
                 logging.exception("Error downloading object %s", object_id)
                 return
-            cstore.mount_object(engine, object_id)
+            engine._mount_object(object_id)
+            # Commit and release the connection (each is keyed by the thread ID)
+            # back into the pool.
+            # NB this should only be done when the loader is running in a different thread, since
+            # otherwise this will also commit the transaction that's opened by the ObjectManager, messing
+            # with its refcounting.
             engine.commit()
+            engine.close()
 
         with ThreadPoolExecutor(max_workers=worker_threads) as tpe:
             # Evaluate the results so that exceptions thrown by the downloader get raised

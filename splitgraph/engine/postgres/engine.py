@@ -4,6 +4,7 @@ to track changes, as well as the Postgres FDW interface to upload/download objec
 import itertools
 import json
 import logging
+import os.path
 import time
 from contextlib import contextmanager
 from io import BytesIO
@@ -18,7 +19,6 @@ from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
-from splitgraph.core import cstore
 from splitgraph.core._common import select, ensure_metadata_schema, META_TABLES
 from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
 from splitgraph.exceptions import UninitializedEngineError, ObjectNotFoundError, ObjectCacheError
@@ -28,6 +28,7 @@ _AUDIT_SCHEMA = "audit"
 _AUDIT_TRIGGER = "resources/audit_trigger.sql"
 _PUSH_PULL = "resources/push_pull.sql"
 _CSTORE = "resources/cstore.sql"
+CSTORE_SERVER = "cstore_server"
 _PACKAGE = "splitgraph"
 ROW_TRIGGER_NAME = "audit_trigger_row"
 STM_TRIGGER_NAME = "audit_trigger_stm"
@@ -239,20 +240,6 @@ class PsycopgEngine(SQLEngine):
             )
         stream.write(";\n")
 
-    def get_table_size(self, schema, table):
-        # NB this excludes some components of the total on-disk table size:
-        #   pg_relation_size(table, 'fsm')  -- free space map
-        #   pg_relation_size(table, 'vm')   -- visibility map
-        #   pg_relation_size(table, 'init') -- initialization fork (???)
-        #   pg_indexes_size(table) -- indexes (this is bad, they do take up a lot of space)
-        # which don't seem to roundtrip (pg_total_relation_size seems to change
-        # when uploading the object to Minio and then redownloading it again?)
-
-        return self.run_sql(
-            SQL("SELECT pg_relation_size('{0}.{1}')").format(Identifier(schema), Identifier(table)),
-            return_shape=ResultShape.ONE_ONE,
-        )
-
     def _admin_conn(self):
         return psycopg2.connect(
             dbname=self.conn_params["SG_ENGINE_POSTGRES_DB_NAME"],
@@ -432,6 +419,102 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
 class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
     """An implementation of the Postgres engine for Splitgraph"""
 
+    def get_object_schema(self, object_id):
+        return [
+            tuple(t)
+            for t in json.loads(
+                self.run_sql(
+                    "SELECT splitgraph_api.get_object_schema(%s)",
+                    (object_id,),
+                    return_shape=ResultShape.ONE_ONE,
+                )
+            )
+        ]
+
+    def _set_object_schema(self, object_id, schema_spec):
+        self.run_sql(
+            "SELECT splitgraph_api.set_object_schema(%s, %s)", (object_id, json.dumps(schema_spec))
+        )
+
+    def _dump_object_creation(self, object_id, schema, schema_spec=None):
+        if not schema_spec:
+            schema_spec = self.get_object_schema(object_id)
+        query = SQL("CREATE FOREIGN TABLE {}.{} (").format(
+            Identifier(schema), Identifier(object_id)
+        )
+        query += SQL(",".join("{} %s " % ctype for _, _, ctype, _ in schema_spec)).format(
+            *(Identifier(cname) for _, cname, _, _ in schema_spec)
+        )
+        # foreign tables/cstore don't support PKs
+        query += SQL(") SERVER {} OPTIONS (compression %s, filename %s)").format(
+            Identifier(CSTORE_SERVER)
+        )
+
+        with self.connection.cursor() as cur:
+            return cur.mogrify(
+                query, ("pglz", os.path.join(self.conn_params["SG_ENGINE_OBJECT_PATH"], object_id))
+            )
+
+    def dump_object(self, object_id, stream, schema):
+        schema_spec = self.get_object_schema(object_id)
+        stream.write(
+            self._dump_object_creation(object_id, schema=schema, schema_spec=schema_spec).decode(
+                "utf-8"
+            )
+        )
+        stream.write(";\n")
+        with self.connection.cursor() as cur:
+            # Since we can't write into the CStore table directly, we first load the data
+            # into a temporary table and then insert that data into the CStore table.
+            stream.write(
+                self.dump_table_creation(
+                    None, "cstore_tmp_ingestion", schema_spec, temporary=True
+                ).as_string(cur)
+            )
+            stream.write(";\n")
+            self.dump_table_sql(
+                schema,
+                object_id,
+                stream,
+                target_schema="pg_temp",
+                target_table="cstore_tmp_ingestion",
+            )
+            stream.write(
+                SQL("INSERT INTO {}.{} (SELECT * FROM pg_temp.cstore_tmp_ingestion);\n")
+                .format(Identifier(schema), Identifier(object_id))
+                .as_string(cur)
+            )
+            stream.write(
+                cur.mogrify(
+                    "SELECT splitgraph_api.set_object_schema(%s, %s);\n",
+                    (object_id, json.dumps(schema_spec)),
+                ).decode("utf-8")
+            )
+            stream.write("DROP TABLE pg_temp.cstore_tmp_ingestion;\n")
+
+    def get_object_size(self, object_id):
+        return self.run_sql(
+            "SELECT splitgraph_api.get_object_size(%s)",
+            (object_id,),
+            return_shape=ResultShape.ONE_ONE,
+        )
+
+    def delete_objects(self, object_ids):
+        unmount_query = SQL(";").join(
+            SQL("DROP FOREIGN TABLE IF EXISTS {}.{}").format(
+                Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)
+            )
+            for object_id in object_ids
+        )
+        self.run_sql(unmount_query)
+        self.run_sql_batch(
+            "SELECT splitgraph_api.delete_object_files(%s)", [(o,) for o in object_ids]
+        )
+
+    def _mount_object(self, object_id, schema=SPLITGRAPH_META_SCHEMA, schema_spec=None):
+        query = self._dump_object_creation(object_id, schema, schema_spec)
+        self.run_sql(query)
+
     def store_fragment(self, inserted, deleted, schema, table, source_schema, source_table):
         # Add the upserted-deleted flag
         # Deletes are tricky: we store the full value here because we're assuming they
@@ -529,6 +612,26 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             args = [p for pk in deleted for p in [False] + list(pk)]
             self.run_sql(query, args)
 
+    def store_object(self, object_id, source_schema, source_table):
+        schema_spec = self.get_full_table_schema(source_schema, source_table)
+
+        # Mount the object first
+        self._mount_object(object_id, schema_spec=schema_spec)
+
+        # Insert the data into the new Citus table.
+        self.run_sql(
+            SQL("INSERT INTO {}.{} SELECT * FROM {}.{}").format(
+                Identifier(SPLITGRAPH_META_SCHEMA),
+                Identifier(object_id),
+                Identifier(source_schema),
+                Identifier(source_table),
+            )
+        )
+
+        # Also store the table schema in a file
+        self._set_object_schema(object_id, schema_spec)
+        self.delete_table(source_schema, source_table)
+
     @staticmethod
     def _schema_spec_to_cols(schema_spec):
         pk_cols = [p[1] for p in schema_spec if p[3]]
@@ -557,7 +660,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             )
             + SQL(" WHERE ")
             + _generate_where_clause(
-                target_schema, target_table, ri_cols, source_table, source_schema
+                target_schema, target_table, ri_cols, source_schema, source_table
             )
         )
 
@@ -609,51 +712,6 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         )
         self.run_sql(query, (extra_qual_args * len(objects)) if extra_qual_args else None)
 
-    # Utilities to dump objects into an external format.
-    # We use a slightly ad hoc format: the schema (JSON) + a null byte + Postgres's copy_to
-    # binary format (only contains data). There's probably some scope to make this more optimized, maybe
-    # we should look into columnar on-disk formats (Parquet/Avro) but we currently just want to get the objects
-    # out of/into postgres as fast as possible.
-    def dump_object(self, schema, table, stream):
-        schema_spec = json.dumps(self.get_full_table_schema(schema, table))
-        stream.write(schema_spec.encode("utf-8") + b"\0")
-        with self.connection.cursor() as cur:
-            cur.copy_expert(
-                SQL("COPY {}.{} TO STDOUT WITH (FORMAT 'binary')").format(
-                    Identifier(schema), Identifier(table)
-                ),
-                stream,
-            )
-
-        self.commit()
-        self.close()
-
-    def load_object(self, schema, table, stream):
-        chars = b""
-        # Read until the delimiter separating a JSON schema from the Postgres copy_to dump.
-        # Surely this is buffered?
-        while True:
-            char = stream.read(1)
-            if char == b"\0":
-                break
-            chars += char
-
-        schema_spec = json.loads(chars.decode("utf-8"))
-        self.create_table(schema, table, schema_spec, unlogged=True)
-
-        with self.connection.cursor() as cur:
-            cur.copy_expert(
-                SQL("COPY {}.{} FROM STDIN WITH (FORMAT 'binary')").format(
-                    Identifier(schema), Identifier(table)
-                ),
-                stream,
-            )
-        # NB this should only be done when the loader is running in a different thread, since
-        # otherwise this will also commit the transaction that's opened by the ObjectManager, messing
-        # with its refcounting.
-        self.commit()
-        self.close()
-
     def upload_objects(self, objects, remote_engine):
         if not isinstance(remote_engine, PostgresEngine):
             raise ObjectCacheError(
@@ -672,8 +730,8 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
         for i, obj in enumerate(objects):
             print("(%d/%d) %s..." % (i + 1, len(objects), obj))
-            schema_spec = cstore.get_object_schema(self, obj)
-            cstore.mount_object(remote_engine, obj, schema_spec=schema_spec)
+            schema_spec = self.get_object_schema(obj)
+            remote_engine._mount_object(obj, schema_spec=schema_spec)
 
             stream = BytesIO()
             with self.connection.cursor() as cur:
@@ -691,7 +749,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                     ),
                     stream,
                 )
-            cstore.set_object_schema(remote_engine, obj, schema_spec)
+            remote_engine._set_object_schema(obj, schema_spec)
             remote_engine.commit()
 
     @contextmanager
@@ -744,11 +802,11 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
                 # Create the CStore table on the engine and copy the contents of the object into it.
                 schema_spec = remote_engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, obj)
-                cstore.mount_object(self, obj, schema_spec=schema_spec)
+                self._mount_object(obj, schema_spec=schema_spec)
                 self.copy_table(
                     remote_schema, obj, SPLITGRAPH_META_SCHEMA, obj, with_pk_constraints=False
                 )
-                cstore.set_object_schema(self, obj, schema_spec=schema_spec)
+                self._set_object_schema(obj, schema_spec=schema_spec)
                 self.connection.commit()
                 downloaded_objects.append(obj)
             return downloaded_objects
@@ -855,12 +913,7 @@ def _convert_vals(vals):
     ]
 
 
-def _generate_where_clause(schema, table, cols, table_2=None, schema_2=None):
-    if not table_2:
-        return SQL(" AND ").join(
-            SQL("{}.{}.{} = %s").format(Identifier(schema), Identifier(table), Identifier(c))
-            for c in cols
-        )
+def _generate_where_clause(schema, table, cols, schema_2, table_2):
     return SQL(" AND ").join(
         SQL("{}.{}.{} = {}.{}.{}").format(
             Identifier(schema),

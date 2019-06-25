@@ -3,10 +3,10 @@ Routines for managing Splitgraph engines, including looking up repositories and 
 """
 
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.config import CONFIG, SPLITGRAPH_API_SCHEMA
 from splitgraph.engine import get_engine, ResultShape
 from splitgraph.exceptions import RepositoryNotFoundError
-
 from ._common import select
 
 

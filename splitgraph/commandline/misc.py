@@ -4,6 +4,7 @@ Miscellaneous image management sgr commands.
 import sys
 
 import click
+
 from splitgraph import CONFIG
 from splitgraph.config.keys import KEYS, SENSITIVE_KEYS
 from splitgraph.core.engine import init_engine, repository_exists
@@ -11,7 +12,6 @@ from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.repository import Repository
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import CheckoutError
-
 from ._common import ImageType, RepositoryType
 
 

@@ -1,13 +1,17 @@
+-- Engine-side functions for managing CStore files
+-- These don't import splitgraph core (large overhead),
+-- so there's some repetition in the code.
+
 CREATE EXTENSION IF NOT EXISTS plpython3u;
 CREATE SCHEMA IF NOT EXISTS splitgraph_api;
 
-CREATE OR REPLACE FUNCTION splitgraph_api.upload_object(object_id varchar, endpoint varchar, access_key varchar, secret_key varchar) RETURNS varchar AS
+CREATE OR REPLACE FUNCTION splitgraph_api.upload_object(object_id varchar, endpoint varchar, bucket varchar,
+    access_key varchar, secret_key varchar) RETURNS varchar AS
 $BODY$
     import os.path
     from minio import Minio
     from minio.error import BucketAlreadyOwnedByYou, BucketAlreadyExists, MinioError
 
-    # tmp, don't want to import splitgraph
     SG_ENGINE_OBJECT_PATH = "/var/lib/splitgraph/objects"
 
     client = Minio(
@@ -16,7 +20,6 @@ $BODY$
         secret_key=secret_key,
         secure=False,
     )
-    bucket = access_key
 
     try:
         client.make_bucket(bucket)
@@ -36,7 +39,8 @@ $BODY$
 LANGUAGE plpython3u VOLATILE;
 
 
-CREATE OR REPLACE FUNCTION splitgraph_api.download_object(object_id varchar, url varchar, access_key varchar, secret_key varchar) RETURNS void AS
+CREATE OR REPLACE FUNCTION splitgraph_api.download_object(object_id varchar, url varchar,
+    access_key varchar, secret_key varchar) RETURNS void AS
 $BODY$
     import os.path
     from minio import Minio

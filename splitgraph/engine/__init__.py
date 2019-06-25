@@ -97,13 +97,12 @@ class SQLEngine(ABC):
         """Rollback the engine's backing connection"""
 
     def run_sql_batch(self, statement, arguments, schema=None):
-        """Run a parameterized SQL statement against multiple sets of arguments. Other engines
-        can override if they support a more efficient batching mechanism."""
-        for args in arguments:
-            if schema:
-                self.run_sql_in(schema, statement, args, return_shape=ResultShape.NONE)
-            else:
-                self.run_sql(statement, args, return_shape=ResultShape.NONE)
+        """Run a parameterized SQL statement against multiple sets of arguments.
+
+        :param statement: Statement to run
+        :param arguments: Query arguments
+        :param schema: Schema to run the statement in"""
+        raise NotImplementedError()
 
     def run_sql_in(self, schema, sql, arguments=None, return_shape=ResultShape.MANY_MANY):
         """
@@ -218,14 +217,6 @@ class SQLEngine(ABC):
                 )
             )
 
-    def rename_table(self, schema, table, new_table):
-        """Rename a table"""
-        self.run_sql(
-            SQL("ALTER TABLE {}.{} RENAME TO {}").format(
-                Identifier(schema), Identifier(table), Identifier(new_table)
-            )
-        )
-
     def delete_schema(self, schema):
         """Delete a schema if it exists, including all the tables in it."""
         self.run_sql(
@@ -250,10 +241,6 @@ class SQLEngine(ABC):
             (schema, table),
             return_shape=ResultShape.ONE_ONE,
         )
-
-    def get_table_size(self, schema, table):
-        """Return the table disk usage, in bytes."""
-        raise NotImplementedError()
 
     def get_primary_keys(self, schema, table):
         """Get a list of (column_name, column_type) denoting the primary keys of a given table."""
@@ -459,6 +446,27 @@ class ObjectEngine:
     Routines for storing/applying objects as well as sharing them with other engines.
     """
 
+    def get_object_schema(self, object_id):
+        """
+        Get the schema of a given object, returned as a list of
+        (ordinal, column_name, column_type, is_pk).
+
+        :param object_id: ID of the object
+        """
+
+    def get_object_size(self, object_id):
+        """
+        Return the on-disk footprint of this object, in bytes
+        :param object_id: ID of the object
+        """
+
+    def delete_objects(self, object_ids):
+        """
+        Delete one or more objects from the engine.
+
+        :param object_ids: IDs of objects to delete
+        """
+
     def store_fragment(self, inserted, deleted, schema, table, source_schema, source_table):
         """
         Store a fragment of a changed table in another table
@@ -495,26 +503,6 @@ class ObjectEngine:
         """
         raise NotImplementedError()
 
-    def dump_object(self, schema, table, stream):
-        """
-        Dump a table to a stream using an engine-specific binary format.
-
-        :param schema: Schema the table lives in
-        :param table: Table to dump
-        :param stream: A file-like stream to dump the object into
-        """
-        raise NotImplementedError()
-
-    def load_object(self, schema, table, stream):
-        """
-        Load a table from a stream using an engine-specific binary format.
-
-        :param schema: Schema to create the table in. Must already exist.
-        :param table: Table to create. Must not exist.
-        :param stream: A file-like stream to load the object from
-        """
-        raise NotImplementedError()
-
     def upload_objects(self, objects, remote_engine):
         """
         Upload objects from the local cache to the remote engine
@@ -534,6 +522,28 @@ class ObjectEngine:
         :return List of object IDs that were downloaded.
         """
         raise NotImplementedError()
+
+    def dump_object(self, object_id, stream, schema):
+        """
+        Dump an object into a series of SQL statements
+
+        :param object_id: Object ID
+        :param stream: Text stream to dump the object into
+        :param schema: Schema the object lives in
+        """
+        raise NotImplementedError()
+
+    def store_object(self, object_id, source_schema, source_table):
+        """
+        Stores a Splitgraph object located in a staging table in the actual format
+        implemented by this engine.
+
+        At the end of this operation, the staging table must be deleted.
+
+        :param source_schema: Schema the staging table is located in.
+        :param source_table: Name of the staging table
+        :param object_id: Name of the object
+        """
 
 
 # Name of the current global engine, 'LOCAL' for the local.

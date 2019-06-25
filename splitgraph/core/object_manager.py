@@ -9,7 +9,6 @@ from datetime import datetime as dt
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
-from splitgraph.core import cstore
 from splitgraph.core.fragment_manager import FragmentManager
 from splitgraph.core.metadata_manager import MetadataManager
 from splitgraph.engine import ResultShape, switch_engine
@@ -503,7 +502,7 @@ class ObjectManager(FragmentManager, MetadataManager):
 
         # Also delete objects that don't have a metadata entry at all
         orphaned_objects = [o[0] for o in candidates if o[0] not in object_sizes]
-        orphaned_object_sizes = {o: self.get_object_size(o) for o in orphaned_objects}
+        orphaned_object_sizes = {o: self.object_engine.get_object_size(o) for o in orphaned_objects}
         if orphaned_objects:
             logging.info(
                 "Found %d orphaned object(s), total size %s: %s",
@@ -737,7 +736,7 @@ class ObjectManager(FragmentManager, MetadataManager):
                     )
                 )
             if foreign_tables:
-                cstore.delete_objects(self.object_engine, foreign_tables)
+                self.object_engine.delete_objects(foreign_tables)
 
             self.object_engine.commit()
 

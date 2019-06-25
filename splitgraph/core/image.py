@@ -7,11 +7,11 @@ from random import getrandbits
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
+
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCHEMA
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphError
 from splitgraph.hooks.mount_handlers import init_fdw
-
 from ._common import set_tag, select, manage_audit, set_head
 from .table import Table
 

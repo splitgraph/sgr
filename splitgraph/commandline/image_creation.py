@@ -6,6 +6,7 @@ import sys
 from collections import defaultdict
 
 import click
+
 from splitgraph.commandline._common import ImageType, RepositoryType
 from splitgraph.core.engine import repository_exists
 
