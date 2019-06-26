@@ -73,8 +73,8 @@ COPY init_scripts /docker-entrypoint-initdb.d/
 # package itself without dependencies (deps are libc>=2.14 -- we have 2.24 -- and libpython3.7
 # which we compiled earlier)
 
-RUN wget http://http.us.debian.org/debian/pool/main/p/postgresql-11/postgresql-plpython3-11_11.3-1_amd64.deb && \
-    echo "de6623346e95f62778018b331706d2bb2f1308ae07c3a056fc954434e89615be  postgresql-plpython3-11_11.3-1_amd64.deb" | shasum -c && \
-    dpkg --force-all -i postgresql-plpython3-11_11.3-1_amd64.deb
+RUN wget http://http.us.debian.org/debian/pool/main/p/postgresql-11/postgresql-plpython3-11_11.4-1_amd64.deb && \
+    echo "fef3a643b255e80e1d471800ba337774df80968fd2a26c89cd90bd9709efaa21  postgresql-plpython3-11_11.4-1_amd64.deb" | shasum -c && \
+    dpkg --force-all -i postgresql-plpython3-11_11.4-1_amd64.deb
 
 CMD ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
