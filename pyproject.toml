@@ -21,7 +21,7 @@ pglast = "^1.4"
 
 [tool.poetry.dev-dependencies]
 pytest = "^4.4"
-pyfakefs = "^3.5"
+pyfakefs = "^3.6"
 pytest-cov = "^2.6"
 pytest-env = "^0.6"
 coveralls = "^1.7"
