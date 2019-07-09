@@ -14,7 +14,6 @@ from splitgraph.core.sql import validate_splitfile_sql
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import ImageNotFoundError, SplitfileError
 from splitgraph.hooks.mount_handlers import get_mount_handler
-
 from ._parsing import (
     parse_commands,
     extract_nodes,

@@ -113,7 +113,7 @@ def _emit_table_diff(table_name, diff_result, verbose):
         if removed:
             count.append("removed " + pluralise("row", removed))
         if updated:
-            count.append("updated " + pluralise("row", removed))
+            count.append("updated " + pluralise("row", updated))
         if added + removed + updated == 0:
             count = ["no changes"]
         print(to_print + ", ".join(count) + ".")

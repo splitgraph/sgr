@@ -232,7 +232,7 @@ class FragmentManager(MetadataManager):
             are used to generate the min/max index for an object to know if it removes/updates some rows
             that might be pertinent to a query.
         """
-        object_size = self.object_engine.get_table_size(SPLITGRAPH_META_SCHEMA, object_id)
+        object_size = self.object_engine.get_object_size(object_id)
         object_index = self._generate_object_index(object_id, changeset)
         self.register_objects(
             [
@@ -336,8 +336,10 @@ class FragmentManager(MetadataManager):
             # the error doesn't roll back the whole transaction (us creating and registering all other objects).
             with self.object_engine.savepoint("object_rename"):
                 try:
-                    self.object_engine.rename_table(
-                        SPLITGRAPH_META_SCHEMA, tmp_object_id, object_id
+                    self.object_engine.store_object(
+                        object_id=object_id,
+                        source_schema=SPLITGRAPH_META_SCHEMA,
+                        source_table=tmp_object_id,
                     )
                 except DuplicateTable:
                     # If an object with this ID already exists, delete the temporary table,
@@ -469,8 +471,10 @@ class FragmentManager(MetadataManager):
 
             # Store the changesets. For the parentless before/after changesets, only create them if they actually
             # contain something.
+            # NB test_commit_diff::test_commit_mode_change: in case the before/after changesets actually
+            # overwrite something that we didn't detect, push them to be later in the application order.
             object_ids = self._store_changesets(
-                old_table, [before] + matched + [after], [None] + top_fragments + [None], schema
+                old_table, matched + [before, after], top_fragments + [None, None], schema
             )
             # Finally, link the table to the new set of objects.
             self.register_tables(
@@ -613,9 +617,20 @@ class FragmentManager(MetadataManager):
             object_id = "o" + sha256((content_hash + schema_hash).encode("ascii")).hexdigest()[:-2]
 
             with self.object_engine.savepoint("object_rename"):
+
+                self.object_engine.run_sql(
+                    SQL("ALTER TABLE {}.{} ADD COLUMN {} BOOLEAN DEFAULT TRUE").format(
+                        Identifier(SPLITGRAPH_META_SCHEMA),
+                        Identifier(tmp_object_id),
+                        Identifier(SG_UD_FLAG),
+                    )
+                )
+
                 try:
-                    self.object_engine.rename_table(
-                        SPLITGRAPH_META_SCHEMA, tmp_object_id, object_id
+                    self.object_engine.store_object(
+                        object_id=object_id,
+                        source_schema=SPLITGRAPH_META_SCHEMA,
+                        source_table=tmp_object_id,
                     )
                 except DuplicateTable:
                     # If we already have an object with this ID (and hence hash), reuse it.
@@ -629,14 +644,6 @@ class FragmentManager(MetadataManager):
                     )
                     self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
                     return object_id
-
-                self.object_engine.run_sql(
-                    SQL("ALTER TABLE {}.{} ADD COLUMN {} BOOLEAN DEFAULT TRUE").format(
-                        Identifier(SPLITGRAPH_META_SCHEMA),
-                        Identifier(object_id),
-                        Identifier(SG_UD_FLAG),
-                    )
-                )
 
             with self.metadata_engine.savepoint("object_register"):
                 try:
@@ -681,13 +688,23 @@ class FragmentManager(MetadataManager):
         :return: Expanded chain. Parents of objects are guaranteed to come before those objects and
             the order in the `object_ids` array is preserved.
         """
+        original_order = {o: i for i, o in enumerate(object_ids)}
+
         parents = self.metadata_engine.run_sql(
-            SQL("SELECT {}.get_object_path(%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
+            SQL("SELECT object_id, original_object_id from {}.get_object_path(%s)").format(
+                Identifier(SPLITGRAPH_API_SCHEMA)
+            ),
             (object_ids,),
-            return_shape=ResultShape.ONE_ONE,
         )
 
-        return list(parents)
+        # Sort the resultant array so that objects that earlier items in the
+        # `object_ids` list depend on come earlier themselves.
+        return [
+            object_id
+            for object_id, _ in sorted(
+                parents, key=lambda object_reason: original_order[object_reason[1]]
+            )
+        ]
 
     def filter_fragments(self, object_ids, quals, column_types):
         """

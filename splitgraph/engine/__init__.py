@@ -25,6 +25,7 @@ _ENGINE_SPECIFIC_CONFIG = [
     "SG_ENGINE_ADMIN_PWD",
     "SG_ENGINE_FDW_HOST",
     "SG_ENGINE_FDW_PORT",
+    "SG_ENGINE_OBJECT_PATH",
 ]
 
 # Some engine config keys default to values of other keys if unspecified.
@@ -96,13 +97,12 @@ class SQLEngine(ABC):
         """Rollback the engine's backing connection"""
 
     def run_sql_batch(self, statement, arguments, schema=None):
-        """Run a parameterized SQL statement against multiple sets of arguments. Other engines
-        can override if they support a more efficient batching mechanism."""
-        for args in arguments:
-            if schema:
-                self.run_sql_in(schema, statement, args, return_shape=ResultShape.NONE)
-            else:
-                self.run_sql(statement, args, return_shape=ResultShape.NONE)
+        """Run a parameterized SQL statement against multiple sets of arguments.
+
+        :param statement: Statement to run
+        :param arguments: Query arguments
+        :param schema: Schema to run the statement in"""
+        raise NotImplementedError()
 
     def run_sql_in(self, schema, sql, arguments=None, return_shape=ResultShape.MANY_MANY):
         """
@@ -217,14 +217,6 @@ class SQLEngine(ABC):
                 )
             )
 
-    def rename_table(self, schema, table, new_table):
-        """Rename a table"""
-        self.run_sql(
-            SQL("ALTER TABLE {}.{} RENAME TO {}").format(
-                Identifier(schema), Identifier(table), Identifier(new_table)
-            )
-        )
-
     def delete_schema(self, schema):
         """Delete a schema if it exists, including all the tables in it."""
         self.run_sql(
@@ -250,69 +242,40 @@ class SQLEngine(ABC):
             return_shape=ResultShape.ONE_ONE,
         )
 
-    def get_table_size(self, schema, table):
-        """Return the table disk usage, in bytes."""
-        raise NotImplementedError()
-
     def get_primary_keys(self, schema, table):
         """Get a list of (column_name, column_type) denoting the primary keys of a given table."""
         raise NotImplementedError()
 
-    def dump_table_creation(self, schema, tables, created_schema):
+    @staticmethod
+    def dump_table_creation(schema, table, schema_spec, unlogged=False, temporary=False):
         """
-        Dumps the basic table schema (column names, data types, is_nullable) for one or more tables into SQL statements.
-
-        :param schema: Schema to dump tables from
-        :param tables: Tables to dump
-        :param created_schema: The new schema that the tables will be created under.
-        :return: An SQL statement that reconstructs the schema for the given tables.
-        """
-        queries = []
-
-        for table in tables:
-            cols = self.run_sql(
-                """SELECT column_name, data_type, is_nullable
-                           FROM information_schema.columns
-                           WHERE table_name = %s AND table_schema = %s""",
-                (table, schema),
-            )
-            target = SQL("{}.{}").format(Identifier(created_schema), Identifier(table))
-            query = SQL("CREATE TABLE {} (").format(target) + SQL(
-                ",".join(
-                    "{} %s " % ctype + ("NOT NULL" if not cnull else "") for _, ctype, cnull in cols
-                )
-            ).format(*(Identifier(cname) for cname, _, _ in cols))
-
-            pks = self.get_primary_keys(schema, table)
-            if pks:
-                query += (
-                    SQL(", PRIMARY KEY (")
-                    + SQL(",").join(SQL("{}").format(Identifier(c)) for c, _ in pks)
-                    + SQL("))")
-                )
-            else:
-                query += SQL(")")
-
-            queries.append(query)
-        return SQL(";").join(queries)
-
-    def create_table(self, schema, table, schema_spec, unlogged=False):
-        """
-        Creates a table using a previously-dumped table schema spec
+        Dumps the DDL for a table using a previously-dumped table schema spec
 
         :param schema: Schema to create the table in
         :param table: Table name to create
         :param schema_spec: A list of (ordinal_position, column_name, data_type, is_pk) specifying the table schema
         :param unlogged: If True, the table won't be reflected in the WAL or scanned by the analyzer/autovacuum.
+        :param temporary: If True, a temporary table is created (the schema parameter is ignored)
+        :return: An SQL statement that reconstructs the table schema.
         """
+        flavour = ""
+        if unlogged:
+            flavour = "UNLOGGED"
+        if temporary:
+            flavour = "TEMPORARY"
 
         schema_spec = sorted(schema_spec)
 
-        target = SQL("{}.{}").format(Identifier(schema), Identifier(table))
-        query = SQL("CREATE " + ("UNLOGGED" if unlogged else "") + " TABLE {} (").format(
-            target
-        ) + SQL(",".join("{} %s " % ctype for _, _, ctype, _ in schema_spec)).format(
-            *(Identifier(cname) for _, cname, _, _ in schema_spec)
+        if temporary:
+            target = Identifier(table)
+        else:
+            target = SQL("{}.{}").format(Identifier(schema), Identifier(table))
+        query = (
+            SQL("CREATE " + flavour + " TABLE ")
+            + target
+            + SQL(" (" + ",".join("{} %s " % ctype for _, _, ctype, _ in schema_spec)).format(
+                *(Identifier(cname) for _, cname, _, _ in schema_spec)
+            )
         )
 
         pk_cols = [cname for _, cname, _, is_pk in schema_spec if is_pk]
@@ -323,12 +286,37 @@ class SQLEngine(ABC):
                 + SQL("))")
             )
         else:
-            query += SQL(")")
+            query += SQL(");")
         if unlogged:
-            query += SQL(" WITH(autovacuum_enabled=false)")
-        self.run_sql(query, return_shape=ResultShape.NONE)
+            query += SQL(" WITH(autovacuum_enabled=false);")
+        return query
 
-    def dump_table_sql(self, schema, table_name, stream, columns="*", where="", where_args=None):
+    def create_table(self, schema, table, schema_spec, unlogged=False, temporary=False):
+        """
+        Creates a table using a previously-dumped table schema spec
+
+        :param schema: Schema to create the table in
+        :param table: Table name to create
+        :param schema_spec: A list of (ordinal_position, column_name, data_type, is_pk) specifying the table schema
+        :param unlogged: If True, the table won't be reflected in the WAL or scanned by the analyzer/autovacuum.
+        :param temporary: If True, a temporary table is created (the schema parameter is ignored)
+        """
+        self.run_sql(
+            self.dump_table_creation(schema, table, schema_spec, unlogged, temporary),
+            return_shape=ResultShape.NONE,
+        )
+
+    def dump_table_sql(
+        self,
+        schema,
+        table_name,
+        stream,
+        columns="*",
+        where="",
+        where_args=None,
+        target_schema=None,
+        target_table=None,
+    ):
         """
         Dump the table contents in the SQL format
         :param schema: Schema the table is located in
@@ -337,6 +325,8 @@ class SQLEngine(ABC):
         :param columns: SQL column spec. Default '*'.
         :param where: Optional, an SQL WHERE clause
         :param where_args: Arguments for the optional WHERE clause.
+        :param target_schema: Schema to create the table in (default same as `schema`)
+        :param target_table: Name of the table to insert data into (default same as `table_name`)
         """
         raise NotImplementedError()
 
@@ -456,6 +446,27 @@ class ObjectEngine:
     Routines for storing/applying objects as well as sharing them with other engines.
     """
 
+    def get_object_schema(self, object_id):
+        """
+        Get the schema of a given object, returned as a list of
+        (ordinal, column_name, column_type, is_pk).
+
+        :param object_id: ID of the object
+        """
+
+    def get_object_size(self, object_id):
+        """
+        Return the on-disk footprint of this object, in bytes
+        :param object_id: ID of the object
+        """
+
+    def delete_objects(self, object_ids):
+        """
+        Delete one or more objects from the engine.
+
+        :param object_ids: IDs of objects to delete
+        """
+
     def store_fragment(self, inserted, deleted, schema, table, source_schema, source_table):
         """
         Store a fragment of a changed table in another table
@@ -470,7 +481,13 @@ class ObjectEngine:
         raise NotImplementedError()
 
     def apply_fragments(
-        self, objects, target_schema, target_table, extra_quals=None, extra_qual_args=None
+        self,
+        objects,
+        target_schema,
+        target_table,
+        extra_quals=None,
+        extra_qual_args=None,
+        schema_spec=None,
     ):
         """
         Apply multiple fragments to a target table as a single-query batch operation.
@@ -481,26 +498,8 @@ class ObjectEngine:
         :param extra_quals: Optional, extra SQL (Composable) clauses to filter new rows in the fragment on
             (e.g. SQL("a = %s"))
         :param extra_qual_args: Optional, a tuple of arguments to use with `extra_quals`
-        """
-        raise NotImplementedError()
-
-    def dump_object(self, schema, table, stream):
-        """
-        Dump a table to a stream using an engine-specific binary format.
-
-        :param schema: Schema the table lives in
-        :param table: Table to dump
-        :param stream: A file-like stream to dump the object into
-        """
-        raise NotImplementedError()
-
-    def load_object(self, schema, table, stream):
-        """
-        Load a table from a stream using an engine-specific binary format.
-
-        :param schema: Schema to create the table in. Must already exist.
-        :param table: Table to create. Must not exist.
-        :param stream: A file-like stream to load the object from
+        :param schema_spec: Optional, list of (ordinal, column_name, column_type, is_pk).
+            If not specified, uses the schema of target_table.
         """
         raise NotImplementedError()
 
@@ -523,6 +522,28 @@ class ObjectEngine:
         :return List of object IDs that were downloaded.
         """
         raise NotImplementedError()
+
+    def dump_object(self, object_id, stream, schema):
+        """
+        Dump an object into a series of SQL statements
+
+        :param object_id: Object ID
+        :param stream: Text stream to dump the object into
+        :param schema: Schema the object lives in
+        """
+        raise NotImplementedError()
+
+    def store_object(self, object_id, source_schema, source_table):
+        """
+        Stores a Splitgraph object located in a staging table in the actual format
+        implemented by this engine.
+
+        At the end of this operation, the staging table must be deleted.
+
+        :param source_schema: Schema the staging table is located in.
+        :param source_table: Name of the staging table
+        :param object_id: Name of the object
+        """
 
 
 # Name of the current global engine, 'LOCAL' for the local.

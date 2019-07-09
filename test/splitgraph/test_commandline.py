@@ -247,11 +247,11 @@ def test_object_info(local_engine_empty):
         ("base_1", "HTTP", "example.com/objects/base_1.tgz"),
     )
     local_engine_empty.run_sql(insert("object_cache_status", ("object_id",)), ("base_1",))
-    local_engine_empty.run_sql("CREATE TABLE splitgraph_meta.base_1 (col_1 INTEGER)")
+    local_engine_empty._mount_object("base_1", schema_spec=[(1, "col_1", "integer", False)])
 
     # patch_1: on the engine, uncached locally
     # patch_2: created here, cached locally
-    local_engine_empty.run_sql("CREATE TABLE splitgraph_meta.patch_2 (col_1 INTEGER)")
+    local_engine_empty._mount_object("patch_2", schema_spec=[(1, "col_1", "integer", False)])
 
     result = runner.invoke(object_c, ["base_1"])
     assert result.exit_code == 0

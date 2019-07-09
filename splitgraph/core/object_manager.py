@@ -56,23 +56,13 @@ class ObjectManager(FragmentManager, MetadataManager):
         :param limit_to: If specified, only the objects in this list will be returned.
         :return: Set of object IDs.
         """
-        query = "SELECT pg_tables.tablename FROM pg_tables WHERE pg_tables.schemaname = %s"
-        query_args = [SPLITGRAPH_META_SCHEMA]
-        if limit_to:
-            query += (
-                " AND pg_tables.tablename IN ("
-                + ",".join(itertools.repeat("%s", len(limit_to)))
-                + ")"
-            )
-            query_args += list(limit_to)
-        objects = set(
-            self.object_engine.run_sql(
-                SQL(query).format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                query_args,
-                return_shape=ResultShape.MANY_ONE,
-            )
+        objects = self.object_engine.run_sql(
+            "SELECT splitgraph_api.list_objects()", return_shape=ResultShape.ONE_ONE
         )
-        return objects.difference(META_TABLES)
+        if not limit_to:
+            return objects
+        else:
+            return [o for o in objects if o in limit_to]
 
     def get_cache_occupancy(self):
         """
@@ -93,11 +83,11 @@ class ObjectManager(FragmentManager, MetadataManager):
         return int(
             self.object_engine.run_sql(
                 SQL(
-                    "SELECT COALESCE(sum(pg_relation_size("
-                    "quote_ident(p.schemaname) || '.' || quote_ident(p.tablename))), 0)"
-                    " FROM pg_tables p JOIN {0}.object_cache_status oc"
-                    " ON p.tablename = oc.object_id"
-                    " WHERE oc.ready = 't' AND p.schemaname = %s"
+                    "SELECT COALESCE(sum(splitgraph_api.get_object_size("
+                    "quote_ident(t.table_name))), 0)"
+                    " FROM information_schema.tables t JOIN {0}.object_cache_status oc"
+                    " ON t.table_name = oc.object_id"
+                    " WHERE oc.ready = 't' AND t.table_schema = %s"
                 ).format(Identifier(SPLITGRAPH_META_SCHEMA)),
                 (SPLITGRAPH_META_SCHEMA,),
                 return_shape=ResultShape.ONE_ONE,
@@ -111,9 +101,10 @@ class ObjectManager(FragmentManager, MetadataManager):
         return int(
             self.object_engine.run_sql(
                 SQL(
-                    "SELECT COALESCE(sum(pg_relation_size("
-                    "quote_ident(p.schemaname) || '.' || quote_ident(p.tablename))), 0)"
-                    " FROM pg_tables p WHERE p.schemaname = %s AND p.tablename NOT IN ("
+                    "SELECT COALESCE(sum(splitgraph_api.get_object_size("
+                    "quote_ident(t.table_name))), 0)"
+                    " FROM information_schema.tables t"
+                    " WHERE t.table_schema = %s AND t.table_name NOT IN ("
                     + ",".join(itertools.repeat("%s", len(META_TABLES)))
                     + ")"
                 ).format(Identifier(SPLITGRAPH_META_SCHEMA)),
@@ -511,10 +502,7 @@ class ObjectManager(FragmentManager, MetadataManager):
 
         # Also delete objects that don't have a metadata entry at all
         orphaned_objects = [o[0] for o in candidates if o[0] not in object_sizes]
-        orphaned_object_sizes = {
-            o: self.object_engine.get_table_size(SPLITGRAPH_META_SCHEMA, o)
-            for o in orphaned_objects
-        }
+        orphaned_object_sizes = {o: self.object_engine.get_object_size(o) for o in orphaned_objects}
         if orphaned_objects:
             logging.info(
                 "Found %d orphaned object(s), total size %s: %s",
@@ -699,6 +687,7 @@ class ObjectManager(FragmentManager, MetadataManager):
             for c in self.object_engine.get_all_tables(SPLITGRAPH_META_SCHEMA)
             if c not in META_TABLES
         }
+        tables_in_meta.update(self.get_downloaded_objects())
 
         to_delete = tables_in_meta.difference(primary_objects)
         self.delete_objects(to_delete)
@@ -720,13 +709,35 @@ class ObjectManager(FragmentManager, MetadataManager):
         """
         objects = list(objects)
         for i in range(0, len(objects), 100):
-            query = SQL(";").join(
-                SQL("DROP TABLE IF EXISTS {}.{}").format(
-                    Identifier(SPLITGRAPH_META_SCHEMA), Identifier(o)
-                )
-                for o in objects[i : i + 100]
+            to_delete = objects[i : i + 100]
+            table_types = self.object_engine.run_sql(
+                SQL(
+                    "SELECT table_name, table_type FROM information_schema.tables "
+                    "WHERE table_schema = %s AND table_name IN ("
+                    + ",".join(itertools.repeat("%s", len(to_delete)))
+                    + ")"
+                ),
+                [SPLITGRAPH_META_SCHEMA] + to_delete,
             )
-            self.object_engine.run_sql(query)
+
+            base_tables = [tn for tn, tt in table_types if tt == "BASE TABLE"]
+            # Try deleting CStore-mounted objects regardless of whether they're
+            # in splitgraph_meta as foreign tables (there might be cases
+            # where they are in /var/lib/splitgraph/objects but not mounted)
+            foreign_tables = [tn for tn in to_delete if tn not in base_tables]
+
+            if base_tables:
+                self.object_engine.run_sql(
+                    SQL(";").join(
+                        SQL("DROP TABLE {}.{}").format(
+                            Identifier(SPLITGRAPH_META_SCHEMA), Identifier(t)
+                        )
+                        for t in base_tables
+                    )
+                )
+            if foreign_tables:
+                self.object_engine.delete_objects(foreign_tables)
+
             self.object_engine.commit()
 
 

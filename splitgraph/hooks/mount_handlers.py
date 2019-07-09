@@ -7,6 +7,7 @@ import logging
 from importlib import import_module
 
 from psycopg2.sql import Identifier, SQL
+
 from splitgraph.config import PG_USER, CONFIG
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import MountHandlerError
