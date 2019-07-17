@@ -264,7 +264,7 @@ class ObjectManager(FragmentManager, MetadataManager):
         now = dt.now()
         self.object_engine.run_sql_batch(
             insert("object_cache_status", ("object_id", "ready", "refcount", "last_used"))
-            + SQL("ON CONFLICT DO NOTHING"),
+            + SQL("ON CONFLICT (object_id) DO UPDATE SET ready = 'f'"),
             [(object_id, False, 1, now) for object_id in new_objects],
         )
 
