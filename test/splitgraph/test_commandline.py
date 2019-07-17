@@ -59,13 +59,12 @@ def test_conn_string_serialization():
     )
 
 
-def test_commandline_basics(pg_repo_local, mg_repo_local):
+def test_commandline_basics(pg_repo_local):
     runner = CliRunner()
 
     # sgr status
     result = runner.invoke(status_c, [])
     assert pg_repo_local.to_schema() in result.output
-    assert mg_repo_local.to_schema() in result.output
     old_head = pg_repo_local.head
     assert old_head.image_hash in result.output
 
