@@ -9,7 +9,7 @@ from splitgraph import ResultShape, get_engine
 from splitgraph.commandline import *
 from splitgraph.commandline._common import ImageType
 from splitgraph.commandline.example import generate_c, alter_c, splitfile_c
-from splitgraph.commandline.image_info import object_c
+from splitgraph.commandline.image_info import object_c, objects_c
 from splitgraph.config import PG_PWD, PG_USER
 from splitgraph.core._common import parse_connection_string, serialize_connection_string, insert
 from splitgraph.core.engine import repository_exists, init_engine
@@ -279,6 +279,14 @@ Original location: example.com/objects/base_1.tgz (HTTP)
     result = runner.invoke(object_c, ["patch_2"])
     assert result.exit_code == 0
     assert "Location: created locally" in result.output
+
+    result = runner.invoke(objects_c)
+    assert result.exit_code == 0
+    assert result.output == "base_1\npatch_1\npatch_2\n"
+
+    result = runner.invoke(objects_c, ["--local"])
+    assert result.exit_code == 0
+    assert result.output == "base_1\npatch_2\n"
 
 
 def test_upstream_management(pg_repo_local):
