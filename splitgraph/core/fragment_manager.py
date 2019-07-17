@@ -351,11 +351,15 @@ class FragmentManager(MetadataManager):
                         table.table_name,
                     )
                     self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
-                    continue
+
+                    # There are some cases where an object can already exist in the object engine (in the cache)
+                    # but has been deleted from the metadata engine, so when it's recreated, we'll skip
+                    # actually registering it. Hence, we still want to proceed trying to register
+                    # it no matter what.
 
             # Same here: if we are being called as part of a commit and an object
             # already exists, we'll roll back everything that the caller has done
-            # (e.g. registering the new image).
+            # (e.g. registering the new image) if we don't have a savepoint.
             with self.metadata_engine.savepoint("object_register"):
                 try:
                     self._register_object(
@@ -368,13 +372,11 @@ class FragmentManager(MetadataManager):
                     )
                 except UniqueViolation:
                     logging.info(
-                        "Reusing object %s for table %s/%s",
+                        "Object %s for table %s/%s already exists, continuing...",
                         object_id,
                         table.repository,
                         table.table_name,
                     )
-                    self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
-                    continue
 
         return object_ids
 
@@ -643,7 +645,6 @@ class FragmentManager(MetadataManager):
                         offset,
                     )
                     self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
-                    return object_id
 
             with self.metadata_engine.savepoint("object_register"):
                 try:
@@ -657,14 +658,13 @@ class FragmentManager(MetadataManager):
                 except UniqueViolation:
                     # Someone registered this object (perhaps a concurrent pull) already.
                     logging.info(
-                        "Reusing object %s for table %s/%s limit %r offset %d",
+                        "Object %s for table %s/%s limit %r offset %d already exists, continuing...",
                         object_id,
                         source_schema,
                         source_table,
                         limit,
                         offset,
                     )
-                    self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, object_id)
 
             return object_id
 
