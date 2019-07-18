@@ -26,6 +26,7 @@ cd mongo_fdw || {
 echo "Build mongo_fdw..."
 
 git checkout 6d06a82b9071c2a8e92d80e07ef7f9d1c4e1e69d
+git apply /build_scripts/fdws/mongo_fdw/build-fixes.patch
 
 # Build the prerequisites
 ./autogen.sh --with-master

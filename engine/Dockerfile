@@ -1,4 +1,4 @@
-FROM postgres:11.3
+FROM postgres:11.4
 
 RUN apt-get update -qq && \
     apt-get install -y \
@@ -16,12 +16,14 @@ RUN apt-get update -qq && \
         libmongoc-dev \
         protobuf-c-compiler \
         libprotobuf-c0-dev \
-        zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev
+        zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev \
+        cmake
 
-RUN wget https://dev.mysql.com/get/mysql-apt-config_0.8.12-1_all.deb
-RUN echo mysql-apt-config mysql-apt-config/select-server  select  mysql-8.0 | debconf-set-selections && \
+RUN wget https://dev.mysql.com/get/mysql-apt-config_0.8.13-1_all.deb
+RUN echo mysql-apt-config mysql-apt-config/repo-codename  select stretch | debconf-set-selections && \
+    echo mysql-apt-config mysql-apt-config/select-server  select mysql-8.0 | debconf-set-selections && \
     echo mysql-apt-config mysql-apt-config/select-product select Apply | debconf-set-selections
-RUN DEBIAN_FRONTEND=noninteractive dpkg -i mysql-apt-config_0.8.12-1_all.deb
+RUN DEBIAN_FRONTEND=noninteractive dpkg -i mysql-apt-config_0.8.13-1_all.deb
 RUN apt-get update -qq && apt-get install -y libmysqlclient-dev && rm -rf /var/lib/apt/lists/*
 
 # Install Python 3.7.3 globally.
@@ -45,7 +47,7 @@ RUN ./build_scripts/fdws/mysql_fdw/build_mysql_fdw.sh
 RUN ./build_scripts/fdws/multicorn/build_multicorn.sh
 
 EXPOSE 5432
-ENV POSTGRES_DB cachedb
+ENV POSTGRES_DB splitgraph
 ENV POSTGRES_USER sgr
 
 # Postgres config files
