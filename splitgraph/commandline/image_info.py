@@ -234,6 +234,25 @@ def object_c(object_id):
             print("Location: " + original_location)
 
 
+@click.command(name="objects")
+@click.option(
+    "--local", is_flag=True, help="Show only objects that are physically present on this engine"
+)
+def objects_c(local):
+    """
+    List objects known to this engine.
+    """
+
+    om = ObjectManager(get_engine())
+
+    if local:
+        objects = om.get_downloaded_objects()
+    else:
+        objects = om.get_all_objects()
+
+    print("\n".join(sorted(objects)))
+
+
 @click.command(name="sql")
 @click.argument("sql")
 @click.option("-s", "--schema", help="Run SQL against this schema.")
