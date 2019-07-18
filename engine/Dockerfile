@@ -47,7 +47,7 @@ RUN ./build_scripts/fdws/mysql_fdw/build_mysql_fdw.sh
 RUN ./build_scripts/fdws/multicorn/build_multicorn.sh
 
 EXPOSE 5432
-ENV POSTGRES_DB cachedb
+ENV POSTGRES_DB splitgraph
 ENV POSTGRES_USER sgr
 
 # Postgres config files
