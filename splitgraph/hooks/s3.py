@@ -22,6 +22,34 @@ S3_SECRET_KEY = CONFIG["SG_S3_PWD"]
 # just exist on a hard drive somewhere.
 
 
+def delete_objects(client, object_ids):
+    """
+    Delete objects stored in Minio
+
+    :param client: Minio client
+    :param object_ids: List of Splitgraph object IDs to delete
+    """
+
+    # Expand the list of objects into actual files we store in Minio
+    all_object_ids = [o + suffix for o in object_ids for suffix in ("", ".schema", ".footer")]
+    list(client.remove_objects(S3_ACCESS_KEY, all_object_ids))
+
+
+def list_objects(client):
+    """
+    List objects stored in Minio
+
+    :param client: Minio client
+    :return: List of Splitgraph object IDs
+    """
+
+    return [
+        o.object_name
+        for o in client.list_objects(bucket_name=S3_ACCESS_KEY)
+        if not o.object_name.endswith(".footer") and not o.object_name.endswith(".schema")
+    ]
+
+
 class S3ExternalObjectHandler(ExternalObjectHandler):
     """Uploads/downloads the objects to/from S3/S3-compatible host using the Minio client.
         The parameters for this handler (overriding the .sgconfig) are:

@@ -270,6 +270,9 @@ def unprivileged_pg_repo(pg_repo_remote, unprivileged_remote_engine):
 
 
 SPLITFILE_ROOT = os.path.join(os.path.dirname(__file__), "../resources/")
+MINIO = Minio(
+    "%s:%s" % (S3_HOST, S3_PORT), access_key=S3_ACCESS_KEY, secret_key=S3_SECRET_KEY, secure=False
+)
 
 
 def load_splitfile(name):
@@ -278,23 +281,17 @@ def load_splitfile(name):
 
 
 def _cleanup_minio():
-    client = Minio(
-        "%s:%s" % (S3_HOST, S3_PORT),
-        access_key=S3_ACCESS_KEY,
-        secret_key=S3_SECRET_KEY,
-        secure=False,
-    )
-    if client.bucket_exists(S3_ACCESS_KEY):
-        objects = [o.object_name for o in client.list_objects(bucket_name=S3_ACCESS_KEY)]
+    if MINIO.bucket_exists(S3_ACCESS_KEY):
+        objects = [o.object_name for o in MINIO.list_objects(bucket_name=S3_ACCESS_KEY)]
         # remove_objects is an iterator, so we force evaluate it
-        list(client.remove_objects(bucket_name=S3_ACCESS_KEY, objects_iter=objects))
+        list(MINIO.remove_objects(bucket_name=S3_ACCESS_KEY, objects_iter=objects))
 
 
 @pytest.fixture
 def clean_minio():
     # Make sure to delete extra objects in the remote Minio bucket
     _cleanup_minio()
-    yield
+    yield MINIO
     # Comment this out if tests fail and you want to see what the hell went on in the bucket.
     _cleanup_minio()
 
