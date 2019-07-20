@@ -5,6 +5,7 @@ tracking tables for changes and uploading/downloading tables to other remote eng
 By default, Splitgraph is backed by Postgres: see :mod:`splitgraph.engine.postgres` for an example of how to
 implement a different engine.
 """
+import itertools
 from abc import ABC
 from contextlib import contextmanager
 from enum import Enum
@@ -166,8 +167,7 @@ class SQLEngine(ABC):
         target_table,
         with_pk_constraints=True,
         limit=None,
-        offset=None,
-        order_by_pk=False,
+        start_pk=None,
     ):
         """Copy a table in the same engine, optionally applying primary key constraints as well."""
         query_args = []
@@ -186,14 +186,26 @@ class SQLEngine(ABC):
                 Identifier(source_table),
             )
         pks = self.get_primary_keys(source_schema, source_table)
-        if order_by_pk and pks:
-            query += SQL(" ORDER BY ") + SQL(",").join(Identifier(p[0]) for p in pks)
+        pks_sql = SQL("(") + SQL(",").join(Identifier(p[0]) for p in pks) + SQL(")")
+        if start_pk:
+            # If start_pk is specified, start from after a given PK (so not really *start*_pk).
+            # Wrap the pk in brackets for when we have a composite key.
+            if not pks:
+                raise ValueError("start_pk cannot be used when a table doesn't have a primary key!")
+
+            query += (
+                SQL(" WHERE ")
+                + pks_sql
+                + SQL(" > (" + ",".join(itertools.repeat("%s", len(pks))) + ")")
+            )
+            query_args.extend(start_pk)
+
         if limit:
+            if pks:
+                query += SQL(" ORDER BY ") + pks_sql
             query += SQL(" LIMIT %s")
             query_args.append(limit)
-        if offset:
-            query += SQL(" OFFSET %s")
-            query_args.append(offset)
+
         if with_pk_constraints and pks:
             query += (
                 SQL(";ALTER TABLE {}.{} ADD PRIMARY KEY (").format(

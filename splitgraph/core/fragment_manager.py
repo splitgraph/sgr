@@ -580,17 +580,17 @@ class FragmentManager(MetadataManager):
             return_shape=ResultShape.ONE_ONE,
         )
 
-        def _insert_and_register_fragment(source_schema, source_table, limit=None, offset=None):
+        def _insert_and_register_fragment(source_schema, source_table, limit=None, start_pk=None):
             # Store the fragment in a temporary location first and hash that (much faster since PG doesn't need
             # to go through the source table multiple times for every offset)
             tmp_object_id = get_random_object_id()
             logging.info(
-                "Using temporary table %s for %s/%s limit %r offset %r",
+                "Using temporary table %s for %s/%s limit %r start_pk %r",
                 tmp_object_id,
                 source_schema,
                 source_table,
                 limit,
-                offset,
+                start_pk,
             )
 
             self.object_engine.copy_table(
@@ -600,8 +600,7 @@ class FragmentManager(MetadataManager):
                 tmp_object_id,
                 with_pk_constraints=True,
                 limit=limit,
-                offset=offset,
-                order_by_pk=(offset is not None),
+                start_pk=start_pk,
             )
             content_hash = self.calculate_content_hash(SPLITGRAPH_META_SCHEMA, tmp_object_id)
 
@@ -637,12 +636,12 @@ class FragmentManager(MetadataManager):
                 except DuplicateTable:
                     # If we already have an object with this ID (and hence hash), reuse it.
                     logging.info(
-                        "Reusing object %s for table %s/%s limit %r offset %d",
+                        "Reusing object %s for table %s/%s limit %r start_pk %r",
                         object_id,
                         source_schema,
                         source_table,
                         limit,
-                        offset,
+                        start_pk,
                     )
                     self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
 
@@ -658,23 +657,43 @@ class FragmentManager(MetadataManager):
                 except UniqueViolation:
                     # Someone registered this object (perhaps a concurrent pull) already.
                     logging.info(
-                        "Object %s for table %s/%s limit %r offset %d already exists, continuing...",
+                        "Object %s for table %s/%s limit %r start_pk %r already exists, continuing...",
                         object_id,
                         source_schema,
                         source_table,
                         limit,
-                        offset,
+                        start_pk,
                     )
 
             return object_id
 
         if chunk_size and table_size:
-            for offset in range(0, table_size, chunk_size):
-                object_ids.append(
-                    _insert_and_register_fragment(
-                        source_schema, source_table, limit=chunk_size, offset=offset
-                    )
+            table_pk = self.object_engine.get_primary_keys(source_schema, source_table)
+            new_fragment = None
+
+            for _ in range(0, table_size, chunk_size):
+                # Chunk the table up. It's very slow to do it with
+                # SELECT * FROM source LIMIT chunk_size OFFSET offset as Postgres
+                # needs to go through `offset` heap fetches before finding out what it is it's
+                # supposed to copy. So for the full table, PG will do 0 + chunk_size + 2 * chunk_size
+                # + ... + (no_chunks - 1) * chunk_size heap fetches which is O(n^2).
+
+                # Instead, we look at the last PK of the chunk we wrote previously and
+                # copy rows starting from after that PK (which PG can locate with an index-only scan).
+
+                # Technically we should see if we tried to write an empty chunk and then
+                # stop chunking the table but since we know the exact table size, we know
+                # exactly how many times to keep going.
+
+                last_pk = None
+                if new_fragment:
+                    _, last_pk = self._extract_min_max_pks([new_fragment], table_pk)[0]
+
+                new_fragment = _insert_and_register_fragment(
+                    source_schema, source_table, limit=chunk_size, start_pk=last_pk
                 )
+                object_ids.append(new_fragment)
+
         elif table_size:
             object_ids.append(_insert_and_register_fragment(source_schema, source_table))
         # If table_size == 0, then we don't link it to any objects and simply store its schema
