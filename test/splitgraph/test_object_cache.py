@@ -126,8 +126,8 @@ def test_object_cache_non_existing_objects(local_engine_empty, pg_repo_remote):
     with pytest.raises(ObjectCacheError) as e:
         with object_manager.ensure_objects(fruits_v3):
             pass
-    assert "Missing objects: " in str(e)
-    assert fruits_v3.objects[0] in str(e)
+    assert "Missing objects: " in str(e.value)
+    assert fruits_v3.objects[0] in str(e.value)
 
     # Make sure the claims have been released on failure (not inserted into the table at all)
     assert _get_refcount(object_manager, fruits_v3.objects[0]) is None
@@ -141,8 +141,8 @@ def test_object_cache_non_existing_objects(local_engine_empty, pg_repo_remote):
     with pytest.raises(ObjectCacheError) as e:
         with object_manager.ensure_objects(fruits_v3):
             pass
-    assert "Missing objects: " in str(e)
-    assert fruits_v3.objects[0] in str(e)
+    assert "Missing objects: " in str(e.value)
+    assert fruits_v3.objects[0] in str(e.value)
 
 
 def test_object_cache_eviction(local_engine_empty, pg_repo_remote):
@@ -202,10 +202,10 @@ def test_object_cache_eviction(local_engine_empty, pg_repo_remote):
 
     # Loading the next version: not enough space for 2 objects.
     object_manager.run_eviction([], None)
-    with pytest.raises(ObjectCacheError) as ex:
+    with pytest.raises(ObjectCacheError) as e:
         with object_manager.ensure_objects(fruits_v3):
             pass
-    assert "Not enough space in the cache" in str(ex)
+    assert "Not enough space in the cache" in str(e.value)
 
 
 def test_object_cache_eviction_fraction(local_engine_empty, pg_repo_remote):
@@ -324,10 +324,10 @@ def test_object_cache_nested(local_engine_empty, pg_repo_remote):
     object_manager.cache_size = SMALL_OBJECT_SIZE * 2 + 300
     with object_manager.ensure_objects(fruits_v3):
         # Now the fruits objects are being used and so we can't reclaim that space and have to raise an error.
-        with pytest.raises(ObjectCacheError) as ex:
+        with pytest.raises(ObjectCacheError) as e:
             with object_manager.ensure_objects(vegetables_v2):
                 pass
-        assert "Not enough space will be reclaimed" in str(ex)
+        assert "Not enough space will be reclaimed" in str(e.value)
 
 
 def test_object_cache_eviction_priority(local_engine_empty, pg_repo_remote):
@@ -394,11 +394,11 @@ def test_object_cache_eviction_priority(local_engine_empty, pg_repo_remote):
         assert vegetables_snap in current_objects
         assert vegetables_diff in current_objects
 
-        with pytest.raises(ObjectCacheError) as ex:
+        with pytest.raises(ObjectCacheError) as e:
             # Try to load all 4 objects in the same time: should fail.
             with object_manager.ensure_objects(fruits_v3):
                 pass
-        assert "Not enough space will be reclaimed" in str(ex)
+        assert "Not enough space will be reclaimed" in str(e.value)
 
 
 def test_object_cache_make_external(pg_repo_local, clean_minio):

@@ -132,7 +132,7 @@ def test_pandas_update_different_schema(ingestion_test_repo):
 
     with pytest.raises(ValueError) as e:
         df_to_table(truncated_df, ingestion_test_repo, "test_table", if_exists="patch")
-        assert "Schema changes are unsupported" in str(e)
+        assert "Schema changes are unsupported" in str(e.value)
 
     # Rename a column
     renamed_df = upd_df_1.copy()
@@ -140,7 +140,7 @@ def test_pandas_update_different_schema(ingestion_test_repo):
 
     with pytest.raises(ValueError) as e:
         df_to_table(renamed_df, ingestion_test_repo, "test_table", if_exists="patch")
-        assert "Schema changes are unsupported" in str(e)
+        assert "Schema changes are unsupported" in str(e.value)
 
 
 def test_evil_pandas_dataframes(ingestion_test_repo):
