@@ -82,26 +82,20 @@ def sql_to_df(sql, image=None, repository=None, use_lq=False, **kwargs):
         return _sql_to_df(engine=image.engine, sql=sql, schema=tmp_schema, **kwargs)
 
 
-def _df_to_empty_table(
-    engine, df, target_schema, target_table, use_ordinal_hack=False, schema_spec=None
-):
-    # Use sqlalchemy's engine to convert types and create a DDL statement for the table. If a schema
-    # spec is passed, uses that to create the table instead.
+def _df_to_empty_table(engine, df, target_schema, target_table, use_ordinal_hack=False):
+    # Use sqlalchemy's engine to convert types and create a DDL statement for the table.
 
-    if schema_spec:
-        engine.create_table(target_schema, target_table, schema_spec=schema_spec)
+    # If there's an unnamed index (created by Pandas), we don't add PKs to the table.
+    if df.index.names == [None]:
+        ddl = get_schema(df, name=target_table, con=_get_sqlalchemy_engine(engine))
     else:
-        # If there's an unnamed index (created by Pandas), we don't add PKs to the table.
-        if df.index.names == [None]:
-            ddl = get_schema(df, name=target_table, con=_get_sqlalchemy_engine(engine))
-        else:
-            ddl = get_schema(
-                df.reset_index(),
-                name=target_table,
-                keys=df.index.names,
-                con=_get_sqlalchemy_engine(engine),
-            )
-        engine.run_sql_in(target_schema, ddl)
+        ddl = get_schema(
+            df.reset_index(),
+            name=target_table,
+            keys=df.index.names,
+            con=_get_sqlalchemy_engine(engine),
+        )
+    engine.run_sql_in(target_schema, ddl)
 
     if use_ordinal_hack:
         # Currently, if a table is dropped and recreated with the same schema, Splitgraph has no way of
@@ -193,12 +187,9 @@ def df_to_table(df, repository, table, if_exists="patch"):
     repository.engine.delete_table(schema, tmp_table)
 
     # We use SQLAlchemy to create the empty table. Verify that the table schema is compatible.
-    # TODO at this point we know the table already exists, so use its schema instead.
-    schema_spec = repository.engine.get_full_table_schema(schema, table)
-    _df_to_empty_table(repository.engine, df, schema, tmp_table, schema_spec=schema_spec)
+    _df_to_empty_table(repository.engine, df, schema, tmp_table)
 
     try:
-
         source_schema = repository.engine.get_full_table_schema(schema, tmp_table)
         target_schema = repository.engine.get_full_table_schema(schema, table)
 
@@ -215,10 +206,21 @@ def df_to_table(df, repository, table, if_exists="patch"):
         pk_cols = [c[1] for c in target_schema if c[3]]
         non_pk_cols = [c[1] for c in target_schema if not c[3]]
 
-        query = SQL("INSERT INTO {0}.{1} (SELECT * FROM {0}.{2})").format(
-            Identifier(schema), Identifier(table), Identifier(tmp_table)
+        # Cast cols for when we're inserting things that Pandas detected as strings into columns with
+        # datetimes/ints/etc
+        cols_sql = SQL(",").join(Identifier(c[1]) for c in target_schema)
+        cols_sql_cast = SQL(",").join(Identifier(c[1]) + SQL("::" + c[2]) for c in target_schema)
+
+        query = (
+            SQL("INSERT INTO {}.{} (").format(Identifier(schema), Identifier(table))
+            + cols_sql
+            + SQL(") (SELECT ")
+            + cols_sql_cast
+            + SQL(" FROM {}.{})").format(Identifier(schema), Identifier(tmp_table))
+            + SQL(" ON CONFLICT (")
+            + SQL(",").join(map(Identifier, pk_cols))
+            + SQL(")")
         )
-        query += SQL(" ON CONFLICT (") + SQL(",").join(map(Identifier, pk_cols)) + SQL(")")
         if non_pk_cols:
             if len(non_pk_cols) > 1:
                 query += (

@@ -5,17 +5,18 @@ import pandas as pd
 import pytest
 from pandas.compat import StringIO
 from pandas.util.testing import assert_frame_equal
+
 from splitgraph.ingestion.pandas import df_to_table, sql_to_df
 from test.splitgraph.conftest import load_csv, INGESTION_RESOURCES
 
 
-def _str_to_df(string):
+def _str_to_df(string, has_ts=True):
     df = pd.read_csv(
         StringIO(string),
         sep=",",
         index_col=0,
-        parse_dates=["timestamp"],
-        infer_datetime_format=True,
+        parse_dates=["timestamp"] if has_ts else None,
+        infer_datetime_format=True if has_ts else None,
     )
     df.columns = df.columns.str.strip()
     return df
@@ -142,7 +143,23 @@ def test_pandas_update_different_schema(ingestion_test_repo):
         assert "Schema changes are unsupported" in str(e)
 
 
-def test_pandas_update_type_changes(ingestion_test_repo):
+def test_evil_pandas_dataframes(ingestion_test_repo):
+    # Test corner cases we found in the real world
+    df = _str_to_df(load_csv("evil_df.csv"), has_ts=False)
+    df_to_table(df, ingestion_test_repo, "test_table", if_exists="patch")
+
+    assert ingestion_test_repo.run_sql(
+        "SELECT id, job_title, some_number FROM test_table ORDER BY id"
+    ) == [
+        # Make sure backslashes don't break ingestion -- not exactly sure what the intention
+        # in the original dataset was (job title is "PRESIDENT\").
+        (1, '"PRESIDENT"', 25),
+        # Test characters that can be used as separators still make it into fields
+        (2, "\t", 26),
+    ]
+
+
+def test_pandas_update_type_changes_weaker(ingestion_test_repo):
     df_to_table(base_df, ingestion_test_repo, "test_table", if_exists="patch")
     ingestion_test_repo.commit()
     altered_df = upd_df_1.copy()
@@ -153,6 +170,21 @@ def test_pandas_update_type_changes(ingestion_test_repo):
     # 'name' remains a string, so a string '4' is written for fruit_id = 2.
     df_to_table(altered_df, ingestion_test_repo, "test_table", if_exists="patch")
     assert ingestion_test_repo.run_sql("SELECT name FROM test_table WHERE fruit_id = 2") == [("4",)]
+
+
+def test_pandas_update_type_changes_stricter(ingestion_test_repo):
+    df_to_table(base_df, ingestion_test_repo, "test_table", if_exists="patch")
+    ingestion_test_repo.commit()
+    altered_df = upd_df_1.copy()
+    altered_df.index = altered_df.index.map(str)
+
+    # fruit_id (integer) is a string in this case -- Postgres should try to coerce
+    # it back into integer to patch into the target table.
+
+    df_to_table(altered_df, ingestion_test_repo, "test_table", if_exists="patch")
+    assert ingestion_test_repo.run_sql("SELECT name FROM test_table WHERE fruit_id = 4") == [
+        ("chandelier",)
+    ]
 
 
 def test_pandas_read_basic(ingestion_test_repo):
