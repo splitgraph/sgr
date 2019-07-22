@@ -580,17 +580,17 @@ class FragmentManager(MetadataManager):
             return_shape=ResultShape.ONE_ONE,
         )
 
-        def _insert_and_register_fragment(source_schema, source_table, limit=None, start_pk=None):
+        def _insert_and_register_fragment(source_schema, source_table, limit=None, after_pk=None):
             # Store the fragment in a temporary location first and hash that (much faster since PG doesn't need
             # to go through the source table multiple times for every offset)
             tmp_object_id = get_random_object_id()
             logging.info(
-                "Using temporary table %s for %s/%s limit %r start_pk %r",
+                "Using temporary table %s for %s/%s limit %r after_pk %r",
                 tmp_object_id,
                 source_schema,
                 source_table,
                 limit,
-                start_pk,
+                after_pk,
             )
 
             self.object_engine.copy_table(
@@ -600,7 +600,7 @@ class FragmentManager(MetadataManager):
                 tmp_object_id,
                 with_pk_constraints=True,
                 limit=limit,
-                start_pk=start_pk,
+                after_pk=after_pk,
             )
             content_hash = self.calculate_content_hash(SPLITGRAPH_META_SCHEMA, tmp_object_id)
 
@@ -636,12 +636,12 @@ class FragmentManager(MetadataManager):
                 except DuplicateTable:
                     # If we already have an object with this ID (and hence hash), reuse it.
                     logging.info(
-                        "Reusing object %s for table %s/%s limit %r start_pk %r",
+                        "Reusing object %s for table %s/%s limit %r after_pk %r",
                         object_id,
                         source_schema,
                         source_table,
                         limit,
-                        start_pk,
+                        after_pk,
                     )
                     self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
 
@@ -657,12 +657,12 @@ class FragmentManager(MetadataManager):
                 except UniqueViolation:
                     # Someone registered this object (perhaps a concurrent pull) already.
                     logging.info(
-                        "Object %s for table %s/%s limit %r start_pk %r already exists, continuing...",
+                        "Object %s for table %s/%s limit %r after_pk %r already exists, continuing...",
                         object_id,
                         source_schema,
                         source_table,
                         limit,
-                        start_pk,
+                        after_pk,
                     )
 
             return object_id
@@ -690,7 +690,7 @@ class FragmentManager(MetadataManager):
                     _, last_pk = self._extract_min_max_pks([new_fragment], table_pk)[0]
 
                 new_fragment = _insert_and_register_fragment(
-                    source_schema, source_table, limit=chunk_size, start_pk=last_pk
+                    source_schema, source_table, limit=chunk_size, after_pk=last_pk
                 )
                 object_ids.append(new_fragment)
 

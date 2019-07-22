@@ -167,7 +167,7 @@ class SQLEngine(ABC):
         target_table,
         with_pk_constraints=True,
         limit=None,
-        start_pk=None,
+        after_pk=None,
     ):
         """Copy a table in the same engine, optionally applying primary key constraints as well."""
         query_args = []
@@ -187,18 +187,18 @@ class SQLEngine(ABC):
             )
         pks = self.get_primary_keys(source_schema, source_table)
         pks_sql = SQL("(") + SQL(",").join(Identifier(p[0]) for p in pks) + SQL(")")
-        if start_pk:
-            # If start_pk is specified, start from after a given PK (so not really *start*_pk).
+        if after_pk:
+            # If after_pk is specified, start from after a given PK.
             # Wrap the pk in brackets for when we have a composite key.
             if not pks:
-                raise ValueError("start_pk cannot be used when a table doesn't have a primary key!")
+                raise ValueError("after_pk cannot be used when a table doesn't have a primary key!")
 
             query += (
                 SQL(" WHERE ")
                 + pks_sql
                 + SQL(" > (" + ",".join(itertools.repeat("%s", len(pks))) + ")")
             )
-            query_args.extend(start_pk)
+            query_args.extend(after_pk)
 
         if limit:
             if pks:

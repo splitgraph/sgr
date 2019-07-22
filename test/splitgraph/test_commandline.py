@@ -180,6 +180,11 @@ def test_commandline_basics(pg_repo_local):
 
 def test_commandline_commit_chunk(pg_repo_local):
     runner = CliRunner()
+
+    # Make sure to set PKs for tables, otherwise chunking will fail.
+    pg_repo_local.run_sql("ALTER TABLE fruits ADD PRIMARY KEY (fruit_id)")
+    pg_repo_local.run_sql("ALTER TABLE vegetables ADD PRIMARY KEY (vegetable_id)")
+
     result = runner.invoke(commit_c, [str(pg_repo_local), "--snap", "--chunk-size=1"])
     assert result.exit_code == 0
 
