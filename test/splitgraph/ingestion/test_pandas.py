@@ -1,9 +1,9 @@
 import os
 from datetime import datetime as dt
+from io import StringIO
 
 import pandas as pd
 import pytest
-from pandas.compat import StringIO
 from pandas.util.testing import assert_frame_equal
 
 from splitgraph.ingestion.pandas import df_to_table, sql_to_df

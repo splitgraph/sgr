@@ -15,8 +15,8 @@ psycopg2-binary = "^2"
 parsimonious = "^0.8"
 minio = "^4"
 # Extra requirements for ingestion (CSV)
-pandas = { version = "^0.24.1", optional = true }
-sqlalchemy = { version = "^1.3", optional = true }
+pandas = {version = ">=0.24", extras = ["ingestion"], optional = true }
+sqlalchemy = { version = "^1.3", extras = ["ingestion"], optional = true }
 pglast = "^1.4"
 
 [tool.poetry.dev-dependencies]
@@ -38,10 +38,6 @@ ingestion = ["pandas", "sqlalchemy"]
 [tool.poetry.scripts]
 sgr = "splitgraph.commandline:cli"
 
-[build-system]
-requires = ["poetry>=0.12"]
-build-backend = "poetry.masonry.api"
-
 [tool.black]
 line-length = 100
 include = '\.pyi?$'
@@ -58,3 +54,7 @@ exclude = '''
   | dist
 )/
 '''
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"
+
