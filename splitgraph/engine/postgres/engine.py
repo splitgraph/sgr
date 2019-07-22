@@ -13,7 +13,7 @@ from threading import get_ident
 
 import psycopg2
 from psycopg2 import DatabaseError
-from psycopg2.errors import UndefinedTable
+from psycopg2.errors import InvalidSchemaName, UndefinedTable
 from psycopg2.extras import execute_batch, Json
 from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.sql import SQL, Identifier
@@ -164,6 +164,11 @@ class PsycopgEngine(SQLEngine):
                             ) from e
                     else:
                         raise ObjectNotFoundError(e)
+                elif isinstance(e, InvalidSchemaName):
+                    if "splitgraph_api." in str(e):
+                        raise UninitializedEngineError(
+                            "splitgraph_api not found on the engine. Has the engine been initialized?"
+                        ) from e
                 raise
 
             if cur.description is None:

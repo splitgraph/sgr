@@ -7,6 +7,7 @@ import pytest
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA
 from splitgraph.core._common import ensure_metadata_schema, Tracer
 from splitgraph.core.engine import get_current_repositories, lookup_repository, ResultShape
+from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.registry import (
     setup_registry_mode,
     get_published_info,
@@ -102,6 +103,13 @@ def test_uninitialized_engine_error(local_engine_empty):
         with pytest.raises(UninitializedEngineError) as e:
             lookup_repository("some/repo", include_local=True)
         assert "splitgraph_meta" in str(e)
+        local_engine_empty.initialize()
+        local_engine_empty.commit()
+
+        local_engine_empty.run_sql("DROP SCHEMA splitgraph_api CASCADE")
+        with pytest.raises(UninitializedEngineError) as e:
+            ObjectManager(local_engine_empty).get_downloaded_objects()
+        assert "splitgraph_api" in str(e)
         local_engine_empty.initialize()
         local_engine_empty.commit()
 
