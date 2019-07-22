@@ -1,3 +1,4 @@
+import json
 from datetime import datetime as dt
 
 import pytest
@@ -6,7 +7,7 @@ from splitgraph import Repository
 from splitgraph.core import clone
 from splitgraph.core._common import META_TABLES
 from splitgraph.engine import ResultShape
-from test.splitgraph.conftest import _assert_cache_occupancy
+from test.splitgraph.conftest import _assert_cache_occupancy, OUTPUT
 
 
 def prepare_lq_repo(repo, commit_after_every, include_pk, snap_only=False):
@@ -109,6 +110,24 @@ def test_layered_querying_type_conversion(pg_repo_local):
     assert pg_repo_local.run_sql("SELECT * FROM fruits WHERE fruit_id IN (3, 4)") == [
         (3, "mayonnaise", 1, _DT),
         (4, "kumquat", 42, dt(2018, 1, 2, 3, 4, 5)),
+    ]
+
+
+def test_layered_querying_json(local_engine_empty):
+    OUTPUT.init()
+    OUTPUT.run_sql("CREATE TABLE test (key INTEGER PRIMARY KEY, value JSONB)")
+    OUTPUT.run_sql("INSERT INTO test VALUES (1, %s)", (json.dumps({"a": 1, "b": 2.5}),))
+    OUTPUT.commit()
+    OUTPUT.run_sql(
+        "INSERT INTO test VALUES (2, %s)", (json.dumps({"a": "one", "b": "two point five"}),)
+    )
+    head = OUTPUT.commit()
+    OUTPUT.uncheckout()
+    head.checkout(layered=True)
+
+    assert OUTPUT.run_sql("SELECT * FROM test ORDER BY key") == [
+        (1, {"a": 1, "b": 2.5}),
+        (2, {"a": "one", "b": "two point five"}),
     ]
 
 
