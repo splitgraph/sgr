@@ -1,7 +1,6 @@
 import os
 
 import pytest
-from minio import Minio
 
 from splitgraph.core._common import ensure_metadata_schema
 from splitgraph.core.engine import get_current_repositories
@@ -16,7 +15,7 @@ from splitgraph.core.registry import (
 from splitgraph.core.repository import Repository
 from splitgraph.engine import get_engine, ResultShape, switch_engine
 from splitgraph.hooks.mount_handlers import mount
-from splitgraph.hooks.s3 import S3_HOST, S3_PORT, S3_ACCESS_KEY, S3_SECRET_KEY
+from splitgraph.hooks.s3_server import MINIO, S3_BUCKET
 
 R = Repository.from_schema
 
@@ -270,9 +269,6 @@ def unprivileged_pg_repo(pg_repo_remote, unprivileged_remote_engine):
 
 
 SPLITFILE_ROOT = os.path.join(os.path.dirname(__file__), "../resources/")
-MINIO = Minio(
-    "%s:%s" % (S3_HOST, S3_PORT), access_key=S3_ACCESS_KEY, secret_key=S3_SECRET_KEY, secure=False
-)
 
 
 def load_splitfile(name):
@@ -281,10 +277,10 @@ def load_splitfile(name):
 
 
 def _cleanup_minio():
-    if MINIO.bucket_exists(S3_ACCESS_KEY):
-        objects = [o.object_name for o in MINIO.list_objects(bucket_name=S3_ACCESS_KEY)]
+    if MINIO.bucket_exists(S3_BUCKET):
+        objects = [o.object_name for o in MINIO.list_objects(bucket_name=S3_BUCKET)]
         # remove_objects is an iterator, so we force evaluate it
-        list(MINIO.remove_objects(bucket_name=S3_ACCESS_KEY, objects_iter=objects))
+        list(MINIO.remove_objects(bucket_name=S3_BUCKET, objects_iter=objects))
 
 
 @pytest.fixture

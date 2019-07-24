@@ -9,7 +9,7 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph import SPLITGRAPH_META_SCHEMA, ResultShape, select, Repository
 from splitgraph.core.fragment_manager import Digest
 from splitgraph.core.metadata_manager import OBJECT_COLS
-from splitgraph.hooks.s3 import delete_objects, list_objects
+from splitgraph.hooks.s3_server import delete_objects, list_objects
 from test.splitgraph.commands.test_layered_querying import _prepare_fully_remote_repo
 from test.splitgraph.conftest import OUTPUT, PG_DATA, SMALL_OBJECT_SIZE
 

@@ -8,6 +8,21 @@ from splitgraph.core.repository import clone
 from test.splitgraph.conftest import PG_MNT
 
 
+def test_s3_presigned_url(local_engine_empty, pg_repo_remote):
+    clone(pg_repo_remote, local_repository=PG_MNT, download_all=False)
+    PG_MNT.images["latest"].checkout()
+    PG_MNT.run_sql("INSERT INTO fruits VALUES (3, 'mayonnaise')")
+    head = PG_MNT.commit()
+    object_id = head.get_table("fruits").objects[0]
+
+    urls = pg_repo_remote.run_sql(
+        "SELECT splitgraph_api.get_object_upload_url(%s)",
+        (object_id,),
+        return_shape=ResultShape.ONE_ONE,
+    )
+    assert len(urls) == 3
+
+
 def test_s3_push_pull(local_engine_empty, pg_repo_remote, clean_minio):
     # Test pushing/pulling when the objects are uploaded to a remote storage instead of to the actual remote DB.
 

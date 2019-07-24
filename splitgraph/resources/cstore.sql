@@ -5,60 +5,38 @@
 CREATE EXTENSION IF NOT EXISTS plpython3u;
 CREATE SCHEMA IF NOT EXISTS splitgraph_api;
 
-CREATE OR REPLACE FUNCTION splitgraph_api.upload_object(object_id varchar, endpoint varchar, bucket varchar,
-    access_key varchar, secret_key varchar) RETURNS varchar AS
+CREATE OR REPLACE FUNCTION splitgraph_api.upload_object(object_id varchar, urls varchar[]) RETURNS void AS
 $BODY$
     import os.path
-    from minio import Minio
-    from minio.error import BucketAlreadyOwnedByYou, BucketAlreadyExists, MinioError
+    import requests
 
     SG_ENGINE_OBJECT_PATH = "/var/lib/splitgraph/objects"
 
-    client = Minio(
-        endpoint,
-        access_key=access_key,
-        secret_key=secret_key,
-        secure=False,
-    )
-
-    try:
-        client.make_bucket(bucket)
-    except BucketAlreadyOwnedByYou:
-        pass
-    except BucketAlreadyExists:
-        pass
-
     object_path = os.path.join(SG_ENGINE_OBJECT_PATH, object_id)
 
-    client.fput_object(bucket, object_id, object_path)
-    client.fput_object(bucket, object_id + ".footer", object_path + ".footer")
-    client.fput_object(bucket, object_id + ".schema", object_path + ".schema")
-
-    return "%s/%s/%s" % (endpoint, bucket, object_id)
+    for suffix, url in zip(("", ".footer", ".schema"), urls):
+        with open(object_path + suffix, "rb") as f:
+            response = requests.put(url, data=f)
+            response.raise_for_status()
 $BODY$
 LANGUAGE plpython3u VOLATILE;
 
 
-CREATE OR REPLACE FUNCTION splitgraph_api.download_object(object_id varchar, url varchar,
-    access_key varchar, secret_key varchar) RETURNS void AS
+CREATE OR REPLACE FUNCTION splitgraph_api.download_object(object_id varchar, urls varchar[]) RETURNS void AS
 $BODY$
     import os.path
-    from minio import Minio
+    import shutil
+    import requests
 
     SG_ENGINE_OBJECT_PATH = "/var/lib/splitgraph/objects"
 
-    endpoint, bucket, remote_object = url.split("/")
-    client = Minio(
-        endpoint,
-        access_key=access_key,
-        secret_key=secret_key,
-        secure=False,
-    )
     object_path = os.path.join(SG_ENGINE_OBJECT_PATH, object_id)
 
-    client.fget_object(bucket, remote_object, object_path)
-    client.fget_object(bucket, remote_object + ".footer", object_path + ".footer")
-    client.fget_object(bucket, remote_object + ".schema", object_path + ".schema")
+    for suffix, url in zip(("", ".footer", ".schema"), urls):
+        with requests.get(url, stream=True) as response:
+            response.raise_for_status()
+            with open(object_path + suffix, "wb") as f:
+                shutil.copyfileobj(response.raw, f)
 $BODY$
 LANGUAGE plpython3u VOLATILE;
 

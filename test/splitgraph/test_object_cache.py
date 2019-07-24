@@ -8,7 +8,6 @@ from splitgraph.core import clone, select
 from splitgraph.core.fragment_manager import _quals_to_clause
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import ObjectCacheError
-from splitgraph.hooks.s3 import S3_ACCESS_KEY, S3_SECRET_KEY
 from test.splitgraph.commands.test_layered_querying import prepare_lq_repo
 from test.splitgraph.conftest import (
     OUTPUT,
@@ -630,12 +629,16 @@ def test_sync_object_mounts(pg_repo_local, clean_minio):
     # Simulate the object being in /var/lib/splitgraph/objects without actually
     # being mounted by downloading (and not mounting) it -- pretend somebody
     # else put it there.
-    _, url, _ = pg_repo_local.objects.get_external_object_locations([object_id])[0]
 
-    pg_repo_local.engine.run_sql(
-        "SELECT splitgraph_api.download_object(%s, %s, %s, %s)",
-        (object_id, url, S3_ACCESS_KEY, S3_SECRET_KEY),
+    _, s3_id, _ = pg_repo_local.objects.get_external_object_locations([object_id])[0]
+
+    url = pg_repo_local.engine.run_sql(
+        "SELECT splitgraph_api.get_object_download_url(%s)",
+        (s3_id,),
+        return_shape=ResultShape.ONE_ONE,
     )
+
+    pg_repo_local.engine.run_sql("SELECT splitgraph_api.download_object(%s, %s)", (object_id, url))
     assert object_id in pg_repo_local.objects.get_downloaded_objects()
 
     pg_repo_local.engine.sync_object_mounts()

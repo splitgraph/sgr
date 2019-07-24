@@ -278,7 +278,7 @@ class ObjectManager(FragmentManager, MetadataManager):
         # Perform the actual upload
         external_handler = get_external_object_handler(handler, handler_params)
         with switch_engine(self.object_engine):
-            uploaded = external_handler.upload_objects(new_objects)
+            uploaded = external_handler.upload_objects(new_objects, self.metadata_engine)
         locations = [(oid, url, handler) for oid, url in zip(new_objects, uploaded)]
         self.register_object_locations(locations)
 
@@ -597,7 +597,12 @@ class ObjectManager(FragmentManager, MetadataManager):
 
         # We don't actually seem to pass extra handler parameters when downloading objects since
         # we can have multiple handlers in this batch.
-        external_objects = _fetch_external_objects(self.object_engine, object_locations, {})
+        external_objects = _fetch_external_objects(
+            self.object_engine,
+            source.metadata_engine if source else self.metadata_engine,
+            object_locations,
+            {},
+        )
 
         remaining_objects_to_fetch = [o for o in objects_to_fetch if o not in external_objects]
         if not remaining_objects_to_fetch or not source:
@@ -641,7 +646,7 @@ class ObjectManager(FragmentManager, MetadataManager):
 
         external_handler = get_external_object_handler(handler, handler_params)
         with switch_engine(self.object_engine):
-            uploaded = external_handler.upload_objects(objects_to_push)
+            uploaded = external_handler.upload_objects(objects_to_push, target.metadata_engine)
         return [(oid, url, handler) for oid, url in zip(objects_to_push, uploaded)]
 
     def cleanup(self):
@@ -741,7 +746,7 @@ class ObjectManager(FragmentManager, MetadataManager):
             self.object_engine.commit()
 
 
-def _fetch_external_objects(engine, object_locations, handler_params):
+def _fetch_external_objects(engine, source_engine, object_locations, handler_params):
     non_remote_objects = []
     non_remote_by_method = defaultdict(list)
     for object_id, object_url, protocol in object_locations:
@@ -753,5 +758,5 @@ def _fetch_external_objects(engine, object_locations, handler_params):
             handler = get_external_object_handler(method, handler_params)
             # In case we're calling this from inside the FDW
             with switch_engine(engine):
-                handler.download_objects(objects)
+                handler.download_objects(objects, source_engine)
     return non_remote_objects
