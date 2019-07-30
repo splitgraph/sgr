@@ -308,6 +308,14 @@ class Repository:
 
     # --- GENERAL REPOSITORY MANAGEMENT ---
 
+    def rollback_engines(self):
+        """
+        Rollback the underlying transactions on both engines that the repository uses.
+        """
+        self.engine.rollback()
+        if self.engine != self.object_engine:
+            self.object_engine.rollback()
+
     def commit_engines(self):
         """
         Commit the underlying transactions on both engines that the repository uses.
@@ -1151,54 +1159,61 @@ def _sync(target, source, download=True, download_all=False, handler="DB", handl
 
     # Get the remote log and the list of objects we need to fetch.
     logging.info("Gathering remote metadata...")
-    new_images, table_meta, object_locations, object_meta, tags = gather_sync_metadata(
-        target, source
-    )
-    if not new_images:
-        logging.info("Nothing to do.")
-        return
 
-    for image in new_images:
-        target.images.add(
-            image.parent_id,
-            image.image_hash,
-            image.created,
-            image.comment,
-            image.provenance_type,
-            image.provenance_data,
+    try:
+        new_images, table_meta, object_locations, object_meta, tags = gather_sync_metadata(
+            target, source
         )
+        if not new_images:
+            logging.info("Nothing to do.")
+            return
 
-    if download:
-        target.objects.register_objects(list(object_meta.values()))
-        target.objects.register_object_locations(object_locations)
-        # Don't actually download any real objects until the user tries to check out a revision, unless
-        # they want to do it in advance.
-        if download_all:
-            logging.info("Fetching remote objects...")
-            target.objects.download_objects(
-                source.objects,
-                objects_to_fetch=list(object_meta.keys()),
-                object_locations=object_locations,
+        for image in new_images:
+            target.images.add(
+                image.parent_id,
+                image.image_hash,
+                image.created,
+                image.comment,
+                image.provenance_type,
+                image.provenance_data,
             )
 
-        # Don't check anything out, keep the repo bare.
-        set_head(target, None)
-    else:
-        new_uploads = source.objects.upload_objects(
-            target.objects,
-            list(object_meta.keys()),
-            handler=handler,
-            handler_params=handler_options,
-        )
-        # Here we have to register the new objects after the upload but before we store their external
-        # location (as the RLS for object_locations relies on the object metadata being in place)
-        target.objects.register_objects(list(object_meta.values()), namespace=target.namespace)
-        target.objects.register_object_locations(object_locations + new_uploads)
-        source.objects.register_object_locations(new_uploads)
+        if download:
+            target.objects.register_objects(list(object_meta.values()))
+            target.objects.register_object_locations(object_locations)
+            # Don't actually download any real objects until the user tries to check out a revision, unless
+            # they want to do it in advance.
+            if download_all:
+                logging.info("Fetching remote objects...")
+                target.objects.download_objects(
+                    source.objects,
+                    objects_to_fetch=list(object_meta.keys()),
+                    object_locations=object_locations,
+                )
 
-    # Register the new tables / tags.
-    target.objects.register_tables(target, table_meta)
-    target.set_tags(tags)
+            # Don't check anything out, keep the repo bare.
+            set_head(target, None)
+        else:
+            new_uploads = source.objects.upload_objects(
+                target.objects,
+                list(object_meta.keys()),
+                handler=handler,
+                handler_params=handler_options,
+            )
+            # Here we have to register the new objects after the upload but before we store their external
+            # location (as the RLS for object_locations relies on the object metadata being in place)
+            target.objects.register_objects(list(object_meta.values()), namespace=target.namespace)
+            target.objects.register_object_locations(object_locations + new_uploads)
+            source.objects.register_object_locations(new_uploads)
+
+        # Register the new tables / tags.
+        target.objects.register_tables(target, table_meta)
+        target.set_tags(tags)
+    except Exception:
+        logging.exception("Error during repository sync")
+        target.rollback_engines()
+        source.rollback_engines()
+        raise
 
     target.commit_engines()
     source.commit_engines()

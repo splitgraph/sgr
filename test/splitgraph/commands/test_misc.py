@@ -106,8 +106,8 @@ def test_tag_errors(pg_repo_local):
     pg_repo_local.uncheckout()
     with pytest.raises(ImageNotFoundError) as e:
         head = pg_repo_local.images.by_tag("HEAD")
-    assert "No current checked out revision found" in str(e)
+    assert "No current checked out revision found" in str(e.value)
 
     with pytest.raises(ImageNotFoundError) as e:
         tag = pg_repo_local.images.by_tag("notatag")
-    assert "Tag notatag not found" in str(e)
+    assert "Tag notatag not found" in str(e.value)

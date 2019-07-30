@@ -152,7 +152,7 @@ def test_no_direct_table_access(unprivileged_pg_repo):
     for table in META_TABLES:
         with pytest.raises(ProgrammingError) as e:
             unprivileged_pg_repo.engine.run_sql(select(table, "1"))
-        assert "permission denied for table" in str(e)
+        assert "permission denied for table" in str(e.value)
 
         with pytest.raises(ProgrammingError) as e:
             unprivileged_pg_repo.engine.run_sql(
@@ -160,4 +160,4 @@ def test_no_direct_table_access(unprivileged_pg_repo):
                     Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table)
                 )
             )
-        assert "permission denied for table" in str(e)
+        assert "permission denied for table" in str(e.value)

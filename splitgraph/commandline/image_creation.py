@@ -72,7 +72,7 @@ def checkout_c(image_spec, force, uncheckout, layered):
 @click.option(
     "-c",
     "--chunk-size",
-    default=None,
+    default=10000,
     type=int,
     help="Split new tables into chunks of this many rows.",
 )

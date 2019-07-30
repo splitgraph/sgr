@@ -7,6 +7,7 @@ import pytest
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA
 from splitgraph.core._common import ensure_metadata_schema, Tracer
 from splitgraph.core.engine import get_current_repositories, lookup_repository, ResultShape
+from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.registry import (
     setup_registry_mode,
     get_published_info,
@@ -55,7 +56,7 @@ def test_repo_lookup_override(remote_engine):
 def test_repo_lookup_override_fail():
     with pytest.raises(RepositoryNotFoundError) as e:
         lookup_repository("does/not_exist")
-    assert "Unknown repository" in str(e)
+    assert "Unknown repository" in str(e.value)
 
 
 def test_engine_reconnect(local_engine_empty):
@@ -101,14 +102,21 @@ def test_uninitialized_engine_error(local_engine_empty):
         local_engine_empty.run_sql("DROP SCHEMA splitgraph_meta CASCADE")
         with pytest.raises(UninitializedEngineError) as e:
             lookup_repository("some/repo", include_local=True)
-        assert "splitgraph_meta" in str(e)
+        assert "splitgraph_meta" in str(e.value)
+        local_engine_empty.initialize()
+        local_engine_empty.commit()
+
+        local_engine_empty.run_sql("DROP SCHEMA splitgraph_api CASCADE")
+        with pytest.raises(UninitializedEngineError) as e:
+            ObjectManager(local_engine_empty).get_downloaded_objects()
+        assert "splitgraph_api" in str(e.value)
         local_engine_empty.initialize()
         local_engine_empty.commit()
 
         local_engine_empty.run_sql("DROP SCHEMA audit CASCADE")
         with pytest.raises(UninitializedEngineError) as e:
             local_engine_empty.discard_pending_changes("some/repo")
-        assert "Audit triggers" in str(e)
+        assert "Audit triggers" in str(e.value)
     finally:
         local_engine_empty.initialize()
         local_engine_empty.commit()

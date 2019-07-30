@@ -105,6 +105,11 @@ def csv_import(repository, table, file, replace, primary_key, datetime):
     # read_csv is a monster of a function, perhaps we should expose some of its configs here.
     # The reason we don't ingest directly into the engine by using COPY FROM STDIN is so that we can let Pandas do
     # some type inference/preprocessing on the CSV.
+    if not primary_key:
+        print(
+            "Warning: primary key is not specified, using the whole row as primary key."
+            "This is probably not something that you want."
+        )
     try:
         import pandas as pd
         from splitgraph.ingestion.pandas import df_to_table

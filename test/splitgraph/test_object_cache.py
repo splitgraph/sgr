@@ -8,6 +8,7 @@ from splitgraph.core import clone, select
 from splitgraph.core.fragment_manager import _quals_to_clause
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import ObjectCacheError
+from splitgraph.hooks.s3 import S3_ACCESS_KEY, S3_SECRET_KEY
 from test.splitgraph.commands.test_layered_querying import prepare_lq_repo
 from test.splitgraph.conftest import (
     OUTPUT,
@@ -125,8 +126,8 @@ def test_object_cache_non_existing_objects(local_engine_empty, pg_repo_remote):
     with pytest.raises(ObjectCacheError) as e:
         with object_manager.ensure_objects(fruits_v3):
             pass
-    assert "Missing objects: " in str(e)
-    assert fruits_v3.objects[0] in str(e)
+    assert "Missing objects: " in str(e.value)
+    assert fruits_v3.objects[0] in str(e.value)
 
     # Make sure the claims have been released on failure (not inserted into the table at all)
     assert _get_refcount(object_manager, fruits_v3.objects[0]) is None
@@ -140,8 +141,8 @@ def test_object_cache_non_existing_objects(local_engine_empty, pg_repo_remote):
     with pytest.raises(ObjectCacheError) as e:
         with object_manager.ensure_objects(fruits_v3):
             pass
-    assert "Missing objects: " in str(e)
-    assert fruits_v3.objects[0] in str(e)
+    assert "Missing objects: " in str(e.value)
+    assert fruits_v3.objects[0] in str(e.value)
 
 
 def test_object_cache_eviction(local_engine_empty, pg_repo_remote):
@@ -201,10 +202,10 @@ def test_object_cache_eviction(local_engine_empty, pg_repo_remote):
 
     # Loading the next version: not enough space for 2 objects.
     object_manager.run_eviction([], None)
-    with pytest.raises(ObjectCacheError) as ex:
+    with pytest.raises(ObjectCacheError) as e:
         with object_manager.ensure_objects(fruits_v3):
             pass
-    assert "Not enough space in the cache" in str(ex)
+    assert "Not enough space in the cache" in str(e.value)
 
 
 def test_object_cache_eviction_fraction(local_engine_empty, pg_repo_remote):
@@ -323,10 +324,10 @@ def test_object_cache_nested(local_engine_empty, pg_repo_remote):
     object_manager.cache_size = SMALL_OBJECT_SIZE * 2 + 300
     with object_manager.ensure_objects(fruits_v3):
         # Now the fruits objects are being used and so we can't reclaim that space and have to raise an error.
-        with pytest.raises(ObjectCacheError) as ex:
+        with pytest.raises(ObjectCacheError) as e:
             with object_manager.ensure_objects(vegetables_v2):
                 pass
-        assert "Not enough space will be reclaimed" in str(ex)
+        assert "Not enough space will be reclaimed" in str(e.value)
 
 
 def test_object_cache_eviction_priority(local_engine_empty, pg_repo_remote):
@@ -393,11 +394,11 @@ def test_object_cache_eviction_priority(local_engine_empty, pg_repo_remote):
         assert vegetables_snap in current_objects
         assert vegetables_diff in current_objects
 
-        with pytest.raises(ObjectCacheError) as ex:
+        with pytest.raises(ObjectCacheError) as e:
             # Try to load all 4 objects in the same time: should fail.
             with object_manager.ensure_objects(fruits_v3):
                 pass
-        assert "Not enough space will be reclaimed" in str(ex)
+        assert "Not enough space will be reclaimed" in str(e.value)
 
 
 def test_object_cache_make_external(pg_repo_local, clean_minio):
@@ -610,3 +611,32 @@ def test_object_manager_object_filtering_end_to_end(local_engine_empty):
             table, quals=[[("col1", ">", 10), ("col4", "=", "2016-01-01 12:00:00")]]
         ) as required_objects:
             assert set(required_objects) == {obj_1, obj_3, obj_4}
+
+
+def test_sync_object_mounts(pg_repo_local, clean_minio):
+    # Test the engine discovering objects that were dropped into
+    # its local storage and automatically mounting them.
+
+    object_id = pg_repo_local.objects.get_all_objects()[0]
+    assert object_id in pg_repo_local.engine.get_all_tables(SPLITGRAPH_META_SCHEMA)
+    assert object_id in pg_repo_local.objects.get_downloaded_objects()
+    pg_repo_local.objects.make_objects_external([object_id], handler="S3", handler_params={})
+    pg_repo_local.engine.unmount_objects([object_id])
+
+    # Unmounting the foreign table fires a cstore hook that deletes the object as well.
+    assert object_id not in pg_repo_local.engine.get_all_tables(SPLITGRAPH_META_SCHEMA)
+    assert object_id not in pg_repo_local.objects.get_downloaded_objects()
+
+    # Simulate the object being in /var/lib/splitgraph/objects without actually
+    # being mounted by downloading (and not mounting) it -- pretend somebody
+    # else put it there.
+    _, url, _ = pg_repo_local.objects.get_external_object_locations([object_id])[0]
+
+    pg_repo_local.engine.run_sql(
+        "SELECT splitgraph_api.download_object(%s, %s, %s, %s)",
+        (object_id, url, S3_ACCESS_KEY, S3_SECRET_KEY),
+    )
+    assert object_id in pg_repo_local.objects.get_downloaded_objects()
+
+    pg_repo_local.engine.sync_object_mounts()
+    assert object_id in pg_repo_local.engine.get_all_tables(SPLITGRAPH_META_SCHEMA)

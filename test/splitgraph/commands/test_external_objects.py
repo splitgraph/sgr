@@ -1,3 +1,9 @@
+from unittest.mock import patch, Mock
+
+import pytest
+from minio.error import MinioError
+
+from splitgraph import ResultShape
 from splitgraph.core.repository import clone
 from test.splitgraph.conftest import PG_MNT
 
@@ -53,4 +59,67 @@ def test_s3_push_pull(local_engine_empty, pg_repo_remote, clean_minio):
     # Only now we actually have all the objects materialized.
     assert sorted(PG_MNT.objects.get_downloaded_objects()) == sorted(
         PG_MNT.objects.get_all_objects()
+    )
+
+
+def test_push_upload_error(local_engine_empty, pg_repo_remote, clean_minio):
+    clone(pg_repo_remote, local_repository=PG_MNT, download_all=False)
+    PG_MNT.images["latest"].checkout()
+    PG_MNT.run_sql("INSERT INTO fruits VALUES (3, 'mayonnaise')")
+    head = PG_MNT.commit()
+
+    # If the upload fails for whatever reason (e.g. Minio is inaccessible), the whole
+    # push fails rather than leaving the engine in an inconsistent state.
+    broken_upload_handler = Mock()
+    broken_upload_handler.upload_objects.side_effect = MinioError("Minio Error!")
+    with patch(
+        "splitgraph.core.object_manager.get_external_object_handler",
+        return_value=broken_upload_handler,
+    ):
+        with pytest.raises(MinioError) as e:
+            PG_MNT.push(remote_repository=pg_repo_remote, handler="S3", handler_options={})
+
+    assert head not in pg_repo_remote.images
+    # Only the two original tables from the original image upstream
+    assert (
+        pg_repo_remote.engine.run_sql(
+            "SELECT COUNT(*) FROM splitgraph_meta.tables", return_shape=ResultShape.ONE_ONE
+        )
+        == 2
+    )
+    assert len(pg_repo_remote.objects.get_all_objects()) == 2
+
+    # Objects not registered remotely since the upload failed
+    assert (
+        local_engine_empty.run_sql(
+            "SELECT COUNT(*) FROM splitgraph_meta.object_locations",
+            return_shape=ResultShape.ONE_ONE,
+        )
+        == 0
+    )
+    assert (
+        pg_repo_remote.engine.run_sql(
+            "SELECT COUNT(*) FROM splitgraph_meta.object_locations",
+            return_shape=ResultShape.ONE_ONE,
+        )
+        == 0
+    )
+
+    # Now do the push normally and check the image exists upstream.
+    PG_MNT.push(remote_repository=pg_repo_remote, handler="S3", handler_options={})
+    assert head in pg_repo_remote.images
+
+    assert (
+        local_engine_empty.run_sql(
+            "SELECT COUNT(*) FROM splitgraph_meta.object_locations",
+            return_shape=ResultShape.ONE_ONE,
+        )
+        == 1
+    )
+    assert (
+        pg_repo_remote.engine.run_sql(
+            "SELECT COUNT(*) FROM splitgraph_meta.object_locations",
+            return_shape=ResultShape.ONE_ONE,
+        )
+        == 1
     )

@@ -1,6 +1,6 @@
 """Module imported by Multicorn on the Splitgraph engine server: a foreign data wrapper that implements
 layered querying (read-only queries to Splitgraph tables without materialization)."""
-
+import json
 import logging
 
 from splitgraph import Repository, get_engine
@@ -51,7 +51,15 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         cnf_quals = self._quals_to_cnf(quals)
         log_to_postgres("CNF quals: %r" % (cnf_quals,), _PG_LOGLEVEL)
 
-        return self.table.query(columns, cnf_quals)
+        result = self.table.query(columns, cnf_quals)
+
+        # Return the result back to Multicorn. For Json values, we need to turn them
+        # back into Json strings (rather than Python dictionaries).
+        result = [
+            {k: v if not isinstance(v, dict) else json.dumps(v) for k, v in row.items()}
+            for row in result
+        ]
+        return result
 
     def __init__(self, fdw_options, fdw_columns):
         """The foreign data wrapper is initialized on the first query.

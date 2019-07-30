@@ -13,7 +13,7 @@ from threading import get_ident
 
 import psycopg2
 from psycopg2 import DatabaseError
-from psycopg2.errors import UndefinedTable
+from psycopg2.errors import InvalidSchemaName, UndefinedTable
 from psycopg2.extras import execute_batch, Json
 from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.sql import SQL, Identifier
@@ -164,6 +164,11 @@ class PsycopgEngine(SQLEngine):
                             ) from e
                     else:
                         raise ObjectNotFoundError(e)
+                elif isinstance(e, InvalidSchemaName):
+                    if "splitgraph_api." in str(e):
+                        raise UninitializedEngineError(
+                            "splitgraph_api not found on the engine. Has the engine been initialized?"
+                        ) from e
                 raise
 
             if cur.description is None:
@@ -500,6 +505,12 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         )
 
     def delete_objects(self, object_ids):
+        self.unmount_objects(object_ids)
+        self.run_sql_batch(
+            "SELECT splitgraph_api.delete_object_files(%s)", [(o,) for o in object_ids]
+        )
+
+    def unmount_objects(self, object_ids):
         unmount_query = SQL(";").join(
             SQL("DROP FOREIGN TABLE IF EXISTS {}.{}").format(
                 Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)
@@ -507,9 +518,23 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             for object_id in object_ids
         )
         self.run_sql(unmount_query)
-        self.run_sql_batch(
-            "SELECT splitgraph_api.delete_object_files(%s)", [(o,) for o in object_ids]
+
+    def sync_object_mounts(self):
+        object_ids = self.run_sql(
+            "SELECT splitgraph_api.list_objects()", return_shape=ResultShape.ONE_ONE
         )
+
+        mounted_objects = self.run_sql(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema = %s AND table_type = 'FOREIGN'",
+            (SPLITGRAPH_META_SCHEMA,),
+            return_shape=ResultShape.MANY_ONE,
+        )
+
+        if mounted_objects:
+            self.unmount_objects(mounted_objects)
+
+        for object_id in object_ids:
+            self._mount_object(object_id, schema_spec=self.get_object_schema(object_id))
 
     def _mount_object(self, object_id, schema=SPLITGRAPH_META_SCHEMA, schema_spec=None):
         query = self._dump_object_creation(object_id, schema, schema_spec)
