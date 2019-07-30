@@ -254,7 +254,7 @@ class PsycopgEngine(SQLEngine):
             port=self.conn_params["SG_ENGINE_PORT"],
         )
 
-    def initialize(self, skip_audit=False):
+    def initialize(self, skip_object_handling=False):
         """Create the Splitgraph Postgres database and install the audit trigger"""
         logging.info("Initializing engine %r...", self)
 
@@ -279,13 +279,14 @@ class PsycopgEngine(SQLEngine):
         push_pull = get_data(_PACKAGE, _PUSH_PULL)
         self.run_sql(push_pull.decode("utf-8"), return_shape=ResultShape.NONE)
 
-        logging.info("Installing CStore management functions...")
-        cstore = get_data(_PACKAGE, _CSTORE)
-        self.run_sql(cstore.decode("utf-8"), return_shape=ResultShape.NONE)
-
-        if skip_audit:
-            logging.info("Skipping installation of the audit trigger as specified.")
+        if skip_object_handling:
+            logging.info("Skipping installation of audit triggers/CStore as specified.")
         else:
+            # Install CStore management routines
+            logging.info("Installing CStore management functions...")
+            cstore = get_data(_PACKAGE, _CSTORE)
+            self.run_sql(cstore.decode("utf-8"), return_shape=ResultShape.NONE)
+
             # Install the audit trigger if it doesn't exist
             if not self.schema_exists(_AUDIT_SCHEMA):
                 logging.info("Installing the audit trigger...")

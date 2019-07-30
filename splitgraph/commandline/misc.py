@@ -145,8 +145,8 @@ def prune_c(repository, remote, yes):
 
 @click.command(name="init")
 @click.argument("repository", type=RepositoryType(), required=False, default=None)
-@click.option("--skip-audit", default=False, is_flag=True)
-def init_c(repository, skip_audit):
+@click.option("--skip-object-handling", default=False, is_flag=True)
+def init_c(repository, skip_object_handling):
     """
     Initialize a new repository/engine.
 
@@ -157,24 +157,24 @@ def init_c(repository, skip_audit):
     Initializes the current local Splitgraph engine by writing some bookkeeping information.
     This is required for the rest of sgr to work.
 
-    `sgr init --skip-audit`
+    `sgr init --skip-object-handling`
 
-    Initializes a Splitgraph engine without installing audit triggers: this is useful for engines that aren't
-    intended to be used for image checkouts.
+    Initializes a Splitgraph engine without installing audit triggers or object management routines:
+    this is useful for engines that aren't intended to be used for image checkouts.
 
     ``sgr init new/repo``
 
     Creates a single image with the hash ``00000...`` in ``new/repo``
     """
     if repository:
-        if skip_audit:
+        if skip_object_handling:
             raise click.BadOptionUsage(
-                "--skip-audit unsupported when initializing a new repository!"
+                "--skip-object-handling unsupported when initializing a new repository!"
             )
         repository.init()
         print("Initialized empty repository %s" % str(repository))
     else:
-        init_engine(skip_audit=skip_audit)
+        init_engine(skip_object_handling=skip_object_handling)
 
 
 @click.command(name="cleanup")
