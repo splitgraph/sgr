@@ -254,23 +254,26 @@ class PsycopgEngine(SQLEngine):
             port=self.conn_params["SG_ENGINE_PORT"],
         )
 
-    def initialize(self, skip_object_handling=False):
+    def initialize(self, skip_object_handling=False, skip_create_database=False):
         """Create the Splitgraph Postgres database and install the audit trigger"""
         logging.info("Initializing engine %r...", self)
 
         # Use the connection to the "postgres" database to create the actual PG_DB
-        with self._admin_conn() as admin_conn:
-            # CREATE DATABASE can't run inside of tx
-            pg_db = self.conn_params["SG_ENGINE_DB_NAME"]
+        if skip_create_database:
+            logging.info("Explicitly skipping create database")
+        else:
+            with self._admin_conn() as admin_conn:
+                # CREATE DATABASE can't run inside of tx
+                pg_db = self.conn_params["SG_ENGINE_DB_NAME"]
 
-            admin_conn.autocommit = True
-            with admin_conn.cursor() as cur:
-                cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (pg_db,))
-                if cur.fetchone() is None:
-                    logging.info("Creating database %s", pg_db)
-                    cur.execute(SQL("CREATE DATABASE {}").format(Identifier(pg_db)))
-                else:
-                    logging.info("Database %s already exists, skipping", pg_db)
+                admin_conn.autocommit = True
+                with admin_conn.cursor() as cur:
+                    cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (pg_db,))
+                    if cur.fetchone() is None:
+                        logging.info("Creating database %s", pg_db)
+                        cur.execute(SQL("CREATE DATABASE {}").format(Identifier(pg_db)))
+                    else:
+                        logging.info("Database %s already exists, skipping", pg_db)
 
         logging.info("Ensuring the metadata schema at %s exists...", SPLITGRAPH_META_SCHEMA)
         ensure_metadata_schema(self)
