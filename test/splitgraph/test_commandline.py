@@ -840,19 +840,38 @@ def test_init_new_db():
         get_engine().delete_database("testdb")
 
 
-def test_init_skip_audit():
+def test_init_skip_object_handling():
     # Test engine initialization where we don't install an audit trigger
     runner = CliRunner()
     engine = get_engine()
     try:
         engine.run_sql("DROP SCHEMA IF EXISTS audit CASCADE")
+        engine.run_sql("DROP FUNCTION IF EXISTS splitgraph_api.upload_object")
         assert not engine.schema_exists("audit")
-        result = runner.invoke(init_c, ["--skip-audit"])
+        result = runner.invoke(init_c, ["--skip-object-handling"])
         assert result.exit_code == 0
         assert not engine.schema_exists("audit")
+        assert (
+            engine.run_sql(
+                "SELECT COUNT(*) FROM information_schema.routines "
+                "WHERE routine_schema = 'splitgraph_api' "
+                "AND routine_name = 'upload_object'",
+                return_shape=ResultShape.ONE_ONE,
+            )
+            == 0
+        )
     finally:
-        init_engine(skip_audit=False)
+        init_engine(skip_object_handling=False)
         assert engine.schema_exists("audit")
+        assert (
+            engine.run_sql(
+                "SELECT COUNT(*) FROM information_schema.routines "
+                "WHERE routine_schema = 'splitgraph_api' "
+                "AND routine_name = 'upload_object'",
+                return_shape=ResultShape.ONE_ONE,
+            )
+            == 1
+        )
 
 
 def test_init_override_engine():

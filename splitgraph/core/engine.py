@@ -26,7 +26,7 @@ _LOOKUP_PATH, _LOOKUP_PATH_OVERRIDE = _parse_paths_overrides(
 )
 
 
-def init_engine(skip_audit=False):  # pragma: no cover
+def init_engine(skip_object_handling=False):  # pragma: no cover
     # Method exercised in test_commandline.test_init_new_db but in
     # an external process
     """
@@ -35,11 +35,12 @@ def init_engine(skip_audit=False):  # pragma: no cover
         * performing any required engine-custom initialization
         * creating the metadata tables
 
-    :param skip_audit: If True, skips installing audit triggers.
+    :param skip_object_handling: If True, skips installing routines related to
+        object handling and checkouts (like audit triggers and CStore management).
     """
     # Initialize the engine
     engine = get_engine()
-    engine.initialize(skip_audit=skip_audit)
+    engine.initialize(skip_object_handling=skip_object_handling)
     engine.commit()
     print("Engine %r initialized." % engine)
 
