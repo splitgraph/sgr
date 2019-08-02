@@ -635,10 +635,10 @@ def test_sync_object_mounts(pg_repo_local, clean_minio):
     _, s3_id, _ = pg_repo_local.objects.get_external_object_locations([object_id])[0]
 
     url = pg_repo_local.engine.run_sql(
-        "SELECT splitgraph_api.get_object_download_url(%s)",
-        (s3_id,),
+        "SELECT splitgraph_api.get_object_download_urls(%s)",
+        ([s3_id],),
         return_shape=ResultShape.ONE_ONE,
-    )
+    )[0]
 
     pg_repo_local.engine.run_sql("SELECT splitgraph_api.download_object(%s, %s)", (object_id, url))
     assert object_id in pg_repo_local.objects.get_downloaded_objects()
