@@ -8,6 +8,7 @@ from splitgraph.core import clone, select
 from splitgraph.core.fragment_manager import _quals_to_clause
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import ObjectCacheError
+from splitgraph.hooks.s3_server import S3_HOST, S3_PORT
 from test.splitgraph.commands.test_layered_querying import prepare_lq_repo
 from test.splitgraph.conftest import (
     OUTPUT,
@@ -635,10 +636,10 @@ def test_sync_object_mounts(pg_repo_local, clean_minio):
     _, s3_id, _ = pg_repo_local.objects.get_external_object_locations([object_id])[0]
 
     url = pg_repo_local.engine.run_sql(
-        "SELECT splitgraph_api.get_object_download_url(%s)",
-        (s3_id,),
+        "SELECT splitgraph_api.get_object_download_urls(%s, %s)",
+        ("%s:%s" % (S3_HOST, S3_PORT), [s3_id]),
         return_shape=ResultShape.ONE_ONE,
-    )
+    )[0]
 
     pg_repo_local.engine.run_sql("SELECT splitgraph_api.download_object(%s, %s)", (object_id, url))
     assert object_id in pg_repo_local.objects.get_downloaded_objects()

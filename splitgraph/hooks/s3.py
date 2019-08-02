@@ -40,18 +40,15 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
         :return: List of object IDs on Minio
         """
         worker_threads = self.params.get("threads", int(CONFIG["SG_ENGINE_POOL"]) - 1)
+        s3_host = self.params.get("host", "%s:%s" % (CONFIG["SG_S3_HOST"], CONFIG["SG_S3_PORT"]))
 
         # Determine upload URLs
         logging.info("Getting upload URLs from the registry...")
-        urls = []
-        for object_id in objects:
-            urls.append(
-                remote_engine.run_sql(
-                    "SELECT splitgraph_api.get_object_upload_url(%s)",
-                    (object_id,),
-                    return_shape=ResultShape.ONE_ONE,
-                )
-            )
+        urls = remote_engine.run_sql(
+            "SELECT splitgraph_api.get_object_upload_urls(%s, %s)",
+            (s3_host, objects),
+            return_shape=ResultShape.ONE_ONE,
+        )
 
         logging.info("Uploading %d object(s)...", len(objects))
         local_engine = get_engine()
@@ -79,19 +76,16 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
         # By default, take up the whole connection pool with downloaders (less one connection for the main
         # thread that handles metadata)
         worker_threads = self.params.get("threads", int(CONFIG["SG_ENGINE_POOL"]) - 1)
+        s3_host = self.params.get("host", "%s:%s" % (CONFIG["SG_S3_HOST"], CONFIG["SG_S3_PORT"]))
 
         logging.info("Getting download URLs from the registry...")
-        urls = []
-        object_ids = []
-        for object_id, remote_object_id in objects:
-            urls.append(
-                remote_engine.run_sql(
-                    "SELECT splitgraph_api.get_object_download_url(%s)",
-                    (remote_object_id,),
-                    return_shape=ResultShape.ONE_ONE,
-                )
-            )
-            object_ids.append(object_id)
+        object_ids = [o[0] for o in objects]
+        remote_object_ids = [o[1] for o in objects]
+        urls = remote_engine.run_sql(
+            "SELECT splitgraph_api.get_object_download_urls(%s, %s)",
+            (s3_host, remote_object_ids),
+            return_shape=ResultShape.ONE_ONE,
+        )
         logging.info("Downloading %d object(s)...", len(objects))
 
         local_engine = get_engine()

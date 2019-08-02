@@ -20,22 +20,46 @@ MINIO = Minio(
 _EXP = timedelta(seconds=60)
 
 
-def get_object_upload_url(object_id):
-    return tuple(
-        MINIO.presigned_put_object(
-            bucket_name=S3_BUCKET, object_name=object_id + suffix, expires=_EXP
-        )
-        for suffix in ("", ".footer", ".schema")
-    )
+def get_object_upload_urls(s3_host, object_ids):
+    """
+    Return a list of pre-signed URLs that each part of an object can be downloaded from.
+
+    :param s3_host: S3 host that the objects are stored on
+    :param object_ids: List of object IDs
+    :return: A list of lists [(object URL, object footer URL, object schema URL)]
+    """
+    if s3_host != "%s:%s" % (S3_HOST, S3_PORT):
+        raise ValueError("Cannot access S3 host %s!" % s3_host)
+    return [
+        [
+            MINIO.presigned_put_object(
+                bucket_name=S3_BUCKET, object_name=object_id + suffix, expires=_EXP
+            )
+            for suffix in ("", ".footer", ".schema")
+        ]
+        for object_id in object_ids
+    ]
 
 
-def get_object_download_url(object_id):
-    return tuple(
-        MINIO.presigned_get_object(
-            bucket_name=S3_BUCKET, object_name=object_id + suffix, expires=_EXP
-        )
-        for suffix in ("", ".footer", ".schema")
-    )
+def get_object_download_urls(s3_host, object_ids):
+    """
+    Return a list of pre-signed URLs that each part of an object can be downloaded from.
+
+    :param s3_host: S3 host that the objects are stored on
+    :param object_ids: List of object IDs
+    :return: A list of lists [(object URL, object footer URL, object schema URL)]
+    """
+    if s3_host != "%s:%s" % (S3_HOST, S3_PORT):
+        raise ValueError("Cannot access S3 host %s!" % s3_host)
+    return [
+        [
+            MINIO.presigned_get_object(
+                bucket_name=S3_BUCKET, object_name=object_id + suffix, expires=_EXP
+            )
+            for suffix in ("", ".footer", ".schema")
+        ]
+        for object_id in object_ids
+    ]
 
 
 def delete_objects(client, object_ids):
