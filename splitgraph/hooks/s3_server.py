@@ -28,7 +28,7 @@ def get_object_upload_urls(s3_host, object_ids):
     :param object_ids: List of object IDs
     :return: A list of lists [(object URL, object footer URL, object schema URL)]
     """
-    if s3_host != S3_HOST:
+    if s3_host != "%s:%s" % (S3_HOST, S3_PORT):
         raise ValueError("Cannot access S3 host %s!" % s3_host)
     return [
         [
@@ -49,7 +49,7 @@ def get_object_download_urls(s3_host, object_ids):
     :param object_ids: List of object IDs
     :return: A list of lists [(object URL, object footer URL, object schema URL)]
     """
-    if s3_host != S3_HOST:
+    if s3_host != "%s:%s" % (S3_HOST, S3_PORT):
         raise ValueError("Cannot access S3 host %s!" % s3_host)
     return [
         [

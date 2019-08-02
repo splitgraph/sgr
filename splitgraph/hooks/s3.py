@@ -40,7 +40,7 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
         :return: List of object IDs on Minio
         """
         worker_threads = self.params.get("threads", int(CONFIG["SG_ENGINE_POOL"]) - 1)
-        s3_host = self.params.get("host", CONFIG["SG_S3_HOST"])
+        s3_host = self.params.get("host", "%s:%s" % (CONFIG["SG_S3_HOST"], CONFIG["SG_S3_PORT"]))
 
         # Determine upload URLs
         logging.info("Getting upload URLs from the registry...")
@@ -76,7 +76,7 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
         # By default, take up the whole connection pool with downloaders (less one connection for the main
         # thread that handles metadata)
         worker_threads = self.params.get("threads", int(CONFIG["SG_ENGINE_POOL"]) - 1)
-        s3_host = self.params.get("host", CONFIG["SG_S3_HOST"])
+        s3_host = self.params.get("host", "%s:%s" % (CONFIG["SG_S3_HOST"], CONFIG["SG_S3_PORT"]))
 
         logging.info("Getting download URLs from the registry...")
         object_ids = [o[0] for o in objects]
