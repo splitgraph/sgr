@@ -30,6 +30,7 @@ DEFAULTS = {
     # Anonymous access by default
     "SG_S3_KEY": None,
     "SG_S3_PWD": None,
+    "SG_S3_BUCKET": "splitgraph",
     # Object cache (objects downloaded from an external location) tuning
     # Will try to target this size (in MB).
     "SG_OBJECT_CACHE_SIZE": 1024,
@@ -74,6 +75,7 @@ ARGUMENT_KEY_MAP = {
     "--s3-port": "SG_S3_PORT",
     "--s3-access-key": "SG_S3_KEY",
     "--s3-secret-key": "SG_S3_PWD",
+    "--s3-bucket": "SG_S3_BUCKET",
     "--object-cache-size": "SG_OBJECT_CACHE_SIZE",
     "--eviction-decay": "SG_EVICTION_DECAY",
     "--eviction-floor": "SG_EVICTION_FLOOR",

@@ -30,8 +30,11 @@ services:
       - POSTGRES_PASSWORD=supersecure
       - POSTGRES_DB=splitgraph
       - PGPORT=5431
+      - SG_CONFIG_FILE=/.sgconfig
+      - SG_LOGLEVEL=INFO
     volumes:
       - ./data/remote_engine/setup.sql:/docker-entrypoint-initdb.d/setup.sql
+      - ../resources/.sgconfig:/.sgconfig
       - ../../:/splitgraph
     expose:
       - 5431

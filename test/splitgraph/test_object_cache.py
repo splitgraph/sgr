@@ -8,7 +8,6 @@ from splitgraph.core import clone, select
 from splitgraph.core.fragment_manager import _quals_to_clause
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import ObjectCacheError
-from splitgraph.hooks.s3 import S3_ACCESS_KEY, S3_SECRET_KEY
 from test.splitgraph.commands.test_layered_querying import prepare_lq_repo
 from test.splitgraph.conftest import (
     OUTPUT,
@@ -66,7 +65,7 @@ def _setup_object_cache_test(pg_repo_remote, longer_chain=False):
     return pg_repo_local
 
 
-def test_object_cache_loading(local_engine_empty, pg_repo_remote):
+def test_object_cache_loading(local_engine_empty, pg_repo_remote, clean_minio):
     # Test object caching, downloading etc.
     pg_repo_local = _setup_object_cache_test(pg_repo_remote)
 
@@ -111,7 +110,7 @@ def test_object_cache_loading(local_engine_empty, pg_repo_remote):
     assert len(object_manager.get_downloaded_objects()) == 2
 
 
-def test_object_cache_non_existing_objects(local_engine_empty, pg_repo_remote):
+def test_object_cache_non_existing_objects(local_engine_empty, pg_repo_remote, clean_minio):
     pg_repo_local = _setup_object_cache_test(pg_repo_remote)
     object_manager = pg_repo_local.objects
 
@@ -145,7 +144,7 @@ def test_object_cache_non_existing_objects(local_engine_empty, pg_repo_remote):
     assert fruits_v3.objects[0] in str(e.value)
 
 
-def test_object_cache_eviction(local_engine_empty, pg_repo_remote):
+def test_object_cache_eviction(local_engine_empty, pg_repo_remote, clean_minio):
     pg_repo_local = _setup_object_cache_test(pg_repo_remote)
 
     object_manager = pg_repo_local.objects
@@ -208,7 +207,7 @@ def test_object_cache_eviction(local_engine_empty, pg_repo_remote):
     assert "Not enough space in the cache" in str(e.value)
 
 
-def test_object_cache_eviction_fraction(local_engine_empty, pg_repo_remote):
+def test_object_cache_eviction_fraction(local_engine_empty, pg_repo_remote, clean_minio):
     pg_repo_local = _setup_object_cache_test(pg_repo_remote)
 
     object_manager = pg_repo_local.objects
@@ -230,7 +229,9 @@ def test_object_cache_eviction_fraction(local_engine_empty, pg_repo_remote):
         _assert_cache_occupancy(object_manager, 1)
 
 
-def test_object_cache_locally_created_dont_get_evicted(local_engine_empty, pg_repo_remote):
+def test_object_cache_locally_created_dont_get_evicted(
+    local_engine_empty, pg_repo_remote, clean_minio
+):
     # Test that the objects which were created locally are exempt from cache eviction/stats.
     pg_repo_local = _setup_object_cache_test(pg_repo_remote)
 
@@ -261,7 +262,7 @@ def test_object_cache_locally_created_dont_get_evicted(local_engine_empty, pg_re
     assert fruits_v4.objects[0] in downloaded
 
 
-def test_object_cache_eviction_orphaned(local_engine_empty, pg_repo_remote):
+def test_object_cache_eviction_orphaned(local_engine_empty, pg_repo_remote, clean_minio):
     # Test that objects that become orphaned (no entry in the objects table) get evicted first.
     pg_repo_local = _setup_object_cache_test(pg_repo_remote)
 
@@ -293,7 +294,7 @@ def test_object_cache_eviction_orphaned(local_engine_empty, pg_repo_remote):
     _assert_cache_occupancy(object_manager, 0)
 
 
-def test_object_cache_nested(local_engine_empty, pg_repo_remote):
+def test_object_cache_nested(local_engine_empty, pg_repo_remote, clean_minio):
     # Test that we can have multiple groups of objects loaded at the same time.
     pg_repo_local = _setup_object_cache_test(pg_repo_remote)
 
@@ -330,7 +331,7 @@ def test_object_cache_nested(local_engine_empty, pg_repo_remote):
         assert "Not enough space will be reclaimed" in str(e.value)
 
 
-def test_object_cache_eviction_priority(local_engine_empty, pg_repo_remote):
+def test_object_cache_eviction_priority(local_engine_empty, pg_repo_remote, clean_minio):
     pg_repo_local = _setup_object_cache_test(pg_repo_remote)
 
     object_manager = pg_repo_local.objects
@@ -630,12 +631,16 @@ def test_sync_object_mounts(pg_repo_local, clean_minio):
     # Simulate the object being in /var/lib/splitgraph/objects without actually
     # being mounted by downloading (and not mounting) it -- pretend somebody
     # else put it there.
-    _, url, _ = pg_repo_local.objects.get_external_object_locations([object_id])[0]
 
-    pg_repo_local.engine.run_sql(
-        "SELECT splitgraph_api.download_object(%s, %s, %s, %s)",
-        (object_id, url, S3_ACCESS_KEY, S3_SECRET_KEY),
+    _, s3_id, _ = pg_repo_local.objects.get_external_object_locations([object_id])[0]
+
+    url = pg_repo_local.engine.run_sql(
+        "SELECT splitgraph_api.get_object_download_url(%s)",
+        (s3_id,),
+        return_shape=ResultShape.ONE_ONE,
     )
+
+    pg_repo_local.engine.run_sql("SELECT splitgraph_api.download_object(%s, %s)", (object_id, url))
     assert object_id in pg_repo_local.objects.get_downloaded_objects()
 
     pg_repo_local.engine.sync_object_mounts()

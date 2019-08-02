@@ -36,18 +36,20 @@ class ExternalObjectHandler:
         """
         self.params = params
 
-    def upload_objects(self, objects):
+    def upload_objects(self, objects, remote_engine):
         """Upload objects from the Splitgraph cache to an external location
 
         :param objects: List of object IDs to upload
+        :param remote_engine: An instance of Engine class that the objects will be registered on
         :return: A list of URLs (same length as `objects`) that the objects can be found at.
         """
 
-    def download_objects(self, objects):
+    def download_objects(self, objects, remote_engine):
         """Download objects from the external location into the Splitgraph cache.
 
         :param objects: List of tuples `(object_id, object_url)` that this handler had previosly
             uploaded the objects to.
+        :param remote_engine: An instance of Engine class that the objects will be registered on
         """
 
 

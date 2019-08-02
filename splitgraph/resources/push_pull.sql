@@ -268,3 +268,26 @@ RETURNS void AS $$ BEGIN
     DELETE FROM registry_meta.images WHERE namespace = _namespace AND repository = _repository;
 END
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = registry_meta, pg_temp;
+
+--
+-- S3 UPLOAD/DOWNLOAD API
+--
+
+CREATE EXTENSION IF NOT EXISTS plpython3u;
+
+-- get_object_upload_url(object_id) -> pre-signed URLs to upload the object, its footer and schema
+-- TODO we first need to check privilege (for object visibility) and _then_ call into the plpython.
+-- Or maybe there's a way to call back into postgres to check privilege.
+
+-- Importing splitgraph.config isn't much slower than importing that + minio
+-- (300ms vs 500ms) -- basically no matter what, we can't do it for every object.
+CREATE OR REPLACE FUNCTION splitgraph_api.get_object_upload_url(object_id varchar) RETURNS varchar[] AS $$
+    from splitgraph.hooks.s3_server import get_object_upload_url
+    return get_object_upload_url(object_id)
+$$ LANGUAGE plpython3u SECURITY DEFINER;
+
+-- get_object_download_url(object_id)
+CREATE OR REPLACE FUNCTION splitgraph_api.get_object_download_url(object_id varchar) RETURNS varchar[] AS $$
+    from splitgraph.hooks.s3_server import get_object_download_url
+    return get_object_download_url(object_id)
+$$ LANGUAGE plpython3u SECURITY DEFINER;
