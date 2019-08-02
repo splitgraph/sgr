@@ -20,13 +20,16 @@ MINIO = Minio(
 _EXP = timedelta(seconds=60)
 
 
-def get_object_upload_urls(object_ids):
+def get_object_upload_urls(s3_host, object_ids):
     """
     Return a list of pre-signed URLs that each part of an object can be downloaded from.
 
+    :param s3_host: S3 host that the objects are stored on
     :param object_ids: List of object IDs
     :return: A list of lists [(object URL, object footer URL, object schema URL)]
     """
+    if s3_host != S3_HOST:
+        raise ValueError("Cannot access S3 host %s!" % s3_host)
     return [
         [
             MINIO.presigned_put_object(
@@ -38,14 +41,16 @@ def get_object_upload_urls(object_ids):
     ]
 
 
-def get_object_download_urls(object_ids):
+def get_object_download_urls(s3_host, object_ids):
     """
     Return a list of pre-signed URLs that each part of an object can be downloaded from.
 
+    :param s3_host: S3 host that the objects are stored on
     :param object_ids: List of object IDs
     :return: A list of lists [(object URL, object footer URL, object schema URL)]
     """
-
+    if s3_host != S3_HOST:
+        raise ValueError("Cannot access S3 host %s!" % s3_host)
     return [
         [
             MINIO.presigned_get_object(

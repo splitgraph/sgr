@@ -281,13 +281,13 @@ CREATE EXTENSION IF NOT EXISTS plpython3u;
 
 -- Importing splitgraph.config isn't much slower than importing that + minio
 -- (300ms vs 500ms) -- basically no matter what, we can't do it for every object.
-CREATE OR REPLACE FUNCTION splitgraph_api.get_object_upload_urls(object_ids varchar[]) RETURNS varchar[][] AS $$
+CREATE OR REPLACE FUNCTION splitgraph_api.get_object_upload_urls(s3_host varchar, object_ids varchar[]) RETURNS varchar[][] AS $$
     from splitgraph.hooks.s3_server import get_object_upload_urls
-    return get_object_upload_urls(object_ids)
+    return get_object_upload_urls(s3_host, object_ids)
 $$ LANGUAGE plpython3u SECURITY DEFINER;
 
 -- get_object_download_url(object_id)
-CREATE OR REPLACE FUNCTION splitgraph_api.get_object_download_urls(object_ids varchar[]) RETURNS varchar[][] AS $$
+CREATE OR REPLACE FUNCTION splitgraph_api.get_object_download_urls(s3_host varchar, object_ids varchar[]) RETURNS varchar[][] AS $$
     from splitgraph.hooks.s3_server import get_object_download_urls
-    return get_object_download_urls(object_ids)
+    return get_object_download_urls(s3_host, object_ids)
 $$ LANGUAGE plpython3u SECURITY DEFINER;

@@ -5,7 +5,7 @@ from minio.error import MinioError
 
 from splitgraph import ResultShape
 from splitgraph.core.repository import clone
-from splitgraph.hooks.s3_server import get_object_upload_urls, get_object_download_urls
+from splitgraph.hooks.s3_server import get_object_upload_urls, get_object_download_urls, S3_HOST
 from test.splitgraph.conftest import PG_MNT
 
 
@@ -19,16 +19,16 @@ def test_s3_presigned_url(local_engine_empty, pg_repo_remote, clean_minio):
 
     # Do a test calling the signer locally (the tests currently have access
     # to the S3 credentials on the host they're running on)
-    urls_local = get_object_upload_urls([object_id])
+    urls_local = get_object_upload_urls(S3_HOST, [object_id])
     assert len(urls_local) == 1
     assert len(urls_local[0]) == 3
-    urls_local = get_object_download_urls([object_id])
+    urls_local = get_object_download_urls(S3_HOST, [object_id])
     assert len(urls_local) == 1
     assert len(urls_local[0]) == 3
 
     urls = pg_repo_remote.run_sql(
-        "SELECT * FROM splitgraph_api.get_object_upload_urls(%s)",
-        ([object_id],),
+        "SELECT * FROM splitgraph_api.get_object_upload_urls(%s, %s)",
+        (S3_HOST, [object_id]),
         return_shape=ResultShape.ONE_ONE,
     )
     assert len(urls) == 1
