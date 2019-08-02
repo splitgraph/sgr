@@ -5,15 +5,24 @@ from minio.error import MinioError
 
 from splitgraph import ResultShape
 from splitgraph.core.repository import clone
+from splitgraph.hooks.s3_server import get_object_upload_url, get_object_download_url
 from test.splitgraph.conftest import PG_MNT
 
 
-def test_s3_presigned_url(local_engine_empty, pg_repo_remote):
+def test_s3_presigned_url(local_engine_empty, pg_repo_remote, clean_minio):
+    # Test the URL signing stored procedure works on the remote machine
     clone(pg_repo_remote, local_repository=PG_MNT, download_all=False)
     PG_MNT.images["latest"].checkout()
     PG_MNT.run_sql("INSERT INTO fruits VALUES (3, 'mayonnaise')")
     head = PG_MNT.commit()
     object_id = head.get_table("fruits").objects[0]
+
+    # Do a test calling the signer locally (the tests currently have access
+    # to the S3 credentials on the host they're running on)
+    urls_local = get_object_upload_url(object_id)
+    assert len(urls_local) == 3
+    urls_local = get_object_download_url(object_id)
+    assert len(urls_local) == 3
 
     urls = pg_repo_remote.run_sql(
         "SELECT splitgraph_api.get_object_upload_url(%s)",

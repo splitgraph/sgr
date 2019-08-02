@@ -4,7 +4,6 @@ URLs to upload/download objects."""
 from datetime import timedelta
 
 from minio import Minio
-from minio.error import BucketAlreadyExists, BucketAlreadyOwnedByYou
 
 from splitgraph.config import CONFIG
 
@@ -22,13 +21,6 @@ _EXP = timedelta(seconds=60)
 
 
 def get_object_upload_url(object_id):
-    try:
-        MINIO.make_bucket(S3_BUCKET)
-    except BucketAlreadyExists:
-        pass
-    except BucketAlreadyOwnedByYou:
-        pass
-
     return tuple(
         MINIO.presigned_put_object(
             bucket_name=S3_BUCKET, object_name=object_id + suffix, expires=_EXP

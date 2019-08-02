@@ -1,6 +1,7 @@
 import os
 
 import pytest
+from minio.error import BucketAlreadyExists, BucketAlreadyOwnedByYou
 
 from splitgraph.core._common import ensure_metadata_schema
 from splitgraph.core.engine import get_current_repositories
@@ -285,6 +286,13 @@ def _cleanup_minio():
 
 @pytest.fixture
 def clean_minio():
+    try:
+        MINIO.make_bucket(S3_BUCKET)
+    except BucketAlreadyExists:
+        pass
+    except BucketAlreadyOwnedByYou:
+        pass
+
     # Make sure to delete extra objects in the remote Minio bucket
     _cleanup_minio()
     yield MINIO
