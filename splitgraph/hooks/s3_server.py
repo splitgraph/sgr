@@ -20,22 +20,41 @@ MINIO = Minio(
 _EXP = timedelta(seconds=60)
 
 
-def get_object_upload_url(object_id):
-    return tuple(
-        MINIO.presigned_put_object(
-            bucket_name=S3_BUCKET, object_name=object_id + suffix, expires=_EXP
-        )
-        for suffix in ("", ".footer", ".schema")
-    )
+def get_object_upload_urls(object_ids):
+    """
+    Return a list of pre-signed URLs that each part of an object can be downloaded from.
+
+    :param object_ids: List of object IDs
+    :return: A list of lists [(object URL, object footer URL, object schema URL)]
+    """
+    return [
+        [
+            MINIO.presigned_put_object(
+                bucket_name=S3_BUCKET, object_name=object_id + suffix, expires=_EXP
+            )
+            for suffix in ("", ".footer", ".schema")
+        ]
+        for object_id in object_ids
+    ]
 
 
-def get_object_download_url(object_id):
-    return tuple(
-        MINIO.presigned_get_object(
-            bucket_name=S3_BUCKET, object_name=object_id + suffix, expires=_EXP
-        )
-        for suffix in ("", ".footer", ".schema")
-    )
+def get_object_download_urls(object_ids):
+    """
+    Return a list of pre-signed URLs that each part of an object can be downloaded from.
+
+    :param object_ids: List of object IDs
+    :return: A list of lists [(object URL, object footer URL, object schema URL)]
+    """
+
+    return [
+        [
+            MINIO.presigned_get_object(
+                bucket_name=S3_BUCKET, object_name=object_id + suffix, expires=_EXP
+            )
+            for suffix in ("", ".footer", ".schema")
+        ]
+        for object_id in object_ids
+    ]
 
 
 def delete_objects(client, object_ids):
