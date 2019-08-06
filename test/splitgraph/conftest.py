@@ -8,7 +8,6 @@ from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.registry import (
     _ensure_registry_schema,
-    unpublish_repository,
     setup_registry_mode,
     toggle_registry_rls,
     set_info_key,
@@ -25,6 +24,13 @@ PG_MNT_PULL = R("test_pg_mount_pull")
 MG_MNT = R("test_mg_mount")
 MYSQL_MNT = R("test/mysql_mount")
 OUTPUT = R("output")
+
+# On the host, mapped into localhost; on the local engine works as intended.
+REMOTE_ENGINE = "remote_engine"
+
+SPLITFILE_ROOT = os.path.join(os.path.dirname(__file__), "../resources/")
+
+INGESTION_RESOURCES = os.path.join(os.path.dirname(__file__), "../resources/ingestion")
 
 # Rough on-disk size taken up by a small (<10 rows) object that we
 # use in tests. Includes the actual CStore file, the footer and the
@@ -167,14 +173,14 @@ with open(
     PG_DATA = f.read()
 
 
-def make_pg_repo(engine):
-    # Used to be a mount, trying to just write the data directly to speed tests up
-    result = Repository("test", "pg_mount", engine=engine)
-    result.init()
-    result.run_sql(PG_DATA)
-    assert result.has_pending_changes()
-    result.commit()
-    return result
+def make_pg_repo(engine, repository=None):
+    repository = repository or Repository("test", "pg_mount")
+    repository = Repository.from_template(repository, engine=engine)
+    repository.init()
+    repository.run_sql(PG_DATA)
+    assert repository.has_pending_changes()
+    repository.commit()
+    return repository
 
 
 def make_multitag_pg_repo(pg_repo):
@@ -204,9 +210,8 @@ def remote_engine_registry():
     set_info_key(engine, "registry_mode", False)
     setup_registry_mode(engine)
     toggle_registry_rls(engine, "DISABLE")
-    unpublish_repository(Repository("", "output", engine))
-    unpublish_repository(Repository("test", "pg_mount", engine))
-    unpublish_repository(Repository("testuser", "pg_mount", engine))
+    # "Unpublish" all images
+    engine.run_sql("DELETE FROM registry_meta.images")
     for mountpoint, _ in get_current_repositories(engine):
         mountpoint.delete(uncheckout=False)
     ObjectManager(engine).cleanup(include_physical_objects=False)
@@ -226,15 +231,15 @@ def remote_engine_registry():
 # A fixture for a test repository that exists on the remote with objects
 # hosted on S3.
 @pytest.fixture
-def pg_repo_remote_registry(pg_repo_local, remote_engine_registry, clean_minio):
-    result = pg_repo_local.push(
-        Repository.from_template(pg_repo_local, engine=remote_engine_registry),
+def pg_repo_remote_registry(local_engine_empty, remote_engine_registry, clean_minio):
+    staging = Repository("test", "pg_mount_staging")
+    staging = make_pg_repo(get_engine(), staging)
+    result = staging.push(
+        Repository("test", "pg_mount", engine=remote_engine_registry),
         handler="S3",
         handler_options={},
     )
-    # This might be against the way fixtures are supposed to work but
-    # we don't actually use pg_repo_local and remote repo at the same time in tests.
-    pg_repo_local.delete()
+    staging.delete()
     yield result
 
 
@@ -268,11 +273,6 @@ def mg_repo_remote(remote_engine):
     yield result
 
 
-REMOTE_ENGINE = (
-    "remote_engine"
-)  # On the host, mapped into localhost; on the local engine works as intended.
-
-
 @pytest.fixture
 def remote_engine():
     engine = get_engine(REMOTE_ENGINE)
@@ -281,9 +281,8 @@ def remote_engine():
     set_info_key(engine, "registry_mode", False)
     setup_registry_mode(engine)
     toggle_registry_rls(engine, "DISABLE")
-    unpublish_repository(Repository("", "output", engine))
-    unpublish_repository(Repository("test", "pg_mount", engine))
-    unpublish_repository(Repository("testuser", "pg_mount", engine))
+    # "Unpublish" all images
+    engine.run_sql("DELETE FROM registry_meta.images")
     for mountpoint, _ in get_current_repositories(engine):
         mountpoint.delete()
     ObjectManager(engine).cleanup()
@@ -316,9 +315,6 @@ def unprivileged_remote_engine(remote_engine_registry):
         engine.close()
 
 
-SPLITFILE_ROOT = os.path.join(os.path.dirname(__file__), "../resources/")
-
-
 def load_splitfile(name):
     with open(SPLITFILE_ROOT + name, "r") as f:
         return f.read()
@@ -345,9 +341,6 @@ def clean_minio():
     yield MINIO
     # Comment this out if tests fail and you want to see what the hell went on in the bucket.
     _cleanup_minio()
-
-
-INGESTION_RESOURCES = os.path.join(os.path.dirname(__file__), "../resources/ingestion")
 
 
 def load_csv(fname):

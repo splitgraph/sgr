@@ -25,7 +25,7 @@ def test_push_own_delete_own(local_engine_empty, unprivileged_pg_repo):
     # tables there
     remote_destination = Repository.from_template(
         destination,
-        namespace=unprivileged_pg_repo.engine.conn_params["SG_ENGINE_USER"],
+        namespace=unprivileged_pg_repo.engine.conn_params["SG_NAMESPACE"],
         engine=unprivileged_pg_repo.engine,
     )
     destination.upstream = remote_destination
@@ -47,7 +47,7 @@ def test_push_own_delete_own_different_namespaces(local_engine_empty, unprivileg
 
     remote_destination = Repository.from_template(
         unprivileged_pg_repo,
-        namespace=unprivileged_pg_repo.engine.conn_params["SG_ENGINE_USER"],
+        namespace=unprivileged_pg_repo.engine.conn_params["SG_NAMESPACE"],
         engine=unprivileged_pg_repo.engine,
     )
     destination.upstream = remote_destination
@@ -57,7 +57,7 @@ def test_push_own_delete_own_different_namespaces(local_engine_empty, unprivileg
     object_id = destination.head.get_table("fruits").objects[0]
     assert (
         remote_destination.objects.get_object_meta([object_id])[object_id].namespace
-        == unprivileged_pg_repo.engine.conn_params["SG_ENGINE_USER"]
+        == unprivileged_pg_repo.engine.conn_params["SG_NAMESPACE"]
     )
 
     # Test we can delete our own repo once we've pushed it
@@ -105,7 +105,7 @@ def test_publish_unpublish_own(
     PG_MNT.images["latest"].tag("my_tag")
     target_repo = Repository.from_template(
         pg_repo_remote_registry,
-        namespace=unprivileged_remote_engine.conn_params["SG_ENGINE_USER"],
+        namespace=unprivileged_remote_engine.conn_params["SG_NAMESPACE"],
         engine=unprivileged_remote_engine,
     )
 
