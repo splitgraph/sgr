@@ -649,10 +649,13 @@ class ObjectManager(FragmentManager, MetadataManager):
             uploaded = external_handler.upload_objects(objects_to_push, target.metadata_engine)
         return [(oid, url, handler) for oid, url in zip(objects_to_push, uploaded)]
 
-    def cleanup(self):
+    def cleanup(self, include_physical_objects=True):
         """
         Deletes all objects in the object_tree not required by any current repository, including their dependencies and
         their remote locations. Also deletes all objects not registered in the object_tree.
+
+        :param include_physical_objects: Default True. If False, only deletes the object metadata rather
+            than any physical objects on the engine.
         """
         # First, get a list of all objects required by a table.
         primary_objects = {
@@ -669,6 +672,9 @@ class ObjectManager(FragmentManager, MetadataManager):
             primary_objects = self.get_all_required_objects(list(primary_objects))
 
         # Go through the tables that aren't repository-dependent and delete entries there.
+        tables = ["object_locations", "objects"]
+        if include_physical_objects:
+            tables.append("object_cache_status")
         for table_name in ["object_locations", "object_cache_status", "objects"]:
             query = SQL("DELETE FROM {}.{}").format(
                 Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table_name)
@@ -684,27 +690,28 @@ class ObjectManager(FragmentManager, MetadataManager):
             else:
                 self.metadata_engine.run_sql(query, list(primary_objects))
 
-        # Go through the physical objects and delete them as well
-        # This is slightly dirty, but since the info about the objects was deleted on rm, we just say that
-        # anything in splitgraph_meta that's not a system table is fair game.
-        tables_in_meta = {
-            c
-            for c in self.object_engine.get_all_tables(SPLITGRAPH_META_SCHEMA)
-            if c not in META_TABLES
-        }
-        tables_in_meta.update(self.get_downloaded_objects())
+        if include_physical_objects:
+            # Go through the physical objects and delete them as well
+            # This is slightly dirty, but since the info about the objects was deleted on rm, we just say that
+            # anything in splitgraph_meta that's not a system table is fair game.
+            tables_in_meta = {
+                c
+                for c in self.object_engine.get_all_tables(SPLITGRAPH_META_SCHEMA)
+                if c not in META_TABLES
+            }
+            tables_in_meta.update(self.get_downloaded_objects())
 
-        to_delete = tables_in_meta.difference(primary_objects)
-        self.delete_objects(to_delete)
+            to_delete = tables_in_meta.difference(primary_objects)
+            self.delete_objects(to_delete)
 
-        # Recalculate the object cache occupancy
-        self.object_engine.run_sql(
-            SQL("UPDATE {}.object_cache_occupancy SET total_size = %s").format(
-                Identifier(SPLITGRAPH_META_SCHEMA)
-            ),
-            (self._recalculate_cache_occupancy(),),
-        )
-        return to_delete
+            # Recalculate the object cache occupancy
+            self.object_engine.run_sql(
+                SQL("UPDATE {}.object_cache_occupancy SET total_size = %s").format(
+                    Identifier(SPLITGRAPH_META_SCHEMA)
+                ),
+                (self._recalculate_cache_occupancy(),),
+            )
+            return to_delete
 
     def delete_objects(self, objects):
         """

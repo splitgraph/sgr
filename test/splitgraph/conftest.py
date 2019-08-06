@@ -195,12 +195,40 @@ def pg_repo_remote(remote_engine):
     yield make_pg_repo(remote_engine)
 
 
+# remote_engine setup but registry-like (no audit triggers, no in-engine object storage)
+@pytest.fixture
+def remote_engine_registry():
+    engine = get_engine(REMOTE_ENGINE)
+    ensure_metadata_schema(engine)
+    _ensure_registry_schema(engine)
+    set_info_key(engine, "registry_mode", False)
+    setup_registry_mode(engine)
+    toggle_registry_rls(engine, "DISABLE")
+    unpublish_repository(Repository("", "output", engine))
+    unpublish_repository(Repository("test", "pg_mount", engine))
+    unpublish_repository(Repository("testuser", "pg_mount", engine))
+    for mountpoint, _ in get_current_repositories(engine):
+        mountpoint.delete(uncheckout=False)
+    ObjectManager(engine).cleanup(include_physical_objects=False)
+    engine.commit()
+    engine.close()
+    try:
+        yield engine
+    finally:
+        engine.rollback()
+        for mountpoint, _ in get_current_repositories(engine):
+            mountpoint.delete(uncheckout=False)
+        ObjectManager(engine).cleanup(include_physical_objects=False)
+        engine.commit()
+        engine.close()
+
+
 # A fixture for a test repository that exists on the remote with objects
 # hosted on S3.
 @pytest.fixture
-def pg_repo_remote_registry(pg_repo_local, remote_engine, clean_minio):
+def pg_repo_remote_registry(pg_repo_local, remote_engine_registry, clean_minio):
     result = pg_repo_local.push(
-        Repository.from_template(pg_repo_local, engine=remote_engine),
+        Repository.from_template(pg_repo_local, engine=remote_engine_registry),
         handler="S3",
         handler_options={},
     )
@@ -273,11 +301,11 @@ def remote_engine():
 
 
 @pytest.fixture()
-def unprivileged_remote_engine(remote_engine):
-    toggle_registry_rls(remote_engine, "ENABLE")
-    remote_engine.commit()
-    remote_engine.close()
-    # Assuption: unprivileged_remote_engine is the same server as remote_engine but with an
+def unprivileged_remote_engine(remote_engine_registry):
+    toggle_registry_rls(remote_engine_registry, "ENABLE")
+    remote_engine_registry.commit()
+    remote_engine_registry.close()
+    # Assuption: unprivileged_remote_engine is the same server as remote_engine_registry but with an
     # unprivileged user.
     engine = get_engine("unprivileged_remote_engine")
     engine.close()
