@@ -13,7 +13,7 @@ def test_pull_public(local_engine_empty, unprivileged_pg_repo):
     clone(unprivileged_pg_repo)
 
 
-def test_push_own_delete_own(local_engine_empty, unprivileged_pg_repo, clean_minio):
+def test_push_own_delete_own(local_engine_empty, unprivileged_pg_repo):
     destination = Repository.from_template(unprivileged_pg_repo, engine=local_engine_empty)
     clone(unprivileged_pg_repo, local_repository=destination)
 
@@ -36,9 +36,7 @@ def test_push_own_delete_own(local_engine_empty, unprivileged_pg_repo, clean_min
     assert len(remote_destination.images()) == 0
 
 
-def test_push_own_delete_own_different_namespaces(
-    local_engine_empty, unprivileged_pg_repo, clean_minio
-):
+def test_push_own_delete_own_different_namespaces(local_engine_empty, unprivileged_pg_repo):
     # Same as previous but we clone into test/pg_mount and push to our own namespace
     # to check that the objects we push get their namespaces rewritten to be the unprivileged user, not test.
     destination = clone(unprivileged_pg_repo)
@@ -78,7 +76,7 @@ def test_push_others(local_engine_empty, unprivileged_pg_repo):
     assert "You do not have access to this namespace!" in str(e.value)
 
 
-def test_delete_others(unprivileged_pg_repo, unprivileged_remote_engine):
+def test_delete_others(unprivileged_pg_repo):
     with pytest.raises(ProgrammingError) as e:
         unprivileged_pg_repo.delete(uncheckout=False)
     assert "You do not have access to this namespace!" in str(e.value)
@@ -87,7 +85,7 @@ def test_delete_others(unprivileged_pg_repo, unprivileged_remote_engine):
     assert len(unprivileged_pg_repo.images()) > 0
 
 
-def test_impersonate_external_object(unprivileged_pg_repo, unprivileged_remote_engine):
+def test_impersonate_external_object(unprivileged_pg_repo):
     sample_object = unprivileged_pg_repo.images["latest"].get_table("fruits").objects[0]
     assert sample_object is not None
 
@@ -100,11 +98,13 @@ def test_impersonate_external_object(unprivileged_pg_repo, unprivileged_remote_e
     assert "You do not have access to this namespace!" in str(e.value)
 
 
-def test_publish_unpublish_own(local_engine_empty, pg_repo_remote, unprivileged_remote_engine):
-    clone(pg_repo_remote, download_all=True)
+def test_publish_unpublish_own(
+    local_engine_empty, pg_repo_remote_registry, unprivileged_remote_engine
+):
+    clone(pg_repo_remote_registry, download_all=True)
     PG_MNT.images["latest"].tag("my_tag")
     target_repo = Repository.from_template(
-        pg_repo_remote,
+        pg_repo_remote_registry,
         namespace=unprivileged_remote_engine.conn_params["SG_ENGINE_USER"],
         engine=unprivileged_remote_engine,
     )
@@ -118,18 +118,18 @@ def test_publish_unpublish_own(local_engine_empty, pg_repo_remote, unprivileged_
         include_provenance=True,
         include_table_previews=True,
     )
-
     assert get_published_info(target_repo, "my_tag") is not None
     unpublish_repository(target_repo)
     assert get_published_info(target_repo, "my_tag") is None
 
 
 def test_publish_unpublish_others(
-    local_engine_empty, pg_repo_remote, unprivileged_pg_repo, unprivileged_remote_engine
+    local_engine_empty, pg_repo_remote_registry, unprivileged_pg_repo
 ):
     # Tag the remote repo as an admin user and try to publish as an unprivileged one
-    pg_repo_remote.images["latest"].tag("my_tag")
-    pg_repo_remote.commit_engines()
+    pg_repo_remote_registry.images["latest"].tag("my_tag")
+    pg_repo_remote_registry.commit_engines()
+
     clone(unprivileged_pg_repo, download_all=True)
 
     # Publish into the "test" namespace as someone who doesn't have access to it.
@@ -138,7 +138,7 @@ def test_publish_unpublish_others(
     assert "You do not have access to this namespace!" in str(e.value)
 
     # Publish as the admin user
-    PG_MNT.publish("my_tag", remote_repository=pg_repo_remote, readme="my_readme")
+    PG_MNT.publish("my_tag", remote_repository=pg_repo_remote_registry, readme="my_readme")
 
     # Try to delete as the remote user -- should fail
     with pytest.raises(ProgrammingError) as e:

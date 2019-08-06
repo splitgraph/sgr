@@ -195,6 +195,26 @@ def pg_repo_remote(remote_engine):
     yield make_pg_repo(remote_engine)
 
 
+# A fixture for a test repository that exists on the remote with objects
+# hosted on S3.
+@pytest.fixture
+def pg_repo_remote_registry(pg_repo_local, remote_engine, clean_minio):
+    result = pg_repo_local.push(
+        Repository.from_template(pg_repo_local, engine=remote_engine),
+        handler="S3",
+        handler_options={},
+    )
+    # This might be against the way fixtures are supposed to work but
+    # we don't actually use pg_repo_local and remote repo at the same time in tests.
+    pg_repo_local.delete()
+    yield result
+
+
+@pytest.fixture
+def unprivileged_pg_repo(unprivileged_remote_engine, pg_repo_remote_registry):
+    yield Repository.from_template(pg_repo_remote_registry, engine=unprivileged_remote_engine)
+
+
 @pytest.fixture
 def pg_repo_remote_multitag(pg_repo_remote):
     yield make_multitag_pg_repo(pg_repo_remote)
@@ -240,6 +260,7 @@ def remote_engine():
         mountpoint.delete()
     ObjectManager(engine).cleanup()
     engine.commit()
+    engine.close()
     try:
         yield engine
     finally:
@@ -254,19 +275,17 @@ def remote_engine():
 @pytest.fixture()
 def unprivileged_remote_engine(remote_engine):
     toggle_registry_rls(remote_engine, "ENABLE")
+    remote_engine.commit()
+    remote_engine.close()
     # Assuption: unprivileged_remote_engine is the same server as remote_engine but with an
     # unprivileged user.
     engine = get_engine("unprivileged_remote_engine")
+    engine.close()
     try:
         yield engine
     finally:
         engine.rollback()
         engine.close()
-
-
-@pytest.fixture()
-def unprivileged_pg_repo(pg_repo_remote, unprivileged_remote_engine):
-    return Repository.from_template(pg_repo_remote, engine=unprivileged_remote_engine)
 
 
 SPLITFILE_ROOT = os.path.join(os.path.dirname(__file__), "../resources/")
