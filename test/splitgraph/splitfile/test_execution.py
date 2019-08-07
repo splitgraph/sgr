@@ -394,7 +394,8 @@ def test_from_local(pg_repo_local):
 
 
 @pytest.mark.mounting
-def test_splitfile_with_external_sql(pg_repo_local, pg_repo_remote, mg_repo_local):
+@pytest.mark.registry
+def test_splitfile_with_external_sql(unprivileged_pg_repo, mg_repo_local):
     # Tests are running from root so we pass in the path to the SQL manually to the splitfile.
     execute_commands(
         load_splitfile("external_sql.splitfile"),
