@@ -1,3 +1,5 @@
+import pytest
+
 from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.repository import import_table_from_remote
 from splitgraph.engine import get_engine
@@ -83,7 +85,8 @@ def test_import_multiple_tables(pg_repo_local):
     assert new_head.parent_id == head.image_hash
 
 
-def test_import_from_remote(local_engine_empty, pg_repo_remote):
+@pytest.mark.registry
+def test_import_from_remote(local_engine_empty, unprivileged_pg_repo):
     # Start with a clean repo -- add a table to output to see if it's preserved.
     head = _setup_dataset()
 
@@ -94,9 +97,9 @@ def test_import_from_remote(local_engine_empty, pg_repo_remote):
     assert local_engine_empty.get_all_tables(OUTPUT.to_schema()) == ["test"]
 
     # Import the 'fruits' table from the origin.
-    remote_head = pg_repo_remote.head
+    remote_head = unprivileged_pg_repo.images["latest"]
     import_table_from_remote(
-        pg_repo_remote, ["fruits"], remote_head.image_hash, OUTPUT, target_tables=[]
+        unprivileged_pg_repo, ["fruits"], remote_head.image_hash, OUTPUT, target_tables=[]
     )
     new_head = OUTPUT.head
 
@@ -113,16 +116,17 @@ def test_import_from_remote(local_engine_empty, pg_repo_remote):
     assert local_engine_empty.table_exists(OUTPUT.to_schema(), "test")
     assert local_engine_empty.table_exists(OUTPUT.to_schema(), "fruits")
 
-    assert OUTPUT.run_sql("SELECT * FROM fruits") == pg_repo_remote.run_sql("SELECT * FROM fruits")
+    assert OUTPUT.run_sql("SELECT * FROM fruits") == [(1, "apple"), (2, "orange")]
 
 
-def test_import_and_update(local_engine_empty, pg_repo_remote):
+@pytest.mark.registry
+def test_import_and_update(local_engine_empty, unprivileged_pg_repo):
     OUTPUT.init()
     head = OUTPUT.head
-    remote_head = pg_repo_remote.head
+    remote_head = unprivileged_pg_repo.images["latest"]
     # Import the 'fruits' table from the origin.
     import_table_from_remote(
-        pg_repo_remote, ["fruits"], remote_head.image_hash, OUTPUT, target_tables=[]
+        unprivileged_pg_repo, ["fruits"], remote_head.image_hash, OUTPUT, target_tables=[]
     )
     new_head = OUTPUT.head
 

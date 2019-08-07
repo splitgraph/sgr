@@ -12,7 +12,7 @@ from splitgraph.core.registry import (
     toggle_registry_rls,
     set_info_key,
 )
-from splitgraph.core.repository import Repository
+from splitgraph.core.repository import Repository, clone
 from splitgraph.engine import get_engine, ResultShape, switch_engine
 from splitgraph.hooks.mount_handlers import mount
 from splitgraph.hooks.s3_server import MINIO, S3_BUCKET
@@ -27,6 +27,12 @@ OUTPUT = R("output")
 
 # On the host, mapped into localhost; on the local engine works as intended.
 REMOTE_ENGINE = "remote_engine"
+
+# Namespace to push to on the remote engine that the user owns
+REMOTE_NAMESPACE = get_engine("unprivileged_remote_engine").conn_params["SG_NAMESPACE"]
+
+# Namespace that the user can read from but can't write to
+READONLY_NAMESPACE = "otheruser"
 
 SPLITFILE_ROOT = os.path.join(os.path.dirname(__file__), "../resources/")
 
@@ -99,7 +105,7 @@ TEST_MOUNTPOINTS = [
     OUTPUT,
     MG_MNT,
     R("output_stage_2"),
-    R("testuser/pg_mount"),
+    Repository(READONLY_NAMESPACE, "pg_mount"),
     MYSQL_MNT,
 ]
 
@@ -235,17 +241,37 @@ def pg_repo_remote_registry(local_engine_empty, remote_engine_registry, clean_mi
     staging = Repository("test", "pg_mount_staging")
     staging = make_pg_repo(get_engine(), staging)
     result = staging.push(
-        Repository("test", "pg_mount", engine=remote_engine_registry),
+        Repository(REMOTE_NAMESPACE, "pg_mount", engine=remote_engine_registry),
         handler="S3",
         handler_options={},
     )
     staging.delete()
+    staging.objects.cleanup()
     yield result
 
 
 @pytest.fixture
 def unprivileged_pg_repo(unprivileged_remote_engine, pg_repo_remote_registry):
+    """Like pg_repo_remote_registry but accessed as an unprivileged user that can't
+    access splitgraph_meta directly and has to use splitgraph_api. If access to
+    splitgraph_meta is required, the test can use both fixtures and do e.g.
+    pg_repo_remote_registry.objects.get_all_objects()"""
     yield Repository.from_template(pg_repo_remote_registry, engine=unprivileged_remote_engine)
+
+
+# Like unprivileged_pg_repo but we rename the repository (and all of its objects)
+# to be in a different namespace.
+@pytest.fixture
+def readonly_pg_repo(unprivileged_remote_engine, pg_repo_remote_registry):
+    target = Repository.from_template(pg_repo_remote_registry, namespace=READONLY_NAMESPACE)
+    clone(pg_repo_remote_registry, target)
+    pg_repo_remote_registry.delete(uncheckout=False)
+    pg_repo_remote_registry.engine.run_sql(
+        "UPDATE splitgraph_meta.objects SET namespace=%s WHERE namespace=%s",
+        (READONLY_NAMESPACE, REMOTE_NAMESPACE),
+    )
+    pg_repo_remote_registry.engine.commit()
+    yield Repository.from_template(target, engine=unprivileged_remote_engine)
 
 
 @pytest.fixture

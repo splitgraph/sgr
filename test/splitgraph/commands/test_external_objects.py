@@ -14,9 +14,10 @@ from splitgraph.hooks.s3_server import (
 from test.splitgraph.conftest import PG_MNT
 
 
-def test_s3_presigned_url(local_engine_empty, pg_repo_remote, clean_minio):
+@pytest.mark.registry
+def test_s3_presigned_url(local_engine_empty, unprivileged_pg_repo, clean_minio):
     # Test the URL signing stored procedure works on the remote machine
-    clone(pg_repo_remote, local_repository=PG_MNT, download_all=False)
+    clone(unprivileged_pg_repo, local_repository=PG_MNT, download_all=False)
     PG_MNT.images["latest"].checkout()
     PG_MNT.run_sql("INSERT INTO fruits VALUES (3, 'mayonnaise')")
     head = PG_MNT.commit()
@@ -31,7 +32,7 @@ def test_s3_presigned_url(local_engine_empty, pg_repo_remote, clean_minio):
     assert len(urls_local) == 1
     assert len(urls_local[0]) == 3
 
-    urls = pg_repo_remote.run_sql(
+    urls = unprivileged_pg_repo.run_sql(
         "SELECT * FROM splitgraph_api.get_object_upload_urls(%s, %s)",
         ("%s:%s" % (S3_HOST, S3_PORT), [object_id]),
         return_shape=ResultShape.ONE_ONE,
@@ -40,10 +41,18 @@ def test_s3_presigned_url(local_engine_empty, pg_repo_remote, clean_minio):
     assert len(urls[0]) == 3
 
 
-def test_s3_push_pull(local_engine_empty, pg_repo_remote, clean_minio):
+@pytest.mark.registry
+def test_s3_push_pull(
+    local_engine_empty, unprivileged_pg_repo, pg_repo_remote_registry, clean_minio
+):
     # Test pushing/pulling when the objects are uploaded to a remote storage instead of to the actual remote DB.
 
-    clone(pg_repo_remote, local_repository=PG_MNT, download_all=False)
+    # In the beginning, the registry has two objects, all remote
+    objects = pg_repo_remote_registry.objects.get_all_objects()
+    assert len(unprivileged_pg_repo.objects.get_external_object_locations(list(objects))) == 2
+    assert len(objects) == 2
+
+    clone(unprivileged_pg_repo, local_repository=PG_MNT, download_all=False)
     # Add a couple of commits, this time on the cloned copy.
     head = PG_MNT.images["latest"]
     head.checkout()
@@ -54,17 +63,17 @@ def test_s3_push_pull(local_engine_empty, pg_repo_remote, clean_minio):
     right = PG_MNT.commit()
 
     # Push to origin, but this time upload the actual objects instead.
-    PG_MNT.push(remote_repository=pg_repo_remote, handler="S3", handler_options={})
+    PG_MNT.push(remote_repository=unprivileged_pg_repo, handler="S3", handler_options={})
 
     # Check that the actual objects don't exist on the remote but are instead registered with an URL.
     # All the objects on pgcache were registered remotely
-    objects = pg_repo_remote.objects.get_all_objects()
+    objects = pg_repo_remote_registry.objects.get_all_objects()
     local_objects = PG_MNT.objects.get_all_objects()
     assert all(o in objects for o in local_objects)
-    # Two non-local objects in the local engine, both registered as non-local on the remote engine.
+    # Two new non-local objects in the local engine, both registered as non-local on the remote engine.
     ext_objects_orig = PG_MNT.objects.get_external_object_locations(list(objects))
-    ext_objects_pull = pg_repo_remote.objects.get_external_object_locations(list(objects))
-    assert len(ext_objects_orig) == 2
+    ext_objects_pull = unprivileged_pg_repo.objects.get_external_object_locations(list(objects))
+    assert len(ext_objects_orig) == 4
     assert all(e in ext_objects_pull for e in ext_objects_orig)
 
     # Destroy the pulled mountpoint and recreate it again.
@@ -74,7 +83,7 @@ def test_s3_push_pull(local_engine_empty, pg_repo_remote, clean_minio):
     PG_MNT.objects.cleanup()
     assert len(PG_MNT.objects.get_downloaded_objects()) == 0
 
-    clone(pg_repo_remote, local_repository=PG_MNT, download_all=False)
+    clone(unprivileged_pg_repo, local_repository=PG_MNT, download_all=False)
 
     # Proceed as per the lazy checkout tests to make sure we don't download more than required.
     # Make sure we still haven't downloaded anything.
@@ -94,8 +103,11 @@ def test_s3_push_pull(local_engine_empty, pg_repo_remote, clean_minio):
     )
 
 
-def test_push_upload_error(local_engine_empty, pg_repo_remote, clean_minio):
-    clone(pg_repo_remote, local_repository=PG_MNT, download_all=False)
+@pytest.mark.registry
+def test_push_upload_error(
+    local_engine_empty, unprivileged_pg_repo, pg_repo_remote_registry, clean_minio
+):
+    clone(unprivileged_pg_repo, local_repository=PG_MNT, download_all=False)
     PG_MNT.images["latest"].checkout()
     PG_MNT.run_sql("INSERT INTO fruits VALUES (3, 'mayonnaise')")
     head = PG_MNT.commit()
@@ -109,49 +121,50 @@ def test_push_upload_error(local_engine_empty, pg_repo_remote, clean_minio):
         return_value=broken_upload_handler,
     ):
         with pytest.raises(MinioError) as e:
-            PG_MNT.push(remote_repository=pg_repo_remote, handler="S3", handler_options={})
+            PG_MNT.push(remote_repository=unprivileged_pg_repo, handler="S3", handler_options={})
 
-    assert head not in pg_repo_remote.images
+    assert head not in unprivileged_pg_repo.images
     # Only the two original tables from the original image upstream
     assert (
-        pg_repo_remote.engine.run_sql(
+        pg_repo_remote_registry.engine.run_sql(
             "SELECT COUNT(*) FROM splitgraph_meta.tables", return_shape=ResultShape.ONE_ONE
         )
         == 2
     )
-    assert len(pg_repo_remote.objects.get_all_objects()) == 2
+    assert len(pg_repo_remote_registry.objects.get_all_objects()) == 2
 
-    # Objects not registered remotely since the upload failed
+    # Two new objects not registered remotely since the upload failed
     assert (
         local_engine_empty.run_sql(
             "SELECT COUNT(*) FROM splitgraph_meta.object_locations",
             return_shape=ResultShape.ONE_ONE,
         )
-        == 0
+        == 2
     )
     assert (
-        pg_repo_remote.engine.run_sql(
+        pg_repo_remote_registry.engine.run_sql(
             "SELECT COUNT(*) FROM splitgraph_meta.object_locations",
             return_shape=ResultShape.ONE_ONE,
         )
-        == 0
+        == 2
     )
 
     # Now do the push normally and check the image exists upstream.
-    PG_MNT.push(remote_repository=pg_repo_remote, handler="S3", handler_options={})
-    assert head in pg_repo_remote.images
+    PG_MNT.push(remote_repository=unprivileged_pg_repo, handler="S3", handler_options={})
+
+    assert any(i.image_hash == head.image_hash for i in unprivileged_pg_repo.images)
 
     assert (
         local_engine_empty.run_sql(
             "SELECT COUNT(*) FROM splitgraph_meta.object_locations",
             return_shape=ResultShape.ONE_ONE,
         )
-        == 1
+        == 3
     )
     assert (
-        pg_repo_remote.engine.run_sql(
+        pg_repo_remote_registry.engine.run_sql(
             "SELECT COUNT(*) FROM splitgraph_meta.object_locations",
             return_shape=ResultShape.ONE_ONE,
         )
-        == 1
+        == 3
     )

@@ -173,8 +173,17 @@ class ObjectManager(FragmentManager, MetadataManager):
         # Perform the actual download. If the table has no upstream but still has external locations, we download
         # just the external objects.
         if to_fetch:
-            upstream = table.repository.upstream
             object_locations = self.get_external_object_locations(to_fetch)
+
+            # If all objects are externally hosted, there's no need to try and get the table's
+            # upstream (there's a corner case where the metadata engine is different from the object
+            # engine and the repo actually has no upstream)
+            external_objects = [o[0] for o in object_locations]
+            if any(o not in external_objects for o in to_fetch):
+                upstream = table.repository.upstream
+            else:
+                upstream = None
+
             downloaded_by_us = self.download_objects(
                 upstream.objects if upstream else None,
                 objects_to_fetch=to_fetch,

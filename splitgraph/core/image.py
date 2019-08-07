@@ -56,13 +56,14 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
         """
         Gets the names of all tables inside of an image.
         """
-        return self.engine.run_sql(
+        result = self.engine.run_sql(
             select(
-                "tables", "table_name", "namespace = %s AND repository = %s AND image_hash = %s"
+                "get_tables", "table_name", table_args="(%s,%s,%s)", schema=SPLITGRAPH_API_SCHEMA
             ),
             (self.repository.namespace, self.repository.repository, self.image_hash),
             return_shape=ResultShape.MANY_ONE,
         )
+        return result or []
 
     def get_table(self, table_name):
         """
