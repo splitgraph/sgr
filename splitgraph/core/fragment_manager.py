@@ -550,6 +550,95 @@ class FragmentManager(MetadataManager):
 
         return reduce(operator.add, (Digest.from_memoryview(r) for r in row_digests)).hex()
 
+    def create_base_fragment(
+        self, source_schema, source_table, namespace, limit=None, after_pk=None
+    ):
+        # Store the fragment in a temporary location first and hash that (much faster since PG doesn't need
+        # to go through the source table multiple times for every offset)
+        tmp_object_id = get_random_object_id()
+        logging.info(
+            "Using temporary table %s for %s/%s limit %r after_pk %r",
+            tmp_object_id,
+            source_schema,
+            source_table,
+            limit,
+            after_pk,
+        )
+
+        self.object_engine.copy_table(
+            source_schema,
+            source_table,
+            SPLITGRAPH_META_SCHEMA,
+            tmp_object_id,
+            with_pk_constraints=True,
+            limit=limit,
+            after_pk=after_pk,
+        )
+        content_hash = self.calculate_content_hash(SPLITGRAPH_META_SCHEMA, tmp_object_id)
+
+        # Fragments can't be reused in tables with different schemas even if the contents match (e.g. '1' vs 1).
+        # Hence, include the table schema in the object ID as well.
+        schema_hash = sha256(
+            str(self.object_engine.get_full_table_schema(source_schema, source_table)).encode(
+                "ascii"
+            )
+        ).hexdigest()
+
+        # Object IDs are also used to key tables in Postgres so they can't be more than 63 characters.
+        # In addition, table names can't start with a number so we have to drop 2 characters from the 64-character
+        # hash and append an "o".
+        object_id = "o" + sha256((content_hash + schema_hash).encode("ascii")).hexdigest()[:-2]
+
+        with self.object_engine.savepoint("object_rename"):
+
+            self.object_engine.run_sql(
+                SQL("ALTER TABLE {}.{} ADD COLUMN {} BOOLEAN DEFAULT TRUE").format(
+                    Identifier(SPLITGRAPH_META_SCHEMA),
+                    Identifier(tmp_object_id),
+                    Identifier(SG_UD_FLAG),
+                )
+            )
+
+            try:
+                self.object_engine.store_object(
+                    object_id=object_id,
+                    source_schema=SPLITGRAPH_META_SCHEMA,
+                    source_table=tmp_object_id,
+                )
+            except DuplicateTable:
+                # If we already have an object with this ID (and hence hash), reuse it.
+                logging.info(
+                    "Reusing object %s for table %s/%s limit %r after_pk %r",
+                    object_id,
+                    source_schema,
+                    source_table,
+                    limit,
+                    after_pk,
+                )
+                self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
+
+        with self.metadata_engine.savepoint("object_register"):
+            try:
+                self._register_object(
+                    object_id,
+                    namespace=namespace,
+                    insertion_hash=content_hash,
+                    deletion_hash="0" * 64,
+                    parent_object=None,
+                )
+            except UniqueViolation:
+                # Someone registered this object (perhaps a concurrent pull) already.
+                logging.info(
+                    "Object %s for table %s/%s limit %r after_pk %r already exists, continuing...",
+                    object_id,
+                    source_schema,
+                    source_table,
+                    limit,
+                    after_pk,
+                )
+
+        return object_id
+
     def record_table_as_base(
         self,
         repository,
@@ -580,93 +669,6 @@ class FragmentManager(MetadataManager):
             return_shape=ResultShape.ONE_ONE,
         )
 
-        def _insert_and_register_fragment(source_schema, source_table, limit=None, after_pk=None):
-            # Store the fragment in a temporary location first and hash that (much faster since PG doesn't need
-            # to go through the source table multiple times for every offset)
-            tmp_object_id = get_random_object_id()
-            logging.info(
-                "Using temporary table %s for %s/%s limit %r after_pk %r",
-                tmp_object_id,
-                source_schema,
-                source_table,
-                limit,
-                after_pk,
-            )
-
-            self.object_engine.copy_table(
-                source_schema,
-                source_table,
-                SPLITGRAPH_META_SCHEMA,
-                tmp_object_id,
-                with_pk_constraints=True,
-                limit=limit,
-                after_pk=after_pk,
-            )
-            content_hash = self.calculate_content_hash(SPLITGRAPH_META_SCHEMA, tmp_object_id)
-
-            # Fragments can't be reused in tables with different schemas even if the contents match (e.g. '1' vs 1).
-            # Hence, include the table schema in the object ID as well.
-            schema_hash = sha256(
-                str(self.object_engine.get_full_table_schema(source_schema, source_table)).encode(
-                    "ascii"
-                )
-            ).hexdigest()
-
-            # Object IDs are also used to key tables in Postgres so they can't be more than 63 characters.
-            # In addition, table names can't start with a number so we have to drop 2 characters from the 64-character
-            # hash and append an "o".
-            object_id = "o" + sha256((content_hash + schema_hash).encode("ascii")).hexdigest()[:-2]
-
-            with self.object_engine.savepoint("object_rename"):
-
-                self.object_engine.run_sql(
-                    SQL("ALTER TABLE {}.{} ADD COLUMN {} BOOLEAN DEFAULT TRUE").format(
-                        Identifier(SPLITGRAPH_META_SCHEMA),
-                        Identifier(tmp_object_id),
-                        Identifier(SG_UD_FLAG),
-                    )
-                )
-
-                try:
-                    self.object_engine.store_object(
-                        object_id=object_id,
-                        source_schema=SPLITGRAPH_META_SCHEMA,
-                        source_table=tmp_object_id,
-                    )
-                except DuplicateTable:
-                    # If we already have an object with this ID (and hence hash), reuse it.
-                    logging.info(
-                        "Reusing object %s for table %s/%s limit %r after_pk %r",
-                        object_id,
-                        source_schema,
-                        source_table,
-                        limit,
-                        after_pk,
-                    )
-                    self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
-
-            with self.metadata_engine.savepoint("object_register"):
-                try:
-                    self._register_object(
-                        object_id,
-                        namespace=repository.namespace,
-                        insertion_hash=content_hash,
-                        deletion_hash="0" * 64,
-                        parent_object=None,
-                    )
-                except UniqueViolation:
-                    # Someone registered this object (perhaps a concurrent pull) already.
-                    logging.info(
-                        "Object %s for table %s/%s limit %r after_pk %r already exists, continuing...",
-                        object_id,
-                        source_schema,
-                        source_table,
-                        limit,
-                        after_pk,
-                    )
-
-            return object_id
-
         if chunk_size and table_size:
             table_pk = self.object_engine.get_primary_keys(source_schema, source_table)
             new_fragment = None
@@ -689,13 +691,19 @@ class FragmentManager(MetadataManager):
                 if new_fragment:
                     _, last_pk = self._extract_min_max_pks([new_fragment], table_pk)[0]
 
-                new_fragment = _insert_and_register_fragment(
-                    source_schema, source_table, limit=chunk_size, after_pk=last_pk
+                new_fragment = self.create_base_fragment(
+                    source_schema,
+                    source_table,
+                    repository.namespace,
+                    limit=chunk_size,
+                    after_pk=last_pk,
                 )
                 object_ids.append(new_fragment)
 
         elif table_size:
-            object_ids.append(_insert_and_register_fragment(source_schema, source_table))
+            object_ids.append(
+                self.create_base_fragment(source_schema, source_table, repository.namespace)
+            )
         # If table_size == 0, then we don't link it to any objects and simply store its schema
         table_schema = self.object_engine.get_full_table_schema(source_schema, source_table)
         self.register_tables(repository, [(image_hash, table_name, table_schema, object_ids)])
