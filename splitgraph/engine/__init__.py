@@ -571,7 +571,7 @@ _ENGINE = CONFIG["SG_ENGINE"] or "LOCAL"
 _ENGINES = {}
 
 
-def get_engine(name=None, use_socket=False):
+def get_engine(name=None, use_socket=False, use_fdw_params=False):
     """
     Get the current global engine or a named remote engine
 
@@ -596,6 +596,9 @@ def get_engine(name=None, use_socket=False):
                 conn_params["SG_ENGINE_PORT"] = None
         else:
             conn_params = _prepare_engine_config(CONFIG["remotes"][name])
+        if use_fdw_params:
+            conn_params["SG_ENGINE_HOST"] = conn_params["SG_ENGINE_FDW_HOST"]
+            conn_params["SG_ENGINE_PORT"] = conn_params["SG_ENGINE_FDW_PORT"]
         _ENGINES[name] = PostgresEngine(conn_params=conn_params, name=name)
     return _ENGINES[name]
 

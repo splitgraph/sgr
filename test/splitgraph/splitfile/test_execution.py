@@ -393,15 +393,16 @@ def test_from_local(pg_repo_local):
     ]
 
 
-@pytest.mark.mounting
 @pytest.mark.registry
-def test_splitfile_with_external_sql(unprivileged_pg_repo, mg_repo_local):
+def test_splitfile_with_external_sql(readonly_pg_repo):
+
     # Tests are running from root so we pass in the path to the SQL manually to the splitfile.
     execute_commands(
         load_splitfile("external_sql.splitfile"),
         params={"EXTERNAL_SQL_FILE": SPLITFILE_ROOT + "external_sql.sql"},
         output=OUTPUT,
     )
+
     assert OUTPUT.run_sql("SELECT id, fruit, vegetable FROM join_table") == [
         (1, "apple", "potato"),
         (2, "orange", "carrot"),

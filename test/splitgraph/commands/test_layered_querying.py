@@ -176,7 +176,6 @@ def test_lq_external(local_engine_empty, unprivileged_pg_repo, pg_repo_remote_re
     assert len(pg_repo_local.objects.get_all_objects()) == 0
     assert len(pg_repo_local.objects.get_downloaded_objects()) == 0
     assert len(pg_repo_remote_registry.objects.get_all_objects()) == 6
-    assert len(pg_repo_remote_registry.objects.get_downloaded_objects()) == 0
 
     # Proceed as per the previous test
     pg_repo_local = clone(unprivileged_pg_repo, download_all=False)
@@ -362,13 +361,3 @@ def test_multiengine_flow(local_engine_empty, unprivileged_pg_repo, pg_repo_remo
                 )
                 == 0
             )
-
-    assert len(pg_repo_remote_registry.objects.get_downloaded_objects()) == 0
-    assert (
-        len(
-            set(pg_repo_remote_registry.engine.get_all_tables("splitgraph_meta")).difference(
-                set(META_TABLES)
-            )
-        )
-        == 0
-    )
