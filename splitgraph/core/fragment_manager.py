@@ -17,7 +17,7 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.config import SPLITGRAPH_API_SCHEMA
 from splitgraph.core.metadata_manager import MetadataManager, Object
 from splitgraph.engine.postgres.engine import SG_UD_FLAG
-from ._common import adapt, SPLITGRAPH_META_SCHEMA, ResultShape, coerce_val_to_json
+from ._common import adapt, SPLITGRAPH_META_SCHEMA, ResultShape, coerce_val_to_json, select
 
 # PG types we can run max/min on
 _PG_INDEXABLE_TYPES = [
@@ -751,14 +751,14 @@ class FragmentManager(MetadataManager):
         # If we don't include the removed items (e.g. the previous values of the deleted/updated rows)
         # in the index, we have to instead fetch the whole chain starting from the first
         # pertinent object
-        query = SQL("SELECT object_id FROM {}.{} WHERE object_id IN (").format(
-            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")
-        )
-        query += SQL(",".join(itertools.repeat("%s", len(object_ids))) + ")")
-        query += SQL(" AND ") + clause
 
+        query = (
+            select("get_object_meta", "object_id", table_args="(%s)", schema=SPLITGRAPH_API_SCHEMA)
+            + SQL(" WHERE ")
+            + clause
+        )
         return self.metadata_engine.run_sql(
-            query, list(object_ids) + list(args), return_shape=ResultShape.MANY_ONE
+            query, [object_ids] + list(args), return_shape=ResultShape.MANY_ONE
         )
 
 

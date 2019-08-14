@@ -8,12 +8,11 @@ from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.registry import (
     _ensure_registry_schema,
-    unpublish_repository,
     setup_registry_mode,
     toggle_registry_rls,
     set_info_key,
 )
-from splitgraph.core.repository import Repository
+from splitgraph.core.repository import Repository, clone
 from splitgraph.engine import get_engine, ResultShape, switch_engine
 from splitgraph.hooks.mount_handlers import mount
 from splitgraph.hooks.s3_server import MINIO, S3_BUCKET
@@ -25,6 +24,19 @@ PG_MNT_PULL = R("test_pg_mount_pull")
 MG_MNT = R("test_mg_mount")
 MYSQL_MNT = R("test/mysql_mount")
 OUTPUT = R("output")
+
+# On the host, mapped into localhost; on the local engine works as intended.
+REMOTE_ENGINE = "remote_engine"
+
+# Namespace to push to on the remote engine that the user owns
+REMOTE_NAMESPACE = get_engine("unprivileged_remote_engine").conn_params["SG_NAMESPACE"]
+
+# Namespace that the user can read from but can't write to
+READONLY_NAMESPACE = "otheruser"
+
+SPLITFILE_ROOT = os.path.join(os.path.dirname(__file__), "../resources/")
+
+INGESTION_RESOURCES = os.path.join(os.path.dirname(__file__), "../resources/ingestion")
 
 # Rough on-disk size taken up by a small (<10 rows) object that we
 # use in tests. Includes the actual CStore file, the footer and the
@@ -93,7 +105,7 @@ TEST_MOUNTPOINTS = [
     OUTPUT,
     MG_MNT,
     R("output_stage_2"),
-    R("testuser/pg_mount"),
+    Repository(READONLY_NAMESPACE, "pg_mount"),
     MYSQL_MNT,
 ]
 
@@ -167,14 +179,14 @@ with open(
     PG_DATA = f.read()
 
 
-def make_pg_repo(engine):
-    # Used to be a mount, trying to just write the data directly to speed tests up
-    result = Repository("test", "pg_mount", engine=engine)
-    result.init()
-    result.run_sql(PG_DATA)
-    assert result.has_pending_changes()
-    result.commit()
-    return result
+def make_pg_repo(engine, repository=None):
+    repository = repository or Repository("test", "pg_mount")
+    repository = Repository.from_template(repository, engine=engine)
+    repository.init()
+    repository.run_sql(PG_DATA)
+    assert repository.has_pending_changes()
+    repository.commit()
+    return repository
 
 
 def make_multitag_pg_repo(pg_repo):
@@ -193,6 +205,73 @@ def pg_repo_local(local_engine_empty):
 @pytest.fixture
 def pg_repo_remote(remote_engine):
     yield make_pg_repo(remote_engine)
+
+
+# remote_engine setup but registry-like (no audit triggers, no in-engine object storage)
+@pytest.fixture
+def remote_engine_registry():
+    engine = get_engine(REMOTE_ENGINE)
+    ensure_metadata_schema(engine)
+    _ensure_registry_schema(engine)
+    set_info_key(engine, "registry_mode", False)
+    setup_registry_mode(engine)
+    toggle_registry_rls(engine, "DISABLE")
+    # "Unpublish" all images
+    engine.run_sql("DELETE FROM registry_meta.images")
+    for mountpoint, _ in get_current_repositories(engine):
+        mountpoint.delete(uncheckout=False)
+    ObjectManager(engine).cleanup(include_physical_objects=False)
+    engine.commit()
+    engine.close()
+    try:
+        yield engine
+    finally:
+        engine.rollback()
+        for mountpoint, _ in get_current_repositories(engine):
+            mountpoint.delete(uncheckout=False)
+        ObjectManager(engine).cleanup(include_physical_objects=False)
+        engine.commit()
+        engine.close()
+
+
+# A fixture for a test repository that exists on the remote with objects
+# hosted on S3.
+@pytest.fixture
+def pg_repo_remote_registry(local_engine_empty, remote_engine_registry, clean_minio):
+    staging = Repository("test", "pg_mount_staging")
+    staging = make_pg_repo(get_engine(), staging)
+    result = staging.push(
+        Repository(REMOTE_NAMESPACE, "pg_mount", engine=remote_engine_registry),
+        handler="S3",
+        handler_options={},
+    )
+    staging.delete()
+    staging.objects.cleanup()
+    yield result
+
+
+@pytest.fixture
+def unprivileged_pg_repo(unprivileged_remote_engine, pg_repo_remote_registry):
+    """Like pg_repo_remote_registry but accessed as an unprivileged user that can't
+    access splitgraph_meta directly and has to use splitgraph_api. If access to
+    splitgraph_meta is required, the test can use both fixtures and do e.g.
+    pg_repo_remote_registry.objects.get_all_objects()"""
+    yield Repository.from_template(pg_repo_remote_registry, engine=unprivileged_remote_engine)
+
+
+# Like unprivileged_pg_repo but we rename the repository (and all of its objects)
+# to be in a different namespace.
+@pytest.fixture
+def readonly_pg_repo(unprivileged_remote_engine, pg_repo_remote_registry):
+    target = Repository.from_template(pg_repo_remote_registry, namespace=READONLY_NAMESPACE)
+    clone(pg_repo_remote_registry, target)
+    pg_repo_remote_registry.delete(uncheckout=False)
+    pg_repo_remote_registry.engine.run_sql(
+        "UPDATE splitgraph_meta.objects SET namespace=%s WHERE namespace=%s",
+        (READONLY_NAMESPACE, REMOTE_NAMESPACE),
+    )
+    pg_repo_remote_registry.engine.commit()
+    yield Repository.from_template(target, engine=unprivileged_remote_engine)
 
 
 @pytest.fixture
@@ -220,11 +299,6 @@ def mg_repo_remote(remote_engine):
     yield result
 
 
-REMOTE_ENGINE = (
-    "remote_engine"
-)  # On the host, mapped into localhost; on the local engine works as intended.
-
-
 @pytest.fixture
 def remote_engine():
     engine = get_engine(REMOTE_ENGINE)
@@ -233,13 +307,13 @@ def remote_engine():
     set_info_key(engine, "registry_mode", False)
     setup_registry_mode(engine)
     toggle_registry_rls(engine, "DISABLE")
-    unpublish_repository(Repository("", "output", engine))
-    unpublish_repository(Repository("test", "pg_mount", engine))
-    unpublish_repository(Repository("testuser", "pg_mount", engine))
+    # "Unpublish" all images
+    engine.run_sql("DELETE FROM registry_meta.images")
     for mountpoint, _ in get_current_repositories(engine):
         mountpoint.delete()
     ObjectManager(engine).cleanup()
     engine.commit()
+    engine.close()
     try:
         yield engine
     finally:
@@ -252,24 +326,19 @@ def remote_engine():
 
 
 @pytest.fixture()
-def unprivileged_remote_engine(remote_engine):
-    toggle_registry_rls(remote_engine, "ENABLE")
-    # Assuption: unprivileged_remote_engine is the same server as remote_engine but with an
+def unprivileged_remote_engine(remote_engine_registry):
+    toggle_registry_rls(remote_engine_registry, "ENABLE")
+    remote_engine_registry.commit()
+    remote_engine_registry.close()
+    # Assuption: unprivileged_remote_engine is the same server as remote_engine_registry but with an
     # unprivileged user.
     engine = get_engine("unprivileged_remote_engine")
+    engine.close()
     try:
         yield engine
     finally:
         engine.rollback()
         engine.close()
-
-
-@pytest.fixture()
-def unprivileged_pg_repo(pg_repo_remote, unprivileged_remote_engine):
-    return Repository.from_template(pg_repo_remote, engine=unprivileged_remote_engine)
-
-
-SPLITFILE_ROOT = os.path.join(os.path.dirname(__file__), "../resources/")
 
 
 def load_splitfile(name):
@@ -298,9 +367,6 @@ def clean_minio():
     yield MINIO
     # Comment this out if tests fail and you want to see what the hell went on in the bucket.
     _cleanup_minio()
-
-
-INGESTION_RESOURCES = os.path.join(os.path.dirname(__file__), "../resources/ingestion")
 
 
 def load_csv(fname):

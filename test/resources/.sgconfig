@@ -52,6 +52,7 @@ SG_ENGINE_ADMIN_USER=
 SG_ENGINE_ADMIN_PWD=
 SG_ENGINE_POSTGRES_DB_NAME=postgres
 SG_META_SCHEMA=splitgraph_meta
+SG_NAMESPACE=testuser
 
 [commands]
 DUMMY=test.splitgraph.splitfile.test_custom_commands.DummyCommand

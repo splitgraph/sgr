@@ -173,8 +173,17 @@ class ObjectManager(FragmentManager, MetadataManager):
         # Perform the actual download. If the table has no upstream but still has external locations, we download
         # just the external objects.
         if to_fetch:
-            upstream = table.repository.upstream
             object_locations = self.get_external_object_locations(to_fetch)
+
+            # If all objects are externally hosted, there's no need to try and get the table's
+            # upstream (there's a corner case where the metadata engine is different from the object
+            # engine and the repo actually has no upstream)
+            external_objects = [o[0] for o in object_locations]
+            if any(o not in external_objects for o in to_fetch):
+                upstream = table.repository.upstream
+            else:
+                upstream = None
+
             downloaded_by_us = self.download_objects(
                 upstream.objects if upstream else None,
                 objects_to_fetch=to_fetch,
@@ -649,10 +658,13 @@ class ObjectManager(FragmentManager, MetadataManager):
             uploaded = external_handler.upload_objects(objects_to_push, target.metadata_engine)
         return [(oid, url, handler) for oid, url in zip(objects_to_push, uploaded)]
 
-    def cleanup(self):
+    def cleanup(self, include_physical_objects=True):
         """
         Deletes all objects in the object_tree not required by any current repository, including their dependencies and
         their remote locations. Also deletes all objects not registered in the object_tree.
+
+        :param include_physical_objects: Default True. If False, only deletes the object metadata rather
+            than any physical objects on the engine.
         """
         # First, get a list of all objects required by a table.
         primary_objects = {
@@ -669,6 +681,9 @@ class ObjectManager(FragmentManager, MetadataManager):
             primary_objects = self.get_all_required_objects(list(primary_objects))
 
         # Go through the tables that aren't repository-dependent and delete entries there.
+        tables = ["object_locations", "objects"]
+        if include_physical_objects:
+            tables.append("object_cache_status")
         for table_name in ["object_locations", "object_cache_status", "objects"]:
             query = SQL("DELETE FROM {}.{}").format(
                 Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table_name)
@@ -684,27 +699,28 @@ class ObjectManager(FragmentManager, MetadataManager):
             else:
                 self.metadata_engine.run_sql(query, list(primary_objects))
 
-        # Go through the physical objects and delete them as well
-        # This is slightly dirty, but since the info about the objects was deleted on rm, we just say that
-        # anything in splitgraph_meta that's not a system table is fair game.
-        tables_in_meta = {
-            c
-            for c in self.object_engine.get_all_tables(SPLITGRAPH_META_SCHEMA)
-            if c not in META_TABLES
-        }
-        tables_in_meta.update(self.get_downloaded_objects())
+        if include_physical_objects:
+            # Go through the physical objects and delete them as well
+            # This is slightly dirty, but since the info about the objects was deleted on rm, we just say that
+            # anything in splitgraph_meta that's not a system table is fair game.
+            tables_in_meta = {
+                c
+                for c in self.object_engine.get_all_tables(SPLITGRAPH_META_SCHEMA)
+                if c not in META_TABLES
+            }
+            tables_in_meta.update(self.get_downloaded_objects())
 
-        to_delete = tables_in_meta.difference(primary_objects)
-        self.delete_objects(to_delete)
+            to_delete = tables_in_meta.difference(primary_objects)
+            self.delete_objects(to_delete)
 
-        # Recalculate the object cache occupancy
-        self.object_engine.run_sql(
-            SQL("UPDATE {}.object_cache_occupancy SET total_size = %s").format(
-                Identifier(SPLITGRAPH_META_SCHEMA)
-            ),
-            (self._recalculate_cache_occupancy(),),
-        )
-        return to_delete
+            # Recalculate the object cache occupancy
+            self.object_engine.run_sql(
+                SQL("UPDATE {}.object_cache_occupancy SET total_size = %s").format(
+                    Identifier(SPLITGRAPH_META_SCHEMA)
+                ),
+                (self._recalculate_cache_occupancy(),),
+            )
+            return to_delete
 
     def delete_objects(self, objects):
         """

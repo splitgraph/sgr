@@ -157,42 +157,40 @@ def test_lq_remote(local_engine_empty, pg_repo_remote):
     _test_lazy_lq_checkout(pg_repo_local)
 
 
-def test_lq_external(local_engine_empty, pg_repo_remote):
+@pytest.mark.registry
+def test_lq_external(local_engine_empty, unprivileged_pg_repo, pg_repo_remote_registry):
     # Test layered querying works when we initialize it on a cloned repo that doesn't have any
     # cached objects (all are on S3 or other external location).
 
-    pg_repo_local = clone(pg_repo_remote)
+    pg_repo_local = clone(unprivileged_pg_repo)
     pg_repo_local.images["latest"].checkout()
     prepare_lq_repo(pg_repo_local, commit_after_every=False, include_pk=True)
 
     # Setup: upstream has the same repository as in the previous test but with no cached objects (all are external).
-    remote = pg_repo_local.push(handler="S3", handler_options={})
+    # In addition, we check that LQ works against an unprivileged upstream (where we don't actually have
+    # admin access).
+    pg_repo_local.push(unprivileged_pg_repo, handler="S3", handler_options={})
     pg_repo_local.delete()
-    pg_repo_remote.objects.delete_objects(remote.objects.get_downloaded_objects())
-    pg_repo_remote.commit_engines()
     pg_repo_local.objects.cleanup()
 
     assert len(pg_repo_local.objects.get_all_objects()) == 0
     assert len(pg_repo_local.objects.get_downloaded_objects()) == 0
-    assert len(remote.objects.get_all_objects()) == 6
-    assert len(remote.objects.get_downloaded_objects()) == 0
+    assert len(pg_repo_remote_registry.objects.get_all_objects()) == 6
 
     # Proceed as per the previous test
-    pg_repo_local = clone(pg_repo_remote, download_all=False)
+    pg_repo_local = clone(unprivileged_pg_repo, download_all=False)
     _test_lazy_lq_checkout(pg_repo_local)
 
 
-def _prepare_fully_remote_repo(local_engine_empty, pg_repo_remote):
+def _prepare_fully_remote_repo(local_engine_empty, pg_repo_remote_registry):
     # Setup: same as external, with an extra patch on top of the fruits table.
-    pg_repo_local = clone(pg_repo_remote)
+    pg_repo_local = clone(pg_repo_remote_registry)
     pg_repo_local.images["latest"].checkout()
     prepare_lq_repo(pg_repo_local, commit_after_every=True, include_pk=True)
     pg_repo_local.run_sql("INSERT INTO fruits VALUES (4, 'kumquat')")
     pg_repo_local.commit()
-    remote = pg_repo_local.push(handler="S3", handler_options={})
+    pg_repo_local.push(handler="S3", handler_options={})
     pg_repo_local.delete()
-    pg_repo_remote.objects.delete_objects(remote.objects.get_downloaded_objects())
-    pg_repo_remote.commit_engines()
     pg_repo_local.objects.cleanup()
     pg_repo_local.commit_engines()
 
@@ -234,12 +232,13 @@ def _prepare_fully_remote_repo(local_engine_empty, pg_repo_remote):
         ("SELECT * FROM fruits WHERE name = 'apple'", [], (True, False, True, False, False)),
     ],
 )
-def test_lq_qual_filtering(local_engine_empty, pg_repo_remote, test_case):
+@pytest.mark.registry
+def test_lq_qual_filtering(local_engine_empty, unprivileged_pg_repo, test_case):
     # Test that LQ prunes the object list based on quals
     # We can't really see that directly, so we check to see which objects it tries to download.
-    _prepare_fully_remote_repo(local_engine_empty, pg_repo_remote)
+    _prepare_fully_remote_repo(local_engine_empty, unprivileged_pg_repo)
 
-    pg_repo_local = clone(pg_repo_remote, download_all=False)
+    pg_repo_local = clone(unprivileged_pg_repo, download_all=False)
     pg_repo_local.images["latest"].checkout(layered=True)
     assert len(pg_repo_local.objects.get_downloaded_objects()) == 0
 
@@ -270,15 +269,16 @@ def test_lq_qual_filtering(local_engine_empty, pg_repo_remote, test_case):
     assert set(expected_objects) == set(used_objects)
 
 
-def test_lq_single_non_snap_object(local_engine_empty, pg_repo_remote):
+@pytest.mark.registry
+def test_lq_single_non_snap_object(local_engine_empty, unprivileged_pg_repo):
     # The object produced by
     # "DELETE FROM vegetables WHERE vegetable_id = 1;INSERT INTO vegetables VALUES (3, 'celery')"
     # has a deletion and an insertion. Check that an LQ that only uses that object
     # doesn't return the extra upserted/deleted flag column.
 
-    _prepare_fully_remote_repo(local_engine_empty, pg_repo_remote)
+    _prepare_fully_remote_repo(local_engine_empty, unprivileged_pg_repo)
 
-    pg_repo_local = clone(pg_repo_remote, download_all=False)
+    pg_repo_local = clone(unprivileged_pg_repo, download_all=False)
     pg_repo_local.images["latest"].checkout(layered=True)
 
     assert pg_repo_local.run_sql(
@@ -318,12 +318,17 @@ def test_direct_table_lq(pg_repo_local, test_case):
     assert list(table.query(columns=["name", "timestamp"], quals=quals)) == expected
 
 
-def test_multiengine_flow(local_engine_empty, pg_repo_remote):
+@pytest.mark.registry
+def test_multiengine_flow(local_engine_empty, unprivileged_pg_repo, pg_repo_remote_registry):
     # Test querying by using the remote engine as a metadata store and the local engine as an object store.
-    _prepare_fully_remote_repo(local_engine_empty, pg_repo_remote)
-    pg_repo_local = Repository.from_template(pg_repo_remote, object_engine=local_engine_empty)
+    _prepare_fully_remote_repo(local_engine_empty, unprivileged_pg_repo)
+    pg_repo_local = Repository.from_template(unprivileged_pg_repo, object_engine=local_engine_empty)
 
-    pg_repo_local.images["latest"].checkout(layered=True)
+    # Checkout currently requires the engine connection to be privileged
+    # (since it does manage_audit_triggers()) -- so we bypass all bookkeeping and call the
+    # actual LQ routine directly.
+    local_engine_empty.create_schema(pg_repo_local.to_schema())
+    pg_repo_local.images["latest"]._lq_checkout()
 
     # Take one of the test cases we ran in test_lq_qual_filtering that exercises index lookups,
     # LQs, object downloads and make sure that the correct engines are used
@@ -356,21 +361,3 @@ def test_multiengine_flow(local_engine_empty, pg_repo_remote):
                 )
                 == 0
             )
-
-    # remote engine untouched
-    assert (
-        pg_repo_remote.engine.run_sql(
-            "SELECT COUNT(1) FROM splitgraph_meta.object_cache_status",
-            return_shape=ResultShape.ONE_ONE,
-        )
-        == 0
-    )
-    assert len(pg_repo_remote.objects.get_downloaded_objects()) == 0
-    assert (
-        len(
-            set(pg_repo_remote.engine.get_all_tables("splitgraph_meta")).difference(
-                set(META_TABLES)
-            )
-        )
-        == 0
-    )

@@ -79,14 +79,19 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
 
         # Try using a UNIX socket if the engine is local to us
         engine = get_engine(
-            self.fdw_options["engine"], bool(self.fdw_options.get("use_socket", False))
+            self.fdw_options["engine"],
+            bool(self.fdw_options.get("use_socket", False)),
+            use_fdw_params=True,
         )
         if "object_engine" in self.fdw_options:
             object_engine = get_engine(
-                self.fdw_options["object_engine"], bool(self.fdw_options.get("use_socket", False))
+                self.fdw_options["object_engine"],
+                bool(self.fdw_options.get("use_socket", False)),
+                use_fdw_params=True,
             )
         else:
             object_engine = engine
+
         repository = Repository(
             fdw_options["namespace"],
             self.fdw_options["repository"],
