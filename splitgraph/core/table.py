@@ -5,7 +5,7 @@ import logging
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.core.fragment_manager import get_random_object_id, quals_to_sql
+from splitgraph.core.fragment_manager import get_random_object_id, quals_to_sql, get_chunk_groups
 
 
 class Table:
@@ -77,25 +77,67 @@ class Table:
             logging.info("Using fragments %r to satisfy the query", required_objects)
             if not required_objects:
                 return []
-            if len(required_objects) == 1:
-                # If one object has our answer, we can send queries directly to it
-                return self._run_select_from_staging(
+
+            # Get fragment boundaries (min-max PKs of every fragment).
+            table_pk = [t[1] for t in self.table_schema if t[3]]
+            object_pks = object_manager.extract_min_max_pks(required_objects, table_pk)
+
+            # Group fragments into non-overlapping groups: those can be applied independently of each other.
+            object_groups = get_chunk_groups(
+                [
+                    (object_id, min_max[0], min_max[1])
+                    for object_id, min_max in zip(required_objects, object_pks)
+                ]
+            )
+
+            # Special fast case: single-chunk groups can all be batched together
+            # and queried directly (with a SELECT + UNION) without having to copy them to a staging table.
+            # We also grab all fragments from multiple-fragment groups and batch them together
+            # for future application.
+            #
+            # Technically, we could do multiple batches of application for these groups
+            # (apply first batch to the staging table, extract the result, clean the table,
+            # apply next batch etc): in the middle of it we could also talk back to the object
+            # manager and release the objects that we don't need so that they can be garbage
+            # collected. The tradeoff is that we perform more calls to apply_fragments (hence
+            # more roundtrips).
+            singletons = []
+            non_singletons = []
+            for group in object_groups:
+                if len(group) == 1:
+                    singletons.append(group[0][0])
+                else:
+                    non_singletons.extend(object_id for object_id, _, _ in group)
+
+            logging.info(
+                "Fragment grouping: %d singletons, %d non-singletons",
+                len(singletons),
+                len(non_singletons),
+            )
+
+            # Query singletons directly with SELECT ... FROM o1 UNION SELECT ... FROM o2 ...
+            if singletons:
+                yield from self._run_select_from_staging(
                     SPLITGRAPH_META_SCHEMA,
-                    required_objects[0],
+                    singletons,
                     columns,
                     drop_table=False,
                     qual_sql=sql_quals,
                     qual_args=sql_qual_vals,
                 )
 
-            # Accumulate the query result in a temporary table.
+            # If the table consists of disjoint chunks, we're done.
+            if not non_singletons:
+                return
+
+            # Create a temporary table for objects that need applying to each other
             staging_table = self._create_staging_table()
 
             # Apply the fragments (just the parts that match the qualifiers) to the staging area
             engine = self.repository.object_engine
             if quals:
                 engine.apply_fragments(
-                    [(SPLITGRAPH_META_SCHEMA, o) for o in required_objects],
+                    [(SPLITGRAPH_META_SCHEMA, o) for o in non_singletons],
                     "pg_temp",
                     staging_table,
                     extra_quals=sql_quals,
@@ -104,12 +146,14 @@ class Table:
                 )
             else:
                 engine.apply_fragments(
-                    [(SPLITGRAPH_META_SCHEMA, o) for o in required_objects],
+                    [(SPLITGRAPH_META_SCHEMA, o) for o in non_singletons],
                     "pg_temp",
                     staging_table,
                     schema_spec=self.table_schema,
                 )
-        return self._run_select_from_staging("pg_temp", staging_table, columns, drop_table=True)
+        yield from self._run_select_from_staging(
+            "pg_temp", [staging_table], columns, drop_table=True
+        )
 
     def _create_staging_table(self):
         staging_table = get_random_object_id()
@@ -121,33 +165,40 @@ class Table:
         return staging_table
 
     def _run_select_from_staging(
-        self, schema, table, columns, drop_table=False, qual_sql=None, qual_args=None
+        self, schema, tables, columns, drop_table=False, qual_sql=None, qual_args=None
     ):
-        """Runs the actual select query against the partially materialized table.
+        """Runs the actual select query against the partially materialized table(s).
         If qual_sql is passed, this will include it in the SELECT query. Despite that Postgres
         will check our results again, this is still useful so that we don't pass all the rows
-        in the fragment(s) through the Python runtime."""
+        in the fragment(s) through the Python runtime.
+
+        If multiple tables are passed, the query will run the same SELECT with a UNION
+        between all of them."""
         engine = self.repository.object_engine
 
         cur = engine.connection.cursor("sg_layered_query_cursor")
-        query = (
+
+        query = SQL(" UNION ").join(
             SQL("SELECT ")
             + SQL(",").join(Identifier(c) for c in columns)
             + SQL(" FROM {}.{}").format(Identifier(schema), Identifier(table))
+            + (SQL(" WHERE ") + qual_sql if qual_args else SQL(""))
+            for table in tables
         )
+
         if qual_args:
-            query += SQL(" WHERE ") + qual_sql
-            query = cur.mogrify(query, qual_args)
+            query = cur.mogrify(query, qual_args * len(tables))
         cur.execute(query)
 
         while True:
             try:
                 yield {c: v for c, v in zip(columns, next(cur))}
             except StopIteration:
-                # When the cursor has been consumed, delete the staging table and close it.
+                # When the cursor has been consumed, delete the staging tables and close it.
                 cur.close()
                 if drop_table:
-                    engine.delete_table(schema, table)
+                    for table in tables:
+                        engine.delete_table(schema, table)
 
                 # End the transaction so that nothing else deadlocks (at this point we've returned
                 # all the data we needed to the runtime so nothing will be lost).
