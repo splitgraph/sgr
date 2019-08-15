@@ -178,9 +178,9 @@ class Table:
         between all of them."""
         engine = self.repository.object_engine
 
-        cur = engine.connection.cursor("sg_layered_query_cursor")
+        cur = engine.connection.cursor()
 
-        query = SQL(" UNION ").join(
+        query = SQL(" UNION ALL ").join(
             SQL("SELECT ")
             + SQL(",").join(Identifier(c) for c in columns)
             + SQL(" FROM {}.{}").format(Identifier(schema), Identifier(table))
