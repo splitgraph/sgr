@@ -75,6 +75,63 @@ def _max(left, right):
     return right if left is None else (left if right is None else max(left, right))
 
 
+def get_chunk_groups(chunks):
+    """
+    Takes a list of chunks and their boundaries and combines them
+    into independent groups such that chunks from no two groups
+    overlap with each other (intervals are assumed to be closed,
+    e.g. chunk (1,2) overlaps with chunk (2,3)).
+
+    The original order of chunks is preserved within each group.
+
+    For example, 4 chunks A, B, C, D that don't overlap each other
+    will be grouped into 4 groups `[A], [B], [C], [D]`.
+
+    If A overlaps B, the result will be [A, B], [C], [D].
+
+    If in addition B overlaps C (but not A), the result will be `[A, B, C], [D]`.
+
+    If in addition D overlaps any of A, B or C, the result will be `[A, B, C, D]`
+    (despite that D is located before A: it will be last since it was last in the
+    original list).
+
+    :param chunks: List of (chunk_id, start, end)
+    :return: List of lists of (chunk_id, start, end)
+    """
+    # Note the original order the chunks came in: it should be preserved
+    # within overlap groups.
+    chunks = [(i,) + chunk for i, chunk in enumerate(chunks)]
+
+    groups = []
+    current_group = []
+    current_group_start = None
+    current_group_end = None
+    for original_id, chunk_id, start, end in sorted(chunks, key=lambda c: c[2]):
+        if not current_group:
+            current_group = [(original_id, chunk_id, start, end)]
+            current_group_start = start
+            current_group_end = end
+            continue
+
+        # See if the chunk overlaps with the current chunk group
+        if start <= current_group_end and end >= current_group_start:
+            current_group.append((original_id, chunk_id, start, end))
+            current_group_start = min(current_group_start, start)
+            current_group_end = max(current_group_end, end)
+            continue
+
+        # If the chunk doesn't overlap, we start a new group
+        groups.append(current_group)
+        current_group = [(original_id, chunk_id, start, end)]
+        current_group_start = start
+        current_group_end = end
+
+    groups.append(current_group)
+
+    # Resort the chunks within groups again
+    return [[c[1:] for c in sorted(chunks)] for chunks in groups]
+
+
 class Digest:
     """
     Homomorphic hashing similar to LtHash (but limited to being backed by 256-bit hashes). The main property is that
@@ -461,8 +518,10 @@ class FragmentManager(MetadataManager):
                 # Follow the chains down to the base fragments that we'll use to find the chunk boundaries
                 base_fragments = [self.get_all_required_objects([o])[0] for o in top_fragments]
 
-                table_pks = self.object_engine.get_change_key(schema, old_table.table_name)
-                min_max = self._extract_min_max_pks(base_fragments, table_pks)
+                table_pks = [
+                    k[0] for k in self.object_engine.get_change_key(schema, old_table.table_name)
+                ]
+                min_max = self.extract_min_max_pks(base_fragments, table_pks)
 
                 matched, before, after = _split_changeset(changeset, min_max, table_pks)
             else:
@@ -490,7 +549,7 @@ class FragmentManager(MetadataManager):
                 [(image_hash, old_table.table_name, old_table.table_schema, old_table.objects)],
             )
 
-    def _extract_min_max_pks(self, fragments, table_pks):
+    def extract_min_max_pks(self, fragments, table_pks):
         # Get the min/max PK values for every chunk
         # Why can't we use the index here? If the PK is composite, consider this example:
         #
@@ -510,7 +569,7 @@ class FragmentManager(MetadataManager):
         # so if we do that, we won't want to redownload them again just to find their boundaries).
 
         min_max = []
-        pk_sql = SQL(",").join(Identifier(p[0]) for p in table_pks)
+        pk_sql = SQL(",").join(Identifier(p) for p in table_pks)
         for fragment in fragments:
             query = (
                 SQL("SELECT ")
@@ -524,7 +583,7 @@ class FragmentManager(MetadataManager):
             )
             frag_max = self.object_engine.run_sql(
                 query
-                + SQL(",").join(Identifier(p[0]) + SQL(" DESC") for p in table_pks)
+                + SQL(",").join(Identifier(p) + SQL(" DESC") for p in table_pks)
                 + SQL(" LIMIT 1"),
                 return_shape=ResultShape.ONE_MANY,
             )
@@ -670,7 +729,9 @@ class FragmentManager(MetadataManager):
         )
 
         if chunk_size and table_size:
-            table_pk = self.object_engine.get_primary_keys(source_schema, source_table)
+            table_pk = [
+                p[0] for p in self.object_engine.get_primary_keys(source_schema, source_table)
+            ]
             new_fragment = None
 
             for _ in range(0, table_size, chunk_size):
@@ -689,7 +750,7 @@ class FragmentManager(MetadataManager):
 
                 last_pk = None
                 if new_fragment:
-                    _, last_pk = self._extract_min_max_pks([new_fragment], table_pk)[0]
+                    _, last_pk = self.extract_min_max_pks([new_fragment], table_pk)[0]
 
                 new_fragment = self.create_base_fragment(
                     source_schema,
