@@ -7,8 +7,14 @@ from math import ceil, log
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.engine import ResultShape
 from splitgraph.engine.postgres.engine import SG_UD_FLAG
+
+
+def _hash_value(value):
+    return (
+        sha256(str(value).encode("utf-8")).digest(),
+        sha256((str(value) + "salt").encode("utf-8")).digest(),
+    )
 
 
 def generate_bloom_index(engine, object_id, changeset, column, probability=None, size=None):
@@ -52,9 +58,21 @@ def generate_bloom_index(engine, object_id, changeset, column, probability=None,
         Identifier(SG_UD_FLAG),
     )
 
-    digests = engine.run_sql(digest_query, return_shape=ResultShape.MANY_MANY)
+    digests = engine.run_sql(digest_query)
 
-    # TODO add digests from changeset.
+    # Add digests of the old values in the changeset for this column.
+    for _, old_row in changeset.values():
+        if column in old_row:
+            # Note that this will add this value to the digest
+            # even if it didn't get changed (say the row got overwritten
+            # but another column got changed). This means that the value
+            # in this case will be counted twice (both the new value
+            # that we hashed before and the old value which we're
+            # hashing now which is the same). This is not an issue
+            # since we deduplicate our digests and the same digest
+            # will set the same bits in the filter to 1, but something
+            # to keep in mind.
+            digests.append(_hash_value(old_row[column]))
 
     # Count the number of distinct items and determine the size (if needed) and optimal number
     # of hash functions.
@@ -103,10 +121,10 @@ def _prepare_bloom_quals(quals):
         if operator != "=":
             return True
 
-        hash_1 = int.from_bytes(sha256(str(value).encode("utf-8")).digest(), byteorder="big")
-        hash_2 = int.from_bytes(
-            sha256((str(value) + "salt").encode("utf-8")).digest(), byteorder="big"
-        )
+        hash_1, hash_2 = _hash_value(value)
+        hash_1 = int.from_bytes(hash_1, byteorder="big")
+        hash_2 = int.from_bytes(hash_2, byteorder="big")
+
         return column, hash_1, hash_2
 
     def _process_or(quals):
