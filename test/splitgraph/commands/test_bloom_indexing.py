@@ -151,8 +151,8 @@ def test_bloom_index_deletions(local_engine_empty):
 
     # Delete and update some rows
     OUTPUT.run_sql("DELETE FROM test WHERE key = 5")  # ('e', 8)
-    OUTPUT.run_sql("DELETE FROM test WHERE key = 10")  # ('k', 18)
-    OUTPUT.run_sql("DELETE FROM test WHERE key = 15")  # ('p', 28)
+    OUTPUT.run_sql("DELETE FROM test WHERE key = 10")  # ('j', 18)
+    OUTPUT.run_sql("DELETE FROM test WHERE key = 15")  # ('o', 28)
     OUTPUT.run_sql("UPDATE test SET value_1 = 'G' WHERE key = 7")  # (g -> G)
     OUTPUT.run_sql("UPDATE test SET value_2 = 23 WHERE key = 12")  # (22 -> 23)
 
@@ -174,7 +174,7 @@ def test_bloom_index_deletions(local_engine_empty):
 
     # Check old/new values for value_1: 3 old values before a deletion,
     # 1 old value before update, 1 updated value
-    value_1_vals = ["e", "k", "p", "g", "G"]
+    value_1_vals = ["e", "j", "o", "g", "G"]
 
     # value_2, same
     value_2_vals = [8, 18, 28, 22, 23]
