@@ -929,21 +929,21 @@ def _qual_to_index_clause(qual, ctype):
     # If the column has to be greater than (or equal to) X, it only might exist in objects
     # whose maximum value is greater than (or equal to) X.
     if qual_op in (">", ">="):
-        query += SQL("(index #>> '{{'range',{},1}}')::" + ctype + "  " + qual_op + " %s").format(
+        query += SQL("(index #>> '{{range,{},1}}')::" + ctype + "  " + qual_op + " %s").format(
             (Identifier(column_name))
         )
         args.append(value)
     # Similar for smaller than, but here we check that the minimum value is smaller than X.
     elif qual_op in ("<", "<="):
-        query += SQL("(index #>> '{{'range',{},0}}')::" + ctype + " " + qual_op + " %s").format(
+        query += SQL("(index #>> '{{range,{},0}}')::" + ctype + " " + qual_op + " %s").format(
             (Identifier(column_name))
         )
         args.append(value)
     elif qual_op == "=":
         query += SQL(
-            "%s BETWEEN (index #>> '{{'range',{0},0}}')::"
+            "%s BETWEEN (index #>> '{{range,{0},0}}')::"
             + ctype
-            + " AND (index #>> '{{'range',{0},1}}')::"
+            + " AND (index #>> '{{range,{0},1}}')::"
             + ctype
         ).format((Identifier(column_name)))
         args.append(value)
