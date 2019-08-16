@@ -55,11 +55,10 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
 
         # Return the result back to Multicorn. For Json values, we need to turn them
         # back into Json strings (rather than Python dictionaries).
-        result = [
-            {k: v if not isinstance(v, dict) else json.dumps(v) for k, v in row.items()}
-            for row in result
-        ]
-        return result
+        for row in result:
+            # This is called from Multicorn's IterateForeignScan routine and won't fetch
+            # more than the LIMIT of the query.
+            yield {k: v if not isinstance(v, dict) else json.dumps(v) for k, v in row.items()}
 
     def __init__(self, fdw_options, fdw_columns):
         """The foreign data wrapper is initialized on the first query.
