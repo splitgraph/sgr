@@ -223,8 +223,7 @@ def test_splitfile_schema_changes(pg_repo_local, mg_repo_local):
     ]
 
 
-@pytest.mark.mounting
-def test_import_with_custom_query(pg_repo_local, mg_repo_local):
+def test_import_with_custom_query(pg_repo_local):
     # Mostly a lazy way for the test to distinguish between the importer storing the results of a query as a snap
     # and pointing the commit history to the diff for unchanged objects.
     pg_repo_local.run_sql(
@@ -254,7 +253,7 @@ def test_import_with_custom_query(pg_repo_local, mg_repo_local):
 
     head.checkout()
     for t, c in zip(tables, contents):
-        assert OUTPUT.run_sql("SELECT * FROM %s" % t) == c
+        assert sorted(OUTPUT.run_sql("SELECT * FROM %s" % t)) == sorted(c)
 
     for t in tables:
         # Tables with queries stored as snaps (no parent), actually imported tables share objects with test/pg_mount.
