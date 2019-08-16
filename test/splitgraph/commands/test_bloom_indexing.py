@@ -31,7 +31,7 @@ def test_bloom_index_structure(local_engine_empty):
     # Insert 26 rows with value_1 spanning a-z
     for i in range(26):
         OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (i + 1, chr(ord("a") + i), i * 2))
-    head = OUTPUT.commit(extra_indexes={"bloom": {"value_1": {"size": 16}}})
+    head = OUTPUT.commit(extra_indexes={"test": {"bloom": {"value_1": {"size": 16}}}})
 
     objects = head.get_table("test").objects
     object_meta = OUTPUT.objects.get_object_meta(objects)
@@ -52,7 +52,9 @@ def test_bloom_index_structure(local_engine_empty):
     OUTPUT.run_sql("DELETE FROM test WHERE key = 26")
     head = OUTPUT.commit(
         snap_only=True,
-        extra_indexes={"bloom": {"value_1": {"size": 16}, "value_2": {"probability": 0.01}}},
+        extra_indexes={
+            "test": {"bloom": {"value_1": {"size": 16}, "value_2": {"probability": 0.01}}}
+        },
     )
 
     objects = head.get_table("test").objects
@@ -83,7 +85,7 @@ def test_bloom_index_querying(local_engine_empty):
     head = OUTPUT.commit(
         chunk_size=9,
         extra_indexes={
-            "bloom": {"value_1": {"probability": 0.01}, "value_2": {"probability": 0.01}}
+            "test": {"bloom": {"value_1": {"probability": 0.01}, "value_2": {"probability": 0.01}}}
         },
     )
 
@@ -158,7 +160,7 @@ def test_bloom_index_deletions(local_engine_empty):
 
     head = OUTPUT.commit(
         extra_indexes={
-            "bloom": {"value_1": {"probability": 0.01}, "value_2": {"probability": 0.01}}
+            "test": {"bloom": {"value_1": {"probability": 0.01}, "value_2": {"probability": 0.01}}}
         }
     )
     objects = head.get_table("test").objects

@@ -528,7 +528,7 @@ class Repository:
             will need to be scanned to satisfy a query.
             If False, the changeset will be stored as a single fragment inheriting from the last fragment in the
             table.
-        :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
+        :param extra_indexes: Dictionary of {table: index_type: column: index_specific_kwargs}.
         :return: The newly created Image object.
         """
 
@@ -583,9 +583,10 @@ class Repository:
         :param chunk_size: Split table snapshots into chunks of this size (None to disable)
         :param split_changeset: Split deltas to match original table snapshot boundaries
         :param schema: Schema that the image is checked out into. By default, `namespace/repository` is used.
-        :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
+        :param extra_indexes: Dictionary of {table: index_type: column: index_specific_kwargs}.
         """
         schema = schema or self.to_schema()
+        extra_indexes = extra_indexes or {}
 
         changed_tables = self.object_engine.get_changed_tables(schema)
         for table in self.object_engine.get_all_tables(schema):
@@ -605,7 +606,7 @@ class Repository:
                     image_hash,
                     chunk_size=chunk_size,
                     source_schema=schema,
-                    extra_indexes=extra_indexes,
+                    extra_indexes=extra_indexes.get(table),
                 )
                 continue
 
@@ -616,7 +617,7 @@ class Repository:
                     schema,
                     image_hash,
                     split_changeset=split_changeset,
-                    extra_indexes=extra_indexes,
+                    extra_indexes=extra_indexes.get(table),
                 )
                 continue
 
