@@ -75,7 +75,7 @@ def generate_bloom_index(engine, object_id, changeset, column, probability=None,
         hash_2 = int.from_bytes(hash_2, byteorder="big")
         for i in range(no_funcs):
             hash_i = (hash_1 + i * hash_2) % size_bits
-            result[hash_i // 8] |= 1 >> hash_i % 8
+            result[hash_i // 8] |= 1 << hash_i % 8
 
     return no_funcs, base64.b64encode(result).decode("ascii")
 
@@ -143,10 +143,10 @@ def _match(qual, bloom_index):
         return True
 
     no_funcs, bloom_filter = bloom_index[column]
-    size_bits = len(bloom_index) * 8
+    size_bits = len(bloom_filter) * 8
     for i in range(no_funcs):
         hash_i = (hash_1 + i * hash_2) % size_bits
-        if not bloom_filter[hash_i // 8] & (1 >> hash_i % 8):
+        if not bloom_filter[hash_i // 8] & (1 << hash_i % 8):
             # If at least one position in the filter isn't filled,
             # this qualifier can't be met by anything in the fragment.
             return False
@@ -179,6 +179,7 @@ def filter_bloom_index(engine, object_ids, quals):
         SQL(
             "SELECT object_id, index -> 'bloom' FROM {}.{} WHERE object_id IN ("
             + ",".join(itertools.repeat("%s", len(object_ids)))
+            + ")"
         ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")),
         object_ids,
     )
@@ -198,7 +199,7 @@ def filter_bloom_index(engine, object_ids, quals):
         for or_quals in quals:
             or_result = False
             for or_qual in or_quals:
-                if _match(or_qual, bloom_index):
+                if _match(or_qual, bloom_index[object_id]):
                     or_result = True
                     break
             if not or_result:
