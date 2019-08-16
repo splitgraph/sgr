@@ -192,11 +192,18 @@ class Table:
             query = cur.mogrify(query, qual_args * len(tables))
         cur.execute(query)
 
+        # If this is called from Multicorn, even though the iterator that we return
+        # isn't called next() on more than required, we're using a client-side cursor here
+        # so all results are fetched. If we use a server-side cursor, we can't scan through
+        # multiple CStore chunks in parallel.
+        logging.info("Cursor has %d rows", cur.rowcount)
         while True:
             try:
                 yield {c: v for c, v in zip(columns, next(cur))}
             except StopIteration:
                 # When the cursor has been consumed, delete the staging tables and close it.
+                # NB: if the Python runtime deletes this iterator (eg Multicorn has stopped
+                # reading and PY_XDECREFd the iterator), is this called?
                 cur.close()
                 if drop_table:
                     for table in tables:
