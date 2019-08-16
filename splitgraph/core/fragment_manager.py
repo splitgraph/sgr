@@ -518,10 +518,9 @@ class FragmentManager(MetadataManager):
                 # Follow the chains down to the base fragments that we'll use to find the chunk boundaries
                 base_fragments = [self.get_all_required_objects([o])[0] for o in top_fragments]
 
-                table_pks = [
-                    k[0] for k in self.object_engine.get_change_key(schema, old_table.table_name)
-                ]
-                min_max = self.extract_min_max_pks(base_fragments, table_pks)
+                table_pks = self.object_engine.get_change_key(schema, old_table.table_name)
+                pk_cols = [col for col, _ in table_pks]
+                min_max = self.extract_min_max_pks(base_fragments, pk_cols)
 
                 matched, before, after = _split_changeset(changeset, min_max, table_pks)
             else:
