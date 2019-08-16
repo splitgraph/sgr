@@ -15,6 +15,7 @@ from psycopg2.errors import DuplicateTable, UniqueViolation
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_API_SCHEMA
+from splitgraph.core.bloom import generate_bloom_index
 from splitgraph.core.metadata_manager import MetadataManager, Object
 from splitgraph.engine.postgres.engine import SG_UD_FLAG
 from ._common import adapt, SPLITGRAPH_META_SCHEMA, ResultShape, coerce_val_to_json, select
@@ -207,14 +208,17 @@ class FragmentManager(MetadataManager):
         self.object_engine = object_engine
         self.metadata_engine = metadata_engine or object_engine
 
-    def _generate_object_index(self, object_id, changeset=None):
+    def _generate_object_index(self, object_id, changeset=None, extra_indexes=None):
         """
         Queries the max/min values of a given fragment for each column, used to speed up querying.
 
         :param object_id: ID of an object
         :param changeset: Optional, if specified, the old row values are included in the index.
-        :return: Dict of {column_name: (min_val, max_val)}
+        :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
+        :return: Dict containing the object index.
         """
+        extra_indexes = extra_indexes or {}
+
         # Maybe we should pass the column names in instead?
         columns = {
             c[1]: c[2]
@@ -263,8 +267,30 @@ class FragmentManager(MetadataManager):
                     val = adapt(val, columns[col])
                     index[col] = (_min(index[col][0], val), _max(index[col][1], val))
 
-        index = {k: (coerce_val_to_json(v[0]), coerce_val_to_json(v[1])) for k, v in index.items()}
-        return index
+        range_index = {
+            k: (coerce_val_to_json(v[0]), coerce_val_to_json(v[1])) for k, v in index.items()
+        }
+        indexes = {"range": range_index}
+
+        # Process extra indexes
+        for index_name, index_cols in extra_indexes.items():
+            if index_name != "bloom":
+                raise ValueError("Unsupported index type %s!" % index_name)
+
+            index_dict = {}
+            for index_col, index_kwargs in index_cols.items():
+                logging.info(
+                    "Running index %s on column %s with parameters %r",
+                    index_name,
+                    index_col,
+                    index_kwargs,
+                )
+                index_dict[index_col] = generate_bloom_index(
+                    self.object_engine, object_id, changeset, index_col, **index_kwargs
+                )
+            indexes[index_name] = index_dict
+
+        return indexes
 
     def _register_object(
         self,
@@ -274,6 +300,7 @@ class FragmentManager(MetadataManager):
         deletion_hash,
         parent_object=None,
         changeset=None,
+        extra_indexes=None,
     ):
         """
         Registers a Splitgraph object in the object tree and indexes it
@@ -288,9 +315,10 @@ class FragmentManager(MetadataManager):
             {PK: (True for upserted/False for deleted, old row (if updated or deleted))}. The old values
             are used to generate the min/max index for an object to know if it removes/updates some rows
             that might be pertinent to a query.
+        :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
         """
         object_size = self.object_engine.get_object_size(object_id)
-        object_index = self._generate_object_index(object_id, changeset)
+        object_index = self._generate_object_index(object_id, changeset, extra_indexes)
         self.register_objects(
             [
                 Object(
@@ -360,7 +388,7 @@ class FragmentManager(MetadataManager):
         )
         return reduce(operator.add, map(Digest.from_memoryview, digests), Digest.empty())
 
-    def _store_changesets(self, table, changesets, parents, schema):
+    def _store_changesets(self, table, changesets, parents, schema, extra_indexes=None):
         """
         Store and register multiple changesets as fragments, optionally linking them to the parent fragments.
 
@@ -369,6 +397,7 @@ class FragmentManager(MetadataManager):
             in the list of resulting objects instead.
         :param parents: List of parents to link each new fragment to.
         :param schema: Schema the table is checked out into.
+        :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
         :return: List of object IDs (created or existing for where the changeset was empty).
         """
         object_ids = []
@@ -426,6 +455,7 @@ class FragmentManager(MetadataManager):
                         deletion_hash=deletion_hash.hex(),
                         parent_object=parent,
                         changeset=sub_changeset,
+                        extra_indexes=extra_indexes,
                     )
                 except UniqueViolation:
                     logging.info(
@@ -487,7 +517,9 @@ class FragmentManager(MetadataManager):
         )
         return insertion_hash
 
-    def record_table_as_patch(self, old_table, schema, image_hash, split_changeset=False):
+    def record_table_as_patch(
+        self, old_table, schema, image_hash, split_changeset=False, extra_indexes=None
+    ):
         """
         Flushes the pending changes from the audit table for a given table and records them,
         registering the new objects.
@@ -496,6 +528,7 @@ class FragmentManager(MetadataManager):
         :param schema: Schema the table is checked out into.
         :param image_hash: Image hash to store the table under
         :param split_changeset: See `Repository.commit` for reference
+        :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
         """
 
         # TODO does the reasoning in the docstring actually make sense? If the point is to, say, for a query
@@ -534,7 +567,11 @@ class FragmentManager(MetadataManager):
             # NB test_commit_diff::test_commit_mode_change: in case the before/after changesets actually
             # overwrite something that we didn't detect, push them to be later in the application order.
             object_ids = self._store_changesets(
-                old_table, matched + [before, after], top_fragments + [None, None], schema
+                old_table,
+                matched + [before, after],
+                top_fragments + [None, None],
+                schema,
+                extra_indexes,
             )
             # Finally, link the table to the new set of objects.
             self.register_tables(
@@ -609,7 +646,7 @@ class FragmentManager(MetadataManager):
         return reduce(operator.add, (Digest.from_memoryview(r) for r in row_digests)).hex()
 
     def create_base_fragment(
-        self, source_schema, source_table, namespace, limit=None, after_pk=None
+        self, source_schema, source_table, namespace, limit=None, after_pk=None, extra_indexes=None
     ):
         # Store the fragment in a temporary location first and hash that (much faster since PG doesn't need
         # to go through the source table multiple times for every offset)
@@ -683,6 +720,7 @@ class FragmentManager(MetadataManager):
                     insertion_hash=content_hash,
                     deletion_hash="0" * 64,
                     parent_object=None,
+                    extra_indexes=extra_indexes,
                 )
             except UniqueViolation:
                 # Someone registered this object (perhaps a concurrent pull) already.
@@ -705,6 +743,7 @@ class FragmentManager(MetadataManager):
         chunk_size=10000,
         source_schema=None,
         source_table=None,
+        extra_indexes=None,
     ):
         """
         Copies the full table verbatim into one or more new base fragments and registers them.
@@ -715,6 +754,7 @@ class FragmentManager(MetadataManager):
         :param chunk_size: If specified, splits the table into multiple objects with a given number of rows
         :param source_schema: Override the schema the source table is stored in
         :param source_table: Override the name of the table the source is stored in
+        :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
         """
         object_ids = []
         source_schema = source_schema or repository.to_schema()
@@ -757,12 +797,15 @@ class FragmentManager(MetadataManager):
                     repository.namespace,
                     limit=chunk_size,
                     after_pk=last_pk,
+                    extra_indexes=extra_indexes,
                 )
                 object_ids.append(new_fragment)
 
         elif table_size:
             object_ids.append(
-                self.create_base_fragment(source_schema, source_table, repository.namespace)
+                self.create_base_fragment(
+                    source_schema, source_table, repository.namespace, extra_indexes=extra_indexes
+                )
             )
         # If table_size == 0, then we don't link it to any objects and simply store its schema
         table_schema = self.object_engine.get_full_table_schema(source_schema, source_table)
@@ -880,27 +923,27 @@ def _qual_to_index_clause(qual, ctype):
     # Hence, we can combine qualifiers in a similar Boolean way (proof?)
 
     # If there's no index information for a given column, we have to assume it might match the qual.
-    query = SQL("NOT index ? %s OR ")
+    query = SQL("NOT (index -> 'range') ? %s OR ")
     args = [column_name]
 
     # If the column has to be greater than (or equal to) X, it only might exist in objects
     # whose maximum value is greater than (or equal to) X.
     if qual_op in (">", ">="):
-        query += SQL("(index #>> '{{{},1}}')::" + ctype + "  " + qual_op + " %s").format(
+        query += SQL("(index #>> '{{'range',{},1}}')::" + ctype + "  " + qual_op + " %s").format(
             (Identifier(column_name))
         )
         args.append(value)
     # Similar for smaller than, but here we check that the minimum value is smaller than X.
     elif qual_op in ("<", "<="):
-        query += SQL("(index #>> '{{{},0}}')::" + ctype + " " + qual_op + " %s").format(
+        query += SQL("(index #>> '{{'range',{},0}}')::" + ctype + " " + qual_op + " %s").format(
             (Identifier(column_name))
         )
         args.append(value)
     elif qual_op == "=":
         query += SQL(
-            "%s BETWEEN (index #>> '{{{0},0}}')::"
+            "%s BETWEEN (index #>> '{{'range',{0},0}}')::"
             + ctype
-            + " AND (index #>> '{{{0},1}}')::"
+            + " AND (index #>> '{{'range',{0},1}}')::"
             + ctype
         ).format((Identifier(column_name)))
         args.append(value)

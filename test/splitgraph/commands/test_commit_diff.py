@@ -134,9 +134,11 @@ def test_commit_chunking(local_engine_empty):
                 "0" * 64,
                 # index
                 {
-                    "key": [min_key, max_key],
-                    "value_1": [chr(ord("a") + min_key - 1), chr(ord("a") + max_key - 1)],
-                    "value_2": [(min_key - 1) * 2, (max_key - 1) * 2],
+                    "range": {
+                        "key": [min_key, max_key],
+                        "value_1": [chr(ord("a") + min_key - 1), chr(ord("a") + max_key - 1)],
+                        "value_2": [(min_key - 1) * 2, (max_key - 1) * 2],
+                    }
                 },
             ),
         )
@@ -221,7 +223,7 @@ def test_commit_diff_splitting(local_engine_empty):
             "e3eb6db305d889d3a69e3d8efa0931853c00fca75c0aeddd8f2fa2d6fd2443d6",
             # for value_1 we have old values for k=4,5 ('d', 'e') and new value
             # for k=5 ('UPDATED') included here; same for value_2.
-            {"key": [4, 5], "value_1": ["UPDATED", "e"], "value_2": [6, 8]},
+            {"range": {"key": [4, 5], "value_1": ["UPDATED", "e"], "value_2": [6, 8]}},
         ),
         (
             new_objects[1],
@@ -233,7 +235,7 @@ def test_commit_diff_splitting(local_engine_empty):
             "0000000000000000000000000000000000000000000000000000000000000000",
             "d7df15e62c1c8799ef3a3677e3eb7661cedf898d73449a80251b93c501b5bdeb",
             # Turned into one deletion, old values included here
-            {"key": [6, 6], "value_1": ["f", "f"], "value_2": [10, 10]},
+            {"range": {"key": [6, 6], "value_1": ["f", "f"], "value_2": [10, 10]}},
         ),
         # Old fragment with just the pk=11
         (
@@ -245,7 +247,7 @@ def test_commit_diff_splitting(local_engine_empty):
             "6950e38c81c51685d617e98c7e2cf98d34630940c33e9259bc01339cca9c9418",
             # No deletions here
             "0000000000000000000000000000000000000000000000000000000000000000",
-            {"key": [11, 11], "value_1": ["k", "k"], "value_2": [20, 20]},
+            {"range": {"key": [11, 11], "value_1": ["k", "k"], "value_2": [20, 20]}},
         ),
         (
             new_objects[3],
@@ -256,7 +258,7 @@ def test_commit_diff_splitting(local_engine_empty):
             "3cfbe8fa6fc546264936e29f402d7263510481c88a8d27190d82b3d5830cbcbf",
             # no deletions in this fragment
             "0000000000000000000000000000000000000000000000000000000000000000",
-            {"key": [0, 0], "value_1": ["zero", "zero"], "value_2": [-1, -1]},
+            {"range": {"key": [0, 0], "value_1": ["zero", "zero"], "value_2": [-1, -1]}},
         ),
         (
             new_objects[4],
@@ -266,7 +268,7 @@ def test_commit_diff_splitting(local_engine_empty):
             SMALL_OBJECT_SIZE,
             "96f0a7394f3839b048b492b789f7d57cf976345b04938a69d82b3512f72c3e9e",
             "0000000000000000000000000000000000000000000000000000000000000000",
-            {"key": [12, 12], "value_1": ["l", "l"], "value_2": [22, 22]},
+            {"range": {"key": [12, 12], "value_1": ["l", "l"], "value_2": [22, 22]}},
         ),
     ]
     for new_object, expected in zip(new_objects, expected_meta):
@@ -369,10 +371,12 @@ def test_commit_diff_splitting_composite(local_engine_empty):
             "00964b1b5db0d6e8d42b48462e9021ed626a773380345a1f4fee5c205d7d4beb",
             "0c8c07c66327f4493c716ceafd4bf70b692a1d6fe7cb1b88e1d683a4ea0bc4e8",
             {
-                "key_1": ["2019-01-01T00:00:00", "2019-01-02T00:00:00"],
-                # 'value' spans the old value (was '5'), the inserted value ('4') and the new updated value ('UPD').
-                "key_2": [2, 4],
-                "value": ["4", "UPD"],
+                "range": {
+                    "key_1": ["2019-01-01T00:00:00", "2019-01-02T00:00:00"],
+                    # 'value' spans the old value (was '5'), the inserted value ('4') and the new updated value ('UPD').
+                    "key_2": [2, 4],
+                    "value": ["4", "UPD"],
+                }
             },
         ),
     )
@@ -391,9 +395,11 @@ def test_commit_diff_splitting_composite(local_engine_empty):
             # Nothing deleted, so the deletion hash is 0
             "0000000000000000000000000000000000000000000000000000000000000000",
             {
-                "key_1": ["2019-01-04T00:00:00", "2019-01-04T00:00:00"],
-                "key_2": [2, 2],
-                "value": ["NEW", "NEW"],
+                "range": {
+                    "key_1": ["2019-01-04T00:00:00", "2019-01-04T00:00:00"],
+                    "key_2": [2, 2],
+                    "value": ["NEW", "NEW"],
+                }
             },
         ),
     )
@@ -701,18 +707,20 @@ def test_various_types(local_engine_empty):
     object_id = new_head.get_table("test").objects[0]
     object_index = OUTPUT.objects.get_object_meta([object_id])[object_id].index
     expected = {
-        "a": [1, 2],
-        "b": [1, 15],
-        "c": [2, 22],
-        "d": [1, 3],
-        "e": ["-1.230", "3.540"],
-        "f": [9.8811, 876.563],
-        "g": [0.23, 1.23],
-        "h": ["abcd", "test"],
-        "i": ["0testtesttesttes", "testtesttesttest"],
-        "j": ["0testtesttesttesttesttesttes", "testtesttesttesttesttesttest"],
-        "l": ["2013-11-02T17:30:52", "2016-01-01T01:01:05"],
-        "m": ["2011-11-11", "2013-02-04"],
+        "range": {
+            "a": [1, 2],
+            "b": [1, 15],
+            "c": [2, 22],
+            "d": [1, 3],
+            "e": ["-1.230", "3.540"],
+            "f": [9.8811, 876.563],
+            "g": [0.23, 1.23],
+            "h": ["abcd", "test"],
+            "i": ["0testtesttesttes", "testtesttesttest"],
+            "j": ["0testtesttesttesttesttesttes", "testtesttesttesttesttesttest"],
+            "l": ["2013-11-02T17:30:52", "2016-01-01T01:01:05"],
+            "m": ["2011-11-11", "2013-02-04"],
+        }
     }
 
     assert object_index == expected
@@ -744,21 +752,23 @@ def test_various_types_with_deletion_index(local_engine_empty):
 
     # Make sure all rows are included since they were all affected + both old and new value for the update
     expected = {
-        "a": [1, 2],  # this one is a sequence so is kinda broken
-        "b": [1, 16],  # original values 1 (updated row), 15 (deleted row), 16 (inserted)
-        "c": [2, 23],  # 2 (U), 22 (D), 23 (I)
-        "d": [1, 3],  # 3 (U), 1 (D), 2 (I)
-        "e": [-1.23, "7.89"],  # 3.54 (U), -1.23 (D), 7.89 (I) -- also wtf is up with types?
-        "f": [9.8811, 876.563],  # 876.563 (U, numeric(5,3) so truncated), 9.8811 (D), 10.01 (I)
-        "g": [0.23, 9.45],  # 1.23 (U), 0.23 (D), 9.45 (I)
-        "h": ["abcd", "test"],  # test (U), abcd (D), defg (I)
-        "i": ["00esttesttesttes", "testtesttesttest"],  # test... (U), 0tes... (D), 00te... (I)
-        # same as previous here
-        "j": ["00esttesttesttesttesttesttes", "testtesttesttesttesttesttest"],
-        # 2013-11 (U), 2016-01 (D), 2016-02 (I)
-        "l": ["2013-11-02T17:30:52", "2016-02-01T01:01:05.123456"],
-        # 2013 (U, old value), 2016 (D), 2012 (I), 2019 (U, new value)
-        "m": ["2011-11-11", "2019-01-01"],
+        "range": {
+            "a": [1, 2],  # this one is a sequence so is kinda broken
+            "b": [1, 16],  # original values 1 (updated row), 15 (deleted row), 16 (inserted)
+            "c": [2, 23],  # 2 (U), 22 (D), 23 (I)
+            "d": [1, 3],  # 3 (U), 1 (D), 2 (I)
+            "e": [-1.23, "7.89"],  # 3.54 (U), -1.23 (D), 7.89 (I) -- also wtf is up with types?
+            "f": [9.8811, 876.563],  # 876.563 (U, numeric(5,3) so truncated), 9.8811 (D), 10.01 (I)
+            "g": [0.23, 9.45],  # 1.23 (U), 0.23 (D), 9.45 (I)
+            "h": ["abcd", "test"],  # test (U), abcd (D), defg (I)
+            "i": ["00esttesttesttes", "testtesttesttest"],  # test... (U), 0tes... (D), 00te... (I)
+            # same as previous here
+            "j": ["00esttesttesttesttesttesttes", "testtesttesttesttesttesttest"],
+            # 2013-11 (U), 2016-01 (D), 2016-02 (I)
+            "l": ["2013-11-02T17:30:52", "2016-02-01T01:01:05.123456"],
+            # 2013 (U, old value), 2016 (D), 2012 (I), 2019 (U, new value)
+            "m": ["2011-11-11", "2019-01-01"],
+        }
     }
 
     assert object_index == expected

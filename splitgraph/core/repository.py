@@ -509,6 +509,7 @@ class Repository:
         snap_only=False,
         chunk_size=10000,
         split_changeset=False,
+        extra_indexes=None,
     ):
         """
         Commits all pending changes to a given repository, creating a new image.
@@ -527,6 +528,7 @@ class Repository:
             will need to be scanned to satisfy a query.
             If False, the changeset will be stored as a single fragment inheriting from the last fragment in the
             table.
+        :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
         :return: The newly created Image object.
         """
 
@@ -547,6 +549,7 @@ class Repository:
             snap_only=snap_only,
             chunk_size=chunk_size,
             split_changeset=split_changeset,
+            extra_indexes=extra_indexes,
         )
 
         set_head(self, image_hash)
@@ -563,6 +566,7 @@ class Repository:
         chunk_size=10000,
         split_changeset=False,
         schema=None,
+        extra_indexes=None,
     ):
         """
         Reads the recorded pending changes to all tables in a given checked-out image,
@@ -579,6 +583,7 @@ class Repository:
         :param chunk_size: Split table snapshots into chunks of this size (None to disable)
         :param split_changeset: Split deltas to match original table snapshot boundaries
         :param schema: Schema that the image is checked out into. By default, `namespace/repository` is used.
+        :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
         """
         schema = schema or self.to_schema()
 
@@ -595,14 +600,23 @@ class Repository:
                 != self.object_engine.get_full_table_schema(schema, table)
             ):
                 self.objects.record_table_as_base(
-                    self, table, image_hash, chunk_size=chunk_size, source_schema=schema
+                    self,
+                    table,
+                    image_hash,
+                    chunk_size=chunk_size,
+                    source_schema=schema,
+                    extra_indexes=extra_indexes,
                 )
                 continue
 
             # If the table has changed, look at the audit log and store it as a delta.
             if table in changed_tables:
                 self.objects.record_table_as_patch(
-                    table_info, schema, image_hash, split_changeset=split_changeset
+                    table_info,
+                    schema,
+                    image_hash,
+                    split_changeset=split_changeset,
+                    extra_indexes=extra_indexes,
                 )
                 continue
 
