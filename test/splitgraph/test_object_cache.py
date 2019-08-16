@@ -1,5 +1,6 @@
 import itertools
 from datetime import datetime as dt
+from unittest import mock
 
 import pytest
 
@@ -465,7 +466,7 @@ def test_object_manager_index_clause_generation(pg_repo_local):
     )
 
 
-def _prepare_object_filtering_dataset():
+def _prepare_object_filtering_dataset(include_bloom=False):
     OUTPUT.init()
     OUTPUT.run_sql(
         """CREATE TABLE test
@@ -476,68 +477,99 @@ def _prepare_object_filtering_dataset():
              col5 json)"""
     )
 
+    bloom_params = (
+        {
+            "test": {
+                "bloom": {col: {"probability": 0.001} for col in ["col2", "col3", "col4", "col5"]}
+            }
+        }
+        if include_bloom
+        else None
+    )
+
     # First object is kind of normal: incrementing PK, a random col2, some text, some timestamps
     OUTPUT.run_sql("INSERT INTO test VALUES (1, 5, 'aaaa', '2016-01-01 00:00:00', '{\"a\": 5}')")
     OUTPUT.run_sql("INSERT INTO test VALUES (5, 3, 'bbbb', '2016-01-02 00:00:00', '{\"a\": 10}')")
-    OUTPUT.commit()
+    OUTPUT.commit(extra_indexes=bloom_params)
     obj_1 = OUTPUT.head.get_table("test").objects[0]
     # Sanity check on index for reference + easier debugging
-    assert OUTPUT.objects.get_object_meta([obj_1])[obj_1].index == {
-        "range": {
-            "col1": [1, 5],
-            "col2": [3, 5],
-            "col3": ["aaaa", "bbbb"],
-            "col4": ["2016-01-01T00:00:00", "2016-01-02T00:00:00"],
-        }
+    assert OUTPUT.objects.get_object_meta([obj_1])[obj_1].index["range"] == {
+        "col1": [1, 5],
+        "col2": [3, 5],
+        "col3": ["aaaa", "bbbb"],
+        "col4": ["2016-01-01T00:00:00", "2016-01-02T00:00:00"],
     }
+    if include_bloom:
+        assert OUTPUT.objects.get_object_meta([obj_1])[obj_1].index["bloom"] == {
+            "col2": [12, mock.ANY],
+            "col3": [12, mock.ANY],
+            "col4": [12, mock.ANY],
+            "col5": [12, mock.ANY],
+        }
 
     # Second object: PK increments, ranges for col2 and col3 overlap, col4 has the same timestamps everywhere
     OUTPUT.run_sql("INSERT INTO test VALUES (6, 1, 'abbb', '2015-12-30 00:00:00', '{\"a\": 5}')")
     OUTPUT.run_sql("INSERT INTO test VALUES (10, 4, 'cccc', '2015-12-30 00:00:00', '{\"a\": 10}')")
-    OUTPUT.commit()
+    OUTPUT.commit(extra_indexes=bloom_params)
     obj_2 = OUTPUT.head.get_table("test").objects[0]
-    assert OUTPUT.objects.get_object_meta([obj_2])[obj_2].index == {
-        "range": {
-            "col1": [6, 10],
-            "col2": [1, 4],
-            "col3": ["abbb", "cccc"],
-            "col4": ["2015-12-30T00:00:00", "2015-12-30T00:00:00"],
-        }
+    assert OUTPUT.objects.get_object_meta([obj_2])[obj_2].index["range"] == {
+        "col1": [6, 10],
+        "col2": [1, 4],
+        "col3": ["abbb", "cccc"],
+        "col4": ["2015-12-30T00:00:00", "2015-12-30T00:00:00"],
     }
+    if include_bloom:
+        assert OUTPUT.objects.get_object_meta([obj_2])[obj_2].index["bloom"] == {
+            "col2": [12, mock.ANY],
+            "col3": [12, mock.ANY],
+            "col4": [12, mock.ANY],
+            "col5": [12, mock.ANY],
+        }
 
     # Third object: just a single row
     OUTPUT.run_sql("INSERT INTO test VALUES (11, 10, 'dddd', '2016-01-05 00:00:00', '{\"a\": 5}')")
-    OUTPUT.commit()
+    OUTPUT.commit(extra_indexes=bloom_params)
     obj_3 = OUTPUT.head.get_table("test").objects[0]
-    assert OUTPUT.objects.get_object_meta([obj_3])[obj_3].index == {
-        "range": {
-            "col1": [11, 11],
-            "col2": [10, 10],
-            "col3": ["dddd", "dddd"],
-            "col4": ["2016-01-05T00:00:00", "2016-01-05T00:00:00"],
-        }
+    assert OUTPUT.objects.get_object_meta([obj_3])[obj_3].index["range"] == {
+        "col1": [11, 11],
+        "col2": [10, 10],
+        "col3": ["dddd", "dddd"],
+        "col4": ["2016-01-05T00:00:00", "2016-01-05T00:00:00"],
     }
+    if include_bloom:
+        assert OUTPUT.objects.get_object_meta([obj_3])[obj_3].index["bloom"] == {
+            "col2": [12, mock.ANY],
+            "col3": [12, mock.ANY],
+            "col4": [12, mock.ANY],
+            "col5": [12, mock.ANY],
+        }
 
     # Fourth object: PK increments, ranges for col2/col3 don't overlap, col4 spans obj_1's range, we have a NULL.
     OUTPUT.run_sql("INSERT INTO test VALUES (12, 11, 'eeee', '2015-12-31 00:00:00', '{\"a\": 5}')")
     OUTPUT.run_sql("INSERT INTO test VALUES (14, 13, 'ezzz', NULL, '{\"a\": 5}')")
     OUTPUT.run_sql("INSERT INTO test VALUES (16, 15, 'ffff', '2016-01-04 00:00:00', '{\"a\": 10}')")
-    OUTPUT.commit()
+    OUTPUT.commit(extra_indexes=bloom_params)
     obj_4 = OUTPUT.head.get_table("test").objects[0]
-    assert OUTPUT.objects.get_object_meta([obj_4])[obj_4].index == {
-        "range": {
-            "col1": [12, 16],
-            "col2": [11, 15],
-            "col3": ["eeee", "ffff"],
-            "col4": ["2015-12-31T00:00:00", "2016-01-04T00:00:00"],
-        }
+    assert OUTPUT.objects.get_object_meta([obj_4])[obj_4].index["range"] == {
+        "col1": [12, 16],
+        "col2": [11, 15],
+        "col3": ["eeee", "ffff"],
+        "col4": ["2015-12-31T00:00:00", "2016-01-04T00:00:00"],
     }
+    if include_bloom:
+        assert OUTPUT.objects.get_object_meta([obj_4])[obj_4].index["bloom"] == {
+            "col2": [12, mock.ANY],
+            "col3": [12, mock.ANY],
+            "col4": [12, mock.ANY],
+            "col5": [12, mock.ANY],
+        }
 
     return [obj_1, obj_2, obj_3, obj_4]
 
 
-def test_object_manager_object_filtering(local_engine_empty):
-    objects = _prepare_object_filtering_dataset()
+@pytest.mark.parametrize("include_bloom", [True, False])
+def test_object_manager_object_filtering(local_engine_empty, include_bloom):
+    objects = _prepare_object_filtering_dataset(include_bloom=include_bloom)
     obj_1, obj_2, obj_3, obj_4 = objects
     om = OUTPUT.objects
     column_types = {
@@ -569,7 +601,12 @@ def test_object_manager_object_filtering(local_engine_empty):
     # Unknown operator (that can't be pruned with the index) returns everything
     _assert_filter_result([[("col3", "~~", "eee%")]], [obj_1, obj_2, obj_3, obj_4])
     _assert_filter_result([[("col3", "=", "aaaa")]], [obj_1])
-    _assert_filter_result([[("col3", "=", "accc")]], [obj_1, obj_2])
+
+    if include_bloom:
+        # With bloom filtering, we can see that "accc" isn't in any of the text fields.
+        _assert_filter_result([[("col3", "=", "accc")]], [])
+    else:
+        _assert_filter_result([[("col3", "=", "accc")]], [obj_1, obj_2])
 
     # Test combining quals
 
@@ -592,6 +629,8 @@ def test_object_manager_object_filtering(local_engine_empty):
     # AND col2 == 2 (selects obj_2)
     # the first clause selects objs 1, 3, 4; second clause selects 2; intersecting them results in []
     _assert_filter_result([[("col1", ">", 10)]], [obj_3, obj_4])
+
+    # TODO datetimes here should be objects rather than strings
     _assert_filter_result([[("col4", "=", "2016-01-01 12:00:00")]], [obj_1, obj_4])
     _assert_filter_result([[("col2", "=", 2)]], [obj_2])
 
