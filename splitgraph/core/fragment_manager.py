@@ -15,7 +15,7 @@ from psycopg2.errors import DuplicateTable, UniqueViolation
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_API_SCHEMA
-from splitgraph.core.bloom import generate_bloom_index
+from splitgraph.core.bloom import generate_bloom_index, filter_bloom_index
 from splitgraph.core.metadata_manager import MetadataManager, Object
 from splitgraph.engine.postgres.engine import SG_UD_FLAG
 from ._common import adapt, SPLITGRAPH_META_SCHEMA, ResultShape, coerce_val_to_json, select
@@ -868,9 +868,27 @@ class FragmentManager(MetadataManager):
             + SQL(" WHERE ")
             + clause
         )
-        return self.metadata_engine.run_sql(
+        range_filter-result = self.metadata_engine.run_sql(
             query, [object_ids] + list(args), return_shape=ResultShape.MANY_ONE
         )
+
+        if len(range_filter_result) < len(object_ids):
+            logging.info(
+                "Range filter discarded %d/%d fragment(s)",
+                len(object_ids) - len(range_filter_result),
+                len(object_ids),
+            )
+
+        # Run other filters: currently we can attempt to run the bloom filter
+        # if the fragment metadata has bloom fingerprints.
+        bloom_filter_result = filter_bloom_index(self.object_engine, range_filter_result, quals)
+        if len(bloom_filter_result) < len(range_filter_result):
+            logging.info(
+                "Bloom filter discarded %d/%d fragment(s)",
+                len(range_filter_result) - len(bloom_filter_result),
+                len(range_filter_result),
+            )
+        return bloom_filter_result
 
 
 def _conflate_changes(changeset, new_changes):

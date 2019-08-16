@@ -11,6 +11,10 @@ from splitgraph.engine.postgres.engine import SG_UD_FLAG
 
 
 def _hash_value(value):
+    if value is None:
+        # See explanation in generate_bloom_index for why this isn't
+        # a completely terrible idea.
+        value = "NULL"
     return (
         sha256(str(value).encode("utf-8")).digest(),
         sha256((str(value) + "salt").encode("utf-8")).digest(),
@@ -47,9 +51,15 @@ def generate_bloom_index(engine, object_id, changeset, column, probability=None,
     # column, the second one is a sha of the column + a deterministic salt.
     # First, we outsource the actual hashing to Postgres.
 
+    # NULLs are interesting since a sha of a NULL is a NULL again. Here, we
+    # turn them into strings with "NULL". This does mean they will collide if
+    # we are indexing a string column with an actual "NULL" in it, but in this case
+    # it will only mean chunks with NULLs will be fetched for a query with "NULL"
+    # and vice versa, which doesn't break anything (this is just a preflight optimisation).
+
     digest_query = SQL(
-        "SELECT digest(({0})::text, 'sha256'), "
-        "digest(({0})::text || 'salt', 'sha256') "
+        "SELECT digest(coalesce({0}::text, 'NULL'), 'sha256'), "
+        "digest(coalesce({0}::text, 'NULL') || 'salt', 'sha256') "
         "FROM {1}.{2} o WHERE o.{3} = true"
     ).format(
         Identifier(column),
@@ -175,7 +185,8 @@ def _match(qual, bloom_index):
 
 def filter_bloom_index(engine, object_ids, quals):
     """
-    Does things.
+    Runs a bloom filter on given qualifiers using the given objects' previously-generated
+    fingerprints.
 
     :param engine: Object engine
     :param object_ids: Object IDs
