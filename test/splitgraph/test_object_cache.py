@@ -442,21 +442,25 @@ def test_object_manager_index_clause_generation(pg_repo_local):
 
     # Test basics: single clause, comparison
     _assert_ic_result(
-        [[("a", ">", 5)]], "((NOT index ? %s OR (index #>> '{\"a\",1}')::int  > %s))", ("a", 5)
+        [[("a", ">", 5)]],
+        "((NOT (index -> 'range') ? %s " "OR (index #>> '{range,\"a\",1}')::int  > %s))",
+        ("a", 5),
     )
 
     # Two clauses in an OR-block, (in)equality
     _assert_ic_result(
         [[("a", "=", 5), ("b", "<>", 3)]],
-        "((NOT index ? %s OR %s BETWEEN (index #>> '{\"a\",0}')::int "
-        "AND (index #>> '{\"a\",1}')::int) OR (TRUE))",
+        "((NOT (index -> 'range') ? %s "
+        "OR %s BETWEEN (index #>> '{range,\"a\",0}')::int "
+        "AND (index #>> '{range,\"a\",1}')::int) OR (TRUE))",
         ("a", 5),
     )
 
     # Two clauses in an AND-block, check unknown operators
     _assert_ic_result(
         [[("a", "<", 3)], [("b", "~", 3)]],
-        "((NOT index ? %s OR (index #>> '{\"a\",0}')::int < %s)) AND ((TRUE))",
+        "((NOT (index -> 'range') ? %s "
+        "OR (index #>> '{range,\"a\",0}')::int < %s)) AND ((TRUE))",
         ("a", 3),
     )
 
@@ -479,10 +483,12 @@ def _prepare_object_filtering_dataset():
     obj_1 = OUTPUT.head.get_table("test").objects[0]
     # Sanity check on index for reference + easier debugging
     assert OUTPUT.objects.get_object_meta([obj_1])[obj_1].index == {
-        "col1": [1, 5],
-        "col2": [3, 5],
-        "col3": ["aaaa", "bbbb"],
-        "col4": ["2016-01-01T00:00:00", "2016-01-02T00:00:00"],
+        "range": {
+            "col1": [1, 5],
+            "col2": [3, 5],
+            "col3": ["aaaa", "bbbb"],
+            "col4": ["2016-01-01T00:00:00", "2016-01-02T00:00:00"],
+        }
     }
 
     # Second object: PK increments, ranges for col2 and col3 overlap, col4 has the same timestamps everywhere
@@ -491,10 +497,12 @@ def _prepare_object_filtering_dataset():
     OUTPUT.commit()
     obj_2 = OUTPUT.head.get_table("test").objects[0]
     assert OUTPUT.objects.get_object_meta([obj_2])[obj_2].index == {
-        "col1": [6, 10],
-        "col2": [1, 4],
-        "col3": ["abbb", "cccc"],
-        "col4": ["2015-12-30T00:00:00", "2015-12-30T00:00:00"],
+        "range": {
+            "col1": [6, 10],
+            "col2": [1, 4],
+            "col3": ["abbb", "cccc"],
+            "col4": ["2015-12-30T00:00:00", "2015-12-30T00:00:00"],
+        }
     }
 
     # Third object: just a single row
@@ -502,10 +510,12 @@ def _prepare_object_filtering_dataset():
     OUTPUT.commit()
     obj_3 = OUTPUT.head.get_table("test").objects[0]
     assert OUTPUT.objects.get_object_meta([obj_3])[obj_3].index == {
-        "col1": [11, 11],
-        "col2": [10, 10],
-        "col3": ["dddd", "dddd"],
-        "col4": ["2016-01-05T00:00:00", "2016-01-05T00:00:00"],
+        "range": {
+            "col1": [11, 11],
+            "col2": [10, 10],
+            "col3": ["dddd", "dddd"],
+            "col4": ["2016-01-05T00:00:00", "2016-01-05T00:00:00"],
+        }
     }
 
     # Fourth object: PK increments, ranges for col2/col3 don't overlap, col4 spans obj_1's range, we have a NULL.
@@ -515,10 +525,12 @@ def _prepare_object_filtering_dataset():
     OUTPUT.commit()
     obj_4 = OUTPUT.head.get_table("test").objects[0]
     assert OUTPUT.objects.get_object_meta([obj_4])[obj_4].index == {
-        "col1": [12, 16],
-        "col2": [11, 15],
-        "col3": ["eeee", "ffff"],
-        "col4": ["2015-12-31T00:00:00", "2016-01-04T00:00:00"],
+        "range": {
+            "col1": [12, 16],
+            "col2": [11, 15],
+            "col3": ["eeee", "ffff"],
+            "col4": ["2015-12-31T00:00:00", "2016-01-04T00:00:00"],
+        }
     }
 
     return [obj_1, obj_2, obj_3, obj_4]
