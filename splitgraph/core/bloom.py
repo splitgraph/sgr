@@ -1,12 +1,14 @@
 """Bloom filtering on fragments for equality queries."""
 import base64
 import itertools
+import struct
 from hashlib import sha256
-from math import ceil, log
+from math import ceil, log, exp
 
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from splitgraph.core._common import pretty_size
 from splitgraph.engine.postgres.engine import SG_UD_FLAG
 
 
@@ -107,6 +109,40 @@ def generate_bloom_index(engine, object_id, changeset, column, probability=None,
             result[hash_i // 8] |= 1 << hash_i % 8
 
     return no_funcs, base64.b64encode(result).decode("ascii")
+
+
+def describe(index_tuple):
+    """
+    Returns a pretty-printed summary of the bloom filter
+
+    :param index_tuple: Tuple of (k, base64-encoded fingerprint)
+        returned by generate_bloom_index
+    :return: String
+    """
+
+    k, bloom_filter = index_tuple
+    footprint = len(bloom_filter)
+    bloom_filter = base64.b64decode(bloom_filter)
+
+    # Get filter size in bytes (this is not the in-db footprint of the base64 value)
+    filter_size = len(bloom_filter)
+
+    # Calculate the number of set bits (used to approximate number of items)
+    set_bits = 0
+    for n in struct.unpack("B" * (len(bloom_filter)), bloom_filter):
+        set_bits += bin(n).count("1")
+
+    approx_items = -(filter_size * 8) / k * log(1 - set_bits / filter_size / 8)
+
+    # Calculate the rough false positive probability
+    probability = (1 - exp(-k * approx_items / filter_size / 8)) ** k
+
+    return "k=%d, size %s, approx. %d item(s), false positive probability %.1f%%" % (
+        k,
+        pretty_size(footprint),
+        int(approx_items),
+        probability * 100,
+    )
 
 
 def _prepare_bloom_quals(quals):

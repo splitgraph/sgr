@@ -227,10 +227,33 @@ def test_object_info(local_engine_empty):
 
     q = insert("objects", OBJECT_COLS)
     local_engine_empty.run_sql(
-        q, ("base_1", "FRAG", None, "ns1", 12345, "HASH1", "HASH2", {"col_1": [10, 20]})
+        q,
+        (
+            "base_1",
+            "FRAG",
+            None,
+            "ns1",
+            12345,
+            "HASH1",
+            "HASH2",
+            {
+                "range": {"col_1": [10, 20]},
+                "bloom": {"col_1": [7, "uSP6qzHHDqVq/qHMlqrAoHhpxEuZ08McrB0J6c9M"]},
+            },
+        ),
     )
     local_engine_empty.run_sql(
-        q, ("patch_1", "FRAG", "base_1", "ns1", 6789, "HASH1", "HASH2", {"col_1": [10, 20]})
+        q,
+        (
+            "patch_1",
+            "FRAG",
+            "base_1",
+            "ns1",
+            6789,
+            "HASH1",
+            "HASH2",
+            {"range": {"col_1": [10, 20]}},
+        ),
     )
     local_engine_empty.run_sql(
         q,
@@ -242,7 +265,7 @@ def test_object_info(local_engine_empty):
             1011,
             "HASH1",
             "HASH2",
-            {"col_1": [10, 20], "col_2": ["bla", "ble"]},
+            {"range": {"col_1": [10, 20], "col_2": ["bla", "ble"]}},
         ),
     )
     # base_1: external, cached locally
@@ -271,6 +294,8 @@ Insertion hash: HASH1
 Deletion hash: HASH2
 Column index:
   col_1: [10, 20]
+Bloom index: 
+  col_1: k=7, size 40.00 B, approx. 23 item(s), false positive probability 0.7%
 
 Location: cached locally
 Original location: example.com/objects/base_1.tgz (HTTP)
