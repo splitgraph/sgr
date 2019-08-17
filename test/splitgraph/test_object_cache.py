@@ -625,26 +625,31 @@ def test_object_manager_object_filtering(local_engine_empty, include_bloom):
     # (col1 > 5 OR col1 < 2)
     _assert_filter_result([[("col1", ">", 5), ("col1", "<", 2)]], [obj_1, obj_2, obj_3, obj_4])
 
-    # (col1 > 10 (selects obj_3 and 4) OR col4 == 2016-01-01 12:00:00 (selects obj_1 and 4))
+    # (col1 > 10 (selects obj_3 and 4) OR col4 == 2016-01-02 00:00:00 (selects obj_1 and 4))
     # AND col2 == 2 (selects obj_2)
     # the first clause selects objs 1, 3, 4; second clause selects 2; intersecting them results in []
     _assert_filter_result([[("col1", ">", 10)]], [obj_3, obj_4])
+    _assert_filter_result([[("col2", "=", 1)]], [obj_2])
 
-    # TODO datetimes here should be objects rather than strings
-    _assert_filter_result([[("col4", "=", "2016-01-01 12:00:00")]], [obj_1, obj_4])
-    _assert_filter_result([[("col2", "=", 2)]], [obj_2])
+    # 2016-01-02 00:00:00 only exists in obj_1 (even though obj_4 also spans that date)
+    # which the bloom filter can catch
+    if include_bloom:
+        _assert_filter_result([[("col4", "=", "2016-01-02 00:00:00")]], [obj_1])
+    else:
+        # Without the bloom filter, both obj_1 and obj_4 are returned.
+        _assert_filter_result([[("col4", "=", "2016-01-02 00:00:00")]], [obj_1, obj_4])
 
     _assert_filter_result(
-        [[("col1", ">", 10), ("col4", "=", "2016-01-01 12:00:00")]], [obj_1, obj_3, obj_4]
+        [[("col1", ">", 10), ("col4", "=", "2016-01-02 00:00:00")]], [obj_1, obj_3, obj_4]
     )
     _assert_filter_result(
-        [[("col1", ">", 10), ("col4", "=", "2016-01-01 12:00:00")], [("col2", "=", 2)]], []
+        [[("col1", ">", 10), ("col4", "=", "2016-01-02 00:00:00")], [("col2", "=", 1)]], []
     )
 
     # Same as previous but the second clause is col3 = 'dddd' (selects only obj_3),
     # hence the final result is just obj_3.
     _assert_filter_result(
-        [[("col1", ">", 10), ("col4", "=", "2016-01-01 12:00:00")], [("col3", "=", "dddd")]],
+        [[("col1", ">", 10), ("col4", "=", "2016-01-02 00:00:00")], [("col3", "=", "dddd")]],
         [obj_3],
     )
 
