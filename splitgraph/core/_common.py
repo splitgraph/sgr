@@ -564,8 +564,12 @@ def coerce_val_to_json(val):
     """
     Turn a Python value to a string/float that can be stored as JSON.
     """
-    if isinstance(val, Decimal):
+    if isinstance(val, Decimal) or isinstance(val, date):
+        # See https://www.postgresql.org/docs/11/datatype-datetime.html
+        # "ISO 8601 specifies the use of uppercase letter T to separate the date and time.
+        # PostgreSQL accepts that format on input, but on output it uses a space rather
+        # than T, as shown above. "
+        #
+        # This also matches python's str().
         return str(val)
-    if isinstance(val, date):
-        return val.isoformat()
     return val

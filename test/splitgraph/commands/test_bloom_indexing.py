@@ -1,3 +1,4 @@
+from datetime import datetime as dt, timedelta
 from unittest import mock
 
 import pytest
@@ -186,3 +187,40 @@ def test_bloom_index_deletions(local_engine_empty):
 
     for val in value_2_vals:
         assert filter_bloom_index(OUTPUT.engine, objects, [[("value_2", "=", val)]]) == objects
+
+
+def test_bloom_index_datetime(local_engine_empty):
+    OUTPUT.init()
+    OUTPUT.run_sql("CREATE TABLE test (key INTEGER PRIMARY KEY, value_1 TIMESTAMP)")
+    for i in range(50):
+        OUTPUT.run_sql(
+            "INSERT INTO test VALUES (%s, %s)", (i + 1, dt(2015, 1, 1) + timedelta(days=i))
+        )
+    head = OUTPUT.commit(extra_indexes={"test": {"bloom": {"value_1": {"probability": 0.01}}}})
+    objects = head.get_table("test").objects
+
+    # Datetimes are supported in the bloom index if they're passed in as actual datetime
+    # objects (which Multicorn does).
+
+    # Spot check some dates that exist...
+    for i in range(0, 50, 5):
+        assert (
+            filter_bloom_index(
+                OUTPUT.engine, objects, [[("value_1", "=", dt(2015, 1, 1) + timedelta(days=i))]]
+            )
+            == objects
+        )
+
+    # ...and some that don't.
+    assert (
+        filter_bloom_index(
+            OUTPUT.engine, objects, [[("value_1", "=", dt(2015, 1, 1) + timedelta(days=55))]]
+        )
+        == []
+    )
+
+    # They also work if passed in as ISO strings with space as a separator.
+    assert (
+        filter_bloom_index(OUTPUT.engine, objects, [[("value_1", "=", "2015-01-01 00:00:00")]])
+        == objects
+    )
