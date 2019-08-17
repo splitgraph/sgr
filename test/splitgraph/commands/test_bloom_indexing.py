@@ -4,7 +4,7 @@ from unittest import mock
 import pytest
 
 from splitgraph import ResultShape
-from splitgraph.core.bloom import _prepare_bloom_quals, filter_bloom_index
+from splitgraph.core.bloom import _prepare_bloom_quals, filter_bloom_index, describe
 from test.splitgraph.conftest import OUTPUT
 
 
@@ -24,6 +24,15 @@ from test.splitgraph.conftest import OUTPUT
 def test_bloom_qual_preprocessing(test_case):
     case, expected = test_case
     assert _prepare_bloom_quals(case) == expected
+
+
+def test_bloom_describe():
+    # This filter was created with probability = 0.01 and 25 items -- see
+    # if describe() reinfers that roughly correctly.
+    assert (
+        describe([7, "uSP6qzHHDqVq/qHMlqrAoHhpxEuZ08McrB0J6c9M"])
+        == "k=7, size 40.00 B, approx. 23 item(s), false positive probability 0.7%"
+    )
 
 
 def test_bloom_index_structure(local_engine_empty):
@@ -67,7 +76,10 @@ def test_bloom_index_structure(local_engine_empty):
     # For fixed probability, we have k = -log2(p) = 6.64 (up to 7)
     # and filter size = -n * ln(p) / ln(2)**2 = 249.211 bits rounded up to 30 bytes
     # which in base64 is represented with ceil(30/3*4) = 40 bytes.
-    assert index["bloom"] == {"value_1": [4, mock.ANY], "value_2": [7, mock.ANY]}
+    assert index["bloom"] == {
+        "value_1": [4, "D79jcGurra5T6d8Hk+djZA=="],
+        "value_2": [7, "uSP6qzHHDqVq/qHMlqrAoHhpxEuZ08McrB0J6c9M"],
+    }
     assert len(index["bloom"]["value_2"][1]) == 40
 
 

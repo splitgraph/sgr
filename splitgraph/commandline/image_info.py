@@ -10,6 +10,7 @@ import click
 from splitgraph import get_engine, select, ResultShape
 from splitgraph.core._common import pretty_size
 from splitgraph.core._drawing import render_tree
+from splitgraph.core.bloom import describe
 from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.object_manager import ObjectManager
 from ._common import ImageType, pluralise, RepositoryType
@@ -208,8 +209,12 @@ def object_c(object_id):
     print("Insertion hash: %s" % sg_object.insertion_hash)
     print("Deletion hash: %s" % sg_object.deletion_hash)
     print("Column index:")
-    for col_name, col_range in sg_object.index.items():
+    for col_name, col_range in sg_object.index["range"].items():
         print("  %s: [%r, %r]" % (col_name, col_range[0], col_range[1]))
+    if "bloom" in sg_object.index:
+        print("Bloom index: ")
+        for col_name, col_bloom in sg_object.index["bloom"].items():
+            print("  %s: %s" % (col_name, describe(col_bloom)))
     print()
     object_in_cache = object_manager.object_engine.run_sql(
         select("object_cache_status", "1", "object_id = %s"),
