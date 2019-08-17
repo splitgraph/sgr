@@ -497,7 +497,7 @@ def _prepare_object_filtering_dataset(include_bloom=False):
         "col1": [1, 5],
         "col2": [3, 5],
         "col3": ["aaaa", "bbbb"],
-        "col4": ["2016-01-01T00:00:00", "2016-01-02T00:00:00"],
+        "col4": ["2016-01-01 00:00:00", "2016-01-02 00:00:00"],
     }
     if include_bloom:
         assert OUTPUT.objects.get_object_meta([obj_1])[obj_1].index["bloom"] == {
@@ -516,7 +516,7 @@ def _prepare_object_filtering_dataset(include_bloom=False):
         "col1": [6, 10],
         "col2": [1, 4],
         "col3": ["abbb", "cccc"],
-        "col4": ["2015-12-30T00:00:00", "2015-12-30T00:00:00"],
+        "col4": ["2015-12-30 00:00:00", "2015-12-30 00:00:00"],
     }
     if include_bloom:
         assert OUTPUT.objects.get_object_meta([obj_2])[obj_2].index["bloom"] == {
@@ -534,7 +534,7 @@ def _prepare_object_filtering_dataset(include_bloom=False):
         "col1": [11, 11],
         "col2": [10, 10],
         "col3": ["dddd", "dddd"],
-        "col4": ["2016-01-05T00:00:00", "2016-01-05T00:00:00"],
+        "col4": ["2016-01-05 00:00:00", "2016-01-05 00:00:00"],
     }
     if include_bloom:
         assert OUTPUT.objects.get_object_meta([obj_3])[obj_3].index["bloom"] == {
@@ -554,7 +554,7 @@ def _prepare_object_filtering_dataset(include_bloom=False):
         "col1": [12, 16],
         "col2": [11, 15],
         "col3": ["eeee", "ffff"],
-        "col4": ["2015-12-31T00:00:00", "2016-01-04T00:00:00"],
+        "col4": ["2015-12-31 00:00:00", "2016-01-04 00:00:00"],
     }
     if include_bloom:
         assert OUTPUT.objects.get_object_meta([obj_4])[obj_4].index["bloom"] == {

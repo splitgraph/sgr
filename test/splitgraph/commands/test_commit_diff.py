@@ -372,7 +372,7 @@ def test_commit_diff_splitting_composite(local_engine_empty):
             "0c8c07c66327f4493c716ceafd4bf70b692a1d6fe7cb1b88e1d683a4ea0bc4e8",
             {
                 "range": {
-                    "key_1": ["2019-01-01T00:00:00", "2019-01-02T00:00:00"],
+                    "key_1": ["2019-01-01 00:00:00", "2019-01-02 00:00:00"],
                     # 'value' spans the old value (was '5'), the inserted value ('4') and the new updated value ('UPD').
                     "key_2": [2, 4],
                     "value": ["4", "UPD"],
@@ -396,7 +396,7 @@ def test_commit_diff_splitting_composite(local_engine_empty):
             "0000000000000000000000000000000000000000000000000000000000000000",
             {
                 "range": {
-                    "key_1": ["2019-01-04T00:00:00", "2019-01-04T00:00:00"],
+                    "key_1": ["2019-01-04 00:00:00", "2019-01-04 00:00:00"],
                     "key_2": [2, 2],
                     "value": ["NEW", "NEW"],
                 }
@@ -718,7 +718,7 @@ def test_various_types(local_engine_empty):
             "h": ["abcd", "test"],
             "i": ["0testtesttesttes", "testtesttesttest"],
             "j": ["0testtesttesttesttesttesttes", "testtesttesttesttesttesttest"],
-            "l": ["2013-11-02T17:30:52", "2016-01-01T01:01:05"],
+            "l": ["2013-11-02 17:30:52", "2016-01-01 01:01:05"],
             "m": ["2011-11-11", "2013-02-04"],
         }
     }
@@ -765,7 +765,7 @@ def test_various_types_with_deletion_index(local_engine_empty):
             # same as previous here
             "j": ["00esttesttesttesttesttesttes", "testtesttesttesttesttesttest"],
             # 2013-11 (U), 2016-01 (D), 2016-02 (I)
-            "l": ["2013-11-02T17:30:52", "2016-02-01T01:01:05.123456"],
+            "l": ["2013-11-02 17:30:52", "2016-02-01 01:01:05.123456"],
             # 2013 (U, old value), 2016 (D), 2012 (I), 2019 (U, new value)
             "m": ["2011-11-11", "2019-01-01"],
         }
