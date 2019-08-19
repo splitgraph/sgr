@@ -89,7 +89,22 @@ def csv_export(image_spec, query, file, layered):
     help="Try to parse the specified column(s) as timestamps.",
     default=False,
 )
-def csv_import(repository, table, file, replace, primary_key, datetime):
+@click.option("--separator", default=",", help="CSV separator to use")
+@click.option(
+    "--no-header",
+    default=False,
+    is_flag=True,
+    help="Treats the first line of the CSV as data rather than a header.",
+)
+@click.option(
+    "--skip-schema-check",
+    default=False,
+    is_flag=True,
+    help="Skips checking that the dataframe is compatible with the target schema.",
+)
+def csv_import(
+    repository, table, file, replace, primary_key, datetime, separator, no_header, skip_schema_check
+):
     """
     Import a CSV file into a checked-out Splitgraph repository. This doesn't create a new image, use `sgr commit`
     after the import and any adjustments (e.g. adding primary keys or converting column types) to do so.
@@ -116,12 +131,20 @@ def csv_import(repository, table, file, replace, primary_key, datetime):
 
         df = pd.read_csv(
             file,
+            sep=separator,
             index_col=primary_key,
             parse_dates=list(datetime) if datetime else False,
             infer_datetime_format=True,
+            header=(None if no_header else "infer"),
         )
         print("Read %d line(s)" % len(df))
-        df_to_table(df, repository, table, if_exists="replace" if replace else "patch")
+        df_to_table(
+            df,
+            repository,
+            table,
+            if_exists="replace" if replace else "patch",
+            schema_check=not skip_schema_check,
+        )
     except ImportError:
         print("Install the " "ingestion" " setuptools extra to enable this feature!")
         exit(1)

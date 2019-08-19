@@ -151,7 +151,7 @@ def _schema_compatible(source_schema, target_schema):
     return True
 
 
-def df_to_table(df, repository, table, if_exists="patch"):
+def df_to_table(df, repository, table, if_exists="patch", schema_check=True):
     """Writes a Pandas DataFrame to a checked-out Splitgraph table. Doesn't create a new image.
 
     :param df: Pandas DataFrame to insert.
@@ -160,6 +160,7 @@ def df_to_table(df, repository, table, if_exists="patch"):
     :param if_exists: Behaviour if the table already exists: 'patch' means that primary keys that already exist in the
     table will be updated and ones that don't will be inserted. 'replace' means that the table will be dropped and
     recreated.
+    :param schema_check: If False, skips checking that the dataframe is compatible with the target schema.
     """
 
     schema = repository.to_schema()
@@ -193,7 +194,7 @@ def df_to_table(df, repository, table, if_exists="patch"):
         source_schema = repository.engine.get_full_table_schema(schema, tmp_table)
         target_schema = repository.engine.get_full_table_schema(schema, table)
 
-        if not _schema_compatible(source_schema, target_schema):
+        if schema_check and not _schema_compatible(source_schema, target_schema):
             raise ValueError(
                 "Schema changes are unsupported with if_exists='patch'!"
                 "\nSource schema: %r\nTarget schema: %r" % (source_schema, target_schema)
@@ -209,7 +210,9 @@ def df_to_table(df, repository, table, if_exists="patch"):
         # Cast cols for when we're inserting things that Pandas detected as strings into columns with
         # datetimes/ints/etc
         cols_sql = SQL(",").join(Identifier(c[1]) for c in target_schema)
-        cols_sql_cast = SQL(",").join(Identifier(c[1]) + SQL("::" + c[2]) for c in target_schema)
+        cols_sql_cast = SQL(",").join(
+            Identifier(s[1]) + SQL("::" + t[2]) for s, t in zip(source_schema, target_schema)
+        )
 
         query = (
             SQL("INSERT INTO {}.{} (").format(Identifier(schema), Identifier(table))
