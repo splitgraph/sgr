@@ -488,10 +488,19 @@ def pretty_size(size):
 
 
 def _parse_dt(string):
-    try:
-        return dt.strptime(string, "%Y-%m-%dT%H:%M:%S.%f")
-    except ValueError:
-        return dt.strptime(string, "%Y-%m-%dT%H:%M:%S")
+    _formats = [
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S.%f",
+        "%Y-%m-%d %H:%M:%S.%f",
+    ]
+    for f in _formats:
+        try:
+            return dt.strptime(string, f)
+        except ValueError:
+            continue
+
+    raise ValueError("Unknown datetime format for string %s!" % string)
 
 
 def _parse_date(string):
@@ -564,7 +573,11 @@ def coerce_val_to_json(val):
     """
     Turn a Python value to a string/float that can be stored as JSON.
     """
-    if isinstance(val, Decimal) or isinstance(val, date):
+    if isinstance(val, list):
+        val = [coerce_val_to_json(v) for v in val]
+    elif isinstance(val, tuple):
+        val = tuple(coerce_val_to_json(v) for v in val)
+    elif isinstance(val, Decimal) or isinstance(val, date):
         # See https://www.postgresql.org/docs/11/datatype-datetime.html
         # "ISO 8601 specifies the use of uppercase letter T to separate the date and time.
         # PostgreSQL accepts that format on input, but on output it uses a space rather

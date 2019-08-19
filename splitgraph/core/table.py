@@ -79,10 +79,10 @@ class Table:
                 return []
 
             # Get fragment boundaries (min-max PKs of every fragment).
-            table_pk = [t[1] for t in self.table_schema if t[3]]
+            table_pk = [(t[1], t[2]) for t in self.table_schema if t[3]]
             if not table_pk:
-                table_pk = [t[1] for t in self.table_schema]
-            object_pks = object_manager.extract_min_max_pks(required_objects, table_pk)
+                table_pk = [(t[1], t[2]) for t in self.table_schema]
+            object_pks = object_manager.get_min_max_pks(required_objects, table_pk)
 
             # Group fragments into non-overlapping groups: those can be applied independently of each other.
             object_groups = get_chunk_groups(

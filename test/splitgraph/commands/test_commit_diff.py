@@ -90,17 +90,14 @@ def _compare_object_meta(meta, expected, size_tolerance=150):
     must be exactly equal apart from size which can vary within `size_tolerance`."""
 
     if len(meta) != len(expected):
-        return False
+        raise AssertionError
 
     size_index = OBJECT_COLS.index("size")
     for i in range(len(meta)):
         if i == size_index:
-            if abs(meta[i] - expected[i]) > size_tolerance:
-                return False
+            assert abs(meta[i] - expected[i]) <= size_tolerance
         else:
-            if meta[i] != expected[i]:
-                return False
-    return True
+            assert meta[i] == expected[i]
 
 
 def test_commit_chunking(local_engine_empty):
@@ -120,7 +117,7 @@ def test_commit_chunking(local_engine_empty):
         min_key = i * 5 + 1
         max_key = min(i * 5 + 5, 11)
 
-        assert _compare_object_meta(
+        _compare_object_meta(
             object_meta[obj],
             (
                 obj,  # object ID
@@ -272,7 +269,7 @@ def test_commit_diff_splitting(local_engine_empty):
         ),
     ]
     for new_object, expected in zip(new_objects, expected_meta):
-        assert _compare_object_meta(object_meta[new_object], expected)
+        _compare_object_meta(object_meta[new_object], expected)
 
     # Check the contents of the newly created objects.
     assert OUTPUT.run_sql(select(new_objects[0])) == [
@@ -358,7 +355,7 @@ def test_commit_diff_splitting_composite(local_engine_empty):
     assert len(new_objects) == 3
     # First chunk: based on the old first chunk, contains the INSERT (1/1/2019, 4) and the UPDATE (2/1/2019, 2)
     object_meta = OUTPUT.objects.get_object_meta(new_objects)
-    assert _compare_object_meta(
+    _compare_object_meta(
         object_meta[new_objects[0]],
         (
             new_objects[0],
@@ -372,6 +369,7 @@ def test_commit_diff_splitting_composite(local_engine_empty):
             "0c8c07c66327f4493c716ceafd4bf70b692a1d6fe7cb1b88e1d683a4ea0bc4e8",
             {
                 "range": {
+                    "$pk": [["2019-01-01 00:00:00", 4], ["2019-01-02 00:00:00", 2]],
                     "key_1": ["2019-01-01 00:00:00", "2019-01-02 00:00:00"],
                     # 'value' spans the old value (was '5'), the inserted value ('4') and the new updated value ('UPD').
                     "key_2": [2, 4],
@@ -383,7 +381,7 @@ def test_commit_diff_splitting_composite(local_engine_empty):
     # The second chunk is reused.
     assert new_objects[1] == base_objects[1]
     # The third chunk is new, contains (4/1/2019, 2, NEW)
-    assert _compare_object_meta(
+    _compare_object_meta(
         object_meta[new_objects[2]],
         (
             new_objects[2],
@@ -396,6 +394,7 @@ def test_commit_diff_splitting_composite(local_engine_empty):
             "0000000000000000000000000000000000000000000000000000000000000000",
             {
                 "range": {
+                    "$pk": [["2019-01-04 00:00:00", 2], ["2019-01-04 00:00:00", 2]],
                     "key_1": ["2019-01-04 00:00:00", "2019-01-04 00:00:00"],
                     "key_2": [2, 2],
                     "value": ["NEW", "NEW"],
@@ -708,6 +707,10 @@ def test_various_types(local_engine_empty):
     object_index = OUTPUT.objects.get_object_meta([object_id])[object_id].index
     expected = {
         "range": {
+            # PK was (b, c, d) and we have two tuples: old (1, 2, 3)
+            # and new (15, 22, 1). Even though the new d (3) is greater than old (1),
+            # the composite PK isn't.
+            "$pk": [[1, 2, 3], [15, 22, 1]],
             "a": [1, 2],
             "b": [1, 15],
             "c": [2, 22],
@@ -753,6 +756,9 @@ def test_various_types_with_deletion_index(local_engine_empty):
     # Make sure all rows are included since they were all affected + both old and new value for the update
     expected = {
         "range": {
+            # Original PK (b, c, d): (1, 2, 3)
+            # We inserted (16, 23, 2) and that's the largest PK tuple.
+            "$pk": [[1, 2, 3], [16, 23, 2]],
             "a": [1, 2],  # this one is a sequence so is kinda broken
             "b": [1, 16],  # original values 1 (updated row), 15 (deleted row), 16 (inserted)
             "c": [2, 23],  # 2 (U), 22 (D), 23 (I)
