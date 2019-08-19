@@ -4,6 +4,7 @@ Routines related to storing tables as fragments.
 
 import bisect
 import itertools
+import json
 import logging
 import operator
 import struct
@@ -18,6 +19,7 @@ from splitgraph.config import SPLITGRAPH_API_SCHEMA
 from splitgraph.core.bloom import generate_bloom_index, filter_bloom_index
 from splitgraph.core.metadata_manager import MetadataManager, Object
 from splitgraph.engine.postgres.engine import SG_UD_FLAG
+from splitgraph.exceptions import SplitGraphError
 from ._common import adapt, SPLITGRAPH_META_SCHEMA, ResultShape, coerce_val_to_json, select
 
 # PG types we can run max/min on
@@ -208,11 +210,12 @@ class FragmentManager(MetadataManager):
         self.object_engine = object_engine
         self.metadata_engine = metadata_engine or object_engine
 
-    def _generate_object_index(self, object_id, changeset=None, extra_indexes=None):
+    def _generate_object_index(self, object_id, table_schema, changeset=None, extra_indexes=None):
         """
         Queries the max/min values of a given fragment for each column, used to speed up querying.
 
         :param object_id: ID of an object
+        :param table_schema: Schema of the table the object belongs to.
         :param changeset: Optional, if specified, the old row values are included in the index.
         :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
         :return: Dict containing the object index.
@@ -220,21 +223,31 @@ class FragmentManager(MetadataManager):
         extra_indexes = extra_indexes or {}
 
         # Maybe we should pass the column names in instead?
-        columns = {
-            c[1]: c[2]
-            for c in self.object_engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, object_id)
-            if c[1] != SG_UD_FLAG and c[2] in _PG_INDEXABLE_TYPES
-        }
+        object_pk = [c[1] for c in table_schema if c[3]]
+        if not object_pk:
+            object_pk = [c[1] for c in table_schema]
+        column_types = {c[1]: c[2] for c in table_schema}
+        columns_to_index = [c[1] for c in table_schema if c[2] in _PG_INDEXABLE_TYPES]
 
         query = SQL("SELECT ") + SQL(",").join(
-            SQL("MIN({0}), MAX({0})").format(Identifier(c)) for c in columns
+            SQL("MIN({0}), MAX({0})").format(Identifier(c)) for c in columns_to_index
         )
         query += SQL(" FROM {}.{}").format(
             Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)
         )
         result = self.object_engine.run_sql(query, return_shape=ResultShape.ONE_MANY)
 
-        index = {col: (cmin, cmax) for col, cmin, cmax in zip(columns, result[0::2], result[1::2])}
+        index = {
+            col: (cmin, cmax)
+            for col, cmin, cmax in zip(columns_to_index, result[0::2], result[1::2])
+        }
+
+        # Also explicitly store the ranges of composite PKs (since they won't be included
+        # in the columns list) to be used for faster chunking/querying.
+        if len(object_pk) > 1:
+            # Add the PK to the same index dict but prefix it with a dollar sign so that
+            # it explicitly doesn't clash with any other columns.
+            index["$pk"] = self.extract_min_max_pks([object_id], object_pk)[0]
 
         if changeset:
             # Expand the index ranges to include the old row values in this chunk.
@@ -255,16 +268,18 @@ class FragmentManager(MetadataManager):
             #
             # See test_lq_qual_filtering for these test cases.
 
+            # We don't need to do this for the PK since the PK is always specified in deletes.
+
             # For DELETEs, we put NULLs in the non-PK columns; make sure we ignore them here.
             for _, old_row in changeset.values():
                 for col, val in old_row.items():
                     # Ignore columns that we aren't indexing because they have unsupported types.
                     # Also ignore NULL values.
-                    if col not in columns or val is None:
+                    if col not in columns_to_index or val is None:
                         continue
                     # The audit trigger stores the old row values as JSON so only supports strings and floats/ints.
                     # Hence, we have to coerce them into the values returned by the index.
-                    val = adapt(val, columns[col])
+                    val = adapt(val, column_types[col])
                     index[col] = (_min(index[col][0], val), _max(index[col][1], val))
 
         range_index = {
@@ -298,6 +313,7 @@ class FragmentManager(MetadataManager):
         namespace,
         insertion_hash,
         deletion_hash,
+        table_schema,
         parent_object=None,
         changeset=None,
         extra_indexes=None,
@@ -310,6 +326,8 @@ class FragmentManager(MetadataManager):
             objects.
         :param insertion_hash: Homomorphic hash of all rows inserted by this fragment
         :param deletion_hash: Homomorphic hash of the old values of all rows deleted by this fragment
+        :param table_schema: List of (ordinal, name, type, is_pk) with the schema of the table that this object
+            belongs to.
         :param parent_object: Parent that the object depends on (if it's a patch).
         :param changeset: For patches, changeset that produced this object. Must be a dictionary of
             {PK: (True for upserted/False for deleted, old row (if updated or deleted))}. The old values
@@ -318,7 +336,9 @@ class FragmentManager(MetadataManager):
         :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
         """
         object_size = self.object_engine.get_object_size(object_id)
-        object_index = self._generate_object_index(object_id, changeset, extra_indexes)
+        object_index = self._generate_object_index(
+            object_id, table_schema, changeset, extra_indexes
+        )
         self.register_objects(
             [
                 Object(
@@ -453,6 +473,7 @@ class FragmentManager(MetadataManager):
                         namespace=table.repository.namespace,
                         insertion_hash=insertion_hash.hex(),
                         deletion_hash=deletion_hash.hex(),
+                        table_schema=table.table_schema,
                         parent_object=parent,
                         changeset=sub_changeset,
                         extra_indexes=extra_indexes,
@@ -552,8 +573,7 @@ class FragmentManager(MetadataManager):
                 base_fragments = [self.get_all_required_objects([o])[0] for o in top_fragments]
 
                 table_pks = self.object_engine.get_change_key(schema, old_table.table_name)
-                pk_cols = [col for col, _ in table_pks]
-                min_max = self.extract_min_max_pks(base_fragments, pk_cols)
+                min_max = self.get_min_max_pks(base_fragments, table_pks)
 
                 matched, before, after = _split_changeset(changeset, min_max, table_pks)
             else:
@@ -585,9 +605,63 @@ class FragmentManager(MetadataManager):
                 [(image_hash, old_table.table_name, old_table.table_schema, old_table.objects)],
             )
 
+    def get_min_max_pks(self, fragments, table_pks):
+        """Get PK ranges for given fragments using the index (without reading the fragments).
+
+        :param fragments: List of object IDs (must be registered and with the same schema)
+        :param table_pks: List of tuples (column, type) that form the object PK.
+
+        :return: List of (min, max) PK for every fragment where PK is a tuple.
+            If a fragment doesn't exist or doesn't have a corresponding index entry,
+            a SplitGraphError is raised.
+        """
+        # If the PK isn't composite, we can read the range for the corresponding column
+        # from the index, otherwise, the indexer stored the min/max tuple under $pk.
+        pk = table_pks[0][0] if len(table_pks) == 1 else "$pk"
+
+        result = {
+            r[0]: (r[1], r[2])
+            for r in self.metadata_engine.run_sql(
+                SQL(
+                    "SELECT object_id, index #>> '{{range,{0},0}}', "
+                    "index #>> '{{range,{0},1}}' "
+                    "FROM {1}.{2} WHERE object_id IN ("
+                    + ",".join(itertools.repeat("%s", len(fragments)))
+                    + ")"
+                ).format(Identifier(pk), Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")),
+                fragments,
+            )
+        }
+
+        # Since the PK can't contain a NULL, if we do get one here, it's from the JSON query
+        # (column doesn't exist in the index).
+
+        min_max = []
+        for fragment in fragments:
+            if fragment not in result:
+                raise SplitGraphError("No metadata found for object %s!" % fragment)
+            min_pk, max_pk = result[fragment]
+            if min_pk is None or max_pk is None:
+                raise SplitGraphError("No index found for object %s!" % fragment)
+            if pk == "$pk":
+                # For composite PKs, we're given back a JSON array and need to load it.
+                min_pk = tuple(json.loads(min_pk))
+                max_pk = tuple(json.loads(max_pk))
+            else:
+                # Single-column PKs still need to be returned as tuples.
+                min_pk = (min_pk,)
+                max_pk = (max_pk,)
+
+            # Coerce the PKs to the actual Python types
+            min_pk = tuple(adapt(v, c[1]) for v, c in zip(min_pk, table_pks))
+            max_pk = tuple(adapt(v, c[1]) for v, c in zip(max_pk, table_pks))
+            min_max.append((min_pk, max_pk))
+
+        return min_max
+
     def extract_min_max_pks(self, fragments, table_pks):
         # Get the min/max PK values for every chunk
-        # Why can't we use the index here? If the PK is composite, consider this example:
+        # Why can't we use the index for individual columns here? If the PK is composite, consider this example:
         #
         # (1, 1)   CHUNK 1
         # (1, 2)   <- pk1: min 1, max 2; pk2: min1, max2 but (pk1, pk2): min (1, 1), max (2, 1)
@@ -673,11 +747,8 @@ class FragmentManager(MetadataManager):
 
         # Fragments can't be reused in tables with different schemas even if the contents match (e.g. '1' vs 1).
         # Hence, include the table schema in the object ID as well.
-        schema_hash = sha256(
-            str(self.object_engine.get_full_table_schema(source_schema, source_table)).encode(
-                "ascii"
-            )
-        ).hexdigest()
+        table_schema = self.object_engine.get_full_table_schema(source_schema, source_table)
+        schema_hash = sha256(str(table_schema).encode("ascii")).hexdigest()
 
         # Object IDs are also used to key tables in Postgres so they can't be more than 63 characters.
         # In addition, table names can't start with a number so we have to drop 2 characters from the 64-character
@@ -719,6 +790,7 @@ class FragmentManager(MetadataManager):
                     namespace=namespace,
                     insertion_hash=content_hash,
                     deletion_hash="0" * 64,
+                    table_schema=table_schema,
                     parent_object=None,
                     extra_indexes=extra_indexes,
                 )
