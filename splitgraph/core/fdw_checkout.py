@@ -40,6 +40,37 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
 
         return [q for qual in quals for q in _qual_to_cnf(qual) if q != []]
 
+    def get_rel_size(self, quals, columns):
+        """
+        Method called from the planner to estimate the resulting relation
+        size for a scan.
+        It will help the planner in deciding between different types of plans,
+        according to their costs.
+        Args:
+            quals (list): A list of Qual instances describing the filters
+                applied to this scan.
+            columns (list): The list of columns that must be returned.
+        Returns:
+            A tuple of the form (expected_number_of_rows, avg_row_width (in bytes))
+        """
+        cnf_quals = self._quals_to_cnf(quals)
+        object_manager = self.table.repository.objects
+        all_objects = list(object_manager.get_all_required_objects(self.table.objects))
+
+        # Filter to see if we can discard any objects with the quals
+        required_objects = object_manager._filter_objects(all_objects, self.table, cnf_quals)
+
+        # how do we do correct estimation of this + using index + lower latency for
+        # normal queries?
+        return 1000000 * len(required_objects), len(columns) * 100
+
+    def get_path_keys(self):
+        # Return the PK of the table (unique path something)
+        pks = [k[1] for k in self.table.table_schema if k[3]]
+        if not pks:
+            pks = [k[1] for k in self.table.table_schema]
+        return [(tuple(pks), 1)]
+
     def execute(self, quals, columns, sortkeys=None):
         """Main Multicorn entry point."""
 
