@@ -3,7 +3,7 @@ Common internal functions used by Splitgraph commands.
 """
 import logging
 import re
-from datetime import datetime as dt, date
+from datetime import datetime as dt, date, time
 from decimal import Decimal
 from functools import wraps
 
@@ -577,7 +577,7 @@ def coerce_val_to_json(val):
         val = [coerce_val_to_json(v) for v in val]
     elif isinstance(val, tuple):
         val = tuple(coerce_val_to_json(v) for v in val)
-    elif isinstance(val, Decimal) or isinstance(val, date):
+    elif isinstance(val, Decimal) or isinstance(val, date) or isinstance(val, time):
         # See https://www.postgresql.org/docs/11/datatype-datetime.html
         # "ISO 8601 specifies the use of uppercase letter T to separate the date and time.
         # PostgreSQL accepts that format on input, but on output it uses a space rather
