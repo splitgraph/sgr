@@ -143,7 +143,6 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
                 "wrapper": wrapper,
                 "engine": engine.name,
                 "object_engine": object_engine.name,
-                "use_socket": "True",
                 "namespace": self.repository.namespace,
                 "repository": self.repository.repository,
                 "image_hash": self.image_hash,
