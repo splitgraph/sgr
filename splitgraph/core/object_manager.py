@@ -114,7 +114,7 @@ class ObjectManager(FragmentManager, MetadataManager):
         )
 
     @contextmanager
-    def ensure_objects(self, table, quals=None):
+    def ensure_objects(self, table, quals=None, defer_release=False):
         """
         Resolves the objects needed to materialize a given table and makes sure they are in the local
         splitgraph_meta schema.
@@ -125,7 +125,9 @@ class ObjectManager(FragmentManager, MetadataManager):
         :param table: Table to materialize
         :param quals: Optional list of qualifiers to be passed to the fragment engine. Fragments that definitely do
             not match these qualifiers will be dropped. See the docstring for `filter_fragments` for the format.
-        :return: List of table fragments
+        :param defer_release: If True, won't release the objects on exit.
+        :return: If defer_release is True: List of table fragments and a callback that the caller must call
+            when the objects are no longer needed. If defer_release is False: just the list of table fragments.
         """
 
         # Main cache management issue here is concurrency: since we have multiple processes per connection on the
@@ -214,17 +216,34 @@ class ObjectManager(FragmentManager, MetadataManager):
                 raise ObjectCacheError(error)
             self._set_ready_flags(to_fetch, is_ready=True)
         tracer.log("fetch_objects")
-
         logging.info("Yielding to the caller")
+
+        release_callback = self._make_release_callback(required_objects, table, tracer)
         try:
             # Release the lock and yield to the caller.
             self.object_engine.commit()
             self.metadata_engine.commit()
-            yield required_objects
+
+            if defer_release:
+                yield required_objects, release_callback
+            else:
+                yield required_objects
         finally:
+            if not defer_release:
+                release_callback()
+
+    def _make_release_callback(self, required_objects, table, tracer):
+        called = False
+
+        def _f():
+            nonlocal called
+            if called:
+                return
+            called = True
             # Decrease the refcounts on the objects. Optionally, evict them.
-            # If the caller crashes, we should still hit this and decrease the refcounts, but if the whole program
-            # is terminated abnormally, we'll leak memory.
+            # If it's the caller's responsibility to call this and it crashes,
+            # we'll leak memory (hold on to objects in the cache that could have been
+            # garbage collected).
             tracer.log("caller")
             self.object_engine.run_sql("SET LOCAL synchronous_commit TO off")
             self._release_objects(required_objects)
@@ -241,6 +260,8 @@ class ObjectManager(FragmentManager, MetadataManager):
             self.object_engine.commit()
             # Release the metadata tables as well
             self.metadata_engine.commit()
+
+        return _f
 
     def make_objects_external(self, objects, handler, handler_params):
         """
