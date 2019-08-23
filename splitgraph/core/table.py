@@ -137,16 +137,12 @@ class Table:
                 staging_table = self._create_staging_table()
                 engine = self.repository.object_engine
 
-                nonlocal release_callback
-
-                # todo this doesn't get called
                 def _f():
-                    logging.info("patched release callback called")
-                    release_callback()
                     engine.delete_table(SPLITGRAPH_META_SCHEMA, staging_table)
+                    engine.commit()
 
-                logging.info("patching release callback")
-                release_callback = _f
+                nonlocal release_callback
+                release_callback.append(_f)
 
                 # Apply the fragments (just the parts that match the qualifiers) to the staging area
                 if quals:
@@ -197,9 +193,6 @@ class Table:
             yield _generate_results()
         finally:
             release_callback()
-            # # End the transaction so that nothing else deadlocks (at this point we've returned
-            # # all the data we needed to the runtime so nothing will be lost).
-            # self.repository.commit_engines()
 
     def query(self, columns, quals):
         """

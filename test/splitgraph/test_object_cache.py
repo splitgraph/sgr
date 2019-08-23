@@ -404,6 +404,60 @@ def test_object_cache_eviction_priority(local_engine_empty, pg_repo_remote, clea
         assert "Not enough space will be reclaimed" in str(e.value)
 
 
+def test_object_cache_deferred(local_engine_empty, pg_repo_remote, clean_minio):
+    # Test object manager with deferred releases (we get given a callback to
+    # release objects rather than it being done when we leave the context manager)
+    pg_repo_local = _setup_object_cache_test(pg_repo_remote)
+
+    object_manager = pg_repo_local.objects
+    fruits_v3 = pg_repo_local.images["latest"].get_table("fruits")
+    vegetables_v2 = pg_repo_local.images[pg_repo_local.images["latest"].parent_id].get_table(
+        "vegetables"
+    )
+
+    with object_manager.ensure_objects(fruits_v3, defer_release=True) as (
+        objects,
+        fruits_v3_callback,
+    ):
+        assert len(object_manager.get_downloaded_objects()) == 2
+        _assert_cache_occupancy(object_manager, 2)
+
+    assert (
+        pg_repo_local.engine.run_sql(
+            "SELECT COUNT(*) FROM splitgraph_meta.object_cache_status WHERE refcount > 0",
+            return_shape=ResultShape.ONE_ONE,
+        )
+        == 2
+    )
+
+    # Even though we left the context manager, we still haven't called the callback.
+    for object_id in objects:
+        assert _get_refcount(object_manager, object_id) == 1
+
+    # Pretend that the cache has no space and try getting a different table
+    # Free space is now 150 bytes (not enough for another object) but we haven't yet
+    # released the original objects, so the download fails.
+    object_manager.cache_size = object_manager.get_cache_occupancy() + 150
+    with pytest.raises(ObjectCacheError) as e:
+        with object_manager.ensure_objects(vegetables_v2):
+            pass
+        assert "Not enough space will be reclaimed" in str(e.value)
+
+    # Now call the callback and check the objects are released
+    fruits_v3_callback()
+    for object_id in objects:
+        assert _get_refcount(object_manager, object_id) == 0
+
+    # Call it again to make sure we don't clean up twice
+    fruits_v3_callback()
+    for object_id in objects:
+        assert _get_refcount(object_manager, object_id) == 0
+
+    # Try loading the original table again, shouldn't fail
+    with object_manager.ensure_objects(vegetables_v2):
+        pass
+
+
 def test_object_cache_make_external(pg_repo_local, clean_minio):
     # Test marking objects as external and uploading them to S3
     all_objects = list(sorted(pg_repo_local.objects.get_all_objects()))
