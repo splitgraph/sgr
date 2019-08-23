@@ -118,7 +118,6 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         cnf_quals = self._quals_to_cnf(quals)
         log_to_postgres("CNF quals: %r" % (cnf_quals,), _PG_LOGLEVEL)
 
-        logging.info("calling indirect query")
         queries, self.end_scan_callback = self.table.query_indirect(columns, cnf_quals)
         for q in queries:
             yield q

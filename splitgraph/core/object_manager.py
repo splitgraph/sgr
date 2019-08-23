@@ -14,7 +14,7 @@ from splitgraph.core.metadata_manager import MetadataManager
 from splitgraph.engine import ResultShape, switch_engine
 from splitgraph.exceptions import SplitGraphError, ObjectCacheError
 from splitgraph.hooks.external_objects import get_external_object_handler
-from ._common import META_TABLES, select, insert, pretty_size, Tracer
+from ._common import META_TABLES, select, insert, pretty_size, Tracer, CallbackList
 
 
 class ObjectManager(FragmentManager, MetadataManager):
@@ -261,7 +261,7 @@ class ObjectManager(FragmentManager, MetadataManager):
             # Release the metadata tables as well
             self.metadata_engine.commit()
 
-        return _f
+        return CallbackList([_f])
 
     def make_objects_external(self, objects, handler, handler_params):
         """

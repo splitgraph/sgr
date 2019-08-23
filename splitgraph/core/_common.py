@@ -586,3 +586,13 @@ def coerce_val_to_json(val):
         # This also matches python's str().
         return str(val)
     return val
+
+
+class CallbackList(list):
+    """
+    Used to pass around and call multiple callbacks at once.
+    """
+
+    def __call__(self, *args, **kwargs):
+        for listener in self:
+            listener(*args, **kwargs)
