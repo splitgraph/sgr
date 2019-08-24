@@ -324,7 +324,9 @@ def select(table, columns="*", where="", schema=SPLITGRAPH_META_SCHEMA, table_ar
         for example, SELECT * FROM "splitgraph_api"."get_images" (%s, %s) ...
     :return: A psycopg2.sql.SQL object with the query.
     """
-    query = SQL("SELECT " + columns + " FROM {}.{}").format(Identifier(schema), Identifier(table))
+    query = SQL("SELECT " + columns) + SQL(" FROM {}.{}").format(
+        Identifier(schema), Identifier(table)
+    )
     if table_args:
         query += SQL(table_args)
     if where:
