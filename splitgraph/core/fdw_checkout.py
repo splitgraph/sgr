@@ -119,13 +119,13 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         log_to_postgres("CNF quals: %r" % (cnf_quals,), _PG_LOGLEVEL)
 
         queries, self.end_scan_callback = self.table.query_indirect(columns, cnf_quals)
-        for q in queries:
-            yield q
+        yield from queries
 
     def end_scan(self):
-        logging.info("end scan called")
         if self.end_scan_callback:
-            self.end_scan_callback()
+            # Call the scan-end callback making sure to use
+            # the special hack to avoid deadlocks with Multicorn.
+            self.end_scan_callback(from_fdw=True)
 
     def __init__(self, fdw_options, fdw_columns):
         """The foreign data wrapper is initialized on the first query.

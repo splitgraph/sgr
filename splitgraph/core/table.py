@@ -1,12 +1,18 @@
 """Table metadata-related classes."""
 import itertools
 import logging
+import threading
 from contextlib import contextmanager
 
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.fragment_manager import get_random_object_id, quals_to_sql, get_chunk_groups
+
+
+def _delete_temporary_table(engine, schema, table):
+    engine.delete_table(schema, table)
+    engine.commit()
 
 
 class Table:
@@ -137,9 +143,33 @@ class Table:
                 staging_table = self._create_staging_table()
                 engine = self.repository.object_engine
 
-                def _f():
-                    engine.delete_table(SPLITGRAPH_META_SCHEMA, staging_table)
-                    engine.commit()
+                def _f(from_fdw=False):
+                    # This is very horrible but the way we share responsibilities between ourselves
+                    # and Multicorn leaves us no other choice. In LQ, this is supposed to be called
+                    # during EndForeignScan (at which point we are done with this staging table).
+                    # However, EndForeignScan doesn't actually release locks on tables that Multicorn
+                    # was reading (that are acquired outside of our control if the foreign scan happened in a
+                    # transaction). In that case we can't delete this table until the transaction actually finishes
+                    # -- which can't happen until we've deleted this table.
+
+                    # Other options are: generating the materialization query and running it on
+                    # Multicorn side (issues with Portals not being able to perform DDL and us having
+                    # to rework our interface), adding a DROP table to the end of the query (then
+                    # it doesn't return results, Portals still can't do DDL and the query is no longer
+                    # idempotent).
+
+                    # Instead, we pretend that we've successfully cleaned up but actually spawn
+                    # a thread whose single job will be running DROP table and waiting until it actually
+                    # returns.
+
+                    if from_fdw:
+                        thread = threading.Thread(
+                            target=_delete_temporary_table,
+                            args=(engine, SPLITGRAPH_META_SCHEMA, staging_table),
+                        )
+                        thread.start()
+                    else:
+                        _delete_temporary_table(engine, SPLITGRAPH_META_SCHEMA, staging_table)
 
                 nonlocal release_callback
                 release_callback.append(_f)

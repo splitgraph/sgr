@@ -299,9 +299,9 @@ class SQLEngine(ABC):
                 + SQL("))")
             )
         else:
-            query += SQL(");")
+            query += SQL(")")
         if unlogged:
-            query += SQL(" WITH(autovacuum_enabled=false);")
+            query += SQL(" WITH(autovacuum_enabled=false)")
         return query
 
     def create_table(self, schema, table, schema_spec, unlogged=False, temporary=False):
