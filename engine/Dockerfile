@@ -1,4 +1,4 @@
-FROM postgres:11.4
+FROM postgres:11.5
 
 RUN apt-get update -qq && \
     apt-get install -y \
@@ -75,8 +75,10 @@ COPY init_scripts /docker-entrypoint-initdb.d/
 # package itself without dependencies (deps are libc>=2.14 -- we have 2.24 -- and libpython3.7
 # which we compiled earlier)
 
-RUN wget http://http.us.debian.org/debian/pool/main/p/postgresql-11/postgresql-plpython3-11_11.4-1_amd64.deb && \
-    echo "fef3a643b255e80e1d471800ba337774df80968fd2a26c89cd90bd9709efaa21  postgresql-plpython3-11_11.4-1_amd64.deb" | shasum -c && \
-    dpkg --force-all -i postgresql-plpython3-11_11.4-1_amd64.deb
+RUN wget http://http.us.debian.org/debian/pool/main/p/postgresql-11/postgresql-plpython3-11_11.5-1_amd64.deb && \
+    echo "61fb900969c0033317779c9870d234e788a88768d899e5b5b6af2a99f6800b18  postgresql-plpython3-11_11.5-1_amd64.deb" | shasum -c && \
+    dpkg --force-all -i postgresql-plpython3-11_11.5-1_amd64.deb
+# Fix to make the dpkg status file usable (so that APT doesn't fail on future installs in the container)
+RUN sed -i "s/Depends: postgresql-11 (= 11.5-1), libc6 (>= 2.14), libpython3.7 (>= 3.7.0)/Depends: /" -i /var/lib/dpkg/status
 
 CMD ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
