@@ -166,7 +166,9 @@ def test_lq_remote(local_engine_empty, pg_repo_remote):
 
 
 @pytest.mark.registry
-def test_lq_external(local_engine_empty, unprivileged_pg_repo, pg_repo_remote_registry, clean_minio):
+def test_lq_external(
+    local_engine_empty, unprivileged_pg_repo, pg_repo_remote_registry, clean_minio
+):
     # Test layered querying works when we initialize it on a cloned repo that doesn't have any
     # cached objects (all are on S3 or other external location).
 
@@ -328,7 +330,9 @@ def test_direct_table_lq(pg_repo_local, test_case):
 
 
 @pytest.mark.registry
-def test_multiengine_flow(local_engine_empty, unprivileged_pg_repo, pg_repo_remote_registry, clean_minio):
+def test_multiengine_flow(
+    local_engine_empty, unprivileged_pg_repo, pg_repo_remote_registry, clean_minio
+):
     # Test querying by using the remote engine as a metadata store and the local engine as an object store.
     _prepare_fully_remote_repo(local_engine_empty, unprivileged_pg_repo)
     pg_repo_local = Repository.from_template(unprivileged_pg_repo, object_engine=local_engine_empty)
@@ -373,16 +377,16 @@ def test_multiengine_flow(local_engine_empty, unprivileged_pg_repo, pg_repo_remo
 
     # remote engine untouched
     assert (
-        pg_repo_remote.engine.run_sql(
+        pg_repo_remote_registry.engine.run_sql(
             "SELECT COUNT(1) FROM splitgraph_meta.object_cache_status",
             return_shape=ResultShape.ONE_ONE,
         )
         == 0
     )
-    assert len(pg_repo_remote.objects.get_downloaded_objects()) == 0
+    assert len(pg_repo_remote_registry.objects.get_downloaded_objects()) == 0
     assert (
         len(
-            set(pg_repo_remote.engine.get_all_tables("splitgraph_meta")).difference(
+            set(pg_repo_remote_registry.engine.get_all_tables("splitgraph_meta")).difference(
                 set(META_TABLES)
             )
         )

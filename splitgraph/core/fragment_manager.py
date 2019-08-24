@@ -618,18 +618,20 @@ class FragmentManager(MetadataManager):
         # If the PK isn't composite, we can read the range for the corresponding column
         # from the index, otherwise, the indexer stored the min/max tuple under $pk.
         pk = table_pks[0][0] if len(table_pks) == 1 else "$pk"
+        fields = SQL("object_id, index #>> '{{range,{0},0}}', index #>> '{{range,{0},1}}'").format(
+            Identifier(pk)
+        )
 
         result = {
             r[0]: (r[1], r[2])
             for r in self.metadata_engine.run_sql(
-                SQL(
-                    "SELECT object_id, index #>> '{{range,{0},0}}', "
-                    "index #>> '{{range,{0},1}}' "
-                    "FROM {1}.{2} WHERE object_id IN ("
-                    + ",".join(itertools.repeat("%s", len(fragments)))
-                    + ")"
-                ).format(Identifier(pk), Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")),
-                fragments,
+                select(
+                    "get_object_meta",
+                    fields.as_string(self.metadata_engine.connection),
+                    table_args="(%s)",
+                    schema=SPLITGRAPH_API_SCHEMA,
+                ),
+                (fragments,),
             )
         }
 
@@ -940,7 +942,7 @@ class FragmentManager(MetadataManager):
             + SQL(" WHERE ")
             + clause
         )
-        range_filter-result = self.metadata_engine.run_sql(
+        range_filter_result = self.metadata_engine.run_sql(
             query, [object_ids] + list(args), return_shape=ResultShape.MANY_ONE
         )
 
