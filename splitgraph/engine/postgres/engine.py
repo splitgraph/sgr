@@ -680,25 +680,22 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
         # First, delete all PKs from staging that are mentioned in the new fragment. This conveniently
         # covers both deletes and updates.
+
+        # Also, alias tables so that we don't have to send around long strings of object IDs.
         query = (
-            SQL("DELETE FROM {0}.{2} USING {1}.{3}").format(
+            SQL("DELETE FROM {0}.{2} t USING {1}.{3} s").format(
                 Identifier(target_schema),
                 Identifier(source_schema),
                 Identifier(target_table),
                 Identifier(source_table),
             )
             + SQL(" WHERE ")
-            + _generate_where_clause(
-                target_schema, target_table, ri_cols, source_schema, source_table
-            )
+            + _generate_where_clause("t", ri_cols, "s")
         )
 
         # At this point, we can insert all rows directly since we won't have any conflicts.
         # We can also apply extra qualifiers to only insert rows that match a certain query,
         # which will result in fewer rows actually being written to the staging table.
-
-        # We need to see if the fragment has an update-deletion flag. Use a custom query instead of a more
-        # expensive get_full_table_schema().
 
         # INSERT INTO target_table (col1, col2...)
         #   (SELECT col1, col2, ...
@@ -942,15 +939,10 @@ def _convert_vals(vals):
     ]
 
 
-def _generate_where_clause(schema, table, cols, schema_2, table_2):
+def _generate_where_clause(table, cols, table_2):
     return SQL(" AND ").join(
-        SQL("{}.{}.{} = {}.{}.{}").format(
-            Identifier(schema),
-            Identifier(table),
-            Identifier(c),
-            Identifier(schema_2),
-            Identifier(table_2),
-            Identifier(c),
+        SQL("{}.{} = {}.{}").format(
+            Identifier(table), Identifier(c), Identifier(table_2), Identifier(c)
         )
         for c in cols
     )

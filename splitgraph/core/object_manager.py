@@ -235,7 +235,7 @@ class ObjectManager(FragmentManager, MetadataManager):
     def _make_release_callback(self, required_objects, table, tracer):
         called = False
 
-        def _f():
+        def _f(from_fdw=False):
             nonlocal called
             if called:
                 return
