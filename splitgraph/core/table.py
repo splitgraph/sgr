@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from splitgraph.core._common import Tracer
 from splitgraph.core.fragment_manager import get_random_object_id, quals_to_sql, get_chunk_groups
 from splitgraph.engine import ResultShape
 
@@ -30,6 +31,7 @@ class QueryPlan:
         self.table = table
         self.quals = quals
         self.columns = columns
+        self.tracer = Tracer()
 
         self.object_manager = table.repository.objects
 
@@ -41,9 +43,11 @@ class QueryPlan:
         )
 
         self.required_objects = list(self.object_manager.get_all_required_objects(table.objects))
+        self.tracer.log("resolve_objects")
         self.filtered_objects = self.object_manager._filter_objects(
             self.required_objects, table, quals
         )
+        self.tracer.log("filter_objects")
 
     def get_rel_size(self):
         """
@@ -97,7 +101,13 @@ class Table:
         key = (quals, columns)
 
         if use_cache and key in self._query_plans:
-            return self._query_plans[key]
+            plan = self._query_plans[key]
+            # Reset the tracer in the plan: if this instance
+            # persisted, the resolve/filter times in it will be
+            # way in the past.
+            plan.tracer = Tracer()
+            plan.tracer.log("resolve_objects")
+            plan.tracer.log("filter_objects")
 
         plan = QueryPlan(self, quals, columns)
         self._query_plans[key] = plan
@@ -191,6 +201,7 @@ class Table:
             len(singletons),
             len(non_singletons),
         )
+        plan.tracer.log("group_fragments")
 
         if singletons:
             queries = self._generate_select_queries(
@@ -202,9 +213,11 @@ class Table:
             )
         else:
             queries = []
+        plan.tracer.log("generate_singleton_queries")
+
         if not non_singletons:
             with object_manager.ensure_objects(
-                self, objects=required_objects, defer_release=True
+                self, objects=required_objects, defer_release=True, tracer=plan.tracer
             ) as (required_objects, release_callback):
                 return queries, release_callback
 
@@ -274,10 +287,9 @@ class Table:
             ]
             yield query
 
-        with object_manager.ensure_objects(self, objects=required_objects, defer_release=True) as (
-            required_objects,
-            release_callback,
-        ):
+        with object_manager.ensure_objects(
+            self, objects=required_objects, defer_release=True, tracer=plan.tracer
+        ) as (required_objects, release_callback):
             return itertools.chain(queries, _generate_nonsingleton_query()), release_callback
 
     @contextmanager

@@ -114,7 +114,7 @@ class ObjectManager(FragmentManager, MetadataManager):
         )
 
     @contextmanager
-    def ensure_objects(self, table, objects=None, quals=None, defer_release=False):
+    def ensure_objects(self, table, objects=None, quals=None, defer_release=False, tracer=None):
         """
         Resolves the objects needed to materialize a given table and makes sure they are in the local
         splitgraph_meta schema.
@@ -140,14 +140,11 @@ class ObjectManager(FragmentManager, MetadataManager):
         #   * What happens if we crash when we're downloading these objects?
 
         self.object_engine.run_sql("SET LOCAL synchronous_commit TO OFF")
-        tracer = Tracer()
+        tracer = tracer or Tracer()
 
         if objects is not None:
             required_objects = objects
             logging.info("Using cached objects list")
-
-            tracer.log("resolve_objects")
-            tracer.log("filter_objects")
         else:
             logging.info(
                 "Resolving objects for table %s:%s:%s",
