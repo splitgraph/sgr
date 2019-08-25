@@ -8,11 +8,68 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.fragment_manager import get_random_object_id, quals_to_sql, get_chunk_groups
+from splitgraph.engine import ResultShape
 
 
 def _delete_temporary_table(engine, schema, table):
     engine.delete_table(schema, table)
     engine.commit()
+
+
+class QueryPlan:
+    """
+    Represents the initial query plan (fragments to query) for given columns and
+    qualifiers.
+    """
+
+    def __init__(self, table, quals, columns):
+        self.table = table
+        self.quals = quals
+        self.columns = columns
+
+        self.object_manager = table.repository.objects
+
+        logging.info(
+            "Resolving objects for table %s:%s:%s",
+            table.repository,
+            table.image.image_hash,
+            table.table_name,
+        )
+
+        self.required_objects = list(self.object_manager.get_all_required_objects(table.objects))
+        self.filtered_objects = self.object_manager._filter_objects(
+            self.required_objects, table, quals
+        )
+
+    def get_rel_size(self):
+        """
+        Return the expected number of rows returned by this query.
+        :return: Tuple of (amount of rows, average row width in bytes)
+        """
+        # local_objects = self.object_manager.get_downloaded_objects(limit_to=self.filtered_objects)
+        local_objects = []
+        # eeh
+        rows = sum(
+            (
+                self.table.repository.object_engine.run_sql(
+                    SQL("SELECT COUNT (*) FROM splitgraph_meta.{0}").format(Identifier(o)),
+                    return_shape=ResultShape.ONE_ONE,
+                )
+            )
+            if o in local_objects
+            else 10000
+            for o in self.filtered_objects
+        )
+
+        total_size = sum(
+            o.size
+            for o in self.table.repository.objects.get_object_meta(self.filtered_objects).values()
+        )
+
+        if rows:
+            return rows, total_size / rows
+        else:
+            return 0, 0
 
 
 class Table:
@@ -27,6 +84,20 @@ class Table:
 
         # List of fragments this table is composed of
         self.objects = objects
+
+        self._query_plans = {}
+
+    def get_query_plan(self, quals, columns, use_cache=True):
+        quals = tuple(tuple(tuple(t) for t in qual) for qual in quals)
+        columns = tuple(columns)
+        key = (quals, columns)
+
+        if use_cache and key in self._query_plans:
+            return self._query_plans[key]
+
+        plan = QueryPlan(self, quals, columns)
+        self._query_plans[key] = plan
+        return plan
 
     def materialize(self, destination, destination_schema=None, lq_server=None):
         """
@@ -88,11 +159,12 @@ class Table:
             quals, column_types={c[1]: c[2] for c in self.table_schema}
         )
 
+        plan = self.get_query_plan(quals, columns)
+
         object_manager = self.repository.objects
-        with object_manager.ensure_objects(self, quals=quals, defer_release=True) as (
-            required_objects,
-            release_callback,
-        ):
+        with object_manager.ensure_objects(
+            self, objects=plan.filtered_objects, defer_release=True
+        ) as (required_objects, release_callback):
             logging.info("Using fragments %r to satisfy the query", required_objects)
             if not required_objects:
                 return [], release_callback

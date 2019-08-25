@@ -57,50 +57,24 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         """
         logging.info("Begin get_rel_size")
         cnf_quals = self._quals_to_cnf(quals)
-        object_manager = self.table.repository.objects
-        all_objects = list(object_manager.get_all_required_objects(self.table.objects))
-
-        # Filter to see if we can discard any objects with the quals
-        required_objects = object_manager._filter_objects(all_objects, self.table, cnf_quals)
-
-        local_objects = object_manager.get_downloaded_objects(limit_to=required_objects)
-        # eeh
-        rows = sum(
-            (
-                self.table.repository.object_engine.run_sql(
-                    SQL("SELECT COUNT (*) FROM splitgraph_meta.{0}").format(Identifier(o)),
-                    return_shape=ResultShape.ONE_ONE,
-                )
-            )
-            if o in local_objects
-            else 10000
-            for o in required_objects
-        )
-
-        total_size = sum(
-            o.size for o in self.table.repository.objects.get_object_meta(required_objects).values()
-        )
-        logging.info("End get_rel_size")
-        # how do we do correct estimation of this + using index + lower latency for
-        # normal queries?
-        return rows, total_size / rows
+        plan = self.table.get_query_plan(cnf_quals, columns)
+        return plan.get_rel_size()
 
     def explain(self, quals, columns, sortkeys=None, verbose=False):
         logging.info("Begin EXPLAIN")
         cnf_quals = self._quals_to_cnf(quals)
-        object_manager = self.table.repository.objects
-        all_objects = list(object_manager.get_all_required_objects(self.table.objects))
+        plan = self.table.get_query_plan(cnf_quals, columns)
+        all_objects = plan.required_objects
+        filtered_objects = plan.filtered_objects
 
-        # Filter to see if we can discard any objects with the quals
-        required_objects = object_manager._filter_objects(all_objects, self.table, cnf_quals)
         total_size = sum(
-            o.size for o in self.table.repository.objects.get_object_meta(required_objects).values()
+            o.size for o in self.table.repository.objects.get_object_meta(filtered_objects).values()
         )
 
         logging.info("End EXPLAIN")
         return [
-            "Objects removed by filter: %d" % (len(all_objects) - len(required_objects)),
-            "Scan through %d object(s) (%s)" % (len(required_objects), pretty_size(total_size)),
+            "Objects removed by filter: %d" % (len(all_objects) - len(filtered_objects)),
+            "Scan through %d object(s) (%s)" % (len(filtered_objects), pretty_size(total_size)),
         ]
 
     def get_path_keys(self):

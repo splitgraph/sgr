@@ -114,7 +114,7 @@ class ObjectManager(FragmentManager, MetadataManager):
         )
 
     @contextmanager
-    def ensure_objects(self, table, quals=None, defer_release=False):
+    def ensure_objects(self, table, objects=None, quals=None, defer_release=False):
         """
         Resolves the objects needed to materialize a given table and makes sure they are in the local
         splitgraph_meta schema.
@@ -139,25 +139,32 @@ class ObjectManager(FragmentManager, MetadataManager):
         #     between us making that decision and increasing the refcount?
         #   * What happens if we crash when we're downloading these objects?
 
-        logging.info(
-            "Resolving objects for table %s:%s:%s",
-            table.repository,
-            table.image.image_hash,
-            table.table_name,
-        )
-
         self.object_engine.run_sql("SET LOCAL synchronous_commit TO OFF")
         tracer = Tracer()
 
-        # Resolve the table into a list of objects we want to fetch.
-        # In the future, we can also take other things into account, such as how expensive it is to load a given object
-        # (its size), location...
-        required_objects = list(self.get_all_required_objects(table.objects))
-        tracer.log("resolve_objects")
+        if objects is not None:
+            required_objects = objects
+            logging.info("Using cached objects list")
 
-        # Filter to see if we can discard any objects with the quals
-        required_objects = self._filter_objects(required_objects, table, quals)
-        tracer.log("filter_objects")
+            tracer.log("resolve_objects")
+            tracer.log("filter_objects")
+        else:
+            logging.info(
+                "Resolving objects for table %s:%s:%s",
+                table.repository,
+                table.image.image_hash,
+                table.table_name,
+            )
+
+            # Resolve the table into a list of objects we want to fetch.
+            # In the future, we can also take other things into account, such as how expensive it is to
+            # load a given object (its size), location...
+            required_objects = list(self.get_all_required_objects(table.objects))
+            tracer.log("resolve_objects")
+
+            # Filter to see if we can discard any objects with the quals
+            required_objects = self._filter_objects(required_objects, table, quals)
+            tracer.log("filter_objects")
 
         # Increase the refcount on all of the objects we're giving back to the caller so that others don't GC them.
         logging.info("Claiming %d object(s)", len(required_objects))
