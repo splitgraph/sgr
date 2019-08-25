@@ -160,115 +160,120 @@ class Table:
         )
 
         plan = self.get_query_plan(quals, columns)
+        required_objects = plan.filtered_objects
 
         object_manager = self.repository.objects
-        with object_manager.ensure_objects(
-            self, objects=plan.filtered_objects, defer_release=True
-        ) as (required_objects, release_callback):
-            logging.info("Using fragments %r to satisfy the query", required_objects)
-            if not required_objects:
-                return [], release_callback
+        logging.info("Using fragments %r to satisfy the query", required_objects)
+        if not required_objects:
+            return [], lambda from_fdw: None
 
-            # Special fast case: single-chunk groups can all be batched together
-            # and queried directly without having to copy them to a staging table.
-            # We also grab all fragments from multiple-fragment groups and batch them together
-            # for future application.
-            #
-            # Technically, we could do multiple batches of application for these groups
-            # (apply first batch to the staging table, extract the result, clean the table,
-            # apply next batch etc): in the middle of it we could also talk back to the object
-            # manager and release the objects that we don't need so that they can be garbage
-            # collected. The tradeoff is that we perform more calls to apply_fragments (hence
-            # more roundtrips).
-            non_singletons, singletons = self._extract_singleton_fragments(
-                object_manager, required_objects
+        # Special fast case: single-chunk groups can all be batched together
+        # and queried directly without having to copy them to a staging table.
+        # We also grab all fragments from multiple-fragment groups and batch them together
+        # for future application.
+        #
+        # Technically, we could do multiple batches of application for these groups
+        # (apply first batch to the staging table, extract the result, clean the table,
+        # apply next batch etc): in the middle of it we could also talk back to the object
+        # manager and release the objects that we don't need so that they can be garbage
+        # collected. The tradeoff is that we perform more calls to apply_fragments (hence
+        # more roundtrips).
+        non_singletons, singletons = self._extract_singleton_fragments(
+            object_manager, required_objects
+        )
+
+        logging.info(
+            "Fragment grouping: %d singletons, %d non-singletons",
+            len(singletons),
+            len(non_singletons),
+        )
+
+        if singletons:
+            queries = self._generate_select_queries(
+                SPLITGRAPH_META_SCHEMA,
+                singletons,
+                columns,
+                qual_sql=sql_quals,
+                qual_args=sql_qual_vals,
             )
-
-            logging.info(
-                "Fragment grouping: %d singletons, %d non-singletons",
-                len(singletons),
-                len(non_singletons),
-            )
-
-            if singletons:
-                queries = self._generate_select_queries(
-                    SPLITGRAPH_META_SCHEMA,
-                    singletons,
-                    columns,
-                    qual_sql=sql_quals,
-                    qual_args=sql_qual_vals,
-                )
-            else:
-                queries = []
-            if not non_singletons:
+        else:
+            queries = []
+        if not non_singletons:
+            with object_manager.ensure_objects(
+                self, objects=required_objects, defer_release=True
+            ) as (required_objects, release_callback):
                 return queries, release_callback
 
-            def _generate_nonsingleton_query():
-                # If we have fragments that need applying to a staging area, we don't want to
-                # do it immediately: the caller might be satisfied with the data they got from
-                # the queries to singleton fragments. So here we have a callback that, when called,
-                # actually materializes the chunks into a temporary table and then changes
-                # the table's release callback to also delete that temporary table.
+        def _generate_nonsingleton_query():
+            # If we have fragments that need applying to a staging area, we don't want to
+            # do it immediately: the caller might be satisfied with the data they got from
+            # the queries to singleton fragments. So here we have a callback that, when called,
+            # actually materializes the chunks into a temporary table and then changes
+            # the table's release callback to also delete that temporary table.
 
-                # There's a slight issue: we can't use temporary tables if we're returning
-                # pointers to tables since the caller might be in a different session.
-                staging_table = self._create_staging_table()
-                engine = self.repository.object_engine
+            # There's a slight issue: we can't use temporary tables if we're returning
+            # pointers to tables since the caller might be in a different session.
+            staging_table = self._create_staging_table()
+            engine = self.repository.object_engine
 
-                def _f(from_fdw=False):
-                    # This is very horrible but the way we share responsibilities between ourselves
-                    # and Multicorn leaves us no other choice. In LQ, this is supposed to be called
-                    # during EndForeignScan (at which point we are done with this staging table).
-                    # However, EndForeignScan doesn't actually release locks on tables that Multicorn
-                    # was reading (that are acquired outside of our control if the foreign scan happened in a
-                    # transaction). In that case we can't delete this table until the transaction actually finishes
-                    # -- which can't happen until we've deleted this table.
+            def _f(from_fdw=False):
+                # This is very horrible but the way we share responsibilities between ourselves
+                # and Multicorn leaves us no other choice. In LQ, this is supposed to be called
+                # during EndForeignScan (at which point we are done with this staging table).
+                # However, EndForeignScan doesn't actually release locks on tables that Multicorn
+                # was reading (that are acquired outside of our control if the foreign scan happened in a
+                # transaction). In that case we can't delete this table until the transaction actually finishes
+                # -- which can't happen until we've deleted this table.
 
-                    # Other options are: generating the materialization query and running it on
-                    # Multicorn side (issues with Portals not being able to perform DDL and us having
-                    # to rework our interface), adding a DROP table to the end of the query (then
-                    # it doesn't return results, Portals still can't do DDL and the query is no longer
-                    # idempotent).
+                # Other options are: generating the materialization query and running it on
+                # Multicorn side (issues with Portals not being able to perform DDL and us having
+                # to rework our interface), adding a DROP table to the end of the query (then
+                # it doesn't return results, Portals still can't do DDL and the query is no longer
+                # idempotent).
 
-                    # Instead, we pretend that we've successfully cleaned up but actually spawn
-                    # a thread whose single job will be running DROP table and waiting until it actually
-                    # returns.
+                # Instead, we pretend that we've successfully cleaned up but actually spawn
+                # a thread whose single job will be running DROP table and waiting until it actually
+                # returns.
 
-                    if from_fdw:
-                        thread = threading.Thread(
-                            target=_delete_temporary_table,
-                            args=(engine, SPLITGRAPH_META_SCHEMA, staging_table),
-                        )
-                        thread.start()
-                    else:
-                        _delete_temporary_table(engine, SPLITGRAPH_META_SCHEMA, staging_table)
-
-                nonlocal release_callback
-                release_callback.append(_f)
-
-                # Apply the fragments (just the parts that match the qualifiers) to the staging area
-                if quals:
-                    engine.apply_fragments(
-                        [(SPLITGRAPH_META_SCHEMA, o) for o in non_singletons],
-                        SPLITGRAPH_META_SCHEMA,
-                        staging_table,
-                        extra_quals=sql_quals,
-                        extra_qual_args=sql_qual_vals,
-                        schema_spec=self.table_schema,
+                if from_fdw:
+                    thread = threading.Thread(
+                        target=_delete_temporary_table,
+                        args=(engine, SPLITGRAPH_META_SCHEMA, staging_table),
                     )
+                    thread.start()
                 else:
-                    engine.apply_fragments(
-                        [(SPLITGRAPH_META_SCHEMA, o) for o in non_singletons],
-                        SPLITGRAPH_META_SCHEMA,
-                        staging_table,
-                        schema_spec=self.table_schema,
-                    )
-                engine.commit()
-                query = self._generate_select_queries(
-                    SPLITGRAPH_META_SCHEMA, [staging_table], columns
-                )[0]
-                yield query
+                    _delete_temporary_table(engine, SPLITGRAPH_META_SCHEMA, staging_table)
 
+            nonlocal release_callback
+            release_callback.append(_f)
+
+            # Apply the fragments (just the parts that match the qualifiers) to the staging area
+            if quals:
+                engine.apply_fragments(
+                    [(SPLITGRAPH_META_SCHEMA, o) for o in non_singletons],
+                    SPLITGRAPH_META_SCHEMA,
+                    staging_table,
+                    extra_quals=sql_quals,
+                    extra_qual_args=sql_qual_vals,
+                    schema_spec=self.table_schema,
+                )
+            else:
+                engine.apply_fragments(
+                    [(SPLITGRAPH_META_SCHEMA, o) for o in non_singletons],
+                    SPLITGRAPH_META_SCHEMA,
+                    staging_table,
+                    schema_spec=self.table_schema,
+                )
+            engine.commit()
+            query = self._generate_select_queries(SPLITGRAPH_META_SCHEMA, [staging_table], columns)[
+                0
+            ]
+            yield query
+
+        with object_manager.ensure_objects(self, objects=required_objects, defer_release=True) as (
+            required_objects,
+            release_callback,
+        ):
             return itertools.chain(queries, _generate_nonsingleton_query()), release_callback
 
     @contextmanager
