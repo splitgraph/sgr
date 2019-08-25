@@ -955,7 +955,7 @@ class FragmentManager(MetadataManager):
 
         # Run other filters: currently we can attempt to run the bloom filter
         # if the fragment metadata has bloom fingerprints.
-        bloom_filter_result = filter_bloom_index(self.object_engine, range_filter_result, quals)
+        bloom_filter_result = filter_bloom_index(self.metadata_engine, range_filter_result, quals)
         if len(bloom_filter_result) < len(range_filter_result):
             logging.info(
                 "Bloom filter discarded %d/%d fragment(s)",

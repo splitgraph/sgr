@@ -283,7 +283,7 @@ class Table:
         """
 
         query_gen, release_callback = self.query_indirect(columns, quals)
-        engine = self.repository.engine
+        engine = self.repository.object_engine
 
         def _generate_results():
             for query in query_gen:
