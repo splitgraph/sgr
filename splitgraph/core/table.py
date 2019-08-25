@@ -16,6 +16,10 @@ def _delete_temporary_table(engine, schema, table):
     engine.commit()
 
 
+def _empty_callback(from_fdw=False):
+    pass
+
+
 class QueryPlan:
     """
     Represents the initial query plan (fragments to query) for given columns and
@@ -88,7 +92,7 @@ class Table:
         self._query_plans = {}
 
     def get_query_plan(self, quals, columns, use_cache=True):
-        quals = tuple(tuple(tuple(t) for t in qual) for qual in quals)
+        quals = tuple(tuple(tuple(t) for t in qual) for qual in quals) if quals else None
         columns = tuple(columns)
         key = (quals, columns)
 
@@ -165,7 +169,7 @@ class Table:
         object_manager = self.repository.objects
         logging.info("Using fragments %r to satisfy the query", required_objects)
         if not required_objects:
-            return [], lambda from_fdw: None
+            return [], _empty_callback
 
         # Special fast case: single-chunk groups can all be batched together
         # and queried directly without having to copy them to a staging table.
