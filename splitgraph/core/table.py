@@ -166,7 +166,8 @@ class Table:
         :param columns: List of columns from this table to fetch
         :param quals: List of qualifiers in conjunctive normal form. See the documentation for
             FragmentManager.filter_fragments for the actual format.
-        :return: Generator of queries (bytes) and a callback.
+        :return: Generator of queries (bytes) a callback and a query plan object (containing stats
+            that are fully populated after the callback has been called to end the query).
         """
 
         sql_quals, sql_qual_vals = quals_to_sql(
@@ -179,7 +180,7 @@ class Table:
         object_manager = self.repository.objects
         logging.info("Using fragments %r to satisfy the query", required_objects)
         if not required_objects:
-            return [], _empty_callback
+            return [], _empty_callback, plan
 
         # Special fast case: single-chunk groups can all be batched together
         # and queried directly without having to copy them to a staging table.
@@ -219,7 +220,7 @@ class Table:
             with object_manager.ensure_objects(
                 self, objects=required_objects, defer_release=True, tracer=plan.tracer
             ) as (required_objects, release_callback):
-                return queries, release_callback
+                return queries, release_callback, plan
 
         def _generate_nonsingleton_query():
             # If we have fragments that need applying to a staging area, we don't want to
@@ -290,7 +291,7 @@ class Table:
         with object_manager.ensure_objects(
             self, objects=required_objects, defer_release=True, tracer=plan.tracer
         ) as (required_objects, release_callback):
-            return itertools.chain(queries, _generate_nonsingleton_query()), release_callback
+            return itertools.chain(queries, _generate_nonsingleton_query()), release_callback, plan
 
     @contextmanager
     def query_lazy(self, columns, quals):
@@ -303,7 +304,7 @@ class Table:
         :return: Generator of dictionaries of results.
         """
 
-        query_gen, release_callback = self.query_indirect(columns, quals)
+        query_gen, release_callback, _ = self.query_indirect(columns, quals)
         engine = self.repository.object_engine
 
         def _generate_results():

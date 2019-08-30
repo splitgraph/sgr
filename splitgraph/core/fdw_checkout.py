@@ -92,7 +92,7 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         cnf_quals = self._quals_to_cnf(quals)
         log_to_postgres("CNF quals: %r" % (cnf_quals,), _PG_LOGLEVEL)
 
-        queries, self.end_scan_callback = self.table.query_indirect(columns, cnf_quals)
+        queries, self.end_scan_callback, self.plan = self.table.query_indirect(columns, cnf_quals)
         yield from queries
 
     def end_scan(self):
@@ -144,3 +144,6 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
 
         # Callback that we have to call when end_scan() is called (release objects and temporary tables).
         self.end_scan_callback = None
+
+        # A QueryPlan object for the last query with stats
+        self.plan = None
