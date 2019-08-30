@@ -441,7 +441,7 @@ def test_disjoint_table_lq_indirect(pg_repo_local):
     prepare_lq_repo(pg_repo_local, commit_after_every=True, include_pk=True)
     fruits = pg_repo_local.images["latest"].get_table("fruits")
 
-    result, callback = fruits.query_indirect(
+    result, callback, _ = fruits.query_indirect(
         columns=["fruit_id", "name"], quals=[[("fruit_id", "=", "3")]]
     )
 
@@ -616,7 +616,7 @@ def test_disjoint_table_lq_two_singletons_one_overwritten_indirect(pg_repo_local
     pg_repo_local.run_sql("INSERT INTO fruits VALUES (4, 'fruit_4'), (5, 'fruit_5')")
     fruits = pg_repo_local.commit().get_table("fruits")
 
-    queries, callback = fruits.query_indirect(columns=["fruit_id", "name"], quals=None)
+    queries, callback, _ = fruits.query_indirect(columns=["fruit_id", "name"], quals=None)
 
     # At this point, we've "claimed" all objects but haven't done anything with them.
     # We're not really testing object claiming here since the objects were created locally
