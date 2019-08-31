@@ -1,0 +1,63 @@
+diff --git a/cstore_fdw.c b/cstore_fdw.c
+index 63ac172..a80fe4b 100644
+--- a/cstore_fdw.c
++++ b/cstore_fdw.c
+@@ -287,58 +287,6 @@ CStoreProcessUtility(Node * parseTree, const char *queryString,
+ 								  destReceiver, completionTag);
+ 		}
+ 	}
+-	else if (nodeTag(parseTree) == T_DropStmt)
+-	{
+-		DropStmt *dropStmt = (DropStmt *) parseTree;
+-
+-		if (dropStmt->removeType == OBJECT_EXTENSION)
+-		{
+-			bool removeCStoreDirectory = false;
+-			ListCell *objectCell = NULL;
+-
+-			foreach(objectCell, dropStmt->objects)
+-			{
+-				Node *object = (Node *) lfirst(objectCell);
+-				char *objectName = NULL;
+-
+-#if PG_VERSION_NUM >= 100000
+-				Assert(IsA(object, String));
+-				objectName = strVal(object);
+-#else
+-				Assert(IsA(object, List));
+-				objectName = strVal(linitial((List *) object));
+-#endif
+-
+-				if (strncmp(CSTORE_FDW_NAME, objectName, NAMEDATALEN) == 0)
+-				{
+-					removeCStoreDirectory = true;
+-				}
+-			}
+-
+-			CALL_PREVIOUS_UTILITY(parseTree, queryString, context, paramListInfo,
+-								  destReceiver, completionTag);
+-
+-			if (removeCStoreDirectory)
+-			{
+-				RemoveCStoreDatabaseDirectory(MyDatabaseId);
+-			}
+-		}
+-		else
+-		{
+-			ListCell *fileListCell = NULL;
+-			List *droppedTables = DroppedCStoreFilenameList((DropStmt *) parseTree);
+-
+-			CALL_PREVIOUS_UTILITY(parseTree, queryString, context, paramListInfo,
+-								  destReceiver, completionTag);
+-
+-			foreach(fileListCell, droppedTables)
+-			{
+-				char *fileName = lfirst(fileListCell);
+-
+-				DeleteCStoreTableFiles(fileName);
+-			}
+-		}
+-	}
+ 	else if (nodeTag(parseTree) == T_TruncateStmt)
+ 	{
+ 		TruncateStmt *truncateStatement = (TruncateStmt *) parseTree;
