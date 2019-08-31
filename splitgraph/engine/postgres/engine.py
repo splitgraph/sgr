@@ -445,12 +445,12 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             "SELECT splitgraph_api.set_object_schema(%s, %s)", (object_id, json.dumps(schema_spec))
         )
 
-    def _dump_object_creation(self, object_id, schema, schema_spec=None):
+    def _dump_object_creation(self, object_id, schema, table=None, schema_spec=None):
+        table = table or object_id
+
         if not schema_spec:
             schema_spec = self.get_object_schema(object_id)
-        query = SQL("CREATE FOREIGN TABLE {}.{} (").format(
-            Identifier(schema), Identifier(object_id)
-        )
+        query = SQL("CREATE FOREIGN TABLE {}.{} (").format(Identifier(schema), Identifier(table))
         query += SQL(",".join("{} %s " % ctype for _, _, ctype, _ in schema_spec)).format(
             *(Identifier(cname) for _, cname, _, _ in schema_spec)
         )
@@ -540,8 +540,8 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         for object_id in object_ids:
             self.mount_object(object_id, schema_spec=self.get_object_schema(object_id))
 
-    def mount_object(self, object_id, schema=SPLITGRAPH_META_SCHEMA, schema_spec=None):
-        query = self._dump_object_creation(object_id, schema, schema_spec)
+    def mount_object(self, object_id, table=None, schema=SPLITGRAPH_META_SCHEMA, schema_spec=None):
+        query = self._dump_object_creation(object_id, schema, table, schema_spec)
         self.run_sql(query)
 
     def store_fragment(self, inserted, deleted, schema, table, source_schema, source_table):
