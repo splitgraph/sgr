@@ -2,10 +2,9 @@
 layered querying (read-only queries to Splitgraph tables without materialization)."""
 import logging
 
-from psycopg2.sql import Identifier, SQL
-
-from splitgraph import Repository, get_engine, ResultShape
+from splitgraph import Repository, get_engine
 from splitgraph.core._common import pretty_size
+from splitgraph.core.object_manager import ObjectManager
 
 try:
     from multicorn import ForeignDataWrapper, ANY
@@ -19,6 +18,9 @@ _PG_LOGLEVEL = logging.INFO
 
 class QueryingForeignDataWrapper(ForeignDataWrapper):
     """The actual Multicorn LQ FDW class"""
+
+    # Allow injecting custom object manager classes
+    object_manager_class = ObjectManager
 
     @staticmethod
     def _quals_to_cnf(quals):
@@ -137,6 +139,9 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
             self.fdw_options["repository"],
             engine=engine,
             object_engine=object_engine,
+            object_manager=self.object_manager_class(
+                object_engine=object_engine, metadata_engine=engine
+            ),
         )
         self.table = repository.images[self.fdw_options["image_hash"]].get_table(
             self.fdw_options["table"]

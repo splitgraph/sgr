@@ -246,7 +246,7 @@ class Repository:
     Splitgraph repository API
     """
 
-    def __init__(self, namespace, repository, engine=None, object_engine=None):
+    def __init__(self, namespace, repository, engine=None, object_engine=None, object_manager=None):
         self.namespace = namespace
         self.repository = repository
 
@@ -259,7 +259,9 @@ class Repository:
         # consider making this an injected/a singleton for a given engine
         # since it's global for the whole engine but calls (e.g. repo.objects.cleanup()) make it
         # look like it's the manager for objects related to a repo.
-        self.objects = ObjectManager(object_engine=self.object_engine, metadata_engine=self.engine)
+        self.objects = object_manager or ObjectManager(
+            object_engine=self.object_engine, metadata_engine=self.engine
+        )
 
     @classmethod
     def from_template(
