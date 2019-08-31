@@ -538,9 +538,9 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             self.unmount_objects(mounted_objects)
 
         for object_id in object_ids:
-            self._mount_object(object_id, schema_spec=self.get_object_schema(object_id))
+            self.mount_object(object_id, schema_spec=self.get_object_schema(object_id))
 
-    def _mount_object(self, object_id, schema=SPLITGRAPH_META_SCHEMA, schema_spec=None):
+    def mount_object(self, object_id, schema=SPLITGRAPH_META_SCHEMA, schema_spec=None):
         query = self._dump_object_creation(object_id, schema, schema_spec)
         self.run_sql(query)
 
@@ -645,7 +645,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         schema_spec = self.get_full_table_schema(source_schema, source_table)
 
         # Mount the object first
-        self._mount_object(object_id, schema_spec=schema_spec)
+        self.mount_object(object_id, schema_spec=schema_spec)
 
         # Insert the data into the new Citus table.
         self.run_sql(
@@ -757,7 +757,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         for i, obj in enumerate(objects):
             print("(%d/%d) %s..." % (i + 1, len(objects), obj))
             schema_spec = self.get_object_schema(obj)
-            remote_engine._mount_object(obj, schema_spec=schema_spec)
+            remote_engine.mount_object(obj, schema_spec=schema_spec)
 
             stream = BytesIO()
             with self.connection.cursor() as cur:
@@ -828,7 +828,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
                 # Create the CStore table on the engine and copy the contents of the object into it.
                 schema_spec = remote_engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, obj)
-                self._mount_object(obj, schema_spec=schema_spec)
+                self.mount_object(obj, schema_spec=schema_spec)
                 self.copy_table(
                     remote_schema, obj, SPLITGRAPH_META_SCHEMA, obj, with_pk_constraints=False
                 )
