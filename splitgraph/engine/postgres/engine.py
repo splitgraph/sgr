@@ -445,12 +445,16 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             "SELECT splitgraph_api.set_object_schema(%s, %s)", (object_id, json.dumps(schema_spec))
         )
 
-    def _dump_object_creation(self, object_id, schema, table=None, schema_spec=None):
+    def dump_object_creation(
+        self, object_id, schema, table=None, schema_spec=None, if_not_exists=False
+    ):
         table = table or object_id
 
         if not schema_spec:
             schema_spec = self.get_object_schema(object_id)
-        query = SQL("CREATE FOREIGN TABLE {}.{} (").format(Identifier(schema), Identifier(table))
+        query = SQL(
+            "CREATE FOREIGN TABLE " + ("IF NOT EXISTS " if if_not_exists else "") + "{}.{} ("
+        ).format(Identifier(schema), Identifier(table))
         query += SQL(",".join("{} %s " % ctype for _, _, ctype, _ in schema_spec)).format(
             *(Identifier(cname) for _, cname, _, _ in schema_spec)
         )
@@ -467,7 +471,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
     def dump_object(self, object_id, stream, schema):
         schema_spec = self.get_object_schema(object_id)
         stream.write(
-            self._dump_object_creation(object_id, schema=schema, schema_spec=schema_spec).decode(
+            self.dump_object_creation(object_id, schema=schema, schema_spec=schema_spec).decode(
                 "utf-8"
             )
         )
