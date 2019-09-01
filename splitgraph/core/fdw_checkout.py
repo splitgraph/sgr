@@ -103,6 +103,22 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
             # the special hack to avoid deadlocks with Multicorn.
             self.end_scan_callback(from_fdw=True)
 
+    def _initialize_engines(self):
+        # Try using a UNIX socket if the engine is local to us
+        self.engine = get_engine(
+            self.fdw_options["engine"],
+            bool(self.fdw_options.get("use_socket", False)),
+            use_fdw_params=True,
+        )
+        if "object_engine" in self.fdw_options:
+            self.object_engine = get_engine(
+                self.fdw_options["object_engine"],
+                bool(self.fdw_options.get("use_socket", False)),
+                use_fdw_params=True,
+            )
+        else:
+            self.object_engine = self.engine
+
     def __init__(self, fdw_options, fdw_columns):
         """The foreign data wrapper is initialized on the first query.
         Args:
@@ -119,28 +135,15 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         # The foreign datawrapper columns (name -> ColumnDefinition).
         self.fdw_columns = fdw_columns
 
-        # Try using a UNIX socket if the engine is local to us
-        engine = get_engine(
-            self.fdw_options["engine"],
-            bool(self.fdw_options.get("use_socket", False)),
-            use_fdw_params=True,
-        )
-        if "object_engine" in self.fdw_options:
-            object_engine = get_engine(
-                self.fdw_options["object_engine"],
-                bool(self.fdw_options.get("use_socket", False)),
-                use_fdw_params=True,
-            )
-        else:
-            object_engine = engine
+        self._initialize_engines()
 
         repository = Repository(
             fdw_options["namespace"],
             self.fdw_options["repository"],
-            engine=engine,
-            object_engine=object_engine,
+            engine=self.engine,
+            object_engine=self.object_engine,
             object_manager=self.object_manager_class(
-                object_engine=object_engine, metadata_engine=engine
+                object_engine=self.object_engine, metadata_engine=self.engine
             ),
         )
         self.table = repository.images[self.fdw_options["image_hash"]].get_table(
