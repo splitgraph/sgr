@@ -46,14 +46,16 @@ RETRY_AMOUNT = 20
 class PsycopgEngine(SQLEngine):
     """Postgres SQL engine backed by a Psycopg connection."""
 
-    def __init__(self, conn_params, name):
+    def __init__(self, conn_params, name, autocommit=False):
         """
         :param conn_params: Dictionary of connection params as stored in the config.
+        :param autocommit: If True, the engine will not use transaction for its operation.
         """
         super().__init__()
 
         self.conn_params = conn_params
         self.name = name
+        self.autocommit = autocommit
 
         # Connection pool used by the engine, keyed by the thread ID (so one connection gets
         # claimed per thread). Usually, only one connection is used (for e.g. metadata management
@@ -120,6 +122,10 @@ class PsycopgEngine(SQLEngine):
                 if conn.closed:
                     self._pool.putconn(conn)
                     conn = self._pool.getconn(get_ident())
+                # Flip the autocommit flag if needed: this is a property,
+                # so changing it from False to False will fail if we're actually in a transaction.
+                if conn.autocommit != self.autocommit:
+                    conn.autocommit = self.autocommit
                 return conn
             except psycopg2.Error:
                 # The fast retrying is really used to claim connections from the pool, not to try to reconnect
@@ -545,7 +551,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             self.mount_object(object_id, schema_spec=self.get_object_schema(object_id))
 
     def mount_object(self, object_id, table=None, schema=SPLITGRAPH_META_SCHEMA, schema_spec=None):
-        query = self._dump_object_creation(object_id, schema, table, schema_spec)
+        query = self.dump_object_creation(object_id, schema, table, schema_spec)
         self.run_sql(query)
 
     def store_fragment(self, inserted, deleted, schema, table, source_schema, source_table):
