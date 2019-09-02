@@ -733,26 +733,17 @@ def test_sync_object_mounts(pg_repo_local, clean_minio):
     assert object_id in pg_repo_local.engine.get_all_tables(SPLITGRAPH_META_SCHEMA)
     assert object_id in pg_repo_local.objects.get_downloaded_objects()
     pg_repo_local.objects.make_objects_external([object_id], handler="S3", handler_params={})
-    pg_repo_local.engine.unmount_objects([object_id])
-
-    # Unmounting the foreign table fires a cstore hook that deletes the object as well.
-    assert object_id not in pg_repo_local.engine.get_all_tables(SPLITGRAPH_META_SCHEMA)
-    assert object_id not in pg_repo_local.objects.get_downloaded_objects()
 
     # Simulate the object being in /var/lib/splitgraph/objects without actually
-    # being mounted by downloading (and not mounting) it -- pretend somebody
+    # being mounted by first unmounting it (dropping the foreign table) -- pretend somebody
     # else put it there.
+    pg_repo_local.engine.unmount_objects([object_id])
 
-    _, s3_id, _ = pg_repo_local.objects.get_external_object_locations([object_id])[0]
-
-    url = pg_repo_local.engine.run_sql(
-        "SELECT splitgraph_api.get_object_download_urls(%s, %s)",
-        ("%s:%s" % (S3_HOST, S3_PORT), [s3_id]),
-        return_shape=ResultShape.ONE_ONE,
-    )[0]
-
-    pg_repo_local.engine.run_sql("SELECT splitgraph_api.download_object(%s, %s)", (object_id, url))
+    # Unmounting the foreign table doesn't delete the object from the storage (/var/lib/splitgraph/objects)
+    assert object_id not in pg_repo_local.engine.get_all_tables(SPLITGRAPH_META_SCHEMA)
     assert object_id in pg_repo_local.objects.get_downloaded_objects()
 
+    # Check that sync_object_mounts remounts the object.
     pg_repo_local.engine.sync_object_mounts()
+    assert object_id in pg_repo_local.objects.get_downloaded_objects()
     assert object_id in pg_repo_local.engine.get_all_tables(SPLITGRAPH_META_SCHEMA)
