@@ -6,9 +6,12 @@ cd cstore_fdw
 # a patch to make it possible to use cstore tables in parallel scans.
 git checkout develop_v1x
 
-# Apply a patch that disables CStore deleting the actual physical files when a table
-# or the database is dropped (in case we spin up an engine to query CStore files directly).
-git apply /build_scripts/fdws/cstore_fdw/do_not_delete_objects_on_drop.patch
+# Apply a patch that changes some CStore behaviour to make the FDW independent from its data files
+# (to let us hotswap them):
+#
+# * don't delete the actual physical files when a table or the database is dropped
+# * don't recreate the footer and open the table file in append mode if it already exists
+git apply /build_scripts/fdws/cstore_fdw/fdw_fixes.patch
 
 make
 make install
