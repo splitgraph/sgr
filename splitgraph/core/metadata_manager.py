@@ -13,7 +13,6 @@ from ._common import select, ResultShape
 OBJECT_COLS = [
     "object_id",
     "format",
-    "parent_id",
     "namespace",
     "size",
     "insertion_hash",

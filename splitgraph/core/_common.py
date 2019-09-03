@@ -162,14 +162,10 @@ def _create_metadata_schema(engine):
 
     # Object metadata.
     # * object_id: ID of the object, calculated as sha256((insertion_hash - deletion_hash) + sha256(table_schema)
-    #   + parent_id (if exists)).
     #     (-) is the vector hash subtraction operator (see `fragment_manager.Digest`)
     #     (+) is normal string concatenation
     #     table_schema is str(table_schema) of the table this fragment belongs to (as specified in the `tables` table)
     #       that encodes the column order, types, names and whether they're the primary key.
-    #   The parent_id is included in the hash so that fragments with the same contents aren't portable between
-    #     different parents (otherwise we can have issues where the same fragment with the same parent chain will be
-    #     reused for different tables, giving wrong results: see test_diff_fragment_hashing_reused_twice).
     # * insertion_hash: the homomorphic hash of all rows inserted or upserted by this fragment (sum of sha256 hashes
     #     of every row). Can be verified by running `FragmentManager.calculate_fragment_insertion_hash`.
     # * deletion_hash: the homomorphic hash of the old values of all rows that were deleted or updated by this fragment.
@@ -184,9 +180,6 @@ def _create_metadata_schema(engine):
     #   (not the size stored externally).
     # * format: Format of the object. Currently, only FRAG (splitting the table into multiple chunks that can partially
     #     overwrite each other) is supported.
-    # * parent_id: The parent of an object that the object partially overwrites. When a table is materialized, the
-    #     parent of an object is first copied into the staging area and then the child object is applied on top of it
-    #     (essentially, a breadth-first traversal of the object tree).
     # * index: A JSON object mapping columns spanned by this object to their minimum and maximum values. Used to
     #   discard and not download at all objects that definitely don't match a given query.
 
@@ -199,16 +192,9 @@ def _create_metadata_schema(engine):
                     format         VARCHAR NOT NULL,
                     index          JSONB,
                     insertion_hash VARCHAR(64),
-                    deletion_hash  VARCHAR(64),
-                    parent_id  VARCHAR)"""
+                    deletion_hash  VARCHAR(64)"""
         ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")),
         return_shape=None,
-    )
-    # PK on object_id here (one object can't have more than 1 parent)
-    engine.run_sql(
-        SQL("""CREATE INDEX idx_splitgraph_meta_objects_parent ON {}.{} (parent_id)""").format(
-            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")
-        )
     )
 
     # Keep track of objects that have been cached locally on the engine.
@@ -457,13 +443,11 @@ def gather_sync_metadata(target, source):
     existing_tags = [t for s, t in target.get_all_hashes_tags()]
     tags = {t: s for s, t in source.get_all_hashes_tags() if t not in existing_tags}
 
-    # Get the top objects required by all new tables (without their dependencies)
-    top_objects = list({o for table in table_meta for o in table[3]})
+    # Get the objects required by all new tables
+    table_objects = list({o for table in table_meta for o in table[3]})
 
-    # Expand this list to include the objects' parents etc
-    new_objects = target.objects.get_new_objects(
-        source.objects.get_all_required_objects(top_objects)
-    )
+    # Get objects that don't exist on the target
+    new_objects = target.objects.get_new_objects(table_objects)
     if new_objects:
         new_objects = list(set(new_objects))
         object_meta = source.objects.get_object_meta(new_objects)

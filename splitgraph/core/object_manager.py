@@ -153,14 +153,8 @@ class ObjectManager(FragmentManager, MetadataManager):
                 table.table_name,
             )
 
-            # Resolve the table into a list of objects we want to fetch.
-            # In the future, we can also take other things into account, such as how expensive it is to
-            # load a given object (its size), location...
-            required_objects = list(self.get_all_required_objects(table.objects))
-            tracer.log("resolve_objects")
-
             # Filter to see if we can discard any objects with the quals
-            required_objects = self._filter_objects(required_objects, table, quals)
+            required_objects = self._filter_objects(table.objects, table, quals)
             tracer.log("filter_objects")
 
         # Increase the refcount on all of the objects we're giving back to the caller so that others don't GC them.
@@ -692,7 +686,7 @@ class ObjectManager(FragmentManager, MetadataManager):
             than any physical objects on the engine.
         """
         # First, get a list of all objects required by a table.
-        primary_objects = {
+        table_objects = {
             o
             for os in self.metadata_engine.run_sql(
                 SQL("SELECT object_ids FROM {}.tables").format(Identifier(SPLITGRAPH_META_SCHEMA)),
@@ -700,10 +694,6 @@ class ObjectManager(FragmentManager, MetadataManager):
             )
             for o in os
         }
-
-        # Expand that since each object might have a parent it depends on.
-        if primary_objects:
-            primary_objects = self.get_all_required_objects(list(primary_objects))
 
         # Go through the tables that aren't repository-dependent and delete entries there.
         tables = ["object_locations", "objects"]
@@ -713,16 +703,16 @@ class ObjectManager(FragmentManager, MetadataManager):
             query = SQL("DELETE FROM {}.{}").format(
                 Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table_name)
             )
-            if primary_objects:
+            if table_objects:
                 query += SQL(
                     " WHERE object_id NOT IN ("
-                    + ",".join("%s" for _ in range(len(primary_objects)))
+                    + ",".join("%s" for _ in range(len(table_objects)))
                     + ")"
                 )
             if table_name == "object_cache_status":
-                self.object_engine.run_sql(query, list(primary_objects))
+                self.object_engine.run_sql(query, list(table_objects))
             else:
-                self.metadata_engine.run_sql(query, list(primary_objects))
+                self.metadata_engine.run_sql(query, list(table_objects))
 
         if include_physical_objects:
             # Go through the physical objects and delete them as well
@@ -735,7 +725,7 @@ class ObjectManager(FragmentManager, MetadataManager):
             }
             tables_in_meta.update(self.get_downloaded_objects())
 
-            to_delete = tables_in_meta.difference(primary_objects)
+            to_delete = tables_in_meta.difference(table_objects)
             self.delete_objects(to_delete)
 
             # Recalculate the object cache occupancy

@@ -42,7 +42,7 @@ class QueryPlan:
             table.table_name,
         )
 
-        self.required_objects = list(self.object_manager.get_all_required_objects(table.objects))
+        self.required_objects = table.objects
         self.tracer.log("resolve_objects")
         self.filtered_objects = self.object_manager._filter_objects(
             self.required_objects, table, quals

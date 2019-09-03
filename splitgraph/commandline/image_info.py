@@ -202,7 +202,6 @@ def object_c(object_id):
     sg_object = object_meta[object_id]
     print("Object ID: %s" % object_id)
     print()
-    print("Parent: %s" % sg_object.parent_id)
     print("Namespace: %s" % sg_object.namespace)
     print("Format: %s" % sg_object.format)
     print("Size: %s" % pretty_size(sg_object.size))
