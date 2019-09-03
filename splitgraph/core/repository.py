@@ -16,7 +16,7 @@ from splitgraph.core import select
 from splitgraph.core._common import insert
 from splitgraph.core.fragment_manager import get_random_object_id
 from splitgraph.core.sql import validate_import_sql
-from splitgraph.exceptions import ImageNotFoundError, CheckoutError
+from splitgraph.exceptions import ImageNotFoundError, CheckoutError, UninitializedEngineError
 from ._common import (
     manage_audit_triggers,
     set_head,
@@ -360,24 +360,27 @@ class Repository:
         if uncheckout:
             # If we're talking to a bare repo / a remote that doesn't have checked out repositories,
             # there's no point in touching the audit trigger.
-            self.object_engine.discard_pending_changes(self.to_schema())
-
-            # Dispose of the foreign servers (LQ FDW, other FDWs) for this schema if it exists (otherwise its connection
-            # won't be recycled and we can get deadlocked).
-            self.object_engine.run_sql(
-                SQL("DROP SERVER IF EXISTS {} CASCADE").format(
-                    Identifier("%s_lq_checkout_server" % self.to_schema())
+            try:
+                self.object_engine.discard_pending_changes(self.to_schema())
+            except UninitializedEngineError:
+                # If the audit trigger doesn't exist,
+                logging.warning("Audit triggers don't exist on engine %s, not running uncheckout.")
+            else:
+                # Dispose of the foreign servers (LQ FDW, other FDWs) for this schema if it exists
+                # (otherwise its connection won't be recycled and we can get deadlocked).
+                self.object_engine.run_sql(
+                    SQL("DROP SERVER IF EXISTS {} CASCADE").format(
+                        Identifier("%s_lq_checkout_server" % self.to_schema())
+                    )
                 )
-            )
-            self.object_engine.run_sql(
-                SQL("DROP SERVER IF EXISTS {} CASCADE").format(
-                    Identifier(self.to_schema() + "_server")
+                self.object_engine.run_sql(
+                    SQL("DROP SERVER IF EXISTS {} CASCADE").format(
+                        Identifier(self.to_schema() + "_server")
+                    )
                 )
-            )
-            self.object_engine.run_sql(
-                SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(self.to_schema()))
-            )
-
+                self.object_engine.run_sql(
+                    SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(self.to_schema()))
+                )
         if unregister:
             # Use the API call in case we're deleting a remote repository.
             self.engine.run_sql(
