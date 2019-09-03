@@ -224,20 +224,21 @@ def test_splitfile_schema_changes(pg_repo_local, mg_repo_local):
 
 
 def test_import_with_custom_query(pg_repo_local):
-    # Mostly a lazy way for the test to distinguish between the importer storing the results of a query as a snap
-    # and pointing the commit history to the diff for unchanged objects.
+    # Test that importing with a custom query creates a new object
     pg_repo_local.run_sql(
         "INSERT INTO fruits VALUES (3, 'mayonnaise');"
         "INSERT INTO vegetables VALUES (3, 'oregano')"
     )
     pg_repo_local.commit()
 
+    all_current_objects = pg_repo_local.objects.get_all_objects()
+
     execute_commands(load_splitfile("import_with_custom_query.splitfile"), output=OUTPUT)
     head = OUTPUT.head
     old_head = OUTPUT.images.by_hash(head.parent_id)
 
-    # First two tables imported as snaps since they had a custom query, the other two are diffs (basically a commit
-    # pointing to the same object as test/pg_mount has).
+    # First two tables imported as new objects since they had a custom query, the other two get pointed
+    # to the old pg_repo_local objects.
     tables = ["my_fruits", "o_vegetables", "vegetables", "all_fruits"]
     contents = [
         [(2, "orange")],
@@ -256,12 +257,11 @@ def test_import_with_custom_query(pg_repo_local):
         assert sorted(OUTPUT.run_sql("SELECT * FROM %s" % t)) == sorted(c)
 
     for t in tables:
-        # Tables with queries stored as snaps (no parent), actually imported tables share objects with test/pg_mount.
         objects = head.get_table(t).objects
         if t in ["my_fruits", "o_vegetables"]:
-            assert OUTPUT.objects.get_object_meta(objects)[objects[0]].parent_id is None
+            assert all(o not in all_current_objects for o in objects)
         else:
-            assert OUTPUT.objects.get_object_meta(objects)[objects[0]].parent_id is not None
+            assert all(o in all_current_objects for o in objects)
 
 
 @pytest.mark.mounting
@@ -285,11 +285,6 @@ def test_import_mount(local_engine_empty):
     head.checkout()
     for t, c in zip(tables, contents):
         assert OUTPUT.run_sql("SELECT * FROM %s" % t) == c
-
-    # All imported tables stored as snapshots
-    for t in tables:
-        objects = head.get_table(t).objects
-        assert OUTPUT.objects.get_object_meta(objects)[objects[0]].parent_id is None
 
 
 @pytest.mark.mounting
@@ -369,8 +364,6 @@ def test_from_multistage(local_engine_empty, pg_repo_remote_multitag):
     # Check the commit is based on the original empty image.
     assert stage_2.head.parent_id == "0" * 64
     assert stage_2.head.get_tables() == ["balanced_diet"]
-    obj = stage_2.head.get_table("balanced_diet").objects[0]
-    assert OUTPUT.objects.get_object_meta([obj])[obj].parent_id is None
 
 
 def test_from_local(pg_repo_local):

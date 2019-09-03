@@ -56,7 +56,7 @@ def test_push_own_delete_own_different_namespaces(local_engine_empty, readonly_p
 
     destination.push(handler="S3")
 
-    object_id = destination.head.get_table("fruits").objects[0]
+    object_id = destination.head.get_table("fruits").objects[-1]
     assert (
         remote_destination.objects.get_object_meta([object_id])[object_id].namespace
         == readonly_pg_repo.engine.conn_params["SG_NAMESPACE"]

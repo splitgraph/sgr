@@ -253,23 +253,20 @@ def test_lq_qual_filtering(local_engine_empty, unprivileged_pg_repo, clean_minio
     assert len(pg_repo_local.objects.get_downloaded_objects()) == 0
 
     query, expected, object_mask = test_case
-    required_objects = list(
-        pg_repo_local.objects.get_all_required_objects(
-            pg_repo_local.head.get_table("fruits").objects
-        )
-    )
+    required_objects = pg_repo_local.head.get_table("fruits").objects
+
     assert len(required_objects) == 5
     assert required_objects == [
         # Initial fragment
         "of22f20503d3bf17c7449b545d68ebcee887ed70089f0342c4bff38862c0dc5",
-        # DEL (1, apple)
-        "oa32db57247f1d5cea7c0ac7df3cf0a74fe552cf9fd07078612c774e8f3472f",
-        # UPS (2, guitar), replaces (2, orange)
-        "ofb935b4decb6062665d8d583d1c266f88dfddad8705d6a33eff1aa8ac1e767",
         # INS (3, mayonnaise)
-        "occfcd55402d9ca3d3d7fa18dd56227d56df4151888a9518c9103b3bac0ee8c",
+        "of0fb43e477311f82aa30055be303ff00599dfe155d737def0d00f06e07228b",
+        # DEL (1, apple)
+        "o23fe42d48d7545596d0fea1c48bcf7d64bde574d437c77cc5bb611e5f8849d",
+        # UPS (2, guitar), replaces (2, orange)
+        "o3f81f6c40ecc3366d691a2ce45f41f6f180053020607cbd0873baf0c4447dc",
         # INS (4, kumquat)
-        "o75dd055ad2465eb1c3f4e03c6f772c48d87029ef6f141fd4cf3d198e5b247f",
+        "oc27ee277aff108525a2df043d9efdaa1c3e26a4949a6cf6b53ee0c889c8559",
     ]
 
     expected_objects = [o for o, m in zip(required_objects, object_mask) if m]
@@ -395,11 +392,10 @@ def test_multiengine_flow(
 
 
 def _get_chunk_groups(table):
-    all_objects = table.repository.objects.get_all_required_objects(table.objects)
     pks = [c[1] for c in table.table_schema if c[3]]
-    chunk_boundaries = table.repository.objects.extract_min_max_pks(all_objects, pks)
+    chunk_boundaries = table.repository.objects.extract_min_max_pks(table.objects, pks)
     return get_chunk_groups(
-        [(o, min_max[0], min_max[1]) for o, min_max in zip(all_objects, chunk_boundaries)]
+        [(o, min_max[0], min_max[1]) for o, min_max in zip(table.objects, chunk_boundaries)]
     )
 
 
@@ -416,13 +412,13 @@ def test_disjoint_table_lq_one_singleton(pg_repo_local):
             # Group 1: original two rows (PKs 1 and 2)...
             ("of22f20503d3bf17c7449b545d68ebcee887ed70089f0342c4bff38862c0dc5", (1,), (2,)),
             # ...then deletion of 'apple' (PK 1)
-            ("ofb935b4decb6062665d8d583d1c266f88dfddad8705d6a33eff1aa8ac1e767", (1,), (1,)),
+            ("o23fe42d48d7545596d0fea1c48bcf7d64bde574d437c77cc5bb611e5f8849d", (1,), (1,)),
             # ...then update PK 2 to 'guitar'
-            ("occfcd55402d9ca3d3d7fa18dd56227d56df4151888a9518c9103b3bac0ee8c", (2,), (2,)),
+            ("o3f81f6c40ecc3366d691a2ce45f41f6f180053020607cbd0873baf0c4447dc", (2,), (2,)),
         ],
         # Group 2: even though this insertion happened first, it's separated out
         # as it can be applied independently.
-        [("oa32db57247f1d5cea7c0ac7df3cf0a74fe552cf9fd07078612c774e8f3472f", (3,), (3,))],
+        [("of0fb43e477311f82aa30055be303ff00599dfe155d737def0d00f06e07228b", (3,), (3,))],
     ]
 
     # Run query that only touches the chunk with pk=3: since we skip over the chunks in the first group,
@@ -449,7 +445,7 @@ def test_disjoint_table_lq_indirect(pg_repo_local):
     # to the ObjectManager to release the objects.
     assert list(result) == [
         b'SELECT "fruit_id","name" FROM "splitgraph_meta".'
-        b'"oa32db57247f1d5cea7c0ac7df3cf0a74fe552cf9fd07078612c774e8f3472f" '
+        b'"of0fb43e477311f82aa30055be303ff00599dfe155d737def0d00f06e07228b" '
         b"WHERE ((\"fruit_id\"::integer = '3'))"
     ]
     assert len(callback) == 1
@@ -464,11 +460,11 @@ def test_disjoint_table_lq_two_singletons(pg_repo_local):
     assert _get_chunk_groups(fruits) == [
         [
             ("of22f20503d3bf17c7449b545d68ebcee887ed70089f0342c4bff38862c0dc5", (1,), (2,)),
-            ("ofb935b4decb6062665d8d583d1c266f88dfddad8705d6a33eff1aa8ac1e767", (1,), (1,)),
-            ("occfcd55402d9ca3d3d7fa18dd56227d56df4151888a9518c9103b3bac0ee8c", (2,), (2,)),
+            ("o23fe42d48d7545596d0fea1c48bcf7d64bde574d437c77cc5bb611e5f8849d", (1,), (1,)),
+            ("o3f81f6c40ecc3366d691a2ce45f41f6f180053020607cbd0873baf0c4447dc", (2,), (2,)),
         ],
-        [("oa32db57247f1d5cea7c0ac7df3cf0a74fe552cf9fd07078612c774e8f3472f", (3,), (3,))],
-        [("o58cdcb577693e090a431d8db8969b502635a0fae80e21fc087ed6fb3a88fbf", (4,), (5,))],
+        [("of0fb43e477311f82aa30055be303ff00599dfe155d737def0d00f06e07228b", (3,), (3,))],
+        [("oaa6d009e485bfa91aec4ab6b0ed1ebcd67055f6a3420d29f26446b034f41cc", (4,), (5,))],
     ]
 
     # Query hitting PKs 3, 4 and 5: they hit single chunks that don't depend on anything,
@@ -492,8 +488,8 @@ def test_disjoint_table_lq_two_singletons(pg_repo_local):
             _generate_select_queries.assert_called_once_with(
                 SPLITGRAPH_META_SCHEMA,
                 [
-                    "oa32db57247f1d5cea7c0ac7df3cf0a74fe552cf9fd07078612c774e8f3472f",
-                    "o58cdcb577693e090a431d8db8969b502635a0fae80e21fc087ed6fb3a88fbf",
+                    "of0fb43e477311f82aa30055be303ff00599dfe155d737def0d00f06e07228b",
+                    "oaa6d009e485bfa91aec4ab6b0ed1ebcd67055f6a3420d29f26446b034f41cc",
                 ],
                 ["fruit_id", "name"],
                 qual_args=("3",),
@@ -512,14 +508,14 @@ def test_disjoint_table_lq_two_singletons_one_overwritten(pg_repo_local):
     assert _get_chunk_groups(fruits) == [
         [
             ("of22f20503d3bf17c7449b545d68ebcee887ed70089f0342c4bff38862c0dc5", (1,), (2,)),
-            ("ofb935b4decb6062665d8d583d1c266f88dfddad8705d6a33eff1aa8ac1e767", (1,), (1,)),
-            ("occfcd55402d9ca3d3d7fa18dd56227d56df4151888a9518c9103b3bac0ee8c", (2,), (2,)),
+            ("o23fe42d48d7545596d0fea1c48bcf7d64bde574d437c77cc5bb611e5f8849d", (1,), (1,)),
+            ("o3f81f6c40ecc3366d691a2ce45f41f6f180053020607cbd0873baf0c4447dc", (2,), (2,)),
         ],
-        [("oa32db57247f1d5cea7c0ac7df3cf0a74fe552cf9fd07078612c774e8f3472f", (3,), (3,))],
+        [("of0fb43e477311f82aa30055be303ff00599dfe155d737def0d00f06e07228b", (3,), (3,))],
         # The pk=5 update has to be added to the last chunk group, making it a non-singleton
         [
-            ("o58cdcb577693e090a431d8db8969b502635a0fae80e21fc087ed6fb3a88fbf", (4,), (5,)),
-            ("o4f89497bdd3c54879596b27f4738d5f3b20579445a7960c4bcebf4368e3981", (5,), (5,)),
+            ("oaa6d009e485bfa91aec4ab6b0ed1ebcd67055f6a3420d29f26446b034f41cc", (4,), (5,)),
+            ("o15a420721b04e9749761b5368628cb15593cb8cfdcc547107b98eddda5031d", (5,), (5,)),
         ],
     ]
 
@@ -542,11 +538,11 @@ def test_disjoint_table_lq_two_singletons_one_overwritten(pg_repo_local):
                 [
                     (
                         "splitgraph_meta",
-                        "o58cdcb577693e090a431d8db8969b502635a0fae80e21fc087ed6fb3a88fbf",
+                        "oaa6d009e485bfa91aec4ab6b0ed1ebcd67055f6a3420d29f26446b034f41cc",
                     ),
                     (
                         "splitgraph_meta",
-                        "o4f89497bdd3c54879596b27f4738d5f3b20579445a7960c4bcebf4368e3981",
+                        "o15a420721b04e9749761b5368628cb15593cb8cfdcc547107b98eddda5031d",
                     ),
                 ],
                 SPLITGRAPH_META_SCHEMA,
@@ -560,7 +556,7 @@ def test_disjoint_table_lq_two_singletons_one_overwritten(pg_repo_local):
             assert _generate_select_queries.call_args_list == [
                 mock.call(
                     SPLITGRAPH_META_SCHEMA,
-                    ["oa32db57247f1d5cea7c0ac7df3cf0a74fe552cf9fd07078612c774e8f3472f"],
+                    ["of0fb43e477311f82aa30055be303ff00599dfe155d737def0d00f06e07228b"],
                     ["fruit_id", "name"],
                     qual_args=("3",),
                     qual_sql=mock.ANY,
@@ -598,8 +594,8 @@ def test_disjoint_table_lq_two_singletons_one_overwritten(pg_repo_local):
                 mock.call(
                     SPLITGRAPH_META_SCHEMA,
                     [
-                        "oa32db57247f1d5cea7c0ac7df3cf0a74fe552cf9fd07078612c774e8f3472f",
-                        "o58cdcb577693e090a431d8db8969b502635a0fae80e21fc087ed6fb3a88fbf",
+                        "of0fb43e477311f82aa30055be303ff00599dfe155d737def0d00f06e07228b",
+                        "oaa6d009e485bfa91aec4ab6b0ed1ebcd67055f6a3420d29f26446b034f41cc",
                     ],
                     ["fruit_id", "name"],
                     qual_args=("3", "4"),
@@ -627,14 +623,14 @@ def test_disjoint_table_lq_two_singletons_one_overwritten_indirect(pg_repo_local
     # (NB: the ordering will change if we're asked to actually return sorted data).
     assert (
         next(queries) == b'SELECT "fruit_id","name" FROM "splitgraph_meta".'
-        b'"oa32db57247f1d5cea7c0ac7df3cf0a74fe552cf9fd07078612c774e8f3472f"'
+        b'"of0fb43e477311f82aa30055be303ff00599dfe155d737def0d00f06e07228b"'
     )
     assert len(callback) == 1
 
     # There's another singleton we can query directly.
     assert (
         next(queries) == b'SELECT "fruit_id","name" FROM "splitgraph_meta".'
-        b'"o58cdcb577693e090a431d8db8969b502635a0fae80e21fc087ed6fb3a88fbf"'
+        b'"oaa6d009e485bfa91aec4ab6b0ed1ebcd67055f6a3420d29f26446b034f41cc"'
     )
     assert len(callback) == 1
 

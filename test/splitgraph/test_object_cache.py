@@ -9,7 +9,6 @@ from splitgraph.core import clone, select
 from splitgraph.core.fragment_manager import _quals_to_clause
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import ObjectCacheError
-from splitgraph.hooks.s3_server import S3_HOST, S3_PORT
 from test.splitgraph.commands.test_layered_querying import prepare_lq_repo
 from test.splitgraph.conftest import (
     OUTPUT,
@@ -77,14 +76,10 @@ def test_object_cache_loading(local_engine_empty, pg_repo_remote, clean_minio):
 
     # Quick assertions on the objects and table sizes recorded by the engine, since we'll rely on them
     # to test eviction.
-    assert len(fruits_v3.objects) == 1
-    fruit_diff = fruits_v3.objects[0]
+    assert len(fruits_v3.objects) == 2
+    fruit_diff = fruits_v3.objects[1]
     assert len(fruits_v2.objects) == 1
     fruit_snap = fruits_v2.objects[0]
-
-    object_meta = object_manager.get_object_meta([fruit_diff, fruit_snap])
-    assert object_meta[fruit_diff].parent_id == fruit_snap
-    assert object_meta[fruit_snap].parent_id is None
 
     # Resolve and download the old version: only one fragment should be downloaded.
     with object_manager.ensure_objects(fruits_v2) as required_objects:
@@ -156,7 +151,7 @@ def test_object_cache_eviction(local_engine_empty, pg_repo_remote, clean_minio):
         "vegetables"
     )
     vegetables_snap = vegetables_v2.objects[0]
-    fruit_diff = fruits_v3.objects[0]
+    fruit_diff = fruits_v3.objects[1]
     fruit_snap = fruits_v2.objects[0]
 
     # Load the fruits objects into the cache
@@ -244,7 +239,7 @@ def test_object_cache_locally_created_dont_get_evicted(
     pg_repo_local.run_sql("INSERT INTO fruits VALUES (5, 'banana')")
     new_head = pg_repo_local.commit()
     fruits_v4 = new_head.get_table("fruits")
-    assert len(fruits_v4.objects) == 1
+    assert len(fruits_v4.objects) == 3
 
     head.checkout()
     new_head.checkout()
@@ -260,8 +255,7 @@ def test_object_cache_locally_created_dont_get_evicted(
     # Evict all objects -- check to see the one we created still exists.
     object_manager.run_eviction(keep_objects=[], required_space=None)
     downloaded = object_manager.get_downloaded_objects()
-    assert len(downloaded) == 1
-    assert fruits_v4.objects[0] in downloaded
+    assert downloaded == [fruits_v4.objects[-1]]
 
 
 def test_object_cache_eviction_orphaned(local_engine_empty, pg_repo_remote, clean_minio):
@@ -340,13 +334,13 @@ def test_object_cache_eviction_priority(local_engine_empty, pg_repo_remote, clea
     fruits_v2 = pg_repo_local.images[pg_repo_local.images["latest"].parent_id].get_table("fruits")
     fruits_v3 = pg_repo_local.images["latest"].get_table("fruits")
     fruit_snap = fruits_v2.objects[0]
-    fruit_diff = fruits_v3.objects[0]
+    fruit_diff = fruits_v3.objects[1]
     vegetables_v2 = pg_repo_local.images[pg_repo_local.images["latest"].parent_id].get_table(
         "vegetables"
     )
     vegetables_v3 = pg_repo_local.images["latest"].get_table("vegetables")
     vegetables_snap = vegetables_v2.objects[0]
-    vegetables_diff = vegetables_v3.objects[0]
+    vegetables_diff = vegetables_v3.objects[1]
 
     # Setup: the cache has enough space for 3 objects
     # (each object is within 100 bytes of SMALL_OBJECT_SIZE)
@@ -545,7 +539,8 @@ def _prepare_object_filtering_dataset(include_bloom=False):
     OUTPUT.run_sql("INSERT INTO test VALUES (1, 5, 'aaaa', '2016-01-01 00:00:00', '{\"a\": 5}')")
     OUTPUT.run_sql("INSERT INTO test VALUES (5, 3, 'bbbb', '2016-01-02 00:00:00', '{\"a\": 10}')")
     OUTPUT.commit(extra_indexes=bloom_params)
-    obj_1 = OUTPUT.head.get_table("test").objects[0]
+    # Grab the newly created object (at the end of the table's objects list)
+    obj_1 = OUTPUT.head.get_table("test").objects[-1]
     # Sanity check on index for reference + easier debugging
     assert OUTPUT.objects.get_object_meta([obj_1])[obj_1].index["range"] == {
         "col1": [1, 5],
@@ -565,7 +560,7 @@ def _prepare_object_filtering_dataset(include_bloom=False):
     OUTPUT.run_sql("INSERT INTO test VALUES (6, 1, 'abbb', '2015-12-30 00:00:00', '{\"a\": 5}')")
     OUTPUT.run_sql("INSERT INTO test VALUES (10, 4, 'cccc', '2015-12-30 00:00:00', '{\"a\": 10}')")
     OUTPUT.commit(extra_indexes=bloom_params)
-    obj_2 = OUTPUT.head.get_table("test").objects[0]
+    obj_2 = OUTPUT.head.get_table("test").objects[-1]
     assert OUTPUT.objects.get_object_meta([obj_2])[obj_2].index["range"] == {
         "col1": [6, 10],
         "col2": [1, 4],
@@ -583,7 +578,7 @@ def _prepare_object_filtering_dataset(include_bloom=False):
     # Third object: just a single row
     OUTPUT.run_sql("INSERT INTO test VALUES (11, 10, 'dddd', '2016-01-05 00:00:00', '{\"a\": 5}')")
     OUTPUT.commit(extra_indexes=bloom_params)
-    obj_3 = OUTPUT.head.get_table("test").objects[0]
+    obj_3 = OUTPUT.head.get_table("test").objects[-1]
     assert OUTPUT.objects.get_object_meta([obj_3])[obj_3].index["range"] == {
         "col1": [11, 11],
         "col2": [10, 10],
@@ -603,7 +598,7 @@ def _prepare_object_filtering_dataset(include_bloom=False):
     OUTPUT.run_sql("INSERT INTO test VALUES (14, 13, 'ezzz', NULL, '{\"a\": 5}')")
     OUTPUT.run_sql("INSERT INTO test VALUES (16, 15, 'ffff', '2016-01-04 00:00:00', '{\"a\": 10}')")
     OUTPUT.commit(extra_indexes=bloom_params)
-    obj_4 = OUTPUT.head.get_table("test").objects[0]
+    obj_4 = OUTPUT.head.get_table("test").objects[-1]
     assert OUTPUT.objects.get_object_meta([obj_4])[obj_4].index["range"] == {
         "col1": [12, 16],
         "col2": [11, 15],
