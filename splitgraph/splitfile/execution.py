@@ -204,7 +204,7 @@ def _execute_db_import(
         mount_handler(tmp_mountpoint.to_schema(), **handler_kwargs)
         # The foreign database is a moving target, so the new image hash is random.
         # Maybe in the future, when the object hash is a function of its contents, we can be smarter here...
-        target_hash = "%0.2x" % getrandbits(256)
+        target_hash = "{:064x}".format(getrandbits(256))
         target_mountpoint.import_tables(
             table_aliases,
             tmp_mountpoint,
@@ -316,7 +316,7 @@ def _execute_custom(node, output):
 
     print(" Executing custom command...")
     exec_hash = command.execute(repository=output, args=args)
-    command_hash = command_hash or exec_hash or "%0.2x" % getrandbits(256)
+    command_hash = command_hash or exec_hash or "{:064x}".format(getrandbits(256))
 
     image_hash = _combine_hashes([output_head, command_hash])
     print(" ---> %s" % image_hash[:12])

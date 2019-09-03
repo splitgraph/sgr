@@ -225,16 +225,20 @@ def test_commandline_commit_chunk(pg_repo_local):
 def test_object_info(local_engine_empty):
     runner = CliRunner()
 
+    base_1 = "o" + "0" * 62
+    patch_1 = "o" + "0" * 61 + "1"
+    patch_2 = "o" + "0" * 61 + "2"
+
     q = insert("objects", OBJECT_COLS)
     local_engine_empty.run_sql(
         q,
         (
-            "base_1",
+            base_1,
             "FRAG",
             "ns1",
             12345,
-            "HASH1",
-            "HASH2",
+            "0" * 64,
+            "0" * 64,
             {
                 "range": {"col_1": [10, 20]},
                 "bloom": {"col_1": [7, "uSP6qzHHDqVq/qHMlqrAoHhpxEuZ08McrB0J6c9M"]},
@@ -242,43 +246,43 @@ def test_object_info(local_engine_empty):
         ),
     )
     local_engine_empty.run_sql(
-        q, ("patch_1", "FRAG", "ns1", 6789, "HASH1", "HASH2", {"range": {"col_1": [10, 20]}})
+        q, (patch_1, "FRAG", "ns1", 6789, "0" * 64, "0" * 64, {"range": {"col_1": [10, 20]}})
     )
     local_engine_empty.run_sql(
         q,
         (
-            "patch_2",
+            patch_2,
             "FRAG",
             "ns1",
             1011,
-            "HASH1",
-            "HASH2",
+            "0" * 64,
+            "0" * 64,
             {"range": {"col_1": [10, 20], "col_2": ["bla", "ble"]}},
         ),
     )
     # base_1: external, cached locally
     local_engine_empty.run_sql(
         insert("object_locations", ("object_id", "protocol", "location")),
-        ("base_1", "HTTP", "example.com/objects/base_1.tgz"),
+        (base_1, "HTTP", "example.com/objects/base_1.tgz"),
     )
-    local_engine_empty.run_sql(insert("object_cache_status", ("object_id",)), ("base_1",))
-    local_engine_empty.mount_object("base_1", schema_spec=[(1, "col_1", "integer", False)])
+    local_engine_empty.run_sql(insert("object_cache_status", ("object_id",)), (base_1,))
+    local_engine_empty.mount_object(base_1, schema_spec=[(1, "col_1", "integer", False)])
 
     # patch_1: on the engine, uncached locally
     # patch_2: created here, cached locally
-    local_engine_empty.mount_object("patch_2", schema_spec=[(1, "col_1", "integer", False)])
+    local_engine_empty.mount_object(patch_2, schema_spec=[(1, "col_1", "integer", False)])
 
-    result = runner.invoke(object_c, ["base_1"])
+    result = runner.invoke(object_c, [base_1])
     assert result.exit_code == 0
     assert (
         result.output
-        == """Object ID: base_1
+        == f"""Object ID: {base_1}
 
 Namespace: ns1
 Format: FRAG
 Size: 12.06 KiB
-Insertion hash: HASH1
-Deletion hash: HASH2
+Insertion hash: {"0" * 64}
+Deletion hash: {"0" * 64}
 Column index:
   col_1: [10, 20]
 Bloom index: 
@@ -289,21 +293,21 @@ Original location: example.com/objects/base_1.tgz (HTTP)
 """
     )
 
-    result = runner.invoke(object_c, ["patch_1"])
+    result = runner.invoke(object_c, [patch_1])
     assert result.exit_code == 0
     assert "Location: remote engine" in result.output
 
-    result = runner.invoke(object_c, ["patch_2"])
+    result = runner.invoke(object_c, [patch_2])
     assert result.exit_code == 0
     assert "Location: created locally" in result.output
 
     result = runner.invoke(objects_c)
     assert result.exit_code == 0
-    assert result.output == "base_1\npatch_1\npatch_2\n"
+    assert result.output == "\n".join([base_1, patch_1, patch_2]) + "\n"
 
     result = runner.invoke(objects_c, ["--local"])
     assert result.exit_code == 0
-    assert result.output == "base_1\npatch_2\n"
+    assert result.output == base_1 + "\n" + patch_2 + "\n"
 
 
 def test_upstream_management(pg_repo_local):

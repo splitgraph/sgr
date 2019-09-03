@@ -132,15 +132,14 @@ def _create_metadata_schema(engine):
             """CREATE TABLE {}.{} (
                     namespace       VARCHAR NOT NULL,
                     repository      VARCHAR NOT NULL,
-                    image_hash      VARCHAR NOT NULL,
-                    parent_id       VARCHAR,
+                    image_hash      VARCHAR(64) NOT NULL CHECK (image_hash ~ '^[a-f0-9]{{64}}$'),
+                    parent_id       VARCHAR(64) CHECK (parent_id ~ '^[a-f0-9]{{64}}$' AND parent_id != image_hash),
                     created         TIMESTAMP,
-                    comment         VARCHAR,
-                    provenance_type VARCHAR,
+                    comment         VARCHAR(4096),
+                    provenance_type VARCHAR(10),
                     provenance_data JSONB,
                     PRIMARY KEY (namespace, repository, image_hash))"""
-        ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("images")),
-        return_shape=None,
+        ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("images"))
     )
     engine.run_sql(
         SQL(
@@ -148,7 +147,7 @@ def _create_metadata_schema(engine):
                     namespace  VARCHAR NOT NULL,
                     repository VARCHAR NOT NULL,
                     image_hash VARCHAR,
-                    tag        VARCHAR,
+                    tag        VARCHAR(64),
                     PRIMARY KEY (namespace, repository, tag),
                     CONSTRAINT sh_fk FOREIGN KEY (namespace, repository, image_hash) REFERENCES {}.{})"""
         ).format(
@@ -156,8 +155,7 @@ def _create_metadata_schema(engine):
             Identifier("tags"),
             Identifier(SPLITGRAPH_META_SCHEMA),
             Identifier("images"),
-        ),
-        return_shape=None,
+        )
     )
 
     # Object metadata.
@@ -186,15 +184,15 @@ def _create_metadata_schema(engine):
     engine.run_sql(
         SQL(
             """CREATE TABLE {}.{} (
-                    object_id      VARCHAR NOT NULL PRIMARY KEY,
+                    object_id      VARCHAR NOT NULL PRIMARY KEY CHECK (object_id ~ '^o[a-f0-9]{{62}}$'),
                     namespace      VARCHAR NOT NULL,
                     size           BIGINT,
                     format         VARCHAR NOT NULL,
                     index          JSONB,
-                    insertion_hash VARCHAR(64),
-                    deletion_hash  VARCHAR(64))"""
-        ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")),
-        return_shape=None,
+                    insertion_hash VARCHAR(64) NOT NULL CHECK (insertion_hash ~ '^[a-f0-9]{{64}}$'),
+                    deletion_hash  VARCHAR(64) NOT NULL CHECK (deletion_hash ~ '^[a-f0-9]{{64}}$'),
+                    CONSTRAINT valid_format CHECK (format IN ('FRAG')))"""
+        ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects"))
     )
 
     # Keep track of objects that have been cached locally on the engine.
@@ -227,8 +225,6 @@ def _create_metadata_schema(engine):
     )
 
     # Maps a given table at a given point in time to a list of fragments that it's assembled from.
-    # Only the "top" fragments are listed here: to actually materialize a given table, the parent chain of every
-    # object in this list is crawled until the base object is reached.
     engine.run_sql(
         SQL(
             """CREATE TABLE {}.{} (
@@ -245,8 +241,28 @@ def _create_metadata_schema(engine):
             Identifier("tables"),
             Identifier(SPLITGRAPH_META_SCHEMA),
             Identifier("images"),
-        ),
-        return_shape=None,
+        )
+    )
+
+    engine.run_sql(
+        SQL(
+            """CREATE OR REPLACE FUNCTION {0}.validate_table_objects() returns trigger as $$
+DECLARE missing_objects_count INT;
+BEGIN
+    missing_objects_count = (SELECT COUNT(*) FROM unnest(NEW.object_ids) AS o(object_id)
+        WHERE NOT EXISTS (SELECT * FROM {0}.objects WHERE object_id = o.object_id));
+    IF (missing_objects_count != 0) THEN
+        RAISE check_violation USING message = 'Some objects in the object_ids array aren''t registered!';
+    END IF;
+    RETURN NEW;
+    END;
+$$
+LANGUAGE plpgsql;
+    
+CREATE TRIGGER sg_validate_table_objects_trigger BEFORE INSERT OR UPDATE ON {0}.tables
+FOR EACH ROW EXECUTE PROCEDURE {0}.validate_table_objects();
+"""
+        ).format(Identifier(SPLITGRAPH_META_SCHEMA))
     )
 
     # Keep track of what the remotes for a given repository are (by default, we create an "origin" remote
@@ -260,8 +276,7 @@ def _create_metadata_schema(engine):
                     remote_namespace   VARCHAR NOT NULL,
                     remote_repository  VARCHAR NOT NULL,
                     PRIMARY KEY (namespace, repository))"""
-        ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("upstream")),
-        return_shape=None,
+        ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("upstream"))
     )
 
     # Map objects to their locations for when they don't live on the remote or the local machine but instead
@@ -281,8 +296,7 @@ def _create_metadata_schema(engine):
             Identifier(SPLITGRAPH_META_SCHEMA),
             Identifier("object_locations"),
             Identifier("objects"),
-        ),
-        return_shape=None,
+        )
     )
 
     # Miscellaneous key-value information for this engine (e.g. whether uploading objects is permitted etc).
@@ -292,8 +306,7 @@ def _create_metadata_schema(engine):
                     key   VARCHAR NOT NULL,
                     value VARCHAR NOT NULL,
                     PRIMARY KEY (key))"""
-        ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("info")),
-        return_shape=None,
+        ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("info"))
     )
 
 
