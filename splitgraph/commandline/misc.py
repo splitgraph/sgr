@@ -263,8 +263,9 @@ def config_c(no_shielding, config_format):
 
 @click.command(name="dump")
 @click.argument("repository", type=RepositoryType())
-def dump_c(repository):
+@click.option("--exclude-object-contents", is_flag=True, default=False)
+def dump_c(repository, exclude_object_contents):
     """
     Dump a repository to SQL.
     """
-    repository.dump(sys.stdout)
+    repository.dump(sys.stdout, exclude_object_contents=exclude_object_contents)

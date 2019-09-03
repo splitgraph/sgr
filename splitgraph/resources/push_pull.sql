@@ -111,26 +111,6 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 -- OBJECT API
 --
 
--- get_object_path(object_ids): list all objects that object_ids depend on, recursively.
--- Returns a table with object IDs as well as which object from the original array
--- caused this object to be included.
-CREATE OR REPLACE FUNCTION splitgraph_api.get_object_path(object_ids varchar[])
-  RETURNS TABLE (
-    object_id VARCHAR,
-    original_object_id VARCHAR) AS $$
-DECLARE result varchar[];
-BEGIN
-    -- Something weird happens if this function is invoked exactly five times and the execution
-    -- time goes from ~6ms to ~100ms. Possibly something to do with the query planner?
-    RETURN QUERY EXECUTE 'WITH RECURSIVE parents AS'
-        ' (SELECT object_id, parent_id, 0 AS depth, object_id AS original_object_id '
-        ' FROM splitgraph_meta.objects WHERE object_id = ANY($1)'
-        '    UNION ALL SELECT o.object_id, o.parent_id, p.depth + 1, p.original_object_id'
-        '    FROM parents p JOIN splitgraph_meta.objects o ON p.parent_id = o.object_id)'
-        ' SELECT object_id, original_object_id FROM parents ORDER BY depth DESC' USING object_ids;
-END
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
-
 -- get_new_objects(object_ids): return objects in object_ids that don't exist in the object tree.
 CREATE OR REPLACE FUNCTION splitgraph_api.get_new_objects(object_ids varchar[]) RETURNS varchar[] AS $$
 BEGIN
@@ -145,7 +125,6 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_object_meta(object_ids varchar[])
   RETURNS TABLE (
     object_id      VARCHAR,
     format         VARCHAR,
-    parent_id      VARCHAR,
     namespace      VARCHAR,
     size           BIGINT,
     insertion_hash VARCHAR(64),
@@ -153,7 +132,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_object_meta(object_ids varchar[])
     index          JSONB) AS $$
 BEGIN
    RETURN QUERY
-   SELECT o.object_id, o.format, o.parent_id, o.namespace, o.size, o.insertion_hash, o.deletion_hash, o.index
+   SELECT o.object_id, o.format, o.namespace, o.size, o.insertion_hash, o.deletion_hash, o.index
    FROM splitgraph_meta.objects o
    WHERE o.object_id = ANY(object_ids);
 END
@@ -174,14 +153,14 @@ END
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 
 -- add_object(object_id, format, parent_id, namespace, size, insertion_hash, deletion_hash, index)
-CREATE OR REPLACE FUNCTION splitgraph_api.add_object(object_id varchar, format varchar, parent_id varchar,
+CREATE OR REPLACE FUNCTION splitgraph_api.add_object(object_id varchar, format varchar,
     namespace varchar, size bigint, insertion_hash varchar(64),
     deletion_hash varchar(64), index jsonb) RETURNS void AS $$
 BEGIN
     PERFORM splitgraph_api.check_privilege(namespace);
-    INSERT INTO splitgraph_meta.objects(object_id, format, parent_id, namespace, size,
+    INSERT INTO splitgraph_meta.objects(object_id, format, namespace, size,
         insertion_hash, deletion_hash, index)
-    VALUES (object_id, format, parent_id, namespace, size, insertion_hash, deletion_hash, index);
+    VALUES (object_id, format, namespace, size, insertion_hash, deletion_hash, index);
 END
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 

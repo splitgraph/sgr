@@ -681,11 +681,12 @@ class Repository:
         self.object_engine.run_sql("SET search_path TO public")
         return result
 
-    def dump(self, stream):
+    def dump(self, stream, exclude_object_contents=False):
         """
         Creates an SQL dump with the metadata required for the repository and all of its objects.
 
         :param stream: Stream to dump the data into.
+        :param exclude_object_contents: Only dump the metadata but not the actual object contents.
         """
         # First, go through the metadata tables required to reconstruct the repository.
         stream.write("""--\n-- Metadata tables --\n--\n""")
@@ -718,11 +719,8 @@ class Repository:
                 for object_id in image.get_table(table_name).objects:
                     required_objects.add(object_id)
 
-        # Expand the required objects into a full set
-        all_required_objects = set(self.objects.get_all_required_objects(list(required_objects)))
-
         object_qual = (
-            "object_id IN (" + ",".join(itertools.repeat("%s", len(all_required_objects))) + ")"
+            "object_id IN (" + ",".join(itertools.repeat("%s", len(required_objects))) + ")"
         )
 
         stream.write("""--\n-- Object metadata --\n--\n""")
@@ -735,7 +733,7 @@ class Repository:
                             Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table_name)
                         )
                         + SQL(object_qual),
-                        list(all_required_objects),
+                        list(required_objects),
                     ).decode("utf-8")
                 )
                 stream.write(";\n\n")
@@ -744,13 +742,16 @@ class Repository:
                     table_name,
                     stream,
                     where=object_qual,
-                    where_args=list(all_required_objects),
+                    where_args=list(required_objects),
                 )
+
+            if exclude_object_contents:
+                return
 
             stream.write("""--\n-- Object contents --\n--\n""")
 
             # Finally, dump the actual objects
-            for object_id in all_required_objects:
+            for object_id in required_objects:
                 stream.write(
                     cur.mogrify(
                         SQL("DROP FOREIGN TABLE IF EXISTS {}.{};\n").format(
