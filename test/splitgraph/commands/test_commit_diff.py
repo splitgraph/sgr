@@ -26,9 +26,9 @@ def test_diff_head(pg_repo_local):
 
 
 # Run some tests in multiple commit modes:
-# * SNAP: store as a full table snapshot
-# * DIFF: store as a single DIFF fragment
-# * DIFF_SPLIT: split a DIFF into multiple based on SNAP boundaries
+# * SNAP: refragment and store the table as a new object(s)
+# * DIFF: delta-compress the changes and only store those
+# * DIFF_SPLIT: split changes according to fragment boundaries
 _COMMIT_MODES = ["SNAP", "DIFF", "DIFF_SPLIT"]
 
 
@@ -122,7 +122,6 @@ def test_commit_chunking(local_engine_empty):
             (
                 obj,  # object ID
                 "FRAG",  # fragment format
-                None,  # no parent
                 "",  # no namespace
                 SMALL_OBJECT_SIZE,
                 # Don't check the insertion hash in this test
@@ -181,6 +180,12 @@ def test_commit_diff_splitting(local_engine_empty):
     # Store the IDs of the base fragments
     base_objects = head.get_table("test").objects
 
+    assert base_objects == [
+        "oab9901c63e816f8e3d47366740a76323f168fbe5d5b25eed6b8f4755c37e10",
+        "o899fa68202a31c0e10c98c446d9ffef8812d7bdce76ef9da92545172fbb47b",
+        "oe1841cba2d9d9598f2cd3226bb60bb77dc77b98a05808e7976ed112bade86f",
+    ]
+
     # Create a change that affects multiple base fragments:
     # INSERT PK 0 (goes before all fragments)
     OUTPUT.run_sql("INSERT INTO test VALUES (0, 'zero', -1)")
@@ -201,19 +206,50 @@ def test_commit_diff_splitting(local_engine_empty):
     new_head.checkout()
     new_objects = new_head.get_table("test").objects
 
-    # We expect 5 objects: one with PK 0, one with PKs 4 and 5 (updating the first base fragment),
-    # one with PK 6 (updating the second base fragment), one with PK 11 (same as the old fragment since it's
-    # unchanged) and one with PK 12.
+    # We expect 4 new objects at the end of the table meta:
+    #   * one with PK 0
+    #   * one with PKs 4 and 5 (partially overwriting the first base fragment)
+    #   * one with PK 6 (updating the second base fragment)
+    #   * one with PK 12 (end of the table)
+    added_objects = [
+        "o99852c525a1ce918bbfe1206d2d556f5a72f96c45b3e88efba88f853d2b963",
+        "oe5bf159b64337a12623bb048e03c19406611ae8adf1ff60d7eb48817a45c18",
+        "o1f065efbddb5004585b5c74cd614f1f66cfd9ceda622842ec0874be072def3",
+        "o52e6b337372c63b8afddc52cab9ef16f899d836048692c42cf6fed2ebcf30a",
+    ]
+    assert new_objects == base_objects + added_objects
 
-    # Check the old fragment with PK 11 is reused.
-    assert new_objects[2] == base_objects[2]
-    object_meta = OUTPUT.objects.get_object_meta(new_objects)
+    # Check the contents of the newly created objects.
+    assert OUTPUT.run_sql(select(added_objects[0])) == [
+        (True, 0, "zero", -1)
+    ]  # upserted=True, key, new_value_1, new_value_2
+    assert OUTPUT.run_sql(select(added_objects[1])) == [
+        (True, 5, "UPDATED", 8),  # upserted=True, key, new_value_1, new_value_2
+        (False, 4, None, None),
+    ]  # upserted=False, key, None, None
+    assert OUTPUT.run_sql(select(added_objects[2])) == [
+        (False, 6, None, None)
+    ]  # upserted=False, key, None, None
+    assert OUTPUT.run_sql(select(added_objects[3])) == [
+        (True, 12, "l", 22)
+    ]  # upserted=True, key, new_value_1, new_value_2
+
+    object_meta = OUTPUT.objects.get_object_meta(added_objects)
     # The new fragments should be at the end of the table objects' list.
     expected_meta = [
         (
-            new_objects[0],
+            added_objects[0],
             "FRAG",
-            base_objects[0],
+            "",
+            SMALL_OBJECT_SIZE,
+            "3cfbe8fa6fc546264936e29f402d7263510481c88a8d27190d82b3d5830cbcbf",
+            # no deletions in this fragment
+            "0000000000000000000000000000000000000000000000000000000000000000",
+            {"range": {"key": [0, 0], "value_1": ["zero", "zero"], "value_2": [-1, -1]}},
+        ),
+        (
+            added_objects[1],
+            "FRAG",
             "",
             SMALL_OBJECT_SIZE,
             "470425e8c107fff67264f9f812dfe211c7e625edf651947b8476f60392c57281",
@@ -223,9 +259,8 @@ def test_commit_diff_splitting(local_engine_empty):
             {"range": {"key": [4, 5], "value_1": ["UPDATED", "e"], "value_2": [6, 8]}},
         ),
         (
-            new_objects[1],
+            added_objects[2],
             "FRAG",
-            base_objects[1],
             "",
             SMALL_OBJECT_SIZE,
             # UPD + DEL conflated so nothing gets inserted by this fragment
@@ -234,33 +269,9 @@ def test_commit_diff_splitting(local_engine_empty):
             # Turned into one deletion, old values included here
             {"range": {"key": [6, 6], "value_1": ["f", "f"], "value_2": [10, 10]}},
         ),
-        # Old fragment with just the pk=11
         (
-            new_objects[2],
+            added_objects[3],
             "FRAG",
-            None,
-            "",
-            SMALL_OBJECT_SIZE,
-            "6950e38c81c51685d617e98c7e2cf98d34630940c33e9259bc01339cca9c9418",
-            # No deletions here
-            "0000000000000000000000000000000000000000000000000000000000000000",
-            {"range": {"key": [11, 11], "value_1": ["k", "k"], "value_2": [20, 20]}},
-        ),
-        (
-            new_objects[3],
-            "FRAG",
-            None,
-            "",
-            SMALL_OBJECT_SIZE,
-            "3cfbe8fa6fc546264936e29f402d7263510481c88a8d27190d82b3d5830cbcbf",
-            # no deletions in this fragment
-            "0000000000000000000000000000000000000000000000000000000000000000",
-            {"range": {"key": [0, 0], "value_1": ["zero", "zero"], "value_2": [-1, -1]}},
-        ),
-        (
-            new_objects[4],
-            "FRAG",
-            None,
             "",
             SMALL_OBJECT_SIZE,
             "96f0a7394f3839b048b492b789f7d57cf976345b04938a69d82b3512f72c3e9e",
@@ -268,33 +279,14 @@ def test_commit_diff_splitting(local_engine_empty):
             {"range": {"key": [12, 12], "value_1": ["l", "l"], "value_2": [22, 22]}},
         ),
     ]
-    for new_object, expected in zip(new_objects, expected_meta):
-        _compare_object_meta(object_meta[new_object], expected)
-
-    # Check the contents of the newly created objects.
-    assert OUTPUT.run_sql(select(new_objects[0])) == [
-        (True, 5, "UPDATED", 8),  # upserted=True, key, new_value_1, new_value_2
-        (False, 4, None, None),
-    ]  # upserted=False, key, None, None
-    assert OUTPUT.run_sql(select(new_objects[1])) == [
-        (False, 6, None, None)
-    ]  # upserted=False, key, None, None
-    # No need to check new_objects[2] (since it's the same as the old fragment)
-    assert OUTPUT.run_sql(select(new_objects[3])) == [
-        (True, 0, "zero", -1)
-    ]  # upserted=True, key, new_value_1, new_value_2
-    assert OUTPUT.run_sql(select(new_objects[4])) == [(True, 12, "l", 22)]  # same
+    for added_object, expected in zip(added_objects, expected_meta):
+        _compare_object_meta(object_meta[added_object], expected)
 
     # Also check that the insertion - deletion hashes of objects add up to the final content hash of the materialized
     # table.
     table_hash = OUTPUT.objects.calculate_content_hash(OUTPUT.to_schema(), "test")
 
-    required_objects = OUTPUT.objects.get_all_required_objects(new_objects)
-
-    # defensive guard -- can a fragment be reused in multiple contexts during the materialization
-    # of one table?
-    assert len(set(required_objects)) == len(required_objects)
-    all_meta = OUTPUT.objects.get_object_meta(required_objects)
+    all_meta = OUTPUT.objects.get_object_meta(new_objects)
     hash_sum = reduce(
         operator.add,
         (
@@ -352,15 +344,15 @@ def test_commit_diff_splitting_composite(local_engine_empty):
     new_head.checkout()
     new_objects = new_head.get_table("test").objects
 
-    assert len(new_objects) == 3
-    # First chunk: based on the old first chunk, contains the INSERT (1/1/2019, 4) and the UPDATE (2/1/2019, 2)
+    assert len(new_objects) == 4
+    assert new_objects[:2] == base_objects
+    # First new chunk: overwrites the old first chunk, contains the INSERT (1/1/2019, 4) and the UPDATE (2/1/2019, 2)
     object_meta = OUTPUT.objects.get_object_meta(new_objects)
     _compare_object_meta(
-        object_meta[new_objects[0]],
+        object_meta[new_objects[2]],
         (
-            new_objects[0],
+            new_objects[2],
             "FRAG",
-            base_objects[0],
             "",
             SMALL_OBJECT_SIZE,
             # Hashes here just copypasted from the test output, see test_object_hashing for actual tests that
@@ -378,15 +370,12 @@ def test_commit_diff_splitting_composite(local_engine_empty):
             },
         ),
     )
-    # The second chunk is reused.
-    assert new_objects[1] == base_objects[1]
     # The third chunk is new, contains (4/1/2019, 2, NEW)
     _compare_object_meta(
-        object_meta[new_objects[2]],
+        object_meta[new_objects[3]],
         (
-            new_objects[2],
+            new_objects[3],
             "FRAG",
-            None,
             "",
             SMALL_OBJECT_SIZE,
             "8c92b3ea89234b06cf53c2bad9d6e1d49dc561dc8c0100ee63c0b9ce1eeb0750",
@@ -405,6 +394,7 @@ def test_commit_diff_splitting_composite(local_engine_empty):
 
 
 def test_commit_mode_change(pg_repo_local):
+    # Test committing with splitting by fragment group boundaries after not doing so.
     OUTPUT.init()
     OUTPUT.run_sql("CREATE TABLE test (key INTEGER PRIMARY KEY, value_1 VARCHAR, value_2 INTEGER)")
     for i in range(5):
@@ -419,47 +409,45 @@ def test_commit_mode_change(pg_repo_local):
         OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (i + 1, chr(ord("a") + i), i * 2))
 
     OUTPUT.commit()
-    # Here, we commit with split_changeset=False, so the new object has the previous one as its parent.
-    # Note that this means that the boundaries of this region don't match the boundaries of the parent
-    # object (since there has been an insert)
+    # Here, we commit with split_changeset=False, so the new object doesn't get split across the current
+    # table object's boundaries. This means that the original table has one "chunk group" spanning 1..6 and
+    # the new one has one "chunk group" spanning -1..7 (thus expanding it).
+
     assert OUTPUT.head.get_table("test").objects == [
-        "o951f5d35a5540e1f7183b4d2937251973589c4db1b00e52aeaa77211260030"
+        "oab9901c63e816f8e3d47366740a76323f168fbe5d5b25eed6b8f4755c37e10",
+        "o20132b896017b209e9cbe82ef33a676435f9ead6b62c4aea53e6fbaad8502a",
     ]
 
-    OUTPUT.run_sql("UPDATE test SET value_1 = 'UPDATED' WHERE key = 6")
+    # Since the group was expanded, this changeset will be split to match the -1..7 expanded
+    # group boundaries: the updates will go into one fragment, the insert will go into another.
+
     OUTPUT.run_sql("UPDATE test SET value_1 = 'UPDATED' WHERE key = -1")
+    OUTPUT.run_sql("UPDATE test SET value_1 = 'UPDATED' WHERE key = 6")
+    OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (8, "something", 42))
     OUTPUT.commit(split_changeset=True)
 
-    # The update (of key 6) is supposed to have the (-2, -1, 5, 6) insertion as its parent but it doesn't:
-    # since the boundary for that region is still assumed to be 0--5, this new update is registered as
-    # not having a parent. We hence have to make sure that fragments that come later in the table objects'
-    # list end up later in the expanded list as well.
     table = OUTPUT.head.get_table("test")
     assert table.objects == [
-        # Original chunk preserved
-        "o951f5d35a5540e1f7183b4d2937251973589c4db1b00e52aeaa77211260030",
-        # Left (key=-1 update)
-        "oe8b3d2ce9bfbe9ba741674f0d676f5af35fcffd2517432f4328e10a0f1fc4b",
-        # Right (key=6 update)
-        "o1b7f695a89cc2592ee7a5e110648dda5232c9942a173c08080136803bd3de3",
-    ]
-    # Make sure that get_all_required_objects returns the objects in the correct order (parents come
-    # before objects that overwrite them and the order in table.objects is preserved). In addition, make sure
-    # that more shallow objects (in this case, the two updates) come last.
-    assert OUTPUT.objects.get_all_required_objects(table.objects) == [
-        # The original 0--5 insertion goes first
+        # The original two objects
         "oab9901c63e816f8e3d47366740a76323f168fbe5d5b25eed6b8f4755c37e10",
-        # The (-2, -1, 5, 6) insertion goes next
-        "o951f5d35a5540e1f7183b4d2937251973589c4db1b00e52aeaa77211260030",
-        # left (key=1) update -- after the insertion so it doesn't get overwritten.
-        "oe8b3d2ce9bfbe9ba741674f0d676f5af35fcffd2517432f4328e10a0f1fc4b",
-        # Right (key=6 update)
-        "o1b7f695a89cc2592ee7a5e110648dda5232c9942a173c08080136803bd3de3",
+        "o20132b896017b209e9cbe82ef33a676435f9ead6b62c4aea53e6fbaad8502a",
+        # The new object (spanning keys -1..6)
+        "o9466c5547cf536b5ab6bebe3a1d9b78102976ddff512d02900bf11b7a7cb86",
+        # The second new object (key = 8 insert)
+        "o77674830056441f5215e56169e2646c935c302504f7b6b4cc2ddd319c1fc81",
     ]
 
+    # Check object contents
+    assert OUTPUT.run_sql(select(table.objects[2])) == [
+        (True, -1, "UPDATED", -4),
+        (True, 6, "UPDATED", 10),
+    ]
 
-def test_drop_recreate_produces_snap(pg_repo_local):
-    # Drops both tables and creates them with the same schema -- check we detect that.
+    assert OUTPUT.run_sql(select(table.objects[3])) == [(True, 8, "something", 42)]
+
+
+def test_drop_recreate(pg_repo_local):
+    # Drops the fruits table and recreates it with the same schema -- check the same objects are recreated.
     old_objects = pg_repo_local.head.get_table("fruits").objects
     pg_repo_local.run_sql(PG_DATA)
 
@@ -479,7 +467,7 @@ def test_commit_on_empty(snap_only, pg_repo_local):
     OUTPUT.run_sql('CREATE TABLE test AS SELECT * FROM "test/pg_mount".fruits')
 
     # Make sure the pending changes get flushed anyway if we are only committing a snapshot.
-    assert OUTPUT.diff("test", image_1=OUTPUT.head.image_hash, image_2=None) == True
+    assert OUTPUT.diff("test", image_1=OUTPUT.head.image_hash, image_2=None) is True
     OUTPUT.commit(snap_only=snap_only)
     assert OUTPUT.diff("test", image_1=OUTPUT.head.image_hash, image_2=None) == []
 
@@ -742,7 +730,8 @@ def test_various_types_with_deletion_index(local_engine_empty):
     OUTPUT.run_sql("UPDATE test SET m = '2019-01-01' WHERE m = '2013-02-04'")
     new_head = OUTPUT.commit()
 
-    object_id = new_head.get_table("test").objects[0]
+    # New object is the second object in the table objects' list
+    object_id = new_head.get_table("test").objects[1]
     object_index = OUTPUT.objects.get_object_meta([object_id])[object_id].index
     # Deleted row for reference:
     # 15, 22, 1, -1.23, 9.8811, 0.23, 'abcd', '0testtesttesttes', '0testtesttesttesttesttesttes',
@@ -877,17 +866,24 @@ def test_multiengine_object_gets_recreated(local_engine_empty, pg_repo_remote, c
     pg_repo_local.uncheckout()
     parent = pg_repo_local.images[pg_repo_local.images["latest"].parent_id]
 
+    old_objects = [
+        "of22f20503d3bf17c7449b545d68ebcee887ed70089f0342c4bff38862c0dc5",
+        "of0fb43e477311f82aa30055be303ff00599dfe155d737def0d00f06e07228b",
+        "o23fe42d48d7545596d0fea1c48bcf7d64bde574d437c77cc5bb611e5f8849d",
+        "o3f81f6c40ecc3366d691a2ce45f41f6f180053020607cbd0873baf0c4447dc",
+    ]
+    assert parent.get_table("fruits").objects == old_objects
+
     # Delete an image from the metadata engine and delete the corresponding object
     # from meta and Minio
     objects = pg_repo_local.images["latest"].get_table("fruits").objects
-    assert objects == ["o75dd055ad2465eb1c3f4e03c6f772c48d87029ef6f141fd4cf3d198e5b247f"]
-    object_to_delete = objects[0]
-
-    old_object_parent = pg_repo_local.objects.get_object_meta([object_to_delete])[
+    assert objects == old_objects + [
+        "oc27ee277aff108525a2df043d9efdaa1c3e26a4949a6cf6b53ee0c889c8559"
+    ]
+    object_to_delete = objects[-1]
+    object_to_delete_meta = pg_repo_local.objects.get_object_meta([object_to_delete])[
         object_to_delete
-    ].parent_id
-    assert old_object_parent == "occfcd55402d9ca3d3d7fa18dd56227d56df4151888a9518c9103b3bac0ee8c"
-    assert parent.get_table("fruits").objects == [old_object_parent]
+    ]
 
     pg_repo_local.images.delete([pg_repo_local.images["latest"].image_hash])
     pg_repo_local.engine.run_sql(
@@ -903,20 +899,17 @@ def test_multiengine_object_gets_recreated(local_engine_empty, pg_repo_remote, c
     # don't get set after a checkout
     parent.checkout()
     pg_repo_local.run_sql("INSERT INTO fruits VALUES (4, 'kumquat', 1, '2019-01-01T12:00:00')")
-    assert pg_repo_local.head.get_table("fruits").objects == [old_object_parent]
+    assert pg_repo_local.head.get_table("fruits").objects == old_objects
     new_image = pg_repo_local.commit()
 
     # Make sure the object was reregistered
-    assert len(new_image.get_table("fruits").objects) == 1
-    new_object = new_image.get_table("fruits").objects[0]
-    assert new_object == object_to_delete
-    assert (
-        pg_repo_local.objects.get_object_meta([new_object])[new_object].parent_id
-        == old_object_parent
-    )
-
+    assert new_image.get_table("fruits").objects == old_objects + [object_to_delete]
     assert object_to_delete in pg_repo_local.objects.get_all_objects()
     assert object_to_delete in pg_repo_local.objects.get_downloaded_objects()
+    assert (
+        object_to_delete_meta
+        == pg_repo_local.objects.get_object_meta([object_to_delete])[object_to_delete]
+    )
 
     # Force a reupload and make sure the object exists in Minio.
     assert object_to_delete not in list_objects(clean_minio)

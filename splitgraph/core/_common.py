@@ -192,7 +192,7 @@ def _create_metadata_schema(engine):
                     format         VARCHAR NOT NULL,
                     index          JSONB,
                     insertion_hash VARCHAR(64),
-                    deletion_hash  VARCHAR(64)"""
+                    deletion_hash  VARCHAR(64))"""
         ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects")),
         return_shape=None,
     )

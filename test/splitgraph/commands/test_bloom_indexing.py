@@ -178,11 +178,11 @@ def test_bloom_index_deletions(local_engine_empty):
     )
     objects = head.get_table("test").objects
 
-    # Sanity check: 1 object with 3 deletions and 2 upserts
-    assert len(objects) == 1
+    # Sanity check: 2 objects (original data + new with 3 deletions and 2 upserts)
+    assert len(objects) == 2
     assert (
         local_engine_empty.run_sql(
-            "SELECT COUNT(*) FROM splitgraph_meta." + objects[0], return_shape=ResultShape.ONE_ONE
+            "SELECT COUNT(*) FROM splitgraph_meta." + objects[1], return_shape=ResultShape.ONE_ONE
         )
         == 5
     )

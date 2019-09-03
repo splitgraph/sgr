@@ -54,11 +54,9 @@ def test_schema_changes(pg_repo_local, test_case):
     head = pg_repo_local.head
     new_head = pg_repo_local.commit()
 
-    # Test that the new image was stored as a snapshot with the new schema.
+    # Test that the new image was stored as new object with the new schema.
+    assert len(new_head.get_table("fruits").objects) == 1
     new_snap = new_head.get_table("fruits").objects[0]
-    assert (
-        pg_repo_local.objects.get_object_meta([new_snap])[new_snap].parent_id is None
-    )  # no parent
     assert pg_repo_local.engine.get_object_schema(new_snap) == _reassign_ordinals(
         expected_new_schema
     ) + [(len(expected_new_schema) + 1, SG_UD_FLAG, "boolean", False)]

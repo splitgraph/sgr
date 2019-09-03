@@ -204,10 +204,10 @@ def test_commandline_commit_chunk(pg_repo_local):
     assert result.exit_code == 0
     new_objects = pg_repo_local.head.get_table("fruits").objects
 
-    # First object the same, second object is new
-    assert len(new_objects) == 2
+    # New change appended to the objects' list
+    assert len(new_objects) == 3
     assert new_objects[0] == original_objects[0]
-    assert new_objects[1] != original_objects[1]
+    assert new_objects[1] == original_objects[1]
 
     runner.invoke(
         sql_c,
@@ -219,7 +219,7 @@ def test_commandline_commit_chunk(pg_repo_local):
     result = runner.invoke(commit_c, [str(pg_repo_local), "--split-changesets"])
     assert result.exit_code == 0
     new_new_objects = pg_repo_local.head.get_table("fruits").objects
-    assert len(new_new_objects) == 3
+    assert len(new_new_objects) == 5
 
 
 def test_object_info(local_engine_empty):
@@ -231,7 +231,6 @@ def test_object_info(local_engine_empty):
         (
             "base_1",
             "FRAG",
-            None,
             "ns1",
             12345,
             "HASH1",
@@ -243,24 +242,13 @@ def test_object_info(local_engine_empty):
         ),
     )
     local_engine_empty.run_sql(
-        q,
-        (
-            "patch_1",
-            "FRAG",
-            "base_1",
-            "ns1",
-            6789,
-            "HASH1",
-            "HASH2",
-            {"range": {"col_1": [10, 20]}},
-        ),
+        q, ("patch_1", "FRAG", "ns1", 6789, "HASH1", "HASH2", {"range": {"col_1": [10, 20]}})
     )
     local_engine_empty.run_sql(
         q,
         (
             "patch_2",
             "FRAG",
-            "base_1",
             "ns1",
             1011,
             "HASH1",
@@ -286,7 +274,6 @@ def test_object_info(local_engine_empty):
         result.output
         == """Object ID: base_1
 
-Parent: None
 Namespace: ns1
 Format: FRAG
 Size: 12.06 KiB

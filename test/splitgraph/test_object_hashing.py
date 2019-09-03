@@ -144,8 +144,13 @@ def test_diff_fragment_hashing(pg_repo_local):
     pg_repo_local.commit()
     fruits_v2 = pg_repo_local.head.get_table("fruits")
 
-    expected_object = "o66847afe022814a2ca3eef87c0c4e09cacf01a9d4c7d9e7e6c2292a2e5f07d"
-    assert fruits_v2.objects == [expected_object]
+    expected_object = "oa4436fec80c4d3ee5052c4f954b555ddf2e139c108e6c854ebd86e201817fb"
+    assert fruits_v2.objects == [
+        # old base fragment
+        "o0e742bd2ea4927f5193a2c68f8d4c51ea018b1ef3e3005a50727147d2cf57b",
+        # our change
+        expected_object,
+    ]
 
     om = pg_repo_local.objects
 
@@ -230,10 +235,10 @@ def test_diff_fragment_hashing_long_chain(local_engine_empty):
     ins_hash_base = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, base.objects[0])
     assert (
         "o" + sha256((ins_hash_base.hex() + schema_hash).encode("ascii")).hexdigest()[:-2]
-        == base.objects[0]
+        == base.objects[-1]
     )
 
-    ins_hash_v1 = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, v1.objects[0])
+    ins_hash_v1 = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, v1.objects[-1])
 
     # timestamp cast to text in a tuple is wrapped with double quotes in PG.
     # As long as hashing is consistent (this happens with all engines no matter what their conventions are),
@@ -244,49 +249,43 @@ def test_diff_fragment_hashing_long_chain(local_engine_empty):
     assert del_hash_v1.hex() == "b12a93d54ba7ff1c2e26c92f01ac9c9d7716242eb47344d57c89b481227f5298"
 
     # Check that the object metadata contains the same hashes.
-    v1_meta = om.get_object_meta(v1.objects)[v1.objects[0]]
+    v1_meta = om.get_object_meta(v1.objects)[v1.objects[-1]]
     assert ins_hash_v1.hex() == v1_meta.insertion_hash
     assert del_hash_v1.hex() == v1_meta.deletion_hash
 
     assert (
         "o"
-        + sha256(
-            ((ins_hash_v1 - del_hash_v1).hex() + schema_hash + base.objects[0]).encode("ascii")
-        ).hexdigest()[:-2]
-        == v1.objects[0]
+        + sha256(((ins_hash_v1 - del_hash_v1).hex() + schema_hash).encode("ascii")).hexdigest()[:-2]
+        == v1.objects[-1]
     )
 
-    ins_hash_v2 = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, v2.objects[0])
+    ins_hash_v2 = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, v2.objects[-1])
     del_hash_v2 = Digest.from_hex(
         sha256('("2019-01-02 02:02:02.222",2,two,2.2)'.encode("ascii")).hexdigest()
     )
     assert del_hash_v2.hex() == "88e01be43523057d192b2fd65e69f651a9515b7e30d17a9fb852926b71e3bdff"
-    assert ins_hash_v2.hex() == om.get_object_meta(v2.objects)[v2.objects[0]].insertion_hash
+    assert ins_hash_v2.hex() == om.get_object_meta(v2.objects)[v2.objects[-1]].insertion_hash
     assert (
         "o"
-        + sha256(
-            ((ins_hash_v2 - del_hash_v2).hex() + schema_hash + v1.objects[0]).encode("ascii")
-        ).hexdigest()[:-2]
-        == v2.objects[0]
+        + sha256(((ins_hash_v2 - del_hash_v2).hex() + schema_hash).encode("ascii")).hexdigest()[:-2]
+        == v2.objects[-1]
     )
 
-    v2_meta = om.get_object_meta(v2.objects)[v2.objects[0]]
+    v2_meta = om.get_object_meta(v2.objects)[v2.objects[-1]]
     assert ins_hash_v2.hex() == v2_meta.insertion_hash
     assert del_hash_v2.hex() == v2_meta.deletion_hash
 
-    ins_hash_v3 = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, v3.objects[0])
+    ins_hash_v3 = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, v3.objects[-1])
     del_hash_v3 = Digest.from_hex(
         sha256('("2019-01-02 02:02:02.222",42,UPDATED,2.2)'.encode("ascii")).hexdigest()
     )
     assert (
         "o"
-        + sha256(
-            ((ins_hash_v3 - del_hash_v3).hex() + schema_hash + v2.objects[0]).encode("ascii")
-        ).hexdigest()[:-2]
-        == v3.objects[0]
+        + sha256(((ins_hash_v3 - del_hash_v3).hex() + schema_hash).encode("ascii")).hexdigest()[:-2]
+        == v3.objects[-1]
     )
 
-    v3_meta = om.get_object_meta(v3.objects)[v3.objects[0]]
+    v3_meta = om.get_object_meta(v3.objects)[v3.objects[-1]]
     assert ins_hash_v3.hex() == v3_meta.insertion_hash
     assert del_hash_v3.hex() == v3_meta.deletion_hash
 
