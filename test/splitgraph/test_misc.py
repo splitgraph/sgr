@@ -2,11 +2,13 @@ from datetime import datetime as dt
 from unittest.mock import patch
 
 import psycopg2
+from psycopg2.errors import CheckViolation
 import pytest
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA
 from splitgraph.core._common import ensure_metadata_schema, Tracer
 from splitgraph.core.engine import get_current_repositories, lookup_repository, ResultShape
+from splitgraph.core.metadata_manager import Object
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.registry import (
     setup_registry_mode,
@@ -141,3 +143,140 @@ def test_tracer():
 event_2: 29.000
 Total: 30.000"""
     )
+
+
+def test_metadata_constraints_image_hashes(local_engine_empty):
+    R = Repository("some", "repo")
+    with pytest.raises(CheckViolation):
+        R.images.add(parent_id="0" * 64, image="bad_hash")
+
+    with pytest.raises(CheckViolation):
+        R.images.add(parent_id="bad_hash", image="cafecafe" * 8)
+
+    with pytest.raises(CheckViolation):
+        R.images.add(parent_id="cafecafe" * 8, image="cafecafe" * 7)
+
+    with pytest.raises(CheckViolation):
+        R.images.add(parent_id="cafecafe" * 8, image="cafecafe" * 8)
+
+
+def test_metadata_constraints_object_ids_hashes(local_engine_empty):
+    R = Repository("some", "repo")
+    R.images.add(parent_id="0" * 64, image="cafecafe" * 8)
+    R.commit_engines()
+
+    with pytest.raises(CheckViolation):
+        R.objects.register_objects(
+            [
+                Object(
+                    object_id="broken",
+                    format="FRAG",
+                    namespace="",
+                    size=42,
+                    insertion_hash="0" * 64,
+                    deletion_hash="0" * 64,
+                    index={},
+                )
+            ]
+        )
+
+    with pytest.raises(CheckViolation):
+        R.objects.register_objects(
+            [
+                Object(
+                    object_id="o12345",
+                    format="FRAG",
+                    namespace="",
+                    size=42,
+                    insertion_hash="0" * 64,
+                    deletion_hash="0" * 64,
+                    index={},
+                )
+            ]
+        )
+
+    with pytest.raises(CheckViolation):
+        R.objects.register_objects(
+            [
+                Object(
+                    object_id="o" + "a" * 61 + "Z",
+                    format="FRAG",
+                    namespace="",
+                    size=42,
+                    insertion_hash="0" * 64,
+                    deletion_hash="0" * 64,
+                    index={},
+                )
+            ]
+        )
+
+    with pytest.raises(CheckViolation):
+        R.objects.register_objects(
+            [
+                Object(
+                    object_id="o" + "a" * 62,
+                    format="FRAG",
+                    namespace="",
+                    size=42,
+                    insertion_hash="broken",
+                    deletion_hash="0" * 64,
+                    index={},
+                )
+            ]
+        )
+
+    with pytest.raises(CheckViolation):
+        R.objects.register_objects(
+            [
+                Object(
+                    object_id="o" + "a" * 62,
+                    format="FRAG",
+                    namespace="",
+                    size=42,
+                    insertion_hash="0" * 64,
+                    deletion_hash="broken",
+                    index={},
+                )
+            ]
+        )
+
+
+def test_metadata_constraints_table_objects(local_engine_empty):
+    R = Repository("some", "repo")
+    R.images.add(parent_id="0" * 64, image="cafecafe" * 8)
+    R.objects.register_objects(
+        [
+            Object(
+                object_id="o" + "a" * 62,
+                format="FRAG",
+                namespace="",
+                size=42,
+                insertion_hash="0" * 64,
+                deletion_hash="0" * 64,
+                index={},
+            )
+        ]
+    )
+    R.commit_engines()
+
+    with pytest.raises(CheckViolation) as e:
+        R.objects.register_tables(
+            R, [("cafecafe" * 8, "table", [(1, "key", "integer", True)], ["object_doesnt_exist"])]
+        )
+
+        assert "Some objects in the object_ids array aren''t registered!" in str(e)
+
+    with pytest.raises(CheckViolation) as e:
+        R.objects.register_tables(
+            R,
+            [
+                (
+                    "cafecafe" * 8,
+                    "table",
+                    [(1, "key", "integer", True)],
+                    ["o" + "a" * 62, "previous_object_existed_but_this_one_doesnt"],
+                )
+            ],
+        )
+
+        assert "Some objects in the object_ids array aren''t registered!" in str(e)

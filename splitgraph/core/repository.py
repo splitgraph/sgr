@@ -542,7 +542,8 @@ class Repository:
         # HEAD can be None (if this is the first commit in this repository)
         head = self.head
         if image_hash is None:
-            image_hash = "%0.2x" % getrandbits(256)
+            # Generate a random hexadecimal hash for new images
+            image_hash = "{:064x}".format(getrandbits(256))
 
         self.images.add(head.image_hash if head else None, image_hash, comment=comment)
         self._commit(
@@ -805,7 +806,7 @@ class Repository:
         # Sanitize/validate the parameters and call the internal function.
         if table_queries is None:
             table_queries = []
-        target_hash = target_hash or "%0.2x" % getrandbits(256)
+        target_hash = target_hash or "{:064x}".format(getrandbits(256))
 
         if not foreign_tables:
             image = (
