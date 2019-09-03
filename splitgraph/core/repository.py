@@ -693,7 +693,7 @@ class Repository:
         :param exclude_object_contents: Only dump the metadata but not the actual object contents.
         """
         # First, go through the metadata tables required to reconstruct the repository.
-        stream.write("""--\n-- Metadata tables --\n--\n""")
+        stream.write("--\n-- Images --\n--\n")
         self.engine.dump_table_sql(
             SPLITGRAPH_META_SCHEMA,
             "images",
@@ -701,33 +701,18 @@ class Repository:
             where="namespace = %s AND repository = %s",
             where_args=(self.namespace, self.repository),
         )
-        self.engine.dump_table_sql(
-            SPLITGRAPH_META_SCHEMA,
-            "tables",
-            stream,
-            where="namespace = %s AND repository = %s",
-            where_args=(self.namespace, self.repository),
-        )
-        self.engine.dump_table_sql(
-            SPLITGRAPH_META_SCHEMA,
-            "tags",
-            stream,
-            where="namespace = %s AND repository = %s AND tag != 'HEAD'",
-            where_args=(self.namespace, self.repository),
-        )
 
-        # Get required objects
+        # Add objects (need to come before tables: we check that objects for inserted tables are registered.
         required_objects = set()
         for image in self.images:
             for table_name in image.get_tables():
-                for object_id in image.get_table(table_name).objects:
-                    required_objects.add(object_id)
+                required_objects.update(image.get_table(table_name).objects)
 
         object_qual = (
             "object_id IN (" + ",".join(itertools.repeat("%s", len(required_objects))) + ")"
         )
 
-        stream.write("""--\n-- Object metadata --\n--\n""")
+        stream.write("\n--\n-- Objects --\n--\n")
         # To avoid conflicts, we just delete the object records if they already exist
         with self.engine.connection.cursor() as cur:
             for table_name in ("objects", "object_locations"):
@@ -749,22 +734,39 @@ class Repository:
                     where_args=list(required_objects),
                 )
 
-            if exclude_object_contents:
-                return
+        stream.write("\n--\n-- Tables --\n--\n")
+        self.engine.dump_table_sql(
+            SPLITGRAPH_META_SCHEMA,
+            "tables",
+            stream,
+            where="namespace = %s AND repository = %s",
+            where_args=(self.namespace, self.repository),
+        )
 
-            stream.write("""--\n-- Object contents --\n--\n""")
+        stream.write("\n--\n-- Tags --\n--\n")
+        self.engine.dump_table_sql(
+            SPLITGRAPH_META_SCHEMA,
+            "tags",
+            stream,
+            where="namespace = %s AND repository = %s AND tag != 'HEAD'",
+            where_args=(self.namespace, self.repository),
+        )
 
-            # Finally, dump the actual objects
-            for object_id in required_objects:
-                stream.write(
-                    cur.mogrify(
-                        SQL("DROP FOREIGN TABLE IF EXISTS {}.{};\n").format(
-                            Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)
-                        )
-                    ).decode("utf-8")
-                )
-                self.object_engine.dump_object(object_id, stream, schema=SPLITGRAPH_META_SCHEMA)
-                stream.write("\n")
+        if not exclude_object_contents:
+            with self.engine.connection.cursor() as cur:
+                stream.write("\n--\n-- Object contents --\n--\n")
+
+                # Finally, dump the actual objects
+                for object_id in required_objects:
+                    stream.write(
+                        cur.mogrify(
+                            SQL("DROP FOREIGN TABLE IF EXISTS {}.{};\n").format(
+                                Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)
+                            )
+                        ).decode("utf-8")
+                    )
+                    self.object_engine.dump_object(object_id, stream, schema=SPLITGRAPH_META_SCHEMA)
+                    stream.write("\n")
 
     # --- IMPORTING TABLES ---
 
