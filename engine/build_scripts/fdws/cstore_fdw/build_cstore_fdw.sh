@@ -1,5 +1,6 @@
-#!/bin/bash
+#!/bin/bash -ex
 
+cd /build
 git clone https://github.com/citusdata/cstore_fdw.git
 cd cstore_fdw
 # Check out the current tip of "development" containing amongst other things
@@ -11,7 +12,7 @@ git checkout develop_v1x
 #
 # * don't delete the actual physical files when a table or the database is dropped
 # * don't recreate the footer and open the table file in append mode if it already exists
-git apply /build_scripts/fdws/cstore_fdw/fdw_fixes.patch
+git apply ../fdw_fixes.patch
 
-make
+export DESTDIR=/output/root
 make install

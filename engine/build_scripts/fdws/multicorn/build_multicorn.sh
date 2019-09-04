@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -ex
 
 git clone git://github.com/splitgraph/Multicorn.git
 cd Multicorn
@@ -7,5 +7,8 @@ cd Multicorn
 # * https://github.com/Kozea/Multicorn/pull/214   (pg11 build)
 # * https://github.com/Kozea/Multicorn/issues/136  (plpython interaction)
 
+export DESTDIR=/output/root
+export PYTHON_OVERRIDE=python3
+
 # Do "make CFLAGS=-DDEBUG install" instead to enable debug output for scans.
-PYTHON_OVERRIDE=python3 make install
+make install
