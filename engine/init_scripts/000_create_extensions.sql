@@ -3,5 +3,5 @@ CREATE EXTENSION mongo_fdw;
 CREATE EXTENSION mysql_fdw;
 CREATE EXTENSION multicorn;
 CREATE EXTENSION cstore_fdw;
-CREATE EXTENSION plpython3u;
+--CREATE EXTENSION plpython3u;
 CREATE SERVER cstore_server FOREIGN DATA WRAPPER cstore_fdw;
