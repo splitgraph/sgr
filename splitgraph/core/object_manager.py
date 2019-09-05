@@ -10,14 +10,13 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.core.fragment_manager import FragmentManager
-from splitgraph.core.metadata_manager import MetadataManager
 from splitgraph.engine import ResultShape, switch_engine
 from splitgraph.exceptions import SplitGraphError, ObjectCacheError
 from splitgraph.hooks.external_objects import get_external_object_handler
 from ._common import META_TABLES, select, insert, pretty_size, Tracer, CallbackList
 
 
-class ObjectManager(FragmentManager, MetadataManager):
+class ObjectManager(FragmentManager):
     """Brings the multiple manager classes together and manages the object cache (downloading and uploading
     objects as required in order to fulfill certain queries)"""
 
@@ -28,7 +27,7 @@ class ObjectManager(FragmentManager, MetadataManager):
         :param metadata_engine: An SQLEngine that will be used to store/query metadata for Splitgraph
             images and objects. By default, `object_engine` is used.
         """
-        super().__init__(object_engine, metadata_engine or object_engine)
+        super().__init__(object_engine, metadata_engine)
 
         # Cache size in bytes
         self.cache_size = float(CONFIG["SG_OBJECT_CACHE_SIZE"]) * 1024 * 1024
@@ -87,7 +86,7 @@ class ObjectManager(FragmentManager, MetadataManager):
                     "quote_ident(t.table_name))), 0)"
                     " FROM information_schema.tables t JOIN {0}.object_cache_status oc"
                     " ON t.table_name = oc.object_id"
-                    " WHERE oc.ready = 't' AND t.table_schema = %s"
+                    " WHERE oc.ready = 't' AND t.table_schema = %s AND t.table_type = 'FOREIGN TABLE'"
                 ).format(Identifier(SPLITGRAPH_META_SCHEMA)),
                 (SPLITGRAPH_META_SCHEMA,),
                 return_shape=ResultShape.ONE_ONE,
@@ -154,7 +153,7 @@ class ObjectManager(FragmentManager, MetadataManager):
             )
 
             # Filter to see if we can discard any objects with the quals
-            required_objects = self._filter_objects(table.objects, table, quals)
+            required_objects = self.filter_objects(table.objects, table, quals)
             tracer.log("filter_objects")
 
         # Increase the refcount on all of the objects we're giving back to the caller so that others don't GC them.
@@ -321,19 +320,6 @@ class ObjectManager(FragmentManager, MetadataManager):
         excess = self.get_cache_occupancy() - self.cache_size
         if excess > 0:
             self.run_eviction(keep_objects=[], required_space=excess)
-
-    def _filter_objects(self, objects, table, quals):
-        if quals:
-            column_types = {c[1]: c[2] for c in table.table_schema}
-            filtered_objects = self.filter_fragments(objects, quals, column_types)
-            logging.info(
-                "Qual filter: discarded %d/%d object(s)",
-                len(objects) - len(filtered_objects),
-                len(objects),
-            )
-            # Make sure to keep the order
-            objects = [r for r in objects if r in filtered_objects]
-        return objects
 
     def _prepare_fetch_list(self, required_objects):
         """
@@ -677,104 +663,44 @@ class ObjectManager(FragmentManager, MetadataManager):
             uploaded = external_handler.upload_objects(objects_to_push, target.metadata_engine)
         return [(oid, url, handler) for oid, url in zip(objects_to_push, uploaded)]
 
-    def cleanup(self, include_physical_objects=True):
+    def cleanup(self):
         """
         Deletes all objects in the object_tree not required by any current repository, including their dependencies and
         their remote locations. Also deletes all objects not registered in the object_tree.
-
-        :param include_physical_objects: Default True. If False, only deletes the object metadata rather
-            than any physical objects on the engine.
         """
-        # First, get a list of all objects required by a table.
-        table_objects = {
-            o
-            for os in self.metadata_engine.run_sql(
-                SQL("SELECT object_ids FROM {}.tables").format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                return_shape=ResultShape.MANY_ONE,
+        required_objects = self.cleanup_metadata()
+
+        # Delete unneeded objects from the cache status table
+        query = SQL("DELETE FROM {}.object_cache_status").format(Identifier(SPLITGRAPH_META_SCHEMA))
+        if required_objects:
+            query += SQL(
+                " WHERE object_id NOT IN ("
+                + ",".join("%s" for _ in range(len(required_objects)))
+                + ")"
             )
-            for o in os
+        self.object_engine.run_sql(query, list(required_objects))
+
+        # Go through the physical objects and delete them as well
+        # This is slightly dirty, but since the info about the objects was deleted on rm, we just say that
+        # anything in splitgraph_meta that's not a system table is fair game.
+        tables_in_meta = {
+            c
+            for c in self.object_engine.get_all_tables(SPLITGRAPH_META_SCHEMA)
+            if c not in META_TABLES
         }
+        tables_in_meta.update(self.get_downloaded_objects())
 
-        # Go through the tables that aren't repository-dependent and delete entries there.
-        tables = ["object_locations", "objects"]
-        if include_physical_objects:
-            tables.append("object_cache_status")
-        for table_name in ["object_locations", "object_cache_status", "objects"]:
-            query = SQL("DELETE FROM {}.{}").format(
-                Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table_name)
-            )
-            if table_objects:
-                query += SQL(
-                    " WHERE object_id NOT IN ("
-                    + ",".join("%s" for _ in range(len(table_objects)))
-                    + ")"
-                )
-            if table_name == "object_cache_status":
-                self.object_engine.run_sql(query, list(table_objects))
-            else:
-                self.metadata_engine.run_sql(query, list(table_objects))
+        to_delete = tables_in_meta.difference(required_objects)
+        self.delete_objects(to_delete)
 
-        if include_physical_objects:
-            # Go through the physical objects and delete them as well
-            # This is slightly dirty, but since the info about the objects was deleted on rm, we just say that
-            # anything in splitgraph_meta that's not a system table is fair game.
-            tables_in_meta = {
-                c
-                for c in self.object_engine.get_all_tables(SPLITGRAPH_META_SCHEMA)
-                if c not in META_TABLES
-            }
-            tables_in_meta.update(self.get_downloaded_objects())
-
-            to_delete = tables_in_meta.difference(table_objects)
-            self.delete_objects(to_delete)
-
-            # Recalculate the object cache occupancy
-            self.object_engine.run_sql(
-                SQL("UPDATE {}.object_cache_occupancy SET total_size = %s").format(
-                    Identifier(SPLITGRAPH_META_SCHEMA)
-                ),
-                (self._recalculate_cache_occupancy(),),
-            )
-            return to_delete
-
-    def delete_objects(self, objects):
-        """
-        Deletes objects from the Splitgraph cache
-
-        :param objects: A sequence of objects to be deleted
-        """
-        objects = list(objects)
-        for i in range(0, len(objects), 100):
-            to_delete = objects[i : i + 100]
-            table_types = self.object_engine.run_sql(
-                SQL(
-                    "SELECT table_name, table_type FROM information_schema.tables "
-                    "WHERE table_schema = %s AND table_name IN ("
-                    + ",".join(itertools.repeat("%s", len(to_delete)))
-                    + ")"
-                ),
-                [SPLITGRAPH_META_SCHEMA] + to_delete,
-            )
-
-            base_tables = [tn for tn, tt in table_types if tt == "BASE TABLE"]
-            # Try deleting CStore-mounted objects regardless of whether they're
-            # in splitgraph_meta as foreign tables (there might be cases
-            # where they are in /var/lib/splitgraph/objects but not mounted)
-            foreign_tables = [tn for tn in to_delete if tn not in base_tables]
-
-            if base_tables:
-                self.object_engine.run_sql(
-                    SQL(";").join(
-                        SQL("DROP TABLE {}.{}").format(
-                            Identifier(SPLITGRAPH_META_SCHEMA), Identifier(t)
-                        )
-                        for t in base_tables
-                    )
-                )
-            if foreign_tables:
-                self.object_engine.delete_objects(foreign_tables)
-
-            self.object_engine.commit()
+        # Recalculate the object cache occupancy
+        self.object_engine.run_sql(
+            SQL("UPDATE {}.object_cache_occupancy SET total_size = %s").format(
+                Identifier(SPLITGRAPH_META_SCHEMA)
+            ),
+            (self._recalculate_cache_occupancy(),),
+        )
+        return to_delete
 
 
 def _fetch_external_objects(engine, source_engine, object_locations, handler_params):

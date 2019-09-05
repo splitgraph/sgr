@@ -15,6 +15,7 @@ from random import getrandbits
 from psycopg2.errors import DuplicateTable, UniqueViolation
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph import SPLITGRAPH_META_SCHEMA
 from splitgraph.config import SPLITGRAPH_API_SCHEMA
 from splitgraph.core.bloom import generate_bloom_index, filter_bloom_index
 from splitgraph.core.metadata_manager import MetadataManager, Object
@@ -206,9 +207,9 @@ class FragmentManager(MetadataManager):
     """
 
     def __init__(self, object_engine, metadata_engine=None):
-        super().__init__(object_engine, metadata_engine)
+        metadata_engine = metadata_engine or object_engine
+        super().__init__(metadata_engine)
         self.object_engine = object_engine
-        self.metadata_engine = metadata_engine or object_engine
 
     def _generate_object_index(self, object_id, table_schema, changeset=None, extra_indexes=None):
         """
@@ -924,6 +925,58 @@ class FragmentManager(MetadataManager):
                 len(range_filter_result),
             )
         return bloom_filter_result
+
+    def filter_objects(self, objects, table, quals):
+        if quals:
+            column_types = {c[1]: c[2] for c in table.table_schema}
+            filtered_objects = self.filter_fragments(objects, quals, column_types)
+            logging.info(
+                "Qual filter: discarded %d/%d object(s)",
+                len(objects) - len(filtered_objects),
+                len(objects),
+            )
+            # Make sure to keep the order
+            objects = [r for r in objects if r in filtered_objects]
+        return objects
+
+    def delete_objects(self, objects):
+        """
+        Deletes objects from the Splitgraph cache
+
+        :param objects: A sequence of objects to be deleted
+        """
+        objects = list(objects)
+        for i in range(0, len(objects), 100):
+            to_delete = objects[i : i + 100]
+            table_types = self.object_engine.run_sql(
+                SQL(
+                    "SELECT table_name, table_type FROM information_schema.tables "
+                    "WHERE table_schema = %s AND table_name IN ("
+                    + ",".join(itertools.repeat("%s", len(to_delete)))
+                    + ")"
+                ),
+                [SPLITGRAPH_META_SCHEMA] + to_delete,
+            )
+
+            base_tables = [tn for tn, tt in table_types if tt == "BASE TABLE"]
+            # Try deleting CStore-mounted objects regardless of whether they're
+            # in splitgraph_meta as foreign tables (there might be cases
+            # where they are in /var/lib/splitgraph/objects but not mounted)
+            foreign_tables = [tn for tn in to_delete if tn not in base_tables]
+
+            if base_tables:
+                self.object_engine.run_sql(
+                    SQL(";").join(
+                        SQL("DROP TABLE {}.{}").format(
+                            Identifier(SPLITGRAPH_META_SCHEMA), Identifier(t)
+                        )
+                        for t in base_tables
+                    )
+                )
+            if foreign_tables:
+                self.object_engine.delete_objects(foreign_tables)
+
+            self.object_engine.commit()
 
 
 def _conflate_changes(changeset, new_changes):

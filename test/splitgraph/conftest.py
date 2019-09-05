@@ -220,7 +220,7 @@ def remote_engine_registry():
     engine.run_sql("DELETE FROM registry_meta.images")
     for mountpoint, _ in get_current_repositories(engine):
         mountpoint.delete(uncheckout=False)
-    ObjectManager(engine).cleanup(include_physical_objects=False)
+    ObjectManager(engine).cleanup_metadata()
     engine.commit()
     engine.close()
     try:
@@ -229,7 +229,7 @@ def remote_engine_registry():
         engine.rollback()
         for mountpoint, _ in get_current_repositories(engine):
             mountpoint.delete(uncheckout=False)
-        ObjectManager(engine).cleanup(include_physical_objects=False)
+        ObjectManager(engine).cleanup_metadata()
         engine.commit()
         engine.close()
 

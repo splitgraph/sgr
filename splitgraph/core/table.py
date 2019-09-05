@@ -44,7 +44,7 @@ class QueryPlan:
 
         self.required_objects = table.objects
         self.tracer.log("resolve_objects")
-        self.filtered_objects = self.object_manager._filter_objects(
+        self.filtered_objects = self.object_manager.filter_objects(
             self.required_objects, table, quals
         )
         self.tracer.log("filter_objects")
@@ -129,7 +129,7 @@ class Table:
 
         if not lq_server:
             # Materialize by applying fragments to one another in their dependency order.
-            with object_manager.ensure_objects(self) as required_objects:
+            with object_manager.ensure_objects(objects=self.objects) as required_objects:
                 engine.create_table(
                     schema=destination_schema, table=destination, schema_spec=self.table_schema
                 )
