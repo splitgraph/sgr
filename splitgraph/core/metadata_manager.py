@@ -7,6 +7,7 @@ from collections import namedtuple
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph import SPLITGRAPH_META_SCHEMA, ResultShape
 from splitgraph.config import SPLITGRAPH_API_SCHEMA
 from ._common import select, ResultShape
 
@@ -31,9 +32,8 @@ class MetadataManager:
     with image, table and object information.
     """
 
-    def __init__(self, object_engine, metadata_engine=None):
-        self.object_engine = object_engine
-        self.metadata_engine = metadata_engine or object_engine
+    def __init__(self, metadata_engine):
+        self.metadata_engine = metadata_engine
 
     def register_objects(self, objects, namespace=None):
         """
@@ -149,3 +149,33 @@ class MetadataManager:
         )
         result = [Object(*m) for m in metadata]
         return {o.object_id: o for o in result}
+
+    def cleanup_metadata(self):
+        """
+        Go through the current metadata and delete all objects that aren't required
+        by any table on the engine.
+
+        :return: List of objects that are still required.
+        """
+        # First, get a list of all objects required by a table.
+        table_objects = {
+            o
+            for os in self.metadata_engine.run_sql(
+                SQL("SELECT object_ids FROM {}.tables").format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                return_shape=ResultShape.MANY_ONE,
+            )
+            for o in os
+        }
+        # Go through the tables that aren't repository-dependent and delete entries there.
+        for table_name in ["object_locations", "objects"]:
+            query = SQL("DELETE FROM {}.{}").format(
+                Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table_name)
+            )
+            if table_objects:
+                query += SQL(
+                    " WHERE object_id NOT IN ("
+                    + ",".join("%s" for _ in range(len(table_objects)))
+                    + ")"
+                )
+            self.metadata_engine.run_sql(query, list(table_objects))
+        return table_objects
