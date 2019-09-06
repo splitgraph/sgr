@@ -7,8 +7,7 @@ from collections import namedtuple
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph import SPLITGRAPH_META_SCHEMA, ResultShape
-from splitgraph.config import SPLITGRAPH_API_SCHEMA
+from splitgraph.config import SPLITGRAPH_API_SCHEMA, SPLITGRAPH_META_SCHEMA
 from ._common import select, ResultShape
 
 OBJECT_COLS = [
