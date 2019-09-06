@@ -162,7 +162,7 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
         object_engine.commit()
 
     @contextmanager
-    def query_schema(self):
+    def query_schema(self, wrapper=FDW_CLASS):
         """
         Creates a temporary schema with tables in this image mounted as foreign tables that can be accessed via
         read-only layered querying. On exit from the context manager, the schema is discarded.
@@ -172,7 +172,7 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
         tmp_schema = str.format("o{:032x}", getrandbits(128))
         try:
             self.object_engine.create_schema(tmp_schema)
-            self._lq_checkout(target_schema=tmp_schema)
+            self._lq_checkout(target_schema=tmp_schema, wrapper=wrapper)
             self.object_engine.commit()  # Make sure the new tables are seen by other connecitons
             yield tmp_schema
         finally:

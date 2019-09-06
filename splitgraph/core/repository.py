@@ -782,6 +782,7 @@ class Repository:
         target_hash=None,
         table_queries=None,
         parent_hash=None,
+        wrapper=None,
     ):
         """
         Creates a new commit in target_repository with one or more tables linked to already-existing tables.
@@ -806,6 +807,7 @@ class Repository:
         :param parent_hash: If not None, must be the hash of the image to base the new image on.
             Existing tables from the parent image are preserved in the new image. If None, the current repository
             HEAD is used.
+        :param wrapper: Override the default class for the layered querying foreign data wrapper.
         :return: Hash that the new image was stored under.
         """
         # Sanitize/validate the parameters and call the internal function.
@@ -856,6 +858,7 @@ class Repository:
             table_queries,
             foreign_tables,
             parent_hash,
+            wrapper,
         )
 
     def _import_tables(
@@ -869,6 +872,7 @@ class Repository:
         table_queries,
         foreign_tables,
         base_hash,
+        wrapper=None,
     ):
         # This importing route only supported between local repos.
         assert self.engine == source_repository.engine
@@ -887,7 +891,7 @@ class Repository:
                 # If we're importing a query from another Splitgraph image, we can use LQ to satisfy it.
                 # This could get executed for the whole import batch as opposed to for every import query
                 # but the overhead of setting up an LQ schema is fairly small.
-                with image.query_schema() as tmp_schema:
+                with image.query_schema(wrapper=wrapper) as tmp_schema:
                     self._import_new_table(
                         tmp_schema, source_table, target_hash, target_table, is_query, do_checkout
                     )

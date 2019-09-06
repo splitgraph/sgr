@@ -15,7 +15,6 @@ from random import getrandbits
 from psycopg2.errors import DuplicateTable, UniqueViolation
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph import SPLITGRAPH_META_SCHEMA
 from splitgraph.config import SPLITGRAPH_API_SCHEMA
 from splitgraph.core.bloom import generate_bloom_index, filter_bloom_index
 from splitgraph.core.metadata_manager import MetadataManager, Object
