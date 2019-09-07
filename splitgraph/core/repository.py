@@ -364,7 +364,10 @@ class Repository:
                 self.object_engine.discard_pending_changes(self.to_schema())
             except UninitializedEngineError:
                 # If the audit trigger doesn't exist,
-                logging.warning("Audit triggers don't exist on engine %s, not running uncheckout.")
+                logging.warning(
+                    "Audit triggers don't exist on engine %s, not running uncheckout.",
+                    self.object_engine,
+                )
             else:
                 # Dispose of the foreign servers (LQ FDW, other FDWs) for this schema if it exists
                 # (otherwise its connection won't be recycled and we can get deadlocked).

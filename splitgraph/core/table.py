@@ -129,7 +129,9 @@ class Table:
 
         if not lq_server:
             # Materialize by applying fragments to one another in their dependency order.
-            with object_manager.ensure_objects(objects=self.objects) as required_objects:
+            with object_manager.ensure_objects(
+                table=self, objects=self.objects
+            ) as required_objects:
                 engine.create_table(
                     schema=destination_schema, table=destination, schema_spec=self.table_schema
                 )
