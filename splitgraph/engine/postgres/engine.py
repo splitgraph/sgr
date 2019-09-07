@@ -46,38 +46,48 @@ RETRY_AMOUNT = 20
 class PsycopgEngine(SQLEngine):
     """Postgres SQL engine backed by a Psycopg connection."""
 
-    def __init__(self, conn_params, name, autocommit=False):
+    def __init__(self, name, conn_params=None, pool=None, autocommit=False):
         """
-        :param conn_params: Dictionary of connection params as stored in the config.
-        :param autocommit: If True, the engine will not use transaction for its operation.
+        :param name: Name of the engine
+        :param conn_params: Optional, dictionary of connection params as stored in the config.
+        :param pool: If specified, a Psycopg connection pool to use in this engine. By default, parameters
+            in conn_params are used so one of them must be specified.
+        :param autocommit: If True, the engine will not use transactions for its operation.
         """
         super().__init__()
 
-        self.conn_params = conn_params
+        if not conn_params and not pool:
+            raise ValueError("One of conn_params/pool must be specified!")
+
         self.name = name
         self.autocommit = autocommit
 
-        # Connection pool used by the engine, keyed by the thread ID (so one connection gets
-        # claimed per thread). Usually, only one connection is used (for e.g. metadata management
-        # or performing checkouts/commits). Multiple connections are used when downloading/uploading
-        # objects from S3, since that is done in multiple threads and these connections are short-lived.
-        server, port, username, password, dbname = (
-            conn_params["SG_ENGINE_HOST"],
-            conn_params["SG_ENGINE_PORT"],
-            conn_params["SG_ENGINE_USER"],
-            conn_params["SG_ENGINE_PWD"],
-            conn_params["SG_ENGINE_DB_NAME"],
-        )
+        if conn_params:
+            self.conn_params = conn_params
 
-        self._pool = ThreadedConnectionPool(
-            minconn=0,
-            maxconn=conn_params.get("SG_ENGINE_POOL", CONFIG["SG_ENGINE_POOL"]),
-            host=server,
-            port=port,
-            user=username,
-            password=password,
-            dbname=dbname,
-        )
+            # Connection pool used by the engine, keyed by the thread ID (so one connection gets
+            # claimed per thread). Usually, only one connection is used (for e.g. metadata management
+            # or performing checkouts/commits). Multiple connections are used when downloading/uploading
+            # objects from S3, since that is done in multiple threads and these connections are short-lived.
+            server, port, username, password, dbname = (
+                conn_params["SG_ENGINE_HOST"],
+                conn_params["SG_ENGINE_PORT"],
+                conn_params["SG_ENGINE_USER"],
+                conn_params["SG_ENGINE_PWD"],
+                conn_params["SG_ENGINE_DB_NAME"],
+            )
+
+            self._pool = ThreadedConnectionPool(
+                minconn=0,
+                maxconn=conn_params.get("SG_ENGINE_POOL", CONFIG["SG_ENGINE_POOL"]),
+                host=server,
+                port=port,
+                user=username,
+                password=password,
+                dbname=dbname,
+            )
+        else:
+            self._pool = pool
 
     def __repr__(self):
         return "PostgresEngine %s (%s@%s:%s/%s)" % (
