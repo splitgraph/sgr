@@ -10,7 +10,7 @@ import click
 from splitgraph import get_engine, select, ResultShape
 from splitgraph.core._common import pretty_size
 from splitgraph.core._drawing import render_tree
-from splitgraph.core.bloom import describe
+from splitgraph.core.indexing.bloom import describe
 from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.object_manager import ObjectManager
 from ._common import ImageType, pluralise, RepositoryType

@@ -4,7 +4,7 @@ from unittest import mock
 import pytest
 
 from splitgraph import ResultShape
-from splitgraph.core.bloom import _prepare_bloom_quals, filter_bloom_index, describe
+from splitgraph.core.indexing.bloom import _prepare_bloom_quals, filter_bloom_index, describe
 from test.splitgraph.conftest import OUTPUT
 
 

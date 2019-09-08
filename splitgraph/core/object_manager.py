@@ -153,7 +153,7 @@ class ObjectManager(FragmentManager):
             )
 
             # Filter to see if we can discard any objects with the quals
-            required_objects = self.filter_objects(table.objects, table, quals)
+            required_objects = self.filter_fragments(table.objects, table, quals)
             tracer.log("filter_objects")
 
         # Increase the refcount on all of the objects we're giving back to the caller so that others don't GC them.

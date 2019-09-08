@@ -6,7 +6,7 @@ import pytest
 
 from splitgraph import SPLITGRAPH_META_SCHEMA
 from splitgraph.core import clone, select
-from splitgraph.core.fragment_manager import _quals_to_clause
+from splitgraph.core.indexing.range import _quals_to_clause
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import ObjectCacheError
 from test.splitgraph.commands.test_layered_querying import prepare_lq_repo
@@ -621,12 +621,10 @@ def test_object_manager_object_filtering(local_engine_empty, include_bloom):
     objects = _prepare_object_filtering_dataset(include_bloom=include_bloom)
     obj_1, obj_2, obj_3, obj_4 = objects
     om = OUTPUT.objects
-    column_types = {
-        c[1]: c[2] for c in OUTPUT.engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, obj_1)
-    }
+    table = OUTPUT.head.get_table("test")
 
     def _assert_filter_result(quals, expected):
-        assert set(om.filter_fragments(objects, quals, column_types)) == set(expected)
+        assert set(om.filter_fragments(objects, table, quals)) == set(expected)
 
     # Test single quals on PK
     _assert_filter_result([[("col1", "=", 3)]], [obj_1])

@@ -8,7 +8,8 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core._common import Tracer
-from splitgraph.core.fragment_manager import get_random_object_id, quals_to_sql, get_chunk_groups
+from splitgraph.core.fragment_manager import get_random_object_id, get_chunk_groups
+from splitgraph.core.indexing.range import quals_to_sql
 from splitgraph.engine import ResultShape
 
 
@@ -44,7 +45,7 @@ class QueryPlan:
 
         self.required_objects = table.objects
         self.tracer.log("resolve_objects")
-        self.filtered_objects = self.object_manager.filter_objects(
+        self.filtered_objects = self.object_manager.filter_fragments(
             self.required_objects, table, quals
         )
         self.tracer.log("filter_objects")

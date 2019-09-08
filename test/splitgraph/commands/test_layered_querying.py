@@ -8,6 +8,7 @@ from splitgraph import Repository, SPLITGRAPH_META_SCHEMA
 from splitgraph.core import clone
 from splitgraph.core._common import META_TABLES
 from splitgraph.core.fragment_manager import get_chunk_groups
+from splitgraph.core.indexing.range import extract_min_max_pks
 from splitgraph.core.table import Table
 from splitgraph.engine import ResultShape
 from splitgraph.engine.postgres.engine import PostgresEngine
@@ -92,7 +93,7 @@ def test_layered_querying(pg_repo_local, test_case):
 
     query, expected = test_case
     print("Query: %s, expected: %r" % test_case)
-    assert pg_repo_local.run_sql(query) == expected
+    assert sorted(pg_repo_local.run_sql(query)) == sorted(expected)
 
 
 def test_layered_querying_against_single_fragment(pg_repo_local):
@@ -393,7 +394,9 @@ def test_multiengine_flow(
 
 def _get_chunk_groups(table):
     pks = [c[1] for c in table.table_schema if c[3]]
-    chunk_boundaries = table.repository.objects.extract_min_max_pks(table.objects, pks)
+    chunk_boundaries = extract_min_max_pks(
+        table.repository.objects.object_engine, table.objects, pks
+    )
     return get_chunk_groups(
         [(o, min_max[0], min_max[1]) for o, min_max in zip(table.objects, chunk_boundaries)]
     )
