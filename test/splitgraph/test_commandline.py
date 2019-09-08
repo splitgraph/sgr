@@ -222,6 +222,32 @@ def test_commandline_commit_chunk(pg_repo_local):
     assert len(new_new_objects) == 5
 
 
+def test_commandline_commit_bloom(pg_repo_local):
+    runner = CliRunner()
+
+    pg_repo_local.run_sql("ALTER TABLE fruits ADD PRIMARY KEY (fruit_id)")
+    pg_repo_local.run_sql("ALTER TABLE vegetables ADD PRIMARY KEY (vegetable_id)")
+
+    result = runner.invoke(
+        commit_c,
+        [
+            str(pg_repo_local),
+            "--snap",
+            "--index-options",
+            '{"fruits": {"bloom": {"name": {"probability": 0.001}}}}',
+        ],
+    )
+    assert result.exit_code == 0
+
+    fruit_objects = pg_repo_local.head.get_table("fruits").objects
+    assert len(fruit_objects) == 1
+    vegetable_objects = pg_repo_local.head.get_table("vegetables").objects
+    assert len(vegetable_objects) == 1
+    object_meta = pg_repo_local.objects.get_object_meta(fruit_objects + vegetable_objects)
+    assert "bloom" in object_meta[fruit_objects[0]].index
+    assert "bloom" not in object_meta[vegetable_objects[0]].index
+
+
 def test_object_info(local_engine_empty):
     runner = CliRunner()
 
