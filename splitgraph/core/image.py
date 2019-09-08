@@ -8,7 +8,7 @@ from random import getrandbits
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCHEMA
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA, FDW_CLASS
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphError
 from splitgraph.hooks.mount_handlers import init_fdw
@@ -20,7 +20,6 @@ _PROV_QUERY = SQL(
     """UPDATE {}.images SET provenance_type = %s, provenance_data = %s WHERE
                             namespace = %s AND repository = %s AND image_hash = %s"""
 ).format(Identifier(SPLITGRAPH_META_SCHEMA))
-FDW_CLASS = CONFIG["SG_FDW_CLASS"]
 
 
 class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_engine"])):

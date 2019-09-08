@@ -31,3 +31,4 @@ SPLITGRAPH_API_SCHEMA = "splitgraph_api"
 logging.basicConfig(
     format="%(asctime)s [%(process)d] %(levelname)s %(message)s", level=CONFIG["SG_LOGLEVEL"]
 )
+FDW_CLASS = CONFIG["SG_FDW_CLASS"]

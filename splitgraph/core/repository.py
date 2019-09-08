@@ -11,7 +11,7 @@ from random import getrandbits
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA, FDW_CLASS
 from splitgraph.core import select
 from splitgraph.core._common import insert
 from splitgraph.core.fragment_manager import get_random_object_id
@@ -785,7 +785,7 @@ class Repository:
         target_hash=None,
         table_queries=None,
         parent_hash=None,
-        wrapper=None,
+        wrapper=FDW_CLASS,
     ):
         """
         Creates a new commit in target_repository with one or more tables linked to already-existing tables.
@@ -875,7 +875,7 @@ class Repository:
         table_queries,
         foreign_tables,
         base_hash,
-        wrapper=None,
+        wrapper,
     ):
         # This importing route only supported between local repos.
         assert self.engine == source_repository.engine
