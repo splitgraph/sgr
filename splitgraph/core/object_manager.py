@@ -86,7 +86,7 @@ class ObjectManager(FragmentManager):
                     "quote_ident(t.table_name))), 0)"
                     " FROM information_schema.tables t JOIN {0}.object_cache_status oc"
                     " ON t.table_name = oc.object_id"
-                    " WHERE oc.ready = 't' AND t.table_schema = %s AND t.table_type = 'FOREIGN TABLE'"
+                    " WHERE oc.ready = 't' AND t.table_schema = %s AND t.table_type = 'FOREIGN'"
                 ).format(Identifier(SPLITGRAPH_META_SCHEMA)),
                 (SPLITGRAPH_META_SCHEMA,),
                 return_shape=ResultShape.ONE_ONE,
