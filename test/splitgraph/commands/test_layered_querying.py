@@ -1,6 +1,7 @@
 import json
 from datetime import datetime as dt
 from unittest import mock
+from unittest.mock import Mock
 
 import pytest
 
@@ -9,9 +10,11 @@ from splitgraph.core import clone
 from splitgraph.core._common import META_TABLES
 from splitgraph.core.fragment_manager import get_chunk_groups
 from splitgraph.core.indexing.range import extract_min_max_pks
+from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.table import Table
 from splitgraph.engine import ResultShape
 from splitgraph.engine.postgres.engine import PostgresEngine
+from splitgraph.exceptions import ObjectNotFoundError
 from test.splitgraph.conftest import _assert_cache_occupancy, OUTPUT
 
 
@@ -325,6 +328,23 @@ def test_direct_table_lq(pg_repo_local, test_case):
     quals, expected = test_case
     actual = table.query(columns=["name", "timestamp"], quals=quals)
     _assert_dict_list_equal(actual, expected)
+
+
+def test_direct_table_lq_query_plan_cache(pg_repo_local):
+    prepare_lq_repo(pg_repo_local, commit_after_every=True, include_pk=True)
+    new_head = pg_repo_local.head
+    table = new_head.get_table("fruits")
+
+    quals, expected = ([[("fruit_id", "=", "2")]], [{"name": "guitar", "timestamp": _DT}])
+
+    # Check "query plan" is reused and the table doesn't run qual filtering again
+    with mock.patch.object(
+        ObjectManager, "filter_fragments", wraps=table.repository.objects.filter_fragments
+    ) as fo:
+        table.query(columns=["name", "timestamp"], quals=quals)
+        assert fo.call_count == 1
+        table.query(columns=["name", "timestamp"], quals=quals)
+        assert fo.call_count == 1
 
 
 @pytest.mark.registry
@@ -659,6 +679,37 @@ def test_disjoint_table_lq_two_singletons_one_overwritten_indirect(pg_repo_local
     # Call the callback now, deleting the temporary table.
     callback()
     assert not pg_repo_local.engine.table_exists(SPLITGRAPH_META_SCHEMA, tmp_table)
+
+
+def test_disjoint_table_lq_temp_table_deletion_doesnt_lock_up(pg_repo_local):
+    # When Multicorn reads from the temporary table, it does that in the context of the
+    # transaction that it's been called from. It hence can hold a read lock on the
+    # temporary table that it won't release until the scan is over but the scan won't
+    # be over until we've managed to delete the temporary table, leading to a deadlock.
+    # Check deleting the table in a separate thread works.
+
+    prepare_lq_repo(pg_repo_local, commit_after_every=True, include_pk=True)
+    pg_repo_local.run_sql("INSERT INTO fruits VALUES (4, 'fruit_4'), (5, 'fruit_5')")
+    fruits = pg_repo_local.commit().get_table("fruits")
+
+    queries, callback, _ = fruits.query_indirect(columns=["fruit_id", "name"], quals=None)
+
+    # Force a materialization and get the query that makes us read from the temporary table.
+    last_table = list(queries)[-1]
+    pg_repo_local.run_sql(last_table)
+
+    # At this point, we're holding a lock on the table and callback will lock up, unless it's run
+    # in a separate thread.
+    callback(from_fdw=True)
+
+    # We still can read from the table (callback spawned a thread which is locked trying to delete it).
+    pg_repo_local.run_sql(last_table)
+
+    # Now drop the lock.
+    pg_repo_local.engine.rollback()
+
+    with pytest.raises(ObjectNotFoundError):
+        pg_repo_local.run_sql(last_table)
 
 
 def test_get_chunk_groups():

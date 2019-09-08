@@ -80,6 +80,7 @@ class Table:
             plan.tracer = Tracer()
             plan.tracer.log("resolve_objects")
             plan.tracer.log("filter_objects")
+            return plan
 
         plan = QueryPlan(self, quals, columns)
         self._query_plans[key] = plan

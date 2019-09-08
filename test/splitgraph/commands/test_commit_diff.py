@@ -20,6 +20,7 @@ def test_diff_head(pg_repo_local):
         DELETE FROM fruits WHERE name = 'apple'"""
     )
     pg_repo_local.commit_engines()  # otherwise the audit trigger won't see this
+    assert pg_repo_local.engine.has_pending_changes(pg_repo_local.to_schema())
     change = pg_repo_local.diff("fruits", image_1=pg_repo_local.head.image_hash, image_2=None)
     # Added (3, mayonnaise); Deleted (1, 'apple')
     assert sorted(change) == [(False, (1, "apple")), (True, (3, "mayonnaise"))]
