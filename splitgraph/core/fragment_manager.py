@@ -681,7 +681,6 @@ class FragmentManager(MetadataManager):
         :param source_table: Override the name of the table the source is stored in
         :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
         """
-        object_ids = []
         source_schema = source_schema or repository.to_schema()
         source_table = source_table or table_name
 
@@ -693,50 +692,58 @@ class FragmentManager(MetadataManager):
         )
 
         if chunk_size and table_size:
-            table_pk = [
-                p[0] for p in self.object_engine.get_primary_keys(source_schema, source_table)
-            ]
-            new_fragment = None
-
-            for _ in range(0, table_size, chunk_size):
-                # Chunk the table up. It's very slow to do it with
-                # SELECT * FROM source LIMIT chunk_size OFFSET offset as Postgres
-                # needs to go through `offset` heap fetches before finding out what it is it's
-                # supposed to copy. So for the full table, PG will do 0 + chunk_size + 2 * chunk_size
-                # + ... + (no_chunks - 1) * chunk_size heap fetches which is O(n^2).
-
-                # Instead, we look at the last PK of the chunk we wrote previously and
-                # copy rows starting from after that PK (which PG can locate with an index-only scan).
-
-                # Technically we should see if we tried to write an empty chunk and then
-                # stop chunking the table but since we know the exact table size, we know
-                # exactly how many times to keep going.
-
-                last_pk = None
-                if new_fragment:
-                    _, last_pk = extract_min_max_pks(self.object_engine, [new_fragment], table_pk)[
-                        0
-                    ]
-
-                new_fragment = self.create_base_fragment(
-                    source_schema,
-                    source_table,
-                    repository.namespace,
-                    limit=chunk_size,
-                    after_pk=last_pk,
-                    extra_indexes=extra_indexes,
-                )
-                object_ids.append(new_fragment)
+            object_ids = self._chunk_table(
+                repository, source_schema, source_table, table_size, chunk_size, extra_indexes
+            )
 
         elif table_size:
-            object_ids.append(
+            object_ids = [
                 self.create_base_fragment(
                     source_schema, source_table, repository.namespace, extra_indexes=extra_indexes
                 )
-            )
-        # If table_size == 0, then we don't link it to any objects and simply store its schema
+            ]
+        else:
+            # If table_size == 0, then we don't link it to any objects and simply store its schema
+            object_ids = []
         table_schema = self.object_engine.get_full_table_schema(source_schema, source_table)
         self.register_tables(repository, [(image_hash, table_name, table_schema, object_ids)])
+
+    def _chunk_table(
+        self, repository, source_schema, source_table, table_size, chunk_size, extra_indexes
+    ):
+        table_pk = [p[0] for p in self.object_engine.get_primary_keys(source_schema, source_table)]
+        object_ids = []
+
+        new_fragment = None
+        for _ in range(0, table_size, chunk_size):
+            # Chunk the table up. It's very slow to do it with
+            # SELECT * FROM source LIMIT chunk_size OFFSET offset as Postgres
+            # needs to go through `offset` heap fetches before finding out what it is it's
+            # supposed to copy. So for the full table, PG will do 0 + chunk_size + 2 * chunk_size
+            # + ... + (no_chunks - 1) * chunk_size heap fetches which is O(n^2).
+
+            # Instead, we look at the last PK of the chunk we wrote previously and
+            # copy rows starting from after that PK (which PG can locate with an index-only scan).
+
+            # Technically we should see if we tried to write an empty chunk and then
+            # stop chunking the table but since we know the exact table size, we know
+            # exactly how many times to keep going.
+
+            last_pk = None
+            if new_fragment:
+                _, last_pk = extract_min_max_pks(self.object_engine, [new_fragment], table_pk)[0]
+
+            new_fragment = self.create_base_fragment(
+                source_schema,
+                source_table,
+                repository.namespace,
+                limit=chunk_size,
+                after_pk=last_pk,
+                extra_indexes=extra_indexes,
+            )
+            object_ids.append(new_fragment)
+
+        return object_ids
 
     def filter_fragments(self, object_ids, table, quals):
         """

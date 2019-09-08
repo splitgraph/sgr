@@ -17,7 +17,7 @@ def _delete_temporary_table(engine, schema, table):
     engine.commit()
 
 
-def _empty_callback(from_fdw=False):
+def _empty_callback(**kwargs):
     pass
 
 
@@ -34,13 +34,6 @@ class QueryPlan:
         self.tracer = Tracer()
 
         self.object_manager = table.repository.objects
-
-        logging.info(
-            "Resolving objects for table %s:%s:%s",
-            table.repository,
-            table.image.image_hash,
-            table.table_name,
-        )
 
         self.required_objects = table.objects
         self.tracer.log("resolve_objects")
@@ -66,6 +59,15 @@ class Table:
         self._query_plans = {}
 
     def get_query_plan(self, quals, columns, use_cache=True):
+        """
+        Start planning a query (preliminary steps before object downloading,
+        like qualifier filtering).
+
+        :param quals: Qualifiers in CNF form
+        :param columns: List of columns
+        :param use_cache: If True, will fetch the plan from the cache for the same qualifiers and columns.
+        :return: QueryPlan
+        """
         quals = tuple(tuple(tuple(t) for t in qual) for qual in quals) if quals else None
         columns = tuple(columns)
         key = (quals, columns)

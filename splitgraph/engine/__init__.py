@@ -374,13 +374,8 @@ class SQLEngine(ABC):
         pks = [pk for pk, _ in self.get_primary_keys(schema, table_name)]
         return [(o, n, _convert_type(dt), (n in pks)) for o, n, dt in results]
 
-    def initialize(self, skip_object_handling=False):
-        """Does any required initialization of the engine
-
-        :param skip_object_handling: If True, skips installation of
-            audit triggers and other object management routines for engines
-            that don't need change tracking or checkouts.
-        """
+    def initialize(self):
+        """Does any required initialization of the engine"""
 
     def lock_table(self, schema, table):
         """Acquire an exclusive lock on a given table, released when the transaction commits / rolls back."""

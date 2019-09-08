@@ -62,23 +62,23 @@ def get_external_object_handler(name, handler_params):
         external_handlers = CONFIG.get("external_handlers", {})
         if name not in external_handlers:
             raise ExternalHandlerError("Protocol %s is not supported!" % name)
-        else:
-            handler_class_name = external_handlers[name]
-            index = handler_class_name.rindex(".")
-            try:
-                handler_class = getattr(
-                    import_module(handler_class_name[:index]), handler_class_name[index + 1 :]
-                )
-                register_upload_download_handler(name, handler_class)
-                return handler_class(handler_params)
-            except AttributeError as e:
-                raise ExternalHandlerError(
-                    "Error loading external object handler {0}".format(name)
-                ) from e
-            except ImportError as e:
-                raise ExternalHandlerError(
-                    "Error loading external object handler {0}".format(name)
-                ) from e
+
+        handler_class_name = external_handlers[name]
+        index = handler_class_name.rindex(".")
+        try:
+            handler_class = getattr(
+                import_module(handler_class_name[:index]), handler_class_name[index + 1 :]
+            )
+            register_upload_download_handler(name, handler_class)
+            return handler_class(handler_params)
+        except AttributeError as e:
+            raise ExternalHandlerError(
+                "Error loading external object handler {0}".format(name)
+            ) from e
+        except ImportError as e:
+            raise ExternalHandlerError(
+                "Error loading external object handler {0}".format(name)
+            ) from e
 
 
 def register_upload_download_handler(name, handler_class):
