@@ -49,36 +49,6 @@ class QueryPlan:
         )
         self.tracer.log("filter_objects")
 
-    def get_rel_size(self):
-        """
-        Return the expected number of rows returned by this query.
-        :return: Tuple of (amount of rows, average row width in bytes)
-        """
-        # local_objects = self.object_manager.get_downloaded_objects(limit_to=self.filtered_objects)
-        local_objects = []
-        # eeh
-        rows = sum(
-            (
-                self.table.repository.object_engine.run_sql(
-                    SQL("SELECT COUNT (*) FROM splitgraph_meta.{0}").format(Identifier(o)),
-                    return_shape=ResultShape.ONE_ONE,
-                )
-            )
-            if o in local_objects
-            else 10000
-            for o in self.filtered_objects
-        )
-
-        total_size = sum(
-            o.size
-            for o in self.table.repository.objects.get_object_meta(self.filtered_objects).values()
-        )
-
-        if rows:
-            return rows, total_size / rows
-        else:
-            return 0, 0
-
 
 class Table:
     """Represents a Splitgraph table in a given image. Shouldn't be created directly, use Table-loading
