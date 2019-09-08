@@ -258,7 +258,7 @@ BEGIN
     END;
 $$
 LANGUAGE plpgsql;
-    
+
 CREATE TRIGGER sg_validate_table_objects_trigger BEFORE INSERT OR UPDATE ON {0}.tables
 FOR EACH ROW EXECUTE PROCEDURE {0}.validate_table_objects();
 """
@@ -493,9 +493,9 @@ def _parse_dt(string):
         "%Y-%m-%dT%H:%M:%S.%f",
         "%Y-%m-%d %H:%M:%S.%f",
     ]
-    for f in _formats:
+    for fmt in _formats:
         try:
-            return dt.strptime(string, f)
+            return dt.strptime(string, fmt)
         except ValueError:
             continue
 
@@ -550,6 +550,10 @@ class Tracer:
         self.events.append((dt.now(), event))
 
     def get_durations(self):
+        """
+        Return all events and durations between them.
+        :return: List of (event name, time to this event from the previous event (or start))
+        """
         result = []
         prev = self.start_time
         for event_time, event in self.events:
@@ -558,6 +562,9 @@ class Tracer:
         return result
 
     def get_total_time(self):
+        """
+        :return: Time from start to the final logged event.
+        """
         return (self.events[-1][0] - self.start_time).total_seconds()
 
     def __str__(self):
@@ -576,7 +583,7 @@ def coerce_val_to_json(val):
         val = [coerce_val_to_json(v) for v in val]
     elif isinstance(val, tuple):
         val = tuple(coerce_val_to_json(v) for v in val)
-    elif isinstance(val, Decimal) or isinstance(val, date) or isinstance(val, time):
+    elif isinstance(val, (Decimal, date, time)):
         # See https://www.postgresql.org/docs/11/datatype-datetime.html
         # "ISO 8601 specifies the use of uppercase letter T to separate the date and time.
         # PostgreSQL accepts that format on input, but on output it uses a space rather

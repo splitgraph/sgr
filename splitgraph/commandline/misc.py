@@ -169,7 +169,7 @@ def init_c(repository, skip_object_handling):
     if repository:
         if skip_object_handling:
             raise click.BadOptionUsage(
-                "--skip-object-handling unsupported when initializing a new repository!"
+                "--skip-object-handling", "Unsupported when initializing a new repository!"
             )
         repository.init()
         print("Initialized empty repository %s" % str(repository))

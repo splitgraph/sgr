@@ -60,8 +60,7 @@ class ObjectManager(FragmentManager):
         )
         if not limit_to:
             return objects
-        else:
-            return [o for o in objects if o in limit_to]
+        return [o for o in objects if o in limit_to]
 
     def get_cache_occupancy(self):
         """
@@ -232,7 +231,7 @@ class ObjectManager(FragmentManager):
     def _make_release_callback(self, required_objects, table, tracer):
         called = False
 
-        def _f(from_fdw=False):
+        def _f(**kwargs):
             nonlocal called
             if called:
                 return
@@ -481,25 +480,7 @@ class ObjectManager(FragmentManager):
             it shall raise an exception. If None, removes all eligible objects.
         """
 
-        now = dt.utcnow()
-
-        def _eviction_score(object_size, last_used):
-            # We want to evict objects in order to minimize
-            # P(object is requested again) * (cost of redownloading the object).
-            # To approximate the probability, we use an exponential decay function (1 if last_used = now, dropping down
-            # to 0 as time since the object's last usage time passes).
-            # To approximate the cost, we use the object's size, floored to a constant (so if the object has
-            # size <= floor, we'd use the floor value -- this is to simulate the latency of re-fetching the object,
-            # as opposed to the bandwidth)
-            time_since_used = (now - last_used).total_seconds()
-            time_factor = math.exp(-self.eviction_decay_constant * time_since_used)
-            size_factor = object_size if object_size > self.eviction_floor else self.eviction_floor
-            return time_factor * size_factor
-
         logging.info("Performing eviction...")
-        # Maybe here we should also do the old cleanup (see if the objects aren't required
-        #   by any of the current repositories at all).
-
         # Find deletion candidates: objects that we have locally, with refcount 0, that aren't in the whitelist.
 
         candidates = [
@@ -536,35 +517,8 @@ class ObjectManager(FragmentManager):
             if required_space > sum(object_sizes.values()) + sum(orphaned_object_sizes.values()):
                 raise ObjectCacheError("Not enough space will be reclaimed after eviction!")
 
-            # Since we can free the minimum required amount of space, see if we can free even more as
-            # per our settings (if we can't, we'll just delete as much as we can instead of failing).
-            required_space = max(required_space, int(self.eviction_min_fraction * self.cache_size))
-
-            # Delete all orphaned objects first
-            to_delete = orphaned_objects
-            last_useds = [o[1] for o in candidates if o[0] in orphaned_objects]
-            freed_space = sum(orphaned_object_sizes.values())
-
-            # Sort candidates by deletion priority (lowest is smallest expected retrieval cost -- more likely to delete)
-            candidates = sorted(
-                [o for o in candidates if o[0] not in orphaned_objects],
-                key=lambda o: _eviction_score(object_sizes[o[0]], o[1]),
-            )
-
-            # Keep adding deletion candidates until we've freed enough space.
-            for object_id, last_used in candidates:
-                if freed_space >= required_space:
-                    break
-                last_useds.append(last_used)
-                to_delete.append(object_id)
-                freed_space += object_sizes[object_id]
-            logging.info(
-                "Will delete %d object(s) last used between %s and %s, total size %s: %s",
-                len(to_delete),
-                min(last_useds).isoformat(),
-                max(last_useds).isoformat(),
-                pretty_size(freed_space),
-                to_delete,
+            to_delete, freed_space = self._prepare_eviction_candidates(
+                candidates, object_sizes, orphaned_object_sizes, orphaned_objects, required_space
             )
 
         if to_delete:
@@ -577,6 +531,56 @@ class ObjectManager(FragmentManager):
             logging.info(
                 "Eviction done. Cache occupancy: %s", pretty_size(self.get_cache_occupancy())
             )
+
+    def _eviction_score(self, now, object_size, last_used):
+        # We want to evict objects in order to minimize
+        # P(object is requested again) * (cost of redownloading the object).
+        # To approximate the probability, we use an exponential decay function (1 if last_used = now, dropping down
+        # to 0 as time since the object's last usage time passes).
+        # To approximate the cost, we use the object's size, floored to a constant (so if the object has
+        # size <= floor, we'd use the floor value -- this is to simulate the latency of re-fetching the object,
+        # as opposed to the bandwidth)
+        time_since_used = (now - last_used).total_seconds()
+        time_factor = math.exp(-self.eviction_decay_constant * time_since_used)
+        size_factor = object_size if object_size > self.eviction_floor else self.eviction_floor
+        return time_factor * size_factor
+
+    def _prepare_eviction_candidates(
+        self, candidates, object_sizes, orphaned_object_sizes, orphaned_objects, required_space
+    ):
+        now = dt.utcnow()
+
+        # Since we can free the minimum required amount of space, see if we can free even more as
+        # per our settings (if we can't, we'll just delete as much as we can instead of failing).
+        required_space = max(required_space, int(self.eviction_min_fraction * self.cache_size))
+
+        # Delete all orphaned objects first
+        to_delete = orphaned_objects
+        last_useds = [o[1] for o in candidates if o[0] in orphaned_objects]
+        freed_space = sum(orphaned_object_sizes.values())
+
+        # Sort candidates by deletion priority (lowest is smallest expected retrieval cost -- more likely to delete)
+        candidates = sorted(
+            [o for o in candidates if o[0] not in orphaned_objects],
+            key=lambda o: self._eviction_score(now, object_sizes[o[0]], o[1]),
+        )
+
+        # Keep adding deletion candidates until we've freed enough space.
+        for object_id, last_used in candidates:
+            if freed_space >= required_space:
+                break
+            last_useds.append(last_used)
+            to_delete.append(object_id)
+            freed_space += object_sizes[object_id]
+        logging.info(
+            "Will delete %d object(s) last used between %s and %s, total size %s: %s",
+            len(to_delete),
+            min(last_useds).isoformat(),
+            max(last_useds).isoformat(),
+            pretty_size(freed_space),
+            to_delete,
+        )
+        return freed_space, to_delete
 
     def _delete_cache_entries(self, to_delete):
         self.object_engine.run_sql(

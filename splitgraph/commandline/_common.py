@@ -5,21 +5,22 @@ import click
 
 
 class ImageType(click.ParamType):
+    """Parser that extracts the full image specification (repository and hash/tag)."""
+
     name = "Image"
 
     def __init__(self, default="latest"):
         """
-        Makes a parser that extracts the full image specification (repository and hash/tag).
-
-        Image specification must have the format [NAMESPACE/]REPOSITORY[:HASH_OR_TAG].
-
-        The parser returns a tuple of (repository object, tag or hash).
-
         :param default: Default tag/hash for image where it's not specified.
         """
         self.default = default
 
     def convert(self, value, param, ctx):
+        """
+        Image specification must have the format [NAMESPACE/]REPOSITORY[:HASH_OR_TAG].
+
+        The parser returns a tuple of (repository object, tag or hash).
+        """
         repo_image = value.split(":")
 
         if len(repo_image) == 2:

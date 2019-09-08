@@ -178,7 +178,7 @@ class PsycopgEngine(SQLEngine):
                             raise UninitializedEngineError(
                                 "splitgraph_meta not found on the engine. Has the engine been initialized?"
                             ) from e
-                    else:
+                    if "splitgraph_meta" in str(e):
                         raise ObjectNotFoundError(e)
                 elif isinstance(e, InvalidSchemaName):
                     if "splitgraph_api." in str(e):
@@ -271,7 +271,13 @@ class PsycopgEngine(SQLEngine):
         )
 
     def initialize(self, skip_object_handling=False, skip_create_database=False):
-        """Create the Splitgraph Postgres database and install the audit trigger"""
+        """Create the Splitgraph Postgres database and install the audit trigger
+
+        :param skip_object_handling: If True, skips installation of
+            audit triggers and other object management routines for engines
+            that don't need change tracking or checkouts.
+        :param skip_create_database: Don't create the Splitgraph database"""
+
         logging.info("Initializing engine %r...", self)
 
         # Use the connection to the "postgres" database to create the actual PG_DB
@@ -464,6 +470,16 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
     def dump_object_creation(
         self, object_id, schema, table=None, schema_spec=None, if_not_exists=False
     ):
+        """
+        Generate the SQL that remounts a foreign table pointing to a Splitgraph object.
+
+        :param object_id: Name of the object
+        :param schema: Schema to create the table in
+        :param table: Name of the table to mount
+        :param schema_spec: Schema of the table
+        :param if_not_exists: Add IF NOT EXISTS to the DDL
+        :return: SQL in bytes format.
+        """
         table = table or object_id
 
         if not schema_spec:
@@ -535,6 +551,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         )
 
     def unmount_objects(self, object_ids):
+        """Unmount objects from splitgraph_meta (this doesn't delete the physical files."""
         unmount_query = SQL(";").join(
             SQL("DROP FOREIGN TABLE IF EXISTS {}.{}").format(
                 Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)
@@ -544,6 +561,8 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         self.run_sql(unmount_query)
 
     def sync_object_mounts(self):
+        """Scan through local object storage and synchronize it with the foreign tables in
+        splitgraph_meta (unmounting non-existing objects and mounting existing ones)."""
         object_ids = self.run_sql(
             "SELECT splitgraph_api.list_objects()", return_shape=ResultShape.ONE_ONE
         )
@@ -561,14 +580,18 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             self.mount_object(object_id, schema_spec=self.get_object_schema(object_id))
 
     def mount_object(self, object_id, table=None, schema=SPLITGRAPH_META_SCHEMA, schema_spec=None):
+        """
+        Mount an object from local storage as a foreign table.
+
+        :param object_id: ID of the object
+        :param table: Table to mount the object into
+        :param schema: Schema to mount the object into
+        :param schema_spec: Schema of the object.
+        """
         query = self.dump_object_creation(object_id, schema, table, schema_spec)
         self.run_sql(query)
 
     def store_fragment(self, inserted, deleted, schema, table, source_schema, source_table):
-        # Add the upserted-deleted flag
-        # Deletes are tricky: we store the full value here because we're assuming they
-        # mostly don't happen and if they do, we will soon replace this fragment with a
-        # new one that doesn't have those rows at all.
 
         schema_spec = self.get_full_table_schema(source_schema, source_table)
         # Assuming the schema_spec has the whole tuple as PK if the table has no PK.
@@ -642,7 +665,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             self.run_sql(query, args)
 
         # Store the deletes
-        # we don't actually have the old values here so we put NULLs but we probably waste space anyway
+        # we don't actually have the old values here so we put NULLs (which should be compressed out).
         if deleted:
             query = (
                 SQL("INSERT INTO {}.{} (").format(Identifier(schema), Identifier(table))
