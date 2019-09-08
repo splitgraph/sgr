@@ -197,11 +197,7 @@ class PsycopgEngine(SQLEngine):
                 return cur.fetchone()
             if return_shape == ResultShape.MANY_ONE:
                 return [c[0] for c in cur.fetchall()]
-            if return_shape == ResultShape.MANY_MANY:
-                return cur.fetchall()
-
-        # ResultShape.NONE or None
-        return None
+            return cur.fetchall()
 
     def get_primary_keys(self, schema, table):
         """Inspects the Postgres information_schema to get the primary keys for a given table."""
@@ -989,12 +985,3 @@ def _generate_where_clause(table, cols, table_2):
         )
         for c in cols
     )
-
-
-def make_conn(server, port, username, password, dbname):
-    """
-    Initializes a connection a Splitgraph Postgres engine.
-
-    :return: Psycopg connection object
-    """
-    return psycopg2.connect(host=server, port=port, user=username, password=password, dbname=dbname)
