@@ -4,8 +4,9 @@ from datetime import datetime
 from psycopg2._json import Json
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph import select, SPLITGRAPH_API_SCHEMA, ResultShape, SPLITGRAPH_META_SCHEMA
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.core import repository_exists
+from splitgraph.core._common import select, ResultShape
 from splitgraph.core.image import IMAGE_COLS, Image
 from splitgraph.exceptions import ImageNotFoundError
 

@@ -580,7 +580,7 @@ class ObjectManager(FragmentManager):
             pretty_size(freed_space),
             to_delete,
         )
-        return freed_space, to_delete
+        return to_delete, freed_space
 
     def _delete_cache_entries(self, to_delete):
         self.object_engine.run_sql(
