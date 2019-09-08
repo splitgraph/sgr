@@ -10,7 +10,6 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core._common import Tracer
 from splitgraph.core.fragment_manager import get_random_object_id, get_chunk_groups
 from splitgraph.core.indexing.range import quals_to_sql
-from splitgraph.engine import ResultShape
 
 
 def _delete_temporary_table(engine, schema, table):

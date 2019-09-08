@@ -3,7 +3,6 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.core._common import adapt, coerce_val_to_json, ResultShape, select
 
-
 # PG types we can run max/min on
 _PG_INDEXABLE_TYPES = [
     "bigint",

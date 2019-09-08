@@ -2,8 +2,8 @@ from datetime import datetime as dt
 from unittest.mock import patch
 
 import psycopg2
-from psycopg2.errors import CheckViolation
 import pytest
+from psycopg2.errors import CheckViolation
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA
 from splitgraph.core._common import ensure_metadata_schema, Tracer
