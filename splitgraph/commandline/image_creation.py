@@ -1,7 +1,7 @@
 """
 sgr commands related to creating and checking out images
 """
-
+import json
 import sys
 from collections import defaultdict
 
@@ -67,7 +67,8 @@ def checkout_c(image_spec, force, uncheckout, layered):
     "--snap",
     default=False,
     is_flag=True,
-    help="Store the table as a full table snapshot. This consumes more space, but makes checkouts faster.",
+    help="Do not delta compress the changes and instead store the whole table again. "
+    "This consumes more space, but makes checkouts faster.",
 )
 @click.option(
     "-c",
@@ -83,8 +84,14 @@ def checkout_c(image_spec, force, uncheckout, layered):
     is_flag=True,
     help="Split changesets for existing tables across original chunk boundaries.",
 )
+@click.option(
+    "-i",
+    "--index-options",
+    type=json.loads,
+    help="JSON dictionary of extra indexes to calculate on the new objects.",
+)
 @click.option("-m", "--message", help="Optional commit message")
-def commit_c(repository, snap, chunk_size, split_changesets, message):
+def commit_c(repository, snap, chunk_size, split_changesets, index_options, message):
     """
     Commit changes to a checked-out Splitgraph repository.
 
@@ -99,9 +106,37 @@ def commit_c(repository, snap, chunk_size, split_changesets, message):
     table chunk boundaries. For example, if there's a change to the first and the 20000th row of a table that was
     originally committed with `--chunk-size=10000`, this will create 2 fragments: one based on the first chunk
     and one on the second chunk of the table.
+
+    `--index-options` expects a JSON-serialized dictionary of `{table: index_type: column: index_specific_kwargs}`.
+    Indexes are used to narrow down the amount of chunks to scan through when running a query. By default, each column
+    has a range index (minimum and maximum values) and it's possible to add bloom filtering to speed up queries that
+    involve equalities.
+
+    Bloom filtering allows to trade off between the space overhead of the index and the probability of a false
+    positive (claiming that an object contains a record when it actually doesn't, leading to extra scans).
+
+    An example bloom filter `index-options` dictionary:
+
+    \b
+    ```
+    {
+        "table": {
+            "bloom": {
+                "column_1": {
+                    "probability": 0.01,   # Only one of probability
+                    "size": 10000          # or size can be specified.
+                }
+            }
+        }
+    }
+    ```
     """
     new_hash = repository.commit(
-        comment=message, snap_only=snap, chunk_size=chunk_size, split_changeset=split_changesets
+        comment=message,
+        snap_only=snap,
+        chunk_size=chunk_size,
+        split_changeset=split_changesets,
+        extra_indexes=index_options,
     ).image_hash
     print("Committed %s as %s." % (str(repository), new_hash[:12]))
 
