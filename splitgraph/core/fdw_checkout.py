@@ -57,13 +57,11 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         Returns:
             A tuple of the form (expected_number_of_rows, avg_row_width (in bytes))
         """
-        logging.info("Begin get_rel_size")
         cnf_quals = self._quals_to_cnf(quals)
         plan = self.table.get_query_plan(cnf_quals, columns)
-        return plan.get_rel_size()
+        return super().get_rel_size(quals, columns)
 
     def explain(self, quals, columns, sortkeys=None, verbose=False):
-        logging.info("Begin EXPLAIN")
         cnf_quals = self._quals_to_cnf(quals)
         plan = self.table.get_query_plan(cnf_quals, columns)
         all_objects = plan.required_objects
