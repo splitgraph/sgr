@@ -14,6 +14,7 @@ from splitgraph.core.indexing.range import quals_to_sql
 
 def _delete_temporary_table(engine, schema, table):
     engine.delete_table(schema, table)
+    logging.info("Dropped temporary table %s", table)
     engine.commit()
 
 
