@@ -711,7 +711,7 @@ class FragmentManager(MetadataManager):
     def _chunk_table(
         self, repository, source_schema, source_table, table_size, chunk_size, extra_indexes
     ):
-        table_pk = [p[0] for p in self.object_engine.get_primary_keys(source_schema, source_table)]
+        table_pk = [p[0] for p in self.object_engine.get_change_key(source_schema, source_table)]
         object_ids = []
 
         new_fragment = None

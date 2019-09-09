@@ -187,6 +187,8 @@ class SQLEngine(ABC):
                 Identifier(source_table),
             )
         pks = self.get_primary_keys(source_schema, source_table)
+        if not pks:
+            pks = self.get_column_names_types(source_schema, source_table)
         pks_sql = SQL("(") + SQL(",").join(Identifier(p[0]) for p in pks) + SQL(")")
         if after_pk:
             # If after_pk is specified, start from after a given PK.
