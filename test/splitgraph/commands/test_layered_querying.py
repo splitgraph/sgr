@@ -1,4 +1,6 @@
 import json
+import logging
+import time
 from datetime import datetime as dt
 from unittest import mock
 from unittest.mock import Mock
@@ -6,13 +8,13 @@ from unittest.mock import Mock
 import pytest
 
 from splitgraph import Repository, SPLITGRAPH_META_SCHEMA
-from splitgraph.core import clone
+from splitgraph.core import clone, CONFIG
 from splitgraph.core._common import META_TABLES
 from splitgraph.core.fragment_manager import get_chunk_groups
 from splitgraph.core.indexing.range import extract_min_max_pks
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.table import Table
-from splitgraph.engine import ResultShape
+from splitgraph.engine import ResultShape, _prepare_engine_config
 from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import ObjectNotFoundError
 from test.splitgraph.conftest import _assert_cache_occupancy, OUTPUT
@@ -696,20 +698,30 @@ def test_disjoint_table_lq_temp_table_deletion_doesnt_lock_up(pg_repo_local):
 
     # Force a materialization and get the query that makes us read from the temporary table.
     last_table = list(queries)[-1]
-    pg_repo_local.run_sql(last_table)
+    pg_repo_local.commit_engines()
+
+    # Simulate Multicorn reading from the table by doing it from a different engine.
+    conn_params = _prepare_engine_config(CONFIG)
+    engine = PostgresEngine(conn_params=conn_params, name="test_engine")
+    engine.run_sql(last_table)
+    logging.info("Acquired read lock")
 
     # At this point, we're holding a lock on the table and callback will lock up, unless it's run
     # in a separate thread.
     callback(from_fdw=True)
 
+    # Wait for the thread to actually start (a bit gauche but otherwise makes the test flaky(ier))
+    time.sleep(1)
+
     # We still can read from the table (callback spawned a thread which is locked trying to delete it).
-    pg_repo_local.run_sql(last_table)
+    engine.run_sql(last_table)
 
     # Now drop the lock.
-    pg_repo_local.engine.rollback()
+    logging.info("Dropping the lock")
+    engine.rollback()
 
     with pytest.raises(ObjectNotFoundError):
-        pg_repo_local.run_sql(last_table)
+        engine.run_sql(last_table)
 
 
 def test_get_chunk_groups():
