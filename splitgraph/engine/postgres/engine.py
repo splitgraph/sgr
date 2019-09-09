@@ -258,13 +258,28 @@ class PsycopgEngine(SQLEngine):
         stream.write(";\n")
 
     def _admin_conn(self):
-        return psycopg2.connect(
-            dbname=self.conn_params["SG_ENGINE_POSTGRES_DB_NAME"],
-            user=self.conn_params["SG_ENGINE_ADMIN_USER"],
-            password=self.conn_params["SG_ENGINE_ADMIN_PWD"],
-            host=self.conn_params["SG_ENGINE_HOST"],
-            port=self.conn_params["SG_ENGINE_PORT"],
-        )
+        retries = 0
+        delay = 1
+        while True:
+            try:
+                return psycopg2.connect(
+                    dbname=self.conn_params["SG_ENGINE_POSTGRES_DB_NAME"],
+                    user=self.conn_params["SG_ENGINE_ADMIN_USER"],
+                    password=self.conn_params["SG_ENGINE_ADMIN_PWD"],
+                    host=self.conn_params["SG_ENGINE_HOST"],
+                    port=self.conn_params["SG_ENGINE_PORT"],
+                )
+            except psycopg2.Error:
+                if retries >= RETRY_AMOUNT:
+                    raise
+                retries += 1
+                logging.exception(
+                    "Error connecting to the engine, sleeping %.2fs and retrying (%d/%d)...",
+                    delay,
+                    retries,
+                    RETRY_AMOUNT,
+                )
+                time.sleep(delay)
 
     def initialize(self, skip_object_handling=False, skip_create_database=False):
         """Create the Splitgraph Postgres database and install the audit trigger
