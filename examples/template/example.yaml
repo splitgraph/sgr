@@ -1,0 +1,18 @@
+- commands:
+  - "# This block will print out"
+  - "# wait for the user to press ENTER"
+  - "# and then execute"
+  - echo Hello!
+- commands:
+  - "# This one won't pause after running the command"
+  - echo Hello!
+  wait: False
+- commands:
+  - "# This one will show a different fake 'prompt'"
+  prompt: root@localhost
+- commands:
+  - echo "This one won't echo commands before running them (good for behind-the-scenes setup)"
+  echo: False
+- commands:
+  - echo "This one will suppress stderr" 1>&2
+  stderr: False

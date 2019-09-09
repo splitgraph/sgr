@@ -1,0 +1,28 @@
+version: '3'
+services:
+  engine:
+    image: splitgraph/engine
+    ports:
+      - '0.0.0.0:5432:5432'
+    environment:
+      - POSTGRES_USER=sgr
+      - POSTGRES_PASSWORD=supersecure
+      - POSTGRES_DB=splitgraph
+      - SG_CONFIG_FILE=/.sgconfig
+      - SG_LOGLEVEL=INFO
+    expose:
+      - 5432
+    volumes:
+      - .sgconfig:/.sgconfig
+  mongo:
+    build: ./mongodb
+    ports:
+      - '0.0.0.0:27017:27017'
+    environment:
+      - ORIGIN_USER=originro
+      - ORIGIN_PASS=originpass
+      - ORIGIN_MONGO_DB=origindb
+    expose:
+      - 27017
+    volumes:
+      - ./mongodb/setup.js:/src/setup.js
