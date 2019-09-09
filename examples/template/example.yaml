@@ -1,4 +1,10 @@
 - commands:
+  - "# Build and start the containers -- use the same project name so that"
+  - "# containers from other examples are removed"
+  - docker-compose --project-name splitgraph_example down -v --remove-orphans
+  - docker-compose --project-name splitgraph_example build
+  - docker-compose --project-name splitgraph_example up -d
+- commands:
   - "# This block will print out"
   - "# wait for the user to press ENTER"
   - "# and then execute"
@@ -16,3 +22,6 @@
 - commands:
   - echo "This one will suppress stderr" 1>&2
   stderr: False
+- commands:
+  - "# Delete the docker-compose project and cleanup"
+  - docker-compose --project-name down -v --remove-orphans

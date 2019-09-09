@@ -1,7 +1,8 @@
 - commands:
   - "# Build and start the containers"
-  - docker-compose build
-  - docker-compose up -d
+  - docker-compose --project-name splitgraph_example down -v --remove-orphans
+  - docker-compose --project-name splitgraph_example build
+  - docker-compose --project-name splitgraph_example up -d
 - commands:
   - "# Initialize the engine"
   - sgr init
@@ -28,3 +29,6 @@
 - commands:
   - "# Import the data into a new Splitgraph repository"
   - sgr import staging "SELECT name, duration, happy FROM stuff" my/repository stuff
+- commands:
+  - "# Delete the docker-compose project and cleanup"
+  - docker-compose --project-name down -v --remove-orphans

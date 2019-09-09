@@ -7,9 +7,11 @@ def test_example(example_path):
 
     :param example_path: Path to the example directory
     """
-    subprocess.run(
+    result = subprocess.run(
         args=["../run_example.py", "example.yaml", "--no-pause"],
         cwd=example_path,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
     )
+
+    if result.returncode != 0:
+        raise AssertionError("Example exited with code %d!" % result.returncode)

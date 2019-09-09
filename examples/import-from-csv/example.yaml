@@ -1,0 +1,44 @@
+- commands:
+  - "# Build and start the containers"
+  - docker-compose --project-name splitgraph_example down -v --remove-orphans
+  - docker-compose --project-name splitgraph_example build
+  - docker-compose --project-name splitgraph_example up -d
+- commands:
+  - "# Initialize the engine (wait for the container to start up)"
+  - sleep 5
+  - sgr init
+- commands:
+  - "# Download the data file"
+  - wget https://data.townofcary.org/api/v2/catalog/datasets/rdu-weather-history/exports/csv -O rdu-weather-history.csv
+- commands:
+  - "# Inspect the CSV"
+  - head -n5 rdu-weather-history.csv
+- commands:
+  - "# Initialize the repository"
+  - sgr init demo/weather
+  - sgr csv import --help
+- commands:
+  - "# Ingest the data into a new table (wrapper around Pandas + SQL)"
+  - |
+    sgr csv import -f rdu-weather-history.csv \
+                   -k date \
+                   -d date \
+                   --separator ";" \
+                   demo/weather rdu
+- commands:
+  - "# The data is now in a table but not committed as a Splitgraph image"
+  - sgr status demo/weather
+  - sgr diff demo/weather
+- commands:
+  - "# Create a new image and tag it"
+  - sgr commit demo/weather
+  - sgr tag demo/weather initial_data
+- commands:
+  - "# Inspect the image"
+  - sgr show demo/weather:initial_data -v
+- commands:
+  - "# Inspect object metadata"
+  - sgr object o6dd9968a1efa420d7ebd4b258039624f730702bddb0200f3723eddd18d4f57
+- commands:
+  - "# Delete the docker-compose project and cleanup"
+  - docker-compose --project-name splitgraph_example down -v
