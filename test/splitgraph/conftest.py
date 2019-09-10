@@ -155,22 +155,21 @@ def healthcheck_mounting():
 def local_engine_empty():
     engine = get_engine()
     # A connection to the local engine that has nothing mounted on it.
+    clean_out_engine(engine)
+    try:
+        yield engine
+    finally:
+        engine.rollback()
+        clean_out_engine(engine)
+
+
+def clean_out_engine(engine):
     for mountpoint, _ in get_current_repositories(engine):
         mountpoint.delete()
     for mountpoint in TEST_MOUNTPOINTS:
         mountpoint.delete()
     ObjectManager(engine).cleanup()
     engine.commit()
-    try:
-        yield engine
-    finally:
-        engine.rollback()
-        for mountpoint, _ in get_current_repositories(engine):
-            mountpoint.delete()
-        for mountpoint in TEST_MOUNTPOINTS:
-            mountpoint.delete()
-        ObjectManager(engine).cleanup()
-        engine.commit()
 
 
 with open(
@@ -200,6 +199,27 @@ def make_multitag_pg_repo(pg_repo):
 @pytest.fixture
 def pg_repo_local(local_engine_empty):
     yield make_pg_repo(local_engine_empty)
+
+
+@pytest.fixture(scope="class")
+def lq_test_repo():
+    """A read-only fixture for LQ tests that gets reused so that we don't clean out
+    the engine after every SELECT query."""
+    engine = get_engine()
+    clean_out_engine(engine)
+    pg_repo_local = make_pg_repo(engine)
+
+    # Most of these tests are only interesting for where there are multiple fragments, so we have PKs on tables
+    # and store them as deltas.
+    prepare_lq_repo(pg_repo_local, commit_after_every=True, include_pk=True)
+
+    # Discard the actual materialized table and query everything via FDW
+    pg_repo_local.head.checkout(layered=True)
+
+    try:
+        yield pg_repo_local
+    finally:
+        clean_out_engine(engine)
 
 
 @pytest.fixture
@@ -396,3 +416,28 @@ def _assert_cache_occupancy(object_manager, number_of_objects):
     cache_occupancy = object_manager.get_cache_occupancy()
     assert abs(cache_occupancy - SMALL_OBJECT_SIZE * number_of_objects) <= 150 * number_of_objects
     assert cache_occupancy == object_manager._recalculate_cache_occupancy()
+
+
+def prepare_lq_repo(repo, commit_after_every, include_pk, snap_only=False):
+    OPS = [
+        "INSERT INTO fruits VALUES (3, 'mayonnaise')",
+        "DELETE FROM fruits WHERE name = 'apple'",
+        "DELETE FROM vegetables WHERE vegetable_id = 1;INSERT INTO vegetables VALUES (3, 'celery')",
+        "UPDATE fruits SET name = 'guitar' WHERE fruit_id = 2",
+    ]
+
+    repo.run_sql("ALTER TABLE fruits ADD COLUMN number NUMERIC DEFAULT 1")
+    repo.run_sql("ALTER TABLE fruits ADD COLUMN timestamp TIMESTAMP DEFAULT '2019-01-01T12:00:00'")
+    if include_pk:
+        repo.run_sql("ALTER TABLE fruits ADD PRIMARY KEY (fruit_id)")
+        repo.run_sql("ALTER TABLE vegetables ADD PRIMARY KEY (vegetable_id)")
+        repo.commit()
+
+    for o in OPS:
+        repo.run_sql(o)
+        print(o)
+
+        if commit_after_every:
+            repo.commit(snap_only=snap_only)
+    if not commit_after_every:
+        repo.commit(snap_only=snap_only)

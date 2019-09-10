@@ -101,6 +101,9 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
             # the special hack to avoid deadlocks with Multicorn.
             self.end_scan_callback(from_fdw=True)
 
+        self.engine.close()
+        self.object_engine.close()
+
     def _initialize_engines(self):
         # Try using a UNIX socket if the engine is local to us
         self.engine = get_engine(

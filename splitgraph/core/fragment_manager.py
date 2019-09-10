@@ -821,7 +821,7 @@ class FragmentManager(MetadataManager):
             if base_tables:
                 self.object_engine.run_sql(
                     SQL(";").join(
-                        SQL("DROP TABLE {}.{}").format(
+                        SQL("DROP TABLE IF EXISTS {}.{}").format(
                             Identifier(SPLITGRAPH_META_SCHEMA), Identifier(t)
                         )
                         for t in base_tables

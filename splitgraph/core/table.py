@@ -16,6 +16,7 @@ def _delete_temporary_table(engine, schema, table):
     engine.delete_table(schema, table)
     logging.info("Dropped temporary table %s", table)
     engine.commit()
+    engine.close()
 
 
 def _empty_callback(**kwargs):

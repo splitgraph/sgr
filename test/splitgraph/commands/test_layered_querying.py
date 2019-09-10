@@ -3,7 +3,6 @@ import logging
 import time
 from datetime import datetime as dt
 from unittest import mock
-from unittest.mock import Mock
 
 import pytest
 
@@ -17,33 +16,7 @@ from splitgraph.core.table import Table
 from splitgraph.engine import ResultShape, _prepare_engine_config
 from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import ObjectNotFoundError
-from test.splitgraph.conftest import _assert_cache_occupancy, OUTPUT
-
-
-def prepare_lq_repo(repo, commit_after_every, include_pk, snap_only=False):
-    OPS = [
-        "INSERT INTO fruits VALUES (3, 'mayonnaise')",
-        "DELETE FROM fruits WHERE name = 'apple'",
-        "DELETE FROM vegetables WHERE vegetable_id = 1;INSERT INTO vegetables VALUES (3, 'celery')",
-        "UPDATE fruits SET name = 'guitar' WHERE fruit_id = 2",
-    ]
-
-    repo.run_sql("ALTER TABLE fruits ADD COLUMN number NUMERIC DEFAULT 1")
-    repo.run_sql("ALTER TABLE fruits ADD COLUMN timestamp TIMESTAMP DEFAULT '2019-01-01T12:00:00'")
-    if include_pk:
-        repo.run_sql("ALTER TABLE fruits ADD PRIMARY KEY (fruit_id)")
-        repo.run_sql("ALTER TABLE vegetables ADD PRIMARY KEY (vegetable_id)")
-        repo.commit()
-
-    for o in OPS:
-        repo.run_sql(o)
-        print(o)
-
-        if commit_after_every:
-            repo.commit(snap_only=snap_only)
-    if not commit_after_every:
-        repo.commit(snap_only=snap_only)
-
+from test.splitgraph.conftest import _assert_cache_occupancy, OUTPUT, prepare_lq_repo
 
 _DT = dt(2019, 1, 1, 12)
 
@@ -53,52 +26,123 @@ def _assert_dict_list_equal(left, right):
     assert sorted(left, key=str) == sorted(right, key=str)
 
 
-@pytest.mark.parametrize(
-    "test_case",
-    [
-        ("SELECT * FROM fruits WHERE fruit_id = 3", [(3, "mayonnaise", 1, _DT)]),
-        ("SELECT * FROM fruits WHERE fruit_id = 2", [(2, "guitar", 1, _DT)]),
-        ("SELECT * FROM vegetables WHERE vegetable_id = 1", []),
-        ("SELECT * FROM fruits WHERE fruit_id = 1", []),
-        # Test quals on other types
-        (
-            "SELECT * FROM fruits WHERE fruit_id = 3 AND timestamp > '2018-01-01T00:00:00'",
-            [(3, "mayonnaise", 1, _DT)],
-        ),
-        # EQ on string
-        ("SELECT * FROM fruits WHERE name = 'guitar'", [(2, "guitar", 1, _DT)]),
-        # IN ( converted to =ANY(array([...]))
-        (
-            "SELECT * FROM fruits WHERE name IN ('guitar', 'mayonnaise') ORDER BY fruit_id",
-            [(2, "guitar", 1, _DT), (3, "mayonnaise", 1, _DT)],
-        ),
-        # LIKE (operator ~~)
-        ("SELECT * FROM fruits WHERE name LIKE '%uitar'", [(2, "guitar", 1, _DT)]),
-        # Join between two FDWs
-        (
-            "SELECT * FROM fruits JOIN vegetables ON fruits.fruit_id = vegetables.vegetable_id",
-            [(2, "guitar", 1, _DT, 2, "carrot"), (3, "mayonnaise", 1, _DT, 3, "celery")],
-        ),
-        # Expression in terms of another column
-        ("SELECT * FROM fruits WHERE fruit_id = number + 1 ", [(2, "guitar", 1, _DT)]),
-    ],
-)
-def test_layered_querying(pg_repo_local, test_case):
-    # Future: move the LQ tests to be local (instantiate the FDW with some mocks and send the same query requests)
-    # since it's much easier to test them like that.
+class TestLayeredQuerying:
+    @pytest.mark.parametrize(
+        "test_case",
+        [
+            ("SELECT * FROM fruits WHERE fruit_id = 3", [(3, "mayonnaise", 1, _DT)]),
+            ("SELECT * FROM fruits WHERE fruit_id = 2", [(2, "guitar", 1, _DT)]),
+            ("SELECT * FROM vegetables WHERE vegetable_id = 1", []),
+            ("SELECT * FROM fruits WHERE fruit_id = 1", []),
+            # Test quals on other types
+            (
+                "SELECT * FROM fruits WHERE fruit_id = 3 AND timestamp > '2018-01-01T00:00:00'",
+                [(3, "mayonnaise", 1, _DT)],
+            ),
+            # EQ on string
+            ("SELECT * FROM fruits WHERE name = 'guitar'", [(2, "guitar", 1, _DT)]),
+            # IN ( converted to =ANY(array([...]))
+            (
+                "SELECT * FROM fruits WHERE name IN ('guitar', 'mayonnaise') ORDER BY fruit_id",
+                [(2, "guitar", 1, _DT), (3, "mayonnaise", 1, _DT)],
+            ),
+            # LIKE (operator ~~)
+            ("SELECT * FROM fruits WHERE name LIKE '%uitar'", [(2, "guitar", 1, _DT)]),
+            # Join between two FDWs
+            (
+                "SELECT * FROM fruits JOIN vegetables ON fruits.fruit_id = vegetables.vegetable_id",
+                [(2, "guitar", 1, _DT, 2, "carrot"), (3, "mayonnaise", 1, _DT, 3, "celery")],
+            ),
+            # Expression in terms of another column
+            ("SELECT * FROM fruits WHERE fruit_id = number + 1 ", [(2, "guitar", 1, _DT)]),
+            # Fetching subsets of columns
+            ("SELECT name, number FROM fruits WHERE fruit_id = number + 1 ", [("guitar", 1)]),
+            # Different order
+            (
+                "SELECT timestamp, number, name FROM fruits WHERE fruit_id = number + 1 ",
+                [(_DT, 1, "guitar")],
+            ),
+            # Duplicate columns
+            (
+                "SELECT number, number, name FROM fruits WHERE fruit_id = number + 1 ",
+                [(1, 1, "guitar")],
+            ),
+        ],
+    )
+    def test_layered_querying(self, lq_test_repo, test_case):
+        # Future: move the LQ tests to be local (instantiate the FDW with some mocks and send the same query requests)
+        # since it's much easier to test them like that.
 
-    # Most of these tests are only interesting for where there are multiple fragments, so we have PKs on tables
-    # and store them as deltas.
+        query, expected = test_case
+        print("Query: %s, expected: %r" % test_case)
+        assert sorted(lq_test_repo.run_sql(query)) == sorted(expected)
 
-    prepare_lq_repo(pg_repo_local, commit_after_every=True, include_pk=True)
+    @pytest.mark.parametrize(
+        "test_case",
+        [
+            # Fetching subsets of columns
+            ("SELECT name, number FROM fruits WHERE fruit_id = number + 1 ", [("guitar", 1)]),
+            # Different order
+            (
+                "SELECT timestamp, number, name FROM fruits WHERE fruit_id = number + 1 ",
+                [(_DT, 1, "guitar")],
+            ),
+            # Duplicate columns
+            (
+                "SELECT number, number, name FROM fruits WHERE fruit_id = number + 1 ",
+                [(1, 1, "guitar")],
+            ),
+        ],
+    )
+    def test_layered_querying_query_schema(self, lq_test_repo, test_case):
+        query, expected = test_case
+        print("Query: %s, expected: %r" % test_case)
+        with lq_test_repo.head.query_schema() as s:
+            assert sorted(lq_test_repo.engine.run_sql_in(s, query)) == sorted(expected)
 
-    # Discard the actual materialized table and query everything via FDW
-    new_head = pg_repo_local.head
-    new_head.checkout(layered=True)
+    @pytest.mark.parametrize(
+        "test_case",
+        [
+            # Normal quals
+            ([[("fruit_id", "=", "2")]], [{"name": "guitar", "timestamp": _DT}]),
+            # No quals
+            (
+                [],
+                [
+                    {"name": "mayonnaise", "timestamp": dt(2019, 1, 1, 12, 0)},
+                    {"name": "guitar", "timestamp": dt(2019, 1, 1, 12, 0)},
+                ],
+            ),
+            # One fragment hit
+            (
+                [[("fruit_id", "=", "3")]],
+                [{"name": "mayonnaise", "timestamp": dt(2019, 1, 1, 12, 0)}],
+            ),
+            # No fragments hit
+            ([[("fruit_id", "=", "42")]], []),
+        ],
+    )
+    def test_direct_table_lq(self, lq_test_repo, test_case):
+        # Test LQ using the Table.query() call instead of the FDW
+        table = lq_test_repo.head.get_table("fruits")
 
-    query, expected = test_case
-    print("Query: %s, expected: %r" % test_case)
-    assert sorted(pg_repo_local.run_sql(query)) == sorted(expected)
+        quals, expected = test_case
+        actual = table.query(columns=["name", "timestamp"], quals=quals)
+        _assert_dict_list_equal(actual, expected)
+
+    def test_direct_table_lq_query_plan_cache(self, lq_test_repo):
+        table = lq_test_repo.head.get_table("fruits")
+
+        quals, expected = ([[("fruit_id", "=", "2")]], [{"name": "guitar", "timestamp": _DT}])
+
+        # Check "query plan" is reused and the table doesn't run qual filtering again
+        with mock.patch.object(
+            ObjectManager, "filter_fragments", wraps=table.repository.objects.filter_fragments
+        ) as fo:
+            table.query(columns=["name", "timestamp"], quals=quals)
+            assert fo.call_count == 1
+            table.query(columns=["name", "timestamp"], quals=quals)
+            assert fo.call_count == 1
 
 
 def test_layered_querying_against_single_fragment(pg_repo_local):
@@ -299,54 +343,6 @@ def test_lq_single_non_snap_object(local_engine_empty, unprivileged_pg_repo, cle
     ) == [(3, "celery")]
     used_objects = pg_repo_local.objects.get_downloaded_objects()
     assert len(used_objects) == 1
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    [
-        # Normal quals
-        ([[("fruit_id", "=", "2")]], [{"name": "guitar", "timestamp": _DT}]),
-        # No quals
-        (
-            [],
-            [
-                {"name": "mayonnaise", "timestamp": dt(2019, 1, 1, 12, 0)},
-                {"name": "guitar", "timestamp": dt(2019, 1, 1, 12, 0)},
-            ],
-        ),
-        # One fragment hit
-        ([[("fruit_id", "=", "3")]], [{"name": "mayonnaise", "timestamp": dt(2019, 1, 1, 12, 0)}]),
-        # No fragments hit
-        ([[("fruit_id", "=", "42")]], []),
-    ],
-)
-def test_direct_table_lq(pg_repo_local, test_case):
-    # Test LQ using the Table.query() call instead of the FDW
-    prepare_lq_repo(pg_repo_local, commit_after_every=True, include_pk=True)
-
-    new_head = pg_repo_local.head
-    table = new_head.get_table("fruits")
-
-    quals, expected = test_case
-    actual = table.query(columns=["name", "timestamp"], quals=quals)
-    _assert_dict_list_equal(actual, expected)
-
-
-def test_direct_table_lq_query_plan_cache(pg_repo_local):
-    prepare_lq_repo(pg_repo_local, commit_after_every=True, include_pk=True)
-    new_head = pg_repo_local.head
-    table = new_head.get_table("fruits")
-
-    quals, expected = ([[("fruit_id", "=", "2")]], [{"name": "guitar", "timestamp": _DT}])
-
-    # Check "query plan" is reused and the table doesn't run qual filtering again
-    with mock.patch.object(
-        ObjectManager, "filter_fragments", wraps=table.repository.objects.filter_fragments
-    ) as fo:
-        table.query(columns=["name", "timestamp"], quals=quals)
-        assert fo.call_count == 1
-        table.query(columns=["name", "timestamp"], quals=quals)
-        assert fo.call_count == 1
 
 
 @pytest.mark.registry

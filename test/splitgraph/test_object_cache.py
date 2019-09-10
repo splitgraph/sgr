@@ -9,12 +9,12 @@ from splitgraph.core import clone, select
 from splitgraph.core.indexing.range import _quals_to_clause
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import ObjectCacheError
-from test.splitgraph.commands.test_layered_querying import prepare_lq_repo
 from test.splitgraph.conftest import (
     OUTPUT,
     _cleanup_minio,
     SMALL_OBJECT_SIZE,
     _assert_cache_occupancy,
+    prepare_lq_repo,
 )
 
 
