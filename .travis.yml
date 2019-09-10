@@ -10,9 +10,13 @@ script:
   # take a lot of time to start up (especially the first time). So, whilst the 3 DBs are busy starting up,
   # we run the core tests against the local/remote engines and then run the rest of the tests (about 10% of them)
   # with the databases up, merging coverage.
-  - poetry run pytest -v -m "not mounting"
+  - poetry run pytest -v -m "not mounting and not example"
   - ./wait-for-test-architecture.sh --mounting
-  - poetry run pytest -v -m "mounting" --cov-append
+  - poetry run pytest -v -m "mounting and not example" --cov-append
+  # The "example" test suite needs the test services to be down, since it tests the end-to-end flow
+  # of bringing them up and running each example.
+  - ./.ci/down_architecture.sh
+  - poetry run pytest -v -m "example" --cov-append
 
 services:
   - docker
