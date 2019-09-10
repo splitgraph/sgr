@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "splitgraph-iris"
+version = "0.0.0"
+description = "Splitgraph Iris Dataset Example"
+license = "Apache 2.0"
+authors = ["Splitgraph Limited"]
+readme = "README.md"
+homepage = "https://www.splitgraph.com"
+repository = "https://github.com/splitgraph/splitgraph"
+
+[tool.poetry.dependencies]
+python = ">=3.6"
+splitgraph = { path = "../.." }
+
+# Requirements to get the actual demo running
+pandas = { version = ">=0.24" }
+sklearn = "^0.0.0"
+jupyter = "^1.0"
+
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"

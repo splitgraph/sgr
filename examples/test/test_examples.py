@@ -1,6 +1,9 @@
 import subprocess
 
+import pytest
 
+
+@pytest.mark.example
 def test_example(example_path):
     """
     Run a test for a single example directory
