@@ -716,6 +716,8 @@ def test_disjoint_table_lq_temp_table_deletion_doesnt_lock_up(pg_repo_local):
     logging.info("Dropping the lock")
     engine.rollback()
 
+    # If this test assertion fails, make sure we're not left holding the lock.
+    engine.autocommit = True
     with pytest.raises(ObjectNotFoundError):
         engine.run_sql(last_table)
 

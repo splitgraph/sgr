@@ -58,7 +58,7 @@ def csv_export(image_spec, query, file, layered):
         df = sql_to_df(query, image=image, repository=repository, use_lq=layered)
         df.to_csv(file, index=df.index.names != [None])
     except ImportError:
-        print("Install the " "ingestion" " setuptools extra to enable this feature!")
+        print('Install the "ingestion" setuptools extra to enable this feature!')
         exit(1)
 
 
@@ -146,7 +146,7 @@ def csv_import(
             schema_check=not skip_schema_check,
         )
     except ImportError:
-        print("Install the " "ingestion" " setuptools extra to enable this feature!")
+        print('Install the "ingestion" setuptools extra to enable this feature!')
         exit(1)
 
 

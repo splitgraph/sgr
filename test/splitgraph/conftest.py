@@ -3,7 +3,8 @@ import os
 import pytest
 from minio.error import BucketAlreadyExists, BucketAlreadyOwnedByYou
 
-from splitgraph.core._common import ensure_metadata_schema
+from splitgraph import SPLITGRAPH_META_SCHEMA
+from splitgraph.core._common import ensure_metadata_schema, META_TABLES
 from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.registry import (
@@ -219,6 +220,22 @@ def lq_test_repo():
     try:
         yield pg_repo_local
     finally:
+        # Canary to make sure that all BASE tables (we use those as temporary storage for Multicorn
+        # to read data from) have been deleted by LQs.
+
+        tables_in_meta = {
+            c for c in engine.get_all_tables(SPLITGRAPH_META_SCHEMA) if c not in META_TABLES
+        }
+        non_foreign_tables = [
+            t
+            for t in tables_in_meta
+            if engine.get_table_type(SPLITGRAPH_META_SCHEMA, t).startswith("BASE")
+        ]
+        if non_foreign_tables:
+            raise AssertionError(
+                "Layered query left temporary tables behind!\n%r", non_foreign_tables
+            )
+
         clean_out_engine(engine)
 
 

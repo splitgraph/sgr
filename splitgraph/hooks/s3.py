@@ -59,6 +59,8 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
             # just the first one for logging)
             logging.info("%s -> %s", object_id, url[0])
             local_engine.run_sql("SELECT splitgraph_api.upload_object(%s, %s)", (object_id, url))
+            local_engine.commit()
+            local_engine.close()
             return object_id
 
         with ThreadPoolExecutor(max_workers=worker_threads) as tpe:

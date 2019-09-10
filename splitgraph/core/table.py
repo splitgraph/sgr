@@ -13,10 +13,24 @@ from splitgraph.core.indexing.range import quals_to_sql
 
 
 def _delete_temporary_table(engine, schema, table):
-    engine.delete_table(schema, table)
-    logging.info("Dropped temporary table %s", table)
-    engine.commit()
-    engine.close()
+    """
+    Workaround for Multicorn deadlocks at end_scan time, supposed to be run in a separate thread.
+    """
+    # Delete the temporary table in an autocommitting connection with a small lock
+    # timeout: if we fail to delete it because Multicorn is still holding a lock on it etc,
+    # we'd rather leave the temporary table in splitgraph_meta than lock up.
+    conn = engine.connection
+    conn.autocommit = True
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SET lock_timeout TO '5s';")
+            cur.execute(
+                SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(schema), Identifier(table))
+            )
+        logging.info("Dropped temporary table %s", table)
+    finally:
+        conn.autocommit = False
+        conn.close()
 
 
 def _empty_callback(**kwargs):
@@ -237,7 +251,7 @@ class Table:
                     )
                     thread.start()
                 else:
-                    _delete_temporary_table(engine, SPLITGRAPH_META_SCHEMA, staging_table)
+                    engine.delete_table(SPLITGRAPH_META_SCHEMA, staging_table)
 
             nonlocal release_callback
             release_callback.append(_f)
