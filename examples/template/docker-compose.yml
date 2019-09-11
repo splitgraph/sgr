@@ -8,10 +8,7 @@ services:
       - POSTGRES_USER=sgr
       - POSTGRES_PASSWORD=supersecure
       - POSTGRES_DB=splitgraph
-      - SG_CONFIG_FILE=/.sgconfig
       - SG_LOGLEVEL=INFO
     expose:
       - 5432
-    volumes:
-      - .sgconfig:/.sgconfig
   # Add extra required services here.
