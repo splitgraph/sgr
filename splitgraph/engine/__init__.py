@@ -187,25 +187,22 @@ class SQLEngine(ABC):
                 Identifier(source_table),
             )
         pks = self.get_primary_keys(source_schema, source_table)
-        if not pks:
-            pks = self.get_column_names_types(source_schema, source_table)
-        pks_sql = SQL("(") + SQL(",").join(Identifier(p[0]) for p in pks) + SQL(")")
+        chunk_key = pks or self.get_column_names_types(source_schema, source_table)
+        chunk_sql = SQL("(") + SQL(",").join(Identifier(p[0]) for p in chunk_key) + SQL(")")
         if after_pk:
-            # If after_pk is specified, start from after a given PK.
+            # If after_pk is specified, start from after a given PK (or, if the table doesn't have
+            # a PK, treat after_pk as the contents of the whole row).
             # Wrap the pk in brackets for when we have a composite key.
-            if not pks:
-                raise ValueError("after_pk cannot be used when a table doesn't have a primary key!")
 
             query += (
                 SQL(" WHERE ")
-                + pks_sql
-                + SQL(" > (" + ",".join(itertools.repeat("%s", len(pks))) + ")")
+                + chunk_sql
+                + SQL(" > (" + ",".join(itertools.repeat("%s", len(chunk_key))) + ")")
             )
             query_args.extend(after_pk)
 
         if limit:
-            if pks:
-                query += SQL(" ORDER BY ") + pks_sql
+            query += SQL(" ORDER BY ") + chunk_sql
             query += SQL(" LIMIT %s")
             query_args.append(limit)
 
@@ -217,7 +214,7 @@ class SQLEngine(ABC):
                 + SQL(",").join(SQL("{}").format(Identifier(c)) for c, _ in pks)
                 + SQL(")")
             )
-        self.run_sql(query, query_args, return_shape=ResultShape.NONE)
+        self.run_sql(query, query_args)
 
     def delete_table(self, schema, table):
         """Drop a table from a schema if it exists"""
