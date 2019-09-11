@@ -38,7 +38,7 @@
   - sgr show demo/weather:initial_data -v
 - commands:
   - "# Inspect object metadata"
-  - sgr object o6dd9968a1efa420d7ebd4b258039624f730702bddb0200f3723eddd18d4f57
+  - sgr object o4a85e1dd9b9c88856c4ff6bfaea7a523a80771100e958ce1d9c97d5b48a305
 - commands:
   - "# Delete the docker-compose project and cleanup"
   - docker-compose --project-name splitgraph_example down -v

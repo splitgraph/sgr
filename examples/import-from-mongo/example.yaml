@@ -31,4 +31,4 @@
   - sgr import staging "SELECT name, duration, happy FROM stuff" my/repository stuff
 - commands:
   - "# Delete the docker-compose project and cleanup"
-  - docker-compose --project-name down -v --remove-orphans
+  - docker-compose --project-name splitgraph_example down -v --remove-orphans
