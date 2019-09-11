@@ -61,6 +61,7 @@ def serialize_config(config, config_format, no_shielding, include_defaults=True)
                 + "\n"
             )
         else:
+            result += "\n%s:\n" % remote
             for key, value in config["remotes"][remote].items():
                 result += _kv_to_str(key, value, no_shielding) + "\n"
 

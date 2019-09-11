@@ -76,6 +76,7 @@ class TestLayeredQuerying:
         query, expected = test_case
         print("Query: %s, expected: %r" % test_case)
         assert sorted(lq_test_repo.run_sql(query)) == sorted(expected)
+        lq_test_repo.engine.rollback()
 
     @pytest.mark.parametrize(
         "test_case",

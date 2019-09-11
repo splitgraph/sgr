@@ -1,5 +1,7 @@
 .coverage
 .sgconfig
+!examples/**/.sgconfig
+!test/resources/.sgconfig
 htmlcov
 **/__pycache__
 **/.eggs
