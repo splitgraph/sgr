@@ -19,6 +19,7 @@ pandas = {version = ">=0.24", extras = ["ingestion"], optional = true }
 sqlalchemy = { version = "^1.3", extras = ["ingestion"], optional = true }
 pglast = "^1.6"
 requests = "^2.22"
+docker = "^4.0"
 
 [tool.poetry.dev-dependencies]
 pytest = ">=4.4"

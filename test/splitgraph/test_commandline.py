@@ -1,27 +1,39 @@
 import json
 import os
+import shutil
 import subprocess
 from decimal import Decimal
 
+import docker
+import docker.errors
 import pytest
 
 from splitgraph import ResultShape, get_engine
 from splitgraph.commandline import *
 from splitgraph.commandline._common import ImageType
+from splitgraph.commandline.engine import (
+    add_engine_c,
+    list_engines_c,
+    stop_engine_c,
+    delete_engine_c,
+    start_engine_c,
+)
 from splitgraph.commandline.example import generate_c, alter_c, splitfile_c
 from splitgraph.commandline.image_info import object_c, objects_c
 from splitgraph.config import PG_PWD, PG_USER
+from splitgraph.config.keys import DEFAULTS
 from splitgraph.core._common import parse_connection_string, serialize_connection_string, insert
 from splitgraph.core.engine import repository_exists, init_engine
 from splitgraph.core.metadata_manager import OBJECT_COLS
 from splitgraph.core.registry import get_published_info
 from splitgraph.core.repository import Repository
+from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.hooks.mount_handlers import get_mount_handlers
 from test.splitgraph.conftest import OUTPUT, SPLITFILE_ROOT, MG_MNT
 
 try:
     # python 3.4+ should use builtin unittest.mock not mock package
-    from unittest.mock import patch
+    from unittest.mock import patch, mock_open
 except ImportError:
     from mock import patch
 
@@ -999,3 +1011,223 @@ def test_commandline_dump_load(pg_repo_local):
         (2, "orange"),
         (3, "mayonnaise"),
     ]
+
+
+def _nuke_engines_and_volumes():
+    # Make sure we don't have engines managed by `sgr engine` running before/after every test.
+    client = docker.from_env()
+    for c in client.containers.list(filters={"ancestor": "splitgraph/engine"}, all=True):
+        if c.name.startswith("splitgraph_engine_"):
+            c.remove(force=True, v=True)
+    for v in client.volumes.list():
+        if v.name.startswith("splitgraph_engine_"):
+            v.remove(force=True)
+
+
+@pytest.fixture()
+def teardown_test_engine():
+    _nuke_engines_and_volumes()
+    try:
+        yield
+    finally:
+        _nuke_engines_and_volumes()
+
+
+def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
+    runner = CliRunner()
+    client = docker.from_env()
+
+    # Create an engine with default password and wait for it to initialize
+    result = runner.invoke(
+        add_engine_c,
+        ["--port", "5430", "--username", "not_sgr", "--no-sgconfig", "secondary"],
+        input="notsosecure\nnotsosecure\n",
+    )
+    assert result.exit_code == 0
+
+    # Connect to the engine to check that it's up
+    conn_params = {
+        "SG_ENGINE_HOST": "localhost",
+        "SG_ENGINE_PORT": 5430,
+        "SG_ENGINE_USER": "not_sgr",
+        "SG_ENGINE_PWD": "notsosecure",
+        "SG_ENGINE_DB_NAME": "splitgraph",
+        "SG_ENGINE_POSTGRES_DB_NAME": "postgres",
+        "SG_ENGINE_ADMIN_USER": "not_sgr",
+        "SG_ENGINE_ADMIN_PWD": "notsosecure",
+    }
+
+    engine = PostgresEngine(name="test", conn_params=conn_params)
+    assert engine.run_sql("SELECT * FROM splitgraph_meta.images") == []
+    engine.close()
+
+    # List running engines
+    result = runner.invoke(list_engines_c)
+    assert result.exit_code == 0
+    assert "secondary" in result.stdout
+    assert "running" in result.stdout
+
+    # Try deleting the engine while it's still running
+    with pytest.raises(docker.errors.APIError):
+        runner.invoke(delete_engine_c, ["-y", "secondary"], catch_exceptions=False)
+
+    # Stop the engine
+    result = runner.invoke(stop_engine_c, ["secondary"])
+    assert result.exit_code == 0
+
+    # Check it's not running
+    for c in client.containers.list(filters={"ancestor": "splitgraph/engine"}, all=False):
+        assert c.name != "splitgraph_engine_secondary"
+
+    result = runner.invoke(list_engines_c)
+    assert "secondary" not in result.stdout
+
+    result = runner.invoke(list_engines_c, ["-a"])
+    assert "secondary" in result.stdout
+
+    # Bring it back up
+    result = runner.invoke(start_engine_c, ["secondary"])
+    assert result.exit_code == 0
+
+    # Check it's running
+    result = runner.invoke(list_engines_c)
+    assert result.exit_code == 0
+    assert "secondary" in result.stdout
+    assert "running" in result.stdout
+
+    # Force delete it
+    result = runner.invoke(delete_engine_c, ["-f", "secondary"], input="y\n")
+    assert result.exit_code == 0
+
+    # Check the engine (and the volumes) are gone
+    for c in client.containers.list(filters={"ancestor": "splitgraph/engine"}, all=False):
+        assert c.name != "splitgraph_engine_secondary"
+    for v in client.volumes.list():
+        assert not v.name.startswith("splitgraph_engine_secondary")
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        # Test case is a 4-tuple: CONFIG dict (values overriding DEFAULTS),
+        #   engine name, output config file name, output config file contents
+        # Also note that values in the output config file that are the same as as defaults are omitted.
+        # Case 1: no source config, default engine: gets inserted as default.
+        (
+            {},
+            "default",
+            ".sgconfig",
+            "[defaults]\nSG_ENGINE_USER=not_sgr\n"
+            "SG_ENGINE_PWD=pwd\nSG_ENGINE_ADMIN_USER=not_sgr\n"
+            "SG_ENGINE_ADMIN_PWD=pwd\n",
+        ),
+        # Case 2: no source config, a different engine: gets inserted as a new remote
+        (
+            {},
+            "secondary",
+            ".sgconfig",
+            "[defaults]\n\n[remote:secondary]\n"
+            "SG_ENGINE_HOST=localhost\nSG_ENGINE_PORT=5432\n"
+            "SG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
+            "SG_ENGINE_DB_NAME=splitgraph\n"
+            "SG_ENGINE_POSTGRES_DB_NAME=postgres\n"
+            "SG_ENGINE_ADMIN_USER=not_sgr\n"
+            "SG_ENGINE_ADMIN_PWD=pwd\n",
+        ),
+        # Case 3: have source config, default engine gets overwritten
+        (
+            {"SG_CONFIG_FILE": "/home/user/.sgconfig", "SG_ENGINE_PORT": 5000},
+            "default",
+            "/home/user/.sgconfig",
+            "[defaults]\nSG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
+            "SG_ENGINE_ADMIN_USER=not_sgr\nSG_ENGINE_ADMIN_PWD=pwd\n",
+        ),
+        # Case 4: have source config, non-default engine gets overwritten
+        (
+            {
+                "SG_CONFIG_FILE": "/home/user/.sgconfig",
+                "SG_ENGINE_PORT": 5000,
+                "remotes": {
+                    "secondary": {
+                        "SG_ENGINE_HOST": "old_host",
+                        "SG_ENGINE_PORT": "5000",
+                        "SG_ENGINE_USER": "old_user",
+                        "SG_ENGINE_PWD": "old_password",
+                    }
+                },
+            },
+            "secondary",
+            "/home/user/.sgconfig",
+            "[defaults]\nSG_ENGINE_PORT=5000\n\n[remote:secondary]\n"
+            "SG_ENGINE_HOST=localhost\nSG_ENGINE_PORT=5432\n"
+            "SG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
+            "SG_ENGINE_DB_NAME=splitgraph\nSG_ENGINE_POSTGRES_DB_NAME=postgres\n"
+            "SG_ENGINE_ADMIN_USER=not_sgr\nSG_ENGINE_ADMIN_PWD=pwd\n",
+        ),
+    ],
+)
+def test_commandline_engine_creation_config_patching(test_case):
+    runner = CliRunner()
+
+    source_config_patch, engine_name, target_path, target_config = test_case
+    source_config = DEFAULTS.copy()
+    source_config.update(source_config_patch)
+
+    # Patch everything out (we've exercised the actual engine creation/connections
+    # in the previous test) and test that `sgr engine add` correctly inserts the
+    # new engine into the config file.
+
+    m = mock_open()
+    with patch("splitgraph.commandline.engine.open", m, create=True):
+        with patch("splitgraph.commandline.engine.CONFIG", source_config):
+            with patch("splitgraph.commandline.engine.docker"):
+                result = runner.invoke(
+                    add_engine_c,
+                    args=["--username", "not_sgr", "--no-init", engine_name],
+                    input="pwd\npwd\n",
+                    catch_exceptions=False,
+                )
+                assert result.exit_code == 0
+                print(result.output)
+
+        m.assert_called_once_with(target_path, "w")
+        handle = m()
+        handle.write.assert_called_once_with(target_config)
+
+
+def test_commandline_engine_creation_config_patching_integration(teardown_test_engine, tmp_path):
+    # An end-to-end test for config patching where we actually try and access the engine
+    # with the generated config.
+
+    config_path = os.path.join(tmp_path, ".sgconfig")
+    shutil.copy(os.path.join(os.path.dirname(__file__), "../resources/.sgconfig"), config_path)
+
+    result = subprocess.run(
+        "SG_CONFIG_FILE=%s sgr engine add secondary --port 5430 --username not_sgr --password password"
+        % config_path,
+        shell=True,
+        stderr=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+    )
+    assert result.returncode == 0
+    assert "Updating the existing config file" in result.stdout.decode("utf-8")
+
+    # Print out the config file for easier debugging.
+    with open(config_path, "r") as f:
+        config = f.read()
+
+    print(config)
+
+    # Do some spot checks to make sure we didn't overwrite anything.
+    assert "SG_S3_HOST=objectstorage" in config
+    assert "POSTGRES_FDW=splitgraph.hooks.mount_handlers.mount_postgres" in config
+    assert "[remote:secondary]" in config
+    assert "[remote:remote_engine]" in config
+
+    # Check that we can access the new engine.
+    result = subprocess.run(
+        "SG_CONFIG_FILE=%s SG_ENGINE=secondary sgr status" % config_path,
+        shell=True,
+        stderr=subprocess.STDOUT,
+    )
+    assert result.returncode == 0

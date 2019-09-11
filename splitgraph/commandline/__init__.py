@@ -6,6 +6,7 @@ Hooks into the API to allow management of Splitgraph repositories and images usi
 
 import click
 
+from splitgraph.commandline.engine import engine_c
 from splitgraph.commandline.example import example
 from splitgraph.commandline.image_creation import checkout_c, commit_c, tag_c, import_c
 from splitgraph.commandline.image_info import (
@@ -66,6 +67,9 @@ cli.add_command(objects_c)
 cli.add_command(show_c)
 cli.add_command(sql_c)
 cli.add_command(status_c)
+
+# Engine management
+cli.add_command(engine_c)
 
 # Miscellaneous
 cli.add_command(mount_c)

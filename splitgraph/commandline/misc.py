@@ -6,7 +6,7 @@ import sys
 import click
 
 from splitgraph import CONFIG
-from splitgraph.config.keys import KEYS, SENSITIVE_KEYS
+from splitgraph.config.export import serialize_config
 from splitgraph.core.engine import init_engine, repository_exists
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.repository import Repository
@@ -194,7 +194,7 @@ def cleanup_c():
     "--no-shielding",
     is_flag=True,
     default=False,
-    help="If set, doesn" "t replace sensitive values (like passwords) with asterisks",
+    help="If set, doesn't replace sensitive values (like passwords) with asterisks",
 )
 @click.option(
     "-c",
@@ -219,46 +219,7 @@ def config_c(no_shielding, config_format):
         SG_REPO_LOOKUP=engine1,engine2 sgr config -sc > .sgconfig
     """
 
-    def _kv_to_str(key, value):
-        if not value:
-            value_str = ""
-        elif key in SENSITIVE_KEYS and not no_shielding:
-            value_str = value[0] + "*******"
-        else:
-            value_str = value
-        return "%s=%s" % (key, value_str)
-
-    print("[defaults]\n" if config_format else "", end="")
-    # Print normal config parameters
-    for key in KEYS:
-        print(_kv_to_str(key, CONFIG[key]))
-
-    # Print hoisted remotes
-    print("\nCurrent registered remote engines:\n" if not config_format else "", end="")
-    for remote in CONFIG.get("remotes", []):
-        print(("\n[remote: %s]" if config_format else "\n%s:") % remote)
-        for key, value in CONFIG["remotes"][remote].items():
-            print(_kv_to_str(key, value))
-
-    # Print Splitfile commands
-    if "commands" in CONFIG:
-        print("\nSplitfile command plugins:\n" if not config_format else "[commands]", end="")
-        for command_name, command_class in CONFIG["commands"].items():
-            print(_kv_to_str(command_name, command_class))
-
-    # Print mount handlers
-    if "mount_handlers" in CONFIG:
-        print("\nFDW Mount handlers:\n" if not config_format else "[mount_handlers]", end="")
-        for handler_name, handler_func in CONFIG["mount_handlers"].items():
-            print(_kv_to_str(handler_name, handler_func.lower()))
-
-    # Print external object handlers
-    if "external_handlers" in CONFIG:
-        print(
-            "\nExternal object handlers:\n" if not config_format else "[external_handlers]", end=""
-        )
-        for handler_name, handler_func in CONFIG["external_handlers"].items():
-            print(_kv_to_str(handler_name, handler_func))
+    print(serialize_config(CONFIG, config_format, no_shielding))
 
 
 @click.command(name="dump")

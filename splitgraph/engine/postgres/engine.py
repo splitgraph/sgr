@@ -61,6 +61,7 @@ class PsycopgEngine(SQLEngine):
 
         self.name = name
         self.autocommit = autocommit
+        self.connected = False
 
         if conn_params:
             self.conn_params = conn_params
@@ -99,21 +100,24 @@ class PsycopgEngine(SQLEngine):
         )
 
     def commit(self):
-        conn = self.connection
-        conn.commit()
+        if self.connected:
+            conn = self.connection
+            conn.commit()
 
     def close(self):
-        conn = self.connection
-        conn.close()
-        self._pool.putconn(conn)
+        if self.connected:
+            conn = self.connection
+            conn.close()
+            self._pool.putconn(conn)
 
     def rollback(self):
-        if self._savepoint_stack:
-            self.run_sql(SQL("ROLLBACK TO ") + Identifier(self._savepoint_stack.pop()))
-        else:
-            conn = self.connection
-            conn.rollback()
-            self._pool.putconn(conn)
+        if self.connected:
+            if self._savepoint_stack:
+                self.run_sql(SQL("ROLLBACK TO ") + Identifier(self._savepoint_stack.pop()))
+            else:
+                conn = self.connection
+                conn.rollback()
+                self._pool.putconn(conn)
 
     def lock_table(self, schema, table):
         # Allow SELECTs but not writes to a given table.
@@ -136,6 +140,7 @@ class PsycopgEngine(SQLEngine):
                 # so changing it from False to False will fail if we're actually in a transaction.
                 if conn.autocommit != self.autocommit:
                     conn.autocommit = self.autocommit
+                self.connected = True
                 return conn
             except psycopg2.Error:
                 # The fast retrying is really used to claim connections from the pool, not to try to reconnect
