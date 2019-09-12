@@ -1126,7 +1126,7 @@ def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
             {},
             "secondary",
             ".sgconfig",
-            "[defaults]\n\n[remote:secondary]\n"
+            "[defaults]\n\n[remote: secondary]\n"
             "SG_ENGINE_HOST=localhost\nSG_ENGINE_PORT=5432\n"
             "SG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
             "SG_ENGINE_DB_NAME=splitgraph\n"
@@ -1158,7 +1158,7 @@ def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
             },
             "secondary",
             "/home/user/.sgconfig",
-            "[defaults]\nSG_ENGINE_PORT=5000\n\n[remote:secondary]\n"
+            "[defaults]\nSG_ENGINE_PORT=5000\n\n[remote: secondary]\n"
             "SG_ENGINE_HOST=localhost\nSG_ENGINE_PORT=5432\n"
             "SG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
             "SG_ENGINE_DB_NAME=splitgraph\nSG_ENGINE_POSTGRES_DB_NAME=postgres\n"
@@ -1221,8 +1221,8 @@ def test_commandline_engine_creation_config_patching_integration(teardown_test_e
     # Do some spot checks to make sure we didn't overwrite anything.
     assert "SG_S3_HOST=objectstorage" in config
     assert "POSTGRES_FDW=splitgraph.hooks.mount_handlers.mount_postgres" in config
-    assert "[remote:secondary]" in config
-    assert "[remote:remote_engine]" in config
+    assert "[remote: secondary]" in config
+    assert "[remote: remote_engine]" in config
 
     # Check that we can access the new engine.
     result = subprocess.run(

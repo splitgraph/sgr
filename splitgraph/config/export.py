@@ -21,7 +21,7 @@ def serialize_engine_config(engine_name, conn_params, no_shielding):
     :param no_shielding: Don't replace passwords with asterisks
     """
 
-    result = "[remote:%s]\n" % engine_name
+    result = "[remote: %s]\n" % engine_name
     result += "\n".join(_kv_to_str(key, value, no_shielding) for key, value in conn_params.items())
     return result
 

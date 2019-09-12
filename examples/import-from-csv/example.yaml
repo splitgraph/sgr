@@ -8,10 +8,8 @@
   - sleep 5
   - sgr init
 - commands:
-  - "# Download the data file"
-  - wget https://data.townofcary.org/api/v2/catalog/datasets/rdu-weather-history/exports/csv -O rdu-weather-history.csv
-- commands:
-  - "# Inspect the CSV"
+  - "# Inspect the data file"
+  - "# (originally from https://data.townofcary.org/api/v2/catalog/datasets/rdu-weather-history/exports/csv)
   - head -n5 rdu-weather-history.csv
 - commands:
   - "# Initialize the repository"
