@@ -400,7 +400,6 @@ def test_multiengine_flow(
         )
         == 0
     )
-    assert len(pg_repo_remote_registry.objects.get_downloaded_objects()) == 0
     assert (
         len(
             set(pg_repo_remote_registry.engine.get_all_tables("splitgraph_meta")).difference(

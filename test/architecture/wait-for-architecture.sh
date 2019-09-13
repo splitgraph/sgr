@@ -17,17 +17,6 @@ export SG_CONFIG_FILE=${SG_CONFIG_FILE-"${DEFAULT_SG_CONFIG_FILE}"}
 
 echo "Using config file at $SG_CONFIG_FILE ..."
 
-# At engine initialization, we also create the directory that's shared
-# between the host and the engine (for object storage).
-
-_init_engines() {
-  ( SG_ENGINE=LOCAL sgr init ) \
-    && ( SG_ENGINE=remote_engine sgr init ) \
-    && return 0
-
-  return 1
-}
-
 _run_health_check() {
     pushd "$REPO_ROOT_DIR" \
         && python -c "$HEALTHCHECK" \
@@ -36,11 +25,6 @@ _run_health_check() {
     return 1
 }
 
-_attempt_init() {
-  _init_engines \
-    && _run_health_check \
-    && return 0
-}
 
 _wait_for_test_architecture() {
     local counter=0
@@ -52,7 +36,7 @@ _wait_for_test_architecture() {
             exit 1
         fi
 
-        if _attempt_init ; then
+        if _run_health_check ; then
             echo
             echo "Architecture is ready"
             break;

@@ -30,12 +30,7 @@ from splitgraph.core.repository import Repository
 from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.hooks.mount_handlers import get_mount_handlers
 from test.splitgraph.conftest import OUTPUT, SPLITFILE_ROOT, MG_MNT
-
-try:
-    # python 3.4+ should use builtin unittest.mock not mock package
-    from unittest.mock import patch, mock_open
-except ImportError:
-    from mock import patch
+from unittest.mock import patch, mock_open
 
 from click.testing import CliRunner
 

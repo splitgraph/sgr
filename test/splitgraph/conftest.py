@@ -1,9 +1,11 @@
+import logging
 import os
 
 import pytest
 from minio.error import BucketAlreadyExists, BucketAlreadyOwnedByYou
 
-from splitgraph import SPLITGRAPH_META_SCHEMA
+from splitgraph import SPLITGRAPH_META_SCHEMA, CONFIG
+from splitgraph.commandline.engine import copy_to_container
 from splitgraph.core._common import ensure_metadata_schema, META_TABLES
 from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.object_manager import ObjectManager
@@ -18,6 +20,10 @@ from splitgraph.engine import get_engine, ResultShape, switch_engine
 from splitgraph.hooks.mount_handlers import mount
 from splitgraph.hooks.s3_server import MINIO, S3_BUCKET
 
+import docker
+import docker.errors
+
+
 R = Repository.from_schema
 
 PG_MNT = R("test/pg_mount")
@@ -28,6 +34,9 @@ OUTPUT = R("output")
 
 # On the host, mapped into localhost; on the local engine works as intended.
 REMOTE_ENGINE = "remote_engine"
+
+# Docker container name for the test engines (used to inject .sgconfig)
+SPLITGRAPH_ENGINE_CONTAINER = "architecture_local_engine_1"
 
 # Namespace to push to on the remote engine that the user owns
 REMOTE_NAMESPACE = get_engine("unprivileged_remote_engine").conn_params["SG_NAMESPACE"]
@@ -114,8 +123,8 @@ TEST_MOUNTPOINTS = [
 def healthcheck():
     # A pre-flight check for most tests: check that the local and the remote engine fixtures are up and
     # running.
-    get_current_repositories(get_engine())
-    get_current_repositories(get_engine("remote_engine"))
+    get_engine().run_sql("SELECT 1")
+    get_engine(REMOTE_ENGINE).run_sql("SELECT 1")
 
 
 def healthcheck_mounting():
@@ -152,23 +161,68 @@ def healthcheck_mounting():
             mountpoint.delete()
 
 
-@pytest.fixture
-def local_engine_empty():
+@pytest.fixture(scope="session")
+def test_local_engine():
+    # A local Splitgraph engine fixture.
+    logging.info("Initializing the test local Splitgraph engine...")
     engine = get_engine()
-    # A connection to the local engine that has nothing mounted on it.
-    clean_out_engine(engine)
+    engine.initialize()
+
+    # Copy the config file over into the test engine container, since some of the layered querying
+    # tests/object downloading tests get the engine to connect to the registry.
+    # It's still an open question regarding how we should do it properly (config file changes do have
+    # to be reflected in the engine as well). However, doing this instead of the bind mount lets
+    # us switch the config used in test by switching the envvar.
+
+    config_path = CONFIG["SG_CONFIG_FILE"]
+    client = docker.from_env()
+
     try:
-        yield engine
+        container = client.containers.get(SPLITGRAPH_ENGINE_CONTAINER)
+        logging.info("Copying .sgconfig (%s) to container %s", config_path, container.short_id)
+        copy_to_container(container, config_path, "/.sgconfig")
+    except docker.errors.NotFound:
+        logging.exception(
+            "Could not find the engine test container %s, is it running?",
+            SPLITGRAPH_ENGINE_CONTAINER,
+        )
+    engine.commit()
+    logging.info("Test local Splitgraph engine initialized.")
+    return engine
+
+
+@pytest.fixture(scope="session")
+def test_remote_engine():
+    # A remote (registry-like) Splitgraph engine fixture.
+    engine = get_engine(REMOTE_ENGINE)
+    if os.getenv("SG_TEST_SKIP_REMOTE_INIT"):
+        logging.info("Skipping initializing the test remote Splitgraph engine...")
+        return engine
+
+    logging.info("Initializing the test remote Splitgraph engine...")
+    engine.initialize()
+    engine.commit()
+    logging.info("Test remote Splitgraph engine initialized.")
+    return engine
+
+
+@pytest.fixture
+def local_engine_empty(test_local_engine):
+    # A connection to the local engine that has nothing mounted on it.
+    clean_out_engine(test_local_engine)
+    try:
+        yield test_local_engine
     finally:
-        engine.rollback()
-        clean_out_engine(engine)
+        test_local_engine.rollback()
+        clean_out_engine(test_local_engine)
 
 
 def clean_out_engine(engine):
+    logging.info("Cleaning out engine %r", engine)
     for mountpoint, _ in get_current_repositories(engine):
         mountpoint.delete()
     for mountpoint in TEST_MOUNTPOINTS:
-        mountpoint.delete()
+        Repository.from_template(mountpoint, engine=engine).delete()
     ObjectManager(engine).cleanup()
     engine.commit()
 
@@ -203,12 +257,11 @@ def pg_repo_local(local_engine_empty):
 
 
 @pytest.fixture(scope="class")
-def lq_test_repo():
+def lq_test_repo(test_local_engine):
     """A read-only fixture for LQ tests that gets reused so that we don't clean out
     the engine after every SELECT query."""
-    engine = get_engine()
-    clean_out_engine(engine)
-    pg_repo_local = make_pg_repo(engine)
+    clean_out_engine(test_local_engine)
+    pg_repo_local = make_pg_repo(test_local_engine)
 
     # Most of these tests are only interesting for where there are multiple fragments, so we have PKs on tables
     # and store them as deltas.
@@ -224,19 +277,21 @@ def lq_test_repo():
         # to read data from) have been deleted by LQs.
 
         tables_in_meta = {
-            c for c in engine.get_all_tables(SPLITGRAPH_META_SCHEMA) if c not in META_TABLES
+            c
+            for c in test_local_engine.get_all_tables(SPLITGRAPH_META_SCHEMA)
+            if c not in META_TABLES
         }
         non_foreign_tables = [
             t
             for t in tables_in_meta
-            if engine.get_table_type(SPLITGRAPH_META_SCHEMA, t).startswith("BASE")
+            if test_local_engine.get_table_type(SPLITGRAPH_META_SCHEMA, t).startswith("BASE")
         ]
         if non_foreign_tables:
             raise AssertionError(
                 "Layered query left temporary tables behind!\n%r", non_foreign_tables
             )
 
-        clean_out_engine(engine)
+        clean_out_engine(test_local_engine)
 
 
 @pytest.fixture
@@ -246,29 +301,27 @@ def pg_repo_remote(remote_engine):
 
 # remote_engine setup but registry-like (no audit triggers, no in-engine object storage)
 @pytest.fixture
-def remote_engine_registry():
-    engine = get_engine(REMOTE_ENGINE)
-    ensure_metadata_schema(engine)
-    _ensure_registry_schema(engine)
-    set_info_key(engine, "registry_mode", False)
-    setup_registry_mode(engine)
-    toggle_registry_rls(engine, "DISABLE")
+def remote_engine_registry(test_remote_engine):
     # "Unpublish" all images
-    engine.run_sql("DELETE FROM registry_meta.images")
-    for mountpoint, _ in get_current_repositories(engine):
+    ensure_metadata_schema(test_remote_engine)
+    _ensure_registry_schema(test_remote_engine)
+    set_info_key(test_remote_engine, "registry_mode", False)
+    setup_registry_mode(test_remote_engine)
+    test_remote_engine.run_sql("DELETE FROM registry_meta.images")
+    for mountpoint, _ in get_current_repositories(test_remote_engine):
         mountpoint.delete(uncheckout=False)
-    ObjectManager(engine).cleanup_metadata()
-    engine.commit()
-    engine.close()
+    ObjectManager(test_remote_engine).cleanup_metadata()
+    test_remote_engine.commit()
+    test_remote_engine.close()
     try:
-        yield engine
+        yield test_remote_engine
     finally:
-        engine.rollback()
-        for mountpoint, _ in get_current_repositories(engine):
+        test_remote_engine.rollback()
+        for mountpoint, _ in get_current_repositories(test_remote_engine):
             mountpoint.delete(uncheckout=False)
-        ObjectManager(engine).cleanup_metadata()
-        engine.commit()
-        engine.close()
+        ObjectManager(test_remote_engine).cleanup_metadata()
+        test_remote_engine.commit()
+        test_remote_engine.close()
 
 
 # A fixture for a test repository that exists on the remote with objects
@@ -337,29 +390,18 @@ def mg_repo_remote(remote_engine):
 
 
 @pytest.fixture
-def remote_engine():
-    engine = get_engine(REMOTE_ENGINE)
-    ensure_metadata_schema(engine)
-    _ensure_registry_schema(engine)
-    set_info_key(engine, "registry_mode", False)
-    setup_registry_mode(engine)
-    toggle_registry_rls(engine, "DISABLE")
+def remote_engine(test_remote_engine):
     # "Unpublish" all images
-    engine.run_sql("DELETE FROM registry_meta.images")
-    for mountpoint, _ in get_current_repositories(engine):
-        mountpoint.delete()
-    ObjectManager(engine).cleanup()
-    engine.commit()
-    engine.close()
+    toggle_registry_rls(test_remote_engine, "DISABLE")
+    test_remote_engine.run_sql("DELETE FROM registry_meta.images")
+    clean_out_engine(test_remote_engine)
+    test_remote_engine.close()
     try:
-        yield engine
+        yield test_remote_engine
     finally:
-        engine.rollback()
-        for mountpoint, _ in get_current_repositories(engine):
-            mountpoint.delete()
-        ObjectManager(engine).cleanup()
-        engine.commit()
-        engine.close()
+        test_remote_engine.rollback()
+        clean_out_engine(test_remote_engine)
+        test_remote_engine.close()
 
 
 @pytest.fixture()

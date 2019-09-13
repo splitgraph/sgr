@@ -84,15 +84,10 @@ class Repository:
         return self.namespace + "/" + self.repository if self.namespace else self.repository
 
     def __repr__(self):
-        return (
-            "Repository "
-            + self.to_schema()
-            + " on "
-            + self.engine.name
-            + " (object engine "
-            + self.object_engine.name
-            + ")"
-        )
+        repr = "Repository %s on %s" % (self.to_schema(), self.engine.name)
+        if self.engine != self.object_engine:
+            repr += " (object engine %s)" % self.object_engine.name
+        return repr
 
     __str__ = to_schema
 

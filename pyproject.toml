@@ -13,13 +13,15 @@ python = ">=3.6"
 click = "^7"
 psycopg2-binary = "^2"
 parsimonious = "^0.8"
-minio = "^5"
+minio = ">=4"
+pglast = ">=1.6"
+requests = ">=2.22"
+docker = ">=4.0"
+
 # Extra requirements for ingestion (CSV)
 pandas = {version = ">=0.24", extras = ["ingestion"], optional = true }
 sqlalchemy = { version = "^1.3", extras = ["ingestion"], optional = true }
-pglast = "^1.6"
-requests = "^2.22"
-docker = "^4.0"
+
 
 [tool.poetry.dev-dependencies]
 pytest = ">=4.4"

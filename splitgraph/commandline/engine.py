@@ -1,3 +1,8 @@
+import os
+import time
+from io import BytesIO
+from tarfile import TarFile, TarInfo
+
 import click
 import docker
 from docker.types import Mount
@@ -8,6 +13,32 @@ from splitgraph.engine.postgres.engine import PostgresEngine
 
 
 DEFAULT_ENGINE = "default"
+
+
+def copy_to_container(container, source_path, target_path):
+    """
+    Copy a file into a Docker container
+
+    :param container: Container object
+    :param source_path: Source file path
+    :param target_path: Target file path (in the container)
+    :return:
+    """
+    # https://github.com/docker/docker-py/issues/1771
+    with open(source_path, "rb") as f:
+        data = f.read()
+
+    tarinfo = TarInfo(name=os.path.basename(target_path))
+    tarinfo.size = len(data)
+    tarinfo.mtime = time.time()
+
+    stream = BytesIO()
+    tar = TarFile(fileobj=stream, mode="w")
+    tar.addfile(tarinfo, BytesIO(data))
+    tar.close()
+
+    stream.seek(0)
+    container.put_archive(path=os.path.dirname(target_path), data=stream)
 
 
 def get_container_name(engine_name):
