@@ -772,8 +772,6 @@ class Repository:
         :param handler_options: Extra options to pass to the handler. For example, see
             :class:`splitgraph.hooks.s3.S3ExternalObjectHandler`.
         """
-        # Maybe consider having a context manager for getting a remote engine instance
-        # that auto-commits/closes when needed?
         remote_repository = remote_repository or self.upstream
         if not remote_repository:
             raise ValueError(

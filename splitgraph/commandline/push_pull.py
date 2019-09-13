@@ -9,6 +9,7 @@ import click
 
 import splitgraph.engine
 import splitgraph.engine.postgres.engine
+from splitgraph import CONFIG
 from splitgraph.commandline._common import RepositoryType
 from splitgraph.core.repository import clone, Repository
 
@@ -54,35 +55,58 @@ def clone_c(remote_repository, local_repository, remote, download_all):
     clone(remote_repository, local_repository=local_repository, download_all=download_all)
 
 
+_remotes = list(CONFIG.get("remotes", []))
+
+
 @click.command(name="push")
 @click.argument("repository", type=RepositoryType())
 @click.argument("remote_repository", required=False, type=RepositoryType())
-@click.option("-r", "--remote", help="Alias or full connection string for the remote engine")
-@click.option("-h", "--upload-handler", help="Upload handler", default="DB")
+@click.option(
+    "-r",
+    "--remote",
+    help="Alias or full connection string for the remote engine",
+    type=click.Choice(_remotes),
+    default=_remotes[0] if len(_remotes) == 1 else None,
+)
+@click.option("-h", "--upload-handler", help="Upload handler", default="S3")
 @click.option("-o", "--upload-handler-options", help="Upload handler parameters", default="{}")
 def push_c(repository, remote_repository, remote, upload_handler, upload_handler_options):
     """
-    Push changes from a local repository to the upstream.
+    Push changes from a local repository to the Splitgraph registry or another engine.
 
-    The actual destination is decided as follows:
+    By default, the repository will be pushed to a repository with the same name. If there's
+    a single engine registered in the config (e.g. data.splitgraph.com), it shall be the default destination.
 
-      * Remote engine: ``remote`` argument (either engine alias as specified in the config or a connection string,
-        then the upstream configured for the repository.
+    If an upstream repository/engine has been configured for this engine with `sgr upstream`,
+    it will be used instead.
 
-      * Remote repository: ``remote_repository`` argument, then the upstream configured for the repository, then
-        the same name as the repository.
+    Finally, if `remote_repository` or `--remote` are passed, they will take precedence.
 
-    ``-h`` and ``-o`` allow to upload the objects to somewhere else other than the external engines. Currently,
-    uploading to an S3-compatible host via Minio is supported: see :mod:`splitgraph.hooks.s3` for information
-    on handler options and how to register a new upload handler.
+    The actual objects will be uploaded to S3 via Minio. When pushing to another engine,
+    you can choose to upload them directly by passing --handler DB.
     """
-    # redesign this so that people push to some default remote engine (e.g. the global registry)?
+
+    # The reason for this behaviour is to streamline out-of-the-box Splitgraph setups where
+    # data.splitgraph.com is the only registered engine. In that case:
+    #
+    # * sgr push myself/repo: will push to myself/repo on data.splitgraph.com with S3 uploading
+    # * sgr push noaa/climate myself/noaa_climate: will push to the user's namespace on data.splitgraph.com
+    #
+    # If the user registers another registry at splitgraph.mycompany.com, then they will be able to do:
+    #
+    # * sgr push noaa/climate -r splitgraph.mycompany.com: will push to noaa/climate
+
     if remote_repository and remote:
         remote_repository = Repository.from_template(
             remote_repository, engine=splitgraph.get_engine(remote)
         )
-    else:
-        remote_repository = None
+    elif remote:
+        remote_repository = Repository.from_template(
+            repository, engine=splitgraph.get_engine(remote)
+        )
+
+    remote_repository = remote_repository or repository.upstream
+
     repository.push(
         remote_repository,
         handler=upload_handler,
