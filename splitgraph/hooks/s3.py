@@ -80,7 +80,7 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
         worker_threads = self.params.get("threads", int(CONFIG["SG_ENGINE_POOL"]) - 1)
         s3_host = self.params.get("host", "%s:%s" % (CONFIG["SG_S3_HOST"], CONFIG["SG_S3_PORT"]))
 
-        logging.info("Getting download URLs from the registry...")
+        logging.info("Getting download URLs from registry %s...", remote_engine)
         object_ids = [o[0] for o in objects]
         remote_object_ids = [o[1] for o in objects]
         urls = remote_engine.run_sql(

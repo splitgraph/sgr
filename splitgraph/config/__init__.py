@@ -32,3 +32,11 @@ logging.basicConfig(
     format="%(asctime)s [%(process)d] %(levelname)s %(message)s", level=CONFIG["SG_LOGLEVEL"]
 )
 FDW_CLASS = CONFIG["SG_FDW_CLASS"]
+
+# This is a global variable that gets flipped to True by the Multicorn FDW class
+# at startup. When we're running from within an engine as an FDW, we might need to use
+# different connection parameters to connect to other engines. It's not trivial to detect
+# whether we're running inside of an embedded Python otherwise and this variable needs to
+# ultimately make it into all get_engine() constructors, so this is simpler than threading
+# it through all calls that FDW makes.
+IN_FDW = False

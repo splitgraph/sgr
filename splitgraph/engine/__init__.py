@@ -12,6 +12,7 @@ from enum import Enum
 
 from psycopg2.sql import SQL, Identifier
 
+import splitgraph.config
 from splitgraph.config import CONFIG
 
 # List of config flags that are extracted from the global configuration and passed to a given engine
@@ -565,16 +566,20 @@ _ENGINE = CONFIG["SG_ENGINE"] or "LOCAL"
 _ENGINES = {}
 
 
-def get_engine(name=None, use_socket=False, use_fdw_params=False, autocommit=False):
+def get_engine(name=None, use_socket=False, use_fdw_params=None, autocommit=False):
     """
     Get the current global engine or a named remote engine
 
     :param name: Name of the remote engine as specified in the config. If None, the current global engine
         is returned.
     :param use_socket: Use a local UNIX socket instead of PG_HOST, PG_PORT for LOCAL engine connections.
-    :param use_fdw_params: Use the _FDW connection parameters (SG_ENGINE_FDW_HOST/PORT)
+    :param use_fdw_params: Use the _FDW connection parameters (SG_ENGINE_FDW_HOST/PORT). By default,
+        will infer from the global splitgraph.config.IN_FDW flag.
     :param autocommit: If True, the engine will not open SQL transactions implicitly.
     """
+    if use_fdw_params is None:
+        use_fdw_params = splitgraph.config.IN_FDW
+
     if not name:
         if isinstance(_ENGINE, SQLEngine):
             return _ENGINE

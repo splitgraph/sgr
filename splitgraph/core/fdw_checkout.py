@@ -5,6 +5,7 @@ import logging
 from splitgraph import Repository, get_engine
 from splitgraph.core._common import pretty_size
 from splitgraph.core.object_manager import ObjectManager
+import splitgraph.config
 
 try:
     from multicorn import ForeignDataWrapper, ANY
@@ -156,3 +157,6 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
 
         # A QueryPlan object for the last query with stats
         self.plan = None
+
+        # Flip the global flag for engine constructors to use (see comment in splitgraph.config).
+        splitgraph.config.IN_FDW = True
