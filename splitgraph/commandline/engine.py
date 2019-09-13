@@ -8,7 +8,7 @@ import docker
 from docker.types import Mount
 
 from splitgraph import CONFIG
-from splitgraph.config.export import serialize_config
+from splitgraph.config.export import serialize_config, patch_config
 from splitgraph.engine.postgres.engine import PostgresEngine
 
 
@@ -175,17 +175,12 @@ def add_engine_c(image, port, username, no_init, no_sgconfig, name, password):
         else:
             print("Updating the existing config file at %s" % config_path)
 
-        new_config = CONFIG.copy()
         if name != DEFAULT_ENGINE:
-            remotes = new_config.get("remotes", {})
-            if name in remotes:
-                print("Overwriting existing configuration for the engine")
-                remotes[name].update(conn_params)
-            else:
-                remotes[name] = conn_params
-            new_config["remotes"] = remotes
+            config_patch = {"remotes": {name: conn_params}}
         else:
-            new_config.update(conn_params)
+            config_patch = conn_params
+
+        new_config = patch_config(CONFIG, config_patch)
 
         with open(config_path, "w") as f:
             f.write(

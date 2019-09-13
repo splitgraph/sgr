@@ -84,3 +84,28 @@ def serialize_config(config, config_format, no_shielding, include_defaults=True)
             result += _kv_to_str(handler_name, handler_func, no_shielding) + "\n"
 
     return result
+
+
+def patch_config(config, patch):
+    """
+    Recursively updates a nested configuration dictionary:
+
+    patch_config(
+        {"key_1": "value_1",
+         "dict_1": {"key_1": "value_1"}},
+        {"key_1": "value_2",
+         "dict_1": {"key_2": "value_2"}}) == \
+        {"key_1": "value_2",
+         "dict_1": {"key_1": "value_1", "key_2": "value_2"}}
+
+    :param config: Config dictionary
+    :param patch: Dictionary with the path
+    :return: New patched dictionary
+    """
+    result = config.copy()
+    for key, value in patch.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = patch_config(result[key], value)
+        else:
+            result[key] = value
+    return result
