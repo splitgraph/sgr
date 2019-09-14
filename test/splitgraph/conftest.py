@@ -201,6 +201,7 @@ def test_remote_engine():
 
     logging.info("Initializing the test remote Splitgraph engine...")
     engine.initialize()
+    _ensure_registry_schema(engine)
     engine.commit()
     logging.info("Test remote Splitgraph engine initialized.")
     return engine
@@ -303,8 +304,6 @@ def pg_repo_remote(remote_engine):
 @pytest.fixture
 def remote_engine_registry(test_remote_engine):
     # "Unpublish" all images
-    ensure_metadata_schema(test_remote_engine)
-    _ensure_registry_schema(test_remote_engine)
     set_info_key(test_remote_engine, "registry_mode", False)
     setup_registry_mode(test_remote_engine)
     test_remote_engine.run_sql("DELETE FROM registry_meta.images")
