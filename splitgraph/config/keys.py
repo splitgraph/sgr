@@ -40,6 +40,9 @@ DEFAULTS = {
     "SG_EVICTION_FLOOR": 1,
     "SG_EVICTION_MIN_FRACTION": 0.05,
     "SG_FDW_CLASS": "splitgraph.core.fdw_checkout.QueryingForeignDataWrapper",
+    # Cloud Auth API endpoint
+    "SG_AUTH_API": "http://localhost:8000",
+    "external_handlers": {"S3": "splitgraph.hooks.s3.S3ExternalObjectHandler"},
 }
 
 KEYS = list(DEFAULTS.keys())

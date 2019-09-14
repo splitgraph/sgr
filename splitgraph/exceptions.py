@@ -46,3 +46,7 @@ class ExternalHandlerError(SplitGraphError):
 
 class MountHandlerError(SplitGraphError):
     """Exceptions raised by mount handlers."""
+
+
+class AuthAPIError(SplitGraphError):
+    """Exceptions raised by the Auth API"""

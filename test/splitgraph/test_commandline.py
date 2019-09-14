@@ -6,6 +6,7 @@ from decimal import Decimal
 
 import docker
 import docker.errors
+import httpretty
 import pytest
 
 from splitgraph import ResultShape, get_engine
@@ -28,6 +29,7 @@ from splitgraph.core.metadata_manager import OBJECT_COLS
 from splitgraph.core.registry import get_published_info
 from splitgraph.core.repository import Repository
 from splitgraph.engine.postgres.engine import PostgresEngine
+from splitgraph.exceptions import AuthAPIError
 from splitgraph.hooks.mount_handlers import get_mount_handlers
 from test.splitgraph.conftest import OUTPUT, SPLITFILE_ROOT, MG_MNT
 from unittest.mock import patch, mock_open
@@ -1114,7 +1116,8 @@ def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
             ".sgconfig",
             "[defaults]\nSG_ENGINE_USER=not_sgr\n"
             "SG_ENGINE_PWD=pwd\nSG_ENGINE_ADMIN_USER=not_sgr\n"
-            "SG_ENGINE_ADMIN_PWD=pwd\n",
+            "SG_ENGINE_ADMIN_PWD=pwd\n"
+            "[external_handlers]\nS3=splitgraph.hooks.s3.S3ExternalObjectHandler\n",
         ),
         # Case 2: no source config, a different engine: gets inserted as a new remote
         (
@@ -1127,7 +1130,8 @@ def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
             "SG_ENGINE_DB_NAME=splitgraph\n"
             "SG_ENGINE_POSTGRES_DB_NAME=postgres\n"
             "SG_ENGINE_ADMIN_USER=not_sgr\n"
-            "SG_ENGINE_ADMIN_PWD=pwd\n",
+            "SG_ENGINE_ADMIN_PWD=pwd\n"
+            "[external_handlers]\nS3=splitgraph.hooks.s3.S3ExternalObjectHandler\n",
         ),
         # Case 3: have source config, default engine gets overwritten
         (
@@ -1135,7 +1139,8 @@ def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
             "default",
             "/home/user/.sgconfig",
             "[defaults]\nSG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
-            "SG_ENGINE_ADMIN_USER=not_sgr\nSG_ENGINE_ADMIN_PWD=pwd\n",
+            "SG_ENGINE_ADMIN_USER=not_sgr\nSG_ENGINE_ADMIN_PWD=pwd\n"
+            "[external_handlers]\nS3=splitgraph.hooks.s3.S3ExternalObjectHandler\n",
         ),
         # Case 4: have source config, non-default engine gets overwritten
         (
@@ -1157,7 +1162,8 @@ def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
             "SG_ENGINE_HOST=localhost\nSG_ENGINE_PORT=5432\n"
             "SG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
             "SG_ENGINE_DB_NAME=splitgraph\nSG_ENGINE_POSTGRES_DB_NAME=postgres\n"
-            "SG_ENGINE_ADMIN_USER=not_sgr\nSG_ENGINE_ADMIN_PWD=pwd\n",
+            "SG_ENGINE_ADMIN_USER=not_sgr\nSG_ENGINE_ADMIN_PWD=pwd\n"
+            "[external_handlers]\nS3=splitgraph.hooks.s3.S3ExternalObjectHandler\n",
         ),
     ],
 )
@@ -1226,3 +1232,119 @@ def test_commandline_engine_creation_config_patching_integration(teardown_test_e
         stderr=subprocess.STDOUT,
     )
     assert result.returncode == 0
+
+
+@httpretty.activate
+def test_commandline_registration_normal():
+    def register_callback(request, uri, response_headers):
+        assert json.loads(request.body) == {
+            "username": "someuser",
+            "password": "somepassword",
+            "email": "someuser@localhost",
+        }
+        return [
+            200,
+            response_headers,
+            json.dumps({"user_uuid": "123e4567-e89b-12d3-a456-426655440000"}),
+        ]
+
+    def refresh_token_callback(request, uri, response_headers):
+        assert json.loads(request.body) == {"username": "someuser", "password": "somepassword"}
+        return [
+            200,
+            response_headers,
+            json.dumps({"access_token": "AAAABBBBCCCCDDDD", "refresh_token": "EEEEFFFFGGGGHHHH"}),
+        ]
+
+    def create_creds_callback(request, uri, response_headers):
+        assert json.loads(request.body) == {"password": "somepassword"}
+        assert request.headers["Authorization"] == "Bearer AAAABBBBCCCCDDDD"
+        return [
+            200,
+            response_headers,
+            json.dumps({"key": "abcdef123456", "secret": "654321fedcba"}),
+        ]
+
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST, "http://localhost:8000/register_user", body=register_callback
+    )
+
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST, "http://localhost:8000/refresh_token", body=refresh_token_callback
+    )
+
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST,
+        "http://localhost:8000/create_machine_credentials",
+        body=create_creds_callback,
+    )
+
+    m = mock_open()
+    source_config = DEFAULTS
+    runner = CliRunner()
+
+    with patch("splitgraph.commandline.cloud.open", m, create=True):
+        with patch("splitgraph.commandline.cloud.CONFIG", source_config):
+            result = runner.invoke(
+                register_c,
+                args=[
+                    "--username",
+                    "someuser",
+                    "--password",
+                    "somepassword",
+                    "--email",
+                    "someuser@localhost",
+                ],
+                catch_exceptions=False,
+            )
+            assert result.exit_code == 0
+            print(result.output)
+
+    m.assert_called_once_with(".sgconfig", "w")
+    handle = m()
+
+    expected_config = """[defaults]
+SG_REPO_LOOKUP=data.splitgraph.com
+SG_S3_HOST=objectstorage
+
+[remote: data.splitgraph.com]
+SG_ENGINE_HOST=localhost
+SG_ENGINE_PORT=5433
+SG_ENGINE_USER=abcdef123456
+SG_ENGINE_PWD=654321fedcba
+SG_ENGINE_DB_NAME=sgregistry
+[external_handlers]
+S3=splitgraph.hooks.s3.S3ExternalObjectHandler
+"""
+    handle.write.assert_called_once_with(expected_config)
+
+
+@httpretty.activate
+def test_commandline_registration_user_error():
+    # Test a user error response propagates back to the command line client
+    # (tests for handling other failure states are API client-specific).
+
+    def register_callback(request, uri, response_headers):
+        return [403, response_headers, json.dumps({"error": "Username exists"})]
+
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST, "http://localhost:8000/register_user", body=register_callback
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        register_c,
+        args=[
+            "--username",
+            "someuser",
+            "--password",
+            "somepassword",
+            "--email",
+            "someuser@localhost",
+        ],
+        catch_exceptions=True,
+    )
+    print(result.output)
+    assert result.exit_code == 1
+    assert isinstance(result.exception, AuthAPIError)
+    assert "Username exists" in str(result.exception)
