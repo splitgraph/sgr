@@ -32,7 +32,7 @@ from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import AuthAPIError
 from splitgraph.hooks.mount_handlers import get_mount_handlers
 from test.splitgraph.conftest import OUTPUT, SPLITFILE_ROOT, MG_MNT
-from unittest.mock import patch, mock_open
+from unittest.mock import patch, mock_open, ANY
 
 from click.testing import CliRunner
 
@@ -1176,24 +1176,27 @@ def test_commandline_engine_creation_config_patching(test_case):
 
     # Patch everything out (we've exercised the actual engine creation/connections
     # in the previous test) and test that `sgr engine add` correctly inserts the
-    # new engine into the config file.
+    # new engine into the config file and calls copy_to_container to copy
+    # the new config into the new engine's root.
 
     m = mock_open()
     with patch("splitgraph.commandline.engine.open", m, create=True):
         with patch("splitgraph.commandline.engine.CONFIG", source_config):
             with patch("splitgraph.commandline.engine.docker"):
-                result = runner.invoke(
-                    add_engine_c,
-                    args=["--username", "not_sgr", "--no-init", engine_name],
-                    input="pwd\npwd\n",
-                    catch_exceptions=False,
-                )
-                assert result.exit_code == 0
-                print(result.output)
+                with patch("splitgraph.commandline.engine.copy_to_container") as ctc:
+                    result = runner.invoke(
+                        add_engine_c,
+                        args=["--username", "not_sgr", "--no-init", engine_name],
+                        input="pwd\npwd\n",
+                        catch_exceptions=False,
+                    )
+                    assert result.exit_code == 0
+                    print(result.output)
 
-        m.assert_called_once_with(target_path, "w")
-        handle = m()
-        handle.write.assert_called_once_with(target_config)
+    m.assert_called_once_with(target_path, "w")
+    handle = m()
+    handle.write.assert_called_once_with(target_config)
+    ctc.assert_called_once_with(ANY, target_path, "/.sgconfig")
 
 
 def test_commandline_engine_creation_config_patching_integration(teardown_test_engine, tmp_path):
