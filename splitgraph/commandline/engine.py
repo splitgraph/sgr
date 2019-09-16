@@ -8,7 +8,8 @@ import docker
 from docker.types import Mount
 
 from splitgraph import CONFIG
-from splitgraph.config.export import serialize_config, patch_config
+from splitgraph.config.export import serialize_config, overwrite_config
+from splitgraph.config.config import patch_config
 from splitgraph.engine.postgres.engine import PostgresEngine
 
 
@@ -200,13 +201,7 @@ def add_engine_c(
             config_patch = conn_params
 
         new_config = patch_config(CONFIG, config_patch)
-
-        with open(config_path, "w") as f:
-            f.write(
-                serialize_config(
-                    new_config, config_format=True, no_shielding=True, include_defaults=False
-                )
-            )
+        overwrite_config(new_config, config_path)
 
     print("Copying in the config file")
     copy_to_container(container, config_path, "/.sgconfig")

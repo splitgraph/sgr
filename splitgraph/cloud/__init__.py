@@ -14,7 +14,8 @@ def expect_result(result):
     If the request has failed, it will extract the "error" from the JSON response and raise an AuthAPIError.
 
     :param result: Items to extract. Will raise an AuthAPIError if not all items were fetched.
-    :return: Tuple of items enumerated in the `result` list
+    :return: Tuple of items enumerated in the `result` list. If there's only one item, it will
+        return just that item.
     """
 
     def decorator(func):
@@ -38,7 +39,10 @@ def expect_result(result):
             missing = [f for f in result if f not in json]
             if missing:
                 raise AuthAPIError("Missing entries %s in the response!" % (tuple(missing),))
-            return tuple(json[f] for f in result)
+            if len(result) == 1:
+                return json[result[0]]
+            else:
+                return tuple(json[f] for f in result)
 
         return wrapped
 
@@ -54,11 +58,13 @@ class AuthAPIClient:
     the Splitgraph registry via the command line.
     """
 
-    def __init__(self, endpoint=None):
+    def __init__(self, remote):
         """
-        :param endpoint: Auth API endpoint
+        :param remote: Name of the remote engine that this auth client communicates with,
+            as specified in the config.
         """
-        self.endpoint = endpoint or CONFIG["SG_AUTH_API"]
+        self.remote = remote
+        self.endpoint = CONFIG["remotes"][remote]["SG_AUTH_API"]
 
     @expect_result(["user_uuid"])
     def register(self, username, password, email):

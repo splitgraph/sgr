@@ -13,18 +13,19 @@ from splitgraph.exceptions import AuthAPIError
 # Methods currently are small enough and all exercised in test_commandline_registration_*,
 # so this is mostly testing various failure states.
 
+_REMOTE = "data.splitgraph.com"
+_ENDPOINT = "data.splitgraph.com/auth"
+
 
 @httpretty.activate
 def test_auth_api_user_error():
-    client = AuthAPIClient()
+    client = AuthAPIClient(_REMOTE)
 
     def callback(request, uri, response_headers):
         assert json.loads(request.body) == {"username": "someuser", "password": "somepassword"}
         return [400, response_headers, json.dumps({"error": "Invalid username or password"})]
 
-    httpretty.register_uri(
-        httpretty.HTTPretty.POST, "http://localhost:8000/refresh_token", body=callback
-    )
+    httpretty.register_uri(httpretty.HTTPretty.POST, _ENDPOINT + "/refresh_token", body=callback)
 
     with pytest.raises(AuthAPIError) as e:
         client.get_refresh_token("someuser", "somepassword")
@@ -35,13 +36,13 @@ def test_auth_api_user_error():
 
 @httpretty.activate
 def test_auth_api_server_error_missing_entries():
-    client = AuthAPIClient()
+    client = AuthAPIClient(_REMOTE)
 
     def callback(request, uri, response_headers):
         return [200, response_headers, json.dumps({})]
 
     httpretty.register_uri(
-        httpretty.HTTPretty.POST, "http://localhost:8000/create_machine_credentials", body=callback
+        httpretty.HTTPretty.POST, _ENDPOINT + "/create_machine_credentials", body=callback
     )
 
     with pytest.raises(AuthAPIError) as e:
@@ -52,13 +53,13 @@ def test_auth_api_server_error_missing_entries():
 
 @httpretty.activate
 def test_auth_api_server_error_no_json():
-    client = AuthAPIClient()
+    client = AuthAPIClient(_REMOTE)
 
     def callback(request, uri, response_headers):
         return [500, response_headers, "Guru Meditation deadcafebeef-feed12345678"]
 
     httpretty.register_uri(
-        httpretty.HTTPretty.POST, "http://localhost:8000/get_refresh_token", body=callback
+        httpretty.HTTPretty.POST, _ENDPOINT + "/get_refresh_token", body=callback
     )
 
     with pytest.raises(AuthAPIError) as e:

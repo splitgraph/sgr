@@ -22,6 +22,7 @@ from splitgraph.commandline.engine import (
 from splitgraph.commandline.example import generate_c, alter_c, splitfile_c
 from splitgraph.commandline.image_info import object_c, objects_c
 from splitgraph.config import PG_PWD, PG_USER
+from splitgraph.config.config import patch_config
 from splitgraph.config.keys import DEFAULTS
 from splitgraph.core._common import parse_connection_string, serialize_connection_string, insert
 from splitgraph.core.engine import repository_exists, init_engine
@@ -1103,6 +1104,10 @@ def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
         assert not v.name.startswith("splitgraph_engine_secondary")
 
 
+# Default parameters for data.splitgraph.com that show up in every config
+_CONFIG_DEFAULTS = "\n[remote: data.splitgraph.com]\nSG_ENGINE_HOST=data.splitgraph.com\nSG_ENGINE_PORT=5432\nSG_ENGINE_DB_NAME=sgregistry\nSG_AUTH_API=data.splitgraph.com/auth\n"
+
+
 @pytest.mark.parametrize(
     "test_case",
     [
@@ -1117,14 +1122,15 @@ def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
             "[defaults]\nSG_ENGINE_USER=not_sgr\n"
             "SG_ENGINE_PWD=pwd\nSG_ENGINE_ADMIN_USER=not_sgr\n"
             "SG_ENGINE_ADMIN_PWD=pwd\n"
-            "[external_handlers]\nS3=splitgraph.hooks.s3.S3ExternalObjectHandler\n",
+            + _CONFIG_DEFAULTS
+            + "[external_handlers]\nS3=splitgraph.hooks.s3.S3ExternalObjectHandler\n",
         ),
         # Case 2: no source config, a different engine: gets inserted as a new remote
         (
             {},
             "secondary",
             ".sgconfig",
-            "[defaults]\n\n[remote: secondary]\n"
+            "[defaults]\n" + _CONFIG_DEFAULTS + "\n[remote: secondary]\n"
             "SG_ENGINE_HOST=localhost\nSG_ENGINE_PORT=5432\n"
             "SG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
             "SG_ENGINE_DB_NAME=splitgraph\n"
@@ -1140,7 +1146,8 @@ def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
             "/home/user/.sgconfig",
             "[defaults]\nSG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
             "SG_ENGINE_ADMIN_USER=not_sgr\nSG_ENGINE_ADMIN_PWD=pwd\n"
-            "[external_handlers]\nS3=splitgraph.hooks.s3.S3ExternalObjectHandler\n",
+            + _CONFIG_DEFAULTS
+            + "[external_handlers]\nS3=splitgraph.hooks.s3.S3ExternalObjectHandler\n",
         ),
         # Case 4: have source config, non-default engine gets overwritten
         (
@@ -1158,7 +1165,7 @@ def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
             },
             "secondary",
             "/home/user/.sgconfig",
-            "[defaults]\nSG_ENGINE_PORT=5000\n\n[remote: secondary]\n"
+            "[defaults]\nSG_ENGINE_PORT=5000\n" + _CONFIG_DEFAULTS + "\n[remote: secondary]\n"
             "SG_ENGINE_HOST=localhost\nSG_ENGINE_PORT=5432\n"
             "SG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
             "SG_ENGINE_DB_NAME=splitgraph\nSG_ENGINE_POSTGRES_DB_NAME=postgres\n"
@@ -1171,8 +1178,7 @@ def test_commandline_engine_creation_config_patching(test_case):
     runner = CliRunner()
 
     source_config_patch, engine_name, target_path, target_config = test_case
-    source_config = DEFAULTS.copy()
-    source_config.update(source_config_patch)
+    source_config = patch_config(DEFAULTS, source_config_patch)
 
     # Patch everything out (we've exercised the actual engine creation/connections
     # in the previous test) and test that `sgr engine add` correctly inserts the
@@ -1180,7 +1186,7 @@ def test_commandline_engine_creation_config_patching(test_case):
     # the new config into the new engine's root.
 
     m = mock_open()
-    with patch("splitgraph.commandline.engine.open", m, create=True):
+    with patch("splitgraph.config.export.open", m, create=True):
         with patch("splitgraph.commandline.engine.CONFIG", source_config):
             with patch("splitgraph.commandline.engine.docker"):
                 with patch("splitgraph.commandline.engine.copy_to_container") as ctc:
@@ -1269,16 +1275,20 @@ def test_commandline_registration_normal():
         ]
 
     httpretty.register_uri(
-        httpretty.HTTPretty.POST, "http://localhost:8000/register_user", body=register_callback
-    )
-
-    httpretty.register_uri(
-        httpretty.HTTPretty.POST, "http://localhost:8000/refresh_token", body=refresh_token_callback
+        httpretty.HTTPretty.POST,
+        "http://data.splitgraph.com/auth/register_user",
+        body=register_callback,
     )
 
     httpretty.register_uri(
         httpretty.HTTPretty.POST,
-        "http://localhost:8000/create_machine_credentials",
+        "http://data.splitgraph.com/auth/refresh_token",
+        body=refresh_token_callback,
+    )
+
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST,
+        "http://data.splitgraph.com/auth/create_machine_credentials",
         body=create_creds_callback,
     )
 
@@ -1286,7 +1296,7 @@ def test_commandline_registration_normal():
     source_config = DEFAULTS
     runner = CliRunner()
 
-    with patch("splitgraph.commandline.cloud.open", m, create=True):
+    with patch("splitgraph.config.export.open", m, create=True):
         with patch("splitgraph.commandline.cloud.CONFIG", source_config):
             result = runner.invoke(
                 register_c,
@@ -1311,11 +1321,15 @@ SG_REPO_LOOKUP=data.splitgraph.com
 SG_S3_HOST=objectstorage
 
 [remote: data.splitgraph.com]
-SG_ENGINE_HOST=localhost
-SG_ENGINE_PORT=5433
+SG_ENGINE_HOST=data.splitgraph.com
+SG_ENGINE_PORT=5432
+SG_ENGINE_DB_NAME=sgregistry
+SG_AUTH_API=http://data.splitgraph.com/auth
 SG_ENGINE_USER=abcdef123456
 SG_ENGINE_PWD=654321fedcba
-SG_ENGINE_DB_NAME=sgregistry
+SG_NAMESPACE=someuser
+SG_CLOUD_REFRESH_TOKEN=EEEEFFFFGGGGHHHH
+SG_CLOUD_ACCESS_TOKEN=AAAABBBBCCCCDDDD
 [external_handlers]
 S3=splitgraph.hooks.s3.S3ExternalObjectHandler
 """
@@ -1331,7 +1345,7 @@ def test_commandline_registration_user_error():
         return [403, response_headers, json.dumps({"error": "Username exists"})]
 
     httpretty.register_uri(
-        httpretty.HTTPretty.POST, "http://localhost:8000/register_user", body=register_callback
+        httpretty.HTTPretty.POST, "http://data.splitgraph.com/register_user", body=register_callback
     )
 
     runner = CliRunner()
