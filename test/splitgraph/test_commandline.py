@@ -22,7 +22,7 @@ from splitgraph.commandline.engine import (
 from splitgraph.commandline.example import generate_c, alter_c, splitfile_c
 from splitgraph.commandline.image_info import object_c, objects_c
 from splitgraph.config import PG_PWD, PG_USER
-from splitgraph.config.config import patch_config
+from splitgraph.config.config import patch_config, create_config_dict
 from splitgraph.config.keys import DEFAULTS
 from splitgraph.core._common import parse_connection_string, serialize_connection_string, insert
 from splitgraph.core.engine import repository_exists, init_engine
@@ -1105,7 +1105,11 @@ def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
 
 
 # Default parameters for data.splitgraph.com that show up in every config
-_CONFIG_DEFAULTS = "\n[remote: data.splitgraph.com]\nSG_ENGINE_HOST=data.splitgraph.com\nSG_ENGINE_PORT=5432\nSG_ENGINE_DB_NAME=sgregistry\nSG_AUTH_API=data.splitgraph.com/auth\n"
+_CONFIG_DEFAULTS = (
+    "\n[remote: data.splitgraph.com]\nSG_ENGINE_HOST=data.splitgraph.com\n"
+    "SG_ENGINE_PORT=5432\nSG_ENGINE_DB_NAME=sgregistry\n"
+    "SG_AUTH_API=http://data.splitgraph.com/auth\n"
+)
 
 
 @pytest.mark.parametrize(
@@ -1201,8 +1205,13 @@ def test_commandline_engine_creation_config_patching(test_case):
 
     m.assert_called_once_with(target_path, "w")
     handle = m()
-    handle.write.assert_called_once_with(target_config)
+    assert handle.write.call_count == 1
     ctc.assert_called_once_with(ANY, target_path, "/.sgconfig")
+
+    expected_lines = target_config.split("\n")
+    actual_config = handle.write.call_args_list[0][0][0]
+    actual_lines = actual_config.split("\n")
+    assert expected_lines == actual_lines
 
 
 def test_commandline_engine_creation_config_patching_integration(teardown_test_engine, tmp_path):
@@ -1213,14 +1222,16 @@ def test_commandline_engine_creation_config_patching_integration(teardown_test_e
     shutil.copy(os.path.join(os.path.dirname(__file__), "../resources/.sgconfig"), config_path)
 
     result = subprocess.run(
-        "SG_CONFIG_FILE=%s sgr engine add secondary --port 5430 --username not_sgr --password password"
+        "SG_CONFIG_FILE=%s sgr engine add secondary --port 5428 --username not_sgr --password password"
         % config_path,
         shell=True,
         stderr=subprocess.PIPE,
         stdout=subprocess.PIPE,
     )
+    print(result.stderr.decode())
+    print(result.stdout.decode())
     assert result.returncode == 0
-    assert "Updating the existing config file" in result.stdout.decode("utf-8")
+    assert "Updating the existing config file" in result.stdout.decode()
 
     # Print out the config file for easier debugging.
     with open(config_path, "r") as f:
@@ -1241,6 +1252,10 @@ def test_commandline_engine_creation_config_patching_integration(teardown_test_e
         stderr=subprocess.STDOUT,
     )
     assert result.returncode == 0
+
+
+_REMOTE = "remote_engine"
+_ENDPOINT = "http://some-auth-service"
 
 
 @httpretty.activate
@@ -1275,65 +1290,66 @@ def test_commandline_registration_normal():
         ]
 
     httpretty.register_uri(
-        httpretty.HTTPretty.POST,
-        "http://data.splitgraph.com/auth/register_user",
-        body=register_callback,
+        httpretty.HTTPretty.POST, _ENDPOINT + "/register_user", body=register_callback
+    )
+
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST, _ENDPOINT + "/refresh_token", body=refresh_token_callback
     )
 
     httpretty.register_uri(
         httpretty.HTTPretty.POST,
-        "http://data.splitgraph.com/auth/refresh_token",
-        body=refresh_token_callback,
-    )
-
-    httpretty.register_uri(
-        httpretty.HTTPretty.POST,
-        "http://data.splitgraph.com/auth/create_machine_credentials",
+        _ENDPOINT + "/create_machine_credentials",
         body=create_creds_callback,
     )
 
-    m = mock_open()
-    source_config = DEFAULTS
+    # Sanitize the test config so that there isn't a ton of spam
+    source_config = create_config_dict()
+    source_config["SG_CONFIG_FILE"] = ".sgconfig"
+    source_config["remotes"] = {_REMOTE: source_config["remotes"][_REMOTE]}
+    del source_config["mount_handlers"]
+    del source_config["commands"]
+    del source_config["external_handlers"]
+
     runner = CliRunner()
 
-    with patch("splitgraph.config.export.open", m, create=True):
-        with patch("splitgraph.commandline.cloud.CONFIG", source_config):
-            result = runner.invoke(
-                register_c,
-                args=[
-                    "--username",
-                    "someuser",
-                    "--password",
-                    "somepassword",
-                    "--email",
-                    "someuser@localhost",
-                ],
-                catch_exceptions=False,
-            )
-            assert result.exit_code == 0
-            print(result.output)
+    with patch("splitgraph.commandline.cloud.overwrite_config"):
+        with patch("splitgraph.commandline.cloud.patch_config") as pc:
+            with patch("splitgraph.commandline.cloud.CONFIG", source_config):
+                result = runner.invoke(
+                    register_c,
+                    args=[
+                        "--username",
+                        "someuser",
+                        "--password",
+                        "somepassword",
+                        "--email",
+                        "someuser@localhost",
+                        "--remote",
+                        _REMOTE,
+                    ],
+                    catch_exceptions=False,
+                )
+                assert result.exit_code == 0
+                print(result.output)
 
-    m.assert_called_once_with(".sgconfig", "w")
-    handle = m()
-
-    expected_config = """[defaults]
-SG_REPO_LOOKUP=data.splitgraph.com
-SG_S3_HOST=objectstorage
-
-[remote: data.splitgraph.com]
-SG_ENGINE_HOST=data.splitgraph.com
-SG_ENGINE_PORT=5432
-SG_ENGINE_DB_NAME=sgregistry
-SG_AUTH_API=http://data.splitgraph.com/auth
-SG_ENGINE_USER=abcdef123456
-SG_ENGINE_PWD=654321fedcba
-SG_NAMESPACE=someuser
-SG_CLOUD_REFRESH_TOKEN=EEEEFFFFGGGGHHHH
-SG_CLOUD_ACCESS_TOKEN=AAAABBBBCCCCDDDD
-[external_handlers]
-S3=splitgraph.hooks.s3.S3ExternalObjectHandler
-"""
-    handle.write.assert_called_once_with(expected_config)
+    pc.assert_called_once_with(
+        source_config,
+        {
+            "SG_REPO_LOOKUP": "remote_engine",
+            "SG_S3_HOST": "objectstorage",
+            "SG_S3_PORT": "9000",
+            "remotes": {
+                "remote_engine": {
+                    "SG_ENGINE_USER": "abcdef123456",
+                    "SG_ENGINE_PWD": "654321fedcba",
+                    "SG_NAMESPACE": "someuser",
+                    "SG_CLOUD_REFRESH_TOKEN": "EEEEFFFFGGGGHHHH",
+                    "SG_CLOUD_ACCESS_TOKEN": "AAAABBBBCCCCDDDD",
+                }
+            },
+        },
+    )
 
 
 @httpretty.activate
@@ -1345,7 +1361,7 @@ def test_commandline_registration_user_error():
         return [403, response_headers, json.dumps({"error": "Username exists"})]
 
     httpretty.register_uri(
-        httpretty.HTTPretty.POST, "http://data.splitgraph.com/register_user", body=register_callback
+        httpretty.HTTPretty.POST, _ENDPOINT + "/register_user", body=register_callback
     )
 
     runner = CliRunner()
@@ -1358,6 +1374,8 @@ def test_commandline_registration_user_error():
             "somepassword",
             "--email",
             "someuser@localhost",
+            "--remote",
+            _REMOTE,
         ],
         catch_exceptions=True,
     )

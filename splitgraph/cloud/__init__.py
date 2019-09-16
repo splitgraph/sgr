@@ -1,10 +1,15 @@
 """Public API for interacting with the Splitgraph registry"""
+import base64
+import json
+import time
 from functools import wraps
 
 import requests
 from requests import HTTPError
 
 from splitgraph import CONFIG
+from splitgraph.config import create_config_dict
+from splitgraph.config.export import overwrite_config
 from splitgraph.exceptions import AuthAPIError
 
 
@@ -107,3 +112,56 @@ class AuthAPIClient:
             json=body,
             headers={"Authorization": "Bearer " + access_token},
         )
+
+    @expect_result(["access_token"])
+    def get_access_token(self, refresh_token):
+        """
+        Get a new access token from a refresh token.
+
+        :param refresh_token: Refresh token
+        :return: New access token.
+        """
+
+        body = dict(refresh_token=refresh_token)
+        return requests.post(self.endpoint + "/access_token", json=body)
+
+    @property
+    def access_token(self, tolerance=30):
+        """
+        Will return an up-to-date access token by either getting it from
+        the configuration file or contacting the auth service for a new one.
+        Will write the new access token into the configuration file.
+
+        :param tolerance: How soon before the token expiry to refresh the token, in seconds.
+        :return: Access token.
+        """
+
+        config = create_config_dict()
+        current_access_token = config["remotes"][self.remote].get("SG_CLOUD_ACCESS_TOKEN")
+
+        if current_access_token:
+            # Extract the expiry timestamp from the JWT token. We don't really
+            # need to validate it here, so we can just directly decode the base64
+            # claims part without pulling in any JWT libraries.
+            claims = current_access_token.split(".")[1]
+
+            # Pad the JWT claims because urlsafe_b64decode doesn't like us
+            claims += "=" * (-len(claims) % 4)
+            exp = json.loads(base64.urlsafe_b64decode(claims).decode("utf-8"))["exp"]
+            now = time.time()
+            if now < exp - tolerance:
+                return current_access_token
+
+        # Token expired or non-existent, get a new one.
+        try:
+            refresh_token = config["remotes"][self.remote]["SG_CLOUD_REFRESH_TOKEN"]
+        except KeyError as e:
+            raise AuthAPIError(
+                "No refresh token found in the config for remote %s! " % self.remote
+                + "Generate one and store it in the config for "
+                "the remote under SG_CLOUD_REFRESH_TOKEN."
+            ) from e
+
+        new_access_token = self.get_access_token(refresh_token)
+        config["remotes"][self.remote]["SG_CLOUD_ACCESS_TOKEN"] = new_access_token
+        overwrite_config(config, config["SG_CONFIG_FILE"])
