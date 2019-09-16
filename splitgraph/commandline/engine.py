@@ -105,9 +105,18 @@ def list_engines_c(include_all):
 @click.option(
     "--no-sgconfig", default=False, help="Don't add the engine to .sgconfig", is_flag=True
 )
+@click.option(
+    "--inject-source",
+    default=False,
+    help="Inject the Splitgraph source code into the engine",
+    is_flag=True,
+)
+@click.option("--no-pull", default=False, help="Don't pull the Docker image", is_flag=True)
 @click.argument("name", default=DEFAULT_ENGINE)
 @click.password_option()
-def add_engine_c(image, port, username, no_init, no_sgconfig, name, password):
+def add_engine_c(
+    image, port, username, no_init, no_sgconfig, inject_source, no_pull, name, password
+):
     """
     Create and start a Splitgraph engine.
 
@@ -119,8 +128,9 @@ def add_engine_c(image, port, username, no_init, no_sgconfig, name, password):
 
     client = docker.from_env()
 
-    print("Pulling image %s..." % image)
-    client.images.pull(image)
+    if not no_pull:
+        print("Pulling image %s..." % image)
+        client.images.pull(image)
 
     container_name = get_container_name(name)
     data_name = get_data_volume_name(name)
@@ -129,20 +139,30 @@ def add_engine_c(image, port, username, no_init, no_sgconfig, name, password):
     # Setup required mounts for data/metadata
     data_volume = Mount(target="/var/lib/splitgraph/objects", source=data_name, type="volume")
     metadata_volume = Mount(target="/var/lib/postgresql/data", source=metadata_name, type="volume")
+    mounts = [data_volume, metadata_volume]
 
     print("Creating container %s." % container_name)
     print("Data volume: %s." % data_name)
     print("Metadata volume: %s." % metadata_name)
+
+    if inject_source:
+        source_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../"))
+        source_volume = Mount(target="/splitgraph/splitgraph", source=source_path, type="bind")
+        mounts.append(source_volume)
+        print("Source path: %s" % source_path)
+
     container = client.containers.run(
         image=image,
         detach=True,
         name=container_name,
         ports={"5432/tcp": port},
-        mounts=[data_volume, metadata_volume],
+        mounts=mounts,
         environment={
             "POSTGRES_USER": username,
             "POSTGRES_PASSWORD": password,
             "POSTGRES_DB": "splitgraph",
+            # Actual config to be injected later
+            "SG_CONFIG_FILE": "/.sgconfig",
         },
     )
 
@@ -166,9 +186,8 @@ def add_engine_c(image, port, username, no_init, no_sgconfig, name, password):
         engine.commit()
         print("Engine initialized successfully.")
 
+    config_path = CONFIG["SG_CONFIG_FILE"]
     if not no_sgconfig:
-        config_path = CONFIG["SG_CONFIG_FILE"]
-
         if not config_path:
             print("No config file detected, creating one locally")
             config_path = ".sgconfig"
@@ -188,6 +207,10 @@ def add_engine_c(image, port, username, no_init, no_sgconfig, name, password):
                     new_config, config_format=True, no_shielding=True, include_defaults=False
                 )
             )
+
+    print("Copying in the config file")
+    copy_to_container(container, config_path, "/.sgconfig")
+    print("Done.")
 
 
 @click.command(name="stop")
