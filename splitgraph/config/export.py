@@ -86,26 +86,19 @@ def serialize_config(config, config_format, no_shielding, include_defaults=True)
     return result
 
 
-def patch_config(config, patch):
+def overwrite_config(new_config, config_path, include_defaults=False):
     """
-    Recursively updates a nested configuration dictionary:
+    Serialize the new config dictionary and overwrite the current config file.
+    Note: this will delete all comments in the config!
 
-    patch_config(
-        {"key_1": "value_1",
-         "dict_1": {"key_1": "value_1"}},
-        {"key_1": "value_2",
-         "dict_1": {"key_2": "value_2"}}) == \
-        {"key_1": "value_2",
-         "dict_1": {"key_1": "value_1", "key_2": "value_2"}}
-
-    :param config: Config dictionary
-    :param patch: Dictionary with the path
-    :return: New patched dictionary
+    :param new_config: Config dictionary.
+    :param config_path: Path to the config file.
+    :param include_defaults: Whether to include values that are the same
+        as their defaults.
     """
-    result = config.copy()
-    for key, value in patch.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = patch_config(result[key], value)
-        else:
-            result[key] = value
-    return result
+    with open(config_path, "w") as f:
+        f.write(
+            serialize_config(
+                new_config, config_format=True, no_shielding=True, include_defaults=include_defaults
+            )
+        )

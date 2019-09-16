@@ -40,12 +40,23 @@ DEFAULTS = {
     "SG_EVICTION_FLOOR": 1,
     "SG_EVICTION_MIN_FRACTION": 0.05,
     "SG_FDW_CLASS": "splitgraph.core.fdw_checkout.QueryingForeignDataWrapper",
-    # Cloud Auth API endpoint
-    "SG_AUTH_API": "http://localhost:8000",
+    # Some default sections: these can't be overridden via envvars.
+    # Default remote engine (data.splitgraph.com).
+    # No credentials here: they are fetched from data.splitgraph.com/auth
+    # at registration time.
+    "remotes": {
+        "data.splitgraph.com": {
+            "SG_ENGINE_HOST": "data.splitgraph.com",
+            "SG_ENGINE_PORT": "5432",
+            "SG_ENGINE_DB_NAME": "sgregistry",
+            "SG_AUTH_API": "http://data.splitgraph.com/auth",
+        }
+    },
     "external_handlers": {"S3": "splitgraph.hooks.s3.S3ExternalObjectHandler"},
 }
 
-KEYS = list(DEFAULTS.keys())
+ALL_KEYS = list(DEFAULTS.keys())
+KEYS = [k for k in ALL_KEYS if k not in ["remotes", "external_handlers"]]
 # Keys whose contents we don't print fully
 SENSITIVE_KEYS = [k for k in KEYS if "_PWD" in k]
 
