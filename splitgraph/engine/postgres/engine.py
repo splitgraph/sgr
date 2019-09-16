@@ -13,12 +13,12 @@ from threading import get_ident
 
 import psycopg2
 from psycopg2 import DatabaseError
-from psycopg2.errors import InvalidSchemaName, UndefinedTable
+from psycopg2.errors import InvalidSchemaName, UndefinedTable, DuplicateTable
 from psycopg2.extras import execute_batch, Json
 from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCHEMA
 from splitgraph.core._common import select, ensure_metadata_schema, META_TABLES
 from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
 from splitgraph.exceptions import UninitializedEngineError, ObjectNotFoundError, ObjectCacheError
@@ -704,7 +704,32 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         schema_spec = self.get_full_table_schema(source_schema, source_table)
 
         # Mount the object first
-        self.mount_object(object_id, schema_spec=schema_spec)
+        try:
+            self.mount_object(object_id, schema_spec=schema_spec)
+        except DuplicateTable:
+            # If the foreign table with that name already exists, check that
+            # the physical object file is still there -- if not, we'll have to write
+            # into the table anyway.
+            if self.run_sql(
+                select("object_exists", schema=SPLITGRAPH_API_SCHEMA, table_args="(%s)"),
+                (object_id,),
+                return_shape=ResultShape.ONE_ONE,
+            ):
+                logging.info(
+                    "Object storage, %s/%s -> %s, already exists, deleting source table",
+                    source_schema,
+                    source_table,
+                    object_id,
+                )
+                self.delete_table(source_schema, source_table)
+                return
+            else:
+                logging.info(
+                    "Object storage, %s/%s -> %s, mounted but no physical file, recreating",
+                    source_schema,
+                    source_table,
+                    object_id,
+                )
 
         # Insert the data into the new Citus table.
         self.run_sql(

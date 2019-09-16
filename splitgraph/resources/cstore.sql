@@ -111,3 +111,16 @@ $BODY$
     return [f for f in files if not f.endswith(".schema") and not f.endswith(".footer")]
 $BODY$
 LANGUAGE plpython3u VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION splitgraph_api.object_exists(object_id varchar) RETURNS boolean AS
+$BODY$
+    # Check if the physical object file exists in storage.
+
+    import os.path
+
+    SG_ENGINE_OBJECT_PATH = "/var/lib/splitgraph/objects"
+
+    return os.path.exists(os.path.join(SG_ENGINE_OBJECT_PATH, object_id))
+$BODY$
+LANGUAGE plpython3u VOLATILE;

@@ -340,27 +340,15 @@ class FragmentManager(MetadataManager):
             # Wrap this rename in a SAVEPOINT so that if the table already exists,
             # the error doesn't roll back the whole transaction (us creating and registering all other objects).
             with self.object_engine.savepoint("object_rename"):
-                try:
-                    self.object_engine.store_object(
-                        object_id=object_id,
-                        source_schema=SPLITGRAPH_META_SCHEMA,
-                        source_table=tmp_object_id,
-                    )
-                except DuplicateTable:
-                    # If an object with this ID already exists, delete the temporary table,
-                    # don't register it and move on.
-                    logging.info(
-                        "Reusing object %s for table %s/%s",
-                        object_id,
-                        table.repository,
-                        table.table_name,
-                    )
-                    self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
-
-                    # There are some cases where an object can already exist in the object engine (in the cache)
-                    # but has been deleted from the metadata engine, so when it's recreated, we'll skip
-                    # actually registering it. Hence, we still want to proceed trying to register
-                    # it no matter what.
+                self.object_engine.store_object(
+                    object_id=object_id,
+                    source_schema=SPLITGRAPH_META_SCHEMA,
+                    source_table=tmp_object_id,
+                )
+                # There are some cases where an object can already exist in the object engine (in the cache)
+                # but has been deleted from the metadata engine, so when it's recreated, we'll skip
+                # actually registering it. Hence, we still want to proceed trying to register
+                # it no matter what.
 
             # Same here: if we are being called as part of a commit and an object
             # already exists, we'll roll back everything that the caller has done
@@ -618,25 +606,11 @@ class FragmentManager(MetadataManager):
                     Identifier(SG_UD_FLAG),
                 )
             )
-
-            try:
-                self.object_engine.store_object(
-                    object_id=object_id,
-                    source_schema=SPLITGRAPH_META_SCHEMA,
-                    source_table=tmp_object_id,
-                )
-            except DuplicateTable:
-                # If we already have an object with this ID (and hence hash), reuse it.
-                logging.info(
-                    "Reusing object %s for table %s/%s limit %r after_pk %r",
-                    object_id,
-                    source_schema,
-                    source_table,
-                    limit,
-                    after_pk,
-                )
-                self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
-
+            self.object_engine.store_object(
+                object_id=object_id,
+                source_schema=SPLITGRAPH_META_SCHEMA,
+                source_table=tmp_object_id,
+            )
         with self.metadata_engine.savepoint("object_register"):
             try:
                 self._register_object(

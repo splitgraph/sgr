@@ -789,6 +789,7 @@ class Repository:
 
             if not self.upstream:
                 self.upstream = remote_repository
+                logging.info("Setting upstream for %s to %s.", self, remote_repository)
         finally:
             remote_repository.engine.commit()
             remote_repository.engine.close()
