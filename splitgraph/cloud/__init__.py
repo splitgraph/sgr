@@ -71,6 +71,9 @@ class AuthAPIClient:
         self.remote = remote
         self.endpoint = CONFIG["remotes"][remote]["SG_AUTH_API"]
 
+        # How soon before the token expiry to refresh the token, in seconds.
+        self.access_token_expiry_tolerance = 30
+
     @expect_result(["user_uuid"])
     def register(self, username, password, email):
         """
@@ -126,13 +129,12 @@ class AuthAPIClient:
         return requests.post(self.endpoint + "/access_token", json=body)
 
     @property
-    def access_token(self, tolerance=30):
+    def access_token(self):
         """
         Will return an up-to-date access token by either getting it from
         the configuration file or contacting the auth service for a new one.
         Will write the new access token into the configuration file.
 
-        :param tolerance: How soon before the token expiry to refresh the token, in seconds.
         :return: Access token.
         """
 
@@ -149,7 +151,7 @@ class AuthAPIClient:
             claims += "=" * (-len(claims) % 4)
             exp = json.loads(base64.urlsafe_b64decode(claims).decode("utf-8"))["exp"]
             now = time.time()
-            if now < exp - tolerance:
+            if now < exp - self.access_token_expiry_tolerance:
                 return current_access_token
 
         # Token expired or non-existent, get a new one.
@@ -165,3 +167,4 @@ class AuthAPIClient:
         new_access_token = self.get_access_token(refresh_token)
         config["remotes"][self.remote]["SG_CLOUD_ACCESS_TOKEN"] = new_access_token
         overwrite_config(config, config["SG_CONFIG_FILE"])
+        return new_access_token
