@@ -35,12 +35,19 @@ STM_TRIGGER_NAME = "audit_trigger_stm"
 REMOTE_TMP_SCHEMA = "tmp_remote_data"
 SG_UD_FLAG = "sg_ud_flag"
 
-# Retry on connection failures after sleeping for BASE, BASE * 2, BASE * 4,... CAP, CAP, CAP...
-RETRY_DELAY_BASE = 0.01
-RETRY_DELAY_CAP = 10
+# Retry policy for claiming connections from the pool when we have multiple worker threads
+# downloading/uploading object:
+
+# sleep for BASE, BASE * 2, BASE * 4,... CAP, CAP, CAP...
+POOL_RETRY_DELAY_BASE = 0.01
+POOL_RETRY_DELAY_CAP = 10
 
 # Max number of retries before failing
-RETRY_AMOUNT = 20
+POOL_RETRY_AMOUNT = 20
+
+# Retry policy for other connection errors
+RETRY_DELAY = 5
+RETRY_AMOUNT = 12
 
 
 class PsycopgEngine(SQLEngine):
@@ -128,7 +135,7 @@ class PsycopgEngine(SQLEngine):
     @property
     def connection(self):
         """Engine-internal Psycopg connection."""
-        delay = RETRY_DELAY_BASE
+        pool_delay = POOL_RETRY_DELAY_BASE
         retries = 0
         while True:
             try:
@@ -142,22 +149,52 @@ class PsycopgEngine(SQLEngine):
                     conn.autocommit = self.autocommit
                 self.connected = True
                 return conn
-            except psycopg2.Error:
-                # The fast retrying is really used to claim connections from the pool, not to try to reconnect
-                # to the engine. Maybe it's worth even splitting the engine into something that's used for
-                # object storage (where having a pool + this is needed) and the metadata handler (where
-                # just 1 connection is enough)
-                if retries >= RETRY_AMOUNT:
+            except psycopg2.pool.PoolError:
+                if retries >= POOL_RETRY_AMOUNT:
+                    logging.exception(
+                        "Error claiming a pool connection %d retries", POOL_RETRY_AMOUNT
+                    )
                     raise
                 retries += 1
-                logging.exception(
-                    "Error connecting to the engine, sleeping %.2fs and retrying (%d/%d)...",
-                    delay,
+                logging.info(
+                    "Error claiming a pool connection, sleeping %.2fs and retrying (%d/%d)...",
+                    pool_delay,
+                    retries,
+                    POOL_RETRY_AMOUNT,
+                )
+                time.sleep(pool_delay)
+                pool_delay = min(pool_delay * 2, POOL_RETRY_DELAY_CAP)
+            except psycopg2.errors.DatabaseError as e:
+                if retries >= RETRY_AMOUNT:
+                    logging.exception(
+                        "Error connecting to the engine after %d retries", RETRY_AMOUNT
+                    )
+                    raise
+                retries += 1
+                logging.error(
+                    "Error connecting to the engine (%s), sleeping %.2fs and retrying (%d/%d)...",
+                    e,
+                    RETRY_DELAY,
                     retries,
                     RETRY_AMOUNT,
                 )
-                time.sleep(delay)
-                delay = min(delay * 2, RETRY_DELAY_CAP)
+                time.sleep(RETRY_DELAY)
+            except psycopg2.errors.CannotConnectNow as e:
+                # This is for when the database is starting up, log at INFO level (not an error)
+                if retries >= RETRY_AMOUNT:
+                    logging.exception(
+                        "Error connecting to the engine after %d retries", RETRY_AMOUNT
+                    )
+                    raise
+                retries += 1
+                logging.info(
+                    "Can't connect to the engine right now (%s), sleeping %.2fs and retrying (%d/%d)...",
+                    e,
+                    RETRY_DELAY,
+                    retries,
+                    RETRY_AMOUNT,
+                )
+                time.sleep(RETRY_DELAY)
 
     def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY, named=False):
 
@@ -264,7 +301,6 @@ class PsycopgEngine(SQLEngine):
 
     def _admin_conn(self):
         retries = 0
-        delay = 1
         while True:
             try:
                 return psycopg2.connect(
@@ -274,17 +310,37 @@ class PsycopgEngine(SQLEngine):
                     host=self.conn_params["SG_ENGINE_HOST"],
                     port=self.conn_params["SG_ENGINE_PORT"],
                 )
-            except psycopg2.Error:
+            except psycopg2.errors.DatabaseError as e:
                 if retries >= RETRY_AMOUNT:
+                    logging.exception(
+                        "Error connecting to the engine after %d retries", RETRY_AMOUNT
+                    )
                     raise
                 retries += 1
-                logging.exception(
-                    "Error connecting to the engine, sleeping %.2fs and retrying (%d/%d)...",
-                    delay,
+                logging.error(
+                    "Error connecting to the engine (%s), sleeping %.2fs and retrying (%d/%d)...",
+                    e,
+                    RETRY_DELAY,
                     retries,
                     RETRY_AMOUNT,
                 )
-                time.sleep(delay)
+                time.sleep(RETRY_DELAY)
+            except psycopg2.errors.CannotConnectNow as e:
+                # This is for when the database is starting up, log at INFO level (not an error)
+                if retries >= RETRY_AMOUNT:
+                    logging.exception(
+                        "Error connecting to the engine after %d retries", RETRY_AMOUNT
+                    )
+                    raise
+                retries += 1
+                logging.info(
+                    "Can't connect to the engine right now (%s), sleeping %.2fs and retrying (%d/%d)...",
+                    e,
+                    RETRY_DELAY,
+                    retries,
+                    RETRY_AMOUNT,
+                )
+                time.sleep(RETRY_DELAY)
 
     def initialize(self, skip_object_handling=False, skip_create_database=False):
         """Create the Splitgraph Postgres database and install the audit trigger
