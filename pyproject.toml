@@ -21,6 +21,8 @@ docker = ">=4.0"
 # Extra requirements for ingestion (CSV)
 pandas = {version = ">=0.24", extras = ["ingestion"], optional = true }
 sqlalchemy = { version = "^1.3", extras = ["ingestion"], optional = true }
+click_log = "^0.3.2"
+tqdm = "^4.36.0"
 
 
 [tool.poetry.dev-dependencies]

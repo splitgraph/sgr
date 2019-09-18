@@ -44,7 +44,7 @@ def build_c(splitfile, args, output_repository):
     ``VAL1`` and  ``VAL2``, respectively.
     """
     args = {k: v for k, v in args}
-    print("Executing Splitfile %s with arguments %r" % (splitfile.name, args))
+    click.echo("Executing Splitfile %s with arguments %r" % (splitfile.name, args))
 
     # Inline import: importing it at every sgr invocation takes extra time because of compiling the Splitfile grammar.
     from splitgraph.splitfile import execute_commands
@@ -120,12 +120,14 @@ def provenance_c(image_spec, full, error_on_end):
 
     if full:
         splitfile_commands = image.to_splitfile(err_on_end=error_on_end)
-        print("# Splitfile commands used to recreate %s:%s" % (str(repository), image.image_hash))
-        print("\n".join(splitfile_commands))
+        click.echo(
+            "# Splitfile commands used to recreate %s:%s" % (str(repository), image.image_hash)
+        )
+        click.echo("\n".join(splitfile_commands))
     else:
         result = image.provenance()
-        print("%s:%s depends on:" % (str(repository), image.image_hash))
-        print("\n".join("%s:%s" % rs for rs in result))
+        click.echo("%s:%s depends on:" % (str(repository), image.image_hash))
+        click.echo("\n".join("%s:%s" % rs for rs in result))
 
 
 @click.command(name="rebuild")
@@ -179,8 +181,8 @@ def rebuild_c(image_spec, update, against):
     )
     deps.update(new_images)
 
-    print("Rerunning %s:%s against:" % (str(repository), image.image_hash))
-    print("\n".join("%s:%s" % rs for rs in new_images.items()))
+    click.echo("Rerunning %s:%s against:" % (str(repository), image.image_hash))
+    click.echo("\n".join("%s:%s" % rs for rs in new_images.items()))
 
     from splitgraph.splitfile import rebuild_image
 

@@ -50,14 +50,13 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
             return_shape=ResultShape.ONE_ONE,
         )
 
-        logging.info("Uploading %d object(s)...", len(objects))
         local_engine = get_engine()
 
         def _do_upload(object_url):
             object_id, url = object_url
             # We get 3 URLs here (one for each of object itself, footer and schema -- emit
             # just the first one for logging)
-            logging.info("%s -> %s", object_id, url[0])
+            logging.debug("%s -> %s", object_id, url[0])
             local_engine.run_sql("SELECT splitgraph_api.upload_object(%s, %s)", (object_id, url))
             local_engine.commit()
             local_engine.close()
@@ -88,13 +87,12 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
             (s3_host, remote_object_ids),
             return_shape=ResultShape.ONE_ONE,
         )
-        logging.info("Downloading %d object(s)...", len(objects))
 
         local_engine = get_engine()
 
         def _do_download(object_url):
             object_id, url = object_url
-            logging.info("%s -> %s", url[0], object_id)
+            logging.debug("%s -> %s", url[0], object_id)
 
             try:
                 local_engine.run_sql(

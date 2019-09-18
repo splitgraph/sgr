@@ -1034,10 +1034,12 @@ def _sync(target, source, download=True, download_all=False, handler="DB", handl
     target.commit_engines()
     source.commit_engines()
 
-    print(
+    logging.info(
         ("Fetched" if download else "Uploaded")
-        + " metadata for %d object(s), %d table version(s) and %d tag(s)."
-        % (len(object_meta), len(table_meta), len([t for t in tags if t != "HEAD"]))
+        + " metadata for %d object(s), %d table version(s) and %d tag(s).",
+        len(object_meta),
+        len(table_meta),
+        len([t for t in tags if t != "HEAD"]),
     )
 
 

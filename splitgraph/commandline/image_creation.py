@@ -53,11 +53,11 @@ def checkout_c(image_spec, force, uncheckout, layered):
 
     if uncheckout:
         repository.uncheckout(force=force)
-        print("Unchecked out %s." % (str(repository),))
+        click.echo("Unchecked out %s." % (str(repository),))
     else:
         image = repository.images[image]
         image.checkout(force=force, layered=layered)
-        print("Checked out %s:%s." % (str(repository), image.image_hash[:12]))
+        click.echo("Checked out %s:%s." % (str(repository), image.image_hash[:12]))
 
 
 @click.command(name="commit")
@@ -138,7 +138,7 @@ def commit_c(repository, snap, chunk_size, split_changesets, index_options, mess
         split_changeset=split_changesets,
         extra_indexes=index_options,
     ).image_hash
-    print("Committed %s as %s." % (str(repository), new_hash[:12]))
+    click.echo("Committed %s as %s." % (str(repository), new_hash[:12]))
 
 
 @click.command(name="tag")
@@ -197,9 +197,9 @@ def tag_c(image_spec, tag, remove):
             for img, tags in tag_dict.items():
                 # Sometimes HEAD is none (if we've just cloned the repo)
                 if img:
-                    print("%s: %s" % (img[:12], ", ".join(tags)))
+                    click.echo("%s: %s" % (img[:12], ", ".join(tags)))
         else:
-            print(", ".join(tag_dict[repository.images[image].image_hash]))
+            click.echo(", ".join(tag_dict[repository.images[image].image_hash]))
         return
 
     if tag == "HEAD":
@@ -211,7 +211,7 @@ def tag_c(image_spec, tag, remove):
         image = repository.images[image]
 
     image.tag(tag)
-    print("Tagged %s:%s with %s." % (str(repository), image.image_hash, tag))
+    click.echo("Tagged %s:%s with %s." % (str(repository), image.image_hash, tag))
 
 
 @click.command(name="import")
@@ -264,7 +264,7 @@ def import_c(image_spec, table_or_query, target_repository, target_table):
         image = None
 
     if is_query and not target_table:
-        print("TARGET_TABLE is required when the source is a query!")
+        click.echo("TARGET_TABLE is required when the source is a query!")
         sys.exit(1)
 
     target_repository.import_tables(
@@ -276,7 +276,7 @@ def import_c(image_spec, table_or_query, target_repository, target_table):
         table_queries=[] if not is_query else [True],
     )
 
-    print(
+    click.echo(
         "%s:%s has been imported from %s:%s%s"
         % (
             str(target_repository),

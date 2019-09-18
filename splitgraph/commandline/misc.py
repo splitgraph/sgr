@@ -61,7 +61,7 @@ def rm_c(image_spec, remote, yes):
     repository, image = image_spec
     repository = Repository.from_template(repository, engine=get_engine(remote or "LOCAL"))
     if not image:
-        print(
+        click.echo(
             ("Repository" if repository_exists(repository) else "Postgres schema")
             + " %s will be deleted." % repository.to_schema()
         )
@@ -73,13 +73,13 @@ def rm_c(image_spec, remote, yes):
         images_to_delete = repository.images.get_all_child_images(image.image_hash)
         tags_to_delete = [t for i, t in repository.get_all_hashes_tags() if i in images_to_delete]
 
-        print("Images to be deleted:")
-        print("\n".join(sorted(images_to_delete)))
-        print("Total: %d" % len(images_to_delete))
+        click.echo("Images to be deleted:")
+        click.echo("\n".join(sorted(images_to_delete)))
+        click.echo("Total: %d" % len(images_to_delete))
 
-        print("\nTags to be deleted:")
-        print("\n".join(sorted(tags_to_delete)))
-        print("Total: %d" % len(tags_to_delete))
+        click.echo("\nTags to be deleted:")
+        click.echo("\n".join(sorted(tags_to_delete)))
+        click.echo("Total: %d" % len(tags_to_delete))
 
         if "HEAD" in tags_to_delete:
             # If we're deleting an image that we currently have checked out,
@@ -94,7 +94,7 @@ def rm_c(image_spec, remote, yes):
 
         repository.images.delete(images_to_delete)
         repository.commit_engines()
-        print("Success.")
+        click.echo("Success.")
 
 
 @click.command(name="prune")
@@ -128,19 +128,19 @@ def prune_c(repository, remote, yes):
     )
 
     if not dangling_images:
-        print("Nothing to do.")
+        click.echo("Nothing to do.")
         return
 
-    print("Images to be deleted:")
-    print("\n".join(sorted(dangling_images)))
-    print("Total: %d" % len(dangling_images))
+    click.echo("Images to be deleted:")
+    click.echo("\n".join(sorted(dangling_images)))
+    click.echo("Total: %d" % len(dangling_images))
 
     if not yes:
         click.confirm("Continue? ", abort=True)
 
     repository.images.delete(dangling_images)
     repository.commit_engines()
-    print("Success.")
+    click.echo("Success.")
 
 
 @click.command(name="init")
@@ -172,7 +172,7 @@ def init_c(repository, skip_object_handling):
                 "--skip-object-handling", "Unsupported when initializing a new repository!"
             )
         repository.init()
-        print("Initialized empty repository %s" % str(repository))
+        click.echo("Initialized empty repository %s" % str(repository))
     else:
         init_engine(skip_object_handling=skip_object_handling)
 
@@ -185,7 +185,7 @@ def cleanup_c():
     This deletes all objects from the cache that aren't required by any local repository.
     """
     deleted = ObjectManager(get_engine()).cleanup()
-    print("Deleted %d physical object(s)" % len(deleted))
+    click.echo("Deleted %d physical object(s)" % len(deleted))
 
 
 @click.command(name="config")
@@ -219,7 +219,7 @@ def config_c(no_shielding, config_format):
         SG_REPO_LOOKUP=engine1,engine2 sgr config -sc > .sgconfig
     """
 
-    print(serialize_config(CONFIG, config_format, no_shielding))
+    click.echo(serialize_config(CONFIG, config_format, no_shielding))
 
 
 @click.command(name="dump")

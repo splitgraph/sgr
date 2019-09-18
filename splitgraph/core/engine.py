@@ -1,6 +1,7 @@
 """
 Routines for managing Splitgraph engines, including looking up repositories and managing objects.
 """
+import logging
 
 from psycopg2.sql import SQL, Identifier
 
@@ -42,7 +43,7 @@ def init_engine(skip_object_handling=False):  # pragma: no cover
     engine = get_engine()
     engine.initialize(skip_object_handling=skip_object_handling)
     engine.commit()
-    print("Engine %r initialized." % engine)
+    logging.info("Engine %r initialized." % engine)
 
 
 def repository_exists(repository):

@@ -1,12 +1,14 @@
 import logging
 import os
 
+import docker
+import docker.errors
 import pytest
 from minio.error import BucketAlreadyExists, BucketAlreadyOwnedByYou
 
 from splitgraph import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.commandline.engine import copy_to_container
-from splitgraph.core._common import ensure_metadata_schema, META_TABLES
+from splitgraph.core._common import META_TABLES
 from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.registry import (
@@ -20,9 +22,14 @@ from splitgraph.engine import get_engine, ResultShape, switch_engine
 from splitgraph.hooks.mount_handlers import mount
 from splitgraph.hooks.s3_server import MINIO, S3_BUCKET
 
-import docker
-import docker.errors
 
+# Clear out the logging root handler that was installed by click_log
+for handler in logging.root.handlers[:]:
+    logging.root.removeHandler(handler)
+
+logging.basicConfig(
+    format="%(asctime)s [%(process)d] %(levelname)s %(message)s", level=logging.DEBUG
+)
 
 R = Repository.from_schema
 

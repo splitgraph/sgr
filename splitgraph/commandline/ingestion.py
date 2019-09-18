@@ -58,7 +58,7 @@ def csv_export(image_spec, query, file, layered):
         df = sql_to_df(query, image=image, repository=repository, use_lq=layered)
         df.to_csv(file, index=df.index.names != [None])
     except ImportError:
-        print('Install the "ingestion" setuptools extra to enable this feature!')
+        click.echo('Install the "ingestion" setuptools extra to enable this feature!')
         exit(1)
 
 
@@ -121,7 +121,7 @@ def csv_import(
     # The reason we don't ingest directly into the engine by using COPY FROM STDIN is so that we can let Pandas do
     # some type inference/preprocessing on the CSV.
     if not primary_key:
-        print(
+        click.echo(
             "Warning: primary key is not specified, using the whole row as primary key."
             "This is probably not something that you want."
         )
@@ -137,7 +137,7 @@ def csv_import(
             infer_datetime_format=True,
             header=(None if no_header else "infer"),
         )
-        print("Read %d line(s)" % len(df))
+        click.echo("Read %d line(s)" % len(df))
         df_to_table(
             df,
             repository,
@@ -146,7 +146,7 @@ def csv_import(
             schema_check=not skip_schema_check,
         )
     except ImportError:
-        print('Install the "ingestion" setuptools extra to enable this feature!')
+        click.echo('Install the "ingestion" setuptools extra to enable this feature!')
         exit(1)
 
 

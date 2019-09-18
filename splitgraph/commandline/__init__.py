@@ -5,6 +5,8 @@ Hooks into the API to allow management of Splitgraph repositories and images usi
 """
 
 import click
+import click_log
+import logging
 
 from splitgraph.commandline.cloud import cloud_c
 from splitgraph.commandline.engine import engine_c
@@ -26,6 +28,10 @@ from splitgraph.commandline.push_pull import pull_c, clone_c, push_c, publish_c,
 from splitgraph.commandline.splitfile import build_c, provenance_c, rebuild_c
 
 
+logger = logging.getLogger()
+click_log.basic_config(logger)
+
+
 def _commit_connection(_):
     """Commit and close the PG connection when the application finishes."""
     from splitgraph.engine import get_engine
@@ -35,6 +41,7 @@ def _commit_connection(_):
 
 
 @click.group(result_callback=_commit_connection)
+@click_log.simple_verbosity_option(logger)
 def cli():
     """Splitgraph command line client: manage and build Postgres schema images."""
 

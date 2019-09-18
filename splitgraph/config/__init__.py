@@ -27,10 +27,6 @@ SPLITGRAPH_META_SCHEMA = CONFIG["SG_META_SCHEMA"]
 REGISTRY_META_SCHEMA = "registry_meta"
 SPLITGRAPH_API_SCHEMA = "splitgraph_api"
 
-# Log timestamp and PID. By default we only log WARNINGs in the command line interface.
-logging.basicConfig(
-    format="%(asctime)s [%(process)d] %(levelname)s %(message)s", level=CONFIG["SG_LOGLEVEL"]
-)
 FDW_CLASS = CONFIG["SG_FDW_CLASS"]
 
 # This is a global variable that gets flipped to True by the Multicorn FDW class

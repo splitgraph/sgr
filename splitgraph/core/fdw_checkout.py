@@ -131,6 +131,12 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
                 to do with them.
 
         """
+        # Initialize the logger that will log to the engine's stderr: log timestamp and PID.
+        logging.basicConfig(
+            format="%(asctime)s [%(process)d] %(levelname)s %(message)s",
+            level=splitgraph.CONFIG["SG_LOGLEVEL"],
+        )
+
         # Dict of connection parameters as well as the table, repository and image hash to query.
         self.fdw_options = fdw_options
 

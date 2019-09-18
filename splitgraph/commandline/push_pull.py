@@ -186,21 +186,21 @@ def upstream_c(repository, set_to, reset):
     if reset:
         if repository.upstream:
             del repository.upstream
-            print("Deleted upstream for %s." % repository.to_schema())
+            click.echo("Deleted upstream for %s." % repository.to_schema())
         else:
-            print("%s has no upstream to delete!" % repository.to_schema())
+            click.echo("%s has no upstream to delete!" % repository.to_schema())
             sys.exit(1)
         return
 
     if set_to == ("", None):
         upstream = repository.upstream
         if upstream:
-            print(
+            click.echo(
                 "%s is tracking %s:%s."
                 % (repository.to_schema(), upstream.engine.name, upstream.to_schema())
             )
         else:
-            print("%s has no upstream." % repository.to_schema())
+            click.echo("%s has no upstream." % repository.to_schema())
     else:
         engine, remote_repo = set_to
         try:
@@ -208,7 +208,9 @@ def upstream_c(repository, set_to, reset):
                 remote_repo, engine=splitgraph.get_engine(engine)
             )
         except KeyError:
-            print("Remote engine '%s' does not exist in the configuration file!" % engine)
+            click.echo("Remote engine '%s' does not exist in the configuration file!" % engine)
             sys.exit(1)
         repository.upstream = remote_repo
-        print("%s set to track %s:%s." % (repository.to_schema(), engine, remote_repo.to_schema()))
+        click.echo(
+            "%s set to track %s:%s." % (repository.to_schema(), engine, remote_repo.to_schema())
+        )

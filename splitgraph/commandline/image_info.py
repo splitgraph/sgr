@@ -35,7 +35,7 @@ def log_c(repository, tree):
         head = repository.head
         log = head.get_log()
         for entry in log:
-            print(
+            click.echo(
                 "%s %s %s %s"
                 % (
                     "H->" if entry == head else "   ",
@@ -89,9 +89,9 @@ def diff_c(verbose, table_name, repository, tag_or_hash_1, tag_or_hash_2):
     }
 
     if tag_or_hash_2 is None:
-        print("Between %s and the current working copy: " % tag_or_hash_1[:12])
+        click.echo("Between %s and the current working copy: " % tag_or_hash_1[:12])
     else:
-        print("Between %s and %s: " % (tag_or_hash_1[:12], tag_or_hash_2[:12]))
+        click.echo("Between %s and %s: " % (tag_or_hash_1[:12], tag_or_hash_2[:12]))
 
     for table, diff_result in diffs.items():
         _emit_table_diff(table, diff_result, verbose)
@@ -117,14 +117,14 @@ def _emit_table_diff(table_name, diff_result, verbose):
             count.append("updated " + pluralise("row", updated))
         if added + removed + updated == 0:
             count = ["no changes"]
-        print(to_print + ", ".join(count) + ".")
+        click.echo(to_print + ", ".join(count) + ".")
 
         if verbose:
             for added, row in diff_result:
-                print(("+" if added else "-") + " %r" % (row,))
+                click.echo(("+" if added else "-") + " %r" % (row,))
     else:
         # Whole table was either added or removed
-        print(to_print + ("table added" if diff_result else "table removed"))
+        click.echo(to_print + ("table added" if diff_result else "table removed"))
 
 
 def _get_actual_hashes(repository, image_1, image_2):
@@ -137,7 +137,7 @@ def _get_actual_hashes(repository, image_1, image_2):
         # One parameter: diff from that and its parent.
         image_2 = image_1_obj.parent_id
         if image_2 is None:
-            print("%s has no parent to compare to!" % image_1)
+            click.echo("%s has no parent to compare to!" % image_1)
         image_1, image_2 = image_2, image_1  # snap_1 has to come first
     else:
         image_1 = repository.images[image_1].image_hash
@@ -163,24 +163,24 @@ def show_c(image_spec, verbose):
     repository, image = image_spec
     image = repository.images[image]
 
-    print("Image %s:%s" % (repository.to_schema(), image.image_hash))
-    print(image.comment or "")
-    print("Created at %s" % image.created.isoformat())
+    click.echo("Image %s:%s" % (repository.to_schema(), image.image_hash))
+    click.echo(image.comment or "")
+    click.echo("Created at %s" % image.created.isoformat())
     if image.parent_id:
-        print("Parent: %s" % image.parent_id)
+        click.echo("Parent: %s" % image.parent_id)
     else:
-        print("No parent (root image)")
+        click.echo("No parent (root image)")
     if verbose:
-        print()
-        print("Tables:")
+        click.echo()
+        click.echo("Tables:")
         for table in image.get_tables():
             table_objects = image.get_table(table).objects
             if len(table_objects) == 1:
-                print("  %s: %s" % (table, table_objects[0]))
+                click.echo("  %s: %s" % (table, table_objects[0]))
             else:
-                print("  %s:" % table)
+                click.echo("  %s:" % table)
                 for obj in table_objects:
-                    print("    %s" % obj)
+                    click.echo("    %s" % obj)
 
 
 @click.command(name="object")
@@ -200,21 +200,21 @@ def object_c(object_id):
         raise click.BadParameter("Object %s does not exist!" % object_id)
 
     sg_object = object_meta[object_id]
-    print("Object ID: %s" % object_id)
-    print()
-    print("Namespace: %s" % sg_object.namespace)
-    print("Format: %s" % sg_object.format)
-    print("Size: %s" % pretty_size(sg_object.size))
-    print("Insertion hash: %s" % sg_object.insertion_hash)
-    print("Deletion hash: %s" % sg_object.deletion_hash)
-    print("Column index:")
+    click.echo("Object ID: %s" % object_id)
+    click.echo()
+    click.echo("Namespace: %s" % sg_object.namespace)
+    click.echo("Format: %s" % sg_object.format)
+    click.echo("Size: %s" % pretty_size(sg_object.size))
+    click.echo("Insertion hash: %s" % sg_object.insertion_hash)
+    click.echo("Deletion hash: %s" % sg_object.deletion_hash)
+    click.echo("Column index:")
     for col_name, col_range in sg_object.index["range"].items():
-        print("  %s: [%r, %r]" % (col_name, col_range[0], col_range[1]))
+        click.echo("  %s: [%r, %r]" % (col_name, col_range[0], col_range[1]))
     if "bloom" in sg_object.index:
-        print("Bloom index: ")
+        click.echo("Bloom index: ")
         for col_name, col_bloom in sg_object.index["bloom"].items():
-            print("  %s: %s" % (col_name, describe(col_bloom)))
-    print()
+            click.echo("  %s: %s" % (col_name, describe(col_bloom)))
+    click.echo()
     object_in_cache = object_manager.object_engine.run_sql(
         select("object_cache_status", "1", "object_id = %s"),
         (object_id,),
@@ -224,7 +224,7 @@ def object_c(object_id):
     object_external = object_manager.get_external_object_locations([object_id])
 
     if object_downloaded and not object_in_cache:
-        print("Location: created locally")
+        click.echo("Location: created locally")
     else:
         original_location = (
             ("%s (%s)" % (object_external[0][1], object_external[0][2]))
@@ -232,10 +232,10 @@ def object_c(object_id):
             else "remote engine"
         )
         if object_in_cache:
-            print("Location: cached locally")
-            print("Original location: " + original_location)
+            click.echo("Location: cached locally")
+            click.echo("Original location: " + original_location)
         else:
-            print("Location: " + original_location)
+            click.echo("Location: " + original_location)
 
 
 @click.command(name="objects")
@@ -254,7 +254,7 @@ def objects_c(local):
     else:
         objects = om.get_all_objects()
 
-    print("\n".join(sorted(objects)))
+    click.echo("\n".join(sorted(objects)))
 
 
 @click.command(name="sql")
@@ -281,10 +281,10 @@ def sql_c(sql, schema, show_all):
         return
 
     if len(results) > 10 and not show_all:
-        pprint(results[:10])
-        print("...")
+        click.echo(results[:10])
+        click.echo("...")
     else:
-        pprint(results)
+        click.echo(results)
 
 
 @click.command(name="status")
@@ -296,21 +296,21 @@ def status_c(repository):
     """
     if repository is None:
         repositories = get_current_repositories(get_engine())
-        print("Local repositories: ")
+        click.echo("Local repositories: ")
         for mp_name, mp_head in repositories:
             # Maybe should also show the remote DB address/server
-            print("%s: \t %s" % (mp_name, mp_head.image_hash if mp_head else None))
-        print("\nUse sgr status repository to get information about a given repository.")
+            click.echo("%s: \t %s" % (mp_name, mp_head.image_hash if mp_head else None))
+        click.echo("\nUse sgr status repository to get information about a given repository.")
     else:
         head = repository.head
         if not head:
-            print("%s: nothing checked out." % str(repository))
+            click.echo("%s: nothing checked out." % str(repository))
             return
         parent, children = head.get_parent_children()
-        print("%s: on image %s." % (str(repository), head.image_hash))
+        click.echo("%s: on image %s." % (str(repository), head.image_hash))
         if parent is not None:
-            print("Parent: %s" % parent)
+            click.echo("Parent: %s" % parent)
         if len(children) > 1:
-            print("Children: " + "\n".join(children))
+            click.echo("Children: " + "\n".join(children))
         elif len(children) == 1:
-            print("Child: %s" % children[0])
+            click.echo("Child: %s" % children[0])

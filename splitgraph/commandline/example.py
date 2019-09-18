@@ -74,7 +74,7 @@ def alter_table(repository, table_name, rows_added, rows_deleted, rows_updated):
     )
 
     # Delete first N rows
-    print("Deleting %d rows..." % rows_deleted)
+    click.echo("Deleting %d rows..." % rows_deleted)
     repository.engine.run_sql_batch(
         SQL("DELETE FROM {} WHERE key = %s").format(Identifier(table_name)),
         [(k,) for k in keys[:rows_deleted]],
@@ -82,7 +82,7 @@ def alter_table(repository, table_name, rows_added, rows_deleted, rows_updated):
     )
 
     # Update next N rows
-    print("Updating %d rows..." % rows_updated)
+    click.echo("Updating %d rows..." % rows_updated)
     repository.engine.run_sql_batch(
         SQL("UPDATE {} SET value = %s WHERE key = %s").format(Identifier(table_name)),
         [(_hash(k) + "_UPDATED", k) for k in keys[rows_updated : rows_updated * 2]],
@@ -90,7 +90,7 @@ def alter_table(repository, table_name, rows_added, rows_deleted, rows_updated):
     )
 
     # Insert rows at the end
-    print("Adding %d rows..." % rows_added)
+    click.echo("Adding %d rows..." % rows_added)
     repository.engine.run_sql_batch(
         SQL("INSERT INTO {} VALUES (%s, %s)").format(Identifier(table_name)),
         [(k, _hash(k)) for k in range(last + 1, last + rows_added + 1)],
@@ -116,7 +116,7 @@ def generate_c(repository):
     generate_table(repository, "demo", size=_DEMO_TABLE_SIZE)
 
     image = repository.commit()
-    print(
+    click.echo(
         "Generated %s:%s with %s rows, image hash %s."
         % (repository.to_schema(), "demo", _DEMO_TABLE_SIZE, image.image_hash[:12])
     )
@@ -148,7 +148,7 @@ def splitfile_c(repository_1, repository_2):
     :param repository_1: First repository
     :param repository_2: Second repository
     """
-    print(
+    click.echo(
         _DEMO_TEMPLATE.format(
             repo_1=repository_1.to_schema(),
             repo_2=repository_2.to_schema(),

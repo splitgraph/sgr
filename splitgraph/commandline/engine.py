@@ -55,7 +55,7 @@ def get_metadata_volume_name(engine_name):
 
 
 def print_table(rows, column_width=15):
-    print(
+    click.echo(
         "\n".join(["".join([("{:" + str(column_width) + "}").format(x) for x in r]) for r in rows])
     )
 
@@ -130,7 +130,7 @@ def add_engine_c(
     client = docker.from_env()
 
     if not no_pull:
-        print("Pulling image %s..." % image)
+        click.echo("Pulling image %s..." % image)
         client.images.pull(image)
 
     container_name = get_container_name(name)
@@ -142,15 +142,15 @@ def add_engine_c(
     metadata_volume = Mount(target="/var/lib/postgresql/data", source=metadata_name, type="volume")
     mounts = [data_volume, metadata_volume]
 
-    print("Creating container %s." % container_name)
-    print("Data volume: %s." % data_name)
-    print("Metadata volume: %s." % metadata_name)
+    click.echo("Creating container %s." % container_name)
+    click.echo("Data volume: %s." % data_name)
+    click.echo("Metadata volume: %s." % metadata_name)
 
     if inject_source:
         source_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../"))
         source_volume = Mount(target="/splitgraph/splitgraph", source=source_path, type="bind")
         mounts.append(source_volume)
-        print("Source path: %s" % source_path)
+        click.echo("Source path: %s" % source_path)
 
     container = client.containers.run(
         image=image,
@@ -167,7 +167,7 @@ def add_engine_c(
         },
     )
 
-    print("Container created, ID %s" % container.short_id)
+    click.echo("Container created, ID %s" % container.short_id)
     conn_params = {
         "SG_ENGINE_HOST": "localhost",
         "SG_ENGINE_PORT": port,
@@ -180,20 +180,20 @@ def add_engine_c(
     }
 
     if not no_init:
-        print("Initializing the engine")
+        click.echo("Initializing the engine")
 
         engine = PostgresEngine(name=name, conn_params=conn_params)
         engine.initialize()
         engine.commit()
-        print("Engine initialized successfully.")
+        click.echo("Engine initialized successfully.")
 
     config_path = CONFIG["SG_CONFIG_FILE"]
     if not no_sgconfig:
         if not config_path:
-            print("No config file detected, creating one locally")
+            click.echo("No config file detected, creating one locally")
             config_path = ".sgconfig"
         else:
-            print("Updating the existing config file at %s" % config_path)
+            click.echo("Updating the existing config file at %s" % config_path)
 
         if name != DEFAULT_ENGINE:
             config_patch = {"remotes": {name: conn_params}}
@@ -203,9 +203,9 @@ def add_engine_c(
         new_config = patch_config(CONFIG, config_patch)
         overwrite_config(new_config, config_path)
 
-    print("Copying in the config file")
+    click.echo("Copying in the config file")
     copy_to_container(container, config_path, "/.sgconfig")
-    print("Done.")
+    click.echo("Done.")
 
 
 @click.command(name="stop")
@@ -217,9 +217,9 @@ def stop_engine_c(name):
     container_name = get_container_name(name)
     container = client.containers.get(container_name)
 
-    print("Stopping Splitgraph engine %s..." % name)
+    click.echo("Stopping Splitgraph engine %s..." % name)
     container.stop()
-    print("Engine stopped.")
+    click.echo("Engine stopped.")
 
 
 @click.command(name="start")
@@ -231,9 +231,9 @@ def start_engine_c(name):
     container_name = get_container_name(name)
     container = client.containers.get(container_name)
 
-    print("Starting Splitgraph engine %s..." % name)
+    click.echo("Starting Splitgraph engine %s..." % name)
     container.start()
-    print("Engine started.")
+    click.echo("Engine started.")
 
 
 @click.command(name="delete")
@@ -248,7 +248,7 @@ def delete_engine_c(yes, force, name):
     container_name = get_container_name(name)
     container = client.containers.get(container_name)
 
-    print(
+    click.echo(
         "Splitgraph engine %s (container ID %s), together with all data, will be deleted."
         % (name, container.short_id)
     )
@@ -256,14 +256,14 @@ def delete_engine_c(yes, force, name):
         click.confirm("Continue? ", abort=True)
 
     container.remove(force=force)
-    print("Splitgraph engine %s has been removed." % name)
+    click.echo("Splitgraph engine %s has been removed." % name)
 
     metadata_volume = client.volumes.get(get_metadata_volume_name(name))
     data_volume = client.volumes.get(get_data_volume_name(name))
 
     metadata_volume.remove()
     data_volume.remove()
-    print("Volumes %s and %s have been removed." % (metadata_volume.name, data_volume.name))
+    click.echo("Volumes %s and %s have been removed." % (metadata_volume.name, data_volume.name))
 
 
 engine_c.add_command(list_engines_c)
