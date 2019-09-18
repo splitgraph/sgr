@@ -50,6 +50,7 @@ DEFAULTS = {
             "SG_ENGINE_PORT": "5432",
             "SG_ENGINE_DB_NAME": "sgregistry",
             "SG_AUTH_API": "http://data.splitgraph.com/auth",
+            "SG_QUERY_API": "http://data.splitgraph.com/mc",
         }
     },
     "external_handlers": {"S3": "splitgraph.hooks.s3.S3ExternalObjectHandler"},

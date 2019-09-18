@@ -10,8 +10,10 @@ import httpretty
 import pytest
 
 from splitgraph import ResultShape, get_engine
+from splitgraph.cloud import AuthAPIClient
 from splitgraph.commandline import *
 from splitgraph.commandline._common import ImageType
+from splitgraph.commandline.cloud import register_c, curl_c
 from splitgraph.commandline.engine import (
     add_engine_c,
     list_engines_c,
@@ -33,7 +35,7 @@ from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import AuthAPIError
 from splitgraph.hooks.mount_handlers import get_mount_handlers
 from test.splitgraph.conftest import OUTPUT, SPLITFILE_ROOT, MG_MNT
-from unittest.mock import patch, mock_open, ANY
+from unittest.mock import patch, mock_open, ANY, MagicMock, PropertyMock
 
 from click.testing import CliRunner
 
@@ -1109,6 +1111,7 @@ _CONFIG_DEFAULTS = (
     "\n[remote: data.splitgraph.com]\nSG_ENGINE_HOST=data.splitgraph.com\n"
     "SG_ENGINE_PORT=5432\nSG_ENGINE_DB_NAME=sgregistry\n"
     "SG_AUTH_API=http://data.splitgraph.com/auth\n"
+    "SG_QUERY_API=http://data.splitgraph.com/mc\n"
 )
 
 
@@ -1383,3 +1386,49 @@ def test_commandline_registration_user_error():
     assert result.exit_code == 1
     assert isinstance(result.exception, AuthAPIError)
     assert "Username exists" in str(result.exception)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ("ns/repo/image/table?id=eq.5", "http://some-query-service/ns/repo/image/table?id=eq.5"),
+        ("ns/repo/table?id=eq.5", "http://some-query-service/ns/repo/latest/table?id=eq.5"),
+    ],
+)
+def test_commandline_curl_normal(test_case):
+    runner = CliRunner()
+    request, result_url = test_case
+
+    with patch(
+        "splitgraph.commandline.cloud.AuthAPIClient.access_token",
+        new_callable=PropertyMock,
+        return_value="AAAABBBBCCCCDDDD",
+    ):
+        with patch("splitgraph.commandline.cloud.subprocess.call") as sc:
+            result = runner.invoke(
+                curl_c,
+                ["--remote", _REMOTE, request, "--some-curl-arg", "-Ssl"],
+                catch_exceptions=False,
+            )
+            assert result.exit_code == 0
+            sc.assert_called_once_with(
+                [
+                    "curl",
+                    result_url,
+                    "-H",
+                    "Authorization: Bearer AAAABBBBCCCCDDDD",
+                    "--some-curl-arg",
+                    "-Ssl",
+                ]
+            )
+
+
+def test_commandline_curl_error():
+    runner = CliRunner()
+
+    with patch("splitgraph.commandline.cloud.AuthAPIClient"):
+        with patch("splitgraph.commandline.cloud.subprocess.call"):
+            result = runner.invoke(
+                curl_c, ["--remote", _REMOTE, "invalid/path"], catch_exceptions=True
+            )
+            assert result.exit_code == 2

@@ -6,7 +6,7 @@ Hooks into the API to allow management of Splitgraph repositories and images usi
 
 import click
 
-from splitgraph.commandline.cloud import register_c
+from splitgraph.commandline.cloud import cloud_c
 from splitgraph.commandline.engine import engine_c
 from splitgraph.commandline.example import example
 from splitgraph.commandline.image_creation import checkout_c, commit_c, tag_c, import_c
@@ -100,4 +100,4 @@ cli.add_command(example)
 cli.add_command(csv)
 
 # Cloud
-cli.add_command(register_c)
+cli.add_command(cloud_c)
