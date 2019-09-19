@@ -791,7 +791,8 @@ class Repository:
                 self.upstream = remote_repository
                 logging.info("Setting upstream for %s to %s.", self, remote_repository)
         finally:
-            remote_repository.engine.commit()
+            # Don't commit the connection here: _sync is supposed to do it itself
+            # after a successful push/pull.
             remote_repository.engine.close()
         return remote_repository
 

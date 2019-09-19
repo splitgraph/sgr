@@ -980,7 +980,6 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                     with_pk_constraints=False,
                 )
                 self._set_object_schema(object_id, schema_spec=schema_spec)
-                self.connection.commit()
                 downloaded_objects.append(object_id)
             return downloaded_objects
 
