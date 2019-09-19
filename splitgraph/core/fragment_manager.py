@@ -6,6 +6,7 @@ import bisect
 import itertools
 import json
 import logging
+import math
 import operator
 import struct
 from functools import reduce
@@ -14,6 +15,7 @@ from random import getrandbits
 
 from psycopg2.errors import DuplicateTable, UniqueViolation
 from psycopg2.sql import SQL, Identifier
+from tqdm import tqdm
 
 from splitgraph.config import SPLITGRAPH_API_SCHEMA
 from splitgraph.core.indexing.bloom import generate_bloom_index, filter_bloom_index
@@ -323,7 +325,8 @@ class FragmentManager(MetadataManager):
         :return: List of created object IDs.
         """
         object_ids = []
-        for sub_changeset in changesets:
+        logging.info("Storing and indexing table %s", table.table_name)
+        for sub_changeset in tqdm(changesets, unit="objs"):
             if not sub_changeset:
                 continue
             # Store the fragment in a temporary location and then find out its hash and rename to the actual target.
@@ -448,6 +451,7 @@ class FragmentManager(MetadataManager):
         current_objects = old_table.objects
         if changeset:
             if split_changeset:
+                logging.info("Splitting changesets")
                 # Reorganize the current table's fragments into non-overlapping groups
                 # and split the changeset to make sure it doesn't span (and hence merge) them.
                 table_pks = self.object_engine.get_change_key(schema, old_table.table_name)
@@ -567,7 +571,7 @@ class FragmentManager(MetadataManager):
         # Store the fragment in a temporary location first and hash that (much faster since PG doesn't need
         # to go through the source table multiple times for every offset)
         tmp_object_id = get_random_object_id()
-        logging.info(
+        logging.debug(
             "Using temporary table %s for %s/%s limit %r after_pk %r",
             tmp_object_id,
             source_schema,
@@ -689,7 +693,10 @@ class FragmentManager(MetadataManager):
         object_ids = []
 
         new_fragment = None
-        for _ in range(0, table_size, chunk_size):
+        logging.info("Storing and indexing table %s", source_table)
+        no_chunks = int(math.ceil(table_size / chunk_size))
+        pbar = tqdm(range(0, table_size, chunk_size), unit="objs", total=no_chunks)
+        for _ in pbar:
             # Chunk the table up. It's very slow to do it with
             # SELECT * FROM source LIMIT chunk_size OFFSET offset as Postgres
             # needs to go through `offset` heap fetches before finding out what it is it's

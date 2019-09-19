@@ -5,6 +5,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 
 from psycopg2 import DatabaseError
+from tqdm import tqdm
 
 from splitgraph.config import CONFIG
 from splitgraph.engine import get_engine, ResultShape
@@ -62,10 +63,14 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
             local_engine.close()
             return object_id
 
+        result = []
         with ThreadPoolExecutor(max_workers=worker_threads) as tpe:
-            urls = tpe.map(_do_upload, zip(objects, urls))
+            pbar = tqdm(tpe.map(_do_upload, zip(objects, urls)), total=len(objects), unit="objs")
+            for object_id in pbar:
+                result.append(object_id)
+                pbar.set_postfix(object=object_id[:10] + "...")
 
-        return list(urls)
+        return list(result)
 
     def download_objects(self, objects, remote_engine):
         """
@@ -110,6 +115,12 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
             local_engine.commit()
             local_engine.close()
 
+            return object_id
+
         with ThreadPoolExecutor(max_workers=worker_threads) as tpe:
             # Evaluate the results so that exceptions thrown by the downloader get raised
-            list(tpe.map(_do_download, zip(object_ids, urls)))
+            pbar = tqdm(
+                tpe.map(_do_download, zip(object_ids, urls)), total=len(objects), unit="objs"
+            )
+            for object_id in pbar:
+                pbar.set_postfix(object=object_id[:10] + "...")

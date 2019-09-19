@@ -17,6 +17,7 @@ from psycopg2.errors import InvalidSchemaName, UndefinedTable, DuplicateTable
 from psycopg2.extras import execute_batch, Json
 from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.sql import SQL, Identifier
+from tqdm import tqdm
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCHEMA
 from splitgraph.core._common import select, ensure_metadata_schema, META_TABLES
@@ -894,16 +895,17 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         #
         # Perhaps we should drop direct uploading altogether and require people to use S3 throughout.
 
-        for i, obj in enumerate(objects):
-            print("(%d/%d) %s..." % (i + 1, len(objects), obj))
-            schema_spec = self.get_object_schema(obj)
-            remote_engine.mount_object(obj, schema_spec=schema_spec)
+        pbar = tqdm(objects, unit="objs")
+        for object_id in pbar:
+            pbar.set_postfix(object=object_id[:10] + "...")
+            schema_spec = self.get_object_schema(object_id)
+            remote_engine.mount_object(object_id, schema_spec=schema_spec)
 
             stream = BytesIO()
             with self.connection.cursor() as cur:
                 cur.copy_expert(
                     SQL("COPY {}.{} TO STDOUT WITH (FORMAT 'binary')").format(
-                        Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj)
+                        Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)
                     ),
                     stream,
                 )
@@ -911,11 +913,11 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             with remote_engine.connection.cursor() as cur:
                 cur.copy_expert(
                     SQL("COPY {}.{} FROM STDIN WITH (FORMAT 'binary')").format(
-                        Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj)
+                        Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)
                     ),
                     stream,
                 )
-            remote_engine._set_object_schema(obj, schema_spec)
+            remote_engine._set_object_schema(object_id, schema_spec)
             remote_engine.commit()
 
     @contextmanager
@@ -960,21 +962,26 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
         with self._mount_remote_engine(remote_engine) as remote_schema:
             downloaded_objects = []
-            for i, obj in enumerate(objects):
-                logging.info("(%d/%d) Downloading %s...", i + 1, len(objects), obj)
-                if not self.table_exists(remote_schema, obj):
-                    logging.error("%s not found on the remote engine!", obj)
+            pbar = tqdm(objects, unit="objs")
+            for object_id in pbar:
+                pbar.set_postfix(object=object_id[:10] + "...")
+                if not self.table_exists(remote_schema, object_id):
+                    logging.error("%s not found on the remote engine!", object_id)
                     continue
 
                 # Create the CStore table on the engine and copy the contents of the object into it.
-                schema_spec = remote_engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, obj)
-                self.mount_object(obj, schema_spec=schema_spec)
+                schema_spec = remote_engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, object_id)
+                self.mount_object(object_id, schema_spec=schema_spec)
                 self.copy_table(
-                    remote_schema, obj, SPLITGRAPH_META_SCHEMA, obj, with_pk_constraints=False
+                    remote_schema,
+                    object_id,
+                    SPLITGRAPH_META_SCHEMA,
+                    object_id,
+                    with_pk_constraints=False,
                 )
-                self._set_object_schema(obj, schema_spec=schema_spec)
+                self._set_object_schema(object_id, schema_spec=schema_spec)
                 self.connection.commit()
-                downloaded_objects.append(obj)
+                downloaded_objects.append(object_id)
             return downloaded_objects
 
 
