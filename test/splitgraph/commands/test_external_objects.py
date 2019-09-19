@@ -4,7 +4,9 @@ import pytest
 from minio.error import MinioError
 
 from splitgraph import ResultShape
+from splitgraph.core import repository_exists
 from splitgraph.core.repository import clone
+from splitgraph.hooks.s3 import S3ExternalObjectHandler
 from splitgraph.hooks.s3_server import (
     get_object_upload_urls,
     get_object_download_urls,
@@ -103,6 +105,31 @@ def test_s3_push_pull(
     )
 
 
+class FlakyExternalObjectHandler(S3ExternalObjectHandler):
+    """
+    An external object handler that fails after downloading some objects
+    to emulate connection errors/CTRL+Cs etc -- test database is still in a
+    consistent state in these cases.
+    """
+
+    def __init__(self, params):
+        super().__init__(params)
+
+    def download_objects(self, objects, remote_engine):
+        """
+        Downloads just the first object and then fails.
+        """
+        self.download_objects(objects[:1], remote_engine)
+        raise Exception("Something bad happened.")
+
+    def upload_objects(self, objects, remote_engine):
+        """
+        Uploads just the first object and then fails.
+        """
+        self.upload_objects(objects[:1], remote_engine)
+        raise Exception("Something bad happened.")
+
+
 @pytest.mark.registry
 def test_push_upload_error(
     local_engine_empty, unprivileged_pg_repo, pg_repo_remote_registry, clean_minio
@@ -112,15 +139,13 @@ def test_push_upload_error(
     PG_MNT.run_sql("INSERT INTO fruits VALUES (3, 'mayonnaise')")
     head = PG_MNT.commit()
 
-    # If the upload fails for whatever reason (e.g. Minio is inaccessible), the whole
-    # push fails rather than leaving the engine in an inconsistent state.
-    broken_upload_handler = Mock()
-    broken_upload_handler.upload_objects.side_effect = MinioError("Minio Error!")
-    with patch(
-        "splitgraph.core.object_manager.get_external_object_handler",
-        return_value=broken_upload_handler,
+    # If the upload fails for whatever reason (e.g. Minio is inaccessible or the upload was aborted),
+    # the whole push fails rather than leaving the registry in an inconsistent state.
+    with patch.dict(
+        "splitgraph.hooks.external_objects._EXTERNAL_OBJECT_HANDLERS",
+        {"S3": FlakyExternalObjectHandler},
     ):
-        with pytest.raises(MinioError) as e:
+        with pytest.raises(Exception) as e:
             PG_MNT.push(remote_repository=unprivileged_pg_repo, handler="S3", handler_options={})
 
     assert head not in unprivileged_pg_repo.images
@@ -168,3 +193,23 @@ def test_push_upload_error(
         )
         == 3
     )
+
+
+@pytest.mark.registry
+def test_pull_download_error(local_engine_empty, unprivileged_pg_repo, clean_minio):
+    # Same test backwards: if we're pulling and abort or fail the download, make sure we can
+    # recover and retry pulling the repo.
+
+    with patch.dict(
+        "splitgraph.hooks.external_objects._EXTERNAL_OBJECT_HANDLERS",
+        {"S3": FlakyExternalObjectHandler},
+    ):
+        with pytest.raises(Exception) as e:
+            clone(unprivileged_pg_repo, local_repository=PG_MNT, download_all=True)
+
+    assert not repository_exists(PG_MNT)
+    assert len(PG_MNT.objects.get_all_objects()) == 0
+
+    clone(unprivileged_pg_repo, local_repository=PG_MNT, download_all=True)
+    assert len(PG_MNT.objects.get_all_objects()) == 2
+    assert len(list(PG_MNT.images)) == 2

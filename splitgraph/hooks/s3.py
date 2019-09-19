@@ -105,7 +105,7 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
                 )
             except DatabaseError:
                 logging.exception("Error downloading object %s", object_id)
-                return
+                return object_id
             local_engine.mount_object(object_id)
             # Commit and release the connection (each is keyed by the thread ID)
             # back into the pool.
@@ -123,4 +123,5 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
                 tpe.map(_do_download, zip(object_ids, urls)), total=len(objects), unit="objs"
             )
             for object_id in pbar:
+
                 pbar.set_postfix(object=object_id[:10] + "...")
