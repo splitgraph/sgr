@@ -3,16 +3,23 @@ import itertools
 import logging
 import threading
 from contextlib import contextmanager
+from typing import Any, Callable, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING
 
-from psycopg2.sql import SQL, Identifier
+from psycopg2.sql import SQL, Identifier, Composed
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core._common import Tracer
 from splitgraph.core.fragment_manager import get_random_object_id, get_chunk_groups
 from splitgraph.core.indexing.range import quals_to_sql
 
+if TYPE_CHECKING:
+    from splitgraph.core.image import Image
+    from splitgraph.core.object_manager import ObjectManager
+    from splitgraph.core.repository import Repository
+    from splitgraph.engine.postgres.engine import PostgresEngine
 
-def _delete_temporary_table(engine, schema, table):
+
+def _delete_temporary_table(engine: "PostgresEngine", schema: str, table: str) -> None:
     """
     Workaround for Multicorn deadlocks at end_scan time, supposed to be run in a separate thread.
     """
@@ -33,7 +40,7 @@ def _delete_temporary_table(engine, schema, table):
         conn.close()
 
 
-def _empty_callback(**kwargs):
+def _empty_callback(**kwargs) -> None:
     pass
 
 
@@ -43,7 +50,17 @@ class QueryPlan:
     qualifiers.
     """
 
-    def __init__(self, table, quals, columns):
+    def __init__(
+        self,
+        table: "Table",
+        quals: Optional[
+            Union[
+                Tuple[Tuple[Tuple[str, str, str]]],
+                Tuple[Tuple[Tuple[str, str, str], Tuple[str, str, str]]],
+            ]
+        ],
+        columns: Union[Tuple[str, str], Tuple[str]],
+    ) -> None:
         self.table = table
         self.quals = quals
         self.columns = columns
@@ -63,7 +80,14 @@ class Table:
     """Represents a Splitgraph table in a given image. Shouldn't be created directly, use Table-loading
     methods in the :class:`splitgraph.core.image.Image` class instead."""
 
-    def __init__(self, repository, image, table_name, table_schema, objects):
+    def __init__(
+        self,
+        repository: "Repository",
+        image: "Image",
+        table_name: str,
+        table_schema: List[List[Union[int, str]]],
+        objects: List[str],
+    ) -> None:
         self.repository = repository
         self.image = image
         self.table_name = table_name
@@ -74,7 +98,12 @@ class Table:
 
         self._query_plans = {}
 
-    def get_query_plan(self, quals, columns, use_cache=True):
+    def get_query_plan(
+        self,
+        quals: Optional[List[List[Tuple[str, str, str]]]],
+        columns: List[str],
+        use_cache: bool = True,
+    ) -> QueryPlan:
         """
         Start planning a query (preliminary steps before object downloading,
         like qualifier filtering).
@@ -102,7 +131,12 @@ class Table:
         self._query_plans[key] = plan
         return plan
 
-    def materialize(self, destination, destination_schema=None, lq_server=None):
+    def materialize(
+        self,
+        destination: str,
+        destination_schema: Optional[str] = None,
+        lq_server: Optional[str] = None,
+    ) -> None:
         """
         Materializes a Splitgraph table in the target schema as a normal Postgres table, potentially downloading all
         required objects and using them to reconstruct the table.
@@ -141,7 +175,9 @@ class Table:
             query += SQL(") SERVER {} OPTIONS (table %s)").format(Identifier(lq_server))
             engine.run_sql(query, (self.table_name,))
 
-    def query_indirect(self, columns, quals):
+    def query_indirect(
+        self, columns: List[str], quals: Optional[List[List[Tuple[str, str, str]]]]
+    ) -> Tuple[List[Any], Callable, QueryPlan]:
         """
         Run a read-only query against this table without materializing it. Instead of
         actual results, this returns a generator of SQL queries that the caller can use
@@ -285,7 +321,9 @@ class Table:
             return itertools.chain(queries, _generate_nonsingleton_query()), release_callback, plan
 
     @contextmanager
-    def query_lazy(self, columns, quals):
+    def query_lazy(
+        self, columns: List[str], quals: List[List[Tuple[str, str, str]]]
+    ) -> Iterator[Iterator[Any]]:
         """
         Run a read-only query against this table without materializing it.
 
@@ -309,7 +347,7 @@ class Table:
         finally:
             release_callback()
 
-    def query(self, columns, quals):
+    def query(self, columns: List[str], quals: List[List[Tuple[str, str, str]]]):
         """
         Run a read-only query against this table without materializing it.
 
@@ -324,7 +362,11 @@ class Table:
         with self.query_lazy(columns, quals) as result:
             return list(result)
 
-    def _extract_singleton_fragments(self, object_manager, required_objects):
+    def _extract_singleton_fragments(
+        self, object_manager: "ObjectManager", required_objects: List[str]
+    ) -> Union[
+        Tuple[List[Any], List[str]], Tuple[List[str], List[Any]], Tuple[List[str], List[str]]
+    ]:
         # Get fragment boundaries (min-max PKs of every fragment).
         table_pk = [(t[1], t[2]) for t in self.table_schema if t[3]]
         if not table_pk:
@@ -346,7 +388,7 @@ class Table:
                 non_singletons.extend(object_id for object_id, _, _ in group)
         return non_singletons, singletons
 
-    def _create_staging_table(self):
+    def _create_staging_table(self) -> str:
         staging_table = get_random_object_id()
 
         logging.info("Using staging table %s", staging_table)
@@ -358,7 +400,14 @@ class Table:
         )
         return staging_table
 
-    def _generate_select_queries(self, schema, tables, columns, qual_sql=None, qual_args=None):
+    def _generate_select_queries(
+        self,
+        schema: str,
+        tables: List[str],
+        columns: List[str],
+        qual_sql: Optional[Union[SQL, Composed]] = None,
+        qual_args: Optional[Tuple] = None,
+    ) -> List[bytes]:
         engine = self.repository.object_engine
         cur = engine.connection.cursor()
 

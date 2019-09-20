@@ -12,7 +12,6 @@
         4. DEFAULTS (see keys.py)
 
 """
-import logging
 
 from .config import create_config_dict
 

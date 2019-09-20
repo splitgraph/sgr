@@ -9,9 +9,7 @@ import pytest
 from requests import HTTPError
 
 from splitgraph.cloud import AuthAPIClient
-
 from splitgraph.exceptions import AuthAPIError
-
 
 # Methods currently are small enough and all exercised in test_commandline_registration_*,
 # so this is mostly testing various failure states.

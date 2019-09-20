@@ -2,7 +2,6 @@
 """A showcase/example runner for Splitgraph"""
 
 import subprocess
-import sys
 
 import click
 import yaml

@@ -1,11 +1,13 @@
 """Routines for managing SQL statements"""
-from pglast import Node, parse_sql
-from pglast.node import Scalar
+from typing import Callable, Dict, List, Union
+
+from pglast import parse_sql
+from pglast.node import Node, Scalar
 
 from splitgraph.exceptions import UnsupportedSQLError
 
 
-def _validate_range_var(node):
+def _validate_range_var(node: Node) -> None:
     if "schemaname" in node.attribute_names:
         raise UnsupportedSQLError("Table names must not be schema-qualified!")
 
@@ -56,7 +58,9 @@ _SPLITFILE_SQL_PERMITTED_NODES = _IMPORT_SQL_PERMITTED_NODES + [
 _SQL_VALIDATORS = {"RangeVar": _validate_range_var}
 
 
-def _validate_node(node, permitted_nodes, node_validators):
+def _validate_node(
+    node: Union[Scalar, Node], permitted_nodes: List[str], node_validators: Dict[str, Callable]
+) -> None:
     if isinstance(node, Scalar):
         return
     node_class = node.node_tag
@@ -69,7 +73,7 @@ def _validate_node(node, permitted_nodes, node_validators):
         raise UnsupportedSQLError(message + "!")
 
 
-def validate_splitfile_sql(sql):
+def validate_splitfile_sql(sql: str) -> None:
     """
     Check an SQL query to see if it can be safely used in a Splitfile SQL command. The rules for usage are:
 
@@ -89,7 +93,7 @@ def validate_splitfile_sql(sql):
         )
 
 
-def validate_import_sql(sql):
+def validate_import_sql(sql: str) -> None:
     """
     Check an SQL query to see if it can be safely used in an IMPORT statement
     (e.g. `FROM noaa/climate:latest IMPORT {SELECT * FROM rainfall WHERE state = 'AZ'} AS rainfall`.

@@ -1,9 +1,15 @@
-from psycopg2.sql import SQL, Identifier
+# PG types we can run max/min on
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
+from psycopg2.sql import Composed, SQL
+from psycopg2.sql import Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.core._common import adapt, coerce_val_to_json, ResultShape, select
+from splitgraph.engine.postgres.engine import PostgresEngine
 
-# PG types we can run max/min on
 _PG_INDEXABLE_TYPES = [
     "bigint",
     "bigserial",
@@ -32,15 +38,22 @@ _PG_INDEXABLE_TYPES = [
 
 
 # Custom min/max functions that ignore Nones
-def _min(left, right):
+def _min(left: Any, right: Union[int, date, str, float]) -> Union[int, date, str, float, Decimal]:
     return right if left is None else (left if right is None else min(left, right))
 
 
-def _max(left, right):
+def _max(left: Any, right: Union[int, date, str, float]) -> Union[int, date, str, float, Decimal]:
     return right if left is None else (left if right is None else max(left, right))
 
 
-def _qual_to_index_clause(qual, ctype):
+def _qual_to_index_clause(
+    qual: Union[Tuple[str, str, datetime], Tuple[str, str, int], Tuple[str, str, str]], ctype: str
+) -> Union[
+    Tuple[Composed, Tuple[str, int]],
+    Tuple[Composed, Tuple[str, datetime]],
+    Tuple[SQL, Tuple],
+    Tuple[Composed, Tuple[str, str]],
+]:
     """Convert our internal qual format into a WHERE clause that runs against an object's index entry.
     Returns a Postgres clause (as a Composable) and a tuple of arguments to be mogrified into it."""
     column_name, qual_op, value = qual
@@ -86,13 +99,15 @@ def _qual_to_index_clause(qual, ctype):
     return query, tuple(args)
 
 
-def _qual_to_sql_clause(qual, ctype):
+def _qual_to_sql_clause(qual: Tuple[str, str, str], ctype: str) -> Tuple[Composed, Tuple[str]]:
     """Convert a qual to a normal SQL clause that can be run against the actual object rather than the index."""
     column_name, qual_op, value = qual
     return SQL("{}::" + ctype + " " + qual_op + " %s").format(Identifier(column_name)), (value,)
 
 
-def _quals_to_clause(quals, column_types, qual_to_clause=_qual_to_index_clause):
+def _quals_to_clause(
+    quals: Any, column_types: Dict[str, str], qual_to_clause: Callable = _qual_to_index_clause
+) -> Any:
     if not quals:
         return SQL(""), ()
 
@@ -110,7 +125,9 @@ def _quals_to_clause(quals, column_types, qual_to_clause=_qual_to_index_clause):
     )
 
 
-def quals_to_sql(quals, column_types):
+def quals_to_sql(
+    quals: Optional[List[List[Tuple[str, str, str]]]], column_types: Dict[str, str]
+) -> Union[Tuple[Composed, Tuple[str]], Tuple[SQL, Tuple], Tuple[Composed, Tuple[str, str]]]:
     """
     Convert a list of qualifiers in CNF to a fragment of a Postgres query
     :param quals: Qualifiers in CNF
@@ -121,7 +138,7 @@ def quals_to_sql(quals, column_types):
     return _quals_to_clause(quals, column_types, qual_to_clause=_qual_to_sql_clause)
 
 
-def extract_min_max_pks(engine, fragments, table_pks):
+def extract_min_max_pks(engine: PostgresEngine, fragments: List[str], table_pks: List[str]) -> Any:
     """
     Extract minimum/maximum PK values for given fragments.
 
@@ -172,7 +189,12 @@ def extract_min_max_pks(engine, fragments, table_pks):
     return min_max
 
 
-def generate_range_index(object_engine, object_id, table_schema, changeset):
+def generate_range_index(
+    object_engine: PostgresEngine,
+    object_id: str,
+    table_schema: List[Tuple[int, str, str, bool]],
+    changeset: Any,
+) -> Dict[str, Any]:
     """
     Calculate the minimim/maximum values of every column in the object (including deleted values).
 
@@ -238,7 +260,9 @@ def generate_range_index(object_engine, object_id, table_schema, changeset):
     return range_index
 
 
-def filter_range_index(metadata_engine, object_ids, quals, column_types):
+def filter_range_index(
+    metadata_engine: PostgresEngine, object_ids: List[str], quals: Any, column_types: Dict[str, str]
+) -> List[str]:
     clause, args = _quals_to_clause(quals, column_types)
     query = (
         select("get_object_meta", "object_id", table_args="(%s)", schema=SPLITGRAPH_API_SCHEMA)

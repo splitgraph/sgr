@@ -22,7 +22,6 @@ from splitgraph.engine import get_engine, ResultShape, switch_engine
 from splitgraph.hooks.mount_handlers import mount
 from splitgraph.hooks.s3_server import MINIO, S3_BUCKET
 
-
 # Clear out the logging root handler that was installed by click_log
 for handler in logging.root.handlers[:]:
     logging.root.removeHandler(handler)

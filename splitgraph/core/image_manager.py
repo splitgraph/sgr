@@ -1,5 +1,6 @@
 import itertools
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Set, Union, TYPE_CHECKING
 
 from psycopg2._json import Json
 from psycopg2.sql import SQL, Identifier
@@ -10,15 +11,18 @@ from splitgraph.core._common import select, ResultShape
 from splitgraph.core.image import IMAGE_COLS, Image
 from splitgraph.exceptions import ImageNotFoundError
 
+if TYPE_CHECKING:
+    from splitgraph.core.repository import Repository
+
 
 class ImageManager:
     """Collects various image-related functions."""
 
-    def __init__(self, repository):
+    def __init__(self, repository: "Repository") -> None:
         self.repository = repository
         self.engine = repository.engine
 
-    def __call__(self):
+    def __call__(self) -> List[Image]:
         """Get all Image objects in the repository, ordered by their creation time (earliest first)."""
         result = []
         for image in self.engine.run_sql(
@@ -33,12 +37,12 @@ class ImageManager:
             result.append(self._make_image(image))
         return result
 
-    def _make_image(self, img_tuple):
+    def _make_image(self, img_tuple: Any) -> Image:
         r_dict = {k: v for k, v in zip(IMAGE_COLS, img_tuple)}
         r_dict.update(repository=self.repository)
         return Image(**r_dict)
 
-    def by_tag(self, tag, raise_on_none=True):
+    def by_tag(self, tag: str, raise_on_none: bool = True) -> Optional[Image]:
         """
         Returns an image with a given tag
 
@@ -89,7 +93,7 @@ class ImageManager:
             return None
         return self.by_hash(result)
 
-    def by_hash(self, image_hash, raise_on_none=True):
+    def by_hash(self, image_hash: str, raise_on_none: bool = True) -> Optional[Image]:
         """
         Returns an image corresponding to a given (possibly shortened) image hash. If the image hash
         is ambiguous, raises an error. If the image does not exist, raises an error or returns None.
@@ -118,7 +122,7 @@ class ImageManager:
             raise ImageNotFoundError(result)
         return self._make_image(result[0])
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str) -> Image:
         """Resolve an Image object from its tag or hash."""
         # Things we can have here: full hash, shortened hash or tag.
         # Users can always use by_hash or by_tag to be explicit -- this is just a shorthand. There's little
@@ -126,7 +130,7 @@ class ImageManager:
         # so we can detect what the user meant in the future.
         return self.by_tag(key, raise_on_none=False) or self.by_hash(key)
 
-    def get_all_child_images(self, start_image):
+    def get_all_child_images(self, start_image: str) -> Set[str]:
         """Get all children of `start_image` of any degree."""
         all_images = self()
         result_size = 1
@@ -140,7 +144,7 @@ class ImageManager:
                 return result
             result_size = len(result)
 
-    def get_all_parent_images(self, start_images):
+    def get_all_parent_images(self, start_images: Set[str]) -> Set[str]:
         """Get all parents of the 'start_images' set of any degree."""
         parent = {image.image_hash: image.parent_id for image in self()}
         result = set(start_images)
@@ -154,13 +158,13 @@ class ImageManager:
 
     def add(
         self,
-        parent_id,
-        image,
-        created=None,
-        comment=None,
-        provenance_type=None,
-        provenance_data=None,
-    ):
+        parent_id: Optional[str],
+        image: str,
+        created: Optional[datetime] = None,
+        comment: Optional[str] = None,
+        provenance_type: Optional[str] = None,
+        provenance_data: Optional[Union[Dict[str, Union[str, List[str], List[bool]]], str]] = None,
+    ) -> None:
         """
         Registers a new image in the Splitgraph image tree.
 
@@ -190,7 +194,7 @@ class ImageManager:
             ),
         )
 
-    def delete(self, images):
+    def delete(self, images: Set[str]) -> None:
         """
         Deletes a set of Splitgraph images from the repository. Note this doesn't check whether
         this will orphan some other images in the repository and can make the state of the repository

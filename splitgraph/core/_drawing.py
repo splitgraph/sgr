@@ -3,11 +3,13 @@
 Routines for rendering a Splitgraph repository as a tree of images
 """
 from collections import defaultdict
+from typing import Dict
 
+from splitgraph.core.repository import Repository
 from splitgraph.exceptions import SplitGraphError
 
 
-def _calc_columns(children, start):
+def _calc_columns(children: defaultdict, start: str) -> Dict[str, int]:
     def dfs(node):
         result = {node: 0}
         base = 0
@@ -20,7 +22,15 @@ def _calc_columns(children, start):
     return dfs(start)
 
 
-def _render_node(node_id, children, node_cols, max_col, mark_node="", node_width=8, col_width=12):
+def _render_node(
+    node_id: str,
+    children: defaultdict,
+    node_cols: Dict[str, int],
+    max_col: int,
+    mark_node: str = "",
+    node_width: int = 8,
+    col_width: int = 12,
+) -> None:
     # First, render all the edges that come before the node
     line = ("│" + " " * (col_width - 1)) * node_cols[node_id]
     # Then, render the node itself.
@@ -54,7 +64,7 @@ def _render_node(node_id, children, node_cols, max_col, mark_node="", node_width
     print(line)
 
 
-def render_tree(repository):
+def render_tree(repository: Repository) -> None:
     """Draws the repository's commit graph as a Git-like tree."""
     # Prepare the tree structure by loading the index from the db and flipping it
     children = defaultdict(list)

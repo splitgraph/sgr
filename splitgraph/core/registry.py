@@ -2,6 +2,9 @@
 Functions for communicating with the remote Splitgraph catalog
 """
 
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
+
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
@@ -9,8 +12,12 @@ from splitgraph.config import REGISTRY_META_SCHEMA, SPLITGRAPH_META_SCHEMA, SPLI
 from splitgraph.core._common import select
 from splitgraph.engine import ResultShape
 
+if TYPE_CHECKING:
+    from splitgraph.core.repository import Repository
+    from splitgraph.engine.postgres.engine import PostgresEngine
 
-def _create_registry_schema(engine):
+
+def _create_registry_schema(engine: "PostgresEngine") -> None:
     """
     Creates the registry metadata schema that contains information on published images that will appear
     in the catalog.
@@ -33,7 +40,7 @@ def _create_registry_schema(engine):
     )
 
 
-def _ensure_registry_schema(engine):
+def _ensure_registry_schema(engine: "PostgresEngine") -> None:
     if (
         engine.run_sql(
             "SELECT 1 FROM information_schema.schemata WHERE schema_name = %s",
@@ -45,7 +52,21 @@ def _ensure_registry_schema(engine):
         _create_registry_schema(engine)
 
 
-def publish_tag(repository, tag, image_hash, published, provenance, readme, schemata, previews):
+def publish_tag(
+    repository: "Repository",
+    tag: str,
+    image_hash: str,
+    published: datetime,
+    provenance: Optional[List[Tuple[Tuple[str, str], str]]],
+    readme: str,
+    schemata: Dict[str, List[Tuple[str, str, bool]]],
+    previews: Optional[
+        Union[
+            Dict[str, Union[List[Tuple[int, str, str]], List[Tuple[int, str]]]],
+            Dict[str, List[Tuple[int, str]]],
+        ]
+    ],
+) -> None:
     """
     Publishes a given tag in the remote catalog. Should't be called directly.
     Use splitgraph.commands.publish instead.
@@ -77,7 +98,29 @@ def publish_tag(repository, tag, image_hash, published, provenance, readme, sche
     )
 
 
-def get_published_info(repository, tag):
+def get_published_info(
+    repository: "Repository", tag: str
+) -> Optional[
+    Union[
+        Tuple[
+            str,
+            datetime,
+            List[Any],
+            str,
+            Dict[str, List[List[Union[bool, str]]]],
+            Dict[str, List[List[Union[int, str]]]],
+        ],
+        Tuple[
+            str,
+            datetime,
+            List[List[Union[List[str], str]]],
+            str,
+            Dict[str, List[List[Union[bool, str]]]],
+            Dict[str, List[List[Union[int, str]]]],
+        ],
+        Tuple[str, datetime, None, str, Dict[str, List[List[Union[bool, str]]]], None],
+    ]
+]:
     """
     Get information on an image that's published in a catalog.
 
@@ -97,7 +140,7 @@ def get_published_info(repository, tag):
     )
 
 
-def unpublish_repository(repository):
+def unpublish_repository(repository: "Repository") -> None:
     """
     Deletes the repository from the remote catalog.
 
@@ -109,7 +152,7 @@ def unpublish_repository(repository):
     )
 
 
-def get_info_key(engine, key):
+def get_info_key(engine: "PostgresEngine", key: str) -> Optional[str]:
     """
     Gets a configuration key from the remote registry, used to notify the client of the registry's capabilities.
 
@@ -123,7 +166,7 @@ def get_info_key(engine, key):
     )
 
 
-def set_info_key(engine, key, value):
+def set_info_key(engine: "PostgresEngine", key: str, value: Union[bool, str]) -> None:
     """
     Sets a configuration value on the remote registry.
 
@@ -141,7 +184,7 @@ def set_info_key(engine, key, value):
     )
 
 
-def setup_registry_mode(engine):
+def setup_registry_mode(engine: "PostgresEngine") -> None:
     """
     Drops tables in splitgraph_meta that aren't pertinent to the registry + sets up access policies/RLS:
 
@@ -182,7 +225,12 @@ def setup_registry_mode(engine):
     set_info_key(engine, "registry_mode", "true")
 
 
-def _setup_rls_policies(engine, table, schema=SPLITGRAPH_META_SCHEMA, condition=None):
+def _setup_rls_policies(
+    engine: "PostgresEngine",
+    table: str,
+    schema: str = SPLITGRAPH_META_SCHEMA,
+    condition: None = None,
+) -> None:
     condition = condition or "({0}.{1}.namespace = current_user)"
 
     engine.run_sql(
@@ -223,7 +271,7 @@ def _setup_rls_policies(engine, table, schema=SPLITGRAPH_META_SCHEMA, condition=
     )
 
 
-def toggle_registry_rls(engine, mode="ENABLE"):
+def toggle_registry_rls(engine: "PostgresEngine", mode: str = "ENABLE") -> None:
     """
     Switches row-level security on the registry, restricting write access to metadata tables
     to owners of relevant repositories/objects.

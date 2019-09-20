@@ -10,11 +10,6 @@ from splitgraph.core.metadata_manager import Object
 from splitgraph.core.repository import Repository
 from splitgraph.exceptions import RepositoryNotFoundError, UninitializedEngineError
 
-try:
-    from unittest import mock
-except ImportError:
-    import mock
-
 
 def test_repo_lookup_override(remote_engine):
     test_repo = Repository("overridden", "repo", engine=remote_engine)
@@ -32,7 +27,7 @@ def test_repo_lookup_override_fail():
 
 
 def test_tracer():
-    with patch("splitgraph.core._common.dt") as datetime:
+    with patch("splitgraph.core._common.datetime") as datetime:
         datetime.now.return_value = dt(2019, 1, 1)
         tracer = Tracer()
 

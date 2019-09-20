@@ -1,19 +1,25 @@
 """Routines that ingest/export CSV files to/from Splitgraph images using Pandas"""
 
 from io import StringIO
+from typing import List, Optional, Tuple, Union
 
 import pandas as pd
+from pandas.core.frame import DataFrame
+from pandas.core.series import Series
 from pandas.io.sql import get_schema
 from psycopg2.sql import Identifier, SQL
 from sqlalchemy import create_engine
+from sqlalchemy.engine.base import Engine
 
 from splitgraph.core.image import Image
+from splitgraph.core.repository import Repository
+from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import CheckoutError
 
 _SEP = "\x01"
 
 
-def _get_sqlalchemy_engine(engine):
+def _get_sqlalchemy_engine(engine: PostgresEngine) -> Engine:
     server, port, username, password, dbname = (
         engine.conn_params["SG_ENGINE_HOST"],
         engine.conn_params["SG_ENGINE_PORT"],
@@ -34,7 +40,7 @@ def _table_to_df(engine, schema, table, **kwargs):
     )
 
 
-def _sql_to_df(engine, sql, schema, **kwargs):
+def _sql_to_df(engine: PostgresEngine, sql: str, schema: str, **kwargs) -> DataFrame:
     return pd.read_sql_query(
         sql=SQL("SET search_path TO {};").format(Identifier(schema)).as_string(engine.connection)
         + sql,
@@ -43,7 +49,13 @@ def _sql_to_df(engine, sql, schema, **kwargs):
     )
 
 
-def sql_to_df(sql, image=None, repository=None, use_lq=False, **kwargs):
+def sql_to_df(
+    sql: str,
+    image: Optional[Union[Image, str]] = None,
+    repository: Optional[Repository] = None,
+    use_lq: bool = False,
+    **kwargs
+) -> DataFrame:
     """
     Executes an SQL query against a Splitgraph image, returning the result.
 
@@ -82,7 +94,13 @@ def sql_to_df(sql, image=None, repository=None, use_lq=False, **kwargs):
         return _sql_to_df(engine=image.engine, sql=sql, schema=tmp_schema, **kwargs)
 
 
-def _df_to_empty_table(engine, df, target_schema, target_table, use_ordinal_hack=False):
+def _df_to_empty_table(
+    engine: PostgresEngine,
+    df: Union[Series, DataFrame],
+    target_schema: str,
+    target_table: str,
+    use_ordinal_hack: bool = False,
+) -> None:
     # Use sqlalchemy's engine to convert types and create a DDL statement for the table.
 
     # If there's an unnamed index (created by Pandas), we don't add PKs to the table.
@@ -116,7 +134,9 @@ def _df_to_empty_table(engine, df, target_schema, target_table, use_ordinal_hack
     engine.commit()
 
 
-def _df_to_table_fast(engine, df, target_schema, target_table):
+def _df_to_table_fast(
+    engine: PostgresEngine, df: DataFrame, target_schema: str, target_table: str
+) -> None:
     # Instead of using Pandas' to_sql, dump the dataframe to csv and then load it on the other
     # end using Psycopg's copy_to.
     with engine.connection.cursor() as cur:
@@ -133,7 +153,9 @@ def _df_to_table_fast(engine, df, target_schema, target_table):
     engine.commit()
 
 
-def _schema_compatible(source_schema, target_schema):
+def _schema_compatible(
+    source_schema: List[Tuple[int, str, str, bool]], target_schema: List[Tuple[int, str, str, bool]]
+) -> bool:
     """Quick check to see if a dataframe with target_schema can be written into source_schema.
     There are some implicit type conversions that SQLAlchemy/Pandas can do so we don't want to immediately fail
     if the column types aren't exactly the same (eg bigint vs numeric etc). Most errors should be caught by PG itself.
@@ -151,7 +173,13 @@ def _schema_compatible(source_schema, target_schema):
     return True
 
 
-def df_to_table(df, repository, table, if_exists="patch", schema_check=True):
+def df_to_table(
+    df: Union[Series, DataFrame],
+    repository: Repository,
+    table: str,
+    if_exists: str = "patch",
+    schema_check: bool = True,
+) -> None:
     """Writes a Pandas DataFrame to a checked-out Splitgraph table. Doesn't create a new image.
 
     :param df: Pandas DataFrame to insert.

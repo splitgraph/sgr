@@ -7,6 +7,7 @@ import click
 
 from splitgraph.commandline._common import RepositoryType
 from splitgraph.core import repository_exists, Identifier, SQL, select
+from splitgraph.core.repository import Repository
 from splitgraph.engine import ResultShape
 
 _DEMO_TABLE_SIZE = 10
@@ -30,12 +31,12 @@ def example():
     """Generate demo Splitgraph data."""
 
 
-def _hash(val):
+def _hash(val: int) -> str:
     """Use deterministic values to showcase reusing fragments."""
     return sha256(str(val).encode("ascii")).hexdigest()
 
 
-def generate_table(repository, table_name, size):
+def generate_table(repository: Repository, table_name: str, size: int) -> None:
     """
     Creates a table with an integer primary key and a string value.
 
@@ -55,7 +56,9 @@ def generate_table(repository, table_name, size):
     )
 
 
-def alter_table(repository, table_name, rows_added, rows_deleted, rows_updated):
+def alter_table(
+    repository: Repository, table_name: str, rows_added: int, rows_deleted: int, rows_updated: int
+) -> None:
     """
     Alters the example table, adding/updating/deleting a certain number of rows.
 

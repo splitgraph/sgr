@@ -4,9 +4,10 @@ Splitgraph command line client
 Hooks into the API to allow management of Splitgraph repositories and images using ``sgr``.
 """
 
+import logging
+
 import click
 import click_log
-import logging
 
 from splitgraph.commandline.cloud import cloud_c
 from splitgraph.commandline.engine import engine_c
@@ -26,7 +27,6 @@ from splitgraph.commandline.misc import rm_c, init_c, cleanup_c, config_c, prune
 from splitgraph.commandline.mount import mount_c
 from splitgraph.commandline.push_pull import pull_c, clone_c, push_c, publish_c, upstream_c
 from splitgraph.commandline.splitfile import build_c, provenance_c, rebuild_c
-
 
 logger = logging.getLogger()
 click_log.basic_config(logger)

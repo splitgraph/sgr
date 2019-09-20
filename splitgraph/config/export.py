@@ -1,8 +1,10 @@
 """Routines for exporting the config back into text."""
+from typing import Any, Dict, Optional, Union
+
 from splitgraph.config.keys import SENSITIVE_KEYS, KEYS, DEFAULTS
 
 
-def _kv_to_str(key, value, no_shielding):
+def _kv_to_str(key: str, value: Optional[Union[str, float, int]], no_shielding: bool) -> str:
     if not value:
         value_str = ""
     elif key in SENSITIVE_KEYS and not no_shielding:
@@ -12,7 +14,9 @@ def _kv_to_str(key, value, no_shielding):
     return "%s=%s" % (key, value_str)
 
 
-def serialize_engine_config(engine_name, conn_params, no_shielding):
+def serialize_engine_config(
+    engine_name: str, conn_params: Dict[str, Union[str, int]], no_shielding: bool
+) -> str:
     """
     Output the config section with connection parameters for a single engine.
 
@@ -28,10 +32,12 @@ def serialize_engine_config(engine_name, conn_params, no_shielding):
 
 # Parameters that aren't really supposed to be in a config file,
 # so we skip them when emitting in the config format.
-_situational_params = ["SG_ENGINE", "SG_CONFIG_FILE"]
+_SITUATIONAL_PARAMS = ["SG_ENGINE", "SG_CONFIG_FILE"]
 
 
-def serialize_config(config, config_format, no_shielding, include_defaults=True):
+def serialize_config(
+    config: Dict[str, Any], config_format: bool, no_shielding: bool, include_defaults: bool = True
+) -> str:
     """
     Pretty-print the configuration or print it in the Splitgraph config file format.
 
@@ -46,7 +52,7 @@ def serialize_config(config, config_format, no_shielding, include_defaults=True)
 
     # Emit normal config parameters
     for key in KEYS:
-        if config_format and key in _situational_params:
+        if config_format and key in _SITUATIONAL_PARAMS:
             continue
         if include_defaults or key not in DEFAULTS or config[key] != DEFAULTS[key]:
             result += _kv_to_str(key, config[key], no_shielding) + "\n"
@@ -86,7 +92,9 @@ def serialize_config(config, config_format, no_shielding, include_defaults=True)
     return result
 
 
-def overwrite_config(new_config, config_path, include_defaults=False):
+def overwrite_config(
+    new_config: Dict[str, Any], config_path: str, include_defaults: bool = False
+) -> None:
     """
     Serialize the new config dictionary and overwrite the current config file.
     Note: this will delete all comments in the config!

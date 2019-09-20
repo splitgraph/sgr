@@ -3,9 +3,11 @@ import base64
 import json
 import time
 from functools import wraps
+from typing import Callable, List, Union, Tuple, Any
 
 import requests
 from requests import HTTPError
+from requests.models import Response
 
 from splitgraph import CONFIG
 from splitgraph.config import create_config_dict
@@ -13,7 +15,9 @@ from splitgraph.config.export import overwrite_config
 from splitgraph.exceptions import AuthAPIError
 
 
-def expect_result(result):
+def expect_result(
+    result: List[str]
+) -> Callable[[Callable[..., Response]], Callable[..., Union[str, Tuple[str]]]]:
     """
     A decorator that can be wrapped around a function returning a requests.Response with a JSON body.
     If the request has failed, it will extract the "error" from the JSON response and raise an AuthAPIError.
@@ -37,8 +41,7 @@ def expect_result(result):
                 error = response.json().get("error", "") or response.body
                 if error:
                     raise AuthAPIError(error) from e
-                else:
-                    raise
+                raise
 
             json = response.json()
             missing = [f for f in result if f not in json]
@@ -46,8 +49,7 @@ def expect_result(result):
                 raise AuthAPIError("Missing entries %s in the response!" % (tuple(missing),))
             if len(result) == 1:
                 return json[result[0]]
-            else:
-                return tuple(json[f] for f in result)
+            return tuple(json[f] for f in result)
 
         return wrapped
 
@@ -63,7 +65,7 @@ class AuthAPIClient:
     the Splitgraph registry via the command line.
     """
 
-    def __init__(self, remote):
+    def __init__(self, remote: str) -> None:
         """
         :param remote: Name of the remote engine that this auth client communicates with,
             as specified in the config.
@@ -75,7 +77,7 @@ class AuthAPIClient:
         self.access_token_expiry_tolerance = 30
 
     @expect_result(["user_uuid"])
-    def register(self, username, password, email):
+    def register(self, username: str, password: str, email: str) -> Response:
         """
         Register a new Splitgraph user.
 
@@ -87,7 +89,7 @@ class AuthAPIClient:
         return requests.post(self.endpoint + "/register_user", json=body)
 
     @expect_result(["access_token", "refresh_token"])
-    def get_refresh_token(self, username, password):
+    def get_refresh_token(self, username: str, password: str) -> Response:
         """
         Get a long-lived refresh token and a short-lived access token from the API.
 
@@ -99,7 +101,7 @@ class AuthAPIClient:
         return requests.post(self.endpoint + "/refresh_token", json=body)
 
     @expect_result(["key", "secret"])
-    def create_machine_credentials(self, access_token, password):
+    def create_machine_credentials(self, access_token: str, password: str) -> Response:
         """
         Generate a key and secret that can be used to log into the Splitgraph registry
         via a normal Postgres connection. The secret must be stored in the user's local
@@ -117,7 +119,7 @@ class AuthAPIClient:
         )
 
     @expect_result(["access_token"])
-    def get_access_token(self, refresh_token):
+    def get_access_token(self, refresh_token: str) -> Response:
         """
         Get a new access token from a refresh token.
 
@@ -129,7 +131,7 @@ class AuthAPIClient:
         return requests.post(self.endpoint + "/access_token", json=body)
 
     @property
-    def access_token(self):
+    def access_token(self) -> str:
         """
         Will return an up-to-date access token by either getting it from
         the configuration file or contacting the auth service for a new one.

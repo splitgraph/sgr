@@ -1,7 +1,13 @@
 """
 Various common functions used by the command line interface.
 """
+from typing import Optional, Tuple, Union, List, TYPE_CHECKING
+
 import click
+from click.core import Argument, Context, Option
+
+if TYPE_CHECKING:
+    from splitgraph.core.repository import Repository
 
 
 class ImageType(click.ParamType):
@@ -9,13 +15,15 @@ class ImageType(click.ParamType):
 
     name = "Image"
 
-    def __init__(self, default="latest"):
+    def __init__(self, default: Optional[str] = "latest") -> None:
         """
         :param default: Default tag/hash for image where it's not specified.
         """
         self.default = default
 
-    def convert(self, value, param, ctx):
+    def convert(
+        self, value: str, param: Optional[Union[Option, Argument]], ctx: Optional[Context]
+    ) -> Union[Tuple["Repository", str], Tuple["Repository", None]]:
         """
         Image specification must have the format [NAMESPACE/]REPOSITORY[:HASH_OR_TAG].
 
@@ -35,7 +43,7 @@ class ImageType(click.ParamType):
 class RepositoryType(click.ParamType):
     name = "Repository"
 
-    def convert(self, value, param, ctx):
+    def convert(self, value: str, param: Union[Argument, Option], ctx: Context) -> "Repository":
         from splitgraph.core import Repository
 
         return Repository.from_schema(value)
@@ -58,11 +66,18 @@ class Color:
     END = "\033[0m"
 
 
-def truncate_line(line, length=80):
+def truncate_line(line: str, length: int = 80) -> str:
     """Truncates a line to a given length, replacing the remainder with ..."""
     return (line if len(line) <= length else line[: length - 3] + "...").replace("\n", "")
 
 
-def pluralise(word, number):
+def pluralise(word: str, number: int) -> str:
     """1 banana, 2 bananas"""
     return "%d %s%s" % (number, word, "" if number == 1 else "s")
+
+
+def print_table(rows: List[Tuple[str, ...]], column_width: int = 15) -> None:
+    """Print a list of rows with a constant column width"""
+    click.echo(
+        "\n".join(["".join([("{:" + str(column_width) + "}").format(x) for x in r]) for r in rows])
+    )

@@ -3,14 +3,15 @@ import os
 import shutil
 import subprocess
 from decimal import Decimal
+from unittest.mock import patch, mock_open, ANY, PropertyMock
 
 import docker
 import docker.errors
 import httpretty
 import pytest
+from click.testing import CliRunner
 
 from splitgraph import ResultShape, get_engine
-from splitgraph.cloud import AuthAPIClient
 from splitgraph.commandline import *
 from splitgraph.commandline._common import ImageType
 from splitgraph.commandline.cloud import register_c, curl_c
@@ -35,9 +36,6 @@ from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import AuthAPIError
 from splitgraph.hooks.mount_handlers import get_mount_handlers
 from test.splitgraph.conftest import OUTPUT, SPLITFILE_ROOT, MG_MNT
-from unittest.mock import patch, mock_open, ANY, MagicMock, PropertyMock
-
-from click.testing import CliRunner
 
 
 def test_image_spec_parsing():

@@ -4,6 +4,7 @@ import logging
 from collections import namedtuple
 from contextlib import contextmanager
 from random import getrandbits
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
@@ -14,6 +15,9 @@ from splitgraph.exceptions import SplitGraphError
 from splitgraph.hooks.mount_handlers import init_fdw
 from ._common import set_tag, select, manage_audit, set_head
 from .table import Table
+
+if TYPE_CHECKING:
+    from .repository import Repository
 
 IMAGE_COLS = ["image_hash", "parent_id", "created", "comment", "provenance_type", "provenance_data"]
 _PROV_QUERY = SQL(
@@ -28,16 +32,16 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
     :class:`splitgraph.core.repository.Repository` class instead.
     """
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args, **kwargs) -> "Image":
         kwargs["engine"] = kwargs["repository"].engine
         kwargs["object_engine"] = kwargs["repository"].object_engine
         self = super(Image, cls).__new__(cls, *args, **kwargs)
         return self
 
-    def __eq__(self, other):
+    def __eq__(self, other: "Image") -> bool:
         return self.image_hash == other.image_hash and self.repository == other.repository
 
-    def get_parent_children(self):
+    def get_parent_children(self) -> Tuple[str, List[Any]]:
         """Gets the parent and a list of children of a given image."""
         parent = self.parent_id
 
@@ -51,7 +55,7 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
         )
         return parent, children
 
-    def get_tables(self):
+    def get_tables(self) -> List[str]:
         """
         Gets the names of all tables inside of an image.
         """
@@ -64,7 +68,7 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
         )
         return result or []
 
-    def get_table(self, table_name):
+    def get_table(self, table_name: str) -> Optional[Table]:
         """
         Returns a Table object representing a version of a given table.
         Contains a list of objects that the table is linked to and the table's schema.
@@ -89,7 +93,7 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
         return Table(self.repository, self, table_name, table_schema, objects)
 
     @manage_audit
-    def checkout(self, force=False, layered=False):
+    def checkout(self, force: bool = False, layered: bool = False) -> None:
         """
         Checks the image out, changing the current HEAD pointer. Raises an error
         if there are pending changes to its checkout.
@@ -121,7 +125,9 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
                 self.get_table(table).materialize(table)
         set_head(self.repository, self.image_hash)
 
-    def _lq_checkout(self, target_schema=None, wrapper=FDW_CLASS):
+    def _lq_checkout(
+        self, target_schema: Optional[str] = None, wrapper: Optional[str] = FDW_CLASS
+    ) -> None:
         """
         Intended to be run on the sgr side. Initializes the FDW for all tables in a given image,
         allowing to query them directly without materializing the tables.
@@ -161,7 +167,7 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
         object_engine.commit()
 
     @contextmanager
-    def query_schema(self, wrapper=FDW_CLASS):
+    def query_schema(self, wrapper: Optional[str] = FDW_CLASS) -> Iterator[str]:
         """
         Creates a temporary schema with tables in this image mounted as foreign tables that can be accessed via
         read-only layered querying. On exit from the context manager, the schema is discarded.
@@ -181,7 +187,7 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
                 )
             )
 
-    def tag(self, tag):
+    def tag(self, tag: str) -> None:
         """
         Tags a given image. All tags are unique inside of a repository. If a tag already exists, it's removed
         from the previous image and given to the new image.
@@ -194,7 +200,7 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
         """Lists all tags that this image has."""
         return [t for h, t in self.repository.get_all_hashes_tags() if h == self.image_hash]
 
-    def delete_tag(self, tag):
+    def delete_tag(self, tag: str) -> None:
         """
         Deletes a tag from an image.
 
@@ -212,14 +218,16 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
             return_shape=None,
         )
 
-    def get_log(self):
+    def get_log(self) -> List["Image"]:
         """Repeatedly gets the parent of a given image until it reaches the bottom."""
         result = [self]
         while result[-1].parent_id:
             result.append(self.repository.images.by_hash(result[-1].parent_id))
         return result
 
-    def to_splitfile(self, err_on_end=True, source_replacement=None):
+    def to_splitfile(
+        self, err_on_end: bool = True, source_replacement: Optional[Dict["Repository", str]] = None
+    ) -> List[str]:
         """
         Crawls the image's parent chain to recreates a Splitfile that can be used to reconstruct it.
 
@@ -261,7 +269,7 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
                 image = self.repository.images.by_hash(parent)
         return list(reversed(splitfile_commands))
 
-    def provenance(self):
+    def provenance(self) -> List[Tuple["Repository", str]]:
         """
         Inspects the image's parent chain to come up with a set of repositories and their hashes
         that it was created from.
@@ -309,7 +317,7 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
             image = self.repository.images.by_hash(parent)
         return list(result)
 
-    def set_provenance(self, provenance_type, **kwargs):
+    def set_provenance(self, provenance_type: str, **kwargs) -> None:
         """
         Sets the image's provenance. Internal function called by the Splitfile interpreter, shouldn't
         be called directly as it changes the image after it's been created.
@@ -381,7 +389,12 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
             raise ValueError("Provenance type %s not supported!" % provenance_type)
 
 
-def _prov_command_to_splitfile(prov_type, prov_data, image_hash, source_replacement):
+def _prov_command_to_splitfile(
+    prov_type: str,
+    prov_data: Union[str, Dict[str, str], Dict[str, Union[str, List[str], List[bool]]]],
+    image_hash: str,
+    source_replacement: Dict["Repository", str],
+) -> str:
     """
     Converts the image's provenance data stored by the Splitfile executor back to a Splitfile used to
     reconstruct it.

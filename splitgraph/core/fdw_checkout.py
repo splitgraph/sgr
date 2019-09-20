@@ -2,10 +2,10 @@
 layered querying (read-only queries to Splitgraph tables without materialization)."""
 import logging
 
+import splitgraph.config
 from splitgraph import Repository, get_engine
 from splitgraph.core._common import pretty_size
 from splitgraph.core.object_manager import ObjectManager
-import splitgraph.config
 
 try:
     from multicorn import ForeignDataWrapper, ANY

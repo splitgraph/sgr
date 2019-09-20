@@ -55,7 +55,7 @@ def clone_c(remote_repository, local_repository, remote, download_all):
     clone(remote_repository, local_repository=local_repository, download_all=download_all)
 
 
-_remotes = list(CONFIG.get("remotes", []))
+_REMOTES = list(CONFIG.get("remotes", []))
 
 
 @click.command(name="push")
@@ -65,8 +65,8 @@ _remotes = list(CONFIG.get("remotes", []))
     "-r",
     "--remote",
     help="Alias or full connection string for the remote engine",
-    type=click.Choice(_remotes),
-    default=_remotes[0] if len(_remotes) == 1 else None,
+    type=click.Choice(_REMOTES),
+    default=_REMOTES[0] if len(_REMOTES) == 1 else None,
 )
 @click.option("-h", "--upload-handler", help="Upload handler", default="S3")
 @click.option("-o", "--upload-handler-options", help="Upload handler parameters", default="{}")

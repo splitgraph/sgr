@@ -1,7 +1,6 @@
-from unittest.mock import patch, Mock
+from unittest.mock import patch
 
 import pytest
-from minio.error import MinioError
 
 from splitgraph import ResultShape
 from splitgraph.core import repository_exists

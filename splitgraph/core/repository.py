@@ -6,16 +6,21 @@ import itertools
 import logging
 from contextlib import contextmanager
 from datetime import datetime
+from io import TextIOWrapper
 from random import getrandbits
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
+from psycopg2.sql import Composed
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA, FDW_CLASS
 from splitgraph.core import select
 from splitgraph.core._common import insert
 from splitgraph.core.fragment_manager import get_random_object_id
+from splitgraph.core.image import Image
 from splitgraph.core.image_manager import ImageManager
 from splitgraph.core.sql import validate_import_sql
+from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import CheckoutError, UninitializedEngineError
 from ._common import (
     manage_audit_triggers,
@@ -37,7 +42,14 @@ class Repository:
     Splitgraph repository API
     """
 
-    def __init__(self, namespace, repository, engine=None, object_engine=None, object_manager=None):
+    def __init__(
+        self,
+        namespace: str,
+        repository: str,
+        engine: Optional[PostgresEngine] = None,
+        object_engine: Optional[PostgresEngine] = None,
+        object_manager: None = None,
+    ) -> None:
         self.namespace = namespace
         self.repository = repository
 
@@ -56,8 +68,13 @@ class Repository:
 
     @classmethod
     def from_template(
-        cls, template, namespace=None, repository=None, engine=None, object_engine=None
-    ):
+        cls,
+        template: "Repository",
+        namespace: Optional[str] = None,
+        repository: None = None,
+        engine: Optional[PostgresEngine] = None,
+        object_engine: Optional[PostgresEngine] = None,
+    ) -> "Repository":
         """Create a Repository from an existing one replacing some of its attributes."""
         # If engine has been overridden but not object_engine, also override the object_engine (maintain
         # the intended behaviour of overriding engine repointing the whole repository)
@@ -69,21 +86,21 @@ class Repository:
         )
 
     @classmethod
-    def from_schema(cls, schema):
+    def from_schema(cls, schema: str) -> "Repository":
         """Convert a Postgres schema name of the format `namespace/repository` to a Splitgraph repository object."""
         if "/" in schema:
             namespace, repository = schema.split("/")
             return cls(namespace, repository)
         return cls("", schema)
 
-    def __eq__(self, other):
+    def __eq__(self, other: "Repository") -> bool:
         return self.namespace == other.namespace and self.repository == other.repository
 
-    def to_schema(self):
+    def to_schema(self) -> str:
         """Returns the engine schema that this repository gets checked out into."""
         return self.namespace + "/" + self.repository if self.namespace else self.repository
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         repr = "Repository %s on %s" % (self.to_schema(), self.engine.name)
         if self.engine != self.object_engine:
             repr += " (object engine %s)" % self.object_engine.name
@@ -91,12 +108,12 @@ class Repository:
 
     __str__ = to_schema
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(self.namespace) * hash(self.repository)
 
     # --- GENERAL REPOSITORY MANAGEMENT ---
 
-    def rollback_engines(self):
+    def rollback_engines(self) -> None:
         """
         Rollback the underlying transactions on both engines that the repository uses.
         """
@@ -104,7 +121,7 @@ class Repository:
         if self.engine != self.object_engine:
             self.object_engine.rollback()
 
-    def commit_engines(self):
+    def commit_engines(self) -> None:
         """
         Commit the underlying transactions on both engines that the repository uses.
         """
@@ -113,7 +130,7 @@ class Repository:
             self.object_engine.commit()
 
     @manage_audit
-    def init(self):
+    def init(self) -> None:
         """
         Initializes an empty repo with an initial commit (hash 0000...)
         """
@@ -129,7 +146,7 @@ class Repository:
             (self.namespace, self.repository, initial_image, "HEAD"),
         )
 
-    def delete(self, unregister=True, uncheckout=True):
+    def delete(self, unregister: bool = True, uncheckout: bool = True) -> None:
         """
         Discards all changes to a given repository and optionally all of its history,
         as well as deleting the Postgres schema that it might be checked out into.
@@ -206,7 +223,7 @@ class Repository:
         return Repository(namespace=result[1], repository=result[2], engine=get_engine(result[0]))
 
     @upstream.setter
-    def upstream(self, remote_repository):
+    def upstream(self, remote_repository: "Repository"):
         """
         Sets the upstream remote + repository that this repository tracks.
 
@@ -247,7 +264,9 @@ class Repository:
     # --- COMMITS / CHECKOUTS ---
 
     @contextmanager
-    def materialized_table(self, table_name, image_hash):
+    def materialized_table(
+        self, table_name: str, image_hash: Optional[str]
+    ) -> Iterator[Tuple[str, str]]:
         """A context manager that returns a pointer to a read-only materialized table in a given image.
         The table is deleted on exit from the context manager.
 
@@ -272,12 +291,12 @@ class Repository:
             self.object_engine.commit()
 
     @property
-    def head(self):
+    def head(self) -> Optional[Image]:
         """Return the HEAD image for the repository or None if the repository isn't checked out."""
         return self.images.by_tag("HEAD", raise_on_none=False)
 
     @manage_audit
-    def uncheckout(self, force=False):
+    def uncheckout(self, force: bool = False) -> None:
         """
         Deletes the schema that the repository is checked out into
 
@@ -298,13 +317,19 @@ class Repository:
 
     def commit(
         self,
-        image_hash=None,
-        comment=None,
-        snap_only=False,
-        chunk_size=10000,
-        split_changeset=False,
-        extra_indexes=None,
-    ):
+        image_hash: Optional[str] = None,
+        comment: Optional[str] = None,
+        snap_only: bool = False,
+        chunk_size: Optional[int] = 10000,
+        split_changeset: bool = False,
+        extra_indexes: Optional[
+            Union[
+                Dict[str, Dict[str, Dict[str, Dict[str, int]]]],
+                Dict[str, Dict[str, Dict[str, Dict[str, float]]]],
+                Dict[str, Dict[str, Dict[str, Union[Dict[str, int], Dict[str, float]]]]],
+            ]
+        ] = None,
+    ) -> Image:
         """
         Commits all pending changes to a given repository, creating a new image.
 
@@ -355,14 +380,20 @@ class Repository:
 
     def _commit(
         self,
-        head,
-        image_hash,
-        snap_only=False,
-        chunk_size=10000,
-        split_changeset=False,
-        schema=None,
-        extra_indexes=None,
-    ):
+        head: Image,
+        image_hash: str,
+        snap_only: bool = False,
+        chunk_size: Optional[int] = 10000,
+        split_changeset: bool = False,
+        schema: None = None,
+        extra_indexes: Optional[
+            Union[
+                Dict[str, Dict[str, Dict[str, Dict[str, int]]]],
+                Dict[str, Dict[str, Dict[str, Dict[str, float]]]],
+                Dict[str, Dict[str, Dict[str, Union[Dict[str, int], Dict[str, float]]]]],
+            ]
+        ] = None,
+    ) -> None:
         """
         Reads the recorded pending changes to all tables in a given checked-out image,
         conflates them and possibly stores them as new object(s) as follows:
@@ -426,7 +457,7 @@ class Repository:
         # NB if we allow partial commits, this will have to be changed (only discard for committed tables).
         self.object_engine.discard_pending_changes(schema)
 
-    def has_pending_changes(self):
+    def has_pending_changes(self) -> bool:
         """
         Detects if the repository has any pending changes (schema changes, table additions/deletions, content changes).
         """
@@ -441,7 +472,13 @@ class Repository:
 
     # --- TAG AND IMAGE MANAGEMENT ---
 
-    def get_all_hashes_tags(self):
+    def get_all_hashes_tags(
+        self
+    ) -> Union[
+        List[Tuple[str, str]],
+        List[Tuple[None, str]],
+        List[Union[Tuple[None, str], Tuple[str, str]]],
+    ]:
         """
         Gets all tagged images and their hashes in a given repository.
 
@@ -457,7 +494,7 @@ class Repository:
             (self.namespace, self.repository),
         )
 
-    def set_tags(self, tags):
+    def set_tags(self, tags: Dict[str, Union[str, None]]) -> None:
         """
         Sets tags for multiple images.
 
@@ -467,14 +504,19 @@ class Repository:
             if tag != "HEAD":
                 self.images.by_hash(image_id).tag(tag)
 
-    def run_sql(self, sql, arguments=None, return_shape=ResultShape.MANY_MANY):
+    def run_sql(
+        self,
+        sql: Union[Composed, str],
+        arguments: Optional[Any] = None,
+        return_shape: ResultShape = ResultShape.MANY_MANY,
+    ) -> Any:
         """Execute an arbitrary SQL statement inside of this repository's checked out schema."""
         self.object_engine.run_sql("SET search_path TO %s", (self.to_schema(),))
         result = self.object_engine.run_sql(sql, arguments=arguments, return_shape=return_shape)
         self.object_engine.run_sql("SET search_path TO public")
         return result
 
-    def dump(self, stream, exclude_object_contents=False):
+    def dump(self, stream: TextIOWrapper, exclude_object_contents: bool = False) -> None:
         """
         Creates an SQL dump with the metadata required for the repository and all of its objects.
 
@@ -562,17 +604,19 @@ class Repository:
     @manage_audit
     def import_tables(
         self,
-        tables,
-        source_repository,
-        source_tables,
-        image_hash=None,
-        foreign_tables=False,
-        do_checkout=True,
-        target_hash=None,
-        table_queries=None,
-        parent_hash=None,
-        wrapper=FDW_CLASS,
-    ):
+        tables: Union[Tuple[str, str, str, str], List[str], Tuple[str], Tuple[str, str]],
+        source_repository: "Repository",
+        source_tables: Union[Tuple[str, str, str, str], List[str], Tuple[str], Tuple[str, str]],
+        image_hash: Optional[str] = None,
+        foreign_tables: bool = False,
+        do_checkout: bool = True,
+        target_hash: Optional[str] = None,
+        table_queries: Optional[
+            Union[Tuple[bool], Tuple[bool, bool], Tuple[bool, bool, bool, bool], List[bool]]
+        ] = None,
+        parent_hash: Optional[str] = None,
+        wrapper: Optional[str] = FDW_CLASS,
+    ) -> str:
         """
         Creates a new commit in target_repository with one or more tables linked to already-existing tables.
         After this operation, the HEAD of the target repository moves to the new commit and the new tables are
@@ -652,17 +696,19 @@ class Repository:
 
     def _import_tables(
         self,
-        image,
-        tables,
-        source_repository,
-        target_hash,
-        source_tables,
-        do_checkout,
-        table_queries,
-        foreign_tables,
-        base_hash,
-        wrapper,
-    ):
+        image: Optional[Image],
+        tables: Union[Tuple[str], Tuple[str, str, str, str], Tuple[str, str], List[str]],
+        source_repository: "Repository",
+        target_hash: str,
+        source_tables: Union[Tuple[str], Tuple[str, str, str, str], Tuple[str, str], List[str]],
+        do_checkout: bool,
+        table_queries: Union[
+            Tuple[bool], Tuple[bool, bool, bool, bool], Tuple[bool, bool], List[bool]
+        ],
+        foreign_tables: bool,
+        base_hash: Optional[str],
+        wrapper: Optional[str],
+    ) -> str:
         # This importing route only supported between local repos.
         assert self.engine == source_repository.engine
         assert self.object_engine == source_repository.object_engine
@@ -723,8 +769,14 @@ class Repository:
         return target_hash
 
     def _import_new_table(
-        self, source_schema, source_table, target_hash, target_table, is_query, do_checkout
-    ):
+        self,
+        source_schema: str,
+        source_table: str,
+        target_hash: str,
+        target_table: str,
+        is_query: bool,
+        do_checkout: bool,
+    ) -> None:
         # First, import the query (or the foreign table) into a temporary table.
         tmp_object_id = get_random_object_id()
         if is_query:
@@ -761,7 +813,12 @@ class Repository:
 
     # --- SYNCING WITH OTHER REPOSITORIES ---
 
-    def push(self, remote_repository=None, handler="DB", handler_options=None):
+    def push(
+        self,
+        remote_repository: Optional["Repository"] = None,
+        handler: str = "DB",
+        handler_options: None = None,
+    ) -> "Repository":
         """
         Inverse of ``pull``: Pushes all local changes to the remote and uploads new objects.
 
@@ -796,7 +853,7 @@ class Repository:
             remote_repository.engine.close()
         return remote_repository
 
-    def pull(self, download_all=False):
+    def pull(self, download_all: Optional[bool] = False) -> None:
         """
         Synchronizes the state of the local Splitgraph repository with its upstream, optionally downloading all new
         objects created on the remote.
@@ -811,12 +868,12 @@ class Repository:
 
     def publish(
         self,
-        tag,
-        remote_repository=None,
-        readme="",
-        include_provenance=True,
-        include_table_previews=True,
-    ):
+        tag: str,
+        remote_repository: Optional["Repository"] = None,
+        readme: str = "",
+        include_provenance: bool = True,
+        include_table_previews: bool = True,
+    ) -> None:
         """
         Summarizes the data on a previously-pushed repository and makes it available in the catalog.
 
@@ -857,7 +914,13 @@ class Repository:
         finally:
             remote_repository.engine.close()
 
-    def diff(self, table_name, image_1, image_2, aggregate=False):
+    def diff(
+        self,
+        table_name: str,
+        image_1: Union[Image, str],
+        image_2: Optional[Union[Image, str]],
+        aggregate: bool = False,
+    ) -> Any:
         """
         Compares the state of a table in different images by materializing both tables into a temporary space
         and comparing them row-to-row.
@@ -904,13 +967,13 @@ class Repository:
 
 
 def import_table_from_remote(
-    remote_repository,
-    remote_tables,
-    remote_image_hash,
-    target_repository,
-    target_tables,
-    target_hash=None,
-):
+    remote_repository: "Repository",
+    remote_tables: List[str],
+    remote_image_hash: str,
+    target_repository: "Repository",
+    target_tables: List[Any],
+    target_hash: None = None,
+) -> None:
     """
     Shorthand for importing one or more tables from a yet-uncloned remote. Here, the remote image hash is required,
     as otherwise we aren't necessarily able to determine what the remote head is.
@@ -945,7 +1008,9 @@ def import_table_from_remote(
     target_repository.commit_engines()
 
 
-def table_exists_at(repository, table_name, image=None):
+def table_exists_at(
+    repository: "Repository", table_name: str, image: Optional[Image] = None
+) -> bool:
     """Determines whether a given table exists in a Splitgraph image without checking it out. If `image_hash` is None,
     determines whether the table exists in the current staging area."""
     return (
@@ -955,7 +1020,14 @@ def table_exists_at(repository, table_name, image=None):
     )
 
 
-def _sync(target, source, download=True, download_all=False, handler="DB", handler_options=None):
+def _sync(
+    target: "Repository",
+    source: "Repository",
+    download: bool = True,
+    download_all: Optional[bool] = False,
+    handler: str = "DB",
+    handler_options: None = None,
+) -> None:
     """
     Generic routine for syncing two repositories: fetches images, hashes, objects and tags
     on `source` that don't exist in `target`.
@@ -1036,15 +1108,19 @@ def _sync(target, source, download=True, download_all=False, handler="DB", handl
     source.commit_engines()
 
     logging.info(
-        ("Fetched" if download else "Uploaded")
-        + " metadata for %d object(s), %d table version(s) and %d tag(s).",
+        "%s metadata for %d object(s), %d table version(s) and %d tag(s).",
+        ("Fetched" if download else "Uploaded"),
         len(object_meta),
         len(table_meta),
         len([t for t in tags if t != "HEAD"]),
     )
 
 
-def clone(remote_repository, local_repository=None, download_all=False):
+def clone(
+    remote_repository: Union["Repository", str],
+    local_repository: Optional["Repository"] = None,
+    download_all: Optional[bool] = False,
+) -> "Repository":
     """
     Clones a remote Splitgraph repository or synchronizes remote changes with the local ones.
 
@@ -1073,5 +1149,5 @@ def clone(remote_repository, local_repository=None, download_all=False):
     return local_repository
 
 
-def _hash(image):
+def _hash(image: Optional[Image]) -> Optional[str]:
     return image.image_hash if image is not None else None

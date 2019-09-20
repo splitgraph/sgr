@@ -6,9 +6,13 @@ import json
 from hashlib import sha256
 from importlib import import_module
 from random import getrandbits
+from typing import Callable, Dict, List, Optional, Tuple, Union
+
+from parsimonious.nodes import Node
 
 from splitgraph.config import CONFIG
 from splitgraph.core.engine import repository_exists, lookup_repository
+from splitgraph.core.image import Image
 from splitgraph.core.repository import Repository, clone
 from splitgraph.core.sql import validate_splitfile_sql
 from splitgraph.engine import get_engine
@@ -24,11 +28,11 @@ from ._parsing import (
 )
 
 
-def _combine_hashes(hashes):
+def _combine_hashes(hashes: List[str]) -> str:
     return sha256("".join(hashes).encode("ascii")).hexdigest()
 
 
-def _checkout_or_calculate_layer(output, image_hash, calc_func):
+def _checkout_or_calculate_layer(output: Repository, image_hash: str, calc_func: Callable) -> None:
     # Future optimization here: don't actually check the layer out if it exists -- only do it at Splitfile execution
     # end or when a command needs it.
 
@@ -41,7 +45,12 @@ def _checkout_or_calculate_layer(output, image_hash, calc_func):
     print(" ---> %s" % image_hash[:12])
 
 
-def execute_commands(commands, params=None, output=None, output_base="0" * 32):
+def execute_commands(
+    commands: str,
+    params: Optional[Dict[str, str]] = None,
+    output: Optional[Repository] = None,
+    output_base: str = "0" * 32,
+) -> None:
     """
     Executes a series of Splitfile commands.
 
@@ -93,7 +102,7 @@ def execute_commands(commands, params=None, output=None, output_base="0" * 32):
     get_engine().commit()
 
 
-def _execute_sql(node, output):
+def _execute_sql(node: Node, output: Repository) -> None:
     # Calculate the hash of the layer we are trying to create.
     # Since we handle the "input" hashing in the import step, we don't need to care about the sources here.
     # Later on, we could enhance the caching and base the hash of the command on the hashes of objects that
@@ -121,7 +130,7 @@ def _execute_sql(node, output):
     _checkout_or_calculate_layer(output, target_hash, _calc)
 
 
-def _execute_from(node, output):
+def _execute_from(node: Node, output: Repository) -> Repository:
     interesting_nodes = extract_nodes(node, ["repo_source", "repository"])
     repo_source = get_first_or_none(interesting_nodes, "repo_source")
     output_node = get_first_or_none(interesting_nodes, "repository")
@@ -161,7 +170,7 @@ def _execute_from(node, output):
     return output
 
 
-def _execute_import(node, output):
+def _execute_import(node: Node, output: Repository) -> None:
     interesting_nodes = extract_nodes(node, ["repo_source", "mount_source", "tables"])
     table_names, table_aliases, table_queries = extract_all_table_aliases(interesting_nodes[-1])
     if interesting_nodes[0].expr_name == "repo_source":
@@ -219,8 +228,13 @@ def _execute_db_import(
 
 
 def _execute_repo_import(
-    repository, table_names, tag_or_hash, target_repository, table_aliases, table_queries
-):
+    repository: Repository,
+    table_names: Union[Tuple[str, str, str, str], Tuple[str, str], Tuple[str]],
+    tag_or_hash: str,
+    target_repository: Repository,
+    table_aliases: Union[Tuple[str, str, str, str], Tuple[str, str], Tuple[str]],
+    table_queries: Union[Tuple[bool, bool, bool, bool], Tuple[bool, bool], Tuple[bool]],
+) -> None:
     # Don't use the actual routine here as we want more control: clone the remote repo in order to turn
     # the tag into an actual hash
     tmp_repo = Repository(repository.namespace, repository.repository + "_clone_tmp")
@@ -279,7 +293,7 @@ def _execute_repo_import(
         tmp_repo.delete()
 
 
-def _execute_custom(node, output):
+def _execute_custom(node: Node, output: Repository) -> None:
     command, args = parse_custom_command(node)
 
     # Locate the command in the config file and instantiate it.
@@ -330,7 +344,7 @@ def _execute_custom(node, output):
         # Worth storing provenance here anyway?
 
 
-def rebuild_image(image, source_replacement):
+def rebuild_image(image: Image, source_replacement: Dict[Repository, str]) -> None:
     """
     Recreates the Splitfile used to create a given image and reruns it, replacing its dependencies with a different
     set of versions.

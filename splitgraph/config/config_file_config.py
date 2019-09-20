@@ -1,7 +1,12 @@
 from configparser import ConfigParser, ExtendedInterpolation
 
 
-def hoist_section(config_dict, section="defaults"):
+from typing import Dict, Union
+
+
+def hoist_section(
+    config_dict: Dict[str, Dict[str, str]], section: str = "defaults"
+) -> Dict[str, Union[Dict[str, str], str]]:
     """
         If a section exists called <hoist_section>, hoist it to the top level
         This is useful for overriding default configs from within a config file
@@ -26,7 +31,9 @@ def hoist_section(config_dict, section="defaults"):
     return hoisted_config_dict
 
 
-def accumulate_lists(config_dict):
+def accumulate_lists(
+    config_dict: Dict[str, Union[Dict[str, str], str]]
+) -> Dict[str, Union[Dict[str, str], str, Dict[str, Dict[str, str]]]]:
     """
         Transform a `config_dict` to "accumulate" objects "nested" via key name
 
@@ -100,7 +107,9 @@ def accumulate_lists(config_dict):
     return new_dict
 
 
-def transform_config_dict(config_dict, **kwargs):
+def transform_config_dict(
+    config_dict: Dict[str, Dict[str, str]], **kwargs
+) -> Dict[str, Union[Dict[str, str], str, Dict[str, Dict[str, str]]]]:
     """
         Apply transformations to the raw ConfigParser.config object
 
@@ -126,7 +135,7 @@ def transform_config_dict(config_dict, **kwargs):
 #         #     return expanded
 
 
-def get_config_dict_from_file(sg_file, **kwargs):
+def get_config_dict_from_file(sg_file: str, **kwargs) -> Dict[str, Dict[str, str]]:
     # TODO
     # config = ConfigParser(interpolation=EnvInterpolation())
     config = ConfigParser(interpolation=ExtendedInterpolation())
@@ -140,7 +149,9 @@ def get_config_dict_from_file(sg_file, **kwargs):
     return config_dict
 
 
-def get_config_dict_from_config_file(sg_file, **kwargs):
+def get_config_dict_from_config_file(
+    sg_file: str, **kwargs
+) -> Dict[str, Union[Dict[str, str], str, Dict[str, Dict[str, str]]]]:
     """
         Create a dict from ConfigParser, apply transformations to it.
 

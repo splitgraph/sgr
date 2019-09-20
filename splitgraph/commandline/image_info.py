@@ -3,7 +3,7 @@ sgr commands related to getting information out of / about images
 """
 
 from collections import Counter
-from pprint import pprint
+from typing import List, Optional, Tuple, Union
 
 import click
 
@@ -13,6 +13,7 @@ from splitgraph.core._drawing import render_tree
 from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.indexing.bloom import describe
 from splitgraph.core.object_manager import ObjectManager
+from splitgraph.core.repository import Repository
 from ._common import ImageType, pluralise, RepositoryType
 
 
@@ -97,7 +98,11 @@ def diff_c(verbose, table_name, repository, tag_or_hash_1, tag_or_hash_2):
         _emit_table_diff(table, diff_result, verbose)
 
 
-def _emit_table_diff(table_name, diff_result, verbose):
+def _emit_table_diff(
+    table_name: str,
+    diff_result: Union[List[Tuple[bool, Tuple[int, str]]], Tuple[int, int, int], bool],
+    verbose: bool,
+) -> None:
     to_print = "%s: " % table_name
     if isinstance(diff_result, (list, tuple)):
         if verbose:
@@ -127,7 +132,9 @@ def _emit_table_diff(table_name, diff_result, verbose):
         click.echo(to_print + ("table added" if diff_result else "table removed"))
 
 
-def _get_actual_hashes(repository, image_1, image_2):
+def _get_actual_hashes(
+    repository: Repository, image_1: Optional[str], image_2: Optional[str]
+) -> Union[Tuple[str, None], Tuple[str, str]]:
     if image_1 is None and image_2 is None:
         # Comparing current working copy against the last commit
         image_1 = repository.head.image_hash

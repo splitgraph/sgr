@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+from unittest.mock import patch
 
 import pytest
 
@@ -16,7 +17,6 @@ from splitgraph.config.system_config import (
     VALID_CONFIG_FILE_NAMES,
 )
 from splitgraph.core.engine import _parse_paths_overrides
-from unittest.mock import patch
 
 
 def test_every_key_has_matching_arg_key():

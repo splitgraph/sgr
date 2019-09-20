@@ -3,14 +3,22 @@ Common internal functions used by Splitgraph commands.
 """
 import logging
 import re
-from datetime import datetime as dt, date, time
+from datetime import date, datetime, time
 from decimal import Decimal
 from functools import wraps
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
+from psycopg2.sql import Composed
 from psycopg2.sql import Identifier, SQL
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.engine import ResultShape
+
+if TYPE_CHECKING:
+    from splitgraph.engine.postgres.engine import PostgresEngine
+    from splitgraph.core.image import Image
+    from splitgraph.core.repository import Repository
+
 
 META_TABLES = [
     "images",
@@ -27,7 +35,7 @@ OBJECT_MANAGER_TABLES = ["object_cache_status", "object_cache_occupancy"]
 _PUBLISH_PREVIEW_SIZE = 100
 
 
-def set_tag(repository, image_hash, tag):
+def set_tag(repository: "Repository", image_hash: Optional[str], tag: str) -> None:
     """Internal function -- add a tag to an image."""
     engine = repository.engine
     engine.run_sql(
@@ -36,12 +44,14 @@ def set_tag(repository, image_hash, tag):
     )
 
 
-def set_head(repository, image):
+def set_head(repository: "Repository", image: Optional[str]) -> None:
     """Sets the HEAD pointer of a given repository to a given image. Shouldn't be used directly."""
     set_tag(repository, image, "HEAD")
 
 
-def manage_audit_triggers(engine, object_engine=None):
+def manage_audit_triggers(
+    engine: "PostgresEngine", object_engine: Optional["PostgresEngine"] = None
+) -> None:
     """Does bookkeeping on audit triggers / audit table:
 
         * Detect tables that are being audited that don't need to be any more
@@ -75,7 +85,7 @@ def manage_audit_triggers(engine, object_engine=None):
         object_engine.track_tables(to_track)
 
 
-def manage_audit(func):
+def manage_audit(func: Callable) -> Callable:
     """A decorator to be put around various Splitgraph commands that performs general admin and auditing management
     (makes sure the metadata schema exists and delete/add required audit triggers)
     """
@@ -99,7 +109,7 @@ def manage_audit(func):
     return wrapped
 
 
-def parse_connection_string(conn_string):
+def parse_connection_string(conn_string: str) -> Tuple[str, int, str, str, str]:
     """
     :return: a tuple (server, port, username, password, dbname)
     """
@@ -109,14 +119,16 @@ def parse_connection_string(conn_string):
     return match.group(3), int(match.group(4)), match.group(1), match.group(2), match.group(5)
 
 
-def serialize_connection_string(server, port, username, password, dbname):
+def serialize_connection_string(
+    server: str, port: int, username: str, password: str, dbname: str
+) -> str:
     """
     Serializes a tuple into a Splitgraph engine connection string.
     """
     return "%s:%s@%s:%s/%s" % (username, password, server, port, dbname)
 
 
-def _create_metadata_schema(engine):
+def _create_metadata_schema(engine: "PostgresEngine") -> None:
     """
     Creates the metadata schema splitgraph_meta that stores the hash tree of schema snaps and the current tags.
     This means we can't mount anything under the schema splitgraph_meta -- much like we can't have a folder
@@ -310,7 +322,13 @@ FOR EACH ROW EXECUTE PROCEDURE {0}.validate_table_objects();
     )
 
 
-def select(table, columns="*", where="", schema=SPLITGRAPH_META_SCHEMA, table_args=None):
+def select(
+    table: str,
+    columns: str = "*",
+    where: str = "",
+    schema: str = SPLITGRAPH_META_SCHEMA,
+    table_args: Optional[str] = None,
+) -> Composed:
     """
     A generic SQL SELECT constructor to simplify metadata access queries so that we don't have to repeat the same
     identifiers everywhere.
@@ -333,7 +351,17 @@ def select(table, columns="*", where="", schema=SPLITGRAPH_META_SCHEMA, table_ar
     return query
 
 
-def insert(table, columns, schema=SPLITGRAPH_META_SCHEMA):
+def insert(
+    table: str,
+    columns: Union[
+        Tuple[str, str, str],
+        Tuple[str, str, str, str],
+        Tuple[str],
+        Tuple[str, str, str, str, str],
+        List[str],
+    ],
+    schema: str = SPLITGRAPH_META_SCHEMA,
+) -> Composed:
     """
     A generic SQL SELECT constructor to simplify metadata access queries so that we don't have to repeat the same
     identifiers everywhere.
@@ -348,7 +376,7 @@ def insert(table, columns, schema=SPLITGRAPH_META_SCHEMA):
     return query
 
 
-def ensure_metadata_schema(engine):
+def ensure_metadata_schema(engine: "PostgresEngine") -> None:
     """Create the metadata schema if it doesn't exist"""
     if (
         engine.run_sql(
@@ -361,7 +389,9 @@ def ensure_metadata_schema(engine):
         _create_metadata_schema(engine)
 
 
-def aggregate_changes(query_result, initial=None):
+def aggregate_changes(
+    query_result: List[Tuple[int, int]], initial: None = None
+) -> Tuple[int, int, int]:
     """Add a changeset to the aggregated diff result"""
     result = list(initial) if initial else [0, 0, 0]
     for kind, kind_count in query_result:
@@ -369,7 +399,9 @@ def aggregate_changes(query_result, initial=None):
     return tuple(result)
 
 
-def slow_diff(repository, table_name, image_1, image_2, aggregate):
+def slow_diff(
+    repository: "Repository", table_name: str, image_1: str, image_2: Optional[str], aggregate: bool
+) -> Any:
     """Materialize both tables and manually diff them"""
     with repository.materialized_table(table_name, image_1) as (mp_1, table_1):
         with repository.materialized_table(table_name, image_2) as (mp_2, table_2):
@@ -391,7 +423,16 @@ def slow_diff(repository, table_name, image_1, image_2, aggregate):
     ]
 
 
-def prepare_publish_data(image, repository, include_table_previews):
+def prepare_publish_data(
+    image: "Image", repository: "Repository", include_table_previews: bool
+) -> Union[
+    Tuple[Dict[Any, Any], Dict[str, List[Tuple[str, str, bool]]]],
+    Tuple[Dict[str, List[Tuple[int, str]]], Dict[str, List[Tuple[str, str, bool]]]],
+    Tuple[
+        Dict[str, Union[List[Tuple[int, str, str]], List[Tuple[int, str]]]],
+        Dict[str, List[Tuple[str, str, bool]]],
+    ],
+]:
     """Prepare previews and schemata for a given image for publishing to a registry."""
     schemata = {}
     previews = {}
@@ -416,7 +457,7 @@ def prepare_publish_data(image, repository, include_table_previews):
     return previews, schemata
 
 
-def gather_sync_metadata(target, source):
+def gather_sync_metadata(target: "Repository", source: "Repository") -> Any:
     """
     Inspects two Splitgraph repositories and gathers metadata that is required to bring target up to
     date with source.
@@ -471,7 +512,7 @@ def gather_sync_metadata(target, source):
     return new_images, table_meta, object_locations, object_meta, tags
 
 
-def pretty_size(size):
+def pretty_size(size: Union[int, float]) -> str:
     """
     Converts a size in bytes to its string representation (e.g. 1024 -> 1KiB)
     :param size: Size in bytes
@@ -486,7 +527,7 @@ def pretty_size(size):
     return "%.2f %s" % (size, {0: "", 1: "Ki", 2: "Mi", 3: "Gi", 4: "Ti"}[base] + "B")
 
 
-def _parse_dt(string):
+def _parse_dt(string: str) -> datetime:
     _formats = [
         "%Y-%m-%dT%H:%M:%S",
         "%Y-%m-%d %H:%M:%S",
@@ -495,15 +536,15 @@ def _parse_dt(string):
     ]
     for fmt in _formats:
         try:
-            return dt.strptime(string, fmt)
+            return datetime.strptime(string, fmt)
         except ValueError:
             continue
 
     raise ValueError("Unknown datetime format for string %s!" % string)
 
 
-def _parse_date(string):
-    return dt.strptime(string, "%Y-%m-%d").date()
+def _parse_date(string: str) -> date:
+    return datetime.strptime(string, "%Y-%m-%d").date()
 
 
 _TYPE_MAP = {
@@ -518,7 +559,7 @@ _TYPE_MAP = {
 }
 
 
-def adapt(value, pg_type):
+def adapt(value: Union[str, int, float], pg_type: str) -> Union[int, date, float, str]:
     """
     Coerces a value with a PG type into its Python equivalent. If the value is None, returns None.
 
@@ -538,18 +579,18 @@ class Tracer:
     Accumulates events and returns the times between them.
     """
 
-    def __init__(self):
-        self.start_time = dt.now()
+    def __init__(self) -> None:
+        self.start_time = datetime.now()
         self.events = []
 
-    def log(self, event):
+    def log(self, event: str) -> None:
         """
         Log an event at the current time
         :param event: Event name
         """
-        self.events.append((dt.now(), event))
+        self.events.append((datetime.now(), event))
 
-    def get_durations(self):
+    def get_durations(self) -> List[Tuple[str, float]]:
         """
         Return all events and durations between them.
         :return: List of (event name, time to this event from the previous event (or start))
@@ -561,13 +602,13 @@ class Tracer:
             prev = event_time
         return result
 
-    def get_total_time(self):
+    def get_total_time(self) -> float:
         """
         :return: Time from start to the final logged event.
         """
         return (self.events[-1][0] - self.start_time).total_seconds()
 
-    def __str__(self):
+    def __str__(self) -> str:
         result = ""
         for event, duration in self.get_durations():
             result += "\n%s: %.3f" % (event, duration)
@@ -575,7 +616,7 @@ class Tracer:
         return result[1:]
 
 
-def coerce_val_to_json(val):
+def coerce_val_to_json(val: Any) -> Any:
     """
     Turn a Python value to a string/float that can be stored as JSON.
     """
@@ -599,6 +640,6 @@ class CallbackList(list):
     Used to pass around and call multiple callbacks at once.
     """
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args, **kwargs) -> None:
         for listener in self:
             listener(*args, **kwargs)

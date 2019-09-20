@@ -5,18 +5,19 @@ from tarfile import TarFile, TarInfo
 
 import click
 import docker
+from docker.models.containers import Container
 from docker.types import Mount
 
 from splitgraph import CONFIG
-from splitgraph.config.export import serialize_config, overwrite_config
+from splitgraph.commandline._common import print_table
 from splitgraph.config.config import patch_config
+from splitgraph.config.export import overwrite_config
 from splitgraph.engine.postgres.engine import PostgresEngine
-
 
 DEFAULT_ENGINE = "default"
 
 
-def copy_to_container(container, source_path, target_path):
+def copy_to_container(container: Container, source_path: str, target_path: str) -> None:
     """
     Copy a file into a Docker container
 
@@ -42,22 +43,16 @@ def copy_to_container(container, source_path, target_path):
     container.put_archive(path=os.path.dirname(target_path), data=stream)
 
 
-def get_container_name(engine_name):
+def _get_container_name(engine_name: str) -> str:
     return "splitgraph_engine_" + engine_name
 
 
-def get_data_volume_name(engine_name):
+def _get_data_volume_name(engine_name: str) -> str:
     return "splitgraph_engine_%s_data" % engine_name
 
 
-def get_metadata_volume_name(engine_name):
+def _get_metadata_volume_name(engine_name: str) -> str:
     return "splitgraph_engine_%s_metadata" % engine_name
-
-
-def print_table(rows, column_width=15):
-    click.echo(
-        "\n".join(["".join([("{:" + str(column_width) + "}").format(x) for x in r]) for r in rows])
-    )
 
 
 @click.group(name="engine")
@@ -133,9 +128,9 @@ def add_engine_c(
         click.echo("Pulling image %s..." % image)
         client.images.pull(image)
 
-    container_name = get_container_name(name)
-    data_name = get_data_volume_name(name)
-    metadata_name = get_metadata_volume_name(name)
+    container_name = _get_container_name(name)
+    data_name = _get_data_volume_name(name)
+    metadata_name = _get_metadata_volume_name(name)
 
     # Setup required mounts for data/metadata
     data_volume = Mount(target="/var/lib/splitgraph/objects", source=data_name, type="volume")
@@ -214,7 +209,7 @@ def stop_engine_c(name):
     """Stop a Splitgraph engine."""
 
     client = docker.from_env()
-    container_name = get_container_name(name)
+    container_name = _get_container_name(name)
     container = client.containers.get(container_name)
 
     click.echo("Stopping Splitgraph engine %s..." % name)
@@ -228,7 +223,7 @@ def start_engine_c(name):
     """Stop a Splitgraph engine."""
 
     client = docker.from_env()
-    container_name = get_container_name(name)
+    container_name = _get_container_name(name)
     container = client.containers.get(container_name)
 
     click.echo("Starting Splitgraph engine %s..." % name)
@@ -245,7 +240,7 @@ def start_engine_c(name):
 def delete_engine_c(yes, force, name):
     """Stop a Splitgraph engine."""
     client = docker.from_env()
-    container_name = get_container_name(name)
+    container_name = _get_container_name(name)
     container = client.containers.get(container_name)
 
     click.echo(
@@ -258,8 +253,8 @@ def delete_engine_c(yes, force, name):
     container.remove(force=force)
     click.echo("Splitgraph engine %s has been removed." % name)
 
-    metadata_volume = client.volumes.get(get_metadata_volume_name(name))
-    data_volume = client.volumes.get(get_data_volume_name(name))
+    metadata_volume = client.volumes.get(_get_metadata_volume_name(name))
+    data_volume = client.volumes.get(_get_data_volume_name(name))
 
     metadata_volume.remove()
     data_volume.remove()

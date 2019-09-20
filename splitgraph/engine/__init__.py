@@ -8,12 +8,20 @@ implement a different engine.
 import itertools
 from abc import ABC
 from contextlib import contextmanager
+from datetime import datetime
+from decimal import Decimal
 from enum import Enum
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING
 
+from psycopg2.sql import Composed
 from psycopg2.sql import SQL, Identifier
 
 import splitgraph.config
 from splitgraph.config import CONFIG
+
+if TYPE_CHECKING:
+    from splitgraph.engine.postgres.engine import PostgresEngine
+
 
 # List of config flags that are extracted from the global configuration and passed to a given engine
 _ENGINE_SPECIFIC_CONFIG = [
@@ -38,7 +46,7 @@ _ENGINE_CONFIG_DEFAULTS = {
 }
 
 
-def _prepare_engine_config(config_dict):
+def _prepare_engine_config(config_dict: Dict[str, Any]) -> Dict[str, Union[str, int]]:
     result = {}
     for key in _ENGINE_SPECIFIC_CONFIG:
         if key in _ENGINE_CONFIG_DEFAULTS:
@@ -64,11 +72,11 @@ class SQLEngine(ABC):
     functions to implement some basic database management methods like listing, deleting, creating, dumping
     and loading tables."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._savepoint_stack = []
 
     @contextmanager
-    def savepoint(self, name):
+    def savepoint(self, name: str) -> Iterator[None]:
         """At the beginning of this context manager, a savepoint is initialized and any database
         error that occurs in run_sql results in a rollback to this savepoint rather than the
         rollback of the whole transaction. At exit, the savepoint is released."""
@@ -107,7 +115,19 @@ class SQLEngine(ABC):
         :param schema: Schema to run the statement in"""
         raise NotImplementedError()
 
-    def run_sql_in(self, schema, sql, arguments=None, return_shape=ResultShape.MANY_MANY):
+    def run_sql_in(
+        self,
+        schema: str,
+        sql: Union[Composed, str],
+        arguments: None = None,
+        return_shape: ResultShape = ResultShape.MANY_MANY,
+    ) -> Optional[
+        Union[
+            List[Tuple[datetime, Decimal, str]],
+            List[Tuple[str, Decimal]],
+            List[Tuple[Decimal, Decimal, str]],
+        ]
+    ]:
         """
         Executes a non-schema-qualified query against a specific schema.
 
@@ -121,7 +141,7 @@ class SQLEngine(ABC):
         self.run_sql("SET search_path TO public", (schema,), return_shape=ResultShape.NONE)
         return result
 
-    def table_exists(self, schema, table_name):
+    def table_exists(self, schema: str, table_name: str) -> bool:
         """
         Check if a table exists on the engine.
 
@@ -138,7 +158,7 @@ class SQLEngine(ABC):
             is not None
         )
 
-    def schema_exists(self, schema):
+    def schema_exists(self, schema: str) -> bool:
         """
         Check if a schema exists on the engine.
 
@@ -154,7 +174,7 @@ class SQLEngine(ABC):
             is not None
         )
 
-    def create_schema(self, schema):
+    def create_schema(self, schema: str) -> None:
         """Create a schema if it doesn't exist"""
         return self.run_sql(
             SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(schema)),
@@ -163,14 +183,14 @@ class SQLEngine(ABC):
 
     def copy_table(
         self,
-        source_schema,
-        source_table,
-        target_schema,
-        target_table,
-        with_pk_constraints=True,
-        limit=None,
-        after_pk=None,
-    ):
+        source_schema: str,
+        source_table: str,
+        target_schema: str,
+        target_table: str,
+        with_pk_constraints: bool = True,
+        limit: Optional[int] = None,
+        after_pk: Optional[Union[Tuple[datetime, int], Tuple[int]]] = None,
+    ) -> None:
         """Copy a table in the same engine, optionally applying primary key constraints as well."""
         query_args = []
         if not self.table_exists(target_schema, target_table):
@@ -217,7 +237,7 @@ class SQLEngine(ABC):
             )
         self.run_sql(query, query_args)
 
-    def delete_table(self, schema, table):
+    def delete_table(self, schema: str, table: str) -> None:
         """Drop a table from a schema if it exists"""
         if self.get_table_type(schema, table) not in ("FOREIGN TABLE", "FOREIGN"):
             self.run_sql(
@@ -230,14 +250,14 @@ class SQLEngine(ABC):
                 )
             )
 
-    def delete_schema(self, schema):
+    def delete_schema(self, schema: str) -> None:
         """Delete a schema if it exists, including all the tables in it."""
         self.run_sql(
             SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(schema)),
             return_shape=ResultShape.NONE,
         )
 
-    def get_all_tables(self, schema):
+    def get_all_tables(self, schema: str) -> List[str]:
         """Get all tables in a given schema."""
         return self.run_sql(
             "SELECT table_name FROM information_schema.tables WHERE table_schema = %s",
@@ -245,7 +265,7 @@ class SQLEngine(ABC):
             return_shape=ResultShape.MANY_ONE,
         )
 
-    def get_table_type(self, schema, table):
+    def get_table_type(self, schema: str, table: str) -> Optional[str]:
         """Get the type of the table (BASE or FOREIGN)
         """
         return self.run_sql(
@@ -260,7 +280,13 @@ class SQLEngine(ABC):
         raise NotImplementedError()
 
     @staticmethod
-    def dump_table_creation(schema, table, schema_spec, unlogged=False, temporary=False):
+    def dump_table_creation(
+        schema: Optional[str],
+        table: str,
+        schema_spec: List[Tuple[int, str, str, bool]],
+        unlogged: bool = False,
+        temporary: bool = False,
+    ) -> Composed:
         """
         Dumps the DDL for a table using a previously-dumped table schema spec
 
@@ -304,7 +330,14 @@ class SQLEngine(ABC):
             query += SQL(" WITH(autovacuum_enabled=false)")
         return query
 
-    def create_table(self, schema, table, schema_spec, unlogged=False, temporary=False):
+    def create_table(
+        self,
+        schema: str,
+        table: str,
+        schema_spec: List[Tuple[int, str, str, bool]],
+        unlogged: bool = False,
+        temporary: bool = False,
+    ) -> None:
         """
         Creates a table using a previously-dumped table schema spec
 
@@ -343,7 +376,7 @@ class SQLEngine(ABC):
         """
         raise NotImplementedError()
 
-    def get_column_names_types(self, schema, table_name):
+    def get_column_names_types(self, schema: str, table_name: str) -> List[Tuple[str, str]]:
         """Returns a list of (column, type) in a given table."""
         return self.run_sql(
             """SELECT column_name, data_type FROM information_schema.columns
@@ -352,7 +385,9 @@ class SQLEngine(ABC):
             (schema, table_name),
         )
 
-    def get_full_table_schema(self, schema, table_name):
+    def get_full_table_schema(
+        self, schema: str, table_name: str
+    ) -> List[Tuple[int, str, str, bool]]:
         """
         Generates a list of (column ordinal, name, data type, is_pk), used to detect schema changes like columns being
         dropped/added/renamed or type changes.
@@ -443,7 +478,7 @@ class ChangeEngine(SQLEngine, ABC):
         """
         raise NotImplementedError()
 
-    def get_change_key(self, schema, table):
+    def get_change_key(self, schema: str, table: str) -> List[Tuple[str, str]]:
         """
         Returns the key used to identify a row in a change (list of column name, column type).
         If the tracked table has a PK, we use that; if it doesn't, the whole row is used.
@@ -566,7 +601,12 @@ _ENGINE = CONFIG["SG_ENGINE"] or "LOCAL"
 _ENGINES = {}
 
 
-def get_engine(name=None, use_socket=False, use_fdw_params=None, autocommit=False):
+def get_engine(
+    name: Optional[str] = None,
+    use_socket: bool = False,
+    use_fdw_params: Optional[bool] = None,
+    autocommit: bool = False,
+) -> "PostgresEngine":
     """
     Get the current global engine or a named remote engine
 
@@ -588,7 +628,6 @@ def get_engine(name=None, use_socket=False, use_fdw_params=None, autocommit=Fals
         # Here we'd get the engine type/backend (Postgres/MySQL etc)
         # and instantiate the actual Engine class.
         # As we only have PostgresEngine, we instantiate that.
-        from .postgres.engine import PostgresEngine
 
         if name == "LOCAL":
             conn_params = _prepare_engine_config(CONFIG)
@@ -600,12 +639,15 @@ def get_engine(name=None, use_socket=False, use_fdw_params=None, autocommit=Fals
         if use_fdw_params:
             conn_params["SG_ENGINE_HOST"] = conn_params["SG_ENGINE_FDW_HOST"]
             conn_params["SG_ENGINE_PORT"] = conn_params["SG_ENGINE_FDW_PORT"]
+
+        from .postgres.engine import PostgresEngine
+
         _ENGINES[name] = PostgresEngine(conn_params=conn_params, name=name, autocommit=autocommit)
     return _ENGINES[name]
 
 
 @contextmanager
-def switch_engine(engine):
+def switch_engine(engine: "PostgresEngine") -> Iterator[None]:
     """
     Switch the global engine to a different one. The engine will
     get switched back on exit from the context manager.

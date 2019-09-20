@@ -8,21 +8,25 @@ import os.path
 import time
 from contextlib import contextmanager
 from io import BytesIO
+from io import TextIOWrapper
 from pkgutil import get_data
 from threading import get_ident
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import psycopg2
 from psycopg2 import DatabaseError
 from psycopg2.errors import InvalidSchemaName, UndefinedTable, DuplicateTable
+from psycopg2.extensions import connection
 from psycopg2.extras import execute_batch, Json
 from psycopg2.pool import ThreadedConnectionPool
-from psycopg2.sql import SQL, Identifier
+from psycopg2.sql import Composed, SQL
+from psycopg2.sql import Identifier
 from tqdm import tqdm
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCHEMA
 from splitgraph.core._common import select, ensure_metadata_schema, META_TABLES
 from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
-from splitgraph.exceptions import UninitializedEngineError, ObjectNotFoundError, ObjectCacheError
+from splitgraph.exceptions import UninitializedEngineError, ObjectNotFoundError
 from splitgraph.hooks.mount_handlers import mount_postgres
 
 _AUDIT_SCHEMA = "audit"
@@ -54,7 +58,13 @@ RETRY_AMOUNT = 12
 class PsycopgEngine(SQLEngine):
     """Postgres SQL engine backed by a Psycopg connection."""
 
-    def __init__(self, name, conn_params=None, pool=None, autocommit=False):
+    def __init__(
+        self,
+        name: str,
+        conn_params: Optional[Dict[str, Union[str, int]]] = None,
+        pool: None = None,
+        autocommit: bool = False,
+    ) -> None:
         """
         :param name: Name of the engine
         :param conn_params: Optional, dictionary of connection params as stored in the config.
@@ -98,7 +108,7 @@ class PsycopgEngine(SQLEngine):
         else:
             self._pool = pool
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "PostgresEngine %s (%s@%s:%s/%s)" % (
             self.name,
             self.conn_params["SG_ENGINE_USER"],
@@ -107,18 +117,18 @@ class PsycopgEngine(SQLEngine):
             self.conn_params["SG_ENGINE_DB_NAME"],
         )
 
-    def commit(self):
+    def commit(self) -> None:
         if self.connected:
             conn = self.connection
             conn.commit()
 
-    def close(self):
+    def close(self) -> None:
         if self.connected:
             conn = self.connection
             conn.close()
             self._pool.putconn(conn)
 
-    def rollback(self):
+    def rollback(self) -> None:
         if self.connected:
             if self._savepoint_stack:
                 self.run_sql(SQL("ROLLBACK TO ") + Identifier(self._savepoint_stack.pop()))
@@ -127,14 +137,14 @@ class PsycopgEngine(SQLEngine):
                 conn.rollback()
                 self._pool.putconn(conn)
 
-    def lock_table(self, schema, table):
+    def lock_table(self, schema: str, table: str) -> None:
         # Allow SELECTs but not writes to a given table.
         self.run_sql(
             SQL("LOCK TABLE {}.{} IN EXCLUSIVE MODE").format(Identifier(schema), Identifier(table))
         )
 
     @property
-    def connection(self):
+    def connection(self) -> connection:
         """Engine-internal Psycopg connection."""
         pool_delay = POOL_RETRY_DELAY_BASE
         retries = 0
@@ -197,7 +207,13 @@ class PsycopgEngine(SQLEngine):
                 )
                 time.sleep(RETRY_DELAY)
 
-    def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY, named=False):
+    def run_sql(
+        self,
+        statement: Union[bytes, Composed, str, SQL],
+        arguments: Optional[Any] = None,
+        return_shape: Optional[ResultShape] = ResultShape.MANY_MANY,
+        named: bool = False,
+    ):
 
         cursor_kwargs = {"cursor_factory": psycopg2.extras.NamedTupleCursor} if named else {}
 
@@ -242,7 +258,7 @@ class PsycopgEngine(SQLEngine):
                 return [c[0] for c in cur.fetchall()]
             return cur.fetchall()
 
-    def get_primary_keys(self, schema, table):
+    def get_primary_keys(self, schema: str, table: str) -> List[Tuple[str, str]]:
         """Inspects the Postgres information_schema to get the primary keys for a given table."""
         return self.run_sql(
             SQL(
@@ -254,7 +270,9 @@ class PsycopgEngine(SQLEngine):
             return_shape=ResultShape.MANY_MANY,
         )
 
-    def run_sql_batch(self, statement, arguments, schema=None):
+    def run_sql_batch(
+        self, statement: Union[Composed, str], arguments: Any, schema: Optional[str] = None
+    ) -> None:
         with self.connection.cursor() as cur:
             try:
                 if schema:
@@ -268,15 +286,15 @@ class PsycopgEngine(SQLEngine):
 
     def dump_table_sql(
         self,
-        schema,
-        table_name,
-        stream,
-        columns="*",
-        where="",
-        where_args=None,
-        target_schema=None,
-        target_table=None,
-    ):
+        schema: str,
+        table_name: str,
+        stream: TextIOWrapper,
+        columns: str = "*",
+        where: str = "",
+        where_args: Optional[Union[List[str], Tuple[str, str]]] = None,
+        target_schema: Optional[str] = None,
+        target_table: Optional[str] = None,
+    ) -> None:
         target_schema = target_schema or schema
         target_table = target_table or table_name
 
@@ -300,7 +318,7 @@ class PsycopgEngine(SQLEngine):
             )
         stream.write(";\n")
 
-    def _admin_conn(self):
+    def _admin_conn(self) -> connection:
         retries = 0
         while True:
             try:
@@ -343,7 +361,9 @@ class PsycopgEngine(SQLEngine):
                 )
                 time.sleep(RETRY_DELAY)
 
-    def initialize(self, skip_object_handling=False, skip_create_database=False):
+    def initialize(
+        self, skip_object_handling: bool = False, skip_create_database: bool = False
+    ) -> None:
         """Create the Splitgraph Postgres database and install the audit trigger
 
         :param skip_object_handling: If True, skips installation of
@@ -396,7 +416,7 @@ class PsycopgEngine(SQLEngine):
         # Start up the pgcrypto extension (required for hashing fragments)
         self.run_sql("CREATE EXTENSION IF NOT EXISTS pgcrypto")
 
-    def delete_database(self, database):
+    def delete_database(self, database: str) -> None:
         """
         Helper function to drop a database using the admin connection
 
@@ -411,7 +431,7 @@ class PsycopgEngine(SQLEngine):
 class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
     """Change tracking based on an audit trigger stored procedure"""
 
-    def get_tracked_tables(self):
+    def get_tracked_tables(self) -> List[Tuple[str, str]]:
         """Return a list of tables that the audit trigger is working on."""
         return self.run_sql(
             "SELECT DISTINCT event_object_schema, event_object_table "
@@ -419,7 +439,7 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
             (ROW_TRIGGER_NAME, STM_TRIGGER_NAME),
         )
 
-    def track_tables(self, tables):
+    def track_tables(self, tables: List[Tuple[str, str]]) -> None:
         """Install the audit trigger on the required tables"""
         self.run_sql(
             SQL(";").join(
@@ -428,7 +448,7 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
             )
         )
 
-    def untrack_tables(self, tables):
+    def untrack_tables(self, tables: List[Tuple[str, str]]) -> None:
         """Remove triggers from tables and delete their pending changes"""
         for trigger in (ROW_TRIGGER_NAME, STM_TRIGGER_NAME):
             self.run_sql(
@@ -444,7 +464,7 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
             "DELETE FROM audit.logged_actions WHERE schema_name = %s AND table_name = %s", tables
         )
 
-    def has_pending_changes(self, schema):
+    def has_pending_changes(self, schema: str) -> bool:
         """
         Return True if the tracked schema has pending changes and False if it doesn't.
         """
@@ -459,7 +479,7 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
             is not None
         )
 
-    def discard_pending_changes(self, schema, table=None):
+    def discard_pending_changes(self, schema: str, table: Optional[str] = None) -> None:
         """
         Discard recorded pending changes for a tracked schema / table
         """
@@ -474,7 +494,7 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
         else:
             self.run_sql(query, (schema,), return_shape=ResultShape.NONE)
 
-    def get_pending_changes(self, schema, table, aggregate=False):
+    def get_pending_changes(self, schema: str, table: str, aggregate: bool = False) -> Any:
         """
         Return pending changes for a given tracked table
 
@@ -508,7 +528,7 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
             result.extend(_convert_audit_change(action, row_data, changed_fields, ri_cols))
         return result
 
-    def get_changed_tables(self, schema):
+    def get_changed_tables(self, schema: str) -> List[str]:
         """Get list of tables that have changed content"""
         return self.run_sql(
             SQL(
@@ -523,7 +543,7 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
 class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
     """An implementation of the Postgres engine for Splitgraph"""
 
-    def get_object_schema(self, object_id):
+    def get_object_schema(self, object_id: str) -> List[Tuple[int, str, str, bool]]:
         return [
             tuple(t)
             for t in json.loads(
@@ -535,13 +555,20 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             )
         ]
 
-    def _set_object_schema(self, object_id, schema_spec):
+    def _set_object_schema(
+        self, object_id: str, schema_spec: List[Tuple[int, str, str, bool]]
+    ) -> None:
         self.run_sql(
             "SELECT splitgraph_api.set_object_schema(%s, %s)", (object_id, json.dumps(schema_spec))
         )
 
     def dump_object_creation(
-        self, object_id, schema, table=None, schema_spec=None, if_not_exists=False
+        self,
+        object_id: str,
+        schema: str,
+        table: None = None,
+        schema_spec: Optional[List[Tuple[int, str, str, bool]]] = None,
+        if_not_exists: bool = False,
     ):
         """
         Generate the SQL that remounts a foreign table pointing to a Splitgraph object.
@@ -573,7 +600,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                 query, ("pglz", os.path.join(self.conn_params["SG_ENGINE_OBJECT_PATH"], object_id))
             )
 
-    def dump_object(self, object_id, stream, schema):
+    def dump_object(self, object_id: str, stream: TextIOWrapper, schema: str) -> None:
         schema_spec = self.get_object_schema(object_id)
         stream.write(
             self.dump_object_creation(object_id, schema=schema, schema_spec=schema_spec).decode(
@@ -610,20 +637,20 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             )
             stream.write("DROP TABLE pg_temp.cstore_tmp_ingestion;\n")
 
-    def get_object_size(self, object_id):
+    def get_object_size(self, object_id: str) -> int:
         return self.run_sql(
             "SELECT splitgraph_api.get_object_size(%s)",
             (object_id,),
             return_shape=ResultShape.ONE_ONE,
         )
 
-    def delete_objects(self, object_ids):
+    def delete_objects(self, object_ids: List[str]) -> None:
         self.unmount_objects(object_ids)
         self.run_sql_batch(
             "SELECT splitgraph_api.delete_object_files(%s)", [(o,) for o in object_ids]
         )
 
-    def unmount_objects(self, object_ids):
+    def unmount_objects(self, object_ids: List[str]) -> None:
         """Unmount objects from splitgraph_meta (this doesn't delete the physical files."""
         unmount_query = SQL(";").join(
             SQL("DROP FOREIGN TABLE IF EXISTS {}.{}").format(
@@ -633,7 +660,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         )
         self.run_sql(unmount_query)
 
-    def sync_object_mounts(self):
+    def sync_object_mounts(self) -> None:
         """Scan through local object storage and synchronize it with the foreign tables in
         splitgraph_meta (unmounting non-existing objects and mounting existing ones)."""
         object_ids = self.run_sql(
@@ -652,7 +679,13 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         for object_id in object_ids:
             self.mount_object(object_id, schema_spec=self.get_object_schema(object_id))
 
-    def mount_object(self, object_id, table=None, schema=SPLITGRAPH_META_SCHEMA, schema_spec=None):
+    def mount_object(
+        self,
+        object_id: str,
+        table: None = None,
+        schema: str = SPLITGRAPH_META_SCHEMA,
+        schema_spec: Optional[List[Tuple[int, str, str, bool]]] = None,
+    ) -> None:
         """
         Mount an object from local storage as a foreign table.
 
@@ -664,7 +697,15 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         query = self.dump_object_creation(object_id, schema, table, schema_spec)
         self.run_sql(query)
 
-    def store_fragment(self, inserted, deleted, schema, table, source_schema, source_table):
+    def store_fragment(
+        self,
+        inserted: Any,
+        deleted: Any,
+        schema: str,
+        table: str,
+        source_schema: str,
+        source_table: str,
+    ) -> None:
 
         schema_spec = self.get_full_table_schema(source_schema, source_table)
         # Assuming the schema_spec has the whole tuple as PK if the table has no PK.
@@ -757,7 +798,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             args = [p for pk in deleted for p in [False] + list(pk)]
             self.run_sql(query, args)
 
-    def store_object(self, object_id, source_schema, source_table):
+    def store_object(self, object_id: str, source_schema: str, source_table: str) -> None:
         schema_spec = self.get_full_table_schema(source_schema, source_table)
 
         # Mount the object first
@@ -780,13 +821,12 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                 )
                 self.delete_table(source_schema, source_table)
                 return
-            else:
-                logging.info(
-                    "Object storage, %s/%s -> %s, mounted but no physical file, recreating",
-                    source_schema,
-                    source_table,
-                    object_id,
-                )
+            logging.info(
+                "Object storage, %s/%s -> %s, mounted but no physical file, recreating",
+                source_schema,
+                source_table,
+                object_id,
+            )
 
         # Insert the data into the new Citus table.
         self.run_sql(
@@ -803,19 +843,25 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         self.delete_table(source_schema, source_table)
 
     @staticmethod
-    def _schema_spec_to_cols(schema_spec):
+    def _schema_spec_to_cols(
+        schema_spec: List[Tuple[int, str, str, bool]]
+    ) -> Union[Tuple[List[str], List[Any]], Tuple[List[str], List[str]]]:
         pk_cols = [p[1] for p in schema_spec if p[3]]
         non_pk_cols = [p[1] for p in schema_spec if not p[3]]
 
         if not pk_cols:
             return pk_cols + non_pk_cols, []
-        else:
-            return pk_cols, non_pk_cols
+        return pk_cols, non_pk_cols
 
     @staticmethod
     def _generate_fragment_application(
-        source_schema, source_table, target_schema, target_table, cols, extra_quals=None
-    ):
+        source_schema: str,
+        source_table: str,
+        target_schema: str,
+        target_table: str,
+        cols: Union[Tuple[List[str], List[Any]], Tuple[List[str], List[str]]],
+        extra_quals: Optional[Composed] = None,
+    ) -> Composed:
         ri_cols, non_ri_cols = cols
         all_cols = ri_cols + non_ri_cols
 
@@ -858,13 +904,13 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
     def apply_fragments(
         self,
-        objects,
-        target_schema,
-        target_table,
-        extra_quals=None,
-        extra_qual_args=None,
-        schema_spec=None,
-    ):
+        objects: List[Tuple[str, str]],
+        target_schema: str,
+        target_table: str,
+        extra_quals: Optional[Composed] = None,
+        extra_qual_args: Optional[Tuple[str]] = None,
+        schema_spec: Optional[List[Tuple[int, str, str, bool]]] = None,
+    ) -> None:
         if not objects:
             return
         schema_spec = schema_spec or self.get_full_table_schema(target_schema, target_table)
@@ -879,11 +925,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         )
         self.run_sql(query, (extra_qual_args * len(objects)) if extra_qual_args else None)
 
-    def upload_objects(self, objects, remote_engine):
-        if not isinstance(remote_engine, PostgresEngine):
-            raise ObjectCacheError(
-                "Remote engine isn't a Postgres engine, object uploading is unsupported for now!"
-            )
+    def upload_objects(self, objects: List[str], remote_engine: "PostgresEngine") -> None:
 
         # We don't have direct access to the remote engine's storage and we also
         # can't use the old method of first creating a CStore table remotely and then
@@ -921,7 +963,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             remote_engine.commit()
 
     @contextmanager
-    def _mount_remote_engine(self, remote_engine):
+    def _mount_remote_engine(self, remote_engine: "PostgresEngine") -> Iterator[str]:
         # Switch the global engine to "self" instead of LOCAL since `mount_postgres` uses the global engine
         # (we can't easily pass args into it as it's also invoked from the command line with its arguments
         # used to populate --help)
@@ -956,7 +998,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         finally:
             self.delete_schema(REMOTE_TMP_SCHEMA)
 
-    def download_objects(self, objects, remote_engine):
+    def download_objects(self, objects: List[str], remote_engine: "PostgresEngine"):
         # Instead of connecting and pushing queries to it from the Python client, we just mount the remote mountpoint
         # into a temporary space (without any checking out) and SELECT the  required data into our local tables.
 
@@ -984,7 +1026,12 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             return downloaded_objects
 
 
-def _split_ri_cols(action, row_data, changed_fields, ri_cols):
+def _split_ri_cols(
+    action: str,
+    row_data: Dict[str, Any],
+    changed_fields: Optional[Dict[str, str]],
+    ri_cols: Union[Tuple[str], Tuple[str, str, str, str], Tuple[str, str], Tuple[str, str, str]],
+) -> Any:
     """
     :return: `(ri_data, non_ri_data)`: a tuple of 2 dictionaries:
         * `ri_data`: maps column names in `ri_cols` to values identifying the replica identity (RI) of a given tuple
@@ -1014,7 +1061,16 @@ def _split_ri_cols(action, row_data, changed_fields, ri_cols):
     return ri_data, non_ri_data
 
 
-def _recalculate_disjoint_ri_cols(ri_cols, ri_data, non_ri_data, row_data):
+def _recalculate_disjoint_ri_cols(
+    ri_cols: Union[Tuple[str, str, str, str], Tuple[str, str]],
+    ri_data: Dict[str, Union[str, int]],
+    non_ri_data: Dict[str, str],
+    row_data: Dict[str, Union[str, int]],
+) -> Union[
+    Tuple[Dict[str, Union[str, bool]], Dict[Any, Any]],
+    Tuple[Dict[str, Union[str, int]], Dict[Any, Any]],
+    Tuple[Dict[str, Union[str, int]], Dict[str, str]],
+]:
     # If part of the PK has been updated (is in the non_ri_cols/vals), we have to instead
     # apply the update to the PK (ri_cols/vals) and recalculate the new full new tuple
     # (by applying the update to row_data).
@@ -1034,7 +1090,12 @@ def _recalculate_disjoint_ri_cols(ri_cols, ri_data, non_ri_data, row_data):
     return ri_data, new_non_ri_data
 
 
-def _convert_audit_change(action, row_data, changed_fields, ri_cols):
+def _convert_audit_change(
+    action: str,
+    row_data: Dict[str, Any],
+    changed_fields: Optional[Dict[str, str]],
+    ri_cols: Union[Tuple[str], Tuple[str, str, str, str], Tuple[str, str], Tuple[str, str, str]],
+) -> Any:
     """
     Converts the audit log entry into Splitgraph's internal format.
 
@@ -1073,7 +1134,7 @@ def _convert_audit_change(action, row_data, changed_fields, ri_cols):
 _KIND = {"I": 0, "D": 1, "U": 2}
 
 
-def _convert_vals(vals):
+def _convert_vals(vals: Any) -> Any:
     """Psycopg returns jsonb objects as dicts/lists but doesn't actually accept them directly
     as a query param (or in the case of lists coerces them into an array.
     Hence, we have to wrap them in the Json datatype when doing a dump + load."""
@@ -1085,7 +1146,7 @@ def _convert_vals(vals):
     ]
 
 
-def _generate_where_clause(table, cols, table_2):
+def _generate_where_clause(table: str, cols: List[str], table_2: str) -> Composed:
     return SQL(" AND ").join(
         SQL("{}.{} = {}.{}").format(
             Identifier(table), Identifier(c), Identifier(table_2), Identifier(c)

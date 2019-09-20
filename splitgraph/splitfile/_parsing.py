@@ -4,15 +4,21 @@ Internal functions for parsing Splitfiles.
 
 import re
 import shlex
+from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 from parsimonious import Grammar
+from parsimonious.nodes import Node, RegexNode
 
 from splitgraph.exceptions import SplitfileError
+
+if TYPE_CHECKING:
+    from splitgraph.core.repository import Repository
+
 
 SPLITFILE_GRAMMAR = Grammar(
     r"""
     commands = space command space (newline space command space)*
-    command = comment / import / from / sql_file / sql / custom 
+    command = comment / import / from / sql_file / sql / custom
     comment = space "#" non_newline
     from = "FROM" space ("EMPTY" / repo_source) (space "AS" space repository)?
     import = "FROM" space source space "IMPORT" space tables
@@ -31,7 +37,7 @@ SPLITFILE_GRAMMAR = Grammar(
     image_hash = ~"[0-9a-f]*"i
 
     # TBH these ones that map to "identifier" aren't realy necessary since parsimonious calls those nodes
-    # "identifier" anyway. This is so that the grammar is slightly more readable. 
+    # "identifier" anyway. This is so that the grammar is slightly more readable.
 
     handler = identifier
     repository = ~"[_a-zA-Z0-9-/]+"
@@ -58,7 +64,7 @@ SPLITFILE_GRAMMAR = Grammar(
 )
 
 
-def preprocess(commands, params=None):
+def preprocess(commands: str, params: Optional[Dict[str, str]] = None) -> str:
     """
     Preprocesses a Splitfile, performing parameter substitution (`${PARAM}` gets replaced with `params['PARAM']`).
     Also removes escaped newlines.
@@ -91,7 +97,7 @@ def preprocess(commands, params=None):
     return commands.replace("\\$", "$")
 
 
-def parse_commands(commands, params=None):
+def parse_commands(commands: str, params: Optional[Dict[str, str]] = None) -> List[Node]:
     """Unpacks the parse tree into a list of command nodes."""
     if params is None:
         params = {}
@@ -104,7 +110,7 @@ def parse_commands(commands, params=None):
     ]
 
 
-def extract_nodes(node, types):
+def extract_nodes(node: Node, types: List[str]) -> Union[List[RegexNode], List[Node]]:
     """Crawls the parse tree and only extracts nodes of given types. Doesn't crawl further down if it reaches a
     sought type."""
     if node.expr_name in types:
@@ -115,7 +121,9 @@ def extract_nodes(node, types):
     return result
 
 
-def get_first_or_none(node_list, node_type):
+def get_first_or_none(
+    node_list: Union[List[RegexNode], List[Node]], node_type: str
+) -> Optional[Node]:
     """Gets the first node of type node_type from node_list, returns None if it doesn't exist."""
     for node in node_list:
         if node.expr_name == node_type:
@@ -123,7 +131,7 @@ def get_first_or_none(node_list, node_type):
     return None
 
 
-def _parse_table_alias(table_node):
+def _parse_table_alias(table_node: Node) -> Tuple[str, str, bool]:
     """Extracts the table name (or a query forming the table) and its alias from the parse tree."""
     table_name_alias = extract_nodes(table_node, ["identifier", "non_curly_brace"])
     table_name = table_name_alias[0].match.group(0)
@@ -137,7 +145,7 @@ def _parse_table_alias(table_node):
     return table_name, table_name, table_is_query
 
 
-def parse_image_spec(remote_repo_node):
+def parse_image_spec(remote_repo_node: Node) -> Tuple["Repository", str]:
     """
     Extracts the image specification (e.g. noaa/climate:abcdef123 -> Repository('noaa', 'climate'), 'abcdef123')
     :param remote_repo_node: Parse node with the specification
@@ -156,7 +164,7 @@ def parse_image_spec(remote_repo_node):
     return repository, tag_or_hash
 
 
-def extract_all_table_aliases(node):
+def extract_all_table_aliases(node: Node) -> Union[zip, Tuple[List[Any], List[Any], List[Any]]]:
     """
     Extracts table names and aliases in a format suitable for passing to the `import_tables` function
     :param node: Parse node
@@ -170,7 +178,7 @@ def extract_all_table_aliases(node):
     return zip(*[_parse_table_alias(table) for table in tables])
 
 
-def parse_custom_command(node):
+def parse_custom_command(node: Node) -> Tuple[str, List[str]]:
     """Splits the parse tree node (CMD arg1 --arg2 "arg 3") into a tuple (command, args)."""
     repo_nodes = extract_nodes(node, ["identifier", "non_newline"])
     command = repo_nodes[0].match.group(0)

@@ -5,6 +5,7 @@ import math
 from collections import defaultdict
 from contextlib import contextmanager
 from datetime import datetime as dt
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, Union, TYPE_CHECKING
 
 from psycopg2.sql import SQL, Identifier
 
@@ -15,12 +16,18 @@ from splitgraph.exceptions import SplitGraphError, ObjectCacheError
 from splitgraph.hooks.external_objects import get_external_object_handler
 from ._common import META_TABLES, select, insert, pretty_size, Tracer, CallbackList
 
+if TYPE_CHECKING:
+    from splitgraph.core.table import Table
+    from splitgraph.engine.postgres.engine import PostgresEngine
+
 
 class ObjectManager(FragmentManager):
     """Brings the multiple manager classes together and manages the object cache (downloading and uploading
     objects as required in order to fulfill certain queries)"""
 
-    def __init__(self, object_engine, metadata_engine=None):
+    def __init__(
+        self, object_engine: "PostgresEngine", metadata_engine: Optional["PostgresEngine"] = None
+    ) -> None:
         """
         :param object_engine: An ObjectEngine that will be used as a backing store for the
             objects.
@@ -48,7 +55,7 @@ class ObjectManager(FragmentManager):
         # of more possible cache misses.
         self.eviction_min_fraction = float(CONFIG["SG_EVICTION_MIN_FRACTION"])
 
-    def get_downloaded_objects(self, limit_to=None):
+    def get_downloaded_objects(self, limit_to: Optional[List[str]] = None) -> List[str]:
         """
         Gets a list of objects currently in the Splitgraph cache (i.e. not only existing externally.)
 
@@ -62,7 +69,7 @@ class ObjectManager(FragmentManager):
             return objects
         return [o for o in objects if o in limit_to]
 
-    def get_cache_occupancy(self):
+    def get_cache_occupancy(self) -> int:
         """
         :return: Space occupied by objects cached from external locations, in bytes.
         """
@@ -75,7 +82,7 @@ class ObjectManager(FragmentManager):
             )
         )
 
-    def _recalculate_cache_occupancy(self):
+    def _recalculate_cache_occupancy(self) -> int:
         """A slower way of getting cache occupancy that actually goes through all objects in the cache status table
         and sums up their size."""
         return int(
@@ -112,7 +119,14 @@ class ObjectManager(FragmentManager):
         )
 
     @contextmanager
-    def ensure_objects(self, table, objects=None, quals=None, defer_release=False, tracer=None):
+    def ensure_objects(
+        self,
+        table: "Table",
+        objects: Optional[List[str]] = None,
+        quals: Optional[List[List[Union[Tuple[str, str, str], Tuple[str, str, int]]]]] = None,
+        defer_release: bool = False,
+        tracer: Optional[Tracer] = None,
+    ) -> Iterator[Union[List[str], Tuple[List[str], CallbackList]]]:
         """
         Resolves the objects needed to materialize a given table and makes sure they are in the local
         splitgraph_meta schema.
@@ -226,7 +240,9 @@ class ObjectManager(FragmentManager):
             if not defer_release:
                 release_callback()
 
-    def _make_release_callback(self, required_objects, table, tracer):
+    def _make_release_callback(
+        self, required_objects: List[str], table: "Table", tracer: Tracer
+    ) -> CallbackList:
         called = False
 
         def _f(**kwargs):
@@ -257,7 +273,9 @@ class ObjectManager(FragmentManager):
 
         return CallbackList([_f])
 
-    def make_objects_external(self, objects, handler, handler_params):
+    def make_objects_external(
+        self, objects: List[str], handler: str, handler_params: Dict[Any, Any]
+    ) -> None:
         """
         Uploads local objects to an external location and marks them as being cached locally (thus making it possible
         to evict or swap them out).
@@ -318,7 +336,7 @@ class ObjectManager(FragmentManager):
         if excess > 0:
             self.run_eviction(keep_objects=[], required_space=excess)
 
-    def _prepare_fetch_list(self, required_objects):
+    def _prepare_fetch_list(self, required_objects: List[str]) -> List[str]:
         """
         Calculates the missing objects and ensures there's enough space in the cache
         to download them.
@@ -381,7 +399,7 @@ class ObjectManager(FragmentManager):
             )
         return to_fetch
 
-    def _claim_objects(self, objects):
+    def _claim_objects(self, objects: List[str]) -> None:
         """Increases refcounts and bumps the last used timestamp to now for cached objects.
         For objects that aren't in the cache, checks that they don't already exist locally and then
         adds them to the cache status table, marking them with ready=False
@@ -424,7 +442,7 @@ class ObjectManager(FragmentManager):
             [(object_id, False, 1, now, now) for object_id in remaining],
         )
 
-    def _set_ready_flags(self, objects, is_ready=True):
+    def _set_ready_flags(self, objects: List[str], is_ready: bool = True) -> None:
         if objects:
             self.object_engine.run_sql(
                 SQL(
@@ -435,7 +453,7 @@ class ObjectManager(FragmentManager):
                 [is_ready] + list(objects),
             )
 
-    def _release_objects(self, objects):
+    def _release_objects(self, objects: List[str]) -> None:
         """Decreases objects' refcounts."""
         if objects:
             self.object_engine.run_sql(
@@ -447,7 +465,7 @@ class ObjectManager(FragmentManager):
                 objects,
             )
 
-    def _increase_cache_occupancy(self, objects):
+    def _increase_cache_occupancy(self, objects: List[str]) -> None:
         """Increase the cache occupancy by objects' total size."""
         if not objects:
             return
@@ -459,7 +477,7 @@ class ObjectManager(FragmentManager):
             (total_size,),
         )
 
-    def _decrease_cache_occupancy(self, size_freed):
+    def _decrease_cache_occupancy(self, size_freed: int) -> None:
         """Decrease the cache occupancy by a given size."""
         self.object_engine.run_sql(
             SQL("UPDATE {}.object_cache_occupancy SET total_size = total_size - %s").format(
@@ -468,7 +486,7 @@ class ObjectManager(FragmentManager):
             (size_freed,),
         )
 
-    def run_eviction(self, keep_objects, required_space=None):
+    def run_eviction(self, keep_objects: List[str], required_space: Optional[int] = None) -> None:
         """
         Delete enough objects with zero reference count (only those, since we guarantee that whilst refcount is >0,
         the object stays alive) to free at least `required_space` in the cache.
@@ -580,7 +598,7 @@ class ObjectManager(FragmentManager):
         )
         return to_delete, freed_space
 
-    def _delete_cache_entries(self, to_delete):
+    def _delete_cache_entries(self, to_delete: List[str]) -> None:
         self.object_engine.run_sql(
             SQL(
                 "DELETE FROM {}.{} WHERE object_id IN ("
@@ -590,7 +608,12 @@ class ObjectManager(FragmentManager):
             to_delete,
         )
 
-    def download_objects(self, source, objects_to_fetch, object_locations):
+    def download_objects(
+        self,
+        source: Optional["ObjectManager"],
+        objects_to_fetch: List[str],
+        object_locations: List[Tuple[str, str, str]],
+    ) -> List[str]:
         """
         Fetches the required objects from the remote and stores them locally.
         Does nothing for objects that already exist.
@@ -629,7 +652,13 @@ class ObjectManager(FragmentManager):
         )
         return external_objects + remote_objects
 
-    def upload_objects(self, target, objects_to_push, handler="DB", handler_params=None):
+    def upload_objects(
+        self,
+        target: "ObjectManager",
+        objects_to_push: List[str],
+        handler: str = "DB",
+        handler_params: Optional[Dict[Any, Any]] = None,
+    ) -> List[Tuple[str, str, str]]:
         """
         Uploads physical objects to the remote or some other external location.
 
@@ -665,7 +694,7 @@ class ObjectManager(FragmentManager):
             uploaded = external_handler.upload_objects(objects_to_push, target.metadata_engine)
         return [(oid, url, handler) for oid, url in zip(objects_to_push, uploaded)]
 
-    def cleanup(self):
+    def cleanup(self) -> Set[str]:
         """
         Deletes all objects in the object_tree not required by any current repository, including their dependencies and
         their remote locations. Also deletes all objects not registered in the object_tree.
@@ -705,7 +734,12 @@ class ObjectManager(FragmentManager):
         return to_delete
 
 
-def _fetch_external_objects(engine, source_engine, object_locations, handler_params):
+def _fetch_external_objects(
+    engine: "PostgresEngine",
+    source_engine: "PostgresEngine",
+    object_locations: List[Tuple[str, str, str]],
+    handler_params: Dict[Any, Any],
+) -> List[str]:
     non_remote_objects = []
     non_remote_by_method = defaultdict(list)
     for object_id, object_url, protocol in object_locations:

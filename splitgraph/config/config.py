@@ -1,4 +1,6 @@
 # engine params
+from typing import Any, Dict
+
 from .argument_config import get_argument_config_value
 from .config_file_config import get_config_dict_from_config_file
 from .default_config import get_default_config_value
@@ -7,7 +9,7 @@ from .keys import KEYS, ALL_KEYS
 from .system_config import get_system_config_value
 
 
-def lazy_get_config_value(key, default_return=None):
+def lazy_get_config_value(key: str, default_return: None = None) -> Any:
     """
         Get the config value for a key in the following precedence
         Otherwise return default_return
@@ -27,7 +29,7 @@ def lazy_get_config_value(key, default_return=None):
     )
 
 
-def update_config_dict_from_arguments(config_dict):
+def update_config_dict_from_arguments(config_dict: Dict[str, Any]) -> Dict[str, Any]:
     """
         Given an existing config_dict, update after reading sys.argv
         and overwriting any keys.
@@ -43,7 +45,7 @@ def update_config_dict_from_arguments(config_dict):
     return new_config_dict
 
 
-def update_config_dict_from_env_vars(config_dict):
+def update_config_dict_from_env_vars(config_dict: Dict[str, Any]) -> Dict[str, Any]:
     """
         Given an existing config_dict, update after reading os.environ
         and overwriting any keys.
@@ -61,7 +63,9 @@ def update_config_dict_from_env_vars(config_dict):
     return new_config_dict
 
 
-def update_config_dict_from_file(config_dict, sg_config_file):
+def update_config_dict_from_file(
+    config_dict: Dict[str, Any], sg_config_file: str
+) -> Dict[str, Any]:
     """
         Given an existing config_dict, update after reading sg_config_file
         and overwriting any keys according to the rules in config_file_config
@@ -75,7 +79,7 @@ def update_config_dict_from_file(config_dict, sg_config_file):
     return new_config_dict
 
 
-def create_config_dict():
+def create_config_dict() -> Dict[str, Any]:
     """
         Create and return a dict of all known config values
     """
@@ -96,7 +100,7 @@ def create_config_dict():
     return config_dict
 
 
-def patch_config(config, patch):
+def patch_config(config: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
     """
     Recursively updates a nested configuration dictionary:
 
