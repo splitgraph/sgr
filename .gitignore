@@ -12,6 +12,7 @@ docs/_build/
 dist/
 .venv/
 .cache/
+.mypy_cache/
 
 .idea/
 pip-wheel-metadata

@@ -21,7 +21,7 @@ from splitgraph.core.image import Image
 from splitgraph.core.image_manager import ImageManager
 from splitgraph.core.sql import validate_import_sql
 from splitgraph.engine.postgres.engine import PostgresEngine
-from splitgraph.exceptions import CheckoutError, EngineInitializationError
+from splitgraph.exceptions import CheckoutError, EngineInitializationError, TableNotFoundError
 from ._common import (
     manage_audit_triggers,
     set_head,
@@ -1013,11 +1013,14 @@ def table_exists_at(
 ) -> bool:
     """Determines whether a given table exists in a Splitgraph image without checking it out. If `image_hash` is None,
     determines whether the table exists in the current staging area."""
-    return (
+    if image is None:
         repository.object_engine.table_exists(repository.to_schema(), table_name)
-        if image is None
-        else bool(image.get_table(table_name))
-    )
+    else:
+        try:
+            image.get_table(table_name)
+            return True
+        except TableNotFoundError:
+            return False
 
 
 def _sync(
