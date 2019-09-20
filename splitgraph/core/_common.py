@@ -6,7 +6,7 @@ import re
 from datetime import date, datetime, time
 from decimal import Decimal
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING, Sequence
 
 from psycopg2.sql import Composed
 from psycopg2.sql import Identifier, SQL
@@ -15,7 +15,7 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.engine import ResultShape
 
 if TYPE_CHECKING:
-    from splitgraph.engine.postgres.engine import PostgresEngine
+    from splitgraph.engine.postgres.engine import PsycopgEngine, PostgresEngine
     from splitgraph.core.image import Image
     from splitgraph.core.repository import Repository
 
@@ -128,7 +128,7 @@ def serialize_connection_string(
     return "%s:%s@%s:%s/%s" % (username, password, server, port, dbname)
 
 
-def _create_metadata_schema(engine: "PostgresEngine") -> None:
+def _create_metadata_schema(engine: "PsycopgEngine") -> None:
     """
     Creates the metadata schema splitgraph_meta that stores the hash tree of schema snaps and the current tags.
     This means we can't mount anything under the schema splitgraph_meta -- much like we can't have a folder
@@ -351,23 +351,14 @@ def select(
     return query
 
 
-def insert(
-    table: str,
-    columns: Union[
-        Tuple[str, str, str],
-        Tuple[str, str, str, str],
-        Tuple[str],
-        Tuple[str, str, str, str, str],
-        List[str],
-    ],
-    schema: str = SPLITGRAPH_META_SCHEMA,
-) -> Composed:
+def insert(table: str, columns: Sequence[str], schema: str = SPLITGRAPH_META_SCHEMA) -> Composed:
     """
     A generic SQL SELECT constructor to simplify metadata access queries so that we don't have to repeat the same
     identifiers everywhere.
 
     :param table: Table to select from.
     :param columns: Columns to insert as a list of strings.
+    :param schema: Schema that contains the table
     :return: A psycopg2.sql.SQL object with the query (parameterized)
     """
     query = SQL("INSERT INTO {}.{}").format(Identifier(schema), Identifier(table))
@@ -390,13 +381,14 @@ def ensure_metadata_schema(engine: "PostgresEngine") -> None:
 
 
 def aggregate_changes(
-    query_result: List[Tuple[int, int]], initial: None = None
+    query_result: List[Tuple[int, int]], initial: Optional[Tuple[int, int, int]] = None
 ) -> Tuple[int, int, int]:
     """Add a changeset to the aggregated diff result"""
     result = list(initial) if initial else [0, 0, 0]
     for kind, kind_count in query_result:
+        assert kind in (0, 1, 2)
         result[kind] += kind_count
-    return tuple(result)
+    return result[0], result[1], result[2]
 
 
 def slow_diff(
@@ -547,7 +539,7 @@ def _parse_date(string: str) -> date:
     return datetime.strptime(string, "%Y-%m-%d").date()
 
 
-_TYPE_MAP = {
+_TYPE_MAP: Dict[str, Callable[..., Any]] = {
     k: v
     for ks, v in [
         (["integer", "bigint", "smallint"], int),
@@ -561,14 +553,12 @@ _TYPE_MAP = {
 
 def adapt(value: Union[str, int, float], pg_type: str) -> Union[int, date, float, str]:
     """
-    Coerces a value with a PG type into its Python equivalent. If the value is None, returns None.
+    Coerces a value with a PG type into its Python equivalent.
 
     :param value: Value
     :param pg_type: Postgres datatype
     :return: Coerced value.
     """
-    if value is None:
-        return value
     if pg_type in _TYPE_MAP:
         return _TYPE_MAP[pg_type](value)
     return value
@@ -581,7 +571,7 @@ class Tracer:
 
     def __init__(self) -> None:
         self.start_time = datetime.now()
-        self.events = []
+        self.events: List[Tuple[datetime, str]] = []
 
     def log(self, event: str) -> None:
         """
@@ -643,3 +633,8 @@ class CallbackList(list):
     def __call__(self, *args, **kwargs) -> None:
         for listener in self:
             listener(*args, **kwargs)
+
+
+Changeset = Dict[Tuple, Tuple[int, Tuple]]
+TableSchema = List[Tuple[int, str, str, bool]]
+Quals = List[List[Tuple[str, str, Any]]]

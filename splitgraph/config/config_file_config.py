@@ -1,7 +1,9 @@
 from configparser import ConfigParser, ExtendedInterpolation
 
 
-from typing import Dict, Union
+from typing import Dict, Union, Any, Mapping, cast
+
+from splitgraph.config.keys import ConfigDict
 
 
 def hoist_section(
@@ -19,21 +21,20 @@ def hoist_section(
     """
 
     if section not in config_dict.keys():
-        return config_dict
+        # see https://github.com/python/mypy/issues/2300
+        return cast(Dict[str, Union[Dict[str, str], str]], config_dict)
 
-    hoisted_config_dict = config_dict.copy()
+    hoisted_config_dict = cast(Dict[str, Union[Dict[str, str], str]], config_dict.copy())
     section_dict = config_dict[section].copy()
     del hoisted_config_dict[section]
 
     for k, v in section_dict.items():
-        hoisted_config_dict.update({k.upper(): v})
+        hoisted_config_dict[k.upper()] = v
 
     return hoisted_config_dict
 
 
-def accumulate_lists(
-    config_dict: Dict[str, Union[Dict[str, str], str]]
-) -> Dict[str, Union[Dict[str, str], str, Dict[str, Dict[str, str]]]]:
+def accumulate_lists(config_dict: Dict[str, Union[Dict[str, str], str]]) -> ConfigDict:
     """
         Transform a `config_dict` to "accumulate" objects "nested" via key name
 
@@ -67,13 +68,13 @@ def accumulate_lists(
         :return a new, updated copy of `config_dict`
     """
 
-    new_dict = config_dict.copy()
+    new_dict = cast(Dict[str, Union[str, Dict[str, Dict[str, str]]]], config_dict.copy())
 
     accumulatable = {"remote": "remotes", "origin": "origins"}
 
     accumulatable_keys = accumulatable.keys()
 
-    accumulated = {}
+    accumulated: Dict[str, Dict[str, Dict[str, str]]] = {}
 
     def key_matches(k):
         return k.split(":")[0] in accumulatable_keys
@@ -93,7 +94,7 @@ def accumulate_lists(
         right_key = "".join(key.split(":")[1:]).strip()
 
         list_key = accumulatable[left_key]
-        new_item = new_dict[key].copy()
+        new_item = cast(Dict[str, str], new_dict[key]).copy()
         if list_key not in accumulated.keys():
             accumulated[list_key] = {right_key: new_item}
         else:
@@ -107,9 +108,7 @@ def accumulate_lists(
     return new_dict
 
 
-def transform_config_dict(
-    config_dict: Dict[str, Dict[str, str]], **kwargs
-) -> Dict[str, Union[Dict[str, str], str, Dict[str, Dict[str, str]]]]:
+def transform_config_dict(config_dict: Dict[str, Dict[str, str]], **kwargs) -> ConfigDict:
     """
         Apply transformations to the raw ConfigParser.config object
 
@@ -120,7 +119,7 @@ def transform_config_dict(
     """
 
     config_dict = hoist_section(config_dict, **kwargs)
-    config_dict = accumulate_lists(config_dict, **kwargs)
+    config_dict = accumulate_lists(config_dict)
     return config_dict
 
 
@@ -149,9 +148,7 @@ def get_config_dict_from_file(sg_file: str, **kwargs) -> Dict[str, Dict[str, str
     return config_dict
 
 
-def get_config_dict_from_config_file(
-    sg_file: str, **kwargs
-) -> Dict[str, Union[Dict[str, str], str, Dict[str, Dict[str, str]]]]:
+def get_config_dict_from_config_file(sg_file: str, **kwargs) -> ConfigDict:
     """
         Create a dict from ConfigParser, apply transformations to it.
 

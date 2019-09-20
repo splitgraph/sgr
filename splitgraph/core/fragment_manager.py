@@ -20,6 +20,7 @@ from psycopg2.sql import SQL, Identifier
 from tqdm import tqdm
 
 from splitgraph.config import SPLITGRAPH_API_SCHEMA
+from splitgraph.core._common import Changeset, TableSchema
 from splitgraph.core.indexing.bloom import generate_bloom_index, filter_bloom_index
 from splitgraph.core.indexing.range import (
     extract_min_max_pks,
@@ -38,11 +39,11 @@ if TYPE_CHECKING:
 
 
 def _split_changeset(
-    changeset: Any, min_max: List[Tuple[Any, Any]], table_pks: List[Tuple[str, str]]
-) -> Any:
+    changeset: Changeset, min_max: List[Tuple[Any, Any]], table_pks: List[Tuple[str, str]]
+) -> Tuple[List[Changeset], Changeset, Changeset]:
     # maybe order min/max here
     maxs = [m[1] for m in min_max]
-    changesets_by_segment = [{} for _ in range(len(min_max))]
+    changesets_by_segment: List[Changeset] = [{} for _ in range(len(min_max))]
     before_changesets = {}
     after_changesets = {}
     for pk, data in changeset.items():
@@ -58,9 +59,7 @@ def _split_changeset(
     return changesets_by_segment, before_changesets, after_changesets
 
 
-def get_chunk_groups(
-    chunks: List[Tuple[str, Any, Any]],
-) -> Union[List[List[Tuple[str, Any, Any]]],]:
+def get_chunk_groups(chunks: List[Tuple[str, Any, Any]],) -> List[List[Tuple[str, Any, Any]]]:
     """
     Takes a list of chunks and their boundaries and combines them
     into independent groups such that chunks from no two groups
@@ -85,10 +84,14 @@ def get_chunk_groups(
     """
     # Note the original order the chunks came in: it should be preserved
     # within overlap groups.
-    chunks = [(i,) + chunk for i, chunk in enumerate(chunks)]
 
-    groups = []
-    current_group = []
+    # no tuple concatenation (typechecker complains)
+    chunks: List[Tuple[int, str, Any, Any]] = [
+        (i, chunk[0], chunk[1], chunk[2]) for i, chunk in enumerate(chunks)
+    ]
+
+    groups: List[List[Tuple[int, str, Any, Any]]] = []
+    current_group: List[Tuple[int, str, Any, Any]] = []
     current_group_start = None
     current_group_end = None
     for original_id, chunk_id, start, end in sorted(chunks, key=lambda c: c[2]):
@@ -197,15 +200,9 @@ class FragmentManager(MetadataManager):
     def _generate_object_index(
         self,
         object_id: str,
-        table_schema: List[Tuple[int, str, str, bool]],
-        changeset: Optional[Any] = None,
-        extra_indexes: Optional[
-            Union[
-                Dict[str, Dict[str, Dict[str, float]]],
-                Dict[str, Dict[str, Dict[str, int]]],
-                Dict[str, Dict[str, Union[Dict[str, int], Dict[str, float]]]],
-            ]
-        ] = None,
+        table_schema: TableSchema,
+        changeset: Optional[Dict[Tuple[str, ...], Tuple[bool, Tuple]]] = None,
+        extra_indexes: Optional[Dict[str, Dict[str, Dict[str, Any]]]] = None,
     ) -> Dict[str, Any]:
         """
         Queries the max/min values of a given fragment for each column, used to speed up querying.
@@ -216,7 +213,7 @@ class FragmentManager(MetadataManager):
         :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
         :return: Dict containing the object index.
         """
-        extra_indexes = extra_indexes or {}
+        extra_indexes: Optional[Dict[str, Dict[str, Dict[str, Any]]]] = extra_indexes or {}
 
         range_index = generate_range_index(self.object_engine, object_id, table_schema, changeset)
         indexes = {"range": range_index}
@@ -247,15 +244,9 @@ class FragmentManager(MetadataManager):
         namespace: str,
         insertion_hash: str,
         deletion_hash: str,
-        table_schema: List[Tuple[int, str, str, bool]],
-        changeset: Optional[Any] = None,
-        extra_indexes: Optional[
-            Union[
-                Dict[str, Dict[str, Dict[str, float]]],
-                Dict[str, Dict[str, Dict[str, int]]],
-                Dict[str, Dict[str, Union[Dict[str, int], Dict[str, float]]]],
-            ]
-        ] = None,
+        table_schema: TableSchema,
+        changeset: Optional[Dict[Tuple[str, ...], Tuple[bool, Dict[str, Any]]]] = None,
+        extra_indexes: Optional[Dict[str, Dict[str, Dict[str, Any]]]] = None,
     ) -> None:
         """
         Registers a Splitgraph object in the object tree and indexes it
@@ -292,9 +283,7 @@ class FragmentManager(MetadataManager):
         )
 
     @staticmethod
-    def _extract_deleted_rows(
-        changeset: Any, table_schema: List[Tuple[int, str, str, bool]]
-    ) -> Any:
+    def _extract_deleted_rows(changeset: Any, table_schema: TableSchema) -> Any:
         has_pk = any(c[3] for c in table_schema)
         rows = []
         for pk, data in changeset.items():
@@ -491,7 +480,7 @@ class FragmentManager(MetadataManager):
         # it's time to rewrite the table altogether?
 
         # Accumulate the diff in-memory. This might become a bottleneck in the future.
-        changeset = {}
+        changeset: Changeset = {}
         _conflate_changes(
             changeset, self.object_engine.get_pending_changes(schema, old_table.table_name)
         )
@@ -627,13 +616,7 @@ class FragmentManager(MetadataManager):
         namespace: str,
         limit: Optional[int] = None,
         after_pk: Optional[Union[Tuple[int], Tuple[datetime, int]]] = None,
-        extra_indexes: Optional[
-            Union[
-                Dict[str, Dict[str, Dict[str, float]]],
-                Dict[str, Dict[str, Dict[str, int]]],
-                Dict[str, Dict[str, Union[Dict[str, int], Dict[str, float]]]],
-            ]
-        ] = None,
+        extra_indexes: Optional[Dict[str, Dict[str, Dict[str, float]]]] = None,
     ) -> str:
         # Store the fragment in a temporary location first and hash that (much faster since PG doesn't need
         # to go through the source table multiple times for every offset)
@@ -713,13 +696,7 @@ class FragmentManager(MetadataManager):
         chunk_size: Optional[int] = 10000,
         source_schema: Optional[str] = None,
         source_table: Optional[str] = None,
-        extra_indexes: Optional[
-            Union[
-                Dict[str, Dict[str, Dict[str, float]]],
-                Dict[str, Dict[str, Dict[str, int]]],
-                Dict[str, Dict[str, Union[Dict[str, int], Dict[str, float]]]],
-            ]
-        ] = None,
+        extra_indexes: Optional[Dict[str, Dict[str, Dict[str, float]]]] = None,
     ) -> None:
         """
         Copies the full table verbatim into one or more new base fragments and registers them.
@@ -899,7 +876,9 @@ class FragmentManager(MetadataManager):
             self.object_engine.commit()
 
 
-def _conflate_changes(changeset: Dict[Any, Any], new_changes: Any) -> Any:
+def _conflate_changes(
+    changeset: Changeset, new_changes: List[Tuple[Tuple, bool, Tuple]]
+) -> Changeset:
     """
     Updates a changeset to incorporate the new changes. Assumes that the new changes are non-pk changing
     (i.e. PK-changing updates have been converted into a del + ins).

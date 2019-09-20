@@ -3,12 +3,12 @@ import itertools
 import logging
 import threading
 from contextlib import contextmanager
-from typing import Any, Callable, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Any, Callable, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING, Dict
 
 from psycopg2.sql import SQL, Identifier, Composed
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.core._common import Tracer
+from splitgraph.core._common import Tracer, TableSchema, Quals
 from splitgraph.core.fragment_manager import get_random_object_id, get_chunk_groups
 from splitgraph.core.indexing.range import quals_to_sql
 
@@ -50,17 +50,7 @@ class QueryPlan:
     qualifiers.
     """
 
-    def __init__(
-        self,
-        table: "Table",
-        quals: Optional[
-            Union[
-                Tuple[Tuple[Tuple[str, str, str]]],
-                Tuple[Tuple[Tuple[str, str, str], Tuple[str, str, str]]],
-            ]
-        ],
-        columns: Union[Tuple[str, str], Tuple[str]],
-    ) -> None:
+    def __init__(self, table: "Table", quals: Optional[Quals], columns: Tuple[str, ...]) -> None:
         self.table = table
         self.quals = quals
         self.columns = columns
@@ -85,24 +75,21 @@ class Table:
         repository: "Repository",
         image: "Image",
         table_name: str,
-        table_schema: List[List[Union[int, str]]],
+        table_schema: TableSchema,
         objects: List[str],
     ) -> None:
         self.repository = repository
         self.image = image
         self.table_name = table_name
-        self.table_schema = [tuple(entry) for entry in table_schema]
+        self.table_schema = table_schema
 
         # List of fragments this table is composed of
         self.objects = objects
 
-        self._query_plans = {}
+        self._query_plans: Dict[Tuple[Optional[Quals], Tuple[str]], QueryPlan] = {}
 
     def get_query_plan(
-        self,
-        quals: Optional[List[List[Tuple[str, str, str]]]],
-        columns: List[str],
-        use_cache: bool = True,
+        self, quals: Optional[Quals], columns: List[str], use_cache: bool = True
     ) -> QueryPlan:
         """
         Start planning a query (preliminary steps before object downloading,
@@ -113,7 +100,7 @@ class Table:
         :param use_cache: If True, will fetch the plan from the cache for the same qualifiers and columns.
         :return: QueryPlan
         """
-        quals = tuple(tuple(tuple(t) for t in qual) for qual in quals) if quals else None
+        quals = [[tuple(t) for t in qual] for qual in quals] if quals else None
         columns = tuple(columns)
         key = (quals, columns)
 
@@ -176,8 +163,8 @@ class Table:
             engine.run_sql(query, (self.table_name,))
 
     def query_indirect(
-        self, columns: List[str], quals: Optional[List[List[Tuple[str, str, str]]]]
-    ) -> Tuple[List[Any], Callable, QueryPlan]:
+        self, columns: List[str], quals: Optional[Quals]
+    ) -> Tuple[Iterator[bytes], Callable, QueryPlan]:
         """
         Run a read-only query against this table without materializing it. Instead of
         actual results, this returns a generator of SQL queries that the caller can use
@@ -193,7 +180,7 @@ class Table:
         :param columns: List of columns from this table to fetch
         :param quals: List of qualifiers in conjunctive normal form. See the documentation for
             FragmentManager.filter_fragments for the actual format.
-        :return: Generator of queries (bytes) a callback and a query plan object (containing stats
+        :return: Generator of queries (bytes), a callback and a query plan object (containing stats
             that are fully populated after the callback has been called to end the query).
         """
 
@@ -321,9 +308,7 @@ class Table:
             return itertools.chain(queries, _generate_nonsingleton_query()), release_callback, plan
 
     @contextmanager
-    def query_lazy(
-        self, columns: List[str], quals: List[List[Tuple[str, str, str]]]
-    ) -> Iterator[Iterator[Any]]:
+    def query_lazy(self, columns: List[str], quals: Quals) -> Iterator[Iterator[Dict[str, Any]]]:
         """
         Run a read-only query against this table without materializing it.
 
@@ -347,7 +332,7 @@ class Table:
         finally:
             release_callback()
 
-    def query(self, columns: List[str], quals: List[List[Tuple[str, str, str]]]):
+    def query(self, columns: List[str], quals: Quals):
         """
         Run a read-only query against this table without materializing it.
 
@@ -364,9 +349,7 @@ class Table:
 
     def _extract_singleton_fragments(
         self, object_manager: "ObjectManager", required_objects: List[str]
-    ) -> Union[
-        Tuple[List[Any], List[str]], Tuple[List[str], List[Any]], Tuple[List[str], List[str]]
-    ]:
+    ) -> Tuple[List[str], List[str]]:
         # Get fragment boundaries (min-max PKs of every fragment).
         table_pk = [(t[1], t[2]) for t in self.table_schema if t[3]]
         if not table_pk:
@@ -379,8 +362,8 @@ class Table:
                 for object_id, min_max in zip(required_objects, object_pks)
             ]
         )
-        singletons = []
-        non_singletons = []
+        singletons: List[str] = []
+        non_singletons: List[str] = []
         for group in object_groups:
             if len(group) == 1:
                 singletons.append(group[0][0])

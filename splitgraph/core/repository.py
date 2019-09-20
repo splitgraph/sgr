@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from io import TextIOWrapper
 from random import getrandbits
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, Set
 
 from psycopg2.sql import Composed
 from psycopg2.sql import SQL, Identifier
@@ -21,7 +21,7 @@ from splitgraph.core.image import Image
 from splitgraph.core.image_manager import ImageManager
 from splitgraph.core.sql import validate_import_sql
 from splitgraph.engine.postgres.engine import PostgresEngine
-from splitgraph.exceptions import CheckoutError, UninitializedEngineError
+from splitgraph.exceptions import CheckoutError, EngineInitializationError
 from ._common import (
     manage_audit_triggers,
     set_head,
@@ -165,7 +165,7 @@ class Repository:
             # there's no point in touching the audit trigger.
             try:
                 self.object_engine.discard_pending_changes(self.to_schema())
-            except UninitializedEngineError:
+            except EngineInitializationError:
                 # If the audit trigger doesn't exist,
                 logging.warning(
                     "Audit triggers don't exist on engine %s, not running uncheckout.",
@@ -534,7 +534,7 @@ class Repository:
         )
 
         # Add objects (need to come before tables: we check that objects for inserted tables are registered.
-        required_objects = set()
+        required_objects: Set[str] = set()
         for image in self.images:
             for table_name in image.get_tables():
                 required_objects.update(image.get_table(table_name).objects)

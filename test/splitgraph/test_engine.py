@@ -17,7 +17,7 @@ from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.registry import _ensure_registry_schema
 from splitgraph.engine import _prepare_engine_config
 from splitgraph.engine.postgres.engine import PostgresEngine
-from splitgraph.exceptions import UninitializedEngineError, ObjectNotFoundError
+from splitgraph.exceptions import EngineInitializationError, ObjectNotFoundError
 
 
 def test_metadata_schema(pg_repo_local):
@@ -83,21 +83,21 @@ def test_uninitialized_engine_error(local_engine_empty):
     # uninitialized engine errors rather than generic SQL errors.
     try:
         local_engine_empty.run_sql("DROP SCHEMA splitgraph_meta CASCADE")
-        with pytest.raises(UninitializedEngineError) as e:
+        with pytest.raises(EngineInitializationError) as e:
             lookup_repository("some/repo", include_local=True)
         assert "splitgraph_meta" in str(e.value)
         local_engine_empty.initialize()
         local_engine_empty.commit()
 
         local_engine_empty.run_sql("DROP SCHEMA splitgraph_api CASCADE")
-        with pytest.raises(UninitializedEngineError) as e:
+        with pytest.raises(EngineInitializationError) as e:
             ObjectManager(local_engine_empty).get_downloaded_objects()
         assert "splitgraph_api" in str(e.value)
         local_engine_empty.initialize()
         local_engine_empty.commit()
 
         local_engine_empty.run_sql("DROP SCHEMA audit CASCADE")
-        with pytest.raises(UninitializedEngineError) as e:
+        with pytest.raises(EngineInitializationError) as e:
             local_engine_empty.discard_pending_changes("some/repo")
         assert "Audit triggers" in str(e.value)
     finally:

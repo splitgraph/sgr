@@ -11,13 +11,14 @@ from contextlib import contextmanager
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING, cast
 
 from psycopg2.sql import Composed
 from psycopg2.sql import SQL, Identifier
 
 import splitgraph.config
 from splitgraph.config import CONFIG
+from splitgraph.config.keys import ConfigDict
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PostgresEngine
@@ -46,14 +47,14 @@ _ENGINE_CONFIG_DEFAULTS = {
 }
 
 
-def _prepare_engine_config(config_dict: Dict[str, Any]) -> Dict[str, Union[str, int]]:
+def _prepare_engine_config(config_dict: ConfigDict) -> Dict[str, Optional[str]]:
     result = {}
     for key in _ENGINE_SPECIFIC_CONFIG:
         if key in _ENGINE_CONFIG_DEFAULTS:
             result[key] = config_dict[_ENGINE_CONFIG_DEFAULTS[key]]
         if key in config_dict:
             result[key] = config_dict[key]
-    return result
+    return cast(Dict[str, Optional[str]], result)
 
 
 class ResultShape(Enum):
@@ -73,7 +74,7 @@ class SQLEngine(ABC):
     and loading tables."""
 
     def __init__(self) -> None:
-        self._savepoint_stack = []
+        self._savepoint_stack: List[str] = []
 
     @contextmanager
     def savepoint(self, name: str) -> Iterator[None]:
@@ -192,7 +193,7 @@ class SQLEngine(ABC):
         after_pk: Optional[Union[Tuple[datetime, int], Tuple[int]]] = None,
     ) -> None:
         """Copy a table in the same engine, optionally applying primary key constraints as well."""
-        query_args = []
+
         if not self.table_exists(target_schema, target_table):
             query = SQL("CREATE TABLE {}.{} AS SELECT * FROM {}.{}").format(
                 Identifier(target_schema),
@@ -210,6 +211,8 @@ class SQLEngine(ABC):
         pks = self.get_primary_keys(source_schema, source_table)
         chunk_key = pks or self.get_column_names_types(source_schema, source_table)
         chunk_sql = SQL("(") + SQL(",").join(Identifier(p[0]) for p in chunk_key) + SQL(")")
+
+        query_args: List[Any] = []
         if after_pk:
             # If after_pk is specified, start from after a given PK (or, if the table doesn't have
             # a PK, treat after_pk as the contents of the whole row).
@@ -595,10 +598,10 @@ class ObjectEngine:
 # Can be overridden via normal configuration routes, e.g.
 # $ SG_ENGINE=remote_engine sgr init
 # will initialize the remote engine instead.
-_ENGINE = CONFIG["SG_ENGINE"] or "LOCAL"
+_ENGINE: Union[str, "PostgresEngine"] = CONFIG["SG_ENGINE"] or "LOCAL"
 
 # Map of engine names -> Engine instances
-_ENGINES = {}
+_ENGINES: Dict[str, "PostgresEngine"] = {}
 
 
 def get_engine(
@@ -620,8 +623,10 @@ def get_engine(
     if use_fdw_params is None:
         use_fdw_params = splitgraph.config.IN_FDW
 
+    from .postgres.engine import PostgresEngine
+
     if not name:
-        if isinstance(_ENGINE, SQLEngine):
+        if isinstance(_ENGINE, PostgresEngine):
             return _ENGINE
         name = _ENGINE
     if name not in _ENGINES:
@@ -640,8 +645,6 @@ def get_engine(
             conn_params["SG_ENGINE_HOST"] = conn_params["SG_ENGINE_FDW_HOST"]
             conn_params["SG_ENGINE_PORT"] = conn_params["SG_ENGINE_FDW_PORT"]
 
-        from .postgres.engine import PostgresEngine
-
         _ENGINES[name] = PostgresEngine(conn_params=conn_params, name=name, autocommit=autocommit)
     return _ENGINES[name]
 
@@ -652,10 +655,8 @@ def switch_engine(engine: "PostgresEngine") -> Iterator[None]:
     Switch the global engine to a different one. The engine will
     get switched back on exit from the context manager.
 
-    :param engine: Name of the engine or an SQLEngine instance
+    :param engine: Engine
     """
-    if not isinstance(engine, str) and not isinstance(engine, SQLEngine):
-        raise ValueError("engine must be an engine name or an SQLEngine, not %r!" % type(engine))
     global _ENGINE
     _prev_engine = _ENGINE
     try:
@@ -663,20 +664,3 @@ def switch_engine(engine: "PostgresEngine") -> Iterator[None]:
         yield
     finally:
         _ENGINE = _prev_engine
-
-
-def get_remote_connection_params(remote_name):
-    """
-    Get connection parameters for a Splitgraph remote.
-
-    :param remote_name: Name of the remote. Must be specified in the config file.
-    :return: A tuple of (hostname, port, username, password, database)
-    """
-    pdict = CONFIG["remotes"][remote_name]
-    return (
-        pdict["SG_ENGINE_HOST"] or None,
-        int(pdict["SG_ENGINE_PORT"]) if pdict["SG_ENGINE_PORT"] else None,
-        pdict["SG_ENGINE_USER"],
-        pdict["SG_ENGINE_PWD"],
-        pdict["SG_ENGINE_DB_NAME"],
-    )

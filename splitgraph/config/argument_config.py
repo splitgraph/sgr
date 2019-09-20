@@ -20,7 +20,7 @@ def get_arg_tuples() -> List[Tuple[str, str]]:
     return [(a1, a2) for a1, a2 in zip(sys_args, sys_args[1:]) if a1 in ARG_KEYS]
 
 
-def get_argument_config_value(key: str, default_return: None = None) -> Optional[str]:
+def get_argument_config_value(key: str, default_return: Optional[str] = None) -> Optional[str]:
     """
         Get get the value of an argument, where value is the argument
         immediately following the argument matching a key in ARG_KEYS, e.g.:

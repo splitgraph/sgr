@@ -1,15 +1,17 @@
-# PG types we can run max/min on
-from datetime import date, datetime
-from decimal import Decimal
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TypeVar, TYPE_CHECKING
 
 from psycopg2.sql import Composed, SQL
 from psycopg2.sql import Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
-from splitgraph.core._common import adapt, coerce_val_to_json, ResultShape, select
+from splitgraph.core._common import adapt, coerce_val_to_json, ResultShape, select, TableSchema
 from splitgraph.engine.postgres.engine import PostgresEngine
 
+if TYPE_CHECKING:
+    pass
+
+
+# PG types we can run max/min on
 _PG_INDEXABLE_TYPES = [
     "bigint",
     "bigserial",
@@ -36,24 +38,21 @@ _PG_INDEXABLE_TYPES = [
     "timestamp with time zone",
 ]
 
+T = TypeVar("T")
+
 
 # Custom min/max functions that ignore Nones
-def _min(left: Any, right: Union[int, date, str, float]) -> Union[int, date, str, float, Decimal]:
+def _min(left: Optional[T], right: Optional[T]) -> Optional[T]:
     return right if left is None else (left if right is None else min(left, right))
 
 
-def _max(left: Any, right: Union[int, date, str, float]) -> Union[int, date, str, float, Decimal]:
+def _max(left: Optional[T], right: Optional[T]) -> Optional[T]:
     return right if left is None else (left if right is None else max(left, right))
 
 
 def _qual_to_index_clause(
-    qual: Union[Tuple[str, str, datetime], Tuple[str, str, int], Tuple[str, str, str]], ctype: str
-) -> Union[
-    Tuple[Composed, Tuple[str, int]],
-    Tuple[Composed, Tuple[str, datetime]],
-    Tuple[SQL, Tuple],
-    Tuple[Composed, Tuple[str, str]],
-]:
+    qual: Tuple[str, str, T], ctype: str
+) -> Tuple[SQL, Union[Tuple[str, T], Tuple[()]]]:
     """Convert our internal qual format into a WHERE clause that runs against an object's index entry.
     Returns a Postgres clause (as a Composable) and a tuple of arguments to be mogrified into it."""
     column_name, qual_op, value = qual
@@ -192,15 +191,16 @@ def extract_min_max_pks(engine: PostgresEngine, fragments: List[str], table_pks:
 def generate_range_index(
     object_engine: PostgresEngine,
     object_id: str,
-    table_schema: List[Tuple[int, str, str, bool]],
-    changeset: Any,
-) -> Dict[str, Any]:
+    table_schema: "TableSchema",
+    changeset: Optional[Dict[Tuple[str, ...], Tuple[bool, Dict[str, Any]]]],
+) -> Dict[str, Tuple[T, T]]:
     """
-    Calculate the minimim/maximum values of every column in the object (including deleted values).
+    Calculate the minimum/maximum values of every column in the object (including deleted values).
 
+    :param object_engine: Engine the object is located on
     :param object_id: ID of the object.
     :param table_schema: Schema of the table
-    :param changeset: Changeset (old values will be included in the index
+    :param changeset: Changeset (old values will be included in the index)
     :return: Dictionary of {column: [min, max]}
     """
     object_pk = [c[1] for c in table_schema if c[3]]

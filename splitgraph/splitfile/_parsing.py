@@ -110,7 +110,7 @@ def parse_commands(commands: str, params: Optional[Dict[str, str]] = None) -> Li
     ]
 
 
-def extract_nodes(node: Node, types: List[str]) -> Union[List[RegexNode], List[Node]]:
+def extract_nodes(node: Node, types: List[str]) -> List[Node]:
     """Crawls the parse tree and only extracts nodes of given types. Doesn't crawl further down if it reaches a
     sought type."""
     if node.expr_name in types:

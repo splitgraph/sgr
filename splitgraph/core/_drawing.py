@@ -3,7 +3,7 @@
 Routines for rendering a Splitgraph repository as a tree of images
 """
 from collections import defaultdict
-from typing import Dict
+from typing import Dict, Mapping, List
 
 from splitgraph.core.repository import Repository
 from splitgraph.exceptions import SplitGraphError
@@ -67,7 +67,7 @@ def _render_node(
 def render_tree(repository: Repository) -> None:
     """Draws the repository's commit graph as a Git-like tree."""
     # Prepare the tree structure by loading the index from the db and flipping it
-    children = defaultdict(list)
+    children: defaultdict[str, List[str]] = defaultdict(list)
     base_node = None
     head = repository.head.image_hash if repository.head else None
 

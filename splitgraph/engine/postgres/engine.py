@@ -11,12 +11,11 @@ from io import BytesIO
 from io import TextIOWrapper
 from pkgutil import get_data
 from threading import get_ident
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING
 
 import psycopg2
 from psycopg2 import DatabaseError
 from psycopg2.errors import InvalidSchemaName, UndefinedTable, DuplicateTable
-from psycopg2.extensions import connection
 from psycopg2.extras import execute_batch, Json
 from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.sql import Composed, SQL
@@ -24,10 +23,15 @@ from psycopg2.sql import Identifier
 from tqdm import tqdm
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCHEMA
-from splitgraph.core._common import select, ensure_metadata_schema, META_TABLES
+from splitgraph.core._common import select, ensure_metadata_schema, META_TABLES, TableSchema
 from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
-from splitgraph.exceptions import UninitializedEngineError, ObjectNotFoundError
+from splitgraph.exceptions import EngineInitializationError, ObjectNotFoundError
 from splitgraph.hooks.mount_handlers import mount_postgres
+
+if TYPE_CHECKING:
+    # Import the connection object under a different name as it shadows
+    # the connection property otherwise
+    from psycopg2._psycopg import connection as Connection
 
 _AUDIT_SCHEMA = "audit"
 _AUDIT_TRIGGER = "resources/audit_trigger.sql"
@@ -55,13 +59,22 @@ RETRY_DELAY = 5
 RETRY_AMOUNT = 12
 
 
+def _get_data_safe(package: str, resource: str) -> bytes:
+    result = get_data(package, resource)
+    if result is None:
+        raise EngineInitializationError(
+            "Resource %s not found in package %s!" % (resource, package)
+        )
+    return result
+
+
 class PsycopgEngine(SQLEngine):
     """Postgres SQL engine backed by a Psycopg connection."""
 
     def __init__(
         self,
         name: str,
-        conn_params: Optional[Dict[str, Union[str, int]]] = None,
+        conn_params: Optional[Dict[str, Optional[str]]] = None,
         pool: None = None,
         autocommit: bool = False,
     ) -> None:
@@ -90,7 +103,7 @@ class PsycopgEngine(SQLEngine):
             # objects from S3, since that is done in multiple threads and these connections are short-lived.
             server, port, username, password, dbname = (
                 conn_params["SG_ENGINE_HOST"],
-                conn_params["SG_ENGINE_PORT"],
+                int(conn_params["SG_ENGINE_PORT"]),
                 conn_params["SG_ENGINE_USER"],
                 conn_params["SG_ENGINE_PWD"],
                 conn_params["SG_ENGINE_DB_NAME"],
@@ -113,7 +126,7 @@ class PsycopgEngine(SQLEngine):
             self.name,
             self.conn_params["SG_ENGINE_USER"],
             self.conn_params["SG_ENGINE_HOST"],
-            str(self.conn_params["SG_ENGINE_PORT"]),
+            self.conn_params["SG_ENGINE_PORT"],
             self.conn_params["SG_ENGINE_DB_NAME"],
         )
 
@@ -144,7 +157,7 @@ class PsycopgEngine(SQLEngine):
         )
 
     @property
-    def connection(self) -> connection:
+    def connection(self) -> "Connection":
         """Engine-internal Psycopg connection."""
         pool_delay = POOL_RETRY_DELAY_BASE
         retries = 0
@@ -229,19 +242,19 @@ class PsycopgEngine(SQLEngine):
                     # This is not a neat way to do this but other methods involve placing wrappers around
                     # anything that sends queries to splitgraph_meta or audit schemas.
                     if "audit." in str(e):
-                        raise UninitializedEngineError(
+                        raise EngineInitializationError(
                             "Audit triggers not found on the engine. Has the engine been initialized?"
                         ) from e
                     for meta_table in META_TABLES:
                         if "splitgraph_meta.%s" % meta_table in str(e):
-                            raise UninitializedEngineError(
+                            raise EngineInitializationError(
                                 "splitgraph_meta not found on the engine. Has the engine been initialized?"
                             ) from e
                     if "splitgraph_meta" in str(e):
                         raise ObjectNotFoundError(e)
                 elif isinstance(e, InvalidSchemaName):
                     if "splitgraph_api." in str(e):
-                        raise UninitializedEngineError(
+                        raise EngineInitializationError(
                             "splitgraph_api not found on the engine. Has the engine been initialized?"
                         ) from e
                 raise
@@ -318,7 +331,7 @@ class PsycopgEngine(SQLEngine):
             )
         stream.write(";\n")
 
-    def _admin_conn(self) -> connection:
+    def _admin_conn(self) -> "Connection":
         retries = 0
         while True:
             try:
@@ -392,24 +405,25 @@ class PsycopgEngine(SQLEngine):
 
         logging.info("Ensuring the metadata schema at %s exists...", SPLITGRAPH_META_SCHEMA)
         ensure_metadata_schema(self)
+
         # Install the push/pull API functions
         logging.info("Installing the push/pull API functions...")
-        push_pull = get_data(_PACKAGE, _PUSH_PULL)
-        self.run_sql(push_pull.decode("utf-8"), return_shape=ResultShape.NONE)
+        push_pull = _get_data_safe(_PACKAGE, _PUSH_PULL)
+        self.run_sql(push_pull.decode("utf-8"))
 
         if skip_object_handling:
             logging.info("Skipping installation of audit triggers/CStore as specified.")
         else:
             # Install CStore management routines
             logging.info("Installing CStore management functions...")
-            cstore = get_data(_PACKAGE, _CSTORE)
-            self.run_sql(cstore.decode("utf-8"), return_shape=ResultShape.NONE)
+            cstore = _get_data_safe(_PACKAGE, _CSTORE)
+            self.run_sql(cstore.decode("utf-8"))
 
             # Install the audit trigger if it doesn't exist
             if not self.schema_exists(_AUDIT_SCHEMA):
                 logging.info("Installing the audit trigger...")
-                audit_trigger = get_data(_PACKAGE, _AUDIT_TRIGGER)
-                self.run_sql(audit_trigger.decode("utf-8"), return_shape=ResultShape.NONE)
+                audit_trigger = _get_data_safe(_PACKAGE, _AUDIT_TRIGGER)
+                self.run_sql(audit_trigger.decode("utf-8"))
             else:
                 logging.info("Skipping the audit trigger as it's already installed.")
 
@@ -494,14 +508,16 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
         else:
             self.run_sql(query, (schema,), return_shape=ResultShape.NONE)
 
-    def get_pending_changes(self, schema: str, table: str, aggregate: bool = False) -> Any:
+    def get_pending_changes(
+        self, schema: str, table: str, aggregate: bool = False
+    ) -> Union[List[Tuple[int, int]], List[Tuple[Tuple, int, Dict]]]:
         """
         Return pending changes for a given tracked table
 
         :param schema: Schema the table belongs to
         :param table: Table to return changes for
         :param aggregate: Whether to aggregate changes or return them completely
-        :return: If aggregate is True: tuple with numbers of `(added_rows, removed_rows, updated_rows)`.
+        :return: If aggregate is True: List of tuples of (change_type, number of rows).
             If aggregate is False: List of (primary_key, change_type, change_data)
         """
         if aggregate:
@@ -517,7 +533,7 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
             ]
 
         ri_cols, _ = zip(*self.get_change_key(schema, table))
-        result = []
+        result: List[Tuple[Tuple, int, Dict]] = []
         for action, row_data, changed_fields in self.run_sql(
             SQL(
                 "SELECT action, row_data, changed_fields FROM {}.{} "
@@ -543,21 +559,25 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
 class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
     """An implementation of the Postgres engine for Splitgraph"""
 
-    def get_object_schema(self, object_id: str) -> List[Tuple[int, str, str, bool]]:
-        return [
-            tuple(t)
-            for t in json.loads(
-                self.run_sql(
-                    "SELECT splitgraph_api.get_object_schema(%s)",
-                    (object_id,),
-                    return_shape=ResultShape.ONE_ONE,
-                )
-            )
-        ]
+    def get_object_schema(self, object_id: str) -> "TableSchema":
+        result: "TableSchema" = []
 
-    def _set_object_schema(
-        self, object_id: str, schema_spec: List[Tuple[int, str, str, bool]]
-    ) -> None:
+        for ordinal, column_name, column_type, is_pk in json.loads(
+            self.run_sql(
+                "SELECT splitgraph_api.get_object_schema(%s)",
+                (object_id,),
+                return_shape=ResultShape.ONE_ONE,
+            )
+        ):
+            assert isinstance(ordinal, int)
+            assert isinstance(column_name, str)
+            assert isinstance(column_type, str)
+            assert isinstance(is_pk, bool)
+            result.append((ordinal, column_name, column_type, is_pk))
+
+        return result
+
+    def _set_object_schema(self, object_id: str, schema_spec: "TableSchema") -> None:
         self.run_sql(
             "SELECT splitgraph_api.set_object_schema(%s, %s)", (object_id, json.dumps(schema_spec))
         )
@@ -567,7 +587,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         object_id: str,
         schema: str,
         table: None = None,
-        schema_spec: Optional[List[Tuple[int, str, str, bool]]] = None,
+        schema_spec: Optional["TableSchema"] = None,
         if_not_exists: bool = False,
     ):
         """
@@ -684,7 +704,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         object_id: str,
         table: None = None,
         schema: str = SPLITGRAPH_META_SCHEMA,
-        schema_spec: Optional[List[Tuple[int, str, str, bool]]] = None,
+        schema_spec: Optional["TableSchema"] = None,
     ) -> None:
         """
         Mount an object from local storage as a foreign table.
@@ -843,9 +863,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         self.delete_table(source_schema, source_table)
 
     @staticmethod
-    def _schema_spec_to_cols(
-        schema_spec: List[Tuple[int, str, str, bool]]
-    ) -> Union[Tuple[List[str], List[Any]], Tuple[List[str], List[str]]]:
+    def _schema_spec_to_cols(schema_spec: "TableSchema") -> Tuple[List[str], List[str]]:
         pk_cols = [p[1] for p in schema_spec if p[3]]
         non_pk_cols = [p[1] for p in schema_spec if not p[3]]
 
@@ -859,7 +877,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         source_table: str,
         target_schema: str,
         target_table: str,
-        cols: Union[Tuple[List[str], List[Any]], Tuple[List[str], List[str]]],
+        cols: Tuple[List[str], List[str]],
         extra_quals: Optional[Composed] = None,
     ) -> Composed:
         ri_cols, non_ri_cols = cols
@@ -909,7 +927,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         target_table: str,
         extra_quals: Optional[Composed] = None,
         extra_qual_args: Optional[Tuple[str]] = None,
-        schema_spec: Optional[List[Tuple[int, str, str, bool]]] = None,
+        schema_spec: Optional["TableSchema"] = None,
     ) -> None:
         if not objects:
             return
@@ -1030,7 +1048,7 @@ def _split_ri_cols(
     action: str,
     row_data: Dict[str, Any],
     changed_fields: Optional[Dict[str, str]],
-    ri_cols: Union[Tuple[str], Tuple[str, str, str, str], Tuple[str, str], Tuple[str, str, str]],
+    ri_cols: Tuple[str, ...],
 ) -> Any:
     """
     :return: `(ri_data, non_ri_data)`: a tuple of 2 dictionaries:
@@ -1062,15 +1080,11 @@ def _split_ri_cols(
 
 
 def _recalculate_disjoint_ri_cols(
-    ri_cols: Union[Tuple[str, str, str, str], Tuple[str, str]],
-    ri_data: Dict[str, Union[str, int]],
-    non_ri_data: Dict[str, str],
-    row_data: Dict[str, Union[str, int]],
-) -> Union[
-    Tuple[Dict[str, Union[str, bool]], Dict[Any, Any]],
-    Tuple[Dict[str, Union[str, int]], Dict[Any, Any]],
-    Tuple[Dict[str, Union[str, int]], Dict[str, str]],
-]:
+    ri_cols: Tuple[str, ...],
+    ri_data: Dict[str, Any],
+    non_ri_data: Dict[str, Any],
+    row_data: Dict[str, Any],
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     # If part of the PK has been updated (is in the non_ri_cols/vals), we have to instead
     # apply the update to the PK (ri_cols/vals) and recalculate the new full new tuple
     # (by applying the update to row_data).
@@ -1094,8 +1108,8 @@ def _convert_audit_change(
     action: str,
     row_data: Dict[str, Any],
     changed_fields: Optional[Dict[str, str]],
-    ri_cols: Union[Tuple[str], Tuple[str, str, str, str], Tuple[str, str], Tuple[str, str, str]],
-) -> Any:
+    ri_cols: Tuple[str, ...],
+) -> List[Tuple[Tuple, bool, Dict[str, str]]]:
     """
     Converts the audit log entry into Splitgraph's internal format.
 

@@ -3,15 +3,16 @@
 import logging
 from collections import namedtuple
 from contextlib import contextmanager
+from datetime import datetime
 from random import getrandbits
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING, NamedTuple
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA, FDW_CLASS
 from splitgraph.engine import ResultShape
-from splitgraph.exceptions import SplitGraphError
+from splitgraph.exceptions import SplitGraphError, TableNotFoundError
 from splitgraph.hooks.mount_handlers import init_fdw
 from ._common import set_tag, select, manage_audit, set_head
 from .table import Table
@@ -26,19 +27,31 @@ _PROV_QUERY = SQL(
 ).format(Identifier(SPLITGRAPH_META_SCHEMA))
 
 
-class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_engine"])):
+class Image(NamedTuple):
     """
     Represents a Splitgraph image. Should't be created directly, use Image-loading methods in the
     :class:`splitgraph.core.repository.Repository` class instead.
     """
 
-    def __new__(cls, *args, **kwargs) -> "Image":
-        kwargs["engine"] = kwargs["repository"].engine
-        kwargs["object_engine"] = kwargs["repository"].object_engine
-        self = super(Image, cls).__new__(cls, *args, **kwargs)
-        return self
+    image_hash: str
+    parent_id: str
+    created: datetime
+    comment: str
+    provenance_type: str
+    provenance_data: dict
+    repository: "Repository"
 
-    def __eq__(self, other: "Image") -> bool:
+    @property
+    def engine(self):
+        return self.repository.engine
+
+    @property
+    def object_engine(self):
+        return self.repository.object_engine
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Image):
+            return NotImplemented
         return self.image_hash == other.image_hash and self.repository == other.repository
 
     def get_parent_children(self) -> Tuple[str, List[Any]]:
@@ -68,7 +81,7 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
         )
         return result or []
 
-    def get_table(self, table_name: str) -> Optional[Table]:
+    def get_table(self, table_name: str) -> Table:
         """
         Returns a Table object representing a version of a given table.
         Contains a list of objects that the table is linked to and the table's schema.
@@ -88,7 +101,10 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
             return_shape=ResultShape.ONE_MANY,
         )
         if not result:
-            return None
+            raise TableNotFoundError(
+                "Image %s:%s does not have a table %s!"
+                % (self.repository, self.image_hash, table_name)
+            )
         table_schema, objects = result
         return Table(self.repository, self, table_name, table_schema, objects)
 
@@ -221,7 +237,7 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
     def get_log(self) -> List["Image"]:
         """Repeatedly gets the parent of a given image until it reaches the bottom."""
         result = [self]
-        while result[-1].parent_id:
+        while result[-1].parent_id is not None:
             result.append(self.repository.images.by_hash(result[-1].parent_id))
         return result
 

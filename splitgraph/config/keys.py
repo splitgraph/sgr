@@ -1,3 +1,5 @@
+from typing import Dict, Union
+
 DEFAULTS = {
     # Name of the engine that the sgr client uses (can be overridden to make
     # the default global engine point to e.g the remote engine).
@@ -104,3 +106,6 @@ ARG_KEYS = list(ARGUMENT_KEY_MAP.keys())
 KEY_ARGUMENT_MAP = {v: k for k, v in ARGUMENT_KEY_MAP.items()}
 
 # ini keys that override environment keys must be same (including SG_)
+
+
+ConfigDict = Dict[str, Union[str, Dict[str, Dict[str, str]]]]

@@ -2,7 +2,7 @@
 Routines for managing Splitgraph engines, including looking up repositories and managing objects.
 """
 import logging
-from typing import Dict, List, Tuple, Union, TYPE_CHECKING
+from typing import Dict, List, Tuple, Union, TYPE_CHECKING, Optional
 
 from psycopg2.sql import SQL, Identifier
 
@@ -14,7 +14,7 @@ from ._common import select
 if TYPE_CHECKING:
     from splitgraph.core.image import Image
     from splitgraph.core.repository import Repository
-    from splitgraph.engine.postgres.engine import PostgresEngine
+    from splitgraph.engine.postgres.engine import PsycopgEngine
 
 
 def _parse_paths_overrides(
@@ -102,12 +102,8 @@ def lookup_repository(name: str, include_local: bool = False) -> "Repository":
 
 
 def get_current_repositories(
-    engine: "PostgresEngine"
-) -> Union[
-    List[Tuple["Repository", "Image"]],
-    List[Union[Tuple["Repository", None], Tuple["Repository", "Image"]]],
-    List[Tuple["Repository", None]],
-]:
+    engine: "PsycopgEngine"
+) -> List[Tuple["Repository", Optional["Image"]]]:
     """
     Lists all repositories currently in the engine.
 

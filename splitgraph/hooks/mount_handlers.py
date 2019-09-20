@@ -16,7 +16,7 @@ from splitgraph.exceptions import MountHandlerError
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PostgresEngine
 
-_MOUNT_HANDLERS = {}
+_MOUNT_HANDLERS: Dict[str, Callable] = {}
 
 
 def get_mount_handler(mount_handler: str) -> Callable:
@@ -203,7 +203,7 @@ def mount_mysql(
     username: str,
     password: str,
     remote_schema: str,
-    tables: None = None,
+    tables: List[str] = None,
 ) -> None:
     """
     Mount a MySQL database.

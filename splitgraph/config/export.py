@@ -5,12 +5,9 @@ from splitgraph.config.keys import SENSITIVE_KEYS, KEYS, DEFAULTS
 
 
 def _kv_to_str(key: str, value: Optional[Union[str, float, int]], no_shielding: bool) -> str:
-    if not value:
-        value_str = ""
-    elif key in SENSITIVE_KEYS and not no_shielding:
-        value_str = value[0] + "*******"
-    else:
-        value_str = value
+    value_str = str(value) or ""
+    if key in SENSITIVE_KEYS and not no_shielding:
+        value_str = value_str[0] + "*******"
     return "%s=%s" % (key, value_str)
 
 

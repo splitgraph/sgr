@@ -93,14 +93,13 @@ class ImageManager:
             return None
         return self.by_hash(result)
 
-    def by_hash(self, image_hash: str, raise_on_none: bool = True) -> Optional[Image]:
+    def by_hash(self, image_hash: str) -> Image:
         """
         Returns an image corresponding to a given (possibly shortened) image hash. If the image hash
         is ambiguous, raises an error. If the image does not exist, raises an error or returns None.
 
         :param image_hash: Image hash (can be shortened).
-        :param raise_on_none: Whether to raise if the image doesn't exist.
-        :return: Image object or None
+        :return: Image
         """
         result = self.engine.run_sql(
             select(
@@ -114,9 +113,7 @@ class ImageManager:
             return_shape=ResultShape.MANY_MANY,
         )
         if not result:
-            if raise_on_none:
-                raise ImageNotFoundError("No images starting with %s found!" % image_hash)
-            return None
+            raise ImageNotFoundError("No images starting with %s found!" % image_hash)
         if len(result) > 1:
             result = "Multiple suitable candidates found: \n * " + "\n * ".join(result)
             raise ImageNotFoundError(result)

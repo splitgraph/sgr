@@ -2,12 +2,10 @@
 Hooks for registering handlers to upload/download objects from external locations into Splitgraph's cache.
 """
 from importlib import import_module
-from typing import Any, Dict, Type
+from typing import Any, Dict, Type, Callable
 
 from splitgraph.config import CONFIG
 from splitgraph.exceptions import ExternalHandlerError
-
-_EXTERNAL_OBJECT_HANDLERS = {}
 
 
 class ExternalObjectHandler:
@@ -54,6 +52,9 @@ class ExternalObjectHandler:
         """
 
 
+_EXTERNAL_OBJECT_HANDLERS: Dict[str, Callable[..., ExternalObjectHandler]] = {}
+
+
 def get_external_object_handler(name: str, handler_params: Dict[Any, Any]) -> ExternalObjectHandler:
     """Load an external protocol handler by its name, initializing it with optional parameters."""
     try:
@@ -82,7 +83,9 @@ def get_external_object_handler(name: str, handler_params: Dict[Any, Any]) -> Ex
             ) from e
 
 
-def register_upload_download_handler(name: str, handler_class: Type[ExternalObjectHandler]) -> None:
+def register_upload_download_handler(
+    name: str, handler_class: Callable[..., ExternalObjectHandler]
+) -> None:
     """Register an external protocol handler. See the docstring for `get_upload_download_handler` for the required
     signatures of the handler functions."""
     global _EXTERNAL_OBJECT_HANDLERS

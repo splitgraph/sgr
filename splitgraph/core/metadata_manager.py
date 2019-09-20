@@ -3,12 +3,13 @@ Classes related to managing table/image/object metadata tables.
 """
 import itertools
 from collections import namedtuple
-from typing import Any, Dict, List, Optional, Set, Tuple, Union, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Set, Tuple, Union, TYPE_CHECKING, NamedTuple
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_API_SCHEMA, SPLITGRAPH_META_SCHEMA
+from splitgraph.core._common import TableSchema
 from ._common import select, ResultShape
 
 if TYPE_CHECKING:
@@ -27,8 +28,16 @@ OBJECT_COLS = [
 ]
 
 
-class Object(namedtuple("Object", OBJECT_COLS)):
+class Object(NamedTuple):
     """Represents a Splitgraph object that tables are composed of."""
+
+    object_id: str
+    format: str
+    namespace: str
+    size: int
+    insertion_hash: str
+    deletion_hash: str
+    index: Dict[str, Any]
 
 
 class MetadataManager:
@@ -63,13 +72,7 @@ class MetadataManager:
         )
 
     def register_tables(
-        self,
-        repository: "Repository",
-        table_meta: Union[
-            List[Tuple[str, str, List[List[Union[int, str]]], List[str]]],
-            List[Tuple[str, str, List[Tuple[int, str, str, bool]], List[Any]]],
-            List[Tuple[str, str, List[Tuple[int, str, str, bool]], List[str]]],
-        ],
+        self, repository: "Repository", table_meta: List[Tuple[str, str, TableSchema, List[str]]]
     ) -> None:
         """
         Links tables in an image to physical objects that they are stored as.

@@ -5,7 +5,7 @@ import struct
 from datetime import datetime
 from hashlib import sha256
 from math import ceil, log, exp
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 from psycopg2.sql import SQL, Identifier
 
@@ -29,12 +29,7 @@ def _hash_value(value: Union[datetime, int, str]) -> Tuple[bytes, bytes]:
 def generate_bloom_index(
     engine: PostgresEngine,
     object_id: str,
-    changeset: Optional[
-        Union[
-            Dict[Tuple[int], Tuple[bool, Dict[str, Union[str, int]]]],
-            Dict[Tuple[int], Tuple[bool, Dict[Any, Any]]],
-        ]
-    ],
+    changeset: Optional[Dict[Tuple[str, ...], Tuple[bool, Dict[str, Any]]]],
     column: str,
     probability: Optional[float] = None,
     size: Optional[int] = None,
@@ -111,6 +106,10 @@ def generate_bloom_index(
         # 8 since we'll be using a byte array for operations + to store the signature.
         size = int(ceil(-len(distinct_items) * log(probability) / log(2) ** 2 / 8))
 
+    # For mypy: we've asserted previously that either probability or size are specified
+    # and we calculate the size from the probability, so size is no longer Optional[int].
+    size = cast(int, size)
+
     size_bits = size * 8
     no_funcs = int(ceil(log(2) * size_bits / len(distinct_items)))
 
@@ -126,7 +125,7 @@ def generate_bloom_index(
     return no_funcs, base64.b64encode(result).decode("ascii")
 
 
-def describe(index_tuple: List[Union[int, str]]) -> str:
+def describe(index_tuple: Tuple[int, str]) -> str:
     """
     Returns a pretty-printed summary of the bloom filter
 

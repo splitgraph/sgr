@@ -5,7 +5,19 @@ import math
 from collections import defaultdict
 from contextlib import contextmanager
 from datetime import datetime as dt
-from typing import Any, Dict, Iterator, List, Optional, Set, Tuple, Union, TYPE_CHECKING
+from typing import (
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+    TYPE_CHECKING,
+    cast,
+    DefaultDict,
+)
 
 from psycopg2.sql import SQL, Identifier
 
@@ -37,7 +49,7 @@ class ObjectManager(FragmentManager):
         super().__init__(object_engine, metadata_engine)
 
         # Cache size in bytes
-        self.cache_size = float(CONFIG["SG_OBJECT_CACHE_SIZE"]) * 1024 * 1024
+        self.cache_size = int(CONFIG["SG_OBJECT_CACHE_SIZE"]) * 1024 * 1024
 
         # 0 to infinity; higher means objects with smaller sizes are more likely to
         # get evicted than objects that haven't been used for a while.
@@ -418,7 +430,7 @@ class ObjectManager(FragmentManager):
             ).format(Identifier(SPLITGRAPH_META_SCHEMA))
             + SQL(",".join(itertools.repeat("%s", len(objects))))
             + SQL(") RETURNING object_id"),
-            [now] + objects,
+            cast(List[Any], [now]) + objects,
             return_shape=ResultShape.MANY_ONE,
         )
         claimed = claimed or []
@@ -450,7 +462,7 @@ class ObjectManager(FragmentManager):
                     + ",".join(itertools.repeat("%s", len(objects)))
                     + ")"
                 ).format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                [is_ready] + list(objects),
+                cast(List[Any], [is_ready]) + list(objects),
             )
 
     def _release_objects(self, objects: List[str]) -> None:
@@ -738,10 +750,10 @@ def _fetch_external_objects(
     engine: "PostgresEngine",
     source_engine: "PostgresEngine",
     object_locations: List[Tuple[str, str, str]],
-    handler_params: Dict[Any, Any],
+    handler_params: Dict[str, Any],
 ) -> List[str]:
     non_remote_objects = []
-    non_remote_by_method = defaultdict(list)
+    non_remote_by_method: DefaultDict[str, List[Tuple[str, str]]] = defaultdict(list)
     for object_id, object_url, protocol in object_locations:
         non_remote_by_method[protocol].append((object_id, object_url))
         non_remote_objects.append(object_id)

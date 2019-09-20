@@ -8,7 +8,7 @@ from splitgraph.core._common import Tracer
 from splitgraph.core.engine import lookup_repository, repository_exists
 from splitgraph.core.metadata_manager import Object
 from splitgraph.core.repository import Repository
-from splitgraph.exceptions import RepositoryNotFoundError, UninitializedEngineError
+from splitgraph.exceptions import RepositoryNotFoundError, EngineInitializationError
 
 
 def test_repo_lookup_override(remote_engine):
@@ -193,7 +193,7 @@ def test_remove_with_no_audit_triggers(local_engine_empty):
         local_engine_empty.run_sql("DROP SCHEMA audit CASCADE")
         local_engine_empty.commit()
         # This still raises
-        with pytest.raises(UninitializedEngineError):
+        with pytest.raises(EngineInitializationError):
             local_engine_empty.discard_pending_changes("some/repo")
 
         # This doesn't.
