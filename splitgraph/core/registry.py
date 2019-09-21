@@ -3,7 +3,7 @@ Functions for communicating with the remote Splitgraph catalog
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING, NamedTuple, cast
+from typing import Dict, List, Optional, Tuple, Union, TYPE_CHECKING, NamedTuple, cast
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier

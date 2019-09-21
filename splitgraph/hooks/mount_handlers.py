@@ -5,11 +5,11 @@ in the command line tool (via `sgr mount`) and in the Splitfile interpreter (via
 
 import logging
 from importlib import import_module
-from typing import Callable, Dict, List, Optional, Union, TYPE_CHECKING
+from typing import Callable, Dict, List, Optional, Union, TYPE_CHECKING, cast
 
 from psycopg2.sql import Identifier, SQL
 
-from splitgraph.config import PG_USER, CONFIG
+from splitgraph.config import PG_USER, CONFIG, get_all_in_section
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import MountHandlerError
 
@@ -265,7 +265,10 @@ def mount(
 
 def _register_default_handlers() -> None:
     # Register the mount handlers from the config.
-    for handler_name, handler_func_name in CONFIG.get("mount_handlers", {}).items():
+    for handler_name, handler_func_name_unk in get_all_in_section(CONFIG, "mount_handlers").items():
+        assert isinstance(handler_func_name_unk, str)
+        handler_func_name: str = cast(str, handler_func_name_unk)
+
         ix = handler_func_name.rindex(".")
         try:
             handler_func = getattr(

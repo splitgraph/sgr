@@ -103,7 +103,7 @@ class PsycopgEngine(SQLEngine):
             # objects from S3, since that is done in multiple threads and these connections are short-lived.
             server, port, username, password, dbname = (
                 conn_params["SG_ENGINE_HOST"],
-                int(conn_params["SG_ENGINE_PORT"]),
+                conn_params["SG_ENGINE_PORT"],
                 conn_params["SG_ENGINE_USER"],
                 conn_params["SG_ENGINE_PWD"],
                 conn_params["SG_ENGINE_DB_NAME"],
@@ -113,7 +113,7 @@ class PsycopgEngine(SQLEngine):
                 minconn=0,
                 maxconn=conn_params.get("SG_ENGINE_POOL", CONFIG["SG_ENGINE_POOL"]),
                 host=server,
-                port=port,
+                port=int(cast(int, port)) if port is not None else None,
                 user=username,
                 password=password,
                 dbname=dbname,
@@ -624,10 +624,11 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             Identifier(CSTORE_SERVER)
         )
 
+        object_path = self.conn_params["SG_ENGINE_OBJECT_PATH"]
+        assert object_path is not None
+
         with self.connection.cursor() as cur:
-            return cur.mogrify(
-                query, ("pglz", os.path.join(self.conn_params["SG_ENGINE_OBJECT_PATH"], object_id))
-            )
+            return cur.mogrify(query, ("pglz", os.path.join(object_path, object_id)))
 
     def dump_object(self, object_id: str, stream: TextIOWrapper, schema: str) -> None:
         schema_spec = self.get_object_schema(object_id)

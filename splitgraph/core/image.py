@@ -1,7 +1,6 @@
 """Image representation and provenance"""
 
 import logging
-from collections import namedtuple
 from contextlib import contextmanager
 from datetime import datetime
 from random import getrandbits
@@ -435,6 +434,7 @@ def _prov_command_to_splitfile(
     from splitgraph.core.repository import Repository
 
     if prov_type == "IMPORT":
+        assert isinstance(prov_data, dict)
         repo, image = (
             Repository(cast(str, prov_data["source_namespace"]), cast(str, prov_data["source"])),
             cast(str, prov_data["source_hash"]),
@@ -450,8 +450,10 @@ def _prov_command_to_splitfile(
         )
         return result
     if prov_type == "FROM":
+        assert isinstance(prov_data, dict)
         repo = Repository(cast(str, prov_data["source_namespace"]), cast(str, prov_data["source"]))
         return "FROM %s:%s" % (str(repo), source_replacement.get(repo, image_hash))
     if prov_type == "SQL":
+        assert isinstance(prov_data, str)
         return "SQL " + cast(str, prov_data).replace("\n", "\\\n")
     raise SplitGraphError("Cannot reconstruct provenance %s!" % prov_type)

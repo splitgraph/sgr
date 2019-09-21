@@ -1,6 +1,7 @@
 # engine params
-from typing import Optional, Union, Dict, Any
+from typing import Optional, Union, Dict, Any, cast
 
+from splitgraph.config import get_singleton
 from .argument_config import get_argument_config_value
 from .config_file_config import get_config_dict_from_config_file
 from .default_config import get_default_config_value
@@ -43,7 +44,7 @@ def update_config_dict_from_arguments(config_dict: ConfigDict) -> ConfigDict:
         for k in KEYS
         if get_argument_config_value(k) is not None
     }
-    new_config_dict = patch_config(config_dict, argument_config_dict)
+    new_config_dict = patch_config(config_dict, cast(ConfigDict, argument_config_dict))
     return new_config_dict
 
 
@@ -60,7 +61,7 @@ def update_config_dict_from_env_vars(config_dict: ConfigDict) -> ConfigDict:
         for k in KEYS
         if get_environment_config_value(k) is not None
     }
-    new_config_dict = patch_config(config_dict, argument_config_dict)
+    new_config_dict = patch_config(config_dict, cast(ConfigDict, argument_config_dict))
 
     return new_config_dict
 
@@ -84,15 +85,14 @@ def create_config_dict() -> ConfigDict:
         Create and return a dict of all known config values
     """
 
-    config_dict = {k: lazy_get_config_value(k) for k in ALL_KEYS}
+    initial_dict = {k: lazy_get_config_value(k) for k in ALL_KEYS}
+    config_dict = cast(ConfigDict, {k: v for k, v in initial_dict.items() if v is not None})
 
-    sg_config_file = config_dict.get("SG_CONFIG_FILE", None)
-
-    # if not sg_config_file:
-    #     return config_dict
-
-    if sg_config_file:
+    try:
+        sg_config_file = get_singleton(config_dict, "SG_CONFIG_FILE")
         config_dict = update_config_dict_from_file(config_dict, sg_config_file)
+    except KeyError:
+        pass
 
     config_dict = update_config_dict_from_env_vars(config_dict)
     config_dict = update_config_dict_from_arguments(config_dict)

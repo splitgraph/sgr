@@ -6,11 +6,11 @@ import json
 from hashlib import sha256
 from importlib import import_module
 from random import getrandbits
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, cast
 
 from parsimonious.nodes import Node
 
-from splitgraph.config import CONFIG
+from splitgraph.config import CONFIG, get_all_in_section
 from splitgraph.core.engine import repository_exists, lookup_repository
 from splitgraph.core.image import Image
 from splitgraph.core.repository import Repository, clone
@@ -107,7 +107,6 @@ def _execute_sql(node: Node, output: Repository) -> None:
     # Since we handle the "input" hashing in the import step, we don't need to care about the sources here.
     # Later on, we could enhance the caching and base the hash of the command on the hashes of objects that
     # definitely go there as sources.
-    assert output.head is not None
     node_contents = extract_nodes(node, ["non_newline"])[0].text
     if node.expr_name == "sql_file":
         print("Loading the SQL commands from %s" % node_contents)
@@ -119,7 +118,7 @@ def _execute_sql(node: Node, output: Repository) -> None:
     else:
         sql_command = node_contents
     validate_splitfile_sql(sql_command)
-    output_head = output.head.image_hash
+    output_head = output.head_strict.image_hash
     target_hash = _combine_hashes([output_head, sha256(sql_command.encode("utf-8")).hexdigest()])
 
     def _calc():
@@ -132,7 +131,6 @@ def _execute_sql(node: Node, output: Repository) -> None:
 
 
 def _execute_from(node: Node, output: Repository) -> Repository:
-    assert output.head is not None
     interesting_nodes = extract_nodes(node, ["repo_source", "repository"])
     repo_source = get_first_or_none(interesting_nodes, "repo_source")
     output_node = get_first_or_none(interesting_nodes, "repository")
@@ -161,7 +159,7 @@ def _execute_from(node: Node, output: Repository) -> Repository:
         # the output has just had the base commit (000...) created in it, that commit will be the latest.
         clone(source_repo, local_repository=output, download_all=False)
         output.images.by_hash(source_repo.images[tag_or_hash].image_hash).checkout()
-        output.head.set_provenance("FROM", source=source_repo)
+        output.head_strict.set_provenance("FROM", source=source_repo)
     else:
         # FROM EMPTY AS repository -- initializes an empty repository (say to create a table or import
         # the results of a previous stage in a multistage build.
@@ -237,7 +235,6 @@ def _execute_repo_import(
     table_aliases: List[str],
     table_queries: List[bool],
 ) -> None:
-    assert target_repository.head is not None
     # Don't use the actual routine here as we want more control: clone the remote repo in order to turn
     # the tag into an actual hash
 
@@ -264,7 +261,7 @@ def _execute_repo_import(
                 source_repo.pull()
             source_hash = source_repo.images[tag_or_hash].image_hash
             source_mountpoint = source_repo
-        output_head = target_repository.head.image_hash
+        output_head = target_repository.head_strict.image_hash
         target_hash = _combine_hashes(
             [output_head, source_hash]
             + [sha256(n.encode("utf-8")).hexdigest() for n in table_names + table_aliases]
@@ -302,7 +299,8 @@ def _execute_custom(node: Node, output: Repository) -> None:
     command, args = parse_custom_command(node)
 
     # Locate the command in the config file and instantiate it.
-    cmd_fq_class = CONFIG.get("commands", {}).get(command)
+    cmd_fq_class: str = cast(str, get_all_in_section(CONFIG, "commands").get(command))
+    assert isinstance(cmd_fq_class, str)
     if not cmd_fq_class:
         raise SplitfileError(
             "Custom command {0} not found in the config! Make sure you add an entry to your"

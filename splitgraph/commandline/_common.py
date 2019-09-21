@@ -1,10 +1,10 @@
 """
 Various common functions used by the command line interface.
 """
-from typing import Optional, Tuple, Union, List, TYPE_CHECKING
+from typing import Optional, Tuple, List, TYPE_CHECKING
 
 import click
-from click.core import Argument, Context, Option, Parameter
+from click.core import Context, Parameter
 
 if TYPE_CHECKING:
     from splitgraph.core.repository import Repository
@@ -15,7 +15,7 @@ class ImageType(click.ParamType):
 
     name = "Image"
 
-    def __init__(self, default: str = "latest") -> None:
+    def __init__(self, default: Optional[str] = "latest") -> None:
         """
         :param default: Default tag/hash for image where it's not specified.
         """
@@ -23,7 +23,7 @@ class ImageType(click.ParamType):
 
     def convert(
         self, value: str, param: Optional[Parameter], ctx: Optional[Context]
-    ) -> Union[Tuple["Repository", str], Tuple["Repository", None]]:
+    ) -> Tuple["Repository", Optional[str]]:
         """
         Image specification must have the format [NAMESPACE/]REPOSITORY[:HASH_OR_TAG].
 
@@ -31,6 +31,7 @@ class ImageType(click.ParamType):
         """
         repo_image = value.split(":")
 
+        tag_or_hash: Optional[str]
         if len(repo_image) == 2:
             tag_or_hash = repo_image[1]
         else:

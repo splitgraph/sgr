@@ -8,7 +8,7 @@ from typing import List, Tuple
 from psycopg2 import DatabaseError
 from tqdm import tqdm
 
-from splitgraph.config import CONFIG
+from splitgraph.config import CONFIG, get_singleton
 from splitgraph.engine import get_engine, ResultShape
 from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.hooks.external_objects import ExternalObjectHandler
@@ -42,8 +42,13 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
         :param objects: List of object IDs to upload
         :return: List of object IDs on Minio
         """
-        worker_threads = self.params.get("threads", int(CONFIG["SG_ENGINE_POOL"]) - 1)
-        s3_host = self.params.get("host", "%s:%s" % (CONFIG["SG_S3_HOST"], CONFIG["SG_S3_PORT"]))
+        worker_threads = self.params.get(
+            "threads", int(get_singleton(CONFIG, "SG_ENGINE_POOL")) - 1
+        )
+        s3_host = self.params.get(
+            "host",
+            "%s:%s" % (get_singleton(CONFIG, "SG_S3_HOST"), get_singleton(CONFIG, "SG_S3_PORT")),
+        )
 
         # Determine upload URLs
         logging.info("Getting upload URLs from the registry...")
@@ -82,11 +87,15 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
 
         :param objects: List of (object ID, object URL (object ID it's stored under))
         """
-        # Maybe here we have to set these to None (anonymous) if the S3 host name doesn't match our own one.
         # By default, take up the whole connection pool with downloaders (less one connection for the main
         # thread that handles metadata)
-        worker_threads = self.params.get("threads", int(CONFIG["SG_ENGINE_POOL"]) - 1)
-        s3_host = self.params.get("host", "%s:%s" % (CONFIG["SG_S3_HOST"], CONFIG["SG_S3_PORT"]))
+        worker_threads = self.params.get(
+            "threads", int(get_singleton(CONFIG, "SG_ENGINE_POOL")) - 1
+        )
+        s3_host = self.params.get(
+            "host",
+            "%s:%s" % (get_singleton(CONFIG, "SG_S3_HOST"), get_singleton(CONFIG, "SG_S3_PORT")),
+        )
 
         logging.info("Getting download URLs from registry %s...", remote_engine)
         object_ids = [o[0] for o in objects]

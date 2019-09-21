@@ -2,8 +2,7 @@
 Classes related to managing table/image/object metadata tables.
 """
 import itertools
-from collections import namedtuple
-from typing import Any, Dict, List, Optional, Set, Tuple, Union, TYPE_CHECKING, NamedTuple, cast
+from typing import Any, Dict, List, Optional, Set, Tuple, TYPE_CHECKING, NamedTuple, cast
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier

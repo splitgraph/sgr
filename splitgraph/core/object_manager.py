@@ -21,7 +21,7 @@ from typing import (
 
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, get_singleton
 from splitgraph.core.fragment_manager import FragmentManager
 from splitgraph.engine import ResultShape, switch_engine
 from splitgraph.exceptions import SplitGraphError, ObjectCacheError
@@ -49,23 +49,23 @@ class ObjectManager(FragmentManager):
         super().__init__(object_engine, metadata_engine)
 
         # Cache size in bytes
-        self.cache_size = int(CONFIG["SG_OBJECT_CACHE_SIZE"]) * 1024 * 1024
+        self.cache_size = int(get_singleton(CONFIG, "SG_OBJECT_CACHE_SIZE")) * 1024 * 1024
 
         # 0 to infinity; higher means objects with smaller sizes are more likely to
         # get evicted than objects that haven't been used for a while.
         # Currently calculated so that an object that hasn't been accessed for 5 minutes has the same
         # removal priority as an object twice its size that's just been accessed.
-        self.eviction_decay_constant = float(CONFIG["SG_EVICTION_DECAY"])
+        self.eviction_decay_constant = float(get_singleton(CONFIG, "SG_EVICTION_DECAY"))
 
         # Objects smaller than this size are assumed to have this size (to simulate the latency of
         # downloading them).
-        self.eviction_floor = float(CONFIG["SG_EVICTION_FLOOR"]) * 1024 * 1024
+        self.eviction_floor = float(get_singleton(CONFIG, "SG_EVICTION_FLOOR")) * 1024 * 1024
 
         # Fraction of the cache size to free when eviction is run (the greater value of this amount and the
         # amount needed to download required objects is actually freed). Eviction is an expensive operation
         # (it pauses concurrent downloads) so increasing this makes eviction happen less often at the cost
         # of more possible cache misses.
-        self.eviction_min_fraction = float(CONFIG["SG_EVICTION_MIN_FRACTION"])
+        self.eviction_min_fraction = float(get_singleton(CONFIG, "SG_EVICTION_MIN_FRACTION"))
 
     def get_downloaded_objects(self, limit_to: Optional[List[str]] = None) -> List[str]:
         """
@@ -356,7 +356,7 @@ class ObjectManager(FragmentManager):
         :param required_objects: Iterable of object IDs that are required to be on the engine.
         :return: Set of objects to fetch
         """
-        to_fetch = self.object_engine.run_sql(
+        to_fetch: List[str] = self.object_engine.run_sql(
             select("object_cache_status", "object_id", "ready = 'f'"),
             return_shape=ResultShape.MANY_ONE,
         )
@@ -375,7 +375,7 @@ class ObjectManager(FragmentManager):
             # we're supposed to be fetching.
             self.object_engine.commit()
             self.object_engine.lock_table(SPLITGRAPH_META_SCHEMA, "object_cache_status")
-            to_fetch: List[str] = self.object_engine.run_sql(
+            to_fetch = self.object_engine.run_sql(
                 select("object_cache_status", "object_id", "ready = 'f'"),
                 return_shape=ResultShape.MANY_ONE,
             )

@@ -647,16 +647,18 @@ class Repository:
             table_queries = []
         target_hash = target_hash or "{:064x}".format(getrandbits(256))
 
+        image: Optional[Image]
         if not foreign_tables:
             image = (
                 source_repository.images.by_hash(image_hash)
                 if image_hash
-                else source_repository.head
+                else source_repository.head_strict
             )
         else:
             image = None
 
         if not source_tables:
+            assert image is not None
             source_tables = (
                 image.get_tables()
                 if not foreign_tables
@@ -723,6 +725,7 @@ class Repository:
                 # If we're importing a query from another Splitgraph image, we can use LQ to satisfy it.
                 # This could get executed for the whole import batch as opposed to for every import query
                 # but the overhead of setting up an LQ schema is fairly small.
+                assert image is not None
                 with image.query_schema(wrapper=wrapper) as tmp_schema:
                     self._import_new_table(
                         tmp_schema, source_table, target_hash, target_table, is_query, do_checkout
@@ -737,6 +740,7 @@ class Repository:
                     do_checkout,
                 )
             else:
+                assert image is not None
                 table_obj = image.get_table(source_table)
                 self.objects.register_tables(
                     self, [(target_hash, target_table, table_obj.table_schema, table_obj.objects)]
@@ -1018,7 +1022,7 @@ def table_exists_at(
     """Determines whether a given table exists in a Splitgraph image without checking it out. If `image_hash` is None,
     determines whether the table exists in the current staging area."""
     if image is None:
-        repository.object_engine.table_exists(repository.to_schema(), table_name)
+        return repository.object_engine.table_exists(repository.to_schema(), table_name)
     else:
         try:
             image.get_table(table_name)

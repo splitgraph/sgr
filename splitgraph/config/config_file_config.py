@@ -1,7 +1,5 @@
 from configparser import ConfigParser, ExtendedInterpolation
-
-
-from typing import Dict, Union, Any, Mapping, cast
+from typing import Dict, Union, cast
 
 from splitgraph.config.keys import ConfigDict
 
@@ -68,7 +66,7 @@ def accumulate_lists(config_dict: Dict[str, Union[Dict[str, str], str]]) -> Conf
         :return a new, updated copy of `config_dict`
     """
 
-    new_dict = cast(Dict[str, Union[str, Dict[str, Dict[str, str]]]], config_dict.copy())
+    new_dict = cast(ConfigDict, config_dict.copy())
 
     accumulatable = {"remote": "remotes", "origin": "origins"}
 
@@ -140,7 +138,7 @@ def get_config_dict_from_file(sg_file: str, **kwargs) -> Dict[str, Dict[str, str
     config = ConfigParser(interpolation=ExtendedInterpolation())
 
     # Convert all keys to uppercase
-    config.optionxform = lambda option: option.upper()
+    setattr(config, "optionxform", lambda option: option.upper())
     config.read(sg_file)
 
     config_dict = {s: dict(config.items(s, False)) for s in config.sections()}

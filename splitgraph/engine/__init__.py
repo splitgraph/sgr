@@ -15,9 +15,8 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, TYPE_CHECK
 from psycopg2.sql import Composed
 from psycopg2.sql import SQL, Identifier
 
-import splitgraph.config
-from splitgraph.config import CONFIG
-from splitgraph.config.keys import ConfigDict
+import splitgraph.config  # to access the IN_FDW global
+from splitgraph.config import CONFIG, get_singleton, get_from_subsection, ConfigDict
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PostgresEngine
@@ -47,14 +46,19 @@ _ENGINE_CONFIG_DEFAULTS = {
 }
 
 
-def _prepare_engine_config(config_dict: ConfigDict) -> Dict[str, Optional[str]]:
+def _prepare_engine_config(config_dict: ConfigDict, name: str = "LOCAL") -> Dict[str, str]:
     result = {}
     for key in _ENGINE_SPECIFIC_CONFIG:
+        actual_key = key
         if key in _ENGINE_CONFIG_DEFAULTS:
-            result[key] = config_dict[_ENGINE_CONFIG_DEFAULTS[key]]
-        if key in config_dict:
-            result[key] = config_dict[key]
-    return cast(Dict[str, Optional[str]], result)
+            actual_key = _ENGINE_CONFIG_DEFAULTS[key]
+        if name == "LOCAL":
+            result[actual_key] = (
+                get_singleton(config_dict, actual_key)
+                if name == "LOCAL"
+                else get_from_subsection(config_dict, "remotes", name, actual_key)
+            )
+    return result
 
 
 class ResultShape(Enum):
@@ -171,10 +175,7 @@ class SQLEngine(ABC):
 
     def create_schema(self, schema: str) -> None:
         """Create a schema if it doesn't exist"""
-        return self.run_sql(
-            SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(schema)),
-            return_shape=ResultShape.NONE,
-        )
+        self.run_sql(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(schema)))
 
     def copy_table(
         self,
@@ -597,7 +598,7 @@ class ObjectEngine:
 # Can be overridden via normal configuration routes, e.g.
 # $ SG_ENGINE=remote_engine sgr init
 # will initialize the remote engine instead.
-_ENGINE: Union[str, "PostgresEngine"] = CONFIG["SG_ENGINE"] or "LOCAL"
+_ENGINE: Union[str, "PostgresEngine"] = get_singleton(CONFIG, "SG_ENGINE") or "LOCAL"
 
 # Map of engine names -> Engine instances
 _ENGINES: Dict[str, "PostgresEngine"] = {}
@@ -633,13 +634,11 @@ def get_engine(
         # and instantiate the actual Engine class.
         # As we only have PostgresEngine, we instantiate that.
 
-        if name == "LOCAL":
-            conn_params = _prepare_engine_config(CONFIG)
+        conn_params = cast(Dict[str, Optional[str]], _prepare_engine_config(CONFIG, name))
+        if name == "LOCAL" and use_socket:
             if use_socket:
                 conn_params["SG_ENGINE_HOST"] = None
                 conn_params["SG_ENGINE_PORT"] = None
-        else:
-            conn_params = _prepare_engine_config(CONFIG["remotes"][name])
         if use_fdw_params:
             conn_params["SG_ENGINE_HOST"] = conn_params["SG_ENGINE_FDW_HOST"]
             conn_params["SG_ENGINE_PORT"] = conn_params["SG_ENGINE_FDW_PORT"]

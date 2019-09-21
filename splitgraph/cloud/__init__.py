@@ -3,14 +3,19 @@ import base64
 import json
 import time
 from functools import wraps
-from typing import Callable, List, Union, Tuple, Any
+from typing import Callable, List, Union, Tuple, cast
 
 import requests
 from requests import HTTPError
 from requests.models import Response
 
 from splitgraph import CONFIG
-from splitgraph.config import create_config_dict
+from splitgraph.config import (
+    create_config_dict,
+    get_from_subsection,
+    set_in_subsection,
+    get_singleton,
+)
 from splitgraph.config.export import overwrite_config
 from splitgraph.exceptions import AuthAPIError
 
@@ -71,7 +76,7 @@ class AuthAPIClient:
             as specified in the config.
         """
         self.remote = remote
-        self.endpoint = CONFIG["remotes"][remote]["SG_AUTH_API"]
+        self.endpoint = get_from_subsection(CONFIG, "remotes", remote, "SG_AUTH_API")
 
         # How soon before the token expiry to refresh the token, in seconds.
         self.access_token_expiry_tolerance = 30
@@ -141,7 +146,9 @@ class AuthAPIClient:
         """
 
         config = create_config_dict()
-        current_access_token = config["remotes"][self.remote].get("SG_CLOUD_ACCESS_TOKEN")
+        current_access_token = get_from_subsection(
+            config, "remotes", self.remote, "SG_CLOUD_ACCESS_TOKEN"
+        )
 
         if current_access_token:
             # Extract the expiry timestamp from the JWT token. We don't really
@@ -158,7 +165,9 @@ class AuthAPIClient:
 
         # Token expired or non-existent, get a new one.
         try:
-            refresh_token = config["remotes"][self.remote]["SG_CLOUD_REFRESH_TOKEN"]
+            refresh_token = get_from_subsection(
+                config, "remotes", self.remote, "SG_CLOUD_REFRESH_TOKEN"
+            )
         except KeyError as e:
             raise AuthAPIError(
                 "No refresh token found in the config for remote %s! " % self.remote
@@ -167,6 +176,6 @@ class AuthAPIClient:
             ) from e
 
         new_access_token = cast(str, self.get_access_token(refresh_token))
-        config["remotes"][self.remote]["SG_CLOUD_ACCESS_TOKEN"] = new_access_token
-        overwrite_config(config, config["SG_CONFIG_FILE"])
+        set_in_subsection(config, "remotes", self.remote, "SG_CLOUD_ACCESS_TOKEN", new_access_token)
+        overwrite_config(config, get_singleton(config, "SG_CONFIG_FILE"))
         return new_access_token

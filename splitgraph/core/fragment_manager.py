@@ -9,7 +9,6 @@ import logging
 import math
 import operator
 import struct
-from datetime import datetime
 from functools import reduce
 from hashlib import sha256
 from random import getrandbits

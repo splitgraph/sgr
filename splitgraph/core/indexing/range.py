@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TypeVar, TYPE_CHECKING, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, TYPE_CHECKING, cast
 
 from psycopg2.sql import Composed, SQL, Composable
 from psycopg2.sql import Identifier

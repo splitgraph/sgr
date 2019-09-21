@@ -149,6 +149,8 @@ def _get_actual_hashes(
             click.echo("%s has no parent to compare to!" % image_1)
         image_1, image_2 = image_2, image_1  # snap_1 has to come first
     else:
+        assert image_1 is not None
+        assert image_2 is not None
         image_1 = repository.images[image_1].image_hash
         image_2 = repository.images[image_2].image_hash
     return image_1, image_2

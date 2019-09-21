@@ -1,10 +1,11 @@
 """Routines for exporting the config back into text."""
-from typing import Any, Dict, Optional, Union
+from typing import Dict, cast
 
-from splitgraph.config.keys import SENSITIVE_KEYS, KEYS, DEFAULTS
+from splitgraph.config import get_all_in_section, get_singleton
+from splitgraph.config.keys import SENSITIVE_KEYS, KEYS, DEFAULTS, ConfigDict
 
 
-def _kv_to_str(key: str, value: Optional[Union[str, float, int]], no_shielding: bool) -> str:
+def _kv_to_str(key: str, value: str, no_shielding: bool) -> str:
     value_str = str(value) or ""
     if key in SENSITIVE_KEYS and not no_shielding:
         value_str = value_str[0] + "*******"
@@ -12,7 +13,7 @@ def _kv_to_str(key: str, value: Optional[Union[str, float, int]], no_shielding: 
 
 
 def serialize_engine_config(
-    engine_name: str, conn_params: Dict[str, Union[str, int]], no_shielding: bool
+    engine_name: str, conn_params: Dict[str, str], no_shielding: bool
 ) -> str:
     """
     Output the config section with connection parameters for a single engine.
@@ -33,7 +34,7 @@ _SITUATIONAL_PARAMS = ["SG_ENGINE", "SG_CONFIG_FILE"]
 
 
 def serialize_config(
-    config: Dict[str, Any], config_format: bool, no_shielding: bool, include_defaults: bool = True
+    config: ConfigDict, config_format: bool, no_shielding: bool, include_defaults: bool = True
 ) -> str:
     """
     Pretty-print the configuration or print it in the Splitgraph config file format.
@@ -51,46 +52,48 @@ def serialize_config(
     for key in KEYS:
         if config_format and key in _SITUATIONAL_PARAMS:
             continue
-        if include_defaults or key not in DEFAULTS or config[key] != DEFAULTS[key]:
-            result += _kv_to_str(key, config[key], no_shielding) + "\n"
+        value = get_singleton(config, key)
+        if include_defaults or key not in DEFAULTS or value != DEFAULTS[key]:
+            result += _kv_to_str(key, value, no_shielding) + "\n"
 
     # Emit hoisted remotes
     result += "\nCurrent registered remote engines:\n" if not config_format else ""
-    for remote in config.get("remotes", []):
+    for remote, remote_config in get_all_in_section(config, "remotes").items():
+        assert isinstance(remote_config, dict)
         if config_format:
             result += (
                 "\n"
-                + serialize_engine_config(remote, config["remotes"][remote], no_shielding)
+                + serialize_engine_config(remote, cast(Dict[str, str], remote_config), no_shielding)
                 + "\n"
             )
         else:
             result += "\n%s:\n" % remote
-            for key, value in config["remotes"][remote].items():
+            for key, value in cast(Dict[str, str], remote_config).items():
                 result += _kv_to_str(key, value, no_shielding) + "\n"
 
     # Print Splitfile commands
     if "commands" in config:
         result += "\nSplitfile command plugins:\n" if not config_format else "[commands]\n"
-        for command_name, command_class in config["commands"].items():
-            result += _kv_to_str(command_name, command_class, no_shielding) + "\n"
+        for command_name, command_class in get_all_in_section(config, "commands").items():
+            result += _kv_to_str(command_name, cast(str, command_class), no_shielding) + "\n"
 
     # Print mount handlers
     if "mount_handlers" in config:
         result += "\nFDW Mount handlers:\n" if not config_format else "[mount_handlers]\n"
-        for handler_name, handler_func in config["mount_handlers"].items():
-            result += _kv_to_str(handler_name, handler_func.lower(), no_shielding) + "\n"
+        for handler_name, handler_func in get_all_in_section(config, "mount_handlers").items():
+            result += _kv_to_str(handler_name, cast(str, handler_func).lower(), no_shielding) + "\n"
 
     # Print external object handlers
     if "external_handlers" in config:
         result += "\nExternal object handlers:\n" if not config_format else "[external_handlers]\n"
-        for handler_name, handler_func in config["external_handlers"].items():
-            result += _kv_to_str(handler_name, handler_func, no_shielding) + "\n"
+        for handler_name, handler_func in get_all_in_section(config, "external_handlers").items():
+            result += _kv_to_str(handler_name, cast(str, handler_func), no_shielding) + "\n"
 
     return result
 
 
 def overwrite_config(
-    new_config: Dict[str, Any], config_path: str, include_defaults: bool = False
+    new_config: ConfigDict, config_path: str, include_defaults: bool = False
 ) -> None:
     """
     Serialize the new config dictionary and overwrite the current config file.

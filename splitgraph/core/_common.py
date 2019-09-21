@@ -2,11 +2,10 @@
 Common internal functions used by Splitgraph commands.
 """
 import logging
-import re
 from datetime import date, datetime, time
 from decimal import Decimal
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING, Sequence, Match
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING, Sequence, cast
 
 from psycopg2.sql import Composed
 from psycopg2.sql import Identifier, SQL
@@ -107,25 +106,6 @@ def manage_audit(func: Callable) -> Callable:
             manage_audit_triggers(repository.engine, repository.object_engine)
 
     return wrapped
-
-
-def parse_connection_string(conn_string: str) -> Tuple[str, int, str, str, str]:
-    """
-    :return: a tuple (server, port, username, password, dbname)
-    """
-    match: Match[str, str, str, int, str] = re.match(r"(\S+):(\S+)@(.+):(\d+)/(\S+)", conn_string)
-    if not match:
-        raise ValueError("Connection string doesn't match the format!")
-    return match.group(3), int(match.group(4)), match.group(1), match.group(2), match.group(5)
-
-
-def serialize_connection_string(
-    server: str, port: int, username: str, password: str, dbname: str
-) -> str:
-    """
-    Serializes a tuple into a Splitgraph engine connection string.
-    """
-    return "%s:%s@%s:%s/%s" % (username, password, server, port, dbname)
 
 
 def _create_metadata_schema(engine: "PsycopgEngine") -> None:
@@ -421,14 +401,7 @@ def slow_diff(
 
 def prepare_publish_data(
     image: "Image", repository: "Repository", include_table_previews: bool
-) -> Union[
-    Tuple[Dict[Any, Any], Dict[str, List[Tuple[str, str, bool]]]],
-    Tuple[Dict[str, List[Tuple[int, str]]], Dict[str, List[Tuple[str, str, bool]]]],
-    Tuple[
-        Dict[str, Union[List[Tuple[int, str, str]], List[Tuple[int, str]]]],
-        Dict[str, List[Tuple[str, str, bool]]],
-    ],
-]:
+) -> Tuple[Optional[Dict[str, List[Tuple]]], Dict[str, List[Tuple[str, str, bool]]]]:
     """Prepare previews and schemata for a given image for publishing to a registry."""
     schemata = {}
     previews = {}
@@ -543,8 +516,8 @@ def _parse_date(string: str) -> date:
     return datetime.strptime(string, "%Y-%m-%d").date()
 
 
-_TYPE_MAP: Dict[str, Callable[..., Any]] = {
-    k: v
+_TYPE_MAP: Dict[str, Callable] = {
+    k: cast(Callable, v)
     for ks, v in [
         (["integer", "bigint", "smallint"], int),
         (["numeric", "real", "double precision"], float),

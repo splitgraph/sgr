@@ -4,7 +4,7 @@ Internal functions for parsing Splitfiles.
 
 import re
 import shlex
-from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING, Sequence, TypeVar
+from typing import Dict, List, Optional, Tuple, Union, TYPE_CHECKING, Sequence, TypeVar
 
 from parsimonious import Grammar
 from parsimonious.nodes import Node, RegexNode
@@ -171,7 +171,7 @@ T3 = TypeVar("T3")
 
 def _transpose3(seq: Sequence[Tuple[T1, T2, T3]]) -> Tuple[List[T1], List[T2], List[T3]]:
     t1, t2, t3 = zip(*seq)
-    return t1, t2, t3
+    return list(t1), list(t2), list(t3)
 
 
 def extract_all_table_aliases(node: Node) -> Tuple[List[str], List[str], List[bool]]:

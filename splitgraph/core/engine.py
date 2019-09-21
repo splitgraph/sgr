@@ -2,11 +2,11 @@
 Routines for managing Splitgraph engines, including looking up repositories and managing objects.
 """
 import logging
-from typing import Dict, List, Tuple, Union, TYPE_CHECKING, Optional
+from typing import Dict, List, Tuple, TYPE_CHECKING, Optional
 
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.config import CONFIG, SPLITGRAPH_API_SCHEMA
+from splitgraph.config import CONFIG, SPLITGRAPH_API_SCHEMA, get_singleton
 from splitgraph.engine import get_engine, ResultShape
 from splitgraph.exceptions import RepositoryNotFoundError
 from ._common import select
@@ -31,7 +31,7 @@ def _parse_paths_overrides(
 # Parse and set these on import. If we ever need to be able to reread the config on the fly, these have to be
 # recalculated.
 _LOOKUP_PATH, _LOOKUP_PATH_OVERRIDE = _parse_paths_overrides(
-    CONFIG["SG_REPO_LOOKUP"], CONFIG["SG_REPO_LOOKUP_OVERRIDE"]
+    get_singleton(CONFIG, "SG_REPO_LOOKUP"), get_singleton(CONFIG, "SG_REPO_LOOKUP_OVERRIDE")
 )
 
 

@@ -27,7 +27,7 @@ from splitgraph.commandline.image_info import object_c, objects_c
 from splitgraph.config import PG_PWD, PG_USER
 from splitgraph.config.config import patch_config, create_config_dict
 from splitgraph.config.keys import DEFAULTS
-from splitgraph.core._common import parse_connection_string, serialize_connection_string, insert
+from splitgraph.core._common import insert
 from splitgraph.core.engine import repository_exists, init_engine
 from splitgraph.core.metadata_manager import OBJECT_COLS
 from splitgraph.core.registry import get_published_info
@@ -47,25 +47,6 @@ def test_image_spec_parsing():
     assert ImageType(default="HEAD")("pg_mount:some_tag") == (
         Repository("", "pg_mount"),
         "some_tag",
-    )
-
-
-def test_conn_string_parsing():
-    assert parse_connection_string("user:pwd@host.com:1234/db") == (
-        "host.com",
-        1234,
-        "user",
-        "pwd",
-        "db",
-    )
-    with pytest.raises(ValueError):
-        parse_connection_string("abcdef@blabla/blabla")
-
-
-def test_conn_string_serialization():
-    assert (
-        serialize_connection_string("host.com", 1234, "user", "pwd", "db")
-        == "user:pwd@host.com:1234/db"
     )
 
 

@@ -3,7 +3,7 @@
 Routines for rendering a Splitgraph repository as a tree of images
 """
 from collections import defaultdict
-from typing import Dict, Mapping, List, DefaultDict
+from typing import Dict, List, DefaultDict
 
 from splitgraph.core.repository import Repository
 from splitgraph.exceptions import SplitGraphError
