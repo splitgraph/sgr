@@ -4,7 +4,7 @@ Various common functions used by the command line interface.
 from typing import Optional, Tuple, Union, List, TYPE_CHECKING
 
 import click
-from click.core import Argument, Context, Option
+from click.core import Argument, Context, Option, Parameter
 
 if TYPE_CHECKING:
     from splitgraph.core.repository import Repository
@@ -15,14 +15,14 @@ class ImageType(click.ParamType):
 
     name = "Image"
 
-    def __init__(self, default: Optional[str] = "latest") -> None:
+    def __init__(self, default: str = "latest") -> None:
         """
         :param default: Default tag/hash for image where it's not specified.
         """
         self.default = default
 
     def convert(
-        self, value: str, param: Optional[Union[Option, Argument]], ctx: Optional[Context]
+        self, value: str, param: Optional[Parameter], ctx: Optional[Context]
     ) -> Union[Tuple["Repository", str], Tuple["Repository", None]]:
         """
         Image specification must have the format [NAMESPACE/]REPOSITORY[:HASH_OR_TAG].
@@ -43,7 +43,9 @@ class ImageType(click.ParamType):
 class RepositoryType(click.ParamType):
     name = "Repository"
 
-    def convert(self, value: str, param: Union[Argument, Option], ctx: Context) -> "Repository":
+    def convert(
+        self, value: str, param: Optional[Parameter], ctx: Optional[Context]
+    ) -> "Repository":
         from splitgraph.core import Repository
 
         return Repository.from_schema(value)

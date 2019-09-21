@@ -166,7 +166,7 @@ class AuthAPIClient:
                 "the remote under SG_CLOUD_REFRESH_TOKEN."
             ) from e
 
-        new_access_token = self.get_access_token(refresh_token)
+        new_access_token = cast(str, self.get_access_token(refresh_token))
         config["remotes"][self.remote]["SG_CLOUD_ACCESS_TOKEN"] = new_access_token
         overwrite_config(config, config["SG_CONFIG_FILE"])
         return new_access_token

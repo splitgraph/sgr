@@ -68,11 +68,9 @@ def sql_to_df(
     :return: A Pandas dataframe.
     """
 
-    # Initial parameter validation
-    if not isinstance(image, Image) and not repository:
-        raise ValueError("repository must be set!")
-
     if image is None:
+        if repository is None:
+            raise ValueError("repository must be set!")
         # Run the query against the current staging area.
         return _sql_to_df(
             engine=repository.engine, sql=sql, schema=repository.to_schema(), **kwargs
@@ -81,6 +79,8 @@ def sql_to_df(
     # Otherwise, check the image out (full or temporary LQ). Corner case here to fix in the future:
     # if the image is the same as current HEAD and there are no changes, there's no need to do a check out.
     if isinstance(image, str):
+        if repository is None:
+            raise ValueError("repository must be set!")
         image = repository.images[image]
 
     if not use_lq:

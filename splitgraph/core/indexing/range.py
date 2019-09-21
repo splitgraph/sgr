@@ -1,10 +1,18 @@
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TypeVar, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TypeVar, TYPE_CHECKING, cast
 
-from psycopg2.sql import Composed, SQL
+from psycopg2.sql import Composed, SQL, Composable
 from psycopg2.sql import Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
-from splitgraph.core._common import adapt, coerce_val_to_json, ResultShape, select, TableSchema
+from splitgraph.core._common import (
+    adapt,
+    coerce_val_to_json,
+    ResultShape,
+    select,
+    TableSchema,
+    Quals,
+    Changeset,
+)
 from splitgraph.engine.postgres.engine import PostgresEngine
 
 if TYPE_CHECKING:
@@ -50,9 +58,7 @@ def _max(left: Optional[T], right: Optional[T]) -> Optional[T]:
     return right if left is None else (left if right is None else max(left, right))
 
 
-def _qual_to_index_clause(
-    qual: Tuple[str, str, T], ctype: str
-) -> Tuple[SQL, Union[Tuple[str, T], Tuple[()]]]:
+def _qual_to_index_clause(qual: Tuple[str, str, Any], ctype: str) -> Tuple[SQL, Tuple]:
     """Convert our internal qual format into a WHERE clause that runs against an object's index entry.
     Returns a Postgres clause (as a Composable) and a tuple of arguments to be mogrified into it."""
     column_name, qual_op, value = qual
@@ -63,7 +69,7 @@ def _qual_to_index_clause(
 
     # If there's no index information for a given column, we have to assume it might match the qual.
     query = SQL("NOT (index -> 'range') ? %s OR ")
-    args = [column_name]
+    args: List[Any] = [column_name]
 
     # If the column has to be greater than (or equal to) X, it only might exist in objects
     # whose maximum value is greater than (or equal to) X.
@@ -105,8 +111,10 @@ def _qual_to_sql_clause(qual: Tuple[str, str, str], ctype: str) -> Tuple[Compose
 
 
 def _quals_to_clause(
-    quals: Any, column_types: Dict[str, str], qual_to_clause: Callable = _qual_to_index_clause
-) -> Any:
+    quals: Optional[Quals],
+    column_types: Dict[str, str],
+    qual_to_clause: Callable = _qual_to_index_clause,
+) -> Tuple[Composable, Tuple]:
     if not quals:
         return SQL(""), ()
 
@@ -124,9 +132,7 @@ def _quals_to_clause(
     )
 
 
-def quals_to_sql(
-    quals: Optional[List[List[Tuple[str, str, str]]]], column_types: Dict[str, str]
-) -> Union[Tuple[Composed, Tuple[str]], Tuple[SQL, Tuple], Tuple[Composed, Tuple[str, str]]]:
+def quals_to_sql(quals: Optional[Quals], column_types: Dict[str, str]) -> Tuple[Composable, Tuple]:
     """
     Convert a list of qualifiers in CNF to a fragment of a Postgres query
     :param quals: Qualifiers in CNF
@@ -192,7 +198,7 @@ def generate_range_index(
     object_engine: PostgresEngine,
     object_id: str,
     table_schema: "TableSchema",
-    changeset: Optional[Dict[Tuple[str, ...], Tuple[bool, Dict[str, Any]]]],
+    changeset: Optional[Changeset],
 ) -> Dict[str, Tuple[T, T]]:
     """
     Calculate the minimum/maximum values of every column in the object (including deleted values).
@@ -270,6 +276,9 @@ def filter_range_index(
         + clause
     )
 
-    return metadata_engine.run_sql(
-        query, [object_ids] + list(args), return_shape=ResultShape.MANY_ONE
+    return cast(
+        List[str],
+        metadata_engine.run_sql(
+            query, [object_ids] + list(args), return_shape=ResultShape.MANY_ONE
+        ),
     )

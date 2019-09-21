@@ -5,7 +5,18 @@ from collections import namedtuple
 from contextlib import contextmanager
 from datetime import datetime
 from random import getrandbits
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING, NamedTuple
+from typing import (
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    TYPE_CHECKING,
+    NamedTuple,
+    cast,
+)
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
@@ -194,7 +205,7 @@ class Image(NamedTuple):
         try:
             self.object_engine.create_schema(tmp_schema)
             self._lq_checkout(target_schema=tmp_schema, wrapper=wrapper)
-            self.object_engine.commit()  # Make sure the new tables are seen by other connecitons
+            self.object_engine.commit()  # Make sure the new tables are seen by other connections
             yield tmp_schema
         finally:
             self.object_engine.run_sql(
@@ -425,20 +436,22 @@ def _prov_command_to_splitfile(
 
     if prov_type == "IMPORT":
         repo, image = (
-            Repository(prov_data["source_namespace"], prov_data["source"]),
-            prov_data["source_hash"],
+            Repository(cast(str, prov_data["source_namespace"]), cast(str, prov_data["source"])),
+            cast(str, prov_data["source_hash"]),
         )
         result = "FROM %s:%s IMPORT " % (str(repo), source_replacement.get(repo, image))
         result += ", ".join(
             "%s AS %s" % (tn if not q else "{" + tn.replace("}", "\\}") + "}", ta)
             for tn, ta, q in zip(
-                prov_data["tables"], prov_data["table_aliases"], prov_data["table_queries"]
+                cast(List[str], prov_data["tables"]),
+                cast(List[str], prov_data["table_aliases"]),
+                cast(List[bool], prov_data["table_queries"]),
             )
         )
         return result
     if prov_type == "FROM":
-        repo = Repository(prov_data["source_namespace"], prov_data["source"])
+        repo = Repository(cast(str, prov_data["source_namespace"]), cast(str, prov_data["source"]))
         return "FROM %s:%s" % (str(repo), source_replacement.get(repo, image_hash))
     if prov_type == "SQL":
-        return "SQL " + prov_data.replace("\n", "\\\n")
+        return "SQL " + cast(str, prov_data).replace("\n", "\\\n")
     raise SplitGraphError("Cannot reconstruct provenance %s!" % prov_type)

@@ -3,7 +3,7 @@ sgr commands related to getting information out of / about images
 """
 
 from collections import Counter
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, Dict, cast
 
 import click
 
@@ -80,7 +80,7 @@ def diff_c(verbose, table_name, repository, tag_or_hash_1, tag_or_hash_2):
     """
     tag_or_hash_1, tag_or_hash_2 = _get_actual_hashes(repository, tag_or_hash_1, tag_or_hash_2)
 
-    diffs = {
+    diffs: Dict[str, Union[bool, Tuple[int, int, int], List[Tuple[bool, Tuple]]]] = {
         table_name: repository.diff(table_name, tag_or_hash_1, tag_or_hash_2, aggregate=not verbose)
         for table_name in (
             [table_name]
@@ -100,18 +100,20 @@ def diff_c(verbose, table_name, repository, tag_or_hash_1, tag_or_hash_2):
 
 def _emit_table_diff(
     table_name: str,
-    diff_result: Union[List[Tuple[bool, Tuple[int, str]]], Tuple[int, int, int], bool],
+    diff_result: Union[bool, Tuple[int, int, int], List[Tuple[bool, Tuple]]],
     verbose: bool,
 ) -> None:
     to_print = "%s: " % table_name
     if isinstance(diff_result, (list, tuple)):
         if verbose:
-            change_count = dict(Counter(d[0] for d in diff_result).most_common())
+            change_count = dict(
+                Counter(d[0] for d in cast(List[Tuple[bool, Tuple]], diff_result)).most_common()
+            )
             added = change_count.get(True, 0)
             removed = change_count.get(False, 0)
             updated = 0
         else:
-            added, removed, updated = diff_result
+            added, removed, updated = cast(Tuple[int, int, int], diff_result)
 
         count = []
         if added:
@@ -125,7 +127,7 @@ def _emit_table_diff(
         click.echo(to_print + ", ".join(count) + ".")
 
         if verbose:
-            for added, row in diff_result:
+            for added, row in cast(List[Tuple[bool, Tuple]], diff_result):
                 click.echo(("+" if added else "-") + " %r" % (row,))
     else:
         # Whole table was either added or removed
@@ -134,11 +136,11 @@ def _emit_table_diff(
 
 def _get_actual_hashes(
     repository: Repository, image_1: Optional[str], image_2: Optional[str]
-) -> Union[Tuple[str, None], Tuple[str, str]]:
+) -> Tuple[str, Optional[str]]:
     if image_1 is None and image_2 is None:
         # Comparing current working copy against the last commit
-        image_1 = repository.head.image_hash
-    elif image_2 is None:
+        image_1 = repository.head_strict.image_hash
+    elif image_1 is not None and image_2 is None:
         image_1_obj = repository.images[image_1]
         image_1 = image_1_obj.image_hash
         # One parameter: diff from that and its parent.
@@ -215,11 +217,11 @@ def object_c(object_id):
     click.echo("Insertion hash: %s" % sg_object.insertion_hash)
     click.echo("Deletion hash: %s" % sg_object.deletion_hash)
     click.echo("Column index:")
-    for col_name, col_range in sg_object.index["range"].items():
+    for col_name, col_range in sg_object.object_index["range"].items():
         click.echo("  %s: [%r, %r]" % (col_name, col_range[0], col_range[1]))
-    if "bloom" in sg_object.index:
+    if "bloom" in sg_object.object_index:
         click.echo("Bloom index: ")
-        for col_name, col_bloom in sg_object.index["bloom"].items():
+        for col_name, col_bloom in sg_object.object_index["bloom"].items():
             click.echo("  %s: %s" % (col_name, describe(col_bloom)))
     click.echo()
     object_in_cache = object_manager.object_engine.run_sql(

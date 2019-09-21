@@ -13,7 +13,7 @@ from datetime import datetime
 from functools import reduce
 from hashlib import sha256
 from random import getrandbits
-from typing import Any, Dict, List, Optional, Set, Tuple, Union, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Set, Tuple, Union, TYPE_CHECKING, cast
 
 from psycopg2.errors import UniqueViolation
 from psycopg2.sql import SQL, Identifier
@@ -177,6 +177,10 @@ class Digest:
         return struct.pack(">16H", *self.shorts).hex()
 
 
+"""Dictionary of {index_type: column: index_specific_kwargs}."""
+ExtraIndexInfo = Dict[str, Dict[str, Dict[str, Any]]]
+
+
 class FragmentManager(MetadataManager):
     """
     A storage engine for Splitgraph tables. Each table can be stored as one or more immutable fragments that can
@@ -201,8 +205,8 @@ class FragmentManager(MetadataManager):
         self,
         object_id: str,
         table_schema: TableSchema,
-        changeset: Optional[Dict[Tuple[str, ...], Tuple[bool, Tuple]]] = None,
-        extra_indexes: Optional[Dict[str, Dict[str, Dict[str, Any]]]] = None,
+        changeset: Optional[Changeset] = None,
+        extra_indexes: Optional[ExtraIndexInfo] = None,
     ) -> Dict[str, Any]:
         """
         Queries the max/min values of a given fragment for each column, used to speed up querying.
@@ -213,9 +217,11 @@ class FragmentManager(MetadataManager):
         :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
         :return: Dict containing the object index.
         """
-        extra_indexes: Optional[Dict[str, Dict[str, Dict[str, Any]]]] = extra_indexes or {}
+        extra_indexes: ExtraIndexInfo = extra_indexes or {}
 
-        range_index = generate_range_index(self.object_engine, object_id, table_schema, changeset)
+        range_index: Dict[str, Any] = generate_range_index(
+            self.object_engine, object_id, table_schema, changeset
+        )
         indexes = {"range": range_index}
 
         # Process extra indexes
@@ -245,8 +251,8 @@ class FragmentManager(MetadataManager):
         insertion_hash: str,
         deletion_hash: str,
         table_schema: TableSchema,
-        changeset: Optional[Dict[Tuple[str, ...], Tuple[bool, Dict[str, Any]]]] = None,
-        extra_indexes: Optional[Dict[str, Dict[str, Dict[str, Any]]]] = None,
+        changeset: Optional[Changeset] = None,
+        extra_indexes: Optional[ExtraIndexInfo] = None,
     ) -> None:
         """
         Registers a Splitgraph object in the object tree and indexes it
@@ -277,7 +283,7 @@ class FragmentManager(MetadataManager):
                     size=object_size,
                     insertion_hash=insertion_hash,
                     deletion_hash=deletion_hash,
-                    index=object_index,
+                    object_index=object_index,
                 )
             ]
         )
@@ -343,7 +349,7 @@ class FragmentManager(MetadataManager):
         table: "Table",
         changesets: Any,
         schema: str,
-        extra_indexes: Optional[Dict[str, Dict[str, Dict[str, float]]]] = None,
+        extra_indexes: Optional[ExtraIndexInfo] = None,
     ) -> List[str]:
         """
         Store and register multiple changesets as fragments.
@@ -460,7 +466,7 @@ class FragmentManager(MetadataManager):
         schema: str,
         image_hash: str,
         split_changeset: bool = False,
-        extra_indexes: Optional[Dict[str, Dict[str, Dict[str, float]]]] = None,
+        extra_indexes: Optional[ExtraIndexInfo] = None,
     ) -> None:
         """
         Flushes the pending changes from the audit table for a given table and records them,
@@ -482,7 +488,11 @@ class FragmentManager(MetadataManager):
         # Accumulate the diff in-memory. This might become a bottleneck in the future.
         changeset: Changeset = {}
         _conflate_changes(
-            changeset, self.object_engine.get_pending_changes(schema, old_table.table_name)
+            changeset,
+            cast(
+                List[Tuple[Tuple[str, ...], bool, Dict[str, Any]]],
+                self.object_engine.get_pending_changes(schema, old_table.table_name),
+            ),
         )
         self.object_engine.discard_pending_changes(schema, old_table.table_name)
         current_objects = old_table.objects
@@ -530,12 +540,7 @@ class FragmentManager(MetadataManager):
 
     def get_min_max_pks(
         self, fragments: List[str], table_pks: List[Tuple[str, str]]
-    ) -> Union[
-        List[Tuple[Tuple[int, str], Tuple[int, str]]],
-        List[Tuple[Tuple[datetime, int], Tuple[datetime, int]]],
-        List[Tuple[Tuple[str, str, float, bool], Tuple[str, str, float, bool]]],
-        List[Tuple[Tuple[int], Tuple[int]]],
-    ]:
+    ) -> List[Tuple[Tuple, Tuple]]:
         """Get PK ranges for given fragments using the index (without reading the fragments).
 
         :param fragments: List of object IDs (must be registered and with the same schema)
@@ -615,8 +620,8 @@ class FragmentManager(MetadataManager):
         source_table: str,
         namespace: str,
         limit: Optional[int] = None,
-        after_pk: Optional[Union[Tuple[int], Tuple[datetime, int]]] = None,
-        extra_indexes: Optional[Dict[str, Dict[str, Dict[str, float]]]] = None,
+        after_pk: Optional[Tuple[Any]] = None,
+        extra_indexes: Optional[ExtraIndexInfo] = None,
     ) -> str:
         # Store the fragment in a temporary location first and hash that (much faster since PG doesn't need
         # to go through the source table multiple times for every offset)
@@ -696,8 +701,8 @@ class FragmentManager(MetadataManager):
         chunk_size: Optional[int] = 10000,
         source_schema: Optional[str] = None,
         source_table: Optional[str] = None,
-        extra_indexes: Optional[Dict[str, Dict[str, Dict[str, float]]]] = None,
-    ) -> None:
+        extra_indexes: Optional[ExtraIndexInfo] = None,
+    ) -> List[str]:
         """
         Copies the full table verbatim into one or more new base fragments and registers them.
 
@@ -735,6 +740,7 @@ class FragmentManager(MetadataManager):
             object_ids = []
         table_schema = self.object_engine.get_full_table_schema(source_schema, source_table)
         self.register_tables(repository, [(image_hash, table_name, table_schema, object_ids)])
+        return object_ids
 
     def _chunk_table(
         self,
@@ -743,13 +749,7 @@ class FragmentManager(MetadataManager):
         source_table: str,
         table_size: int,
         chunk_size: int,
-        extra_indexes: Optional[
-            Union[
-                Dict[str, Dict[str, Dict[str, float]]],
-                Dict[str, Dict[str, Dict[str, int]]],
-                Dict[str, Dict[str, Union[Dict[str, int], Dict[str, float]]]],
-            ]
-        ],
+        extra_indexes: Optional[ExtraIndexInfo],
     ) -> List[str]:
         table_pk = [p[0] for p in self.object_engine.get_change_key(source_schema, source_table)]
         object_ids = []
@@ -877,7 +877,7 @@ class FragmentManager(MetadataManager):
 
 
 def _conflate_changes(
-    changeset: Changeset, new_changes: List[Tuple[Tuple, bool, Tuple]]
+    changeset: Changeset, new_changes: List[Tuple[Tuple[str, ...], bool, Dict[str, Any]]]
 ) -> Changeset:
     """
     Updates a changeset to incorporate the new changes. Assumes that the new changes are non-pk changing

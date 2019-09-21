@@ -26,7 +26,7 @@ from splitgraph.core.fragment_manager import FragmentManager
 from splitgraph.engine import ResultShape, switch_engine
 from splitgraph.exceptions import SplitGraphError, ObjectCacheError
 from splitgraph.hooks.external_objects import get_external_object_handler
-from ._common import META_TABLES, select, insert, pretty_size, Tracer, CallbackList
+from ._common import META_TABLES, select, insert, pretty_size, Tracer, CallbackList, Quals
 
 if TYPE_CHECKING:
     from splitgraph.core.table import Table
@@ -74,7 +74,7 @@ class ObjectManager(FragmentManager):
         :param limit_to: If specified, only the objects in this list will be returned.
         :return: Set of object IDs.
         """
-        objects = self.object_engine.run_sql(
+        objects: List[str] = self.object_engine.run_sql(
             "SELECT splitgraph_api.list_objects()", return_shape=ResultShape.ONE_ONE
         )
         if not limit_to:
@@ -135,7 +135,7 @@ class ObjectManager(FragmentManager):
         self,
         table: "Table",
         objects: Optional[List[str]] = None,
-        quals: Optional[List[List[Union[Tuple[str, str, str], Tuple[str, str, int]]]]] = None,
+        quals: Optional[Quals] = None,
         defer_release: bool = False,
         tracer: Optional[Tracer] = None,
     ) -> Iterator[Union[List[str], Tuple[List[str], CallbackList]]]:
@@ -375,7 +375,7 @@ class ObjectManager(FragmentManager):
             # we're supposed to be fetching.
             self.object_engine.commit()
             self.object_engine.lock_table(SPLITGRAPH_META_SCHEMA, "object_cache_status")
-            to_fetch = self.object_engine.run_sql(
+            to_fetch: List[str] = self.object_engine.run_sql(
                 select("object_cache_status", "object_id", "ready = 'f'"),
                 return_shape=ResultShape.MANY_ONE,
             )

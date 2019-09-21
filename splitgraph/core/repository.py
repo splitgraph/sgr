@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from io import TextIOWrapper
 from random import getrandbits
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, Set
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, Set, Sequence, cast
 
 from psycopg2.sql import Composed
 from psycopg2.sql import SQL, Identifier
@@ -16,10 +16,11 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA, FDW_CLASS
 from splitgraph.core import select
 from splitgraph.core._common import insert
-from splitgraph.core.fragment_manager import get_random_object_id
+from splitgraph.core.fragment_manager import get_random_object_id, ExtraIndexInfo
 from splitgraph.core.image import Image
 from splitgraph.core.image_manager import ImageManager
 from splitgraph.core.sql import validate_import_sql
+from splitgraph.core.table import Table
 from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import CheckoutError, EngineInitializationError, TableNotFoundError
 from ._common import (
@@ -34,7 +35,7 @@ from ._common import (
 )
 from .engine import lookup_repository, get_engine
 from .object_manager import ObjectManager
-from .registry import publish_tag
+from .registry import publish_tag, PublishInfo
 
 
 class Repository:
@@ -93,7 +94,9 @@ class Repository:
             return cls(namespace, repository)
         return cls("", schema)
 
-    def __eq__(self, other: "Repository") -> bool:
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Repository):
+            return NotImplemented
         return self.namespace == other.namespace and self.repository == other.repository
 
     def to_schema(self) -> str:
@@ -291,6 +294,12 @@ class Repository:
             self.object_engine.commit()
 
     @property
+    def head_strict(self) -> Image:
+        """Return the HEAD image for the repository. Raise an exception if the repository
+         isn't checked out."""
+        return cast(Image, self.images.by_tag("HEAD", raise_on_none=True))
+
+    @property
     def head(self) -> Optional[Image]:
         """Return the HEAD image for the repository or None if the repository isn't checked out."""
         return self.images.by_tag("HEAD", raise_on_none=False)
@@ -302,6 +311,8 @@ class Repository:
 
         :param force: Discards all pending changes to the schema.
         """
+        if not self.head:
+            return
         if self.has_pending_changes():
             if not force:
                 raise CheckoutError(
@@ -322,13 +333,7 @@ class Repository:
         snap_only: bool = False,
         chunk_size: Optional[int] = 10000,
         split_changeset: bool = False,
-        extra_indexes: Optional[
-            Union[
-                Dict[str, Dict[str, Dict[str, Dict[str, int]]]],
-                Dict[str, Dict[str, Dict[str, Dict[str, float]]]],
-                Dict[str, Dict[str, Dict[str, Union[Dict[str, int], Dict[str, float]]]]],
-            ]
-        ] = None,
+        extra_indexes: Optional[ExtraIndexInfo] = None,
     ) -> Image:
         """
         Commits all pending changes to a given repository, creating a new image.
@@ -380,19 +385,13 @@ class Repository:
 
     def _commit(
         self,
-        head: Image,
+        head: Optional[Image],
         image_hash: str,
         snap_only: bool = False,
         chunk_size: Optional[int] = 10000,
         split_changeset: bool = False,
         schema: None = None,
-        extra_indexes: Optional[
-            Union[
-                Dict[str, Dict[str, Dict[str, Dict[str, int]]]],
-                Dict[str, Dict[str, Dict[str, Dict[str, float]]]],
-                Dict[str, Dict[str, Dict[str, Union[Dict[str, int], Dict[str, float]]]]],
-            ]
-        ] = None,
+        extra_indexes: Optional[ExtraIndexInfo] = None,
     ) -> None:
         """
         Reads the recorded pending changes to all tables in a given checked-out image,
@@ -412,11 +411,15 @@ class Repository:
         :param extra_indexes: Dictionary of {table: index_type: column: index_specific_kwargs}.
         """
         schema = schema or self.to_schema()
-        extra_indexes = extra_indexes or {}
+        extra_indexes: ExtraIndexInfo = extra_indexes or {}
 
         changed_tables = self.object_engine.get_changed_tables(schema)
         for table in self.object_engine.get_all_tables(schema):
-            table_info = head.get_table(table) if head else None
+            try:
+                table_info: Optional[Table] = head.get_table(table) if head else None
+            except TableNotFoundError:
+                table_info = None
+
             # Store as a full copy if this is a new table, there's been a schema change or we were told to.
             # This is obviously wasteful (say if just one column has been added/dropped or we added a PK,
             # but it's a starting point to support schema changes.
@@ -472,29 +475,26 @@ class Repository:
 
     # --- TAG AND IMAGE MANAGEMENT ---
 
-    def get_all_hashes_tags(
-        self
-    ) -> Union[
-        List[Tuple[str, str]],
-        List[Tuple[None, str]],
-        List[Union[Tuple[None, str], Tuple[str, str]]],
-    ]:
+    def get_all_hashes_tags(self) -> List[Tuple[Optional[str], str]]:
         """
         Gets all tagged images and their hashes in a given repository.
 
         :return: List of (image_hash, tag)
         """
-        return self.engine.run_sql(
-            select(
-                "get_tagged_images",
-                "image_hash, tag",
-                schema=SPLITGRAPH_API_SCHEMA,
-                table_args="(%s,%s)",
+        return cast(
+            List[Tuple[Optional[str], str]],
+            self.engine.run_sql(
+                select(
+                    "get_tagged_images",
+                    "image_hash, tag",
+                    schema=SPLITGRAPH_API_SCHEMA,
+                    table_args="(%s,%s)",
+                ),
+                (self.namespace, self.repository),
             ),
-            (self.namespace, self.repository),
         )
 
-    def set_tags(self, tags: Dict[str, Union[str, None]]) -> None:
+    def set_tags(self, tags: Dict[str, Optional[str]]) -> None:
         """
         Sets tags for multiple images.
 
@@ -502,6 +502,7 @@ class Repository:
         """
         for tag, image_id in tags.items():
             if tag != "HEAD":
+                assert image_id is not None
                 self.images.by_hash(image_id).tag(tag)
 
     def run_sql(
@@ -604,16 +605,14 @@ class Repository:
     @manage_audit
     def import_tables(
         self,
-        tables: Union[Tuple[str, str, str, str], List[str], Tuple[str], Tuple[str, str]],
+        tables: Sequence[str],
         source_repository: "Repository",
-        source_tables: Union[Tuple[str, str, str, str], List[str], Tuple[str], Tuple[str, str]],
+        source_tables: Sequence[str],
         image_hash: Optional[str] = None,
         foreign_tables: bool = False,
         do_checkout: bool = True,
         target_hash: Optional[str] = None,
-        table_queries: Optional[
-            Union[Tuple[bool], Tuple[bool, bool], Tuple[bool, bool, bool, bool], List[bool]]
-        ] = None,
+        table_queries: Optional[Sequence[bool]] = None,
         parent_hash: Optional[str] = None,
         wrapper: Optional[str] = FDW_CLASS,
     ) -> str:
@@ -697,14 +696,12 @@ class Repository:
     def _import_tables(
         self,
         image: Optional[Image],
-        tables: Union[Tuple[str], Tuple[str, str, str, str], Tuple[str, str], List[str]],
+        tables: Sequence[str],
         source_repository: "Repository",
         target_hash: str,
-        source_tables: Union[Tuple[str], Tuple[str, str, str, str], Tuple[str, str], List[str]],
+        source_tables: Sequence[str],
         do_checkout: bool,
-        table_queries: Union[
-            Tuple[bool], Tuple[bool, bool, bool, bool], Tuple[bool, bool], List[bool]
-        ],
+        table_queries: Sequence[bool],
         foreign_tables: bool,
         base_hash: Optional[str],
         wrapper: Optional[str],
@@ -776,7 +773,7 @@ class Repository:
         target_table: str,
         is_query: bool,
         do_checkout: bool,
-    ) -> None:
+    ) -> List[str]:
         # First, import the query (or the foreign table) into a temporary table.
         tmp_object_id = get_random_object_id()
         if is_query:
@@ -817,7 +814,7 @@ class Repository:
         self,
         remote_repository: Optional["Repository"] = None,
         handler: str = "DB",
-        handler_options: None = None,
+        handler_options: Optional[Dict[str, Any]] = None,
     ) -> "Repository":
         """
         Inverse of ``pull``: Pushes all local changes to the remote and uploads new objects.
@@ -903,12 +900,14 @@ class Repository:
             publish_tag(
                 remote_repository,
                 tag,
-                image.image_hash,
-                datetime.now(),
-                dependencies,
-                readme,
-                schemata=schemata,
-                previews=previews if include_table_previews else None,
+                PublishInfo(
+                    image_hash=image.image_hash,
+                    published=datetime.now(),
+                    provenance=dependencies,
+                    readme=readme,
+                    schemata=schemata,
+                    previews=previews if include_table_previews else None,
+                ),
             )
             remote_repository.engine.commit()
         finally:
@@ -920,7 +919,7 @@ class Repository:
         image_1: Union[Image, str],
         image_2: Optional[Union[Image, str]],
         aggregate: bool = False,
-    ) -> Any:
+    ) -> Union[bool, Tuple[int, int, int], List[Tuple[bool, Tuple]]]:
         """
         Compares the state of a table in different images by materializing both tables into a temporary space
         and comparing them row-to-row.
@@ -951,7 +950,12 @@ class Repository:
         # Special case: if diffing HEAD and staging (with aggregation), we can return that directly.
         if image_1 == self.head and image_2 is None and aggregate:
             return aggregate_changes(
-                self.object_engine.get_pending_changes(self.to_schema(), table_name, aggregate=True)
+                cast(
+                    List[Tuple[int, int]],
+                    self.object_engine.get_pending_changes(
+                        self.to_schema(), table_name, aggregate=True
+                    ),
+                )
             )
 
         # If the table is the same in the two images, short circuit as well.
@@ -972,7 +976,7 @@ def import_table_from_remote(
     remote_image_hash: str,
     target_repository: "Repository",
     target_tables: List[Any],
-    target_hash: None = None,
+    target_hash: str = None,
 ) -> None:
     """
     Shorthand for importing one or more tables from a yet-uncloned remote. Here, the remote image hash is required,
@@ -1029,7 +1033,7 @@ def _sync(
     download: bool = True,
     download_all: Optional[bool] = False,
     handler: str = "DB",
-    handler_options: None = None,
+    handler_options: Optional[Dict[str, Any]] = None,
 ) -> None:
     """
     Generic routine for syncing two repositories: fetches images, hashes, objects and tags

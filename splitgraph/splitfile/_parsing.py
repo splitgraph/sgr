@@ -4,7 +4,7 @@ Internal functions for parsing Splitfiles.
 
 import re
 import shlex
-from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING, Sequence, TypeVar
 
 from parsimonious import Grammar
 from parsimonious.nodes import Node, RegexNode
@@ -164,7 +164,17 @@ def parse_image_spec(remote_repo_node: Node) -> Tuple["Repository", str]:
     return repository, tag_or_hash
 
 
-def extract_all_table_aliases(node: Node) -> Union[zip, Tuple[List[Any], List[Any], List[Any]]]:
+T1 = TypeVar("T1")
+T2 = TypeVar("T2")
+T3 = TypeVar("T3")
+
+
+def _transpose3(seq: Sequence[Tuple[T1, T2, T3]]) -> Tuple[List[T1], List[T2], List[T3]]:
+    t1, t2, t3 = zip(*seq)
+    return t1, t2, t3
+
+
+def extract_all_table_aliases(node: Node) -> Tuple[List[str], List[str], List[bool]]:
     """
     Extracts table names and aliases in a format suitable for passing to the `import_tables` function
     :param node: Parse node
@@ -175,7 +185,7 @@ def extract_all_table_aliases(node: Node) -> Union[zip, Tuple[List[Any], List[An
     if not tables:
         # No tables specified (imports all tables from the mounted db / repo)
         return [], [], []
-    return zip(*[_parse_table_alias(table) for table in tables])
+    return _transpose3([_parse_table_alias(table) for table in tables])
 
 
 def parse_custom_command(node: Node) -> Tuple[str, List[str]]:

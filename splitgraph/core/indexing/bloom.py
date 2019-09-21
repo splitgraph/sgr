@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union, cast
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.core._common import pretty_size
+from splitgraph.core._common import pretty_size, Changeset
 from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.engine.postgres.engine import SG_UD_FLAG
 
@@ -29,7 +29,7 @@ def _hash_value(value: Union[datetime, int, str]) -> Tuple[bytes, bytes]:
 def generate_bloom_index(
     engine: PostgresEngine,
     object_id: str,
-    changeset: Optional[Dict[Tuple[str, ...], Tuple[bool, Dict[str, Any]]]],
+    changeset: Optional[Changeset],
     column: str,
     probability: Optional[float] = None,
     size: Optional[int] = None,

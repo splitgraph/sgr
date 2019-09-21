@@ -9,7 +9,6 @@ import itertools
 from abc import ABC
 from contextlib import contextmanager
 from datetime import datetime
-from decimal import Decimal
 from enum import Enum
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING, cast
 
@@ -22,6 +21,7 @@ from splitgraph.config.keys import ConfigDict
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PostgresEngine
+    from splitgraph.core._common import TableSchema
 
 
 # List of config flags that are extracted from the global configuration and passed to a given engine
@@ -122,13 +122,7 @@ class SQLEngine(ABC):
         sql: Union[Composed, str],
         arguments: None = None,
         return_shape: ResultShape = ResultShape.MANY_MANY,
-    ) -> Optional[
-        Union[
-            List[Tuple[datetime, Decimal, str]],
-            List[Tuple[str, Decimal]],
-            List[Tuple[Decimal, Decimal, str]],
-        ]
-    ]:
+    ) -> Any:
         """
         Executes a non-schema-qualified query against a specific schema.
 
@@ -262,21 +256,25 @@ class SQLEngine(ABC):
 
     def get_all_tables(self, schema: str) -> List[str]:
         """Get all tables in a given schema."""
-        return self.run_sql(
-            "SELECT table_name FROM information_schema.tables WHERE table_schema = %s",
-            (schema,),
-            return_shape=ResultShape.MANY_ONE,
+        return cast(
+            List[str],
+            self.run_sql(
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = %s",
+                (schema,),
+                return_shape=ResultShape.MANY_ONE,
+            ),
         )
 
     def get_table_type(self, schema: str, table: str) -> Optional[str]:
         """Get the type of the table (BASE or FOREIGN)
         """
-        return self.run_sql(
+        result = self.run_sql(
             "SELECT table_type FROM information_schema.tables WHERE table_schema = %s"
             " AND table_name = %s",
             (schema, table),
             return_shape=ResultShape.ONE_ONE,
         )
+        return cast(Optional[str], result)
 
     def get_primary_keys(self, schema, table):
         """Get a list of (column_name, column_type) denoting the primary keys of a given table."""
@@ -286,7 +284,7 @@ class SQLEngine(ABC):
     def dump_table_creation(
         schema: Optional[str],
         table: str,
-        schema_spec: List[Tuple[int, str, str, bool]],
+        schema_spec: "TableSchema",
         unlogged: bool = False,
         temporary: bool = False,
     ) -> Composed:
@@ -337,7 +335,7 @@ class SQLEngine(ABC):
         self,
         schema: str,
         table: str,
-        schema_spec: List[Tuple[int, str, str, bool]],
+        schema_spec: "TableSchema",
         unlogged: bool = False,
         temporary: bool = False,
     ) -> None:
@@ -381,16 +379,17 @@ class SQLEngine(ABC):
 
     def get_column_names_types(self, schema: str, table_name: str) -> List[Tuple[str, str]]:
         """Returns a list of (column, type) in a given table."""
-        return self.run_sql(
-            """SELECT column_name, data_type FROM information_schema.columns
+        return cast(
+            List[Tuple[str, str]],
+            self.run_sql(
+                """SELECT column_name, data_type FROM information_schema.columns
                            WHERE table_schema = %s
                            AND table_name = %s""",
-            (schema, table_name),
+                (schema, table_name),
+            ),
         )
 
-    def get_full_table_schema(
-        self, schema: str, table_name: str
-    ) -> List[Tuple[int, str, str, bool]]:
+    def get_full_table_schema(self, schema: str, table_name: str) -> "TableSchema":
         """
         Generates a list of (column ordinal, name, data type, is_pk), used to detect schema changes like columns being
         dropped/added/renamed or type changes.

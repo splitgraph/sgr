@@ -1,15 +1,17 @@
 # engine params
-from typing import Any, Dict
+from typing import Optional, Union, Dict, Any
 
 from .argument_config import get_argument_config_value
 from .config_file_config import get_config_dict_from_config_file
 from .default_config import get_default_config_value
 from .environment_config import get_environment_config_value
-from .keys import KEYS, ALL_KEYS
+from .keys import KEYS, ALL_KEYS, ConfigDict
 from .system_config import get_system_config_value
 
 
-def lazy_get_config_value(key: str, default_return: None = None) -> Any:
+def lazy_get_config_value(
+    key: str, default_return: Optional[str] = None
+) -> Optional[Union[str, Dict[str, Dict[str, str]]]]:
     """
         Get the config value for a key in the following precedence
         Otherwise return default_return
@@ -29,7 +31,7 @@ def lazy_get_config_value(key: str, default_return: None = None) -> Any:
     )
 
 
-def update_config_dict_from_arguments(config_dict: Dict[str, Any]) -> Dict[str, Any]:
+def update_config_dict_from_arguments(config_dict: ConfigDict) -> ConfigDict:
     """
         Given an existing config_dict, update after reading sys.argv
         and overwriting any keys.
@@ -45,7 +47,7 @@ def update_config_dict_from_arguments(config_dict: Dict[str, Any]) -> Dict[str, 
     return new_config_dict
 
 
-def update_config_dict_from_env_vars(config_dict: Dict[str, Any]) -> Dict[str, Any]:
+def update_config_dict_from_env_vars(config_dict: ConfigDict) -> ConfigDict:
     """
         Given an existing config_dict, update after reading os.environ
         and overwriting any keys.
@@ -63,9 +65,7 @@ def update_config_dict_from_env_vars(config_dict: Dict[str, Any]) -> Dict[str, A
     return new_config_dict
 
 
-def update_config_dict_from_file(
-    config_dict: Dict[str, Any], sg_config_file: str
-) -> Dict[str, Any]:
+def update_config_dict_from_file(config_dict: ConfigDict, sg_config_file: str) -> ConfigDict:
     """
         Given an existing config_dict, update after reading sg_config_file
         and overwriting any keys according to the rules in config_file_config
@@ -79,7 +79,7 @@ def update_config_dict_from_file(
     return new_config_dict
 
 
-def create_config_dict() -> Dict[str, Any]:
+def create_config_dict() -> ConfigDict:
     """
         Create and return a dict of all known config values
     """
@@ -100,7 +100,7 @@ def create_config_dict() -> Dict[str, Any]:
     return config_dict
 
 
-def patch_config(config: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
+def patch_config(config: ConfigDict, patch: ConfigDict) -> ConfigDict:
     """
     Recursively updates a nested configuration dictionary:
 
@@ -116,10 +116,14 @@ def patch_config(config: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any
     :param patch: Dictionary with the path
     :return: New patched dictionary
     """
-    result = config.copy()
-    for key, value in patch.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = patch_config(result[key], value)
-        else:
-            result[key] = value
+
+    def _patch_internal(left: Dict[str, Any], right: Dict[str, Any]) -> Dict[str, Any]:
+        for key, value in right.items():
+            if key in left and isinstance(left[key], dict) and isinstance(value, dict):
+                left[key] = _patch_internal(left[key], value)
+            else:
+                left[key] = value
+        return left
+
+    result: ConfigDict = _patch_internal(config.copy(), patch)
     return result

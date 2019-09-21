@@ -11,7 +11,7 @@ from io import BytesIO
 from io import TextIOWrapper
 from pkgutil import get_data
 from threading import get_ident
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING, Sequence, cast
 
 import psycopg2
 from psycopg2 import DatabaseError
@@ -223,10 +223,10 @@ class PsycopgEngine(SQLEngine):
     def run_sql(
         self,
         statement: Union[bytes, Composed, str, SQL],
-        arguments: Optional[Any] = None,
+        arguments: Optional[Sequence[Any]] = None,
         return_shape: Optional[ResultShape] = ResultShape.MANY_MANY,
         named: bool = False,
-    ):
+    ) -> Any:
 
         cursor_kwargs = {"cursor_factory": psycopg2.extras.NamedTupleCursor} if named else {}
 
@@ -273,14 +273,17 @@ class PsycopgEngine(SQLEngine):
 
     def get_primary_keys(self, schema: str, table: str) -> List[Tuple[str, str]]:
         """Inspects the Postgres information_schema to get the primary keys for a given table."""
-        return self.run_sql(
-            SQL(
-                """SELECT a.attname, format_type(a.atttypid, a.atttypmod)
+        return cast(
+            List[Tuple[str, str]],
+            self.run_sql(
+                SQL(
+                    """SELECT a.attname, format_type(a.atttypid, a.atttypmod)
                                FROM pg_index i JOIN pg_attribute a ON a.attrelid = i.indrelid
                                                                       AND a.attnum = ANY(i.indkey)
                                WHERE i.indrelid = '{}.{}'::regclass AND i.indisprimary"""
-            ).format(Identifier(schema), Identifier(table)),
-            return_shape=ResultShape.MANY_MANY,
+                ).format(Identifier(schema), Identifier(table)),
+                return_shape=ResultShape.MANY_MANY,
+            ),
         )
 
     def run_sql_batch(
@@ -447,10 +450,13 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
 
     def get_tracked_tables(self) -> List[Tuple[str, str]]:
         """Return a list of tables that the audit trigger is working on."""
-        return self.run_sql(
-            "SELECT DISTINCT event_object_schema, event_object_table "
-            "FROM information_schema.triggers WHERE trigger_name IN (%s, %s)",
-            (ROW_TRIGGER_NAME, STM_TRIGGER_NAME),
+        return cast(
+            List[Tuple[str, str]],
+            self.run_sql(
+                "SELECT DISTINCT event_object_schema, event_object_table "
+                "FROM information_schema.triggers WHERE trigger_name IN (%s, %s)",
+                (ROW_TRIGGER_NAME, STM_TRIGGER_NAME),
+            ),
         )
 
     def track_tables(self, tables: List[Tuple[str, str]]) -> None:
@@ -510,7 +516,7 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
 
     def get_pending_changes(
         self, schema: str, table: str, aggregate: bool = False
-    ) -> Union[List[Tuple[int, int]], List[Tuple[Tuple, int, Dict]]]:
+    ) -> Union[List[Tuple[int, int]], List[Tuple[Tuple[str, ...], bool, Dict[str, Any]]]]:
         """
         Return pending changes for a given tracked table
 
@@ -533,7 +539,7 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
             ]
 
         ri_cols, _ = zip(*self.get_change_key(schema, table))
-        result: List[Tuple[Tuple, int, Dict]] = []
+        result: List[Tuple[Tuple, bool, Dict]] = []
         for action, row_data, changed_fields in self.run_sql(
             SQL(
                 "SELECT action, row_data, changed_fields FROM {}.{} "
@@ -546,13 +552,16 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
 
     def get_changed_tables(self, schema: str) -> List[str]:
         """Get list of tables that have changed content"""
-        return self.run_sql(
-            SQL(
-                """SELECT DISTINCT(table_name) FROM {}.{}
+        return cast(
+            List[str],
+            self.run_sql(
+                SQL(
+                    """SELECT DISTINCT(table_name) FROM {}.{}
                                WHERE schema_name = %s"""
-            ).format(Identifier("audit"), Identifier("logged_actions")),
-            (schema,),
-            return_shape=ResultShape.MANY_ONE,
+                ).format(Identifier("audit"), Identifier("logged_actions")),
+                (schema,),
+                return_shape=ResultShape.MANY_ONE,
+            ),
         )
 
 
@@ -586,7 +595,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         self,
         object_id: str,
         schema: str,
-        table: None = None,
+        table: Optional[str] = None,
         schema_spec: Optional["TableSchema"] = None,
         if_not_exists: bool = False,
     ):
@@ -658,10 +667,13 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             stream.write("DROP TABLE pg_temp.cstore_tmp_ingestion;\n")
 
     def get_object_size(self, object_id: str) -> int:
-        return self.run_sql(
-            "SELECT splitgraph_api.get_object_size(%s)",
-            (object_id,),
-            return_shape=ResultShape.ONE_ONE,
+        return cast(
+            int,
+            self.run_sql(
+                "SELECT splitgraph_api.get_object_size(%s)",
+                (object_id,),
+                return_shape=ResultShape.ONE_ONE,
+            ),
         )
 
     def delete_objects(self, object_ids: List[str]) -> None:
@@ -991,6 +1003,14 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         port = remote_engine.conn_params["SG_ENGINE_FDW_PORT"]
         dbname = remote_engine.conn_params["SG_ENGINE_DB_NAME"]
 
+        # conn_params might contain Nones for some parameters (host/port for Unix
+        # socket connection, so here we have to validate that they aren't None).
+        assert user is not None
+        assert pwd is not None
+        assert host is not None
+        assert port is not None
+        assert dbname is not None
+
         logging.info(
             "Mounting remote schema %s@%s:%s/%s/%s to %s...",
             user,
@@ -1016,7 +1036,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         finally:
             self.delete_schema(REMOTE_TMP_SCHEMA)
 
-    def download_objects(self, objects: List[str], remote_engine: "PostgresEngine"):
+    def download_objects(self, objects: List[str], remote_engine: "PostgresEngine") -> List[str]:
         # Instead of connecting and pushing queries to it from the Python client, we just mount the remote mountpoint
         # into a temporary space (without any checking out) and SELECT the  required data into our local tables.
 

@@ -6,7 +6,7 @@ import re
 from datetime import date, datetime, time
 from decimal import Decimal
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING, Sequence
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING, Sequence, Match
 
 from psycopg2.sql import Composed
 from psycopg2.sql import Identifier, SQL
@@ -113,7 +113,7 @@ def parse_connection_string(conn_string: str) -> Tuple[str, int, str, str, str]:
     """
     :return: a tuple (server, port, username, password, dbname)
     """
-    match = re.match(r"(\S+):(\S+)@(.+):(\d+)/(\S+)", conn_string)
+    match: Match[str, str, str, int, str] = re.match(r"(\S+):(\S+)@(.+):(\d+)/(\S+)", conn_string)
     if not match:
         raise ValueError("Connection string doesn't match the format!")
     return match.group(3), int(match.group(4)), match.group(1), match.group(2), match.group(5)
@@ -367,7 +367,7 @@ def insert(table: str, columns: Sequence[str], schema: str = SPLITGRAPH_META_SCH
     return query
 
 
-def ensure_metadata_schema(engine: "PostgresEngine") -> None:
+def ensure_metadata_schema(engine: "PsycopgEngine") -> None:
     """Create the metadata schema if it doesn't exist"""
     if (
         engine.run_sql(
@@ -392,8 +392,12 @@ def aggregate_changes(
 
 
 def slow_diff(
-    repository: "Repository", table_name: str, image_1: str, image_2: Optional[str], aggregate: bool
-) -> Any:
+    repository: "Repository",
+    table_name: str,
+    image_1: Optional[str],
+    image_2: Optional[str],
+    aggregate: bool,
+) -> Union[Tuple[int, int, int], List[Tuple[bool, Tuple]]]:
     """Materialize both tables and manually diff them"""
     with repository.materialized_table(table_name, image_1) as (mp_1, table_1):
         with repository.materialized_table(table_name, image_2) as (mp_2, table_2):
@@ -551,7 +555,7 @@ _TYPE_MAP: Dict[str, Callable[..., Any]] = {
 }
 
 
-def adapt(value: Union[str, int, float], pg_type: str) -> Union[int, date, float, str]:
+def adapt(value: Any, pg_type: str) -> Any:
     """
     Coerces a value with a PG type into its Python equivalent.
 
@@ -635,6 +639,6 @@ class CallbackList(list):
             listener(*args, **kwargs)
 
 
-Changeset = Dict[Tuple, Tuple[int, Tuple]]
+Changeset = Dict[Tuple[str, ...], Tuple[bool, Dict[str, Any]]]
 TableSchema = List[Tuple[int, str, str, bool]]
-Quals = List[List[Tuple[str, str, Any]]]
+Quals = Sequence[Sequence[Tuple[str, str, Any]]]

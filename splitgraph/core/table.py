@@ -3,7 +3,19 @@ import itertools
 import logging
 import threading
 from contextlib import contextmanager
-from typing import Any, Callable, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING, Dict
+from typing import (
+    Any,
+    Callable,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    TYPE_CHECKING,
+    Dict,
+    Sequence,
+    cast,
+)
 
 from psycopg2.sql import SQL, Identifier, Composed
 
@@ -50,7 +62,7 @@ class QueryPlan:
     qualifiers.
     """
 
-    def __init__(self, table: "Table", quals: Optional[Quals], columns: Tuple[str, ...]) -> None:
+    def __init__(self, table: "Table", quals: Optional[Quals], columns: Sequence[str]) -> None:
         self.table = table
         self.quals = quals
         self.columns = columns
@@ -64,6 +76,15 @@ class QueryPlan:
             self.required_objects, table, quals
         )
         self.tracer.log("filter_objects")
+
+
+QueryPlanCacheKey = Tuple[Optional[Tuple[Tuple[Tuple[str, str, Any]]]], Tuple[str]]
+
+
+def _get_plan_cache_key(quals: Optional[Quals], columns: Sequence[str]) -> QueryPlanCacheKey:
+    quals = tuple(tuple(qual) for qual in quals) if quals else None
+    columns = tuple(columns)
+    return quals, columns
 
 
 class Table:
@@ -89,7 +110,7 @@ class Table:
         self._query_plans: Dict[Tuple[Optional[Quals], Tuple[str]], QueryPlan] = {}
 
     def get_query_plan(
-        self, quals: Optional[Quals], columns: List[str], use_cache: bool = True
+        self, quals: Optional[Quals], columns: Sequence[str], use_cache: bool = True
     ) -> QueryPlan:
         """
         Start planning a query (preliminary steps before object downloading,
@@ -100,9 +121,7 @@ class Table:
         :param use_cache: If True, will fetch the plan from the cache for the same qualifiers and columns.
         :return: QueryPlan
         """
-        quals = [[tuple(t) for t in qual] for qual in quals] if quals else None
-        columns = tuple(columns)
-        key = (quals, columns)
+        key = _get_plan_cache_key(quals, columns)
 
         if use_cache and key in self._query_plans:
             plan = self._query_plans[key]
@@ -148,7 +167,7 @@ class Table:
                 if required_objects:
                     logging.info("Applying %d fragment(s)...", (len(required_objects)))
                     engine.apply_fragments(
-                        [(SPLITGRAPH_META_SCHEMA, d) for d in required_objects],
+                        [(SPLITGRAPH_META_SCHEMA, d) for d in cast(List[str], required_objects)],
                         destination_schema,
                         destination,
                     )
@@ -234,7 +253,7 @@ class Table:
             with object_manager.ensure_objects(
                 self, objects=required_objects, defer_release=True, tracer=plan.tracer
             ) as (required_objects, release_callback):
-                return queries, release_callback, plan
+                return queries, cast(Callable, release_callback), plan
 
         def _generate_nonsingleton_query():
             # If we have fragments that need applying to a staging area, we don't want to
@@ -305,7 +324,11 @@ class Table:
         with object_manager.ensure_objects(
             self, objects=required_objects, defer_release=True, tracer=plan.tracer
         ) as (required_objects, release_callback):
-            return itertools.chain(queries, _generate_nonsingleton_query()), release_callback, plan
+            return (
+                itertools.chain(queries, _generate_nonsingleton_query()),
+                cast(Callable, release_callback),
+                plan,
+            )
 
     @contextmanager
     def query_lazy(self, columns: List[str], quals: Quals) -> Iterator[Iterator[Dict[str, Any]]]:
@@ -388,7 +411,7 @@ class Table:
         schema: str,
         tables: List[str],
         columns: List[str],
-        qual_sql: Optional[Union[SQL, Composed]] = None,
+        qual_sql: Optional[Composable] = None,
         qual_args: Optional[Tuple] = None,
     ) -> List[bytes]:
         engine = self.repository.object_engine

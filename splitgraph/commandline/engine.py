@@ -32,7 +32,7 @@ def copy_to_container(container: Container, source_path: str, target_path: str) 
 
     tarinfo = TarInfo(name=os.path.basename(target_path))
     tarinfo.size = len(data)
-    tarinfo.mtime = time.time()
+    tarinfo.mtime = int(time.time())
 
     stream = BytesIO()
     tar = TarFile(fileobj=stream, mode="w")
@@ -40,7 +40,7 @@ def copy_to_container(container: Container, source_path: str, target_path: str) 
     tar.close()
 
     stream.seek(0)
-    container.put_archive(path=os.path.dirname(target_path), data=stream)
+    container.put_archive(path=os.path.dirname(target_path), data=stream.read())
 
 
 def _get_container_name(engine_name: str) -> str:

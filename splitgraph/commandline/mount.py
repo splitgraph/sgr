@@ -73,15 +73,18 @@ def _make_mount_handler_command(handler_name: str) -> Command:
     with help text and kwarg/connection string passing"""
 
     handler = get_mount_handler(handler_name)
-    help_text, handler_options_help = _generate_handler_help(handler.__doc__)
+    help_text, handler_options_help = (
+        _generate_handler_help(handler.__doc__) if handler.__doc__ else None,
+        None,
+    )
 
     params = [
         click.Argument(["schema"]),
         click.Option(
-            ("--connection", "-c"),
+            ["--connection", "-c"],
             help="Connection string in the form username:password@server:port",
         ),
-        click.Option(("--handler-options", "-o"), help=handler_options_help, default="{}"),
+        click.Option(["--handler-options", "-o"], help=handler_options_help, default="{}"),
     ]
 
     def _callback(schema, connection, handler_options):

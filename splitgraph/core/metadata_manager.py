@@ -3,7 +3,7 @@ Classes related to managing table/image/object metadata tables.
 """
 import itertools
 from collections import namedtuple
-from typing import Any, Dict, List, Optional, Set, Tuple, Union, TYPE_CHECKING, NamedTuple
+from typing import Any, Dict, List, Optional, Set, Tuple, Union, TYPE_CHECKING, NamedTuple, cast
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
@@ -37,7 +37,7 @@ class Object(NamedTuple):
     size: int
     insertion_hash: str
     deletion_hash: str
-    index: Dict[str, Any]
+    object_index: Dict[str, Any]
 
 
 class MetadataManager:
@@ -110,8 +110,11 @@ class MetadataManager:
 
         :return: List of object IDs.
         """
-        return self.metadata_engine.run_sql(
-            select("objects", "object_id"), return_shape=ResultShape.MANY_ONE
+        return cast(
+            List[str],
+            self.metadata_engine.run_sql(
+                select("objects", "object_id"), return_shape=ResultShape.MANY_ONE
+            ),
         )
 
     def get_new_objects(self, object_ids: List[str]) -> List[str]:
@@ -121,10 +124,13 @@ class MetadataManager:
         :param object_ids: List of objects to check
         :return: List of unknown object IDs.
         """
-        return self.metadata_engine.run_sql(
-            SQL("SELECT {}.get_new_objects(%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
-            (object_ids,),
-            return_shape=ResultShape.ONE_ONE,
+        return cast(
+            List[str],
+            self.metadata_engine.run_sql(
+                SQL("SELECT {}.get_new_objects(%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
+                (object_ids,),
+                return_shape=ResultShape.ONE_ONE,
+            ),
         )
 
     def get_external_object_locations(self, objects: List[str]) -> List[Tuple[str, str, str]]:
@@ -134,14 +140,17 @@ class MetadataManager:
         :param objects: List of object IDs stored externally.
         :return: List of (object_id, location, protocol).
         """
-        return self.metadata_engine.run_sql(
-            select(
-                "get_object_locations",
-                "object_id, location, protocol",
-                schema=SPLITGRAPH_API_SCHEMA,
-                table_args="(%s)",
+        return cast(
+            List[Tuple[str, str, str]],
+            self.metadata_engine.run_sql(
+                select(
+                    "get_object_locations",
+                    "object_id, location, protocol",
+                    schema=SPLITGRAPH_API_SCHEMA,
+                    table_args="(%s)",
+                ),
+                (objects,),
             ),
-            (objects,),
         )
 
     def get_object_meta(self, objects: List[str]) -> Dict[str, Object]:

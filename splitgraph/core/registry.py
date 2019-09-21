@@ -3,7 +3,7 @@ Functions for communicating with the remote Splitgraph catalog
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING, NamedTuple, cast
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
@@ -52,33 +52,23 @@ def _ensure_registry_schema(engine: "PostgresEngine") -> None:
         _create_registry_schema(engine)
 
 
-def publish_tag(
-    repository: "Repository",
-    tag: str,
-    image_hash: str,
-    published: datetime,
-    provenance: Optional[List[Tuple[Tuple[str, str], str]]],
-    readme: str,
-    schemata: Dict[str, List[Tuple[str, str, bool]]],
-    previews: Optional[
-        Union[
-            Dict[str, Union[List[Tuple[int, str, str]], List[Tuple[int, str]]]],
-            Dict[str, List[Tuple[int, str]]],
-        ]
-    ],
-) -> None:
+class PublishInfo(NamedTuple):
+    image_hash: str
+    published: datetime
+    provenance: Optional[List[Tuple[Tuple[str, str], str]]]
+    readme: str
+    schemata: Dict[str, List[Tuple[str, str, bool]]]
+    previews: Optional[Dict[str, List[Tuple]]]
+
+
+def publish_tag(repository: "Repository", tag: str, info: PublishInfo) -> None:
     """
     Publishes a given tag in the remote catalog. Should't be called directly.
     Use splitgraph.commands.publish instead.
 
     :param repository: Remote (!) Repository object
     :param tag: Tag to publish
-    :param image_hash: Image hash corresponding to the given tag.
-    :param published: Publish time (datetime)
-    :param provenance: A list of tuples (repository, image_hash) showing what the image was created from
-    :param readme: An optional README for the repo
-    :param schemata: Dict mapping table name to a list of (column name, column type)
-    :param previews: Dict mapping table name to a list of tuples with a preview
+    :param info: A structure with information about the published image.
     """
     repository.engine.run_sql(
         SQL("SELECT {}.publish_image(%s,%s,%s,%s,%s,%s,%s,%s,%s)").format(
@@ -88,55 +78,36 @@ def publish_tag(
             repository.namespace,
             repository.repository,
             tag,
-            image_hash,
-            published,
-            Json(provenance),
-            readme,
-            Json(schemata),
-            Json(previews),
+            info.image_hash,
+            info.published,
+            Json(info.provenance),
+            info.readme,
+            Json(info.schemata),
+            Json(info.previews),
         ),
     )
 
 
-def get_published_info(
-    repository: "Repository", tag: str
-) -> Optional[
-    Union[
-        Tuple[
-            str,
-            datetime,
-            List[Any],
-            str,
-            Dict[str, List[List[Union[bool, str]]]],
-            Dict[str, List[List[Union[int, str]]]],
-        ],
-        Tuple[
-            str,
-            datetime,
-            List[List[Union[List[str], str]]],
-            str,
-            Dict[str, List[List[Union[bool, str]]]],
-            Dict[str, List[List[Union[int, str]]]],
-        ],
-        Tuple[str, datetime, None, str, Dict[str, List[List[Union[bool, str]]]], None],
-    ]
-]:
+def get_published_info(repository: "Repository", tag: str) -> Optional[PublishInfo]:
     """
     Get information on an image that's published in a catalog.
 
     :param repository: Repository
     :param tag: Image tag
-    :return: A tuple of (image_hash, published_timestamp, provenance, readme, table schemata, previews)
+    :return: A PublishInfo namedtuple.
     """
-    return repository.engine.run_sql(
-        select(
-            "get_published_image",
-            "image_hash,published,provenance,readme,schemata,previews",
-            table_args="(%s,%s,%s)",
-            schema=SPLITGRAPH_API_SCHEMA,
+    return cast(
+        PublishInfo,
+        repository.engine.run_sql(
+            select(
+                "get_published_image",
+                "image_hash,published,provenance,readme,schemata,previews",
+                table_args="(%s,%s,%s)",
+                schema=SPLITGRAPH_API_SCHEMA,
+            ),
+            (repository.namespace, repository.repository, tag),
+            return_shape=ResultShape.ONE_MANY,
         ),
-        (repository.namespace, repository.repository, tag),
-        return_shape=ResultShape.ONE_MANY,
     )
 
 
@@ -159,10 +130,15 @@ def get_info_key(engine: "PostgresEngine", key: str) -> Optional[str]:
     :param engine: Engine
     :param key: Key to get
     """
-    return engine.run_sql(
-        SQL("SELECT value FROM {}.info WHERE key = %s").format(Identifier(SPLITGRAPH_META_SCHEMA)),
-        (key,),
-        return_shape=ResultShape.ONE_ONE,
+    return cast(
+        Optional[str],
+        engine.run_sql(
+            SQL("SELECT value FROM {}.info WHERE key = %s").format(
+                Identifier(SPLITGRAPH_META_SCHEMA)
+            ),
+            (key,),
+            return_shape=ResultShape.ONE_ONE,
+        ),
     )
 
 

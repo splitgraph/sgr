@@ -6,7 +6,7 @@ import json
 from hashlib import sha256
 from importlib import import_module
 from random import getrandbits
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional
 
 from parsimonious.nodes import Node
 
@@ -107,6 +107,7 @@ def _execute_sql(node: Node, output: Repository) -> None:
     # Since we handle the "input" hashing in the import step, we don't need to care about the sources here.
     # Later on, we could enhance the caching and base the hash of the command on the hashes of objects that
     # definitely go there as sources.
+    assert output.head is not None
     node_contents = extract_nodes(node, ["non_newline"])[0].text
     if node.expr_name == "sql_file":
         print("Loading the SQL commands from %s" % node_contents)
@@ -131,6 +132,7 @@ def _execute_sql(node: Node, output: Repository) -> None:
 
 
 def _execute_from(node: Node, output: Repository) -> Repository:
+    assert output.head is not None
     interesting_nodes = extract_nodes(node, ["repo_source", "repository"])
     repo_source = get_first_or_none(interesting_nodes, "repo_source")
     output_node = get_first_or_none(interesting_nodes, "repository")
@@ -229,14 +231,16 @@ def _execute_db_import(
 
 def _execute_repo_import(
     repository: Repository,
-    table_names: Union[Tuple[str, str, str, str], Tuple[str, str], Tuple[str]],
+    table_names: List[str],
     tag_or_hash: str,
     target_repository: Repository,
-    table_aliases: Union[Tuple[str, str, str, str], Tuple[str, str], Tuple[str]],
-    table_queries: Union[Tuple[bool, bool, bool, bool], Tuple[bool, bool], Tuple[bool]],
+    table_aliases: List[str],
+    table_queries: List[bool],
 ) -> None:
+    assert target_repository.head is not None
     # Don't use the actual routine here as we want more control: clone the remote repo in order to turn
     # the tag into an actual hash
+
     tmp_repo = Repository(repository.namespace, repository.repository + "_clone_tmp")
     try:
         # Calculate the hash of the new layer by combining the hash of the previous layer,
@@ -294,6 +298,7 @@ def _execute_repo_import(
 
 
 def _execute_custom(node: Node, output: Repository) -> None:
+    assert output.head is not None
     command, args = parse_custom_command(node)
 
     # Locate the command in the config file and instantiate it.
