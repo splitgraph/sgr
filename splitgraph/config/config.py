@@ -1,13 +1,24 @@
 # engine params
-from typing import Optional, Union, Dict, Any, cast
+from typing import Optional, Union, Dict, Any, cast, Sequence, Callable
 
-from splitgraph.config import get_singleton
 from .argument_config import get_argument_config_value
 from .config_file_config import get_config_dict_from_config_file
 from .default_config import get_default_config_value
 from .environment_config import get_environment_config_value
-from .keys import KEYS, ALL_KEYS, ConfigDict
+from .keys import KEYS, ALL_KEYS, ConfigDict, DEFAULTS
 from .system_config import get_system_config_value
+
+
+def chain_getters(
+    getters: Sequence[Callable[[str], Optional[str]]],
+    key: str,
+    default_return: Optional[str] = None,
+) -> Optional[str]:
+    for getter in getters:
+        result = getter(key)
+        if result is not None:
+            return result
+    return default_return
 
 
 def lazy_get_config_value(
@@ -21,14 +32,17 @@ def lazy_get_config_value(
     if key not in ALL_KEYS:
         # For sections which can't be overridden via envvars/arguments,
         # we only use default values
-        return get_default_config_value(key, None) or default_return
+        return chain_getters([get_default_config_value], key, default_return)
 
-    return (
-        get_argument_config_value(key, None)
-        or get_environment_config_value(key, None)
-        or get_system_config_value(key, None)
-        or get_default_config_value(key, None)
-        or default_return
+    return chain_getters(
+        [
+            get_argument_config_value,
+            get_environment_config_value,
+            get_system_config_value,
+            get_default_config_value,
+        ],
+        key,
+        default_return,
     )
 
 
@@ -84,16 +98,13 @@ def create_config_dict() -> ConfigDict:
     """
         Create and return a dict of all known config values
     """
-
     initial_dict = {k: lazy_get_config_value(k) for k in ALL_KEYS}
     config_dict = cast(ConfigDict, {k: v for k, v in initial_dict.items() if v is not None})
-
     try:
         sg_config_file = get_singleton(config_dict, "SG_CONFIG_FILE")
         config_dict = update_config_dict_from_file(config_dict, sg_config_file)
     except KeyError:
         pass
-
     config_dict = update_config_dict_from_env_vars(config_dict)
     config_dict = update_config_dict_from_arguments(config_dict)
 
@@ -118,12 +129,59 @@ def patch_config(config: ConfigDict, patch: ConfigDict) -> ConfigDict:
     """
 
     def _patch_internal(left: Dict[str, Any], right: Dict[str, Any]) -> Dict[str, Any]:
+        result = left.copy()
         for key, value in right.items():
             if key in left and isinstance(left[key], dict) and isinstance(value, dict):
-                left[key] = _patch_internal(left[key], value)
+                result[key] = _patch_internal(left[key], value)
             else:
-                left[key] = value
-        return left
+                result[key] = value
+        return result
 
-    result: ConfigDict = _patch_internal(config.copy(), patch)
+    return _patch_internal(config, patch)
+
+
+def get_singleton(config: ConfigDict, item: str) -> str:
+    """Return a singleton (not a section) variable from the config."""
+    result = config[item]
+    assert isinstance(result, str)
     return result
+
+
+def get_all_in_section(config: ConfigDict, section: str) -> Dict[str, Union[str, Dict[str, str]]]:
+    """
+    Get all subsections from a config (e.g. config["mount_handlers"])
+    """
+    result: Dict[str, Union[str, Dict[str, str]]] = cast(
+        Dict[str, Union[str, Dict[str, str]]], config.get(section, {})
+    )
+    assert isinstance(result, dict)
+    return result
+
+
+def get_all_in_subsection(config: ConfigDict, section: str, subsection: str) -> Dict[str, str]:
+    section_dict = get_all_in_section(config, section)
+    subsection_dict: Dict[str, str] = cast(Dict[str, str], section_dict.get(subsection, {}))
+    assert isinstance(subsection_dict, dict)
+    return subsection_dict
+
+
+def get_from_subsection(config: ConfigDict, section: str, subsection: str, item: str) -> str:
+    """Return a singleton variable from a subsection of the config,
+    e.g. config["remotes"]["data.splitgraph.com"]["SG_ENGINE_HOST"]"""
+    subsection_dict = get_all_in_subsection(config, section, subsection)
+    return subsection_dict[item]
+
+
+def get_from_section(config: ConfigDict, section: str, item: str) -> str:
+    section_dict = get_all_in_section(config, section)
+    assert isinstance(section_dict, dict)
+    return cast(str, section_dict[item])
+
+
+def set_in_subsection(
+    config: ConfigDict, section: str, subsection: str, item: str, value: str
+) -> None:
+    """Set a singleton variable in a subsection of the config,
+    e.g. config["remotes"]["data.splitgraph.com"]["SG_ENGINE_HOST"]"""
+    subsection_dict = get_all_in_subsection(config, section, subsection)
+    subsection_dict[item] = value

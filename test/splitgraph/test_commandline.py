@@ -33,7 +33,7 @@ from splitgraph.core.metadata_manager import OBJECT_COLS
 from splitgraph.core.registry import get_published_info
 from splitgraph.core.repository import Repository
 from splitgraph.engine.postgres.engine import PostgresEngine
-from splitgraph.exceptions import AuthAPIError
+from splitgraph.exceptions import AuthAPIError, ImageNotFoundError
 from splitgraph.hooks.mount_handlers import get_mount_handlers
 from test.splitgraph.conftest import OUTPUT, SPLITFILE_ROOT, MG_MNT
 
@@ -235,8 +235,8 @@ def test_commandline_commit_bloom(pg_repo_local):
     vegetable_objects = pg_repo_local.head.get_table("vegetables").objects
     assert len(vegetable_objects) == 1
     object_meta = pg_repo_local.objects.get_object_meta(fruit_objects + vegetable_objects)
-    assert "bloom" in object_meta[fruit_objects[0]].index
-    assert "bloom" not in object_meta[vegetable_objects[0]].index
+    assert "bloom" in object_meta[fruit_objects[0]].object_index
+    assert "bloom" not in object_meta[vegetable_objects[0]].object_index
 
 
 def test_object_info(local_engine_empty):
@@ -565,7 +565,7 @@ def test_pull_push(pg_repo_local, pg_repo_remote):
     pg_repo_local.run_sql("INSERT INTO fruits VALUES (4, 'mustard')")
     local_head = pg_repo_local.commit()
 
-    assert not pg_repo_remote.images.by_hash(local_head.image_hash, raise_on_none=False)
+    assert local_head.image_hash not in list(pg_repo_remote.images)
     result = runner.invoke(push_c, [str(pg_repo_local), "-h", "DB"])
     assert result.exit_code == 0
     assert pg_repo_local.head.get_table("fruits")
@@ -745,7 +745,9 @@ def test_rm_images(pg_repo_local_multitag, pg_repo_remote_multitag):
     )
     assert result.exit_code == 0
     assert pg_repo_remote_multitag.images.by_tag("v2", raise_on_none=False) is None
-    assert pg_repo_remote_multitag.images.by_hash(remote_v2, raise_on_none=False) is None
+
+    with pytest.raises(ImageNotFoundError):
+        pg_repo_remote_multitag.images.by_hash(remote_v2)
 
     # sgr rm test/pg_mount:v1 -y
     # Should delete both images since v2 depends on v1
@@ -827,7 +829,7 @@ def test_config_dumping():
     runner = CliRunner()
 
     # sgr config (normal, with passwords shielded)
-    result = runner.invoke(config_c)
+    result = runner.invoke(config_c, catch_exceptions=False)
     assert result.exit_code == 0
     assert PG_PWD not in result.output
     assert "remote_engine:" in result.output
@@ -1127,7 +1129,7 @@ _CONFIG_DEFAULTS = (
         ),
         # Case 3: have source config, default engine gets overwritten
         (
-            {"SG_CONFIG_FILE": "/home/user/.sgconfig", "SG_ENGINE_PORT": 5000},
+            {"SG_CONFIG_FILE": "/home/user/.sgconfig", "SG_ENGINE_PORT": "5000"},
             "default",
             "/home/user/.sgconfig",
             "[defaults]\nSG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
@@ -1139,7 +1141,7 @@ _CONFIG_DEFAULTS = (
         (
             {
                 "SG_CONFIG_FILE": "/home/user/.sgconfig",
-                "SG_ENGINE_PORT": 5000,
+                "SG_ENGINE_PORT": "5000",
                 "remotes": {
                     "secondary": {
                         "SG_ENGINE_HOST": "old_host",

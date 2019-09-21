@@ -10,12 +10,8 @@ from requests import HTTPError
 from requests.models import Response
 
 from splitgraph import CONFIG
-from splitgraph.config import (
-    create_config_dict,
-    get_from_subsection,
-    set_in_subsection,
-    get_singleton,
-)
+from splitgraph.config import create_config_dict, get_singleton
+from splitgraph.config.config import get_from_subsection, set_in_subsection
 from splitgraph.config.export import overwrite_config
 from splitgraph.exceptions import AuthAPIError
 
@@ -146,11 +142,11 @@ class AuthAPIClient:
         """
 
         config = create_config_dict()
-        current_access_token = get_from_subsection(
-            config, "remotes", self.remote, "SG_CLOUD_ACCESS_TOKEN"
-        )
 
-        if current_access_token:
+        try:
+            current_access_token = get_from_subsection(
+                config, "remotes", self.remote, "SG_CLOUD_ACCESS_TOKEN"
+            )
             # Extract the expiry timestamp from the JWT token. We don't really
             # need to validate it here, so we can just directly decode the base64
             # claims part without pulling in any JWT libraries.
@@ -162,6 +158,8 @@ class AuthAPIClient:
             now = time.time()
             if now < exp - self.access_token_expiry_tolerance:
                 return current_access_token
+        except KeyError:
+            pass
 
         # Token expired or non-existent, get a new one.
         try:

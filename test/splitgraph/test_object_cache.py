@@ -542,14 +542,14 @@ def _prepare_object_filtering_dataset(include_bloom=False):
     # Grab the newly created object (at the end of the table's objects list)
     obj_1 = OUTPUT.head.get_table("test").objects[-1]
     # Sanity check on index for reference + easier debugging
-    assert OUTPUT.objects.get_object_meta([obj_1])[obj_1].index["range"] == {
+    assert OUTPUT.objects.get_object_meta([obj_1])[obj_1].object_index["range"] == {
         "col1": [1, 5],
         "col2": [3, 5],
         "col3": ["aaaa", "bbbb"],
         "col4": ["2016-01-01 00:00:00", "2016-01-02 00:00:00"],
     }
     if include_bloom:
-        assert OUTPUT.objects.get_object_meta([obj_1])[obj_1].index["bloom"] == {
+        assert OUTPUT.objects.get_object_meta([obj_1])[obj_1].object_index["bloom"] == {
             "col2": [12, mock.ANY],
             "col3": [12, mock.ANY],
             "col4": [12, mock.ANY],
@@ -561,14 +561,14 @@ def _prepare_object_filtering_dataset(include_bloom=False):
     OUTPUT.run_sql("INSERT INTO test VALUES (10, 4, 'cccc', '2015-12-30 00:00:00', '{\"a\": 10}')")
     OUTPUT.commit(extra_indexes=bloom_params)
     obj_2 = OUTPUT.head.get_table("test").objects[-1]
-    assert OUTPUT.objects.get_object_meta([obj_2])[obj_2].index["range"] == {
+    assert OUTPUT.objects.get_object_meta([obj_2])[obj_2].object_index["range"] == {
         "col1": [6, 10],
         "col2": [1, 4],
         "col3": ["abbb", "cccc"],
         "col4": ["2015-12-30 00:00:00", "2015-12-30 00:00:00"],
     }
     if include_bloom:
-        assert OUTPUT.objects.get_object_meta([obj_2])[obj_2].index["bloom"] == {
+        assert OUTPUT.objects.get_object_meta([obj_2])[obj_2].object_index["bloom"] == {
             "col2": [12, mock.ANY],
             "col3": [12, mock.ANY],
             "col4": [12, mock.ANY],
@@ -579,14 +579,14 @@ def _prepare_object_filtering_dataset(include_bloom=False):
     OUTPUT.run_sql("INSERT INTO test VALUES (11, 10, 'dddd', '2016-01-05 00:00:00', '{\"a\": 5}')")
     OUTPUT.commit(extra_indexes=bloom_params)
     obj_3 = OUTPUT.head.get_table("test").objects[-1]
-    assert OUTPUT.objects.get_object_meta([obj_3])[obj_3].index["range"] == {
+    assert OUTPUT.objects.get_object_meta([obj_3])[obj_3].object_index["range"] == {
         "col1": [11, 11],
         "col2": [10, 10],
         "col3": ["dddd", "dddd"],
         "col4": ["2016-01-05 00:00:00", "2016-01-05 00:00:00"],
     }
     if include_bloom:
-        assert OUTPUT.objects.get_object_meta([obj_3])[obj_3].index["bloom"] == {
+        assert OUTPUT.objects.get_object_meta([obj_3])[obj_3].object_index["bloom"] == {
             "col2": [12, mock.ANY],
             "col3": [12, mock.ANY],
             "col4": [12, mock.ANY],
@@ -599,14 +599,14 @@ def _prepare_object_filtering_dataset(include_bloom=False):
     OUTPUT.run_sql("INSERT INTO test VALUES (16, 15, 'ffff', '2016-01-04 00:00:00', '{\"a\": 10}')")
     OUTPUT.commit(extra_indexes=bloom_params)
     obj_4 = OUTPUT.head.get_table("test").objects[-1]
-    assert OUTPUT.objects.get_object_meta([obj_4])[obj_4].index["range"] == {
+    assert OUTPUT.objects.get_object_meta([obj_4])[obj_4].object_index["range"] == {
         "col1": [12, 16],
         "col2": [11, 15],
         "col3": ["eeee", "ffff"],
         "col4": ["2015-12-31 00:00:00", "2016-01-04 00:00:00"],
     }
     if include_bloom:
-        assert OUTPUT.objects.get_object_meta([obj_4])[obj_4].index["bloom"] == {
+        assert OUTPUT.objects.get_object_meta([obj_4])[obj_4].object_index["bloom"] == {
             "col2": [12, mock.ANY],
             "col3": [12, mock.ANY],
             "col4": [12, mock.ANY],

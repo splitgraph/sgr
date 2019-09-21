@@ -16,7 +16,14 @@ from psycopg2.sql import Composed
 from psycopg2.sql import SQL, Identifier
 
 import splitgraph.config  # to access the IN_FDW global
-from splitgraph.config import CONFIG, get_singleton, get_from_subsection, ConfigDict
+from splitgraph.config import CONFIG
+from splitgraph.config.config import (
+    get_from_subsection,
+    get_singleton,
+    ConfigDict,
+    get_all_in_subsection,
+    get_all_in_section,
+)
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PostgresEngine
@@ -48,16 +55,20 @@ _ENGINE_CONFIG_DEFAULTS = {
 
 def _prepare_engine_config(config_dict: ConfigDict, name: str = "LOCAL") -> Dict[str, str]:
     result = {}
+
+    # strictly speaking the "config_dict" itself doesn't have the type Dict[str, str]
+    # (since it has nested things) but whatever
+    subsection: Dict[str, str] = cast(
+        Dict[str, str],
+        config_dict if name == "LOCAL" else get_all_in_section(config_dict, "remotes")[name],
+    )
+
     for key in _ENGINE_SPECIFIC_CONFIG:
-        actual_key = key
-        if key in _ENGINE_CONFIG_DEFAULTS:
-            actual_key = _ENGINE_CONFIG_DEFAULTS[key]
-        if name == "LOCAL":
-            result[actual_key] = (
-                get_singleton(config_dict, actual_key)
-                if name == "LOCAL"
-                else get_from_subsection(config_dict, "remotes", name, actual_key)
-            )
+        actual_key = _ENGINE_CONFIG_DEFAULTS.get(key, key)
+        try:
+            result[key] = subsection[actual_key]
+        except KeyError:
+            result[key] = ""
     return result
 
 
@@ -636,9 +647,8 @@ def get_engine(
 
         conn_params = cast(Dict[str, Optional[str]], _prepare_engine_config(CONFIG, name))
         if name == "LOCAL" and use_socket:
-            if use_socket:
-                conn_params["SG_ENGINE_HOST"] = None
-                conn_params["SG_ENGINE_PORT"] = None
+            conn_params["SG_ENGINE_HOST"] = None
+            conn_params["SG_ENGINE_PORT"] = None
         if use_fdw_params:
             conn_params["SG_ENGINE_HOST"] = conn_params["SG_ENGINE_FDW_HOST"]
             conn_params["SG_ENGINE_PORT"] = conn_params["SG_ENGINE_FDW_PORT"]

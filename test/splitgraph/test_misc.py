@@ -77,7 +77,7 @@ def test_metadata_constraints_object_ids_hashes(local_engine_empty):
                     size=42,
                     insertion_hash="0" * 64,
                     deletion_hash="0" * 64,
-                    index={},
+                    object_index={},
                 )
             ]
         )
@@ -92,7 +92,7 @@ def test_metadata_constraints_object_ids_hashes(local_engine_empty):
                     size=42,
                     insertion_hash="0" * 64,
                     deletion_hash="0" * 64,
-                    index={},
+                    object_index={},
                 )
             ]
         )
@@ -107,7 +107,7 @@ def test_metadata_constraints_object_ids_hashes(local_engine_empty):
                     size=42,
                     insertion_hash="0" * 64,
                     deletion_hash="0" * 64,
-                    index={},
+                    object_index={},
                 )
             ]
         )
@@ -122,7 +122,7 @@ def test_metadata_constraints_object_ids_hashes(local_engine_empty):
                     size=42,
                     insertion_hash="broken",
                     deletion_hash="0" * 64,
-                    index={},
+                    object_index={},
                 )
             ]
         )
@@ -137,7 +137,7 @@ def test_metadata_constraints_object_ids_hashes(local_engine_empty):
                     size=42,
                     insertion_hash="0" * 64,
                     deletion_hash="broken",
-                    index={},
+                    object_index={},
                 )
             ]
         )
@@ -155,7 +155,7 @@ def test_metadata_constraints_table_objects(local_engine_empty):
                 size=42,
                 insertion_hash="0" * 64,
                 deletion_hash="0" * 64,
-                index={},
+                object_index={},
             )
         ]
     )

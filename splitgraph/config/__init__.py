@@ -12,63 +12,9 @@
         4. DEFAULTS (see keys.py)
 
 """
-from typing import Dict, Union, cast
-
-from splitgraph.config.keys import ConfigDict
-from .config import create_config_dict
+from .config import create_config_dict, get_singleton
 
 CONFIG = create_config_dict()
-
-
-# Type-safe functions for getting values from the config
-
-
-def get_singleton(config: ConfigDict, item: str) -> str:
-    """Return a singleton (not a section) variable from the config."""
-    result = config[item]
-    assert isinstance(result, str)
-    return result
-
-
-def get_all_in_section(config: ConfigDict, section: str) -> Dict[str, Union[str, Dict[str, str]]]:
-    """
-    Get all subsections from a config (e.g. config["mount_handlers"])
-    """
-    result: Dict[str, Union[str, Dict[str, str]]] = cast(
-        Dict[str, Union[str, Dict[str, str]]], config.get(section, {})
-    )
-    assert isinstance(result, dict)
-    return result
-
-
-def get_all_in_subsection(config: ConfigDict, section: str, subsection: str) -> Dict[str, str]:
-    section_dict = get_all_in_section(config, section)
-    subsection_dict: Dict[str, str] = cast(Dict[str, str], section_dict.get(subsection, {}))
-    assert isinstance(subsection_dict, dict)
-    return subsection_dict
-
-
-def get_from_subsection(config: ConfigDict, section: str, subsection: str, item: str) -> str:
-    """Return a singleton variable from a subsection of the config,
-    e.g. config["remotes"]["data.splitgraph.com"]["SG_ENGINE_HOST"]"""
-    subsection_dict = get_all_in_subsection(config, section, subsection)
-    return subsection_dict[item]
-
-
-def get_from_section(config: ConfigDict, section: str, item: str) -> str:
-    section_dict = get_all_in_section(config, section)
-    assert isinstance(section_dict, dict)
-    return cast(str, section_dict[item])
-
-
-def set_in_subsection(
-    config: ConfigDict, section: str, subsection: str, item: str, value: str
-) -> None:
-    """Set a singleton variable in a subsection of the config,
-    e.g. config["remotes"]["data.splitgraph.com"]["SG_ENGINE_HOST"]"""
-    subsection_dict = get_all_in_subsection(config, section, subsection)
-    subsection_dict[item] = value
-
 
 PG_HOST = get_singleton(CONFIG, "SG_ENGINE_HOST")
 PG_PORT = get_singleton(CONFIG, "SG_ENGINE_PORT")

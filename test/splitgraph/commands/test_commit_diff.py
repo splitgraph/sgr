@@ -693,7 +693,7 @@ def test_various_types(local_engine_empty):
     ]
 
     object_id = new_head.get_table("test").objects[0]
-    object_index = OUTPUT.objects.get_object_meta([object_id])[object_id].index
+    object_index = OUTPUT.objects.get_object_meta([object_id])[object_id].object_index
     expected = {
         "range": {
             # PK was (b, c, d) and we have two tuples: old (1, 2, 3)
@@ -733,7 +733,7 @@ def test_various_types_with_deletion_index(local_engine_empty):
 
     # New object is the second object in the table objects' list
     object_id = new_head.get_table("test").objects[1]
-    object_index = OUTPUT.objects.get_object_meta([object_id])[object_id].index
+    object_index = OUTPUT.objects.get_object_meta([object_id])[object_id].object_index
     # Deleted row for reference:
     # 15, 22, 1, -1.23, 9.8811, 0.23, 'abcd', '0testtesttesttes', '0testtesttesttesttesttesttes',
     #   B'111110011111111', '2016-01-01 01:01:05', '2011-11-11', false, '{ "b": 456 }',

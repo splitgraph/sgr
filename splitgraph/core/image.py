@@ -24,7 +24,7 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA, FDW
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphError, TableNotFoundError
 from splitgraph.hooks.mount_handlers import init_fdw
-from ._common import set_tag, select, manage_audit, set_head
+from ._common import set_tag, select, manage_audit, set_head, TableSchema
 from .table import Table
 
 if TYPE_CHECKING:
@@ -97,7 +97,7 @@ class Image(NamedTuple):
         Contains a list of objects that the table is linked to and the table's schema.
 
         :param table_name: Name of the table
-        :return: Table object or None
+        :return: Table object
         """
         result = self.engine.run_sql(
             select(
@@ -116,7 +116,13 @@ class Image(NamedTuple):
                 % (self.repository, self.image_hash, table_name)
             )
         table_schema, objects = result
-        return Table(self.repository, self, table_name, table_schema, objects)
+        return Table(
+            self.repository,
+            self,
+            table_name,
+            cast(TableSchema, [tuple(t) for t in table_schema]),
+            objects,
+        )
 
     @manage_audit
     def checkout(self, force: bool = False, layered: bool = False) -> None:

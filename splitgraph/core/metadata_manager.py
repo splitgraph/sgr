@@ -36,7 +36,7 @@ class Object(NamedTuple):
     size: int
     insertion_hash: str
     deletion_hash: str
-    object_index: Dict[str, Any]
+    object_index: Dict[str, Any]  # Clashes with NamedTuple's "index"
 
 
 class MetadataManager:
@@ -58,7 +58,10 @@ class MetadataManager:
         """
         object_meta = [
             tuple(
-                namespace if namespace and a == "namespace" else getattr(o, a) for a in OBJECT_COLS
+                namespace
+                if namespace and a == "namespace"
+                else getattr(o, a if a != "index" else "object_index")
+                for a in OBJECT_COLS
             )
             for o in objects
         ]

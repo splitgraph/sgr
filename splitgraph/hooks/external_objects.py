@@ -4,7 +4,8 @@ Hooks for registering handlers to upload/download objects from external location
 from importlib import import_module
 from typing import Any, Dict, Callable
 
-from splitgraph.config import CONFIG, get_from_section
+from splitgraph.config import CONFIG
+from splitgraph.config.config import get_from_section
 from splitgraph.exceptions import ExternalHandlerError
 
 

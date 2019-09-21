@@ -8,7 +8,7 @@ import docker
 from docker.models.containers import Container
 from docker.types import Mount
 
-from splitgraph import CONFIG
+from splitgraph import CONFIG, Dict
 from splitgraph.commandline._common import print_table
 from splitgraph.config.config import patch_config
 from splitgraph.config.export import overwrite_config
@@ -163,9 +163,9 @@ def add_engine_c(
     )
 
     click.echo("Container created, ID %s" % container.short_id)
-    conn_params = {
+    conn_params: Dict[str, str] = {
         "SG_ENGINE_HOST": "localhost",
-        "SG_ENGINE_PORT": port,
+        "SG_ENGINE_PORT": str(port),
         "SG_ENGINE_USER": username,
         "SG_ENGINE_PWD": password,
         "SG_ENGINE_DB_NAME": "splitgraph",

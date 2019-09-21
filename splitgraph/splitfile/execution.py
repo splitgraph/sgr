@@ -10,7 +10,8 @@ from typing import Callable, Dict, List, Optional, cast
 
 from parsimonious.nodes import Node
 
-from splitgraph.config import CONFIG, get_all_in_section
+from splitgraph.config import CONFIG
+from splitgraph.config.config import get_all_in_section
 from splitgraph.core.engine import repository_exists, lookup_repository
 from splitgraph.core.image import Image
 from splitgraph.core.repository import Repository, clone
@@ -300,13 +301,13 @@ def _execute_custom(node: Node, output: Repository) -> None:
 
     # Locate the command in the config file and instantiate it.
     cmd_fq_class: str = cast(str, get_all_in_section(CONFIG, "commands").get(command))
-    assert isinstance(cmd_fq_class, str)
     if not cmd_fq_class:
         raise SplitfileError(
             "Custom command {0} not found in the config! Make sure you add an entry to your"
             " config like so:\n  [commands]  \n{0}=path.to.command.Class".format(command)
         )
 
+    assert isinstance(cmd_fq_class, str)
     index = cmd_fq_class.rindex(".")
     try:
         cmd_class = getattr(import_module(cmd_fq_class[:index]), cmd_fq_class[index + 1 :])

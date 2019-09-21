@@ -9,7 +9,8 @@ from typing import Callable, Dict, List, Optional, Union, TYPE_CHECKING, cast
 
 from psycopg2.sql import Identifier, SQL
 
-from splitgraph.config import PG_USER, CONFIG, get_all_in_section
+from splitgraph.config import PG_USER, CONFIG
+from splitgraph.config.config import get_all_in_section
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import MountHandlerError
 

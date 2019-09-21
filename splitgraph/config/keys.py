@@ -5,8 +5,8 @@ from typing import Dict, Union
 # so we enumerate them all explicitly.
 ConfigDict = Dict[str, Union[str, Dict[str, str], Dict[str, Dict[str, str]]]]
 
-
 DEFAULTS: ConfigDict = {
+    "SG_ENGINE": "",
     # Logging threshold (log messages not emitted below this). Accepted values are
     # CRITICAL, ERROR, WARNING, INFO and DEBUG.
     "SG_LOGLEVEL": "WARNING",
@@ -24,13 +24,18 @@ DEFAULTS: ConfigDict = {
     "SG_ENGINE_OBJECT_PATH": "/var/lib/splitgraph/objects",
     # Size of the connection pool used to download/upload objects + talk to the engine
     "SG_ENGINE_POOL": "5",
+    "SG_CONFIG_FILE": "",
     "SG_META_SCHEMA": "splitgraph_meta",
+    "SG_CONFIG_DIRS": "",
+    "SG_CONFIG_DIR": "",
     "SG_REPO_LOOKUP": "",
     "SG_REPO_LOOKUP_OVERRIDE": "",
     "SG_S3_HOST": "localhost",
     "SG_S3_PORT": "9000",
     # Anonymous S3 access by default
     "SG_S3_BUCKET": "splitgraph",
+    "SG_S3_KEY": "",
+    "SG_S3_PWD": "",
     # Object cache (objects downloaded from an external location) tuning
     # Will try to target this size (in MB).
     "SG_OBJECT_CACHE_SIZE": "1024",
