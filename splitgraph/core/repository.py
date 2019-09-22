@@ -658,12 +658,13 @@ class Repository:
             image = None
 
         if not source_tables:
-            assert image is not None
-            source_tables = (
-                image.get_tables()
-                if not foreign_tables
-                else source_repository.object_engine.get_all_tables(source_repository.to_schema())
-            )
+            if foreign_tables:
+                source_tables = source_repository.object_engine.get_all_tables(
+                    source_repository.to_schema()
+                )
+            else:
+                assert image is not None
+                source_tables = image.get_tables()
         if not tables:
             if table_queries:
                 raise ValueError("target_tables has to be defined if table_queries is True!")

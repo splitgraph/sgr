@@ -33,7 +33,7 @@ from splitgraph.core.metadata_manager import OBJECT_COLS
 from splitgraph.core.registry import get_published_info
 from splitgraph.core.repository import Repository
 from splitgraph.engine.postgres.engine import PostgresEngine
-from splitgraph.exceptions import AuthAPIError, ImageNotFoundError
+from splitgraph.exceptions import AuthAPIError, ImageNotFoundError, TableNotFoundError
 from splitgraph.hooks.mount_handlers import get_mount_handlers
 from test.splitgraph.conftest import OUTPUT, SPLITFILE_ROOT, MG_MNT
 
@@ -505,7 +505,9 @@ def test_import(pg_repo_local, mg_repo_local):
     assert result.exit_code == 0
     new_head = pg_repo_local.head
     assert new_head.get_table("stuff")
-    assert not head.get_table("stuff")
+
+    with pytest.raises(TableNotFoundError):
+        head.get_table("stuff")
 
     # sgr import with alias
     result = runner.invoke(
@@ -514,7 +516,9 @@ def test_import(pg_repo_local, mg_repo_local):
     assert result.exit_code == 0
     new_new_head = pg_repo_local.head
     assert new_new_head.get_table("stuff_copy")
-    assert not new_head.get_table("stuff_copy")
+
+    with pytest.raises(TableNotFoundError):
+        new_head.get_table("stuff_copy")
 
     # sgr import with alias and custom image hash
     mg_repo_local.run_sql("DELETE FROM stuff")
@@ -532,7 +536,10 @@ def test_import(pg_repo_local, mg_repo_local):
     assert result.exit_code == 0
     new_new_new_head = pg_repo_local.head
     assert new_new_new_head.get_table("stuff_empty")
-    assert not new_new_head.get_table("stuff_empty")
+
+    with pytest.raises(TableNotFoundError):
+        new_new_head.get_table("stuff_empty")
+
     assert pg_repo_local.run_sql("SELECT * FROM stuff_empty") == []
 
     # sgr import with query, no alias

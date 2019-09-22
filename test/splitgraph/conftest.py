@@ -295,7 +295,7 @@ def lq_test_repo(test_local_engine):
         ]
         if non_foreign_tables:
             raise AssertionError(
-                "Layered query left temporary tables behind!\n%r", non_foreign_tables
+                "Layered query left temporary tables behind: %r" % non_foreign_tables
             )
 
         clean_out_engine(test_local_engine)

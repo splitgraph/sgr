@@ -9,6 +9,7 @@ import click
 
 from splitgraph.commandline._common import ImageType, RepositoryType
 from splitgraph.core.engine import repository_exists
+from splitgraph.exceptions import TableNotFoundError
 
 
 @click.command(name="checkout")
@@ -256,7 +257,11 @@ def import_c(image_spec, table_or_query, target_repository, target_table):
         foreign_table = False
         image = repository.images[image]
         # If the source table doesn't exist in the image, we'll treat it as a query instead.
-        is_query = not bool(image.get_table(table_or_query))
+        try:
+            image.get_table(table_or_query)
+            is_query = False
+        except TableNotFoundError:
+            is_query = True
     else:
         # If the source schema isn't actually a Splitgraph repo, we'll be copying the table verbatim.
         foreign_table = True
