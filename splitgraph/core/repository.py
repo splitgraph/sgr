@@ -49,7 +49,7 @@ class Repository:
         repository: str,
         engine: Optional[PostgresEngine] = None,
         object_engine: Optional[PostgresEngine] = None,
-        object_manager: None = None,
+        object_manager: Optional[ObjectManager] = None,
     ) -> None:
         self.namespace = namespace
         self.repository = repository

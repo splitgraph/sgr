@@ -64,11 +64,13 @@ def _prepare_engine_config(config_dict: ConfigDict, name: str = "LOCAL") -> Dict
     )
 
     for key in _ENGINE_SPECIFIC_CONFIG:
-        actual_key = _ENGINE_CONFIG_DEFAULTS.get(key, key)
         try:
-            result[key] = subsection[actual_key]
+            result[key] = subsection[key]
         except KeyError:
-            result[key] = ""
+            try:
+                result[key] = subsection[_ENGINE_CONFIG_DEFAULTS[key]]
+            except KeyError:
+                result[key] = ""
     return result
 
 
