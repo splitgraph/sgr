@@ -82,7 +82,10 @@ QueryPlanCacheKey = Tuple[Optional[Tuple[Tuple[Tuple[str, str, Any]]]], Tuple[st
 
 def _get_plan_cache_key(quals: Optional[Quals], columns: Sequence[str]) -> QueryPlanCacheKey:
     quals = (
-        cast(Tuple[Tuple[Tuple[str, str, Any]]], tuple(tuple(qual) for qual in quals))
+        cast(
+            Tuple[Tuple[Tuple[str, str, Any]]],
+            tuple(tuple(tuple(q) for q in qual) for qual in quals),
+        )
         if quals
         else None
     )
