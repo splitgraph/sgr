@@ -3,9 +3,9 @@ layered querying (read-only queries to Splitgraph tables without materialization
 import logging
 
 import splitgraph.config
-from splitgraph import Repository, get_engine
-from splitgraph.core._common import pretty_size
+from splitgraph.core.common import pretty_size
 from splitgraph.core.object_manager import ObjectManager
+from splitgraph.core.repository import Repository, get_engine
 
 try:
     from multicorn import ForeignDataWrapper, ANY
@@ -134,7 +134,7 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         # Initialize the logger that will log to the engine's stderr: log timestamp and PID.
         logging.basicConfig(
             format="%(asctime)s [%(process)d] %(levelname)s %(message)s",
-            level=splitgraph.CONFIG["SG_LOGLEVEL"],
+            level=splitgraph.config.CONFIG["SG_LOGLEVEL"],
         )
 
         # Dict of connection parameters as well as the table, repository and image hash to query.

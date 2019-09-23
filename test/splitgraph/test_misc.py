@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 from psycopg2.errors import CheckViolation
 
-from splitgraph.core._common import Tracer
+from splitgraph.core.common import Tracer
 from splitgraph.core.engine import lookup_repository, repository_exists
 from splitgraph.core.metadata_manager import Object
 from splitgraph.core.repository import Repository
@@ -27,7 +27,7 @@ def test_repo_lookup_override_fail():
 
 
 def test_tracer():
-    with patch("splitgraph.core._common.datetime") as datetime:
+    with patch("splitgraph.core.common.datetime") as datetime:
         datetime.now.return_value = dt(2019, 1, 1)
         tracer = Tracer()
 

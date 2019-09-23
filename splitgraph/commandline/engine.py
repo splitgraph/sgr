@@ -2,22 +2,20 @@ import os
 import time
 from io import BytesIO
 from tarfile import TarFile, TarInfo
+from typing import Dict, TYPE_CHECKING
 
 import click
-import docker
-from docker.models.containers import Container
-from docker.types import Mount
 
-from splitgraph import CONFIG, Dict
-from splitgraph.commandline._common import print_table
-from splitgraph.config.config import patch_config
-from splitgraph.config.export import overwrite_config
-from splitgraph.engine.postgres.engine import PostgresEngine
+from splitgraph.commandline.common import print_table
+
+if TYPE_CHECKING:
+    from docker.models.containers import Container
+
 
 DEFAULT_ENGINE = "default"
 
 
-def copy_to_container(container: Container, source_path: str, target_path: str) -> None:
+def copy_to_container(container: "Container", source_path: str, target_path: str) -> None:
     """
     Copy a file into a Docker container
 
@@ -71,6 +69,8 @@ def list_engines_c(include_all):
     (whose names start with "splitgraph_engine_". To operate other engines,
     use Docker CLI directly.
     """
+    import docker
+
     client = docker.from_env()
     containers = client.containers.list(filters={"ancestor": "splitgraph/engine"}, all=include_all)
 
@@ -121,6 +121,12 @@ def add_engine_c(
 
     This also creates Docker volumes required to persist data/metadata.
     """
+    from splitgraph.engine import PostgresEngine
+    from splitgraph.config import CONFIG
+    from splitgraph.config.config import patch_config
+    from splitgraph.config.export import overwrite_config
+    import docker
+    from docker.types import Mount
 
     client = docker.from_env()
 
@@ -221,6 +227,7 @@ def stop_engine_c(name):
 @click.argument("name", default=DEFAULT_ENGINE)
 def start_engine_c(name):
     """Stop a Splitgraph engine."""
+    import docker
 
     client = docker.from_env()
     container_name = _get_container_name(name)
@@ -239,6 +246,8 @@ def start_engine_c(name):
 @click.argument("name", default=DEFAULT_ENGINE)
 def delete_engine_c(yes, force, name):
     """Stop a Splitgraph engine."""
+    import docker
+
     client = docker.from_env()
     container_name = _get_container_name(name)
     container = client.containers.get(container_name)

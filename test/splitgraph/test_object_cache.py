@@ -4,9 +4,10 @@ from unittest import mock
 
 import pytest
 
-from splitgraph import SPLITGRAPH_META_SCHEMA
-from splitgraph.core import clone, select
+from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from splitgraph.core.common import select
 from splitgraph.core.indexing.range import _quals_to_clause
+from splitgraph.core.repository import clone
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import ObjectCacheError
 from test.splitgraph.conftest import (

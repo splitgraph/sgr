@@ -19,7 +19,7 @@ from psycopg2.sql import SQL, Identifier
 from tqdm import tqdm
 
 from splitgraph.config import SPLITGRAPH_API_SCHEMA
-from splitgraph.core._common import Changeset, TableSchema
+from splitgraph.core.common import Changeset, TableSchema
 from splitgraph.core.indexing.bloom import generate_bloom_index, filter_bloom_index
 from splitgraph.core.indexing.range import (
     extract_min_max_pks,
@@ -29,7 +29,7 @@ from splitgraph.core.indexing.range import (
 from splitgraph.core.metadata_manager import MetadataManager, Object
 from splitgraph.engine.postgres.engine import SG_UD_FLAG
 from splitgraph.exceptions import SplitGraphError
-from ._common import adapt, SPLITGRAPH_META_SCHEMA, ResultShape, select
+from .common import adapt, SPLITGRAPH_META_SCHEMA, ResultShape, select
 
 if TYPE_CHECKING:
     from splitgraph.core.repository import Repository

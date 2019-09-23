@@ -36,7 +36,7 @@ class ImageType(click.ParamType):
             tag_or_hash = repo_image[1]
         else:
             tag_or_hash = self.default
-        from splitgraph.core import Repository
+        from splitgraph.core.repository import Repository
 
         return Repository.from_schema(repo_image[0]), tag_or_hash
 
@@ -47,7 +47,7 @@ class RepositoryType(click.ParamType):
     def convert(
         self, value: str, param: Optional[Parameter], ctx: Optional[Context]
     ) -> "Repository":
-        from splitgraph.core import Repository
+        from splitgraph.core.repository import Repository
 
         return Repository.from_schema(value)
 

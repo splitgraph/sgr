@@ -4,7 +4,7 @@ sgr commands related to building and rebuilding Splitfiles.
 
 import click
 
-from ._common import ImageType, RepositoryType
+from .common import ImageType, RepositoryType
 
 
 @click.command(name="build")
@@ -43,11 +43,10 @@ def build_c(splitfile, args, output_repository):
     Executes ``my_other.splitfile`` with parameters ``PARAM1`` and ``PARAM2`` set to
     ``VAL1`` and  ``VAL2``, respectively.
     """
+    from splitgraph.splitfile import execute_commands
+
     args = {k: v for k, v in args}
     click.echo("Executing Splitfile %s with arguments %r" % (splitfile.name, args))
-
-    # Inline import: importing it at every sgr invocation takes extra time because of compiling the Splitfile grammar.
-    from splitgraph.splitfile import execute_commands
 
     execute_commands(splitfile.read(), args, output=output_repository)
 

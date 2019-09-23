@@ -6,9 +6,9 @@ import docker.errors
 import pytest
 from minio.error import BucketAlreadyExists, BucketAlreadyOwnedByYou
 
-from splitgraph import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.commandline.engine import copy_to_container
-from splitgraph.core._common import META_TABLES
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
+from splitgraph.core.common import META_TABLES
 from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.registry import (

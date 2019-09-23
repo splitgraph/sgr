@@ -6,7 +6,7 @@ import subprocess
 import click
 import yaml
 
-from splitgraph.commandline._common import Color
+from splitgraph.commandline.common import Color
 
 
 @click.command(name="example")

@@ -7,8 +7,7 @@ from collections import defaultdict
 
 import click
 
-from splitgraph.commandline._common import ImageType, RepositoryType
-from splitgraph.core.engine import repository_exists
+from splitgraph.commandline.common import ImageType, RepositoryType
 from splitgraph.exceptions import TableNotFoundError
 
 
@@ -251,6 +250,8 @@ def import_c(image_spec, table_or_query, target_repository, target_table):
     Note that importing doesn't discard or commit pending changes in the target Splitgraph repository: a new image
     is created with the new table added, the new table is materialized in the repository and the HEAD pointer is moved.
     """
+    from splitgraph.core.engine import repository_exists
+
     repository, image = image_spec
 
     if repository_exists(repository):

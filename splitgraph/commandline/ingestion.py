@@ -2,7 +2,7 @@
 
 import click
 
-from splitgraph.commandline._common import ImageType, RepositoryType
+from splitgraph.commandline.common import ImageType, RepositoryType
 
 
 # This commandline entry point doesn't actually import splitgraph.ingestion directly

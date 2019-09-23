@@ -2,8 +2,8 @@ from datetime import datetime as dt
 
 import pytest
 
-from splitgraph import get_engine
 from splitgraph.core.repository import Repository
+from splitgraph.engine import get_engine
 from test.splitgraph.conftest import _mount_postgres, _mount_mysql, _mount_mongo
 
 PG_MNT = Repository.from_schema("test/pg_mount")

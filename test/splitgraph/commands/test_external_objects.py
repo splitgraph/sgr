@@ -2,9 +2,9 @@ from unittest.mock import patch
 
 import pytest
 
-from splitgraph import ResultShape
-from splitgraph.core import repository_exists
+from splitgraph.core.engine import repository_exists
 from splitgraph.core.repository import clone
+from splitgraph.engine import ResultShape
 from splitgraph.hooks.s3 import S3ExternalObjectHandler
 from splitgraph.hooks.s3_server import (
     get_object_upload_urls,

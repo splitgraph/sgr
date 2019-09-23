@@ -5,14 +5,8 @@ import sys
 
 import click
 
-from splitgraph import CONFIG
-from splitgraph.config.export import serialize_config
-from splitgraph.core.engine import init_engine, repository_exists
-from splitgraph.core.object_manager import ObjectManager
-from splitgraph.core.repository import Repository
-from splitgraph.engine import get_engine
 from splitgraph.exceptions import CheckoutError
-from ._common import ImageType, RepositoryType
+from .common import ImageType, RepositoryType
 
 
 @click.command(name="rm")
@@ -57,6 +51,9 @@ def rm_c(image_spec, remote, yes):
     Note this will not delete images that import tables from the deleted images via Splitfiles or indeed the
     physical objects containing the actual tables.
     """
+    from splitgraph.core.repository import Repository
+    from splitgraph.engine import get_engine
+    from splitgraph.core.engine import repository_exists
 
     repository, image = image_spec
     repository = Repository.from_template(repository, engine=get_engine(remote or "LOCAL"))
@@ -119,6 +116,9 @@ def prune_c(repository, remote, yes):
     This does not delete any physical objects that the deleted repository/images depend on:
     use ``sgr cleanup`` to do that.
     """
+    from splitgraph.core.repository import Repository
+    from splitgraph.engine import get_engine
+
     repository = Repository.from_template(repository, engine=get_engine(remote or "LOCAL"))
 
     all_images = set(image.image_hash for image in repository.images())
@@ -166,6 +166,8 @@ def init_c(repository, skip_object_handling):
 
     Creates a single image with the hash ``00000...`` in ``new/repo``
     """
+    from splitgraph.core.engine import init_engine
+
     if repository:
         if skip_object_handling:
             raise click.BadOptionUsage(
@@ -184,6 +186,9 @@ def cleanup_c():
 
     This deletes all objects from the cache that aren't required by any local repository.
     """
+    from splitgraph.core.object_manager import ObjectManager
+    from splitgraph.engine import get_engine
+
     deleted = ObjectManager(get_engine()).cleanup()
     click.echo("Deleted %d physical object(s)" % len(deleted))
 
@@ -218,6 +223,9 @@ def config_c(no_shielding, config_format):
 
         SG_REPO_LOOKUP=engine1,engine2 sgr config -sc > .sgconfig
     """
+
+    from splitgraph.config.export import serialize_config
+    from splitgraph.config import CONFIG
 
     click.echo(serialize_config(CONFIG, config_format, no_shielding))
 

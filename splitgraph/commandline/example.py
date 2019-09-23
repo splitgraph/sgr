@@ -4,11 +4,12 @@ Command line routines generating example data / Splitfiles
 from hashlib import sha256
 
 import click
+from typing import TYPE_CHECKING
 
-from splitgraph.commandline._common import RepositoryType
-from splitgraph.core import repository_exists, Identifier, SQL, select
-from splitgraph.core.repository import Repository
-from splitgraph.engine import ResultShape
+from splitgraph.commandline.common import RepositoryType
+
+if TYPE_CHECKING:
+    from splitgraph.core.repository import Repository
 
 _DEMO_TABLE_SIZE = 10
 _DEMO_CHANGE_SIZE = 2
@@ -36,7 +37,7 @@ def _hash(val: int) -> str:
     return sha256(str(val).encode("ascii")).hexdigest()
 
 
-def generate_table(repository: Repository, table_name: str, size: int) -> None:
+def generate_table(repository: "Repository", table_name: str, size: int) -> None:
     """
     Creates a table with an integer primary key and a string value.
 
@@ -44,6 +45,9 @@ def generate_table(repository: Repository, table_name: str, size: int) -> None:
     :param table_name: Name of the table to generate
     :param size: Number of rows in the table.
     """
+    from psycopg2.sql import SQL
+    from psycopg2.sql import Identifier
+
     repository.engine.create_table(
         repository.to_schema(),
         table_name,
@@ -57,7 +61,7 @@ def generate_table(repository: Repository, table_name: str, size: int) -> None:
 
 
 def alter_table(
-    repository: Repository, table_name: str, rows_added: int, rows_deleted: int, rows_updated: int
+    repository: "Repository", table_name: str, rows_added: int, rows_deleted: int, rows_updated: int
 ) -> None:
     """
     Alters the example table, adding/updating/deleting a certain number of rows.
@@ -68,6 +72,9 @@ def alter_table(
     :param rows_deleted: Number of rows to remove
     :param rows_updated: Number of rows to update
     """
+    from splitgraph.core.common import select, ResultShape
+    from psycopg2.sql import Identifier, SQL
+
     keys = repository.run_sql(
         select(table_name, "key", schema=repository.to_schema()), return_shape=ResultShape.MANY_ONE
     )
@@ -109,6 +116,8 @@ def generate_c(repository):
 
     :param repository: Repository to generate. Must not already exist.
     """
+    from splitgraph.core.engine import repository_exists
+
     if repository_exists(repository):
         raise click.ClickException(
             "Repository %s already exists, use sgr rm to delete it!" % repository.to_schema()

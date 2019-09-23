@@ -9,7 +9,7 @@ from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import REGISTRY_META_SCHEMA, SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
-from splitgraph.core._common import select
+from splitgraph.core.common import select
 from splitgraph.engine import ResultShape
 
 if TYPE_CHECKING:

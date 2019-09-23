@@ -19,7 +19,7 @@ from typing import (
 from psycopg2.sql import SQL, Identifier, Composable
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.core._common import Tracer, TableSchema, Quals
+from splitgraph.core.common import Tracer, TableSchema, Quals
 from splitgraph.core.fragment_manager import get_random_object_id, get_chunk_groups
 from splitgraph.core.indexing.range import quals_to_sql
 

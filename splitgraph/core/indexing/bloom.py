@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union, cast
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.core._common import pretty_size, Changeset
+from splitgraph.core.common import pretty_size, Changeset
 from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.engine.postgres.engine import SG_UD_FLAG
 

@@ -23,7 +23,7 @@ from psycopg2.sql import Identifier
 from tqdm import tqdm
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCHEMA
-from splitgraph.core._common import select, ensure_metadata_schema, META_TABLES, TableSchema
+from splitgraph.core.common import select, ensure_metadata_schema, META_TABLES, TableSchema
 from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
 from splitgraph.exceptions import EngineInitializationError, ObjectNotFoundError
 from splitgraph.hooks.mount_handlers import mount_postgres

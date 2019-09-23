@@ -14,8 +14,7 @@ from psycopg2.sql import Composed
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA, FDW_CLASS
-from splitgraph.core import select
-from splitgraph.core._common import insert
+from splitgraph.core.common import insert, select
 from splitgraph.core.fragment_manager import get_random_object_id, ExtraIndexInfo
 from splitgraph.core.image import Image
 from splitgraph.core.image_manager import ImageManager
@@ -23,7 +22,7 @@ from splitgraph.core.sql import validate_import_sql
 from splitgraph.core.table import Table
 from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import CheckoutError, EngineInitializationError, TableNotFoundError
-from ._common import (
+from .common import (
     manage_audit_triggers,
     set_head,
     manage_audit,
@@ -390,7 +389,7 @@ class Repository:
         snap_only: bool = False,
         chunk_size: Optional[int] = 10000,
         split_changeset: bool = False,
-        schema: None = None,
+        schema: str = None,
         extra_indexes: Optional[ExtraIndexInfo] = None,
     ) -> None:
         """

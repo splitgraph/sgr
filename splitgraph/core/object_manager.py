@@ -26,7 +26,7 @@ from splitgraph.core.fragment_manager import FragmentManager
 from splitgraph.engine import ResultShape, switch_engine
 from splitgraph.exceptions import SplitGraphError, ObjectCacheError
 from splitgraph.hooks.external_objects import get_external_object_handler
-from ._common import META_TABLES, select, insert, pretty_size, Tracer, CallbackList, Quals
+from .common import META_TABLES, select, insert, pretty_size, Tracer, CallbackList, Quals
 
 if TYPE_CHECKING:
     from splitgraph.core.table import Table

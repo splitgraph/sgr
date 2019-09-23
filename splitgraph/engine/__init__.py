@@ -17,17 +17,11 @@ from psycopg2.sql import SQL, Identifier
 
 import splitgraph.config  # to access the IN_FDW global
 from splitgraph.config import CONFIG
-from splitgraph.config.config import (
-    get_from_subsection,
-    get_singleton,
-    ConfigDict,
-    get_all_in_subsection,
-    get_all_in_section,
-)
+from splitgraph.config.config import get_singleton, ConfigDict, get_all_in_section
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PostgresEngine
-    from splitgraph.core._common import TableSchema
+    from splitgraph.core.common import TableSchema
 
 
 # List of config flags that are extracted from the global configuration and passed to a given engine

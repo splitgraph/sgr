@@ -3,18 +3,14 @@ sgr commands related to getting information out of / about images
 """
 
 from collections import Counter
-from typing import List, Optional, Tuple, Union, Dict, cast
+from typing import List, Optional, Tuple, Union, Dict, cast, TYPE_CHECKING
 
 import click
 
-from splitgraph import get_engine, select, ResultShape
-from splitgraph.core._common import pretty_size
-from splitgraph.core._drawing import render_tree
-from splitgraph.core.engine import get_current_repositories
-from splitgraph.core.indexing.bloom import describe
-from splitgraph.core.object_manager import ObjectManager
-from splitgraph.core.repository import Repository
-from ._common import ImageType, pluralise, RepositoryType
+from .common import ImageType, pluralise, RepositoryType
+
+if TYPE_CHECKING:
+    from splitgraph.core.repository import Repository
 
 
 @click.command(name="log")
@@ -30,6 +26,8 @@ def log_c(repository, tree):
     If ``-t`` or ``--tree`` is passed, this instead renders the full image tree. The repository doesn't need to have
     been checked out in this case.
     """
+    from splitgraph.core._drawing import render_tree
+
     if tree:
         render_tree(repository)
     else:
@@ -135,7 +133,7 @@ def _emit_table_diff(
 
 
 def _get_actual_hashes(
-    repository: Repository, image_1: Optional[str], image_2: Optional[str]
+    repository: "Repository", image_1: Optional[str], image_2: Optional[str]
 ) -> Tuple[str, Optional[str]]:
     if image_1 is None and image_2 is None:
         # Comparing current working copy against the last commit
@@ -205,6 +203,11 @@ def object_c(object_id):
     the smallest and largest values for every column are stored in the fragment's metadata. This information is used
     to choose which objects to download in order to execute a query against a table.
     """
+    from splitgraph.core.object_manager import ObjectManager
+    from splitgraph.engine import get_engine
+    from splitgraph.core.common import pretty_size, select, ResultShape
+    from splitgraph.core.indexing.bloom import describe
+
     object_manager = ObjectManager(get_engine())
     object_meta = object_manager.get_object_meta([object_id])
     if not object_meta:
@@ -257,6 +260,8 @@ def objects_c(local):
     """
     List objects known to this engine.
     """
+    from splitgraph.core.object_manager import ObjectManager
+    from splitgraph.engine import get_engine
 
     om = ObjectManager(get_engine())
 
@@ -285,6 +290,8 @@ def sql_c(sql, schema, show_all):
         sgr sql "SELECT * FROM \"noaa/climate\".table"
         sgr sql -s noaa/climate "SELECT * FROM table"
     """
+    from splitgraph.engine import get_engine
+
     if schema:
         get_engine().run_sql("SET search_path TO %s", (schema,))
     results = get_engine().run_sql(sql)
@@ -305,6 +312,9 @@ def status_c(repository):
     Show the status of the Splitgraph engine. If a repository is passed, show information about
     the repository. If not, show information about all repositories local to the engine.
     """
+    from splitgraph.core.engine import get_current_repositories
+    from splitgraph.engine import get_engine
+
     if repository is None:
         repositories = get_current_repositories(get_engine())
         click.echo("Local repositories: ")

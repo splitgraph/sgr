@@ -9,8 +9,7 @@ import requests
 from requests import HTTPError
 from requests.models import Response
 
-from splitgraph import CONFIG
-from splitgraph.config import create_config_dict, get_singleton
+from splitgraph.config import create_config_dict, get_singleton, CONFIG
 from splitgraph.config.config import get_from_subsection, set_in_subsection
 from splitgraph.config.export import overwrite_config
 from splitgraph.exceptions import AuthAPIError

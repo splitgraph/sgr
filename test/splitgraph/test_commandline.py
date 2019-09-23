@@ -11,10 +11,9 @@ import httpretty
 import pytest
 from click.testing import CliRunner
 
-from splitgraph import ResultShape, get_engine
 from splitgraph.commandline import *
-from splitgraph.commandline._common import ImageType
 from splitgraph.commandline.cloud import register_c, curl_c
+from splitgraph.commandline.common import ImageType
 from splitgraph.commandline.engine import (
     add_engine_c,
     list_engines_c,
@@ -27,8 +26,8 @@ from splitgraph.commandline.image_info import object_c, objects_c
 from splitgraph.config import PG_PWD, PG_USER
 from splitgraph.config.config import patch_config, create_config_dict
 from splitgraph.config.keys import DEFAULTS
-from splitgraph.core._common import insert
-from splitgraph.core.engine import repository_exists, init_engine
+from splitgraph.core.common import insert, ResultShape
+from splitgraph.core.engine import repository_exists, init_engine, get_engine
 from splitgraph.core.metadata_manager import OBJECT_COLS
 from splitgraph.core.registry import get_published_info
 from splitgraph.core.repository import Repository

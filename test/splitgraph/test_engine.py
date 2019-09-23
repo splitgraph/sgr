@@ -3,19 +3,17 @@ from unittest import mock
 import psycopg2
 import pytest
 
-from splitgraph import (
-    SPLITGRAPH_META_SCHEMA,
-    REGISTRY_META_SCHEMA,
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA, CONFIG
+from splitgraph.core.common import ensure_metadata_schema
+from splitgraph.core.engine import get_current_repositories, lookup_repository, repository_exists
+from splitgraph.core.object_manager import ObjectManager
+from splitgraph.core.registry import (
+    _ensure_registry_schema,
     setup_registry_mode,
     get_published_info,
-    Repository,
-    ResultShape,
 )
-from splitgraph.core import get_current_repositories, lookup_repository, CONFIG, repository_exists
-from splitgraph.core._common import ensure_metadata_schema
-from splitgraph.core.object_manager import ObjectManager
-from splitgraph.core.registry import _ensure_registry_schema
-from splitgraph.engine import _prepare_engine_config
+from splitgraph.core.repository import Repository
+from splitgraph.engine import _prepare_engine_config, ResultShape
 from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import EngineInitializationError, ObjectNotFoundError
 

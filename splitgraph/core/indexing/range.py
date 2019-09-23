@@ -4,7 +4,7 @@ from psycopg2.sql import Composed, SQL, Composable
 from psycopg2.sql import Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
-from splitgraph.core._common import (
+from splitgraph.core.common import (
     adapt,
     coerce_val_to_json,
     ResultShape,

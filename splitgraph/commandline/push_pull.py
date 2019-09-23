@@ -7,11 +7,8 @@ import sys
 
 import click
 
-import splitgraph.engine
-import splitgraph.engine.postgres.engine
-from splitgraph import CONFIG
-from splitgraph.commandline._common import RepositoryType
-from splitgraph.core.repository import clone, Repository
+from splitgraph.commandline.common import RepositoryType
+from splitgraph.config import CONFIG
 
 
 @click.command(name="pull")
@@ -42,13 +39,15 @@ def clone_c(remote_repository, local_repository, remote, download_all):
     The lookup path for the repository is governed by the ``SG_REPO_LOOKUP`` and ``SG_REPO_LOOKUP_OVERRIDE``
     config parameters and can be overriden by the command line ``--remote`` option.
     """
+    from splitgraph.core.repository import Repository
+    from splitgraph.engine import get_engine
+    from splitgraph.core.repository import clone
+
     # If the user passed in a remote, we can inject that into the repository spec.
     # Otherwise, we have to turn the repository into a string and let clone() look up the
     # actual engine the repository lives on.
     if remote:
-        remote_repository = Repository.from_template(
-            remote_repository, engine=splitgraph.get_engine(remote)
-        )
+        remote_repository = Repository.from_template(remote_repository, engine=get_engine(remote))
     else:
         remote_repository = remote_repository.to_schema()
 
@@ -95,15 +94,13 @@ def push_c(repository, remote_repository, remote, upload_handler, upload_handler
     # If the user registers another registry at splitgraph.mycompany.com, then they will be able to do:
     #
     # * sgr push noaa/climate -r splitgraph.mycompany.com: will push to noaa/climate
+    from splitgraph.core.repository import Repository
+    from splitgraph.engine import get_engine
 
     if remote_repository and remote:
-        remote_repository = Repository.from_template(
-            remote_repository, engine=splitgraph.get_engine(remote)
-        )
+        remote_repository = Repository.from_template(remote_repository, engine=get_engine(remote))
     elif remote:
-        remote_repository = Repository.from_template(
-            repository, engine=splitgraph.get_engine(remote)
-        )
+        remote_repository = Repository.from_template(repository, engine=get_engine(remote))
 
     remote_repository = remote_repository or repository.upstream
 
@@ -179,6 +176,9 @@ def upstream_c(repository, set_to, reset):
 
     Shows the current upstream for ``my/repo``.
     """
+    from splitgraph.core.repository import Repository
+    from splitgraph.engine import get_engine
+
     # surely there's a better way of finding out whether --set isn't specified
     if set_to != ("", None) and reset:
         raise click.BadParameter("Only one of --set and --reset can be specified!")
@@ -204,9 +204,7 @@ def upstream_c(repository, set_to, reset):
     else:
         engine, remote_repo = set_to
         try:
-            remote_repo = Repository.from_template(
-                remote_repo, engine=splitgraph.get_engine(engine)
-            )
+            remote_repo = Repository.from_template(remote_repo, engine=get_engine(engine))
         except KeyError:
             click.echo("Remote engine '%s' does not exist in the configuration file!" % engine)
             sys.exit(1)

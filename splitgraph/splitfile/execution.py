@@ -76,7 +76,7 @@ def execute_commands(
         if not repository_exists(output):
             output.init()
 
-    from splitgraph.commandline._common import Color, truncate_line
+    from splitgraph.commandline.common import Color, truncate_line
 
     node_list = parse_commands(commands, params=params)
     for i, node in enumerate(node_list):

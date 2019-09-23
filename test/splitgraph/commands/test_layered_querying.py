@@ -6,12 +6,12 @@ from unittest import mock
 
 import pytest
 
-from splitgraph import Repository, SPLITGRAPH_META_SCHEMA
-from splitgraph.core import clone, CONFIG
-from splitgraph.core._common import META_TABLES
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
+from splitgraph.core.common import META_TABLES
 from splitgraph.core.fragment_manager import get_chunk_groups
 from splitgraph.core.indexing.range import extract_min_max_pks
 from splitgraph.core.object_manager import ObjectManager
+from splitgraph.core.repository import clone, Repository
 from splitgraph.core.table import Table
 from splitgraph.engine import ResultShape, _prepare_engine_config
 from splitgraph.engine.postgres.engine import PostgresEngine

@@ -5,11 +5,6 @@ from urllib.parse import urlsplit
 
 import click
 
-from splitgraph import CONFIG
-from splitgraph.cloud import AuthAPIClient
-from splitgraph.config.config import patch_config
-from splitgraph.config.export import overwrite_config
-
 
 @click.command("register")
 @click.option("--username", prompt=True)
@@ -25,6 +20,10 @@ def register_c(username, password, email, remote):
     Register the user on splitgraph.com, obtain a set of machine credentials
     and configure the data.splitgraph.com engine.
     """
+    from splitgraph.cloud import AuthAPIClient
+    from splitgraph.config import CONFIG
+    from splitgraph.config.config import patch_config
+    from splitgraph.config.export import overwrite_config
 
     client = AuthAPIClient(remote)
     click.echo("Registering the user...")
@@ -92,6 +91,9 @@ def curl_c(remote, request, curl_args):
     The request must be of the form namespace/repository/hash_or_tag/table?[postgrest request]".
     Image hash or tag can be omitted, in which case "latest" is used.
     """
+    from splitgraph.config import CONFIG
+    from splitgraph.cloud import AuthAPIClient
+
     # Do some early validation
     request_parsed = urlsplit(request)
     path_segments = request_parsed.path.lstrip("/").split("/")

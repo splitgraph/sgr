@@ -9,7 +9,7 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.config import CONFIG, SPLITGRAPH_API_SCHEMA, get_singleton
 from splitgraph.engine import get_engine, ResultShape
 from splitgraph.exceptions import RepositoryNotFoundError
-from ._common import select
+from .common import select
 
 if TYPE_CHECKING:
     from splitgraph.core.image import Image

@@ -2,12 +2,12 @@ import itertools
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Union, TYPE_CHECKING
 
-from psycopg2._json import Json
+from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
-from splitgraph.core import repository_exists
-from splitgraph.core._common import select, ResultShape
+from splitgraph.core.common import select, ResultShape
+from splitgraph.core.engine import repository_exists
 from splitgraph.core.image import IMAGE_COLS, Image
 from splitgraph.exceptions import ImageNotFoundError
 
