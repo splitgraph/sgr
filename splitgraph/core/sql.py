@@ -3,6 +3,7 @@ from typing import Callable, Dict, List, Union
 
 from pglast import parse_sql
 from pglast.node import Node, Scalar
+from pglast.parser import ParseError
 
 from splitgraph.exceptions import UnsupportedSQLError
 
@@ -86,7 +87,10 @@ def validate_splitfile_sql(sql: str) -> None:
     :return: None if validation is successful
     :raises: UnsupportedSQLException if validation failed
     """
-    tree = Node(parse_sql(sql))
+    try:
+        tree = Node(parse_sql(sql))
+    except ParseError:
+        raise UnsupportedSQLError("Error parsing SQL %s" % sql)
     for node in tree.traverse():
         _validate_node(
             node, permitted_nodes=_SPLITFILE_SQL_PERMITTED_NODES, node_validators=_SQL_VALIDATORS
@@ -104,7 +108,10 @@ def validate_import_sql(sql: str) -> None:
     :raises: UnsupportedSQLException if validation failed
     """
 
-    tree = Node(parse_sql(sql))
+    try:
+        tree = Node(parse_sql(sql))
+    except ParseError:
+        raise UnsupportedSQLError("Error parsing SQL %s" % sql)
     if len(tree) != 1:
         raise UnsupportedSQLError("The query is supposed to consist of only one SELECT statement!")
 
