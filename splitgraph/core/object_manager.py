@@ -182,7 +182,7 @@ class ObjectManager(FragmentManager):
             tracer.log("filter_objects")
 
         # Increase the refcount on all of the objects we're giving back to the caller so that others don't GC them.
-        logging.info("Claiming %d object(s)", len(required_objects))
+        logging.debug("Claiming %d object(s)", len(required_objects))
 
         self._claim_objects(required_objects)
         tracer.log("claim_objects")
@@ -236,7 +236,7 @@ class ObjectManager(FragmentManager):
                 raise ObjectCacheError(error)
             self._set_ready_flags(to_fetch, is_ready=True)
         tracer.log("fetch_objects")
-        logging.info("Yielding to the caller")
+        logging.debug("Yielding to the caller")
 
         release_callback = self._make_release_callback(required_objects, table, tracer)
         try:
@@ -270,15 +270,16 @@ class ObjectManager(FragmentManager):
             self.object_engine.run_sql("SET LOCAL synchronous_commit TO off")
             self._release_objects(required_objects)
             tracer.log("release_objects")
-            logging.info("Releasing %d object(s)", len(required_objects))
-            logging.info(
-                "Timing stats for %s/%s/%s/%s: \n%s",
-                table.repository.namespace,
-                table.repository.repository,
-                table.image.image_hash,
-                table.table_name,
-                tracer,
-            )
+            logging.debug("Releasing %d object(s)", len(required_objects))
+            if table:
+                logging.debug(
+                    "Timing stats for %s/%s/%s/%s: \n%s",
+                    table.repository.namespace,
+                    table.repository.repository,
+                    table.image.image_hash,
+                    table.table_name,
+                    tracer,
+                )
             self.object_engine.commit()
             # Release the metadata tables as well
             self.metadata_engine.commit()
@@ -300,7 +301,7 @@ class ObjectManager(FragmentManager):
         uploaded_objects = [o[0] for o in self.get_external_object_locations(objects)]
         new_objects = [o for o in objects if o not in uploaded_objects]
 
-        logging.info(
+        logging.debug(
             "%d object(s) of %d haven't been uploaded yet: %r",
             len(new_objects),
             len(objects),
