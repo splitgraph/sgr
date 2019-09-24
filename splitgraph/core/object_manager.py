@@ -210,7 +210,9 @@ class ObjectManager(FragmentManager):
                 and table is not None
                 and upstream_manager is None
             ):
-                upstream_manager = table.repository.upstream.objects
+                upstream_manager = (
+                    table.repository.upstream.objects if table.repository.upstream else None
+                )
 
             downloaded_by_us = self.download_objects(
                 upstream_manager, objects_to_fetch=to_fetch, object_locations=object_locations
