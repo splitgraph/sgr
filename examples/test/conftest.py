@@ -1,5 +1,9 @@
 import os.path
 
+# List of examples to ignore: get-started is difficult to test as it requires access
+# to the actual Splitgraph cloud and the command line registration is tested otherwise.
+_DO_NOT_TEST = ["get-started"]
+
 
 def pytest_generate_tests(metafunc):
     """Generate test cases (one for each subdirectory in examples/ apart from "test" itself"""
@@ -11,6 +15,7 @@ def pytest_generate_tests(metafunc):
             if (
                 not f.is_dir()
                 or f.name in ["htmlcov", "test"]
+                or f.name in _DO_NOT_TEST
                 or not os.path.exists(os.path.join(f.path, "example.yaml"))
             ):
                 continue

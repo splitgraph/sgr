@@ -1,0 +1,23 @@
+- commands:
+  - "# Preliminary cleanup: THIS WILL DELETE YOUR LOCAL ENGINE AND ALL DATA"
+  - sgr engine delete --force --yes
+- commands:
+  - "# Check that sgr is installed"
+  - sgr cloud register --help
+- commands:
+  - "# Register on the Splitgraph registry"
+  - sgr cloud register
+- commands:
+  - "# The credentials (API keys) have been written into a .sgconfig file."
+  - "# These can be managed on data.splitgraph.com."
+  - cat .sgconfig
+- commands:
+  - "# Spin up a local Splitgraph engine: the password in this case is what"
+  - "# you'll use to access the engine (rather than your actual account)."
+  - sgr engine add --port 5432 --password password
+- commands:
+  - "# The new engine has been added to the .sgconfig"
+  - cat .sgconfig
+- commands:
+  - "# Delete the test engine and all data"
+  - sgr engine delete --force --yes
