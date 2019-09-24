@@ -121,7 +121,7 @@ def add_engine_c(
 
     This also creates Docker volumes required to persist data/metadata.
     """
-    from splitgraph.engine import PostgresEngine
+    from splitgraph.engine.postgres.engine import PostgresEngine
     from splitgraph.config import CONFIG
     from splitgraph.config.config import patch_config
     from splitgraph.config.export import overwrite_config
@@ -213,6 +213,7 @@ def add_engine_c(
 @click.argument("name", default=DEFAULT_ENGINE)
 def stop_engine_c(name):
     """Stop a Splitgraph engine."""
+    import docker
 
     client = docker.from_env()
     container_name = _get_container_name(name)

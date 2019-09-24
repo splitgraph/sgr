@@ -1027,7 +1027,7 @@ def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
     # Create an engine with default password and wait for it to initialize
     result = runner.invoke(
         add_engine_c,
-        ["--port", "5430", "--username", "not_sgr", "--no-sgconfig", "secondary"],
+        ["--port", "5428", "--username", "not_sgr", "--no-sgconfig", "secondary"],
         input="notsosecure\nnotsosecure\n",
     )
     assert result.exit_code == 0
@@ -1035,7 +1035,7 @@ def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
     # Connect to the engine to check that it's up
     conn_params = {
         "SG_ENGINE_HOST": "localhost",
-        "SG_ENGINE_PORT": 5430,
+        "SG_ENGINE_PORT": "5428",
         "SG_ENGINE_USER": "not_sgr",
         "SG_ENGINE_PWD": "notsosecure",
         "SG_ENGINE_DB_NAME": "splitgraph",
@@ -1181,8 +1181,8 @@ def test_commandline_engine_creation_config_patching(test_case):
 
     m = mock_open()
     with patch("splitgraph.config.export.open", m, create=True):
-        with patch("splitgraph.commandline.engine.CONFIG", source_config):
-            with patch("splitgraph.commandline.engine.docker"):
+        with patch("splitgraph.config.CONFIG", source_config):
+            with patch("docker.from_env"):
                 with patch("splitgraph.commandline.engine.copy_to_container") as ctc:
                     result = runner.invoke(
                         add_engine_c,
@@ -1303,9 +1303,9 @@ def test_commandline_registration_normal():
 
     runner = CliRunner()
 
-    with patch("splitgraph.commandline.cloud.overwrite_config"):
-        with patch("splitgraph.commandline.cloud.patch_config") as pc:
-            with patch("splitgraph.commandline.cloud.CONFIG", source_config):
+    with patch("splitgraph.config.export.overwrite_config"):
+        with patch("splitgraph.config.config.patch_config") as pc:
+            with patch("splitgraph.config.CONFIG", source_config):
                 result = runner.invoke(
                     register_c,
                     args=[
@@ -1387,7 +1387,7 @@ def test_commandline_curl_normal(test_case):
     request, result_url = test_case
 
     with patch(
-        "splitgraph.commandline.cloud.AuthAPIClient.access_token",
+        "splitgraph.cloud.AuthAPIClient.access_token",
         new_callable=PropertyMock,
         return_value="AAAABBBBCCCCDDDD",
     ):
@@ -1413,7 +1413,7 @@ def test_commandline_curl_normal(test_case):
 def test_commandline_curl_error():
     runner = CliRunner()
 
-    with patch("splitgraph.commandline.cloud.AuthAPIClient"):
+    with patch("splitgraph.cloud.AuthAPIClient"):
         with patch("splitgraph.commandline.cloud.subprocess.call"):
             result = runner.invoke(
                 curl_c, ["--remote", _REMOTE, "invalid/path"], catch_exceptions=True
