@@ -172,7 +172,8 @@ BEGIN
     namespace = (SELECT o.namespace FROM splitgraph_meta.objects o WHERE o.object_id = _object_id);
     PERFORM splitgraph_api.check_privilege(namespace);
     INSERT INTO splitgraph_meta.object_locations(object_id, location, protocol)
-    VALUES (_object_id, location, protocol);
+    VALUES (_object_id, location, protocol)
+    ON CONFLICT (object_id) DO UPDATE SET location = EXCLUDED.location, protocol = EXCLUDED.protocol;
 END
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 

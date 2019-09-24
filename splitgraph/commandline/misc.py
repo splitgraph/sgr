@@ -64,7 +64,10 @@ def rm_c(image_spec, remote, yes):
         )
         if not yes:
             click.confirm("Continue? ", abort=True)
-        repository.delete()
+
+        # Don't try to "uncheckout" repositories on the registry/other remote engines
+        repository.delete(uncheckout=remote is None)
+        repository.commit_engines()
     else:
         image = repository.images[image]
         images_to_delete = repository.images.get_all_child_images(image.image_hash)

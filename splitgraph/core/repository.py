@@ -1035,7 +1035,6 @@ def _sync(
     target: "Repository",
     source: "Repository",
     download: bool = True,
-    download_all: Optional[bool] = False,
     handler: str = "DB",
     handler_options: Optional[Dict[str, Any]] = None,
 ) -> None:
@@ -1050,7 +1049,6 @@ def _sync(
     :param source: Source Repository object
     :param download: If True, uses the download routines to download physical objects to self.
         If False, uses the upload routines to get `source` to upload physical objects to self / external.
-    :param download_all: Whether to download all objects (pull option)
     :param handler: Upload handler
     :param handler_options: Upload handler options
     """
@@ -1094,7 +1092,7 @@ def _sync(
             # Here we have to register the new objects after the upload but before we store their external
             # location (as the RLS for object_locations relies on the object metadata being in place)
             target.objects.register_objects(list(object_meta.values()), namespace=target.namespace)
-            target.objects.register_object_locations(object_locations + new_uploads)
+            target.objects.register_object_locations(list(set(object_locations + new_uploads)))
             source.objects.register_object_locations(new_uploads)
 
         # Register the new tables / tags.
