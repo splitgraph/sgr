@@ -206,9 +206,14 @@ def test_pull_download_error(local_engine_empty, unprivileged_pg_repo, clean_min
         with pytest.raises(Exception) as e:
             clone(unprivileged_pg_repo, local_repository=PG_MNT, download_all=True)
 
-    assert not repository_exists(PG_MNT)
-    assert len(PG_MNT.objects.get_all_objects()) == 0
+    # Check that the pull succeeded (repository registered locally) but the objects
+    # are just marked as external, not downloaded
+    assert repository_exists(PG_MNT)
+    assert len(PG_MNT.objects.get_all_objects()) == 2
+    assert len(PG_MNT.objects.get_downloaded_objects()) == 0
+    assert len(PG_MNT.objects.get_external_object_locations(PG_MNT.objects.get_all_objects())) == 2
 
     clone(unprivileged_pg_repo, local_repository=PG_MNT, download_all=True)
     assert len(PG_MNT.objects.get_all_objects()) == 2
+    assert len(PG_MNT.objects.get_downloaded_objects()) == 2
     assert len(list(PG_MNT.images)) == 2

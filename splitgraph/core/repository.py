@@ -1081,15 +1081,6 @@ def _sync(
         if download:
             target.objects.register_objects(list(object_meta.values()))
             target.objects.register_object_locations(object_locations)
-            # Don't actually download any real objects until the user tries to check out a revision, unless
-            # they want to do it in advance.
-            if download_all:
-                logging.info("Fetching remote objects...")
-                target.objects.download_objects(
-                    source.objects,
-                    objects_to_fetch=list(object_meta.keys()),
-                    object_locations=object_locations,
-                )
 
             # Don't check anything out, keep the repo bare.
             set_head(target, None)
@@ -1152,7 +1143,20 @@ def clone(
     if not local_repository:
         local_repository = Repository(remote_repository.namespace, remote_repository.repository)
 
-    _sync(local_repository, remote_repository, download=True, download_all=download_all)
+    _sync(local_repository, remote_repository, download=True)
+
+    # Perform the optional download of all objects as a final step (normally we do it when the user
+    # tries to check out a revision) and do it using the object manager as it has some handling
+    # of error cases.
+    if download_all:
+        local_om = local_repository.objects
+        logging.info("Fetching remote objects...")
+        with local_om.ensure_objects(
+            table=None,
+            objects=local_om.get_objects_for_repository(local_repository),
+            upstream_manager=remote_repository.objects,
+        ):
+            pass
 
     if not local_repository.upstream:
         local_repository.upstream = remote_repository

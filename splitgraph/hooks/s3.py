@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import List, Tuple
 
 from psycopg2 import DatabaseError
+from psycopg2.errors import DuplicateTable
 from tqdm import tqdm
 
 from splitgraph.config import CONFIG, get_singleton
@@ -119,7 +120,11 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
             except DatabaseError:
                 logging.exception("Error downloading object %s", object_id)
                 return object_id
-            local_engine.mount_object(object_id)
+
+            try:
+                local_engine.mount_object(object_id)
+            except DuplicateTable:
+                logging.warning("Object %s already exists locally." % object_id)
             # Commit and release the connection (each is keyed by the thread ID)
             # back into the pool.
             # NB this should only be done when the loader is running in a different thread, since

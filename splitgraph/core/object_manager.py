@@ -133,11 +133,12 @@ class ObjectManager(FragmentManager):
     @contextmanager
     def ensure_objects(
         self,
-        table: "Table",
+        table: Optional["Table"],
         objects: Optional[List[str]] = None,
         quals: Optional[Quals] = None,
         defer_release: bool = False,
         tracer: Optional[Tracer] = None,
+        upstream_manager: Optional["ObjectManager"] = None,
     ) -> Iterator[Union[List[str], Tuple[List[str], CallbackList]]]:
         """
         Resolves the objects needed to materialize a given table and makes sure they are in the local
@@ -147,6 +148,7 @@ class ObjectManager(FragmentManager):
         unneeded and can be garbage collected.
 
         :param table: Table to materialize
+        :param objects: List of objects to download: one of table or objects must be specified.
         :param quals: Optional list of qualifiers to be passed to the fragment engine. Fragments that definitely do
             not match these qualifiers will be dropped. See the docstring for `filter_fragments` for the format.
         :param defer_release: If True, won't release the objects on exit.
@@ -168,9 +170,10 @@ class ObjectManager(FragmentManager):
 
         if objects is not None:
             required_objects = objects
-            logging.info("Using cached objects list")
         else:
-            logging.info(
+            if table is None:
+                raise ValueError("One of table or objects must be specified!")
+            logging.debug(
                 "Resolving objects for table %s:%s:%s",
                 table.repository,
                 table.image.image_hash,
@@ -202,29 +205,33 @@ class ObjectManager(FragmentManager):
             # If all objects are externally hosted, there's no need to try and get the table's
             # upstream (there's a corner case where the metadata engine is different from the object
             # engine and the repo actually has no upstream)
-            if self.metadata_engine == self.object_engine:
-                upstream = table.repository.upstream
-            else:
-                upstream = None
+            if (
+                self.metadata_engine == self.object_engine
+                and table is not None
+                and upstream_manager is None
+            ):
+                upstream_manager = table.repository.upstream.objects
+
             downloaded_by_us = self.download_objects(
-                upstream.objects if upstream else None,
-                objects_to_fetch=to_fetch,
-                object_locations=object_locations,
+                upstream_manager, objects_to_fetch=to_fetch, object_locations=object_locations
             )
             # No matter what, claim the space required by the newly downloaded objects.
             self._increase_cache_occupancy(downloaded_by_us)
             downloaded = self.get_downloaded_objects(limit_to=to_fetch)
             difference = list(set(to_fetch).difference(downloaded))
             if difference:
-                error = (
-                    "Not all objects required to materialize %s:%s:%s have been fetched. Missing objects: %r"
-                    % (
-                        table.repository.to_schema(),
-                        table.image.image_hash,
-                        table.table_name,
-                        difference,
+                if table:
+                    error = (
+                        "Not all objects required to materialize %s:%s:%s have been fetched. Missing objects: %r"
+                        % (
+                            table.repository.to_schema(),
+                            table.image.image_hash,
+                            table.table_name,
+                            difference,
+                        )
                     )
-                )
+                else:
+                    error = "Not all objects have been fetched. Missing objects: %r" % difference
                 logging.error(error)
                 # Instead of deleting all objects in this batch, discard the cache data
                 # on the objects that failed, decrease the refcount on the objects that
@@ -253,7 +260,7 @@ class ObjectManager(FragmentManager):
                 release_callback()
 
     def _make_release_callback(
-        self, required_objects: List[str], table: "Table", tracer: Tracer
+        self, required_objects: List[str], table: Optional["Table"], tracer: Tracer
     ) -> CallbackList:
         called = False
 

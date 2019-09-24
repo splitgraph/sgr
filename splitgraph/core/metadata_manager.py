@@ -177,6 +177,21 @@ class MetadataManager:
         result = [Object(*m) for m in metadata]
         return {o.object_id: o for o in result}
 
+    def get_objects_for_repository(self, repository: "Repository") -> List[str]:
+        table_objects = {
+            o
+            for os in self.metadata_engine.run_sql(
+                SQL(
+                    "SELECT object_ids FROM {}.tables WHERE namespace = %s AND repository = %s"
+                ).format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                (repository.namespace, repository.repository),
+                return_shape=ResultShape.MANY_ONE,
+            )
+            for o in os
+        }
+
+        return list(table_objects)
+
     def cleanup_metadata(self) -> Set[str]:
         """
         Go through the current metadata and delete all objects that aren't required
