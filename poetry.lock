@@ -434,8 +434,8 @@ category = "dev"
 description = "python code static checker"
 name = "pylint"
 optional = false
-python-versions = ">=3.4.*"
-version = "2.3.1"
+python-versions = ">=3.5.*"
+version = "2.4.0"
 
 [package.dependencies]
 astroid = ">=2.2.0,<3"
@@ -708,7 +708,7 @@ version = "0.5.2"
 ingestion = ["pandas", "sqlalchemy"]
 
 [metadata]
-content-hash = "df5af158426d5b9a3f6371fc9f6e4f44ec6078f2dfc9acf1a01064c55543b3e8"
+content-hash = "5030fedb47ac0f2877f44944dabcc7f1579941e16b8c869a5e0ad5313e22570c"
 python-versions = ">=3.6"
 
 [metadata.hashes]
@@ -756,7 +756,7 @@ py = ["64f65755aee5b381cea27766a3a147c3f15b9b6b9ac88676de66ba2ae36793fa", "dc639
 pyfakefs = ["2d973133c81c005ec8d713b76e2d9cc9e4946f6d95775bd283863ccf0f3e6604", "87a9819dafa2b210a26d9453aea1903eb88bd76a2425053a8f4ba6245777c498"]
 pygments = ["71e430bc85c88a430f000ac1d9b331d2407f681d6f6aec95e8bcfbc3df5b0127", "881c4c157e45f30af185c1ffe8d549d48ac9127433f2c380c24b84572ad66297"]
 pyinstaller = ["ee7504022d1332a3324250faf2135ea56ac71fdb6309cff8cd235de26b1d0a96"]
-pylint = ["5d77031694a5fb97ea95e828c8d10fc770a1df6eb3906067aaed42201a8a6a09", "723e3db49555abaf9bf79dc474c6b9e2935ad82230b10c1138a71ea41ac0fff1"]
+pylint = ["92280a6085fc5e4fec67d6330c0c85eae50817696d02bdc85e9ca6bab830ad58", "ef796b99c243afeebf7a04b4426126ac837940da6bcd5fc47229c507e056fec1"]
 pyparsing = ["6f98a7b9397e206d78cc01df10131398f1c8b8510a2f4d97d9abd82e1aacdd80", "d9338df12903bbf5d65a0e4e87c2161968b10d2e489652bb47001d82a9b028b4"]
 pytest = ["95d13143cc14174ca1a01ec68e84d76ba5d9d493ac02716fd9706c949a505210", "b78fe2881323bd44fd9bd76e5317173d4316577e7b1cddebae9136a4495ec865"]
 pytest-cov = ["2b097cde81a302e1047331b48cadacf23577e431b61e9c6f49a1170bbe3d3da6", "e00ea4fdde970725482f1f35630d12f074e121a23801aabf2ae154ec6bdd343a"]
