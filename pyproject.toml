@@ -29,7 +29,7 @@ coveralls = "^1.7"
 pyinstaller = "^3.4"
 sphinx = "^2.0"
 sphinx_rtd_theme = "^0.4.2"
-pylint = "^2.3"
+pylint = "^2.4"
 black = { version = "*", allows-prereleases = true }
 pre-commit = "^1.18"
 
