@@ -101,6 +101,17 @@ class TestLayeredQuerying:
         with lq_test_repo.head.query_schema() as s:
             assert sorted(lq_test_repo.engine.run_sql_in(s, query)) == sorted(expected)
 
+    def test_layered_querying_mount_comments(self, lq_test_repo):
+        with lq_test_repo.head.query_schema() as s:
+            assert (
+                lq_test_repo.engine.run_sql_in(
+                    s,
+                    "SELECT col_description('fruits'::regclass, 2)",
+                    return_shape=ResultShape.ONE_ONE,
+                )
+                == "Name of the fruit"
+            )
+
     @pytest.mark.parametrize(
         "test_case",
         [

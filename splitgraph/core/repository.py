@@ -20,6 +20,7 @@ from splitgraph.core.image import Image
 from splitgraph.core.image_manager import ImageManager
 from splitgraph.core.sql import validate_import_sql
 from splitgraph.core.table import Table
+from splitgraph.core.types import TableSchema
 from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import CheckoutError, EngineInitializationError, TableNotFoundError
 from .common import (
@@ -420,13 +421,11 @@ class Repository:
                 table_info = None
 
             # Store as a full copy if this is a new table, there's been a schema change or we were told to.
-            # This is obviously wasteful (say if just one column has been added/dropped or we added a PK,
-            # but it's a starting point to support schema changes.
+            new_schema = self.object_engine.get_full_table_schema(schema, table)
             if (
                 not table_info
                 or snap_only
-                or table_info.table_schema
-                != self.object_engine.get_full_table_schema(schema, table)
+                or not _schema_compatible(table_info.table_schema, new_schema)
             ):
                 self.objects.record_table_as_base(
                     self,
@@ -444,6 +443,7 @@ class Repository:
                     table_info,
                     schema,
                     image_hash,
+                    new_schema_spec=new_schema,
                     split_changeset=split_changeset,
                     extra_indexes=extra_indexes.get(table),
                 )
@@ -451,7 +451,7 @@ class Repository:
 
             # If the table wasn't changed, point the image to the old table
             self.objects.register_tables(
-                self, [(image_hash, table, table_info.table_schema, table_info.objects)]
+                self, [(image_hash, table, new_schema, table_info.objects)]
             )
 
         # Make sure that all pending changes have been discarded by this point (e.g. if we created just a snapshot for
@@ -1164,3 +1164,18 @@ def clone(
 
 def _hash(image: Optional[Image]) -> Optional[str]:
     return image.image_hash if image is not None else None
+
+
+def _schema_compatible(old: TableSchema, new: TableSchema) -> bool:
+    """
+    Determines whether a table with a schema change can be delta compressed
+    using data in the audit triggers.
+
+    :param old: Old table schema
+    :param new: New table schema
+    :return: Boolean
+    """
+
+    # Currently we don't support schema changes at all but we do delta compress if
+    # just the comments on some of the table's columns have changed.
+    return [t[:4] for t in old] == [t[:4] for t in new]

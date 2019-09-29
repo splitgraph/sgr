@@ -19,7 +19,6 @@ from psycopg2.sql import SQL, Identifier
 from tqdm import tqdm
 
 from splitgraph.config import SPLITGRAPH_API_SCHEMA
-from splitgraph.core.common import Changeset, TableSchema
 from splitgraph.core.indexing.bloom import generate_bloom_index, filter_bloom_index
 from splitgraph.core.indexing.range import (
     extract_min_max_pks,
@@ -27,6 +26,7 @@ from splitgraph.core.indexing.range import (
     filter_range_index,
 )
 from splitgraph.core.metadata_manager import MetadataManager, Object
+from splitgraph.core.types import Changeset, TableSchema
 from splitgraph.engine.postgres.engine import SG_UD_FLAG
 from splitgraph.exceptions import SplitGraphError
 from .common import adapt, SPLITGRAPH_META_SCHEMA, ResultShape, select
@@ -289,7 +289,7 @@ class FragmentManager(MetadataManager):
 
     @staticmethod
     def _extract_deleted_rows(changeset: Any, table_schema: TableSchema) -> Any:
-        has_pk = any(c[3] for c in table_schema)
+        has_pk = any(c.is_pk for c in table_schema)
         rows = []
         for pk, data in changeset.items():
             if not data[1]:
@@ -301,25 +301,23 @@ class FragmentManager(MetadataManager):
                 # Turn the changeset into an actual row in the correct order
                 pk_index = 0
                 row = []
-                for _, column_name, _, is_pk in sorted(table_schema):
-                    if not is_pk:
-                        row.append(data[1][column_name])
+                for col in sorted(table_schema):
+                    if not col.is_pk:
+                        row.append(data[1][col.name])
                     else:
                         row.append(pk[pk_index])
                         pk_index += 1
             rows.append(row)
         return rows
 
-    def _hash_old_changeset_values(
-        self, changeset: Any, table_schema: List[Tuple[int, str, str, bool]]
-    ) -> Digest:
+    def _hash_old_changeset_values(self, changeset: Any, table_schema: TableSchema) -> Digest:
         """
         Since we're not storing the values of the deleted rows (and we don't have access to them in the staging table
         because they've been deleted), we have to hash them in Python. This involves mimicking the return value of
         `SELECT t::text FROM table t`.
 
         :param changeset: Map PK -> (upserted/deleted, Map col -> old val)
-        :param table_schema: List (ordinal, column, type, is_pk)
+        :param table_schema: Table schema
         :return: `Digest` object.
         """
         rows = self._extract_deleted_rows(changeset, table_schema)
@@ -329,7 +327,7 @@ class FragmentManager(MetadataManager):
         # Horror alert: we hash newly created tables by essentially calling digest(row::text) in Postgres and
         # we don't really know how it turns some types to strings. So instead we give Postgres all of its deleted
         # rows back and ask it to hash them for us in the same way.
-        inner_tuple = "(" + ",".join("%s::" + c[2] for c in table_schema) + ")"
+        inner_tuple = "(" + ",".join("%s::" + c.pg_type for c in table_schema) + ")"
         query = (
             "SELECT digest(o::text, 'sha256') FROM (VALUES "
             + ",".join(itertools.repeat(inner_tuple, len(rows)))
@@ -421,7 +419,7 @@ class FragmentManager(MetadataManager):
             SPLITGRAPH_META_SCHEMA, tmp_object_id
         )
         content_hash = (insertion_hash - deletion_hash).hex()
-        schema_hash = sha256(str(table.table_schema).encode("ascii")).hexdigest()
+        schema_hash = self._calculate_schema_hash(table.table_schema)
         object_id = "o" + sha256((content_hash + schema_hash).encode("ascii")).hexdigest()[:-2]
         return deletion_hash, insertion_hash, object_id
 
@@ -443,7 +441,7 @@ class FragmentManager(MetadataManager):
         """
         table_schema = self.object_engine.get_full_table_schema(schema, table)
         columns_sql = SQL(",").join(
-            SQL("o.") + Identifier(c[1]) for c in table_schema if c[1] != SG_UD_FLAG
+            SQL("o.") + Identifier(c.name) for c in table_schema if c.name != SG_UD_FLAG
         )
         digest_query = (
             SQL("SELECT digest((")
@@ -464,6 +462,7 @@ class FragmentManager(MetadataManager):
         old_table: "Table",
         schema: str,
         image_hash: str,
+        new_schema_spec: TableSchema = None,
         split_changeset: bool = False,
         extra_indexes: Optional[ExtraIndexInfo] = None,
     ) -> None:
@@ -474,6 +473,7 @@ class FragmentManager(MetadataManager):
         :param old_table: Table object pointing to the current HEAD table
         :param schema: Schema the table is checked out into.
         :param image_hash: Image hash to store the table under
+        :param new_schema_spec: New schema of the table (use the old table's schema by default).
         :param split_changeset: See `Repository.commit` for reference
         :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
         """
@@ -495,6 +495,8 @@ class FragmentManager(MetadataManager):
         )
         self.object_engine.discard_pending_changes(schema, old_table.table_name)
         current_objects = old_table.objects
+
+        new_schema_spec = new_schema_spec or old_table.table_schema
         if changeset:
             if split_changeset:
                 logging.info("Splitting changesets")
@@ -525,7 +527,7 @@ class FragmentManager(MetadataManager):
                     (
                         image_hash,
                         old_table.table_name,
-                        old_table.table_schema,
+                        new_schema_spec,
                         old_table.objects + object_ids,
                     )
                 ],
@@ -534,7 +536,7 @@ class FragmentManager(MetadataManager):
             # Changes in the audit log cancelled each other out. Point the image to the same old objects.
             self.register_tables(
                 old_table.repository,
-                [(image_hash, old_table.table_name, old_table.table_schema, old_table.objects)],
+                [(image_hash, old_table.table_name, new_schema_spec, old_table.objects)],
             )
 
     def get_min_max_pks(
@@ -648,7 +650,7 @@ class FragmentManager(MetadataManager):
         # Fragments can't be reused in tables with different schemas even if the contents match (e.g. '1' vs 1).
         # Hence, include the table schema in the object ID as well.
         table_schema = self.object_engine.get_full_table_schema(source_schema, source_table)
-        schema_hash = sha256(str(table_schema).encode("ascii")).hexdigest()
+        schema_hash = self._calculate_schema_hash(table_schema)
 
         # Object IDs are also used to key tables in Postgres so they can't be more than 63 characters.
         # In addition, table names can't start with a number so we have to drop 2 characters from the 64-character
@@ -691,6 +693,13 @@ class FragmentManager(MetadataManager):
                 )
 
         return object_id
+
+    @staticmethod
+    def _calculate_schema_hash(table_schema):
+        # Don't include column comments in the schema hash.
+        return sha256(
+            str([(c.ordinal, c.name, c.pg_type, c.is_pk) for c in table_schema]).encode("ascii")
+        ).hexdigest()
 
     def record_table_as_base(
         self,

@@ -19,9 +19,10 @@ from typing import (
 from psycopg2.sql import SQL, Identifier, Composable
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.core.common import Tracer, TableSchema, Quals
+from splitgraph.core.common import Tracer
 from splitgraph.core.fragment_manager import get_random_object_id, get_chunk_groups
 from splitgraph.core.indexing.range import quals_to_sql
+from splitgraph.core.types import TableSchema, Quals
 
 if TYPE_CHECKING:
     from splitgraph.core.image import Image
@@ -168,7 +169,10 @@ class Table:
                 table=self, objects=self.objects
             ) as required_objects:
                 engine.create_table(
-                    schema=destination_schema, table=destination, schema_spec=self.table_schema
+                    schema=destination_schema,
+                    table=destination,
+                    schema_spec=self.table_schema,
+                    include_comments=True,
                 )
                 if required_objects:
                     logging.info("Applying %d fragment(s)...", (len(required_objects)))
@@ -181,11 +185,22 @@ class Table:
             query = SQL("CREATE FOREIGN TABLE {}.{} (").format(
                 Identifier(destination_schema), Identifier(self.table_name)
             )
-            query += SQL(",".join("{} %s " % ctype for _, _, ctype, _ in self.table_schema)).format(
-                *(Identifier(cname) for _, cname, _, _ in self.table_schema)
+            query += SQL(",".join("{} %s " % col.pg_type for col in self.table_schema)).format(
+                *(Identifier(col.name) for col in self.table_schema)
             )
-            query += SQL(") SERVER {} OPTIONS (table %s)").format(Identifier(lq_server))
-            engine.run_sql(query, (self.table_name,))
+            query += SQL(") SERVER {} OPTIONS (table %s);").format(Identifier(lq_server))
+
+            args = [self.table_name]
+            for col in self.table_schema:
+                if col.comment:
+                    query += SQL("COMMENT ON COLUMN {}.{}.{} IS %s;").format(
+                        Identifier(destination_schema),
+                        Identifier(self.table_name),
+                        Identifier(col.name),
+                    )
+                    args.append(col.comment)
+
+            engine.run_sql(query, args)
 
     def query_indirect(
         self, columns: List[str], quals: Optional[Quals]
@@ -210,7 +225,7 @@ class Table:
         """
 
         sql_quals, sql_qual_vals = quals_to_sql(
-            quals, column_types={c[1]: c[2] for c in self.table_schema}
+            quals, column_types={c.name: c.pg_type for c in self.table_schema}
         )
 
         plan = self.get_query_plan(quals, columns)

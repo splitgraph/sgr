@@ -1,11 +1,13 @@
 import pytest
 
+from splitgraph.engine import ResultShape
 from splitgraph.exceptions import ImageNotFoundError
 
 
 @pytest.mark.parametrize("snap_only", [True, False])
 def test_log_checkout(snap_only, pg_repo_local):
     pg_repo_local.run_sql("INSERT INTO fruits VALUES (3, 'mayonnaise')")
+    pg_repo_local.run_sql("COMMENT ON COLUMN fruits.name IS 'Name of the fruit'")
 
     head = pg_repo_local.head
     head_1 = pg_repo_local.commit(snap_only=snap_only)
@@ -19,8 +21,15 @@ def test_log_checkout(snap_only, pg_repo_local):
     # in the future)
     assert head_2.get_log()[:3] == [head_2, head_1, head]
 
+    # Test that the column comment is correctly reproduced on checkout.
     head.checkout()
     assert pg_repo_local.run_sql("SELECT * FROM fruits") == [(1, "apple"), (2, "orange")]
+    assert (
+        pg_repo_local.run_sql(
+            "SELECT col_description('fruits'::regclass, 2)", return_shape=ResultShape.ONE_ONE
+        )
+        is None
+    )
 
     head_1.checkout()
     assert pg_repo_local.run_sql("SELECT * FROM fruits") == [
@@ -28,9 +37,21 @@ def test_log_checkout(snap_only, pg_repo_local):
         (2, "orange"),
         (3, "mayonnaise"),
     ]
+    assert (
+        pg_repo_local.run_sql(
+            "SELECT col_description('fruits'::regclass, 2)", return_shape=ResultShape.ONE_ONE
+        )
+        == "Name of the fruit"
+    )
 
     head_2.checkout()
     assert pg_repo_local.run_sql("SELECT * FROM fruits") == [(2, "orange"), (3, "mayonnaise")]
+    assert (
+        pg_repo_local.run_sql(
+            "SELECT col_description('fruits'::regclass, 2)", return_shape=ResultShape.ONE_ONE
+        )
+        == "Name of the fruit"
+    )
 
 
 @pytest.mark.parametrize("snap_only", [True, False])

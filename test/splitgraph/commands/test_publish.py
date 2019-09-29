@@ -2,6 +2,7 @@ import pytest
 
 from splitgraph.core.registry import get_published_info
 from splitgraph.core.repository import Repository
+from splitgraph.core.types import TableColumn
 from splitgraph.splitfile import execute_commands
 from test.splitgraph.conftest import OUTPUT, load_splitfile
 
@@ -37,51 +38,53 @@ def test_publish(local_engine_empty, remote_engine, pg_repo_remote_multitag, ext
         include_table_previews=extra_info,
     )
 
-    image_hash, published_dt, provenance, readme, schemata, previews = get_published_info(
-        remote_output, "v1"
-    )
-    assert image_hash == OUTPUT.images["v1"].image_hash
-    assert readme == "A test repo."
+    info = get_published_info(remote_output, "v1")
+    assert info.image_hash == OUTPUT.images["v1"].image_hash
+    assert info.readme == "A test repo."
     expected_schemata = {
         "join_table": [
-            ["id", "integer", False],
-            ["fruit", "character varying", False],
-            ["vegetable", "character varying", False],
+            TableColumn(1, "id", "integer", False, None),
+            TableColumn(2, "fruit", "character varying", False, None),
+            TableColumn(3, "vegetable", "character varying", False, None),
         ],
-        "my_fruits": [["fruit_id", "integer", False], ["name", "character varying", False]],
-        "vegetables": [["vegetable_id", "integer", False], ["name", "character varying", False]],
+        "my_fruits": [
+            TableColumn(1, "fruit_id", "integer", False, None),
+            TableColumn(2, "name", "character varying", False, None),
+        ],
+        "vegetables": [
+            TableColumn(1, "vegetable_id", "integer", False, None),
+            TableColumn(2, "name", "character varying", False, None),
+        ],
     }
 
-    assert schemata == expected_schemata
+    assert info.schemata == expected_schemata
     if extra_info:
-        assert provenance == [
+        assert info.provenance == [
             [["test", "pg_mount"], pg_repo_remote_multitag.images["v1"].image_hash]
         ]
-        assert previews == {
+        assert info.previews == {
             "join_table": [[1, "apple", "potato"], [2, "orange", "carrot"]],
             "my_fruits": [[1, "apple"], [2, "orange"]],
             "vegetables": [[1, "potato"], [2, "carrot"]],
         }
 
     else:
-        assert provenance is None
-        assert previews is None
+        assert info.provenance is None
+        assert info.previews is None
 
-    image_hash, published_dt, provenance, readme, schemata, previews = get_published_info(
-        remote_output, "v2"
-    )
-    assert image_hash == OUTPUT.images["v2"].image_hash
-    assert readme == "Based on v2."
-    assert schemata == expected_schemata
+    info = get_published_info(remote_output, "v2")
+    assert info.image_hash == OUTPUT.images["v2"].image_hash
+    assert info.readme == "Based on v2."
+    assert info.schemata == expected_schemata
     if extra_info:
-        assert provenance == [
+        assert info.provenance == [
             [["test", "pg_mount"], pg_repo_remote_multitag.images["v2"].image_hash]
         ]
-        assert previews == {
+        assert info.previews == {
             "join_table": [[2, "orange", "carrot"]],
             "my_fruits": [[2, "orange"]],
             "vegetables": [[1, "potato"], [2, "carrot"]],
         }
     else:
-        assert provenance is None
-        assert previews is None
+        assert info.provenance is None
+        assert info.previews is None

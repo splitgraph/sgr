@@ -10,6 +10,7 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import REGISTRY_META_SCHEMA, SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.core.common import select
+from splitgraph.core.types import TableSchema, TableColumn
 from splitgraph.engine import ResultShape
 
 if TYPE_CHECKING:
@@ -57,7 +58,7 @@ class PublishInfo(NamedTuple):
     published: datetime
     provenance: Optional[List[Tuple[Tuple[str, str], str]]]
     readme: str
-    schemata: Dict[str, List[Tuple[str, str, bool]]]
+    schemata: Dict[str, TableSchema]
     previews: Optional[Dict[str, List[Tuple]]]
 
 
@@ -96,18 +97,26 @@ def get_published_info(repository: "Repository", tag: str) -> Optional[PublishIn
     :param tag: Image tag
     :return: A PublishInfo namedtuple.
     """
-    return cast(
-        PublishInfo,
-        repository.engine.run_sql(
-            select(
-                "get_published_image",
-                "image_hash,published,provenance,readme,schemata,previews",
-                table_args="(%s,%s,%s)",
-                schema=SPLITGRAPH_API_SCHEMA,
-            ),
-            (repository.namespace, repository.repository, tag),
-            return_shape=ResultShape.ONE_MANY,
+    result = repository.engine.run_sql(
+        select(
+            "get_published_image",
+            "image_hash,published,provenance,readme,schemata,previews",
+            table_args="(%s,%s,%s)",
+            schema=SPLITGRAPH_API_SCHEMA,
         ),
+        (repository.namespace, repository.repository, tag),
+        return_shape=ResultShape.ONE_MANY,
+    )
+    if result is None:
+        return None
+
+    return PublishInfo(
+        image_hash=result[0],
+        published=result[1],
+        provenance=result[2],
+        readme=result[3],
+        schemata={t: [TableColumn(*c) for c in v] for t, v in result[4].items()},
+        previews=result[5],
     )
 
 

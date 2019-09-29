@@ -2,11 +2,12 @@
 Command line routines generating example data / Splitfiles
 """
 from hashlib import sha256
-
-import click
 from typing import TYPE_CHECKING
 
+import click
+
 from splitgraph.commandline.common import RepositoryType
+from splitgraph.core.types import TableColumn
 
 if TYPE_CHECKING:
     from splitgraph.core.repository import Repository
@@ -51,7 +52,10 @@ def generate_table(repository: "Repository", table_name: str, size: int) -> None
     repository.engine.create_table(
         repository.to_schema(),
         table_name,
-        [(1, "key", "integer", True), (2, "value", "varchar", False)],
+        [
+            TableColumn(1, "key", "integer", True, "Some key"),
+            TableColumn(2, "value", "varchar", False, "Some value"),
+        ],
     )
     repository.engine.run_sql_batch(
         SQL("INSERT INTO {} VALUES (%s, %s)").format(Identifier(table_name)),

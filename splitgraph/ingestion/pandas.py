@@ -1,7 +1,7 @@
 """Routines that ingest/export CSV files to/from Splitgraph images using Pandas"""
 
 from io import StringIO
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Union
 
 import pandas as pd
 from pandas.core.frame import DataFrame
@@ -13,6 +13,7 @@ from sqlalchemy.engine.base import Engine
 
 from splitgraph.core.image import Image
 from splitgraph.core.repository import Repository
+from splitgraph.core.types import TableSchema
 from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import CheckoutError
 
@@ -123,12 +124,12 @@ def _df_to_empty_table(
         #
         # This is a (very ugly) hack but the root cause fix is not straightforward (see the comment on the test).
         table_schema = engine.get_full_table_schema(target_schema, target_table)
-        _, cname, ctype, _ = table_schema[-1]
         engine.run_sql_in(
             target_schema,
-            SQL("ALTER TABLE {0} DROP COLUMN {1};ALTER TABLE {0} ADD COLUMN {1} %s" % ctype).format(
-                Identifier(target_table), Identifier(cname)
-            ),
+            SQL(
+                "ALTER TABLE {0} DROP COLUMN {1};ALTER TABLE {0} ADD COLUMN {1} %s"
+                % table_schema[-1].pg_type
+            ).format(Identifier(target_table), Identifier(table_schema[-1].name)),
         )
 
     engine.commit()
@@ -153,9 +154,7 @@ def _df_to_table_fast(
     engine.commit()
 
 
-def _schema_compatible(
-    source_schema: List[Tuple[int, str, str, bool]], target_schema: List[Tuple[int, str, str, bool]]
-) -> bool:
+def _schema_compatible(source_schema: TableSchema, target_schema: TableSchema) -> bool:
     """Quick check to see if a dataframe with target_schema can be written into source_schema.
     There are some implicit type conversions that SQLAlchemy/Pandas can do so we don't want to immediately fail
     if the column types aren't exactly the same (eg bigint vs numeric etc). Most errors should be caught by PG itself.
@@ -167,7 +166,7 @@ def _schema_compatible(
 
     for col1, col2 in zip(sorted(source_schema), sorted(target_schema)):
         # Only check column names
-        if col1[1] != col2[1]:
+        if col1.name != col2.name:
             return False
 
     return True

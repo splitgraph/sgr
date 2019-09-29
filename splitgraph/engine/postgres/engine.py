@@ -23,7 +23,8 @@ from psycopg2.sql import Identifier
 from tqdm import tqdm
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCHEMA
-from splitgraph.core.common import select, ensure_metadata_schema, META_TABLES, TableSchema
+from splitgraph.core.common import select, ensure_metadata_schema, META_TABLES
+from splitgraph.core.types import TableColumn, TableSchema
 from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
 from splitgraph.exceptions import EngineInitializationError, ObjectNotFoundError
 from splitgraph.hooks.mount_handlers import mount_postgres
@@ -582,11 +583,13 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             assert isinstance(column_name, str)
             assert isinstance(column_type, str)
             assert isinstance(is_pk, bool)
-            result.append((ordinal, column_name, column_type, is_pk))
+            result.append(TableColumn(ordinal, column_name, column_type, is_pk, None))
 
         return result
 
     def _set_object_schema(self, object_id: str, schema_spec: "TableSchema") -> None:
+        # Drop the comments from the schema spec (not stored in the object schema file).
+        schema_spec = [s[:4] for s in schema_spec]
         self.run_sql(
             "SELECT splitgraph_api.set_object_schema(%s, %s)", (object_id, json.dumps(schema_spec))
         )
@@ -598,7 +601,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         table: Optional[str] = None,
         schema_spec: Optional["TableSchema"] = None,
         if_not_exists: bool = False,
-    ):
+    ) -> bytes:
         """
         Generate the SQL that remounts a foreign table pointing to a Splitgraph object.
 
@@ -616,8 +619,8 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         query = SQL(
             "CREATE FOREIGN TABLE " + ("IF NOT EXISTS " if if_not_exists else "") + "{}.{} ("
         ).format(Identifier(schema), Identifier(table))
-        query += SQL(",".join("{} %s " % ctype for _, _, ctype, _ in schema_spec)).format(
-            *(Identifier(cname) for _, cname, _, _ in schema_spec)
+        query += SQL(",".join("{} %s " % col.pg_type for col in schema_spec)).format(
+            *(Identifier(col.name) for col in schema_spec)
         )
         # foreign tables/cstore don't support PKs
         query += SQL(") SERVER {} OPTIONS (compression %s, filename %s)").format(
@@ -628,7 +631,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         assert object_path is not None
 
         with self.connection.cursor() as cur:
-            return cur.mogrify(query, ("pglz", os.path.join(object_path, object_id)))
+            return cast(bytes, cur.mogrify(query, ("pglz", os.path.join(object_path, object_id))))
 
     def dump_object(self, object_id: str, stream: TextIOWrapper, schema: str) -> None:
         schema_spec = self.get_object_schema(object_id)
@@ -641,11 +644,10 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         with self.connection.cursor() as cur:
             # Since we can't write into the CStore table directly, we first load the data
             # into a temporary table and then insert that data into the CStore table.
-            stream.write(
-                self.dump_table_creation(
-                    None, "cstore_tmp_ingestion", schema_spec, temporary=True
-                ).as_string(cur)
+            query, args = self.dump_table_creation(
+                None, "cstore_tmp_ingestion", schema_spec, temporary=True
             )
+            stream.write(cur.mogrify(query, args))
             stream.write(";\n")
             self.dump_table_sql(
                 schema,
@@ -742,14 +744,18 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
         schema_spec = self.get_full_table_schema(source_schema, source_table)
         # Assuming the schema_spec has the whole tuple as PK if the table has no PK.
-        if all(not c[3] for c in schema_spec):
-            schema_spec = [(c[0], c[1], c[2], True) for c in schema_spec]
-        ri_cols = [c[1] for c in schema_spec if c[3]]
-        ri_types = [c[2] for c in schema_spec if c[3]]
-        non_ri_cols = [c[1] for c in schema_spec if not c[3]]
+        if all(not c.is_pk for c in schema_spec):
+            schema_spec = [
+                TableColumn(c.ordinal, c.name, c.pg_type, True, c.comment) for c in schema_spec
+            ]
+        ri_cols = [c.name for c in schema_spec if c.is_pk]
+        ri_types = [c.pg_type for c in schema_spec if c.is_pk]
+        non_ri_cols = [c.name for c in schema_spec if not c.is_pk]
         all_cols = ri_cols + non_ri_cols
         self.create_table(
-            schema, table, schema_spec=([(0, SG_UD_FLAG, "boolean", False)] + schema_spec)
+            schema,
+            table,
+            schema_spec=([TableColumn(0, SG_UD_FLAG, "boolean", False, None)] + schema_spec),
         )
 
         # Store upserts
@@ -877,8 +883,8 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
     @staticmethod
     def _schema_spec_to_cols(schema_spec: "TableSchema") -> Tuple[List[str], List[str]]:
-        pk_cols = [p[1] for p in schema_spec if p[3]]
-        non_pk_cols = [p[1] for p in schema_spec if not p[3]]
+        pk_cols = [p.name for p in schema_spec if p.is_pk]
+        non_pk_cols = [p.name for p in schema_spec if not p.is_pk]
 
         if not pk_cols:
             return pk_cols + non_pk_cols, []

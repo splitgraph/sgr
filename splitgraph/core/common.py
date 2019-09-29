@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PsycopgEngine, PostgresEngine
     from splitgraph.core.image import Image
     from splitgraph.core.repository import Repository
-
+    from splitgraph.core.types import TableSchema
 
 META_TABLES = [
     "images",
@@ -401,7 +401,7 @@ def slow_diff(
 
 def prepare_publish_data(
     image: "Image", repository: "Repository", include_table_previews: bool
-) -> Tuple[Optional[Dict[str, List[Tuple]]], Dict[str, List[Tuple[str, str, bool]]]]:
+) -> Tuple[Optional[Dict[str, List[Tuple]]], Dict[str, "TableSchema"]]:
     """Prepare previews and schemata for a given image for publishing to a registry."""
     schemata = {}
     previews = {}
@@ -422,7 +422,7 @@ def prepare_publish_data(
                 )
         else:
             schema = image.get_table(table_name).table_schema
-        schemata[table_name] = [(cn, ct, pk) for _, cn, ct, pk in schema]
+        schemata[table_name] = schema
     return previews, schemata
 
 
@@ -610,8 +610,3 @@ class CallbackList(list):
     def __call__(self, *args, **kwargs) -> None:
         for listener in self:
             listener(*args, **kwargs)
-
-
-Changeset = Dict[Tuple[str, ...], Tuple[bool, Dict[str, Any]]]
-TableSchema = List[Tuple[int, str, str, bool]]
-Quals = Sequence[Sequence[Tuple[str, str, Any]]]

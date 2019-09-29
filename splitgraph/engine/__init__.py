@@ -18,11 +18,10 @@ from psycopg2.sql import SQL, Identifier
 import splitgraph.config  # to access the IN_FDW global
 from splitgraph.config import CONFIG
 from splitgraph.config.config import get_singleton, ConfigDict, get_all_in_section
+from splitgraph.core.types import TableColumn, TableSchema
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PostgresEngine
-    from splitgraph.core.common import TableSchema
-
 
 # List of config flags that are extracted from the global configuration and passed to a given engine
 _ENGINE_SPECIFIC_CONFIG = [
@@ -295,16 +294,18 @@ class SQLEngine(ABC):
         schema_spec: "TableSchema",
         unlogged: bool = False,
         temporary: bool = False,
-    ) -> Composed:
+        include_comments: bool = False,
+    ) -> Tuple[Composed, Tuple]:
         """
         Dumps the DDL for a table using a previously-dumped table schema spec
 
         :param schema: Schema to create the table in
         :param table: Table name to create
-        :param schema_spec: A list of (ordinal_position, column_name, data_type, is_pk) specifying the table schema
+        :param schema_spec: TableSchema
         :param unlogged: If True, the table won't be reflected in the WAL or scanned by the analyzer/autovacuum.
         :param temporary: If True, a temporary table is created (the schema parameter is ignored)
-        :return: An SQL statement that reconstructs the table schema.
+        :param include_comments: If True, also adds COMMENT statements for columns that have them.
+        :return: An SQL statement that reconstructs the table schema + args to be mogrified into it.
         """
         flavour = ""
         if unlogged:
@@ -321,12 +322,12 @@ class SQLEngine(ABC):
         query = (
             SQL("CREATE " + flavour + " TABLE ")
             + target
-            + SQL(" (" + ",".join("{} %s " % ctype for _, _, ctype, _ in schema_spec)).format(
-                *(Identifier(cname) for _, cname, _, _ in schema_spec)
+            + SQL(" (" + ",".join("{} %s " % col.pg_type for col in schema_spec)).format(
+                *(Identifier(col.name) for col in schema_spec)
             )
         )
 
-        pk_cols = [cname for _, cname, _, is_pk in schema_spec if is_pk]
+        pk_cols = [col.name for col in schema_spec if col.is_pk]
         if pk_cols:
             query += (
                 SQL(", PRIMARY KEY (")
@@ -337,7 +338,18 @@ class SQLEngine(ABC):
             query += SQL(")")
         if unlogged:
             query += SQL(" WITH(autovacuum_enabled=false)")
-        return query
+        query += SQL(";")
+
+        args = []
+        if include_comments:
+            for col in schema_spec:
+                if col.comment:
+                    query += SQL("COMMENT ON COLUMN {}.{} IS %s;").format(
+                        target, Identifier(col.name)
+                    )
+                    args.append(col.comment)
+
+        return query, tuple(args)
 
     def create_table(
         self,
@@ -346,20 +358,22 @@ class SQLEngine(ABC):
         schema_spec: "TableSchema",
         unlogged: bool = False,
         temporary: bool = False,
+        include_comments: bool = False,
     ) -> None:
         """
         Creates a table using a previously-dumped table schema spec
 
         :param schema: Schema to create the table in
         :param table: Table name to create
-        :param schema_spec: A list of (ordinal_position, column_name, data_type, is_pk) specifying the table schema
+        :param schema_spec: TableSchema
         :param unlogged: If True, the table won't be reflected in the WAL or scanned by the analyzer/autovacuum.
         :param temporary: If True, a temporary table is created (the schema parameter is ignored)
+        :param include_comments: If True, also adds COMMENT statements for columns that have them.
         """
-        self.run_sql(
-            self.dump_table_creation(schema, table, schema_spec, unlogged, temporary),
-            return_shape=ResultShape.NONE,
+        query, args = self.dump_table_creation(
+            schema, table, schema_spec, unlogged, temporary, include_comments
         )
+        self.run_sql(query, args)
 
     def dump_table_sql(
         self,
@@ -399,14 +413,17 @@ class SQLEngine(ABC):
 
     def get_full_table_schema(self, schema: str, table_name: str) -> "TableSchema":
         """
-        Generates a list of (column ordinal, name, data type, is_pk), used to detect schema changes like columns being
-        dropped/added/renamed or type changes.
+        Generates a list of (column ordinal, name, data type, is_pk, column comment),
+        used to detect schema changes like columns being dropped/added/renamed or type changes.
         """
         results = self.run_sql(
-            """SELECT ordinal_position, column_name, data_type FROM information_schema.columns
-                           WHERE table_schema = %s
-                           AND table_name = %s
-                           ORDER BY ordinal_position""",
+            SQL(
+                "SELECT ordinal_position, column_name, data_type, "
+                "col_description('{}.{}'::regclass, ordinal_position) "
+                "FROM information_schema.columns "
+                "WHERE table_schema = %s AND table_name = %s "
+                "ORDER BY ordinal_position"
+            ).format(Identifier(schema), Identifier(table_name)),
             (schema, table_name),
         )
 
@@ -417,7 +434,8 @@ class SQLEngine(ABC):
 
         # Do we need to make sure the PK has the same type + ordinal position here?
         pks = [pk for pk, _ in self.get_primary_keys(schema, table_name)]
-        return [(o, n, _convert_type(dt), (n in pks)) for o, n, dt in results]
+
+        return [TableColumn(o, n, _convert_type(dt), (n in pks), c) for o, n, dt, c in results]
 
     def initialize(self):
         """Does any required initialization of the engine"""

@@ -11,6 +11,7 @@ from splitgraph.core.common import select
 from splitgraph.core.fragment_manager import Digest
 from splitgraph.core.metadata_manager import OBJECT_COLS
 from splitgraph.core.repository import Repository
+from splitgraph.core.types import TableColumn
 from splitgraph.engine import ResultShape
 from splitgraph.hooks.s3_server import delete_objects, list_objects
 from test.splitgraph.commands.test_layered_querying import _prepare_fully_remote_repo
@@ -52,10 +53,12 @@ def test_commit_diff(mode, pg_repo_local):
     pg_repo_local.run_sql(
         """INSERT INTO fruits VALUES (3, 'mayonnaise');
         DELETE FROM fruits WHERE name = 'apple';
-        UPDATE fruits SET name = 'guitar' WHERE fruit_id = 2"""
+        UPDATE fruits SET name = 'guitar' WHERE fruit_id = 2;
+        COMMENT ON COLUMN fruits.name IS 'Name of the fruit'"""
     )
 
     head = pg_repo_local.head.image_hash
+    old_objects = pg_repo_local.head.get_table("fruits").objects
 
     new_head = _commit(pg_repo_local, mode, comment="test commit")
 
@@ -66,14 +69,22 @@ def test_commit_diff(mode, pg_repo_local):
     # Test object structure
     table = pg_repo_local.head.get_table("fruits")
     assert table.table_schema == [
-        (1, "fruit_id", "integer", False),
-        (2, "name", "character varying", False),
+        TableColumn(1, "fruit_id", "integer", False, None),
+        TableColumn(2, "name", "character varying", False, "Name of the fruit"),
     ]
 
     obj = table.objects[0]
     obj_meta = pg_repo_local.objects.get_object_meta([obj])[obj]
     # Check object size has been written
     assert obj_meta.size >= 0
+
+    if mode == "SNAP":
+        assert all(o not in old_objects for o in table.objects)
+    else:
+        # Even though we've changed the comment on the fruits column, we still
+        # delta compressed the table.
+        assert len(table.objects) > 1
+        assert obj == old_objects[0]
 
     assert new_head.comment == "test commit"
     change = pg_repo_local.diff("fruits", image_1=head, image_2=new_head)

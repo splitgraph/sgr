@@ -23,10 +23,11 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, get_singleton
 from splitgraph.core.fragment_manager import FragmentManager
+from splitgraph.core.types import Quals
 from splitgraph.engine import ResultShape, switch_engine
 from splitgraph.exceptions import SplitGraphError, ObjectCacheError
 from splitgraph.hooks.external_objects import get_external_object_handler
-from .common import META_TABLES, select, insert, pretty_size, Tracer, CallbackList, Quals
+from .common import META_TABLES, select, insert, pretty_size, Tracer, CallbackList
 
 if TYPE_CHECKING:
     from splitgraph.core.table import Table

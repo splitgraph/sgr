@@ -492,6 +492,7 @@ def prepare_lq_repo(repo, commit_after_every, include_pk, snap_only=False):
 
     repo.run_sql("ALTER TABLE fruits ADD COLUMN number NUMERIC DEFAULT 1")
     repo.run_sql("ALTER TABLE fruits ADD COLUMN timestamp TIMESTAMP DEFAULT '2019-01-01T12:00:00'")
+    repo.run_sql("COMMENT ON COLUMN fruits.name IS 'Name of the fruit'")
     if include_pk:
         repo.run_sql("ALTER TABLE fruits ADD PRIMARY KEY (fruit_id)")
         repo.run_sql("ALTER TABLE vegetables ADD PRIMARY KEY (vegetable_id)")

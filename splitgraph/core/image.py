@@ -24,8 +24,9 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA, FDW
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphError, TableNotFoundError
 from splitgraph.hooks.mount_handlers import init_fdw
-from .common import set_tag, select, manage_audit, set_head, TableSchema
+from .common import set_tag, select, manage_audit, set_head
 from .table import Table
+from .types import TableSchema, TableColumn
 
 if TYPE_CHECKING:
     from .repository import Repository
@@ -117,11 +118,7 @@ class Image(NamedTuple):
             )
         table_schema, objects = result
         return Table(
-            self.repository,
-            self,
-            table_name,
-            cast(TableSchema, [tuple(t) for t in table_schema]),
-            objects,
+            self.repository, self, table_name, [TableColumn(*t) for t in table_schema], objects
         )
 
     @manage_audit
