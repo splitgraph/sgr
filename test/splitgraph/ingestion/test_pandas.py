@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 from pandas.util.testing import assert_frame_equal
 
+from splitgraph.core.types import TableColumn
 from splitgraph.ingestion.pandas import df_to_table, sql_to_df
 from test.splitgraph.conftest import load_csv, INGESTION_RESOURCES
 
@@ -36,9 +37,9 @@ def test_pandas_basic_insert(ingestion_test_repo):
     ingestion_test_repo.commit()
 
     assert ingestion_test_repo.head.get_table("test_table").table_schema == [
-        (1, "fruit_id", "bigint", True),
-        (2, "timestamp", "timestamp without time zone", False),
-        (3, "name", "text", False),
+        TableColumn(1, "fruit_id", "bigint", True),
+        TableColumn(2, "timestamp", "timestamp without time zone", False),
+        TableColumn(3, "name", "text", False),
     ]
 
     assert ingestion_test_repo.run_sql(
@@ -58,9 +59,9 @@ def test_pandas_no_processing_insert(ingestion_test_repo):
     ingestion_test_repo.commit()
 
     assert ingestion_test_repo.head.get_table("test_table").table_schema == [
-        (1, "fruit_id", "bigint", False),
-        (2, "timestamp", "text", False),
-        (3, "name", "text", False),
+        TableColumn(1, "fruit_id", "bigint", False),
+        TableColumn(2, "timestamp", "text", False),
+        TableColumn(3, "name", "text", False),
     ]
 
     assert ingestion_test_repo.run_sql(

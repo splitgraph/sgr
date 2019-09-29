@@ -31,6 +31,7 @@ from splitgraph.core.engine import repository_exists, init_engine, get_engine
 from splitgraph.core.metadata_manager import OBJECT_COLS
 from splitgraph.core.registry import get_published_info
 from splitgraph.core.repository import Repository
+from splitgraph.core.types import TableColumn
 from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import AuthAPIError, ImageNotFoundError, TableNotFoundError
 from splitgraph.hooks.mount_handlers import get_mount_handlers
@@ -282,11 +283,15 @@ def test_object_info(local_engine_empty):
         (base_1, "HTTP", "example.com/objects/base_1.tgz"),
     )
     local_engine_empty.run_sql(insert("object_cache_status", ("object_id",)), (base_1,))
-    local_engine_empty.mount_object(base_1, schema_spec=[(1, "col_1", "integer", False)])
+    local_engine_empty.mount_object(
+        base_1, schema_spec=[TableColumn(1, "col_1", "integer", False, None)]
+    )
 
     # patch_1: on the engine, uncached locally
     # patch_2: created here, cached locally
-    local_engine_empty.mount_object(patch_2, schema_spec=[(1, "col_1", "integer", False)])
+    local_engine_empty.mount_object(
+        patch_2, schema_spec=[TableColumn(1, "col_1", "integer", False, None)]
+    )
 
     result = runner.invoke(object_c, [base_1])
     assert result.exit_code == 0
@@ -582,17 +587,21 @@ def test_pull_push(pg_repo_local, pg_repo_remote):
         publish_c, [str(pg_repo_local), "v1", "-r", SPLITFILE_ROOT + "README.md"]
     )
     assert result.exit_code == 0
-    image_hash, published_dt, deps, readme, schemata, previews = get_published_info(
-        pg_repo_remote, "v1"
-    )
-    assert image_hash == local_head.image_hash
-    assert deps == []
-    assert readme == "Test readme for a test dataset."
-    assert schemata == {
-        "fruits": [["fruit_id", "integer", False], ["name", "character varying", False]],
-        "vegetables": [["vegetable_id", "integer", False], ["name", "character varying", False]],
+    info = get_published_info(pg_repo_remote, "v1")
+    assert info.image_hash == local_head.image_hash
+    assert info.provenance == []
+    assert info.readme == "Test readme for a test dataset."
+    assert info.schemata == {
+        "fruits": [
+            TableColumn(1, "fruit_id", "integer", False, None),
+            TableColumn(2, "name", "character varying", False, None),
+        ],
+        "vegetables": [
+            TableColumn(1, "vegetable_id", "integer", False, None),
+            TableColumn(2, "name", "character varying", False, None),
+        ],
     }
-    assert previews == {
+    assert info.previews == {
         "fruits": [[1, "apple"], [2, "orange"], [3, "mayonnaise"], [4, "mustard"]],
         "vegetables": [[1, "potato"], [2, "carrot"]],
     }

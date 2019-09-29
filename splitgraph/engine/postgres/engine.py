@@ -583,7 +583,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             assert isinstance(column_name, str)
             assert isinstance(column_type, str)
             assert isinstance(is_pk, bool)
-            result.append(TableColumn(ordinal, column_name, column_type, is_pk, None))
+            result.append(TableColumn(ordinal, column_name, column_type, is_pk))
 
         return result
 
@@ -647,7 +647,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             query, args = self.dump_table_creation(
                 None, "cstore_tmp_ingestion", schema_spec, temporary=True
             )
-            stream.write(cur.mogrify(query, args))
+            stream.write(cur.mogrify(query, args).decode("utf-8"))
             stream.write(";\n")
             self.dump_table_sql(
                 schema,
@@ -755,7 +755,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         self.create_table(
             schema,
             table,
-            schema_spec=([TableColumn(0, SG_UD_FLAG, "boolean", False, None)] + schema_spec),
+            schema_spec=([TableColumn(0, SG_UD_FLAG, "boolean", False)] + schema_spec),
         )
 
         # Store upserts

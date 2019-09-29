@@ -8,7 +8,7 @@ class TableColumn(NamedTuple):
     name: str
     pg_type: str
     is_pk: bool
-    comment: Optional[str]
+    comment: Optional[str] = None
 
 
 TableSchema = List[TableColumn]

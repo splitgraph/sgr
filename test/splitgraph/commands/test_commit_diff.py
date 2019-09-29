@@ -69,7 +69,7 @@ def test_commit_diff(mode, pg_repo_local):
     # Test object structure
     table = pg_repo_local.head.get_table("fruits")
     assert table.table_schema == [
-        TableColumn(1, "fruit_id", "integer", False, None),
+        TableColumn(1, "fruit_id", "integer", False),
         TableColumn(2, "name", "character varying", False, "Name of the fruit"),
     ]
 
