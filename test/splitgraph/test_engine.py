@@ -2,7 +2,9 @@ from unittest import mock
 
 import psycopg2
 import pytest
+from psycopg2.sql import Identifier, SQL
 
+from splitgraph.__version__ import __version__, VERSION_LOCAL_VAR
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA, CONFIG
 from splitgraph.core.common import ensure_metadata_schema
 from splitgraph.core.engine import get_current_repositories, lookup_repository, repository_exists
@@ -119,3 +121,32 @@ def test_engine_autocommit(local_engine_empty):
 
     repo.engine.rollback()
     assert repository_exists(Repository.from_template(repo, engine=local_engine_empty))
+
+
+@pytest.mark.registry
+def test_engine_version_injected(unprivileged_remote_engine):
+    # Check version gets injected as a local variable
+    assert (
+        unprivileged_remote_engine.run_sql(
+            SQL("SHOW {};").format(Identifier(VERSION_LOCAL_VAR)), return_shape=ResultShape.ONE_ONE
+        )
+        == __version__
+    )
+    unprivileged_remote_engine.run_sql(
+        SQL("SET {} = 'bogus'").format(Identifier(VERSION_LOCAL_VAR))
+    )
+    assert (
+        unprivileged_remote_engine.run_sql(
+            SQL("SHOW {};").format(Identifier(VERSION_LOCAL_VAR)), return_shape=ResultShape.ONE_ONE
+        )
+        == "bogus"
+    )
+
+    # Rollback and check version gets injected again for a new transaction
+    unprivileged_remote_engine.rollback()
+    assert (
+        unprivileged_remote_engine.run_sql(
+            SQL("SHOW {};").format(Identifier(VERSION_LOCAL_VAR)), return_shape=ResultShape.ONE_ONE
+        )
+        == __version__
+    )

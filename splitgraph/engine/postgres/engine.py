@@ -16,12 +16,14 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, TYPE_CHECK
 import psycopg2
 from psycopg2 import DatabaseError
 from psycopg2.errors import InvalidSchemaName, UndefinedTable, DuplicateTable
+from psycopg2.extensions import STATUS_READY
 from psycopg2.extras import execute_batch, Json
 from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.sql import Composed, SQL
 from psycopg2.sql import Identifier
 from tqdm import tqdm
 
+from splitgraph.__version__ import __version__, VERSION_LOCAL_VAR
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCHEMA
 from splitgraph.core.common import select, ensure_metadata_schema, META_TABLES
 from splitgraph.core.types import TableColumn, TableSchema
@@ -230,9 +232,17 @@ class PsycopgEngine(SQLEngine):
     ) -> Any:
 
         cursor_kwargs = {"cursor_factory": psycopg2.extras.NamedTupleCursor} if named else {}
+        connection = self.connection
 
-        with self.connection.cursor(**cursor_kwargs) as cur:
+        with connection.cursor(**cursor_kwargs) as cur:
             try:
+                # If we're about to open a transaction, inject the Splitgraph client version
+                # as a local variable (for future API routing).
+                if connection.status == STATUS_READY and not connection.autocommit:
+                    cur.execute(
+                        SQL("SET LOCAL {} = %s;").format(Identifier(VERSION_LOCAL_VAR)),
+                        (__version__,),
+                    )
                 cur.execute(statement, _convert_vals(arguments) if arguments else None)
             except DatabaseError as e:
                 # Rollback the transaction (to a savepoint if we're inside the savepoint() context manager)
