@@ -394,7 +394,7 @@ def test_multiengine_flow(
 
     # Test the local engine doesn't actually have any metadata stored on it.
     for table in META_TABLES:
-        if table not in ("object_cache_status", "object_cache_occupancy"):
+        if table not in ("object_cache_status", "object_cache_occupancy", "version"):
             assert (
                 local_engine_empty.run_sql(
                     "SELECT COUNT(1) FROM splitgraph_meta." + table,

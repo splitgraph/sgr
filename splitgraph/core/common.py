@@ -30,6 +30,7 @@ META_TABLES = [
     "object_cache_status",
     "object_cache_occupancy",
     "info",
+    "version",
 ]
 OBJECT_MANAGER_TABLES = ["object_cache_status", "object_cache_occupancy"]
 _PUBLISH_PREVIEW_SIZE = 100
