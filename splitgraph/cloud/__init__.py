@@ -3,6 +3,7 @@ import base64
 import json
 import time
 from functools import wraps
+from json import JSONDecodeError
 from typing import Callable, List, Union, Tuple, cast
 
 import requests
@@ -38,7 +39,10 @@ def expect_result(
             try:
                 response.raise_for_status()
             except HTTPError as e:
-                error = response.json().get("error", "") or response.body
+                try:
+                    error = response.json().get("error", "") or response.text
+                except JSONDecodeError:
+                    error = response.text
                 if error:
                     raise AuthAPIError(error) from e
                 raise
@@ -73,6 +77,13 @@ class AuthAPIClient:
         self.remote = remote
         self.endpoint = get_from_subsection(CONFIG, "remotes", remote, "SG_AUTH_API")
 
+        # Allow overriding the CA bundle for test purposes (requests doesn't use the system
+        # cert store)
+        try:
+            self.verify = get_from_subsection(CONFIG, "remotes", remote, "SG_AUTH_API_CA_PATH")
+        except KeyError:
+            self.verify = True
+
         # How soon before the token expiry to refresh the token, in seconds.
         self.access_token_expiry_tolerance = 30
 
@@ -86,7 +97,7 @@ class AuthAPIClient:
         :param email: Email
         """
         body = dict(username=username, password=password, email=email)
-        return requests.post(self.endpoint + "/register_user", json=body)
+        return requests.post(self.endpoint + "/register_user", json=body, verify=self.verify)
 
     @expect_result(["access_token", "refresh_token"])
     def get_refresh_token(self, username: str, password: str) -> Response:
@@ -98,7 +109,7 @@ class AuthAPIClient:
         :return: Tuple of (access_token, refresh_token).
         """
         body = dict(username=username, password=password)
-        return requests.post(self.endpoint + "/refresh_token", json=body)
+        return requests.post(self.endpoint + "/refresh_token", json=body, verify=self.verify)
 
     @expect_result(["key", "secret"])
     def create_machine_credentials(self, access_token: str, password: str) -> Response:
@@ -116,6 +127,7 @@ class AuthAPIClient:
             self.endpoint + "/create_machine_credentials",
             json=body,
             headers={"Authorization": "Bearer " + access_token},
+            verify=self.verify,
         )
 
     @expect_result(["access_token"])
@@ -128,7 +140,7 @@ class AuthAPIClient:
         """
 
         body = dict(refresh_token=refresh_token)
-        return requests.post(self.endpoint + "/access_token", json=body)
+        return requests.post(self.endpoint + "/access_token", json=body, verify=self.verify)
 
     @property
     def access_token(self) -> str:
