@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECK
 from psycopg2.sql import Composed
 from psycopg2.sql import Identifier, SQL
 
+from splitgraph.__version__ import __version__
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.engine import ResultShape
 
@@ -301,6 +302,16 @@ FOR EACH ROW EXECUTE PROCEDURE {0}.validate_table_objects();
         ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("info"))
     )
 
+    engine.run_sql(
+        SQL(
+            """CREATE TABLE {0}.{1} (
+            version VARCHAR NOT NULL,
+            installed TIMESTAMP);
+            INSERT INTO {0}.{1} (version, installed) VALUES (%s, now())"""
+        ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("version")),
+        (__version__,),
+    )
+
 
 def select(
     table: str,
@@ -347,6 +358,13 @@ def insert(table: str, columns: Sequence[str], schema: str = SPLITGRAPH_META_SCH
     return query
 
 
+def get_metadata_schema_version(engine: "PsycopgEngine") -> Tuple[str, datetime]:
+    return engine.run_sql(
+        select("version", "version,installed") + SQL("ORDER BY installed DESC LIMIT 1"),
+        return_shape=ResultShape.ONE_MANY,
+    )
+
+
 def ensure_metadata_schema(engine: "PsycopgEngine") -> None:
     """Create the metadata schema if it doesn't exist"""
     if (
@@ -358,6 +376,15 @@ def ensure_metadata_schema(engine: "PsycopgEngine") -> None:
         is None
     ):
         _create_metadata_schema(engine)
+    else:
+        schema_version, date_installed = get_metadata_schema_version(engine)
+
+        # Currently a stub, add migration code when needed.
+        logging.info(
+            "Metadata schema already exists, version %s, installed on %s",
+            schema_version,
+            date_installed,
+        )
 
 
 def aggregate_changes(

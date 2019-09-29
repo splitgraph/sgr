@@ -11,6 +11,7 @@ import httpretty
 import pytest
 from click.testing import CliRunner
 
+from splitgraph.__version__ import __version__
 from splitgraph.commandline import *
 from splitgraph.commandline.cloud import register_c, curl_c
 from splitgraph.commandline.common import ImageType
@@ -26,7 +27,7 @@ from splitgraph.commandline.image_info import object_c, objects_c
 from splitgraph.config import PG_PWD, PG_USER
 from splitgraph.config.config import patch_config, create_config_dict
 from splitgraph.config.keys import DEFAULTS
-from splitgraph.core.common import insert, ResultShape
+from splitgraph.core.common import insert, ResultShape, select, get_metadata_schema_version
 from splitgraph.core.engine import repository_exists, init_engine, get_engine
 from splitgraph.core.metadata_manager import OBJECT_COLS
 from splitgraph.core.registry import get_published_info
@@ -890,10 +891,16 @@ def test_init_new_db():
         get_engine().delete_database("testdb")
 
 
-def test_init_skip_object_handling():
-    # Test engine initialization where we don't install an audit trigger
+def test_init_skip_object_handling_version_():
+    # Test engine initialization where we don't install an audit trigger + also
+    # check that the schema version history table is maintained.
+
     runner = CliRunner()
     engine = get_engine()
+
+    schema_version, date_installed = get_metadata_schema_version(engine)
+    assert schema_version == __version__
+
     try:
         engine.run_sql("DROP SCHEMA IF EXISTS audit CASCADE")
         engine.run_sql("DROP FUNCTION IF EXISTS splitgraph_api.upload_object")
@@ -912,6 +919,12 @@ def test_init_skip_object_handling():
         )
     finally:
         init_engine(skip_object_handling=False)
+        schema_version_new, date_installed_new = get_metadata_schema_version(engine)
+
+        # No migrations currently -- check the current version hasn't changed.
+        assert schema_version == schema_version_new
+        assert date_installed == date_installed_new
+
         assert engine.schema_exists("audit")
         assert (
             engine.run_sql(
