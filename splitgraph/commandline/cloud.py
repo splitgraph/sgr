@@ -84,11 +84,16 @@ def register_c(username, password, email, remote):
 @click.argument("curl_args", nargs=-1, type=click.UNPROCESSED)
 def curl_c(remote, request, curl_args):
     """A thin wrapper around curl that performs an HTTP request to Splitgraph Cloud to
-    query a dataset using Postgrest. The actual invocation is:
+    query a dataset using Postgrest (http://postgrest.org).
 
-    curl [API endpoint][request] -H [access_token] [extra curl args].
+    The actual invocation is:
 
-    The request must be of the form namespace/repository/hash_or_tag/table?[postgrest request]".
+        curl [API endpoint][request] -H [access_token] [extra curl args].
+
+    The request must be of the form `namespace/repository/hash_or_tag/table?[postgrest request]`.
+
+    For a reference on how to perform Postgrest requests, see http://postgrest.org/en/v6.0/api.html.
+
     Image hash or tag can be omitted, in which case "latest" is used.
     """
     from splitgraph.config import CONFIG
