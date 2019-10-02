@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, TYPE_CHECKING, cast
 
 from psycopg2.sql import Composed, SQL, Composable
@@ -202,11 +203,13 @@ def generate_range_index(
     :param changeset: Changeset (old values will be included in the index)
     :return: Dictionary of {column: [min, max]}
     """
-    object_pk = [c[1] for c in table_schema if c[3]]
+    object_pk = [c.name for c in table_schema if c.is_pk]
     if not object_pk:
-        object_pk = [c[1] for c in table_schema]
-    column_types = {c[1]: c[2] for c in table_schema}
-    columns_to_index = [c[1] for c in table_schema if c[2] in _PG_INDEXABLE_TYPES]
+        object_pk = [c.name for c in table_schema]
+    column_types = {c.name: c.pg_type for c in table_schema}
+    columns_to_index = [c.name for c in table_schema if c.pg_type in _PG_INDEXABLE_TYPES]
+
+    logging.info("Running range index on columns %s", columns_to_index)
     query = SQL("SELECT ") + SQL(",").join(
         SQL("MIN({0}), MAX({0})").format(Identifier(c)) for c in columns_to_index
     )

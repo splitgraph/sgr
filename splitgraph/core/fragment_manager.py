@@ -649,7 +649,9 @@ class FragmentManager(MetadataManager):
 
         # Fragments can't be reused in tables with different schemas even if the contents match (e.g. '1' vs 1).
         # Hence, include the table schema in the object ID as well.
-        table_schema = self.object_engine.get_full_table_schema(source_schema, source_table)
+        table_schema = self.object_engine.get_full_table_schema(
+            SPLITGRAPH_META_SCHEMA, tmp_object_id
+        )
         schema_hash = self._calculate_schema_hash(table_schema)
 
         # Object IDs are also used to key tables in Postgres so they can't be more than 63 characters.

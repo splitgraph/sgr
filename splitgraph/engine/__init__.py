@@ -415,7 +415,11 @@ class SQLEngine(ABC):
         """
         Generates a list of (column ordinal, name, data type, is_pk, column comment),
         used to detect schema changes like columns being dropped/added/renamed or type changes.
+
+        NB this doesn't work for temporary tables (pg_temp) and returns an empty schema.
         """
+        assert schema != "pg_temp"
+
         results = self.run_sql(
             SQL(
                 "SELECT ordinal_position, column_name, data_type, "
