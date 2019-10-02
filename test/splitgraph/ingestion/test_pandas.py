@@ -154,7 +154,7 @@ def test_evil_pandas_dataframes(ingestion_test_repo):
     ) == [
         # Make sure backslashes don't break ingestion -- not exactly sure what the intention
         # in the original dataset was (job title is "PRESIDENT\").
-        (1, '"PRESIDENT"', 25),
+        (1, "PRESIDENT\\", 25),
         # Test characters that can be used as separators still make it into fields
         (2, "\t", 26),
     ]

@@ -156,7 +156,7 @@ def df_to_table_fast(
             header=False,
             index=df.index.names != [None],
             escapechar="\\",
-            quoting=csv.QUOTE_ALL,
+            quoting=csv.QUOTE_NONNUMERIC,
         )
         buffer.seek(0)
         cur.copy_expert(
