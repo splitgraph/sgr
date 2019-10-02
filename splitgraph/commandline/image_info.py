@@ -7,6 +7,7 @@ from typing import List, Optional, Tuple, Union, Dict, cast, TYPE_CHECKING
 
 import click
 
+from splitgraph.core.common import pretty_size
 from .common import ImageType, pluralise, RepositoryType
 
 if TYPE_CHECKING:
@@ -156,16 +157,12 @@ def _get_actual_hashes(
 
 @click.command(name="show")
 @click.argument("image_spec", type=ImageType(default="HEAD"))
-@click.option(
-    "-v",
-    "--verbose",
-    default=False,
-    is_flag=True,
-    help="Also show all tables in this image and the objects they map to.",
-)
-def show_c(image_spec, verbose):
+def show_c(image_spec):
     """
-    Show information about a Splitgraph image. This includes its parent, comment and creation time.
+    Show information about a Splitgraph image. This includes its parent, comment, size and creation time.
+
+    Note that the size isn't the on-disk footprint, as the image might share some objects with other images
+    or if some of the image's objects have not been downloaded.
 
     Image spec must be of the format ``[NAMESPACE/]REPOSITORY[:HASH_OR_TAG]``. If no tag is specified, ``HEAD`` is used.
     """
@@ -175,21 +172,51 @@ def show_c(image_spec, verbose):
     click.echo("Image %s:%s" % (repository.to_schema(), image.image_hash))
     click.echo(image.comment or "")
     click.echo("Created at %s" % image.created.isoformat())
+    click.echo("Size: %s" % pretty_size(image.get_size()))
     if image.parent_id:
         click.echo("Parent: %s" % image.parent_id)
     else:
         click.echo("No parent (root image)")
-    if verbose:
-        click.echo()
-        click.echo("Tables:")
-        for table in image.get_tables():
-            table_objects = image.get_table(table).objects
-            if len(table_objects) == 1:
-                click.echo("  %s: %s" % (table, table_objects[0]))
-            else:
-                click.echo("  %s:" % table)
-                for obj in table_objects:
-                    click.echo("    %s" % obj)
+    click.echo()
+    click.echo("Tables:")
+    for table in image.get_tables():
+        click.echo("  %s" % table)
+
+
+@click.command(name="table")
+@click.argument("image_spec", type=ImageType(default="HEAD"))
+@click.argument("table_name", type=str)
+@click.option(
+    "-v", "--verbose", type=bool, is_flag=True, default=False, help="Show all of table's objects."
+)
+def table_c(image_spec, table_name, verbose):
+    """
+    Show information about a table in a Splitgraph image.
+
+    Image spec must be of the format ``[NAMESPACE/]REPOSITORY[:HASH_OR_TAG]``. If no tag is specified, ``HEAD`` is used.
+    """
+    repository, image = image_spec
+    image = repository.images[image]
+    table = image.get_table(table_name)
+    click.echo("Table %s:%s/%s" % (repository.to_schema(), image.image_hash, table_name))
+    click.echo()
+    click.echo("Size: %s" % pretty_size(table.get_size()))
+    click.echo("Columns: ")
+    for column in table.table_schema:
+        column_str = "  " + column.name + " (" + column.pg_type
+        if column.is_pk:
+            column_str += ", PK"
+        column_str += ")"
+        if column.comment:
+            column_str += ": " + column.comment
+        click.echo(column_str)
+
+    click.echo()
+    click.echo("Objects: ")
+    if len(table.objects) > 10 and not verbose:
+        click.echo("  " + "\n  ".join(table.objects[:10] + ["..."]))
+    else:
+        click.echo("  " + "\n  ".join(table.objects))
 
 
 @click.command(name="object")

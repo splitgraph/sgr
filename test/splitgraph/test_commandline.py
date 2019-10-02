@@ -159,15 +159,20 @@ def test_commandline_basics(pg_repo_local):
     assert new_head.image_hash[:5] in result.output
 
     # sgr show the new commit
-    result = runner.invoke(show_c, [str(pg_repo_local) + ":" + new_head.image_hash[:20], "-v"])
+    result = runner.invoke(show_c, [str(pg_repo_local) + ":" + new_head.image_hash[:20]])
     assert "Test commit" in result.output
     assert "Parent: " + old_head.image_hash in result.output
-    fruit_objs = new_head.get_table("fruits").objects
-    mushroom_objs = new_head.get_table("mushrooms").objects
+    assert new_head.get_size() == 260
+    assert "Size: 260.00 B" in result.output
+    assert "fruits" in result.output
+    assert "mushrooms" in result.output
 
-    # Check verbose show also has the actual object IDs
-    for o in fruit_objs + mushroom_objs:
-        assert o in result.output
+    # sgr show the table's metadata
+    assert new_head.get_table("fruits").get_size() == 260
+    result = runner.invoke(table_c, [str(pg_repo_local) + ":" + new_head.image_hash[:20], "fruits"])
+    assert "Size: 260.00 B" in result.output
+    assert "fruit_id (integer)" in result.output
+    assert new_head.get_table("fruits").objects[0] in result.output
 
 
 def test_commandline_commit_chunk(pg_repo_local):

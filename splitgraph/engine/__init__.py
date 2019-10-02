@@ -353,7 +353,7 @@ class SQLEngine(ABC):
 
     def create_table(
         self,
-        schema: str,
+        schema: Optional[str],
         table: str,
         schema_spec: "TableSchema",
         unlogged: bool = False,

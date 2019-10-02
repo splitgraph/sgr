@@ -23,6 +23,7 @@ from splitgraph.core.common import Tracer
 from splitgraph.core.fragment_manager import get_random_object_id, get_chunk_groups
 from splitgraph.core.indexing.range import quals_to_sql
 from splitgraph.core.types import TableSchema, Quals
+from splitgraph.engine import ResultShape
 
 if TYPE_CHECKING:
     from splitgraph.core.image import Image
@@ -392,6 +393,36 @@ class Table:
         """
         with self.query_lazy(columns, quals) as result:
             return list(result)
+
+    def get_size(self) -> int:
+        """
+        Get the physical size used by the image's objects (including those shared with other tables).
+
+        This is calculated from the metadata, the on-disk footprint might be smaller if not all of table's
+        objects have been downloaded.
+
+        :return: Size of the table in bytes.
+        """
+        query = (
+            "WITH iob AS(SELECT DISTINCT image_hash, unnest(object_ids) AS object_id "
+            "FROM splitgraph_meta.tables t "
+            "WHERE t.namespace = %s AND t.repository = %s AND t.image_hash = %s AND t.table_name = %s) "
+            "SELECT SUM(o.size) FROM iob JOIN splitgraph_meta.objects o "
+            "ON iob.object_id = o.object_id "
+        )
+        return cast(
+            int,
+            self.repository.engine.run_sql(
+                query,
+                (
+                    self.repository.namespace,
+                    self.repository.repository,
+                    self.image.image_hash,
+                    self.table_name,
+                ),
+                return_shape=ResultShape.ONE_ONE,
+            ),
+        )
 
     def _extract_singleton_fragments(
         self, object_manager: "ObjectManager", required_objects: List[str]

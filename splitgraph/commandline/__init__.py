@@ -21,6 +21,7 @@ from splitgraph.commandline.image_info import (
     status_c,
     object_c,
     objects_c,
+    table_c,
 )
 from splitgraph.commandline.ingestion import csv
 from splitgraph.commandline.misc import rm_c, init_c, cleanup_c, config_c, prune_c, dump_c
@@ -73,6 +74,7 @@ cli.add_command(diff_c)
 cli.add_command(object_c)
 cli.add_command(objects_c)
 cli.add_command(show_c)
+cli.add_command(table_c)
 cli.add_command(sql_c)
 cli.add_command(status_c)
 

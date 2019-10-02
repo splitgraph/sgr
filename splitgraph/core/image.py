@@ -254,6 +254,32 @@ class Image(NamedTuple):
             result.append(self.repository.images.by_hash(result[-1].parent_id))
         return result
 
+    def get_size(self) -> int:
+        """
+        Get the physical size used by the image's objects (including those that might be
+        shared with other images).
+
+        This is calculated from the metadata, the on-disk footprint might be smaller if not all of image's
+        objects have been downloaded.
+
+        :return: Size of the image in bytes.
+        """
+        query = (
+            "WITH iob AS(SELECT DISTINCT image_hash, unnest(object_ids) AS object_id "
+            "FROM splitgraph_meta.tables t "
+            "WHERE t.namespace = %s AND t.repository = %s AND t.image_hash = %s) "
+            "SELECT SUM(o.size) FROM iob JOIN splitgraph_meta.objects o "
+            "ON iob.object_id = o.object_id "
+        )
+        return cast(
+            int,
+            self.engine.run_sql(
+                query,
+                (self.repository.namespace, self.repository.repository, self.image_hash),
+                return_shape=ResultShape.ONE_ONE,
+            ),
+        )
+
     def to_splitfile(
         self, err_on_end: bool = True, source_replacement: Optional[Dict["Repository", str]] = None
     ) -> List[str]:
