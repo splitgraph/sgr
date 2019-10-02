@@ -850,34 +850,43 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
     def store_object(self, object_id: str, source_schema: str, source_table: str) -> None:
         schema_spec = self.get_full_table_schema(source_schema, source_table)
 
-        # Mount the object first
+        # The physical object storage (/var/lib/splitgraph/objects) and the actual
+        # foreign tables in spligraph_meta might be desynced for a variety of reasons,
+        # so we have to handle all four cases of (physical object exists/doesn't exist,
+        # foreign table exists/doesn't exist).
+
+        object_exists = self.run_sql(
+            select("object_exists", schema=SPLITGRAPH_API_SCHEMA, table_args="(%s)"),
+            (object_id,),
+            return_shape=ResultShape.ONE_ONE,
+        )
+
+        # Try mounting the object
         try:
             self.mount_object(object_id, schema_spec=schema_spec)
         except DuplicateTable:
-            # If the foreign table with that name already exists, check that
-            # the physical object file is still there -- if not, we'll have to write
-            # into the table anyway.
-            if self.run_sql(
-                select("object_exists", schema=SPLITGRAPH_API_SCHEMA, table_args="(%s)"),
-                (object_id,),
-                return_shape=ResultShape.ONE_ONE,
-            ):
+            # Foreign table with that name already exists. If it does exist but there's no
+            # physical object file, we'll have to write into the table anyway.
+            if not object_exists:
                 logging.info(
-                    "Object storage, %s/%s -> %s, already exists, deleting source table",
+                    "Object storage, %s/%s -> %s, mounted but no physical file, recreating",
                     source_schema,
                     source_table,
                     object_id,
                 )
-                self.delete_table(source_schema, source_table)
-                return
+
+        if object_exists:
             logging.info(
-                "Object storage, %s/%s -> %s, mounted but no physical file, recreating",
+                "Object storage, %s/%s -> %s, already exists, deleting source table",
                 source_schema,
                 source_table,
                 object_id,
             )
+            self.delete_table(source_schema, source_table)
+            return
 
-        # Insert the data into the new Citus table.
+        # At this point, the foreign table mounting the object exists and we've established
+        # that it's a brand new table, so insert data into it.
         self.run_sql(
             SQL("INSERT INTO {}.{} SELECT * FROM {}.{}").format(
                 Identifier(SPLITGRAPH_META_SCHEMA),
