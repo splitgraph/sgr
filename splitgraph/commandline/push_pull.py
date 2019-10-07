@@ -8,7 +8,8 @@ import sys
 import click
 
 from splitgraph.commandline.common import RepositoryType
-from splitgraph.config import CONFIG, get_singleton
+from splitgraph.config import CONFIG
+from splitgraph.config.config import get_from_subsection
 
 
 @click.command(name="pull")
@@ -106,7 +107,7 @@ def push_c(repository, remote_repository, remote, upload_handler, upload_handler
         remote_repository = Repository.from_template(remote_repository, engine=get_engine(remote))
     elif remote:
         try:
-            namespace = get_singleton(CONFIG, "SG_NAMESPACE")
+            namespace = get_from_subsection(CONFIG, "remotes", remote, "SG_NAMESPACE")
         except KeyError:
             namespace = None
         remote_repository = Repository.from_template(
@@ -114,6 +115,11 @@ def push_c(repository, remote_repository, remote, upload_handler, upload_handler
         )
 
     remote_repository = remote_repository or repository.upstream
+
+    click.echo(
+        "Pushing %s to %s on remote %s"
+        % (repository, remote_repository, remote_repository.engine.name)
+    )
 
     repository.push(
         remote_repository,
