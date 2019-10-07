@@ -156,11 +156,11 @@ def df_to_table_fast(
             header=False,
             index=df.index.names != [None],
             escapechar="\\",
-            quoting=csv.QUOTE_NONNUMERIC,
+            quoting=csv.QUOTE_MINIMAL,
         )
         buffer.seek(0)
         cur.copy_expert(
-            SQL("COPY {}.{} FROM STDIN WITH (FORMAT CSV)").format(
+            SQL("COPY {}.{} FROM STDIN WITH (FORMAT CSV, NULL '')").format(
                 Identifier(target_schema), Identifier(target_table)
             ),
             buffer,

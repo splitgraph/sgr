@@ -33,7 +33,10 @@
   - sgr tag demo/weather initial_data
 - commands:
   - "# Inspect the image"
-  - sgr show demo/weather:initial_data -v
+  - sgr show demo/weather:initial_data
+- commands:
+  - "# Inspect the table"
+  - sgr table demo/weather:initial_data rdu
 - commands:
   - "# Inspect object metadata"
   - sgr object o4a85e1dd9b9c88856c4ff6bfaea7a523a80771100e958ce1d9c97d5b48a305
