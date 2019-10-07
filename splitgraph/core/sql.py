@@ -13,6 +13,17 @@ def _validate_range_var(node: Node) -> None:
         raise UnsupportedSQLError("Table names must not be schema-qualified!")
 
 
+def _validate_funccall(node: Node):
+    # We can't ban all function calls (there are some useful ones like
+    # to_date() etc) but we can't allow all of them either (some pg system
+    # calls like pg_relation_filepath etc) aren't appropriate here but are available
+    # to all users by default -- so as a preliminary defense we stop all functions that
+    # begin with pg_.
+    funcname = node.funcname.string_value
+    if funcname.startswith("pg_"):
+        raise UnsupportedSQLError("Unsupported function name %s!" % funcname)
+
+
 # Whitelist of permitted AST nodes. When crawling the parse tree, a node not in this list fails validation. If a node
 # is in this list, the crawler continues down the tree.
 _IMPORT_SQL_PERMITTED_NODES = [
@@ -38,6 +49,8 @@ _IMPORT_SQL_PERMITTED_NODES = [
     "CommonTableExpr",
     "A_ArrayExpr",
     "Float",
+    "CaseExpr",
+    "CaseWhen",
 ]
 
 _SPLITFILE_SQL_PERMITTED_NODES = _IMPORT_SQL_PERMITTED_NODES + [
@@ -56,7 +69,7 @@ _SPLITFILE_SQL_PERMITTED_NODES = _IMPORT_SQL_PERMITTED_NODES + [
 
 # Nodes in this list have extra validators that are supposed to return None or raise an Exception if they
 # fail validation.
-_SQL_VALIDATORS = {"RangeVar": _validate_range_var}
+_SQL_VALIDATORS = {"RangeVar": _validate_range_var, "FuncCall": _validate_funccall}
 
 
 def _validate_node(

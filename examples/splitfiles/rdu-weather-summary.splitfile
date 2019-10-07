@@ -1,0 +1,13 @@
+# First, import the original data table: this doesn't consume extra space (reuses the same
+# object that's used by the demo/weather repository.
+
+FROM demo/weather IMPORT rdu AS source_data
+
+# Now summarize the data
+SQL CREATE TABLE monthly_summary AS ( \
+    SELECT to_char(date, 'YYYYMM') AS month, \
+        AVG(precipitation) AS average_precipitation, \
+        AVG(snowfall) AS average_snowfall \
+    FROM source_data \
+    GROUP BY month \
+    ORDER BY month ASC)
