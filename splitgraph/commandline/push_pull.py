@@ -8,7 +8,7 @@ import sys
 import click
 
 from splitgraph.commandline.common import RepositoryType
-from splitgraph.config import CONFIG
+from splitgraph.config import CONFIG, get_singleton
 
 
 @click.command(name="pull")
@@ -73,8 +73,11 @@ def push_c(repository, remote_repository, remote, upload_handler, upload_handler
     """
     Push changes from a local repository to the Splitgraph registry or another engine.
 
-    By default, the repository will be pushed to a repository with the same name. If there's
-    a single engine registered in the config (e.g. data.splitgraph.com), it shall be the default destination.
+    By default, the repository will be pushed to a repository with the same name in the user's namespace
+    (SG_NAMESPACE configuration value which defaults to the username).
+
+    If there's a single engine registered in the config (e.g. data.splitgraph.com), it shall be the default
+    destination.
 
     If an upstream repository/engine has been configured for this engine with `sgr upstream`,
     it will be used instead.
@@ -88,8 +91,10 @@ def push_c(repository, remote_repository, remote, upload_handler, upload_handler
     # The reason for this behaviour is to streamline out-of-the-box Splitgraph setups where
     # data.splitgraph.com is the only registered engine. In that case:
     #
-    # * sgr push myself/repo: will push to myself/repo on data.splitgraph.com with S3 uploading
-    # * sgr push noaa/climate myself/noaa_climate: will push to the user's namespace on data.splitgraph.com
+    # * sgr push repo: will push to myself/repo on data.splitgraph.com with S3 uploading (user's namespace).
+    # * sgr push noaa/climate: will push to myself/climate
+    # * sgr push noaa/climate noaa/climate: will explicitly push to noaa/climate (assuming the user can write
+    #   to that repository).
     #
     # If the user registers another registry at splitgraph.mycompany.com, then they will be able to do:
     #
@@ -100,7 +105,13 @@ def push_c(repository, remote_repository, remote, upload_handler, upload_handler
     if remote_repository and remote:
         remote_repository = Repository.from_template(remote_repository, engine=get_engine(remote))
     elif remote:
-        remote_repository = Repository.from_template(repository, engine=get_engine(remote))
+        try:
+            namespace = get_singleton(CONFIG, "SG_NAMESPACE")
+        except KeyError:
+            namespace = None
+        remote_repository = Repository.from_template(
+            repository, namespace=namespace, engine=get_engine(remote)
+        )
 
     remote_repository = remote_repository or repository.upstream
 
