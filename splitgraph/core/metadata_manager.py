@@ -2,6 +2,7 @@
 Classes related to managing table/image/object metadata tables.
 """
 import itertools
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple, TYPE_CHECKING, NamedTuple, cast
 
 from psycopg2.extras import Json
@@ -21,6 +22,7 @@ OBJECT_COLS = [
     "format",
     "namespace",
     "size",
+    "created",
     "insertion_hash",
     "deletion_hash",
     "index",
@@ -34,6 +36,7 @@ class Object(NamedTuple):
     format: str
     namespace: str
     size: int
+    created: datetime
     insertion_hash: str
     deletion_hash: str
     object_index: Dict[str, Any]  # Clashes with NamedTuple's "index"

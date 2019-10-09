@@ -1,4 +1,4 @@
-from datetime import datetime as dt
+from datetime import datetime as dt, datetime
 from unittest.mock import patch
 
 import pytest
@@ -75,6 +75,7 @@ def test_metadata_constraints_object_ids_hashes(local_engine_empty):
                     format="FRAG",
                     namespace="",
                     size=42,
+                    created=datetime.now(),
                     insertion_hash="0" * 64,
                     deletion_hash="0" * 64,
                     object_index={},
@@ -90,6 +91,7 @@ def test_metadata_constraints_object_ids_hashes(local_engine_empty):
                     format="FRAG",
                     namespace="",
                     size=42,
+                    created=datetime.now(),
                     insertion_hash="0" * 64,
                     deletion_hash="0" * 64,
                     object_index={},
@@ -105,6 +107,7 @@ def test_metadata_constraints_object_ids_hashes(local_engine_empty):
                     format="FRAG",
                     namespace="",
                     size=42,
+                    created=datetime.now(),
                     insertion_hash="0" * 64,
                     deletion_hash="0" * 64,
                     object_index={},
@@ -120,6 +123,7 @@ def test_metadata_constraints_object_ids_hashes(local_engine_empty):
                     format="FRAG",
                     namespace="",
                     size=42,
+                    created=datetime.now(),
                     insertion_hash="broken",
                     deletion_hash="0" * 64,
                     object_index={},
@@ -135,6 +139,7 @@ def test_metadata_constraints_object_ids_hashes(local_engine_empty):
                     format="FRAG",
                     namespace="",
                     size=42,
+                    created=datetime.now(),
                     insertion_hash="0" * 64,
                     deletion_hash="broken",
                     object_index={},
@@ -153,6 +158,7 @@ def test_metadata_constraints_table_objects(local_engine_empty):
                 format="FRAG",
                 namespace="",
                 size=42,
+                created=datetime.now(),
                 insertion_hash="0" * 64,
                 deletion_hash="0" * 64,
                 object_index={},

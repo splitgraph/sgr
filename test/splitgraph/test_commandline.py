@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import subprocess
+from datetime import datetime
 from decimal import Decimal
 from unittest.mock import patch, mock_open, ANY, PropertyMock
 
@@ -251,6 +252,7 @@ def test_object_info(local_engine_empty):
     base_1 = "o" + "0" * 62
     patch_1 = "o" + "0" * 61 + "1"
     patch_2 = "o" + "0" * 61 + "2"
+    dt = datetime(2019, 1, 1)
 
     q = insert("objects", OBJECT_COLS)
     local_engine_empty.run_sql(
@@ -260,6 +262,7 @@ def test_object_info(local_engine_empty):
             "FRAG",
             "ns1",
             12345,
+            dt,
             "0" * 64,
             "0" * 64,
             {
@@ -269,7 +272,7 @@ def test_object_info(local_engine_empty):
         ),
     )
     local_engine_empty.run_sql(
-        q, (patch_1, "FRAG", "ns1", 6789, "0" * 64, "0" * 64, {"range": {"col_1": [10, 20]}})
+        q, (patch_1, "FRAG", "ns1", 6789, dt, "0" * 64, "0" * 64, {"range": {"col_1": [10, 20]}})
     )
     local_engine_empty.run_sql(
         q,
@@ -278,6 +281,7 @@ def test_object_info(local_engine_empty):
             "FRAG",
             "ns1",
             1011,
+            dt,
             "0" * 64,
             "0" * 64,
             {"range": {"col_1": [10, 20], "col_2": ["bla", "ble"]}},
@@ -299,7 +303,7 @@ def test_object_info(local_engine_empty):
         patch_2, schema_spec=[TableColumn(1, "col_1", "integer", False, None)]
     )
 
-    result = runner.invoke(object_c, [base_1])
+    result = runner.invoke(object_c, [base_1], catch_exceptions=False)
     assert result.exit_code == 0
     assert (
         result.output
@@ -308,6 +312,7 @@ def test_object_info(local_engine_empty):
 Namespace: ns1
 Format: FRAG
 Size: 12.06 KiB
+Created: 2019-01-01 00:00:00
 Insertion hash: {"0" * 64}
 Deletion hash: {"0" * 64}
 Column index:

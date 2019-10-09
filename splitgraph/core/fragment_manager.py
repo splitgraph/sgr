@@ -9,6 +9,7 @@ import logging
 import math
 import operator
 import struct
+from datetime import datetime
 from functools import reduce
 from hashlib import sha256
 from random import getrandbits
@@ -280,6 +281,7 @@ class FragmentManager(MetadataManager):
                     format="FRAG",
                     namespace=namespace,
                     size=object_size,
+                    created=datetime.now(),
                     insertion_hash=insertion_hash,
                     deletion_hash=deletion_hash,
                     object_index=object_index,

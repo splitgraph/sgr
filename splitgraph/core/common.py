@@ -181,6 +181,7 @@ def _create_metadata_schema(engine: "PsycopgEngine") -> None:
                     object_id      VARCHAR NOT NULL PRIMARY KEY CHECK (object_id ~ '^o[a-f0-9]{{62}}$'),
                     namespace      VARCHAR NOT NULL,
                     size           BIGINT,
+                    created        TIMESTAMP,
                     format         VARCHAR NOT NULL,
                     index          JSONB,
                     insertion_hash VARCHAR(64) NOT NULL CHECK (insertion_hash ~ '^[a-f0-9]{{64}}$'),

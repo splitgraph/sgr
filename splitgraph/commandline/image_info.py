@@ -246,6 +246,7 @@ def object_c(object_id):
     click.echo("Namespace: %s" % sg_object.namespace)
     click.echo("Format: %s" % sg_object.format)
     click.echo("Size: %s" % pretty_size(sg_object.size))
+    click.echo("Created: %s" % sg_object.created)
     click.echo("Insertion hash: %s" % sg_object.insertion_hash)
     click.echo("Deletion hash: %s" % sg_object.deletion_hash)
     click.echo("Column index:")
