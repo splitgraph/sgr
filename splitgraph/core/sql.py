@@ -19,8 +19,11 @@ def _validate_funccall(node: Node):
     # calls like pg_relation_filepath etc) aren't appropriate here but are available
     # to all users by default -- so as a preliminary defense we stop all functions that
     # begin with pg_.
-    funcname = node.funcname.string_value
-    if funcname.startswith("pg_"):
+    funcname = node.funcname
+    if len(funcname) != 1:
+        # e.g. pg_catalog.substring
+        funcname = funcname[1]
+    if funcname.string_value.startswith("pg_"):
         raise UnsupportedSQLError("Unsupported function name %s!" % funcname)
 
 
@@ -51,6 +54,7 @@ _IMPORT_SQL_PERMITTED_NODES = [
     "Float",
     "CaseExpr",
     "CaseWhen",
+    "Alias",
 ]
 
 _SPLITFILE_SQL_PERMITTED_NODES = _IMPORT_SQL_PERMITTED_NODES + [
