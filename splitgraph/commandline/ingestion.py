@@ -89,6 +89,7 @@ def csv_export(image_spec, query, file, layered):
     help="Try to parse the specified column(s) as timestamps.",
     default=False,
 )
+@click.option("--encoding", help="Encoding to use for the CSV file", default=None)
 @click.option("--separator", default=",", help="CSV separator to use")
 @click.option(
     "--no-header",
@@ -103,7 +104,16 @@ def csv_export(image_spec, query, file, layered):
     help="Skips checking that the dataframe is compatible with the target schema.",
 )
 def csv_import(
-    repository, table, file, replace, primary_key, datetime, separator, no_header, skip_schema_check
+    repository,
+    table,
+    file,
+    replace,
+    primary_key,
+    datetime,
+    encoding,
+    separator,
+    no_header,
+    skip_schema_check,
 ):
     """
     Import a CSV file into a checked-out Splitgraph repository. This doesn't create a new image, use `sgr commit`
@@ -136,6 +146,7 @@ def csv_import(
             parse_dates=list(datetime) if datetime else False,
             infer_datetime_format=True,
             header=(None if no_header else "infer"),
+            encoding=encoding,
         )
         click.echo("Read %d line(s)" % len(df))
         df_to_table(
