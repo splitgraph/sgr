@@ -72,7 +72,7 @@ def list_engines_c(include_all):
     import docker
 
     client = docker.from_env()
-    containers = client.containers.list(filters={"ancestor": "splitgraph/engine"}, all=include_all)
+    containers = client.containers.list(all=include_all)
 
     if containers:
         our_containers = []
@@ -244,8 +244,16 @@ def start_engine_c(name):
 @click.option(
     "-f", "--force", default=False, is_flag=True, help="Delete the engine anyway if it's running."
 )
+@click.option(
+    "-v",
+    "--with-volumes",
+    default=False,
+    is_flag=True,
+    help="Include the engine's volumes (if not specified, volumes will be reattached when an engine"
+    " with the same name is created).",
+)
 @click.argument("name", default=DEFAULT_ENGINE)
-def delete_engine_c(yes, force, name):
+def delete_engine_c(yes, force, with_volumes, name):
     """Stop a Splitgraph engine."""
     import docker
 
@@ -254,8 +262,8 @@ def delete_engine_c(yes, force, name):
     container = client.containers.get(container_name)
 
     click.echo(
-        "Splitgraph engine %s (container ID %s), together with all data, will be deleted."
-        % (name, container.short_id)
+        "Splitgraph engine %s (container ID %s)%s will be deleted."
+        % (name, container.short_id, (", together with all data," if with_volumes else ""))
     )
     if not yes:
         click.confirm("Continue? ", abort=True)
@@ -263,12 +271,15 @@ def delete_engine_c(yes, force, name):
     container.remove(force=force)
     click.echo("Splitgraph engine %s has been removed." % name)
 
-    metadata_volume = client.volumes.get(_get_metadata_volume_name(name))
-    data_volume = client.volumes.get(_get_data_volume_name(name))
+    if with_volumes:
+        metadata_volume = client.volumes.get(_get_metadata_volume_name(name))
+        data_volume = client.volumes.get(_get_data_volume_name(name))
 
-    metadata_volume.remove()
-    data_volume.remove()
-    click.echo("Volumes %s and %s have been removed." % (metadata_volume.name, data_volume.name))
+        metadata_volume.remove()
+        data_volume.remove()
+        click.echo(
+            "Volumes %s and %s have been removed." % (metadata_volume.name, data_volume.name)
+        )
 
 
 engine_c.add_command(list_engines_c)
