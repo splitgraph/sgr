@@ -162,10 +162,10 @@ RUN /build/build_splitgraph.sh
 # package itself without dependencies (deps are libc>=2.14 -- we have 2.24 -- and libpython3.7
 # which we compiled earlier)
 
-RUN wget http://http.us.debian.org/debian/pool/main/p/postgresql-11/postgresql-plpython3-11_11.5-1_amd64.deb && \
-    echo "61fb900969c0033317779c9870d234e788a88768d899e5b5b6af2a99f6800b18  postgresql-plpython3-11_11.5-1_amd64.deb" | sha256sum -c - && \
-    dpkg --force-all -i postgresql-plpython3-11_11.5-1_amd64.deb
+RUN wget http://http.us.debian.org/debian/pool/main/p/postgresql-11/postgresql-plpython3-11_11.5-3sid2_amd64.deb && \
+    echo "1b0cdca6aa97a07b96481623f5d58ce4a5d24d96eea5af004aa4baaabd4a2311  postgresql-plpython3-11_11.5-3sid2_amd64.deb" | sha256sum -c - && \
+    dpkg --force-all -i postgresql-plpython3-11_11.5-3sid2_amd64.deb
 # Fix to make the dpkg status file usable (so that APT doesn't fail on future installs in the container)
-RUN sed -i "s/Depends: postgresql-11 (= 11.5-1), libc6 (>= 2.14), libpython3.7 (>= 3.7.0)/Depends: /" -i /var/lib/dpkg/status
+RUN sed -i "s/Depends: postgresql-11 (= 11.5-3sid2), libc6 (>= 2.14), libpython3.7 (>= 3.7.0)/Depends: /" -i /var/lib/dpkg/status
 
 CMD ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
