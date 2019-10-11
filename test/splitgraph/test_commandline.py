@@ -647,7 +647,7 @@ def test_splitfile(local_engine_empty, pg_repo_remote):
     assert (
         "FROM test/pg_mount:%s IMPORT" % pg_repo_remote.images["latest"].image_hash in result.output
     )
-    assert "SQL CREATE TABLE join_table AS SELECT" in result.output
+    assert "SQL CREATE TABLE join_table AS" in result.output
 
 
 def test_splitfile_rebuild_update(local_engine_empty, pg_repo_remote_multitag):
@@ -1115,7 +1115,7 @@ def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
     assert "running" in result.stdout
 
     # Force delete it
-    result = runner.invoke(delete_engine_c, ["-f", "secondary"], input="y\n")
+    result = runner.invoke(delete_engine_c, ["-f", "--with-volumes", "secondary"], input="y\n")
     assert result.exit_code == 0
 
     # Check the engine (and the volumes) are gone
