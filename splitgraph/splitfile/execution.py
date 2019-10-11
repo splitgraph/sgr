@@ -108,8 +108,8 @@ def _execute_sql(node: Node, output: Repository) -> None:
     # Since we handle the "input" hashing in the import step, we don't need to care about the sources here.
     # Later on, we could enhance the caching and base the hash of the command on the hashes of objects that
     # definitely go there as sources.
-    node_contents = extract_nodes(node, ["non_newline"])[0].text
     if node.expr_name == "sql_file":
+        node_contents = extract_nodes(node, ["non_newline"])[0].text
         print("Loading the SQL commands from %s" % node_contents)
         with open(node_contents, "r") as file:
             # Possibly use a different method to calculate the image hash for commands originating from
@@ -117,7 +117,11 @@ def _execute_sql(node: Node, output: Repository) -> None:
             # Don't "canonicalize" it here to get rid of whitespace, just hash the whole file.
             sql_command = file.read()
     else:
-        sql_command = node_contents
+        # Support singleline and multiple SQL commands between braces
+        nodes = extract_nodes(node, ["non_newline"])
+        if not nodes:
+            nodes = extract_nodes(node, ["non_curly_brace"])
+        sql_command = nodes[0].text.replace("\\{", "{").replace("\\}", "}").replace("\\\\", "\\")
     validate_splitfile_sql(sql_command)
     output_head = output.head_strict.image_hash
     target_hash = _combine_hashes([output_head, sha256(sql_command.encode("utf-8")).hexdigest()])

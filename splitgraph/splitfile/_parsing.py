@@ -23,7 +23,7 @@ SPLITFILE_GRAMMAR = Grammar(
     from = "FROM" space ("EMPTY" / repo_source) (space "AS" space repository)?
     import = "FROM" space source space "IMPORT" space tables
     sql_file = "SQL" space "FILE" space non_newline
-    sql = "SQL" space sql_statement
+    sql = "SQL" space (("{" non_curly_brace "}") / non_newline)
     custom = identifier space non_newline
 
     table = ((table_name / table_query) space "AS" space table_alias) / table_name
@@ -36,7 +36,7 @@ SPLITFILE_GRAMMAR = Grammar(
 
     image_hash = ~"[0-9a-f]*"i
 
-    # TBH these ones that map to "identifier" aren't realy necessary since parsimonious calls those nodes
+    # TBH these ones that map to "identifier" aren't really necessary since parsimonious calls those nodes
     # "identifier" anyway. This is so that the grammar is slightly more readable.
 
     handler = identifier
@@ -45,7 +45,6 @@ SPLITFILE_GRAMMAR = Grammar(
     table_alias = identifier
     tag_or_hash = identifier
     handler_options = "'" non_single_quote "'"
-    sql_statement = non_newline
 
     newline = ~"\n*"
     non_newline = ~"[^\n]*"
