@@ -422,7 +422,8 @@ class SQLEngine(ABC):
 
         results = self.run_sql(
             SQL(
-                "SELECT ordinal_position, column_name, data_type, "
+                "SELECT ordinal_position, column_name, "
+                "CASE WHEN data_type = 'USER-DEFINED' THEN udt_name ELSE data_type END, "
                 "col_description('{}.{}'::regclass, ordinal_position) "
                 "FROM information_schema.columns "
                 "WHERE table_schema = %s AND table_name = %s "
