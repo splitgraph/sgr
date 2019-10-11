@@ -2,6 +2,7 @@ import operator
 from datetime import date, datetime as dt
 from decimal import Decimal
 from functools import reduce
+from unittest.mock import patch
 
 import pytest
 from psycopg2.sql import SQL, Identifier
@@ -120,7 +121,9 @@ def test_commit_chunking(local_engine_empty):
     OUTPUT.run_sql("CREATE TABLE test (key INTEGER PRIMARY KEY, value_1 VARCHAR, value_2 INTEGER)")
     for i in range(11):
         OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (i + 1, chr(ord("a") + i), i * 2))
-    head = OUTPUT.commit(chunk_size=5)
+    with patch("splitgraph.core.fragment_manager.datetime") as dtp:
+        dtp.now.return_value = dt(2019, 1, 1)
+        head = OUTPUT.commit(chunk_size=5)
 
     # Should produce 3 objects: PK 1..5, PK 6..10, PK 11
     objects = head.get_table("test").objects
@@ -139,6 +142,7 @@ def test_commit_chunking(local_engine_empty):
                 "FRAG",  # fragment format
                 "",  # no namespace
                 SMALL_OBJECT_SIZE,
+                dt(2019, 1, 1),
                 # Don't check the insertion hash in this test
                 object_meta[obj].insertion_hash,
                 # Object didn't delete anything, so the deletion hash is zero.
@@ -217,7 +221,9 @@ def test_commit_diff_splitting(local_engine_empty):
     OUTPUT.run_sql("INSERT INTO test VALUES (12, 'l', 22)")
 
     # Now check the objects that were created.
-    new_head = OUTPUT.commit(split_changeset=True)
+    with patch("splitgraph.core.fragment_manager.datetime") as dtp:
+        dtp.now.return_value = dt(2019, 1, 1)
+        new_head = OUTPUT.commit(split_changeset=True)
     new_head.checkout()
     new_objects = new_head.get_table("test").objects
 
@@ -257,6 +263,7 @@ def test_commit_diff_splitting(local_engine_empty):
             "FRAG",
             "",
             SMALL_OBJECT_SIZE,
+            dt(2019, 1, 1),
             "3cfbe8fa6fc546264936e29f402d7263510481c88a8d27190d82b3d5830cbcbf",
             # no deletions in this fragment
             "0000000000000000000000000000000000000000000000000000000000000000",
@@ -267,6 +274,7 @@ def test_commit_diff_splitting(local_engine_empty):
             "FRAG",
             "",
             SMALL_OBJECT_SIZE,
+            dt(2019, 1, 1),
             "470425e8c107fff67264f9f812dfe211c7e625edf651947b8476f60392c57281",
             "e3eb6db305d889d3a69e3d8efa0931853c00fca75c0aeddd8f2fa2d6fd2443d6",
             # for value_1 we have old values for k=4,5 ('d', 'e') and new value
@@ -278,6 +286,7 @@ def test_commit_diff_splitting(local_engine_empty):
             "FRAG",
             "",
             SMALL_OBJECT_SIZE,
+            dt(2019, 1, 1),
             # UPD + DEL conflated so nothing gets inserted by this fragment
             "0000000000000000000000000000000000000000000000000000000000000000",
             "d7df15e62c1c8799ef3a3677e3eb7661cedf898d73449a80251b93c501b5bdeb",
@@ -289,6 +298,7 @@ def test_commit_diff_splitting(local_engine_empty):
             "FRAG",
             "",
             SMALL_OBJECT_SIZE,
+            dt(2019, 1, 1),
             "96f0a7394f3839b048b492b789f7d57cf976345b04938a69d82b3512f72c3e9e",
             "0000000000000000000000000000000000000000000000000000000000000000",
             {"range": {"key": [12, 12], "value_1": ["l", "l"], "value_2": [22, 22]}},
@@ -338,6 +348,7 @@ def test_commit_diff_splitting_composite(local_engine_empty):
         OUTPUT.run_sql(
             "INSERT INTO test VALUES (%s, %s, %s)", (dt(2019, 1, i // 3 + 1), i % 3 + 1, str(i))
         )
+
     head = OUTPUT.commit(chunk_size=5)
     base_objects = head.get_table("test").objects
     assert len(base_objects) == 2
@@ -355,7 +366,9 @@ def test_commit_diff_splitting_composite(local_engine_empty):
     # INSERT a new value that comes after all chunks
     OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (dt(2019, 1, 4), 2, "NEW"))
 
-    new_head = OUTPUT.commit(split_changeset=True)
+    with patch("splitgraph.core.fragment_manager.datetime") as dtp:
+        dtp.now.return_value = dt(2019, 1, 1)
+        new_head = OUTPUT.commit(split_changeset=True)
     new_head.checkout()
     new_objects = new_head.get_table("test").objects
 
@@ -370,6 +383,7 @@ def test_commit_diff_splitting_composite(local_engine_empty):
             "FRAG",
             "",
             SMALL_OBJECT_SIZE,
+            dt(2019, 1, 1),
             # Hashes here just copypasted from the test output, see test_object_hashing for actual tests that
             # test each part of hash generation
             "00964b1b5db0d6e8d42b48462e9021ed626a773380345a1f4fee5c205d7d4beb",
@@ -393,6 +407,7 @@ def test_commit_diff_splitting_composite(local_engine_empty):
             "FRAG",
             "",
             SMALL_OBJECT_SIZE,
+            dt(2019, 1, 1),
             "8c92b3ea89234b06cf53c2bad9d6e1d49dc561dc8c0100ee63c0b9ce1eeb0750",
             # Nothing deleted, so the deletion hash is 0
             "0000000000000000000000000000000000000000000000000000000000000000",
@@ -921,10 +936,11 @@ def test_multiengine_object_gets_recreated(local_engine_empty, pg_repo_remote, c
     assert new_image.get_table("fruits").objects == old_objects + [object_to_delete]
     assert object_to_delete in pg_repo_local.objects.get_all_objects()
     assert object_to_delete in pg_repo_local.objects.get_downloaded_objects()
-    assert (
-        object_to_delete_meta
-        == pg_repo_local.objects.get_object_meta([object_to_delete])[object_to_delete]
-    )
+
+    # New object has same metadata apart from creation timestamp (slightly in the future)
+    actual_meta = pg_repo_local.objects.get_object_meta([object_to_delete])[object_to_delete]
+    expected_meta = object_to_delete_meta._replace(created=actual_meta.created)
+    assert expected_meta == actual_meta
 
     # Force a reupload and make sure the object exists in Minio.
     assert object_to_delete not in list_objects(clean_minio)
