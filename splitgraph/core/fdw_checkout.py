@@ -60,7 +60,15 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         """
         cnf_quals = self._quals_to_cnf(quals)
         plan = self.table.get_query_plan(cnf_quals, columns)
-        return super().get_rel_size(quals, columns)
+
+        # Estimate the number of rows -- several precision levels here:
+        #   * number of objects * 10000 (random assumption of rows per fragment)
+        #   * row numbers  of actual fragments (assuming they won't match the quals)
+        #   * calling EXPLAIN on all fragments in filtered_objects (might be pretty expensive
+        #     and requires the actual fragments to be present)
+        #   * reading binary cstore files?
+
+        return len(plan.filtered_objects) * 10000, len(quals) * 10
 
     def explain(self, quals, columns, sortkeys=None, verbose=False):
         cnf_quals = self._quals_to_cnf(quals)
