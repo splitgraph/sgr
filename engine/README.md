@@ -31,6 +31,8 @@ external databases (only mongo and postgres at the moment):
       foreign data wrappers.
 * Installs the [Splitgraph command line client and library](https://github.com/splitgraph/splitgraph.git)
     that is required for layered querying.
+* Optionally installs the [PostGIS](https://postgis.net/) extension to handle geospatial
+  data: to build the engine with PostGIS, add `--build-arg with_postgis=1` to your `docker build` command.
 
 ## Running the engine
 

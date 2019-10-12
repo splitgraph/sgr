@@ -168,4 +168,16 @@ RUN wget http://http.us.debian.org/debian/pool/main/p/postgresql-11/postgresql-p
 # Fix to make the dpkg status file usable (so that APT doesn't fail on future installs in the container)
 RUN sed -i "s/Depends: postgresql-11 (= 11.5-3sid2), libc6 (>= 2.14), libpython3.7 (>= 3.7.0)/Depends: /" -i /var/lib/dpkg/status
 
+# postgis
+# Install from stretch-backports rather than pgdg repo to prevent SCFGAL pulling in OSG and X11:
+#   see https://github.com/Oslandia/SFCGAL/issues/136
+
+ARG with_postgis
+RUN test -z "${with_postgis}" || (\
+    echo "deb http://deb.debian.org/debian stretch-backports main" >> /etc/apt/sources.list && \
+    apt-get update -qq && \
+    apt-get install -t stretch-backports --no-install-recommends -y postgis && \
+    rm -rf /var/lib/apt/lists/* && \
+    echo "CREATE EXTENSION postgis;" >> /docker-entrypoint-initdb.d/000_create_extensions.sql)
+
 CMD ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
