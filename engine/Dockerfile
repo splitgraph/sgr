@@ -176,7 +176,9 @@ ARG with_postgis
 RUN test -z "${with_postgis}" || (\
     echo "deb http://deb.debian.org/debian stretch-backports main" >> /etc/apt/sources.list && \
     apt-get update -qq && \
-    apt-get install -t stretch-backports --no-install-recommends -y postgis && \
+    apt-get install -t stretch-backports --no-install-recommends -y \
+        postgresql-11-postgis-2.5 \
+        postgresql-11-postgis-2.5-scripts && \
     rm -rf /var/lib/apt/lists/* && \
     echo "CREATE EXTENSION postgis;" >> /docker-entrypoint-initdb.d/000_create_extensions.sql)
 
