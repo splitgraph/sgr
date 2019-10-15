@@ -174,6 +174,7 @@ class Table:
                     table=destination,
                     schema_spec=self.table_schema,
                     include_comments=True,
+                    unlogged=True,
                 )
                 if required_objects:
                     logging.info("Applying %d fragment(s)...", (len(required_objects)))
