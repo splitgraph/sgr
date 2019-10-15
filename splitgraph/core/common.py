@@ -434,24 +434,20 @@ def prepare_publish_data(
     """Prepare previews and schemata for a given image for publishing to a registry."""
     schemata = {}
     previews = {}
-    for table_name in image.get_tables():
-        if include_table_previews:
-            logging.info("Generating preview for %s...", table_name)
-            with repository.materialized_table(table_name, image.image_hash) as (
-                tmp_schema,
-                tmp_table,
-            ):
+    with image.query_schema() as tmp_schema:
+        for table_name in image.get_tables():
+            schema = image.get_table(table_name).table_schema
+            schemata[table_name] = schema
+
+            if include_table_previews:
+                logging.info("Generating preview for %s...", table_name)
                 engine = repository.object_engine
-                schema = engine.get_full_table_schema(tmp_schema, tmp_table)
                 previews[table_name] = engine.run_sql(
                     SQL("SELECT * FROM {}.{} LIMIT %s").format(
-                        Identifier(tmp_schema), Identifier(tmp_table)
+                        Identifier(tmp_schema), Identifier(table_name)
                     ),
                     (_PUBLISH_PREVIEW_SIZE,),
                 )
-        else:
-            schema = image.get_table(table_name).table_schema
-        schemata[table_name] = schema
     return previews, schemata
 
 
@@ -620,7 +616,9 @@ def coerce_val_to_json(val: Any) -> Any:
         val = [coerce_val_to_json(v) for v in val]
     elif isinstance(val, tuple):
         val = tuple(coerce_val_to_json(v) for v in val)
-    elif isinstance(val, (Decimal, date, time)):
+    elif isinstance(val, dict):
+        val = {k: coerce_val_to_json(v) for k, v in val.items()}
+    elif isinstance(val, (Decimal, date, time, datetime)):
         # See https://www.postgresql.org/docs/11/datatype-datetime.html
         # "ISO 8601 specifies the use of uppercase letter T to separate the date and time.
         # PostgreSQL accepts that format on input, but on output it uses a space rather

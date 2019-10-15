@@ -14,7 +14,7 @@ from psycopg2.sql import Composed
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA, FDW_CLASS
-from splitgraph.core.common import insert, select
+from splitgraph.core.common import insert, select, coerce_val_to_json
 from splitgraph.core.fragment_manager import get_random_object_id, ExtraIndexInfo
 from splitgraph.core.image import Image
 from splitgraph.core.image_manager import ImageManager
@@ -910,7 +910,7 @@ class Repository:
                     provenance=dependencies,
                     readme=readme,
                     schemata=schemata,
-                    previews=previews if include_table_previews else None,
+                    previews=coerce_val_to_json(previews) if include_table_previews else None,
                 ),
             )
             remote_repository.engine.commit()
