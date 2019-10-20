@@ -18,7 +18,7 @@ from psycopg2 import DatabaseError
 from psycopg2.errors import InvalidSchemaName, UndefinedTable, DuplicateTable
 from psycopg2.extensions import STATUS_READY
 from psycopg2.extras import execute_batch, Json
-from psycopg2.pool import ThreadedConnectionPool
+from psycopg2.pool import ThreadedConnectionPool, AbstractConnectionPool
 from psycopg2.sql import Composed, SQL
 from psycopg2.sql import Identifier
 from tqdm import tqdm
@@ -76,9 +76,9 @@ class PsycopgEngine(SQLEngine):
 
     def __init__(
         self,
-        name: str,
+        name: Optional[str],
         conn_params: Optional[Dict[str, Optional[str]]] = None,
-        pool: None = None,
+        pool: Optional[AbstractConnectionPool] = None,
         autocommit: bool = False,
     ) -> None:
         """
@@ -125,13 +125,17 @@ class PsycopgEngine(SQLEngine):
             self._pool = pool
 
     def __repr__(self) -> str:
-        return "PostgresEngine %s (%s@%s:%s/%s)" % (
-            self.name,
-            self.conn_params["SG_ENGINE_USER"],
-            self.conn_params["SG_ENGINE_HOST"],
-            self.conn_params["SG_ENGINE_PORT"],
-            self.conn_params["SG_ENGINE_DB_NAME"],
-        )
+        try:
+            conn_summary = "(%s@%s:%s/%s)" % (
+                self.conn_params["SG_ENGINE_USER"],
+                self.conn_params["SG_ENGINE_HOST"],
+                self.conn_params["SG_ENGINE_PORT"],
+                self.conn_params["SG_ENGINE_DB_NAME"],
+            )
+        except AttributeError:
+            conn_summary = " (custom connection pool)"
+
+        return "PostgresEngine " + ((self.name + " ") if self.name else "") + conn_summary
 
     def commit(self) -> None:
         if self.connected:
