@@ -15,10 +15,10 @@ from splitgraph.engine import ResultShape
 
 if TYPE_CHECKING:
     from splitgraph.core.repository import Repository
-    from splitgraph.engine.postgres.engine import PostgresEngine
+    from splitgraph.engine.postgres.engine import PostgresEngine, PsycopgEngine
 
 
-def _create_registry_schema(engine: "PostgresEngine") -> None:
+def _create_registry_schema(engine: "PsycopgEngine") -> None:
     """
     Creates the registry metadata schema that contains information on published images that will appear
     in the catalog.
@@ -41,7 +41,7 @@ def _create_registry_schema(engine: "PostgresEngine") -> None:
     )
 
 
-def _ensure_registry_schema(engine: "PostgresEngine") -> None:
+def _ensure_registry_schema(engine: "PsycopgEngine") -> None:
     if (
         engine.run_sql(
             "SELECT 1 FROM information_schema.schemata WHERE schema_name = %s",
