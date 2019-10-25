@@ -40,6 +40,9 @@ from splitgraph.hooks.mount_handlers import get_mount_handlers
 from test.splitgraph.conftest import OUTPUT, SPLITFILE_ROOT, MG_MNT
 
 
+TEST_ENGINE_PREFIX = "test"
+
+
 def test_image_spec_parsing():
     assert ImageType()("test/pg_mount") == (Repository("test", "pg_mount"), "latest")
     assert ImageType(default="HEAD")("test/pg_mount") == (Repository("test", "pg_mount"), "HEAD")
@@ -1033,13 +1036,14 @@ def test_commandline_dump_load(pg_repo_local):
 
 
 def _nuke_engines_and_volumes():
-    # Make sure we don't have engines managed by `sgr engine` running before/after every test.
+    # Make sure we don't have the test engine (managed by `sgr engine`) running before/after tests.
     client = docker.from_env()
     for c in client.containers.list(filters={"ancestor": "splitgraph/engine"}, all=True):
-        if c.name.startswith("splitgraph_engine_"):
+        if c.name.startswith("splitgraph_engine_" + TEST_ENGINE_PREFIX):
+            logging.info("Killing %s. Logs (100 lines): %s", c.name, c.logs(tail=1000))
             c.remove(force=True, v=True)
     for v in client.volumes.list():
-        if v.name.startswith("splitgraph_engine_"):
+        if v.name.startswith("splitgraph_engine_" + TEST_ENGINE_PREFIX):
             v.remove(force=True)
 
 
@@ -1059,7 +1063,7 @@ def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
     # Create an engine with default password and wait for it to initialize
     result = runner.invoke(
         add_engine_c,
-        ["--port", "5428", "--username", "not_sgr", "--no-sgconfig", "secondary"],
+        ["--port", "5428", "--username", "not_sgr", "--no-sgconfig", TEST_ENGINE_PREFIX],
         input="notsosecure\nnotsosecure\n",
     )
     assert result.exit_code == 0
@@ -1083,46 +1087,48 @@ def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
     # List running engines
     result = runner.invoke(list_engines_c)
     assert result.exit_code == 0
-    assert "secondary" in result.stdout
+    assert TEST_ENGINE_PREFIX in result.stdout
     assert "running" in result.stdout
 
     # Try deleting the engine while it's still running
     with pytest.raises(docker.errors.APIError):
-        runner.invoke(delete_engine_c, ["-y", "secondary"], catch_exceptions=False)
+        runner.invoke(delete_engine_c, ["-y", TEST_ENGINE_PREFIX], catch_exceptions=False)
 
     # Stop the engine
-    result = runner.invoke(stop_engine_c, ["secondary"])
+    result = runner.invoke(stop_engine_c, [TEST_ENGINE_PREFIX])
     assert result.exit_code == 0
 
     # Check it's not running
     for c in client.containers.list(filters={"ancestor": "splitgraph/engine"}, all=False):
-        assert c.name != "splitgraph_engine_secondary"
+        assert c.name != "splitgraph_engine_" + TEST_ENGINE_PREFIX
 
     result = runner.invoke(list_engines_c)
-    assert "secondary" not in result.stdout
+    assert TEST_ENGINE_PREFIX not in result.stdout
 
     result = runner.invoke(list_engines_c, ["-a"])
-    assert "secondary" in result.stdout
+    assert TEST_ENGINE_PREFIX in result.stdout
 
     # Bring it back up
-    result = runner.invoke(start_engine_c, ["secondary"])
+    result = runner.invoke(start_engine_c, [TEST_ENGINE_PREFIX])
     assert result.exit_code == 0
 
     # Check it's running
     result = runner.invoke(list_engines_c)
     assert result.exit_code == 0
-    assert "secondary" in result.stdout
+    assert TEST_ENGINE_PREFIX in result.stdout
     assert "running" in result.stdout
 
     # Force delete it
-    result = runner.invoke(delete_engine_c, ["-f", "--with-volumes", "secondary"], input="y\n")
+    result = runner.invoke(
+        delete_engine_c, ["-f", "--with-volumes", TEST_ENGINE_PREFIX], input="y\n"
+    )
     assert result.exit_code == 0
 
     # Check the engine (and the volumes) are gone
     for c in client.containers.list(filters={"ancestor": "splitgraph/engine"}, all=False):
-        assert c.name != "splitgraph_engine_secondary"
+        assert c.name != "splitgraph_engine_" + TEST_ENGINE_PREFIX
     for v in client.volumes.list():
-        assert not v.name.startswith("splitgraph_engine_secondary")
+        assert not v.name.startswith("splitgraph_engine_" + TEST_ENGINE_PREFIX)
 
 
 # Default parameters for data.splitgraph.com that show up in every config
@@ -1244,8 +1250,8 @@ def test_commandline_engine_creation_config_patching_integration(teardown_test_e
     shutil.copy(os.path.join(os.path.dirname(__file__), "../resources/.sgconfig"), config_path)
 
     result = subprocess.run(
-        "SG_CONFIG_FILE=%s sgr engine add secondary --port 5428 --username not_sgr --password password"
-        % config_path,
+        "SG_CONFIG_FILE=%s sgr engine add %s --port 5428 --username not_sgr --password password"
+        % (config_path, TEST_ENGINE_PREFIX),
         shell=True,
         stderr=subprocess.PIPE,
         stdout=subprocess.PIPE,
@@ -1264,12 +1270,12 @@ def test_commandline_engine_creation_config_patching_integration(teardown_test_e
     # Do some spot checks to make sure we didn't overwrite anything.
     assert "SG_S3_HOST=objectstorage" in config
     assert "POSTGRES_FDW=splitgraph.hooks.mount_handlers.mount_postgres" in config
-    assert "[remote: secondary]" in config
+    assert "[remote: %s]" % TEST_ENGINE_PREFIX in config
     assert "[remote: remote_engine]" in config
 
     # Check that we can access the new engine.
     result = subprocess.run(
-        "SG_CONFIG_FILE=%s SG_ENGINE=secondary sgr status" % config_path,
+        "SG_CONFIG_FILE=%s SG_ENGINE=%s sgr status" % (config_path, TEST_ENGINE_PREFIX),
         shell=True,
         stderr=subprocess.STDOUT,
     )
