@@ -108,10 +108,16 @@ def list_engines_c(include_all):
     is_flag=True,
 )
 @click.option("--no-pull", default=False, help="Don't pull the Docker image", is_flag=True)
+@click.option(
+    "--set-default",
+    default=False,
+    help="Set the engine as the default engine in the config regardless of its name",
+    is_flag=True,
+)
 @click.argument("name", default=DEFAULT_ENGINE)
 @click.password_option()
 def add_engine_c(
-    image, port, username, no_init, no_sgconfig, inject_source, no_pull, name, password
+    image, port, username, no_init, no_sgconfig, inject_source, no_pull, name, password, set_default
 ):
     """
     Create and start a Splitgraph engine.
@@ -172,6 +178,10 @@ def add_engine_c(
     conn_params: Dict[str, str] = {
         "SG_ENGINE_HOST": "localhost",
         "SG_ENGINE_PORT": str(port),
+        # Even if the engine is exposed on a different port on the host,
+        # need to make sure that it uses the default 5432 port to connect
+        # to itself.
+        "SG_ENGINE_FDW_PORT": "5432",
         "SG_ENGINE_USER": username,
         "SG_ENGINE_PWD": password,
         "SG_ENGINE_DB_NAME": "splitgraph",
@@ -196,7 +206,7 @@ def add_engine_c(
         else:
             click.echo("Updating the existing config file at %s" % config_path)
 
-        if name != DEFAULT_ENGINE:
+        if name != DEFAULT_ENGINE and not set_default:
             config_patch = {"remotes": {name: conn_params}}
         else:
             config_patch = conn_params
