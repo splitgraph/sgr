@@ -39,13 +39,11 @@ def expect_result(
             try:
                 response.raise_for_status()
             except HTTPError as e:
-                try:
-                    error = response.json().get("error", "") or response.text
-                except JSONDecodeError:
-                    error = response.text
-                if error:
-                    raise AuthAPIError(error) from e
-                raise
+                error = response.text
+                raise AuthAPIError(error) from e
+
+            if not result:
+                return None
 
             json = response.json()
             missing = [f for f in result if f not in json]
@@ -87,7 +85,7 @@ class AuthAPIClient:
         # How soon before the token expiry to refresh the token, in seconds.
         self.access_token_expiry_tolerance = 30
 
-    @expect_result(["user_uuid"])
+    @expect_result(["user_id"])
     def register(self, username: str, password: str, email: str) -> Response:
         """
         Register a new Splitgraph user.
