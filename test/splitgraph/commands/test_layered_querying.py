@@ -411,14 +411,6 @@ def test_multiengine_flow(
         )
         == 0
     )
-    assert (
-        len(
-            set(pg_repo_remote_registry.engine.get_all_tables("splitgraph_meta")).difference(
-                set(META_TABLES)
-            )
-        )
-        == 0
-    )
 
 
 def _get_chunk_groups(table):

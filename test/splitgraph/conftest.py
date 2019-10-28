@@ -42,7 +42,9 @@ OUTPUT = R("output")
 REMOTE_ENGINE = "remote_engine"
 
 # Docker container name for the test engines (used to inject .sgconfig)
-SPLITGRAPH_ENGINE_CONTAINER = "architecture_local_engine_1"
+SPLITGRAPH_ENGINE_CONTAINER = os.getenv(
+    "SG_TEST_LOCAL_ENGINE_CONTAINER", "architecture_local_engine_1"
+)
 
 # Namespace to push to on the remote engine that the user owns
 REMOTE_NAMESPACE = get_engine("unprivileged_remote_engine").conn_params["SG_NAMESPACE"]
