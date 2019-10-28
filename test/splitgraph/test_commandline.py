@@ -1039,11 +1039,14 @@ def _nuke_engines_and_volumes():
     # Make sure we don't have the test engine (managed by `sgr engine`) running before/after tests.
     client = docker.from_env()
     for c in client.containers.list(filters={"ancestor": "splitgraph/engine"}, all=True):
-        if c.name.startswith("splitgraph_engine_" + TEST_ENGINE_PREFIX):
+        if c.name == "splitgraph_engine_" + TEST_ENGINE_PREFIX:
             logging.info("Killing %s. Logs (100 lines): %s", c.name, c.logs(tail=1000))
             c.remove(force=True, v=True)
     for v in client.volumes.list():
-        if v.name.startswith("splitgraph_engine_" + TEST_ENGINE_PREFIX):
+        if (
+            v.name == "splitgraph_engine_" + TEST_ENGINE_PREFIX + "_data"
+            or v.name == "splitgraph_engine_" + TEST_ENGINE_PREFIX + "_metadata"
+        ):
             v.remove(force=True)
 
 
