@@ -3,13 +3,15 @@
   - docker-compose --project-name splitgraph_example down -v --remove-orphans
   - docker-compose --project-name splitgraph_example build
   - docker-compose --project-name splitgraph_example up -d
+  record: False
 - commands:
   - "# Initialize the engine (wait for the container to start up)"
   - sleep 5
   - sgr init
+  record: False
 - commands:
   - "# Inspect the data file"
-  - "# (originally from https://data.townofcary.org/api/v2/catalog/datasets/rdu-weather-history/exports/csv)
+  - "# (originally from https://data.townofcary.org/api/v2/catalog/datasets/rdu-weather-history/exports/csv)"
   - head -n5 rdu-weather-history.csv
 - commands:
   - "# Initialize the repository"
@@ -43,3 +45,4 @@
 - commands:
   - "# Delete the docker-compose project and cleanup"
   - docker-compose --project-name splitgraph_example down -v
+  record: False
