@@ -7,6 +7,7 @@
 - commands:
   - "# Initialize the engine"
   - sgr init
+  record: False
 - commands:
   - "# Ingest the weather dataset at Raleigh-Durham Airport from the CSV example"
   - sgr init demo/weather

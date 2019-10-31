@@ -25,8 +25,12 @@ class RecorderOutput:
     """An stdout wrapper that emits "recordings" of the terminal session
     in Asciinema format."""
 
-    def __init__(self, input_rate=0.03, delay=3.0, max_gap=1.0, title=None):
+    def __init__(self, input_rate=0.03, delay=1.0 / 70, min_delay=2.0, max_gap=1.0, title=None):
         self.input_rate = input_rate
+
+        # Delay as a function of #characters that were emitted;
+        # average human reading speed is 25 and there's
+        # stuff like image hashes they will glance over).
         self.delay = delay
         self.max_gap = max_gap
 
@@ -39,6 +43,10 @@ class RecorderOutput:
             self.header["title"] = title
 
         self.record = True
+
+        self._chars_since_cls = 0
+        self._cls_start_time = 0
+        self.min_delay = min_delay
 
     def add_event(self, text, time_since_last):
         if isinstance(text, bytes):
@@ -64,6 +72,7 @@ class RecorderOutput:
                 # (nobody wants to watch someone pressing space 50 times)
                 for char in _ANSI_ESCAPE.findall(text):
                     self.add_event(char, time_since_last=self.input_rate)
+                    self._chars_since_cls += 1
 
     def print_from_pipe(self, proc):
         """Records output from a subprocess, including the delays and printing the output."""
@@ -73,9 +82,10 @@ class RecorderOutput:
             if line:
                 sys.stdout.buffer.write(line)
                 sys.stdout.flush()
-                line = line.replace(b"\n", b"\n\r")
+                line = line.replace(b"\n", b"\r\n")
                 if self.record:
                     self.add_event(line, time_since_last=time.time() - now)
+                    self._chars_since_cls += len(line)
                 now = time.time()
             else:
                 result = proc.poll()
@@ -85,7 +95,14 @@ class RecorderOutput:
     def cls(self):
         if self.record:
             if self.current_time > 0:
-                self.current_time += self.delay
+                # Add a delay assuming that the person has spent the whole time
+                # since the text started showing up reading it.
+                self.current_time += max(
+                    self.delay * self._chars_since_cls - (self.current_time - self._cls_start_time),
+                    self.min_delay,
+                )
+            self._chars_since_cls = 0
+        self._cls_start_time = self.current_time
         self.print("\033[H\033[J", end="")
 
 
