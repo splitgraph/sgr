@@ -2,7 +2,8 @@ import os.path
 
 # List of examples to ignore: get-started is difficult to test as it requires access
 # to the actual Splitgraph cloud and the command line registration is tested otherwise.
-_DO_NOT_TEST = ["get-started"]
+# Same with the US election example: needs registration and the data set is bulky.
+_DO_NOT_TEST = ["get-started", "us-election"]
 
 
 def pytest_generate_tests(metafunc):

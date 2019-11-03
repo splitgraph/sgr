@@ -1,0 +1,36 @@
+- commands:
+  - "# Build and start the engine"
+  - docker-compose --project-name splitgraph_example down -v --remove-orphans
+  - docker-compose --project-name splitgraph_example build
+  - docker-compose --project-name splitgraph_example up -d
+  - sgr init
+  record: False
+- commands:
+  - "# This example will use Splitgraph to build a dataset that correlates, for every US county,"
+  - "# its voting pattern in the 2016 US Presidential election with the amount of"
+  - "# Qualified Opportunity Zone areas in it."
+  - "#"
+  - "# First, examine the Splitfile used to build the dataset."
+  - cat qoz_vote_fraction.splitfile
+- commands:
+  - "# Now, build the dataset: the Splitgraph engine will automatically download the required data"
+  - "# and run the queries in the Splitfile to produce the final data image."
+  - sgr build qoz_vote_fraction.splitfile -o qoz_vote_fraction
+  stderr: False
+- commands:
+  - "# Inspect the dataset metadata"
+  - sgr show qoz_vote_fraction
+  - sgr table qoz_vote_fraction qoz_vote_fraction
+- commands:
+  - "# Get the data for New York County (FIPS 36061)"
+  - |
+    sgr sql -s qoz_vote_fraction \
+        "SELECT row_to_json(d) FROM (SELECT * FROM qoz_vote_fraction WHERE county_id = '36061') d"
+- commands:
+  - "# Do a quick analysis of the dataset."
+  - cat analyze.py
+  - python analyze.py
+- commands:
+  - "# Delete the docker-compose project and cleanup"
+  # - docker-compose --project-name splitgraph_example down -v
+  record: False

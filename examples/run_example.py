@@ -25,7 +25,7 @@ class RecorderOutput:
     """An stdout wrapper that emits "recordings" of the terminal session
     in Asciinema format."""
 
-    def __init__(self, input_rate=0.03, delay=1.0 / 70, min_delay=2.0, max_gap=1.0, title=None):
+    def __init__(self, input_rate=0.03, delay=1.0 / 70, min_delay=5.0, max_gap=1.0, title=None):
         self.input_rate = input_rate
 
         # Delay as a function of #characters that were emitted;
@@ -152,24 +152,23 @@ def example(skip, no_pause, dump_asciinema, file):
 
         for l in block["commands"]:
             proc = subprocess.Popen(
-                l,
-                shell=True,
-                stdout=subprocess.PIPE,
-                stderr=(subprocess.PIPE if stderr else subprocess.DEVNULL),
+                l, shell=True, stdout=subprocess.PIPE, stderr=(subprocess.PIPE if stderr else None)
             )
             if output.print_from_pipe(proc) != 0:
                 exit(1)
 
+        output.print(
+            Color.BOLD
+            + Color.DARKCYAN
+            + current_prompt
+            + (" " if current_prompt else "")
+            + Color.RED
+            + "$ "
+            + Color.END,
+            end="",
+        )
         if wait and not no_pause:
-            input(
-                Color.BOLD
-                + Color.DARKCYAN
-                + current_prompt
-                + (" " if current_prompt else "")
-                + Color.RED
-                + "$ "
-                + Color.END
-            )
+            input()
 
     if dump_asciinema:
         recording = output.to_asciinema()
