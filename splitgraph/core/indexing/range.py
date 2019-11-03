@@ -209,7 +209,7 @@ def generate_range_index(
     column_types = {c.name: c.pg_type for c in table_schema}
     columns_to_index = [c.name for c in table_schema if c.pg_type in _PG_INDEXABLE_TYPES]
 
-    logging.info("Running range index on columns %s", columns_to_index)
+    logging.debug("Running range index on columns %s", columns_to_index)
     query = SQL("SELECT ") + SQL(",").join(
         SQL("MIN({0}), MAX({0})").format(Identifier(c)) for c in columns_to_index
     )

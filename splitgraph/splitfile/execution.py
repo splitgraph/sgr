@@ -274,8 +274,8 @@ def _execute_repo_import(
 
         def _calc():
             print(
-                "Importing tables %r:%s from %s into %s"
-                % (table_names, source_hash[:12], str(repository), str(target_repository))
+                "Importing %d table(s) from %s:%s into %s"
+                % (len(table_names), str(repository), source_hash[:12], str(target_repository))
             )
             target_repository.import_tables(
                 table_aliases,

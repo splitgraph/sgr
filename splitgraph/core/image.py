@@ -185,7 +185,7 @@ class Image(NamedTuple):
 
         # It's easier to create the foreign tables from our side than to implement IMPORT FOREIGN SCHEMA by the FDW
         for table_name in self.get_tables():
-            logging.info(
+            logging.debug(
                 "Mounting %s:%s/%s into %s",
                 self.repository.to_schema(),
                 self.image_hash,
