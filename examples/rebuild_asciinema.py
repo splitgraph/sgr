@@ -23,9 +23,18 @@ import click
     help="Extra arguments to pass to asciicast2gif, -S1 is recommended (doesn't double the GIF's resolution),"
     "otherwise Imagemagick takes up ~6GB of RAM merging the frames",
 )
+@click.option("--gif-stylesheet", type=str, default=None)
 @click.option("--output-path", type=str, default="asciinema")
 @click.argument("directory")
-def rebuild(skip_gif, skip_record, extra_recorder_args, extra_gif_args, output_path, directory):
+def rebuild(
+    skip_gif,
+    skip_record,
+    extra_recorder_args,
+    extra_gif_args,
+    gif_stylesheet,
+    output_path,
+    directory,
+):
     workdir = os.path.join(os.path.dirname(__file__), directory)
 
     asciinema_dir = os.path.abspath(output_path)
@@ -63,8 +72,13 @@ def rebuild(skip_gif, skip_record, extra_recorder_args, extra_gif_args, output_p
     # Run asciicast2gif in Docker: entrypoint args are
     # [EXTRA_ARGS] CAST_FILE OUTPUT_FILE
     # where EXTRA_ARGS can be e.g. -s1 -S1 -t solarized-dark etc.
-    args = (
-        ["docker", "run", "--rm", "-v", asciinema_dir + ":" + "/data", "asciinema/asciicast2gif"]
+    args = ["docker", "run", "--rm", "-v", asciinema_dir + ":" + "/data", "-v"]
+
+    if gif_stylesheet:
+        args.append(os.path.abspath(gif_stylesheet) + ":" + "/app/page/asciinema-player.css")
+
+    args += (
+        ["asciinema/asciicast2gif"]
         + shlex.split(extra_gif_args)
         + [asciinema_cast, asciinema_basename + ".gif"]
     )
