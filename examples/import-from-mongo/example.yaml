@@ -3,9 +3,11 @@
   - docker-compose --project-name splitgraph_example down -v --remove-orphans
   - docker-compose --project-name splitgraph_example build
   - docker-compose --project-name splitgraph_example up -d
+  record: False
 - commands:
   - "# Initialize the engine"
   - sgr init
+  record: False
 - commands:
   - "# Inspect the config file"
   - cat .sgconfig
@@ -32,3 +34,4 @@
 - commands:
   - "# Delete the docker-compose project and cleanup"
   - docker-compose --project-name splitgraph_example down -v --remove-orphans
+  record: False
