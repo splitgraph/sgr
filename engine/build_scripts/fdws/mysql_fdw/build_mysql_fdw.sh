@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -ex
 
 echo "Install mysql_fdw extension..."
 
@@ -24,13 +24,6 @@ cd mysql_fdw || {
 
 echo "Build mysql_fdw..."
 
-USE_PGXS=1 make && USE_PGXS=1 make install
-
-echo "Finished building mysql_fdw."
-
-echo "Cleanup mysql_fdw..."
-cd / || {
-    fatal_error "Failed to cd to / for cleanup operation" ;
-}
-
-rm -rf /tmp/mysql-fdw-staging || true
+export USE_PGXS=1
+export DESTDIR=/output/root
+make install

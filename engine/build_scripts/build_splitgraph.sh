@@ -6,6 +6,9 @@
 
 cd /splitgraph
 
+ln -s /usr/local/bin/python3 /usr/local/bin/python
+ln -s /usr/local/bin/pip3 /usr/local/bin/pip
+
 curl -sSL https://raw.githubusercontent.com/sdispater/poetry/master/get-poetry.py | python
 # Install globally (otherwise we'll need to find a way to get Multicorn to see the venv)
 source $HOME/.poetry/env
