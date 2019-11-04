@@ -1166,7 +1166,7 @@ _CONFIG_DEFAULTS = (
             "secondary",
             ".sgconfig",
             "[defaults]\n" + _CONFIG_DEFAULTS + "\n[remote: secondary]\n"
-            "SG_ENGINE_HOST=localhost\nSG_ENGINE_PORT=5432\n"
+            "SG_ENGINE_HOST=localhost\nSG_ENGINE_PORT=5432\nSG_ENGINE_FDW_PORT=5432\n"
             "SG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
             "SG_ENGINE_DB_NAME=splitgraph\n"
             "SG_ENGINE_POSTGRES_DB_NAME=postgres\n"
@@ -1202,7 +1202,7 @@ _CONFIG_DEFAULTS = (
             "/home/user/.sgconfig",
             "[defaults]\nSG_ENGINE_PORT=5000\n" + _CONFIG_DEFAULTS + "\n[remote: secondary]\n"
             "SG_ENGINE_HOST=localhost\nSG_ENGINE_PORT=5432\n"
-            "SG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
+            "SG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\nSG_ENGINE_FDW_PORT=5432\n"
             "SG_ENGINE_DB_NAME=splitgraph\nSG_ENGINE_POSTGRES_DB_NAME=postgres\n"
             "SG_ENGINE_ADMIN_USER=not_sgr\nSG_ENGINE_ADMIN_PWD=pwd\n"
             "[external_handlers]\nS3=splitgraph.hooks.s3.S3ExternalObjectHandler\n",
@@ -1300,7 +1300,7 @@ def test_commandline_registration_normal():
         return [
             200,
             response_headers,
-            json.dumps({"user_uuid": "123e4567-e89b-12d3-a456-426655440000"}),
+            json.dumps({"user_id": "123e4567-e89b-12d3-a456-426655440000"}),
         ]
 
     def refresh_token_callback(request, uri, response_headers):
