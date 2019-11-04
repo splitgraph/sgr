@@ -15,7 +15,7 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA, FDW_CLASS
 from splitgraph.core.common import insert, select, coerce_val_to_json
-from splitgraph.core.fragment_manager import get_random_object_id, ExtraIndexInfo
+from splitgraph.core.fragment_manager import get_temporary_table_id, ExtraIndexInfo
 from splitgraph.core.image import Image
 from splitgraph.core.image_manager import ImageManager
 from splitgraph.core.sql import validate_import_sql
@@ -284,7 +284,7 @@ class Repository:
 
         table = self.images.by_hash(image_hash).get_table(table_name)
         # Materialize the table even if it's a single object to discard the upsert-delete flag.
-        new_id = get_random_object_id()
+        new_id = get_temporary_table_id()
         table.materialize(new_id, destination_schema=SPLITGRAPH_META_SCHEMA)
         try:
             yield SPLITGRAPH_META_SCHEMA, new_id
@@ -779,7 +779,7 @@ class Repository:
         do_checkout: bool,
     ) -> List[str]:
         # First, import the query (or the foreign table) into a temporary table.
-        tmp_object_id = get_random_object_id()
+        tmp_object_id = get_temporary_table_id()
         if is_query:
             # is_query precedes foreign_tables: if we're importing using a query, we don't care if it's a
             # foreign table or not since we're storing it as a full snapshot.

@@ -426,7 +426,7 @@ class FragmentManager(MetadataManager):
         return deletion_hash, insertion_hash, object_id
 
     def _store_changeset(self, sub_changeset: Any, table: str, schema: str) -> str:
-        tmp_object_id = get_random_object_id()
+        tmp_object_id = get_temporary_table_id()
         upserted = [pk for pk, data in sub_changeset.items() if data[0]]
         deleted = [pk for pk, data in sub_changeset.items() if not data[0]]
         self.object_engine.store_fragment(
@@ -628,7 +628,7 @@ class FragmentManager(MetadataManager):
     ) -> str:
         # Store the fragment in a temporary location first and hash that (much faster since PG doesn't need
         # to go through the source table multiple times for every offset)
-        tmp_object_id = get_random_object_id()
+        tmp_object_id = get_temporary_table_id()
         logging.debug(
             "Using temporary table %s for %s/%s limit %r after_pk %r",
             tmp_object_id,
@@ -921,10 +921,6 @@ def _conflate_changes(
     return changeset
 
 
-def get_random_object_id() -> str:
-    """Generate a random ID for temporary/staging objects that haven't had their ID calculated yet.
-    Note that Postgres limits table names to 63 characters, so the IDs shall be 248-bit strings, hex-encoded,
-    + a letter prefix since Postgres doesn't seem to support table names starting with a digit."""
-    # Make sure we're padded to 62 characters (otherwise if the random number generated is less than 2^247 we'll be
-    # dropping characters from the hex format)
-    return str.format("o{:062x}", getrandbits(248))
+def get_temporary_table_id() -> str:
+    """Generate a random ID for temporary/staging objects that haven't had their ID calculated yet."""
+    return str.format("sg_tmp_{:032x}", getrandbits(128))

@@ -80,7 +80,6 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
             o.size for o in self.table.repository.objects.get_object_meta(filtered_objects).values()
         )
 
-        logging.info("End EXPLAIN")
         return [
             "Objects removed by filter: %d" % (len(all_objects) - len(filtered_objects)),
             "Scan through %d object(s) (%s)" % (len(filtered_objects), pretty_size(total_size)),
@@ -99,6 +98,14 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         # For quals, the more elaborate ones (like table.id = table.name or similar) actually aren't passed here
         # at all and PG filters them out later on.
         cnf_quals = self._quals_to_cnf(quals)
+
+        # Sometimes (e.g. with running a join) Postgres can ask us to "restart" the scan, which means
+        # that it doesn't call our end_scan() method. If we have a scan in progress, make sure to
+        # call the callback anyway, since otherwise we'll leak temporary tables.
+        if self.end_scan_callback:
+            self.end_scan_callback(from_fdw=True)
+            self.end_scan_callback = None
+
         log_to_postgres("CNF quals: %r" % (cnf_quals,), _PG_LOGLEVEL)
 
         queries, self.end_scan_callback, self.plan = self.table.query_indirect(columns, cnf_quals)
@@ -109,6 +116,7 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
             # Call the scan-end callback making sure to use
             # the special hack to avoid deadlocks with Multicorn.
             self.end_scan_callback(from_fdw=True)
+            self.end_scan_callback = None
 
         self.engine.close()
         self.object_engine.close()

@@ -20,7 +20,7 @@ from psycopg2.sql import SQL, Identifier, Composable
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.common import Tracer
-from splitgraph.core.fragment_manager import get_random_object_id, get_chunk_groups
+from splitgraph.core.fragment_manager import get_temporary_table_id, get_chunk_groups
 from splitgraph.core.indexing.range import quals_to_sql
 from splitgraph.core.types import TableSchema, Quals
 from splitgraph.engine import ResultShape
@@ -450,9 +450,9 @@ class Table:
         return non_singletons, singletons
 
     def _create_staging_table(self) -> str:
-        staging_table = get_random_object_id()
+        staging_table = get_temporary_table_id()
 
-        logging.info("Using staging table %s", staging_table)
+        logging.debug("Using staging table %s", staging_table)
         self.repository.object_engine.create_table(
             schema=SPLITGRAPH_META_SCHEMA,
             table=staging_table,
@@ -484,5 +484,5 @@ class Table:
             queries.append(query)
 
         cur.close()
-        logging.info("Returning queries %r", queries)
+        logging.debug("Returning queries %r", queries)
         return queries

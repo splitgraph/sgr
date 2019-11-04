@@ -285,6 +285,15 @@ def lq_test_repo(test_local_engine):
         # Canary to make sure that all BASE tables (we use those as temporary storage for Multicorn
         # to read data from) have been deleted by LQs.
 
+        # This is pretty flaky though, since the deletion happens in a separate thread inside
+        # of the engine (otherwise there's a deadlock, see _generate_nonsingleton_query
+        # in splitgraph.core.table) -- so on teardown sometimes we're faster than the deletion thread
+        # and can see temporary tables. Hence, we sleep for a bit before running our check.
+
+        import time
+
+        time.sleep(5)
+
         tables_in_meta = {
             c
             for c in test_local_engine.get_all_tables(SPLITGRAPH_META_SCHEMA)
