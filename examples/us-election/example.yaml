@@ -32,5 +32,5 @@
   - python analyze.py
 - commands:
   - "# Delete the docker-compose project and cleanup"
-  # - docker-compose --project-name splitgraph_example down -v
+  - docker-compose --project-name splitgraph_example down -v
   record: False

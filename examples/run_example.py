@@ -12,12 +12,6 @@ import yaml
 from splitgraph.commandline.common import Color
 
 
-_ASCIINEMA_PRELUDE = {
-    "version": 2,
-    "width": 100,
-    "height": 40,
-    "env": {"TERM": "xterm-256color", "SHELL": "/bin/zsh"},
-}
 _ANSI_ESCAPE = re.compile(r"(\x1B[@-_][0-?]*[ -/]*[@-~]|\s+|.)")
 
 
@@ -25,7 +19,16 @@ class RecorderOutput:
     """An stdout wrapper that emits "recordings" of the terminal session
     in Asciinema format."""
 
-    def __init__(self, input_rate=0.03, delay=1.0 / 70, min_delay=5.0, max_gap=1.0, title=None):
+    def __init__(
+        self,
+        input_rate=0.03,
+        delay=1.0 / 70,
+        min_delay=5.0,
+        max_gap=1.0,
+        title=None,
+        width=None,
+        height=None,
+    ):
         self.input_rate = input_rate
 
         # Delay as a function of #characters that were emitted;
@@ -37,7 +40,17 @@ class RecorderOutput:
         self.events = []
         self.current_time = 0.0
 
-        self.header = _ASCIINEMA_PRELUDE.copy()
+        self.header = {
+            "version": 2,
+            "width": 100,
+            "height": None,
+            "env": {"TERM": "xterm-256color", "SHELL": "/bin/zsh"},
+        }
+        if width:
+            self.header["width"] = width
+        if height:
+            self.header["height"] = height
+
         self.header["timestamp"] = int(time.time())
         if title:
             self.header["title"] = title
@@ -46,19 +59,31 @@ class RecorderOutput:
 
         self._chars_since_cls = 0
         self._cls_start_time = 0
+
         self.min_delay = min_delay
+
+        # Approximate (since we don't look at ANSI control characters apart from
+        # clear-screen that we produce ourselves) the maximum height of the terminal.
+        # If height isn't passed, we determine it automatically.
+        self._curr_height = 0
+        self._max_height = 0
 
     def add_event(self, text, time_since_last):
         if isinstance(text, bytes):
             text = text.decode("unicode_escape")
+
+        self._curr_height += text.count("\n")
+        self._max_height = max(self._max_height, self._curr_height)
+
         time_since_last = min(time_since_last, self.max_gap)
         self.current_time += time_since_last
         self.events.append((self.current_time, "o", text))
 
     def to_asciinema(self):
-        return (
-            json.dumps(self.header) + "\n" + "\n".join(json.dumps(event) for event in self.events)
-        )
+        header = self.header.copy()
+        header["height"] = header["height"] or self._max_height + 1
+
+        return json.dumps(header) + "\n" + "\n".join(json.dumps(event) for event in self.events)
 
     def print(self, text="", end="\n"):
         text = text + end
@@ -103,6 +128,7 @@ class RecorderOutput:
                 )
             self._chars_since_cls = 0
         self._cls_start_time = self.current_time
+        self._curr_height = 0
         self.print("\033[H\033[J", end="")
 
 
@@ -112,14 +138,16 @@ class RecorderOutput:
     "--no-pause", is_flag=True, default=False, help="Don't wait for user input after every block"
 )
 @click.option("--dump-asciinema", type=click.File("w"), default=None)
+@click.option("--asciinema-width", type=int, default=None)
+@click.option("--asciinema-height", type=int, default=None)
 @click.argument("file")
-def example(skip, no_pause, dump_asciinema, file):
+def example(skip, no_pause, dump_asciinema, asciinema_width, asciinema_height, file):
     """Run commands in an example YAML file."""
     with open(file, "r") as f:
         commands = yaml.load(f)
     current_prompt = ""
 
-    output = RecorderOutput()
+    output = RecorderOutput(width=asciinema_width, height=asciinema_height)
 
     for i, block in enumerate(commands):
         if i < skip:
