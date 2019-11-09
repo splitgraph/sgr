@@ -154,7 +154,9 @@ def add_engine_c(
     click.echo("Metadata volume: %s." % metadata_name)
 
     if inject_source:
-        source_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../"))
+        source_path = os.getenv(
+            "SG_SOURCE_ROOT", os.path.abspath(os.path.join(os.path.dirname(__file__), "../"))
+        )
         source_volume = Mount(target="/splitgraph/splitgraph", source=source_path, type="bind")
         mounts.append(source_volume)
         click.echo("Source path: %s" % source_path)

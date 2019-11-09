@@ -2,13 +2,20 @@ import os
 from datetime import datetime as dt
 from io import StringIO
 
-import pandas as pd
 import pytest
-from pandas.util.testing import assert_frame_equal
 
 from splitgraph.core.types import TableColumn
-from splitgraph.ingestion.pandas import df_to_table, sql_to_df
+
+try:
+    from splitgraph.ingestion.pandas import df_to_table, sql_to_df
+except ImportError:
+    # If Pandas isn't installed, pytest will skip these tests
+    # (see pytest.importorskip).
+    pass
 from test.splitgraph.conftest import load_csv, INGESTION_RESOURCES
+
+pd = pytest.importorskip("pandas")
+assert_frame_equal = pytest.importorskip("pandas.util.testing").assert_frame_equal
 
 
 def _str_to_df(string, has_ts=True):
