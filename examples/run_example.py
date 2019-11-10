@@ -12,7 +12,8 @@ import yaml
 from splitgraph.commandline.common import Color
 
 
-_ANSI_ESCAPE = re.compile(r"(\x1B[@-_][0-?]*[ -/]*[@-~]|\s+|.)")
+_ANSI_CONTROL = re.compile(r"(\x1B[@-_][0-?]*[ -/]*[@-~])")
+_SPLIT = re.compile(r"(\x1B[@-_][0-?]*[ -/]*[@-~]|\s+|.)")
 
 
 class RecorderOutput:
@@ -28,6 +29,7 @@ class RecorderOutput:
         title=None,
         width=None,
         height=None,
+        dump_key_timestamps=True,
     ):
         self.input_rate = input_rate
 
@@ -39,6 +41,9 @@ class RecorderOutput:
 
         self.events = []
         self.current_time = 0.0
+
+        self.dump_key_timestamps = dump_key_timestamps
+        self._extra_metadata = {}
 
         self.header = {
             "version": 2,
@@ -82,6 +87,8 @@ class RecorderOutput:
     def to_asciinema(self):
         header = self.header.copy()
         header["height"] = header["height"] or self._max_height + 1
+        if self._extra_metadata:
+            header["metadata"] = self._extra_metadata
 
         return json.dumps(header) + "\n" + "\n".join(json.dumps(event) for event in self.events)
 
@@ -91,11 +98,20 @@ class RecorderOutput:
         text = text.replace("\n", "\r\n")
         if self.record:
             if "$ # " in text:
+                if self.dump_key_timestamps and self._curr_height == 0:
+                    # Dump the first comment emitted after a clearscreen as a keypoint.
+                    timestamps = self._extra_metadata.get("tss", [])
+
+                    # Strip comment symbols + ANSI control chars
+                    header = text.replace("$ # ", "")
+                    header = _ANSI_CONTROL.sub("", header)
+                    timestamps.append({"h": header, "ts": self.current_time})
+                    self._extra_metadata["tss"] = timestamps
                 self.add_event(text, time_since_last=self.input_rate)
             else:
                 # Make sure the ANSI control sequences + whitespace are coalesced
                 # (nobody wants to watch someone pressing space 50 times)
-                for char in _ANSI_ESCAPE.findall(text):
+                for char in _SPLIT.findall(text):
                     self.add_event(char, time_since_last=self.input_rate)
                     self._chars_since_cls += 1
 
@@ -147,7 +163,9 @@ def example(skip, no_pause, dump_asciinema, asciinema_width, asciinema_height, f
         commands = yaml.load(f)
     current_prompt = ""
 
-    output = RecorderOutput(width=asciinema_width, height=asciinema_height)
+    output = RecorderOutput(
+        width=asciinema_width, height=asciinema_height, dump_key_timestamps=True
+    )
 
     for i, block in enumerate(commands):
         if i < skip:
