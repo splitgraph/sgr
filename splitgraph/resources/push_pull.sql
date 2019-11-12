@@ -153,7 +153,7 @@ BEGIN
 END
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 
--- add_object(object_id, format, parent_id, namespace, size, insertion_hash, deletion_hash, index)
+-- add_object(object_id, format, namespace, size, insertion_hash, deletion_hash, index)
 CREATE OR REPLACE FUNCTION splitgraph_api.add_object(object_id varchar, format varchar,
     namespace varchar, size bigint, created timestamp, insertion_hash varchar(64),
     deletion_hash varchar(64), index jsonb) RETURNS void AS $$

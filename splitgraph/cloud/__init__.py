@@ -44,8 +44,10 @@ def expect_result(
 
             if not result:
                 return None
-
-            json = response.json()
+            try:
+                json = response.json()
+            except JSONDecodeError:
+                raise AuthAPIError("Invalid response from service: %s" % response.text)
             missing = [f for f in result if f not in json]
             if missing:
                 raise AuthAPIError("Missing entries %s in the response!" % (tuple(missing),))

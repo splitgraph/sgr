@@ -38,7 +38,7 @@ pylint = "^2.4"
 black = { version = "*", allows-prereleases = true }
 pre-commit = "^1.18"
 httpretty = "^0.9.6"
-mypy = "^0.720"
+mypy = ">=0.720"
 
 [tool.poetry.extras]
 ingestion = ["pandas", "sqlalchemy"]
