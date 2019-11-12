@@ -71,6 +71,7 @@ def test_commandline_basics(pg_repo_local):
     )
     runner.invoke(sql_c, ['DROP TABLE "test/pg_mount".vegetables'])
     runner.invoke(sql_c, ['DELETE FROM "test/pg_mount".fruits WHERE fruit_id = 1'])
+    runner.invoke(sql_c, ["COMMENT ON COLUMN \"test/pg_mount\".fruits.name IS 'Name of the fruit'"])
     result = runner.invoke(sql_c, ['SELECT * FROM "test/pg_mount".fruits'])
     assert "(3, 'mayonnaise')" in result.output
     assert "(1, 'apple')" not in result.output
@@ -177,6 +178,7 @@ def test_commandline_basics(pg_repo_local):
     assert "Size: 260.00 B" in result.output
     assert "fruit_id (integer)" in result.output
     assert new_head.get_table("fruits").objects[0] in result.output
+    assert "Name of the fruit" in result.output
 
 
 def test_commandline_commit_chunk(pg_repo_local):
