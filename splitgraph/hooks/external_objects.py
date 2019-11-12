@@ -2,11 +2,11 @@
 Hooks for registering handlers to upload/download objects from external locations into Splitgraph's cache.
 """
 from importlib import import_module
+from typing import Any, Dict, Callable
 
 from splitgraph.config import CONFIG
+from splitgraph.config.config import get_from_section
 from splitgraph.exceptions import ExternalHandlerError
-
-_EXTERNAL_OBJECT_HANDLERS = {}
 
 
 class ExternalObjectHandler:
@@ -26,7 +26,7 @@ class ExternalObjectHandler:
     and used to download the objects back into the Splitgraph cache when they are needed.
     """
 
-    def __init__(self, params):
+    def __init__(self, params: Dict[Any, Any]) -> None:
         """
         Initialize the handler with a dictionary of parameters (e.g. remote access keys etc).
         The instantiation happens at the beginning of a pull/push.
@@ -53,17 +53,20 @@ class ExternalObjectHandler:
         """
 
 
-def get_external_object_handler(name, handler_params):
+_EXTERNAL_OBJECT_HANDLERS: Dict[str, Callable[..., ExternalObjectHandler]] = {}
+
+
+def get_external_object_handler(name: str, handler_params: Dict[Any, Any]) -> ExternalObjectHandler:
     """Load an external protocol handler by its name, initializing it with optional parameters."""
     try:
         handler_class = _EXTERNAL_OBJECT_HANDLERS[name]
         return handler_class(handler_params)
     except KeyError:
-        external_handlers = CONFIG.get("external_handlers", {})
-        if name not in external_handlers:
+        try:
+            handler_class_name = get_from_section(CONFIG, "external_handlers", name)
+        except KeyError:
             raise ExternalHandlerError("Protocol %s is not supported!" % name)
 
-        handler_class_name = external_handlers[name]
         index = handler_class_name.rindex(".")
         try:
             handler_class = getattr(
@@ -81,7 +84,9 @@ def get_external_object_handler(name, handler_params):
             ) from e
 
 
-def register_upload_download_handler(name, handler_class):
+def register_upload_download_handler(
+    name: str, handler_class: Callable[..., ExternalObjectHandler]
+) -> None:
     """Register an external protocol handler. See the docstring for `get_upload_download_handler` for the required
     signatures of the handler functions."""
     global _EXTERNAL_OBJECT_HANDLERS

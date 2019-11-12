@@ -4,8 +4,13 @@ Splitgraph command line client
 Hooks into the API to allow management of Splitgraph repositories and images using ``sgr``.
 """
 
-import click
+import logging
 
+import click
+import click_log
+
+from splitgraph.commandline.cloud import cloud_c
+from splitgraph.commandline.engine import engine_c
 from splitgraph.commandline.example import example
 from splitgraph.commandline.image_creation import checkout_c, commit_c, tag_c, import_c
 from splitgraph.commandline.image_info import (
@@ -16,12 +21,16 @@ from splitgraph.commandline.image_info import (
     status_c,
     object_c,
     objects_c,
+    table_c,
 )
 from splitgraph.commandline.ingestion import csv
 from splitgraph.commandline.misc import rm_c, init_c, cleanup_c, config_c, prune_c, dump_c
 from splitgraph.commandline.mount import mount_c
 from splitgraph.commandline.push_pull import pull_c, clone_c, push_c, publish_c, upstream_c
 from splitgraph.commandline.splitfile import build_c, provenance_c, rebuild_c
+
+logger = logging.getLogger()
+click_log.basic_config(logger)
 
 
 def _commit_connection(_):
@@ -33,6 +42,7 @@ def _commit_connection(_):
 
 
 @click.group(result_callback=_commit_connection)
+@click_log.simple_verbosity_option(logger)
 def cli():
     """Splitgraph command line client: manage and build Postgres schema images."""
 
@@ -64,8 +74,12 @@ cli.add_command(diff_c)
 cli.add_command(object_c)
 cli.add_command(objects_c)
 cli.add_command(show_c)
+cli.add_command(table_c)
 cli.add_command(sql_c)
 cli.add_command(status_c)
+
+# Engine management
+cli.add_command(engine_c)
 
 # Miscellaneous
 cli.add_command(mount_c)
@@ -93,3 +107,6 @@ cli.add_command(example)
 
 # CSV
 cli.add_command(csv)
+
+# Cloud
+cli.add_command(cloud_c)

@@ -3,22 +3,57 @@ import itertools
 import logging
 import threading
 from contextlib import contextmanager
+from typing import (
+    Any,
+    Callable,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    TYPE_CHECKING,
+    Dict,
+    Sequence,
+    cast,
+)
 
-from psycopg2.sql import SQL, Identifier
+from psycopg2.sql import SQL, Identifier, Composable
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.core._common import Tracer
-from splitgraph.core.fragment_manager import get_random_object_id, get_chunk_groups
+from splitgraph.core.common import Tracer
+from splitgraph.core.fragment_manager import get_temporary_table_id, get_chunk_groups
 from splitgraph.core.indexing.range import quals_to_sql
+from splitgraph.core.types import TableSchema, Quals
+from splitgraph.engine import ResultShape
+
+if TYPE_CHECKING:
+    from splitgraph.core.image import Image
+    from splitgraph.core.object_manager import ObjectManager
+    from splitgraph.core.repository import Repository
+    from splitgraph.engine.postgres.engine import PostgresEngine
 
 
-def _delete_temporary_table(engine, schema, table):
-    engine.delete_table(schema, table)
-    logging.info("Dropped temporary table %s", table)
-    engine.commit()
+def _delete_temporary_table(engine: "PostgresEngine", schema: str, table: str) -> None:
+    """
+    Workaround for Multicorn deadlocks at end_scan time, supposed to be run in a separate thread.
+    """
+    # Delete the temporary table in an autocommitting connection with a small lock
+    # timeout: if we fail to delete it because Multicorn is still holding a lock on it etc,
+    # we'd rather leave the temporary table in splitgraph_meta than lock up.
+    conn = engine.connection
+    conn.autocommit = True
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SET lock_timeout TO '5s';")
+            cur.execute(
+                SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(schema), Identifier(table))
+            )
+        logging.info("Dropped temporary table %s", table)
+    finally:
+        conn.autocommit = False
+        conn.close()
 
 
-def _empty_callback(**kwargs):
+def _empty_callback(**kwargs) -> None:
     pass
 
 
@@ -28,7 +63,7 @@ class QueryPlan:
     qualifiers.
     """
 
-    def __init__(self, table, quals, columns):
+    def __init__(self, table: "Table", quals: Optional[Quals], columns: Sequence[str]) -> None:
         self.table = table
         self.quals = quals
         self.columns = columns
@@ -44,22 +79,47 @@ class QueryPlan:
         self.tracer.log("filter_objects")
 
 
+QueryPlanCacheKey = Tuple[Optional[Tuple[Tuple[Tuple[str, str, Any]]]], Tuple[str]]
+
+
+def _get_plan_cache_key(quals: Optional[Quals], columns: Sequence[str]) -> QueryPlanCacheKey:
+    quals = (
+        cast(
+            Tuple[Tuple[Tuple[str, str, Any]]],
+            tuple(tuple(tuple(q) for q in qual) for qual in quals),
+        )
+        if quals
+        else None
+    )
+    columns = cast(Tuple[str], tuple(columns))
+    return quals, columns
+
+
 class Table:
     """Represents a Splitgraph table in a given image. Shouldn't be created directly, use Table-loading
     methods in the :class:`splitgraph.core.image.Image` class instead."""
 
-    def __init__(self, repository, image, table_name, table_schema, objects):
+    def __init__(
+        self,
+        repository: "Repository",
+        image: "Image",
+        table_name: str,
+        table_schema: TableSchema,
+        objects: List[str],
+    ) -> None:
         self.repository = repository
         self.image = image
         self.table_name = table_name
-        self.table_schema = [tuple(entry) for entry in table_schema]
+        self.table_schema = table_schema
 
         # List of fragments this table is composed of
         self.objects = objects
 
-        self._query_plans = {}
+        self._query_plans: Dict[Tuple[Optional[Quals], Tuple[str]], QueryPlan] = {}
 
-    def get_query_plan(self, quals, columns, use_cache=True):
+    def get_query_plan(
+        self, quals: Optional[Quals], columns: Sequence[str], use_cache: bool = True
+    ) -> QueryPlan:
         """
         Start planning a query (preliminary steps before object downloading,
         like qualifier filtering).
@@ -69,9 +129,7 @@ class Table:
         :param use_cache: If True, will fetch the plan from the cache for the same qualifiers and columns.
         :return: QueryPlan
         """
-        quals = tuple(tuple(tuple(t) for t in qual) for qual in quals) if quals else None
-        columns = tuple(columns)
-        key = (quals, columns)
+        key = _get_plan_cache_key(quals, columns)
 
         if use_cache and key in self._query_plans:
             plan = self._query_plans[key]
@@ -87,7 +145,12 @@ class Table:
         self._query_plans[key] = plan
         return plan
 
-    def materialize(self, destination, destination_schema=None, lq_server=None):
+    def materialize(
+        self,
+        destination: str,
+        destination_schema: Optional[str] = None,
+        lq_server: Optional[str] = None,
+    ) -> None:
         """
         Materializes a Splitgraph table in the target schema as a normal Postgres table, potentially downloading all
         required objects and using them to reconstruct the table.
@@ -107,12 +170,16 @@ class Table:
                 table=self, objects=self.objects
             ) as required_objects:
                 engine.create_table(
-                    schema=destination_schema, table=destination, schema_spec=self.table_schema
+                    schema=destination_schema,
+                    table=destination,
+                    schema_spec=self.table_schema,
+                    include_comments=True,
+                    unlogged=True,
                 )
                 if required_objects:
                     logging.info("Applying %d fragment(s)...", (len(required_objects)))
                     engine.apply_fragments(
-                        [(SPLITGRAPH_META_SCHEMA, d) for d in required_objects],
+                        [(SPLITGRAPH_META_SCHEMA, d) for d in cast(List[str], required_objects)],
                         destination_schema,
                         destination,
                     )
@@ -120,13 +187,26 @@ class Table:
             query = SQL("CREATE FOREIGN TABLE {}.{} (").format(
                 Identifier(destination_schema), Identifier(self.table_name)
             )
-            query += SQL(",".join("{} %s " % ctype for _, _, ctype, _ in self.table_schema)).format(
-                *(Identifier(cname) for _, cname, _, _ in self.table_schema)
+            query += SQL(",".join("{} %s " % col.pg_type for col in self.table_schema)).format(
+                *(Identifier(col.name) for col in self.table_schema)
             )
-            query += SQL(") SERVER {} OPTIONS (table %s)").format(Identifier(lq_server))
-            engine.run_sql(query, (self.table_name,))
+            query += SQL(") SERVER {} OPTIONS (table %s);").format(Identifier(lq_server))
 
-    def query_indirect(self, columns, quals):
+            args = [self.table_name]
+            for col in self.table_schema:
+                if col.comment:
+                    query += SQL("COMMENT ON COLUMN {}.{}.{} IS %s;").format(
+                        Identifier(destination_schema),
+                        Identifier(self.table_name),
+                        Identifier(col.name),
+                    )
+                    args.append(col.comment)
+
+            engine.run_sql(query, args)
+
+    def query_indirect(
+        self, columns: List[str], quals: Optional[Quals]
+    ) -> Tuple[Iterator[bytes], Callable, QueryPlan]:
         """
         Run a read-only query against this table without materializing it. Instead of
         actual results, this returns a generator of SQL queries that the caller can use
@@ -142,12 +222,12 @@ class Table:
         :param columns: List of columns from this table to fetch
         :param quals: List of qualifiers in conjunctive normal form. See the documentation for
             FragmentManager.filter_fragments for the actual format.
-        :return: Generator of queries (bytes) a callback and a query plan object (containing stats
+        :return: Generator of queries (bytes), a callback and a query plan object (containing stats
             that are fully populated after the callback has been called to end the query).
         """
 
         sql_quals, sql_qual_vals = quals_to_sql(
-            quals, column_types={c[1]: c[2] for c in self.table_schema}
+            quals, column_types={c.name: c.pg_type for c in self.table_schema}
         )
 
         plan = self.get_query_plan(quals, columns)
@@ -156,7 +236,7 @@ class Table:
         object_manager = self.repository.objects
         logging.info("Using fragments %r to satisfy the query", required_objects)
         if not required_objects:
-            return [], _empty_callback, plan
+            return cast(Iterator[bytes], []), cast(Callable, _empty_callback), plan
 
         # Special fast case: single-chunk groups can all be batched together
         # and queried directly without having to copy them to a staging table.
@@ -195,8 +275,9 @@ class Table:
         if not non_singletons:
             with object_manager.ensure_objects(
                 self, objects=required_objects, defer_release=True, tracer=plan.tracer
-            ) as (required_objects, release_callback):
-                return queries, release_callback, plan
+            ) as eo_result:
+                _, release_callback = cast(Tuple, eo_result)
+                return iter(queries), cast(Callable, release_callback), plan
 
         def _generate_nonsingleton_query():
             # If we have fragments that need applying to a staging area, we don't want to
@@ -236,7 +317,7 @@ class Table:
                     )
                     thread.start()
                 else:
-                    _delete_temporary_table(engine, SPLITGRAPH_META_SCHEMA, staging_table)
+                    engine.delete_table(SPLITGRAPH_META_SCHEMA, staging_table)
 
             nonlocal release_callback
             release_callback.append(_f)
@@ -266,11 +347,16 @@ class Table:
 
         with object_manager.ensure_objects(
             self, objects=required_objects, defer_release=True, tracer=plan.tracer
-        ) as (required_objects, release_callback):
-            return itertools.chain(queries, _generate_nonsingleton_query()), release_callback, plan
+        ) as eo_result:
+            _, release_callback = cast(Tuple, eo_result)
+            return (
+                itertools.chain(queries, _generate_nonsingleton_query()),
+                cast(Callable, release_callback),
+                plan,
+            )
 
     @contextmanager
-    def query_lazy(self, columns, quals):
+    def query_lazy(self, columns: List[str], quals: Quals) -> Iterator[Iterator[Dict[str, Any]]]:
         """
         Run a read-only query against this table without materializing it.
 
@@ -294,7 +380,7 @@ class Table:
         finally:
             release_callback()
 
-    def query(self, columns, quals):
+    def query(self, columns: List[str], quals: Quals):
         """
         Run a read-only query against this table without materializing it.
 
@@ -309,7 +395,39 @@ class Table:
         with self.query_lazy(columns, quals) as result:
             return list(result)
 
-    def _extract_singleton_fragments(self, object_manager, required_objects):
+    def get_size(self) -> int:
+        """
+        Get the physical size used by the image's objects (including those shared with other tables).
+
+        This is calculated from the metadata, the on-disk footprint might be smaller if not all of table's
+        objects have been downloaded.
+
+        :return: Size of the table in bytes.
+        """
+        query = (
+            "WITH iob AS(SELECT DISTINCT image_hash, unnest(object_ids) AS object_id "
+            "FROM splitgraph_meta.tables t "
+            "WHERE t.namespace = %s AND t.repository = %s AND t.image_hash = %s AND t.table_name = %s) "
+            "SELECT SUM(o.size) FROM iob JOIN splitgraph_meta.objects o "
+            "ON iob.object_id = o.object_id "
+        )
+        return cast(
+            int,
+            self.repository.engine.run_sql(
+                query,
+                (
+                    self.repository.namespace,
+                    self.repository.repository,
+                    self.image.image_hash,
+                    self.table_name,
+                ),
+                return_shape=ResultShape.ONE_ONE,
+            ),
+        )
+
+    def _extract_singleton_fragments(
+        self, object_manager: "ObjectManager", required_objects: List[str]
+    ) -> Tuple[List[str], List[str]]:
         # Get fragment boundaries (min-max PKs of every fragment).
         table_pk = [(t[1], t[2]) for t in self.table_schema if t[3]]
         if not table_pk:
@@ -322,8 +440,8 @@ class Table:
                 for object_id, min_max in zip(required_objects, object_pks)
             ]
         )
-        singletons = []
-        non_singletons = []
+        singletons: List[str] = []
+        non_singletons: List[str] = []
         for group in object_groups:
             if len(group) == 1:
                 singletons.append(group[0][0])
@@ -331,10 +449,10 @@ class Table:
                 non_singletons.extend(object_id for object_id, _, _ in group)
         return non_singletons, singletons
 
-    def _create_staging_table(self):
-        staging_table = get_random_object_id()
+    def _create_staging_table(self) -> str:
+        staging_table = get_temporary_table_id()
 
-        logging.info("Using staging table %s", staging_table)
+        logging.debug("Using staging table %s", staging_table)
         self.repository.object_engine.create_table(
             schema=SPLITGRAPH_META_SCHEMA,
             table=staging_table,
@@ -343,7 +461,14 @@ class Table:
         )
         return staging_table
 
-    def _generate_select_queries(self, schema, tables, columns, qual_sql=None, qual_args=None):
+    def _generate_select_queries(
+        self,
+        schema: str,
+        tables: List[str],
+        columns: List[str],
+        qual_sql: Optional[Composable] = None,
+        qual_args: Optional[Tuple] = None,
+    ) -> List[bytes]:
         engine = self.repository.object_engine
         cur = engine.connection.cursor()
 
@@ -359,5 +484,5 @@ class Table:
             queries.append(query)
 
         cur.close()
-        logging.info("Returning queries %r", queries)
+        logging.debug("Returning queries %r", queries)
         return queries

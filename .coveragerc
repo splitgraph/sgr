@@ -20,5 +20,8 @@ exclude_lines =
     if 0:
     if __name__ == .__main__.:
 
+    # mypy guards to avoid importing code that's only used for typechecking
+    if TYPE_CHECKING:
+
 ignore_errors = True
 

@@ -1,0 +1,14 @@
+version: '3'
+services:
+  engine:
+    image: splitgraph/engine
+    ports:
+      - '0.0.0.0:5432:5432'
+    environment:
+      - POSTGRES_USER=sgr
+      - POSTGRES_PASSWORD=supersecure
+      - POSTGRES_DB=splitgraph
+      - SG_LOGLEVEL=INFO
+    expose:
+      - 5432
+  # Add extra required services here.

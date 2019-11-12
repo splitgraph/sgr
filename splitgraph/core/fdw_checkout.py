@@ -2,9 +2,10 @@
 layered querying (read-only queries to Splitgraph tables without materialization)."""
 import logging
 
-from splitgraph import Repository, get_engine
-from splitgraph.core._common import pretty_size
+import splitgraph.config
+from splitgraph.core.common import pretty_size
 from splitgraph.core.object_manager import ObjectManager
+from splitgraph.core.repository import Repository, get_engine
 
 try:
     from multicorn import ForeignDataWrapper, ANY
@@ -59,7 +60,15 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         """
         cnf_quals = self._quals_to_cnf(quals)
         plan = self.table.get_query_plan(cnf_quals, columns)
-        return super().get_rel_size(quals, columns)
+
+        # Estimate the number of rows -- several precision levels here:
+        #   * number of objects * 10000 (random assumption of rows per fragment)
+        #   * row numbers  of actual fragments (assuming they won't match the quals)
+        #   * calling EXPLAIN on all fragments in filtered_objects (might be pretty expensive
+        #     and requires the actual fragments to be present)
+        #   * reading binary cstore files?
+
+        return len(plan.filtered_objects) * 10000, len(quals) * 10
 
     def explain(self, quals, columns, sortkeys=None, verbose=False):
         cnf_quals = self._quals_to_cnf(quals)
@@ -71,7 +80,6 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
             o.size for o in self.table.repository.objects.get_object_meta(filtered_objects).values()
         )
 
-        logging.info("End EXPLAIN")
         return [
             "Objects removed by filter: %d" % (len(all_objects) - len(filtered_objects)),
             "Scan through %d object(s) (%s)" % (len(filtered_objects), pretty_size(total_size)),
@@ -90,6 +98,14 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         # For quals, the more elaborate ones (like table.id = table.name or similar) actually aren't passed here
         # at all and PG filters them out later on.
         cnf_quals = self._quals_to_cnf(quals)
+
+        # Sometimes (e.g. with running a join) Postgres can ask us to "restart" the scan, which means
+        # that it doesn't call our end_scan() method. If we have a scan in progress, make sure to
+        # call the callback anyway, since otherwise we'll leak temporary tables.
+        if self.end_scan_callback:
+            self.end_scan_callback(from_fdw=True)
+            self.end_scan_callback = None
+
         log_to_postgres("CNF quals: %r" % (cnf_quals,), _PG_LOGLEVEL)
 
         queries, self.end_scan_callback, self.plan = self.table.query_indirect(columns, cnf_quals)
@@ -100,6 +116,10 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
             # Call the scan-end callback making sure to use
             # the special hack to avoid deadlocks with Multicorn.
             self.end_scan_callback(from_fdw=True)
+            self.end_scan_callback = None
+
+        self.engine.close()
+        self.object_engine.close()
 
     def _initialize_engines(self):
         # Try using a UNIX socket if the engine is local to us
@@ -127,6 +147,12 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
                 to do with them.
 
         """
+        # Initialize the logger that will log to the engine's stderr: log timestamp and PID.
+        logging.basicConfig(
+            format="%(asctime)s [%(process)d] %(levelname)s %(message)s",
+            level=splitgraph.config.CONFIG["SG_LOGLEVEL"],
+        )
+
         # Dict of connection parameters as well as the table, repository and image hash to query.
         self.fdw_options = fdw_options
 
@@ -153,3 +179,6 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
 
         # A QueryPlan object for the last query with stats
         self.plan = None
+
+        # Flip the global flag for engine constructors to use (see comment in splitgraph.config).
+        splitgraph.config.IN_FDW = True

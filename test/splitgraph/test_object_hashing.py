@@ -4,8 +4,9 @@ from hashlib import sha256
 
 import pytest
 
-from splitgraph import SPLITGRAPH_META_SCHEMA, Repository
+from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.fragment_manager import Digest
+from splitgraph.core.repository import Repository
 from splitgraph.splitfile import execute_commands
 from test.splitgraph.conftest import OUTPUT, PG_DATA, load_splitfile
 
@@ -71,7 +72,7 @@ def test_base_fragment_hashing(pg_repo_local):
     assert insertion_hash == "c01cce6c17bde5b999147b43c6133b11872298842a7388a0b82aee834e9454b0"
     assert insertion_hash == om.get_object_meta([expected_object])[expected_object].insertion_hash
 
-    schema_hash = sha256(str(fruits.table_schema).encode("ascii")).hexdigest()
+    schema_hash = om._calculate_schema_hash(fruits.table_schema)
     assert schema_hash == "3e022317e6dd31edb92c18a464dab55750ca16d5f4f111d383b1bdbc53ded5b5"
 
     full_hash = "0e742bd2ea4927f5193a2c68f8d4c51ea018b1ef3e3005a50727147d2cf57bc9"
@@ -177,7 +178,7 @@ def test_diff_fragment_hashing(pg_repo_local):
         deletion_hash.hex() == om.get_object_meta([expected_object])[expected_object].deletion_hash
     )
 
-    schema_hash = sha256(str(fruits_v2.table_schema).encode("ascii")).hexdigest()
+    schema_hash = om._calculate_schema_hash(fruits_v2.table_schema)
     assert schema_hash == "3e022317e6dd31edb92c18a464dab55750ca16d5f4f111d383b1bdbc53ded5b5"
 
     # Full hash (less two last bytes) is the same as the object ID.
@@ -228,7 +229,7 @@ def test_diff_fragment_hashing_long_chain(local_engine_empty):
     om = OUTPUT.objects
     final_hash = OUTPUT.objects.calculate_content_hash(OUTPUT.to_schema(), "test")
 
-    schema_hash = sha256(str(base.table_schema).encode("ascii")).hexdigest()
+    schema_hash = om._calculate_schema_hash(base.table_schema)
 
     # Check that the final hash can be assembled out of intermediate objects' insertion and deletion hashes
 

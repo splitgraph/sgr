@@ -6,9 +6,14 @@ import json
 from hashlib import sha256
 from importlib import import_module
 from random import getrandbits
+from typing import Callable, Dict, List, Optional, cast
+
+from parsimonious.nodes import Node
 
 from splitgraph.config import CONFIG
+from splitgraph.config.config import get_all_in_section
 from splitgraph.core.engine import repository_exists, lookup_repository
+from splitgraph.core.image import Image
 from splitgraph.core.repository import Repository, clone
 from splitgraph.core.sql import validate_splitfile_sql
 from splitgraph.engine import get_engine
@@ -24,11 +29,11 @@ from ._parsing import (
 )
 
 
-def _combine_hashes(hashes):
+def _combine_hashes(hashes: List[str]) -> str:
     return sha256("".join(hashes).encode("ascii")).hexdigest()
 
 
-def _checkout_or_calculate_layer(output, image_hash, calc_func):
+def _checkout_or_calculate_layer(output: Repository, image_hash: str, calc_func: Callable) -> None:
     # Future optimization here: don't actually check the layer out if it exists -- only do it at Splitfile execution
     # end or when a command needs it.
 
@@ -41,7 +46,12 @@ def _checkout_or_calculate_layer(output, image_hash, calc_func):
     print(" ---> %s" % image_hash[:12])
 
 
-def execute_commands(commands, params=None, output=None, output_base="0" * 32):
+def execute_commands(
+    commands: str,
+    params: Optional[Dict[str, str]] = None,
+    output: Optional[Repository] = None,
+    output_base: str = "0" * 32,
+) -> None:
     """
     Executes a series of Splitfile commands.
 
@@ -66,7 +76,7 @@ def execute_commands(commands, params=None, output=None, output_base="0" * 32):
         if not repository_exists(output):
             output.init()
 
-    from splitgraph.commandline._common import Color, truncate_line
+    from splitgraph.commandline.common import Color, truncate_line
 
     node_list = parse_commands(commands, params=params)
     for i, node in enumerate(node_list):
@@ -93,13 +103,13 @@ def execute_commands(commands, params=None, output=None, output_base="0" * 32):
     get_engine().commit()
 
 
-def _execute_sql(node, output):
+def _execute_sql(node: Node, output: Repository) -> None:
     # Calculate the hash of the layer we are trying to create.
     # Since we handle the "input" hashing in the import step, we don't need to care about the sources here.
     # Later on, we could enhance the caching and base the hash of the command on the hashes of objects that
     # definitely go there as sources.
-    node_contents = extract_nodes(node, ["non_newline"])[0].text
     if node.expr_name == "sql_file":
+        node_contents = extract_nodes(node, ["non_newline"])[0].text
         print("Loading the SQL commands from %s" % node_contents)
         with open(node_contents, "r") as file:
             # Possibly use a different method to calculate the image hash for commands originating from
@@ -107,9 +117,13 @@ def _execute_sql(node, output):
             # Don't "canonicalize" it here to get rid of whitespace, just hash the whole file.
             sql_command = file.read()
     else:
-        sql_command = node_contents
+        # Support singleline and multiple SQL commands between braces
+        nodes = extract_nodes(node, ["non_newline"])
+        if not nodes:
+            nodes = extract_nodes(node, ["non_curly_brace"])
+        sql_command = nodes[0].text.replace("\\{", "{").replace("\\}", "}").replace("\\\\", "\\")
     validate_splitfile_sql(sql_command)
-    output_head = output.head.image_hash
+    output_head = output.head_strict.image_hash
     target_hash = _combine_hashes([output_head, sha256(sql_command.encode("utf-8")).hexdigest()])
 
     def _calc():
@@ -121,7 +135,7 @@ def _execute_sql(node, output):
     _checkout_or_calculate_layer(output, target_hash, _calc)
 
 
-def _execute_from(node, output):
+def _execute_from(node: Node, output: Repository) -> Repository:
     interesting_nodes = extract_nodes(node, ["repo_source", "repository"])
     repo_source = get_first_or_none(interesting_nodes, "repo_source")
     output_node = get_first_or_none(interesting_nodes, "repository")
@@ -150,7 +164,7 @@ def _execute_from(node, output):
         # the output has just had the base commit (000...) created in it, that commit will be the latest.
         clone(source_repo, local_repository=output, download_all=False)
         output.images.by_hash(source_repo.images[tag_or_hash].image_hash).checkout()
-        output.head.set_provenance("FROM", source=source_repo)
+        output.head_strict.set_provenance("FROM", source=source_repo)
     else:
         # FROM EMPTY AS repository -- initializes an empty repository (say to create a table or import
         # the results of a previous stage in a multistage build.
@@ -161,7 +175,7 @@ def _execute_from(node, output):
     return output
 
 
-def _execute_import(node, output):
+def _execute_import(node: Node, output: Repository) -> None:
     interesting_nodes = extract_nodes(node, ["repo_source", "mount_source", "tables"])
     table_names, table_aliases, table_queries = extract_all_table_aliases(interesting_nodes[-1])
     if interesting_nodes[0].expr_name == "repo_source":
@@ -219,10 +233,16 @@ def _execute_db_import(
 
 
 def _execute_repo_import(
-    repository, table_names, tag_or_hash, target_repository, table_aliases, table_queries
-):
+    repository: Repository,
+    table_names: List[str],
+    tag_or_hash: str,
+    target_repository: Repository,
+    table_aliases: List[str],
+    table_queries: List[bool],
+) -> None:
     # Don't use the actual routine here as we want more control: clone the remote repo in order to turn
     # the tag into an actual hash
+
     tmp_repo = Repository(repository.namespace, repository.repository + "_clone_tmp")
     try:
         # Calculate the hash of the new layer by combining the hash of the previous layer,
@@ -246,7 +266,7 @@ def _execute_repo_import(
                 source_repo.pull()
             source_hash = source_repo.images[tag_or_hash].image_hash
             source_mountpoint = source_repo
-        output_head = target_repository.head.image_hash
+        output_head = target_repository.head_strict.image_hash
         target_hash = _combine_hashes(
             [output_head, source_hash]
             + [sha256(n.encode("utf-8")).hexdigest() for n in table_names + table_aliases]
@@ -254,8 +274,8 @@ def _execute_repo_import(
 
         def _calc():
             print(
-                "Importing tables %r:%s from %s into %s"
-                % (table_names, source_hash[:12], str(repository), str(target_repository))
+                "Importing %d table(s) from %s:%s into %s"
+                % (len(table_names), str(repository), source_hash[:12], str(target_repository))
             )
             target_repository.import_tables(
                 table_aliases,
@@ -279,17 +299,19 @@ def _execute_repo_import(
         tmp_repo.delete()
 
 
-def _execute_custom(node, output):
+def _execute_custom(node: Node, output: Repository) -> None:
+    assert output.head is not None
     command, args = parse_custom_command(node)
 
     # Locate the command in the config file and instantiate it.
-    cmd_fq_class = CONFIG.get("commands", {}).get(command)
+    cmd_fq_class: str = cast(str, get_all_in_section(CONFIG, "commands").get(command))
     if not cmd_fq_class:
         raise SplitfileError(
             "Custom command {0} not found in the config! Make sure you add an entry to your"
             " config like so:\n  [commands]  \n{0}=path.to.command.Class".format(command)
         )
 
+    assert isinstance(cmd_fq_class, str)
     index = cmd_fq_class.rindex(".")
     try:
         cmd_class = getattr(import_module(cmd_fq_class[:index]), cmd_fq_class[index + 1 :])
@@ -330,7 +352,7 @@ def _execute_custom(node, output):
         # Worth storing provenance here anyway?
 
 
-def rebuild_image(image, source_replacement):
+def rebuild_image(image: Image, source_replacement: Dict[Repository, str]) -> None:
     """
     Recreates the Splitfile used to create a given image and reruns it, replacing its dependencies with a different
     set of versions.

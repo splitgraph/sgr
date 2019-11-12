@@ -1,7 +1,10 @@
 import os
 
 
-def get_environment_config_value(key, default_return=None):
+from typing import Optional
+
+
+def get_environment_config_value(key: str, default_return: Optional[str] = None) -> Optional[str]:
     """ Get the environment variable value of the environment variable matching key.
         Otherwise return default_return.
     """

@@ -2,8 +2,9 @@
 that are aware of the actual S3 access creds and generate pre-signed
 URLs to upload/download objects."""
 from datetime import timedelta
+from typing import List
 
-from minio import Minio
+from minio.api import Minio
 
 from splitgraph.config import CONFIG
 
@@ -20,7 +21,7 @@ MINIO = Minio(
 _EXP = timedelta(seconds=60)
 
 
-def get_object_upload_urls(s3_host, object_ids):
+def get_object_upload_urls(s3_host: str, object_ids: List[str]) -> List[List[str]]:
     """
     Return a list of pre-signed URLs that each part of an object can be downloaded from.
 
@@ -29,7 +30,7 @@ def get_object_upload_urls(s3_host, object_ids):
     :return: A list of lists [(object URL, object footer URL, object schema URL)]
     """
     if s3_host != "%s:%s" % (S3_HOST, S3_PORT):
-        raise ValueError("Cannot access S3 host %s!" % s3_host)
+        raise ValueError("Only S3 host %s:%s is supported, not %s!" % (S3_HOST, S3_PORT, s3_host))
     return [
         [
             MINIO.presigned_put_object(
@@ -41,7 +42,7 @@ def get_object_upload_urls(s3_host, object_ids):
     ]
 
 
-def get_object_download_urls(s3_host, object_ids):
+def get_object_download_urls(s3_host: str, object_ids: List[str]) -> List[List[str]]:
     """
     Return a list of pre-signed URLs that each part of an object can be downloaded from.
 
@@ -50,7 +51,7 @@ def get_object_download_urls(s3_host, object_ids):
     :return: A list of lists [(object URL, object footer URL, object schema URL)]
     """
     if s3_host != "%s:%s" % (S3_HOST, S3_PORT):
-        raise ValueError("Cannot access S3 host %s!" % s3_host)
+        raise ValueError("Only S3 host %s:%s is supported, not %s!" % (S3_HOST, S3_PORT, s3_host))
     return [
         [
             MINIO.presigned_get_object(
@@ -62,7 +63,7 @@ def get_object_download_urls(s3_host, object_ids):
     ]
 
 
-def delete_objects(client, object_ids):
+def delete_objects(client: Minio, object_ids: List[str]) -> None:
     """
     Delete objects stored in Minio
 
@@ -75,7 +76,7 @@ def delete_objects(client, object_ids):
     list(client.remove_objects(S3_BUCKET, all_object_ids))
 
 
-def list_objects(client):
+def list_objects(client: Minio) -> List[str]:
     """
     List objects stored in Minio
 

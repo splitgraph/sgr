@@ -5,17 +5,22 @@ in the command line tool (via `sgr mount`) and in the Splitfile interpreter (via
 
 import logging
 from importlib import import_module
+from typing import Callable, Dict, List, Optional, Union, TYPE_CHECKING, cast
 
 from psycopg2.sql import Identifier, SQL
 
 from splitgraph.config import PG_USER, CONFIG
+from splitgraph.config.config import get_all_in_section
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import MountHandlerError
 
-_MOUNT_HANDLERS = {}
+if TYPE_CHECKING:
+    from splitgraph.engine.postgres.engine import PostgresEngine
+
+_MOUNT_HANDLERS: Dict[str, Callable] = {}
 
 
-def get_mount_handler(mount_handler):
+def get_mount_handler(mount_handler: str) -> Callable:
     """Returns a mount function for a given handler.
     The mount function must have a signature `(mountpoint, server, port, username, password, handler_kwargs)`."""
     try:
@@ -24,12 +29,12 @@ def get_mount_handler(mount_handler):
         raise MountHandlerError("Mount handler %s not supported!" % mount_handler)
 
 
-def get_mount_handlers():
+def get_mount_handlers() -> List[str]:
     """Returns the names of all registered mount handlers."""
     return list(_MOUNT_HANDLERS.keys())
 
 
-def register_mount_handler(name, mount_function):
+def register_mount_handler(name: str, mount_function: Callable) -> None:
     """Returns a mount function under a given name. See `get_mount_handler` for the mount handler spec."""
     global _MOUNT_HANDLERS
     if name in _MOUNT_HANDLERS:
@@ -37,7 +42,14 @@ def register_mount_handler(name, mount_function):
     _MOUNT_HANDLERS[name] = mount_function
 
 
-def init_fdw(engine, server_id, wrapper, server_options=None, user_options=None, overwrite=True):
+def init_fdw(
+    engine: "PostgresEngine",
+    server_id: str,
+    wrapper: str,
+    server_options: Optional[Dict[str, Union[str, None]]] = None,
+    user_options: Optional[Dict[str, str]] = None,
+    overwrite: bool = True,
+) -> None:
     """
     Sets up a foreign data server on the engine.
 
@@ -48,10 +60,6 @@ def init_fdw(engine, server_id, wrapper, server_options=None, user_options=None,
     :param user_options: Dictionary of user options
     :param overwrite: If the server already exists, delete and recreate it.
     """
-    from splitgraph.engine.postgres.engine import PostgresEngine
-
-    if not isinstance(engine, PostgresEngine):
-        raise MountHandlerError("Only PostgresEngines support mounting via FDW!")
 
     if overwrite:
         engine.run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(server_id)))
@@ -85,8 +93,15 @@ def init_fdw(engine, server_id, wrapper, server_options=None, user_options=None,
 
 
 def mount_postgres(
-    mountpoint, server, port, username, password, dbname, remote_schema, tables=None
-):
+    mountpoint: str,
+    server: str,
+    port: Union[int, str],
+    username: str,
+    password: str,
+    dbname: str,
+    remote_schema: str,
+    tables: Optional[List[str]] = None,
+) -> None:
     """
     Mount a Postgres database.
 
@@ -123,7 +138,9 @@ def mount_postgres(
     _import_foreign_schema(engine, mountpoint, remote_schema, server_id, tables)
 
 
-def _import_foreign_schema(engine, mountpoint, remote_schema, server_id, tables):
+def _import_foreign_schema(
+    engine: "PostgresEngine", mountpoint: str, remote_schema: str, server_id: str, tables: List[str]
+) -> None:
     # Construct a query: import schema limit to (%s, %s, ...) from server mountpoint_server into mountpoint
     query = SQL("IMPORT FOREIGN SCHEMA {} ").format(Identifier(remote_schema))
     if tables:
@@ -132,7 +149,9 @@ def _import_foreign_schema(engine, mountpoint, remote_schema, server_id, tables)
     engine.run_sql(query)
 
 
-def mount_mongo(mountpoint, server, port, username, password, **table_spec):
+def mount_mongo(
+    mountpoint: str, server: str, port: int, username: str, password: str, **table_spec
+) -> None:
     """
     Mount a Mongo database.
 
@@ -178,7 +197,15 @@ def mount_mongo(mountpoint, server, port, username, password, **table_spec):
         engine.run_sql(query, (db, coll))
 
 
-def mount_mysql(mountpoint, server, port, username, password, remote_schema, tables=None):
+def mount_mysql(
+    mountpoint: str,
+    server: str,
+    port: int,
+    username: str,
+    password: str,
+    remote_schema: str,
+    tables: List[str] = None,
+) -> None:
     """
     Mount a MySQL database.
 
@@ -211,7 +238,13 @@ def mount_mysql(mountpoint, server, port, username, password, remote_schema, tab
     _import_foreign_schema(engine, mountpoint, remote_schema, server_id, tables)
 
 
-def mount(mountpoint, mount_handler, handler_kwargs):
+def mount(
+    mountpoint: str,
+    mount_handler: str,
+    handler_kwargs: Dict[
+        str, Union[str, int, None, List[str], Dict[str, Union[str, Dict[str, str]]]]
+    ],
+) -> None:
     """
     Mounts a foreign database via Postgres FDW (without creating new Splitgraph objects)
 
@@ -231,9 +264,12 @@ def mount(mountpoint, mount_handler, handler_kwargs):
     engine.commit()
 
 
-def _register_default_handlers():
+def _register_default_handlers() -> None:
     # Register the mount handlers from the config.
-    for handler_name, handler_func_name in CONFIG.get("mount_handlers", {}).items():
+    for handler_name, handler_func_name_unk in get_all_in_section(CONFIG, "mount_handlers").items():
+        assert isinstance(handler_func_name_unk, str)
+        handler_func_name: str = cast(str, handler_func_name_unk)
+
         ix = handler_func_name.rindex(".")
         try:
             handler_func = getattr(

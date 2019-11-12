@@ -2,12 +2,20 @@ import os
 from datetime import datetime as dt
 from io import StringIO
 
-import pandas as pd
 import pytest
-from pandas.util.testing import assert_frame_equal
 
-from splitgraph.ingestion.pandas import df_to_table, sql_to_df
+from splitgraph.core.types import TableColumn
+
+try:
+    from splitgraph.ingestion.pandas import df_to_table, sql_to_df
+except ImportError:
+    # If Pandas isn't installed, pytest will skip these tests
+    # (see pytest.importorskip).
+    pass
 from test.splitgraph.conftest import load_csv, INGESTION_RESOURCES
+
+pd = pytest.importorskip("pandas")
+assert_frame_equal = pytest.importorskip("pandas.util.testing").assert_frame_equal
 
 
 def _str_to_df(string, has_ts=True):
@@ -36,9 +44,9 @@ def test_pandas_basic_insert(ingestion_test_repo):
     ingestion_test_repo.commit()
 
     assert ingestion_test_repo.head.get_table("test_table").table_schema == [
-        (1, "fruit_id", "bigint", True),
-        (2, "timestamp", "timestamp without time zone", False),
-        (3, "name", "text", False),
+        TableColumn(1, "fruit_id", "bigint", True),
+        TableColumn(2, "timestamp", "timestamp without time zone", False),
+        TableColumn(3, "name", "text", False),
     ]
 
     assert ingestion_test_repo.run_sql(
@@ -58,9 +66,9 @@ def test_pandas_no_processing_insert(ingestion_test_repo):
     ingestion_test_repo.commit()
 
     assert ingestion_test_repo.head.get_table("test_table").table_schema == [
-        (1, "fruit_id", "bigint", False),
-        (2, "timestamp", "text", False),
-        (3, "name", "text", False),
+        TableColumn(1, "fruit_id", "bigint", False),
+        TableColumn(2, "timestamp", "text", False),
+        TableColumn(3, "name", "text", False),
     ]
 
     assert ingestion_test_repo.run_sql(
@@ -153,7 +161,7 @@ def test_evil_pandas_dataframes(ingestion_test_repo):
     ) == [
         # Make sure backslashes don't break ingestion -- not exactly sure what the intention
         # in the original dataset was (job title is "PRESIDENT\").
-        (1, '"PRESIDENT"', 25),
+        (1, "PRESIDENT\\", 25),
         # Test characters that can be used as separators still make it into fields
         (2, "\t", 26),
     ]

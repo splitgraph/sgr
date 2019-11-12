@@ -16,7 +16,7 @@ class UnsupportedSQLError(SplitGraphError):
     is supposed to be used in an SQL/IMPORT Splitfile command."""
 
 
-class UninitializedEngineError(SplitGraphError):
+class EngineInitializationError(SplitGraphError):
     """Raised when the engine isn't initialized (no splitgraph_meta schema or audit triggers)"""
 
 
@@ -36,6 +36,10 @@ class ImageNotFoundError(SplitGraphError):
     """A Splitgraph image doesn't exist."""
 
 
+class TableNotFoundError(SplitGraphError):
+    """A table doesn't exist in an image"""
+
+
 class SplitfileError(SplitGraphError):
     """Generic error class for Splitfile interpretation/execution errors."""
 
@@ -46,3 +50,7 @@ class ExternalHandlerError(SplitGraphError):
 
 class MountHandlerError(SplitGraphError):
     """Exceptions raised by mount handlers."""
+
+
+class AuthAPIError(SplitGraphError):
+    """Exceptions raised by the Auth API"""

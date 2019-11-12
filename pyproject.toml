@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "splitgraph"
-version = "0.0.0"
+version = "0.1.0-pre"
 description = "Command line library and Python client for Splitgraph, a version control system for data"
 license = "Apache 2.0 modified with Commons Clause"
 authors = ["Splitgraph Limited"]
@@ -13,12 +13,17 @@ python = ">=3.6"
 click = "^7"
 psycopg2-binary = "^2"
 parsimonious = "^0.8"
-minio = "^5"
+minio = ">=4"
+pglast = ">=1.6"
+requests = ">=2.22"
+docker = ">=4.0"
+
 # Extra requirements for ingestion (CSV)
 pandas = {version = ">=0.24", extras = ["ingestion"], optional = true }
 sqlalchemy = { version = "^1.3", extras = ["ingestion"], optional = true }
-pglast = "^1.6"
-requests = "^2.22"
+click_log = "^0.3.2"
+tqdm = "^4.36.0"
+
 
 [tool.poetry.dev-dependencies]
 pytest = ">=4.4"
@@ -32,6 +37,8 @@ sphinx_rtd_theme = "^0.4.2"
 pylint = "^2.4"
 black = { version = "*", allows-prereleases = true }
 pre-commit = "^1.18"
+httpretty = "^0.9.6"
+mypy = ">=0.720"
 
 [tool.poetry.extras]
 ingestion = ["pandas", "sqlalchemy"]

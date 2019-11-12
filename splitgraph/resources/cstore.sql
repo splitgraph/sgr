@@ -1,6 +1,6 @@
 -- Engine-side functions for managing CStore files
--- These don't import splitgraph core (large overhead),
--- so there's some repetition in the code.
+-- These import splitgraph.config but since that doesn't pull
+-- the rest of splitgraph, the overhead is pretty small.
 
 CREATE EXTENSION IF NOT EXISTS plpython3u;
 CREATE SCHEMA IF NOT EXISTS splitgraph_api;
@@ -9,8 +9,9 @@ CREATE OR REPLACE FUNCTION splitgraph_api.upload_object(object_id varchar, urls 
 $BODY$
     import os.path
     import requests
+    from splitgraph.config import CONFIG
 
-    SG_ENGINE_OBJECT_PATH = "/var/lib/splitgraph/objects"
+    SG_ENGINE_OBJECT_PATH = CONFIG["SG_ENGINE_OBJECT_PATH"]
 
     object_path = os.path.join(SG_ENGINE_OBJECT_PATH, object_id)
 
@@ -27,8 +28,9 @@ $BODY$
     import os.path
     import shutil
     import requests
+    from splitgraph.config import CONFIG
 
-    SG_ENGINE_OBJECT_PATH = "/var/lib/splitgraph/objects"
+    SG_ENGINE_OBJECT_PATH = CONFIG["SG_ENGINE_OBJECT_PATH"]
 
     object_path = os.path.join(SG_ENGINE_OBJECT_PATH, object_id)
 
@@ -44,8 +46,9 @@ LANGUAGE plpython3u VOLATILE;
 CREATE OR REPLACE FUNCTION splitgraph_api.set_object_schema(object_id varchar, schema varchar) RETURNS void AS
 $BODY$
     import os.path
+    from splitgraph.config import CONFIG
 
-    SG_ENGINE_OBJECT_PATH = "/var/lib/splitgraph/objects"
+    SG_ENGINE_OBJECT_PATH = CONFIG["SG_ENGINE_OBJECT_PATH"]
 
     with open(os.path.join(SG_ENGINE_OBJECT_PATH, object_id + ".schema"), "w") as f:
         f.write(schema)
@@ -56,8 +59,9 @@ LANGUAGE plpython3u VOLATILE;
 CREATE OR REPLACE FUNCTION splitgraph_api.get_object_schema(object_id varchar) RETURNS varchar AS
 $BODY$
     import os.path
+    from splitgraph.config import CONFIG
 
-    SG_ENGINE_OBJECT_PATH = "/var/lib/splitgraph/objects"
+    SG_ENGINE_OBJECT_PATH = CONFIG["SG_ENGINE_OBJECT_PATH"]
 
     with open(os.path.join(SG_ENGINE_OBJECT_PATH, object_id + ".schema")) as f:
         return f.read()
@@ -68,8 +72,9 @@ LANGUAGE plpython3u VOLATILE;
 CREATE OR REPLACE FUNCTION splitgraph_api.delete_object_files(object_id varchar) RETURNS void AS
 $BODY$
     import os.path
+    from splitgraph.config import CONFIG
 
-    SG_ENGINE_OBJECT_PATH = "/var/lib/splitgraph/objects"
+    SG_ENGINE_OBJECT_PATH = CONFIG["SG_ENGINE_OBJECT_PATH"]
 
     def _remove(path):
         try:
@@ -88,8 +93,9 @@ LANGUAGE plpython3u VOLATILE;
 CREATE OR REPLACE FUNCTION splitgraph_api.get_object_size(object_id varchar) RETURNS int AS
 $BODY$
     import os.path
+    from splitgraph.config import CONFIG
 
-    SG_ENGINE_OBJECT_PATH = "/var/lib/splitgraph/objects"
+    SG_ENGINE_OBJECT_PATH = CONFIG["SG_ENGINE_OBJECT_PATH"]
 
     object_path = os.path.join(SG_ENGINE_OBJECT_PATH, object_id)
     return os.path.getsize(object_path) + \
@@ -102,12 +108,27 @@ LANGUAGE plpython3u VOLATILE;
 CREATE OR REPLACE FUNCTION splitgraph_api.list_objects() RETURNS varchar[] AS
 $BODY$
     import os
+    from splitgraph.config import CONFIG
 
-    SG_ENGINE_OBJECT_PATH = "/var/lib/splitgraph/objects"
+    SG_ENGINE_OBJECT_PATH = CONFIG["SG_ENGINE_OBJECT_PATH"]
 
     # Crude but faster than listing foreign tables (and hopefully consistent).
 
     files = os.listdir(SG_ENGINE_OBJECT_PATH)
     return [f for f in files if not f.endswith(".schema") and not f.endswith(".footer")]
+$BODY$
+LANGUAGE plpython3u VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION splitgraph_api.object_exists(object_id varchar) RETURNS boolean AS
+$BODY$
+    # Check if the physical object file exists in storage.
+
+    import os.path
+    from splitgraph.config import CONFIG
+
+    SG_ENGINE_OBJECT_PATH = CONFIG["SG_ENGINE_OBJECT_PATH"]
+
+    return os.path.exists(os.path.join(SG_ENGINE_OBJECT_PATH, object_id))
 $BODY$
 LANGUAGE plpython3u VOLATILE;

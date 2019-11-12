@@ -10,14 +10,13 @@ services:
       - POSTGRES_USER=sgr
       - POSTGRES_PASSWORD=supersecure
       - POSTGRES_DB=splitgraph
+      # .sgconfig that contains aliases for the remote_engine and object cache parameters, used
+      # by layered querying and object uploads/downloads. Copied into the engine when it's set up.
       - SG_CONFIG_FILE=/.sgconfig
-      - SG_LOGLEVEL=INFO
+      - SG_LOGLEVEL=DEBUG
     expose:
       - 5432
     volumes:
-      # Mount the .sgconfig so that the splitgraph library used by the LQ FDW knows about
-      # the remote_engine / Minio handler that we use locally.
-      - ../resources/.sgconfig:/.sgconfig
       - ../../:/splitgraph
   remote_engine:
     build:
@@ -30,11 +29,14 @@ services:
       - POSTGRES_PASSWORD=supersecure
       - POSTGRES_DB=splitgraph
       - PGPORT=5431
-      - SG_CONFIG_FILE=/.sgconfig
       - SG_LOGLEVEL=INFO
+      # S3 host that this engine can sign upload/download URLs for
+      - SG_S3_HOST=objectstorage
+      - SG_S3_PORT=9000
+      - SG_S3_KEY=minioclient
+      - SG_S3_PWD=supersecure
     volumes:
       - ./data/remote_engine/setup.sql:/docker-entrypoint-initdb.d/setup.sql
-      - ../resources/.sgconfig:/.sgconfig
       - ../../:/splitgraph
     expose:
       - 5431

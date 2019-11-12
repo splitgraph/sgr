@@ -127,12 +127,13 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_object_meta(object_ids varchar[])
     format         VARCHAR,
     namespace      VARCHAR,
     size           BIGINT,
+    created        TIMESTAMP,
     insertion_hash VARCHAR(64),
     deletion_hash  VARCHAR(64),
     index          JSONB) AS $$
 BEGIN
    RETURN QUERY
-   SELECT o.object_id, o.format, o.namespace, o.size, o.insertion_hash, o.deletion_hash, o.index
+   SELECT o.object_id, o.format, o.namespace, o.size, o.created, o.insertion_hash, o.deletion_hash, o.index
    FROM splitgraph_meta.objects o
    WHERE o.object_id = ANY(object_ids);
 END
@@ -152,15 +153,15 @@ BEGIN
 END
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 
--- add_object(object_id, format, parent_id, namespace, size, insertion_hash, deletion_hash, index)
+-- add_object(object_id, format, namespace, size, insertion_hash, deletion_hash, index)
 CREATE OR REPLACE FUNCTION splitgraph_api.add_object(object_id varchar, format varchar,
-    namespace varchar, size bigint, insertion_hash varchar(64),
+    namespace varchar, size bigint, created timestamp, insertion_hash varchar(64),
     deletion_hash varchar(64), index jsonb) RETURNS void AS $$
 BEGIN
     PERFORM splitgraph_api.check_privilege(namespace);
-    INSERT INTO splitgraph_meta.objects(object_id, format, namespace, size,
+    INSERT INTO splitgraph_meta.objects(object_id, format, namespace, size, created,
         insertion_hash, deletion_hash, index)
-    VALUES (object_id, format, namespace, size, insertion_hash, deletion_hash, index);
+    VALUES (object_id, format, namespace, size, created, insertion_hash, deletion_hash, index);
 END
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 
@@ -172,7 +173,8 @@ BEGIN
     namespace = (SELECT o.namespace FROM splitgraph_meta.objects o WHERE o.object_id = _object_id);
     PERFORM splitgraph_api.check_privilege(namespace);
     INSERT INTO splitgraph_meta.object_locations(object_id, location, protocol)
-    VALUES (_object_id, location, protocol);
+    VALUES (_object_id, location, protocol)
+    ON CONFLICT (object_id) DO UPDATE SET location = EXCLUDED.location, protocol = EXCLUDED.protocol;
 END
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 

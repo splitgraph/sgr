@@ -1,15 +1,20 @@
-DEFAULTS = {
-    # Name of the engine that the sgr client uses (can be overridden to make
-    # the default global engine point to e.g the remote engine).
-    "SG_ENGINE": None,
+from typing import Dict, Union
+
+# Define a ConfigDict: it's a nested dictionary of strings but so far
+# we only go down max 2 levels (config["remotes"]["data.splitgraph.com"][param])
+# so we enumerate them all explicitly.
+ConfigDict = Dict[str, Union[str, Dict[str, str], Dict[str, Dict[str, str]]]]
+
+DEFAULTS: ConfigDict = {
+    "SG_ENGINE": "",
     # Logging threshold (log messages not emitted below this). Accepted values are
     # CRITICAL, ERROR, WARNING, INFO and DEBUG.
     "SG_LOGLEVEL": "WARNING",
     "SG_NAMESPACE": "sg-default-ns",
     "SG_ENGINE_FDW_HOST": "localhost",
-    "SG_ENGINE_FDW_PORT": 5432,
+    "SG_ENGINE_FDW_PORT": "5432",
     "SG_ENGINE_HOST": "localhost",
-    "SG_ENGINE_PORT": 5432,
+    "SG_ENGINE_PORT": "5432",
     "SG_ENGINE_DB_NAME": "splitgraph",
     "SG_ENGINE_USER": "sgr",
     "SG_ENGINE_PWD": "supersecure",
@@ -18,31 +23,46 @@ DEFAULTS = {
     "SG_ENGINE_POSTGRES_DB_NAME": "postgres",
     "SG_ENGINE_OBJECT_PATH": "/var/lib/splitgraph/objects",
     # Size of the connection pool used to download/upload objects + talk to the engine
-    "SG_ENGINE_POOL": 16,
-    "SG_CONFIG_FILE": None,
+    "SG_ENGINE_POOL": "5",
+    "SG_CONFIG_FILE": "",
     "SG_META_SCHEMA": "splitgraph_meta",
-    "SG_CONFIG_DIRS": None,
-    "SG_CONFIG_DIR": None,
+    "SG_CONFIG_DIRS": "",
+    "SG_CONFIG_DIR": "",
     "SG_REPO_LOOKUP": "",
     "SG_REPO_LOOKUP_OVERRIDE": "",
     "SG_S3_HOST": "localhost",
     "SG_S3_PORT": "9000",
-    # Anonymous access by default
-    "SG_S3_KEY": None,
-    "SG_S3_PWD": None,
+    # Anonymous S3 access by default
     "SG_S3_BUCKET": "splitgraph",
+    "SG_S3_KEY": "",
+    "SG_S3_PWD": "",
     # Object cache (objects downloaded from an external location) tuning
     # Will try to target this size (in MB).
-    "SG_OBJECT_CACHE_SIZE": 1024,
+    "SG_OBJECT_CACHE_SIZE": "1024",
     # Significance of recent usage time and object size in cache eviction.
     # See splitgraph.core.object_manager for an explanation.
-    "SG_EVICTION_DECAY": 0.002,
-    "SG_EVICTION_FLOOR": 1,
-    "SG_EVICTION_MIN_FRACTION": 0.05,
+    "SG_EVICTION_DECAY": "0.002",
+    "SG_EVICTION_FLOOR": "1",
+    "SG_EVICTION_MIN_FRACTION": "0.05",
     "SG_FDW_CLASS": "splitgraph.core.fdw_checkout.QueryingForeignDataWrapper",
+    # Some default sections: these can't be overridden via envvars.
+    # Default remote engine (data.splitgraph.com).
+    # No credentials here: they are fetched from data.splitgraph.com/auth
+    # at registration time.
+    "remotes": {
+        "data.splitgraph.com": {
+            "SG_ENGINE_HOST": "data.splitgraph.com",
+            "SG_ENGINE_PORT": "5432",
+            "SG_ENGINE_DB_NAME": "sgregistry",
+            "SG_AUTH_API": "http://data.splitgraph.com/auth",
+            "SG_QUERY_API": "http://data.splitgraph.com/mc",
+        }
+    },
+    "external_handlers": {"S3": "splitgraph.hooks.s3.S3ExternalObjectHandler"},
 }
 
-KEYS = list(DEFAULTS.keys())
+ALL_KEYS = list(DEFAULTS.keys())
+KEYS = [k for k in ALL_KEYS if k not in ["remotes", "external_handlers"]]
 # Keys whose contents we don't print fully
 SENSITIVE_KEYS = [k for k in KEYS if "_PWD" in k]
 

@@ -11,7 +11,9 @@ SQL CREATE TABLE spirit_fruits AS SELECT fruits.fruit_id, stuff.name, fruits.nam
 # that it couldn't be a part of a DIFF object (since in absence of a PK the DIFF is PKd on the whole tuple).
 # Somehow this bug only showed up when WAL was changed to audit triggers to detect changes.
 
-SQL ALTER TABLE spirit_fruits ADD COLUMN new_id integer;\
-    UPDATE spirit_fruits SET new_id = fruit_id + 10;\
-    ALTER TABLE spirit_fruits ADD PRIMARY KEY (new_id);\
+SQL {
+    ALTER TABLE spirit_fruits ADD COLUMN new_id integer;
+    UPDATE spirit_fruits SET new_id = fruit_id + 10;
+    ALTER TABLE spirit_fruits ADD PRIMARY KEY (new_id);
     ALTER TABLE spirit_fruits DROP COLUMN fruit_id
+}

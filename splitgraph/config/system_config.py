@@ -1,13 +1,15 @@
 import os
 import sys
 
-from .argument_config import get_argument_config_value
-from .environment_config import get_environment_config_value
-
 # "Export" an object of SystemConfigGetters, for getting config values that
 # require operations with the system, like checking if files exist.
 #
 # Don't forget to add each method definition to the object after defining it.
+from typing import List, Optional
+
+from .argument_config import get_argument_config_value
+from .environment_config import get_environment_config_value
+
 SYSTEM_CONFIG_GETTERS = {}
 
 VALID_CONFIG_FILE_NAMES = [".sgconfig", ".sgrc", ".splitgraph.config"]
@@ -15,15 +17,15 @@ VALID_CONFIG_FILE_NAMES = [".sgconfig", ".sgrc", ".splitgraph.config"]
 HOME_SUB_DIR = ".splitgraph"
 
 
-def is_file(filename):
+def is_file(filename: str) -> bool:
     return os.path.isfile(filename)
 
 
-def file_exists(_dir, filename):
+def file_exists(_dir: str, filename: str) -> bool:
     return is_file(os.path.join(_dir, filename))
 
 
-def get_explicit_config_file_location():
+def get_explicit_config_file_location() -> Optional[str]:
     """ Get the explicitly defined location of config file, if defined.
 
         The location will either be defined in:
@@ -55,7 +57,7 @@ def get_explicit_config_file_location():
     return None
 
 
-def get_explicit_config_file_dirs():
+def get_explicit_config_file_dirs() -> List[str]:
     """ Get any explicitly defined config file directories,
         which are directories where we should search for files from
         VALID_CONFIG_FILE_NAMES.
@@ -111,7 +113,7 @@ def get_explicit_config_file_dirs():
     return existing_unique_dir_list
 
 
-def get_config_file(default_return=None):
+def get_config_file(default_return: None = None) -> Optional[str]:
     """
         Get the location of an existing SG_CONFIG_FILE on the system with
         a valid name. Do not attempt to parse the config file, just return
@@ -166,5 +168,5 @@ def get_config_file(default_return=None):
 SYSTEM_CONFIG_GETTERS["SG_CONFIG_FILE"] = get_config_file
 
 
-def get_system_config_value(key, default_return=None):
+def get_system_config_value(key: str, default_return: None = None) -> Optional[str]:
     return SYSTEM_CONFIG_GETTERS.get(key, lambda: default_return)()

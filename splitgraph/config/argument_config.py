@@ -1,9 +1,10 @@
 import sys
+from typing import List, Optional, Tuple
 
 from .keys import ARG_KEYS, ARGUMENT_KEY_MAP
 
 
-def get_arg_tuples():
+def get_arg_tuples() -> List[Tuple[str, str]]:
     """
         Get the raw (argN, argN+1) tuples from sys.argv
 
@@ -19,7 +20,7 @@ def get_arg_tuples():
     return [(a1, a2) for a1, a2 in zip(sys_args, sys_args[1:]) if a1 in ARG_KEYS]
 
 
-def get_argument_config_value(key, default_return=None):
+def get_argument_config_value(key: str, default_return: Optional[str] = None) -> Optional[str]:
     """
         Get get the value of an argument, where value is the argument
         immediately following the argument matching a key in ARG_KEYS, e.g.:

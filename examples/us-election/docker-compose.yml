@@ -1,0 +1,18 @@
+version: '3'
+services:
+  engine:
+    image: splitgraph/engine
+    ports:
+      - '0.0.0.0:5432:5432'
+    environment:
+      - POSTGRES_USER=sgr
+      - POSTGRES_PASSWORD=supersecure
+      - POSTGRES_DB=splitgraph
+      - SG_LOGLEVEL=INFO
+      - SG_CONFIG_FILE=/.sgconfig
+    expose:
+      - 5432
+    # Need to mount this into the engine so that access credentials to
+    # data.splitgraph.com propagate into it.
+    volumes:
+      - ./.sgconfig:/.sgconfig

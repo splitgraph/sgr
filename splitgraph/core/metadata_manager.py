@@ -2,27 +2,44 @@
 Classes related to managing table/image/object metadata tables.
 """
 import itertools
-from collections import namedtuple
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Set, Tuple, TYPE_CHECKING, NamedTuple, cast
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_API_SCHEMA, SPLITGRAPH_META_SCHEMA
-from ._common import select, ResultShape
+from splitgraph.core.types import TableSchema
+from .common import select, ResultShape
+
+if TYPE_CHECKING:
+    from splitgraph.core.repository import Repository
+    from splitgraph.engine.postgres.engine import PostgresEngine
+
 
 OBJECT_COLS = [
     "object_id",
     "format",
     "namespace",
     "size",
+    "created",
     "insertion_hash",
     "deletion_hash",
     "index",
 ]
 
 
-class Object(namedtuple("Object", OBJECT_COLS)):
+class Object(NamedTuple):
     """Represents a Splitgraph object that tables are composed of."""
+
+    object_id: str
+    format: str
+    namespace: str
+    size: int
+    created: datetime
+    insertion_hash: str
+    deletion_hash: str
+    object_index: Dict[str, Any]  # Clashes with NamedTuple's "index"
 
 
 class MetadataManager:
@@ -31,10 +48,10 @@ class MetadataManager:
     with image, table and object information.
     """
 
-    def __init__(self, metadata_engine):
+    def __init__(self, metadata_engine: "PostgresEngine") -> None:
         self.metadata_engine = metadata_engine
 
-    def register_objects(self, objects, namespace=None):
+    def register_objects(self, objects: List[Object], namespace: Optional[str] = None) -> None:
         """
         Registers multiple Splitgraph objects in the tree.
 
@@ -44,7 +61,10 @@ class MetadataManager:
         """
         object_meta = [
             tuple(
-                namespace if namespace and a == "namespace" else getattr(o, a) for a in OBJECT_COLS
+                namespace
+                if namespace and a == "namespace"
+                else getattr(o, a if a != "index" else "object_index")
+                for a in OBJECT_COLS
             )
             for o in objects
         ]
@@ -56,7 +76,9 @@ class MetadataManager:
             object_meta,
         )
 
-    def register_tables(self, repository, table_meta):
+    def register_tables(
+        self, repository: "Repository", table_meta: List[Tuple[str, str, TableSchema, List[str]]]
+    ) -> None:
         """
         Links tables in an image to physical objects that they are stored as.
         Objects must already be registered in the object tree.
@@ -73,7 +95,7 @@ class MetadataManager:
             table_meta,
         )
 
-    def register_object_locations(self, object_locations):
+    def register_object_locations(self, object_locations: List[Tuple[str, str, str]]) -> None:
         """
         Registers external locations (e.g. HTTP or S3) for Splitgraph objects.
         Objects must already be registered in the object tree.
@@ -87,47 +109,56 @@ class MetadataManager:
             object_locations,
         )
 
-    def get_all_objects(self):
+    def get_all_objects(self) -> List[str]:
         """
         Gets all objects currently in the Splitgraph tree.
 
         :return: List of object IDs.
         """
-        return self.metadata_engine.run_sql(
-            select("objects", "object_id"), return_shape=ResultShape.MANY_ONE
+        return cast(
+            List[str],
+            self.metadata_engine.run_sql(
+                select("objects", "object_id"), return_shape=ResultShape.MANY_ONE
+            ),
         )
 
-    def get_new_objects(self, object_ids):
+    def get_new_objects(self, object_ids: List[str]) -> List[str]:
         """
         Get object IDs from the passed list that don't exist in the tree.
 
         :param object_ids: List of objects to check
         :return: List of unknown object IDs.
         """
-        return self.metadata_engine.run_sql(
-            SQL("SELECT {}.get_new_objects(%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
-            (object_ids,),
-            return_shape=ResultShape.ONE_ONE,
+        return cast(
+            List[str],
+            self.metadata_engine.run_sql(
+                SQL("SELECT {}.get_new_objects(%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
+                (object_ids,),
+                return_shape=ResultShape.ONE_ONE,
+            ),
         )
 
-    def get_external_object_locations(self, objects):
+    def get_external_object_locations(self, objects: List[str]) -> List[Tuple[str, str, str]]:
         """
         Gets external locations for objects.
 
         :param objects: List of object IDs stored externally.
         :return: List of (object_id, location, protocol).
         """
-        return self.metadata_engine.run_sql(
-            select(
-                "get_object_locations",
-                "object_id, location, protocol",
-                schema=SPLITGRAPH_API_SCHEMA,
-                table_args="(%s)",
+        return cast(
+            List[Tuple[str, str, str]],
+            self.metadata_engine.run_sql(
+                select(
+                    "get_object_locations",
+                    "object_id, location, protocol",
+                    schema=SPLITGRAPH_API_SCHEMA,
+                    table_args="(%s)",
+                ),
+                (objects,),
             ),
-            (objects,),
         )
 
-    def get_object_meta(self, objects):
+    def get_object_meta(self, objects: List[str]) -> Dict[str, Object]:
         """
         Get metadata for multiple Splitgraph objects from the tree
 
@@ -149,7 +180,22 @@ class MetadataManager:
         result = [Object(*m) for m in metadata]
         return {o.object_id: o for o in result}
 
-    def cleanup_metadata(self):
+    def get_objects_for_repository(self, repository: "Repository") -> List[str]:
+        table_objects = {
+            o
+            for os in self.metadata_engine.run_sql(
+                SQL(
+                    "SELECT object_ids FROM {}.tables WHERE namespace = %s AND repository = %s"
+                ).format(Identifier(SPLITGRAPH_META_SCHEMA)),
+                (repository.namespace, repository.repository),
+                return_shape=ResultShape.MANY_ONE,
+            )
+            for o in os
+        }
+
+        return list(table_objects)
+
+    def cleanup_metadata(self) -> Set[str]:
         """
         Go through the current metadata and delete all objects that aren't required
         by any table on the engine.

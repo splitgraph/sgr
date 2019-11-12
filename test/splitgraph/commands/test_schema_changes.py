@@ -1,39 +1,62 @@
 import pytest
 
+from splitgraph.core.types import TableColumn, TableSchema
 from splitgraph.engine.postgres.engine import SG_UD_FLAG
 
 TEST_CASES = [
-    ("ALTER TABLE fruits DROP COLUMN name", [(1, "fruit_id", "integer", False)]),
+    ("ALTER TABLE fruits DROP COLUMN name", [TableColumn(1, "fruit_id", "integer", False)]),
     (
         "ALTER TABLE fruits ADD COLUMN test varchar",
         [
-            (1, "fruit_id", "integer", False),
-            (2, "name", "character varying", False),
-            (3, "test", "character varying", False),
+            TableColumn(1, "fruit_id", "integer", False),
+            TableColumn(2, "name", "character varying", False),
+            TableColumn(3, "test", "character varying", False),
         ],
     ),
     (
         "ALTER TABLE fruits ADD PRIMARY KEY (fruit_id)",
-        [(1, "fruit_id", "integer", True), (2, "name", "character varying", False)],
+        [
+            TableColumn(1, "fruit_id", "integer", True),
+            TableColumn(2, "name", "character varying", False),
+        ],
     ),
     (
         """ALTER TABLE fruits ADD COLUMN test_1 varchar, ADD COLUMN test_2 integer,
                                          DROP COLUMN name;
         ALTER TABLE fruits ADD PRIMARY KEY (fruit_id)""",
         [
-            (1, "fruit_id", "integer", True),
-            (3, "test_1", "character varying", False),
-            (4, "test_2", "integer", False),
+            TableColumn(1, "fruit_id", "integer", True),
+            TableColumn(3, "test_1", "character varying", False),
+            TableColumn(4, "test_2", "integer", False),
+        ],
+    ),
+    (
+        """COMMENT ON COLUMN fruits.name IS 'Test name'""",
+        [
+            TableColumn(1, "fruit_id", "integer", False),
+            TableColumn(2, "name", "character varying", False, "Test name"),
         ],
     ),
 ]
 
-OLD_SCHEMA = [(1, "fruit_id", "integer", False), (2, "name", "character varying", False)]
+OLD_SCHEMA = [
+    TableColumn(1, "fruit_id", "integer", False),
+    TableColumn(2, "name", "character varying", False),
+]
 
 
-def _reassign_ordinals(schema):
+def _reassign_ordinals(schema: TableSchema):
     # When a table is created anew, its ordinals are made consecutive again.
-    return [(i + 1, col[1], col[2], col[3]) for i, col in enumerate(schema)]
+    return [
+        TableColumn(i + 1, col.name, col.pg_type, col.is_pk, col.comment)
+        for i, col in enumerate(schema)
+    ]
+
+
+def _drop_comments(schema: TableSchema) -> TableSchema:
+    # For storing object schemata in JSON in /var/lib/splitgraph/objects,
+    # we don't store the comments (they're a feature of the table, not the object).
+    return [TableColumn(*(t[:4])) for t in schema]
 
 
 @pytest.mark.parametrize("test_case", TEST_CASES)
@@ -57,9 +80,10 @@ def test_schema_changes(pg_repo_local, test_case):
     # Test that the new image was stored as new object with the new schema.
     assert len(new_head.get_table("fruits").objects) == 1
     new_snap = new_head.get_table("fruits").objects[0]
-    assert pg_repo_local.engine.get_object_schema(new_snap) == _reassign_ordinals(
-        expected_new_schema
-    ) + [(len(expected_new_schema) + 1, SG_UD_FLAG, "boolean", False)]
+    assert pg_repo_local.engine.get_object_schema(new_snap) == _drop_comments(
+        _reassign_ordinals(expected_new_schema)
+        + [TableColumn(len(expected_new_schema) + 1, SG_UD_FLAG, "boolean", False)]
+    )
 
     head.checkout()
     assert (

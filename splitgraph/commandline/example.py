@@ -2,12 +2,15 @@
 Command line routines generating example data / Splitfiles
 """
 from hashlib import sha256
+from typing import TYPE_CHECKING
 
 import click
 
-from splitgraph.commandline._common import RepositoryType
-from splitgraph.core import repository_exists, Identifier, SQL, select
-from splitgraph.engine import ResultShape
+from splitgraph.commandline.common import RepositoryType
+from splitgraph.core.types import TableColumn
+
+if TYPE_CHECKING:
+    from splitgraph.core.repository import Repository
 
 _DEMO_TABLE_SIZE = 10
 _DEMO_CHANGE_SIZE = 2
@@ -30,12 +33,12 @@ def example():
     """Generate demo Splitgraph data."""
 
 
-def _hash(val):
+def _hash(val: int) -> str:
     """Use deterministic values to showcase reusing fragments."""
     return sha256(str(val).encode("ascii")).hexdigest()
 
 
-def generate_table(repository, table_name, size):
+def generate_table(repository: "Repository", table_name: str, size: int) -> None:
     """
     Creates a table with an integer primary key and a string value.
 
@@ -43,10 +46,16 @@ def generate_table(repository, table_name, size):
     :param table_name: Name of the table to generate
     :param size: Number of rows in the table.
     """
+    from psycopg2.sql import SQL
+    from psycopg2.sql import Identifier
+
     repository.engine.create_table(
         repository.to_schema(),
         table_name,
-        [(1, "key", "integer", True), (2, "value", "varchar", False)],
+        [
+            TableColumn(1, "key", "integer", True, "Some key"),
+            TableColumn(2, "value", "varchar", False, "Some value"),
+        ],
     )
     repository.engine.run_sql_batch(
         SQL("INSERT INTO {} VALUES (%s, %s)").format(Identifier(table_name)),
@@ -55,7 +64,9 @@ def generate_table(repository, table_name, size):
     )
 
 
-def alter_table(repository, table_name, rows_added, rows_deleted, rows_updated):
+def alter_table(
+    repository: "Repository", table_name: str, rows_added: int, rows_deleted: int, rows_updated: int
+) -> None:
     """
     Alters the example table, adding/updating/deleting a certain number of rows.
 
@@ -65,6 +76,9 @@ def alter_table(repository, table_name, rows_added, rows_deleted, rows_updated):
     :param rows_deleted: Number of rows to remove
     :param rows_updated: Number of rows to update
     """
+    from splitgraph.core.common import select, ResultShape
+    from psycopg2.sql import Identifier, SQL
+
     keys = repository.run_sql(
         select(table_name, "key", schema=repository.to_schema()), return_shape=ResultShape.MANY_ONE
     )
@@ -74,7 +88,7 @@ def alter_table(repository, table_name, rows_added, rows_deleted, rows_updated):
     )
 
     # Delete first N rows
-    print("Deleting %d rows..." % rows_deleted)
+    click.echo("Deleting %d rows..." % rows_deleted)
     repository.engine.run_sql_batch(
         SQL("DELETE FROM {} WHERE key = %s").format(Identifier(table_name)),
         [(k,) for k in keys[:rows_deleted]],
@@ -82,7 +96,7 @@ def alter_table(repository, table_name, rows_added, rows_deleted, rows_updated):
     )
 
     # Update next N rows
-    print("Updating %d rows..." % rows_updated)
+    click.echo("Updating %d rows..." % rows_updated)
     repository.engine.run_sql_batch(
         SQL("UPDATE {} SET value = %s WHERE key = %s").format(Identifier(table_name)),
         [(_hash(k) + "_UPDATED", k) for k in keys[rows_updated : rows_updated * 2]],
@@ -90,7 +104,7 @@ def alter_table(repository, table_name, rows_added, rows_deleted, rows_updated):
     )
 
     # Insert rows at the end
-    print("Adding %d rows..." % rows_added)
+    click.echo("Adding %d rows..." % rows_added)
     repository.engine.run_sql_batch(
         SQL("INSERT INTO {} VALUES (%s, %s)").format(Identifier(table_name)),
         [(k, _hash(k)) for k in range(last + 1, last + rows_added + 1)],
@@ -106,6 +120,8 @@ def generate_c(repository):
 
     :param repository: Repository to generate. Must not already exist.
     """
+    from splitgraph.core.engine import repository_exists
+
     if repository_exists(repository):
         raise click.ClickException(
             "Repository %s already exists, use sgr rm to delete it!" % repository.to_schema()
@@ -116,7 +132,7 @@ def generate_c(repository):
     generate_table(repository, "demo", size=_DEMO_TABLE_SIZE)
 
     image = repository.commit()
-    print(
+    click.echo(
         "Generated %s:%s with %s rows, image hash %s."
         % (repository.to_schema(), "demo", _DEMO_TABLE_SIZE, image.image_hash[:12])
     )
@@ -148,7 +164,7 @@ def splitfile_c(repository_1, repository_2):
     :param repository_1: First repository
     :param repository_2: Second repository
     """
-    print(
+    click.echo(
         _DEMO_TEMPLATE.format(
             repo_1=repository_1.to_schema(),
             repo_2=repository_2.to_schema(),

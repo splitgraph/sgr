@@ -1,0 +1,37 @@
+- commands:
+  - "# Build and start the containers"
+  - docker-compose --project-name splitgraph_example down -v --remove-orphans
+  - docker-compose --project-name splitgraph_example build
+  - docker-compose --project-name splitgraph_example up -d
+  record: False
+- commands:
+  - "# Initialize the engine"
+  - sgr init
+  record: False
+- commands:
+  - "# Inspect the config file"
+  - cat .sgconfig
+- commands:
+  - "# Do some preliminary cleanup"
+  - sgr rm -y staging
+- commands:
+  - "# Mount the Mongo database"
+  - sgr mount mongo_fdw --help
+  - |
+    sgr mount mongo_fdw staging -c originro:originpass@mongo:27017 -o '{"stuff": {
+                "db": "origindb",
+                "coll": "stuff",
+                "schema": {
+                    "name": "text",
+                    "duration": "numeric",
+                    "happy": "boolean"}}}'
+- commands:
+  - "# Check the contents of the new table"
+  - sgr sql -s staging "SELECT * FROM stuff"
+- commands:
+  - "# Import the data into a new Splitgraph repository"
+  - sgr import staging "SELECT name, duration, happy FROM stuff" my/repository stuff
+- commands:
+  - "# Delete the docker-compose project and cleanup"
+  - docker-compose --project-name splitgraph_example down -v --remove-orphans
+  record: False

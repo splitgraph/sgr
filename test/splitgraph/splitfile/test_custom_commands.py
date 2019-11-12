@@ -1,16 +1,13 @@
+from unittest.mock import patch
+
 import pytest
-
-from splitgraph import get_engine
-
-try:
-    from unittest.mock import patch
-except ImportError:
-    from mock import patch
 from psycopg2.sql import Identifier, SQL
+
+from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitfileError
+from splitgraph.hooks.splitfile_commands import PluginCommand
 from splitgraph.splitfile import execute_commands
 from splitgraph.splitfile.execution import _combine_hashes
-from splitgraph.hooks.splitfile_commands import PluginCommand
 from test.splitgraph.conftest import OUTPUT, load_splitfile
 
 

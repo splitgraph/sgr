@@ -7,10 +7,9 @@ import sys
 
 import click
 
-import splitgraph.engine
-import splitgraph.engine.postgres.engine
-from splitgraph.commandline._common import RepositoryType
-from splitgraph.core.repository import clone, Repository
+from splitgraph.commandline.common import RepositoryType
+from splitgraph.config import CONFIG
+from splitgraph.config.config import get_from_subsection
 
 
 @click.command(name="pull")
@@ -41,48 +40,87 @@ def clone_c(remote_repository, local_repository, remote, download_all):
     The lookup path for the repository is governed by the ``SG_REPO_LOOKUP`` and ``SG_REPO_LOOKUP_OVERRIDE``
     config parameters and can be overriden by the command line ``--remote`` option.
     """
+    from splitgraph.core.repository import Repository
+    from splitgraph.engine import get_engine
+    from splitgraph.core.repository import clone
+
     # If the user passed in a remote, we can inject that into the repository spec.
     # Otherwise, we have to turn the repository into a string and let clone() look up the
     # actual engine the repository lives on.
     if remote:
-        remote_repository = Repository.from_template(
-            remote_repository, engine=splitgraph.get_engine(remote)
-        )
+        remote_repository = Repository.from_template(remote_repository, engine=get_engine(remote))
     else:
         remote_repository = remote_repository.to_schema()
 
     clone(remote_repository, local_repository=local_repository, download_all=download_all)
 
 
+_REMOTES = list(CONFIG.get("remotes", []))
+
+
 @click.command(name="push")
 @click.argument("repository", type=RepositoryType())
 @click.argument("remote_repository", required=False, type=RepositoryType())
-@click.option("-r", "--remote", help="Alias or full connection string for the remote engine")
-@click.option("-h", "--upload-handler", help="Upload handler", default="DB")
+@click.option(
+    "-r",
+    "--remote",
+    help="Alias or full connection string for the remote engine",
+    type=click.Choice(_REMOTES),
+    default=_REMOTES[0] if len(_REMOTES) == 1 else None,
+)
+@click.option("-h", "--upload-handler", help="Upload handler", default="S3")
 @click.option("-o", "--upload-handler-options", help="Upload handler parameters", default="{}")
 def push_c(repository, remote_repository, remote, upload_handler, upload_handler_options):
     """
-    Push changes from a local repository to the upstream.
+    Push changes from a local repository to the Splitgraph registry or another engine.
 
-    The actual destination is decided as follows:
+    By default, the repository will be pushed to a repository with the same name in the user's namespace
+    (SG_NAMESPACE configuration value which defaults to the username).
 
-      * Remote engine: ``remote`` argument (either engine alias as specified in the config or a connection string,
-        then the upstream configured for the repository.
+    If there's a single engine registered in the config (e.g. data.splitgraph.com), it shall be the default
+    destination.
 
-      * Remote repository: ``remote_repository`` argument, then the upstream configured for the repository, then
-        the same name as the repository.
+    If an upstream repository/engine has been configured for this engine with `sgr upstream`,
+    it will be used instead.
 
-    ``-h`` and ``-o`` allow to upload the objects to somewhere else other than the external engines. Currently,
-    uploading to an S3-compatible host via Minio is supported: see :mod:`splitgraph.hooks.s3` for information
-    on handler options and how to register a new upload handler.
+    Finally, if `remote_repository` or `--remote` are passed, they will take precedence.
+
+    The actual objects will be uploaded to S3 via Minio. When pushing to another engine,
+    you can choose to upload them directly by passing --handler DB.
     """
-    # redesign this so that people push to some default remote engine (e.g. the global registry)?
+
+    # The reason for this behaviour is to streamline out-of-the-box Splitgraph setups where
+    # data.splitgraph.com is the only registered engine. In that case:
+    #
+    # * sgr push repo: will push to myself/repo on data.splitgraph.com with S3 uploading (user's namespace).
+    # * sgr push noaa/climate: will push to myself/climate
+    # * sgr push noaa/climate noaa/climate: will explicitly push to noaa/climate (assuming the user can write
+    #   to that repository).
+    #
+    # If the user registers another registry at splitgraph.mycompany.com, then they will be able to do:
+    #
+    # * sgr push noaa/climate -r splitgraph.mycompany.com: will push to noaa/climate
+    from splitgraph.core.repository import Repository
+    from splitgraph.engine import get_engine
+
     if remote_repository and remote:
+        remote_repository = Repository.from_template(remote_repository, engine=get_engine(remote))
+    elif remote:
+        try:
+            namespace = get_from_subsection(CONFIG, "remotes", remote, "SG_NAMESPACE")
+        except KeyError:
+            namespace = None
         remote_repository = Repository.from_template(
-            remote_repository, engine=splitgraph.get_engine(remote)
+            repository, namespace=namespace, engine=get_engine(remote)
         )
-    else:
-        remote_repository = None
+
+    remote_repository = remote_repository or repository.upstream
+
+    click.echo(
+        "Pushing %s to %s on remote %s"
+        % (repository, remote_repository, remote_repository.engine.name)
+    )
+
     repository.push(
         remote_repository,
         handler=upload_handler,
@@ -155,6 +193,9 @@ def upstream_c(repository, set_to, reset):
 
     Shows the current upstream for ``my/repo``.
     """
+    from splitgraph.core.repository import Repository
+    from splitgraph.engine import get_engine
+
     # surely there's a better way of finding out whether --set isn't specified
     if set_to != ("", None) and reset:
         raise click.BadParameter("Only one of --set and --reset can be specified!")
@@ -162,29 +203,29 @@ def upstream_c(repository, set_to, reset):
     if reset:
         if repository.upstream:
             del repository.upstream
-            print("Deleted upstream for %s." % repository.to_schema())
+            click.echo("Deleted upstream for %s." % repository.to_schema())
         else:
-            print("%s has no upstream to delete!" % repository.to_schema())
+            click.echo("%s has no upstream to delete!" % repository.to_schema())
             sys.exit(1)
         return
 
     if set_to == ("", None):
         upstream = repository.upstream
         if upstream:
-            print(
+            click.echo(
                 "%s is tracking %s:%s."
                 % (repository.to_schema(), upstream.engine.name, upstream.to_schema())
             )
         else:
-            print("%s has no upstream." % repository.to_schema())
+            click.echo("%s has no upstream." % repository.to_schema())
     else:
         engine, remote_repo = set_to
         try:
-            remote_repo = Repository.from_template(
-                remote_repo, engine=splitgraph.get_engine(engine)
-            )
+            remote_repo = Repository.from_template(remote_repo, engine=get_engine(engine))
         except KeyError:
-            print("Remote engine '%s' does not exist in the configuration file!" % engine)
+            click.echo("Remote engine '%s' does not exist in the configuration file!" % engine)
             sys.exit(1)
         repository.upstream = remote_repo
-        print("%s set to track %s:%s." % (repository.to_schema(), engine, remote_repo.to_schema()))
+        click.echo(
+            "%s set to track %s:%s." % (repository.to_schema(), engine, remote_repo.to_schema())
+        )

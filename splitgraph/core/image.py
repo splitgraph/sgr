@@ -1,19 +1,35 @@
 """Image representation and provenance"""
 
 import logging
-from collections import namedtuple
 from contextlib import contextmanager
+from datetime import datetime
 from random import getrandbits
+from typing import (
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    TYPE_CHECKING,
+    NamedTuple,
+    cast,
+)
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA, FDW_CLASS
 from splitgraph.engine import ResultShape
-from splitgraph.exceptions import SplitGraphError
+from splitgraph.exceptions import SplitGraphError, TableNotFoundError
 from splitgraph.hooks.mount_handlers import init_fdw
-from ._common import set_tag, select, manage_audit, set_head
+from .common import set_tag, select, manage_audit, set_head
 from .table import Table
+from .types import TableSchema, TableColumn
+
+if TYPE_CHECKING:
+    from .repository import Repository
 
 IMAGE_COLS = ["image_hash", "parent_id", "created", "comment", "provenance_type", "provenance_data"]
 _PROV_QUERY = SQL(
@@ -22,22 +38,34 @@ _PROV_QUERY = SQL(
 ).format(Identifier(SPLITGRAPH_META_SCHEMA))
 
 
-class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_engine"])):
+class Image(NamedTuple):
     """
     Represents a Splitgraph image. Should't be created directly, use Image-loading methods in the
     :class:`splitgraph.core.repository.Repository` class instead.
     """
 
-    def __new__(cls, *args, **kwargs):
-        kwargs["engine"] = kwargs["repository"].engine
-        kwargs["object_engine"] = kwargs["repository"].object_engine
-        self = super(Image, cls).__new__(cls, *args, **kwargs)
-        return self
+    image_hash: str
+    parent_id: str
+    created: datetime
+    comment: str
+    provenance_type: str
+    provenance_data: dict
+    repository: "Repository"
 
-    def __eq__(self, other):
+    @property
+    def engine(self):
+        return self.repository.engine
+
+    @property
+    def object_engine(self):
+        return self.repository.object_engine
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Image):
+            return NotImplemented
         return self.image_hash == other.image_hash and self.repository == other.repository
 
-    def get_parent_children(self):
+    def get_parent_children(self) -> Tuple[str, List[Any]]:
         """Gets the parent and a list of children of a given image."""
         parent = self.parent_id
 
@@ -51,7 +79,7 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
         )
         return parent, children
 
-    def get_tables(self):
+    def get_tables(self) -> List[str]:
         """
         Gets the names of all tables inside of an image.
         """
@@ -64,13 +92,13 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
         )
         return result or []
 
-    def get_table(self, table_name):
+    def get_table(self, table_name: str) -> Table:
         """
         Returns a Table object representing a version of a given table.
         Contains a list of objects that the table is linked to and the table's schema.
 
         :param table_name: Name of the table
-        :return: Table object or None
+        :return: Table object
         """
         result = self.engine.run_sql(
             select(
@@ -84,12 +112,17 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
             return_shape=ResultShape.ONE_MANY,
         )
         if not result:
-            return None
+            raise TableNotFoundError(
+                "Image %s:%s does not have a table %s!"
+                % (self.repository, self.image_hash, table_name)
+            )
         table_schema, objects = result
-        return Table(self.repository, self, table_name, table_schema, objects)
+        return Table(
+            self.repository, self, table_name, [TableColumn(*t) for t in table_schema], objects
+        )
 
     @manage_audit
-    def checkout(self, force=False, layered=False):
+    def checkout(self, force: bool = False, layered: bool = False) -> None:
         """
         Checks the image out, changing the current HEAD pointer. Raises an error
         if there are pending changes to its checkout.
@@ -121,7 +154,9 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
                 self.get_table(table).materialize(table)
         set_head(self.repository, self.image_hash)
 
-    def _lq_checkout(self, target_schema=None, wrapper=FDW_CLASS):
+    def _lq_checkout(
+        self, target_schema: Optional[str] = None, wrapper: Optional[str] = FDW_CLASS
+    ) -> None:
         """
         Intended to be run on the sgr side. Initializes the FDW for all tables in a given image,
         allowing to query them directly without materializing the tables.
@@ -150,7 +185,7 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
 
         # It's easier to create the foreign tables from our side than to implement IMPORT FOREIGN SCHEMA by the FDW
         for table_name in self.get_tables():
-            logging.info(
+            logging.debug(
                 "Mounting %s:%s/%s into %s",
                 self.repository.to_schema(),
                 self.image_hash,
@@ -161,7 +196,7 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
         object_engine.commit()
 
     @contextmanager
-    def query_schema(self, wrapper=FDW_CLASS):
+    def query_schema(self, wrapper: Optional[str] = FDW_CLASS) -> Iterator[str]:
         """
         Creates a temporary schema with tables in this image mounted as foreign tables that can be accessed via
         read-only layered querying. On exit from the context manager, the schema is discarded.
@@ -172,7 +207,7 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
         try:
             self.object_engine.create_schema(tmp_schema)
             self._lq_checkout(target_schema=tmp_schema, wrapper=wrapper)
-            self.object_engine.commit()  # Make sure the new tables are seen by other connecitons
+            self.object_engine.commit()  # Make sure the new tables are seen by other connections
             yield tmp_schema
         finally:
             self.object_engine.run_sql(
@@ -181,7 +216,7 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
                 )
             )
 
-    def tag(self, tag):
+    def tag(self, tag: str) -> None:
         """
         Tags a given image. All tags are unique inside of a repository. If a tag already exists, it's removed
         from the previous image and given to the new image.
@@ -194,7 +229,7 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
         """Lists all tags that this image has."""
         return [t for h, t in self.repository.get_all_hashes_tags() if h == self.image_hash]
 
-    def delete_tag(self, tag):
+    def delete_tag(self, tag: str) -> None:
         """
         Deletes a tag from an image.
 
@@ -212,14 +247,42 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
             return_shape=None,
         )
 
-    def get_log(self):
+    def get_log(self) -> List["Image"]:
         """Repeatedly gets the parent of a given image until it reaches the bottom."""
         result = [self]
-        while result[-1].parent_id:
+        while result[-1].parent_id is not None:
             result.append(self.repository.images.by_hash(result[-1].parent_id))
         return result
 
-    def to_splitfile(self, err_on_end=True, source_replacement=None):
+    def get_size(self) -> int:
+        """
+        Get the physical size used by the image's objects (including those that might be
+        shared with other images).
+
+        This is calculated from the metadata, the on-disk footprint might be smaller if not all of image's
+        objects have been downloaded.
+
+        :return: Size of the image in bytes.
+        """
+        query = (
+            "WITH iob AS(SELECT DISTINCT image_hash, unnest(object_ids) AS object_id "
+            "FROM splitgraph_meta.tables t "
+            "WHERE t.namespace = %s AND t.repository = %s AND t.image_hash = %s) "
+            "SELECT SUM(o.size) FROM iob JOIN splitgraph_meta.objects o "
+            "ON iob.object_id = o.object_id "
+        )
+        return cast(
+            int,
+            self.engine.run_sql(
+                query,
+                (self.repository.namespace, self.repository.repository, self.image_hash),
+                return_shape=ResultShape.ONE_ONE,
+            ),
+        )
+
+    def to_splitfile(
+        self, err_on_end: bool = True, source_replacement: Optional[Dict["Repository", str]] = None
+    ) -> List[str]:
         """
         Crawls the image's parent chain to recreates a Splitfile that can be used to reconstruct it.
 
@@ -261,7 +324,7 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
                 image = self.repository.images.by_hash(parent)
         return list(reversed(splitfile_commands))
 
-    def provenance(self):
+    def provenance(self) -> List[Tuple["Repository", str]]:
         """
         Inspects the image's parent chain to come up with a set of repositories and their hashes
         that it was created from.
@@ -309,7 +372,7 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
             image = self.repository.images.by_hash(parent)
         return list(result)
 
-    def set_provenance(self, provenance_type, **kwargs):
+    def set_provenance(self, provenance_type: str, **kwargs) -> None:
         """
         Sets the image's provenance. Internal function called by the Splitfile interpreter, shouldn't
         be called directly as it changes the image after it's been created.
@@ -381,7 +444,12 @@ class Image(namedtuple("Image", IMAGE_COLS + ["repository", "engine", "object_en
             raise ValueError("Provenance type %s not supported!" % provenance_type)
 
 
-def _prov_command_to_splitfile(prov_type, prov_data, image_hash, source_replacement):
+def _prov_command_to_splitfile(
+    prov_type: str,
+    prov_data: Union[str, Dict[str, str], Dict[str, Union[str, List[str], List[bool]]]],
+    image_hash: str,
+    source_replacement: Dict["Repository", str],
+) -> str:
     """
     Converts the image's provenance data stored by the Splitfile executor back to a Splitfile used to
     reconstruct it.
@@ -395,21 +463,26 @@ def _prov_command_to_splitfile(prov_type, prov_data, image_hash, source_replacem
     from splitgraph.core.repository import Repository
 
     if prov_type == "IMPORT":
+        assert isinstance(prov_data, dict)
         repo, image = (
-            Repository(prov_data["source_namespace"], prov_data["source"]),
-            prov_data["source_hash"],
+            Repository(cast(str, prov_data["source_namespace"]), cast(str, prov_data["source"])),
+            cast(str, prov_data["source_hash"]),
         )
         result = "FROM %s:%s IMPORT " % (str(repo), source_replacement.get(repo, image))
         result += ", ".join(
             "%s AS %s" % (tn if not q else "{" + tn.replace("}", "\\}") + "}", ta)
             for tn, ta, q in zip(
-                prov_data["tables"], prov_data["table_aliases"], prov_data["table_queries"]
+                cast(List[str], prov_data["tables"]),
+                cast(List[str], prov_data["table_aliases"]),
+                cast(List[bool], prov_data["table_queries"]),
             )
         )
         return result
     if prov_type == "FROM":
-        repo = Repository(prov_data["source_namespace"], prov_data["source"])
+        assert isinstance(prov_data, dict)
+        repo = Repository(cast(str, prov_data["source_namespace"]), cast(str, prov_data["source"]))
         return "FROM %s:%s" % (str(repo), source_replacement.get(repo, image_hash))
     if prov_type == "SQL":
-        return "SQL " + prov_data.replace("\n", "\\\n")
+        assert isinstance(prov_data, str)
+        return "SQL " + cast(str, prov_data).replace("\n", "\\\n")
     raise SplitGraphError("Cannot reconstruct provenance %s!" % prov_type)

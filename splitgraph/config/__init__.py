@@ -12,23 +12,26 @@
         4. DEFAULTS (see keys.py)
 
 """
-import logging
-
-from .config import create_config_dict
+from .config import create_config_dict, get_singleton
 
 CONFIG = create_config_dict()
 
-PG_HOST = CONFIG["SG_ENGINE_HOST"]
-PG_PORT = CONFIG["SG_ENGINE_PORT"]
-PG_DB = CONFIG["SG_ENGINE_DB_NAME"]
-PG_USER = CONFIG["SG_ENGINE_USER"]
-PG_PWD = CONFIG["SG_ENGINE_PWD"]
-SPLITGRAPH_META_SCHEMA = CONFIG["SG_META_SCHEMA"]
+PG_HOST = get_singleton(CONFIG, "SG_ENGINE_HOST")
+PG_PORT = get_singleton(CONFIG, "SG_ENGINE_PORT")
+PG_DB = get_singleton(CONFIG, "SG_ENGINE_DB_NAME")
+PG_USER = get_singleton(CONFIG, "SG_ENGINE_USER")
+PG_PWD = get_singleton(CONFIG, "SG_ENGINE_PWD")
+
+SPLITGRAPH_META_SCHEMA = get_singleton(CONFIG, "SG_META_SCHEMA")
 REGISTRY_META_SCHEMA = "registry_meta"
 SPLITGRAPH_API_SCHEMA = "splitgraph_api"
 
-# Log timestamp and PID. By default we only log WARNINGs in the command line interface.
-logging.basicConfig(
-    format="%(asctime)s [%(process)d] %(levelname)s %(message)s", level=CONFIG["SG_LOGLEVEL"]
-)
-FDW_CLASS = CONFIG["SG_FDW_CLASS"]
+FDW_CLASS = get_singleton(CONFIG, "SG_FDW_CLASS")
+
+# This is a global variable that gets flipped to True by the Multicorn FDW class
+# at startup. When we're running from within an engine as an FDW, we might need to use
+# different connection parameters to connect to other engines. It's not trivial to detect
+# whether we're running inside of an embedded Python otherwise and this variable needs to
+# ultimately make it into all get_engine() constructors, so this is simpler than threading
+# it through all calls that FDW makes.
+IN_FDW = False

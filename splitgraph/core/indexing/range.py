@@ -1,7 +1,17 @@
-from psycopg2.sql import SQL, Identifier
+import logging
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, TYPE_CHECKING, cast
+
+from psycopg2.sql import Composed, SQL, Composable
+from psycopg2.sql import Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
-from splitgraph.core._common import adapt, coerce_val_to_json, ResultShape, select
+from splitgraph.core.common import adapt, coerce_val_to_json, ResultShape, select
+from splitgraph.core.types import Quals, Changeset, TableSchema
+from splitgraph.engine.postgres.engine import PostgresEngine
+
+if TYPE_CHECKING:
+    pass
+
 
 # PG types we can run max/min on
 _PG_INDEXABLE_TYPES = [
@@ -30,17 +40,19 @@ _PG_INDEXABLE_TYPES = [
     "timestamp with time zone",
 ]
 
+T = TypeVar("T")
+
 
 # Custom min/max functions that ignore Nones
-def _min(left, right):
+def _min(left: Optional[T], right: Optional[T]) -> Optional[T]:
     return right if left is None else (left if right is None else min(left, right))
 
 
-def _max(left, right):
+def _max(left: Optional[T], right: Optional[T]) -> Optional[T]:
     return right if left is None else (left if right is None else max(left, right))
 
 
-def _qual_to_index_clause(qual, ctype):
+def _qual_to_index_clause(qual: Tuple[str, str, Any], ctype: str) -> Tuple[SQL, Tuple]:
     """Convert our internal qual format into a WHERE clause that runs against an object's index entry.
     Returns a Postgres clause (as a Composable) and a tuple of arguments to be mogrified into it."""
     column_name, qual_op, value = qual
@@ -51,7 +63,7 @@ def _qual_to_index_clause(qual, ctype):
 
     # If there's no index information for a given column, we have to assume it might match the qual.
     query = SQL("NOT (index -> 'range') ? %s OR ")
-    args = [column_name]
+    args: List[Any] = [column_name]
 
     # If the column has to be greater than (or equal to) X, it only might exist in objects
     # whose maximum value is greater than (or equal to) X.
@@ -86,13 +98,17 @@ def _qual_to_index_clause(qual, ctype):
     return query, tuple(args)
 
 
-def _qual_to_sql_clause(qual, ctype):
+def _qual_to_sql_clause(qual: Tuple[str, str, str], ctype: str) -> Tuple[Composed, Tuple[str]]:
     """Convert a qual to a normal SQL clause that can be run against the actual object rather than the index."""
     column_name, qual_op, value = qual
     return SQL("{}::" + ctype + " " + qual_op + " %s").format(Identifier(column_name)), (value,)
 
 
-def _quals_to_clause(quals, column_types, qual_to_clause=_qual_to_index_clause):
+def _quals_to_clause(
+    quals: Optional[Quals],
+    column_types: Dict[str, str],
+    qual_to_clause: Callable = _qual_to_index_clause,
+) -> Tuple[Composable, Tuple]:
     if not quals:
         return SQL(""), ()
 
@@ -110,7 +126,7 @@ def _quals_to_clause(quals, column_types, qual_to_clause=_qual_to_index_clause):
     )
 
 
-def quals_to_sql(quals, column_types):
+def quals_to_sql(quals: Optional[Quals], column_types: Dict[str, str]) -> Tuple[Composable, Tuple]:
     """
     Convert a list of qualifiers in CNF to a fragment of a Postgres query
     :param quals: Qualifiers in CNF
@@ -121,7 +137,7 @@ def quals_to_sql(quals, column_types):
     return _quals_to_clause(quals, column_types, qual_to_clause=_qual_to_sql_clause)
 
 
-def extract_min_max_pks(engine, fragments, table_pks):
+def extract_min_max_pks(engine: PostgresEngine, fragments: List[str], table_pks: List[str]) -> Any:
     """
     Extract minimum/maximum PK values for given fragments.
 
@@ -172,20 +188,28 @@ def extract_min_max_pks(engine, fragments, table_pks):
     return min_max
 
 
-def generate_range_index(object_engine, object_id, table_schema, changeset):
+def generate_range_index(
+    object_engine: PostgresEngine,
+    object_id: str,
+    table_schema: "TableSchema",
+    changeset: Optional[Changeset],
+) -> Dict[str, Tuple[T, T]]:
     """
-    Calculate the minimim/maximum values of every column in the object (including deleted values).
+    Calculate the minimum/maximum values of every column in the object (including deleted values).
 
+    :param object_engine: Engine the object is located on
     :param object_id: ID of the object.
     :param table_schema: Schema of the table
-    :param changeset: Changeset (old values will be included in the index
+    :param changeset: Changeset (old values will be included in the index)
     :return: Dictionary of {column: [min, max]}
     """
-    object_pk = [c[1] for c in table_schema if c[3]]
+    object_pk = [c.name for c in table_schema if c.is_pk]
     if not object_pk:
-        object_pk = [c[1] for c in table_schema]
-    column_types = {c[1]: c[2] for c in table_schema}
-    columns_to_index = [c[1] for c in table_schema if c[2] in _PG_INDEXABLE_TYPES]
+        object_pk = [c.name for c in table_schema]
+    column_types = {c.name: c.pg_type for c in table_schema}
+    columns_to_index = [c.name for c in table_schema if c.pg_type in _PG_INDEXABLE_TYPES]
+
+    logging.debug("Running range index on columns %s", columns_to_index)
     query = SQL("SELECT ") + SQL(",").join(
         SQL("MIN({0}), MAX({0})").format(Identifier(c)) for c in columns_to_index
     )
@@ -238,7 +262,9 @@ def generate_range_index(object_engine, object_id, table_schema, changeset):
     return range_index
 
 
-def filter_range_index(metadata_engine, object_ids, quals, column_types):
+def filter_range_index(
+    metadata_engine: PostgresEngine, object_ids: List[str], quals: Any, column_types: Dict[str, str]
+) -> List[str]:
     clause, args = _quals_to_clause(quals, column_types)
     query = (
         select("get_object_meta", "object_id", table_args="(%s)", schema=SPLITGRAPH_API_SCHEMA)
@@ -246,6 +272,9 @@ def filter_range_index(metadata_engine, object_ids, quals, column_types):
         + clause
     )
 
-    return metadata_engine.run_sql(
-        query, [object_ids] + list(args), return_shape=ResultShape.MANY_ONE
+    return cast(
+        List[str],
+        metadata_engine.run_sql(
+            query, [object_ids] + list(args), return_shape=ResultShape.MANY_ONE
+        ),
     )

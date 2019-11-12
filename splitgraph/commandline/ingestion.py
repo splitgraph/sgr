@@ -2,7 +2,7 @@
 
 import click
 
-from splitgraph.commandline._common import ImageType, RepositoryType
+from splitgraph.commandline.common import ImageType, RepositoryType
 
 
 # This commandline entry point doesn't actually import splitgraph.ingestion directly
@@ -58,7 +58,7 @@ def csv_export(image_spec, query, file, layered):
         df = sql_to_df(query, image=image, repository=repository, use_lq=layered)
         df.to_csv(file, index=df.index.names != [None])
     except ImportError:
-        print("Install the " "ingestion" " setuptools extra to enable this feature!")
+        click.echo('Install the "ingestion" setuptools extra to enable this feature!')
         exit(1)
 
 
@@ -89,6 +89,7 @@ def csv_export(image_spec, query, file, layered):
     help="Try to parse the specified column(s) as timestamps.",
     default=False,
 )
+@click.option("--encoding", help="Encoding to use for the CSV file", default=None)
 @click.option("--separator", default=",", help="CSV separator to use")
 @click.option(
     "--no-header",
@@ -103,7 +104,16 @@ def csv_export(image_spec, query, file, layered):
     help="Skips checking that the dataframe is compatible with the target schema.",
 )
 def csv_import(
-    repository, table, file, replace, primary_key, datetime, separator, no_header, skip_schema_check
+    repository,
+    table,
+    file,
+    replace,
+    primary_key,
+    datetime,
+    encoding,
+    separator,
+    no_header,
+    skip_schema_check,
 ):
     """
     Import a CSV file into a checked-out Splitgraph repository. This doesn't create a new image, use `sgr commit`
@@ -121,7 +131,7 @@ def csv_import(
     # The reason we don't ingest directly into the engine by using COPY FROM STDIN is so that we can let Pandas do
     # some type inference/preprocessing on the CSV.
     if not primary_key:
-        print(
+        click.echo(
             "Warning: primary key is not specified, using the whole row as primary key."
             "This is probably not something that you want."
         )
@@ -136,8 +146,9 @@ def csv_import(
             parse_dates=list(datetime) if datetime else False,
             infer_datetime_format=True,
             header=(None if no_header else "infer"),
+            encoding=encoding,
         )
-        print("Read %d line(s)" % len(df))
+        click.echo("Read %d line(s)" % len(df))
         df_to_table(
             df,
             repository,
@@ -146,7 +157,7 @@ def csv_import(
             schema_check=not skip_schema_check,
         )
     except ImportError:
-        print("Install the " "ingestion" " setuptools extra to enable this feature!")
+        click.echo('Install the "ingestion" setuptools extra to enable this feature!')
         exit(1)
 
 

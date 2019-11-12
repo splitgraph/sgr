@@ -1,6 +1,7 @@
 import pytest
 
 from splitgraph.core.repository import clone
+from splitgraph.exceptions import ImageNotFoundError
 from test.splitgraph.conftest import PG_MNT
 
 
@@ -33,7 +34,9 @@ def test_pull(local_engine_empty, pg_repo_remote, download_all):
 
     # ...and check it's unchanged on the pulled one.
     assert PG_MNT.run_sql("SELECT * FROM fruits") == [(1, "apple"), (2, "orange")]
-    assert PG_MNT.images.by_hash(head_1.image_hash, raise_on_none=False) is None
+
+    with pytest.raises(ImageNotFoundError):
+        PG_MNT.images.by_hash(head_1.image_hash)
 
     # Since the pull procedure initializes a new connection, we have to commit our changes
     # in order to see them.

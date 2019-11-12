@@ -3,7 +3,7 @@ from unittest import mock
 
 import pytest
 
-from splitgraph import ResultShape
+from splitgraph.core.common import ResultShape
 from splitgraph.core.indexing.bloom import _prepare_bloom_quals, filter_bloom_index, describe
 from test.splitgraph.conftest import OUTPUT
 
@@ -46,7 +46,7 @@ def test_bloom_index_structure(local_engine_empty):
     objects = head.get_table("test").objects
     object_meta = OUTPUT.objects.get_object_meta(objects)
 
-    index = object_meta[objects[0]].index
+    index = object_meta[objects[0]].object_index
     assert "bloom" in index
 
     # The bloom index used k=4, note that the formula for optimal k is
@@ -70,7 +70,7 @@ def test_bloom_index_structure(local_engine_empty):
     objects = head.get_table("test").objects
     object_meta = OUTPUT.objects.get_object_meta(objects)
 
-    index = object_meta[objects[0]].index
+    index = object_meta[objects[0]].object_index
     assert "bloom" in index
 
     # For fixed probability, we have k = -log2(p) = 6.64 (up to 7)

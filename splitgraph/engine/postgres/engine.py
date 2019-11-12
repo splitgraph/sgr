@@ -8,21 +8,33 @@ import os.path
 import time
 from contextlib import contextmanager
 from io import BytesIO
+from io import TextIOWrapper
 from pkgutil import get_data
 from threading import get_ident
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING, Sequence, cast
 
 import psycopg2
 from psycopg2 import DatabaseError
-from psycopg2.errors import InvalidSchemaName, UndefinedTable
+from psycopg2.errors import InvalidSchemaName, UndefinedTable, DuplicateTable
+from psycopg2.extensions import STATUS_READY
 from psycopg2.extras import execute_batch, Json
-from psycopg2.pool import ThreadedConnectionPool
-from psycopg2.sql import SQL, Identifier
+from psycopg2.pool import ThreadedConnectionPool, AbstractConnectionPool
+from psycopg2.sql import Composed, SQL
+from psycopg2.sql import Identifier
+from tqdm import tqdm
 
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
-from splitgraph.core._common import select, ensure_metadata_schema, META_TABLES
+from splitgraph.__version__ import __version__, VERSION_LOCAL_VAR
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCHEMA
+from splitgraph.core.common import select, ensure_metadata_schema, META_TABLES
+from splitgraph.core.types import TableColumn, TableSchema
 from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
-from splitgraph.exceptions import UninitializedEngineError, ObjectNotFoundError, ObjectCacheError
+from splitgraph.exceptions import EngineInitializationError, ObjectNotFoundError
 from splitgraph.hooks.mount_handlers import mount_postgres
+
+if TYPE_CHECKING:
+    # Import the connection object under a different name as it shadows
+    # the connection property otherwise
+    from psycopg2._psycopg import connection as Connection
 
 _AUDIT_SCHEMA = "audit"
 _AUDIT_TRIGGER = "resources/audit_trigger.sql"
@@ -35,18 +47,40 @@ STM_TRIGGER_NAME = "audit_trigger_stm"
 REMOTE_TMP_SCHEMA = "tmp_remote_data"
 SG_UD_FLAG = "sg_ud_flag"
 
-# Retry on connection failures after sleeping for BASE, BASE * 2, BASE * 4,... CAP, CAP, CAP...
-RETRY_DELAY_BASE = 0.01
-RETRY_DELAY_CAP = 10
+# Retry policy for claiming connections from the pool when we have multiple worker threads
+# downloading/uploading object:
+
+# sleep for BASE, BASE * 2, BASE * 4,... CAP, CAP, CAP...
+POOL_RETRY_DELAY_BASE = 0.01
+POOL_RETRY_DELAY_CAP = 10
 
 # Max number of retries before failing
-RETRY_AMOUNT = 20
+POOL_RETRY_AMOUNT = 20
+
+# Retry policy for other connection errors
+RETRY_DELAY = 5
+RETRY_AMOUNT = 12
+
+
+def _get_data_safe(package: str, resource: str) -> bytes:
+    result = get_data(package, resource)
+    if result is None:
+        raise EngineInitializationError(
+            "Resource %s not found in package %s!" % (resource, package)
+        )
+    return result
 
 
 class PsycopgEngine(SQLEngine):
     """Postgres SQL engine backed by a Psycopg connection."""
 
-    def __init__(self, name, conn_params=None, pool=None, autocommit=False):
+    def __init__(
+        self,
+        name: Optional[str],
+        conn_params: Optional[Dict[str, Optional[str]]] = None,
+        pool: Optional[AbstractConnectionPool] = None,
+        autocommit: bool = False,
+    ) -> None:
         """
         :param name: Name of the engine
         :param conn_params: Optional, dictionary of connection params as stored in the config.
@@ -61,6 +95,7 @@ class PsycopgEngine(SQLEngine):
 
         self.name = name
         self.autocommit = autocommit
+        self.connected = False
 
         if conn_params:
             self.conn_params = conn_params
@@ -81,7 +116,7 @@ class PsycopgEngine(SQLEngine):
                 minconn=0,
                 maxconn=conn_params.get("SG_ENGINE_POOL", CONFIG["SG_ENGINE_POOL"]),
                 host=server,
-                port=port,
+                port=int(cast(int, port)) if port is not None else None,
                 user=username,
                 password=password,
                 dbname=dbname,
@@ -89,42 +124,49 @@ class PsycopgEngine(SQLEngine):
         else:
             self._pool = pool
 
-    def __repr__(self):
-        return "PostgresEngine %s (%s@%s:%s/%s)" % (
-            self.name,
-            self.conn_params["SG_ENGINE_USER"],
-            self.conn_params["SG_ENGINE_HOST"],
-            str(self.conn_params["SG_ENGINE_PORT"]),
-            self.conn_params["SG_ENGINE_DB_NAME"],
-        )
+    def __repr__(self) -> str:
+        try:
+            conn_summary = "(%s@%s:%s/%s)" % (
+                self.conn_params["SG_ENGINE_USER"],
+                self.conn_params["SG_ENGINE_HOST"],
+                self.conn_params["SG_ENGINE_PORT"],
+                self.conn_params["SG_ENGINE_DB_NAME"],
+            )
+        except AttributeError:
+            conn_summary = " (custom connection pool)"
 
-    def commit(self):
-        conn = self.connection
-        conn.commit()
+        return "PostgresEngine " + ((self.name + " ") if self.name else "") + conn_summary
 
-    def close(self):
-        conn = self.connection
-        conn.close()
-        self._pool.putconn(conn)
-
-    def rollback(self):
-        if self._savepoint_stack:
-            self.run_sql(SQL("ROLLBACK TO ") + Identifier(self._savepoint_stack.pop()))
-        else:
+    def commit(self) -> None:
+        if self.connected:
             conn = self.connection
-            conn.rollback()
+            conn.commit()
+
+    def close(self) -> None:
+        if self.connected:
+            conn = self.connection
+            conn.close()
             self._pool.putconn(conn)
 
-    def lock_table(self, schema, table):
+    def rollback(self) -> None:
+        if self.connected:
+            if self._savepoint_stack:
+                self.run_sql(SQL("ROLLBACK TO ") + Identifier(self._savepoint_stack.pop()))
+            else:
+                conn = self.connection
+                conn.rollback()
+                self._pool.putconn(conn)
+
+    def lock_table(self, schema: str, table: str) -> None:
         # Allow SELECTs but not writes to a given table.
         self.run_sql(
             SQL("LOCK TABLE {}.{} IN EXCLUSIVE MODE").format(Identifier(schema), Identifier(table))
         )
 
     @property
-    def connection(self):
+    def connection(self) -> "Connection":
         """Engine-internal Psycopg connection."""
-        delay = RETRY_DELAY_BASE
+        pool_delay = POOL_RETRY_DELAY_BASE
         retries = 0
         while True:
             try:
@@ -136,30 +178,75 @@ class PsycopgEngine(SQLEngine):
                 # so changing it from False to False will fail if we're actually in a transaction.
                 if conn.autocommit != self.autocommit:
                     conn.autocommit = self.autocommit
+                self.connected = True
                 return conn
-            except psycopg2.Error:
-                # The fast retrying is really used to claim connections from the pool, not to try to reconnect
-                # to the engine. Maybe it's worth even splitting the engine into something that's used for
-                # object storage (where having a pool + this is needed) and the metadata handler (where
-                # just 1 connection is enough)
-                if retries >= RETRY_AMOUNT:
+            except psycopg2.pool.PoolError:
+                if retries >= POOL_RETRY_AMOUNT:
+                    logging.exception(
+                        "Error claiming a pool connection %d retries", POOL_RETRY_AMOUNT
+                    )
                     raise
                 retries += 1
-                logging.exception(
-                    "Error connecting to the engine, sleeping %.2fs and retrying (%d/%d)...",
-                    delay,
+                logging.info(
+                    "Error claiming a pool connection, sleeping %.2fs and retrying (%d/%d)...",
+                    pool_delay,
+                    retries,
+                    POOL_RETRY_AMOUNT,
+                )
+                time.sleep(pool_delay)
+                pool_delay = min(pool_delay * 2, POOL_RETRY_DELAY_CAP)
+            except psycopg2.errors.DatabaseError as e:
+                if retries >= RETRY_AMOUNT:
+                    logging.exception(
+                        "Error connecting to the engine after %d retries", RETRY_AMOUNT
+                    )
+                    raise
+                retries += 1
+                logging.error(
+                    "Error connecting to the engine (%s), sleeping %.2fs and retrying (%d/%d)...",
+                    e,
+                    RETRY_DELAY,
                     retries,
                     RETRY_AMOUNT,
                 )
-                time.sleep(delay)
-                delay = min(delay * 2, RETRY_DELAY_CAP)
+                time.sleep(RETRY_DELAY)
+            except psycopg2.errors.CannotConnectNow as e:
+                # This is for when the database is starting up, log at INFO level (not an error)
+                if retries >= RETRY_AMOUNT:
+                    logging.exception(
+                        "Error connecting to the engine after %d retries", RETRY_AMOUNT
+                    )
+                    raise
+                retries += 1
+                logging.info(
+                    "Can't connect to the engine right now (%s), sleeping %.2fs and retrying (%d/%d)...",
+                    e,
+                    RETRY_DELAY,
+                    retries,
+                    RETRY_AMOUNT,
+                )
+                time.sleep(RETRY_DELAY)
 
-    def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY, named=False):
+    def run_sql(
+        self,
+        statement: Union[bytes, Composed, str, SQL],
+        arguments: Optional[Sequence[Any]] = None,
+        return_shape: Optional[ResultShape] = ResultShape.MANY_MANY,
+        named: bool = False,
+    ) -> Any:
 
         cursor_kwargs = {"cursor_factory": psycopg2.extras.NamedTupleCursor} if named else {}
+        connection = self.connection
 
-        with self.connection.cursor(**cursor_kwargs) as cur:
+        with connection.cursor(**cursor_kwargs) as cur:
             try:
+                # If we're about to open a transaction, inject the Splitgraph client version
+                # as a local variable (for future API routing).
+                if connection.status == STATUS_READY and not connection.autocommit:
+                    cur.execute(
+                        SQL("SET LOCAL {} = %s;").format(Identifier(VERSION_LOCAL_VAR)),
+                        (__version__,),
+                    )
                 cur.execute(statement, _convert_vals(arguments) if arguments else None)
             except DatabaseError as e:
                 # Rollback the transaction (to a savepoint if we're inside the savepoint() context manager)
@@ -170,19 +257,19 @@ class PsycopgEngine(SQLEngine):
                     # This is not a neat way to do this but other methods involve placing wrappers around
                     # anything that sends queries to splitgraph_meta or audit schemas.
                     if "audit." in str(e):
-                        raise UninitializedEngineError(
+                        raise EngineInitializationError(
                             "Audit triggers not found on the engine. Has the engine been initialized?"
                         ) from e
                     for meta_table in META_TABLES:
                         if "splitgraph_meta.%s" % meta_table in str(e):
-                            raise UninitializedEngineError(
+                            raise EngineInitializationError(
                                 "splitgraph_meta not found on the engine. Has the engine been initialized?"
                             ) from e
                     if "splitgraph_meta" in str(e):
                         raise ObjectNotFoundError(e)
                 elif isinstance(e, InvalidSchemaName):
                     if "splitgraph_api." in str(e):
-                        raise UninitializedEngineError(
+                        raise EngineInitializationError(
                             "splitgraph_api not found on the engine. Has the engine been initialized?"
                         ) from e
                 raise
@@ -199,19 +286,24 @@ class PsycopgEngine(SQLEngine):
                 return [c[0] for c in cur.fetchall()]
             return cur.fetchall()
 
-    def get_primary_keys(self, schema, table):
+    def get_primary_keys(self, schema: str, table: str) -> List[Tuple[str, str]]:
         """Inspects the Postgres information_schema to get the primary keys for a given table."""
-        return self.run_sql(
-            SQL(
-                """SELECT a.attname, format_type(a.atttypid, a.atttypmod)
+        return cast(
+            List[Tuple[str, str]],
+            self.run_sql(
+                SQL(
+                    """SELECT a.attname, format_type(a.atttypid, a.atttypmod)
                                FROM pg_index i JOIN pg_attribute a ON a.attrelid = i.indrelid
                                                                       AND a.attnum = ANY(i.indkey)
                                WHERE i.indrelid = '{}.{}'::regclass AND i.indisprimary"""
-            ).format(Identifier(schema), Identifier(table)),
-            return_shape=ResultShape.MANY_MANY,
+                ).format(Identifier(schema), Identifier(table)),
+                return_shape=ResultShape.MANY_MANY,
+            ),
         )
 
-    def run_sql_batch(self, statement, arguments, schema=None):
+    def run_sql_batch(
+        self, statement: Union[Composed, str], arguments: Any, schema: Optional[str] = None
+    ) -> None:
         with self.connection.cursor() as cur:
             try:
                 if schema:
@@ -225,15 +317,15 @@ class PsycopgEngine(SQLEngine):
 
     def dump_table_sql(
         self,
-        schema,
-        table_name,
-        stream,
-        columns="*",
-        where="",
-        where_args=None,
-        target_schema=None,
-        target_table=None,
-    ):
+        schema: str,
+        table_name: str,
+        stream: TextIOWrapper,
+        columns: str = "*",
+        where: str = "",
+        where_args: Optional[Union[List[str], Tuple[str, str]]] = None,
+        target_schema: Optional[str] = None,
+        target_table: Optional[str] = None,
+    ) -> None:
         target_schema = target_schema or schema
         target_table = target_table or table_name
 
@@ -257,16 +349,52 @@ class PsycopgEngine(SQLEngine):
             )
         stream.write(";\n")
 
-    def _admin_conn(self):
-        return psycopg2.connect(
-            dbname=self.conn_params["SG_ENGINE_POSTGRES_DB_NAME"],
-            user=self.conn_params["SG_ENGINE_ADMIN_USER"],
-            password=self.conn_params["SG_ENGINE_ADMIN_PWD"],
-            host=self.conn_params["SG_ENGINE_HOST"],
-            port=self.conn_params["SG_ENGINE_PORT"],
-        )
+    def _admin_conn(self) -> "Connection":
+        retries = 0
+        while True:
+            try:
+                return psycopg2.connect(
+                    dbname=self.conn_params["SG_ENGINE_POSTGRES_DB_NAME"],
+                    user=self.conn_params["SG_ENGINE_ADMIN_USER"],
+                    password=self.conn_params["SG_ENGINE_ADMIN_PWD"],
+                    host=self.conn_params["SG_ENGINE_HOST"],
+                    port=self.conn_params["SG_ENGINE_PORT"],
+                )
+            except psycopg2.errors.DatabaseError as e:
+                if retries >= RETRY_AMOUNT:
+                    logging.exception(
+                        "Error connecting to the engine after %d retries", RETRY_AMOUNT
+                    )
+                    raise
+                retries += 1
+                logging.error(
+                    "Error connecting to the engine (%s), sleeping %.2fs and retrying (%d/%d)...",
+                    e,
+                    RETRY_DELAY,
+                    retries,
+                    RETRY_AMOUNT,
+                )
+                time.sleep(RETRY_DELAY)
+            except psycopg2.errors.CannotConnectNow as e:
+                # This is for when the database is starting up, log at INFO level (not an error)
+                if retries >= RETRY_AMOUNT:
+                    logging.exception(
+                        "Error connecting to the engine after %d retries", RETRY_AMOUNT
+                    )
+                    raise
+                retries += 1
+                logging.info(
+                    "Can't connect to the engine right now (%s), sleeping %.2fs and retrying (%d/%d)...",
+                    e,
+                    RETRY_DELAY,
+                    retries,
+                    RETRY_AMOUNT,
+                )
+                time.sleep(RETRY_DELAY)
 
-    def initialize(self, skip_object_handling=False, skip_create_database=False):
+    def initialize(
+        self, skip_object_handling: bool = False, skip_create_database: bool = False
+    ) -> None:
         """Create the Splitgraph Postgres database and install the audit trigger
 
         :param skip_object_handling: If True, skips installation of
@@ -295,31 +423,32 @@ class PsycopgEngine(SQLEngine):
 
         logging.info("Ensuring the metadata schema at %s exists...", SPLITGRAPH_META_SCHEMA)
         ensure_metadata_schema(self)
+
         # Install the push/pull API functions
         logging.info("Installing the push/pull API functions...")
-        push_pull = get_data(_PACKAGE, _PUSH_PULL)
-        self.run_sql(push_pull.decode("utf-8"), return_shape=ResultShape.NONE)
+        push_pull = _get_data_safe(_PACKAGE, _PUSH_PULL)
+        self.run_sql(push_pull.decode("utf-8"))
 
         if skip_object_handling:
             logging.info("Skipping installation of audit triggers/CStore as specified.")
         else:
             # Install CStore management routines
             logging.info("Installing CStore management functions...")
-            cstore = get_data(_PACKAGE, _CSTORE)
-            self.run_sql(cstore.decode("utf-8"), return_shape=ResultShape.NONE)
+            cstore = _get_data_safe(_PACKAGE, _CSTORE)
+            self.run_sql(cstore.decode("utf-8"))
 
             # Install the audit trigger if it doesn't exist
             if not self.schema_exists(_AUDIT_SCHEMA):
                 logging.info("Installing the audit trigger...")
-                audit_trigger = get_data(_PACKAGE, _AUDIT_TRIGGER)
-                self.run_sql(audit_trigger.decode("utf-8"), return_shape=ResultShape.NONE)
+                audit_trigger = _get_data_safe(_PACKAGE, _AUDIT_TRIGGER)
+                self.run_sql(audit_trigger.decode("utf-8"))
             else:
                 logging.info("Skipping the audit trigger as it's already installed.")
 
         # Start up the pgcrypto extension (required for hashing fragments)
         self.run_sql("CREATE EXTENSION IF NOT EXISTS pgcrypto")
 
-    def delete_database(self, database):
+    def delete_database(self, database: str) -> None:
         """
         Helper function to drop a database using the admin connection
 
@@ -334,15 +463,18 @@ class PsycopgEngine(SQLEngine):
 class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
     """Change tracking based on an audit trigger stored procedure"""
 
-    def get_tracked_tables(self):
+    def get_tracked_tables(self) -> List[Tuple[str, str]]:
         """Return a list of tables that the audit trigger is working on."""
-        return self.run_sql(
-            "SELECT DISTINCT event_object_schema, event_object_table "
-            "FROM information_schema.triggers WHERE trigger_name IN (%s, %s)",
-            (ROW_TRIGGER_NAME, STM_TRIGGER_NAME),
+        return cast(
+            List[Tuple[str, str]],
+            self.run_sql(
+                "SELECT DISTINCT event_object_schema, event_object_table "
+                "FROM information_schema.triggers WHERE trigger_name IN (%s, %s)",
+                (ROW_TRIGGER_NAME, STM_TRIGGER_NAME),
+            ),
         )
 
-    def track_tables(self, tables):
+    def track_tables(self, tables: List[Tuple[str, str]]) -> None:
         """Install the audit trigger on the required tables"""
         self.run_sql(
             SQL(";").join(
@@ -351,7 +483,7 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
             )
         )
 
-    def untrack_tables(self, tables):
+    def untrack_tables(self, tables: List[Tuple[str, str]]) -> None:
         """Remove triggers from tables and delete their pending changes"""
         for trigger in (ROW_TRIGGER_NAME, STM_TRIGGER_NAME):
             self.run_sql(
@@ -367,7 +499,7 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
             "DELETE FROM audit.logged_actions WHERE schema_name = %s AND table_name = %s", tables
         )
 
-    def has_pending_changes(self, schema):
+    def has_pending_changes(self, schema: str) -> bool:
         """
         Return True if the tracked schema has pending changes and False if it doesn't.
         """
@@ -382,7 +514,7 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
             is not None
         )
 
-    def discard_pending_changes(self, schema, table=None):
+    def discard_pending_changes(self, schema: str, table: Optional[str] = None) -> None:
         """
         Discard recorded pending changes for a tracked schema / table
         """
@@ -397,14 +529,16 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
         else:
             self.run_sql(query, (schema,), return_shape=ResultShape.NONE)
 
-    def get_pending_changes(self, schema, table, aggregate=False):
+    def get_pending_changes(
+        self, schema: str, table: str, aggregate: bool = False
+    ) -> Union[List[Tuple[int, int]], List[Tuple[Tuple[str, ...], bool, Dict[str, Any]]]]:
         """
         Return pending changes for a given tracked table
 
         :param schema: Schema the table belongs to
         :param table: Table to return changes for
         :param aggregate: Whether to aggregate changes or return them completely
-        :return: If aggregate is True: tuple with numbers of `(added_rows, removed_rows, updated_rows)`.
+        :return: If aggregate is True: List of tuples of (change_type, number of rows).
             If aggregate is False: List of (primary_key, change_type, change_data)
         """
         if aggregate:
@@ -420,7 +554,7 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
             ]
 
         ri_cols, _ = zip(*self.get_change_key(schema, table))
-        result = []
+        result: List[Tuple[Tuple, bool, Dict]] = []
         for action, row_data, changed_fields in self.run_sql(
             SQL(
                 "SELECT action, row_data, changed_fields FROM {}.{} "
@@ -431,41 +565,57 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
             result.extend(_convert_audit_change(action, row_data, changed_fields, ri_cols))
         return result
 
-    def get_changed_tables(self, schema):
+    def get_changed_tables(self, schema: str) -> List[str]:
         """Get list of tables that have changed content"""
-        return self.run_sql(
-            SQL(
-                """SELECT DISTINCT(table_name) FROM {}.{}
+        return cast(
+            List[str],
+            self.run_sql(
+                SQL(
+                    """SELECT DISTINCT(table_name) FROM {}.{}
                                WHERE schema_name = %s"""
-            ).format(Identifier("audit"), Identifier("logged_actions")),
-            (schema,),
-            return_shape=ResultShape.MANY_ONE,
+                ).format(Identifier("audit"), Identifier("logged_actions")),
+                (schema,),
+                return_shape=ResultShape.MANY_ONE,
+            ),
         )
 
 
 class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
     """An implementation of the Postgres engine for Splitgraph"""
 
-    def get_object_schema(self, object_id):
-        return [
-            tuple(t)
-            for t in json.loads(
-                self.run_sql(
-                    "SELECT splitgraph_api.get_object_schema(%s)",
-                    (object_id,),
-                    return_shape=ResultShape.ONE_ONE,
-                )
-            )
-        ]
+    def get_object_schema(self, object_id: str) -> "TableSchema":
+        result: "TableSchema" = []
 
-    def _set_object_schema(self, object_id, schema_spec):
+        for ordinal, column_name, column_type, is_pk in json.loads(
+            self.run_sql(
+                "SELECT splitgraph_api.get_object_schema(%s)",
+                (object_id,),
+                return_shape=ResultShape.ONE_ONE,
+            )
+        ):
+            assert isinstance(ordinal, int)
+            assert isinstance(column_name, str)
+            assert isinstance(column_type, str)
+            assert isinstance(is_pk, bool)
+            result.append(TableColumn(ordinal, column_name, column_type, is_pk))
+
+        return result
+
+    def _set_object_schema(self, object_id: str, schema_spec: "TableSchema") -> None:
+        # Drop the comments from the schema spec (not stored in the object schema file).
+        schema_spec = [s[:4] for s in schema_spec]
         self.run_sql(
             "SELECT splitgraph_api.set_object_schema(%s, %s)", (object_id, json.dumps(schema_spec))
         )
 
     def dump_object_creation(
-        self, object_id, schema, table=None, schema_spec=None, if_not_exists=False
-    ):
+        self,
+        object_id: str,
+        schema: str,
+        table: Optional[str] = None,
+        schema_spec: Optional["TableSchema"] = None,
+        if_not_exists: bool = False,
+    ) -> bytes:
         """
         Generate the SQL that remounts a foreign table pointing to a Splitgraph object.
 
@@ -483,20 +633,21 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         query = SQL(
             "CREATE FOREIGN TABLE " + ("IF NOT EXISTS " if if_not_exists else "") + "{}.{} ("
         ).format(Identifier(schema), Identifier(table))
-        query += SQL(",".join("{} %s " % ctype for _, _, ctype, _ in schema_spec)).format(
-            *(Identifier(cname) for _, cname, _, _ in schema_spec)
+        query += SQL(",".join("{} %s " % col.pg_type for col in schema_spec)).format(
+            *(Identifier(col.name) for col in schema_spec)
         )
         # foreign tables/cstore don't support PKs
         query += SQL(") SERVER {} OPTIONS (compression %s, filename %s)").format(
             Identifier(CSTORE_SERVER)
         )
 
-        with self.connection.cursor() as cur:
-            return cur.mogrify(
-                query, ("pglz", os.path.join(self.conn_params["SG_ENGINE_OBJECT_PATH"], object_id))
-            )
+        object_path = self.conn_params["SG_ENGINE_OBJECT_PATH"]
+        assert object_path is not None
 
-    def dump_object(self, object_id, stream, schema):
+        with self.connection.cursor() as cur:
+            return cast(bytes, cur.mogrify(query, ("pglz", os.path.join(object_path, object_id))))
+
+    def dump_object(self, object_id: str, stream: TextIOWrapper, schema: str) -> None:
         schema_spec = self.get_object_schema(object_id)
         stream.write(
             self.dump_object_creation(object_id, schema=schema, schema_spec=schema_spec).decode(
@@ -507,11 +658,10 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         with self.connection.cursor() as cur:
             # Since we can't write into the CStore table directly, we first load the data
             # into a temporary table and then insert that data into the CStore table.
-            stream.write(
-                self.dump_table_creation(
-                    None, "cstore_tmp_ingestion", schema_spec, temporary=True
-                ).as_string(cur)
+            query, args = self.dump_table_creation(
+                None, "cstore_tmp_ingestion", schema_spec, temporary=True
             )
+            stream.write(cur.mogrify(query, args).decode("utf-8"))
             stream.write(";\n")
             self.dump_table_sql(
                 schema,
@@ -533,20 +683,23 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             )
             stream.write("DROP TABLE pg_temp.cstore_tmp_ingestion;\n")
 
-    def get_object_size(self, object_id):
-        return self.run_sql(
-            "SELECT splitgraph_api.get_object_size(%s)",
-            (object_id,),
-            return_shape=ResultShape.ONE_ONE,
+    def get_object_size(self, object_id: str) -> int:
+        return cast(
+            int,
+            self.run_sql(
+                "SELECT splitgraph_api.get_object_size(%s)",
+                (object_id,),
+                return_shape=ResultShape.ONE_ONE,
+            ),
         )
 
-    def delete_objects(self, object_ids):
+    def delete_objects(self, object_ids: List[str]) -> None:
         self.unmount_objects(object_ids)
         self.run_sql_batch(
             "SELECT splitgraph_api.delete_object_files(%s)", [(o,) for o in object_ids]
         )
 
-    def unmount_objects(self, object_ids):
+    def unmount_objects(self, object_ids: List[str]) -> None:
         """Unmount objects from splitgraph_meta (this doesn't delete the physical files."""
         unmount_query = SQL(";").join(
             SQL("DROP FOREIGN TABLE IF EXISTS {}.{}").format(
@@ -556,7 +709,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         )
         self.run_sql(unmount_query)
 
-    def sync_object_mounts(self):
+    def sync_object_mounts(self) -> None:
         """Scan through local object storage and synchronize it with the foreign tables in
         splitgraph_meta (unmounting non-existing objects and mounting existing ones)."""
         object_ids = self.run_sql(
@@ -575,7 +728,13 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         for object_id in object_ids:
             self.mount_object(object_id, schema_spec=self.get_object_schema(object_id))
 
-    def mount_object(self, object_id, table=None, schema=SPLITGRAPH_META_SCHEMA, schema_spec=None):
+    def mount_object(
+        self,
+        object_id: str,
+        table: None = None,
+        schema: str = SPLITGRAPH_META_SCHEMA,
+        schema_spec: Optional["TableSchema"] = None,
+    ) -> None:
         """
         Mount an object from local storage as a foreign table.
 
@@ -587,18 +746,30 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         query = self.dump_object_creation(object_id, schema, table, schema_spec)
         self.run_sql(query)
 
-    def store_fragment(self, inserted, deleted, schema, table, source_schema, source_table):
+    def store_fragment(
+        self,
+        inserted: Any,
+        deleted: Any,
+        schema: str,
+        table: str,
+        source_schema: str,
+        source_table: str,
+    ) -> None:
 
         schema_spec = self.get_full_table_schema(source_schema, source_table)
         # Assuming the schema_spec has the whole tuple as PK if the table has no PK.
-        if all(not c[3] for c in schema_spec):
-            schema_spec = [(c[0], c[1], c[2], True) for c in schema_spec]
-        ri_cols = [c[1] for c in schema_spec if c[3]]
-        ri_types = [c[2] for c in schema_spec if c[3]]
-        non_ri_cols = [c[1] for c in schema_spec if not c[3]]
+        if all(not c.is_pk for c in schema_spec):
+            schema_spec = [
+                TableColumn(c.ordinal, c.name, c.pg_type, True, c.comment) for c in schema_spec
+            ]
+        ri_cols = [c.name for c in schema_spec if c.is_pk]
+        ri_types = [c.pg_type for c in schema_spec if c.is_pk]
+        non_ri_cols = [c.name for c in schema_spec if not c.is_pk]
         all_cols = ri_cols + non_ri_cols
         self.create_table(
-            schema, table, schema_spec=([(0, SG_UD_FLAG, "boolean", False)] + schema_spec)
+            schema,
+            table,
+            schema_spec=([TableColumn(0, SG_UD_FLAG, "boolean", False)] + schema_spec),
         )
 
         # Store upserts
@@ -680,13 +851,46 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             args = [p for pk in deleted for p in [False] + list(pk)]
             self.run_sql(query, args)
 
-    def store_object(self, object_id, source_schema, source_table):
+    def store_object(self, object_id: str, source_schema: str, source_table: str) -> None:
         schema_spec = self.get_full_table_schema(source_schema, source_table)
 
-        # Mount the object first
-        self.mount_object(object_id, schema_spec=schema_spec)
+        # The physical object storage (/var/lib/splitgraph/objects) and the actual
+        # foreign tables in spligraph_meta might be desynced for a variety of reasons,
+        # so we have to handle all four cases of (physical object exists/doesn't exist,
+        # foreign table exists/doesn't exist).
 
-        # Insert the data into the new Citus table.
+        object_exists = self.run_sql(
+            select("object_exists", schema=SPLITGRAPH_API_SCHEMA, table_args="(%s)"),
+            (object_id,),
+            return_shape=ResultShape.ONE_ONE,
+        )
+
+        # Try mounting the object
+        try:
+            self.mount_object(object_id, schema_spec=schema_spec)
+        except DuplicateTable:
+            # Foreign table with that name already exists. If it does exist but there's no
+            # physical object file, we'll have to write into the table anyway.
+            if not object_exists:
+                logging.info(
+                    "Object storage, %s/%s -> %s, mounted but no physical file, recreating",
+                    source_schema,
+                    source_table,
+                    object_id,
+                )
+
+        if object_exists:
+            logging.info(
+                "Object storage, %s/%s -> %s, already exists, deleting source table",
+                source_schema,
+                source_table,
+                object_id,
+            )
+            self.delete_table(source_schema, source_table)
+            return
+
+        # At this point, the foreign table mounting the object exists and we've established
+        # that it's a brand new table, so insert data into it.
         self.run_sql(
             SQL("INSERT INTO {}.{} SELECT * FROM {}.{}").format(
                 Identifier(SPLITGRAPH_META_SCHEMA),
@@ -701,19 +905,23 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         self.delete_table(source_schema, source_table)
 
     @staticmethod
-    def _schema_spec_to_cols(schema_spec):
-        pk_cols = [p[1] for p in schema_spec if p[3]]
-        non_pk_cols = [p[1] for p in schema_spec if not p[3]]
+    def _schema_spec_to_cols(schema_spec: "TableSchema") -> Tuple[List[str], List[str]]:
+        pk_cols = [p.name for p in schema_spec if p.is_pk]
+        non_pk_cols = [p.name for p in schema_spec if not p.is_pk]
 
         if not pk_cols:
             return pk_cols + non_pk_cols, []
-        else:
-            return pk_cols, non_pk_cols
+        return pk_cols, non_pk_cols
 
     @staticmethod
     def _generate_fragment_application(
-        source_schema, source_table, target_schema, target_table, cols, extra_quals=None
-    ):
+        source_schema: str,
+        source_table: str,
+        target_schema: str,
+        target_table: str,
+        cols: Tuple[List[str], List[str]],
+        extra_quals: Optional[Composed] = None,
+    ) -> Composed:
         ri_cols, non_ri_cols = cols
         all_cols = ri_cols + non_ri_cols
 
@@ -756,13 +964,13 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
     def apply_fragments(
         self,
-        objects,
-        target_schema,
-        target_table,
-        extra_quals=None,
-        extra_qual_args=None,
-        schema_spec=None,
-    ):
+        objects: List[Tuple[str, str]],
+        target_schema: str,
+        target_table: str,
+        extra_quals: Optional[Composed] = None,
+        extra_qual_args: Optional[Tuple[str]] = None,
+        schema_spec: Optional["TableSchema"] = None,
+    ) -> None:
         if not objects:
             return
         schema_spec = schema_spec or self.get_full_table_schema(target_schema, target_table)
@@ -777,11 +985,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         )
         self.run_sql(query, (extra_qual_args * len(objects)) if extra_qual_args else None)
 
-    def upload_objects(self, objects, remote_engine):
-        if not isinstance(remote_engine, PostgresEngine):
-            raise ObjectCacheError(
-                "Remote engine isn't a Postgres engine, object uploading is unsupported for now!"
-            )
+    def upload_objects(self, objects: List[str], remote_engine: "PostgresEngine") -> None:
 
         # We don't have direct access to the remote engine's storage and we also
         # can't use the old method of first creating a CStore table remotely and then
@@ -793,16 +997,17 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         #
         # Perhaps we should drop direct uploading altogether and require people to use S3 throughout.
 
-        for i, obj in enumerate(objects):
-            print("(%d/%d) %s..." % (i + 1, len(objects), obj))
-            schema_spec = self.get_object_schema(obj)
-            remote_engine.mount_object(obj, schema_spec=schema_spec)
+        pbar = tqdm(objects, unit="objs")
+        for object_id in pbar:
+            pbar.set_postfix(object=object_id[:10] + "...")
+            schema_spec = self.get_object_schema(object_id)
+            remote_engine.mount_object(object_id, schema_spec=schema_spec)
 
             stream = BytesIO()
             with self.connection.cursor() as cur:
                 cur.copy_expert(
                     SQL("COPY {}.{} TO STDOUT WITH (FORMAT 'binary')").format(
-                        Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj)
+                        Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)
                     ),
                     stream,
                 )
@@ -810,15 +1015,15 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             with remote_engine.connection.cursor() as cur:
                 cur.copy_expert(
                     SQL("COPY {}.{} FROM STDIN WITH (FORMAT 'binary')").format(
-                        Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj)
+                        Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)
                     ),
                     stream,
                 )
-            remote_engine._set_object_schema(obj, schema_spec)
+            remote_engine._set_object_schema(object_id, schema_spec)
             remote_engine.commit()
 
     @contextmanager
-    def _mount_remote_engine(self, remote_engine):
+    def _mount_remote_engine(self, remote_engine: "PostgresEngine") -> Iterator[str]:
         # Switch the global engine to "self" instead of LOCAL since `mount_postgres` uses the global engine
         # (we can't easily pass args into it as it's also invoked from the command line with its arguments
         # used to populate --help)
@@ -827,6 +1032,14 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         host = remote_engine.conn_params["SG_ENGINE_FDW_HOST"]
         port = remote_engine.conn_params["SG_ENGINE_FDW_PORT"]
         dbname = remote_engine.conn_params["SG_ENGINE_DB_NAME"]
+
+        # conn_params might contain Nones for some parameters (host/port for Unix
+        # socket connection, so here we have to validate that they aren't None).
+        assert user is not None
+        assert pwd is not None
+        assert host is not None
+        assert port is not None
+        assert dbname is not None
 
         logging.info(
             "Mounting remote schema %s@%s:%s/%s/%s to %s...",
@@ -853,31 +1066,40 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         finally:
             self.delete_schema(REMOTE_TMP_SCHEMA)
 
-    def download_objects(self, objects, remote_engine):
+    def download_objects(self, objects: List[str], remote_engine: "PostgresEngine") -> List[str]:
         # Instead of connecting and pushing queries to it from the Python client, we just mount the remote mountpoint
         # into a temporary space (without any checking out) and SELECT the  required data into our local tables.
 
         with self._mount_remote_engine(remote_engine) as remote_schema:
             downloaded_objects = []
-            for i, obj in enumerate(objects):
-                logging.info("(%d/%d) Downloading %s...", i + 1, len(objects), obj)
-                if not self.table_exists(remote_schema, obj):
-                    logging.error("%s not found on the remote engine!", obj)
+            pbar = tqdm(objects, unit="objs")
+            for object_id in pbar:
+                pbar.set_postfix(object=object_id[:10] + "...")
+                if not self.table_exists(remote_schema, object_id):
+                    logging.error("%s not found on the remote engine!", object_id)
                     continue
 
                 # Create the CStore table on the engine and copy the contents of the object into it.
-                schema_spec = remote_engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, obj)
-                self.mount_object(obj, schema_spec=schema_spec)
+                schema_spec = remote_engine.get_full_table_schema(SPLITGRAPH_META_SCHEMA, object_id)
+                self.mount_object(object_id, schema_spec=schema_spec)
                 self.copy_table(
-                    remote_schema, obj, SPLITGRAPH_META_SCHEMA, obj, with_pk_constraints=False
+                    remote_schema,
+                    object_id,
+                    SPLITGRAPH_META_SCHEMA,
+                    object_id,
+                    with_pk_constraints=False,
                 )
-                self._set_object_schema(obj, schema_spec=schema_spec)
-                self.connection.commit()
-                downloaded_objects.append(obj)
+                self._set_object_schema(object_id, schema_spec=schema_spec)
+                downloaded_objects.append(object_id)
             return downloaded_objects
 
 
-def _split_ri_cols(action, row_data, changed_fields, ri_cols):
+def _split_ri_cols(
+    action: str,
+    row_data: Dict[str, Any],
+    changed_fields: Optional[Dict[str, str]],
+    ri_cols: Tuple[str, ...],
+) -> Any:
     """
     :return: `(ri_data, non_ri_data)`: a tuple of 2 dictionaries:
         * `ri_data`: maps column names in `ri_cols` to values identifying the replica identity (RI) of a given tuple
@@ -907,7 +1129,12 @@ def _split_ri_cols(action, row_data, changed_fields, ri_cols):
     return ri_data, non_ri_data
 
 
-def _recalculate_disjoint_ri_cols(ri_cols, ri_data, non_ri_data, row_data):
+def _recalculate_disjoint_ri_cols(
+    ri_cols: Tuple[str, ...],
+    ri_data: Dict[str, Any],
+    non_ri_data: Dict[str, Any],
+    row_data: Dict[str, Any],
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     # If part of the PK has been updated (is in the non_ri_cols/vals), we have to instead
     # apply the update to the PK (ri_cols/vals) and recalculate the new full new tuple
     # (by applying the update to row_data).
@@ -927,7 +1154,12 @@ def _recalculate_disjoint_ri_cols(ri_cols, ri_data, non_ri_data, row_data):
     return ri_data, new_non_ri_data
 
 
-def _convert_audit_change(action, row_data, changed_fields, ri_cols):
+def _convert_audit_change(
+    action: str,
+    row_data: Dict[str, Any],
+    changed_fields: Optional[Dict[str, str]],
+    ri_cols: Tuple[str, ...],
+) -> List[Tuple[Tuple, bool, Dict[str, str]]]:
     """
     Converts the audit log entry into Splitgraph's internal format.
 
@@ -966,7 +1198,7 @@ def _convert_audit_change(action, row_data, changed_fields, ri_cols):
 _KIND = {"I": 0, "D": 1, "U": 2}
 
 
-def _convert_vals(vals):
+def _convert_vals(vals: Any) -> Any:
     """Psycopg returns jsonb objects as dicts/lists but doesn't actually accept them directly
     as a query param (or in the case of lists coerces them into an array.
     Hence, we have to wrap them in the Json datatype when doing a dump + load."""
@@ -978,7 +1210,7 @@ def _convert_vals(vals):
     ]
 
 
-def _generate_where_clause(table, cols, table_2):
+def _generate_where_clause(table: str, cols: List[str], table_2: str) -> Composed:
     return SQL(" AND ").join(
         SQL("{}.{} = {}.{}").format(
             Identifier(table), Identifier(c), Identifier(table_2), Identifier(c)

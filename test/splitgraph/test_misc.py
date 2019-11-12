@@ -1,19 +1,14 @@
-from datetime import datetime as dt
+from datetime import datetime as dt, datetime
 from unittest.mock import patch
 
 import pytest
 from psycopg2.errors import CheckViolation
 
-from splitgraph.core._common import Tracer
+from splitgraph.core.common import Tracer
 from splitgraph.core.engine import lookup_repository, repository_exists
 from splitgraph.core.metadata_manager import Object
 from splitgraph.core.repository import Repository
-from splitgraph.exceptions import RepositoryNotFoundError, UninitializedEngineError
-
-try:
-    from unittest import mock
-except ImportError:
-    import mock
+from splitgraph.exceptions import RepositoryNotFoundError, EngineInitializationError
 
 
 def test_repo_lookup_override(remote_engine):
@@ -32,7 +27,7 @@ def test_repo_lookup_override_fail():
 
 
 def test_tracer():
-    with patch("splitgraph.core._common.dt") as datetime:
+    with patch("splitgraph.core.common.datetime") as datetime:
         datetime.now.return_value = dt(2019, 1, 1)
         tracer = Tracer()
 
@@ -80,9 +75,10 @@ def test_metadata_constraints_object_ids_hashes(local_engine_empty):
                     format="FRAG",
                     namespace="",
                     size=42,
+                    created=datetime.now(),
                     insertion_hash="0" * 64,
                     deletion_hash="0" * 64,
-                    index={},
+                    object_index={},
                 )
             ]
         )
@@ -95,9 +91,10 @@ def test_metadata_constraints_object_ids_hashes(local_engine_empty):
                     format="FRAG",
                     namespace="",
                     size=42,
+                    created=datetime.now(),
                     insertion_hash="0" * 64,
                     deletion_hash="0" * 64,
-                    index={},
+                    object_index={},
                 )
             ]
         )
@@ -110,9 +107,10 @@ def test_metadata_constraints_object_ids_hashes(local_engine_empty):
                     format="FRAG",
                     namespace="",
                     size=42,
+                    created=datetime.now(),
                     insertion_hash="0" * 64,
                     deletion_hash="0" * 64,
-                    index={},
+                    object_index={},
                 )
             ]
         )
@@ -125,9 +123,10 @@ def test_metadata_constraints_object_ids_hashes(local_engine_empty):
                     format="FRAG",
                     namespace="",
                     size=42,
+                    created=datetime.now(),
                     insertion_hash="broken",
                     deletion_hash="0" * 64,
-                    index={},
+                    object_index={},
                 )
             ]
         )
@@ -140,9 +139,10 @@ def test_metadata_constraints_object_ids_hashes(local_engine_empty):
                     format="FRAG",
                     namespace="",
                     size=42,
+                    created=datetime.now(),
                     insertion_hash="0" * 64,
                     deletion_hash="broken",
-                    index={},
+                    object_index={},
                 )
             ]
         )
@@ -158,9 +158,10 @@ def test_metadata_constraints_table_objects(local_engine_empty):
                 format="FRAG",
                 namespace="",
                 size=42,
+                created=datetime.now(),
                 insertion_hash="0" * 64,
                 deletion_hash="0" * 64,
-                index={},
+                object_index={},
             )
         ]
     )
@@ -198,7 +199,7 @@ def test_remove_with_no_audit_triggers(local_engine_empty):
         local_engine_empty.run_sql("DROP SCHEMA audit CASCADE")
         local_engine_empty.commit()
         # This still raises
-        with pytest.raises(UninitializedEngineError):
+        with pytest.raises(EngineInitializationError):
             local_engine_empty.discard_pending_changes("some/repo")
 
         # This doesn't.

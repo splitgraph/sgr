@@ -8,11 +8,20 @@ implement a different engine.
 import itertools
 from abc import ABC
 from contextlib import contextmanager
+from datetime import datetime
 from enum import Enum
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING, cast
 
+from psycopg2.sql import Composed
 from psycopg2.sql import SQL, Identifier
 
+import splitgraph.config  # to access the IN_FDW global
 from splitgraph.config import CONFIG
+from splitgraph.config.config import get_singleton, ConfigDict, get_all_in_section
+from splitgraph.core.types import TableColumn, TableSchema
+
+if TYPE_CHECKING:
+    from splitgraph.engine.postgres.engine import PostgresEngine
 
 # List of config flags that are extracted from the global configuration and passed to a given engine
 _ENGINE_SPECIFIC_CONFIG = [
@@ -37,13 +46,24 @@ _ENGINE_CONFIG_DEFAULTS = {
 }
 
 
-def _prepare_engine_config(config_dict):
+def _prepare_engine_config(config_dict: ConfigDict, name: str = "LOCAL") -> Dict[str, str]:
     result = {}
+
+    # strictly speaking the "config_dict" itself doesn't have the type Dict[str, str]
+    # (since it has nested things) but whatever
+    subsection: Dict[str, str] = cast(
+        Dict[str, str],
+        config_dict if name == "LOCAL" else get_all_in_section(config_dict, "remotes")[name],
+    )
+
     for key in _ENGINE_SPECIFIC_CONFIG:
-        if key in _ENGINE_CONFIG_DEFAULTS:
-            result[key] = config_dict[_ENGINE_CONFIG_DEFAULTS[key]]
-        if key in config_dict:
-            result[key] = config_dict[key]
+        try:
+            result[key] = subsection[key]
+        except KeyError:
+            try:
+                result[key] = subsection[_ENGINE_CONFIG_DEFAULTS[key]]
+            except KeyError:
+                result[key] = ""
     return result
 
 
@@ -63,11 +83,11 @@ class SQLEngine(ABC):
     functions to implement some basic database management methods like listing, deleting, creating, dumping
     and loading tables."""
 
-    def __init__(self):
-        self._savepoint_stack = []
+    def __init__(self) -> None:
+        self._savepoint_stack: List[str] = []
 
     @contextmanager
-    def savepoint(self, name):
+    def savepoint(self, name: str) -> Iterator[None]:
         """At the beginning of this context manager, a savepoint is initialized and any database
         error that occurs in run_sql results in a rollback to this savepoint rather than the
         rollback of the whole transaction. At exit, the savepoint is released."""
@@ -106,7 +126,13 @@ class SQLEngine(ABC):
         :param schema: Schema to run the statement in"""
         raise NotImplementedError()
 
-    def run_sql_in(self, schema, sql, arguments=None, return_shape=ResultShape.MANY_MANY):
+    def run_sql_in(
+        self,
+        schema: str,
+        sql: Union[Composed, str],
+        arguments: None = None,
+        return_shape: ResultShape = ResultShape.MANY_MANY,
+    ) -> Any:
         """
         Executes a non-schema-qualified query against a specific schema.
 
@@ -120,7 +146,7 @@ class SQLEngine(ABC):
         self.run_sql("SET search_path TO public", (schema,), return_shape=ResultShape.NONE)
         return result
 
-    def table_exists(self, schema, table_name):
+    def table_exists(self, schema: str, table_name: str) -> bool:
         """
         Check if a table exists on the engine.
 
@@ -137,7 +163,7 @@ class SQLEngine(ABC):
             is not None
         )
 
-    def schema_exists(self, schema):
+    def schema_exists(self, schema: str) -> bool:
         """
         Check if a schema exists on the engine.
 
@@ -153,25 +179,22 @@ class SQLEngine(ABC):
             is not None
         )
 
-    def create_schema(self, schema):
+    def create_schema(self, schema: str) -> None:
         """Create a schema if it doesn't exist"""
-        return self.run_sql(
-            SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(schema)),
-            return_shape=ResultShape.NONE,
-        )
+        self.run_sql(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(schema)))
 
     def copy_table(
         self,
-        source_schema,
-        source_table,
-        target_schema,
-        target_table,
-        with_pk_constraints=True,
-        limit=None,
-        after_pk=None,
-    ):
+        source_schema: str,
+        source_table: str,
+        target_schema: str,
+        target_table: str,
+        with_pk_constraints: bool = True,
+        limit: Optional[int] = None,
+        after_pk: Optional[Union[Tuple[datetime, int], Tuple[int]]] = None,
+    ) -> None:
         """Copy a table in the same engine, optionally applying primary key constraints as well."""
-        query_args = []
+
         if not self.table_exists(target_schema, target_table):
             query = SQL("CREATE TABLE {}.{} AS SELECT * FROM {}.{}").format(
                 Identifier(target_schema),
@@ -187,23 +210,24 @@ class SQLEngine(ABC):
                 Identifier(source_table),
             )
         pks = self.get_primary_keys(source_schema, source_table)
-        pks_sql = SQL("(") + SQL(",").join(Identifier(p[0]) for p in pks) + SQL(")")
+        chunk_key = pks or self.get_column_names_types(source_schema, source_table)
+        chunk_sql = SQL("(") + SQL(",").join(Identifier(p[0]) for p in chunk_key) + SQL(")")
+
+        query_args: List[Any] = []
         if after_pk:
-            # If after_pk is specified, start from after a given PK.
+            # If after_pk is specified, start from after a given PK (or, if the table doesn't have
+            # a PK, treat after_pk as the contents of the whole row).
             # Wrap the pk in brackets for when we have a composite key.
-            if not pks:
-                raise ValueError("after_pk cannot be used when a table doesn't have a primary key!")
 
             query += (
                 SQL(" WHERE ")
-                + pks_sql
-                + SQL(" > (" + ",".join(itertools.repeat("%s", len(pks))) + ")")
+                + chunk_sql
+                + SQL(" > (" + ",".join(itertools.repeat("%s", len(chunk_key))) + ")")
             )
             query_args.extend(after_pk)
 
         if limit:
-            if pks:
-                query += SQL(" ORDER BY ") + pks_sql
+            query += SQL(" ORDER BY ") + chunk_sql
             query += SQL(" LIMIT %s")
             query_args.append(limit)
 
@@ -215,9 +239,9 @@ class SQLEngine(ABC):
                 + SQL(",").join(SQL("{}").format(Identifier(c)) for c, _ in pks)
                 + SQL(")")
             )
-        self.run_sql(query, query_args, return_shape=ResultShape.NONE)
+        self.run_sql(query, query_args)
 
-    def delete_table(self, schema, table):
+    def delete_table(self, schema: str, table: str) -> None:
         """Drop a table from a schema if it exists"""
         if self.get_table_type(schema, table) not in ("FOREIGN TABLE", "FOREIGN"):
             self.run_sql(
@@ -230,46 +254,58 @@ class SQLEngine(ABC):
                 )
             )
 
-    def delete_schema(self, schema):
+    def delete_schema(self, schema: str) -> None:
         """Delete a schema if it exists, including all the tables in it."""
         self.run_sql(
             SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(schema)),
             return_shape=ResultShape.NONE,
         )
 
-    def get_all_tables(self, schema):
+    def get_all_tables(self, schema: str) -> List[str]:
         """Get all tables in a given schema."""
-        return self.run_sql(
-            "SELECT table_name FROM information_schema.tables WHERE table_schema = %s",
-            (schema,),
-            return_shape=ResultShape.MANY_ONE,
+        return cast(
+            List[str],
+            self.run_sql(
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = %s",
+                (schema,),
+                return_shape=ResultShape.MANY_ONE,
+            ),
         )
 
-    def get_table_type(self, schema, table):
+    def get_table_type(self, schema: str, table: str) -> Optional[str]:
         """Get the type of the table (BASE or FOREIGN)
         """
-        return self.run_sql(
+        result = self.run_sql(
             "SELECT table_type FROM information_schema.tables WHERE table_schema = %s"
             " AND table_name = %s",
             (schema, table),
             return_shape=ResultShape.ONE_ONE,
         )
+        return cast(Optional[str], result)
 
     def get_primary_keys(self, schema, table):
         """Get a list of (column_name, column_type) denoting the primary keys of a given table."""
         raise NotImplementedError()
 
     @staticmethod
-    def dump_table_creation(schema, table, schema_spec, unlogged=False, temporary=False):
+    def dump_table_creation(
+        schema: Optional[str],
+        table: str,
+        schema_spec: "TableSchema",
+        unlogged: bool = False,
+        temporary: bool = False,
+        include_comments: bool = False,
+    ) -> Tuple[Composed, Tuple]:
         """
         Dumps the DDL for a table using a previously-dumped table schema spec
 
         :param schema: Schema to create the table in
         :param table: Table name to create
-        :param schema_spec: A list of (ordinal_position, column_name, data_type, is_pk) specifying the table schema
+        :param schema_spec: TableSchema
         :param unlogged: If True, the table won't be reflected in the WAL or scanned by the analyzer/autovacuum.
         :param temporary: If True, a temporary table is created (the schema parameter is ignored)
-        :return: An SQL statement that reconstructs the table schema.
+        :param include_comments: If True, also adds COMMENT statements for columns that have them.
+        :return: An SQL statement that reconstructs the table schema + args to be mogrified into it.
         """
         flavour = ""
         if unlogged:
@@ -286,12 +322,12 @@ class SQLEngine(ABC):
         query = (
             SQL("CREATE " + flavour + " TABLE ")
             + target
-            + SQL(" (" + ",".join("{} %s " % ctype for _, _, ctype, _ in schema_spec)).format(
-                *(Identifier(cname) for _, cname, _, _ in schema_spec)
+            + SQL(" (" + ",".join("{} %s " % col.pg_type for col in schema_spec)).format(
+                *(Identifier(col.name) for col in schema_spec)
             )
         )
 
-        pk_cols = [cname for _, cname, _, is_pk in schema_spec if is_pk]
+        pk_cols = [col.name for col in schema_spec if col.is_pk]
         if pk_cols:
             query += (
                 SQL(", PRIMARY KEY (")
@@ -302,22 +338,42 @@ class SQLEngine(ABC):
             query += SQL(")")
         if unlogged:
             query += SQL(" WITH(autovacuum_enabled=false)")
-        return query
+        query += SQL(";")
 
-    def create_table(self, schema, table, schema_spec, unlogged=False, temporary=False):
+        args = []
+        if include_comments:
+            for col in schema_spec:
+                if col.comment:
+                    query += SQL("COMMENT ON COLUMN {}.{} IS %s;").format(
+                        target, Identifier(col.name)
+                    )
+                    args.append(col.comment)
+
+        return query, tuple(args)
+
+    def create_table(
+        self,
+        schema: Optional[str],
+        table: str,
+        schema_spec: "TableSchema",
+        unlogged: bool = False,
+        temporary: bool = False,
+        include_comments: bool = False,
+    ) -> None:
         """
         Creates a table using a previously-dumped table schema spec
 
         :param schema: Schema to create the table in
         :param table: Table name to create
-        :param schema_spec: A list of (ordinal_position, column_name, data_type, is_pk) specifying the table schema
+        :param schema_spec: TableSchema
         :param unlogged: If True, the table won't be reflected in the WAL or scanned by the analyzer/autovacuum.
         :param temporary: If True, a temporary table is created (the schema parameter is ignored)
+        :param include_comments: If True, also adds COMMENT statements for columns that have them.
         """
-        self.run_sql(
-            self.dump_table_creation(schema, table, schema_spec, unlogged, temporary),
-            return_shape=ResultShape.NONE,
+        query, args = self.dump_table_creation(
+            schema, table, schema_spec, unlogged, temporary, include_comments
         )
+        self.run_sql(query, args)
 
     def dump_table_sql(
         self,
@@ -343,25 +399,36 @@ class SQLEngine(ABC):
         """
         raise NotImplementedError()
 
-    def get_column_names_types(self, schema, table_name):
+    def get_column_names_types(self, schema: str, table_name: str) -> List[Tuple[str, str]]:
         """Returns a list of (column, type) in a given table."""
-        return self.run_sql(
-            """SELECT column_name, data_type FROM information_schema.columns
+        return cast(
+            List[Tuple[str, str]],
+            self.run_sql(
+                """SELECT column_name, data_type FROM information_schema.columns
                            WHERE table_schema = %s
                            AND table_name = %s""",
-            (schema, table_name),
+                (schema, table_name),
+            ),
         )
 
-    def get_full_table_schema(self, schema, table_name):
+    def get_full_table_schema(self, schema: str, table_name: str) -> "TableSchema":
         """
-        Generates a list of (column ordinal, name, data type, is_pk), used to detect schema changes like columns being
-        dropped/added/renamed or type changes.
+        Generates a list of (column ordinal, name, data type, is_pk, column comment),
+        used to detect schema changes like columns being dropped/added/renamed or type changes.
+
+        NB this doesn't work for temporary tables (pg_temp) and returns an empty schema.
         """
+        assert schema != "pg_temp"
+
         results = self.run_sql(
-            """SELECT ordinal_position, column_name, data_type FROM information_schema.columns
-                           WHERE table_schema = %s
-                           AND table_name = %s
-                           ORDER BY ordinal_position""",
+            SQL(
+                "SELECT ordinal_position, column_name, "
+                "CASE WHEN data_type = 'USER-DEFINED' THEN udt_name ELSE data_type END, "
+                "col_description('{}.{}'::regclass, ordinal_position) "
+                "FROM information_schema.columns "
+                "WHERE table_schema = %s AND table_name = %s "
+                "ORDER BY ordinal_position"
+            ).format(Identifier(schema), Identifier(table_name)),
             (schema, table_name),
         )
 
@@ -372,7 +439,8 @@ class SQLEngine(ABC):
 
         # Do we need to make sure the PK has the same type + ordinal position here?
         pks = [pk for pk, _ in self.get_primary_keys(schema, table_name)]
-        return [(o, n, _convert_type(dt), (n in pks)) for o, n, dt in results]
+
+        return [TableColumn(o, n, _convert_type(dt), (n in pks), c) for o, n, dt, c in results]
 
     def initialize(self):
         """Does any required initialization of the engine"""
@@ -443,7 +511,7 @@ class ChangeEngine(SQLEngine, ABC):
         """
         raise NotImplementedError()
 
-    def get_change_key(self, schema, table):
+    def get_change_key(self, schema: str, table: str) -> List[Tuple[str, str]]:
         """
         Returns the key used to identify a row in a change (list of column name, column type).
         If the tracked table has a PK, we use that; if it doesn't, the whole row is used.
@@ -560,56 +628,62 @@ class ObjectEngine:
 # Can be overridden via normal configuration routes, e.g.
 # $ SG_ENGINE=remote_engine sgr init
 # will initialize the remote engine instead.
-_ENGINE = CONFIG["SG_ENGINE"] or "LOCAL"
+_ENGINE: Union[str, "PostgresEngine"] = get_singleton(CONFIG, "SG_ENGINE") or "LOCAL"
 
 # Map of engine names -> Engine instances
-_ENGINES = {}
+_ENGINES: Dict[str, "PostgresEngine"] = {}
 
 
-def get_engine(name=None, use_socket=False, use_fdw_params=False, autocommit=False):
+def get_engine(
+    name: Optional[str] = None,
+    use_socket: bool = False,
+    use_fdw_params: Optional[bool] = None,
+    autocommit: bool = False,
+) -> "PostgresEngine":
     """
     Get the current global engine or a named remote engine
 
     :param name: Name of the remote engine as specified in the config. If None, the current global engine
         is returned.
     :param use_socket: Use a local UNIX socket instead of PG_HOST, PG_PORT for LOCAL engine connections.
-    :param use_fdw_params: Use the _FDW connection parameters (SG_ENGINE_FDW_HOST/PORT)
+    :param use_fdw_params: Use the _FDW connection parameters (SG_ENGINE_FDW_HOST/PORT). By default,
+        will infer from the global splitgraph.config.IN_FDW flag.
     :param autocommit: If True, the engine will not open SQL transactions implicitly.
     """
+    if use_fdw_params is None:
+        use_fdw_params = splitgraph.config.IN_FDW
+
+    from .postgres.engine import PostgresEngine
+
     if not name:
-        if isinstance(_ENGINE, SQLEngine):
+        if isinstance(_ENGINE, PostgresEngine):
             return _ENGINE
         name = _ENGINE
     if name not in _ENGINES:
         # Here we'd get the engine type/backend (Postgres/MySQL etc)
         # and instantiate the actual Engine class.
         # As we only have PostgresEngine, we instantiate that.
-        from .postgres.engine import PostgresEngine
 
-        if name == "LOCAL":
-            conn_params = _prepare_engine_config(CONFIG)
-            if use_socket:
-                conn_params["SG_ENGINE_HOST"] = None
-                conn_params["SG_ENGINE_PORT"] = None
-        else:
-            conn_params = _prepare_engine_config(CONFIG["remotes"][name])
+        conn_params = cast(Dict[str, Optional[str]], _prepare_engine_config(CONFIG, name))
+        if name == "LOCAL" and use_socket:
+            conn_params["SG_ENGINE_HOST"] = None
+            conn_params["SG_ENGINE_PORT"] = None
         if use_fdw_params:
             conn_params["SG_ENGINE_HOST"] = conn_params["SG_ENGINE_FDW_HOST"]
             conn_params["SG_ENGINE_PORT"] = conn_params["SG_ENGINE_FDW_PORT"]
+
         _ENGINES[name] = PostgresEngine(conn_params=conn_params, name=name, autocommit=autocommit)
     return _ENGINES[name]
 
 
 @contextmanager
-def switch_engine(engine):
+def switch_engine(engine: "PostgresEngine") -> Iterator[None]:
     """
     Switch the global engine to a different one. The engine will
     get switched back on exit from the context manager.
 
-    :param engine: Name of the engine or an SQLEngine instance
+    :param engine: Engine
     """
-    if not isinstance(engine, str) and not isinstance(engine, SQLEngine):
-        raise ValueError("engine must be an engine name or an SQLEngine, not %r!" % type(engine))
     global _ENGINE
     _prev_engine = _ENGINE
     try:
@@ -617,20 +691,3 @@ def switch_engine(engine):
         yield
     finally:
         _ENGINE = _prev_engine
-
-
-def get_remote_connection_params(remote_name):
-    """
-    Get connection parameters for a Splitgraph remote.
-
-    :param remote_name: Name of the remote. Must be specified in the config file.
-    :return: A tuple of (hostname, port, username, password, database)
-    """
-    pdict = CONFIG["remotes"][remote_name]
-    return (
-        pdict["SG_ENGINE_HOST"] or None,
-        int(pdict["SG_ENGINE_PORT"]) if pdict["SG_ENGINE_PORT"] else None,
-        pdict["SG_ENGINE_USER"],
-        pdict["SG_ENGINE_PWD"],
-        pdict["SG_ENGINE_DB_NAME"],
-    )

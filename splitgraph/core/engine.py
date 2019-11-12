@@ -1,16 +1,25 @@
 """
 Routines for managing Splitgraph engines, including looking up repositories and managing objects.
 """
+import logging
+from typing import Dict, List, Tuple, TYPE_CHECKING, Optional
 
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.config import CONFIG, SPLITGRAPH_API_SCHEMA
+from splitgraph.config import CONFIG, SPLITGRAPH_API_SCHEMA, get_singleton
 from splitgraph.engine import get_engine, ResultShape
 from splitgraph.exceptions import RepositoryNotFoundError
-from ._common import select
+from .common import select
+
+if TYPE_CHECKING:
+    from splitgraph.core.image import Image
+    from splitgraph.core.repository import Repository
+    from splitgraph.engine.postgres.engine import PostgresEngine
 
 
-def _parse_paths_overrides(lookup_path, override_path):
+def _parse_paths_overrides(
+    lookup_path: str, override_path: str
+) -> Tuple[List[str], Dict[str, str]]:
     return (
         lookup_path.split(",") if lookup_path else [],
         {r[: r.index(":")]: r[r.index(":") + 1 :] for r in override_path.split(",")}
@@ -22,11 +31,11 @@ def _parse_paths_overrides(lookup_path, override_path):
 # Parse and set these on import. If we ever need to be able to reread the config on the fly, these have to be
 # recalculated.
 _LOOKUP_PATH, _LOOKUP_PATH_OVERRIDE = _parse_paths_overrides(
-    CONFIG["SG_REPO_LOOKUP"], CONFIG["SG_REPO_LOOKUP_OVERRIDE"]
+    get_singleton(CONFIG, "SG_REPO_LOOKUP"), get_singleton(CONFIG, "SG_REPO_LOOKUP_OVERRIDE")
 )
 
 
-def init_engine(skip_object_handling=False):  # pragma: no cover
+def init_engine(skip_object_handling: bool = False) -> None:  # pragma: no cover
     # Method exercised in test_commandline.test_init_new_db but in
     # an external process
     """
@@ -42,10 +51,10 @@ def init_engine(skip_object_handling=False):  # pragma: no cover
     engine = get_engine()
     engine.initialize(skip_object_handling=skip_object_handling)
     engine.commit()
-    print("Engine %r initialized." % engine)
+    logging.info("Engine %r initialized.", engine)
 
 
-def repository_exists(repository):
+def repository_exists(repository: "Repository") -> bool:
     """
     Checks if a repository exists on the engine.
 
@@ -61,7 +70,7 @@ def repository_exists(repository):
     )
 
 
-def lookup_repository(name, include_local=False):
+def lookup_repository(name: str, include_local: bool = False) -> "Repository":
     """
     Queries the SG engines on the lookup path to locate one hosting the given repository.
 
@@ -92,7 +101,9 @@ def lookup_repository(name, include_local=False):
     raise RepositoryNotFoundError("Unknown repository %s!" % name)
 
 
-def get_current_repositories(engine):
+def get_current_repositories(
+    engine: "PostgresEngine"
+) -> List[Tuple["Repository", Optional["Image"]]]:
     """
     Lists all repositories currently in the engine.
 

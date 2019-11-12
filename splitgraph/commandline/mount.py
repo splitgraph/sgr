@@ -4,8 +4,10 @@ sgr commands related to mounting databases via Postgres FDW
 
 import json
 import re
+from typing import Tuple, Optional
 
 import click
+from click.core import Command
 
 from splitgraph.hooks.mount_handlers import get_mount_handler, get_mount_handlers, mount
 
@@ -29,7 +31,7 @@ def mount_c():
     """
 
 
-def _generate_handler_help(docstring):
+def _generate_handler_help(docstring: str) -> Tuple[str, str]:
     """
     Extract the long description and the parameters from a docstring
 
@@ -66,20 +68,25 @@ def _generate_handler_help(docstring):
         return "", ""
 
 
-def _make_mount_handler_command(handler_name):
+def _make_mount_handler_command(handler_name: str) -> Command:
     """Turn the mount handler function into a Click subcommand
     with help text and kwarg/connection string passing"""
 
     handler = get_mount_handler(handler_name)
-    help_text, handler_options_help = _generate_handler_help(handler.__doc__)
+    help_text: Optional[str]
+    handler_options_help: Optional[str]
+    if handler.__doc__:
+        help_text, handler_options_help = _generate_handler_help(handler.__doc__)
+    else:
+        help_text, handler_options_help = None, None
 
     params = [
         click.Argument(["schema"]),
         click.Option(
-            ("--connection", "-c"),
+            ["--connection", "-c"],
             help="Connection string in the form username:password@server:port",
         ),
-        click.Option(("--handler-options", "-o"), help=handler_options_help, default="{}"),
+        click.Option(["--handler-options", "-o"], help=handler_options_help, default="{}"),
     ]
 
     def _callback(schema, connection, handler_options):

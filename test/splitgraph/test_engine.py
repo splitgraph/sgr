@@ -2,22 +2,22 @@ from unittest import mock
 
 import psycopg2
 import pytest
+from psycopg2.sql import Identifier, SQL
 
-from splitgraph import (
-    SPLITGRAPH_META_SCHEMA,
-    REGISTRY_META_SCHEMA,
+from splitgraph.__version__ import __version__, VERSION_LOCAL_VAR
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA, CONFIG
+from splitgraph.core.common import ensure_metadata_schema
+from splitgraph.core.engine import get_current_repositories, lookup_repository, repository_exists
+from splitgraph.core.object_manager import ObjectManager
+from splitgraph.core.registry import (
+    _ensure_registry_schema,
     setup_registry_mode,
     get_published_info,
-    Repository,
-    ResultShape,
 )
-from splitgraph.core import get_current_repositories, lookup_repository, CONFIG, repository_exists
-from splitgraph.core._common import ensure_metadata_schema
-from splitgraph.core.object_manager import ObjectManager
-from splitgraph.core.registry import _ensure_registry_schema
-from splitgraph.engine import _prepare_engine_config
+from splitgraph.core.repository import Repository
+from splitgraph.engine import _prepare_engine_config, ResultShape
 from splitgraph.engine.postgres.engine import PostgresEngine
-from splitgraph.exceptions import UninitializedEngineError, ObjectNotFoundError
+from splitgraph.exceptions import EngineInitializationError, ObjectNotFoundError
 
 
 def test_metadata_schema(pg_repo_local):
@@ -83,21 +83,21 @@ def test_uninitialized_engine_error(local_engine_empty):
     # uninitialized engine errors rather than generic SQL errors.
     try:
         local_engine_empty.run_sql("DROP SCHEMA splitgraph_meta CASCADE")
-        with pytest.raises(UninitializedEngineError) as e:
+        with pytest.raises(EngineInitializationError) as e:
             lookup_repository("some/repo", include_local=True)
         assert "splitgraph_meta" in str(e.value)
         local_engine_empty.initialize()
         local_engine_empty.commit()
 
         local_engine_empty.run_sql("DROP SCHEMA splitgraph_api CASCADE")
-        with pytest.raises(UninitializedEngineError) as e:
+        with pytest.raises(EngineInitializationError) as e:
             ObjectManager(local_engine_empty).get_downloaded_objects()
         assert "splitgraph_api" in str(e.value)
         local_engine_empty.initialize()
         local_engine_empty.commit()
 
         local_engine_empty.run_sql("DROP SCHEMA audit CASCADE")
-        with pytest.raises(UninitializedEngineError) as e:
+        with pytest.raises(EngineInitializationError) as e:
             local_engine_empty.discard_pending_changes("some/repo")
         assert "Audit triggers" in str(e.value)
     finally:
@@ -121,3 +121,32 @@ def test_engine_autocommit(local_engine_empty):
 
     repo.engine.rollback()
     assert repository_exists(Repository.from_template(repo, engine=local_engine_empty))
+
+
+@pytest.mark.registry
+def test_engine_version_injected(unprivileged_remote_engine):
+    # Check version gets injected as a local variable
+    assert (
+        unprivileged_remote_engine.run_sql(
+            SQL("SHOW {};").format(Identifier(VERSION_LOCAL_VAR)), return_shape=ResultShape.ONE_ONE
+        )
+        == __version__
+    )
+    unprivileged_remote_engine.run_sql(
+        SQL("SET {} = 'bogus'").format(Identifier(VERSION_LOCAL_VAR))
+    )
+    assert (
+        unprivileged_remote_engine.run_sql(
+            SQL("SHOW {};").format(Identifier(VERSION_LOCAL_VAR)), return_shape=ResultShape.ONE_ONE
+        )
+        == "bogus"
+    )
+
+    # Rollback and check version gets injected again for a new transaction
+    unprivileged_remote_engine.rollback()
+    assert (
+        unprivileged_remote_engine.run_sql(
+            SQL("SHOW {};").format(Identifier(VERSION_LOCAL_VAR)), return_shape=ResultShape.ONE_ONE
+        )
+        == __version__
+    )

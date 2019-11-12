@@ -1,5 +1,7 @@
 .coverage
 .sgconfig
+!examples/**/.sgconfig
+!test/resources/.sgconfig
 htmlcov
 **/__pycache__
 **/.eggs
@@ -10,6 +12,7 @@ docs/_build/
 dist/
 .venv/
 .cache/
+.mypy_cache/
 
 .idea/
 pip-wheel-metadata

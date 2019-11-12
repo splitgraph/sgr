@@ -1,0 +1,56 @@
+- commands:
+  - "# Build and start the containers"
+  - docker-compose --project-name splitgraph_example down -v --remove-orphans
+  - docker-compose --project-name splitgraph_example build
+  - docker-compose --project-name splitgraph_example up -d
+  record: False
+- commands:
+  - "# Initialize the engine"
+  - sgr init
+  record: False
+- commands:
+  - "# Ingest the weather dataset at Raleigh-Durham Airport from the CSV example"
+  - sgr init demo/weather
+  - |
+    sgr csv import -f ../import-from-csv/rdu-weather-history.csv \
+                   -k date \
+                   -d date \
+                   --separator ";" \
+                   demo/weather rdu
+  - sgr commit demo/weather
+  - sgr tag demo/weather initial_data
+- commands:
+  - "# Inspect the Splitfile used to create a derivative image"
+  - cat rdu-weather-summary.splitfile
+- commands:
+  - "# Run the Splitfile to build a new image"
+  - sgr build rdu-weather-summary.splitfile -o demo/summary
+  - sgr tag demo/summary based_on_initial
+- commands:
+  - "# Much like with Docker, the build result is cached, so running build again checks out the existing image."
+  - sgr build rdu-weather-summary.splitfile -o demo/summary
+- commands:
+  - "# Inspect the new dataset"
+  - sgr show demo/summary:based_on_initial
+  - sgr table demo/summary:based_on_initial monthly_summary
+  - sgr sql -s demo/summary "SELECT * FROM monthly_summary ORDER BY month DESC LIMIT 5"
+- commands:
+  - "# Inspect the image's provenance (generated from its metadata)"
+  - sgr provenance demo/summary
+  - sgr provenance --full demo/summary
+- commands:
+  - "# Now pretend there's been a revision to the source historical weather data"
+  - sgr sql -s demo/weather "UPDATE rdu SET precipitation = precipitation * 1.2 WHERE EXTRACT (year FROM date) = 2012"
+  - sgr commit -m "Revision to the 2012 rainfall data" demo/weather
+  - sgr tag demo/weather revised_data
+- commands:
+  - "# Use the derivative image's provenance to rebuild it against the revised version"
+  - sgr rebuild demo/summary --against demo/weather:revised_data
+  - sgr tag demo/summary based_on_revised
+- commands:
+  - "# Compare the two resultant datasets"
+  - sgr diff demo/summary based_on_initial based_on_revised --verbose --table-name monthly_summary
+- commands:
+  - "# Delete the docker-compose project and cleanup"
+  - docker-compose --project-name splitgraph_example down -v
+  record: False

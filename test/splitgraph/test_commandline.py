@@ -1,31 +1,46 @@
 import json
 import os
+import shutil
 import subprocess
+from datetime import datetime
 from decimal import Decimal
+from unittest.mock import patch, mock_open, ANY, PropertyMock
 
+import docker
+import docker.errors
+import httpretty
 import pytest
+from click.testing import CliRunner
 
-from splitgraph import ResultShape, get_engine
+from splitgraph.__version__ import __version__
 from splitgraph.commandline import *
-from splitgraph.commandline._common import ImageType
+from splitgraph.commandline.cloud import register_c, curl_c
+from splitgraph.commandline.common import ImageType
+from splitgraph.commandline.engine import (
+    add_engine_c,
+    list_engines_c,
+    stop_engine_c,
+    delete_engine_c,
+    start_engine_c,
+)
 from splitgraph.commandline.example import generate_c, alter_c, splitfile_c
 from splitgraph.commandline.image_info import object_c, objects_c
 from splitgraph.config import PG_PWD, PG_USER
-from splitgraph.core._common import parse_connection_string, serialize_connection_string, insert
-from splitgraph.core.engine import repository_exists, init_engine
+from splitgraph.config.config import patch_config, create_config_dict
+from splitgraph.config.keys import DEFAULTS
+from splitgraph.core.common import insert, ResultShape, select, get_metadata_schema_version
+from splitgraph.core.engine import repository_exists, init_engine, get_engine
 from splitgraph.core.metadata_manager import OBJECT_COLS
 from splitgraph.core.registry import get_published_info
 from splitgraph.core.repository import Repository
+from splitgraph.core.types import TableColumn
+from splitgraph.engine.postgres.engine import PostgresEngine
+from splitgraph.exceptions import AuthAPIError, ImageNotFoundError, TableNotFoundError
 from splitgraph.hooks.mount_handlers import get_mount_handlers
 from test.splitgraph.conftest import OUTPUT, SPLITFILE_ROOT, MG_MNT
 
-try:
-    # python 3.4+ should use builtin unittest.mock not mock package
-    from unittest.mock import patch
-except ImportError:
-    from mock import patch
 
-from click.testing import CliRunner
+TEST_ENGINE_PREFIX = "test"
 
 
 def test_image_spec_parsing():
@@ -37,25 +52,6 @@ def test_image_spec_parsing():
     assert ImageType(default="HEAD")("pg_mount:some_tag") == (
         Repository("", "pg_mount"),
         "some_tag",
-    )
-
-
-def test_conn_string_parsing():
-    assert parse_connection_string("user:pwd@host.com:1234/db") == (
-        "host.com",
-        1234,
-        "user",
-        "pwd",
-        "db",
-    )
-    with pytest.raises(ValueError):
-        parse_connection_string("abcdef@blabla/blabla")
-
-
-def test_conn_string_serialization():
-    assert (
-        serialize_connection_string("host.com", 1234, "user", "pwd", "db")
-        == "user:pwd@host.com:1234/db"
     )
 
 
@@ -167,15 +163,20 @@ def test_commandline_basics(pg_repo_local):
     assert new_head.image_hash[:5] in result.output
 
     # sgr show the new commit
-    result = runner.invoke(show_c, [str(pg_repo_local) + ":" + new_head.image_hash[:20], "-v"])
+    result = runner.invoke(show_c, [str(pg_repo_local) + ":" + new_head.image_hash[:20]])
     assert "Test commit" in result.output
     assert "Parent: " + old_head.image_hash in result.output
-    fruit_objs = new_head.get_table("fruits").objects
-    mushroom_objs = new_head.get_table("mushrooms").objects
+    assert new_head.get_size() == 260
+    assert "Size: 260.00 B" in result.output
+    assert "fruits" in result.output
+    assert "mushrooms" in result.output
 
-    # Check verbose show also has the actual object IDs
-    for o in fruit_objs + mushroom_objs:
-        assert o in result.output
+    # sgr show the table's metadata
+    assert new_head.get_table("fruits").get_size() == 260
+    result = runner.invoke(table_c, [str(pg_repo_local) + ":" + new_head.image_hash[:20], "fruits"])
+    assert "Size: 260.00 B" in result.output
+    assert "fruit_id (integer)" in result.output
+    assert new_head.get_table("fruits").objects[0] in result.output
 
 
 def test_commandline_commit_chunk(pg_repo_local):
@@ -244,8 +245,8 @@ def test_commandline_commit_bloom(pg_repo_local):
     vegetable_objects = pg_repo_local.head.get_table("vegetables").objects
     assert len(vegetable_objects) == 1
     object_meta = pg_repo_local.objects.get_object_meta(fruit_objects + vegetable_objects)
-    assert "bloom" in object_meta[fruit_objects[0]].index
-    assert "bloom" not in object_meta[vegetable_objects[0]].index
+    assert "bloom" in object_meta[fruit_objects[0]].object_index
+    assert "bloom" not in object_meta[vegetable_objects[0]].object_index
 
 
 def test_object_info(local_engine_empty):
@@ -254,6 +255,7 @@ def test_object_info(local_engine_empty):
     base_1 = "o" + "0" * 62
     patch_1 = "o" + "0" * 61 + "1"
     patch_2 = "o" + "0" * 61 + "2"
+    dt = datetime(2019, 1, 1)
 
     q = insert("objects", OBJECT_COLS)
     local_engine_empty.run_sql(
@@ -263,6 +265,7 @@ def test_object_info(local_engine_empty):
             "FRAG",
             "ns1",
             12345,
+            dt,
             "0" * 64,
             "0" * 64,
             {
@@ -272,7 +275,7 @@ def test_object_info(local_engine_empty):
         ),
     )
     local_engine_empty.run_sql(
-        q, (patch_1, "FRAG", "ns1", 6789, "0" * 64, "0" * 64, {"range": {"col_1": [10, 20]}})
+        q, (patch_1, "FRAG", "ns1", 6789, dt, "0" * 64, "0" * 64, {"range": {"col_1": [10, 20]}})
     )
     local_engine_empty.run_sql(
         q,
@@ -281,6 +284,7 @@ def test_object_info(local_engine_empty):
             "FRAG",
             "ns1",
             1011,
+            dt,
             "0" * 64,
             "0" * 64,
             {"range": {"col_1": [10, 20], "col_2": ["bla", "ble"]}},
@@ -292,13 +296,17 @@ def test_object_info(local_engine_empty):
         (base_1, "HTTP", "example.com/objects/base_1.tgz"),
     )
     local_engine_empty.run_sql(insert("object_cache_status", ("object_id",)), (base_1,))
-    local_engine_empty.mount_object(base_1, schema_spec=[(1, "col_1", "integer", False)])
+    local_engine_empty.mount_object(
+        base_1, schema_spec=[TableColumn(1, "col_1", "integer", False, None)]
+    )
 
     # patch_1: on the engine, uncached locally
     # patch_2: created here, cached locally
-    local_engine_empty.mount_object(patch_2, schema_spec=[(1, "col_1", "integer", False)])
+    local_engine_empty.mount_object(
+        patch_2, schema_spec=[TableColumn(1, "col_1", "integer", False, None)]
+    )
 
-    result = runner.invoke(object_c, [base_1])
+    result = runner.invoke(object_c, [base_1], catch_exceptions=False)
     assert result.exit_code == 0
     assert (
         result.output
@@ -307,6 +315,7 @@ def test_object_info(local_engine_empty):
 Namespace: ns1
 Format: FRAG
 Size: 12.06 KiB
+Created: 2019-01-01 00:00:00
 Insertion hash: {"0" * 64}
 Deletion hash: {"0" * 64}
 Column index:
@@ -514,7 +523,9 @@ def test_import(pg_repo_local, mg_repo_local):
     assert result.exit_code == 0
     new_head = pg_repo_local.head
     assert new_head.get_table("stuff")
-    assert not head.get_table("stuff")
+
+    with pytest.raises(TableNotFoundError):
+        head.get_table("stuff")
 
     # sgr import with alias
     result = runner.invoke(
@@ -523,7 +534,9 @@ def test_import(pg_repo_local, mg_repo_local):
     assert result.exit_code == 0
     new_new_head = pg_repo_local.head
     assert new_new_head.get_table("stuff_copy")
-    assert not new_head.get_table("stuff_copy")
+
+    with pytest.raises(TableNotFoundError):
+        new_head.get_table("stuff_copy")
 
     # sgr import with alias and custom image hash
     mg_repo_local.run_sql("DELETE FROM stuff")
@@ -541,7 +554,10 @@ def test_import(pg_repo_local, mg_repo_local):
     assert result.exit_code == 0
     new_new_new_head = pg_repo_local.head
     assert new_new_new_head.get_table("stuff_empty")
-    assert not new_new_head.get_table("stuff_empty")
+
+    with pytest.raises(TableNotFoundError):
+        new_new_head.get_table("stuff_empty")
+
     assert pg_repo_local.run_sql("SELECT * FROM stuff_empty") == []
 
     # sgr import with query, no alias
@@ -574,7 +590,7 @@ def test_pull_push(pg_repo_local, pg_repo_remote):
     pg_repo_local.run_sql("INSERT INTO fruits VALUES (4, 'mustard')")
     local_head = pg_repo_local.commit()
 
-    assert not pg_repo_remote.images.by_hash(local_head.image_hash, raise_on_none=False)
+    assert local_head.image_hash not in list(pg_repo_remote.images)
     result = runner.invoke(push_c, [str(pg_repo_local), "-h", "DB"])
     assert result.exit_code == 0
     assert pg_repo_local.head.get_table("fruits")
@@ -585,17 +601,21 @@ def test_pull_push(pg_repo_local, pg_repo_remote):
         publish_c, [str(pg_repo_local), "v1", "-r", SPLITFILE_ROOT + "README.md"]
     )
     assert result.exit_code == 0
-    image_hash, published_dt, deps, readme, schemata, previews = get_published_info(
-        pg_repo_remote, "v1"
-    )
-    assert image_hash == local_head.image_hash
-    assert deps == []
-    assert readme == "Test readme for a test dataset."
-    assert schemata == {
-        "fruits": [["fruit_id", "integer", False], ["name", "character varying", False]],
-        "vegetables": [["vegetable_id", "integer", False], ["name", "character varying", False]],
+    info = get_published_info(pg_repo_remote, "v1")
+    assert info.image_hash == local_head.image_hash
+    assert info.provenance == []
+    assert info.readme == "Test readme for a test dataset."
+    assert info.schemata == {
+        "fruits": [
+            TableColumn(1, "fruit_id", "integer", False, None),
+            TableColumn(2, "name", "character varying", False, None),
+        ],
+        "vegetables": [
+            TableColumn(1, "vegetable_id", "integer", False, None),
+            TableColumn(2, "name", "character varying", False, None),
+        ],
     }
-    assert previews == {
+    assert info.previews == {
         "fruits": [[1, "apple"], [2, "orange"], [3, "mayonnaise"], [4, "mustard"]],
         "vegetables": [[1, "potato"], [2, "carrot"]],
     }
@@ -630,7 +650,7 @@ def test_splitfile(local_engine_empty, pg_repo_remote):
     assert (
         "FROM test/pg_mount:%s IMPORT" % pg_repo_remote.images["latest"].image_hash in result.output
     )
-    assert "SQL CREATE TABLE join_table AS SELECT" in result.output
+    assert "SQL CREATE TABLE join_table AS" in result.output
 
 
 def test_splitfile_rebuild_update(local_engine_empty, pg_repo_remote_multitag):
@@ -754,7 +774,9 @@ def test_rm_images(pg_repo_local_multitag, pg_repo_remote_multitag):
     )
     assert result.exit_code == 0
     assert pg_repo_remote_multitag.images.by_tag("v2", raise_on_none=False) is None
-    assert pg_repo_remote_multitag.images.by_hash(remote_v2, raise_on_none=False) is None
+
+    with pytest.raises(ImageNotFoundError):
+        pg_repo_remote_multitag.images.by_hash(remote_v2)
 
     # sgr rm test/pg_mount:v1 -y
     # Should delete both images since v2 depends on v1
@@ -836,7 +858,7 @@ def test_config_dumping():
     runner = CliRunner()
 
     # sgr config (normal, with passwords shielded)
-    result = runner.invoke(config_c)
+    result = runner.invoke(config_c, catch_exceptions=False)
     assert result.exit_code == 0
     assert PG_PWD not in result.output
     assert "remote_engine:" in result.output
@@ -882,10 +904,16 @@ def test_init_new_db():
         get_engine().delete_database("testdb")
 
 
-def test_init_skip_object_handling():
-    # Test engine initialization where we don't install an audit trigger
+def test_init_skip_object_handling_version_():
+    # Test engine initialization where we don't install an audit trigger + also
+    # check that the schema version history table is maintained.
+
     runner = CliRunner()
     engine = get_engine()
+
+    schema_version, date_installed = get_metadata_schema_version(engine)
+    assert schema_version == __version__
+
     try:
         engine.run_sql("DROP SCHEMA IF EXISTS audit CASCADE")
         engine.run_sql("DROP FUNCTION IF EXISTS splitgraph_api.upload_object")
@@ -904,6 +932,12 @@ def test_init_skip_object_handling():
         )
     finally:
         init_engine(skip_object_handling=False)
+        schema_version_new, date_installed_new = get_metadata_schema_version(engine)
+
+        # No migrations currently -- check the current version hasn't changed.
+        assert schema_version == schema_version_new
+        assert date_installed == date_installed_new
+
         assert engine.schema_exists("audit")
         assert (
             engine.run_sql(
@@ -999,3 +1033,430 @@ def test_commandline_dump_load(pg_repo_local):
         (2, "orange"),
         (3, "mayonnaise"),
     ]
+
+
+def _nuke_engines_and_volumes():
+    # Make sure we don't have the test engine (managed by `sgr engine`) running before/after tests.
+    client = docker.from_env()
+    for c in client.containers.list(filters={"ancestor": "splitgraph/engine"}, all=True):
+        if c.name == "splitgraph_engine_" + TEST_ENGINE_PREFIX:
+            logging.info("Killing %s. Logs (100 lines): %s", c.name, c.logs(tail=1000))
+            c.remove(force=True, v=True)
+    for v in client.volumes.list():
+        if (
+            v.name == "splitgraph_engine_" + TEST_ENGINE_PREFIX + "_data"
+            or v.name == "splitgraph_engine_" + TEST_ENGINE_PREFIX + "_metadata"
+        ):
+            v.remove(force=True)
+
+
+@pytest.fixture()
+def teardown_test_engine():
+    _nuke_engines_and_volumes()
+    try:
+        yield
+    finally:
+        _nuke_engines_and_volumes()
+
+
+def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
+    runner = CliRunner()
+    client = docker.from_env()
+
+    # Create an engine with default password and wait for it to initialize
+    result = runner.invoke(
+        add_engine_c,
+        ["--port", "5428", "--username", "not_sgr", "--no-sgconfig", TEST_ENGINE_PREFIX],
+        input="notsosecure\nnotsosecure\n",
+    )
+    assert result.exit_code == 0
+
+    # Connect to the engine to check that it's up
+    conn_params = {
+        "SG_ENGINE_HOST": "localhost",
+        "SG_ENGINE_PORT": "5428",
+        "SG_ENGINE_USER": "not_sgr",
+        "SG_ENGINE_PWD": "notsosecure",
+        "SG_ENGINE_DB_NAME": "splitgraph",
+        "SG_ENGINE_POSTGRES_DB_NAME": "postgres",
+        "SG_ENGINE_ADMIN_USER": "not_sgr",
+        "SG_ENGINE_ADMIN_PWD": "notsosecure",
+    }
+
+    engine = PostgresEngine(name="test", conn_params=conn_params)
+    assert engine.run_sql("SELECT * FROM splitgraph_meta.images") == []
+    engine.close()
+
+    # List running engines
+    result = runner.invoke(list_engines_c)
+    assert result.exit_code == 0
+    assert TEST_ENGINE_PREFIX in result.stdout
+    assert "running" in result.stdout
+
+    # Try deleting the engine while it's still running
+    with pytest.raises(docker.errors.APIError):
+        runner.invoke(delete_engine_c, ["-y", TEST_ENGINE_PREFIX], catch_exceptions=False)
+
+    # Stop the engine
+    result = runner.invoke(stop_engine_c, [TEST_ENGINE_PREFIX])
+    assert result.exit_code == 0
+
+    # Check it's not running
+    for c in client.containers.list(filters={"ancestor": "splitgraph/engine"}, all=False):
+        assert c.name != "splitgraph_engine_" + TEST_ENGINE_PREFIX
+
+    result = runner.invoke(list_engines_c)
+    assert TEST_ENGINE_PREFIX not in result.stdout
+
+    result = runner.invoke(list_engines_c, ["-a"])
+    assert TEST_ENGINE_PREFIX in result.stdout
+
+    # Bring it back up
+    result = runner.invoke(start_engine_c, [TEST_ENGINE_PREFIX])
+    assert result.exit_code == 0
+
+    # Check it's running
+    result = runner.invoke(list_engines_c)
+    assert result.exit_code == 0
+    assert TEST_ENGINE_PREFIX in result.stdout
+    assert "running" in result.stdout
+
+    # Force delete it
+    result = runner.invoke(
+        delete_engine_c, ["-f", "--with-volumes", TEST_ENGINE_PREFIX], input="y\n"
+    )
+    assert result.exit_code == 0
+
+    # Check the engine (and the volumes) are gone
+    for c in client.containers.list(filters={"ancestor": "splitgraph/engine"}, all=False):
+        assert c.name != "splitgraph_engine_" + TEST_ENGINE_PREFIX
+    for v in client.volumes.list():
+        assert not v.name.startswith("splitgraph_engine_" + TEST_ENGINE_PREFIX)
+
+
+# Default parameters for data.splitgraph.com that show up in every config
+_CONFIG_DEFAULTS = (
+    "\n[remote: data.splitgraph.com]\nSG_ENGINE_HOST=data.splitgraph.com\n"
+    "SG_ENGINE_PORT=5432\nSG_ENGINE_DB_NAME=sgregistry\n"
+    "SG_AUTH_API=http://data.splitgraph.com/auth\n"
+    "SG_QUERY_API=http://data.splitgraph.com/mc\n"
+)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        # Test case is a 4-tuple: CONFIG dict (values overriding DEFAULTS),
+        #   engine name, output config file name, output config file contents
+        # Also note that values in the output config file that are the same as as defaults are omitted.
+        # Case 1: no source config, default engine: gets inserted as default.
+        (
+            {},
+            "default",
+            ".sgconfig",
+            "[defaults]\nSG_ENGINE_USER=not_sgr\n"
+            "SG_ENGINE_PWD=pwd\nSG_ENGINE_ADMIN_USER=not_sgr\n"
+            "SG_ENGINE_ADMIN_PWD=pwd\n"
+            + _CONFIG_DEFAULTS
+            + "[external_handlers]\nS3=splitgraph.hooks.s3.S3ExternalObjectHandler\n",
+        ),
+        # Case 2: no source config, a different engine: gets inserted as a new remote
+        (
+            {},
+            "secondary",
+            ".sgconfig",
+            "[defaults]\n" + _CONFIG_DEFAULTS + "\n[remote: secondary]\n"
+            "SG_ENGINE_HOST=localhost\nSG_ENGINE_PORT=5432\nSG_ENGINE_FDW_PORT=5432\n"
+            "SG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
+            "SG_ENGINE_DB_NAME=splitgraph\n"
+            "SG_ENGINE_POSTGRES_DB_NAME=postgres\n"
+            "SG_ENGINE_ADMIN_USER=not_sgr\n"
+            "SG_ENGINE_ADMIN_PWD=pwd\n"
+            "[external_handlers]\nS3=splitgraph.hooks.s3.S3ExternalObjectHandler\n",
+        ),
+        # Case 3: have source config, default engine gets overwritten
+        (
+            {"SG_CONFIG_FILE": "/home/user/.sgconfig", "SG_ENGINE_PORT": "5000"},
+            "default",
+            "/home/user/.sgconfig",
+            "[defaults]\nSG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
+            "SG_ENGINE_ADMIN_USER=not_sgr\nSG_ENGINE_ADMIN_PWD=pwd\n"
+            + _CONFIG_DEFAULTS
+            + "[external_handlers]\nS3=splitgraph.hooks.s3.S3ExternalObjectHandler\n",
+        ),
+        # Case 4: have source config, non-default engine gets overwritten
+        (
+            {
+                "SG_CONFIG_FILE": "/home/user/.sgconfig",
+                "SG_ENGINE_PORT": "5000",
+                "remotes": {
+                    "secondary": {
+                        "SG_ENGINE_HOST": "old_host",
+                        "SG_ENGINE_PORT": "5000",
+                        "SG_ENGINE_USER": "old_user",
+                        "SG_ENGINE_PWD": "old_password",
+                    }
+                },
+            },
+            "secondary",
+            "/home/user/.sgconfig",
+            "[defaults]\nSG_ENGINE_PORT=5000\n" + _CONFIG_DEFAULTS + "\n[remote: secondary]\n"
+            "SG_ENGINE_HOST=localhost\nSG_ENGINE_PORT=5432\n"
+            "SG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\nSG_ENGINE_FDW_PORT=5432\n"
+            "SG_ENGINE_DB_NAME=splitgraph\nSG_ENGINE_POSTGRES_DB_NAME=postgres\n"
+            "SG_ENGINE_ADMIN_USER=not_sgr\nSG_ENGINE_ADMIN_PWD=pwd\n"
+            "[external_handlers]\nS3=splitgraph.hooks.s3.S3ExternalObjectHandler\n",
+        ),
+    ],
+)
+def test_commandline_engine_creation_config_patching(test_case):
+    runner = CliRunner()
+
+    source_config_patch, engine_name, target_path, target_config = test_case
+    source_config = patch_config(DEFAULTS, source_config_patch)
+
+    # Patch everything out (we've exercised the actual engine creation/connections
+    # in the previous test) and test that `sgr engine add` correctly inserts the
+    # new engine into the config file and calls copy_to_container to copy
+    # the new config into the new engine's root.
+
+    m = mock_open()
+    with patch("splitgraph.config.export.open", m, create=True):
+        with patch("splitgraph.config.CONFIG", source_config):
+            with patch("docker.from_env"):
+                with patch("splitgraph.commandline.engine.copy_to_container") as ctc:
+                    result = runner.invoke(
+                        add_engine_c,
+                        args=["--username", "not_sgr", "--no-init", engine_name],
+                        input="pwd\npwd\n",
+                        catch_exceptions=False,
+                    )
+                    assert result.exit_code == 0
+                    print(result.output)
+
+    m.assert_called_once_with(target_path, "w")
+    handle = m()
+    assert handle.write.call_count == 1
+    ctc.assert_called_once_with(ANY, target_path, "/.sgconfig")
+
+    expected_lines = target_config.split("\n")
+    actual_config = handle.write.call_args_list[0][0][0]
+    actual_lines = actual_config.split("\n")
+    assert expected_lines == actual_lines
+
+
+def test_commandline_engine_creation_config_patching_integration(teardown_test_engine, tmp_path):
+    # An end-to-end test for config patching where we actually try and access the engine
+    # with the generated config.
+
+    config_path = os.path.join(tmp_path, ".sgconfig")
+    shutil.copy(os.path.join(os.path.dirname(__file__), "../resources/.sgconfig"), config_path)
+
+    result = subprocess.run(
+        "SG_CONFIG_FILE=%s sgr engine add %s --port 5428 --username not_sgr --password password"
+        % (config_path, TEST_ENGINE_PREFIX),
+        shell=True,
+        stderr=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+    )
+    print(result.stderr.decode())
+    print(result.stdout.decode())
+    assert result.returncode == 0
+    assert "Updating the existing config file" in result.stdout.decode()
+
+    # Print out the config file for easier debugging.
+    with open(config_path, "r") as f:
+        config = f.read()
+
+    print(config)
+
+    # Do some spot checks to make sure we didn't overwrite anything.
+    assert "SG_S3_HOST=objectstorage" in config
+    assert "POSTGRES_FDW=splitgraph.hooks.mount_handlers.mount_postgres" in config
+    assert "[remote: %s]" % TEST_ENGINE_PREFIX in config
+    assert "[remote: remote_engine]" in config
+
+    # Check that we can access the new engine.
+    result = subprocess.run(
+        "SG_CONFIG_FILE=%s SG_ENGINE=%s sgr status" % (config_path, TEST_ENGINE_PREFIX),
+        shell=True,
+        stderr=subprocess.STDOUT,
+    )
+    assert result.returncode == 0
+
+
+_REMOTE = "remote_engine"
+_ENDPOINT = "http://some-auth-service"
+
+
+@httpretty.activate
+def test_commandline_registration_normal():
+    def register_callback(request, uri, response_headers):
+        assert json.loads(request.body) == {
+            "username": "someuser",
+            "password": "somepassword",
+            "email": "someuser@localhost",
+        }
+        return [
+            200,
+            response_headers,
+            json.dumps({"user_id": "123e4567-e89b-12d3-a456-426655440000"}),
+        ]
+
+    def refresh_token_callback(request, uri, response_headers):
+        assert json.loads(request.body) == {"username": "someuser", "password": "somepassword"}
+        return [
+            200,
+            response_headers,
+            json.dumps({"access_token": "AAAABBBBCCCCDDDD", "refresh_token": "EEEEFFFFGGGGHHHH"}),
+        ]
+
+    def create_creds_callback(request, uri, response_headers):
+        assert json.loads(request.body) == {"password": "somepassword"}
+        assert request.headers["Authorization"] == "Bearer AAAABBBBCCCCDDDD"
+        return [
+            200,
+            response_headers,
+            json.dumps({"key": "abcdef123456", "secret": "654321fedcba"}),
+        ]
+
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST, _ENDPOINT + "/register_user", body=register_callback
+    )
+
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST, _ENDPOINT + "/refresh_token", body=refresh_token_callback
+    )
+
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST,
+        _ENDPOINT + "/create_machine_credentials",
+        body=create_creds_callback,
+    )
+
+    # Sanitize the test config so that there isn't a ton of spam
+    source_config = create_config_dict()
+    source_config["SG_CONFIG_FILE"] = ".sgconfig"
+    source_config["remotes"] = {_REMOTE: source_config["remotes"][_REMOTE]}
+    del source_config["mount_handlers"]
+    del source_config["commands"]
+    del source_config["external_handlers"]
+
+    runner = CliRunner()
+
+    with patch("splitgraph.config.export.overwrite_config"):
+        with patch("splitgraph.config.config.patch_config") as pc:
+            with patch("splitgraph.config.CONFIG", source_config):
+                result = runner.invoke(
+                    register_c,
+                    args=[
+                        "--username",
+                        "someuser",
+                        "--password",
+                        "somepassword",
+                        "--email",
+                        "someuser@localhost",
+                        "--remote",
+                        _REMOTE,
+                    ],
+                    catch_exceptions=False,
+                )
+                assert result.exit_code == 0
+                print(result.output)
+
+    pc.assert_called_once_with(
+        source_config,
+        {
+            "SG_REPO_LOOKUP": "remote_engine",
+            "SG_S3_HOST": "objectstorage",
+            "SG_S3_PORT": "9000",
+            "remotes": {
+                "remote_engine": {
+                    "SG_ENGINE_USER": "abcdef123456",
+                    "SG_ENGINE_PWD": "654321fedcba",
+                    "SG_NAMESPACE": "someuser",
+                    "SG_CLOUD_REFRESH_TOKEN": "EEEEFFFFGGGGHHHH",
+                    "SG_CLOUD_ACCESS_TOKEN": "AAAABBBBCCCCDDDD",
+                }
+            },
+        },
+    )
+
+
+@httpretty.activate
+def test_commandline_registration_user_error():
+    # Test a user error response propagates back to the command line client
+    # (tests for handling other failure states are API client-specific).
+
+    def register_callback(request, uri, response_headers):
+        return [403, response_headers, json.dumps({"error": "Username exists"})]
+
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST, _ENDPOINT + "/register_user", body=register_callback
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        register_c,
+        args=[
+            "--username",
+            "someuser",
+            "--password",
+            "somepassword",
+            "--email",
+            "someuser@localhost",
+            "--remote",
+            _REMOTE,
+        ],
+        catch_exceptions=True,
+    )
+    print(result.output)
+    assert result.exit_code == 1
+    assert isinstance(result.exception, AuthAPIError)
+    assert "Username exists" in str(result.exception)
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ("ns/repo/image/table?id=eq.5", "http://some-query-service/ns/repo/image/table?id=eq.5"),
+        ("ns/repo/table?id=eq.5", "http://some-query-service/ns/repo/latest/table?id=eq.5"),
+    ],
+)
+def test_commandline_curl_normal(test_case):
+    runner = CliRunner()
+    request, result_url = test_case
+
+    with patch(
+        "splitgraph.cloud.AuthAPIClient.access_token",
+        new_callable=PropertyMock,
+        return_value="AAAABBBBCCCCDDDD",
+    ):
+        with patch("splitgraph.commandline.cloud.subprocess.call") as sc:
+            result = runner.invoke(
+                curl_c,
+                ["--remote", _REMOTE, request, "--some-curl-arg", "-Ssl"],
+                catch_exceptions=False,
+            )
+            assert result.exit_code == 0
+            sc.assert_called_once_with(
+                [
+                    "curl",
+                    result_url,
+                    "-H",
+                    "Authorization: Bearer AAAABBBBCCCCDDDD",
+                    "--some-curl-arg",
+                    "-Ssl",
+                ]
+            )
+
+
+def test_commandline_curl_error():
+    runner = CliRunner()
+
+    with patch("splitgraph.cloud.AuthAPIClient"):
+        with patch("splitgraph.commandline.cloud.subprocess.call"):
+            result = runner.invoke(
+                curl_c, ["--remote", _REMOTE, "invalid/path"], catch_exceptions=True
+            )
+            assert result.exit_code == 2

@@ -2,17 +2,21 @@
 import base64
 import itertools
 import struct
+from datetime import datetime
 from hashlib import sha256
 from math import ceil, log, exp
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.core._common import pretty_size
+from splitgraph.core.common import pretty_size
+from splitgraph.core.types import Changeset
+from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.engine.postgres.engine import SG_UD_FLAG
 
 
-def _hash_value(value):
+def _hash_value(value: Union[datetime, int, str]) -> Tuple[bytes, bytes]:
     if value is None:
         # See explanation in generate_bloom_index for why this isn't
         # a completely terrible idea.
@@ -23,7 +27,14 @@ def _hash_value(value):
     )
 
 
-def generate_bloom_index(engine, object_id, changeset, column, probability=None, size=None):
+def generate_bloom_index(
+    engine: PostgresEngine,
+    object_id: str,
+    changeset: Optional[Changeset],
+    column: str,
+    probability: Optional[float] = None,
+    size: Optional[int] = None,
+) -> Tuple[int, str]:
     """
     Generates a bloom filter signature for a given column and a given fragment. Bloom filters
     can answer queries asking whether an item is definitely not in a given set or possibly can be.
@@ -96,6 +107,10 @@ def generate_bloom_index(engine, object_id, changeset, column, probability=None,
         # 8 since we'll be using a byte array for operations + to store the signature.
         size = int(ceil(-len(distinct_items) * log(probability) / log(2) ** 2 / 8))
 
+    # For mypy: we've asserted previously that either probability or size are specified
+    # and we calculate the size from the probability, so size is no longer Optional[int].
+    size = cast(int, size)
+
     size_bits = size * 8
     no_funcs = int(ceil(log(2) * size_bits / len(distinct_items)))
 
@@ -111,7 +126,7 @@ def generate_bloom_index(engine, object_id, changeset, column, probability=None,
     return no_funcs, base64.b64encode(result).decode("ascii")
 
 
-def describe(index_tuple):
+def describe(index_tuple: Tuple[int, str]) -> str:
     """
     Returns a pretty-printed summary of the bloom filter
 
@@ -145,7 +160,7 @@ def describe(index_tuple):
     )
 
 
-def _prepare_bloom_quals(quals):
+def _prepare_bloom_quals(quals: Any) -> List[List[Tuple[str, int, int]]]:
     """
     Convert list of qualifiers in CNF (ANDed OR-clauses where each clause is "column, operator, value")
     to prepare it for querying the bloom filter:
@@ -193,7 +208,7 @@ def _prepare_bloom_quals(quals):
     return result
 
 
-def _match(qual, bloom_index):
+def _match(qual: Tuple[str, int, int], bloom_index: Dict[str, Tuple[int, bytes]]) -> bool:
     """
     Checks whether a processed qual (column, hash_1, hash_2) can match a fragment with
     a given index.
@@ -219,7 +234,7 @@ def _match(qual, bloom_index):
     return True
 
 
-def filter_bloom_index(engine, object_ids, quals):
+def filter_bloom_index(engine: PostgresEngine, object_ids: List[str], quals: Any) -> List[str]:
     """
     Runs a bloom filter on given qualifiers using the given objects' previously-generated
     fingerprints.
