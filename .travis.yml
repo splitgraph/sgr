@@ -6,6 +6,8 @@ python:
 install:
   - poetry install -E ingestion --develop splitgraph
 script:
+  # Run static type checker first to short circuit obvious errors
+  - poetry run mypy splitgraph
   # The majority of the test suite doesn't depend on {pg,mongo,mysql}origin being up and they
   # take a lot of time to start up (especially the first time). So, whilst the 3 DBs are busy starting up,
   # we run the core tests against the local/remote engines and then run the rest of the tests (about 10% of them)

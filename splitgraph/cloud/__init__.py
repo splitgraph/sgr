@@ -79,10 +79,11 @@ class AuthAPIClient:
 
         # Allow overriding the CA bundle for test purposes (requests doesn't use the system
         # cert store)
+        self.verify: Union[bool, str] = True
         try:
             self.verify = get_from_subsection(CONFIG, "remotes", remote, "SG_AUTH_API_CA_PATH")
         except KeyError:
-            self.verify = True
+            pass
 
         # How soon before the token expiry to refresh the token, in seconds.
         self.access_token_expiry_tolerance = 30

@@ -361,9 +361,12 @@ def insert(table: str, columns: Sequence[str], schema: str = SPLITGRAPH_META_SCH
 
 
 def get_metadata_schema_version(engine: "PsycopgEngine") -> Tuple[str, datetime]:
-    return engine.run_sql(
-        select("version", "version,installed") + SQL("ORDER BY installed DESC LIMIT 1"),
-        return_shape=ResultShape.ONE_MANY,
+    return cast(
+        Tuple[str, datetime],
+        engine.run_sql(
+            select("version", "version,installed") + SQL("ORDER BY installed DESC LIMIT 1"),
+            return_shape=ResultShape.ONE_MANY,
+        ),
     )
 
 
