@@ -18,8 +18,8 @@ from typing import (
 
 from psycopg2.sql import SQL, Identifier, Composable
 
-from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.core.common import Tracer
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
+from splitgraph.core.common import Tracer, select
 from splitgraph.core.fragment_manager import get_temporary_table_id, get_chunk_groups
 from splitgraph.core.indexing.range import quals_to_sql
 from splitgraph.core.types import TableSchema, Quals
@@ -397,24 +397,17 @@ class Table:
 
     def get_size(self) -> int:
         """
-        Get the physical size used by the image's objects (including those shared with other tables).
+        Get the physical size used by the table's objects (including those shared with other tables).
 
         This is calculated from the metadata, the on-disk footprint might be smaller if not all of table's
         objects have been downloaded.
 
         :return: Size of the table in bytes.
         """
-        query = (
-            "WITH iob AS(SELECT DISTINCT image_hash, unnest(object_ids) AS object_id "
-            "FROM splitgraph_meta.tables t "
-            "WHERE t.namespace = %s AND t.repository = %s AND t.image_hash = %s AND t.table_name = %s) "
-            "SELECT SUM(o.size) FROM iob JOIN splitgraph_meta.objects o "
-            "ON iob.object_id = o.object_id "
-        )
         return cast(
             int,
             self.repository.engine.run_sql(
-                query,
+                select("get_table_size", table_args="(%s,%s,%s,%s)", schema=SPLITGRAPH_API_SCHEMA),
                 (
                     self.repository.namespace,
                     self.repository.repository,
