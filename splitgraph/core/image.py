@@ -264,17 +264,10 @@ class Image(NamedTuple):
 
         :return: Size of the image in bytes.
         """
-        query = (
-            "WITH iob AS(SELECT DISTINCT image_hash, unnest(object_ids) AS object_id "
-            "FROM splitgraph_meta.tables t "
-            "WHERE t.namespace = %s AND t.repository = %s AND t.image_hash = %s) "
-            "SELECT SUM(o.size) FROM iob JOIN splitgraph_meta.objects o "
-            "ON iob.object_id = o.object_id "
-        )
         return cast(
             int,
             self.engine.run_sql(
-                query,
+                select("get_image_size", table_args="(%s,%s,%s)", schema=SPLITGRAPH_API_SCHEMA),
                 (self.repository.namespace, self.repository.repository, self.image_hash),
                 return_shape=ResultShape.ONE_ONE,
             ),

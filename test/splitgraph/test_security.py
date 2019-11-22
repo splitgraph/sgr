@@ -38,6 +38,14 @@ def test_push_own_delete_own(local_engine_empty, unprivileged_pg_repo):
 
 
 @pytest.mark.registry
+def test_api_funcs(readonly_pg_repo):
+    # Test some image-reading API functions work over non-superuser connections.
+    readonly_pg_repo.images["latest"].get_size()
+
+    readonly_pg_repo.images["latest"].get_table("fruits").get_size()
+
+
+@pytest.mark.registry
 def test_push_own_delete_own_different_namespaces(local_engine_empty, readonly_pg_repo):
     # Same as previous but we clone the read-only repo and push to our own namespace
     # to check that the objects we push get their namespaces rewritten to be the unprivileged user, not test.

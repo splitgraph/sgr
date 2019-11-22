@@ -71,6 +71,20 @@ BEGIN
 END
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 
+
+-- get_image_size(namespace, repository, image_hash): get image size in bytes (counting tables
+-- that share objects only once)
+CREATE OR REPLACE FUNCTION splitgraph_api.get_image_size(_namespace varchar, _repository varchar, _image_hash varchar)
+  RETURNS INTEGER AS $$
+BEGIN
+   RETURN (WITH iob AS(SELECT DISTINCT image_hash, unnest(object_ids) AS object_id
+       FROM splitgraph_meta.tables t
+       WHERE t.namespace = _namespace AND t.repository = _repository AND t.image_hash = _image_hash)
+   SELECT SUM(o.size) FROM iob JOIN splitgraph_meta.objects o
+   ON iob.object_id = o.object_id);
+END
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+
 -- Consider merging writes to all tables into one big routine (e.g. also include a list of tables here, which
 -- will get added to the tables table)
 -- add_image(namespace, repository, image_hash, parent_id, created, comment, provenance_type, provenance_data)
@@ -208,6 +222,21 @@ BEGIN
     PERFORM splitgraph_api.check_privilege(namespace);
     INSERT INTO splitgraph_meta.tables(namespace, repository, image_hash, table_name, table_schema, object_ids)
     VALUES (namespace, repository, image_hash, table_name, table_schema, object_ids);
+END
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+
+-- get_table_size(namespace, repository, image_hash, table_name): get table size in bytes (counting tables
+-- that share objects only once)
+CREATE OR REPLACE FUNCTION splitgraph_api.get_table_size(
+    _namespace varchar, _repository varchar, _image_hash varchar, _table_name varchar)
+  RETURNS INTEGER AS $$
+BEGIN
+   RETURN (WITH iob AS(SELECT DISTINCT image_hash, unnest(object_ids) AS object_id
+       FROM splitgraph_meta.tables t
+       WHERE t.namespace = _namespace AND t.repository = _repository
+           AND t.image_hash = _image_hash AND t.table_name = _table_name)
+       SELECT SUM(o.size) FROM iob JOIN splitgraph_meta.objects o
+       ON iob.object_id = o.object_id);
 END
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 
