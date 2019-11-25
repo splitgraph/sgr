@@ -1451,14 +1451,3 @@ def test_commandline_curl_normal(test_case):
                     "-Ssl",
                 ]
             )
-
-
-def test_commandline_curl_error():
-    runner = CliRunner()
-
-    with patch("splitgraph.cloud.AuthAPIClient"):
-        with patch("splitgraph.commandline.cloud.subprocess.call"):
-            result = runner.invoke(
-                curl_c, ["--remote", _REMOTE, "invalid/path"], catch_exceptions=True
-            )
-            assert result.exit_code == 2
