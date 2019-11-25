@@ -997,7 +997,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         #
         # Perhaps we should drop direct uploading altogether and require people to use S3 throughout.
 
-        pbar = tqdm(objects, unit="objs")
+        pbar = tqdm(objects, unit="objs", ascii=True)
         for object_id in pbar:
             pbar.set_postfix(object=object_id[:10] + "...")
             schema_spec = self.get_object_schema(object_id)
@@ -1072,7 +1072,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
         with self._mount_remote_engine(remote_engine) as remote_schema:
             downloaded_objects = []
-            pbar = tqdm(objects, unit="objs")
+            pbar = tqdm(objects, unit="objs", ascii=True)
             for object_id in pbar:
                 pbar.set_postfix(object=object_id[:10] + "...")
                 if not self.table_exists(remote_schema, object_id):

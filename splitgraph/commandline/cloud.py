@@ -76,9 +76,7 @@ def register_c(username, password, email, remote):
 
 @click.command("curl", context_settings=dict(ignore_unknown_options=True))
 @click.option(
-    "--remote",
-    default="data.splitgraph.com",
-    help="Name of the remote cloud engine to register on.",
+    "--remote", default="data.splitgraph.com", help="Name of the remote cloud engine to use."
 )
 @click.argument("request")
 @click.argument("curl_args", nargs=-1, type=click.UNPROCESSED)
@@ -93,8 +91,6 @@ def curl_c(remote, request, curl_args):
     The request must be of the form `namespace/repository/hash_or_tag/table?[postgrest request]`.
 
     For a reference on how to perform Postgrest requests, see http://postgrest.org/en/v6.0/api.html.
-
-    Image hash or tag can be omitted, in which case "latest" is used.
     """
     from splitgraph.config import CONFIG
     from splitgraph.cloud import AuthAPIClient
@@ -102,11 +98,6 @@ def curl_c(remote, request, curl_args):
     # Do some early validation
     request_parsed = urlsplit(request)
     path_segments = request_parsed.path.lstrip("/").split("/")
-
-    if len(path_segments) == 3:
-        path_segments = path_segments[:2] + ["latest"] + path_segments[2:]
-    elif len(path_segments) != 4:
-        raise click.BadArgumentUsage("Invalid request, see sgr cloud help for the correct format!")
 
     # Craft a request
     config = CONFIG["remotes"][remote]
@@ -122,7 +113,7 @@ def curl_c(remote, request, curl_args):
         curl_args
     )
 
-    logging.info("Calling %s", " ".join(subprocess_args))
+    logging.debug("Calling %s", " ".join(subprocess_args))
     subprocess.call(subprocess_args)
 
 

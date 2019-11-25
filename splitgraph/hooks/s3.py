@@ -73,7 +73,9 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
 
         result = []
         with ThreadPoolExecutor(max_workers=worker_threads) as tpe:
-            pbar = tqdm(tpe.map(_do_upload, zip(objects, urls)), total=len(objects), unit="objs")
+            pbar = tqdm(
+                tpe.map(_do_upload, zip(objects, urls)), total=len(objects), unit="objs", ascii=True
+            )
             for object_id in pbar:
                 result.append(object_id)
                 pbar.set_postfix(object=object_id[:10] + "...")
@@ -138,7 +140,10 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
         with ThreadPoolExecutor(max_workers=worker_threads) as tpe:
             # Evaluate the results so that exceptions thrown by the downloader get raised
             pbar = tqdm(
-                tpe.map(_do_download, zip(object_ids, urls)), total=len(objects), unit="objs"
+                tpe.map(_do_download, zip(object_ids, urls)),
+                total=len(objects),
+                unit="objs",
+                ascii=True,
             )
             for object_id in pbar:
 

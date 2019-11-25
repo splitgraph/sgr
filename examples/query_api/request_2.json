@@ -1,0 +1,3 @@
+{"command": "SQL CREATE TABLE rdu_flights_weather AS ( WITH monthly_summary AS (SELECT date_trunc ('month', date) AS month, AVG(temperaturemin) AS tmin_avg, AVG(temperaturemax) AS tmax_avg FROM rdu GROUP BY month) SELECT w.month, w.tmin_avg, w.tmax_avg, f.total_passengers FROM monthly_summary w JOIN flights f ON w.month = f.fly_month)",
+ "tag":  "joined_data"}
+
