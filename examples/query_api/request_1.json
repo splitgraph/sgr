@@ -1,0 +1,3 @@
+{"command": "FROM splitgraph/domestic_us_flights:latest IMPORT {SELECT fly_month, SUM(passengers) AS total_passengers FROM flights WHERE origin_airport = 'RDU' OR destination_airport = 'RDU' GROUP BY fly_month ORDER BY fly_month} AS flights",
+  "tag": "with_flight_data"}
+

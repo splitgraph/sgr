@@ -361,7 +361,7 @@ class FragmentManager(MetadataManager):
         """
         object_ids = []
         logging.info("Storing and indexing table %s", table.table_name)
-        for sub_changeset in tqdm(changesets, unit="objs"):
+        for sub_changeset in tqdm(changesets, unit="objs", ascii=True):
             if not sub_changeset:
                 continue
             # Store the fragment in a temporary location and then find out its hash and rename to the actual target.
@@ -769,7 +769,7 @@ class FragmentManager(MetadataManager):
         new_fragment = None
         logging.info("Storing and indexing table %s", source_table)
         no_chunks = int(math.ceil(table_size / chunk_size))
-        pbar = tqdm(range(0, table_size, chunk_size), unit="objs", total=no_chunks)
+        pbar = tqdm(range(0, table_size, chunk_size), unit="objs", total=no_chunks, ascii=True)
         for _ in pbar:
             # Chunk the table up. It's very slow to do it with
             # SELECT * FROM source LIMIT chunk_size OFFSET offset as Postgres

@@ -198,7 +198,10 @@ def example(skip, no_pause, dump_asciinema, asciinema_width, asciinema_height, f
 
         for l in block["commands"]:
             proc = subprocess.Popen(
-                l, shell=True, stdout=subprocess.PIPE, stderr=(subprocess.PIPE if stderr else None)
+                l,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=(subprocess.STDOUT if stderr else None),
             )
             if output.print_from_pipe(proc) != 0:
                 exit(1)

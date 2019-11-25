@@ -1,0 +1,52 @@
+- commands:
+  - "# Build and start the engine"
+  - docker-compose --project-name splitgraph_example down -v --remove-orphans
+  - docker-compose --project-name splitgraph_example build
+  - docker-compose --project-name splitgraph_example up -d
+  - sgr init
+  record: False
+- commands:
+  - "# Delete old version of the dataset"
+  - sgr rm -y --remote data.splitgraph.com splitgraph_demo/weather
+  record: False
+- commands:
+  - "# Ingest the weather dataset at Raleigh-Durham Airport"
+  - sgr init weather
+  - |
+    sgr csv import -f ../import-from-csv/rdu-weather-history.csv \
+                   -k date \
+                   -d date \
+                   --separator ";" \
+                   weather rdu
+  - sgr commit weather
+  - sgr tag weather initial_data
+- commands:
+  - "# Push the dataset to Splitgraph"
+  - sgr push weather
+- commands:
+  - "# Perform a request against an automatically-generated"
+  - "# Postgrest (https://postgrest.org) endpoint."
+  - curl "https://data.splitgraph.com/mc/splitgraph_demo/weather/initial_data/rdu?date=eq.2009-08-25T00:00:00"
+- commands:
+  - "# sgr also has a shorthand to access the query API"
+  - sgr cloud curl "splitgraph_demo/weather/initial_data/rdu?date=eq.2009-08-25T00:00:00"
+- commands:
+  - "# The query API also supports running one-off Splitfile commands against a repository,"
+  - "# creating new images that can be pulled. sgr handles authentication for this automatically."
+  - cat request_1.json
+  - sgr cloud curl splitgraph_demo/weather/initial_data -X POST -d @request_1.json
+- commands:
+  - "# Run another command against the new layer to join the two datasets"
+  - cat request_2.json
+  - sgr cloud curl splitgraph_demo/weather/with_flight_data -X POST -d @request_2.json
+- commands:
+  - "# Pull the dataset and check out the new image"
+  - sgr pull weather
+  - sgr checkout weather:joined_data
+- commands:
+  - "# Inspect the generated data"
+  - sgr sql -s weather "SELECT month, tmin_avg, tmax_avg, total_passengers FROM rdu_flights_weather ORDER BY month LIMIT 10"
+- commands:
+  - "# Delete the docker-compose project and cleanup"
+  - docker-compose --project-name splitgraph_example down -v
+  record: False

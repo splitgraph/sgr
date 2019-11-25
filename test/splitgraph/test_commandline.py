@@ -1422,7 +1422,7 @@ def test_commandline_registration_user_error():
     "test_case",
     [
         ("ns/repo/image/table?id=eq.5", "http://some-query-service/ns/repo/image/table?id=eq.5"),
-        ("ns/repo/table?id=eq.5", "http://some-query-service/ns/repo/latest/table?id=eq.5"),
+        ("ns/repo/latest/table?id=eq.5", "http://some-query-service/ns/repo/latest/table?id=eq.5"),
     ],
 )
 def test_commandline_curl_normal(test_case):
