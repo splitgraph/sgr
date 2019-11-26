@@ -87,8 +87,8 @@ def manage_audit_triggers(
 
 
 def manage_audit(func: Callable) -> Callable:
-    """A decorator to be put around various Splitgraph commands that performs general admin and auditing management
-    (makes sure the metadata schema exists and delete/add required audit triggers)
+    """A decorator to be put around various Splitgraph commands
+    that adds/removes audit triggers for new/committed/deleted tables.
     """
 
     # Make sure docstrings are passed through

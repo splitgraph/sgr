@@ -42,7 +42,15 @@ def _checkout_or_calculate_layer(output: Repository, image_hash: str, calc_func:
         output.images.by_hash(image_hash).checkout()
         print(" ---> Using cache")
     except ImageNotFoundError:
-        calc_func()
+        try:
+            calc_func()
+        except Exception:
+            # Some of the Splitfile commands have to use a commit
+            # (e.g. IMPORT uses Image.query_schema context manager that mounts the source
+            # image via LQ and commits), so a rollback won't delete this new image
+            # that we might have created.
+            output.images.delete([image_hash])
+            raise
     print(" ---> %s" % image_hash[:12])
 
 
@@ -71,36 +79,47 @@ def execute_commands(
 
     # Don't initialize the output until a command writing to it asks us to
     # (otherwise we might have a FROM ... AS output_name change it).
+    repo_created = False
 
     def _initialize_output(output):
         if not repository_exists(output):
+            nonlocal repo_created
             output.init()
+            repo_created = True
 
     from splitgraph.commandline.common import Color, truncate_line
 
     node_list = parse_commands(commands, params=params)
-    for i, node in enumerate(node_list):
-        print(
-            Color.BOLD
-            + "\nStep %d/%d : %s" % (i + 1, len(node_list), truncate_line(node.text, length=60))
-            + Color.END
-        )
-        if node.expr_name == "from":
-            output = _execute_from(node, output)
+    try:
+        for i, node in enumerate(node_list):
+            print(
+                Color.BOLD
+                + "\nStep %d/%d : %s" % (i + 1, len(node_list), truncate_line(node.text, length=60))
+                + Color.END
+            )
+            if node.expr_name == "from":
+                output = _execute_from(node, output)
 
-        elif node.expr_name == "import":
-            _initialize_output(output)
-            _execute_import(node, output)
+            elif node.expr_name == "import":
+                _initialize_output(output)
+                _execute_import(node, output)
 
-        elif node.expr_name == "sql" or node.expr_name == "sql_file":
-            _initialize_output(output)
-            _execute_sql(node, output)
+            elif node.expr_name == "sql" or node.expr_name == "sql_file":
+                _initialize_output(output)
+                _execute_sql(node, output)
 
-        elif node.expr_name == "custom":
-            _initialize_output(output)
-            _execute_custom(node, output)
-
-    get_engine().commit()
+            elif node.expr_name == "custom":
+                _initialize_output(output)
+                _execute_custom(node, output)
+        get_engine().commit()
+    except Exception:
+        if repo_created and len(output.images()) == 1:
+            # As a corner case, if we created a repository and there's been
+            # a failure running the Splitfile (on the first command), we delete the dummy
+            # 0000... image and the rest of the repository as part of cleanup.
+            output.delete()
+        get_engine().rollback()
+        raise
 
 
 def _execute_sql(node: Node, output: Repository) -> None:

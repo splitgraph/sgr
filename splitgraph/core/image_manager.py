@@ -1,6 +1,6 @@
 import itertools
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set, Union, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Set, Union, TYPE_CHECKING, Sequence
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
@@ -191,7 +191,7 @@ class ImageManager:
             ),
         )
 
-    def delete(self, images: Set[str]) -> None:
+    def delete(self, images: Sequence[str]) -> None:
         """
         Deletes a set of Splitgraph images from the repository. Note this doesn't check whether
         this will orphan some other images in the repository and can make the state of the repository

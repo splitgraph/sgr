@@ -106,8 +106,8 @@ def validate_splitfile_sql(sql: str) -> None:
     """
     try:
         tree = Node(parse_sql(sql))
-    except ParseError:
-        raise UnsupportedSQLError("Error parsing SQL %s" % sql)
+    except ParseError as e:
+        raise UnsupportedSQLError("Could not parse %s: %s" % (sql, str(e)))
     for node in tree.traverse():
         _validate_node(
             node, permitted_nodes=_SPLITFILE_SQL_PERMITTED_NODES, node_validators=_SQL_VALIDATORS
@@ -127,8 +127,8 @@ def validate_import_sql(sql: str) -> None:
 
     try:
         tree = Node(parse_sql(sql))
-    except ParseError:
-        raise UnsupportedSQLError("Error parsing SQL %s" % sql)
+    except ParseError as e:
+        raise UnsupportedSQLError("Could not parse %s: %s" % (sql, str(e)))
     if len(tree) != 1:
         raise UnsupportedSQLError("The query is supposed to consist of only one SELECT statement!")
 
