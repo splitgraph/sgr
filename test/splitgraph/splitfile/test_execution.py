@@ -27,8 +27,7 @@ def test_splitfile_preprocessor_escaping():
     assert "tag-v1-whatever" in commands
 
 
-@pytest.mark.mounting
-def test_basic_splitfile(pg_repo_local, mg_repo_local):
+def test_basic_splitfile(pg_repo_local):
     execute_commands(load_splitfile("create_table.splitfile"), output=OUTPUT)
     log = list(reversed(OUTPUT.head.get_log()))
 
@@ -42,8 +41,7 @@ def test_basic_splitfile(pg_repo_local, mg_repo_local):
     assert OUTPUT.run_sql("SELECT * FROM my_fruits") == [(1, "pineapple"), (2, "banana")]
 
 
-@pytest.mark.mounting
-def test_update_without_import_splitfile(pg_repo_local, mg_repo_local):
+def test_update_without_import_splitfile(pg_repo_local):
     # Test that correct commits are produced by executing an splitfile (both against newly created and already
     # existing tables on an existing mountpoint)
     execute_commands(load_splitfile("update_without_import.splitfile"), output=OUTPUT)
@@ -56,8 +54,7 @@ def test_update_without_import_splitfile(pg_repo_local, mg_repo_local):
     assert OUTPUT.run_sql("SELECT * FROM my_fruits") == [(1, "pineapple")]
 
 
-@pytest.mark.mounting
-def test_local_import_splitfile(pg_repo_local, mg_repo_local):
+def test_local_import_splitfile(pg_repo_local):
     execute_commands(load_splitfile("import_local.splitfile"), output=OUTPUT)
     head = OUTPUT.head
     old_head = head.parent_id
@@ -71,8 +68,7 @@ def test_local_import_splitfile(pg_repo_local, mg_repo_local):
     assert not OUTPUT.engine.table_exists(OUTPUT.to_schema(), "fruits")
 
 
-@pytest.mark.mounting
-def test_advanced_splitfile(pg_repo_local, mg_repo_local):
+def test_advanced_splitfile(pg_repo_local):
     execute_commands(load_splitfile("import_local_multiple_with_queries.splitfile"), output=OUTPUT)
 
     assert OUTPUT.engine.table_exists(OUTPUT.to_schema(), "my_fruits")
@@ -91,8 +87,7 @@ def test_advanced_splitfile(pg_repo_local, mg_repo_local):
     assert OUTPUT.run_sql("SELECT * FROM my_fruits") == [(2, "orange")]
 
 
-@pytest.mark.mounting
-def test_splitfile_cached(pg_repo_local, mg_repo_local):
+def test_splitfile_cached(pg_repo_local):
     # Check that no new commits/snaps are created if we rerun the same splitfile
     execute_commands(load_splitfile("import_local_multiple_with_queries.splitfile"), output=OUTPUT)
     images = OUTPUT.images()
