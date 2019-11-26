@@ -1,14 +1,26 @@
+import os
+
 import pytest
 
 from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.repository import clone, Repository
 from splitgraph.exceptions import SplitfileError
-from splitgraph.splitfile._parsing import preprocess
+from splitgraph.splitfile._parsing import preprocess, parse_commands
 from splitgraph.splitfile.execution import execute_commands
 from test.splitgraph.conftest import OUTPUT, SPLITFILE_ROOT, load_splitfile
 
 PARSING_TEST_SPLITFILE = load_splitfile("import_remote_multiple.splitfile")
 R = Repository.from_schema
+
+
+def test_splitfile_parsing_qoz_regression():
+    # Test a big real-world Splitfile from the examples dir to make sure
+    # that parsing changes don't break it.
+    with open(
+        os.path.join(SPLITFILE_ROOT, "../../examples/us-election/qoz_vote_fraction.splitfile")
+    ) as f:
+        commands = f.read()
+    assert len(parse_commands(commands)) == 4
 
 
 def test_splitfile_preprocessor_missing_params():

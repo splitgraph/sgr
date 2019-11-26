@@ -28,7 +28,7 @@ from splitgraph.commandline.image_info import object_c, objects_c
 from splitgraph.config import PG_PWD, PG_USER
 from splitgraph.config.config import patch_config, create_config_dict
 from splitgraph.config.keys import DEFAULTS
-from splitgraph.core.common import insert, ResultShape, select, get_metadata_schema_version
+from splitgraph.core.common import insert, ResultShape, get_metadata_schema_version
 from splitgraph.core.engine import repository_exists, init_engine, get_engine
 from splitgraph.core.metadata_manager import OBJECT_COLS
 from splitgraph.core.registry import get_published_info
@@ -38,7 +38,6 @@ from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import AuthAPIError, ImageNotFoundError, TableNotFoundError
 from splitgraph.hooks.mount_handlers import get_mount_handlers
 from test.splitgraph.conftest import OUTPUT, SPLITFILE_ROOT, MG_MNT
-
 
 TEST_ENGINE_PREFIX = "test"
 
