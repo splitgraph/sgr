@@ -181,6 +181,15 @@ def test_commandline_basics(pg_repo_local):
     assert "Name of the fruit" in result.output
 
 
+def test_commandline_show_empty_image(local_engine_empty):
+    # Check size calculations etc in an empty image don't cause errors.
+    runner = CliRunner()
+    OUTPUT.init()
+    assert OUTPUT.images["latest"].get_size() == 0
+    result = runner.invoke(show_c, [str(OUTPUT) + ":" + "000000000000"], catch_exceptions=False)
+    assert "Size: 0.00 B" in result.output
+
+
 def test_commandline_commit_chunk(pg_repo_local):
     runner = CliRunner()
 
