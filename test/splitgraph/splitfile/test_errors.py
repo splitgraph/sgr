@@ -3,10 +3,12 @@ Tests for various internal errors (e.g. missing objects) not breaking the execut
 """
 import psycopg2
 import pytest
+from parsimonious import IncompleteParseError
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import ObjectCacheError
+from splitgraph.splitfile._parsing import parse_commands
 from splitgraph.splitfile.execution import execute_commands
 from test.splitgraph.conftest import OUTPUT, load_splitfile
 
@@ -63,7 +65,9 @@ def test_splitfile_object_download_failure(local_engine_empty, pg_repo_remote_mu
     ]
 
     assert len(OUTPUT.images()) == 3
-    assert _get_table_count(OUTPUT) == 3
+    # 2 tables in the first non-empty image, 3 tables in the second image
+    # (previous 2 + joined data).
+    assert _get_table_count(OUTPUT) == 5
 
 
 def test_splitfile_sql_failure(local_engine_empty, pg_repo_remote_multitag):
@@ -79,3 +83,9 @@ def test_splitfile_sql_failure(local_engine_empty, pg_repo_remote_multitag):
     assert len(OUTPUT.images()) == 2
     assert _get_table_count(OUTPUT) == 2
     assert OUTPUT.images["latest"].get_tables() == ["my_fruits", "vegetables"]
+
+
+def test_splitfile_various_parse_errors():
+    # Check common mistypings of official commands don't get parsed as FROM + custom command
+    with pytest.raises(IncompleteParseError):
+        parse_commands("FROM some/repo:12345 IMPORT {SELECT * FROM table}")

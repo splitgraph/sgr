@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 SPLITFILE_GRAMMAR = Grammar(
     r"""
-    commands = space command space (newline space command space)*
+    commands = space_nn command space_nn (newline space_nn command space_nn)* newline?
     command = comment / import / from / sql_file / sql / custom
     comment = space "#" non_newline
     from = "FROM" space ("EMPTY" / repo_source) (space "AS" space repository)?
@@ -29,7 +29,7 @@ SPLITFILE_GRAMMAR = Grammar(
     table = ((table_name / table_query) space "AS" space table_alias) / table_name
 
     table_query = "{" non_curly_brace "}"
-    tables = "ALL" / (table space ("," space table)*)
+    tables = "ALL" / (table (space "," space table)*)
     source = mount_source / repo_source
     repo_source = repository (":" tag_or_hash)?
     mount_source = "MOUNT" space handler space no_db_conn_string space handler_options
@@ -46,8 +46,8 @@ SPLITFILE_GRAMMAR = Grammar(
     tag_or_hash = identifier
     handler_options = "'" non_single_quote "'"
 
-    newline = ~"\n*"
-    non_newline = ~"[^\n]*"
+    newline = ~"\n+"
+    non_newline = ~"[^\n]+"
 
     # I've no idea why we need so many slashes here. The purpose of this regex is to consume anything
     # that's not a closing curly brace or \} (an escaped curly brace).
@@ -59,6 +59,7 @@ SPLITFILE_GRAMMAR = Grammar(
     no_db_conn_string = ~"(\S+):(\S+)@(.+):(\d+)"
     identifier = ~"[_a-zA-Z0-9-]+"
     space = ~"\s*"
+    space_nn = ~"[ \t]*"
 """
 )
 
