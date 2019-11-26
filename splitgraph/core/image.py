@@ -270,7 +270,8 @@ class Image(NamedTuple):
                 select("get_image_size", table_args="(%s,%s,%s)", schema=SPLITGRAPH_API_SCHEMA),
                 (self.repository.namespace, self.repository.repository, self.image_hash),
                 return_shape=ResultShape.ONE_ONE,
-            ),
+            )
+            or 0,
         )
 
     def to_splitfile(

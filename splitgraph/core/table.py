@@ -415,7 +415,8 @@ class Table:
                     self.table_name,
                 ),
                 return_shape=ResultShape.ONE_ONE,
-            ),
+            )
+            or 0,
         )
 
     def _extract_singleton_fragments(
