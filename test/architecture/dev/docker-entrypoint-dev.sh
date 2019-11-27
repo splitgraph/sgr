@@ -8,10 +8,10 @@ main() {
 
 install_latest_sgr() {
     mkdir -p /src/venvs \
-        && poetry config settings.virtualenvs.create true \
-        && poetry config settings.virtualenvs.path /src/venvs \
+        && poetry config virtualenvs.create true \
+        && poetry config virtualenvs.path /src/venvs \
         && cd /src/splitgraph \
-        && poetry install -E ingestion --develop splitgraph
+        && poetry install -E ingestion
 }
 
 # Because we are bind-mounting the root of the repository with /src/splitgraph

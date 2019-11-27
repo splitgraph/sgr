@@ -4,7 +4,7 @@ sudo: required
 python:
   - '3.6'
 install:
-  - poetry install -E ingestion --develop splitgraph
+  - poetry install -E ingestion
 script:
   # Run static type checker first to short circuit obvious errors
   - poetry run mypy splitgraph
