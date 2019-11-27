@@ -29,8 +29,9 @@ def get_object_upload_urls(s3_host: str, object_ids: List[str]) -> List[List[str
     :param object_ids: List of object IDs
     :return: A list of lists [(object URL, object footer URL, object schema URL)]
     """
-    if s3_host != "%s:%s" % (S3_HOST, S3_PORT):
-        raise ValueError("Only S3 host %s:%s is supported, not %s!" % (S3_HOST, S3_PORT, s3_host))
+    # Currently s3_host is ignored: this is to future-proof for choosing between multiple
+    # S3 providers by the client but at this point the registry knows exactly where the
+    # object is located.
     return [
         [
             MINIO.presigned_put_object(
@@ -50,8 +51,6 @@ def get_object_download_urls(s3_host: str, object_ids: List[str]) -> List[List[s
     :param object_ids: List of object IDs
     :return: A list of lists [(object URL, object footer URL, object schema URL)]
     """
-    if s3_host != "%s:%s" % (S3_HOST, S3_PORT):
-        raise ValueError("Only S3 host %s:%s is supported, not %s!" % (S3_HOST, S3_PORT, s3_host))
     return [
         [
             MINIO.presigned_get_object(

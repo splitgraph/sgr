@@ -1378,8 +1378,6 @@ def test_commandline_registration_normal():
         source_config,
         {
             "SG_REPO_LOOKUP": "remote_engine",
-            "SG_S3_HOST": "objectstorage",
-            "SG_S3_PORT": "9000",
             "remotes": {
                 "remote_engine": {
                     "SG_ENGINE_USER": "abcdef123456",

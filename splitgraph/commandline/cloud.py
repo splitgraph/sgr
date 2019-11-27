@@ -47,8 +47,6 @@ def register_c(username, password, email, remote):
 
     config_patch = {
         "SG_REPO_LOOKUP": ",".join(repo_lookup),
-        "SG_S3_HOST": "objectstorage",
-        "SG_S3_PORT": "9000",
         "remotes": {
             remote: {
                 "SG_ENGINE_USER": key,
