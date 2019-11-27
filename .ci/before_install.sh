@@ -15,8 +15,8 @@ pushd "$REPO_ROOT_DIR" \
     && curl -L "$D_COMPOSE_URL" > docker-compose \
     && chmod +x docker-compose \
     && sudo mv docker-compose /usr/local/bin \
-    && pip install poetry \
-    && poetry config settings.virtualenvs.create false \
+    && pip install poetry=="$POETRY_VERSION" \
+    && poetry config virtualenvs.create false \
     && popd \
     && exit 0
 

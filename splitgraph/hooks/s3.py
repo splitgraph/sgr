@@ -23,16 +23,12 @@ from splitgraph.hooks.external_objects import ExternalObjectHandler
 
 class S3ExternalObjectHandler(ExternalObjectHandler):
     """Uploads/downloads the objects to/from S3/S3-compatible host using the Minio client.
-        The parameters for this handler (overriding the .sgconfig) are:
 
-        * host: default SG_S3_HOST
-        * port: default SG_S3_PORT
-        * access_key: default SG_S3_KEY
-        * bucket: default same as access_key
-        * secret_key: default SG_S3_PWD
+        The handler is "attached" to a given registry which manages issuing pre-signed
+        GET/PUT URLs.
 
-        You can also specify the number of worker threads (`threads`) used to upload the
-        objects.
+        The handler supports a parameter `threads` specifying the number of threads
+        used to upload the objects.
     """
 
     def upload_objects(self, objects: List[str], remote_engine: PostgresEngine) -> List[str]:
@@ -46,16 +42,12 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
         worker_threads = self.params.get(
             "threads", int(get_singleton(CONFIG, "SG_ENGINE_POOL")) - 1
         )
-        s3_host = self.params.get(
-            "host",
-            "%s:%s" % (get_singleton(CONFIG, "SG_S3_HOST"), get_singleton(CONFIG, "SG_S3_PORT")),
-        )
 
         # Determine upload URLs
         logging.info("Getting upload URLs from the registry...")
         urls = remote_engine.run_sql(
             "SELECT splitgraph_api.get_object_upload_urls(%s, %s)",
-            (s3_host, objects),
+            ("default", objects),
             return_shape=ResultShape.ONE_ONE,
         )
 
@@ -95,17 +87,13 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
         worker_threads = self.params.get(
             "threads", int(get_singleton(CONFIG, "SG_ENGINE_POOL")) - 1
         )
-        s3_host = self.params.get(
-            "host",
-            "%s:%s" % (get_singleton(CONFIG, "SG_S3_HOST"), get_singleton(CONFIG, "SG_S3_PORT")),
-        )
 
         logging.info("Getting download URLs from registry %s...", remote_engine)
         object_ids = [o[0] for o in objects]
         remote_object_ids = [o[1] for o in objects]
         urls = remote_engine.run_sql(
             "SELECT splitgraph_api.get_object_download_urls(%s, %s)",
-            (s3_host, remote_object_ids),
+            ("default", remote_object_ids),
             return_shape=ResultShape.ONE_ONE,
         )
 
