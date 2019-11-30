@@ -248,7 +248,7 @@ class PsycopgEngine(SQLEngine):
                         (__version__,),
                     )
                 cur.execute(statement, _convert_vals(arguments) if arguments else None)
-            except DatabaseError as e:
+            except Exception as e:
                 # Rollback the transaction (to a savepoint if we're inside the savepoint() context manager)
                 self.rollback()
                 # Go through some more common errors (like the engine not being initialized) and raise
