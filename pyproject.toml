@@ -27,7 +27,7 @@ tqdm = "^4.40.0"
 
 [tool.poetry.dev-dependencies]
 pytest = ">=4.4"
-pyfakefs = "^3.6"
+pyfakefs = "^3.7"
 pytest-cov = "^2.8"
 pytest-env = "^0.6"
 coveralls = "^1.7"
