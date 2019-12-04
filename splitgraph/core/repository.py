@@ -223,7 +223,18 @@ class Repository:
         )
         if result is None:
             return result
-        return Repository(namespace=result[1], repository=result[2], engine=get_engine(result[0]))
+        try:
+            engine = get_engine(result[0])
+        except KeyError:
+            logging.warning(
+                "Repository %s/%s has upstream on remote %s which doesn't exist in the config.",
+                self.namespace,
+                self.repository,
+                result[0],
+            )
+            return None
+
+        return Repository(namespace=result[1], repository=result[2], engine=engine)
 
     @upstream.setter
     def upstream(self, remote_repository: "Repository"):
