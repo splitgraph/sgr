@@ -132,3 +132,20 @@ def test_tag_errors(pg_repo_local):
     with pytest.raises(ImageNotFoundError) as e:
         tag = pg_repo_local.images.by_tag("notatag")
     assert "Tag notatag not found" in str(e.value)
+
+
+def test_upstream_goes_away(pg_repo_local):
+    # Check upstream getter doesn't crash if a remote is deleted from the config.
+    pg_repo_local.engine.run_sql(
+        "INSERT INTO splitgraph_meta.upstream (namespace, repository, "
+        "remote_name, remote_namespace, remote_repository) VALUES (%s, %s, %s, %s, %s)",
+        (
+            pg_repo_local.namespace,
+            pg_repo_local.repository,
+            "nonexistent_engine",
+            pg_repo_local.namespace,
+            pg_repo_local.repository,
+        ),
+    )
+
+    assert pg_repo_local.upstream is None
