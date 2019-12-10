@@ -879,6 +879,12 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                     object_id,
                 )
 
+            # In addition, there's a corner case where the object was mounted with different FDW
+            # parameters (e.g. object path in /var/lib/splitgraph/objects has changed)
+            # and we want that to be overwritten in any case, so we remount the object.
+            self.unmount_objects([object_id])
+            self.mount_object(object_id, schema_spec=schema_spec)
+
         if object_exists:
             logging.info(
                 "Object storage, %s/%s -> %s, already exists, deleting source table",
