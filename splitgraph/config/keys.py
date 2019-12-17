@@ -54,8 +54,8 @@ DEFAULTS: ConfigDict = {
             "SG_ENGINE_HOST": "data.splitgraph.com",
             "SG_ENGINE_PORT": "5432",
             "SG_ENGINE_DB_NAME": "sgregistry",
-            "SG_AUTH_API": "http://data.splitgraph.com/auth",
-            "SG_QUERY_API": "http://data.splitgraph.com/mc",
+            "SG_AUTH_API": "https://api.splitgraph.com/auth",
+            "SG_QUERY_API": "https://data.splitgraph.com/mc",
         }
     },
     "external_handlers": {"S3": "splitgraph.hooks.s3.S3ExternalObjectHandler"},
