@@ -1148,8 +1148,8 @@ def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
 _CONFIG_DEFAULTS = (
     "\n[remote: data.splitgraph.com]\nSG_ENGINE_HOST=data.splitgraph.com\n"
     "SG_ENGINE_PORT=5432\nSG_ENGINE_DB_NAME=sgregistry\n"
-    "SG_AUTH_API=http://data.splitgraph.com/auth\n"
-    "SG_QUERY_API=http://data.splitgraph.com/mc\n"
+    "SG_AUTH_API=https://api.splitgraph.com/auth\n"
+    "SG_QUERY_API=https://data.splitgraph.com/mc\n"
 )
 
 
