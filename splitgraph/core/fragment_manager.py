@@ -231,7 +231,7 @@ class FragmentManager(MetadataManager):
 
             index_dict = {}
             for index_col, index_kwargs in index_cols.items():
-                logging.info(
+                logging.debug(
                     "Running index %s on column %s with parameters %r",
                     index_name,
                     index_col,
