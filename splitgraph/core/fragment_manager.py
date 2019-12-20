@@ -201,7 +201,7 @@ class FragmentManager(MetadataManager):
         super().__init__(metadata_engine)
         self.object_engine = object_engine
 
-    def _generate_object_index(
+    def generate_object_index(
         self,
         object_id: str,
         table_schema: TableSchema,
@@ -271,9 +271,7 @@ class FragmentManager(MetadataManager):
         :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
         """
         object_size = self.object_engine.get_object_size(object_id)
-        object_index = self._generate_object_index(
-            object_id, table_schema, changeset, extra_indexes
-        )
+        object_index = self.generate_object_index(object_id, table_schema, changeset, extra_indexes)
         self.register_objects(
             [
                 Object(

@@ -5,6 +5,9 @@ import pytest
 
 from splitgraph.core.common import ResultShape
 from splitgraph.core.indexing.bloom import _prepare_bloom_quals, filter_bloom_index, describe
+from splitgraph.core.repository import clone, Repository
+from splitgraph.exceptions import ObjectIndexingError
+from test.splitgraph.commands.test_layered_querying import _prepare_fully_remote_repo
 from test.splitgraph.conftest import OUTPUT
 
 
@@ -235,4 +238,107 @@ def test_bloom_index_datetime(local_engine_empty):
     assert (
         filter_bloom_index(OUTPUT.engine, objects, [[("value_1", "=", "2015-01-01 00:00:00")]])
         == objects
+    )
+
+
+def test_bloom_index_post_factum(local_engine_empty):
+    OUTPUT.init()
+    OUTPUT.run_sql("CREATE TABLE test (key INTEGER PRIMARY KEY, value_1 TIMESTAMP)")
+    for i in range(50):
+        OUTPUT.run_sql(
+            "INSERT INTO test VALUES (%s, %s)", (i + 1, dt(2015, 1, 1) + timedelta(days=i))
+        )
+    head = OUTPUT.commit()
+
+    # Reindex the table after committing it and check that object metadata gets overwritten.
+    head.get_table("test").reindex(extra_indexes={"bloom": {"value_1": {"probability": 0.01}}})
+
+    obj = head.get_table("test").objects[0]
+    object_index = OUTPUT.objects.get_object_meta([obj])[obj].object_index
+    assert "bloom" in object_index
+
+    # Run a snippet from the previous test to check the bloom metadata is valid.
+    objects = head.get_table("test").objects
+    for i in range(0, 50, 5):
+        assert (
+            filter_bloom_index(
+                OUTPUT.engine, objects, [[("value_1", "=", dt(2015, 1, 1) + timedelta(days=i))]]
+            )
+            == objects
+        )
+
+
+def test_bloom_reindex_changed_table(local_engine_empty):
+    OUTPUT.init()
+    OUTPUT.run_sql("CREATE TABLE test (key INTEGER PRIMARY KEY, value_1 VARCHAR, value_2 INTEGER)")
+    for i in range(26):
+        OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (i + 1, chr(ord("a") + i), i * 2))
+    OUTPUT.commit(chunk_size=13)
+    OUTPUT.run_sql("DELETE FROM test WHERE key = 5")  # ('e', 8)
+
+    head = OUTPUT.commit()
+    objects = head.get_table("test").objects
+    assert len(objects) == 3  # original 2 fragments and one overwrite
+
+    index_spec = {"bloom": {"value_1": {"probability": 0.01}, "value_2": {"probability": 0.01}}}
+    # Since the patch object deletes the old value, we don't immediately know what it was and so
+    # can't reindex that object.
+    with pytest.raises(ObjectIndexingError) as e:
+        head.get_table("test").reindex(extra_indexes=index_spec)
+    assert "1 object(s)" in str(e.value)
+
+    reindexed = head.get_table("test").reindex(
+        extra_indexes=index_spec, raise_on_patch_objects=False
+    )
+    assert objects[0] in reindexed
+    assert objects[1] in reindexed
+    assert objects[2] not in reindexed
+
+
+@pytest.mark.registry
+def test_bloom_reindex_remote(local_engine_empty, unprivileged_pg_repo, clean_minio):
+    _prepare_fully_remote_repo(local_engine_empty, unprivileged_pg_repo)
+
+    # Do a reindex using our local engine to query the object and the remote engine
+    # to write metadata to.
+    repo = Repository.from_template(unprivileged_pg_repo, object_engine=local_engine_empty)
+    fruits = repo.images["latest"].get_table("fruits")
+
+    # The repo used for LQ tests has 2 objects that overwrite data, so we ignore those.
+    reindexed = fruits.reindex(
+        extra_indexes={"bloom": {"name": {"probability": 0.01}}}, raise_on_patch_objects=False
+    )
+    repo.commit_engines()
+
+    assert len(reindexed) == 3
+    assert set(repo.objects.get_downloaded_objects()) == set(reindexed)
+
+    # Check the index was written to the remote metadata engine.
+    assert (
+        "bloom"
+        in unprivileged_pg_repo.objects.get_object_meta(reindexed)[reindexed[0]].object_index
+    )
+
+
+@pytest.mark.registry
+def test_bloom_reindex_push(local_engine_empty, unprivileged_pg_repo, clean_minio):
+    _prepare_fully_remote_repo(local_engine_empty, unprivileged_pg_repo)
+    pg_repo_local = clone(unprivileged_pg_repo, download_all=False)
+
+    # Do a reindex on the local engine and push the dataset back out.
+    fruits = pg_repo_local.images["latest"].get_table("fruits")
+
+    # The repo used for LQ tests has 2 objects that overwrite data, so we ignore those.
+    reindexed = fruits.reindex(
+        extra_indexes={"bloom": {"name": {"probability": 0.01}}}, raise_on_patch_objects=False
+    )
+    pg_repo_local.commit_engines()
+
+    # Push back out overwriting object metadata
+    pg_repo_local.push(overwrite=True)
+
+    # Check the index was written to the registry.
+    assert (
+        "bloom"
+        in unprivileged_pg_repo.objects.get_object_meta(reindexed)[reindexed[0]].object_index
     )
