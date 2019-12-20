@@ -168,14 +168,32 @@ END
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 
 -- add_object(object_id, format, namespace, size, insertion_hash, deletion_hash, index)
-CREATE OR REPLACE FUNCTION splitgraph_api.add_object(object_id varchar, format varchar,
-    namespace varchar, size bigint, created timestamp, insertion_hash varchar(64),
-    deletion_hash varchar(64), index jsonb) RETURNS void AS $$
+-- If the object already exists, it gets overwritten (making sure the caller has permissions
+-- to overwrite it) -- this is for easier patching or adding indexes by users.
+CREATE OR REPLACE FUNCTION splitgraph_api.add_object(_object_id varchar, _format varchar,
+    _namespace varchar, _size bigint, _created timestamp, _insertion_hash varchar(64),
+    _deletion_hash varchar(64), _index jsonb) RETURNS void AS $$
+DECLARE existing record;
 BEGIN
-    PERFORM splitgraph_api.check_privilege(namespace);
-    INSERT INTO splitgraph_meta.objects(object_id, format, namespace, size, created,
-        insertion_hash, deletion_hash, index)
-    VALUES (object_id, format, namespace, size, created, insertion_hash, deletion_hash, index);
+    PERFORM splitgraph_api.check_privilege(_namespace);
+
+    -- Do SELECT FOR UPDATE to lock the row if it actually does exist to avoid two people
+    -- calling this at the same time
+    SELECT * INTO existing
+        FROM splitgraph_meta.objects WHERE splitgraph_meta.objects.object_id = _object_id
+        FOR UPDATE;
+
+    IF NOT FOUND THEN
+        INSERT INTO splitgraph_meta.objects(object_id, format, namespace, size, created,
+            insertion_hash, deletion_hash, index)
+        VALUES (_object_id, _format, _namespace, _size, _created, _insertion_hash, _deletion_hash, _index);
+    ELSE
+        PERFORM splitgraph_api.check_privilege(existing.namespace);
+        UPDATE splitgraph_meta.objects SET format = _format,
+            namespace = _namespace, size = _size, created = _created,
+            insertion_hash = _insertion_hash, deletion_hash = _deletion_hash,
+            index = _index WHERE object_id = _object_id;
+    END IF;
 END
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 

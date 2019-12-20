@@ -6,6 +6,7 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.common import META_TABLES, select
 from splitgraph.core.registry import get_published_info, unpublish_repository
 from splitgraph.core.repository import Repository, clone
+from test.splitgraph.conftest import REMOTE_NAMESPACE
 
 
 @pytest.mark.registry
@@ -95,6 +96,36 @@ def test_delete_others(readonly_pg_repo):
 
     # Check the repository still exists on the remote.
     assert len(readonly_pg_repo.images()) > 0
+
+
+@pytest.mark.registry
+def test_overwrite_own_object_meta(unprivileged_pg_repo):
+    fruits = unprivileged_pg_repo.images["latest"].get_table("fruits")
+    object_meta = unprivileged_pg_repo.objects.get_object_meta(fruits.objects)[fruits.objects[0]]
+
+    object_meta = object_meta._replace(size=12345)
+    unprivileged_pg_repo.objects.register_objects([object_meta])
+
+    object_meta = unprivileged_pg_repo.objects.get_object_meta(fruits.objects)[fruits.objects[0]]
+    assert object_meta.size == 12345
+
+
+@pytest.mark.registry
+def test_overwrite_other_object_meta(readonly_pg_repo):
+    fruits = readonly_pg_repo.images["latest"].get_table("fruits")
+    object_meta = readonly_pg_repo.objects.get_object_meta(fruits.objects)[fruits.objects[0]]
+
+    object_meta = object_meta._replace(size=12345)
+
+    with pytest.raises(ProgrammingError) as e:
+        readonly_pg_repo.objects.register_objects([object_meta])
+    assert "You do not have access to this namespace!" in str(e.value)
+    object_meta = readonly_pg_repo.objects.get_object_meta(fruits.objects)[fruits.objects[0]]
+    assert object_meta.size != 12345
+
+    with pytest.raises(ProgrammingError) as e:
+        readonly_pg_repo.objects.register_objects([object_meta], namespace=REMOTE_NAMESPACE)
+    assert "You do not have access to this namespace!" in str(e.value)
 
 
 @pytest.mark.registry

@@ -11,7 +11,6 @@ import yaml
 
 from splitgraph.commandline.common import Color
 
-
 _ANSI_CONTROL = re.compile(r"(\x1B[@-_][0-?]*[ -/]*[@-~])")
 _SPLIT = re.compile(r"(\x1B[@-_][0-?]*[ -/]*[@-~]|\s+|.)")
 
