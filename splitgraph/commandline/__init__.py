@@ -12,7 +12,7 @@ import click_log
 from splitgraph.commandline.cloud import cloud_c
 from splitgraph.commandline.engine import engine_c
 from splitgraph.commandline.example import example
-from splitgraph.commandline.image_creation import checkout_c, commit_c, tag_c, import_c
+from splitgraph.commandline.image_creation import checkout_c, commit_c, tag_c, import_c, reindex_c
 from splitgraph.commandline.image_info import (
     log_c,
     diff_c,
@@ -67,6 +67,7 @@ cli.add_command(checkout_c)
 cli.add_command(commit_c)
 cli.add_command(tag_c)
 cli.add_command(import_c)
+cli.add_command(reindex_c)
 
 # Information
 cli.add_command(log_c)
