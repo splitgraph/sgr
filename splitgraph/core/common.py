@@ -454,13 +454,19 @@ def prepare_publish_data(
     return previews, schemata
 
 
-def gather_sync_metadata(target: "Repository", source: "Repository") -> Any:
+def gather_sync_metadata(
+    target: "Repository", source: "Repository", overwrite_objects=False
+) -> Any:
     """
     Inspects two Splitgraph repositories and gathers metadata that is required to bring target up to
     date with source.
 
     :param target: Target Repository object
     :param source: Source repository object
+    :param overwrite_objects: If True, will return metadata for _all_ objects (not images or tables)
+        in the source repository to overwrite target.
+
+    :returns: Tuple of metadata for  new_images, new_tables, object_locations, object_meta, tags
     """
 
     target_images = {i.image_hash: i for i in target.images()}
@@ -494,18 +500,24 @@ def gather_sync_metadata(target: "Repository", source: "Repository") -> Any:
     existing_tags = [t for s, t in target.get_all_hashes_tags()]
     tags = {t: s for s, t in source.get_all_hashes_tags() if t not in existing_tags}
 
-    # Get the objects required by all new tables
-    table_objects = list({o for table in table_meta for o in table[3]})
-
     # Get objects that don't exist on the target
-    new_objects = target.objects.get_new_objects(table_objects)
+    table_objects = list({o for table in table_meta for o in table[3]})
+    new_objects = list(set(target.objects.get_new_objects(table_objects)))
+
+    # Ignore overwrite_objects for calculating which objects to upload the flag
+    # is only for overwriting metadata).
     if new_objects:
-        new_objects = list(set(new_objects))
-        object_meta = source.objects.get_object_meta(new_objects)
         object_locations = source.objects.get_external_object_locations(new_objects)
     else:
-        object_meta = {}
         object_locations = []
+
+    if overwrite_objects:
+        new_objects = source.objects.get_objects_for_repository(source)
+
+    if new_objects:
+        object_meta = source.objects.get_object_meta(new_objects)
+    else:
+        object_meta = {}
     return new_images, table_meta, object_locations, object_meta, tags
 
 

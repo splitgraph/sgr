@@ -28,6 +28,10 @@ class ObjectNotFoundError(SplitGraphError):
     """Raised when a physical object doesn't exist in the cache."""
 
 
+class ObjectIndexingError(SplitGraphError):
+    """Errors related to indexing objects"""
+
+
 class RepositoryNotFoundError(SplitGraphError):
     """A Splitgraph repository doesn't exist."""
 

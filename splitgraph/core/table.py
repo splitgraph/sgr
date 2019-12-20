@@ -17,13 +17,19 @@ from typing import (
 )
 
 from psycopg2.sql import SQL, Identifier, Composable
+from tqdm import tqdm
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.core.common import Tracer, select
-from splitgraph.core.fragment_manager import get_temporary_table_id, get_chunk_groups
+from splitgraph.core.fragment_manager import (
+    get_temporary_table_id,
+    get_chunk_groups,
+    ExtraIndexInfo,
+)
 from splitgraph.core.indexing.range import quals_to_sql
 from splitgraph.core.types import TableSchema, Quals
 from splitgraph.engine import ResultShape
+from splitgraph.exceptions import ObjectIndexingError
 
 if TYPE_CHECKING:
     from splitgraph.core.image import Image
@@ -95,6 +101,17 @@ def _get_plan_cache_key(quals: Optional[Quals], columns: Sequence[str]) -> Query
     return quals, columns
 
 
+def _merge_index_data(current_index, new_index):
+    for index_type, index_data in new_index.items():
+        for col_name, col_index_data in index_data.items():
+            if index_type not in current_index:
+                current_index[index_type] = {}
+            if col_name not in current_index[index_type]:
+                current_index[index_type][col_name] = {}
+
+            current_index[index_type][col_name] = col_index_data
+
+
 class Table:
     """Represents a Splitgraph table in a given image. Shouldn't be created directly, use Table-loading
     methods in the :class:`splitgraph.core.image.Image` class instead."""
@@ -116,6 +133,9 @@ class Table:
         self.objects = objects
 
         self._query_plans: Dict[Tuple[Optional[Quals], Tuple[str]], QueryPlan] = {}
+
+    def __repr__(self) -> str:
+        return "Table %s in %s" % (self.table_name, str(self.image))
 
     def get_query_plan(
         self, quals: Optional[Quals], columns: Sequence[str], use_cache: bool = True
@@ -418,6 +438,52 @@ class Table:
             )
             or 0,
         )
+
+    def reindex(self, extra_indexes: ExtraIndexInfo, raise_on_patch_objects=True) -> List[str]:
+        """
+        Run extra indexes on all objects in this table and update their metadata.
+        This only works on objects that don't have any deletions or upserts (have a deletion hash of 000000...).
+
+        :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
+        :param raise_on_patch_objects: If True, will raise an exception if any objects in the table
+            overwrite any other objects. If False, will log a warning but will reindex all non-patch objects.
+
+        :returns List of objects that were reindexed.
+        """
+        object_manager = self.repository.objects
+
+        object_meta = object_manager.get_object_meta(self.objects)
+
+        # Because the index includes both inserted and deleted entries (so that we know
+        # to grab the object if it deletes something we're interested in), we can't easily
+        # reindex objects that include deletions since we'd have to find the object with
+        # the old value for whatever we're deleting and also download it.
+
+        valid_objects = {o: om for o, om in object_meta.items() if om.deletion_hash == "0" * 64}
+        if len(valid_objects) < len(object_meta):
+            message = "%d object(s) in %s have deletions or upserts, reindexing unsupported" % (
+                len(object_meta) - len(valid_objects),
+                self,
+            )
+            if raise_on_patch_objects:
+                raise ObjectIndexingError(message)
+            else:
+                logging.warning(message)
+
+        # Download the objects to reindex them
+        with object_manager.ensure_objects(self, objects=list(valid_objects)):
+            for object_id in tqdm(valid_objects, unit="objs", ascii=True):
+                current_index = valid_objects[object_id].object_index
+
+                index_struct = object_manager.generate_object_index(
+                    object_id, self.table_schema, changeset=None, extra_indexes=extra_indexes
+                )
+
+                # Update the index in-place and overwrite it
+                _merge_index_data(current_index, index_struct)
+
+        object_manager.register_objects(list(valid_objects.values()))
+        return list(valid_objects)
 
     def _extract_singleton_fragments(
         self, object_manager: "ObjectManager", required_objects: List[str]

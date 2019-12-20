@@ -828,6 +828,7 @@ class Repository:
     def push(
         self,
         remote_repository: Optional["Repository"] = None,
+        overwrite: bool = False,
         handler: str = "DB",
         handler_options: Optional[Dict[str, Any]] = None,
     ) -> "Repository":
@@ -838,6 +839,7 @@ class Repository:
             upstream is used.
         :param handler: Name of the handler to use to upload objects. Use `DB` to push them to the remote or `S3`
             to store them in an S3 bucket.
+        :param overwrite: If True, will overwrite object metadata on the remote repository for existing objects.
         :param handler_options: Extra options to pass to the handler. For example, see
             :class:`splitgraph.hooks.s3.S3ExternalObjectHandler`.
         """
@@ -852,6 +854,7 @@ class Repository:
                 target=remote_repository,
                 source=self,
                 download=False,
+                overwrite=overwrite,
                 handler=handler,
                 handler_options=handler_options,
             )
@@ -865,18 +868,24 @@ class Repository:
             remote_repository.engine.close()
         return remote_repository
 
-    def pull(self, download_all: Optional[bool] = False) -> None:
+    def pull(self, download_all: Optional[bool] = False, overwrite: bool = False) -> None:
         """
         Synchronizes the state of the local Splitgraph repository with its upstream, optionally downloading all new
         objects created on the remote.
 
         :param download_all: If True, downloads all objects and stores them locally. Otherwise, will only download
             required objects when a table is checked out.
+        :param overwrite: If True, will overwrite object metadata on the local repository for existing objects.
         """
         if not self.upstream:
             raise ValueError("No upstream found for repository %s!" % self.to_schema())
 
-        clone(remote_repository=self.upstream, local_repository=self, download_all=download_all)
+        clone(
+            remote_repository=self.upstream,
+            local_repository=self,
+            download_all=download_all,
+            overwrite=overwrite,
+        )
 
     def publish(
         self,
@@ -1046,6 +1055,7 @@ def _sync(
     target: "Repository",
     source: "Repository",
     download: bool = True,
+    overwrite: bool = False,
     handler: str = "DB",
     handler_options: Optional[Dict[str, Any]] = None,
 ) -> None:
@@ -1060,6 +1070,7 @@ def _sync(
     :param source: Source Repository object
     :param download: If True, uses the download routines to download physical objects to self.
         If False, uses the upload routines to get `source` to upload physical objects to self / external.
+    :param overwrite: If True, overwrites remote object metadata for the target repository.
     :param handler: Upload handler
     :param handler_options: Upload handler options
     """
@@ -1071,9 +1082,9 @@ def _sync(
 
     try:
         new_images, table_meta, object_locations, object_meta, tags = gather_sync_metadata(
-            target, source
+            target, source, overwrite_objects=overwrite
         )
-        if not new_images:
+        if not new_images and not object_meta:
             logging.info("Nothing to do.")
             return
 
@@ -1130,6 +1141,7 @@ def _sync(
 def clone(
     remote_repository: Union["Repository", str],
     local_repository: Optional["Repository"] = None,
+    overwrite: bool = False,
     download_all: Optional[bool] = False,
 ) -> "Repository":
     """
@@ -1143,6 +1155,7 @@ def clone(
     :param local_repository: Local repository to clone into. If None, uses the same name as the remote.
     :param download_all: If True, downloads all objects and stores them locally. Otherwise, will only download required
         objects when a table is checked out.
+    :param overwrite: If True, will overwrite object metadata on the local repository for existing objects.
     :return: A locally cloned Repository object.
     """
     if isinstance(remote_repository, str):
@@ -1152,7 +1165,7 @@ def clone(
     if not local_repository:
         local_repository = Repository(remote_repository.namespace, remote_repository.repository)
 
-    _sync(local_repository, remote_repository, download=True)
+    _sync(local_repository, remote_repository, download=True, overwrite=overwrite)
 
     # Perform the optional download of all objects as a final step (normally we do it when the user
     # tries to check out a revision) and do it using the object manager as it has some handling
