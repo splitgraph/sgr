@@ -26,7 +26,7 @@ from splitgraph.exceptions import SplitGraphError, TableNotFoundError
 from splitgraph.hooks.mount_handlers import init_fdw
 from .common import set_tag, select, manage_audit, set_head
 from .table import Table
-from .types import TableSchema, TableColumn
+from .types import TableColumn
 
 if TYPE_CHECKING:
     from .repository import Repository
