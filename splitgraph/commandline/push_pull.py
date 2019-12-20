@@ -70,7 +70,22 @@ _REMOTES = list(CONFIG.get("remotes", []))
 )
 @click.option("-h", "--upload-handler", help="Upload handler", default="S3")
 @click.option("-o", "--upload-handler-options", help="Upload handler parameters", default="{}")
-def push_c(repository, remote_repository, remote, upload_handler, upload_handler_options):
+@click.option(
+    "-f",
+    "--overwrite-object-meta",
+    help="Overwrite metadata for existing remote objects",
+    default=False,
+    is_flag=True,
+    type=bool,
+)
+def push_c(
+    repository,
+    remote_repository,
+    remote,
+    upload_handler,
+    upload_handler_options,
+    overwrite_object_meta,
+):
     """
     Push changes from a local repository to the Splitgraph registry or another engine.
 
@@ -125,6 +140,7 @@ def push_c(repository, remote_repository, remote, upload_handler, upload_handler
         remote_repository,
         handler=upload_handler,
         handler_options=json.loads(upload_handler_options),
+        overwrite=overwrite_object_meta,
     )
 
 

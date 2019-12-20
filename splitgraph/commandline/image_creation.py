@@ -292,3 +292,45 @@ def import_c(image_spec, table_or_query, target_repository, target_table):
             (" (%s)" % image.image_hash[:12] if image else ""),
         )
     )
+
+
+@click.command(name="reindex")
+@click.argument("image_spec", type=ImageType(default="HEAD"))
+@click.argument("table_name", type=str)
+@click.option(
+    "-i",
+    "--index-options",
+    type=json.loads,
+    required=True,
+    help="JSON dictionary of extra indexes to calculate, e.g. "
+    '\'{"bloom": {"column_1": {"probability": 0.01}}}\'',
+)
+@click.option(
+    "-o",
+    "--ignore-patch-objects",
+    type=bool,
+    is_flag=True,
+    default=False,
+    help="Ignore objects that change other objects' rows instead of raising an error",
+)
+def reindex_c(image_spec, table_name, index_options, ignore_patch_objects):
+    """
+    Run extra indexes on a table. This will merge the indexing results for all objects
+    that a table is formed from with the current object indexes. For explanation of
+    what indexes do, see the documentation for `sgr commit`.
+
+    If the objects haven't been downloaded yet, this will download them.
+
+    Currently reindexing objects that change other objects is unsupported and will raise
+    an error. Pass `-o` to ignore these objects and only reindex supported objects.
+
+    Image spec must be of the format ``[NAMESPACE/]REPOSITORY[:HASH_OR_TAG]``. If no tag is specified, ``HEAD`` is used.
+    """
+    repository, image = image_spec
+    image = repository.images[image]
+    table = image.get_table(table_name)
+    click.echo("Reindexing table %s:%s/%s" % (repository.to_schema(), image.image_hash, table_name))
+    reindexed = table.reindex(
+        extra_indexes=index_options, raise_on_patch_objects=not ignore_patch_objects
+    )
+    click.echo("Reindexed %d object(s)" % len(reindexed))

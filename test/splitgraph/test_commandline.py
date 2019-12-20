@@ -24,6 +24,7 @@ from splitgraph.commandline.engine import (
     start_engine_c,
 )
 from splitgraph.commandline.example import generate_c, alter_c, splitfile_c
+from splitgraph.commandline.image_creation import reindex_c
 from splitgraph.commandline.image_info import object_c, objects_c
 from splitgraph.config import PG_PWD, PG_USER
 from splitgraph.config.config import patch_config, create_config_dict
@@ -629,6 +630,27 @@ def test_pull_push(pg_repo_local, pg_repo_remote):
         "fruits": [[1, "apple"], [2, "orange"], [3, "mayonnaise"], [4, "mustard"]],
         "vegetables": [[1, "potato"], [2, "carrot"]],
     }
+
+
+def test_reindex_and_force_push(pg_repo_local, pg_repo_remote):
+    runner = CliRunner(mix_stderr=False)
+
+    result = runner.invoke(clone_c, [str(pg_repo_local)])
+    assert result.exit_code == 0
+    assert repository_exists(pg_repo_local)
+
+    result = runner.invoke(
+        reindex_c,
+        [str(pg_repo_local) + ":latest", "fruits", '-i {"bloom": {"name": {"probability": 0.01}}}'],
+    )
+    assert result.exit_code == 0
+    assert "Reindexed 1 object(s)" in result.output
+
+    result = runner.invoke(push_c, [str(pg_repo_local), "-f"], mix_stderr=False)
+    assert result.exit_code == 0
+
+    obj = pg_repo_remote.images["latest"].get_table("fruits").objects[0]
+    assert "bloom" in pg_repo_remote.objects.get_object_meta([obj])[obj].object_index
 
 
 def test_splitfile(local_engine_empty, pg_repo_remote):
