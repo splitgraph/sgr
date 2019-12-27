@@ -584,8 +584,9 @@ def test_import(pg_repo_local, mg_repo_local):
     assert "TARGET_TABLE is required" in str(result.stdout)
 
 
-def test_pull_push(pg_repo_local, pg_repo_remote):
+def test_pull_push(local_engine_empty, pg_repo_remote):
     runner = CliRunner()
+    pg_repo_local = Repository.from_template(pg_repo_remote, engine=local_engine_empty)
 
     result = runner.invoke(clone_c, [str(pg_repo_local)])
     assert result.exit_code == 0
@@ -596,6 +597,12 @@ def test_pull_push(pg_repo_local, pg_repo_remote):
 
     result = runner.invoke(pull_c, [str(pg_repo_local)])
     assert result.exit_code == 0
+    assert len(pg_repo_local.objects.get_downloaded_objects()) == 0
+
+    result = runner.invoke(pull_c, [str(pg_repo_local), "--download-all"])
+    assert result.exit_code == 0
+    assert len(pg_repo_local.objects.get_downloaded_objects()) == 3
+
     pg_repo_local.images.by_hash(remote_engine_head.image_hash).checkout()
 
     pg_repo_local.run_sql("INSERT INTO fruits VALUES (4, 'mustard')")
