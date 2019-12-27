@@ -14,7 +14,12 @@ from splitgraph.config.config import get_from_subsection
 
 @click.command(name="pull")
 @click.argument("repository", type=RepositoryType())
-@click.option("-d", "--download-all", help="Download all objects immediately instead on checkout.")
+@click.option(
+    "-d",
+    "--download-all",
+    is_flag=True,
+    help="Download all objects immediately instead on checkout.",
+)
 def pull_c(repository, download_all):
     """
     Pull changes from an upstream repository.
