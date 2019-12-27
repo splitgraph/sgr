@@ -71,7 +71,7 @@ _REMOTES = list(CONFIG.get("remotes", []))
     "--remote",
     help="Alias or full connection string for the remote engine",
     type=click.Choice(_REMOTES),
-    default=_REMOTES[0] if len(_REMOTES) == 1 else None,
+    default=None,
 )
 @click.option("-h", "--upload-handler", help="Upload handler", default="S3")
 @click.option("-o", "--upload-handler-options", help="Upload handler parameters", default="{}")
@@ -126,15 +126,19 @@ def push_c(
     if remote_repository and remote:
         remote_repository = Repository.from_template(remote_repository, engine=get_engine(remote))
     elif remote:
-        try:
-            namespace = get_from_subsection(CONFIG, "remotes", remote, "SG_NAMESPACE")
-        except KeyError:
-            namespace = None
-        remote_repository = Repository.from_template(
-            repository, namespace=namespace, engine=get_engine(remote)
-        )
+        remote_repository = _make_push_target(repository, remote)
 
     remote_repository = remote_repository or repository.upstream
+
+    # If at this point we don't have a target repo, default to user's namespace on
+    # the default remote
+    if not remote_repository:
+        if len(_REMOTES) != 1:
+            raise click.UsageError(
+                "Could not infer a repository to push to, " "specify a remote explicitly with -r!"
+            )
+        remote = _REMOTES[0]
+        remote_repository = _make_push_target(repository, remote)
 
     click.echo(
         "Pushing %s to %s on remote %s"
@@ -147,6 +151,20 @@ def push_c(
         handler_options=json.loads(upload_handler_options),
         overwrite=overwrite_object_meta,
     )
+
+
+def _make_push_target(repository, remote):
+    from splitgraph.core.repository import Repository
+    from splitgraph.engine import get_engine
+
+    try:
+        namespace = get_from_subsection(CONFIG, "remotes", remote, "SG_NAMESPACE")
+    except KeyError:
+        namespace = None
+    remote_repository = Repository.from_template(
+        repository, namespace=namespace, engine=get_engine(remote)
+    )
+    return remote_repository
 
 
 @click.command(name="publish")
