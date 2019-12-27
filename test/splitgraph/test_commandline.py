@@ -80,6 +80,13 @@ def test_commandline_basics(pg_repo_local):
     assert "(3, 'mayonnaise')" in result.output
     assert "(1, 'apple')" not in result.output
 
+    # Test sql using LQ against current HEAD (without the changes we've made)
+    result = runner.invoke(sql_c, ["--image", "test/pg_mount:latest", "SELECT * FROM fruits"])
+    assert result.exit_code == 0
+    assert "(1, 'apple')" in result.output
+    assert "(2, 'orange')" in result.output
+    assert "(3, 'mayonnaise')" not in result.output
+
     def check_diff(args):
         result = runner.invoke(diff_c, [str(a) for a in args])
         assert "added 1 row" in result.output

@@ -304,8 +304,9 @@ def objects_c(local):
 @click.command(name="sql")
 @click.argument("sql")
 @click.option("-s", "--schema", help="Run SQL against this schema.")
+@click.option("-i", "--image", help="Run SQL against this image.", type=ImageType(default="latest"))
 @click.option("-a", "--show-all", is_flag=True, help="Returns all results of the query.")
-def sql_c(sql, schema, show_all):
+def sql_c(sql, schema, image, show_all):
     """
     Run an SQL statement against the Splitgraph engine.
 
@@ -317,12 +318,26 @@ def sql_c(sql, schema, show_all):
 
         sgr sql "SELECT * FROM \"noaa/climate\".table"
         sgr sql -s noaa/climate "SELECT * FROM table"
+
+    If `--image` is specified, this will run the statement against that image using layered querying.
+    Only read-only statements are supported. For example:
+
+        sgr sql -i noaa/climate:latest "SELECT * FROM table"
     """
     from splitgraph.engine import get_engine
 
-    if schema:
-        get_engine().run_sql("SET search_path TO %s", (schema,))
-    results = get_engine().run_sql(sql)
+    if schema and image:
+        raise click.UsageError("Only one of --schema and --image can be specified!")
+
+    if not image:
+        if schema:
+            get_engine().run_sql("SET search_path TO %s", (schema,))
+        results = get_engine().run_sql(sql)
+    else:
+        repo, hash_or_tag = image
+        with repo.images[hash_or_tag].query_schema() as s:
+            results = get_engine().run_sql_in(s, sql)
+
     if results is None:
         return
 
@@ -345,7 +360,7 @@ def status_c(repository):
 
     if repository is None:
         repositories = get_current_repositories(get_engine())
-        click.echo("Local repositories: ")
+        click.echo("Local repositories and checked out images: ")
         for mp_name, mp_head in repositories:
             # Maybe should also show the remote DB address/server
             click.echo("%s: \t %s" % (mp_name, mp_head.image_hash if mp_head else None))
