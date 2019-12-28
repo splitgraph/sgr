@@ -1,19 +1,25 @@
 """Routines for managing SQL statements"""
+import logging
 from typing import Callable, Dict, List, Union
 
-from pglast import parse_sql
-from pglast.node import Node, Scalar
-from pglast.parser import ParseError
+try:
+    from pglast import parse_sql
+    from pglast.node import Node, Scalar
+    from pglast.parser import ParseError
+
+    _VALIDATION_SUPPORTED = True
+except ImportError:
+    _VALIDATION_SUPPORTED = False
 
 from splitgraph.exceptions import UnsupportedSQLError
 
 
-def _validate_range_var(node: Node) -> None:
+def _validate_range_var(node: "Node") -> None:
     if "schemaname" in node.attribute_names:
         raise UnsupportedSQLError("Table names must not be schema-qualified!")
 
 
-def _validate_funccall(node: Node):
+def _validate_funccall(node: "Node"):
     # We can't ban all function calls (there are some useful ones like
     # to_date() etc) but we can't allow all of them either (some pg system
     # calls like pg_relation_filepath etc) aren't appropriate here but are available
@@ -77,7 +83,7 @@ _SQL_VALIDATORS = {"RangeVar": _validate_range_var, "FuncCall": _validate_funcca
 
 
 def _validate_node(
-    node: Union[Scalar, Node], permitted_nodes: List[str], node_validators: Dict[str, Callable]
+    node: Union["Scalar", "Node"], permitted_nodes: List[str], node_validators: Dict[str, Callable]
 ) -> None:
     if isinstance(node, Scalar):
         return
@@ -104,6 +110,10 @@ def validate_splitfile_sql(sql: str) -> None:
     :return: None if validation is successful
     :raises: UnsupportedSQLException if validation failed
     """
+    if not _VALIDATION_SUPPORTED:
+        logging.warning("SQL validation is unsupported on Windows. SQL will be run unvalidated.")
+        return
+
     try:
         tree = Node(parse_sql(sql))
     except ParseError as e:
@@ -124,6 +134,9 @@ def validate_import_sql(sql: str) -> None:
     :return: None if validation is successful
     :raises: UnsupportedSQLException if validation failed
     """
+    if not _VALIDATION_SUPPORTED:
+        logging.warning("SQL validation is unsupported on Windows. SQL will be run unvalidated.")
+        return
 
     try:
         tree = Node(parse_sql(sql))
