@@ -3,6 +3,7 @@ import time
 from io import BytesIO
 from tarfile import TarFile, TarInfo
 from typing import Dict, TYPE_CHECKING
+from urllib.parse import urlparse
 
 import click
 
@@ -177,12 +178,18 @@ def add_engine_c(
     )
 
     click.echo("Container created, ID %s" % container.short_id)
+
+    # Extract the host that we can reach the container on
+    # (might be different from localhost if docker-machine is used)
+    hostname = urlparse(client.api.base_url).hostname
+
     conn_params: Dict[str, str] = {
-        "SG_ENGINE_HOST": "localhost",
+        "SG_ENGINE_HOST": hostname,
         "SG_ENGINE_PORT": str(port),
         # Even if the engine is exposed on a different port on the host,
         # need to make sure that it uses the default 5432 port to connect
         # to itself.
+        "SG_ENGINE_FDW_HOST": "localhost",
         "SG_ENGINE_FDW_PORT": "5432",
         "SG_ENGINE_USER": username,
         "SG_ENGINE_PWD": password,
