@@ -4,11 +4,11 @@ to track changes, as well as the Postgres FDW interface to upload/download objec
 import itertools
 import json
 import logging
-import os.path
 import time
 from contextlib import contextmanager
 from io import BytesIO
 from io import TextIOWrapper
+from pathlib import PurePosixPath
 from pkgutil import get_data
 from threading import get_ident
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING, Sequence, cast
@@ -645,7 +645,9 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         assert object_path is not None
 
         with self.connection.cursor() as cur:
-            return cast(bytes, cur.mogrify(query, ("pglz", os.path.join(object_path, object_id))))
+            return cast(
+                bytes, cur.mogrify(query, ("pglz", str(PurePosixPath(object_path, object_id))))
+            )
 
     def dump_object(self, object_id: str, stream: TextIOWrapper, schema: str) -> None:
         schema_spec = self.get_object_schema(object_id)
