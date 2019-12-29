@@ -4,7 +4,7 @@ import shutil
 import subprocess
 from datetime import datetime
 from decimal import Decimal
-from unittest.mock import patch, mock_open, ANY, PropertyMock
+from unittest.mock import patch, mock_open, ANY, PropertyMock, Mock
 
 import docker
 import docker.errors
@@ -1212,7 +1212,8 @@ _CONFIG_DEFAULTS = (
             "secondary",
             ".sgconfig",
             "[defaults]\n" + _CONFIG_DEFAULTS + "\n[remote: secondary]\n"
-            "SG_ENGINE_HOST=localhost\nSG_ENGINE_PORT=5432\nSG_ENGINE_FDW_PORT=5432\n"
+            "SG_ENGINE_HOST=localhost\nSG_ENGINE_PORT=5432\n"
+            "SG_ENGINE_FDW_HOST=localhost\nSG_ENGINE_FDW_PORT=5432\n"
             "SG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
             "SG_ENGINE_DB_NAME=splitgraph\n"
             "SG_ENGINE_POSTGRES_DB_NAME=postgres\n"
@@ -1248,7 +1249,8 @@ _CONFIG_DEFAULTS = (
             "/home/user/.sgconfig",
             "[defaults]\nSG_ENGINE_PORT=5000\n" + _CONFIG_DEFAULTS + "\n[remote: secondary]\n"
             "SG_ENGINE_HOST=localhost\nSG_ENGINE_PORT=5432\n"
-            "SG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\nSG_ENGINE_FDW_PORT=5432\n"
+            "SG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
+            "SG_ENGINE_FDW_HOST=localhost\nSG_ENGINE_FDW_PORT=5432\n"
             "SG_ENGINE_DB_NAME=splitgraph\nSG_ENGINE_POSTGRES_DB_NAME=postgres\n"
             "SG_ENGINE_ADMIN_USER=not_sgr\nSG_ENGINE_ADMIN_PWD=pwd\n"
             "[external_handlers]\nS3=splitgraph.hooks.s3.S3ExternalObjectHandler\n",
@@ -1266,10 +1268,12 @@ def test_commandline_engine_creation_config_patching(test_case):
     # new engine into the config file and calls copy_to_container to copy
     # the new config into the new engine's root.
 
+    client = Mock()
+    client.api.base_url = "tcp://localhost:3333"
     m = mock_open()
     with patch("splitgraph.config.export.open", m, create=True):
         with patch("splitgraph.config.CONFIG", source_config):
-            with patch("docker.from_env"):
+            with patch("docker.from_env", return_value=client):
                 with patch("splitgraph.commandline.engine.copy_to_container") as ctc:
                     result = runner.invoke(
                         add_engine_c,
