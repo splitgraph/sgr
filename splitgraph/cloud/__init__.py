@@ -17,7 +17,7 @@ from splitgraph.exceptions import AuthAPIError
 
 
 def expect_result(
-    result: List[str]
+    result: List[str],
 ) -> Callable[[Callable[..., Response]], Callable[..., Union[str, Tuple[str]]]]:
     """
     A decorator that can be wrapped around a function returning a requests.Response with a JSON body.

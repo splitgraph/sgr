@@ -1,6 +1,8 @@
+import logging
 import os
 import time
 from io import BytesIO
+from pathlib import Path, WindowsPath
 from tarfile import TarFile, TarInfo
 from typing import Dict, TYPE_CHECKING
 from urllib.parse import urlparse
@@ -52,6 +54,26 @@ def _get_data_volume_name(engine_name: str) -> str:
 
 def _get_metadata_volume_name(engine_name: str) -> str:
     return "splitgraph_engine_%s_metadata" % engine_name
+
+
+def _convert_source_path(path: str) -> str:
+    """If we're passed a Windows-style path to mount into the container,
+    we need to convert it to Unix-style for when the user is running Docker
+    in a docker-machine VM on Windows. Docker mounts C:\\Users into /c/Users on the
+    machine, so anything that's a subdirectory of that is available for bind mounts."""
+    pathobj = Path(path)
+    if isinstance(pathobj, WindowsPath):
+        path = str(pathobj.as_posix())
+    if path[1] == ":":
+        # If the path has a drive letter (C:/Users/... is recognized as a PosixPath on Linux
+        # but that's not what we want), we need to convert it into the /c/Users/... mount
+        if not path.lower().startswith("c:/users"):
+            logging.warning(
+                "Windows-style path %s might not be available for bind mounting in Docker", path
+            )
+        drive_letter = path[0].lower()
+        return "/" + drive_letter + path[2:]
+    return path
 
 
 @click.group(name="engine")
@@ -155,8 +177,10 @@ def add_engine_c(
     click.echo("Metadata volume: %s." % metadata_name)
 
     if inject_source:
-        source_path = os.getenv(
-            "SG_SOURCE_ROOT", os.path.abspath(os.path.join(os.path.dirname(__file__), "../"))
+        source_path = _convert_source_path(
+            os.getenv(
+                "SG_SOURCE_ROOT", os.path.abspath(os.path.join(os.path.dirname(__file__), "../"))
+            )
         )
         source_volume = Mount(target="/splitgraph/splitgraph", source=source_path, type="bind")
         mounts.append(source_volume)

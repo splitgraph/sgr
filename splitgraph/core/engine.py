@@ -102,7 +102,7 @@ def lookup_repository(name: str, include_local: bool = False) -> "Repository":
 
 
 def get_current_repositories(
-    engine: "PostgresEngine"
+    engine: "PostgresEngine",
 ) -> List[Tuple["Repository", Optional["Image"]]]:
     """
     Lists all repositories currently in the engine.
