@@ -127,18 +127,14 @@ def push_c(
         remote_repository = Repository.from_template(remote_repository, engine=get_engine(remote))
     elif remote:
         remote_repository = _make_push_target(repository, remote)
-
-    remote_repository = remote_repository or repository.upstream
-
-    # If at this point we don't have a target repo, default to user's namespace on
-    # the default remote
-    if not remote_repository:
-        if len(_REMOTES) != 1:
-            raise click.UsageError(
-                "Could not infer a repository to push to, " "specify a remote explicitly with -r!"
-            )
-        remote = _REMOTES[0]
-        remote_repository = _make_push_target(repository, remote)
+    elif remote_repository:
+        remote_repository = Repository.from_template(
+            remote_repository, engine=get_engine(_get_default_remote())
+        )
+    else:
+        remote_repository = repository.upstream or _make_push_target(
+            repository, _get_default_remote()
+        )
 
     click.echo(
         "Pushing %s to %s on remote %s"
@@ -151,6 +147,15 @@ def push_c(
         handler_options=json.loads(upload_handler_options),
         overwrite=overwrite_object_meta,
     )
+
+
+def _get_default_remote():
+    if len(_REMOTES) != 1:
+        raise click.UsageError(
+            "Could not infer a repository to push to, specify a remote explicitly with -r!"
+        )
+    remote = _REMOTES[0]
+    return remote
 
 
 def _make_push_target(repository, remote):
