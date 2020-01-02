@@ -1,11 +1,13 @@
 #!/bin/bash -e
 
+PYTHON_VERSION=${PYTHON_VERSION-3.7.6}
+
 mkdir -p /build/python
 cd /build/python
 
-wget https://www.python.org/ftp/python/3.7.4/Python-3.7.4.tgz
-tar -xzf Python-3.7.4.tgz
-cd Python-3.7.4
+wget https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz
+tar -xzf Python-${PYTHON_VERSION}.tgz
+cd Python-${PYTHON_VERSION}
 
 # We need to configure the Python build to install into /usr/local (default) but actually
 # make install it into a staging area, as the engine image build won't be able to easily

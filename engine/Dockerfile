@@ -10,7 +10,7 @@
 ##### toolchain
 #####
 
-FROM postgres:11.5 AS toolchain
+FROM postgres:11.6 AS toolchain
 
 RUN apt-get update -qq && \
     apt-get install -y \
@@ -32,12 +32,9 @@ RUN apt-get update -qq && \
         cmake && \
     rm -rf /var/lib/apt/lists/*
 
-RUN wget https://dev.mysql.com/get/mysql-apt-config_0.8.13-1_all.deb
-RUN echo mysql-apt-config mysql-apt-config/repo-codename  select stretch | debconf-set-selections && \
-    echo mysql-apt-config mysql-apt-config/select-server  select mysql-8.0 | debconf-set-selections && \
-    echo mysql-apt-config mysql-apt-config/select-product select Apply | debconf-set-selections
-RUN DEBIAN_FRONTEND=noninteractive dpkg -i mysql-apt-config_0.8.13-1_all.deb
-RUN apt-get update -qq && apt-get install -y libmysqlclient-dev && rm -rf /var/lib/apt/lists/*
+RUN apt-key adv --keyserver keys.gnupg.net --recv-keys 5072E1F5 && \
+    echo "deb http://repo.mysql.com/apt/debian/ stretch mysql-8.0" > /etc/apt/sources.list.d/mysql.list && \
+    apt-get update -qq && apt-get install -y libmysqlclient-dev && rm -rf /var/lib/apt/lists/*
 
 # Build scripts for subsequent FDW builder images
 RUN mkdir -p /build
@@ -91,7 +88,7 @@ RUN /build/build_mysql_fdw.sh
 ##### splitgraph/engine
 #####
 
-FROM postgres:11.5
+FROM postgres:11.6
 
 # We still have to install some runtime libraries here, but no dev.
 
@@ -103,12 +100,9 @@ RUN apt-get update -qq && \
         wget && \
     rm -rf /var/lib/apt/lists/*
 
-RUN wget https://dev.mysql.com/get/mysql-apt-config_0.8.13-1_all.deb
-RUN echo mysql-apt-config mysql-apt-config/repo-codename  select stretch | debconf-set-selections && \
-    echo mysql-apt-config mysql-apt-config/select-server  select mysql-8.0 | debconf-set-selections && \
-    echo mysql-apt-config mysql-apt-config/select-product select Apply | debconf-set-selections
-RUN DEBIAN_FRONTEND=noninteractive dpkg -i mysql-apt-config_0.8.13-1_all.deb
-RUN apt-get update -qq && apt-get install -y libmysqlclient-dev && rm -rf /var/lib/apt/lists/*
+RUN apt-key adv --keyserver keys.gnupg.net --recv-keys 5072E1F5 && \
+    echo "deb http://repo.mysql.com/apt/debian/ stretch mysql-8.0" > /etc/apt/sources.list.d/mysql.list && \
+    apt-get update -qq && apt-get install -y libmysqlclient-dev && rm -rf /var/lib/apt/lists/*
 
 # Extract and copy over all binaries from the builder containers
 
@@ -162,11 +156,11 @@ RUN /build/build_splitgraph.sh
 # package itself without dependencies (deps are libc>=2.14 -- we have 2.24 -- and libpython3.7
 # which we compiled earlier)
 
-RUN wget http://http.us.debian.org/debian/pool/main/p/postgresql-11/postgresql-plpython3-11_11.5-3sid2_amd64.deb && \
-    echo "1b0cdca6aa97a07b96481623f5d58ce4a5d24d96eea5af004aa4baaabd4a2311  postgresql-plpython3-11_11.5-3sid2_amd64.deb" | sha256sum -c - && \
-    dpkg --force-all -i postgresql-plpython3-11_11.5-3sid2_amd64.deb
+RUN wget http://http.us.debian.org/debian/pool/main/p/postgresql-11/postgresql-plpython3-11_11.6-2~sid1_amd64.deb && \
+    echo "59980cdd6b7e30187ba851fbc3123c47b9a8ff99fd1327a1531f07dcc93dbefb  postgresql-plpython3-11_11.6-2~sid1_amd64.deb" | sha256sum -c - && \
+    dpkg --force-all -i postgresql-plpython3-11_11.6-2~sid1_amd64.deb
 # Fix to make the dpkg status file usable (so that APT doesn't fail on future installs in the container)
-RUN sed -i "s/Depends: postgresql-11 (= 11.5-3sid2), libc6 (>= 2.14), libpython3.7 (>= 3.7.0)/Depends: /" -i /var/lib/dpkg/status
+RUN sed -i "s/postgresql-11 (= 11.6-2~sid1), libc6 (>= 2.14), libpython3.7 (>= 3.7.0)/Depends: /" -i /var/lib/dpkg/status
 
 # postgis
 # Install from stretch-backports rather than pgdg repo to prevent SCFGAL pulling in OSG and X11:
