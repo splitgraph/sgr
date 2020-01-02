@@ -1321,7 +1321,7 @@ def test_commandline_engine_creation_config_patching_integration(teardown_test_e
     print(config)
 
     # Do some spot checks to make sure we didn't overwrite anything.
-    assert "SG_S3_HOST=objectstorage" in config
+    assert "SG_S3_HOST=//objectstorage" in config
     assert "POSTGRES_FDW=splitgraph.hooks.mount_handlers.mount_postgres" in config
     assert "[remote: %s]" % TEST_ENGINE_PREFIX in config
     assert "[remote: remote_engine]" in config
