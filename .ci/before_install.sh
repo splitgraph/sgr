@@ -8,7 +8,7 @@ test -z "$COMPOSE_VERSION" && { echo "Fatal Error: No COMPOSE_VERSION set" ; exi
 D_COMPOSE_BASE_URL="https://github.com/docker/compose/releases/download"
 D_COMPOSE_ARCH="docker-compose-$(uname -s)-$(uname -m)"
 D_COMPOSE_URL="${D_COMPOSE_BASE_URL}/${COMPOSE_VERSION}/${D_COMPOSE_ARCH}"
-export POETRY_VERSION=1.0.0b7
+export POETRY_VERSION=1.0.0
 
 # Install docker compose and poetry
 pushd "$REPO_ROOT_DIR" \

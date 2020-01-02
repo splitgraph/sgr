@@ -13,7 +13,10 @@ SG_ENGINE_POSTGRES_DB_NAME=postgres
 SG_META_SCHEMA=splitgraph_meta
 
 ; Must be accessible from both the host and the actual engine container
-SG_S3_HOST=objectstorage
+; Minio uses urlsplit which treats hostnames without a dot as a "schema" (protocol)
+; so this is to fool it into parsing the S3 host correctly.
+; see https://github.com/minio/minio-py/issues/737
+SG_S3_HOST=//objectstorage
 SG_S3_PORT=9000
 SG_S3_KEY=minioclient
 SG_S3_PWD=supersecure
