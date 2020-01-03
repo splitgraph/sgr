@@ -1,0 +1,52 @@
+- commands:
+  - "# Build and start the engine"
+  - docker-compose --project-name splitgraph_example down -v --remove-orphans
+  - docker-compose --project-name splitgraph_example build
+  - docker-compose --project-name splitgraph_example up -d
+  - sgr init
+  record: False
+- commands:
+  - "# This example will use the 2016 US presidential election dataset"
+  - "# to show off how indexing with a bloom filter can improve query performance."
+  - "#"
+  - "# First, clone the whole dataset without downloading it."
+  - sgr clone splitgraph/2016_election
+- commands:
+  - "# The table is sorted by voting precinct and so queries that filter by that"
+  - "# (or by state, since precinct FIPS codes have the state as the prefix)"
+  - "# will use and download fewer fragments (6MiB/27MiB)"
+  - |
+    sgr sql --image splitgraph/2016_election:latest \
+      "EXPLAIN SELECT SUM(votes) FROM precinct_results WHERE state = 'New York'"
+- commands:
+  - "# Currently we have no fragments in cache. Let's run this query and check the cache again"
+  - sgr objects --local
+  - |
+    sgr sql --image splitgraph/2016_election:latest \
+        "SELECT SUM(votes) FROM precinct_results WHERE state = 'New York'"
+  - sgr objects --local
+- commands:
+  - "# Since default indexing in Splitgraph is done by min-max values for every column"
+  - "# in every fragment, it's going to do worse if multiple fragments span the same value"
+  - |
+    sgr sql --image splitgraph/2016_election:latest \
+        "EXPLAIN SELECT SUM(votes) FROM precinct_results WHERE county_name = 'New York County'"
+- commands:
+  - "# Let's download the whole dataset and add a bloom filter index on county_name"
+  - |
+    sgr reindex -i '{"bloom": {"county_name": {"probability": 0.01}}}' \
+                   splitgraph/2016_election:latest precinct_results
+- commands:
+  - "# Check the metadata of a new object to see details about the bloom filter structure"
+  - sgr object o0671aabeb9d4ce362515624616a5a202503db99d7a83007bfdf63fd71b91af
+- commands:
+  - "# Plan the query again: because the bloom filter can drop most fragments
+  - "# that don't have NY County, the query will only need to scan through two fragments."
+  - "# This is an improvement of about 25MiB at the cost of a few KB of index data."
+  - |
+    sgr sql --image splitgraph/2016_election:latest \
+        "EXPLAIN SELECT SUM(votes) FROM precinct_results WHERE county_name = 'New York County'"
+- commands:
+  - "# Delete the docker-compose project and cleanup"
+  - docker-compose --project-name splitgraph_example down -v
+  record: False
