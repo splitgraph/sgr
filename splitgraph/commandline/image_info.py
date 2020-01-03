@@ -3,7 +3,7 @@ sgr commands related to getting information out of / about images
 """
 
 from collections import Counter
-from typing import List, Optional, Tuple, Union, Dict, cast, TYPE_CHECKING
+from typing import List, Optional, Tuple, Union, Dict, cast, TYPE_CHECKING, Any
 
 import click
 
@@ -301,6 +301,10 @@ def objects_c(local):
     click.echo("\n".join(sorted(objects)))
 
 
+def _to_str(results: List[Tuple[Any]]) -> str:
+    return "\n".join("\t".join(str(t) for t in ts) for ts in results)
+
+
 @click.command(name="sql")
 @click.argument("sql")
 @click.option("-s", "--schema", help="Run SQL against this schema.")
@@ -342,10 +346,10 @@ def sql_c(sql, schema, image, show_all):
         return
 
     if len(results) > 10 and not show_all:
-        click.echo(results[:10])
+        click.echo(_to_str(results[:10]))
         click.echo("...")
     else:
-        click.echo(results)
+        click.echo(_to_str(results))
 
 
 @click.command(name="status")
