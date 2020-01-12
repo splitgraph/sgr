@@ -15,9 +15,13 @@ $BODY$
 
     object_path = os.path.join(SG_ENGINE_OBJECT_PATH, object_id)
 
+    # If there's a file called /rootCA.pem in the engine, use it as the CA for
+    # HTTPS S3 operations (for testing with self-signed certs)
+    verify = "/rootCA.pem" if os.path.exists("/rootCA.pem") else True
+
     for suffix, url in zip(("", ".footer", ".schema"), urls):
         with open(object_path + suffix, "rb") as f:
-            response = requests.put(url, data=f)
+            response = requests.put(url, data=f, verify=verify)
             response.raise_for_status()
 $BODY$
 LANGUAGE plpython3u VOLATILE;
@@ -33,9 +37,10 @@ $BODY$
     SG_ENGINE_OBJECT_PATH = CONFIG["SG_ENGINE_OBJECT_PATH"]
 
     object_path = os.path.join(SG_ENGINE_OBJECT_PATH, object_id)
+    verify = "/rootCA.pem" if os.path.exists("/rootCA.pem") else True
 
     for suffix, url in zip(("", ".footer", ".schema"), urls):
-        with requests.get(url, stream=True) as response:
+        with requests.get(url, stream=True, verify=verify) as response:
             response.raise_for_status()
             with open(object_path + suffix, "wb") as f:
                 shutil.copyfileobj(response.raw, f)

@@ -13,9 +13,13 @@ S3_PORT = CONFIG["SG_S3_PORT"]
 S3_SECRET_KEY = CONFIG["SG_S3_PWD"]
 S3_BUCKET = CONFIG["SG_S3_BUCKET"]
 S3_ACCESS_KEY = CONFIG["SG_S3_KEY"]
+S3_SECURE = CONFIG["SG_S3_SECURE"] == "true"
 
 MINIO = Minio(
-    "%s:%s" % (S3_HOST, S3_PORT), access_key=S3_ACCESS_KEY, secret_key=S3_SECRET_KEY, secure=False
+    "%s:%s" % (S3_HOST, S3_PORT),
+    access_key=S3_ACCESS_KEY,
+    secret_key=S3_SECRET_KEY,
+    secure=S3_SECURE,
 )
 
 _EXP = timedelta(seconds=60)
