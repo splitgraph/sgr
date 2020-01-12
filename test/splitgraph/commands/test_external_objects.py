@@ -118,14 +118,14 @@ class FlakyExternalObjectHandler(S3ExternalObjectHandler):
         """
         Downloads just the first object and then fails.
         """
-        self.download_objects(objects[:1], remote_engine)
+        super().download_objects(objects[:1], remote_engine)
         raise Exception("Something bad happened.")
 
     def upload_objects(self, objects, remote_engine):
         """
         Uploads just the first object and then fails.
         """
-        self.upload_objects(objects[:1], remote_engine)
+        super().upload_objects(objects[:1], remote_engine)
         raise Exception("Something bad happened.")
 
 
@@ -210,7 +210,7 @@ def test_pull_download_error(local_engine_empty, unprivileged_pg_repo, clean_min
     # are just marked as external, not downloaded
     assert repository_exists(PG_MNT)
     assert len(PG_MNT.objects.get_all_objects()) == 2
-    assert len(PG_MNT.objects.get_downloaded_objects()) == 0
+    assert len(PG_MNT.objects.get_downloaded_objects()) == 1
     assert len(PG_MNT.objects.get_external_object_locations(PG_MNT.objects.get_all_objects())) == 2
 
     clone(unprivileged_pg_repo, local_repository=PG_MNT, download_all=True)
