@@ -26,7 +26,7 @@
 - commands:
   - "# Perform a request against an automatically-generated"
   - "# Postgrest (https://postgrest.org) endpoint."
-  - curl "https://data.splitgraph.com/mc/splitgraph_demo/weather/initial_data/rdu?date=eq.2009-08-25T00:00:00"
+  - curl "https://data.splitgraph.com/splitgraph_demo/weather/initial_data/rdu?date=eq.2009-08-25T00:00:00"
 - commands:
   - "# sgr also has a shorthand to access the query API"
   - sgr cloud curl "splitgraph_demo/weather/initial_data/rdu?date=eq.2009-08-25T00:00:00"
