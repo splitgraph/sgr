@@ -65,7 +65,7 @@ DEFAULTS: ConfigDict = {
 ALL_KEYS = list(DEFAULTS.keys())
 KEYS = [k for k in ALL_KEYS if k not in ["remotes", "external_handlers"]]
 # Keys whose contents we don't print fully
-SENSITIVE_KEYS = [k for k in KEYS if "_PWD" in k]
+SENSITIVE_KEY_SUFFIXES = ["_PWD", "_TOKEN"]
 
 """ Warning: Every key in DEFAULTS must have a key in ARGUMENT_KEY_MAP
     If you add/remove keys from DEFAULTS, make sure to do so here too.

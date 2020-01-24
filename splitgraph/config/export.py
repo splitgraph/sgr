@@ -3,12 +3,12 @@ from typing import Dict, cast
 
 from splitgraph.config import get_singleton
 from splitgraph.config.config import get_all_in_section
-from splitgraph.config.keys import SENSITIVE_KEYS, KEYS, DEFAULTS, ConfigDict
+from splitgraph.config.keys import KEYS, DEFAULTS, ConfigDict, SENSITIVE_KEY_SUFFIXES
 
 
 def _kv_to_str(key: str, value: str, no_shielding: bool) -> str:
     value_str = str(value) or ""
-    if key in SENSITIVE_KEYS and not no_shielding:
+    if any(key.endswith(s) for s in SENSITIVE_KEY_SUFFIXES) and not no_shielding:
         value_str = value_str[:1] + "*******"
     return "%s=%s" % (key, value_str)
 
