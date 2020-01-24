@@ -8,6 +8,7 @@ CREATE SCHEMA IF NOT EXISTS splitgraph_api;
 CREATE OR REPLACE FUNCTION splitgraph_api.upload_object(object_id varchar, urls varchar[]) RETURNS void AS
 $BODY$
     import os.path
+    from urllib.parse import urlparse
     import requests
     from splitgraph.config import CONFIG
 
@@ -16,12 +17,17 @@ $BODY$
     object_path = os.path.join(SG_ENGINE_OBJECT_PATH, object_id)
 
     # If there's a file called /rootCA.pem in the engine, use it as the CA for
-    # HTTPS S3 operations (for testing with self-signed certs)
-    verify = "/rootCA.pem" if os.path.exists("/rootCA.pem") else True
+    # HTTPS S3 operations with .test domains (for testing with self-signed certs)
+
+    def verify(url):
+        if urlparse(url).hostname.split('.')[-1] == "test":
+            return "/rootCA.pem" if os.path.exists("/rootCA.pem") else False
+        else:
+            return True
 
     for suffix, url in zip(("", ".footer", ".schema"), urls):
         with open(object_path + suffix, "rb") as f:
-            response = requests.put(url, data=f, verify=verify)
+            response = requests.put(url, data=f, verify=verify(url))
             response.raise_for_status()
 $BODY$
 LANGUAGE plpython3u VOLATILE;
@@ -30,6 +36,7 @@ LANGUAGE plpython3u VOLATILE;
 CREATE OR REPLACE FUNCTION splitgraph_api.download_object(object_id varchar, urls varchar[]) RETURNS void AS
 $BODY$
     import os.path
+    from urllib.parse import urlparse
     import shutil
     import requests
     from splitgraph.config import CONFIG
@@ -37,10 +44,15 @@ $BODY$
     SG_ENGINE_OBJECT_PATH = CONFIG["SG_ENGINE_OBJECT_PATH"]
 
     object_path = os.path.join(SG_ENGINE_OBJECT_PATH, object_id)
-    verify = "/rootCA.pem" if os.path.exists("/rootCA.pem") else True
+    def verify(url):
+        if urlparse(url).hostname.split('.')[-1] == "test":
+            return "/rootCA.pem" if os.path.exists("/rootCA.pem") else False
+        else:
+            return True
+
 
     for suffix, url in zip(("", ".footer", ".schema"), urls):
-        with requests.get(url, stream=True, verify=verify) as response:
+        with requests.get(url, stream=True, verify=verify(url)) as response:
             response.raise_for_status()
             with open(object_path + suffix, "wb") as f:
                 shutil.copyfileobj(response.raw, f)
