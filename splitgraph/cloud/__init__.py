@@ -60,6 +60,18 @@ def expect_result(
     return decorator
 
 
+def _get_token_expiry(jwt):
+    """Extract expiry from a JWT token without validating it."""
+    # Directly decode the base6 claims part without pulling in any JWT libraries
+    # (since we're not validating any signatures).
+
+    claims = jwt.split(".")[1]
+    # Pad the JWT claims because urlsafe_b64decode doesn't like us
+    claims += "=" * (-len(claims) % 4)
+    exp = json.loads(base64.urlsafe_b64decode(claims).decode("utf-8"))["exp"]
+    return exp
+
+
 class AuthAPIClient:
     """
     Client for the Splitgraph registry auth API that generates tokens to access
@@ -143,6 +155,19 @@ class AuthAPIClient:
         body = dict(refresh_token=refresh_token)
         return requests.post(self.endpoint + "/access_token", json=body, verify=self.verify)
 
+    @expect_result(["access_token"])
+    def get_access_token_from_api(self, api_key: str, api_secret: str) -> Response:
+        """
+        Get a new access token from API keys
+
+        :param api_key: API key
+        :param api_key: API secret
+        :return: New access token.
+        """
+
+        body = dict(api_key=api_key, api_secret=api_secret)
+        return requests.post(self.endpoint + "/access_token", json=body, verify=self.verify)
+
     @property
     def access_token(self) -> str:
         """
@@ -159,14 +184,7 @@ class AuthAPIClient:
             current_access_token = get_from_subsection(
                 config, "remotes", self.remote, "SG_CLOUD_ACCESS_TOKEN"
             )
-            # Extract the expiry timestamp from the JWT token. We don't really
-            # need to validate it here, so we can just directly decode the base64
-            # claims part without pulling in any JWT libraries.
-            claims = current_access_token.split(".")[1]
-
-            # Pad the JWT claims because urlsafe_b64decode doesn't like us
-            claims += "=" * (-len(claims) % 4)
-            exp = json.loads(base64.urlsafe_b64decode(claims).decode("utf-8"))["exp"]
+            exp = _get_token_expiry(current_access_token)
             now = time.time()
             if now < exp - self.access_token_expiry_tolerance:
                 return current_access_token
@@ -175,17 +193,24 @@ class AuthAPIClient:
 
         # Token expired or non-existent, get a new one.
         try:
-            refresh_token = get_from_subsection(
-                config, "remotes", self.remote, "SG_CLOUD_REFRESH_TOKEN"
-            )
+            api_key = get_from_subsection(config, "remotes", self.remote, "SG_ENGINE_USER")
+            api_secret = get_from_subsection(config, "remotes", self.remote, "SG_ENGINE_PWD")
+            new_access_token = cast(str, self.get_access_token_from_api(api_key, api_secret))
         except KeyError as e:
-            raise AuthAPIError(
-                "No refresh token found in the config for remote %s! " % self.remote
-                + "Generate one and store it in the config for "
-                "the remote under SG_CLOUD_REFRESH_TOKEN."
-            ) from e
+            try:
+                refresh_token = get_from_subsection(
+                    config, "remotes", self.remote, "SG_CLOUD_REFRESH_TOKEN"
+                )
+                new_access_token = cast(str, self.get_access_token(refresh_token))
+            except KeyError:
+                raise AuthAPIError(
+                    (
+                        "No refresh token or API keys found in the config for remote %s! "
+                        % self.remote
+                    )
+                    + "Log into the registry using sgr cloud login."
+                ) from e
 
-        new_access_token = cast(str, self.get_access_token(refresh_token))
         set_in_subsection(config, "remotes", self.remote, "SG_CLOUD_ACCESS_TOKEN", new_access_token)
         overwrite_config(config, get_singleton(config, "SG_CONFIG_FILE"))
         return new_access_token
