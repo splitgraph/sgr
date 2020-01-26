@@ -22,8 +22,6 @@ def register_c(username, password, email, remote):
     """
     from splitgraph.cloud import AuthAPIClient
     from splitgraph.config import CONFIG
-    from splitgraph.config.config import patch_config
-    from splitgraph.config.export import overwrite_config
 
     client = AuthAPIClient(remote)
     click.echo("Registering the user...")
@@ -32,10 +30,8 @@ def register_c(username, password, email, remote):
     click.echo("Registration successful. UUID %s" % uuid)
 
     access, refresh = client.get_refresh_token(username, password)
-    click.echo("Got access/refresh tokens")
-
     key, secret = client.create_machine_credentials(access, password)
-    click.echo("Got key/secret: %s/%s" % (key, secret))
+    click.echo("Acquired refresh token and API keys")
 
     repo_lookup = CONFIG.get("SG_REPO_LOOKUP")
     if repo_lookup:
@@ -57,19 +53,70 @@ def register_c(username, password, email, remote):
             }
         },
     }
+    _patch_and_save_config(CONFIG, config_patch)
 
-    config_path = CONFIG["SG_CONFIG_FILE"]
+    click.echo("Done.")
 
+
+@click.command("login")
+@click.option("--username", prompt=True)
+@click.password_option()
+@click.option(
+    "--remote", default="data.splitgraph.com", help="Name of the remote registry to log into.",
+)
+@click.option(
+    "--overwrite", is_flag=True, help="Overwrite old API keys in the config if they exist"
+)
+def login_c(username, password, remote, overwrite):
+    """Log into a Splitgraph registry.
+
+    This will generate a new refresh token (to use the Splitgraph query API)
+    and API keys to let sgr access the registry (if they don't already exist
+    in the configuration file).
+    """
+    from splitgraph.config import CONFIG
+    from splitgraph.cloud import AuthAPIClient
+
+    client = AuthAPIClient(remote)
+
+    access, refresh = client.get_refresh_token(username, password)
+
+    click.echo("Logged into %s" % remote)
+    config_patch = {
+        "remotes": {
+            remote: {
+                "SG_NAMESPACE": username,
+                "SG_CLOUD_REFRESH_TOKEN": refresh,
+                "SG_CLOUD_ACCESS_TOKEN": access,
+            }
+        },
+    }
+
+    if (
+        "SG_ENGINE_USER" not in CONFIG["remotes"][remote]
+        or "SG_ENGINE_PWD" not in CONFIG["remotes"][remote]
+        or overwrite
+    ):
+        key, secret = client.create_machine_credentials(access, password)
+        config_patch["remotes"][remote]["SG_ENGINE_USER"] = key
+        config_patch["remotes"][remote]["SG_ENGINE_PWD"] = secret
+        click.echo("Acquired new API keys")
+
+    _patch_and_save_config(CONFIG, config_patch)
+
+
+def _patch_and_save_config(config, patch):
+    from splitgraph.config.config import patch_config
+    from splitgraph.config.export import overwrite_config
+
+    config_path = config["SG_CONFIG_FILE"]
     if not config_path:
         click.echo("No config file detected, creating one locally")
         config_path = ".sgconfig"
     else:
         click.echo("Updating the existing config file at %s" % config_path)
-
-    new_config = patch_config(CONFIG, config_patch)
+    new_config = patch_config(config, patch)
     overwrite_config(new_config, config_path)
-
-    click.echo("Done.")
 
 
 @click.command("curl", context_settings=dict(ignore_unknown_options=True))
@@ -120,5 +167,6 @@ def cloud_c():
     """Manage connections to Splitgraph Cloud."""
 
 
+cloud_c.add_command(login_c)
 cloud_c.add_command(register_c)
 cloud_c.add_command(curl_c)

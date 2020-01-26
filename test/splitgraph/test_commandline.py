@@ -14,7 +14,7 @@ from click.testing import CliRunner
 
 from splitgraph.__version__ import __version__
 from splitgraph.commandline import *
-from splitgraph.commandline.cloud import register_c, curl_c
+from splitgraph.commandline.cloud import register_c, curl_c, login_c
 from splitgraph.commandline.common import ImageType
 from splitgraph.commandline.engine import (
     add_engine_c,
@@ -1339,58 +1339,55 @@ _REMOTE = "remote_engine"
 _ENDPOINT = "http://some-auth-service"
 
 
+def _register_callback(request, uri, response_headers):
+    assert json.loads(request.body) == {
+        "username": "someuser",
+        "password": "somepassword",
+        "email": "someuser@localhost",
+    }
+    return [
+        200,
+        response_headers,
+        json.dumps({"user_id": "123e4567-e89b-12d3-a456-426655440000"}),
+    ]
+
+
+def _refresh_token_callback(request, uri, response_headers):
+    assert json.loads(request.body) == {"username": "someuser", "password": "somepassword"}
+    return [
+        200,
+        response_headers,
+        json.dumps({"access_token": "AAAABBBBCCCCDDDD", "refresh_token": "EEEEFFFFGGGGHHHH"}),
+    ]
+
+
+def _create_creds_callback(request, uri, response_headers):
+    assert json.loads(request.body) == {"password": "somepassword"}
+    assert request.headers["Authorization"] == "Bearer AAAABBBBCCCCDDDD"
+    return [
+        200,
+        response_headers,
+        json.dumps({"key": "abcdef123456", "secret": "654321fedcba"}),
+    ]
+
+
 @httpretty.activate
 def test_commandline_registration_normal():
-    def register_callback(request, uri, response_headers):
-        assert json.loads(request.body) == {
-            "username": "someuser",
-            "password": "somepassword",
-            "email": "someuser@localhost",
-        }
-        return [
-            200,
-            response_headers,
-            json.dumps({"user_id": "123e4567-e89b-12d3-a456-426655440000"}),
-        ]
-
-    def refresh_token_callback(request, uri, response_headers):
-        assert json.loads(request.body) == {"username": "someuser", "password": "somepassword"}
-        return [
-            200,
-            response_headers,
-            json.dumps({"access_token": "AAAABBBBCCCCDDDD", "refresh_token": "EEEEFFFFGGGGHHHH"}),
-        ]
-
-    def create_creds_callback(request, uri, response_headers):
-        assert json.loads(request.body) == {"password": "somepassword"}
-        assert request.headers["Authorization"] == "Bearer AAAABBBBCCCCDDDD"
-        return [
-            200,
-            response_headers,
-            json.dumps({"key": "abcdef123456", "secret": "654321fedcba"}),
-        ]
-
     httpretty.register_uri(
-        httpretty.HTTPretty.POST, _ENDPOINT + "/register_user", body=register_callback
+        httpretty.HTTPretty.POST, _ENDPOINT + "/register_user", body=_register_callback
     )
 
     httpretty.register_uri(
-        httpretty.HTTPretty.POST, _ENDPOINT + "/refresh_token", body=refresh_token_callback
+        httpretty.HTTPretty.POST, _ENDPOINT + "/refresh_token", body=_refresh_token_callback
     )
 
     httpretty.register_uri(
         httpretty.HTTPretty.POST,
         _ENDPOINT + "/create_machine_credentials",
-        body=create_creds_callback,
+        body=_create_creds_callback,
     )
 
-    # Sanitize the test config so that there isn't a ton of spam
-    source_config = create_config_dict()
-    source_config["SG_CONFIG_FILE"] = ".sgconfig"
-    source_config["remotes"] = {_REMOTE: source_config["remotes"][_REMOTE]}
-    del source_config["mount_handlers"]
-    del source_config["commands"]
-    del source_config["external_handlers"]
+    source_config = _make_dummy_config_dict()
 
     runner = CliRunner()
 
@@ -1462,6 +1459,99 @@ def test_commandline_registration_user_error():
     assert result.exit_code == 1
     assert isinstance(result.exception, AuthAPIError)
     assert "Username exists" in str(result.exception)
+
+
+@httpretty.activate
+def test_commandline_login_normal():
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST, _ENDPOINT + "/refresh_token", body=_refresh_token_callback
+    )
+
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST,
+        _ENDPOINT + "/create_machine_credentials",
+        body=_create_creds_callback,
+    )
+
+    source_config = _make_dummy_config_dict()
+
+    runner = CliRunner()
+
+    with patch("splitgraph.config.export.overwrite_config"):
+        with patch("splitgraph.config.config.patch_config") as pc:
+            with patch("splitgraph.config.CONFIG", source_config):
+                result = runner.invoke(
+                    login_c,
+                    args=[
+                        "--username",
+                        "someuser",
+                        "--password",
+                        "somepassword",
+                        "--remote",
+                        _REMOTE,
+                    ],
+                    catch_exceptions=False,
+                )
+                assert result.exit_code == 0
+                print(result.output)
+
+    pc.assert_called_once_with(
+        source_config,
+        {
+            "remotes": {
+                "remote_engine": {
+                    "SG_NAMESPACE": "someuser",
+                    "SG_CLOUD_REFRESH_TOKEN": "EEEEFFFFGGGGHHHH",
+                    "SG_CLOUD_ACCESS_TOKEN": "AAAABBBBCCCCDDDD",
+                }
+            },
+        },
+    )
+
+    # Do the same overwriting the current API keys
+    with patch("splitgraph.config.export.overwrite_config"):
+        with patch("splitgraph.config.config.patch_config") as pc:
+            with patch("splitgraph.config.CONFIG", source_config):
+                result = runner.invoke(
+                    login_c,
+                    args=[
+                        "--username",
+                        "someuser",
+                        "--password",
+                        "somepassword",
+                        "--remote",
+                        _REMOTE,
+                        "--overwrite",
+                    ],
+                    catch_exceptions=False,
+                )
+                assert result.exit_code == 0
+
+    pc.assert_called_once_with(
+        source_config,
+        {
+            "remotes": {
+                "remote_engine": {
+                    "SG_ENGINE_USER": "abcdef123456",
+                    "SG_ENGINE_PWD": "654321fedcba",
+                    "SG_NAMESPACE": "someuser",
+                    "SG_CLOUD_REFRESH_TOKEN": "EEEEFFFFGGGGHHHH",
+                    "SG_CLOUD_ACCESS_TOKEN": "AAAABBBBCCCCDDDD",
+                }
+            },
+        },
+    )
+
+
+def _make_dummy_config_dict():
+    # Sanitize the test config so that there isn't a ton of spam
+    source_config = create_config_dict()
+    source_config["SG_CONFIG_FILE"] = ".sgconfig"
+    source_config["remotes"] = {_REMOTE: source_config["remotes"][_REMOTE]}
+    del source_config["mount_handlers"]
+    del source_config["commands"]
+    del source_config["external_handlers"]
+    return source_config
 
 
 @pytest.mark.parametrize(
