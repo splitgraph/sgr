@@ -28,7 +28,7 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCH
 from splitgraph.core.common import select, ensure_metadata_schema, META_TABLES
 from splitgraph.core.types import TableColumn, TableSchema
 from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
-from splitgraph.exceptions import EngineInitializationError, ObjectNotFoundError
+from splitgraph.exceptions import EngineInitializationError, ObjectNotFoundError, AuthAPIError
 from splitgraph.hooks.mount_handlers import mount_postgres
 
 if TYPE_CHECKING:
@@ -69,6 +69,19 @@ def _get_data_safe(package: str, resource: str) -> bytes:
             "Resource %s not found in package %s!" % (resource, package)
         )
     return result
+
+
+def _handle_fatal(e):
+    """Handle some Postgres exceptions that aren't transient."""
+
+    if "unexpected response from login query" in str(e):
+        # This one is unintuitive but is raised by the sg registry auth gateway
+        # if there's been a login error (user doesn't exist or wrong password)
+        raise AuthAPIError(
+            "Could not open a registry connection: wrong API key or secret. "
+            "Check your credentials using sgr config and make sure you've "
+            "logged into the registry using sgr cloud login."
+        )
 
 
 class PsycopgEngine(SQLEngine):
@@ -195,12 +208,13 @@ class PsycopgEngine(SQLEngine):
                 )
                 time.sleep(pool_delay)
                 pool_delay = min(pool_delay * 2, POOL_RETRY_DELAY_CAP)
-            except psycopg2.errors.DatabaseError as e:
+            except psycopg2.errors.OperationalError as e:
                 if retries >= RETRY_AMOUNT:
                     logging.exception(
                         "Error connecting to the engine after %d retries", RETRY_AMOUNT
                     )
                     raise
+                _handle_fatal(e)
                 retries += 1
                 logging.error(
                     "Error connecting to the engine (%s), sleeping %.2fs and retrying (%d/%d)...",
