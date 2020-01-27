@@ -60,7 +60,7 @@ def register_c(username, password, email, remote):
 
 @click.command("login")
 @click.option("--username", prompt=True)
-@click.password_option()
+@click.password_option(confirmation_prompt=False)
 @click.option(
     "--remote", default="data.splitgraph.com", help="Name of the remote registry to log into.",
 )
