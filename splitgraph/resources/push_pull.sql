@@ -19,11 +19,18 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+CREATE OR REPLACE FUNCTION splitgraph_api.bypass_privilege()
+RETURNS BOOLEAN AS $$
+BEGIN
+    -- Superusers bypass everything
+    RETURN (SELECT usesuper FROM pg_user WHERE usename = session_user);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 
 CREATE OR REPLACE FUNCTION splitgraph_api.check_privilege(namespace varchar) RETURNS void AS $$
 BEGIN
-    IF (SELECT usesuper FROM pg_user WHERE usename = session_user) THEN
-        -- Superusers bypass everything
+    IF splitgraph_api.bypass_privilege() THEN
         RETURN;
     END IF;
     -- Here "current_user" is the definer, "session_user" is the caller and we can access another session variable
