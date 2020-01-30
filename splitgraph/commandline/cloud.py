@@ -17,7 +17,8 @@ from splitgraph.cloud import get_token_claim
     default="data.splitgraph.com",
     help="Name of the remote cloud engine to register on.",
 )
-def register_c(username, password, email, remote):
+@click.option("--accept-tos", is_flag=True, help="Accept the registry's Terms of Service")
+def register_c(username, password, email, remote, accept_tos):
     """
     Register the user on splitgraph.com, obtain a set of machine credentials
     and configure the data.splitgraph.com engine.
@@ -26,9 +27,14 @@ def register_c(username, password, email, remote):
     from splitgraph.config import CONFIG
 
     client = AuthAPIClient(remote)
+    tos = client.tos()
+
+    if tos and not accept_tos:
+        click.echo("%s says: %s" % (client.endpoint, tos))
+        click.confirm("Do you accept the Terms of Service?", default=False, abort=True)
     click.echo("Registering the user...")
 
-    uuid = client.register(username, password, email)
+    uuid = client.register(username, password, email, accept_tos=True)
     click.echo("Registration successful. UUID %s" % uuid)
 
     access, refresh = client.get_refresh_token(username, password)

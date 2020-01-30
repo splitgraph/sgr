@@ -1344,6 +1344,7 @@ def _register_callback(request, uri, response_headers):
         "username": "someuser",
         "password": "somepassword",
         "email": "someuser@localhost",
+        "accept_tos": True,
     }
     return [
         200,
@@ -1371,6 +1372,14 @@ def _create_creds_callback(request, uri, response_headers):
     ]
 
 
+def _tos_callback(request, uri, response_headers):
+    return [
+        200,
+        response_headers,
+        json.dumps({"tos": "Sample ToS message"}),
+    ]
+
+
 @httpretty.activate
 def test_commandline_registration_normal():
     httpretty.register_uri(
@@ -1380,6 +1389,8 @@ def test_commandline_registration_normal():
     httpretty.register_uri(
         httpretty.HTTPretty.POST, _ENDPOINT + "/refresh_token", body=_refresh_token_callback
     )
+
+    httpretty.register_uri(httpretty.HTTPretty.GET, _ENDPOINT + "/tos", body=_tos_callback)
 
     httpretty.register_uri(
         httpretty.HTTPretty.POST,
@@ -1394,22 +1405,24 @@ def test_commandline_registration_normal():
     with patch("splitgraph.config.export.overwrite_config"):
         with patch("splitgraph.config.config.patch_config") as pc:
             with patch("splitgraph.config.CONFIG", source_config):
-                result = runner.invoke(
-                    register_c,
-                    args=[
-                        "--username",
-                        "someuser",
-                        "--password",
-                        "somepassword",
-                        "--email",
-                        "someuser@localhost",
-                        "--remote",
-                        _REMOTE,
-                    ],
-                    catch_exceptions=False,
-                )
+                # First don't agree to ToS, then agree
+                args = [
+                    "--username",
+                    "someuser",
+                    "--password",
+                    "somepassword",
+                    "--email",
+                    "someuser@localhost",
+                    "--remote",
+                    _REMOTE,
+                ]
+                result = runner.invoke(register_c, args=args, catch_exceptions=False, input="n",)
+                assert result.exit_code == 1
+                assert "Sample ToS message" in result.output
+
+                result = runner.invoke(register_c, args=args, catch_exceptions=False, input="y",)
                 assert result.exit_code == 0
-                print(result.output)
+                assert "Sample ToS message" in result.output
 
     pc.assert_called_once_with(
         source_config,

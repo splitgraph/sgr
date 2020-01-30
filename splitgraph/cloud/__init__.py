@@ -4,7 +4,7 @@ import json
 import time
 from functools import wraps
 from json import JSONDecodeError
-from typing import Callable, List, Union, Tuple, cast
+from typing import Callable, List, Union, Tuple, cast, Optional
 
 import requests
 from requests import HTTPError
@@ -17,13 +17,15 @@ from splitgraph.exceptions import AuthAPIError
 
 
 def expect_result(
-    result: List[str],
+    result: List[str], ignore_status_codes: Optional[List[int]] = None
 ) -> Callable[[Callable[..., Response]], Callable[..., Union[str, Tuple[str]]]]:
     """
     A decorator that can be wrapped around a function returning a requests.Response with a JSON body.
     If the request has failed, it will extract the "error" from the JSON response and raise an AuthAPIError.
 
     :param result: Items to extract. Will raise an AuthAPIError if not all items were fetched.
+    :param ignore_status_codes: If one of these status codes is returned (e.g. 404),
+        it gets ignored and a None is returned instead.
     :return: Tuple of items enumerated in the `result` list. If there's only one item, it will
         return just that item.
     """
@@ -35,6 +37,9 @@ def expect_result(
                 response = func(*args, **kwargs)
             except Exception as e:
                 raise AuthAPIError from e
+
+            if ignore_status_codes and response.status_code in ignore_status_codes:
+                return None
 
             try:
                 response.raise_for_status()
@@ -100,16 +105,25 @@ class AuthAPIClient:
         # How soon before the token expiry to refresh the token, in seconds.
         self.access_token_expiry_tolerance = 30
 
+    @expect_result(["tos"])
+    def tos(self) -> Response:
+        """
+        Get a Terms of Service message from the registry (if accepting ToS is required)
+        :return: Link to the Terms of Service or None
+        """
+        return requests.get(self.endpoint + "/tos", verify=self.verify)
+
     @expect_result(["user_id"])
-    def register(self, username: str, password: str, email: str) -> Response:
+    def register(self, username: str, password: str, email: str, accept_tos: bool) -> Response:
         """
         Register a new Splitgraph user.
 
         :param username: Username
         :param password: Password
         :param email: Email
+        :param accept_tos: Accept the Terms of Service if they exist
         """
-        body = dict(username=username, password=password, email=email)
+        body = dict(username=username, password=password, email=email, accept_tos=accept_tos)
         return requests.post(self.endpoint + "/register_user", json=body, verify=self.verify)
 
     @expect_result(["access_token", "refresh_token"])
