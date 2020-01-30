@@ -5,6 +5,8 @@ from urllib.parse import urlsplit
 
 import click
 
+from splitgraph.cloud import get_token_claim
+
 
 @click.command("register")
 @click.option("--username", prompt=True)
@@ -59,7 +61,7 @@ def register_c(username, password, email, remote):
 
 
 @click.command("login")
-@click.option("--username", prompt=True)
+@click.option("--username", prompt="Username or e-mail")
 @click.password_option(confirmation_prompt=False)
 @click.option(
     "--remote", default="data.splitgraph.com", help="Name of the remote registry to log into.",
@@ -81,11 +83,14 @@ def login_c(username, password, remote, overwrite):
 
     access, refresh = client.get_refresh_token(username, password)
 
-    click.echo("Logged into %s" % remote)
+    # Extract namespace from the access token since we might have logged in with an e-mail.
+    namespace = get_token_claim(access, "username")
+
+    click.echo("Logged into %s as %s" % (remote, namespace))
     config_patch = {
         "remotes": {
             remote: {
-                "SG_NAMESPACE": username,
+                "SG_NAMESPACE": namespace,
                 "SG_CLOUD_REFRESH_TOKEN": refresh,
                 "SG_CLOUD_ACCESS_TOKEN": access,
             }

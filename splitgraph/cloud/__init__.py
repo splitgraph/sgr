@@ -60,15 +60,15 @@ def expect_result(
     return decorator
 
 
-def _get_token_expiry(jwt):
-    """Extract expiry from a JWT token without validating it."""
-    # Directly decode the base6 claims part without pulling in any JWT libraries
+def get_token_claim(jwt, claim):
+    """Extract a claim from a JWT token without validating it."""
+    # Directly decode the base64 claims part without pulling in any JWT libraries
     # (since we're not validating any signatures).
 
     claims = jwt.split(".")[1]
     # Pad the JWT claims because urlsafe_b64decode doesn't like us
     claims += "=" * (-len(claims) % 4)
-    exp = json.loads(base64.urlsafe_b64decode(claims).decode("utf-8"))["exp"]
+    exp = json.loads(base64.urlsafe_b64decode(claims).decode("utf-8"))[claim]
     return exp
 
 
@@ -161,7 +161,7 @@ class AuthAPIClient:
         Get a new access token from API keys
 
         :param api_key: API key
-        :param api_key: API secret
+        :param api_secret: API secret
         :return: New access token.
         """
 
@@ -184,7 +184,7 @@ class AuthAPIClient:
             current_access_token = get_from_subsection(
                 config, "remotes", self.remote, "SG_CLOUD_ACCESS_TOKEN"
             )
-            exp = _get_token_expiry(current_access_token)
+            exp = get_token_claim(current_access_token, "exp")
             now = time.time()
             if now < exp - self.access_token_expiry_tolerance:
                 return current_access_token
