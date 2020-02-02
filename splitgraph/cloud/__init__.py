@@ -113,7 +113,7 @@ class AuthAPIClient:
         """
         return requests.get(self.endpoint + "/tos", verify=self.verify)
 
-    @expect_result(["user_id"])
+    @expect_result(["user_id", "access_token", "refresh_token"])
     def register(self, username: str, password: str, email: str, accept_tos: bool) -> Response:
         """
         Register a new Splitgraph user.
