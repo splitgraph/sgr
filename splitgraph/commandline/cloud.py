@@ -34,10 +34,9 @@ def register_c(username, password, email, remote, accept_tos):
         click.confirm("Do you accept the Terms of Service?", default=False, abort=True)
     click.echo("Registering the user...")
 
-    uuid = client.register(username, password, email, accept_tos=True)
+    uuid, access, refresh = client.register(username, password, email, accept_tos=True)
     click.echo("Registration successful. UUID %s" % uuid)
 
-    access, refresh = client.get_refresh_token(username, password)
     key, secret = client.create_machine_credentials(access, password)
     click.echo("Acquired refresh token and API keys")
 
