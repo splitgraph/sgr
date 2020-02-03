@@ -10,6 +10,8 @@ import click
 from splitgraph.commandline.common import RepositoryType
 from splitgraph.config import CONFIG
 from splitgraph.config.config import get_from_subsection
+from splitgraph.core.engine import repository_exists
+from splitgraph.exceptions import RepositoryNotFoundError
 
 
 @click.command(name="pull")
@@ -122,6 +124,9 @@ def push_c(
     # * sgr push noaa/climate -r splitgraph.mycompany.com: will push to noaa/climate
     from splitgraph.core.repository import Repository
     from splitgraph.engine import get_engine
+
+    if not repository_exists(repository):
+        raise RepositoryNotFoundError("Unknown repository %s" % repository)
 
     if remote_repository and remote:
         remote_repository = Repository.from_template(remote_repository, engine=get_engine(remote))
