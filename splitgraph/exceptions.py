@@ -1,6 +1,7 @@
 """
 Exceptions that can be raised by the Splitgraph library.
 """
+from typing import List, Optional
 
 
 class SplitGraphError(Exception):
@@ -58,3 +59,19 @@ class MountHandlerError(SplitGraphError):
 
 class AuthAPIError(SplitGraphError):
     """Exceptions raised by the Auth API"""
+
+
+class IncompleteObjectTransferError(SplitGraphError):
+    """Raised when an error is encountered during upload/download
+    of multiple objects. The handler is supposed to perform any necessary
+    cleanup and reraise `reason` at the earliest opportunity."""
+
+    def __init__(
+        self,
+        reason: Optional[BaseException],
+        successful_objects: List[str],
+        successful_object_urls: Optional[List[str]] = None,
+    ):
+        self.reason = reason
+        self.successful_objects = successful_objects
+        self.successful_object_urls = successful_object_urls

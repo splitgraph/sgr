@@ -82,7 +82,7 @@ def test_splitfile_sql_failure(local_engine_empty, pg_repo_remote_multitag):
     # with IMPORT results
     assert len(OUTPUT.images()) == 2
     assert _get_table_count(OUTPUT) == 2
-    assert OUTPUT.images["latest"].get_tables() == ["my_fruits", "vegetables"]
+    assert sorted(OUTPUT.images["latest"].get_tables()) == ["my_fruits", "vegetables"]
 
 
 def test_splitfile_various_parse_errors():
