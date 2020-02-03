@@ -1337,19 +1337,27 @@ def test_commandline_engine_creation_config_patching_integration(teardown_test_e
 
 _REMOTE = "remote_engine"
 _ENDPOINT = "http://some-auth-service"
+_SAMPLE_ACCESS = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYmYiOjE1ODA1OTQyMzQsImVtYWlsX3ZlcmlmaWVkIjpmYWxzZSwiZW1haWwiOiJzb21ldXNlckBleGFtcGxlLmNvbSIsImV4cCI6MTU4MDU5NzgzNCwidXNlcl9pZCI6IjEyM2U0NTY3LWU4OWItMTJkMy1hNDU2LTQyNjY1NTQ0MDAwMCIsImdyYW50IjoiYWNjZXNzIiwidXNlcm5hbWUiOiJzb21ldXNlciIsImlhdCI6MTU4MDU5NDIzNH0.YEuNhqKfFoxHloohfxInSEV9rnivXcF9SvFP72Vv1mDDsaqlRqCjKYM4S7tdSMap5__e3_UTwE_CpH8eI7DdePjMu8AOFXwFHPl34AAxZgavP4Mly0a0vrMsxNJ4KbtmL5-7ih3uneTEuZLt9zQLUh-Bi_UYlEYwGl8xgz5dDZ1YlwTEMsqSrDnXdjl69CTk3vVHIQdxtki4Ng7dZhbOnEdJIRsZi9_VdMlsg2TIU-0FsU2bYYBWktms5hyAAH0RkHYfvjGwIRirSEjxTpO9vci-eAsF8C4ohTUg6tajOcyWz8d7JSaJv_NjLFMZI9mC09hchbQZkw-37CdbS_8Yvw"
+_SAMPLE_REFRESH = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYmYiOjE1NzYzMTk5MTYsImlhdCI6MTU3NjMxOTkxNiwiZW1haWwiOiJzb21ldXNlckBleGFtcGxlLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjpmYWxzZSwicmVmcmVzaF90b2tlbl9zZWNyZXQiOiJzb21lc2VjcmV0IiwiZXhwIjoxNTc4OTExOTE2LCJ1c2VyX2lkIjoiMTIzZTQ1NjctZTg5Yi0xMmQzLWE0NTYtNDI2NjU1NDQwMDAwIiwidXNlcm5hbWUiOiJzb21ldXNlciIsInJlZnJlc2hfdG9rZW5fa2V5Ijoic29tZWtleSIsImdyYW50IjoicmVmcmVzaCJ9.lO3nN3Tmu3twwUjrWsVpBq7nHHEvLnOGXeMkXXv4PRBADUAHyhmmaIPzgccq9XlwpLIexBAxTKJ4GaxSQufKUVLbzAKIMHqxiGTzELY6JMyUvMDHKeKNsq6FdhHxXoKa96fHaDDa65eGcSRSKS3Yr-9sBiANMBJGRbwypYw41gf61pewMA8TXqBmA-mvsBzMUaQNz1DfjkkpHs4SCERPK0GhYSJwDAwK8U3wG47S9k-CQqpq2B99yRRrdSVRzA_lcKe7GlF-Pw6hbRR7xBPBtX61pPME5hFUCPcwYWYXa_KhqEx9IF9edt9UahZuBudaVLmTdKKWgE9M53jQofxNzg"
 
 
 def _register_callback(request, uri, response_headers):
     assert json.loads(request.body) == {
         "username": "someuser",
         "password": "somepassword",
-        "email": "someuser@localhost",
+        "email": "someuser@example.com",
         "accept_tos": True,
     }
     return [
         200,
         response_headers,
-        json.dumps({"user_id": "123e4567-e89b-12d3-a456-426655440000"}),
+        json.dumps(
+            {
+                "user_id": "123e4567-e89b-12d3-a456-426655440000",
+                "access_token": _SAMPLE_ACCESS,
+                "refresh_token": _SAMPLE_REFRESH,
+            }
+        ),
     ]
 
 
@@ -1358,13 +1366,13 @@ def _refresh_token_callback(request, uri, response_headers):
     return [
         200,
         response_headers,
-        json.dumps({"access_token": "AAAABBBBCCCCDDDD", "refresh_token": "EEEEFFFFGGGGHHHH"}),
+        json.dumps({"access_token": _SAMPLE_ACCESS, "refresh_token": _SAMPLE_REFRESH}),
     ]
 
 
 def _create_creds_callback(request, uri, response_headers):
     assert json.loads(request.body) == {"password": "somepassword"}
-    assert request.headers["Authorization"] == "Bearer AAAABBBBCCCCDDDD"
+    assert request.headers["Authorization"] == "Bearer %s" % _SAMPLE_ACCESS
     return [
         200,
         response_headers,
@@ -1384,10 +1392,6 @@ def _tos_callback(request, uri, response_headers):
 def test_commandline_registration_normal():
     httpretty.register_uri(
         httpretty.HTTPretty.POST, _ENDPOINT + "/register_user", body=_register_callback
-    )
-
-    httpretty.register_uri(
-        httpretty.HTTPretty.POST, _ENDPOINT + "/refresh_token", body=_refresh_token_callback
     )
 
     httpretty.register_uri(httpretty.HTTPretty.GET, _ENDPOINT + "/tos", body=_tos_callback)
@@ -1412,7 +1416,7 @@ def test_commandline_registration_normal():
                     "--password",
                     "somepassword",
                     "--email",
-                    "someuser@localhost",
+                    "someuser@example.com",
                     "--remote",
                     _REMOTE,
                 ]
@@ -1433,8 +1437,8 @@ def test_commandline_registration_normal():
                     "SG_ENGINE_USER": "abcdef123456",
                     "SG_ENGINE_PWD": "654321fedcba",
                     "SG_NAMESPACE": "someuser",
-                    "SG_CLOUD_REFRESH_TOKEN": "EEEEFFFFGGGGHHHH",
-                    "SG_CLOUD_ACCESS_TOKEN": "AAAABBBBCCCCDDDD",
+                    "SG_CLOUD_REFRESH_TOKEN": _SAMPLE_REFRESH,
+                    "SG_CLOUD_ACCESS_TOKEN": _SAMPLE_ACCESS,
                 }
             },
         },
@@ -1449,6 +1453,8 @@ def test_commandline_registration_user_error():
     def register_callback(request, uri, response_headers):
         return [403, response_headers, json.dumps({"error": "Username exists"})]
 
+    httpretty.register_uri(httpretty.HTTPretty.GET, _ENDPOINT + "/tos", body=_tos_callback)
+
     httpretty.register_uri(
         httpretty.HTTPretty.POST, _ENDPOINT + "/register_user", body=register_callback
     )
@@ -1462,11 +1468,11 @@ def test_commandline_registration_user_error():
             "--password",
             "somepassword",
             "--email",
-            "someuser@localhost",
+            "someuser@example.com",
             "--remote",
             _REMOTE,
+            "--accept-tos",
         ],
-        catch_exceptions=True,
     )
     print(result.output)
     assert result.exit_code == 1
@@ -1514,8 +1520,8 @@ def test_commandline_login_normal():
             "remotes": {
                 "remote_engine": {
                     "SG_NAMESPACE": "someuser",
-                    "SG_CLOUD_REFRESH_TOKEN": "EEEEFFFFGGGGHHHH",
-                    "SG_CLOUD_ACCESS_TOKEN": "AAAABBBBCCCCDDDD",
+                    "SG_CLOUD_REFRESH_TOKEN": _SAMPLE_REFRESH,
+                    "SG_CLOUD_ACCESS_TOKEN": _SAMPLE_ACCESS,
                 }
             },
         },
@@ -1548,8 +1554,8 @@ def test_commandline_login_normal():
                     "SG_ENGINE_USER": "abcdef123456",
                     "SG_ENGINE_PWD": "654321fedcba",
                     "SG_NAMESPACE": "someuser",
-                    "SG_CLOUD_REFRESH_TOKEN": "EEEEFFFFGGGGHHHH",
-                    "SG_CLOUD_ACCESS_TOKEN": "AAAABBBBCCCCDDDD",
+                    "SG_CLOUD_REFRESH_TOKEN": _SAMPLE_REFRESH,
+                    "SG_CLOUD_ACCESS_TOKEN": _SAMPLE_ACCESS,
                 }
             },
         },
