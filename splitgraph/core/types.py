@@ -1,4 +1,4 @@
-from typing import Dict, Tuple, Any, NamedTuple, Optional, List, Sequence
+from typing import Dict, Tuple, Any, NamedTuple, Optional, List, Sequence, Union
 
 Changeset = Dict[Tuple[str, ...], Tuple[bool, Dict[str, Any]]]
 
@@ -13,3 +13,6 @@ class TableColumn(NamedTuple):
 
 TableSchema = List[TableColumn]
 Quals = Sequence[Sequence[Tuple[str, str, Any]]]
+
+
+ProvenanceData = Dict[str, Union[str, List[str], List[bool]]]

@@ -1088,16 +1088,7 @@ def _sync(
             logging.info("Nothing to do.")
             return
 
-        for image in new_images:
-            target.images.add(
-                image.parent_id,
-                image.image_hash,
-                image.created,
-                image.comment,
-                image.provenance_type,
-                image.provenance_data,
-            )
-
+        target.images.add_batch(new_images)
         if download:
             target.objects.register_objects(list(object_meta.values()))
             target.objects.register_object_locations(object_locations)

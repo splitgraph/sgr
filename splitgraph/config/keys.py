@@ -39,7 +39,7 @@ DEFAULTS: ConfigDict = {
     "SG_S3_PWD": "",
     # Object cache (objects downloaded from an external location) tuning
     # Will try to target this size (in MB).
-    "SG_OBJECT_CACHE_SIZE": "1024",
+    "SG_OBJECT_CACHE_SIZE": "10240",
     # Significance of recent usage time and object size in cache eviction.
     # See splitgraph.core.object_manager for an explanation.
     "SG_EVICTION_DECAY": "0.002",
