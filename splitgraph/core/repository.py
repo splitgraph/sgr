@@ -1091,7 +1091,7 @@ def _sync(
         new_images, table_meta, object_locations, object_meta, tags = gather_sync_metadata(
             target, source, overwrite_objects=overwrite
         )
-        if not new_images and not object_meta:
+        if not new_images and not object_meta and not object_locations:
             logging.info("Nothing to do.")
             return
 
@@ -1131,7 +1131,9 @@ def _sync(
                 [v for k, v in object_meta.items() if k not in objects_to_push or k in successful],
                 namespace=target.namespace,
             )
-            target.objects.register_object_locations(list(set(object_locations + new_locations)))
+            target.objects.register_object_locations(
+                [o for o in set(object_locations + new_locations) if o[0] in successful]
+            )
             source.objects.register_object_locations(new_locations)
 
             if partial_upload_failure:

@@ -126,7 +126,9 @@ class ImageManager:
         # Users can always use by_hash or by_tag to be explicit -- this is just a shorthand. There's little
         # chance for ambiguity (why would someone have a hexadecimal tag that can be confused with a hash?)
         # so we can detect what the user meant in the future.
-        return self.by_tag(key, raise_on_none=False) or self.by_hash(key)
+        # For HEAD (currently checked-out) images, raise if there's nothing
+        # checked out (otherwise we'll fallback to hash and get an even more confusing message).
+        return self.by_tag(key, raise_on_none=key == "HEAD") or self.by_hash(key)
 
     def get_all_child_images(self, start_image: str) -> Set[str]:
         """Get all children of `start_image` of any degree."""
