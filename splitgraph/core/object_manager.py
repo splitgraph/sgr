@@ -756,7 +756,7 @@ class ObjectManager(FragmentManager):
         external_handler = get_external_object_handler(handler, handler_params)
 
         with switch_engine(self.object_engine):
-            return external_handler.upload_objects(objects_to_push, self.metadata_engine)
+            return external_handler.upload_objects(objects_to_push, target.metadata_engine)
 
     def cleanup(self) -> Set[str]:
         """
