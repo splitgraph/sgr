@@ -25,7 +25,7 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, get_singleton
 from splitgraph.core.fragment_manager import FragmentManager
 from splitgraph.core.types import Quals
 from splitgraph.engine import ResultShape, switch_engine
-from splitgraph.exceptions import SplitGraphError, ObjectCacheError
+from splitgraph.exceptions import SplitGraphError, ObjectCacheError, IncompleteObjectTransferError
 from splitgraph.hooks.external_objects import get_external_object_handler
 from .common import META_TABLES, select, insert, pretty_size, Tracer, CallbackList
 
@@ -215,35 +215,38 @@ class ObjectManager(FragmentManager):
                     table.repository.upstream.objects if table.repository.upstream else None
                 )
 
-            downloaded_by_us = self.download_objects(
-                upstream_manager, objects_to_fetch=to_fetch, object_locations=object_locations
-            )
-            # No matter what, claim the space required by the newly downloaded objects.
-            self._increase_cache_occupancy(downloaded_by_us)
-            downloaded = self.get_downloaded_objects(limit_to=to_fetch)
-            difference = list(set(to_fetch).difference(downloaded))
-            if difference:
-                if table:
-                    error = (
-                        "Not all objects required to materialize %s:%s:%s have been fetched. Missing objects: %r"
-                        % (
-                            table.repository.to_schema(),
-                            table.image.image_hash,
-                            table.table_name,
-                            difference,
-                        )
-                    )
+            partial_failure: Optional[BaseException] = None
+            try:
+                successful = self.download_objects(
+                    upstream_manager, objects_to_fetch=to_fetch, object_locations=object_locations
+                )
+                difference = []
+            except IncompleteObjectTransferError as e:
+                successful = e.successful_objects
+                difference = list(set(to_fetch).difference(successful))
+                if e.reason:
+                    partial_failure = e.reason
                 else:
-                    error = "Not all objects have been fetched. Missing objects: %r" % difference
-                logging.error(error)
+                    partial_failure = self._generate_download_error(table, difference)
+            except Exception:
+                successful = self.get_downloaded_objects(to_fetch)
+                difference = list(set(to_fetch).difference(successful))
+                partial_failure = self._generate_download_error(table, difference)
+
+            # No matter what, claim the space required by the newly downloaded objects.
+            self._increase_cache_occupancy(successful)
+
+            if partial_failure:
                 # Instead of deleting all objects in this batch, discard the cache data
                 # on the objects that failed, decrease the refcount on the objects that
                 # succeeded and mark them as ready.
                 self._delete_cache_entries(difference)
-                self._set_ready_flags(downloaded, is_ready=True)
-                self._release_objects(downloaded)
+                self._set_ready_flags(successful, is_ready=True)
+                self._release_objects(successful)
                 self.object_engine.commit()
-                raise ObjectCacheError(error)
+
+                raise partial_failure
+
             self._set_ready_flags(to_fetch, is_ready=True)
         tracer.log("fetch_objects")
         logging.debug("Yielding to the caller")
@@ -261,6 +264,23 @@ class ObjectManager(FragmentManager):
         finally:
             if not defer_release:
                 release_callback()
+
+    def _generate_download_error(self, table, difference):
+        if table:
+            error = (
+                "Not all objects required to materialize %s:%s:%s have been fetched. Missing objects: %r"
+                % (
+                    table.repository.to_schema(),
+                    table.image.image_hash,
+                    table.table_name,
+                    difference,
+                )
+            )
+        else:
+            error = "Not all objects have been fetched. Missing objects: %r" % difference
+        logging.error(error)
+        partial_failure = ObjectCacheError(error)
+        return partial_failure
 
     def _make_release_callback(
         self, required_objects: List[str], table: Optional["Table"], tracer: Tracer
@@ -342,17 +362,36 @@ class ObjectManager(FragmentManager):
 
         # Perform the actual upload
         external_handler = get_external_object_handler(handler, handler_params)
-        with switch_engine(self.object_engine):
-            uploaded = external_handler.upload_objects(new_objects, self.metadata_engine)
-        locations = [(oid, url, handler) for oid, url in zip(new_objects, uploaded)]
+
+        partial_failure: Optional[IncompleteObjectTransferError] = None
+        try:
+            with switch_engine(self.object_engine):
+                successful = {
+                    o: u
+                    for o, u in external_handler.upload_objects(new_objects, self.metadata_engine)
+                }
+        except IncompleteObjectTransferError as e:
+            partial_failure = e
+            successful = {o: u for o, u in zip(e.successful_objects, e.successful_object_urls)}
+
+        locations = [(o, u, handler) for o, u in successful.items()]
         self.register_object_locations(locations)
 
         # Increase the cache occupancy since the objects can now be evicted.
-        self._increase_cache_occupancy(new_objects)
+        self._increase_cache_occupancy(list(successful.keys()))
 
         # Mark the objects as ready and decrease their refcounts.
-        self._set_ready_flags(new_objects, True)
-        self._release_objects(new_objects)
+        self._set_ready_flags(list(successful.keys()), True)
+        self._release_objects(list(successful.keys()))
+
+        self.object_engine.commit()
+        self.metadata_engine.commit()
+
+        if partial_failure:
+            if partial_failure.reason:
+                raise partial_failure.reason
+            else:
+                raise ObjectCacheError("Some objects failed to upload!")
 
         # Perform eviction in case we've reached the capacity of the cache
         excess = self.get_cache_occupancy() - self.cache_size
@@ -670,10 +709,15 @@ class ObjectManager(FragmentManager):
         if not remaining_objects_to_fetch or not source:
             return external_objects
 
-        remote_objects = self.object_engine.download_objects(
-            remaining_objects_to_fetch, source.object_engine
-        )
-        return external_objects + remote_objects
+        try:
+            remote_objects = self.object_engine.download_objects(
+                remaining_objects_to_fetch, source.object_engine
+            )
+            return external_objects + remote_objects
+        except IncompleteObjectTransferError as e:
+            raise IncompleteObjectTransferError(
+                reason=e.reason, successful_objects=external_objects + e.successful_objects
+            )
 
     def upload_objects(
         self,
@@ -681,7 +725,7 @@ class ObjectManager(FragmentManager):
         objects_to_push: List[str],
         handler: str = "DB",
         handler_params: Optional[Dict[Any, Any]] = None,
-    ) -> List[Tuple[str, str, str]]:
+    ) -> List[Tuple[str, Optional[str]]]:
         """
         Uploads physical objects to the remote or some other external location.
 
@@ -691,14 +735,12 @@ class ObjectManager(FragmentManager):
             to store them in a directory that can be accessed from the client and `HTTP` to upload them to HTTP.
         :param handler_params: For `HTTP`, a dictionary `{"username": username, "password", password}`. For `FILE`,
             a dictionary `{"path": path}` specifying the directory where the objects shall be saved.
-        :return: A list of (object_id, url, handler) that specifies all objects were uploaded (skipping objects that
+        :return: A list of (object_id, url) that specifies all objects were uploaded (skipping objects that
             already exist on the remote).
         """
         if handler_params is None:
             handler_params = {}
 
-        # Check which objects we need to push out
-        objects_to_push = target.get_new_objects(objects_to_push)
         if not objects_to_push:
             logging.info("Nothing to upload.")
             return []
@@ -709,13 +751,12 @@ class ObjectManager(FragmentManager):
 
         if handler == "DB":
             self.object_engine.upload_objects(objects_to_push, target.object_engine)
-            # We assume that if the object doesn't have an explicit location, it lives on the remote.
-            return []
+            return [(o, None) for o in objects_to_push]
 
         external_handler = get_external_object_handler(handler, handler_params)
+
         with switch_engine(self.object_engine):
-            uploaded = external_handler.upload_objects(objects_to_push, target.metadata_engine)
-        return [(oid, url, handler) for oid, url in zip(objects_to_push, uploaded)]
+            return external_handler.upload_objects(objects_to_push, self.metadata_engine)
 
     def cleanup(self) -> Set[str]:
         """
@@ -768,11 +809,13 @@ def _fetch_external_objects(
     for object_id, object_url, protocol in object_locations:
         non_remote_by_method[protocol].append((object_id, object_url))
         non_remote_objects.append(object_id)
+
+    successful: List[str] = []
     if non_remote_objects:
         logging.info("Fetching external objects...")
         for method, objects in non_remote_by_method.items():
             handler = get_external_object_handler(method, handler_params)
             # In case we're calling this from inside the FDW
             with switch_engine(engine):
-                handler.download_objects(objects, source_engine)
-    return non_remote_objects
+                successful.extend(handler.download_objects(objects, source_engine))
+    return successful

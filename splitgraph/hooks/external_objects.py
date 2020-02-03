@@ -41,7 +41,7 @@ class ExternalObjectHandler:
 
         :param objects: List of object IDs to upload
         :param remote_engine: An instance of Engine class that the objects will be registered on
-        :return: A list of URLs (same length as `objects`) that the objects can be found at.
+        :return: A list of successfully uploaded object IDs and URLs they can be found at.
         """
 
     def download_objects(self, objects, remote_engine):
@@ -50,6 +50,7 @@ class ExternalObjectHandler:
         :param objects: List of tuples `(object_id, object_url)` that this handler had previosly
             uploaded the objects to.
         :param remote_engine: An instance of Engine class that the objects will be registered on
+        :return: A list of object IDs that have been successfully downloaded.
         """
 
 

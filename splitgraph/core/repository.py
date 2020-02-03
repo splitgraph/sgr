@@ -22,7 +22,12 @@ from splitgraph.core.sql import validate_import_sql
 from splitgraph.core.table import Table
 from splitgraph.core.types import TableSchema
 from splitgraph.engine.postgres.engine import PostgresEngine
-from splitgraph.exceptions import CheckoutError, EngineInitializationError, TableNotFoundError
+from splitgraph.exceptions import (
+    CheckoutError,
+    EngineInitializationError,
+    TableNotFoundError,
+    IncompleteObjectTransferError,
+)
 from .common import (
     manage_audit_triggers,
     set_head,
@@ -1080,6 +1085,8 @@ def _sync(
     # Get the remote log and the list of objects we need to fetch.
     logging.info("Gathering remote metadata...")
 
+    partial_upload_failure: Optional[IncompleteObjectTransferError] = None
+
     try:
         new_images, table_meta, object_locations, object_meta, tags = gather_sync_metadata(
             target, source, overwrite_objects=overwrite
@@ -1088,7 +1095,6 @@ def _sync(
             logging.info("Nothing to do.")
             return
 
-        target.images.add_batch(new_images)
         if download:
             target.objects.register_objects(list(object_meta.values()))
             target.objects.register_object_locations(object_locations)
@@ -1096,19 +1102,51 @@ def _sync(
             # Don't check anything out, keep the repo bare.
             set_head(target, None)
         else:
-            new_uploads = source.objects.upload_objects(
-                target.objects,
-                list(object_meta.keys()),
-                handler=handler,
-                handler_params=handler_options,
-            )
+            objects_to_push = target.objects.get_new_objects(list(object_meta.keys()))
+
+            try:
+                new_uploads = source.objects.upload_objects(
+                    target.objects,
+                    objects_to_push,
+                    handler=handler,
+                    handler_params=handler_options,
+                )
+                new_locations = [(o, u, handler) for o, u in new_uploads if u]
+                successful = [o for o, _ in new_uploads]
+            except IncompleteObjectTransferError as e:
+                partial_upload_failure = e
+                new_locations = [
+                    (o, u, handler)
+                    for o, u in zip(e.successful_objects, e.successful_object_urls)
+                    if u
+                ]
+                successful = e.successful_objects
+
             # Here we have to register the new objects after the upload but before we store their external
             # location (as the RLS for object_locations relies on the object metadata being in place)
-            target.objects.register_objects(list(object_meta.values()), namespace=target.namespace)
-            target.objects.register_object_locations(list(set(object_locations + new_uploads)))
-            source.objects.register_object_locations(new_uploads)
+            # In addition, register all objects we had in object_meta apart from those that
+            # we tried to upload and failed (if we're pushing overwriting object metadata,
+            # object_meta might have more objects than what we actually intended to upload).
+            target.objects.register_objects(
+                [v for k, v in object_meta.items() if k not in objects_to_push or k in successful],
+                namespace=target.namespace,
+            )
+            target.objects.register_object_locations(list(set(object_locations + new_locations)))
+            source.objects.register_object_locations(new_locations)
 
-        # Register the new tables / tags.
+            if partial_upload_failure:
+                # If the upload has failed or was cancelled for some reason, still register
+                # successful objects (give the caller a chance to continue the upload) but
+                # not images or tables -- bail out now.
+                target.commit_engines()
+                source.commit_engines()
+                if partial_upload_failure.reason:
+                    raise partial_upload_failure.reason
+                else:
+                    raise partial_upload_failure
+
+        # Register the new images / tables / tags.
+        target.images.add_batch(new_images)
         target.objects.register_tables(target, table_meta)
         target.set_tags(tags)
     except Exception:

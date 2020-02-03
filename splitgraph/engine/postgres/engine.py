@@ -28,7 +28,12 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCH
 from splitgraph.core.common import select, ensure_metadata_schema, META_TABLES
 from splitgraph.core.types import TableColumn, TableSchema
 from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
-from splitgraph.exceptions import EngineInitializationError, ObjectNotFoundError, AuthAPIError
+from splitgraph.exceptions import (
+    EngineInitializationError,
+    ObjectNotFoundError,
+    AuthAPIError,
+    IncompleteObjectTransferError,
+)
 from splitgraph.hooks.mount_handlers import mount_postgres
 
 if TYPE_CHECKING:
@@ -1113,7 +1118,9 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                 )
                 self._set_object_schema(object_id, schema_spec=schema_spec)
                 downloaded_objects.append(object_id)
-            return downloaded_objects
+        if len(downloaded_objects) < len(objects):
+            raise IncompleteObjectTransferError(reason=None, successful_objects=downloaded_objects)
+        return downloaded_objects
 
 
 def _split_ri_cols(

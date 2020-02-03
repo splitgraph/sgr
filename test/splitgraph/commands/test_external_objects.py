@@ -5,6 +5,7 @@ import pytest
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.repository import clone
 from splitgraph.engine import ResultShape
+from splitgraph.exceptions import IncompleteObjectTransferError
 from splitgraph.hooks.s3 import S3ExternalObjectHandler
 from splitgraph.hooks.s3_server import (
     get_object_upload_urls,
@@ -104,45 +105,60 @@ def test_s3_push_pull(
     )
 
 
-class FlakyExternalObjectHandler(S3ExternalObjectHandler):
-    """
-    An external object handler that fails after downloading some objects
-    to emulate connection errors/CTRL+Cs etc -- test database is still in a
-    consistent state in these cases.
-    """
+def _flaky_handler(incomplete=False):
+    class FlakyExternalObjectHandler(S3ExternalObjectHandler):
+        """
+        An external object handler that fails after downloading some objects
+        to emulate connection errors/CTRL+Cs etc -- test database is still in a
+        consistent state in these cases.
+        """
 
-    def __init__(self, params):
-        super().__init__(params)
+        def __init__(self, params):
+            super().__init__(params)
 
-    def download_objects(self, objects, remote_engine):
-        """
-        Downloads just the first object and then fails.
-        """
-        super().download_objects(objects[:1], remote_engine)
-        raise Exception("Something bad happened.")
+        def download_objects(self, objects, remote_engine):
+            """
+            Downloads just the first object and then fails.
+            """
+            super().download_objects(objects[:1], remote_engine)
+            ex = Exception("Something bad happened.")
+            if incomplete:
+                raise IncompleteObjectTransferError(reason=ex, successful_objects=[objects[0][0]])
+            else:
+                raise ex
 
-    def upload_objects(self, objects, remote_engine):
-        """
-        Uploads just the first object and then fails.
-        """
-        super().upload_objects(objects[:1], remote_engine)
-        raise Exception("Something bad happened.")
+        def upload_objects(self, objects, remote_engine):
+            """
+            Uploads just the first object and then fails.
+            """
+            super().upload_objects(objects[:1], remote_engine)
+            ex = Exception("Something bad happened.")
+            if incomplete:
+                raise IncompleteObjectTransferError(
+                    reason=ex, successful_objects=objects[:1], successful_object_urls=objects[:1]
+                )
+            else:
+                raise ex
+
+    return FlakyExternalObjectHandler
 
 
 @pytest.mark.registry
+@pytest.mark.parametrize("interrupted", [True, False])
 def test_push_upload_error(
-    local_engine_empty, unprivileged_pg_repo, pg_repo_remote_registry, clean_minio
+    local_engine_empty, unprivileged_pg_repo, pg_repo_remote_registry, clean_minio, interrupted
 ):
     clone(unprivileged_pg_repo, local_repository=PG_MNT, download_all=False)
     PG_MNT.images["latest"].checkout()
     PG_MNT.run_sql("INSERT INTO fruits VALUES (3, 'mayonnaise')")
+    PG_MNT.run_sql("INSERT INTO vegetables VALUES (3, 'cucumber')")
     head = PG_MNT.commit()
 
     # If the upload fails for whatever reason (e.g. Minio is inaccessible or the upload was aborted),
     # the whole push fails rather than leaving the registry in an inconsistent state.
     with patch.dict(
         "splitgraph.hooks.external_objects._EXTERNAL_OBJECT_HANDLERS",
-        {"S3": FlakyExternalObjectHandler},
+        {"S3": _flaky_handler(incomplete=interrupted)},
     ):
         with pytest.raises(Exception) as e:
             PG_MNT.push(remote_repository=unprivileged_pg_repo, handler="S3", handler_options={})
@@ -155,7 +171,14 @@ def test_push_upload_error(
         )
         == 2
     )
-    assert len(pg_repo_remote_registry.objects.get_all_objects()) == 2
+
+    # Registry had 2 objects before the upload -- if we interrupted the upload,
+    # we only managed to upload the first object that was registered (even if the image
+    # wasn't).
+
+    expected_object_count = 3 if interrupted else 2
+
+    assert len(pg_repo_remote_registry.objects.get_all_objects()) == expected_object_count
 
     # Two new objects not registered remotely since the upload failed
     assert (
@@ -163,14 +186,14 @@ def test_push_upload_error(
             "SELECT COUNT(*) FROM splitgraph_meta.object_locations",
             return_shape=ResultShape.ONE_ONE,
         )
-        == 2
+        == expected_object_count
     )
     assert (
         pg_repo_remote_registry.engine.run_sql(
             "SELECT COUNT(*) FROM splitgraph_meta.object_locations",
             return_shape=ResultShape.ONE_ONE,
         )
-        == 2
+        == expected_object_count
     )
 
     # Now do the push normally and check the image exists upstream.
@@ -178,30 +201,33 @@ def test_push_upload_error(
 
     assert any(i.image_hash == head.image_hash for i in unprivileged_pg_repo.images)
 
+    assert len(pg_repo_remote_registry.objects.get_all_objects()) == 4
+
     assert (
         local_engine_empty.run_sql(
             "SELECT COUNT(*) FROM splitgraph_meta.object_locations",
             return_shape=ResultShape.ONE_ONE,
         )
-        == 3
+        == 4
     )
     assert (
         pg_repo_remote_registry.engine.run_sql(
             "SELECT COUNT(*) FROM splitgraph_meta.object_locations",
             return_shape=ResultShape.ONE_ONE,
         )
-        == 3
+        == 4
     )
 
 
 @pytest.mark.registry
-def test_pull_download_error(local_engine_empty, unprivileged_pg_repo, clean_minio):
+@pytest.mark.parametrize("interrupted", [True, False])
+def test_pull_download_error(local_engine_empty, unprivileged_pg_repo, clean_minio, interrupted):
     # Same test backwards: if we're pulling and abort or fail the download, make sure we can
     # recover and retry pulling the repo.
 
     with patch.dict(
         "splitgraph.hooks.external_objects._EXTERNAL_OBJECT_HANDLERS",
-        {"S3": FlakyExternalObjectHandler},
+        {"S3": _flaky_handler(interrupted)},
     ):
         with pytest.raises(Exception) as e:
             clone(unprivileged_pg_repo, local_repository=PG_MNT, download_all=True)
@@ -212,8 +238,22 @@ def test_pull_download_error(local_engine_empty, unprivileged_pg_repo, clean_min
     assert len(PG_MNT.objects.get_all_objects()) == 2
     assert len(PG_MNT.objects.get_downloaded_objects()) == 1
     assert len(PG_MNT.objects.get_external_object_locations(PG_MNT.objects.get_all_objects())) == 2
+    assert (
+        PG_MNT.run_sql(
+            "SELECT COUNT(*) FROM splitgraph_meta.object_cache_status",
+            return_shape=ResultShape.ONE_ONE,
+        )
+        == 1
+    )
 
     clone(unprivileged_pg_repo, local_repository=PG_MNT, download_all=True)
     assert len(PG_MNT.objects.get_all_objects()) == 2
     assert len(PG_MNT.objects.get_downloaded_objects()) == 2
     assert len(list(PG_MNT.images)) == 2
+    assert (
+        PG_MNT.run_sql(
+            "SELECT COUNT(*) FROM splitgraph_meta.object_cache_status",
+            return_shape=ResultShape.ONE_ONE,
+        )
+        == 2
+    )
