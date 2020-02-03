@@ -325,8 +325,27 @@ def delete_engine_c(yes, force, with_volumes, name):
         )
 
 
+@click.command("log")
+@click.option("-f", "--follow", is_flag=True, help="Stream logs")
+@click.argument("name", default=DEFAULT_ENGINE)
+def engine_log_c(name, follow):
+    """Get logs from a Splitgraph engine."""
+    import docker
+
+    client = docker.from_env()
+    container_name = _get_container_name(name)
+    container = client.containers.get(container_name)
+
+    if follow:
+        for line in container.logs(stream=True):
+            click.echo(line)
+    else:
+        click.echo(container.logs())
+
+
 engine_c.add_command(list_engines_c)
 engine_c.add_command(add_engine_c)
 engine_c.add_command(stop_engine_c)
 engine_c.add_command(start_engine_c)
 engine_c.add_command(delete_engine_c)
+engine_c.add_command(engine_log_c)
