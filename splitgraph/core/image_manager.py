@@ -9,6 +9,7 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.core.common import select, ResultShape
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.image import IMAGE_COLS, Image
+from splitgraph.core.types import ProvenanceData
 from splitgraph.exceptions import ImageNotFoundError
 
 if TYPE_CHECKING:
@@ -160,7 +161,7 @@ class ImageManager:
         created: Optional[datetime] = None,
         comment: Optional[str] = None,
         provenance_type: Optional[str] = None,
-        provenance_data: Optional[Union[Dict[str, Union[str, List[str], List[bool]]], str]] = None,
+        provenance_data: Optional[ProvenanceData] = None,
     ) -> None:
         """
         Registers a new image in the Splitgraph image tree.
@@ -175,6 +176,7 @@ class ImageManager:
             (one of None, FROM, MOUNT, IMPORT, SQL)
         :param provenance_data: Extra provenance data (dictionary).
         """
+
         self.engine.run_sql(
             SQL("SELECT {}.add_image(%s, %s, %s, %s, %s, %s, %s, %s)").format(
                 Identifier(SPLITGRAPH_API_SCHEMA)
@@ -189,6 +191,33 @@ class ImageManager:
                 provenance_type,
                 Json(provenance_data),
             ),
+        )
+
+    def add_batch(self, images: List[Image]) -> None:
+        """
+        Like add, but registers multiple images at the same time. Used in push/pull
+        to avoid a roundtrip to the registry for each image
+        :param images: List of Image objects. Namespace and repository will be patched
+            with this repository.
+        """
+        now = datetime.now()
+        self.engine.run_sql_batch(
+            SQL("SELECT {}.add_image(%s, %s, %s, %s, %s, %s, %s, %s)").format(
+                Identifier(SPLITGRAPH_API_SCHEMA)
+            ),
+            [
+                (
+                    self.repository.namespace,
+                    self.repository.repository,
+                    image.image_hash,
+                    image.parent_id,
+                    image.created or now,
+                    image.comment,
+                    image.provenance_type,
+                    Json(image.provenance_data),
+                )
+                for image in images
+            ],
         )
 
     def delete(self, images: Sequence[str]) -> None:
