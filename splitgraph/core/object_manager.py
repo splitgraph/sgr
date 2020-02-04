@@ -17,6 +17,7 @@ from typing import (
     TYPE_CHECKING,
     cast,
     DefaultDict,
+    Sequence,
 )
 
 from psycopg2.sql import SQL, Identifier
@@ -25,7 +26,12 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, get_singleton
 from splitgraph.core.fragment_manager import FragmentManager
 from splitgraph.core.types import Quals
 from splitgraph.engine import ResultShape, switch_engine
-from splitgraph.exceptions import SplitGraphError, ObjectCacheError, IncompleteObjectTransferError
+from splitgraph.exceptions import (
+    SplitGraphError,
+    ObjectCacheError,
+    IncompleteObjectUploadError,
+    IncompleteObjectDownloadError,
+)
 from splitgraph.hooks.external_objects import get_external_object_handler
 from .common import META_TABLES, select, insert, pretty_size, Tracer, CallbackList
 
@@ -221,7 +227,7 @@ class ObjectManager(FragmentManager):
                     upstream_manager, objects_to_fetch=to_fetch, object_locations=object_locations
                 )
                 difference = []
-            except IncompleteObjectTransferError as e:
+            except IncompleteObjectDownloadError as e:
                 successful = e.successful_objects
                 difference = list(set(to_fetch).difference(successful))
                 if e.reason:
@@ -363,14 +369,14 @@ class ObjectManager(FragmentManager):
         # Perform the actual upload
         external_handler = get_external_object_handler(handler, handler_params)
 
-        partial_failure: Optional[IncompleteObjectTransferError] = None
+        partial_failure: Optional[IncompleteObjectUploadError] = None
         try:
             with switch_engine(self.object_engine):
                 successful = {
                     o: u
                     for o, u in external_handler.upload_objects(new_objects, self.metadata_engine)
                 }
-        except IncompleteObjectTransferError as e:
+        except IncompleteObjectUploadError as e:
             partial_failure = e
             successful = {o: u for o, u in zip(e.successful_objects, e.successful_object_urls)}
 
@@ -714,8 +720,8 @@ class ObjectManager(FragmentManager):
                 remaining_objects_to_fetch, source.object_engine
             )
             return external_objects + remote_objects
-        except IncompleteObjectTransferError as e:
-            raise IncompleteObjectTransferError(
+        except IncompleteObjectDownloadError as e:
+            raise IncompleteObjectDownloadError(
                 reason=e.reason, successful_objects=external_objects + e.successful_objects
             )
 
@@ -725,7 +731,7 @@ class ObjectManager(FragmentManager):
         objects_to_push: List[str],
         handler: str = "DB",
         handler_params: Optional[Dict[Any, Any]] = None,
-    ) -> List[Tuple[str, Optional[str]]]:
+    ) -> Sequence[Tuple[str, Optional[str]]]:
         """
         Uploads physical objects to the remote or some other external location.
 

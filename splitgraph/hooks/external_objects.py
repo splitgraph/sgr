@@ -2,11 +2,15 @@
 Hooks for registering handlers to upload/download objects from external locations into Splitgraph's cache.
 """
 from importlib import import_module
-from typing import Any, Dict, Callable
+from typing import Any, Dict, Callable, List, Tuple, Sequence, TYPE_CHECKING
 
 from splitgraph.config import CONFIG
 from splitgraph.config.config import get_from_section
+
 from splitgraph.exceptions import ExternalHandlerError
+
+if TYPE_CHECKING:
+    from splitgraph.engine import PostgresEngine
 
 
 class ExternalObjectHandler:
@@ -36,7 +40,9 @@ class ExternalObjectHandler:
         """
         self.params = params
 
-    def upload_objects(self, objects, remote_engine):
+    def upload_objects(
+        self, objects: List[str], remote_engine: "PostgresEngine"
+    ) -> Sequence[Tuple[str, str]]:
         """Upload objects from the Splitgraph cache to an external location
 
         :param objects: List of object IDs to upload
@@ -44,7 +50,9 @@ class ExternalObjectHandler:
         :return: A list of successfully uploaded object IDs and URLs they can be found at.
         """
 
-    def download_objects(self, objects, remote_engine):
+    def download_objects(
+        self, objects: List[Tuple[str, str]], remote_engine: "PostgresEngine"
+    ) -> Sequence[str]:
         """Download objects from the external location into the Splitgraph cache.
 
         :param objects: List of tuples `(object_id, object_url)` that this handler had previosly

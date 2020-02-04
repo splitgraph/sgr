@@ -32,7 +32,7 @@ from splitgraph.exceptions import (
     EngineInitializationError,
     ObjectNotFoundError,
     AuthAPIError,
-    IncompleteObjectTransferError,
+    IncompleteObjectDownloadError,
 )
 from splitgraph.hooks.mount_handlers import mount_postgres
 
@@ -1119,7 +1119,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                 self._set_object_schema(object_id, schema_spec=schema_spec)
                 downloaded_objects.append(object_id)
         if len(downloaded_objects) < len(objects):
-            raise IncompleteObjectTransferError(reason=None, successful_objects=downloaded_objects)
+            raise IncompleteObjectDownloadError(reason=None, successful_objects=downloaded_objects)
         return downloaded_objects
 
 

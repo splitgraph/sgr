@@ -5,7 +5,7 @@ import pytest
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.repository import clone
 from splitgraph.engine import ResultShape
-from splitgraph.exceptions import IncompleteObjectTransferError
+from splitgraph.exceptions import IncompleteObjectUploadError, IncompleteObjectDownloadError
 from splitgraph.hooks.s3 import S3ExternalObjectHandler
 from splitgraph.hooks.s3_server import (
     get_object_upload_urls,
@@ -123,7 +123,7 @@ def _flaky_handler(incomplete=False):
             super().download_objects(objects[:1], remote_engine)
             ex = Exception("Something bad happened.")
             if incomplete:
-                raise IncompleteObjectTransferError(reason=ex, successful_objects=[objects[0][0]])
+                raise IncompleteObjectDownloadError(reason=ex, successful_objects=[objects[0][0]])
             else:
                 raise ex
 
@@ -134,7 +134,7 @@ def _flaky_handler(incomplete=False):
             super().upload_objects(objects[:1], remote_engine)
             ex = Exception("Something bad happened.")
             if incomplete:
-                raise IncompleteObjectTransferError(
+                raise IncompleteObjectUploadError(
                     reason=ex, successful_objects=objects[:1], successful_object_urls=objects[:1]
                 )
             else:
