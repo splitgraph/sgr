@@ -12,7 +12,7 @@ from tqdm import tqdm
 from splitgraph.config import CONFIG, get_singleton
 from splitgraph.engine import get_engine, ResultShape
 from splitgraph.engine.postgres.engine import PostgresEngine
-from splitgraph.exceptions import IncompleteObjectTransferError
+from splitgraph.exceptions import IncompleteObjectUploadError, IncompleteObjectDownloadError
 from splitgraph.hooks.external_objects import ExternalObjectHandler
 
 
@@ -86,14 +86,14 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
                         successful.append(object_id)
                         pbar.set_postfix(object=object_id[:10] + "...")
             if len(successful) < len(objects):
-                raise IncompleteObjectTransferError(
+                raise IncompleteObjectUploadError(
                     reason=None, successful_objects=successful, successful_object_urls=successful,
                 )
             # The "URL" in this case is the same object ID: we ask the registry
             # for the actual URL by giving it the object ID.
             return [(s, s) for s in successful]
         except KeyboardInterrupt as e:
-            raise IncompleteObjectTransferError(
+            raise IncompleteObjectUploadError(
                 reason=e, successful_objects=successful, successful_object_urls=successful,
             )
 
@@ -164,7 +164,7 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
                         successful.append(object_id)
                         pbar.set_postfix(object=object_id[:10] + "...")
             if len(successful) < len(object_ids):
-                raise IncompleteObjectTransferError(reason=None, successful_objects=successful)
+                raise IncompleteObjectDownloadError(reason=None, successful_objects=successful)
             return successful
         except KeyboardInterrupt as e:
-            raise IncompleteObjectTransferError(reason=e, successful_objects=successful)
+            raise IncompleteObjectDownloadError(reason=e, successful_objects=successful)

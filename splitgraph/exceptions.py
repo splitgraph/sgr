@@ -61,17 +61,29 @@ class AuthAPIError(SplitGraphError):
     """Exceptions raised by the Auth API"""
 
 
-class IncompleteObjectTransferError(SplitGraphError):
-    """Raised when an error is encountered during upload/download
-    of multiple objects. The handler is supposed to perform any necessary
+class IncompleteObjectUploadError(SplitGraphError):
+    """Raised when an error is encountered during upload of multiple objects.
+    The handler is supposed to perform any necessary
     cleanup and reraise `reason` at the earliest opportunity."""
 
     def __init__(
         self,
         reason: Optional[BaseException],
         successful_objects: List[str],
-        successful_object_urls: Optional[List[str]] = None,
+        successful_object_urls: List[str],
     ):
         self.reason = reason
         self.successful_objects = successful_objects
         self.successful_object_urls = successful_object_urls
+
+
+class IncompleteObjectDownloadError(SplitGraphError):
+    """Raised when an error is encountered during download of multiple objects.
+    The handler is supposed to perform any necessary
+    cleanup and reraise `reason` at the earliest opportunity."""
+
+    def __init__(
+        self, reason: Optional[BaseException], successful_objects: List[str],
+    ):
+        self.reason = reason
+        self.successful_objects = successful_objects

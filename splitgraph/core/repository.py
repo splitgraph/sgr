@@ -26,7 +26,7 @@ from splitgraph.exceptions import (
     CheckoutError,
     EngineInitializationError,
     TableNotFoundError,
-    IncompleteObjectTransferError,
+    IncompleteObjectUploadError,
 )
 from .common import (
     manage_audit_triggers,
@@ -1085,7 +1085,7 @@ def _sync(
     # Get the remote log and the list of objects we need to fetch.
     logging.info("Gathering remote metadata...")
 
-    partial_upload_failure: Optional[IncompleteObjectTransferError] = None
+    partial_upload_failure: Optional[IncompleteObjectUploadError] = None
 
     try:
         new_images, table_meta, object_locations, object_meta, tags = gather_sync_metadata(
@@ -1113,7 +1113,7 @@ def _sync(
                 )
                 new_locations = [(o, u, handler) for o, u in new_uploads if u]
                 successful = [o for o, _ in new_uploads]
-            except IncompleteObjectTransferError as e:
+            except IncompleteObjectUploadError as e:
                 partial_upload_failure = e
                 new_locations = [
                     (o, u, handler)
