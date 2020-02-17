@@ -152,8 +152,8 @@ def alter_c(repository):
 
 
 @click.command(name="splitfile")
-@click.argument("repository_1", type=RepositoryType(exists=True))
-@click.argument("repository_2", type=RepositoryType(exists=True))
+@click.argument("repository_1", type=RepositoryType())
+@click.argument("repository_2", type=RepositoryType())
 def splitfile_c(repository_1, repository_2):
     """
     Generate a sample Splitfile.
