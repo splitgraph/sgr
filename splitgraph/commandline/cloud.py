@@ -62,7 +62,7 @@ def register_c(username, password, email, remote, accept_tos):
         },
     }
     config_path = patch_and_save_config(CONFIG, config_patch)
-    inject_config_into_engines(config_path)
+    inject_config_into_engines(CONFIG["SG_ENGINE_PREFIX"], config_path)
 
     click.echo("Done.")
 
@@ -115,7 +115,7 @@ def login_c(username, password, remote, overwrite):
         click.echo("Acquired new API keys")
 
     config_path = patch_and_save_config(CONFIG, config_patch)
-    inject_config_into_engines(config_path)
+    inject_config_into_engines(CONFIG["SG_ENGINE_PREFIX"], config_path)
 
 
 @click.command("curl", context_settings=dict(ignore_unknown_options=True))
