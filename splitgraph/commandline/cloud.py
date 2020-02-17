@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 import click
 
 from splitgraph.cloud import get_token_claim
-from splitgraph.commandline.common import patch_and_save_config
+from splitgraph.commandline.engine import patch_and_save_config, inject_config_into_engines
 
 
 @click.command("register")
@@ -61,7 +61,8 @@ def register_c(username, password, email, remote, accept_tos):
             }
         },
     }
-    patch_and_save_config(CONFIG, config_patch)
+    config_path = patch_and_save_config(CONFIG, config_patch)
+    inject_config_into_engines(config_path)
 
     click.echo("Done.")
 
@@ -113,7 +114,8 @@ def login_c(username, password, remote, overwrite):
         config_patch["remotes"][remote]["SG_ENGINE_PWD"] = secret
         click.echo("Acquired new API keys")
 
-    patch_and_save_config(CONFIG, config_patch)
+    config_path = patch_and_save_config(CONFIG, config_patch)
+    inject_config_into_engines(config_path)
 
 
 @click.command("curl", context_settings=dict(ignore_unknown_options=True))

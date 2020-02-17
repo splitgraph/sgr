@@ -9,13 +9,14 @@ from urllib.parse import urlparse
 
 import click
 
-from splitgraph.commandline.common import print_table, patch_and_save_config
+from splitgraph.commandline.common import print_table
 
 if TYPE_CHECKING:
     from docker.models.containers import Container
 
 
 DEFAULT_ENGINE = "default"
+SG_MANAGED_PREFIX = "splitgraph_engine_"
 
 
 def copy_to_container(container: "Container", source_path: str, target_path: str) -> None:
@@ -42,6 +43,44 @@ def copy_to_container(container: "Container", source_path: str, target_path: str
 
     stream.seek(0)
     container.put_archive(path=os.path.dirname(target_path), data=stream.read())
+
+
+def patch_and_save_config(config, patch):
+    from splitgraph.config.config import patch_config
+    from splitgraph.config.system_config import HOME_SUB_DIR
+    from splitgraph.config.export import overwrite_config
+    from pathlib import Path
+    import os
+
+    config_path = config["SG_CONFIG_FILE"]
+    if not config_path:
+        # Default to creating a config in the user's homedir rather than local.
+        config_dir = Path(os.environ["HOME"]) / Path(HOME_SUB_DIR)
+        config_path = config_dir / Path(".sgconfig")
+        click.echo("No config file detected, creating one at %s" % config_path)
+        config_dir.mkdir(exist_ok=True, parents=True)
+    else:
+        click.echo("Updating the existing config file at %s" % config_path)
+    new_config = patch_config(config, patch)
+    overwrite_config(new_config, config_path)
+    return str(config_path)
+
+
+def inject_config_into_engines(config_path):
+    """
+    Copy the current config into all engines that are managed by `sgr engine`. This
+    is so that the engine has the right credentials and settings for when we do
+    layered querying (a Postgres client queries the engine directly and it
+    has to download objects etc).
+
+    :param config_path: Path to the config file.
+    """
+    engine_containers = list_engines(include_all=True)
+    if engine_containers:
+        logging.info("Copying the config file at %s into all current engines", config_path)
+        for container in engine_containers:
+            copy_to_container(container, config_path, "/.sgconfig")
+            logging.info("Config updated for container %s", container.name)
 
 
 def _get_container_name(engine_name: str) -> str:
@@ -81,6 +120,14 @@ def engine_c():
     """Manage running Splitgraph engines. This is a wrapper around the relevant Docker commands."""
 
 
+def list_engines(include_all=False):
+    import docker
+
+    client = docker.from_env()
+    containers = client.containers.list(all=include_all)
+    return [c for c in containers if c.name.startswith(SG_MANAGED_PREFIX)]
+
+
 @click.command(name="list")
 @click.option(
     "-a", "--include-all", is_flag=True, default=False, help="Include stopped engine containers."
@@ -92,18 +139,12 @@ def list_engines_c(include_all):
     (whose names start with "splitgraph_engine_". To operate other engines,
     use Docker CLI directly.
     """
-    import docker
 
-    client = docker.from_env()
-    containers = client.containers.list(all=include_all)
-
+    containers = list_engines(include_all=include_all)
     if containers:
         our_containers = []
         for container in containers:
-            container_name = container.name
-            if not container_name.startswith("splitgraph_engine_"):
-                continue
-            engine_name = container_name[18:]
+            engine_name = container.name[len(SG_MANAGED_PREFIX) :]
             ports = container.attrs["NetworkSettings"]["Ports"]
             ports = ",".join("%s -> %s" % i for i in ports.items())
             our_containers.append((engine_name, container.short_id, container.status, ports))
@@ -152,8 +193,6 @@ def add_engine_c(
     """
     from splitgraph.engine.postgres.engine import PostgresEngine
     from splitgraph.config import CONFIG
-    from splitgraph.config.config import patch_config
-    from splitgraph.config.export import overwrite_config
     import docker
     from docker.types import Mount
 
@@ -241,8 +280,7 @@ def add_engine_c(
     else:
         config_path = CONFIG["SG_CONFIG_FILE"]
 
-    click.echo("Copying in the config file")
-    copy_to_container(container, config_path, "/.sgconfig")
+    inject_config_into_engines(config_path)
     click.echo("Done.")
 
 

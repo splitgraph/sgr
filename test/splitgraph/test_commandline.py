@@ -5,7 +5,7 @@ import subprocess
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
-from unittest.mock import patch, mock_open, ANY, PropertyMock, Mock
+from unittest.mock import patch, mock_open, ANY, PropertyMock, Mock, sentinel
 
 import docker
 import docker.errors
@@ -23,6 +23,7 @@ from splitgraph.commandline.engine import (
     stop_engine_c,
     delete_engine_c,
     start_engine_c,
+    inject_config_into_engines,
 )
 from splitgraph.commandline.example import generate_c, alter_c, splitfile_c
 from splitgraph.commandline.image_creation import reindex_c
@@ -1266,18 +1267,17 @@ def test_commandline_engine_creation_config_patching(test_case, fs):
 
     # Patch Docker stuff out (we've exercised the actual engine creation/connections
     # in the previous test) and test that `sgr engine add` correctly inserts the
-    # new engine into the config file and calls copy_to_container to copy
-    # the new config into the new engine's root.
-
-    client = Mock()
-    client.api.base_url = "tcp://localhost:3333"
+    # new engine into the config file and calls inject_config_into_engines to synch
+    # up the configuration.
     env = os.environ.copy()
     env["HOME"] = "/home/user"
     Path(env["HOME"]).mkdir(exist_ok=True, parents=True)
+    client = Mock()
+    client.api.base_url = "tcp://localhost:3333"
 
     with patch("splitgraph.config.CONFIG", source_config):
         with patch("docker.from_env", return_value=client):
-            with patch("splitgraph.commandline.engine.copy_to_container") as ctc:
+            with patch("splitgraph.commandline.engine.inject_config_into_engines") as ic:
                 result = runner.invoke(
                     add_engine_c,
                     args=["--username", "not_sgr", "--no-init", engine_name],
@@ -1288,11 +1288,27 @@ def test_commandline_engine_creation_config_patching(test_case, fs):
                 assert result.exit_code == 0
                 print(result.output)
 
+                ic.assert_called_once_with(target_path)
+
     assert os.path.exists(target_path)
     with open(target_path, "r") as f:
         actual_lines = f.read().split("\n")
     expected_lines = target_config.split("\n")
     assert expected_lines == actual_lines
+
+
+def test_inject_config_into_engines_unit():
+    client = Mock()
+    client.api.base_url = "tcp://localhost:3333"
+    container = Mock()
+    container.name = "splitgraph_engine_default"
+
+    client.containers.list.return_value = [container]
+
+    with patch("docker.from_env", return_value=client):
+        with patch("splitgraph.commandline.engine.copy_to_container") as ctc:
+            inject_config_into_engines(sentinel.config_path)
+            assert ctc.called_once_with(container, sentinel.config_path, "/.sgconfig")
 
 
 def test_commandline_engine_creation_config_patching_integration(teardown_test_engine, tmp_path):
@@ -1409,24 +1425,29 @@ def test_commandline_registration_normal():
     with patch("splitgraph.config.export.overwrite_config"):
         with patch("splitgraph.config.config.patch_config") as pc:
             with patch("splitgraph.config.CONFIG", source_config):
-                # First don't agree to ToS, then agree
-                args = [
-                    "--username",
-                    "someuser",
-                    "--password",
-                    "somepassword",
-                    "--email",
-                    "someuser@example.com",
-                    "--remote",
-                    _REMOTE,
-                ]
-                result = runner.invoke(register_c, args=args, catch_exceptions=False, input="n",)
-                assert result.exit_code == 1
-                assert "Sample ToS message" in result.output
+                with patch("splitgraph.commandline.cloud.inject_config_into_engines") as ic:
+                    # First don't agree to ToS, then agree
+                    args = [
+                        "--username",
+                        "someuser",
+                        "--password",
+                        "somepassword",
+                        "--email",
+                        "someuser@example.com",
+                        "--remote",
+                        _REMOTE,
+                    ]
+                    result = runner.invoke(
+                        register_c, args=args, catch_exceptions=False, input="n",
+                    )
+                    assert result.exit_code == 1
+                    assert "Sample ToS message" in result.output
 
-                result = runner.invoke(register_c, args=args, catch_exceptions=False, input="y",)
-                assert result.exit_code == 0
-                assert "Sample ToS message" in result.output
+                    result = runner.invoke(
+                        register_c, args=args, catch_exceptions=False, input="y",
+                    )
+                    assert result.exit_code == 0
+                    assert "Sample ToS message" in result.output
 
     pc.assert_called_once_with(
         source_config,
@@ -1443,6 +1464,8 @@ def test_commandline_registration_normal():
             },
         },
     )
+
+    ic.assert_called_once_with(source_config["SG_CONFIG_FILE"])
 
 
 @httpretty.activate
@@ -1498,21 +1521,22 @@ def test_commandline_login_normal():
 
     with patch("splitgraph.config.export.overwrite_config"):
         with patch("splitgraph.config.config.patch_config") as pc:
-            with patch("splitgraph.config.CONFIG", source_config):
-                result = runner.invoke(
-                    login_c,
-                    args=[
-                        "--username",
-                        "someuser",
-                        "--password",
-                        "somepassword",
-                        "--remote",
-                        _REMOTE,
-                    ],
-                    catch_exceptions=False,
-                )
-                assert result.exit_code == 0
-                print(result.output)
+            with patch("splitgraph.commandline.cloud.inject_config_into_engines") as ic:
+                with patch("splitgraph.config.CONFIG", source_config):
+                    result = runner.invoke(
+                        login_c,
+                        args=[
+                            "--username",
+                            "someuser",
+                            "--password",
+                            "somepassword",
+                            "--remote",
+                            _REMOTE,
+                        ],
+                        catch_exceptions=False,
+                    )
+                    assert result.exit_code == 0
+                    print(result.output)
 
     pc.assert_called_once_with(
         source_config,
@@ -1526,25 +1550,27 @@ def test_commandline_login_normal():
             },
         },
     )
+    ic.assert_called_once_with(source_config["SG_CONFIG_FILE"])
 
     # Do the same overwriting the current API keys
     with patch("splitgraph.config.export.overwrite_config"):
         with patch("splitgraph.config.config.patch_config") as pc:
-            with patch("splitgraph.config.CONFIG", source_config):
-                result = runner.invoke(
-                    login_c,
-                    args=[
-                        "--username",
-                        "someuser",
-                        "--password",
-                        "somepassword",
-                        "--remote",
-                        _REMOTE,
-                        "--overwrite",
-                    ],
-                    catch_exceptions=False,
-                )
-                assert result.exit_code == 0
+            with patch("splitgraph.commandline.cloud.inject_config_into_engines") as ic:
+                with patch("splitgraph.config.CONFIG", source_config):
+                    result = runner.invoke(
+                        login_c,
+                        args=[
+                            "--username",
+                            "someuser",
+                            "--password",
+                            "somepassword",
+                            "--remote",
+                            _REMOTE,
+                            "--overwrite",
+                        ],
+                        catch_exceptions=False,
+                    )
+                    assert result.exit_code == 0
 
     pc.assert_called_once_with(
         source_config,
@@ -1560,6 +1586,7 @@ def test_commandline_login_normal():
             },
         },
     )
+    ic.assert_called_once_with(source_config["SG_CONFIG_FILE"])
 
 
 def _make_dummy_config_dict():
