@@ -10,12 +10,10 @@ import click
 from splitgraph.commandline.common import RepositoryType
 from splitgraph.config import CONFIG
 from splitgraph.config.config import get_from_subsection
-from splitgraph.core.engine import repository_exists
-from splitgraph.exceptions import RepositoryNotFoundError
 
 
 @click.command(name="pull")
-@click.argument("repository", type=RepositoryType())
+@click.argument("repository", type=RepositoryType(exists=True))
 @click.option(
     "-d",
     "--download-all",
@@ -66,7 +64,7 @@ _REMOTES = list(CONFIG.get("remotes", []))
 
 
 @click.command(name="push")
-@click.argument("repository", type=RepositoryType())
+@click.argument("repository", type=RepositoryType(exists=True))
 @click.argument("remote_repository", required=False, type=RepositoryType())
 @click.option(
     "-r",
@@ -125,9 +123,6 @@ def push_c(
     from splitgraph.core.repository import Repository
     from splitgraph.engine import get_engine
 
-    if not repository_exists(repository):
-        raise RepositoryNotFoundError("Unknown repository %s" % repository)
-
     if remote_repository and remote:
         remote_repository = Repository.from_template(remote_repository, engine=get_engine(remote))
     elif remote:
@@ -178,7 +173,7 @@ def _make_push_target(repository, remote):
 
 
 @click.command(name="publish")
-@click.argument("repository", type=RepositoryType())
+@click.argument("repository", type=RepositoryType(exists=True))
 @click.argument("tag")
 @click.option("-r", "--readme", type=click.File("r"))
 @click.option(
@@ -209,7 +204,7 @@ def publish_c(repository, tag, readme, skip_provenance, skip_previews):
 
 
 @click.command(name="upstream")
-@click.argument("repository", type=RepositoryType())
+@click.argument("repository", type=RepositoryType(exists=True))
 @click.option(
     "-s",
     "--set",

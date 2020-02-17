@@ -61,7 +61,7 @@ def checkout_c(image_spec, force, uncheckout, layered):
 
 
 @click.command(name="commit")
-@click.argument("repository", type=RepositoryType())
+@click.argument("repository", type=RepositoryType(exists=True))
 @click.option(
     "-s",
     "--snap",
@@ -197,7 +197,7 @@ def tag_c(image_spec, tag, remove):
             for img, tags in tag_dict.items():
                 # Sometimes HEAD is none (if we've just cloned the repo)
                 if img:
-                    click.echo("%s: %s" % (img[:12], ", ".join(tags)))
+                    click.echo("%s: %s" % (img[:12], ", ".join(sorted(tags))))
         else:
             click.echo(", ".join(tag_dict[repository.images[image].image_hash]))
         return

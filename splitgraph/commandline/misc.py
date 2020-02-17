@@ -98,7 +98,7 @@ def rm_c(image_spec, remote, yes):
 
 
 @click.command(name="prune")
-@click.argument("repository", type=RepositoryType())
+@click.argument("repository", type=RepositoryType(exists=True))
 @click.option(
     "-r", "--remote", help="Perform the deletion on a remote instead, specified by its alias"
 )
@@ -234,7 +234,7 @@ def config_c(no_shielding, config_format):
 
 
 @click.command(name="dump")
-@click.argument("repository", type=RepositoryType())
+@click.argument("repository", type=RepositoryType(exists=True))
 @click.option("--exclude-object-contents", is_flag=True, default=False)
 def dump_c(repository, exclude_object_contents):
     """
