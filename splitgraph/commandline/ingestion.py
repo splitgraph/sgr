@@ -63,7 +63,7 @@ def csv_export(image_spec, query, file, layered):
 
 
 @click.command(name="import")
-@click.argument("repository", type=RepositoryType())
+@click.argument("repository", type=RepositoryType(exists=True))
 @click.argument("table")
 @click.option(
     "-f",

@@ -139,7 +139,7 @@ def generate_c(repository):
 
 
 @click.command(name="alter")
-@click.argument("repository", type=RepositoryType())
+@click.argument("repository", type=RepositoryType(exists=True))
 def alter_c(repository):
     """
     Alter the table in an example repository.
@@ -152,8 +152,8 @@ def alter_c(repository):
 
 
 @click.command(name="splitfile")
-@click.argument("repository_1", type=RepositoryType())
-@click.argument("repository_2", type=RepositoryType())
+@click.argument("repository_1", type=RepositoryType(exists=True))
+@click.argument("repository_2", type=RepositoryType(exists=True))
 def splitfile_c(repository_1, repository_2):
     """
     Generate a sample Splitfile.

@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 @click.command(name="log")
-@click.argument("repository", type=RepositoryType())
+@click.argument("repository", type=RepositoryType(exists=True))
 @click.option("-t", "--tree", is_flag=True)
 def log_c(repository, tree):
     """
@@ -353,7 +353,7 @@ def sql_c(sql, schema, image, show_all):
 
 
 @click.command(name="status")
-@click.argument("repository", required=False, type=RepositoryType())
+@click.argument("repository", required=False, type=RepositoryType(exists=True))
 def status_c(repository):
     """
     Show the status of the Splitgraph engine. If a repository is passed, show information about

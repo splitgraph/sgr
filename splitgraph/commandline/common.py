@@ -6,6 +6,8 @@ from typing import Optional, Tuple, List, TYPE_CHECKING
 import click
 from click.core import Context, Parameter
 
+from splitgraph.exceptions import RepositoryNotFoundError
+
 if TYPE_CHECKING:
     from splitgraph.core.repository import Repository
 
@@ -44,12 +46,21 @@ class ImageType(click.ParamType):
 class RepositoryType(click.ParamType):
     name = "Repository"
 
+    def __init__(self, exists: bool = False) -> None:
+        self.exists = exists
+
     def convert(
         self, value: str, param: Optional[Parameter], ctx: Optional[Context]
     ) -> "Repository":
         from splitgraph.core.repository import Repository
 
-        return Repository.from_schema(value)
+        result = Repository.from_schema(value)
+        if self.exists:
+            from splitgraph.core.engine import repository_exists
+
+            if not repository_exists(result):
+                raise RepositoryNotFoundError("Unknown repository %s" % result)
+        return result
 
 
 class Color:
