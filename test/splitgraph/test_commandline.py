@@ -4,6 +4,7 @@ import shutil
 import subprocess
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 from unittest.mock import patch, mock_open, ANY, PropertyMock, Mock
 
 import docker
@@ -1199,7 +1200,7 @@ _CONFIG_DEFAULTS = (
         (
             {},
             "default",
-            ".sgconfig",
+            "/home/user/.splitgraph/.sgconfig",
             "[defaults]\nSG_ENGINE_USER=not_sgr\n"
             "SG_ENGINE_PWD=pwd\nSG_ENGINE_ADMIN_USER=not_sgr\n"
             "SG_ENGINE_ADMIN_PWD=pwd\n"
@@ -1210,7 +1211,7 @@ _CONFIG_DEFAULTS = (
         (
             {},
             "secondary",
-            ".sgconfig",
+            "/home/user/.splitgraph/.sgconfig",
             "[defaults]\n" + _CONFIG_DEFAULTS + "\n[remote: secondary]\n"
             "SG_ENGINE_HOST=localhost\nSG_ENGINE_PORT=5432\n"
             "SG_ENGINE_FDW_HOST=localhost\nSG_ENGINE_FDW_PORT=5432\n"
@@ -1257,41 +1258,40 @@ _CONFIG_DEFAULTS = (
         ),
     ],
 )
-def test_commandline_engine_creation_config_patching(test_case):
+def test_commandline_engine_creation_config_patching(test_case, fs):
     runner = CliRunner()
 
     source_config_patch, engine_name, target_path, target_config = test_case
     source_config = patch_config(DEFAULTS, source_config_patch)
 
-    # Patch everything out (we've exercised the actual engine creation/connections
+    # Patch Docker stuff out (we've exercised the actual engine creation/connections
     # in the previous test) and test that `sgr engine add` correctly inserts the
     # new engine into the config file and calls copy_to_container to copy
     # the new config into the new engine's root.
 
     client = Mock()
     client.api.base_url = "tcp://localhost:3333"
-    m = mock_open()
-    with patch("splitgraph.config.export.open", m, create=True):
-        with patch("splitgraph.config.CONFIG", source_config):
-            with patch("docker.from_env", return_value=client):
-                with patch("splitgraph.commandline.engine.copy_to_container") as ctc:
-                    result = runner.invoke(
-                        add_engine_c,
-                        args=["--username", "not_sgr", "--no-init", engine_name],
-                        input="pwd\npwd\n",
-                        catch_exceptions=False,
-                    )
-                    assert result.exit_code == 0
-                    print(result.output)
+    env = os.environ.copy()
+    env["HOME"] = "/home/user"
+    Path(env["HOME"]).mkdir(exist_ok=True, parents=True)
 
-    m.assert_called_once_with(target_path, "w")
-    handle = m()
-    assert handle.write.call_count == 1
-    ctc.assert_called_once_with(ANY, target_path, "/.sgconfig")
+    with patch("splitgraph.config.CONFIG", source_config):
+        with patch("docker.from_env", return_value=client):
+            with patch("splitgraph.commandline.engine.copy_to_container") as ctc:
+                result = runner.invoke(
+                    add_engine_c,
+                    args=["--username", "not_sgr", "--no-init", engine_name],
+                    input="pwd\npwd\n",
+                    catch_exceptions=False,
+                    env=env,
+                )
+                assert result.exit_code == 0
+                print(result.output)
 
+    assert os.path.exists(target_path)
+    with open(target_path, "r") as f:
+        actual_lines = f.read().split("\n")
     expected_lines = target_config.split("\n")
-    actual_config = handle.write.call_args_list[0][0][0]
-    actual_lines = actual_config.split("\n")
     assert expected_lines == actual_lines
 
 

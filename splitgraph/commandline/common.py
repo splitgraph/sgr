@@ -84,3 +84,24 @@ def print_table(rows: List[Tuple[str, ...]], column_width: int = 15) -> None:
     click.echo(
         "\n".join(["".join([("{:" + str(column_width) + "}").format(x) for x in r]) for r in rows])
     )
+
+
+def patch_and_save_config(config, patch):
+    from splitgraph.config.config import patch_config
+    from splitgraph.config.system_config import HOME_SUB_DIR
+    from splitgraph.config.export import overwrite_config
+    from pathlib import Path
+    import os
+
+    config_path = config["SG_CONFIG_FILE"]
+    if not config_path:
+        # Default to creating a config in the user's homedir rather than local.
+        config_dir = Path(os.environ["HOME"]) / Path(HOME_SUB_DIR)
+        config_path = config_dir / Path(".sgconfig")
+        click.echo("No config file detected, creating one at %s" % config_path)
+        config_dir.mkdir(exist_ok=True, parents=True)
+    else:
+        click.echo("Updating the existing config file at %s" % config_path)
+    new_config = patch_config(config, patch)
+    overwrite_config(new_config, config_path)
+    return config_path

@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 import click
 
-from splitgraph.commandline.common import print_table
+from splitgraph.commandline.common import print_table, patch_and_save_config
 
 if TYPE_CHECKING:
     from docker.models.containers import Container
@@ -231,21 +231,15 @@ def add_engine_c(
         engine.commit()
         click.echo("Engine initialized successfully.")
 
-    config_path = CONFIG["SG_CONFIG_FILE"]
     if not no_sgconfig:
-        if not config_path:
-            click.echo("No config file detected, creating one locally")
-            config_path = ".sgconfig"
-        else:
-            click.echo("Updating the existing config file at %s" % config_path)
-
         if name != DEFAULT_ENGINE and not set_default:
             config_patch = {"remotes": {name: conn_params}}
         else:
             config_patch = conn_params
 
-        new_config = patch_config(CONFIG, config_patch)
-        overwrite_config(new_config, config_path)
+        config_path = patch_and_save_config(CONFIG, config_patch)
+    else:
+        config_path = CONFIG["SG_CONFIG_FILE"]
 
     click.echo("Copying in the config file")
     copy_to_container(container, config_path, "/.sgconfig")
