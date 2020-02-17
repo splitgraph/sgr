@@ -10,6 +10,8 @@ DEFAULTS: ConfigDict = {
     # Logging threshold (log messages not emitted below this). Accepted values are
     # CRITICAL, ERROR, WARNING, INFO and DEBUG.
     "SG_LOGLEVEL": "WARNING",
+    # Prefix for Docker containers that are treated as Splitgraph engines.
+    "SG_ENGINE_PREFIX": "splitgraph_engine_",
     "SG_NAMESPACE": "sg-default-ns",
     "SG_ENGINE_FDW_HOST": "localhost",
     "SG_ENGINE_FDW_PORT": "5432",

@@ -46,6 +46,8 @@ SPLITGRAPH_ENGINE_CONTAINER = os.getenv(
     "SG_TEST_LOCAL_ENGINE_CONTAINER", "architecture_local_engine_1"
 )
 
+SG_ENGINE_PREFIX = CONFIG["SG_ENGINE_PREFIX"]
+
 # Namespace to push to on the remote engine that the user owns
 REMOTE_NAMESPACE = get_engine("unprivileged_remote_engine").conn_params["SG_NAMESPACE"]
 

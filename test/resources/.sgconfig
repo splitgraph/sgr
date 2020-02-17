@@ -12,6 +12,9 @@ SG_ENGINE_ADMIN_PWD=supersecure
 SG_ENGINE_POSTGRES_DB_NAME=postgres
 SG_META_SCHEMA=splitgraph_meta
 
+; Change the engine prefix so that we don't conflict with actual engines devs use
+SG_ENGINE_PREFIX=splitgraph_test_engine_
+
 ; Must be accessible from both the host and the actual engine container
 ; Minio uses urlsplit which treats hostnames without a dot as a "schema" (protocol)
 ; so this is to fool it into parsing the S3 host correctly.

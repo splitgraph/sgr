@@ -16,7 +16,6 @@ if TYPE_CHECKING:
 
 
 DEFAULT_ENGINE = "default"
-SG_MANAGED_PREFIX = "splitgraph_engine_"
 
 
 def copy_to_container(container: "Container", source_path: str, target_path: str) -> None:
@@ -66,16 +65,17 @@ def patch_and_save_config(config, patch):
     return str(config_path)
 
 
-def inject_config_into_engines(config_path):
+def inject_config_into_engines(engine_prefix, config_path):
     """
     Copy the current config into all engines that are managed by `sgr engine`. This
     is so that the engine has the right credentials and settings for when we do
     layered querying (a Postgres client queries the engine directly and it
     has to download objects etc).
 
+    :param engine_prefix: Prefix for Docker containers that are considered to be engines
     :param config_path: Path to the config file.
     """
-    engine_containers = list_engines(include_all=True)
+    engine_containers = list_engines(engine_prefix, include_all=True)
     if engine_containers:
         logging.info("Copying the config file at %s into all current engines", config_path)
         for container in engine_containers:
@@ -84,15 +84,21 @@ def inject_config_into_engines(config_path):
 
 
 def _get_container_name(engine_name: str) -> str:
-    return "splitgraph_engine_" + engine_name
+    from splitgraph.config import CONFIG
+
+    return "%s%s" % (CONFIG["SG_ENGINE_PREFIX"], engine_name)
 
 
 def _get_data_volume_name(engine_name: str) -> str:
-    return "splitgraph_engine_%s_data" % engine_name
+    from splitgraph.config import CONFIG
+
+    return "%s%s_data" % (CONFIG["SG_ENGINE_PREFIX"], engine_name)
 
 
 def _get_metadata_volume_name(engine_name: str) -> str:
-    return "splitgraph_engine_%s_metadata" % engine_name
+    from splitgraph.config import CONFIG
+
+    return "%s%s_metadata" % (CONFIG["SG_ENGINE_PREFIX"], engine_name)
 
 
 def _convert_source_path(path: str) -> str:
@@ -120,12 +126,12 @@ def engine_c():
     """Manage running Splitgraph engines. This is a wrapper around the relevant Docker commands."""
 
 
-def list_engines(include_all=False):
+def list_engines(prefix, include_all=False):
     import docker
 
     client = docker.from_env()
     containers = client.containers.list(all=include_all)
-    return [c for c in containers if c.name.startswith(SG_MANAGED_PREFIX)]
+    return [c for c in containers if c.name.startswith(prefix)]
 
 
 @click.command(name="list")
@@ -139,12 +145,13 @@ def list_engines_c(include_all):
     (whose names start with "splitgraph_engine_". To operate other engines,
     use Docker CLI directly.
     """
+    from splitgraph.config import CONFIG
 
-    containers = list_engines(include_all=include_all)
+    containers = list_engines(include_all=include_all, prefix=CONFIG["SG_ENGINE_PREFIX"])
     if containers:
         our_containers = []
         for container in containers:
-            engine_name = container.name[len(SG_MANAGED_PREFIX) :]
+            engine_name = container.name[len(CONFIG["SG_ENGINE_PREFIX"]) :]
             ports = container.attrs["NetworkSettings"]["Ports"]
             ports = ",".join("%s -> %s" % i for i in ports.items())
             our_containers.append((engine_name, container.short_id, container.status, ports))
@@ -280,7 +287,7 @@ def add_engine_c(
     else:
         config_path = CONFIG["SG_CONFIG_FILE"]
 
-    inject_config_into_engines(config_path)
+    inject_config_into_engines(CONFIG["SG_ENGINE_PREFIX"], config_path)
     click.echo("Done.")
 
 
