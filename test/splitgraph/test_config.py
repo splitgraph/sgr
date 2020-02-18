@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+from contextlib import contextmanager
 from unittest.mock import patch
 
 import pytest
@@ -17,6 +18,17 @@ from splitgraph.config.system_config import (
     VALID_CONFIG_FILE_NAMES,
 )
 from splitgraph.core.engine import _parse_paths_overrides
+
+
+@contextmanager
+def patch_os_environ(update):
+    # Context manager to inject some extra values into the environment, e.g.
+    # when SG_CONFIG_FILE is already set and is used by other tests and we
+    # want to test it being overridden.
+    mock_environ = os.environ.copy()
+    mock_environ.update(update)
+    with patch.object(os, "environ", mock_environ):
+        yield
 
 
 def test_every_key_has_matching_arg_key():
@@ -72,7 +84,7 @@ def test_get_argument_config_value_duplicate():
 def test_get_environment_config_value():
     mock_environ = {"SOME_ARBITRARY_KEY": "foo bar"}
 
-    with patch.object(os, "environ", mock_environ):
+    with patch_os_environ(mock_environ):
         val = get_environment_config_value("SOME_ARBITRARY_KEY")
 
         assert val == "foo bar"
@@ -114,7 +126,7 @@ def test_get_explicit_config_file_location_from_env_existing_file(fs):
 
     assert os.path.isfile(existing_file)
 
-    with patch.object(os, "environ", mock_environ):
+    with patch_os_environ(mock_environ):
         loc = get_explicit_config_file_location()
 
         assert loc == "/var/mock/foo_bar.cfg"
@@ -130,7 +142,7 @@ def test_get_explicit_config_file_location_from_env_nonexisting_file(fs):
 
     assert not os.path.isfile(dne_file)
 
-    with patch.object(os, "environ", mock_environ):
+    with patch_os_environ(mock_environ):
         loc = get_explicit_config_file_location()
 
         assert loc is None
@@ -183,7 +195,7 @@ def test_get_explicit_config_file_existing_dirs_via_env(fs):
     # Try with duplicates which should be filtered
     mock_environ = {"SG_CONFIG_DIRS": "%s:%s:%s" % (exists_dir_1, exists_dir_1, exists_dir_2)}
 
-    with patch.object(os, "environ", mock_environ):
+    with patch_os_environ(mock_environ):
         dirs = get_explicit_config_file_dirs()
 
         assert len(dirs) == 2
@@ -201,7 +213,7 @@ def test_get_explicit_config_file_existing_single_dir_via_env(fs):
     # singular
     mock_environ = {"SG_CONFIG_DIR": exists_dir}
 
-    with patch.object(os, "environ", mock_environ):
+    with patch_os_environ(mock_environ):
         dirs = get_explicit_config_file_dirs()
 
         assert len(dirs) == 1
@@ -216,7 +228,7 @@ def test_get_explicit_config_file_non_existing_single_dir_via_env(fs):
     # singular
     mock_environ = {"SG_CONFIG_DIR": dne_dir}
 
-    with patch.object(os, "environ", mock_environ):
+    with patch_os_environ(mock_environ):
         dirs = get_explicit_config_file_dirs()
 
         assert len(dirs) == 0
@@ -241,7 +253,7 @@ def test_get_explicit_config_file_existing_single_and_plural_dir_via_env(fs):
         "SG_CONFIG_DIRS": "%s:%s:%s" % (exists_dir_1, exists_dir_2, exists_dir_3),
     }
 
-    with patch.object(os, "environ", mock_environ):
+    with patch_os_environ(mock_environ):
         dirs = get_explicit_config_file_dirs()
 
         assert len(dirs) == 3
@@ -262,7 +274,7 @@ def test_get_explicit_config_file_non_existing_dirs_via_env(fs):
         "SG_CONFIG_DIRS": "%s:%s:%s" % (non_exist_dir_1, non_exist_dir_1, non_exist_dir_2),
     }
 
-    with patch.object(os, "environ", mock_environ):
+    with patch_os_environ(mock_environ):
         dirs = get_explicit_config_file_dirs()
 
         assert len(dirs) == 0
@@ -389,7 +401,7 @@ def test_SG_CONFIG_FILE_valid_names_home_sub_dir(fs, config_file_name):
 
     fs.create_file(config_file)
 
-    with patch.object(os, "environ", mock_environ):
+    with patch_os_environ(mock_environ):
         assert os.path.isdir(home_sub_dir)
         assert os.path.isfile(config_file)
 
@@ -436,26 +448,18 @@ def _write_config_file(fs, lines):
     fake_cwd = os.getcwd()
     fake_config_file = os.path.join(fake_cwd, ".sgconfig")
 
-    # If running tests in docker, SG_CONFIG_FILE is already set and would
-    # override our fake_config_file. In that case explicitly set SG_CONFIG_FILE
-    pivot_sg_config_file = None
-    if os.environ.get("SG_CONFIG_FILE", None) is not None:
-        pivot_sg_config_file = os.environ["SG_CONFIG_FILE"]
-        os.environ["SG_CONFIG_FILE"] = fake_config_file
-
     with open(fake_config_file, "w") as f:
         for line in lines:
             f.write("%s\n" % line)
 
-    # Restore old value to avoid messing up other tests
-    if pivot_sg_config_file is not None:
-        os.environ["SG_CONFIG_FILE"] = os.environ["SG_CONFIG_FILE"]
+    return fake_config_file
 
 
 def test_key_set_in_config_file(fs):
-    _write_config_file(fs, ["[defaults]", "SG_NAMESPACE=pass-the-test"])
+    fake_config_file = _write_config_file(fs, ["[defaults]", "SG_NAMESPACE=pass-the-test"])
 
-    config = create_config_dict()
+    with patch_os_environ({"SG_CONFIG_FILE": fake_config_file}):
+        config = create_config_dict()
 
     assert config["SG_NAMESPACE"] == "pass-the-test"
 
@@ -470,7 +474,7 @@ def test_hoist_section():
 
 
 def test_config_file_accumulation(fs):
-    _write_config_file(
+    fake_config_file = _write_config_file(
         fs,
         [
             "[remote: blah]",
@@ -480,7 +484,8 @@ def test_config_file_accumulation(fs):
         ],
     )
 
-    config = create_config_dict()
+    with patch_os_environ({"SG_CONFIG_FILE": fake_config_file}):
+        config = create_config_dict()
 
     assert config["remotes"]["blah"]["SG_ENGINE_HOST"] == "pass-the-test"
     assert config["remotes"]["foo"]["SG_ENGINE_HOST"] == "foo-pass"
@@ -503,7 +508,7 @@ def test_key_set_in_arg_flag():
 def test_key_set_in_env_var():
     mock_environ = {"SG_NAMESPACE": "pass-env-namespace-test"}
 
-    with patch.object(os, "environ", mock_environ):
+    with patch_os_environ(mock_environ):
         config = create_config_dict()
         assert config["SG_NAMESPACE"] == "pass-env-namespace-test"
 
@@ -511,14 +516,17 @@ def test_key_set_in_env_var():
 def test_arg_flag_supercedes_config_file(fs):
     mock_argv = ["sg", "--namespace", "namespace-from-arg"]
 
-    _write_config_file(fs, ["[defaults]", "SG_NAMESPACE=namespace-from-config-file"])
+    fake_config_file = _write_config_file(
+        fs, ["[defaults]", "SG_NAMESPACE=namespace-from-config-file"]
+    )
 
-    config = create_config_dict()
-    assert config["SG_NAMESPACE"] == "namespace-from-config-file"
-
-    with patch.object(sys, "argv", mock_argv):
+    with patch_os_environ({"SG_CONFIG_FILE": fake_config_file}):
         config = create_config_dict()
-        assert config["SG_NAMESPACE"] == "namespace-from-arg"
+        assert config["SG_NAMESPACE"] == "namespace-from-config-file"
+
+        with patch.object(sys, "argv", mock_argv):
+            config = create_config_dict()
+            assert config["SG_NAMESPACE"] == "namespace-from-arg"
 
 
 def test_arg_flag_supercedes_env_var(fs):
@@ -527,7 +535,7 @@ def test_arg_flag_supercedes_env_var(fs):
     mock_argv = ["sg", "--namespace", "namespace-from-arg"]
 
     with patch.object(sys, "argv", mock_argv):
-        with patch.object(os, "environ", mock_environ):
+        with patch_os_environ(mock_environ):
             assert os.environ.get("SG_NAMESPACE", None) == "namespace-from-env-var"
             assert sys.argv[2] == "namespace-from-arg"
 
@@ -537,14 +545,17 @@ def test_arg_flag_supercedes_env_var(fs):
 
 
 def test_env_var_supercedes_config_file(fs):
-    _write_config_file(fs, ["[defaults]", "SG_NAMESPACE=namespace-from-config-file"])
+    fake_config_file = _write_config_file(
+        fs, ["[defaults]", "SG_NAMESPACE=namespace-from-config-file"]
+    )
 
-    config = create_config_dict()
-    assert config["SG_NAMESPACE"] == "namespace-from-config-file"
+    with patch_os_environ({"SG_CONFIG_FILE": fake_config_file}):
+        config = create_config_dict()
+        assert config["SG_NAMESPACE"] == "namespace-from-config-file"
 
-    mock_environ = {"SG_NAMESPACE": "pass-env-namespace-test"}
-
-    with patch.object(os, "environ", mock_environ):
+    with patch_os_environ(
+        {"SG_NAMESPACE": "pass-env-namespace-test", "SG_CONFIG_FILE": fake_config_file}
+    ):
         config = create_config_dict()
         assert config["SG_NAMESPACE"] == "pass-env-namespace-test"
 
