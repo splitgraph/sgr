@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 import click
 
 from splitgraph.commandline.common import print_table
+from splitgraph.config import CONFIG
 
 if TYPE_CHECKING:
     from docker.models.containers import Container
@@ -367,7 +368,7 @@ def delete_engine_c(yes, force, with_volumes, name):
 @click.command("log")
 @click.option("-f", "--follow", is_flag=True, help="Stream logs")
 @click.argument("name", default=DEFAULT_ENGINE)
-def engine_log_c(name, follow):
+def log_engine_c(name, follow):
     """Get logs from a Splitgraph engine."""
     import docker
 
@@ -382,9 +383,29 @@ def engine_log_c(name, follow):
         click.echo(container.logs())
 
 
+@click.command("configure")
+@click.argument("name", default=DEFAULT_ENGINE)
+def configure_engine_c(name):
+    """Inject configuration file into an engine. This copies
+    the current .sgconfig file (pointed to by SG_CONFIG_FILE) into
+    the engine container, making it use that configuration for
+    when it's queried through an application other than the sgr client
+    (layered querying)."""
+
+    import docker
+
+    client = docker.from_env()
+    container_name = _get_container_name(name)
+    container = client.containers.get(container_name)
+
+    copy_to_container(container, CONFIG["SG_CONFIG_FILE"], "/.sgconfig")
+    logging.info("Config updated for container %s", container.name)
+
+
 engine_c.add_command(list_engines_c)
 engine_c.add_command(add_engine_c)
 engine_c.add_command(stop_engine_c)
 engine_c.add_command(start_engine_c)
 engine_c.add_command(delete_engine_c)
-engine_c.add_command(engine_log_c)
+engine_c.add_command(log_engine_c)
+engine_c.add_command(configure_engine_c)
