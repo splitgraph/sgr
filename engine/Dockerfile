@@ -10,10 +10,10 @@
 ##### toolchain
 #####
 
-FROM postgres:11.6 AS toolchain
+FROM postgres:11.7 AS toolchain
 
 RUN apt-get update -qq && \
-    apt-get install -y \
+    apt-get install -y --allow-downgrades \
         build-essential \
         curl \
         wget \
@@ -23,7 +23,10 @@ RUN apt-get update -qq && \
         pkgconf \
         autoconf \
         libtool \
-        postgresql-server-dev-11 \
+        # https://github.com/docker-library/postgres/issues/678#issuecomment-586888013
+        libpq5=${PG_MAJOR}.* \
+        libpq-dev=${PG_MAJOR}.* \
+        postgresql-server-dev-$PG_MAJOR \
         libmongoc-1.0.0 \
         libmongoc-dev \
         protobuf-c-compiler \
@@ -32,7 +35,9 @@ RUN apt-get update -qq && \
         cmake && \
     rm -rf /var/lib/apt/lists/*
 
-RUN apt-key adv --keyserver keys.gnupg.net --recv-keys 5072E1F5 && \
+# Fix taken from https://github.com/f-secure-foundry/usbarmory-debian-base_image/issues/9
+RUN mkdir ~/.gnupg && echo "disable-ipv6" >> ~/.gnupg/dirmngr.conf && \
+    apt-key adv --homedir ~/.gnupg --keyserver keys.gnupg.net --recv-keys 5072E1F5 && \
     echo "deb http://repo.mysql.com/apt/debian/ stretch mysql-8.0" > /etc/apt/sources.list.d/mysql.list && \
     apt-get update -qq && apt-get install -y libmysqlclient-dev && rm -rf /var/lib/apt/lists/*
 
@@ -88,7 +93,7 @@ RUN /build/build_mysql_fdw.sh
 ##### splitgraph/engine
 #####
 
-FROM postgres:11.6
+FROM postgres:11.7
 
 # We still have to install some runtime libraries here, but no dev.
 
@@ -100,7 +105,8 @@ RUN apt-get update -qq && \
         wget && \
     rm -rf /var/lib/apt/lists/*
 
-RUN apt-key adv --keyserver keys.gnupg.net --recv-keys 5072E1F5 && \
+RUN mkdir ~/.gnupg && echo "disable-ipv6" >> ~/.gnupg/dirmngr.conf && \
+    apt-key adv --homedir ~/.gnupg --keyserver keys.gnupg.net --recv-keys 5072E1F5 && \
     echo "deb http://repo.mysql.com/apt/debian/ stretch mysql-8.0" > /etc/apt/sources.list.d/mysql.list && \
     apt-get update -qq && apt-get install -y libmysqlclient-dev && rm -rf /var/lib/apt/lists/*
 
