@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch, sentinel
 import docker
 import pytest
 from click.testing import CliRunner
+from test.splitgraph.conftest import SG_ENGINE_PREFIX
 
 from splitgraph.commandline.engine import (
     add_engine_c,
@@ -21,8 +22,6 @@ from splitgraph.commandline.engine import (
 from splitgraph.config import CONFIG
 from splitgraph.config.config import patch_config
 from splitgraph.config.keys import DEFAULTS
-from test.splitgraph.conftest import SG_ENGINE_PREFIX
-
 from splitgraph.engine.postgres.engine import PostgresEngine
 
 TEST_ENGINE_NAME = "test"
@@ -258,7 +257,7 @@ def test_commandline_engine_creation_config_patching_integration(teardown_test_e
     # with the generated config.
 
     config_path = os.path.join(tmp_path, ".sgconfig")
-    shutil.copy(os.path.join(os.path.dirname(__file__), "../resources/.sgconfig"), config_path)
+    shutil.copy(os.path.join(os.path.dirname(__file__), "../../resources/.sgconfig"), config_path)
     result = subprocess.run(
         "SG_CONFIG_FILE=%s sgr engine add %s --port 5428 --username not_sgr --password password"
         % (config_path, TEST_ENGINE_NAME),

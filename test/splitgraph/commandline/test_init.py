@@ -83,7 +83,7 @@ def test_init_override_engine():
     # this path is probably the culprit.
     output = subprocess.check_output(
         "SG_CONFIG_FILE=%s SG_LOGLEVEL=INFO SG_ENGINE=remote_engine sgr init"
-        % os.path.join(os.path.dirname(__file__), "../resources/.sgconfig"),
+        % os.path.join(os.path.dirname(__file__), "../../resources/.sgconfig"),
         shell=True,
         stderr=subprocess.STDOUT,
     )

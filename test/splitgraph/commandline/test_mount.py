@@ -1,14 +1,14 @@
 import json
-from _pydecimal import Decimal
+from decimal import Decimal
 
 import pytest
 from click.testing import CliRunner
+from test.splitgraph.conftest import OUTPUT, MG_MNT
 
 from splitgraph.commandline import status_c, rm_c, cleanup_c, init_c, mount_c, import_c
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.repository import Repository
 from splitgraph.hooks.mount_handlers import get_mount_handlers
-from test.splitgraph.conftest import OUTPUT, MG_MNT
 
 
 @pytest.mark.mounting

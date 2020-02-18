@@ -1,7 +1,7 @@
 from click.testing import CliRunner
+from test.splitgraph.conftest import SPLITFILE_ROOT, OUTPUT
 
 from splitgraph.commandline import build_c, provenance_c, rebuild_c
-from test.splitgraph.conftest import SPLITFILE_ROOT, OUTPUT
 
 
 def test_splitfile(local_engine_empty, pg_repo_remote):
