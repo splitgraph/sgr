@@ -241,3 +241,76 @@ def dump_c(repository, exclude_object_contents):
     Dump a repository to SQL.
     """
     repository.dump(sys.stdout, exclude_object_contents=exclude_object_contents)
+
+
+def _eval(command, args):
+    from splitgraph.core.repository import Repository
+    from splitgraph.engine import get_engine
+    from splitgraph.core.object_manager import ObjectManager
+
+    engine = get_engine()
+    object_manager = ObjectManager(object_engine=engine, metadata_engine=engine)
+
+    command_locals = locals().copy()
+    command_locals.update({k: v for k, v in args})
+
+    exec(command, globals(), command_locals)
+
+
+@click.command(name="eval")
+@click.option(
+    "--i-know-what-im-doing",
+    is_flag=True,
+    help="Pass this if you're sure that the code you're running "
+    "is safe and don't want to be prompted.",
+)
+@click.argument("command", type=str)
+@click.option(
+    "-a",
+    "--arg",
+    multiple=True,
+    type=(str, str),
+    help="Make extra variables available in the command's namespace",
+)
+def eval_c(i_know_what_im_doing, command, arg):
+    """
+    Evaluate a Python snippet using the Splitgraph API.
+
+    This is for advanced users only and should be only used
+    if you know what you are doing.
+
+    Normal Python statements are supported and the command is evaluated
+    in a namespace where the following is already imported and available:
+
+      * Repository: class that instantiates a Splitgraph repository and makes
+        API functions like .commit(), .checkout() etc available.
+
+      * engine: Current local engine
+
+      * object_manager: an instance of ObjectManager that allows
+        to get information about objects and manage the object cache.
+
+    \b
+    Example:
+        sgr eval 'import json; print(json.dumps(Repository\\
+            .from_schema(repo_name)\\
+            .images["latest"]\\
+            .get_table(table_name)\\
+            .table_schema))' \\
+        -a repo_name my_repo -a table_name my_table
+
+    Will dump the schema of table my_table in the most recent image in my_repo in JSON format.
+
+    For more information, see the Splitgraph API reference.
+    """
+    if not i_know_what_im_doing:
+        click.confirm(
+            "WARNING: This command might be unsafe and break your Splitgraph \n"
+            "installation or harm your machine. This is exactly the same as running \n"
+            "untrusted code off of the Internet. In addition, it might rely on undocumented \n"
+            "Splitgraph internals that might change in the future. \n\n"
+            "Have you checked it and made sure it's not doing anything suspicious?",
+            abort=True,
+        )
+
+    _eval(command, arg)

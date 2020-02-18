@@ -1,7 +1,7 @@
 import pytest
 from click.testing import CliRunner
 
-from splitgraph.commandline import upstream_c, import_c, rm_c, prune_c, config_c, dump_c
+from splitgraph.commandline import upstream_c, import_c, rm_c, prune_c, config_c, dump_c, eval_c
 from splitgraph.commandline.common import ImageType
 from splitgraph.commandline.example import generate_c, alter_c, splitfile_c
 from splitgraph.config import PG_PWD, PG_USER
@@ -320,3 +320,21 @@ def test_commandline_dump_load(pg_repo_local):
         (2, "orange"),
         (3, "mayonnaise"),
     ]
+
+
+def test_commandline_eval():
+    runner = CliRunner()
+    result = runner.invoke(
+        eval_c,
+        [
+            "assert Repository.from_schema('test/repo').namespace == 'test';"
+            "assert object_manager is not None; print('arg_1=%s' % arg_1)",
+            "--arg",
+            "arg_1",
+            "val_1",
+            "--i-know-what-im-doing",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert "arg_1=val_1" in result.output
