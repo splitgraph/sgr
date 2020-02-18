@@ -1,11 +1,11 @@
 from click.testing import CliRunner
+from test.splitgraph.conftest import SPLITFILE_ROOT
 
 from splitgraph.commandline import clone_c, pull_c, push_c, publish_c, reindex_c
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.registry import get_published_info
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableColumn
-from test.splitgraph.conftest import SPLITFILE_ROOT
 
 
 def test_pull_push(local_engine_empty, pg_repo_remote):

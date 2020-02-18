@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from click.testing import CliRunner
+from test.splitgraph.conftest import OUTPUT
 
 from splitgraph.commandline import (
     status_c,
