@@ -1,0 +1,103 @@
+diff --git a/cstore_fdw.c b/cstore_fdw.c
+index 63ac172..73706d6 100644
+--- a/cstore_fdw.c
++++ b/cstore_fdw.c
+@@ -287,58 +287,6 @@ CStoreProcessUtility(Node * parseTree, const char *queryString,
+ 								  destReceiver, completionTag);
+ 		}
+ 	}
+-	else if (nodeTag(parseTree) == T_DropStmt)
+-	{
+-		DropStmt *dropStmt = (DropStmt *) parseTree;
+-
+-		if (dropStmt->removeType == OBJECT_EXTENSION)
+-		{
+-			bool removeCStoreDirectory = false;
+-			ListCell *objectCell = NULL;
+-
+-			foreach(objectCell, dropStmt->objects)
+-			{
+-				Node *object = (Node *) lfirst(objectCell);
+-				char *objectName = NULL;
+-
+-#if PG_VERSION_NUM >= 100000
+-				Assert(IsA(object, String));
+-				objectName = strVal(object);
+-#else
+-				Assert(IsA(object, List));
+-				objectName = strVal(linitial((List *) object));
+-#endif
+-
+-				if (strncmp(CSTORE_FDW_NAME, objectName, NAMEDATALEN) == 0)
+-				{
+-					removeCStoreDirectory = true;
+-				}
+-			}
+-
+-			CALL_PREVIOUS_UTILITY(parseTree, queryString, context, paramListInfo,
+-								  destReceiver, completionTag);
+-
+-			if (removeCStoreDirectory)
+-			{
+-				RemoveCStoreDatabaseDirectory(MyDatabaseId);
+-			}
+-		}
+-		else
+-		{
+-			ListCell *fileListCell = NULL;
+-			List *droppedTables = DroppedCStoreFilenameList((DropStmt *) parseTree);
+-
+-			CALL_PREVIOUS_UTILITY(parseTree, queryString, context, paramListInfo,
+-								  destReceiver, completionTag);
+-
+-			foreach(fileListCell, droppedTables)
+-			{
+-				char *fileName = lfirst(fileListCell);
+-
+-				DeleteCStoreTableFiles(fileName);
+-			}
+-		}
+-	}
+ 	else if (nodeTag(parseTree) == T_TruncateStmt)
+ 	{
+ 		TruncateStmt *truncateStatement = (TruncateStmt *) parseTree;
+@@ -888,24 +836,32 @@ DeleteCStoreTableFiles(char *filename)
+ 
+ /*
+  * InitializeCStoreTableFile creates data and footer file for a cstore table.
+- * The function assumes data and footer files do not exist, therefore
+- * it should be called on empty or non-existing table. Notice that the caller
+- * is expected to acquire AccessExclusiveLock on the relation.
++ * If the data and footer files already exist, it will not do anything.
++ * Notice that the caller is expected to acquire AccessExclusiveLock on the relation.
+  */
+ static void InitializeCStoreTableFile(Oid relationId, Relation relation)
+ {
+ 	TableWriteState *writeState = NULL;
+ 	TupleDesc tupleDescriptor = RelationGetDescr(relation);
+ 	CStoreFdwOptions* cstoreFdwOptions = CStoreGetOptions(relationId);
++	struct stat statBuffer;
+ 
+ 	/*
+ 	 * Initialize state to write to the cstore file. This creates an
+ 	 * empty data file and a valid footer file for the table.
++	 * 
++	 * If the file already exists (CREATE FOREIGN TABLE called on an existing
++	 * relation), this will do nothing. Ordinarily, there'd be a TOCTOU race
++	 * condition if two FDWs are checking for file existing at the same time
++	 * before creating it, but since we're holding an exclusive lock, this
++	 * shouldn't happen.
+ 	 */
+-	writeState = CStoreBeginWrite(cstoreFdwOptions->filename,
+-			cstoreFdwOptions->compressionType, cstoreFdwOptions->stripeRowCount,
+-			cstoreFdwOptions->blockRowCount, tupleDescriptor);
+-	CStoreEndWrite(writeState);
++	if (stat(cstoreFdwOptions -> filename, &statBuffer) < 0) {
++		writeState = CStoreBeginWrite(cstoreFdwOptions->filename,
++				cstoreFdwOptions->compressionType, cstoreFdwOptions->stripeRowCount,
++				cstoreFdwOptions->blockRowCount, tupleDescriptor);
++		CStoreEndWrite(writeState);
++	}
+ }
+ 
+ 
