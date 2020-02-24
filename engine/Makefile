@@ -1,9 +1,9 @@
 # Makefile for building the Splitgraph engine
 
 export DOCKER_REPO ?= splitgraph
-export DOCKER_TAG ?= latest
+export DOCKER_TAG ?= development
 export DOCKER_ENGINE_IMAGE ?= engine
-export DOCKER_BUILDKIT=1
+# export DOCKER_BUILDKIT=1
 
 SHELL=/bin/bash
 
