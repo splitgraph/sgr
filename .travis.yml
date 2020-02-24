@@ -9,21 +9,21 @@ install:
   - cd engine && make
   - cd ..
 script:
-  # Run static type checker first to short circuit obvious errors
-  - poetry run mypy splitgraph
-  # The majority of the test suite doesn't depend on {pg,mongo,mysql}origin being up and they
-  # take a lot of time to start up (especially the first time). So, whilst the 3 DBs are busy starting up,
-  # we run the core tests against the local/remote engines and then run the rest of the tests (about 10% of them)
-  # with the databases up, merging coverage.
-  - poetry run pytest -v -m "not mounting and not example"
-  - ./wait-for-test-architecture.sh --mounting
-  - poetry run pytest -v -m "mounting and not example" --cov-append
-  # The "example" test suite needs the test services to be down, since it tests the end-to-end flow
-  # of bringing them up and running each example.
-  - ./.ci/down_architecture.sh
-  - poetry run pytest -sv -m "example" --cov-append
-  - docker images
-
+#  # Run static type checker first to short circuit obvious errors
+#  - poetry run mypy splitgraph
+#  # The majority of the test suite doesn't depend on {pg,mongo,mysql}origin being up and they
+#  # take a lot of time to start up (especially the first time). So, whilst the 3 DBs are busy starting up,
+#  # we run the core tests against the local/remote engines and then run the rest of the tests (about 10% of them)
+#  # with the databases up, merging coverage.
+#  - poetry run pytest -v -m "not mounting and not example"
+#  - ./wait-for-test-architecture.sh --mounting
+#  - poetry run pytest -v -m "mounting and not example" --cov-append
+#  # The "example" test suite needs the test services to be down, since it tests the end-to-end flow
+#  # of bringing them up and running each example.
+#  - ./.ci/down_architecture.sh
+#  - poetry run pytest -sv -m "example" --cov-append
+#  - docker images
+  - echo "Skipping tests, test deploy"
 services:
   - docker
 
@@ -67,16 +67,9 @@ after_success:
 
 # How to release:
 # * on master:
-# * do bumpversion {major,minor,patch,release} to bump version constant where needed
+# * update CHANGELOG
+# * do bumpversion {major,minor,patch} to bump version: this will create a new commit and tag
 # * git push --tags
-#
-# TODO there's a workflow in which only non-dev versions get tags and are released
-#   and -dev versions are considered floating: master always has a -dev version in it unless
-#   a release is in progress. That way we have a way to refer to temporary nighly artifacts.
-#   So say master is on 1.0.0-dev and we want to do a release -- then we first bump a version
-#   to 1.0.0, do a release based on that (so all artifacts have 1.0.0 as their version) and then
-#   bump the version to 1.0.1-dev without any tagging so that whatever we build off of that commit
-#   has version 1.0.1-dev and isn't "frozen".
 
 # How to undo a release:
 # * Remove the release from the releases page on GH
@@ -92,11 +85,12 @@ deploy:
       secure: 'BL9bLoFZB/1hZfq8vez4i+A1y6O//slLqdTjcWJPCr6G4kBIkwbQsSPjsyMpJACNlzNbCo02bGROIttlEWVJ11jxYHioKWexG7j4pTMQNwup96s9PRTwm8o4H/64a6PT4+ruCVz0wO7qzet5y6QTx5oOZZqEIB/93X8PAhpednU0eq9Vedf3VjutZ3xXEMsgfltkE7Lm3b0brHKQVQOoecudRt1mFLduusUx1lsO+V7Wu8pET2zIn7g6W8sUiPYgtsrcZ8bFyl3OewyYEFyb0e45EW2KWFnf0Ozm0GNEz6FlyRo6JmcmfdkjWoM7mHSiTj2vCnz/FsJwsIJS1z4RRaSe2gJe9kQSHNy0erCr8eehJyphsYBbqyLjXuP3e9QzdLJAsdhqV+KFK5QGOEjIhKTY6IiFctF8yeKiEKL/kD31KPQcnFX/RDrwEUGWkBfaqwlORZC68Q4P2ZkbW1ydsdYcthFhFE6IFhs0sZDdreOVHsM1t0CwePpWPU+iFb1j2HQv9LROFo7G404PpnjbkP+UIZChxMZxv3s2FOeFMDiTCJEiPHMw8Q6kRJmi9+3qZULkjcWnpSb02YBiJjaXJng93o7H85cb6G5HfmGmlphe6+8twQsS7v3pB+DTDLSKLu3VS3LlUP92EwM3H9+BZqR3tpFVmDoimVjYfydkmKc='
     file: dist/${BINARY_OUTPUT}
     skip_cleanup: true
+    draft: true
     on:
       repo: splitgraph/splitgraph
       tags: true
       # Uncomment this to trigger deploys from all branches
-      # all_branches: true
+      all_branches: true
   - provider: script
     # Remove -r testpypi to publish to the real PyPI
     # NB PyPI is write-once: once we've published a version, we can't overwrite it!
@@ -106,7 +100,7 @@ deploy:
       repo: splitgraph/splitgraph
       tags: true
       # Uncomment this to trigger deploys from all branches
-      # all_branches: true
+      all_branches: true
   - provider: script
     script: .ci/push_engine.sh
     skip_cleanup: true
@@ -115,4 +109,4 @@ deploy:
       # Only do this on master but even if there are no tags: in that case,
       # we push out a "latest" image + a commit hash image.
       # Uncomment this to trigger deploys from all branches
-      # all_branches: true
+      all_branches: true
