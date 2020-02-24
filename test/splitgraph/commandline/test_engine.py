@@ -59,7 +59,14 @@ def teardown_test_engine():
         _nuke_engines_and_volumes()
 
 
-# TODO make sure to pull/start the engine that we built in CI here
+def _get_test_engine_image():
+    # Make sure to run sgr engine integration tests against the engine we built earlier in CI
+    # rather than the current version on Docker Hub.
+    return "%s/%s:%s" % (
+        os.environ.get("DOCKER_REPO", "splitgraph"),
+        os.environ.get("DOCKER_ENGINE_IMAGE", "engine"),
+        os.environ.get("DOCKER_TAG", "development"),
+    )
 
 
 def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
@@ -69,7 +76,17 @@ def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
     # Create an engine with default password and wait for it to initialize
     result = runner.invoke(
         add_engine_c,
-        ["--port", "5428", "--username", "not_sgr", "--no-sgconfig", TEST_ENGINE_NAME],
+        [
+            "--image",
+            _get_test_engine_image(),
+            "--no-pull",
+            "--port",
+            "5428",
+            "--username",
+            "not_sgr",
+            "--no-sgconfig",
+            TEST_ENGINE_NAME,
+        ],
         input="notsosecure\nnotsosecure\n",
     )
     assert result.exit_code == 0

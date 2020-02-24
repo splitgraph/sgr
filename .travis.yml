@@ -4,7 +4,7 @@ sudo: required
 python:
   - '3.6'
 install:
-  # - poetry install -E ingestion
+  - poetry install -E ingestion
   - sudo cat /etc/docker/daemon.json
   - cd engine && make
   - cd ..
