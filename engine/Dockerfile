@@ -45,7 +45,7 @@ RUN mkdir ~/.gnupg && echo "disable-ipv6" >> ~/.gnupg/dirmngr.conf && \
 RUN mkdir -p /build
 
 # Also build and install Python
-COPY ./build_scripts/build_python.sh /build/
+COPY ./engine/build_scripts/build_python.sh /build/
 RUN /build/build_python.sh
 
 RUN ldconfig
@@ -58,7 +58,7 @@ RUN mkdir -p /output/root
 #####
 
 FROM toolchain AS builder_cstore
-COPY build_scripts/fdws/cstore_fdw /build
+COPY ./engine/build_scripts/fdws/cstore_fdw /build
 RUN /build/build_cstore_fdw.sh
 
 
@@ -67,7 +67,7 @@ RUN /build/build_cstore_fdw.sh
 #####
 
 FROM toolchain AS builder_multicorn
-COPY build_scripts/fdws/multicorn /build
+COPY ./engine/build_scripts/fdws/multicorn /build
 RUN /build/build_multicorn.sh
 
 
@@ -76,7 +76,7 @@ RUN /build/build_multicorn.sh
 #####
 
 FROM toolchain AS builder_mongo
-COPY build_scripts/fdws/mongo_fdw /build
+COPY ./engine/build_scripts/fdws/mongo_fdw /build
 RUN /build/build_mongo_fdw.sh
 
 
@@ -85,7 +85,7 @@ RUN /build/build_mongo_fdw.sh
 #####
 
 FROM toolchain AS builder_mysql
-COPY build_scripts/fdws/mysql_fdw /build
+COPY ./engine/build_scripts/fdws/mysql_fdw /build
 RUN /build/build_mysql_fdw.sh
 
 
@@ -138,17 +138,24 @@ EXPOSE 5432
 ENV POSTGRES_DB splitgraph
 ENV POSTGRES_USER sgr
 
-COPY etc /etc/
-COPY init_scripts /docker-entrypoint-initdb.d/
+COPY ./engine/etc /etc/
+COPY ./engine/init_scripts /docker-entrypoint-initdb.d/
 
 # Install Splitgraph itself (required for layered querying)
 
 RUN mkdir -p /var/lib/splitgraph/objects && chmod 777 /var/lib/splitgraph/objects
 
-# Git submodule
-COPY splitgraph /splitgraph
+# Do the installation in two phases to use Docker caching: first,
+# install all the dependencies and then copy the Splitgraph code over. That way,
+# if we just change the code, we only need to rebuild one layer rather than
+# reinstall all dependencies from scratch.
+
+# However, we need to make Poetry think that we actually have a genuine package
+# that we want to install in editable mode in here, so we create and copy some files to fool it.
+RUN mkdir -p /splitgraph/splitgraph && touch /splitgraph/splitgraph/__init__.py
+COPY poetry.lock pyproject.toml README.md /splitgraph
 RUN mkdir /build
-COPY ./build_scripts/build_splitgraph.sh /build/
+COPY ./engine/build_scripts/build_splitgraph.sh /build/
 RUN /build/build_splitgraph.sh
 
 # pl/python
@@ -167,6 +174,9 @@ RUN wget http://http.us.debian.org/debian/pool/main/p/postgresql-11/postgresql-p
     dpkg --force-all -i postgresql-plpython3-11_11.6-2~sid1_amd64.deb
 # Fix to make the dpkg status file usable (so that APT doesn't fail on future installs in the container)
 RUN sed -i "s/postgresql-11 (= 11.6-2~sid1), libc6 (>= 2.14), libpython3.7 (>= 3.7.0)/Depends: /" -i /var/lib/dpkg/status
+
+# Copy the actual Splitgraph code over at this point.
+COPY ./splitgraph /splitgraph/splitgraph
 
 # postgis
 # Install from stretch-backports rather than pgdg repo to prevent SCFGAL pulling in OSG and X11:

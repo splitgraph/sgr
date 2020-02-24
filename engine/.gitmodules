@@ -1,4 +1,0 @@
-[submodule "splitgraph"]
-	path = splitgraph
-	url = git://github.com/splitgraph/splitgraph.git
-	branch = master
