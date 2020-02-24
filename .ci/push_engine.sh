@@ -18,7 +18,7 @@ docker login -u "$DOCKER_USERNAME" -p "$DOCKER_PASSWORD"
 
 short_sha=$(echo "$TRAVIS_COMMIT" | cut -c-8)
 
-if [ -z "$TRAVIS_TAG" ]; then
+if [ -n "$TRAVIS_TAG" ]; then
   TAGS="latest $TRAVIS_TAG $short_sha stable"
 else
   TAGS="latest $short_sha"
