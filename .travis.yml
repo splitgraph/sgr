@@ -4,7 +4,8 @@ sudo: required
 python:
   - '3.6'
 install:
-  - poetry install -E ingestion
+  # - poetry install -E ingestion
+  - sudo cat /etc/docker/daemon.json
   - cd engine && make
   - cd ..
 script:
@@ -41,19 +42,29 @@ cache:
     - docker_images
 
 before_install:
+  # Update docker to 19 to get buildkit support
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+  - sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+  - sudo apt-get update
+  - sudo apt-get -y -o Dpkg::Options::="--force-confnew" install docker-ce
+  # Disable https://mirror.gcr.io Docker registry mirror since it breaks with Buildkit
+  # https://github.com/moby/moby/issues/39120
+  # https://github.com/moby/buildkit/issues/606
+  - "echo '{\"mtu\": 1460}' | sudo dd of=/etc/docker/daemon.json && sudo systemctl restart docker"
   - './.ci/before_install.sh'
 
 before_script:
   - './.ci/before_script.sh'
 
 before_cache:
-  - docker save -o docker_images/engine.tar $(docker images -a --filter="reference=splitgraph/engine:*" -a)
+  # Save the actual tag rather than calling `docker images -q` so that the tag gets restored
+  # on docker load.
+  - docker save -o docker_images/engine.tar $DOCKER_REPO/$DOCKER_ENGINE_IMAGE:$DOCKER_TAG
 
 after_success:
   - poetry run coveralls
-  # push the engine here?
-  # what tag do we give it -- commit hash or version?
-  # do we only push the image on successful releases?
+  # TODO push the engine here (if we're releasing it)
+  #   - what tag do we give it -- commit hash or version?
 
 # How to release:
 # * make sure the master build passes

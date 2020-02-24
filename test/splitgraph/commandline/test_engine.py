@@ -59,6 +59,9 @@ def teardown_test_engine():
         _nuke_engines_and_volumes()
 
 
+# TODO make sure to pull/start the engine that we built in CI here
+
+
 def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
     runner = CliRunner()
     client = docker.from_env()
