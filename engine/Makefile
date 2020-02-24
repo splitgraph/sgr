@@ -3,7 +3,7 @@
 export DOCKER_REPO ?= splitgraph
 export DOCKER_TAG ?= development
 export DOCKER_ENGINE_IMAGE ?= engine
-# export DOCKER_BUILDKIT=1
+export DOCKER_BUILDKIT=1
 
 SHELL=/bin/bash
 
@@ -11,7 +11,14 @@ SHELL=/bin/bash
 .DEFAULT_GOAL := build
 
 build:
-	cd .. && docker build -t $$DOCKER_REPO/$$DOCKER_ENGINE_IMAGE:$$DOCKER_TAG -f engine/Dockerfile .
+	cd .. && docker build \
+	--build-arg BUILDKIT_INLINE_CACHE=1 \
+	-t $$DOCKER_REPO/$$DOCKER_ENGINE_IMAGE:$$DOCKER_TAG \
+	--cache-from=$$DOCKER_REPO/$$DOCKER_ENGINE_IMAGE:$$DOCKER_TAG \
+	-f engine/Dockerfile .
 
 toolchain:
-	cd .. && docker build -t $$DOCKER_REPO/engine-toolchain:$$DOCKER_TAG --target toolchain -f engine/Dockerfile .
+	cd .. && docker build \
+	--build-arg BUILDKIT_INLINE_CACHE=1 \
+	-t $$DOCKER_REPO/engine-toolchain:$$DOCKER_TAG \
+	--target toolchain -f engine/Dockerfile .

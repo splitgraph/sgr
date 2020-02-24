@@ -37,7 +37,7 @@ RUN apt-get update -qq && \
 
 # Fix taken from https://github.com/f-secure-foundry/usbarmory-debian-base_image/issues/9
 RUN mkdir ~/.gnupg && echo "disable-ipv6" >> ~/.gnupg/dirmngr.conf && \
-    apt-key adv --homedir ~/.gnupg --keyserver keys.gnupg.net --recv-keys 5072E1F5 && \
+    apt-key adv --homedir ~/.gnupg --keyserver hkp://keyserver.ubuntu.com --recv-keys 5072E1F5 && \
     echo "deb http://repo.mysql.com/apt/debian/ stretch mysql-8.0" > /etc/apt/sources.list.d/mysql.list && \
     apt-get update -qq && apt-get install -y libmysqlclient-dev && rm -rf /var/lib/apt/lists/*
 
@@ -106,7 +106,7 @@ RUN apt-get update -qq && \
     rm -rf /var/lib/apt/lists/*
 
 RUN mkdir ~/.gnupg && echo "disable-ipv6" >> ~/.gnupg/dirmngr.conf && \
-    apt-key adv --homedir ~/.gnupg --keyserver keys.gnupg.net --recv-keys 5072E1F5 && \
+    apt-key adv --homedir ~/.gnupg --keyserver hkp://keyserver.ubuntu.com --recv-keys 5072E1F5 && \
     echo "deb http://repo.mysql.com/apt/debian/ stretch mysql-8.0" > /etc/apt/sources.list.d/mysql.list && \
     apt-get update -qq && apt-get install -y libmysqlclient-dev && rm -rf /var/lib/apt/lists/*
 
@@ -153,7 +153,7 @@ RUN mkdir -p /var/lib/splitgraph/objects && chmod 777 /var/lib/splitgraph/object
 # However, we need to make Poetry think that we actually have a genuine package
 # that we want to install in editable mode in here, so we create and copy some files to fool it.
 RUN mkdir -p /splitgraph/splitgraph && touch /splitgraph/splitgraph/__init__.py
-COPY poetry.lock pyproject.toml README.md /splitgraph
+COPY poetry.lock pyproject.toml README.md /splitgraph/
 RUN mkdir /build
 COPY ./engine/build_scripts/build_splitgraph.sh /build/
 RUN /build/build_splitgraph.sh
