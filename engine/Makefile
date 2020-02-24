@@ -11,7 +11,7 @@ SHELL=/bin/bash
 .DEFAULT_GOAL := build
 
 build:
-	docker build -t $$DOCKER_REPO/$$DOCKER_ENGINE_IMAGE:$$DOCKER_TAG .
+	cd .. && docker build -t $$DOCKER_REPO/$$DOCKER_ENGINE_IMAGE:$$DOCKER_TAG -f engine/Dockerfile .
 
 toolchain:
-	docker build -t $$DOCKER_REPO/engine-toolchain:$$DOCKER_TAG --target toolchain .
+	cd .. && docker build -t $$DOCKER_REPO/engine-toolchain:$$DOCKER_TAG --target toolchain -f engine/Dockerfile .
