@@ -19,7 +19,8 @@ docker login -u "$DOCKER_USERNAME" -p "$DOCKER_PASSWORD"
 short_sha=$(echo "$TRAVIS_COMMIT" | cut -c-8)
 
 if [ -n "$TRAVIS_TAG" ]; then
-  TAGS="latest $TRAVIS_TAG $short_sha stable"
+  # Strip the first letter (v0.0.1 etc) from the Git tag to get the Docker tag (actual version)
+  TAGS="latest ${TRAVIS_TAG:1} $short_sha stable"
 else
   TAGS="latest $short_sha"
 fi
