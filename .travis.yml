@@ -5,6 +5,8 @@ python:
   - '3.6'
 install:
   - poetry install -E ingestion
+  - cd engine && make
+  - cd ..
 script:
   # Run static type checker first to short circuit obvious errors
   - poetry run mypy splitgraph
@@ -26,12 +28,17 @@ services:
 env:
   global:
     - secure: 'h3RGGiUxXzirelNuxyqbb5Qgqahg4aL2LCVXKaVkoq0SIGftHSHy4Hu0QEV8h5UGQIaXLIyMeNZcS5XPuYg0MBEz5mP0MJyUj4E9l/TJFSyKQHiFUjB34d16vf/xkSzCBMkNbOltNNKe4gonZhn3/I8uRMF9ZyfsoP1SC8B3B7+C7wCZhNS6hvFXG0+n9+HDQDsx6Tws0Oa28YHctzLcFp5mTCr+cBUGqJ1NphuOqAfsRzgj1poWt0uU2XysbcJ3nSBFrPWYjtgF7IFP/G0NqrYF7cQ60G4R9GhAbyPmrc7AF7NHfjrreu4+3199NMpSbQtumLWBIAxkhblSU7likiLEIVw3hIipNHXKnSiMXeGRlcNBMrb2vO57cTifhtwi7fzHHrsVOjnYANmCQHM+nDS7rj5j2hXPUmAr1Zw6AZ4HYGW0iL+79eB5IfyKRqc75/YPyRnYSDjz6oiwlGYWrAlgWnz3Nwa5/TcCNMA7u9N3Lml4P/Wly3aC/87yPa8gT0SM/KRfweslcx29JsRkxjeRfOe8cyejAvQonN/RFibdOo/CD02oNu3Bzp5EaNW0FY/cWDi4diq4ok+t5Z0ID1i6NXBd9xPqYJiWWNGnh5lNIi6N/flFomwJpocDiIInOWCF6+y/K6SrLV2pGCBlyItjhbC9rMO9FrOnO45QScA='
-    - COMPOSE_VERSION: '1.21.2'
+    - COMPOSE_VERSION: '1.25.4'
+    - DOCKER_REPO: splitgraph
+    - DOCKER_ENGINE_IMAGE: engine
+    - DOCKER_TAG: development
   matrix:
     - BINARY_OUTPUT: 'sgr-linux'
 
 cache:
   pip: true
+  directories:
+    - docker_images
 
 before_install:
   - './.ci/before_install.sh'
@@ -39,8 +46,14 @@ before_install:
 before_script:
   - './.ci/before_script.sh'
 
+before_cache:
+  - docker save -o docker_images/engine.tar $(docker images -a --filter="reference=splitgraph/engine:*" -a)
+
 after_success:
   - poetry run coveralls
+  # push the engine here?
+  # what tag do we give it -- commit hash or version?
+  # do we only push the image on successful releases?
 
 # How to release:
 # * make sure the master build passes

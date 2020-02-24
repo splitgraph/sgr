@@ -20,4 +20,7 @@ pushd "$REPO_ROOT_DIR" \
     && popd \
     && exit 0
 
+# Load the engine image from cache, if it exists.
+docker load -i docker_images/engine.tar || true
+
 exit 1

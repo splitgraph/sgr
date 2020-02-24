@@ -14,12 +14,10 @@ pushd "$REPO_ROOT_DIR" \
     && ( sudo /etc/init.d/postgresql stop || true ; ) \
     && ( sudo /etc/init.d/mysql stop || true ; ) \
     && pushd "${ARCHITECTURE_DIR}" \
-    && docker-compose -f $CORE_ARCHITECTURE pull \
     && docker-compose -f $CORE_ARCHITECTURE build \
     && docker-compose -f $CORE_ARCHITECTURE up -d \
     && { {
         echo "Building the mounting test architecture in the background: " $(date)
-        docker-compose -f $MOUNTING_ARCHITECTURE pull
         docker-compose -f $MOUNTING_ARCHITECTURE build
         docker-compose -f $MOUNTING_ARCHITECTURE up -d
         echo "Background mounting test architecture build complete: " $(date)
