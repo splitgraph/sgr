@@ -1,3 +1,3 @@
-__version__ = "0.1.0-pre"
+__version__ = "0.1.0-dev"
 
 VERSION_LOCAL_VAR = "splitgraph.client_version"

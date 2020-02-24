@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "splitgraph"
-version = "0.1.0-pre"
+version = "0.1.0-dev"
 description = "Command line library and Python client for Splitgraph, a version control system for data"
 license = "Apache 2.0 modified with Commons Clause"
 authors = ["Splitgraph Limited"]
@@ -39,6 +39,7 @@ black = { version = "*", allow-prereleases = true }
 pre-commit = "^1.18"
 httpretty = "^0.9.6"
 mypy = ">=0.720"
+bump2version = "^1.0.0"
 
 [tool.poetry.extras]
 ingestion = ["pandas", "sqlalchemy"]
