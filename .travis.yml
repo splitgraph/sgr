@@ -21,7 +21,8 @@ script:
   # The "example" test suite needs the test services to be down, since it tests the end-to-end flow
   # of bringing them up and running each example.
   - ./.ci/down_architecture.sh
-  - poetry run pytest -v -m "example" --cov-append
+  - poetry run pytest -sv -m "example" --cov-append
+  - docker images
 
 services:
   - docker
@@ -67,10 +68,17 @@ after_success:
   #   - what tag do we give it -- commit hash or version?
 
 # How to release:
-# * make sure the master build passes
-# * do poetry version (to bump the version in pyproject.toml), commit
-# * add a tag with the same version
+# * on master:
+# * do bumpversion {major,minor,patch,release} to bump version constant where needed
 # * git push --tags
+#
+# TODO there's a workflow in which only non-dev versions get tags and are released
+#   and -dev versions are considered floating: master always has a -dev version in it unless
+#   a release is in progress. That way we have a way to refer to temporary nighly artifacts.
+#   So say master is on 1.0.0-dev and we want to do a release -- then we first bump a version
+#   to 1.0.0, do a release based on that (so all artifacts have 1.0.0 as their version) and then
+#   bump the version to 1.0.1-dev without any tagging so that whatever we build off of that commit
+#   has version 1.0.1-dev and isn't "frozen".
 
 # How to undo a release:
 # * Remove the release from the releases page on GH
@@ -101,3 +109,12 @@ deploy:
       tags: true
       # Uncomment this to trigger deploys from all branches
       # all_branches: true
+  - provider: script
+    script: .ci/push_engine.sh
+    skip_cleanup: true
+    on:
+      repo: splitgraph/splitgraph
+      # Only do this on master but even if there are no tags: in that case,
+      # we push out a "latest" image + a commit hash image.
+      # Uncomment this to trigger deploys from all branches
+      all_branches: true
