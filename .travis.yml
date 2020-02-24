@@ -64,8 +64,6 @@ before_cache:
 
 after_success:
   - poetry run coveralls
-  # TODO push the engine here (if we're releasing it)
-  #   - what tag do we give it -- commit hash or version?
 
 # How to release:
 # * on master:
@@ -117,4 +115,4 @@ deploy:
       # Only do this on master but even if there are no tags: in that case,
       # we push out a "latest" image + a commit hash image.
       # Uncomment this to trigger deploys from all branches
-      all_branches: true
+      # all_branches: true

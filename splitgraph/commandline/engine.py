@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 
 import click
 
+from splitgraph.__version__ import __version__
 from splitgraph.commandline.common import print_table
 from splitgraph.config import CONFIG
 
@@ -164,7 +165,7 @@ def list_engines_c(include_all):
 @click.option(
     "-i",
     "--image",
-    default="splitgraph/engine:latest",
+    default="splitgraph/engine:%s" % __version__,
     help="Docker image with the Splitgraph engine",
 )
 @click.option("-p", "--port", type=int, default=5432, help="Port to start the engine on")
