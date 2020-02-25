@@ -16,7 +16,7 @@ pushd "$REPO_ROOT_DIR" \
     && poetry config http-basic.testpypi splitgraph "$PYPI_PASSWORD" \
     && poetry config http-basic.pypi splitgraph "$PYPI_PASSWORD" \
     && poetry build \
-    && poetry run "$CI_DIR"/prepare_doc_bundle.sh
+    && poetry run "$CI_DIR"/prepare_doc_bundle.sh \
     && popd \
     && exit 0
 
