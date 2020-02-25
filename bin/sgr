@@ -1,0 +1,5 @@
+#!/usr/bin/env python
+
+from splitgraph.commandline import cli
+
+cli()
