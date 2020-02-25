@@ -205,7 +205,7 @@ def _update_bar(progress, progress_text, bar, progress_data):
 @click.option(
     "--inject-source",
     default=False,
-    help="Inject the Splitgraph source code into the engine",
+    help="Inject the current Splitgraph source code into the engine using Docker bind mounts",
     is_flag=True,
 )
 @click.option("--no-pull", default=False, help="Don't pull the Docker image", is_flag=True)
@@ -227,6 +227,10 @@ def add_engine_c(
     the engine.
 
     This also creates Docker volumes required to persist data/metadata.
+
+    The engine Docker container by default will be named `splitgraph_engine_default` and
+    its data and metadata volumes will have names `splitgraph_engine_default_data` and
+    `splitgraph_engine_default_metadata`.
     """
     from splitgraph.engine.postgres.engine import PostgresEngine
     from splitgraph.config import CONFIG
@@ -322,7 +326,10 @@ def add_engine_c(
 @click.command(name="stop")
 @click.argument("name", default=DEFAULT_ENGINE)
 def stop_engine_c(name):
-    """Stop a Splitgraph engine."""
+    """Stop a Splitgraph engine.
+
+    This is a wrapper around the corresponding Docker command.
+    """
     import docker
 
     client = docker.from_env()
@@ -337,7 +344,10 @@ def stop_engine_c(name):
 @click.command(name="start")
 @click.argument("name", default=DEFAULT_ENGINE)
 def start_engine_c(name):
-    """Stop a Splitgraph engine."""
+    """Start a Splitgraph engine.
+
+    This is a wrapper around the corresponding Docker command.
+    """
     import docker
 
     client = docker.from_env()

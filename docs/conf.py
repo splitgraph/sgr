@@ -20,13 +20,15 @@ sys.path.insert(0, os.path.abspath(".."))
 # -- Project information -----------------------------------------------------
 
 project = "Splitgraph API reference"
-copyright = "2018-2019, Splitgraph Limited"
+copyright = "2018-2020, Splitgraph Limited"
 author = "Splitgraph Limited"
 
+from splitgraph.__version__ import __version__
+
 # The short X.Y version
-version = ""
+version = __version__
 # The full version, including alpha/beta/rc tags
-release = ""
+release = __version__
 
 # -- General configuration ---------------------------------------------------
 
