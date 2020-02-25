@@ -38,7 +38,7 @@ _CONFIG_DEFAULTS = (
 def _nuke_engines_and_volumes():
     # Make sure we don't have the test engine (managed by `sgr engine`) running before/after tests.
     client = docker.from_env()
-    for c in client.containers.list(filters={"ancestor": "splitgraph/engine"}, all=True):
+    for c in client.containers.list(all=True):
         if c.name == SG_ENGINE_PREFIX + TEST_ENGINE_NAME:
             logging.info("Killing %s. Logs (100 lines): %s", c.name, c.logs(tail=1000))
             c.remove(force=True, v=True)
@@ -235,6 +235,7 @@ def test_commandline_engine_creation_config_patching(test_case, fs):
     Path(env["HOME"]).mkdir(exist_ok=True, parents=True)
     client = Mock()
     client.api.base_url = "tcp://localhost:3333"
+    client.api.pull.return_value = []
 
     with patch("splitgraph.config.CONFIG", source_config):
         with patch("docker.from_env", return_value=client):
@@ -279,8 +280,10 @@ def test_commandline_engine_creation_config_patching_integration(teardown_test_e
     config_path = os.path.join(tmp_path, ".sgconfig")
     shutil.copy(os.path.join(os.path.dirname(__file__), "../../resources/.sgconfig"), config_path)
     result = subprocess.run(
-        "SG_CONFIG_FILE=%s sgr engine add %s --port 5428 --username not_sgr --password password"
-        % (config_path, TEST_ENGINE_NAME),
+        "SG_CONFIG_FILE=%s sgr engine add %s "
+        "--port 5428 --image %s --no-pull "
+        "--username not_sgr --password password"
+        % (config_path, TEST_ENGINE_NAME, _get_test_engine_image()),
         shell=True,
         stderr=subprocess.PIPE,
         stdout=subprocess.PIPE,
