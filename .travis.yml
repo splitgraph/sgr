@@ -1,68 +1,14 @@
-language: python
-install: true
-sudo: required
-python:
-  - '3.6'
-install:
-  - poetry install -E ingestion
-  - sudo cat /etc/docker/daemon.json
-  - cd engine && make
-  - cd ..
-script:
-#  # Run static type checker first to short circuit obvious errors
-#  - poetry run mypy splitgraph
-#  # The majority of the test suite doesn't depend on {pg,mongo,mysql}origin being up and they
-#  # take a lot of time to start up (especially the first time). So, whilst the 3 DBs are busy starting up,
-#  # we run the core tests against the local/remote engines and then run the rest of the tests (about 10% of them)
-#  # with the databases up, merging coverage.
-#  - poetry run pytest -v -m "not mounting and not example"
-#  - ./wait-for-test-architecture.sh --mounting
-#  - poetry run pytest -v -m "mounting and not example" --cov-append
-#  # The "example" test suite needs the test services to be down, since it tests the end-to-end flow
-#  # of bringing them up and running each example.
-#  - ./.ci/down_architecture.sh
-#  - poetry run pytest -sv -m "example" --cov-append
-#  - docker images
-  - echo "Skipping tests, test deploy"
-services:
-  - docker
-
-env:
-  global:
-    - COMPOSE_VERSION: '1.25.4'
-    - DOCKER_REPO: splitgraph
-    - DOCKER_ENGINE_IMAGE: engine
-    - DOCKER_TAG: development
-  matrix:
-    - BINARY_OUTPUT: 'sgr-linux'
-
-cache:
-  pip: true
-  directories:
-    - docker_images
-
-before_install:
-  # Update docker to 19 to get buildkit support
-  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-  - sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
-  - sudo apt-get update
-  - sudo apt-get -y -o Dpkg::Options::="--force-confnew" install docker-ce
-  # Disable https://mirror.gcr.io Docker registry mirror since it breaks with Buildkit
-  # https://github.com/moby/moby/issues/39120
-  # https://github.com/moby/buildkit/issues/606
-  - "echo '{\"mtu\": 1460}' | sudo dd of=/etc/docker/daemon.json && sudo systemctl restart docker"
-  - './.ci/before_install.sh'
-
-before_script:
-  - './.ci/before_script.sh'
-
-before_cache:
-  # Save the actual tag rather than calling `docker images -q` so that the tag gets restored
-  # on docker load.
-  - docker save -o docker_images/engine.tar $DOCKER_REPO/$DOCKER_ENGINE_IMAGE:$DOCKER_TAG
-
-after_success:
-  - poetry run coveralls
+# The build pipeline has two stages:
+# * Build everything and test on Linux
+#   * Build engine
+#   * Install package in dev mode
+#   * Run all tests
+#   * (if deploying) Push out the Docker image and the PyPi package
+# * (if deploying) Build and push out the single binary for 3 platforms
+#   * Jobs don't share anything so we have to reinstall the package here
+#   * We don't run tests on Windows/OSX either currently
+#   * We also install the package in non-dev mode so that PyInstaller doesn't
+#     grab dev dependencies from the venv
 
 # How to release:
 # * on master:
@@ -76,36 +22,168 @@ after_success:
 # * git push origin :<tag> -- delete tag remotely on GH
 # * delete the release from pypi (won't be able to push the same version again)
 
-before_deploy:
-  - './.ci/before_deploy.sh'
-deploy:
-  - provider: releases
-    api_key:
-      secure: MWwqUDXZDI/Wi4qk3EM5afR5XVn/DayFQCkct4lRFw9TgpB1uKbyQKuPJnycE7nOPmdAdzQhsSIHfmoFRuO9ReQsADlOR1BbSkI1KGLIbPx/74tQTQ6Htf+VQrfX7R1Yk9C3mIfd51Ix9ffvPzmWfeF6At/fcPrVvTK/jWvyQ2NZimEAGSgELB1KItZWAighoT4x5cVEc11MBMj7JkD4wOrBrP4aaNq3HLIZW7cMIjBHMhvDvcd/ry7kZLjAQtSzEPL8bsulRjYW0nJzLJyGci5dCSga1Qd2VBdLlkCZHcL0OoUqCQmFTYT0AwkjHwO96oVFy8WYvP57Vvf/613w1w43kr8FrQAu37Ahhg+douplo4owvXhJUm+G53BwtXeY2MFvBqxROdOLTD9yjAyAH+3mMBAFtWswfQhxP4dpn4m+Js5Lp4j7PwM4V+x4XZ/bP1HiBGLS4NHd4sBrNFSTEbY5WuuRSBx/HJP5AEtu60gMKUQwdVNz9XEDXxKRCWaxihcYTCHCnJBt4MLp7WtUNjymt4zz9IZLRy05rskx/KXE0nT7aM0KeyZqFEz0+dkI9srSsAJSxQKtJp3rBfPgRq9m8RQ6GvFeqx+fXiS5LBlICHE7S9Ql8QHVI0ut+ru33k8IUgtvElUvZgl7x7BxeBYGzNYO8GzyKNksKsMpHWo=
-    file: dist/${BINARY_OUTPUT}
-    skip_cleanup: true
-    draft: true
-    on:
-      repo: splitgraph/splitgraph
-      tags: true
-      # Uncomment this to trigger deploys from all branches
-      all_branches: true
-  - provider: script
-    # Remove -r testpypi to publish to the real PyPI
-    # NB PyPI is write-once: once we've published a version, we can't overwrite it!
-    script: poetry publish -r testpypi
-    skip_cleanup: true
-    on:
-      repo: splitgraph/splitgraph
-      tags: true
-      # Uncomment this to trigger deploys from all branches
-      all_branches: true
-  - provider: script
-    script: .ci/push_engine.sh
-    skip_cleanup: true
-    on:
-      repo: splitgraph/splitgraph
-      # Only do this on master but even if there are no tags: in that case,
-      # we push out a "latest" image + a commit hash image.
-      # Uncomment this to trigger deploys from all branches
-      all_branches: true
+env:
+  global:
+    - COMPOSE_VERSION: '1.25.4'
+    - POETRY_VERSION: '1.0.3'
+    - DOCKER_REPO: splitgraph
+    - DOCKER_ENGINE_IMAGE: engine
+    - DOCKER_TAG: development
+
+jobs:
+  include:
+    - stage: Build engine and test on Linux
+      language: python
+      python:
+        - '3.6'
+      install:
+#        - poetry install -E ingestion
+        - sudo cat /etc/docker/daemon.json
+#        - cd engine && make
+#        - cd ..
+      script:
+      #  # Run static type checker first to short circuit obvious errors
+      #  - poetry run mypy splitgraph
+      #  # The majority of the test suite doesn't depend on {pg,mongo,mysql}origin being up and they
+      #  # take a lot of time to start up (especially the first time). So, whilst the 3 DBs are busy starting up,
+      #  # we run the core tests against the local/remote engines and then run the rest of the tests (about 10% of them)
+      #  # with the databases up, merging coverage.
+      #  - poetry run pytest -v -m "not mounting and not example"
+      #  - ./wait-for-test-architecture.sh --mounting
+      #  - poetry run pytest -v -m "mounting and not example" --cov-append
+      #  # The "example" test suite needs the test services to be down, since it tests the end-to-end flow
+      #  # of bringing them up and running each example.
+      #  - ./.ci/down_architecture.sh
+      #  - poetry run pytest -sv -m "example" --cov-append
+      #  - docker images
+        - echo "Skipping tests, test deploy"
+      services:
+        - docker
+      cache:
+        pip: true
+        directories:
+          - docker_images
+
+#      before_install:
+#        # Update docker to 19 to get buildkit support
+#        - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+#        - sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+#        - sudo apt-get update
+#        - sudo apt-get -y -o Dpkg::Options::="--force-confnew" install docker-ce
+#        # Disable https://mirror.gcr.io Docker registry mirror since it breaks with Buildkit
+#        # https://github.com/moby/moby/issues/39120
+#        # https://github.com/moby/buildkit/issues/606
+#        - "echo '{\"mtu\": 1460}' | sudo dd of=/etc/docker/daemon.json && sudo systemctl restart docker"
+#        - './.ci/before_install.sh'
+#        - source $HOME/.poetry/env
+#
+#      before_script:
+#        - './.ci/before_script.sh'
+#
+#      before_cache:
+#        # Save the actual tag rather than calling `docker images -q` so that the tag gets restored
+#        # on docker load.
+#        - docker save -o docker_images/engine.tar $DOCKER_REPO/$DOCKER_ENGINE_IMAGE:$DOCKER_TAG
+#
+#      after_success:
+#        - poetry run coveralls
+#
+#      before_deploy:
+#        - './.ci/before_deploy.sh'
+#      deploy:
+#        - provider: script
+#          # Remove -r testpypi to publish to the real PyPI
+#          # NB PyPI is write-once: once we've published a version, we can't overwrite it!
+#          script: poetry publish -r testpypi
+#          skip_cleanup: true
+#          on:
+#            repo: splitgraph/splitgraph
+#            tags: true
+#            # Uncomment this to trigger deploys from all branches
+#            all_branches: true
+#        - provider: script
+#          script: .ci/push_engine.sh
+#          skip_cleanup: true
+#          on:
+#            repo: splitgraph/splitgraph
+#            # Only do this on master but even if there are no tags: in that case,
+#            # we push out a "latest" image + a commit hash image.
+#            # Uncomment this to trigger deploys from all branches
+##            all_branches: true
+
+    - stage: Build and deploy single binary
+      os: linux
+      language: python
+      python:
+        - '3.6'
+      cache:
+        pip: true
+      script: skip
+      before_install:
+        - "curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python"
+        - source $HOME/.poetry/env
+      install: &install
+        # This is common between all 3 platforms:
+        # * use the "poetry run" wrapper for everything (even pip installs) because
+        #   on Windows pyinstaller fails with setuptools errors if it's not in the same venv and
+        #   on OSX we have that + two Python versions (python/pip and python3/pip3) so this breaks
+        #   even more.
+        # * Use .exe extension on Windows
+        - poetry --version
+        - poetry install --no-dev
+        - poetry run pip install pyinstaller
+        - poetry run pyinstaller -F splitgraph.spec
+        - if [ "$TRAVIS_OS_NAME" == "windows" ]; then export EXTENSION=".exe"; fi
+        - export BINARY_OUTPUT=sgr-"$TRAVIS_OS_NAME"-"$TRAVIS_CPU_ARCH""$EXTENSION"
+        - mv dist/sgr"$EXTENSION" dist/"$BINARY_OUTPUT"
+      before_deploy: &before_deploy
+        - echo "before_deploy"
+      deploy: &deploy
+      - provider: releases
+        api_key:
+          secure: MWwqUDXZDI/Wi4qk3EM5afR5XVn/DayFQCkct4lRFw9TgpB1uKbyQKuPJnycE7nOPmdAdzQhsSIHfmoFRuO9ReQsADlOR1BbSkI1KGLIbPx/74tQTQ6Htf+VQrfX7R1Yk9C3mIfd51Ix9ffvPzmWfeF6At/fcPrVvTK/jWvyQ2NZimEAGSgELB1KItZWAighoT4x5cVEc11MBMj7JkD4wOrBrP4aaNq3HLIZW7cMIjBHMhvDvcd/ry7kZLjAQtSzEPL8bsulRjYW0nJzLJyGci5dCSga1Qd2VBdLlkCZHcL0OoUqCQmFTYT0AwkjHwO96oVFy8WYvP57Vvf/613w1w43kr8FrQAu37Ahhg+douplo4owvXhJUm+G53BwtXeY2MFvBqxROdOLTD9yjAyAH+3mMBAFtWswfQhxP4dpn4m+Js5Lp4j7PwM4V+x4XZ/bP1HiBGLS4NHd4sBrNFSTEbY5WuuRSBx/HJP5AEtu60gMKUQwdVNz9XEDXxKRCWaxihcYTCHCnJBt4MLp7WtUNjymt4zz9IZLRy05rskx/KXE0nT7aM0KeyZqFEz0+dkI9srSsAJSxQKtJp3rBfPgRq9m8RQ6GvFeqx+fXiS5LBlICHE7S9Ql8QHVI0ut+ru33k8IUgtvElUvZgl7x7BxeBYGzNYO8GzyKNksKsMpHWo=
+        file: dist/${BINARY_OUTPUT}
+        skip_cleanup: true
+        draft: true
+        on:
+          repo: splitgraph/splitgraph
+          tags: true
+          # Uncomment this to trigger deploys from all branches
+          all_branches: true
+    - stage: Build and deploy single binary
+      os: osx
+      language: sh
+      # Travis OSX workers have "a" version of Python installed + pyenv
+      cache:
+        pip: true
+      before_install:
+        - "curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python"
+        - source $HOME/.poetry/env
+        # Fix Poetry on Travis' OSX image
+        # https://github.com/sdispater/clikit/issues/3
+        - export TERM=xterm-256color
+        - export COLUMNS=150
+      install:
+        *install
+      script: skip
+      before_deploy:
+        *before_deploy
+      deploy:
+        *deploy
+    - stage: Build and deploy single binary
+      os: windows
+      language: sh
+      before_install:
+        - choco install python --version=3.6.8
+        - export PATH="/c/Python36:/c/Python36/Scripts:$PATH"
+        - "curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python"
+        - export PATH="$HOME/.poetry/bin:$PATH"
+      install:
+        *install
+      script: skip
+      cache:
+        pip: true
+      before_deploy:
+        *before_deploy
+      deploy:
+        *deploy
