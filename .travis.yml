@@ -29,6 +29,7 @@ env:
     - DOCKER_REPO: splitgraph
     - DOCKER_ENGINE_IMAGE: engine
     - DOCKER_TAG: development
+    - GITHUB_OAUTH_SECURE: MWwqUDXZDI/Wi4qk3EM5afR5XVn/DayFQCkct4lRFw9TgpB1uKbyQKuPJnycE7nOPmdAdzQhsSIHfmoFRuO9ReQsADlOR1BbSkI1KGLIbPx/74tQTQ6Htf+VQrfX7R1Yk9C3mIfd51Ix9ffvPzmWfeF6At/fcPrVvTK/jWvyQ2NZimEAGSgELB1KItZWAighoT4x5cVEc11MBMj7JkD4wOrBrP4aaNq3HLIZW7cMIjBHMhvDvcd/ry7kZLjAQtSzEPL8bsulRjYW0nJzLJyGci5dCSga1Qd2VBdLlkCZHcL0OoUqCQmFTYT0AwkjHwO96oVFy8WYvP57Vvf/613w1w43kr8FrQAu37Ahhg+douplo4owvXhJUm+G53BwtXeY2MFvBqxROdOLTD9yjAyAH+3mMBAFtWswfQhxP4dpn4m+Js5Lp4j7PwM4V+x4XZ/bP1HiBGLS4NHd4sBrNFSTEbY5WuuRSBx/HJP5AEtu60gMKUQwdVNz9XEDXxKRCWaxihcYTCHCnJBt4MLp7WtUNjymt4zz9IZLRy05rskx/KXE0nT7aM0KeyZqFEz0+dkI9srSsAJSxQKtJp3rBfPgRq9m8RQ6GvFeqx+fXiS5LBlICHE7S9Ql8QHVI0ut+ru33k8IUgtvElUvZgl7x7BxeBYGzNYO8GzyKNksKsMpHWo=
 
 jobs:
   include:
@@ -90,6 +91,7 @@ jobs:
       before_deploy:
         - './.ci/before_deploy.sh'
       deploy:
+        # Push Splitgraph package to PyPI
         - provider: script
           # Remove -r testpypi to publish to the real PyPI
           # NB PyPI is write-once: once we've published a version, we can't overwrite it!
@@ -100,6 +102,7 @@ jobs:
             tags: true
             # Uncomment this to trigger deploys from all branches
             all_branches: true
+        # Push engine to Docker Hub
         - provider: script
           script: .ci/push_engine.sh
           skip_cleanup: true
@@ -109,7 +112,20 @@ jobs:
             # we push out a "latest" image + a commit hash image.
             # Uncomment this to trigger deploys from all branches
             # all_branches: true
-
+        # Push the binary Sphinx bundle as a release for build by splitgraph.com
+        - provider: releases
+          api_key:
+            secure: ${GITHUB_OAUTH_SECURE}
+          file: dist/sgr-docs-bin.tar.gz
+          # Set draft to false to disable draft releases (available to public straightaway,
+          # not just the collaborators).
+          draft: true
+          overwrite: true
+          on:
+            repo: splitgraph/splitgraph
+            tags: true
+            # Uncomment this to trigger deploys from all branches
+            all_branches: true
     - stage: Build and deploy single binary
       os: linux
       language: python
@@ -141,7 +157,7 @@ jobs:
       deploy: &deploy
       - provider: releases
         api_key:
-          secure: MWwqUDXZDI/Wi4qk3EM5afR5XVn/DayFQCkct4lRFw9TgpB1uKbyQKuPJnycE7nOPmdAdzQhsSIHfmoFRuO9ReQsADlOR1BbSkI1KGLIbPx/74tQTQ6Htf+VQrfX7R1Yk9C3mIfd51Ix9ffvPzmWfeF6At/fcPrVvTK/jWvyQ2NZimEAGSgELB1KItZWAighoT4x5cVEc11MBMj7JkD4wOrBrP4aaNq3HLIZW7cMIjBHMhvDvcd/ry7kZLjAQtSzEPL8bsulRjYW0nJzLJyGci5dCSga1Qd2VBdLlkCZHcL0OoUqCQmFTYT0AwkjHwO96oVFy8WYvP57Vvf/613w1w43kr8FrQAu37Ahhg+douplo4owvXhJUm+G53BwtXeY2MFvBqxROdOLTD9yjAyAH+3mMBAFtWswfQhxP4dpn4m+Js5Lp4j7PwM4V+x4XZ/bP1HiBGLS4NHd4sBrNFSTEbY5WuuRSBx/HJP5AEtu60gMKUQwdVNz9XEDXxKRCWaxihcYTCHCnJBt4MLp7WtUNjymt4zz9IZLRy05rskx/KXE0nT7aM0KeyZqFEz0+dkI9srSsAJSxQKtJp3rBfPgRq9m8RQ6GvFeqx+fXiS5LBlICHE7S9Ql8QHVI0ut+ru33k8IUgtvElUvZgl7x7BxeBYGzNYO8GzyKNksKsMpHWo=
+          secure: ${GITHUB_OAUTH_SECURE}
         file: dist/${BINARY_OUTPUT}
         # Set draft to false to disable draft releases (available to public straightaway,
         # not just the collaborators).
