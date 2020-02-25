@@ -136,6 +136,7 @@ jobs:
         - if [ "$TRAVIS_OS_NAME" == "windows" ]; then export EXTENSION=".exe"; fi
         - export BINARY_OUTPUT=sgr-"$TRAVIS_OS_NAME"-"$TRAVIS_CPU_ARCH""$EXTENSION"
         - mv dist/sgr"$EXTENSION" dist/"$BINARY_OUTPUT"
+        - ls -lah dist/"$BINARY_OUTPUT"
       before_deploy: &before_deploy
         - echo "before_deploy"
       deploy: &deploy
@@ -145,6 +146,7 @@ jobs:
         file: dist/${BINARY_OUTPUT}
         skip_cleanup: true
         draft: true
+        overwrite: true
         on:
           repo: splitgraph/splitgraph
           tags: true
