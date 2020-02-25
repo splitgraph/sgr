@@ -125,13 +125,16 @@ jobs:
             tags: true
             # Uncomment this to trigger deploys from all branches
             all_branches: true
+    # We don't have the pip cache here even though it would have been useful. The reason is because
+    # if we only have a pip cache and don't cache the docker_images directory with the engine
+    # image, this stage will wipe that directory from the cache (since just the pip cache will be
+    # unpacked and packed again without the docker_images dir). So the choice is between a few
+    # seconds lost to no pip cache and a minute lost to unpacking/repacking the engine.
     - stage: Build and deploy single binary
       os: linux
       language: python
       python:
         - '3.6'
-      cache:
-        pip: true
       script: skip
       before_install:
         - "curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python"
@@ -162,6 +165,7 @@ jobs:
         # not just the collaborators).
         draft: true
         overwrite: true
+        skip_cleanup: true
         on:
           repo: splitgraph/splitgraph
           tags: true
@@ -171,8 +175,6 @@ jobs:
       os: osx
       language: sh
       # Travis OSX workers have "a" version of Python installed + pyenv
-      cache:
-        pip: true
       before_install:
         - "curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poetry.py | python"
         - source $HOME/.poetry/env
@@ -198,8 +200,6 @@ jobs:
       install:
         *install
       script: skip
-      cache:
-        pip: true
       before_deploy:
         *before_deploy
       deploy:
