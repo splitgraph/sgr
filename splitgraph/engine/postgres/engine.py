@@ -4,6 +4,7 @@ to track changes, as well as the Postgres FDW interface to upload/download objec
 import itertools
 import json
 import logging
+import sys
 import time
 from contextlib import contextmanager
 from io import BytesIO
@@ -186,6 +187,14 @@ class PsycopgEngine(SQLEngine):
         """Engine-internal Psycopg connection."""
         pool_delay = POOL_RETRY_DELAY_BASE
         retries = 0
+        failed = False
+
+        def _notify():
+            nonlocal failed
+            print(("\033[F" if failed else "") + "Waiting for connection..." + "." * retries)
+            sys.stdout.flush()
+            failed = True
+
         while True:
             try:
                 conn = self._pool.getconn(get_ident())
@@ -198,19 +207,26 @@ class PsycopgEngine(SQLEngine):
                     conn.autocommit = self.autocommit
                 self.connected = True
                 return conn
+            # If we can't connect right now, write/log a message and wait. This is slightly
+            # hacky since we don't get passed whether we've been called through Click, so
+            # we check if we're running interactively and then print some
+            # dots instead of a scary log message (waiting until the connection actually fails)
             except psycopg2.pool.PoolError:
                 if retries >= POOL_RETRY_AMOUNT:
                     logging.exception(
-                        "Error claiming a pool connection %d retries", POOL_RETRY_AMOUNT
+                        "Error claiming a pool connection after %d retries", POOL_RETRY_AMOUNT
                     )
                     raise
                 retries += 1
-                logging.info(
-                    "Error claiming a pool connection, sleeping %.2fs and retrying (%d/%d)...",
-                    pool_delay,
-                    retries,
-                    POOL_RETRY_AMOUNT,
-                )
+                if sys.stdin.isatty():
+                    _notify()
+                else:
+                    logging.info(
+                        "Error claiming a pool connection, sleeping %.2fs and retrying (%d/%d)...",
+                        pool_delay,
+                        retries,
+                        POOL_RETRY_AMOUNT,
+                    )
                 time.sleep(pool_delay)
                 pool_delay = min(pool_delay * 2, POOL_RETRY_DELAY_CAP)
             except psycopg2.errors.OperationalError as e:
@@ -221,29 +237,16 @@ class PsycopgEngine(SQLEngine):
                     raise
                 _handle_fatal(e)
                 retries += 1
-                logging.error(
-                    "Error connecting to the engine (%s), sleeping %.2fs and retrying (%d/%d)...",
-                    e,
-                    RETRY_DELAY,
-                    retries,
-                    RETRY_AMOUNT,
-                )
-                time.sleep(RETRY_DELAY)
-            except psycopg2.errors.CannotConnectNow as e:
-                # This is for when the database is starting up, log at INFO level (not an error)
-                if retries >= RETRY_AMOUNT:
-                    logging.exception(
-                        "Error connecting to the engine after %d retries", RETRY_AMOUNT
+                if sys.stdin.isatty():
+                    _notify()
+                else:
+                    logging.error(
+                        "Error connecting to the engine (%s), sleeping %.2fs and retrying (%d/%d)...",
+                        e,
+                        RETRY_DELAY,
+                        retries,
+                        RETRY_AMOUNT,
                     )
-                    raise
-                retries += 1
-                logging.info(
-                    "Can't connect to the engine right now (%s), sleeping %.2fs and retrying (%d/%d)...",
-                    e,
-                    RETRY_DELAY,
-                    retries,
-                    RETRY_AMOUNT,
-                )
                 time.sleep(RETRY_DELAY)
 
     def run_sql(
@@ -370,6 +373,14 @@ class PsycopgEngine(SQLEngine):
 
     def _admin_conn(self) -> "Connection":
         retries = 0
+        failed = False
+
+        def _notify():
+            nonlocal failed
+            print(("\033[F" if failed else "") + "Waiting for connection..." + "." * retries)
+            sys.stdout.flush()
+            failed = True
+
         while True:
             try:
                 return psycopg2.connect(
@@ -386,29 +397,16 @@ class PsycopgEngine(SQLEngine):
                     )
                     raise
                 retries += 1
-                logging.error(
-                    "Error connecting to the engine (%s), sleeping %.2fs and retrying (%d/%d)...",
-                    e,
-                    RETRY_DELAY,
-                    retries,
-                    RETRY_AMOUNT,
-                )
-                time.sleep(RETRY_DELAY)
-            except psycopg2.errors.CannotConnectNow as e:
-                # This is for when the database is starting up, log at INFO level (not an error)
-                if retries >= RETRY_AMOUNT:
-                    logging.exception(
-                        "Error connecting to the engine after %d retries", RETRY_AMOUNT
+                if sys.stdin.isatty():
+                    _notify()
+                else:
+                    logging.error(
+                        "Error connecting to the engine (%s), sleeping %.2fs and retrying (%d/%d)...",
+                        e,
+                        RETRY_DELAY,
+                        retries,
+                        RETRY_AMOUNT,
                     )
-                    raise
-                retries += 1
-                logging.info(
-                    "Can't connect to the engine right now (%s), sleeping %.2fs and retrying (%d/%d)...",
-                    e,
-                    RETRY_DELAY,
-                    retries,
-                    RETRY_AMOUNT,
-                )
                 time.sleep(RETRY_DELAY)
 
     def initialize(
