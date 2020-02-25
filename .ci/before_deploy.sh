@@ -10,12 +10,13 @@ test -z "$PYPI_URL" && { echo "No PYPI_URL set. Defaulting to ${DEFAULT_PYPI_URL
 
 PYPI_URL=${PYPI_URL-"${DEFAULT_PYPI_URL}"}
 
-# Create single binary (currently linux only) and configure pypi for deployment
+# Configure pypi for deployment
 pushd "$REPO_ROOT_DIR" \
     && poetry config repositories.testpypi "$PYPI_URL" \
     && poetry config http-basic.testpypi splitgraph "$PYPI_PASSWORD" \
     && poetry config http-basic.pypi splitgraph "$PYPI_PASSWORD" \
     && poetry build \
+    && poetry run "$CI_DIR"/prepare_doc_bundle.sh
     && popd \
     && exit 0
 
