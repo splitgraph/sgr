@@ -8,6 +8,7 @@ from typing import Dict, TYPE_CHECKING
 from urllib.parse import urlparse
 
 import click
+from tqdm import tqdm
 
 from splitgraph.__version__ import __version__
 from splitgraph.commandline.common import print_table
@@ -161,6 +162,33 @@ def list_engines_c(include_all):
         print_table([("Name", "Docker ID", "Status", "ports")] + our_containers)
 
 
+def _pretty_pull(client, image):
+    # Use the details from the low-level docker API to give us a pull progressbar
+    with tqdm(
+        total=1, desc="Downloading", unit="B", unit_scale=True, unit_divisor=1024, position=0
+    ) as download_bar:
+        with tqdm(
+            total=1, desc="Extracting", unit="B", unit_scale=True, unit_divisor=1024, position=1
+        ) as extract_bar:
+            download_progress = {}
+            extract_progress = {}
+            for progress in client.api.pull(image, stream=True, decode=True):
+                progress_text = "%s: %s" % (progress.get("id", ""), progress.get("status", ""))
+                if progress["status"] == "Downloading":
+                    _update_bar(progress, progress_text, download_bar, download_progress)
+                elif progress["status"] == "Extracting":
+                    _update_bar(progress, progress_text, extract_bar, extract_progress)
+
+
+def _update_bar(progress, progress_text, bar, progress_data):
+    if progress.get("progressDetail"):
+        progress_data[progress["id"]] = progress["progressDetail"]
+
+        bar.total = sum(p["total"] for p in progress_data.values())
+        bar.update(sum(p["current"] for p in progress_data.values()) - bar.n)
+    bar.set_description_str(progress_text)
+
+
 @click.command(name="add")
 @click.option(
     "-i",
@@ -209,7 +237,7 @@ def add_engine_c(
 
     if not no_pull:
         click.echo("Pulling image %s..." % image)
-        client.images.pull(image)
+        _pretty_pull(client, image)
 
     container_name = _get_container_name(name)
     data_name = _get_data_volume_name(name)
@@ -272,8 +300,6 @@ def add_engine_c(
     }
 
     if not no_init:
-        click.echo("Initializing the engine")
-
         engine = PostgresEngine(name=name, conn_params=conn_params)
         engine.initialize()
         engine.commit()
