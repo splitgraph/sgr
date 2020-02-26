@@ -15,4 +15,4 @@ services:
     # Need to mount this into the engine so that access credentials to
     # data.splitgraph.com propagate into it.
     volumes:
-      - ./.sgconfig:/.sgconfig
+      - ${SG_CONFIG_FILE-./.sgconfig}:/.sgconfig
