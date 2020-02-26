@@ -23,6 +23,9 @@ mv _build/json "$TARGET_DIR"
 echo "Generating Markdown sgr reference"
 python generate_markdown_commandline_reference.py "$TARGET_DIR"/sgr
 
+echo "Building Asciinema casts"
+TARGET_DIR=$TARGET_DIR "$CI_DIR"/rebuild_asciicasts.sh
+
 echo "Archiving the bundle $OUTPUT.tar.gz"
 cd "$TARGET_DIR"/..
 tar -czf "$OUTPUT".tar.gz "$OUTPUT"
