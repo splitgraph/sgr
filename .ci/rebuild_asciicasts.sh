@@ -17,6 +17,9 @@ ASCIINEMA_CONFIG="$REPO_ROOT_DIR"/examples/asciinema.sgconfig
 cp "$REPO_ROOT_DIR"/examples/import-from-mongo/.sgconfig "$ASCIINEMA_CONFIG"
 SG_CONFIG_FILE=$ASCIINEMA_CONFIG sgr cloud login --username "$SG_DEMO_USER" --password "$SG_DEMO_PASSWORD"
 
+# TODO the us-election asciicast requires scipy for the last part, consider replacing
+pip install scipy
+
 cd "$REPO_ROOT_DIR"/examples
 for dir in $ASCIINEMA_CASTS; do
   ./rebuild_asciinema.py "$dir" \
