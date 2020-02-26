@@ -39,6 +39,7 @@ SG_ENGINE_PWD=supersecure
 SG_ENGINE_ADMIN_USER=sgr
 SG_ENGINE_ADMIN_PWD=supersecure
 SG_ENGINE_POSTGRES_DB_NAME=postgres
+SG_IS_REGISTRY=true
 SG_META_SCHEMA=splitgraph_meta
 SG_ENGINE_OBJECT_PATH=/var/lib/splitgraph/objects
 SG_AUTH_API=http://some-auth-service
@@ -58,6 +59,7 @@ SG_ENGINE_PWD=testpassword
 SG_ENGINE_ADMIN_USER=
 SG_ENGINE_ADMIN_PWD=
 SG_ENGINE_POSTGRES_DB_NAME=postgres
+SG_IS_REGISTRY=true
 SG_META_SCHEMA=splitgraph_meta
 SG_NAMESPACE=testuser
 

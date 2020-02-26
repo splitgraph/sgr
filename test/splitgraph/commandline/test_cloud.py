@@ -118,6 +118,7 @@ def test_commandline_registration_normal():
                     "SG_NAMESPACE": "someuser",
                     "SG_CLOUD_REFRESH_TOKEN": _SAMPLE_REFRESH,
                     "SG_CLOUD_ACCESS_TOKEN": _SAMPLE_ACCESS,
+                    "SG_IS_REGISTRY": "true",
                 }
             },
         },

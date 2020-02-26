@@ -13,6 +13,7 @@ from tqdm import tqdm
 from splitgraph.__version__ import __version__
 from splitgraph.commandline.common import print_table
 from splitgraph.config import CONFIG
+from splitgraph.engine import get_engine
 
 if TYPE_CHECKING:
     from docker.models.containers import Container
@@ -437,6 +438,21 @@ def configure_engine_c(name):
 
     copy_to_container(container, CONFIG["SG_CONFIG_FILE"], "/.sgconfig")
     logging.info("Config updated for container %s", container.name)
+
+
+@click.command("version")
+@click.argument("name", default=DEFAULT_ENGINE)
+def version_engine_c(name):
+    """Get version of Splitgraph engine."""
+
+    if name == DEFAULT_ENGINE:
+        engine = get_engine()
+    else:
+        engine = get_engine(name)
+
+    version = engine.splitgraph_version
+    if version:
+        click.echo("Splitgraph Engine %s" % version)
 
 
 engine_c.add_command(list_engines_c)

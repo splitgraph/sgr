@@ -99,6 +99,8 @@ class PsycopgEngine(SQLEngine):
         conn_params: Optional[Dict[str, Optional[str]]] = None,
         pool: Optional[AbstractConnectionPool] = None,
         autocommit: bool = False,
+        registry: bool = False,
+        check_version: bool = True,
     ) -> None:
         """
         :param name: Name of the engine
@@ -115,6 +117,8 @@ class PsycopgEngine(SQLEngine):
         self.name = name
         self.autocommit = autocommit
         self.connected = False
+        self.check_version = check_version
+        self.registry = registry
 
         if conn_params:
             self.conn_params = conn_params
@@ -183,6 +187,15 @@ class PsycopgEngine(SQLEngine):
         )
 
     @property
+    def splitgraph_version(self) -> Optional[str]:
+        """Returns the version of the Splitgraph library installed on the engine
+        and by association the version of the engine itself."""
+        if self.registry:
+            raise ValueError("Engine %s is a registry, can't check version!" % self.name)
+        else:
+            return self._get_engine_version(self.connection)
+
+    @property
     def connection(self) -> "Connection":
         """Engine-internal Psycopg connection."""
         pool_delay = POOL_RETRY_DELAY_BASE
@@ -205,6 +218,12 @@ class PsycopgEngine(SQLEngine):
                 # so changing it from False to False will fail if we're actually in a transaction.
                 if conn.autocommit != self.autocommit:
                     conn.autocommit = self.autocommit
+
+                # Get the engine version and warn the user if the client and the
+                # engine have mismatched versions.
+                if not self.registry and self.check_version and not self.connected:
+                    self._check_engine_version(conn)
+
                 self.connected = True
                 return conn
             # If we can't connect right now, write/log a message and wait. This is slightly
@@ -248,6 +267,40 @@ class PsycopgEngine(SQLEngine):
                         RETRY_AMOUNT,
                     )
                 time.sleep(RETRY_DELAY)
+
+    def _get_engine_version(self, conn):
+        # Internal function to get the Splitgraph library version on the engine.
+        # Doesn't use run_sql because it can get called as part of run_sql if it's
+        # run for the first time, messing up transaction state.
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    SQL("SELECT {}.get_splitgraph_version()").format(
+                        Identifier(SPLITGRAPH_API_SCHEMA)
+                    )
+                )
+                result = cur.fetchone()
+                if result:
+                    return result[0]
+                return None
+        except psycopg2.errors.UndefinedFunction:
+            conn.rollback()
+            return None
+        except psycopg2.errors.InvalidSchemaName:
+            conn.rollback()
+            return None
+
+    def _check_engine_version(self, conn):
+        engine_version = self._get_engine_version(conn)
+        if engine_version and engine_version != __version__:
+            logging.warning(
+                "You're running sgr %s against engine %s. "
+                "It's recommended to match the versions of sgr and the "
+                "engine. Either upgrade your engine or ignore this message "
+                "by setting SG_CHECK_VERSION= to this engine's config.",
+                __version__,
+                engine_version,
+            )
 
     def run_sql(
         self,

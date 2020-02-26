@@ -13,6 +13,12 @@ DEFAULTS: ConfigDict = {
     # Prefix for Docker containers that are treated as Splitgraph engines.
     "SG_ENGINE_PREFIX": "splitgraph_engine_",
     "SG_NAMESPACE": "sg-default-ns",
+    # Whether this engine is a registry (access only via the API) or
+    # a personal Splitgraph engine
+    "SG_IS_REGISTRY": "",
+    # Whether to check the version of Splitgraph core installed on this engine
+    # when we first connect to it.
+    "SG_CHECK_VERSION": "true",
     "SG_ENGINE_FDW_HOST": "localhost",
     "SG_ENGINE_FDW_PORT": "5432",
     "SG_ENGINE_HOST": "localhost",
@@ -54,6 +60,7 @@ DEFAULTS: ConfigDict = {
     # at registration time.
     "remotes": {
         "data.splitgraph.com": {
+            "SG_IS_REGISTRY": "true",
             "SG_ENGINE_HOST": "data.splitgraph.com",
             "SG_ENGINE_PORT": "5432",
             "SG_ENGINE_DB_NAME": "sgregistry",

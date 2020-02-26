@@ -5,6 +5,15 @@
 CREATE EXTENSION IF NOT EXISTS plpython3u;
 CREATE SCHEMA IF NOT EXISTS splitgraph_api;
 
+-- This is here because it's only supposed to be installed on engines rather than
+-- on the registry.
+CREATE OR REPLACE FUNCTION splitgraph_api.get_splitgraph_version()
+RETURNS TEXT AS $$
+    from splitgraph.__version__ import __version__
+    return __version__
+$$ LANGUAGE plpython3u SECURITY INVOKER;
+
+
 CREATE OR REPLACE FUNCTION splitgraph_api.upload_object(object_id varchar, urls varchar[]) RETURNS void AS
 $BODY$
     import os.path
