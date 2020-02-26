@@ -37,6 +37,13 @@ jobs:
       python:
         - '3.6'
       install:
+        # A hack that speeds up poetry install by first exporting
+        # the project's requirements, pip installing them and then
+        # running poetry install on top of that to install the project
+        # itself in editable mode.
+        - poetry export --dev -f requirements.txt --without-hashes -o /tmp/requirements.txt -E ingestion
+        - sed -i "/^-e/d" /tmp/requirements.txt
+        - pip install -r /tmp/requirements.txt
         - poetry install -E ingestion
         - sudo cat /etc/docker/daemon.json
         - cd engine && make && cd ..
