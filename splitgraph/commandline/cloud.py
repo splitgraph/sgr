@@ -52,6 +52,7 @@ def register_c(username, password, email, remote, accept_tos):
                 "SG_NAMESPACE": username,
                 "SG_CLOUD_REFRESH_TOKEN": refresh,
                 "SG_CLOUD_ACCESS_TOKEN": access,
+                "SG_IS_REGISTRY": "true",
             }
         },
     }

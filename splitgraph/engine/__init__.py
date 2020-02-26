@@ -37,6 +37,8 @@ _ENGINE_SPECIFIC_CONFIG = [
     "SG_ENGINE_FDW_PORT",
     "SG_ENGINE_OBJECT_PATH",
     "SG_NAMESPACE",
+    "SG_IS_REGISTRY",
+    "SG_CHECK_VERSION",
 ]
 
 # Some engine config keys default to values of other keys if unspecified.
@@ -665,6 +667,16 @@ def get_engine(
         # As we only have PostgresEngine, we instantiate that.
 
         conn_params = cast(Dict[str, Optional[str]], _prepare_engine_config(CONFIG, name))
+
+        try:
+            is_registry = bool(conn_params.pop("SG_IS_REGISTRY"))
+        except KeyError:
+            is_registry = False
+        try:
+            check_version = bool(conn_params.pop("SG_CHECK_VERSION"))
+        except KeyError:
+            check_version = False
+
         if name == "LOCAL" and use_socket:
             conn_params["SG_ENGINE_HOST"] = None
             conn_params["SG_ENGINE_PORT"] = None
@@ -672,7 +684,13 @@ def get_engine(
             conn_params["SG_ENGINE_HOST"] = conn_params["SG_ENGINE_FDW_HOST"]
             conn_params["SG_ENGINE_PORT"] = conn_params["SG_ENGINE_FDW_PORT"]
 
-        _ENGINES[name] = PostgresEngine(conn_params=conn_params, name=name, autocommit=autocommit)
+        _ENGINES[name] = PostgresEngine(
+            conn_params=conn_params,
+            name=name,
+            autocommit=autocommit,
+            registry=is_registry,
+            check_version=check_version,
+        )
     return _ENGINES[name]
 
 

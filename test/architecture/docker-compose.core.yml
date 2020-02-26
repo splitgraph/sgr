@@ -3,7 +3,7 @@
 version: '3'
 services:
   local_engine:
-    image: ${DOCKER_REPO}/engine:${DOCKER_TAG}
+    image: ${DOCKER_REPO-splitgraph}/engine:${DOCKER_TAG-development}
     ports:
       - '0.0.0.0:5432:5432'
     environment:
@@ -21,8 +21,8 @@ services:
       context: ./src/
       dockerfile: remote_engine/Dockerfile
       args:
-        DOCKER_REPO: ${DOCKER_REPO}
-        DOCKER_TAG: ${DOCKER_TAG}
+        DOCKER_REPO: ${DOCKER_REPO-splitgraph}
+        DOCKER_TAG: ${DOCKER_TAG-development}
     ports:
       - '0.0.0.0:5431:5431'
     environment:
