@@ -199,6 +199,7 @@ def test_commandline_login_normal():
     pc.assert_called_once_with(
         source_config,
         {
+            "SG_REPO_LOOKUP": _REMOTE,
             "remotes": {
                 "remote_engine": {
                     "SG_NAMESPACE": "someuser",
@@ -233,6 +234,7 @@ def test_commandline_login_normal():
     pc.assert_called_once_with(
         source_config,
         {
+            "SG_REPO_LOOKUP": _REMOTE,
             "remotes": {
                 "remote_engine": {
                     "SG_ENGINE_USER": "abcdef123456",

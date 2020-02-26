@@ -41,16 +41,10 @@ def register_c(username, password, email, remote, accept_tos):
     key, secret = client.create_machine_credentials(access, password)
     click.echo("Acquired refresh token and API keys")
 
-    repo_lookup = CONFIG.get("SG_REPO_LOOKUP")
-    if repo_lookup:
-        repo_lookup = repo_lookup.split(",")
-        if remote not in repo_lookup:
-            repo_lookup.append(remote)
-    else:
-        repo_lookup = [remote]
+    repo_lookup = _update_repo_lookup(CONFIG, remote)
 
     config_patch = {
-        "SG_REPO_LOOKUP": ",".join(repo_lookup),
+        "SG_REPO_LOOKUP": repo_lookup,
         "remotes": {
             remote: {
                 "SG_ENGINE_USER": key,
@@ -65,6 +59,17 @@ def register_c(username, password, email, remote, accept_tos):
     inject_config_into_engines(CONFIG["SG_ENGINE_PREFIX"], config_path)
 
     click.echo("Done.")
+
+
+def _update_repo_lookup(config, remote):
+    repo_lookup = config.get("SG_REPO_LOOKUP")
+    if repo_lookup:
+        repo_lookup = repo_lookup.split(",")
+        if remote not in repo_lookup:
+            repo_lookup.append(remote)
+    else:
+        repo_lookup = [remote]
+    return ",".join(repo_lookup)
 
 
 @click.command("login")
@@ -95,6 +100,7 @@ def login_c(username, password, remote, overwrite):
 
     click.echo("Logged into %s as %s" % (remote, namespace))
     config_patch = {
+        "SG_REPO_LOOKUP": _update_repo_lookup(CONFIG, remote),
         "remotes": {
             remote: {
                 "SG_NAMESPACE": namespace,
