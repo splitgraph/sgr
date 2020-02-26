@@ -9,6 +9,7 @@ import logging
 import click
 import click_log
 
+from splitgraph.__version__ import __version__
 from splitgraph.commandline.cloud import cloud_c
 from splitgraph.commandline.engine import engine_c
 from splitgraph.commandline.example import example
@@ -43,6 +44,7 @@ def _commit_connection(_):
 
 @click.group(result_callback=_commit_connection)
 @click_log.simple_verbosity_option(logger)
+@click.version_option(version=__version__)
 def cli():
     """Splitgraph command line client: manage and build Postgres schema images."""
 
