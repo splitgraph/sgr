@@ -455,10 +455,64 @@ def version_engine_c(name):
         click.echo("Splitgraph Engine %s" % version)
 
 
+@click.command("upgrade")
+@click.option(
+    "-i",
+    "--image",
+    default="splitgraph/engine:%s" % __version__,
+    help="Docker image with the Splitgraph engine",
+)
+@click.option("--no-pull", is_flag=True, help="Don't pull the new engine image")
+@click.argument("name", default=DEFAULT_ENGINE)
+@click.pass_context
+def upgrade_engine_c(ctx, image, no_pull, name):
+    """Upgrade a Splitgraph engine.
+
+    This consists of shutting down the current Splitgraph engine,
+    deleting its Docker container (keeping the actual data and
+    metadata volumes intact), creating a container based on a newer
+    image and finally reinitializing the engine to perform needed migrations.
+    """
+
+    # Get reference to engine to extract its connection params
+    if name == DEFAULT_ENGINE:
+        engine = get_engine()
+    else:
+        engine = get_engine(name)
+
+    username = engine.conn_params["SG_ENGINE_USER"]
+    password = engine.conn_params["SG_ENGINE_PWD"]
+    port = engine.conn_params["SG_ENGINE_PORT"]
+
+    # Stop the engine
+    ctx.invoke(stop_engine_c, name=name)
+
+    # Delete the container
+    ctx.invoke(delete_engine_c, name=name, yes=True)
+
+    # Create and start new engine
+    ctx.invoke(
+        add_engine_c,
+        image=image,
+        port=port,
+        username=username,
+        password=password,
+        no_sgconfig=True,
+        no_pull=no_pull,
+        name=name,
+    )
+
+    version = engine.splitgraph_version
+    if version:
+        click.echo("Upgraded engine %s to %s" % (name, version))
+
+
 engine_c.add_command(list_engines_c)
 engine_c.add_command(add_engine_c)
 engine_c.add_command(stop_engine_c)
 engine_c.add_command(start_engine_c)
 engine_c.add_command(delete_engine_c)
+engine_c.add_command(upgrade_engine_c)
 engine_c.add_command(log_engine_c)
 engine_c.add_command(configure_engine_c)
+engine_c.add_command(version_engine_c)
