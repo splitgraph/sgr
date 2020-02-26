@@ -16,6 +16,8 @@ from splitgraph.commandline.engine import (
     stop_engine_c,
     log_engine_c,
     configure_engine_c,
+    upgrade_engine_c,
+    version_engine_c,
 )
 from splitgraph.commandline.ingestion import csv_export, csv_import
 
@@ -32,8 +34,10 @@ STRUCTURE = [
             "engine list",
             "engine start",
             "engine stop",
+            "engine upgrade",
             "engine log",
             "engine configure",
+            "engine version",
         ],
     ),
     ("Data import/export", ["csv export", "csv import", "mount"]),
@@ -51,9 +55,11 @@ STRUCTURE_CMD_OVERRIDE = {
     "engine delete": delete_engine_c,
     "engine list": list_engines_c,
     "engine start": start_engine_c,
+    "engine upgrade": upgrade_engine_c,
     "engine stop": stop_engine_c,
     "engine log": log_engine_c,
     "engine configure": configure_engine_c,
+    "engine version": version_engine_c,
     "cloud register": register_c,
     "cloud login": login_c,
     "cloud curl": curl_c,

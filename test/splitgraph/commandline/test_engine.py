@@ -3,6 +3,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+from unittest import mock
 from unittest.mock import Mock, patch, sentinel
 
 import docker
@@ -10,6 +11,7 @@ import pytest
 from click.testing import CliRunner
 from test.splitgraph.conftest import SG_ENGINE_PREFIX
 
+from splitgraph.__version__ import __version__
 from splitgraph.commandline.engine import (
     add_engine_c,
     list_engines_c,
@@ -18,6 +20,8 @@ from splitgraph.commandline.engine import (
     start_engine_c,
     inject_config_into_engines,
     configure_engine_c,
+    version_engine_c,
+    upgrade_engine_c,
 )
 from splitgraph.config import CONFIG
 from splitgraph.config.config import patch_config
@@ -28,7 +32,8 @@ TEST_ENGINE_NAME = "test"
 
 # Default parameters for data.splitgraph.com that show up in every config
 _CONFIG_DEFAULTS = (
-    "\n[remote: data.splitgraph.com]\nSG_ENGINE_HOST=data.splitgraph.com\n"
+    "\n[remote: data.splitgraph.com]\nSG_IS_REGISTRY=true\n"
+    "SG_ENGINE_HOST=data.splitgraph.com\n"
     "SG_ENGINE_PORT=5432\nSG_ENGINE_DB_NAME=sgregistry\n"
     "SG_AUTH_API=https://api.splitgraph.com/auth\n"
     "SG_QUERY_API=https://data.splitgraph.com\n"
@@ -113,6 +118,13 @@ def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
     assert TEST_ENGINE_NAME in result.stdout
     assert "running" in result.stdout
 
+    # Check engine version
+    # (we didn't put it into the .sgconfig so have to patch instead)
+    with mock.patch("splitgraph.commandline.engine.get_engine", return_value=engine):
+        result = runner.invoke(version_engine_c, [TEST_ENGINE_NAME])
+        assert result.exit_code == 0
+        assert __version__ in result.stdout
+
     # Try deleting the engine while it's still running
     with pytest.raises(docker.errors.APIError):
         runner.invoke(delete_engine_c, ["-y", TEST_ENGINE_NAME], catch_exceptions=False)
@@ -140,6 +152,30 @@ def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
     assert result.exit_code == 0
     assert TEST_ENGINE_NAME in result.stdout
     assert "running" in result.stdout
+
+    # Try upgrading it to the same engine version as a smoke test
+    with mock.patch("splitgraph.commandline.engine.get_engine", return_value=engine):
+        # Make sure the connection is closed as the client will use this Engine reference
+        # after the upgrade to initialize it.
+        engine.close()
+
+        result = runner.invoke(
+            upgrade_engine_c,
+            [TEST_ENGINE_NAME, "--image", _get_test_engine_image(), "--no-pull"],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0
+        assert "Upgraded engine %s to %s" % (TEST_ENGINE_NAME, __version__) in result.stdout
+
+        # Check the engine is running and has the right version
+        result = runner.invoke(list_engines_c)
+        assert result.exit_code == 0
+        assert TEST_ENGINE_NAME in result.stdout
+        assert "running" in result.stdout
+
+        result = runner.invoke(version_engine_c, [TEST_ENGINE_NAME])
+        assert result.exit_code == 0
+        assert __version__ in result.stdout
 
     # Force delete it
     result = runner.invoke(delete_engine_c, ["-f", "--with-volumes", TEST_ENGINE_NAME], input="y\n")
