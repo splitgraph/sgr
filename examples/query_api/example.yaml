@@ -7,7 +7,7 @@
   record: False
 - commands:
   - "# Delete old version of the dataset"
-  - sgr rm -y --remote data.splitgraph.com splitgraph_demo/weather
+  - sgr rm -y --remote data.splitgraph.com splitgraph-demo/weather
   record: False
 - commands:
   - "# Ingest the weather dataset at Raleigh-Durham Airport"
@@ -26,19 +26,19 @@
 - commands:
   - "# Perform a request against an automatically-generated"
   - "# Postgrest (https://postgrest.org) endpoint."
-  - curl "https://data.splitgraph.com/splitgraph_demo/weather/initial_data/rdu?date=eq.2009-08-25T00:00:00"
+  - curl "https://data.splitgraph.com/splitgraph-demo/weather/initial_data/rdu?date=eq.2009-08-25T00:00:00"
 - commands:
   - "# sgr also has a shorthand to access the query API"
-  - sgr cloud curl "splitgraph_demo/weather/initial_data/rdu?date=eq.2009-08-25T00:00:00"
+  - sgr cloud curl "splitgraph-demo/weather/initial_data/rdu?date=eq.2009-08-25T00:00:00"
 - commands:
   - "# The query API also supports running one-off Splitfile commands against a repository,"
   - "# creating new images that can be pulled. sgr handles authentication for this automatically."
   - cat request_1.json
-  - sgr cloud curl splitgraph_demo/weather/initial_data -X POST -d @request_1.json
+  - sgr cloud curl splitgraph-demo/weather/initial_data -X POST -d @request_1.json
 - commands:
   - "# Run another command against the new layer to join the two datasets"
   - cat request_2.json
-  - sgr cloud curl splitgraph_demo/weather/with_flight_data -X POST -d @request_2.json
+  - sgr cloud curl splitgraph-demo/weather/with_flight_data -X POST -d @request_2.json
 - commands:
   - "# Pull the dataset and check out the new image"
   - sgr pull weather

@@ -25,6 +25,7 @@ import click
 )
 @click.option("--gif-stylesheet", type=str, default=None)
 @click.option("--output-path", type=str, default="asciinema")
+@click.option("--config", type=str, default=None, help=".sgconfig file to be used by the recorder")
 @click.argument("directory")
 def rebuild(
     skip_gif,
@@ -33,6 +34,7 @@ def rebuild(
     extra_gif_args,
     gif_stylesheet,
     output_path,
+    config,
     directory,
 ):
     workdir = os.path.join(os.path.dirname(__file__), directory)
@@ -55,6 +57,10 @@ def rebuild(
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
 
+        if config:
+            # Use absolute path for SG_CONFIG_FILE since we're
+            # running run_example from a different directory.
+            env["SG_CONFIG_FILE"] = os.path.abspath(config)
         args = [
             "../run_example.py",
             "example.yaml",
