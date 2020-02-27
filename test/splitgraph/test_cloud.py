@@ -18,7 +18,7 @@ _REMOTE = "remote_engine"
 _ENDPOINT = "http://some-auth-service"
 
 
-@httpretty.activate
+@httpretty.activate(allow_net_connect=False)
 def test_auth_api_user_error():
     client = AuthAPIClient(_REMOTE)
 
@@ -35,7 +35,7 @@ def test_auth_api_user_error():
         assert "403" in str(e.__cause__)
 
 
-@httpretty.activate
+@httpretty.activate(allow_net_connect=False)
 def test_auth_api_server_error_missing_entries():
     client = AuthAPIClient(_REMOTE)
 
@@ -52,7 +52,7 @@ def test_auth_api_server_error_missing_entries():
         assert "Missing entries" in str(e)
 
 
-@httpretty.activate
+@httpretty.activate(allow_net_connect=False)
 def test_auth_api_server_error_no_json():
     client = AuthAPIClient(_REMOTE)
 
@@ -103,7 +103,7 @@ def test_auth_api_access_token_property_not_expired():
         assert client.get_access_token.call_count == 0
 
 
-@httpretty.activate
+@httpretty.activate(allow_net_connect=False)
 def test_auth_api_access_token_property_expired():
     client = AuthAPIClient(_REMOTE)
 
