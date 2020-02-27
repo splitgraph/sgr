@@ -5,6 +5,7 @@ import httpretty
 import pytest
 from click.testing import CliRunner
 
+from splitgraph.__version__ import __version__
 from splitgraph.commandline.cloud import register_c, login_c, curl_c
 from splitgraph.config import create_config_dict
 from splitgraph.exceptions import AuthAPIError
@@ -288,6 +289,8 @@ def test_commandline_curl_normal(test_case):
                 [
                     "curl",
                     result_url,
+                    "-H",
+                    "User-Agent: sgr %s" % __version__,
                     "-H",
                     "Authorization: Bearer AAAABBBBCCCCDDDD",
                     "--some-curl-arg",

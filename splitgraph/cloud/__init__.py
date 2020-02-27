@@ -10,10 +10,15 @@ import requests
 from requests import HTTPError
 from requests.models import Response
 
+from splitgraph.__version__ import __version__
 from splitgraph.config import create_config_dict, get_singleton, CONFIG
 from splitgraph.config.config import get_from_subsection, set_in_subsection
 from splitgraph.config.export import overwrite_config
 from splitgraph.exceptions import AuthAPIError
+
+
+def get_headers():
+    return {"User-Agent": "sgr %s" % __version__}
 
 
 def expect_result(
@@ -111,7 +116,7 @@ class AuthAPIClient:
         Get a Terms of Service message from the registry (if accepting ToS is required)
         :return: Link to the Terms of Service or None
         """
-        return requests.get(self.endpoint + "/tos", verify=self.verify)
+        return requests.get(self.endpoint + "/tos", verify=self.verify, headers=get_headers())
 
     @expect_result(["user_id", "access_token", "refresh_token"])
     def register(self, username: str, password: str, email: str, accept_tos: bool) -> Response:
@@ -124,7 +129,9 @@ class AuthAPIClient:
         :param accept_tos: Accept the Terms of Service if they exist
         """
         body = dict(username=username, password=password, email=email, accept_tos=accept_tos)
-        return requests.post(self.endpoint + "/register_user", json=body, verify=self.verify)
+        return requests.post(
+            self.endpoint + "/register_user", json=body, verify=self.verify, headers=get_headers()
+        )
 
     @expect_result(["access_token", "refresh_token"])
     def get_refresh_token(self, username: str, password: str) -> Response:
@@ -136,7 +143,9 @@ class AuthAPIClient:
         :return: Tuple of (access_token, refresh_token).
         """
         body = dict(username=username, password=password)
-        return requests.post(self.endpoint + "/refresh_token", json=body, verify=self.verify)
+        return requests.post(
+            self.endpoint + "/refresh_token", json=body, verify=self.verify, headers=get_headers()
+        )
 
     @expect_result(["key", "secret"])
     def create_machine_credentials(self, access_token: str, password: str) -> Response:
@@ -153,7 +162,7 @@ class AuthAPIClient:
         return requests.post(
             self.endpoint + "/create_machine_credentials",
             json=body,
-            headers={"Authorization": "Bearer " + access_token},
+            headers={**get_headers(), **{"Authorization": "Bearer " + access_token}},
             verify=self.verify,
         )
 
@@ -167,7 +176,9 @@ class AuthAPIClient:
         """
 
         body = dict(refresh_token=refresh_token)
-        return requests.post(self.endpoint + "/access_token", json=body, verify=self.verify)
+        return requests.post(
+            self.endpoint + "/access_token", json=body, verify=self.verify, headers=get_headers()
+        )
 
     @expect_result(["access_token"])
     def get_access_token_from_api(self, api_key: str, api_secret: str) -> Response:
@@ -180,7 +191,9 @@ class AuthAPIClient:
         """
 
         body = dict(api_key=api_key, api_secret=api_secret)
-        return requests.post(self.endpoint + "/access_token", json=body, verify=self.verify)
+        return requests.post(
+            self.endpoint + "/access_token", json=body, verify=self.verify, headers=get_headers()
+        )
 
     @property
     def access_token(self) -> str:

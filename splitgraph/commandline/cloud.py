@@ -5,7 +5,8 @@ from urllib.parse import urlsplit
 
 import click
 
-from splitgraph.cloud import get_token_claim
+from splitgraph.__version__ import __version__
+from splitgraph.cloud import get_token_claim, get_headers
 from splitgraph.commandline.engine import patch_and_save_config, inject_config_into_engines
 
 
@@ -160,9 +161,11 @@ def curl_c(remote, request, curl_args):
     )
 
     access_token = AuthAPIClient(remote).access_token
-    subprocess_args = ["curl", full_request, "-H", "Authorization: Bearer " + access_token] + list(
-        curl_args
-    )
+    headers = get_headers()
+    headers.update({"Authorization": "Bearer " + access_token})
+
+    header_invocation = [h for i in headers.items() for h in ("-H", "%s: %s" % i)]
+    subprocess_args = ["curl", full_request] + header_invocation + list(curl_args)
 
     logging.debug("Calling %s", " ".join(subprocess_args))
     subprocess.call(subprocess_args)
