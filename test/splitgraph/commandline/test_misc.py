@@ -1,9 +1,17 @@
+import os
+import tempfile
+from unittest import mock
+from unittest.mock import sentinel, call
+
+import httpretty
 import pytest
 from click.testing import CliRunner
+from test.splitgraph.conftest import API_RESOURCES
 
 from splitgraph.commandline import upstream_c, import_c, rm_c, prune_c, config_c, dump_c, eval_c
 from splitgraph.commandline.common import ImageType
 from splitgraph.commandline.example import generate_c, alter_c, splitfile_c
+from splitgraph.commandline.misc import _get_binary_url_for, upgrade_c
 from splitgraph.config import PG_PWD, PG_USER
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.repository import Repository
@@ -338,3 +346,119 @@ def test_commandline_eval():
     )
     assert result.exit_code == 0
     assert "arg_1=val_1" in result.output
+
+
+_GH_TAG = "https://api.github.com/repos/splitgraph/splitgraph/releases/tags/v0.1.0"
+_GH_LATEST = "https://api.github.com/repos/splitgraph/splitgraph/releases/latest"
+_GH_NONEXISTENT = "https://api.github.com/repos/splitgraph/splitgraph/releases/tags/vnonexistent"
+
+
+def _gh_response(request, uri, response_headers):
+    with open(os.path.join(API_RESOURCES, "github_releases.json")) as f:
+        return [200, response_headers, f.read()]
+
+
+def _gh_404(request, uri, response_headers):
+    return [404, response_headers, ""]
+
+
+@httpretty.activate(allow_net_connect=False)
+@pytest.mark.parametrize(
+    "system,release,result",
+    [
+        (
+            "linux",
+            "latest",
+            (
+                "0.1.0",
+                "https://github.com/splitgraph/splitgraph/releases/download/v0.1.0/sgr-linux-amd64",
+            ),
+        ),
+        (
+            "linux",
+            "v0.1.0",
+            (
+                "0.1.0",
+                "https://github.com/splitgraph/splitgraph/releases/download/v0.1.0/sgr-linux-amd64",
+            ),
+        ),
+        (
+            "osx",
+            "latest",
+            (
+                "0.1.0",
+                "https://github.com/splitgraph/splitgraph/releases/download/v0.1.0/sgr-osx-amd64",
+            ),
+        ),
+        (
+            "windows",
+            "latest",
+            (
+                "0.1.0",
+                "https://github.com/splitgraph/splitgraph/releases/download/v0.1.0/sgr-windows-amd64.exe",
+            ),
+        ),
+        ("windows", "vnonexistent", ValueError),
+        ("weirdplatform", "v0.1.0", ValueError),
+    ],
+)
+def test_get_binary_url(system, release, result):
+    httpretty.register_uri(httpretty.HTTPretty.GET, _GH_TAG, body=_gh_response)
+    httpretty.register_uri(httpretty.HTTPretty.GET, _GH_LATEST, body=_gh_response)
+    httpretty.register_uri(httpretty.HTTPretty.GET, _GH_NONEXISTENT, body=_gh_404)
+
+    if result == ValueError:
+        with pytest.raises(result):
+            _get_binary_url_for(system, release)
+    else:
+        assert _get_binary_url_for(system, release) == result
+
+
+@httpretty.activate(allow_net_connect=False)
+def test_upgrade_end_to_end():
+    _BODY = "new sgr client"
+    httpretty.register_uri(httpretty.HTTPretty.GET, _GH_TAG, body=_gh_response)
+    httpretty.register_uri(httpretty.HTTPretty.GET, _GH_LATEST, body=_gh_response)
+    httpretty.register_uri(httpretty.HTTPretty.GET, _GH_NONEXISTENT, body=_gh_404)
+
+    httpretty.register_uri(
+        httpretty.HTTPretty.GET,
+        "https://github.com/splitgraph/splitgraph/releases/download/v0.1.0/sgr-linux-amd64",
+        body=_BODY,
+        adding_headers={"Content-Length": len(_BODY)},
+    )
+
+    runner = CliRunner()
+
+    # Patch a lot of things
+    with tempfile.TemporaryDirectory() as dir:
+        with open(os.path.join(dir, "sgr"), "w") as f:
+            f.write("old sgr client")
+
+        _module = "splitgraph.commandline.misc"
+        with mock.patch(_module + ".sys") as m_sys:
+            m_sys.executable = os.path.join(dir, "sgr")
+            m_sys.frozen = True
+            with mock.patch(_module + ".platform.system", return_value="Linux"):
+                with mock.patch(_module + ".subprocess.check_call") as subprocess:
+                    with mock.patch(_module + ".list_engines", return_value=[sentinel.engine]):
+                        with mock.patch("splitgraph.commandline.misc.atexit.register") as register:
+                            result = runner.invoke(upgrade_c, ["--force"], catch_exceptions=False)
+                            assert result.exit_code == 0
+                            print(result.output)
+
+        assert subprocess.mock_calls == [
+            call([mock.ANY, "--version"]),
+            call([mock.ANY, "engine", "upgrade"]),
+        ]
+
+        # Call the atexit callback that swaps the new sgr in and check it does that correctly.
+        # mock_calls is a list of tuples (name, args, kwargs), so grab the first arg
+        finalize_callback = register.mock_calls[-1][1][0]
+        assert finalize_callback.__name__ == "_finalize"
+        finalize_callback()
+
+        with open(os.path.join(dir, "sgr")) as f:
+            assert f.read() == "new sgr client"
+        with open(os.path.join(dir, "sgr.old")) as f:
+            assert f.read() == "old sgr client"

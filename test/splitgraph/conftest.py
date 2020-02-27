@@ -58,6 +58,8 @@ SPLITFILE_ROOT = os.path.join(os.path.dirname(__file__), "../resources/")
 
 INGESTION_RESOURCES = os.path.join(os.path.dirname(__file__), "../resources/ingestion")
 
+API_RESOURCES = os.path.join(os.path.dirname(__file__), "../resources/api")
+
 # Rough on-disk size taken up by a small (<10 rows) object that we
 # use in tests. Includes the actual CStore file, the footer and the
 # object's schema (serialized into JSON).

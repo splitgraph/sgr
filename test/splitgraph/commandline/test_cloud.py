@@ -63,7 +63,7 @@ def _tos_callback(request, uri, response_headers):
     ]
 
 
-@httpretty.activate
+@httpretty.activate(allow_net_connect=False)
 def test_commandline_registration_normal():
     httpretty.register_uri(
         httpretty.HTTPretty.POST, _ENDPOINT + "/register_user", body=_register_callback
@@ -128,7 +128,7 @@ def test_commandline_registration_normal():
     ic.assert_called_once_with("splitgraph_test_engine_", source_config["SG_CONFIG_FILE"])
 
 
-@httpretty.activate
+@httpretty.activate(allow_net_connect=False)
 def test_commandline_registration_user_error():
     # Test a user error response propagates back to the command line client
     # (tests for handling other failure states are API client-specific).
@@ -163,7 +163,7 @@ def test_commandline_registration_user_error():
     assert "Username exists" in str(result.exception)
 
 
-@httpretty.activate
+@httpretty.activate(allow_net_connect=False)
 def test_commandline_login_normal():
     httpretty.register_uri(
         httpretty.HTTPretty.POST, _ENDPOINT + "/refresh_token", body=_refresh_token_callback

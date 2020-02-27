@@ -333,10 +333,15 @@ def eval_c(i_know_what_im_doing, command, arg):
 def _get_binary_url_for(system, release: str = "latest") -> Tuple[str, str]:
     import requests
 
-    endpoint = "https://api.github.com/repos/splitgraph/splitgraph/releases/%s" % release
+    if release == "latest":
+        endpoint = "https://api.github.com/repos/splitgraph/splitgraph/releases/%s" % release
+    else:
+        endpoint = "https://api.github.com/repos/splitgraph/splitgraph/releases/tags/%s" % release
     headers = get_headers()
     headers.update({"Accept": "application/vnd.github.v3+json"})
     response = requests.get(endpoint, headers=get_headers())
+    if response.status_code == 404:
+        raise ValueError("No releases found for tag %s, system %s!" % (release, system))
     response.raise_for_status()
 
     body = response.json()
