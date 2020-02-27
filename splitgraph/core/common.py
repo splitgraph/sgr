@@ -5,6 +5,7 @@ import logging
 from datetime import date, datetime, time
 from decimal import Decimal
 from functools import wraps
+from pkgutil import get_data
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING, Sequence, cast
 
 from psycopg2.sql import Composed
@@ -13,6 +14,7 @@ from psycopg2.sql import Identifier, SQL
 from splitgraph.__version__ import __version__
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.engine import ResultShape
+from splitgraph.exceptions import EngineInitializationError
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PsycopgEngine, PostgresEngine
@@ -34,6 +36,7 @@ META_TABLES = [
 ]
 OBJECT_MANAGER_TABLES = ["object_cache_status", "object_cache_occupancy"]
 _PUBLISH_PREVIEW_SIZE = 100
+_SPLITGRAPH_META = "resources/splitgraph_meta.sql"
 
 
 def set_tag(repository: "Repository", image_hash: Optional[str], tag: str) -> None:
@@ -119,190 +122,8 @@ def _create_metadata_schema(engine: "PsycopgEngine") -> None:
     This all should probably be moved into some sort of a routine that runs when the whole engine is set up
     for the first time.
     """
-    engine.run_sql(SQL("CREATE SCHEMA {}").format(Identifier(SPLITGRAPH_META_SCHEMA)))
-    # maybe FK parent_id on image_hash. NULL there means this is the repo root.
-    engine.run_sql(
-        SQL(
-            """CREATE TABLE {}.{} (
-                    namespace       VARCHAR NOT NULL,
-                    repository      VARCHAR NOT NULL,
-                    image_hash      VARCHAR(64) NOT NULL CHECK (image_hash ~ '^[a-f0-9]{{64}}$'),
-                    parent_id       VARCHAR(64) CHECK (parent_id ~ '^[a-f0-9]{{64}}$' AND parent_id != image_hash),
-                    created         TIMESTAMP,
-                    comment         VARCHAR(4096),
-                    provenance_type VARCHAR(10),
-                    provenance_data JSONB,
-                    PRIMARY KEY (namespace, repository, image_hash))"""
-        ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("images"))
-    )
-    engine.run_sql(
-        SQL(
-            """CREATE TABLE {}.{} (
-                    namespace  VARCHAR NOT NULL,
-                    repository VARCHAR NOT NULL,
-                    image_hash VARCHAR,
-                    tag        VARCHAR(64),
-                    PRIMARY KEY (namespace, repository, tag),
-                    CONSTRAINT sh_fk FOREIGN KEY (namespace, repository, image_hash) REFERENCES {}.{})"""
-        ).format(
-            Identifier(SPLITGRAPH_META_SCHEMA),
-            Identifier("tags"),
-            Identifier(SPLITGRAPH_META_SCHEMA),
-            Identifier("images"),
-        )
-    )
-
-    # Object metadata.
-    # * object_id: ID of the object, calculated as sha256((insertion_hash - deletion_hash) + sha256(table_schema)
-    #     (-) is the vector hash subtraction operator (see `fragment_manager.Digest`)
-    #     (+) is normal string concatenation
-    #     table_schema is str(table_schema) of the table this fragment belongs to (as specified in the `tables` table)
-    #       that encodes the column order, types, names and whether they're the primary key.
-    # * insertion_hash: the homomorphic hash of all rows inserted or upserted by this fragment (sum of sha256 hashes
-    #     of every row). Can be verified by running `FragmentManager.calculate_fragment_insertion_hash`.
-    # * deletion_hash: the homomorphic hash of the old values of all rows that were deleted or updated by this fragment.
-    #     This can't be verified directly by looking at the fragment (since it only contains the PKs of its deleted
-    #     rows): fetching all the fragments this fragment depends on is required.
-    #     insertion_hash - deletion hash form the content hash of this fragment.
-    #     Homomorphic hashing in this case has the property that the sum of content hashes of individual fragments
-    #     is equal to the content hash of the final materialized table.
-    # * namespace: Original namespace this object was created in. Only the users with write rights to a given namespace
-    #   can delete/alter this object's metadata.
-    # * size: the on-disk (in-database) size occupied by the object table as reported by the engine
-    #   (not the size stored externally).
-    # * format: Format of the object. Currently, only FRAG (splitting the table into multiple chunks that can partially
-    #     overwrite each other) is supported.
-    # * index: A JSON object mapping columns spanned by this object to their minimum and maximum values. Used to
-    #   discard and not download at all objects that definitely don't match a given query.
-
-    engine.run_sql(
-        SQL(
-            """CREATE TABLE {}.{} (
-                    object_id      VARCHAR NOT NULL PRIMARY KEY CHECK (object_id ~ '^o[a-f0-9]{{62}}$'),
-                    namespace      VARCHAR NOT NULL,
-                    size           BIGINT,
-                    created        TIMESTAMP,
-                    format         VARCHAR NOT NULL,
-                    index          JSONB,
-                    insertion_hash VARCHAR(64) NOT NULL CHECK (insertion_hash ~ '^[a-f0-9]{{64}}$'),
-                    deletion_hash  VARCHAR(64) NOT NULL CHECK (deletion_hash ~ '^[a-f0-9]{{64}}$'),
-                    CONSTRAINT valid_format CHECK (format IN ('FRAG')))"""
-        ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("objects"))
-    )
-
-    # Keep track of objects that have been cached locally on the engine.
-    #
-    # refcount:  incremented when a component requests the object to be downloaded (for materialization
-    #            or a layered query). Decremented when the component has finished using the object.
-    #            (maybe consider a row-level lock on this table?)
-    # ready:     f if the object can't be used yet (is being downloaded), t if it can.
-    # last_used: Timestamp (UTC) this object was last returned to be used in a layered query / materialization.
-    engine.run_sql(
-        SQL(
-            """CREATE TABLE {}.{} (
-                        object_id  VARCHAR NOT NULL PRIMARY KEY,
-                        refcount   INTEGER,
-                        ready      BOOLEAN,
-                        last_used  TIMESTAMP)"""
-        ).format(
-            Identifier(SPLITGRAPH_META_SCHEMA),
-            Identifier("object_cache_status"),
-            Identifier(SPLITGRAPH_META_SCHEMA),
-            Identifier("objects"),
-        )
-    )
-
-    # Size of all objects cached on the engine (existing externally and downloaded for a materialization/LQ)
-    engine.run_sql(
-        SQL("""CREATE TABLE {0}.{1} (total_size BIGINT); INSERT INTO {0}.{1} VALUES (0)""").format(
-            Identifier(SPLITGRAPH_META_SCHEMA), Identifier("object_cache_occupancy")
-        )
-    )
-
-    # Maps a given table at a given point in time to a list of fragments that it's assembled from.
-    engine.run_sql(
-        SQL(
-            """CREATE TABLE {}.{} (
-                    namespace  VARCHAR NOT NULL,
-                    repository VARCHAR NOT NULL,
-                    image_hash VARCHAR NOT NULL,
-                    table_name VARCHAR NOT NULL,
-                    table_schema JSONB,
-                    object_ids  VARCHAR[] NOT NULL,
-                    PRIMARY KEY (namespace, repository, image_hash, table_name),
-                    CONSTRAINT tb_fk FOREIGN KEY (namespace, repository, image_hash) REFERENCES {}.{})"""
-        ).format(
-            Identifier(SPLITGRAPH_META_SCHEMA),
-            Identifier("tables"),
-            Identifier(SPLITGRAPH_META_SCHEMA),
-            Identifier("images"),
-        )
-    )
-
-    engine.run_sql(
-        SQL(
-            """CREATE OR REPLACE FUNCTION {0}.validate_table_objects() returns trigger as $$
-DECLARE missing_objects_count INT;
-BEGIN
-    missing_objects_count = (SELECT COUNT(*) FROM unnest(NEW.object_ids) AS o(object_id)
-        WHERE NOT EXISTS (SELECT * FROM {0}.objects WHERE object_id = o.object_id));
-    IF (missing_objects_count != 0) THEN
-        RAISE check_violation USING message = 'Some objects in the object_ids array aren''t registered!';
-    END IF;
-    RETURN NEW;
-    END;
-$$
-LANGUAGE plpgsql;
-
-CREATE TRIGGER sg_validate_table_objects_trigger BEFORE INSERT OR UPDATE ON {0}.tables
-FOR EACH ROW EXECUTE PROCEDURE {0}.validate_table_objects();
-"""
-        ).format(Identifier(SPLITGRAPH_META_SCHEMA))
-    )
-
-    # Keep track of what the remotes for a given repository are (by default, we create an "origin" remote
-    # on initial pull)
-    engine.run_sql(
-        SQL(
-            """CREATE TABLE {}.{} (
-                    namespace          VARCHAR NOT NULL,
-                    repository         VARCHAR NOT NULL,
-                    remote_name        VARCHAR NOT NULL,
-                    remote_namespace   VARCHAR NOT NULL,
-                    remote_repository  VARCHAR NOT NULL,
-                    PRIMARY KEY (namespace, repository))"""
-        ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("upstream"))
-    )
-
-    # Map objects to their locations for when they don't live on the remote or the local machine but instead
-    # in S3/some FTP/HTTP server/torrent etc.
-    # Lookup path to resolve an object on checkout: local -> this table -> remote (so that we don't bombard
-    # the remote with queries for tables that may have been uploaded to a different place).
-    engine.run_sql(
-        SQL(
-            """CREATE TABLE {0}.{1} (
-                    object_id          VARCHAR NOT NULL,
-                    location           VARCHAR NOT NULL,
-                    protocol           VARCHAR NOT NULL,
-                    PRIMARY KEY (object_id),
-                    CONSTRAINT ol_fk FOREIGN KEY (object_id) REFERENCES {0}.{2})
-                    """
-        ).format(
-            Identifier(SPLITGRAPH_META_SCHEMA),
-            Identifier("object_locations"),
-            Identifier("objects"),
-        )
-    )
-
-    # Miscellaneous key-value information for this engine (e.g. whether uploading objects is permitted etc).
-    engine.run_sql(
-        SQL(
-            """CREATE TABLE {}.{} (
-                    key   VARCHAR NOT NULL,
-                    value VARCHAR NOT NULL,
-                    PRIMARY KEY (key))"""
-        ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("info"))
-    )
+    splitgraph_meta = get_data_safe("splitgraph", _SPLITGRAPH_META)
+    engine.run_sql(splitgraph_meta.decode("utf-8"))
 
     engine.run_sql(
         SQL(
@@ -652,3 +473,12 @@ class CallbackList(list):
     def __call__(self, *args, **kwargs) -> None:
         for listener in self:
             listener(*args, **kwargs)
+
+
+def get_data_safe(package: str, resource: str) -> bytes:
+    result = get_data(package, resource)
+    if result is None:
+        raise EngineInitializationError(
+            "Resource %s not found in package %s!" % (resource, package)
+        )
+    return result
