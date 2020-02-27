@@ -10,7 +10,6 @@ from contextlib import contextmanager
 from io import BytesIO
 from io import TextIOWrapper
 from pathlib import PurePosixPath
-from pkgutil import get_data
 from threading import get_ident
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING, Sequence, cast
 
@@ -26,7 +25,7 @@ from tqdm import tqdm
 
 from splitgraph.__version__ import __version__, VERSION_LOCAL_VAR
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCHEMA
-from splitgraph.core.common import select, ensure_metadata_schema, META_TABLES
+from splitgraph.core.common import select, ensure_metadata_schema, META_TABLES, get_data_safe
 from splitgraph.core.types import TableColumn, TableSchema
 from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
 from splitgraph.exceptions import (
@@ -66,15 +65,6 @@ POOL_RETRY_AMOUNT = 20
 # Retry policy for other connection errors
 RETRY_DELAY = 5
 RETRY_AMOUNT = 12
-
-
-def _get_data_safe(package: str, resource: str) -> bytes:
-    result = get_data(package, resource)
-    if result is None:
-        raise EngineInitializationError(
-            "Resource %s not found in package %s!" % (resource, package)
-        )
-    return result
 
 
 def _handle_fatal(e):
@@ -492,11 +482,12 @@ class PsycopgEngine(SQLEngine):
                         logging.info("Database %s already exists, skipping", pg_db)
 
         logging.info("Ensuring the metadata schema at %s exists...", SPLITGRAPH_META_SCHEMA)
+
         ensure_metadata_schema(self)
 
         # Install the push/pull API functions
         logging.info("Installing the push/pull API functions...")
-        push_pull = _get_data_safe(_PACKAGE, _PUSH_PULL)
+        push_pull = get_data_safe(_PACKAGE, _PUSH_PULL)
         self.run_sql(push_pull.decode("utf-8"))
 
         if skip_object_handling:
@@ -504,13 +495,13 @@ class PsycopgEngine(SQLEngine):
         else:
             # Install CStore management routines
             logging.info("Installing CStore management functions...")
-            cstore = _get_data_safe(_PACKAGE, _CSTORE)
+            cstore = get_data_safe(_PACKAGE, _CSTORE)
             self.run_sql(cstore.decode("utf-8"))
 
             # Install the audit trigger if it doesn't exist
             if not self.schema_exists(_AUDIT_SCHEMA):
                 logging.info("Installing the audit trigger...")
-                audit_trigger = _get_data_safe(_PACKAGE, _AUDIT_TRIGGER)
+                audit_trigger = get_data_safe(_PACKAGE, _AUDIT_TRIGGER)
                 self.run_sql(audit_trigger.decode("utf-8"))
             else:
                 logging.info("Skipping the audit trigger as it's already installed.")

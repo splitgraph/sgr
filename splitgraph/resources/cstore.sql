@@ -1,21 +1,27 @@
 -- Engine-side functions for managing CStore files
 -- These import splitgraph.config but since that doesn't pull
 -- the rest of splitgraph, the overhead is pretty small.
-
 CREATE EXTENSION IF NOT EXISTS plpython3u;
+
 CREATE SCHEMA IF NOT EXISTS splitgraph_api;
 
 -- This is here because it's only supposed to be installed on engines rather than
 -- on the registry.
-CREATE OR REPLACE FUNCTION splitgraph_api.get_splitgraph_version()
-RETURNS TEXT AS $$
+CREATE OR REPLACE FUNCTION splitgraph_api.get_splitgraph_version ()
+    RETURNS TEXT
+    AS $$
     from splitgraph.__version__ import __version__
     return __version__
-$$ LANGUAGE plpython3u SECURITY INVOKER;
+$$
+LANGUAGE plpython3u
+SECURITY INVOKER;
 
-
-CREATE OR REPLACE FUNCTION splitgraph_api.upload_object(object_id varchar, urls varchar[]) RETURNS void AS
-$BODY$
+CREATE OR REPLACE FUNCTION splitgraph_api.upload_object (
+    object_id varchar,
+    urls varchar[]
+)
+    RETURNS void
+    AS $BODY$
     import os.path
     from urllib.parse import urlparse
     import requests
@@ -39,11 +45,15 @@ $BODY$
             response = requests.put(url, data=f, verify=verify(url))
             response.raise_for_status()
 $BODY$
-LANGUAGE plpython3u VOLATILE;
+LANGUAGE plpython3u
+VOLATILE;
 
-
-CREATE OR REPLACE FUNCTION splitgraph_api.download_object(object_id varchar, urls varchar[]) RETURNS void AS
-$BODY$
+CREATE OR REPLACE FUNCTION splitgraph_api.download_object (
+    object_id varchar,
+    urls varchar[]
+)
+    RETURNS void
+    AS $BODY$
     import os.path
     from urllib.parse import urlparse
     import shutil
@@ -66,11 +76,15 @@ $BODY$
             with open(object_path + suffix, "wb") as f:
                 shutil.copyfileobj(response.raw, f)
 $BODY$
-LANGUAGE plpython3u VOLATILE;
+LANGUAGE plpython3u
+VOLATILE;
 
-
-CREATE OR REPLACE FUNCTION splitgraph_api.set_object_schema(object_id varchar, schema varchar) RETURNS void AS
-$BODY$
+CREATE OR REPLACE FUNCTION splitgraph_api.set_object_schema (
+    object_id varchar,
+    SCHEMA varchar
+)
+    RETURNS void
+    AS $BODY$
     import os.path
     from splitgraph.config import CONFIG
 
@@ -79,11 +93,14 @@ $BODY$
     with open(os.path.join(SG_ENGINE_OBJECT_PATH, object_id + ".schema"), "w") as f:
         f.write(schema)
 $BODY$
-LANGUAGE plpython3u VOLATILE;
+LANGUAGE plpython3u
+VOLATILE;
 
-
-CREATE OR REPLACE FUNCTION splitgraph_api.get_object_schema(object_id varchar) RETURNS varchar AS
-$BODY$
+CREATE OR REPLACE FUNCTION splitgraph_api.get_object_schema (
+    object_id varchar
+)
+    RETURNS varchar
+    AS $BODY$
     import os.path
     from splitgraph.config import CONFIG
 
@@ -92,11 +109,14 @@ $BODY$
     with open(os.path.join(SG_ENGINE_OBJECT_PATH, object_id + ".schema")) as f:
         return f.read()
 $BODY$
-LANGUAGE plpython3u VOLATILE;
+LANGUAGE plpython3u
+VOLATILE;
 
-
-CREATE OR REPLACE FUNCTION splitgraph_api.delete_object_files(object_id varchar) RETURNS void AS
-$BODY$
+CREATE OR REPLACE FUNCTION splitgraph_api.delete_object_files (
+    object_id varchar
+)
+    RETURNS void
+    AS $BODY$
     import os.path
     from splitgraph.config import CONFIG
 
@@ -113,11 +133,14 @@ $BODY$
     _remove(object_path + ".footer")
     _remove(object_path + ".schema")
 $BODY$
-LANGUAGE plpython3u VOLATILE;
+LANGUAGE plpython3u
+VOLATILE;
 
-
-CREATE OR REPLACE FUNCTION splitgraph_api.get_object_size(object_id varchar) RETURNS int AS
-$BODY$
+CREATE OR REPLACE FUNCTION splitgraph_api.get_object_size (
+    object_id varchar
+)
+    RETURNS int
+    AS $BODY$
     import os.path
     from splitgraph.config import CONFIG
 
@@ -128,11 +151,12 @@ $BODY$
         os.path.getsize(object_path + ".footer") + \
         os.path.getsize(object_path + ".schema")
 $BODY$
-LANGUAGE plpython3u VOLATILE;
+LANGUAGE plpython3u
+VOLATILE;
 
-
-CREATE OR REPLACE FUNCTION splitgraph_api.list_objects() RETURNS varchar[] AS
-$BODY$
+CREATE OR REPLACE FUNCTION splitgraph_api.list_objects ()
+    RETURNS varchar[]
+    AS $BODY$
     import os
     from splitgraph.config import CONFIG
 
@@ -143,11 +167,14 @@ $BODY$
     files = os.listdir(SG_ENGINE_OBJECT_PATH)
     return [f for f in files if not f.endswith(".schema") and not f.endswith(".footer")]
 $BODY$
-LANGUAGE plpython3u VOLATILE;
+LANGUAGE plpython3u
+VOLATILE;
 
-
-CREATE OR REPLACE FUNCTION splitgraph_api.object_exists(object_id varchar) RETURNS boolean AS
-$BODY$
+CREATE OR REPLACE FUNCTION splitgraph_api.object_exists (
+    object_id varchar
+)
+    RETURNS boolean
+    AS $BODY$
     # Check if the physical object file exists in storage.
 
     import os.path
@@ -157,4 +184,5 @@ $BODY$
 
     return os.path.exists(os.path.join(SG_ENGINE_OBJECT_PATH, object_id))
 $BODY$
-LANGUAGE plpython3u VOLATILE;
+LANGUAGE plpython3u
+VOLATILE;
