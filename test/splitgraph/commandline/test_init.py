@@ -3,10 +3,10 @@ import subprocess
 
 from click.testing import CliRunner
 
-from splitgraph.__version__ import __version__
 from splitgraph.commandline import init_c
-from splitgraph.core.common import get_metadata_schema_version
+from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.engine import init_engine
+from splitgraph.core.migration import get_installed_version
 from splitgraph.engine import get_engine, ResultShape
 
 
@@ -35,8 +35,7 @@ def test_init_skip_object_handling_version_():
     runner = CliRunner()
     engine = get_engine()
 
-    schema_version, date_installed = get_metadata_schema_version(engine)
-    assert schema_version == __version__
+    schema_version, date_installed = get_installed_version(engine, SPLITGRAPH_META_SCHEMA)
 
     try:
         engine.run_sql("DROP SCHEMA IF EXISTS audit CASCADE")
@@ -56,9 +55,11 @@ def test_init_skip_object_handling_version_():
         )
     finally:
         init_engine(skip_object_handling=False)
-        schema_version_new, date_installed_new = get_metadata_schema_version(engine)
+        schema_version_new, date_installed_new = get_installed_version(
+            engine, SPLITGRAPH_META_SCHEMA
+        )
 
-        # No migrations currently -- check the current version hasn't changed.
+        # Check the current version hasn't been reinstalled
         assert schema_version == schema_version_new
         assert date_installed == date_installed_new
 

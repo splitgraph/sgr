@@ -5,7 +5,6 @@ from urllib.parse import urlsplit
 
 import click
 
-from splitgraph.__version__ import __version__
 from splitgraph.cloud import get_token_claim, get_headers
 from splitgraph.commandline.engine import patch_and_save_config, inject_config_into_engines
 

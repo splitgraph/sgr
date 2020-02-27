@@ -3,7 +3,7 @@ from unittest import mock
 
 import pytest
 
-from splitgraph.core.common import ResultShape
+from splitgraph.engine import ResultShape
 from splitgraph.core.indexing.bloom import _prepare_bloom_quals, filter_bloom_index, describe
 from splitgraph.core.repository import clone, Repository
 from splitgraph.exceptions import ObjectIndexingError

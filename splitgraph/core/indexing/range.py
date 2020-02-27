@@ -1,17 +1,15 @@
 import logging
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, TYPE_CHECKING, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, cast
 
 from psycopg2.sql import Composed, SQL, Composable
 from psycopg2.sql import Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
-from splitgraph.core.common import adapt, coerce_val_to_json, ResultShape, select
+from splitgraph.core.common import adapt, coerce_val_to_json
+from splitgraph.core.sql import select
 from splitgraph.core.types import Quals, Changeset, TableSchema
+from splitgraph.engine import ResultShape
 from splitgraph.engine.postgres.engine import PostgresEngine
-
-if TYPE_CHECKING:
-    pass
-
 
 # PG types we can run max/min on
 _PG_INDEXABLE_TYPES = [

@@ -2,18 +2,19 @@
 Common internal functions used by Splitgraph commands.
 """
 import logging
+import os
 from datetime import date, datetime, time
 from decimal import Decimal
 from functools import wraps
 from pkgutil import get_data
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING, Sequence, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING, cast
 
-from psycopg2.sql import Composed
+from pkg_resources import resource_listdir
 from psycopg2.sql import Identifier, SQL
 
-from splitgraph.__version__ import __version__
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
-from splitgraph.engine import ResultShape
+from splitgraph.core.migration import source_files_to_apply, set_installed_version
+from splitgraph.core.sql import select
 from splitgraph.exceptions import EngineInitializationError
 
 if TYPE_CHECKING:
@@ -36,7 +37,7 @@ META_TABLES = [
 ]
 OBJECT_MANAGER_TABLES = ["object_cache_status", "object_cache_occupancy"]
 _PUBLISH_PREVIEW_SIZE = 100
-_SPLITGRAPH_META = "resources/splitgraph_meta.sql"
+_SPLITGRAPH_META_DIR = "resources/splitgraph_meta"
 
 
 def set_tag(repository: "Repository", image_hash: Optional[str], tag: str) -> None:
@@ -113,104 +114,28 @@ def manage_audit(func: Callable) -> Callable:
     return wrapped
 
 
-def _create_metadata_schema(engine: "PsycopgEngine") -> None:
+def ensure_metadata_schema(engine: "PsycopgEngine") -> None:
     """
-    Creates the metadata schema splitgraph_meta that stores the hash tree of schema snaps and the current tags.
+    Create or migrate the metadata schema splitgraph_meta that stores the hash tree of schema
+    snapshots (images), tags and tables.
     This means we can't mount anything under the schema splitgraph_meta -- much like we can't have a folder
     ".git" under Git version control...
-
-    This all should probably be moved into some sort of a routine that runs when the whole engine is set up
-    for the first time.
     """
-    splitgraph_meta = get_data_safe("splitgraph", _SPLITGRAPH_META)
-    engine.run_sql(splitgraph_meta.decode("utf-8"))
 
-    engine.run_sql(
-        SQL(
-            """CREATE TABLE {0}.{1} (
-            version VARCHAR NOT NULL,
-            installed TIMESTAMP);
-            INSERT INTO {0}.{1} (version, installed) VALUES (%s, now())"""
-        ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier("version")),
-        (__version__,),
+    files, target_version = source_files_to_apply(
+        engine,
+        schema_name=SPLITGRAPH_META_SCHEMA,
+        schema_files=resource_listdir("splitgraph", _SPLITGRAPH_META_DIR),
     )
 
-
-def select(
-    table: str,
-    columns: str = "*",
-    where: str = "",
-    schema: str = SPLITGRAPH_META_SCHEMA,
-    table_args: Optional[str] = None,
-) -> Composed:
-    """
-    A generic SQL SELECT constructor to simplify metadata access queries so that we don't have to repeat the same
-    identifiers everywhere.
-
-    :param table: Table to select from.
-    :param columns: Columns to select as a string. WARN: concatenated directly without any formatting.
-    :param where: If specified, added to the query with a "WHERE" keyword. WARN also concatenated directly.
-    :param schema: Defaults to SPLITGRAPH_META_SCHEMA.
-    :param table_args: If specified, appends to the FROM clause after the table specification,
-        for example, SELECT * FROM "splitgraph_api"."get_images" (%s, %s) ...
-    :return: A psycopg2.sql.SQL object with the query.
-    """
-    query = SQL("SELECT " + columns) + SQL(" FROM {}.{}").format(
-        Identifier(schema), Identifier(table)
-    )
-    if table_args:
-        query += SQL(table_args)
-    if where:
-        query += SQL(" WHERE " + where)
-    return query
-
-
-def insert(table: str, columns: Sequence[str], schema: str = SPLITGRAPH_META_SCHEMA) -> Composed:
-    """
-    A generic SQL SELECT constructor to simplify metadata access queries so that we don't have to repeat the same
-    identifiers everywhere.
-
-    :param table: Table to select from.
-    :param columns: Columns to insert as a list of strings.
-    :param schema: Schema that contains the table
-    :return: A psycopg2.sql.SQL object with the query (parameterized)
-    """
-    query = SQL("INSERT INTO {}.{}").format(Identifier(schema), Identifier(table))
-    query += SQL("(" + ",".join("{}" for _ in columns) + ")").format(*map(Identifier, columns))
-    query += SQL("VALUES (" + ",".join("%s" for _ in columns) + ")")
-    return query
-
-
-def get_metadata_schema_version(engine: "PsycopgEngine") -> Tuple[str, datetime]:
-    return cast(
-        Tuple[str, datetime],
-        engine.run_sql(
-            select("version", "version,installed") + SQL("ORDER BY installed DESC LIMIT 1"),
-            return_shape=ResultShape.ONE_MANY,
-        ),
-    )
-
-
-def ensure_metadata_schema(engine: "PsycopgEngine") -> None:
-    """Create the metadata schema if it doesn't exist"""
-    if (
-        engine.run_sql(
-            "SELECT 1 FROM information_schema.schemata WHERE schema_name = %s",
-            (SPLITGRAPH_META_SCHEMA,),
-            return_shape=ResultShape.ONE_ONE,
-        )
-        is None
-    ):
-        _create_metadata_schema(engine)
-    else:
-        schema_version, date_installed = get_metadata_schema_version(engine)
-
-        # Currently a stub, add migration code when needed.
-        logging.info(
-            "Metadata schema already exists, version %s, installed on %s",
-            schema_version,
-            date_installed,
-        )
+    if not files:
+        return
+    for name in files:
+        data = get_data_safe("splitgraph", os.path.join(_SPLITGRAPH_META_DIR, name)).decode("utf-8")
+        logging.info("Running %s", name)
+        engine.run_sql(data)
+    set_installed_version(engine, SPLITGRAPH_META_SCHEMA, target_version)
+    engine.commit()
 
 
 def aggregate_changes(

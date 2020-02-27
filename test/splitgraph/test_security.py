@@ -3,7 +3,8 @@ from psycopg2._psycopg import ProgrammingError
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.core.common import META_TABLES, select
+from splitgraph.core.common import META_TABLES
+from splitgraph.core.sql import select
 from splitgraph.core.registry import get_published_info, unpublish_repository
 from splitgraph.core.repository import Repository, clone
 from test.splitgraph.conftest import REMOTE_NAMESPACE

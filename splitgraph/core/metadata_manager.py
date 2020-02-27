@@ -10,7 +10,8 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_API_SCHEMA, SPLITGRAPH_META_SCHEMA
 from splitgraph.core.types import TableSchema
-from .common import select, ResultShape
+from splitgraph.engine import ResultShape
+from .sql import select
 
 if TYPE_CHECKING:
     from splitgraph.core.repository import Repository
