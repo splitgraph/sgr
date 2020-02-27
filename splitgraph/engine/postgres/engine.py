@@ -268,7 +268,7 @@ class PsycopgEngine(SQLEngine):
                     )
                 time.sleep(RETRY_DELAY)
 
-    def _get_engine_version(self, conn):
+    def _get_engine_version(self, conn) -> Optional[str]:
         # Internal function to get the Splitgraph library version on the engine.
         # Doesn't use run_sql because it can get called as part of run_sql if it's
         # run for the first time, messing up transaction state.
@@ -281,7 +281,7 @@ class PsycopgEngine(SQLEngine):
                 )
                 result = cur.fetchone()
                 if result:
-                    return result[0]
+                    return cast(str, result[0])
                 return None
         except psycopg2.errors.UndefinedFunction:
             conn.rollback()
