@@ -1,12 +1,24 @@
 """
 Miscellaneous image management sgr commands.
 """
+import atexit
+import os
+import platform
+import shutil
+import stat
+import subprocess
 import sys
+import uuid
+from pathlib import Path
+from typing import Tuple
 
 import click
 
+from splitgraph.__version__ import __version__
 from splitgraph.exceptions import CheckoutError
 from .common import ImageType, RepositoryType
+from .engine import list_engines
+from ..cloud import get_headers
 
 
 @click.command(name="rm")
@@ -244,6 +256,8 @@ def dump_c(repository, exclude_object_contents):
 
 
 def _eval(command, args):
+    # appease PyCharm
+    # noinspection PyUnresolvedReferences
     from splitgraph.core.repository import Repository
     from splitgraph.engine import get_engine
     from splitgraph.core.object_manager import ObjectManager
@@ -314,3 +328,128 @@ def eval_c(i_know_what_im_doing, command, arg):
         )
 
     _eval(command, arg)
+
+
+def _get_binary_url_for(system, release: str = "latest") -> Tuple[str, str]:
+    import requests
+
+    endpoint = "https://api.github.com/repos/splitgraph/splitgraph/releases/%s" % release
+    headers = get_headers()
+    headers.update({"Accept": "application/vnd.github.v3+json"})
+    response = requests.get(endpoint, headers=get_headers())
+    response.raise_for_status()
+
+    body = response.json()
+    actual_version = body["tag_name"].lstrip("v")
+    asset = [a for a in body["assets"] if a["name"] == "sgr-%s-amd64" % system]
+    if not asset:
+        raise ValueError("No releases found for tag %s, system %s!" % (release, system))
+    return actual_version, asset[0]["browser_download_url"]
+
+
+@click.command(name="upgrade")
+@click.option("--skip-engine-upgrade", is_flag=True, help="Only upgrade the client")
+@click.option("--path", help="Override the path to download the new binary to.")
+@click.option("--force", is_flag=True, help="Reinstall older/same versions.")
+@click.argument("version", default="latest")
+def upgrade_c(skip_engine_upgrade, path, force, version):
+    """Upgrade sgr client and engine.
+
+    This will try to download the most recent stable binary for the current platform
+    into the location this binary is running from and then upgrade the default engine.
+
+    This method is only supported for single-binary installs and engines managed
+    by `sgr engine`.
+    """
+    from splitgraph.config import CONFIG
+    import requests
+    from tqdm import tqdm
+
+    # Detect if we're running from a Pyinstaller binary
+    if not hasattr(sys, "frozen"):
+        raise click.ClickException(
+            "Not running from a single binary. Use the tool "
+            "you originally used to install Splitgraph (e.g. pip) "
+            "to upgrade."
+        )
+
+    if platform.processor() != "x86_64":
+        raise click.ClickException(
+            "Single binary is unsupported on architecture %s!" % platform.processor()
+        )
+
+    system_reported = platform.system()
+    if system_reported == "Linux":
+        system = "linux"
+    elif system_reported == "Windows":
+        system = "windows"
+    elif system_reported == "Darwin":
+        system = "osx"
+    else:
+        raise click.ClickException("Single binary is unsupported on system %s!" % system_reported)
+
+    # Get link to the release
+    actual_version, download_url = _get_binary_url_for(
+        system, "v" + version if version != "latest" else version
+    )
+
+    if version == "latest":
+        click.echo("Latest version is %s." % actual_version)
+    if actual_version == __version__ and not force:
+        # TODO figure out version comparison
+        click.echo("sgr %s is already installed, pass --force to reinstall." % __version__)
+        return
+
+    # Download the file
+
+    if path:
+        if os.path.isdir(path):
+            destdir = path
+            file_name = download_url.split("/")[-1]
+        else:
+            destdir = os.path.dirname(path)
+            file_name = os.path.basename(path)
+    else:
+        destdir = os.path.dirname(sys.executable)
+        file_name = os.path.basename(sys.executable)
+
+    final_path = Path(destdir) / file_name
+    temp_path = Path(destdir) / uuid.uuid4().hex
+
+    # Delete the temporary file at exit if we crash
+
+    def _unlink():
+        try:
+            temp_path.unlink()
+        except FileNotFoundError:
+            pass
+
+    atexit.register(_unlink)
+
+    click.echo("Downloading sgr %s from %s to %s" % (actual_version, download_url, temp_path))
+
+    headers = get_headers()
+    response = requests.get(download_url, headers=headers, allow_redirects=True, stream=True)
+    response.raise_for_status()
+    with tqdm(total=int(response.headers["Content-Length"]), unit="B", unit_scale=True) as pbar:
+        with (open(temp_path, "wb")) as f:
+            for chunk in response.iter_content(chunk_size=1024):
+                f.write(chunk)
+                pbar.update(len(chunk))
+
+    # Test the new binary
+    st = os.stat(temp_path)
+    os.chmod(temp_path, st.st_mode | stat.S_IEXEC)
+    subprocess.check_call([temp_path, "--version"])
+
+    # Upgrade the default engine
+    containers = list_engines(include_all=True, prefix=CONFIG["SG_ENGINE_PREFIX"])
+    if containers and not skip_engine_upgrade:
+        subprocess.check_call([temp_path, "engine", "upgrade"])
+
+    click.echo("Installing new sgr at %s" % final_path)
+
+    # Instead of moving the file right now, do it at exit -- that way
+    # Pyinstaller won't break with a scary error when cleaning up because
+    # the file it's running from has changed.
+    atexit.register(shutil.move, temp_path, final_path)
