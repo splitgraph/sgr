@@ -24,7 +24,8 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA, FDW
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphError, TableNotFoundError
 from splitgraph.hooks.mount_handlers import init_fdw
-from .common import set_tag, select, manage_audit, set_head
+from .common import set_tag, manage_audit, set_head
+from .sql import select
 from .table import Table
 from .types import TableColumn
 

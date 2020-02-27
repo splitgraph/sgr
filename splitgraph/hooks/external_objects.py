@@ -6,7 +6,6 @@ from typing import Any, Dict, Callable, List, Tuple, Sequence, TYPE_CHECKING
 
 from splitgraph.config import CONFIG
 from splitgraph.config.config import get_from_section
-
 from splitgraph.exceptions import ExternalHandlerError
 
 if TYPE_CHECKING:

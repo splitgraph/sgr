@@ -1,15 +1,16 @@
 import itertools
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set, Union, TYPE_CHECKING, Sequence
+from typing import Any, List, Optional, Set, TYPE_CHECKING, Sequence
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
-from splitgraph.core.common import select, ResultShape
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.image import IMAGE_COLS, Image
+from splitgraph.core.sql import select
 from splitgraph.core.types import ProvenanceData
+from splitgraph.engine import ResultShape
 from splitgraph.exceptions import ImageNotFoundError
 
 if TYPE_CHECKING:

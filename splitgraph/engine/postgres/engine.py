@@ -25,7 +25,8 @@ from tqdm import tqdm
 
 from splitgraph.__version__ import __version__, VERSION_LOCAL_VAR
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCHEMA
-from splitgraph.core.common import select, ensure_metadata_schema, META_TABLES, get_data_safe
+from splitgraph.core.common import ensure_metadata_schema, META_TABLES, get_data_safe
+from splitgraph.core.sql import select
 from splitgraph.core.types import TableColumn, TableSchema
 from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
 from splitgraph.exceptions import (
@@ -42,9 +43,9 @@ if TYPE_CHECKING:
     from psycopg2._psycopg import connection as Connection
 
 _AUDIT_SCHEMA = "audit"
-_AUDIT_TRIGGER = "resources/audit_trigger.sql"
-_PUSH_PULL = "resources/push_pull.sql"
-_CSTORE = "resources/cstore.sql"
+_AUDIT_TRIGGER = "resources/static/audit_trigger.sql"
+_PUSH_PULL = "resources/static/splitgraph_api.sql"
+_CSTORE = "resources/static/cstore.sql"
 CSTORE_SERVER = "cstore_server"
 _PACKAGE = "splitgraph"
 ROW_TRIGGER_NAME = "audit_trigger_row"
@@ -486,7 +487,7 @@ class PsycopgEngine(SQLEngine):
         ensure_metadata_schema(self)
 
         # Install the push/pull API functions
-        logging.info("Installing the push/pull API functions...")
+        logging.info("Installing Splitgraph API functions...")
         push_pull = get_data_safe(_PACKAGE, _PUSH_PULL)
         self.run_sql(push_pull.decode("utf-8"))
 
@@ -506,8 +507,8 @@ class PsycopgEngine(SQLEngine):
             else:
                 logging.info("Skipping the audit trigger as it's already installed.")
 
-        # Start up the pgcrypto extension (required for hashing fragments)
-        self.run_sql("CREATE EXTENSION IF NOT EXISTS pgcrypto")
+            # Start up the pgcrypto extension (required for hashing fragments)
+            self.run_sql("CREATE EXTENSION IF NOT EXISTS pgcrypto")
 
     def delete_database(self, database: str) -> None:
         """

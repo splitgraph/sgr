@@ -76,7 +76,8 @@ def alter_table(
     :param rows_deleted: Number of rows to remove
     :param rows_updated: Number of rows to update
     """
-    from splitgraph.core.common import select, ResultShape
+    from splitgraph.engine import ResultShape
+    from splitgraph.core.sql import select
     from psycopg2.sql import Identifier, SQL
 
     keys = repository.run_sql(

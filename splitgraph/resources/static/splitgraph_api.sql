@@ -1,9 +1,20 @@
 -- API functions to access various parts of splitgraph_meta related to downloading and uploading images.
 -- Serves as a level of indirection between Splitgraph push/pull logic and the organisation of the actual
 -- SQL tables.
+-- Clients are only allowed to interact with the registry over this API.
 DROP SCHEMA IF EXISTS splitgraph_api CASCADE;
 
 CREATE SCHEMA splitgraph_api;
+
+CREATE OR REPLACE FUNCTION splitgraph_api.get_version()
+    RETURNS TEXT
+    AS $$
+BEGIN
+    RETURN '0.0.1';
+END;
+$$
+LANGUAGE plpgsql
+SECURITY INVOKER;
 
 ---
 -- Privilege checking

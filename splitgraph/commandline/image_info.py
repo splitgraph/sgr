@@ -231,8 +231,9 @@ def object_c(object_id):
     to choose which objects to download in order to execute a query against a table.
     """
     from splitgraph.core.object_manager import ObjectManager
-    from splitgraph.engine import get_engine
-    from splitgraph.core.common import pretty_size, select, ResultShape
+    from splitgraph.engine import get_engine, ResultShape
+    from splitgraph.core.common import pretty_size
+    from ..core.sql import select
     from splitgraph.core.indexing.bloom import describe
 
     object_manager = ObjectManager(get_engine())

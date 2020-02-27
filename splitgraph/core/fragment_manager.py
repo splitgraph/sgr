@@ -28,9 +28,11 @@ from splitgraph.core.indexing.range import (
 )
 from splitgraph.core.metadata_manager import MetadataManager, Object
 from splitgraph.core.types import Changeset, TableSchema
+from splitgraph.engine import ResultShape
 from splitgraph.engine.postgres.engine import SG_UD_FLAG
 from splitgraph.exceptions import SplitGraphError
-from .common import adapt, SPLITGRAPH_META_SCHEMA, ResultShape, select
+from .common import adapt, SPLITGRAPH_META_SCHEMA
+from .sql import select
 
 if TYPE_CHECKING:
     from splitgraph.core.repository import Repository

@@ -14,11 +14,11 @@ from psycopg2.sql import Composed
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA, FDW_CLASS
-from splitgraph.core.common import insert, select, coerce_val_to_json
+from splitgraph.core.common import coerce_val_to_json
 from splitgraph.core.fragment_manager import get_temporary_table_id, ExtraIndexInfo
 from splitgraph.core.image import Image
 from splitgraph.core.image_manager import ImageManager
-from splitgraph.core.sql import validate_import_sql
+from splitgraph.core.sql import validate_import_sql, select, insert
 from splitgraph.core.table import Table
 from splitgraph.core.types import TableSchema
 from splitgraph.engine.postgres.engine import PostgresEngine
@@ -36,11 +36,11 @@ from .common import (
     slow_diff,
     prepare_publish_data,
     gather_sync_metadata,
-    ResultShape,
 )
 from .engine import lookup_repository, get_engine
 from .object_manager import ObjectManager
 from .registry import publish_tag, PublishInfo
+from ..engine import ResultShape
 
 
 class Repository:
