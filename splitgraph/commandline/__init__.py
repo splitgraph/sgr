@@ -64,6 +64,11 @@ class WithExceptionHandler(click.Group):
         try:
             return super(click.Group, self).invoke(ctx)
         except Exception as exc:
+            if isinstance(
+                exc,
+                (click.exceptions.ClickException, click.exceptions.Abort, click.exceptions.Exit),
+            ):
+                raise
             # Can't seem to be able to get the click_log verbosity option
             # value so have to get it indirectly. Basically, if we're in
             # DEBUG mode, output the whole stacktrace.
