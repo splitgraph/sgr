@@ -87,7 +87,7 @@ def login_c(username, password, remote, overwrite):
 
     This will generate a new refresh token (to use the Splitgraph query API)
     and API keys to let sgr access the registry (if they don't already exist
-    in the configuration file).
+    in the configuration file or if the actual username has changed).
     """
     from splitgraph.config import CONFIG
     from splitgraph.cloud import AuthAPIClient
@@ -111,10 +111,17 @@ def login_c(username, password, remote, overwrite):
         },
     }
 
+    # Get new tokens in any case if we're logging in under a different username.
+    try:
+        username_changed = namespace != CONFIG["remotes"][remote]["SG_NAMESPACE"]
+    except KeyError:
+        username_changed = False
+
     if (
         "SG_ENGINE_USER" not in CONFIG["remotes"][remote]
         or "SG_ENGINE_PWD" not in CONFIG["remotes"][remote]
         or overwrite
+        or username_changed
     ):
         key, secret = client.create_machine_credentials(access, password)
         config_patch["remotes"][remote]["SG_ENGINE_USER"] = key
