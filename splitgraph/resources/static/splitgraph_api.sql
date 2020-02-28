@@ -10,6 +10,12 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_version()
     RETURNS TEXT
     AS $$
 BEGIN
+    -- This must follow semver: patch version bumps for patches that don't change any
+    -- function signatures, minor bumps for adding new functions in a backwards
+    -- compatible manner and major bumps for API redesigns. The client uses this routine to
+    -- warn the user if there are API version incompatibilities.
+    -- If you bump this, also bump the client expected version
+    -- in splitgraph.engine.postgres.engine.
     RETURN '0.0.1';
 END;
 $$

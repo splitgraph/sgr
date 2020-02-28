@@ -61,6 +61,10 @@ class AuthAPIError(SplitGraphError):
     """Exceptions raised by the Auth API"""
 
 
+class APICompatibilityError(SplitGraphError):
+    """Exceptions related to API incompatibilities"""
+
+
 class IncompleteObjectUploadError(SplitGraphError):
     """Raised when an error is encountered during upload of multiple objects.
     The handler is supposed to perform any necessary
