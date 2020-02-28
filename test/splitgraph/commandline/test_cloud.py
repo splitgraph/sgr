@@ -1,4 +1,5 @@
 import json
+from contextlib import contextmanager
 from unittest.mock import patch, PropertyMock
 
 import httpretty
@@ -163,6 +164,15 @@ def test_commandline_registration_user_error():
     assert "Username exists" in str(result.exception)
 
 
+@contextmanager
+def _patch_login_funcs(source_config):
+    with patch("splitgraph.config.export.overwrite_config"):
+        with patch("splitgraph.config.config.patch_config") as pc:
+            with patch("splitgraph.commandline.cloud.inject_config_into_engines") as ic:
+                with patch("splitgraph.config.CONFIG", source_config):
+                    yield pc, ic
+
+
 @httpretty.activate(allow_net_connect=False)
 def test_commandline_login_normal():
     httpretty.register_uri(
@@ -178,25 +188,14 @@ def test_commandline_login_normal():
     source_config = _make_dummy_config_dict()
 
     runner = CliRunner()
-
-    with patch("splitgraph.config.export.overwrite_config"):
-        with patch("splitgraph.config.config.patch_config") as pc:
-            with patch("splitgraph.commandline.cloud.inject_config_into_engines") as ic:
-                with patch("splitgraph.config.CONFIG", source_config):
-                    result = runner.invoke(
-                        login_c,
-                        args=[
-                            "--username",
-                            "someuser",
-                            "--password",
-                            "somepassword",
-                            "--remote",
-                            _REMOTE,
-                        ],
-                        catch_exceptions=False,
-                    )
-                    assert result.exit_code == 0
-                    print(result.output)
+    with _patch_login_funcs(source_config) as (pc, ic):
+        result = runner.invoke(
+            login_c,
+            args=["--username", "someuser", "--password", "somepassword", "--remote", _REMOTE,],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0
+        print(result.output)
 
     pc.assert_called_once_with(
         source_config,
@@ -214,24 +213,21 @@ def test_commandline_login_normal():
     ic.assert_called_once_with("splitgraph_test_engine_", source_config["SG_CONFIG_FILE"])
 
     # Do the same overwriting the current API keys
-    with patch("splitgraph.config.export.overwrite_config"):
-        with patch("splitgraph.config.config.patch_config") as pc:
-            with patch("splitgraph.commandline.cloud.inject_config_into_engines") as ic:
-                with patch("splitgraph.config.CONFIG", source_config):
-                    result = runner.invoke(
-                        login_c,
-                        args=[
-                            "--username",
-                            "someuser",
-                            "--password",
-                            "somepassword",
-                            "--remote",
-                            _REMOTE,
-                            "--overwrite",
-                        ],
-                        catch_exceptions=False,
-                    )
-                    assert result.exit_code == 0
+    with _patch_login_funcs(source_config) as (pc, ic):
+        result = runner.invoke(
+            login_c,
+            args=[
+                "--username",
+                "someuser",
+                "--password",
+                "somepassword",
+                "--remote",
+                _REMOTE,
+                "--overwrite",
+            ],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0
 
     pc.assert_called_once_with(
         source_config,
@@ -249,6 +245,32 @@ def test_commandline_login_normal():
         },
     )
     ic.assert_called_once_with("splitgraph_test_engine_", source_config["SG_CONFIG_FILE"])
+
+    # Do the same changing the user -- check new API keys are still acquired
+    source_config["remotes"][_REMOTE]["SG_NAMESPACE"] = "someotheruser"
+    with _patch_login_funcs(source_config) as (pc, ic):
+        result = runner.invoke(
+            login_c,
+            args=["--username", "someuser", "--password", "somepassword", "--remote", _REMOTE,],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0
+
+    pc.assert_called_once_with(
+        source_config,
+        {
+            "SG_REPO_LOOKUP": _REMOTE,
+            "remotes": {
+                "remote_engine": {
+                    "SG_ENGINE_USER": "abcdef123456",
+                    "SG_ENGINE_PWD": "654321fedcba",
+                    "SG_NAMESPACE": "someuser",
+                    "SG_CLOUD_REFRESH_TOKEN": _SAMPLE_REFRESH,
+                    "SG_CLOUD_ACCESS_TOKEN": _SAMPLE_ACCESS,
+                }
+            },
+        },
+    )
 
 
 def _make_dummy_config_dict():
