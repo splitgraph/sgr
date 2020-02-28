@@ -2,13 +2,13 @@ from unittest.mock import patch
 
 import pytest
 from psycopg2.sql import Identifier, SQL
+from test.splitgraph.conftest import OUTPUT, load_splitfile
 
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitfileError
 from splitgraph.hooks.splitfile_commands import PluginCommand
 from splitgraph.splitfile import execute_commands
 from splitgraph.splitfile.execution import _combine_hashes
-from test.splitgraph.conftest import OUTPUT, load_splitfile
 
 
 class DummyCommand(PluginCommand):

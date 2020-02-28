@@ -2,13 +2,13 @@ from datetime import datetime as dt, timedelta
 from unittest import mock
 
 import pytest
-
-from splitgraph.engine import ResultShape
-from splitgraph.core.indexing.bloom import _prepare_bloom_quals, filter_bloom_index, describe
-from splitgraph.core.repository import clone, Repository
-from splitgraph.exceptions import ObjectIndexingError
 from test.splitgraph.commands.test_layered_querying import _prepare_fully_remote_repo
 from test.splitgraph.conftest import OUTPUT
+
+from splitgraph.core.indexing.bloom import _prepare_bloom_quals, filter_bloom_index, describe
+from splitgraph.core.repository import clone, Repository
+from splitgraph.engine import ResultShape
+from splitgraph.exceptions import ObjectIndexingError
 
 
 @pytest.mark.parametrize(

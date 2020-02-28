@@ -2,9 +2,9 @@ import os
 from datetime import datetime as dt
 
 from click.testing import CliRunner
+from test.splitgraph.conftest import INGESTION_RESOURCES
 
 from splitgraph.commandline.ingestion import csv_import, csv_export
-from test.splitgraph.conftest import INGESTION_RESOURCES
 
 
 def test_import_empty(ingestion_test_repo):

@@ -3,13 +3,6 @@ from datetime import datetime as dt
 from unittest import mock
 
 import pytest
-
-from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.core.sql import select
-from splitgraph.core.indexing.range import _quals_to_clause
-from splitgraph.core.repository import clone
-from splitgraph.engine import ResultShape
-from splitgraph.exceptions import ObjectCacheError
 from test.splitgraph.conftest import (
     OUTPUT,
     _cleanup_minio,
@@ -17,6 +10,13 @@ from test.splitgraph.conftest import (
     _assert_cache_occupancy,
     prepare_lq_repo,
 )
+
+from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from splitgraph.core.indexing.range import _quals_to_clause
+from splitgraph.core.repository import clone
+from splitgraph.core.sql import select
+from splitgraph.engine import ResultShape
+from splitgraph.exceptions import ObjectCacheError
 
 
 def _get_refcount(object_manager, object_id):

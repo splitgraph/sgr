@@ -6,6 +6,7 @@ import os
 import shutil
 
 import click
+
 import splitgraph.commandline as cmd
 from splitgraph.commandline.cloud import register_c, login_c, curl_c
 from splitgraph.commandline.engine import (

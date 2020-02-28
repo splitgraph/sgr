@@ -1,7 +1,6 @@
-import os
 from datetime import datetime
-from unittest import mock
-from unittest.mock import Mock, MagicMock
+from datetime import datetime
+from unittest.mock import MagicMock
 
 import pytest
 

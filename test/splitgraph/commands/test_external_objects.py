@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 import pytest
+from test.splitgraph.conftest import PG_MNT
 
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.repository import clone
@@ -13,7 +14,6 @@ from splitgraph.hooks.s3_server import (
     S3_HOST,
     S3_PORT,
 )
-from test.splitgraph.conftest import PG_MNT
 
 
 @pytest.mark.registry

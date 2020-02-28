@@ -1,8 +1,8 @@
 import pytest
+from test.splitgraph.conftest import OUTPUT, load_splitfile
 
 from splitgraph.splitfile import execute_commands
 from splitgraph.splitfile.execution import rebuild_image
-from test.splitgraph.conftest import OUTPUT, load_splitfile
 
 
 def test_provenance(local_engine_empty, pg_repo_remote_multitag):

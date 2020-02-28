@@ -1,13 +1,13 @@
 import os
 
 import pytest
+from test.splitgraph.conftest import OUTPUT, SPLITFILE_ROOT, load_splitfile
 
 from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.repository import clone, Repository
 from splitgraph.exceptions import SplitfileError
 from splitgraph.splitfile._parsing import preprocess, parse_commands
 from splitgraph.splitfile.execution import execute_commands
-from test.splitgraph.conftest import OUTPUT, SPLITFILE_ROOT, load_splitfile
 
 PARSING_TEST_SPLITFILE = load_splitfile("import_remote_multiple.splitfile")
 R = Repository.from_schema

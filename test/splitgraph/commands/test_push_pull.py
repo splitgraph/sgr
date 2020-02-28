@@ -1,8 +1,8 @@
 import pytest
+from test.splitgraph.conftest import PG_MNT
 
 from splitgraph.core.repository import clone
 from splitgraph.exceptions import ImageNotFoundError
-from test.splitgraph.conftest import PG_MNT
 
 
 @pytest.mark.parametrize("download_all", [True, False])
