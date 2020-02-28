@@ -2,9 +2,9 @@ from unittest import mock
 
 import psycopg2
 import pytest
-from psycopg2.sql import Identifier, SQL
+from packaging.version import Version
 
-from splitgraph.__version__ import __version__, VERSION_LOCAL_VAR
+from splitgraph.__version__ import __version__
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, REGISTRY_META_SCHEMA, CONFIG
 from splitgraph.core.common import ensure_metadata_schema
 from splitgraph.core.engine import get_current_repositories, lookup_repository, repository_exists
@@ -16,8 +16,12 @@ from splitgraph.core.registry import (
 )
 from splitgraph.core.repository import Repository
 from splitgraph.engine import _prepare_engine_config, ResultShape
-from splitgraph.engine.postgres.engine import PostgresEngine
-from splitgraph.exceptions import EngineInitializationError, ObjectNotFoundError
+from splitgraph.engine.postgres.engine import PostgresEngine, _API_VERSION
+from splitgraph.exceptions import (
+    EngineInitializationError,
+    ObjectNotFoundError,
+    APICompatibilityError,
+)
 
 
 def test_metadata_schema(pg_repo_local):
@@ -124,29 +128,34 @@ def test_engine_autocommit(local_engine_empty):
 
 
 @pytest.mark.registry
-def test_engine_version_injected(unprivileged_remote_engine):
-    # Check version gets injected as a local variable
+def test_client_api_compat(unprivileged_remote_engine):
+    # Check client version gets set as an application name + test API
+    # version gets verified by the client.
     assert (
-        unprivileged_remote_engine.run_sql(
-            SQL("SHOW {};").format(Identifier(VERSION_LOCAL_VAR)), return_shape=ResultShape.ONE_ONE
-        )
-        == __version__
-    )
-    unprivileged_remote_engine.run_sql(
-        SQL("SET {} = 'bogus'").format(Identifier(VERSION_LOCAL_VAR))
-    )
-    assert (
-        unprivileged_remote_engine.run_sql(
-            SQL("SHOW {};").format(Identifier(VERSION_LOCAL_VAR)), return_shape=ResultShape.ONE_ONE
-        )
-        == "bogus"
+        unprivileged_remote_engine.connection.info.dsn_parameters["application_name"]
+        == "sgr " + __version__
     )
 
-    # Rollback and check version gets injected again for a new transaction
-    unprivileged_remote_engine.rollback()
-    assert (
-        unprivileged_remote_engine.run_sql(
-            SQL("SHOW {};").format(Identifier(VERSION_LOCAL_VAR)), return_shape=ResultShape.ONE_ONE
-        )
-        == __version__
-    )
+    unprivileged_remote_engine.close()
+    unprivileged_remote_engine.connected = False
+    with mock.patch.object(unprivileged_remote_engine, "_call_version_func") as cvf:
+        cvf.return_value = _API_VERSION
+        unprivileged_remote_engine.run_sql("SELECT 1")
+
+    unprivileged_remote_engine.close()
+    unprivileged_remote_engine.connected = False
+    with mock.patch.object(unprivileged_remote_engine, "_call_version_func") as cvf:
+        v = Version(_API_VERSION)
+        cvf.return_value = "%d.%d.%d" % (v.major + 1, v.minor, v.micro)
+        with pytest.raises(APICompatibilityError) as e:
+            unprivileged_remote_engine.run_sql("SELECT 1")
+
+    unprivileged_remote_engine.close()
+    unprivileged_remote_engine.connected = False
+    with mock.patch.object(unprivileged_remote_engine, "_call_version_func") as cvf:
+        with mock.patch("splitgraph.engine.postgres.engine.logging") as log:
+            v = Version(_API_VERSION)
+            cvf.return_value = "%d.%d.%d" % (v.major, v.minor + 1, v.micro)
+            unprivileged_remote_engine.run_sql("SELECT 1")
+
+            assert "Client has a different API version" in log.warning.mock_calls[0][1][0]

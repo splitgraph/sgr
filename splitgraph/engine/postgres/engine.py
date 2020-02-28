@@ -14,16 +14,16 @@ from threading import get_ident
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING, Sequence, cast
 
 import psycopg2
+from packaging.version import Version
 from psycopg2 import DatabaseError
 from psycopg2.errors import InvalidSchemaName, UndefinedTable, DuplicateTable
-from psycopg2.extensions import STATUS_READY
 from psycopg2.extras import execute_batch, Json
 from psycopg2.pool import ThreadedConnectionPool, AbstractConnectionPool
 from psycopg2.sql import Composed, SQL
 from psycopg2.sql import Identifier
 from tqdm import tqdm
 
-from splitgraph.__version__ import __version__, VERSION_LOCAL_VAR
+from splitgraph.__version__ import __version__
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCHEMA
 from splitgraph.core.common import ensure_metadata_schema, META_TABLES, get_data_safe
 from splitgraph.core.sql import select
@@ -34,6 +34,7 @@ from splitgraph.exceptions import (
     ObjectNotFoundError,
     AuthAPIError,
     IncompleteObjectDownloadError,
+    APICompatibilityError,
 )
 from splitgraph.hooks.mount_handlers import mount_postgres
 
@@ -45,6 +46,7 @@ if TYPE_CHECKING:
 _AUDIT_SCHEMA = "audit"
 _AUDIT_TRIGGER = "resources/static/audit_trigger.sql"
 _PUSH_PULL = "resources/static/splitgraph_api.sql"
+_API_VERSION = "0.0.1"
 _CSTORE = "resources/static/cstore.sql"
 CSTORE_SERVER = "cstore_server"
 _PACKAGE = "splitgraph"
@@ -134,6 +136,7 @@ class PsycopgEngine(SQLEngine):
                 user=username,
                 password=password,
                 dbname=dbname,
+                application_name="sgr " + __version__,
             )
         else:
             self._pool = pool
@@ -184,7 +187,7 @@ class PsycopgEngine(SQLEngine):
         if self.registry:
             raise ValueError("Engine %s is a registry, can't check version!" % self.name)
         else:
-            return self._get_engine_version(self.connection)
+            return self._call_version_func(self.connection)
 
     @property
     def connection(self) -> "Connection":
@@ -210,10 +213,16 @@ class PsycopgEngine(SQLEngine):
                 if conn.autocommit != self.autocommit:
                     conn.autocommit = self.autocommit
 
-                # Get the engine version and warn the user if the client and the
-                # engine have mismatched versions.
-                if not self.registry and self.check_version and not self.connected:
-                    self._check_engine_version(conn)
+                if not self.connected:
+                    # Get the engine version and warn the user if the client and the
+                    # engine have mismatched versions.
+                    if not self.registry and self.check_version:
+                        self._check_engine_version(conn)
+
+                    # If we're connecting to a registry, check the API
+                    # version and warn about incompatibilities.
+                    if self.registry:
+                        self._check_api_compat(conn)
 
                 self.connected = True
                 return conn
@@ -259,15 +268,15 @@ class PsycopgEngine(SQLEngine):
                     )
                 time.sleep(RETRY_DELAY)
 
-    def _get_engine_version(self, conn) -> Optional[str]:
-        # Internal function to get the Splitgraph library version on the engine.
+    def _call_version_func(self, conn, func="get_splitgraph_version") -> Optional[str]:
+        # Internal function to get the Splitgraph library/API version on the engine.
         # Doesn't use run_sql because it can get called as part of run_sql if it's
         # run for the first time, messing up transaction state.
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    SQL("SELECT {}.get_splitgraph_version()").format(
-                        Identifier(SPLITGRAPH_API_SCHEMA)
+                    SQL("SELECT {}.{}()").format(
+                        Identifier(SPLITGRAPH_API_SCHEMA), Identifier(func),
                     )
                 )
                 result = cur.fetchone()
@@ -282,7 +291,7 @@ class PsycopgEngine(SQLEngine):
             return None
 
     def _check_engine_version(self, conn):
-        engine_version = self._get_engine_version(conn)
+        engine_version = self._call_version_func(conn)
         if engine_version and engine_version != __version__:
             logging.warning(
                 "You're running sgr %s against engine %s. "
@@ -291,6 +300,26 @@ class PsycopgEngine(SQLEngine):
                 "by setting SG_CHECK_VERSION= to this engine's config.",
                 __version__,
                 engine_version,
+            )
+
+    def _check_api_compat(self, conn):
+        remote_version = self._call_version_func(conn, "get_version")
+        if not remote_version:
+            return
+
+        client = Version(_API_VERSION)
+        remote = Version(remote_version)
+
+        if client.major != remote.major:
+            raise APICompatibilityError(
+                "Incompatible API version between client (%s) and registry %s (%s)!"
+                % (_API_VERSION, self.name, remote_version)
+            )
+
+        if client.minor != remote.minor:
+            logging.warning(
+                "Client has a different API version (%s) than the registry %s (%s)."
+                % (_API_VERSION, self.name, remote_version)
             )
 
     def run_sql(
@@ -306,14 +335,13 @@ class PsycopgEngine(SQLEngine):
 
         with connection.cursor(**cursor_kwargs) as cur:
             try:
-                # If we're about to open a transaction, inject the Splitgraph client version
-                # as a local variable (for future API routing).
-                if connection.status == STATUS_READY and not connection.autocommit:
-                    cur.execute(
-                        SQL("SET LOCAL {} = %s;").format(Identifier(VERSION_LOCAL_VAR)),
-                        (__version__,),
-                    )
                 cur.execute(statement, _convert_vals(arguments) if arguments else None)
+                if connection.notices and self.registry:
+                    # Forward NOTICE messages from the registry back to the user
+                    # (e.g. to nag them to upgrade etc).
+                    for notice in connection.notices:
+                        logging.info("%s says: %s", self.name, notice)
+                    del connection.notices[:]
             except Exception as e:
                 # Rollback the transaction (to a savepoint if we're inside the savepoint() context manager)
                 self.rollback()
@@ -433,6 +461,7 @@ class PsycopgEngine(SQLEngine):
                     password=self.conn_params["SG_ENGINE_ADMIN_PWD"],
                     host=self.conn_params["SG_ENGINE_HOST"],
                     port=self.conn_params["SG_ENGINE_PORT"],
+                    application_name="sgr " + __version__,
                 )
             except psycopg2.errors.DatabaseError as e:
                 if retries >= RETRY_AMOUNT:
