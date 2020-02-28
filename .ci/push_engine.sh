@@ -16,13 +16,11 @@ docker login -u "$DOCKER_USERNAME" -p "$DOCKER_PASSWORD"
 # release tags, e.g. a build of 3.4.5 would push out splitgraph/engine:3.4.5,
 # splitgraph/engine:3.4 and splitgraph/engine:latest.
 
-short_sha=$(echo "$TRAVIS_COMMIT" | cut -c-8)
-
 if [ -n "$TRAVIS_TAG" ]; then
   # Strip the first letter (v0.0.1 etc) from the Git tag to get the Docker tag (actual version)
-  TAGS="latest ${TRAVIS_TAG:1} $short_sha stable"
+  TAGS="latest ${TRAVIS_TAG:1} stable"
 else
-  TAGS="latest $short_sha"
+  TAGS="latest"
 fi
 
 source="$DOCKER_REPO"/"$DOCKER_ENGINE_IMAGE":"$DOCKER_TAG"
