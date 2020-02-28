@@ -1,6 +1,7 @@
+from test.splitgraph.conftest import OUTPUT, load_splitfile
+
 from splitgraph.core._drawing import render_tree
 from splitgraph.splitfile.execution import execute_commands, rebuild_image
-from test.splitgraph.conftest import OUTPUT, load_splitfile
 
 
 def test_drawing(pg_repo_local):

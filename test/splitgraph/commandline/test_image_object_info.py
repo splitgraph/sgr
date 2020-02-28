@@ -14,8 +14,8 @@ from splitgraph.commandline import (
     object_c,
     objects_c,
 )
-from splitgraph.core.sql import insert
 from splitgraph.core.metadata_manager import OBJECT_COLS
+from splitgraph.core.sql import insert
 from splitgraph.core.types import TableColumn
 
 

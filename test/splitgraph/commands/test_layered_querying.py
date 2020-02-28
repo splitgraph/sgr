@@ -5,6 +5,7 @@ from datetime import datetime as dt
 from unittest import mock
 
 import pytest
+from test.splitgraph.conftest import _assert_cache_occupancy, OUTPUT, prepare_lq_repo
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.core.common import META_TABLES
@@ -16,7 +17,6 @@ from splitgraph.core.table import Table
 from splitgraph.engine import ResultShape, _prepare_engine_config
 from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import ObjectNotFoundError
-from test.splitgraph.conftest import _assert_cache_occupancy, OUTPUT, prepare_lq_repo
 
 _DT = dt(2019, 1, 1, 12)
 

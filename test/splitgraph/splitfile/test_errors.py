@@ -5,12 +5,12 @@ import psycopg2
 import pytest
 from parsimonious import IncompleteParseError
 from psycopg2.sql import SQL, Identifier
+from test.splitgraph.conftest import OUTPUT, load_splitfile
 
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import ObjectCacheError
 from splitgraph.splitfile._parsing import parse_commands
 from splitgraph.splitfile.execution import execute_commands
-from test.splitgraph.conftest import OUTPUT, load_splitfile
 
 
 def _get_table_count(repo):

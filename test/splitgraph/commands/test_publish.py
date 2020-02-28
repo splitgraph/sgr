@@ -1,10 +1,10 @@
 import pytest
+from test.splitgraph.conftest import OUTPUT, load_splitfile
 
 from splitgraph.core.registry import get_published_info
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableColumn
 from splitgraph.splitfile import execute_commands
-from test.splitgraph.conftest import OUTPUT, load_splitfile
 
 
 @pytest.mark.parametrize("extra_info", [True, False])
