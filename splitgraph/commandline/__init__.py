@@ -5,6 +5,7 @@ Hooks into the API to allow management of Splitgraph repositories and images usi
 """
 
 import logging
+import traceback
 
 import click
 import click_log
@@ -51,7 +52,29 @@ def _commit_connection(_):
     get_engine().close()
 
 
-@click.group(result_callback=_commit_connection)
+def _fullname(o):
+    module = o.__class__.__module__
+    if module is None or module == str.__class__.__module__:
+        return o.__class__.__name__
+    return module + "." + o.__class__.__name__
+
+
+class WithExceptionHandler(click.Group):
+    def invoke(self, ctx):
+        try:
+            return super(click.Group, self).invoke(ctx)
+        except Exception as exc:
+            # Can't seem to be able to get the click_log verbosity option
+            # value so have to get it indirectly. Basically, if we're in
+            # DEBUG mode, output the whole stacktrace.
+            if logger.getEffectiveLevel() == logging.DEBUG:
+                logger.error(traceback.format_exc())
+            else:
+                logger.error("%s: %s" % (_fullname(exc), exc))
+            ctx.exit(code=2)
+
+
+@click.group(cls=WithExceptionHandler, result_callback=_commit_connection)
 @click_log.simple_verbosity_option(logger)
 @click.version_option(prog_name="sgr", version=__version__)
 def cli():

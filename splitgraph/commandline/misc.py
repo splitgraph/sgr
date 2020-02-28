@@ -463,6 +463,11 @@ def upgrade_c(skip_engine_upgrade, path, force, version):
         # We hence rename ourselves to a .old file and ask the user to delete it if needed.
         if final_path.exists():
             backup_path = final_path.with_suffix(final_path.suffix + ".old")
+            try:
+                # shutil.move() breaks on Windows otherwise.
+                backup_path.unlink()
+            except FileNotFoundError:
+                pass
             shutil.move(final_path, backup_path)
             click.echo("Old version has been backed up to %s." % backup_path)
 

@@ -14,12 +14,28 @@ from splitgraph.__version__ import __version__
 from splitgraph.commandline.common import print_table
 from splitgraph.config import CONFIG
 from splitgraph.engine import get_engine
+from splitgraph.exceptions import DockerUnavailableError
 
 if TYPE_CHECKING:
     from docker.models.containers import Container
 
 
 DEFAULT_ENGINE = "default"
+
+
+def get_docker_client():
+    """Wrapper around client.from_env() that also pings the daemon
+    to make sure it can connect and if not, raises an error."""
+    import docker
+    from requests.exceptions import ConnectionError
+
+    client = docker.from_env()
+    try:
+        client.ping()
+    except ConnectionError as e:
+        raise DockerUnavailableError("Could not connect to the Docker daemon") from e
+
+    return client
 
 
 def copy_to_container(container: "Container", source_path: str, target_path: str) -> None:
@@ -130,11 +146,18 @@ def engine_c():
     """Manage running Splitgraph engines. This is a wrapper around the relevant Docker commands."""
 
 
-def list_engines(prefix, include_all=False):
-    import docker
-
-    client = docker.from_env()
+def list_engines(prefix, include_all=False, unavailable_ok=True):
+    try:
+        client = get_docker_client()
+    except DockerUnavailableError:
+        if not unavailable_ok:
+            raise
+        logging.warning(
+            "Could not connect to the Docker daemon to enumerate engines managed by sgr."
+        )
+        return []
     containers = client.containers.list(all=include_all)
+
     return [c for c in containers if c.name.startswith(prefix)]
 
 
@@ -235,10 +258,9 @@ def add_engine_c(
     """
     from splitgraph.engine.postgres.engine import PostgresEngine
     from splitgraph.config import CONFIG
-    import docker
     from docker.types import Mount
 
-    client = docker.from_env()
+    client = get_docker_client()
 
     if not no_pull:
         click.echo("Pulling image %s..." % image)
@@ -331,9 +353,8 @@ def stop_engine_c(name):
 
     This is a wrapper around the corresponding Docker command.
     """
-    import docker
 
-    client = docker.from_env()
+    client = get_docker_client()
     container_name = _get_container_name(name)
     container = client.containers.get(container_name)
 
@@ -349,9 +370,8 @@ def start_engine_c(name):
 
     This is a wrapper around the corresponding Docker command.
     """
-    import docker
 
-    client = docker.from_env()
+    client = get_docker_client()
     container_name = _get_container_name(name)
     container = client.containers.get(container_name)
 
@@ -376,9 +396,8 @@ def start_engine_c(name):
 @click.argument("name", default=DEFAULT_ENGINE)
 def delete_engine_c(yes, force, with_volumes, name):
     """Stop a Splitgraph engine."""
-    import docker
 
-    client = docker.from_env()
+    client = get_docker_client()
     container_name = _get_container_name(name)
     container = client.containers.get(container_name)
 
@@ -408,9 +427,8 @@ def delete_engine_c(yes, force, with_volumes, name):
 @click.argument("name", default=DEFAULT_ENGINE)
 def log_engine_c(name, follow):
     """Get logs from a Splitgraph engine."""
-    import docker
 
-    client = docker.from_env()
+    client = get_docker_client()
     container_name = _get_container_name(name)
     container = client.containers.get(container_name)
 
@@ -430,9 +448,7 @@ def configure_engine_c(name):
     when it's queried through an application other than the sgr client
     (layered querying)."""
 
-    import docker
-
-    client = docker.from_env()
+    client = get_docker_client()
     container_name = _get_container_name(name)
     container = client.containers.get(container_name)
 
