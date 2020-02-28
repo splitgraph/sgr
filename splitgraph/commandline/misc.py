@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Tuple
 
 import click
+from packaging.version import Version
 
 from splitgraph.__version__ import __version__
 from splitgraph.exceptions import CheckoutError
@@ -374,11 +375,12 @@ def upgrade_c(skip_engine_upgrade, path, force, version):
     from tqdm import tqdm
 
     # Detect if we're running from a Pyinstaller binary
-    if not hasattr(sys, "frozen"):
+    if not hasattr(sys, "frozen") and not force and not path:
         raise click.ClickException(
             "Not running from a single binary. Use the tool "
             "you originally used to install Splitgraph (e.g. pip) "
-            "to upgrade."
+            "to upgrade. To download and run a single binary "
+            "for your platform, pass --force and --path."
         )
 
     system_reported = platform.system()
@@ -398,14 +400,18 @@ def upgrade_c(skip_engine_upgrade, path, force, version):
 
     if version == "latest":
         click.echo("Latest version is %s." % actual_version)
-    if actual_version == __version__ and not force:
-        # TODO figure out version comparison
-        click.echo("sgr %s is already installed, pass --force to reinstall." % __version__)
+
+    if Version(actual_version) < Version(__version__) and not force:
+        click.echo(
+            "Newer or existing version of sgr (%s) is installed, pass --force to reinstall."
+            % __version__
+        )
         return
 
     # Download the file
 
     if path:
+        path = os.path.abspath(path)
         if os.path.isdir(path):
             destdir = path
             file_name = download_url.split("/")[-1]
@@ -449,16 +455,19 @@ def upgrade_c(skip_engine_upgrade, path, force, version):
     if not skip_engine_upgrade:
         containers = list_engines(include_all=True, prefix=CONFIG["SG_ENGINE_PREFIX"])
         if containers:
+            click.echo("Upgrading the default engine...")
             subprocess.check_call([str(temp_path), "engine", "upgrade"])
 
     def _finalize():
         # On Windows we can't replace a running executable + probably should keep a backup anyway.
         # We hence rename ourselves to a .old file and ask the user to delete it if needed.
-        backup_path = final_path.with_suffix(final_path.suffix + ".old")
-        shutil.move(final_path, backup_path)
+        if final_path.exists():
+            backup_path = final_path.with_suffix(final_path.suffix + ".old")
+            shutil.move(final_path, backup_path)
+            click.echo("Old version has been backed up to %s." % backup_path)
+
         shutil.move(temp_path, final_path)
         click.echo("New sgr has been installed at %s." % final_path)
-        click.echo("Old version has been backed up to %s." % backup_path)
 
     # Instead of moving the file right now, do it at exit -- that way
     # Pyinstaller won't break with a scary error when cleaning up because

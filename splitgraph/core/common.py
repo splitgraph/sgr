@@ -9,7 +9,6 @@ from functools import wraps
 from pkgutil import get_data
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING, cast
 
-from pkg_resources import resource_listdir
 from psycopg2.sql import Identifier, SQL
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
@@ -125,7 +124,10 @@ def ensure_metadata_schema(engine: "PsycopgEngine") -> None:
     files, target_version = source_files_to_apply(
         engine,
         schema_name=SPLITGRAPH_META_SCHEMA,
-        schema_files=resource_listdir("splitgraph", _SPLITGRAPH_META_DIR),
+        # resource_listdir breaks with pyinstaller
+        schema_files=os.listdir(
+            os.path.join(os.path.dirname(__file__), "..", _SPLITGRAPH_META_DIR)
+        ),
     )
 
     if not files:

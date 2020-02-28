@@ -113,10 +113,11 @@ jobs:
           skip_cleanup: true
           on:
             repo: splitgraph/splitgraph
-            # Only do this on master but even if there are no tags: in that case,
-            # we push out a "latest" image + a commit hash image.
+            # Push out only on tagged releases instead of on every master build: would rather
+            # release more often in lockstep than have weird engine version floating around.
             # Uncomment this to trigger deploys from all branches
             all_branches: true
+            tags: true
         # Push the binary Sphinx bundle as a release for build by splitgraph.com
         - provider: releases
           api_key:

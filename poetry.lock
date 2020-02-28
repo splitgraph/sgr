@@ -443,7 +443,7 @@ python-versions = ">=3.5"
 version = "1.18.1"
 
 [[package]]
-category = "dev"
+category = "main"
 description = "Core utilities for Python packages"
 name = "packaging"
 optional = false
@@ -606,7 +606,7 @@ isort = ">=4.2.5,<5"
 mccabe = ">=0.6,<0.7"
 
 [[package]]
-category = "dev"
+category = "main"
 description = "Python parsing module"
 name = "pyparsing"
 optional = false
@@ -1001,7 +1001,7 @@ testing = ["jaraco.itertools", "func-timeout"]
 ingestion = ["pandas", "sqlalchemy"]
 
 [metadata]
-content-hash = "7c74ae028d7fc500aa4664ab4b230371b66fae940026d6baa8c2452d7fd0e016"
+content-hash = "f6fd4042f20fb59b2600207ea2c2d96460d562c9ce9ee564c17e7ded7a8e10b9"
 python-versions = "~=3.6"
 
 [metadata.files]
