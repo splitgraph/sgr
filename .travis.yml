@@ -12,15 +12,19 @@
 
 # How to release:
 # * on master:
-# * update CHANGELOG
+# * update CHANGELOG.md
 # * do bumpversion {major,minor,patch} to bump version: this will create a new commit and tag
 # * git push --tags
+# * This will build the PyPI package, the single binaries and the Docker image as well as the
+#   binary doc bundle to be used by splitgraph.com.
 
 # How to undo a release:
 # * Remove the release from the releases page on GH
 # * git tag -d <tag>  -- delete tag locally
 # * git push origin :<tag> -- delete tag remotely on GH
 # * delete the release from pypi (won't be able to push the same version again)
+# * delete the release from github
+# * delete the release from Docker
 
 env:
   global:
@@ -97,16 +101,16 @@ jobs:
         - './.ci/before_deploy.sh'
       deploy:
         # Push Splitgraph package to PyPI
-#        - provider: script
-#          # Remove -r testpypi to publish to the real PyPI
-#          # NB PyPI is write-once: once we've published a version, we can't overwrite it!
-#          script: poetry publish -r testpypi
-#          skip_cleanup: true
-#          on:
-#            repo: splitgraph/splitgraph
-#            tags: true
-#            # Uncomment this to trigger deploys from all branches
-#            all_branches: true
+        - provider: script
+          # Remove -r testpypi to publish to the real PyPI
+          # NB PyPI is write-once: once we've published a version, we can't overwrite it!
+          script: poetry publish -r testpypi
+          skip_cleanup: true
+          on:
+            repo: splitgraph/splitgraph
+            tags: true
+            # Uncomment this to trigger deploys from all branches
+            # all_branches: true
         # Push engine to Docker Hub
         - provider: script
           script: .ci/push_engine.sh
@@ -116,7 +120,7 @@ jobs:
             # Push out only on tagged releases instead of on every master build: would rather
             # release more often in lockstep than have weird engine version floating around.
             # Uncomment this to trigger deploys from all branches
-            all_branches: true
+            # all_branches: true
             tags: true
         # Push the binary Sphinx bundle as a release for build by splitgraph.com
         - provider: releases
@@ -132,7 +136,7 @@ jobs:
             repo: splitgraph/splitgraph
             tags: true
             # Uncomment this to trigger deploys from all branches
-            all_branches: true
+            # all_branches: true
     # We don't have the pip cache here even though it would have been useful. The reason is because
     # if we only have a pip cache and don't cache the docker_images directory with the engine
     # image, this stage will wipe that directory from the cache (since just the pip cache will be
@@ -178,7 +182,7 @@ jobs:
           repo: splitgraph/splitgraph
           tags: true
           # Uncomment this to trigger deploys from all branches
-          all_branches: true
+          # all_branches: true
     - stage: Build and deploy single binary
       os: osx
       language: sh
