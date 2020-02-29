@@ -4,13 +4,11 @@ from unittest.mock import PropertyMock, Mock, sentinel
 import pytest
 from click import UsageError
 from click.testing import CliRunner
-from test.splitgraph.conftest import SPLITFILE_ROOT
 
 from splitgraph.commandline import clone_c, pull_c, push_c, reindex_c
 from splitgraph.commandline.push_pull import _determine_push_target
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.repository import Repository
-from splitgraph.core.types import TableColumn
 
 
 @pytest.mark.parametrize(

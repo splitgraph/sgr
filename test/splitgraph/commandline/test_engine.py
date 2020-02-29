@@ -3,7 +3,6 @@ import os
 import shutil
 import subprocess
 from pathlib import Path, PureWindowsPath
-from unittest import mock
 from unittest.mock import Mock, patch, sentinel
 
 import docker

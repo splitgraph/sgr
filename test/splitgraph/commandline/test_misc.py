@@ -383,7 +383,7 @@ def _gh_404(request, uri, response_headers):
             "latest",
             (
                 "0.1.0",
-                "https://github.com/splitgraph/splitgraph/releases/download/v0.1.0/sgr-linux-amd64",
+                "https://github.com/splitgraph/splitgraph/releases/download/v0.1.0/sgr-linux-x86_64",
             ),
         ),
         (
@@ -391,7 +391,7 @@ def _gh_404(request, uri, response_headers):
             "v0.1.0",
             (
                 "0.1.0",
-                "https://github.com/splitgraph/splitgraph/releases/download/v0.1.0/sgr-linux-amd64",
+                "https://github.com/splitgraph/splitgraph/releases/download/v0.1.0/sgr-linux-x86_64",
             ),
         ),
         (
@@ -399,7 +399,7 @@ def _gh_404(request, uri, response_headers):
             "latest",
             (
                 "0.1.0",
-                "https://github.com/splitgraph/splitgraph/releases/download/v0.1.0/sgr-osx-amd64",
+                "https://github.com/splitgraph/splitgraph/releases/download/v0.1.0/sgr-osx-x86_64",
             ),
         ),
         (
@@ -407,7 +407,7 @@ def _gh_404(request, uri, response_headers):
             "latest",
             (
                 "0.1.0",
-                "https://github.com/splitgraph/splitgraph/releases/download/v0.1.0/sgr-windows-amd64.exe",
+                "https://github.com/splitgraph/splitgraph/releases/download/v0.1.0/sgr-windows-x86_64.exe",
             ),
         ),
         ("windows", "vnonexistent", ValueError),
@@ -460,7 +460,7 @@ def test_upgrade_end_to_end():
 
     httpretty.register_uri(
         httpretty.HTTPretty.GET,
-        "https://github.com/splitgraph/splitgraph/releases/download/v0.1.0/sgr-linux-amd64",
+        "https://github.com/splitgraph/splitgraph/releases/download/v0.1.0/sgr-linux-x86_64",
         body=_BODY,
         adding_headers={"Content-Length": len(_BODY)},
     )

@@ -347,7 +347,7 @@ def _get_binary_url_for(system, release: str = "latest") -> Tuple[str, str]:
 
     body = response.json()
     actual_version = body["tag_name"].lstrip("v")
-    executable = "sgr-%s-amd64" % system
+    executable = "sgr-%s-x86_64" % system
     if system == "windows":
         executable += ".exe"
     asset = [a for a in body["assets"] if a["name"] == executable]

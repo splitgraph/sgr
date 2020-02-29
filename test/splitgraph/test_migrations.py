@@ -1,5 +1,4 @@
 from datetime import datetime
-from datetime import datetime
 from unittest.mock import MagicMock
 
 import pytest

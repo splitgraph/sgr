@@ -71,7 +71,7 @@
       "url": "https://api.github.com/repos/splitgraph/splitgraph/releases/assets/18322638",
       "id": 18322638,
       "node_id": "MDEyOlJlbGVhc2VBc3NldDE4MzIyNjM4",
-      "name": "sgr-linux-amd64",
+      "name": "sgr-linux-x86_64",
       "label": "",
       "uploader": {
         "login": "mildbyte",
@@ -99,13 +99,13 @@
       "download_count": 1,
       "created_at": "2020-02-27T00:56:03Z",
       "updated_at": "2020-02-27T00:56:04Z",
-      "browser_download_url": "https://github.com/splitgraph/splitgraph/releases/download/v0.1.0/sgr-linux-amd64"
+      "browser_download_url": "https://github.com/splitgraph/splitgraph/releases/download/v0.1.0/sgr-linux-x86_64"
     },
     {
       "url": "https://api.github.com/repos/splitgraph/splitgraph/releases/assets/18322656",
       "id": 18322656,
       "node_id": "MDEyOlJlbGVhc2VBc3NldDE4MzIyNjU2",
-      "name": "sgr-osx-amd64",
+      "name": "sgr-osx-x86_64",
       "label": "",
       "uploader": {
         "login": "mildbyte",
@@ -133,13 +133,13 @@
       "download_count": 0,
       "created_at": "2020-02-27T00:57:56Z",
       "updated_at": "2020-02-27T00:57:57Z",
-      "browser_download_url": "https://github.com/splitgraph/splitgraph/releases/download/v0.1.0/sgr-osx-amd64"
+      "browser_download_url": "https://github.com/splitgraph/splitgraph/releases/download/v0.1.0/sgr-osx-x86_64"
     },
     {
       "url": "https://api.github.com/repos/splitgraph/splitgraph/releases/assets/18322652",
       "id": 18322652,
       "node_id": "MDEyOlJlbGVhc2VBc3NldDE4MzIyNjUy",
-      "name": "sgr-windows-amd64.exe",
+      "name": "sgr-windows-x86_64.exe",
       "label": "",
       "uploader": {
         "login": "mildbyte",
@@ -167,7 +167,7 @@
       "download_count": 8,
       "created_at": "2020-02-27T00:57:24Z",
       "updated_at": "2020-02-27T00:57:25Z",
-      "browser_download_url": "https://github.com/splitgraph/splitgraph/releases/download/v0.1.0/sgr-windows-amd64.exe"
+      "browser_download_url": "https://github.com/splitgraph/splitgraph/releases/download/v0.1.0/sgr-windows-x86_64.exe"
     }
   ],
   "tarball_url": "https://api.github.com/repos/splitgraph/splitgraph/tarball/v0.1.0",
