@@ -43,7 +43,7 @@ STRUCTURE = [
     ),
     ("Data import/export", ["csv export", "csv import", "mount"]),
     ("Miscellaneous", ["rm", "init", "cleanup", "prune", "config", "dump", "eval", "upgrade"]),
-    ("Sharing images", ["clone", "push", "pull", "publish", "upstream"]),
+    ("Sharing images", ["clone", "push", "pull", "upstream"]),
     ("Splitfile execution", ["build", "rebuild", "provenance"]),
     ("Splitgraph Cloud", ["cloud register", "cloud login", "cloud curl"]),
 ]
