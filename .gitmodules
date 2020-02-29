@@ -1,0 +1,6 @@
+[submodule "engine/src/Multicorn"]
+	path = engine/src/Multicorn
+	url = https://github.com/splitgraph/Multicorn.git
+[submodule "engine/src/cstore_fdw"]
+	path = engine/src/cstore_fdw
+	url = https://github.com/splitgraph/cstore_fdw.git
