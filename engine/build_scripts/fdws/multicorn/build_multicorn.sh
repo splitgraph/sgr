@@ -1,7 +1,6 @@
 #!/bin/bash -ex
 
-git clone git://github.com/splitgraph/Multicorn.git
-cd Multicorn
+cd /src/Multicorn
 
 # Fork of official Multicorn with a few cherry-picked patches:
 # * https://github.com/Kozea/Multicorn/pull/214   (pg11 build)

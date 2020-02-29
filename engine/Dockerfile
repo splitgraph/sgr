@@ -58,6 +58,7 @@ RUN mkdir -p /output/root
 #####
 
 FROM toolchain AS builder_cstore
+COPY ./engine/src/cstore_fdw /src/cstore_fdw
 COPY ./engine/build_scripts/fdws/cstore_fdw /build
 RUN /build/build_cstore_fdw.sh
 
@@ -67,6 +68,7 @@ RUN /build/build_cstore_fdw.sh
 #####
 
 FROM toolchain AS builder_multicorn
+COPY ./engine/src/Multicorn /src/Multicorn
 COPY ./engine/build_scripts/fdws/multicorn /build
 RUN /build/build_multicorn.sh
 
