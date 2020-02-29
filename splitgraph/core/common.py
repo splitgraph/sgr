@@ -20,7 +20,6 @@ if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PsycopgEngine, PostgresEngine
     from splitgraph.core.image import Image
     from splitgraph.core.repository import Repository
-    from splitgraph.core.types import TableSchema
 
 META_TABLES = [
     "images",
