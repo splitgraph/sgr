@@ -14,7 +14,6 @@ from psycopg2.sql import Composed
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA, FDW_CLASS
-from splitgraph.core.common import coerce_val_to_json
 from splitgraph.core.fragment_manager import get_temporary_table_id, ExtraIndexInfo
 from splitgraph.core.image import Image
 from splitgraph.core.image_manager import ImageManager
@@ -34,12 +33,10 @@ from .common import (
     manage_audit,
     aggregate_changes,
     slow_diff,
-    prepare_publish_data,
     gather_sync_metadata,
 )
 from .engine import lookup_repository, get_engine
 from .object_manager import ObjectManager
-from .registry import publish_tag, PublishInfo
 from ..engine import ResultShape
 
 
@@ -891,56 +888,6 @@ class Repository:
             download_all=download_all,
             overwrite=overwrite,
         )
-
-    def publish(
-        self,
-        tag: str,
-        remote_repository: Optional["Repository"] = None,
-        readme: str = "",
-        include_provenance: bool = True,
-        include_table_previews: bool = True,
-    ) -> None:
-        """
-        Summarizes the data on a previously-pushed repository and makes it available in the catalog.
-
-        :param tag: Image tag. Only images with tags can be published.
-        :param remote_repository: Remote Repository object (uses the upstream if unspecified)
-        :param readme: Optional README for the repository.
-        :param include_provenance: If False, doesn't include the dependencies of the image
-        :param include_table_previews: Whether to include data previews for every table in the image.
-        """
-        remote_repository = remote_repository or self.upstream
-        if not remote_repository:
-            raise ValueError(
-                "No remote repository specified and no upstream found for %s!" % self.to_schema()
-            )
-
-        image = self.images[tag]
-        logging.info("Publishing %s:%s (%s)", self, image.image_hash, tag)
-
-        dependencies = (
-            [((r.namespace, r.repository), i) for r, i in image.provenance()]
-            if include_provenance
-            else None
-        )
-        previews, schemata = prepare_publish_data(image, self, include_table_previews)
-
-        try:
-            publish_tag(
-                remote_repository,
-                tag,
-                PublishInfo(
-                    image_hash=image.image_hash,
-                    published=datetime.now(),
-                    provenance=dependencies,
-                    readme=readme,
-                    schemata=schemata,
-                    previews=coerce_val_to_json(previews) if include_table_previews else None,
-                ),
-            )
-            remote_repository.engine.commit()
-        finally:
-            remote_repository.engine.close()
 
     def diff(
         self,

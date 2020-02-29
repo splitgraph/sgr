@@ -186,37 +186,6 @@ def _make_push_target(repository, remote):
     return remote_repository
 
 
-@click.command(name="publish")
-@click.argument("repository", type=RepositoryType(exists=True))
-@click.argument("tag")
-@click.option("-r", "--readme", type=click.File("r"))
-@click.option(
-    "--skip-provenance", is_flag=True, help="Don't include provenance in the published information."
-)
-@click.option(
-    "--skip-previews",
-    is_flag=True,
-    help="Don't include table previews in the published information.",
-)
-def publish_c(repository, tag, readme, skip_provenance, skip_previews):
-    """
-    Publish tagged Splitgraph images to the catalog.
-
-    Only images with a tag can be published. The image must have been pushed
-    to the registry beforehand with ``sgr push``.
-    """
-    if readme:
-        readme = readme.read()
-    else:
-        readme = ""
-    repository.publish(
-        tag,
-        readme=readme,
-        include_provenance=not skip_provenance,
-        include_table_previews=not skip_previews,
-    )
-
-
 @click.command(name="upstream")
 @click.argument("repository", type=RepositoryType(exists=True))
 @click.option(

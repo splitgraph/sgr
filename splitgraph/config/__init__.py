@@ -23,7 +23,6 @@ PG_USER = get_singleton(CONFIG, "SG_ENGINE_USER")
 PG_PWD = get_singleton(CONFIG, "SG_ENGINE_PWD")
 
 SPLITGRAPH_META_SCHEMA = get_singleton(CONFIG, "SG_META_SCHEMA")
-REGISTRY_META_SCHEMA = "registry_meta"
 SPLITGRAPH_API_SCHEMA = "splitgraph_api"
 
 FDW_CLASS = get_singleton(CONFIG, "SG_FDW_CLASS")

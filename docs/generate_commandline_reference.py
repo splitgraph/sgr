@@ -12,7 +12,7 @@ STRUCTURE = {
     "Image management/creation": ["checkout", "commit", "tag", "import"],
     "Image information": ["log", "diff", "show", "sql", "status"],
     "Miscellaneous": ["mount", "rm", "init", "cleanup", "prune", "config"],
-    "Sharing images": ["clone", "push", "pull", "publish", "upstream"],
+    "Sharing images": ["clone", "push", "pull", "upstream"],
     "Splitfile execution": ["build", "rebuild", "provenance"],
 }
 

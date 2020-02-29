@@ -12,9 +12,7 @@ from splitgraph.core.common import META_TABLES
 from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.registry import (
-    _ensure_registry_schema,
     setup_registry_mode,
-    toggle_registry_rls,
     set_info_key,
 )
 from splitgraph.core.repository import Repository, clone
@@ -213,7 +211,6 @@ def test_remote_engine():
 
     logging.info("Initializing the test remote Splitgraph engine...")
     engine.initialize()
-    _ensure_registry_schema(engine)
     engine.commit()
     logging.info("Test remote Splitgraph engine initialized.")
     return engine
@@ -324,10 +321,8 @@ def pg_repo_remote(remote_engine):
 # remote_engine setup but registry-like (no audit triggers, no in-engine object storage)
 @pytest.fixture
 def remote_engine_registry(test_remote_engine):
-    # "Unpublish" all images
     set_info_key(test_remote_engine, "registry_mode", False)
     setup_registry_mode(test_remote_engine)
-    test_remote_engine.run_sql("DELETE FROM registry_meta.images")
     for mountpoint, _ in get_current_repositories(test_remote_engine):
         mountpoint.delete(uncheckout=False)
     ObjectManager(test_remote_engine).cleanup_metadata()
@@ -412,8 +407,6 @@ def mg_repo_remote(remote_engine):
 @pytest.fixture
 def remote_engine(test_remote_engine):
     # "Unpublish" all images
-    toggle_registry_rls(test_remote_engine, "DISABLE")
-    test_remote_engine.run_sql("DELETE FROM registry_meta.images")
     clean_out_engine(test_remote_engine)
     test_remote_engine.close()
     try:
@@ -426,7 +419,6 @@ def remote_engine(test_remote_engine):
 
 @pytest.fixture()
 def unprivileged_remote_engine(remote_engine_registry):
-    toggle_registry_rls(remote_engine_registry, "ENABLE")
     remote_engine_registry.commit()
     remote_engine_registry.close()
     # Assuption: unprivileged_remote_engine is the same server as remote_engine_registry but with an

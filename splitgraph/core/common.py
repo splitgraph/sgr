@@ -179,29 +179,6 @@ def slow_diff(
     ]
 
 
-def prepare_publish_data(
-    image: "Image", repository: "Repository", include_table_previews: bool
-) -> Tuple[Optional[Dict[str, List[Tuple]]], Dict[str, "TableSchema"]]:
-    """Prepare previews and schemata for a given image for publishing to a registry."""
-    schemata = {}
-    previews = {}
-    with image.query_schema() as tmp_schema:
-        for table_name in image.get_tables():
-            schema = image.get_table(table_name).table_schema
-            schemata[table_name] = schema
-
-            if include_table_previews:
-                logging.info("Generating preview for %s...", table_name)
-                engine = repository.object_engine
-                previews[table_name] = engine.run_sql(
-                    SQL("SELECT * FROM {}.{} LIMIT %s").format(
-                        Identifier(tmp_schema), Identifier(table_name)
-                    ),
-                    (_PUBLISH_PREVIEW_SIZE,),
-                )
-    return previews, schemata
-
-
 def gather_sync_metadata(
     target: "Repository", source: "Repository", overwrite_objects=False
 ) -> Any:
