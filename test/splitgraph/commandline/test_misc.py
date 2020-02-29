@@ -1,17 +1,24 @@
 import os
 import tempfile
+from pathlib import Path
 from unittest import mock
 from unittest.mock import sentinel, call
 
 import httpretty
 import pytest
+from click import ClickException
 from click.testing import CliRunner
 from test.splitgraph.conftest import API_RESOURCES
 
 from splitgraph.commandline import upstream_c, import_c, rm_c, prune_c, config_c, dump_c, eval_c
 from splitgraph.commandline.common import ImageType
 from splitgraph.commandline.example import generate_c, alter_c, splitfile_c
-from splitgraph.commandline.misc import _get_binary_url_for, upgrade_c
+from splitgraph.commandline.misc import (
+    _get_binary_url_for,
+    upgrade_c,
+    _get_system_id,
+    _get_download_paths,
+)
 from splitgraph.config import PG_PWD, PG_USER
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.repository import Repository
@@ -332,6 +339,11 @@ def test_commandline_dump_load(pg_repo_local):
 
 def test_commandline_eval():
     runner = CliRunner()
+
+    result = runner.invoke(eval_c, ["print()"], input="n\n", catch_exceptions=False)
+    assert result.exit_code == 1
+    assert "Aborted!" in result.output
+
     result = runner.invoke(
         eval_c,
         [
@@ -412,6 +424,31 @@ def test_get_binary_url(system, release, result):
             _get_binary_url_for(system, release)
     else:
         assert _get_binary_url_for(system, release) == result
+
+
+def test_system_id_not_exists():
+    with mock.patch("splitgraph.commandline.misc.platform.system", return_value="TempleOS"):
+        with pytest.raises(ClickException):
+            _get_system_id()
+
+
+@pytest.mark.parametrize(
+    "path,final_path",
+    [
+        ("/home/user/", "/home/user/sgr"),
+        ("/home/user/sgr_dest", "/home/user/sgr_dest"),
+        (None, "/usr/local/bin/sgr"),
+    ],
+)
+def test_get_download_paths(fs, path, final_path):
+    Path("/home/user/").mkdir(parents=True)
+
+    with mock.patch("splitgraph.commandline.misc.sys") as m_sys:
+        m_sys.executable = "/usr/local/bin/sgr"
+        temp_path_actual, final_path_actual = _get_download_paths(
+            path, "https://some.url.com/assets/sgr"
+        )
+        assert str(final_path_actual) == final_path
 
 
 @httpretty.activate(allow_net_connect=False)

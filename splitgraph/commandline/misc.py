@@ -10,7 +10,7 @@ import subprocess
 import sys
 import uuid
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, Optional
 
 import click
 from packaging.version import Version
@@ -383,15 +383,7 @@ def upgrade_c(skip_engine_upgrade, path, force, version):
             "for your platform, pass --force and --path."
         )
 
-    system_reported = platform.system()
-    if system_reported == "Linux":
-        system = "linux"
-    elif system_reported == "Windows":
-        system = "windows"
-    elif system_reported == "Darwin":
-        system = "osx"
-    else:
-        raise click.ClickException("Single binary is unsupported on system %s!" % system_reported)
+    system = _get_system_id()
 
     # Get link to the release
     actual_version, download_url = _get_binary_url_for(
@@ -410,20 +402,7 @@ def upgrade_c(skip_engine_upgrade, path, force, version):
 
     # Download the file
 
-    if path:
-        path = os.path.abspath(path)
-        if os.path.isdir(path):
-            destdir = path
-            file_name = download_url.split("/")[-1]
-        else:
-            destdir = os.path.dirname(path)
-            file_name = os.path.basename(path)
-    else:
-        destdir = os.path.dirname(sys.executable)
-        file_name = os.path.basename(sys.executable)
-
-    final_path = Path(destdir) / file_name
-    temp_path = Path(destdir) / uuid.uuid4().hex
+    temp_path, final_path = _get_download_paths(path, download_url)
 
     # Delete the temporary file at exit if we crash
 
@@ -441,14 +420,14 @@ def upgrade_c(skip_engine_upgrade, path, force, version):
     response = requests.get(download_url, headers=headers, allow_redirects=True, stream=True)
     response.raise_for_status()
     with tqdm(total=int(response.headers["Content-Length"]), unit="B", unit_scale=True) as pbar:
-        with (open(temp_path, "wb")) as f:
+        with (open(str(temp_path), "wb")) as f:
             for chunk in response.iter_content(chunk_size=1024):
                 f.write(chunk)
                 pbar.update(len(chunk))
 
     # Test the new binary
-    st = os.stat(temp_path)
-    os.chmod(temp_path, st.st_mode | stat.S_IEXEC)
+    st = os.stat(str(temp_path))
+    os.chmod(str(temp_path), st.st_mode | stat.S_IEXEC)
     subprocess.check_call([str(temp_path), "--version"])
 
     # Upgrade the default engine
@@ -468,13 +447,38 @@ def upgrade_c(skip_engine_upgrade, path, force, version):
                 backup_path.unlink()
             except FileNotFoundError:
                 pass
-            shutil.move(final_path, backup_path)
+            shutil.move(str(final_path), str(backup_path))
             click.echo("Old version has been backed up to %s." % backup_path)
 
-        shutil.move(temp_path, final_path)
+        shutil.move(str(temp_path), str(final_path))
         click.echo("New sgr has been installed at %s." % final_path)
 
     # Instead of moving the file right now, do it at exit -- that way
     # Pyinstaller won't break with a scary error when cleaning up because
     # the file it's running from has changed.
     atexit.register(_finalize)
+
+
+def _get_download_paths(path: Optional[str], download_url: str) -> Tuple[Path, Path]:
+    if path:
+        path = os.path.abspath(path)
+        if os.path.isdir(path):
+            destdir = path
+            file_name = download_url.split("/")[-1]
+        else:
+            destdir = os.path.dirname(path)
+            file_name = os.path.basename(path)
+    else:
+        destdir = os.path.dirname(sys.executable)
+        file_name = os.path.basename(sys.executable)
+    final_path = Path(destdir) / file_name
+    temp_path = Path(destdir) / uuid.uuid4().hex
+    return temp_path, final_path
+
+
+def _get_system_id():
+    system_reported = platform.system()
+    try:
+        return {"Linux": "linux", "Windows": "windows", "Darwin": "osx"}[system_reported]
+    except KeyError:
+        raise click.ClickException("Single binary is unsupported on system %s!" % system_reported)

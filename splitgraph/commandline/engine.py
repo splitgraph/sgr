@@ -2,7 +2,7 @@ import logging
 import os
 import time
 from io import BytesIO
-from pathlib import Path, WindowsPath
+from pathlib import Path, PureWindowsPath
 from tarfile import TarFile, TarInfo
 from typing import Dict, TYPE_CHECKING
 from urllib.parse import urlparse
@@ -127,7 +127,7 @@ def _convert_source_path(path: str) -> str:
     in a docker-machine VM on Windows. Docker mounts C:\\Users into /c/Users on the
     machine, so anything that's a subdirectory of that is available for bind mounts."""
     pathobj = Path(path)
-    if isinstance(pathobj, WindowsPath):
+    if isinstance(pathobj, PureWindowsPath):
         path = str(pathobj.as_posix())
     if path[1] == ":":
         # If the path has a drive letter (C:/Users/... is recognized as a PosixPath on Linux

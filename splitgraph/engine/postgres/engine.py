@@ -55,13 +55,6 @@ STM_TRIGGER_NAME = "audit_trigger_stm"
 REMOTE_TMP_SCHEMA = "tmp_remote_data"
 SG_UD_FLAG = "sg_ud_flag"
 
-# Retry policy for claiming connections from the pool when we have multiple worker threads
-# downloading/uploading object:
-
-# sleep for BASE, BASE * 2, BASE * 4,... CAP, CAP, CAP...
-POOL_RETRY_DELAY_BASE = 0.01
-POOL_RETRY_DELAY_CAP = 10
-
 # Max number of retries before failing
 POOL_RETRY_AMOUNT = 20
 
@@ -192,7 +185,6 @@ class PsycopgEngine(SQLEngine):
     @property
     def connection(self) -> "Connection":
         """Engine-internal Psycopg connection."""
-        pool_delay = POOL_RETRY_DELAY_BASE
         retries = 0
         failed = False
 
@@ -230,24 +222,6 @@ class PsycopgEngine(SQLEngine):
             # hacky since we don't get passed whether we've been called through Click, so
             # we check if we're running interactively and then print some
             # dots instead of a scary log message (waiting until the connection actually fails)
-            except psycopg2.pool.PoolError:
-                if retries >= POOL_RETRY_AMOUNT:
-                    logging.exception(
-                        "Error claiming a pool connection after %d retries", POOL_RETRY_AMOUNT
-                    )
-                    raise
-                retries += 1
-                if sys.stdin.isatty():
-                    _notify()
-                else:
-                    logging.info(
-                        "Error claiming a pool connection, sleeping %.2fs and retrying (%d/%d)...",
-                        pool_delay,
-                        retries,
-                        POOL_RETRY_AMOUNT,
-                    )
-                time.sleep(pool_delay)
-                pool_delay = min(pool_delay * 2, POOL_RETRY_DELAY_CAP)
             except psycopg2.errors.OperationalError as e:
                 if retries >= RETRY_AMOUNT:
                     logging.exception(
@@ -1219,7 +1193,8 @@ def _split_ri_cols(
         for column, value in row_data.items():
             if column in ri_cols:
                 ri_data[column] = value
-    elif action == "U":
+    else:
+        assert action == "U"
         for column, value in row_data.items():
             if column in ri_cols:
                 ri_data[column] = value
