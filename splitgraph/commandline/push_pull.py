@@ -108,18 +108,43 @@ def push_c(
     The actual objects will be uploaded to S3 via Minio. When pushing to another engine,
     you can choose to upload them directly by passing --handler DB.
     """
+    remote_repository = _determine_push_target(repository, remote_repository, remote)
 
-    # The reason for this behaviour is to streamline out-of-the-box Splitgraph setups where
-    # data.splitgraph.com is the only registered engine. In that case:
-    #
-    # * sgr push repo: will push to myself/repo on data.splitgraph.com with S3 uploading (user's namespace).
-    # * sgr push noaa/climate: will push to myself/climate
-    # * sgr push noaa/climate noaa/climate: will explicitly push to noaa/climate (assuming the user can write
-    #   to that repository).
-    #
-    # If the user registers another registry at splitgraph.mycompany.com, then they will be able to do:
-    #
-    # * sgr push noaa/climate -r splitgraph.mycompany.com: will push to noaa/climate
+    click.echo(
+        "Pushing %s to %s on remote %s"
+        % (repository, remote_repository, remote_repository.engine.name)
+    )
+
+    repository.push(
+        remote_repository,
+        handler=upload_handler,
+        handler_options=json.loads(upload_handler_options),
+        overwrite=overwrite_object_meta,
+    )
+
+
+def _determine_push_target(repository, remote_repository, remote):
+    """
+    Create the remote Repository object we're pushing to based on all the
+    parameters we've been passed
+
+    The reason for this behaviour is to streamline out-of-the-box Splitgraph setups where
+    data.splitgraph.com is the only registered engine. In that case:
+
+     * sgr push repo: will push to myself/repo on data.splitgraph.com with S3 uploading (user's namespace).
+     * sgr push noaa/climate: will push to myself/climate
+     * sgr push noaa/climate noaa/climate: will explicitly push to noaa/climate (assuming the user can write
+       to that repository).
+
+    If the user registers another registry at splitgraph.mycompany.com, then they will be able to do:
+
+    * sgr push noaa/climate -r splitgraph.mycompany.com: will push to noaa/climate
+
+    :param repository: Local Repository, required.
+    :param remote_repository: remote Repository (without the remote engine), optional.
+    :param remote: Name of the remote engine/registry, optional.
+    :return:
+    """
     from splitgraph.core.repository import Repository
     from splitgraph.engine import get_engine
 
@@ -135,18 +160,7 @@ def push_c(
         remote_repository = repository.upstream or _make_push_target(
             repository, _get_default_remote()
         )
-
-    click.echo(
-        "Pushing %s to %s on remote %s"
-        % (repository, remote_repository, remote_repository.engine.name)
-    )
-
-    repository.push(
-        remote_repository,
-        handler=upload_handler,
-        handler_options=json.loads(upload_handler_options),
-        overwrite=overwrite_object_meta,
-    )
+    return remote_repository
 
 
 def _get_default_remote():

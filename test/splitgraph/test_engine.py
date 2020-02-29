@@ -1,3 +1,4 @@
+from io import StringIO
 from unittest import mock
 
 import psycopg2
@@ -59,10 +60,61 @@ def test_engine_reconnect(local_engine_empty):
 def test_engine_retry(local_engine_empty):
     conn = local_engine_empty.connection
 
-    with mock.patch.object(local_engine_empty, "_pool") as pool:
-        pool.getconn.side_effect = [psycopg2.OperationalError, conn]
-        assert local_engine_empty.connection == conn
-        assert pool.getconn.call_count == 2
+    with mock.patch("splitgraph.engine.postgres.engine.RETRY_DELAY", 0.1):
+        with mock.patch.object(local_engine_empty, "_pool") as pool:
+            with mock.patch(
+                "splitgraph.engine.postgres.engine.sys.stdin.isatty", return_value=True
+            ):
+                stdout = StringIO()
+                with mock.patch("sys.stdout", stdout):
+                    pool.getconn.side_effect = [
+                        psycopg2.OperationalError,
+                        psycopg2.OperationalError,
+                        conn,
+                    ]
+                    assert local_engine_empty.connection == conn
+                    assert pool.getconn.call_count == 3
+                    assert "Waiting for connection..." in stdout.getvalue()
+
+        with mock.patch.object(local_engine_empty, "_pool") as pool:
+            with mock.patch("splitgraph.engine.postgres.engine.RETRY_AMOUNT", 1):
+                pool.getconn.side_effect = [
+                    psycopg2.OperationalError,
+                    psycopg2.OperationalError,
+                    conn,
+                ]
+                with pytest.raises(psycopg2.OperationalError):
+                    conn = local_engine_empty.connection
+
+
+def test_engine_retry_admin(local_engine_empty):
+    conn = local_engine_empty._admin_conn()
+
+    with mock.patch("splitgraph.engine.postgres.engine.RETRY_DELAY", 0.1):
+        with mock.patch("splitgraph.engine.postgres.engine.psycopg2.connect") as connect:
+            with mock.patch(
+                "splitgraph.engine.postgres.engine.sys.stdin.isatty", return_value=True
+            ):
+                stdout = StringIO()
+                with mock.patch("sys.stdout", stdout):
+                    connect.side_effect = [
+                        psycopg2.DatabaseError,
+                        psycopg2.DatabaseError,
+                        conn,
+                    ]
+                    assert local_engine_empty._admin_conn() == conn
+                    assert connect.call_count == 3
+                    assert "Waiting for connection..." in stdout.getvalue()
+
+        with mock.patch("splitgraph.engine.postgres.engine.psycopg2.connect") as connect:
+            with mock.patch("splitgraph.engine.postgres.engine.RETRY_AMOUNT", 1):
+                connect.side_effect = [
+                    psycopg2.DatabaseError,
+                    psycopg2.DatabaseError,
+                    conn,
+                ]
+                with pytest.raises(psycopg2.DatabaseError):
+                    conn = local_engine_empty._admin_conn()
 
 
 def test_run_sql_namedtuple(local_engine_empty):

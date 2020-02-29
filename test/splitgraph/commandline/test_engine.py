@@ -2,12 +2,13 @@ import logging
 import os
 import shutil
 import subprocess
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from unittest import mock
 from unittest.mock import Mock, patch, sentinel
 
 import docker
 import pytest
+import requests
 from click.testing import CliRunner
 from test.splitgraph.conftest import SG_ENGINE_PREFIX
 
@@ -22,11 +23,15 @@ from splitgraph.commandline.engine import (
     configure_engine_c,
     version_engine_c,
     upgrade_engine_c,
+    log_engine_c,
+    _convert_source_path,
+    list_engines,
 )
 from splitgraph.config import CONFIG
 from splitgraph.config.config import patch_config
 from splitgraph.config.keys import DEFAULTS
 from splitgraph.engine.postgres.engine import PostgresEngine
+from splitgraph.exceptions import DockerUnavailableError
 
 TEST_ENGINE_NAME = "test"
 
@@ -120,10 +125,14 @@ def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
 
     # Check engine version
     # (we didn't put it into the .sgconfig so have to patch instead)
-    with mock.patch("splitgraph.commandline.engine.get_engine", return_value=engine):
+    with patch("splitgraph.commandline.engine.get_engine", return_value=engine):
         result = runner.invoke(version_engine_c, [TEST_ENGINE_NAME])
         assert result.exit_code == 0
         assert __version__ in result.stdout
+
+    # Get engine logs (no --follow since we won't be able to interrupt it)
+    result = runner.invoke(log_engine_c, [TEST_ENGINE_NAME])
+    assert "database system is ready to accept connections" in result.stdout
 
     # Try deleting the engine while it's still running
     with pytest.raises(docker.errors.APIError):
@@ -154,7 +163,7 @@ def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
     assert "running" in result.stdout
 
     # Try upgrading it to the same engine version as a smoke test
-    with mock.patch("splitgraph.commandline.engine.get_engine", return_value=engine):
+    with patch("splitgraph.commandline.engine.get_engine", return_value=engine):
         # Make sure the connection is closed as the client will use this Engine reference
         # after the upgrade to initialize it.
         engine.close()
@@ -186,6 +195,25 @@ def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
         assert c.name != "splitgraph_test_engine_" + TEST_ENGINE_NAME
     for v in client.volumes.list():
         assert not v.name.startswith("splitgraph_test_engine_" + TEST_ENGINE_NAME)
+
+
+# Sample Docker SDK pull progress response (to make sure progress bars get rendered etc)
+_PULL_PROGRESS = [
+    {"status": "Pulling fs layer", "progressDetail": {}, "id": "66f0f2cf1825"},
+    {"status": "Waiting", "progressDetail": {}, "id": "66f0f2cf1825"},
+    {
+        "status": "Downloading",
+        "progressDetail": {"current": 49837, "total": 4865303},
+        "progress": "[>                                                  ]  49.84kB/4.865MB",
+        "id": "66f0f2cf1825",
+    },
+    {
+        "status": "Extracting",
+        "progressDetail": {"current": 49837, "total": 4865303},
+        "progress": "[>                                                  ]  49.84kB/4.865MB",
+        "id": "66f0f2cf1825",
+    },
+]
 
 
 @pytest.mark.parametrize(
@@ -271,7 +299,7 @@ def test_commandline_engine_creation_config_patching(test_case, fs):
     Path(env["HOME"]).mkdir(exist_ok=True, parents=True)
     client = Mock()
     client.api.base_url = "tcp://localhost:3333"
-    client.api.pull.return_value = []
+    client.api.pull.return_value = _PULL_PROGRESS
 
     with patch("splitgraph.config.CONFIG", source_config):
         with patch("docker.from_env", return_value=client):
@@ -365,3 +393,38 @@ def test_commandline_engine_config_reinject():
             result = runner.invoke(configure_engine_c)
             assert result.exit_code == 0
             assert ctc.called_once_with(container_1, CONFIG["SG_CONFIG_FILE"], "/.sgconfig")
+
+
+def test_convert_source_path():
+    """Test source path gets converted to a location that's mounted into the Docker
+    VM on Windows and allows running `sgr engine add` with `--inject-source` to bind
+    mount Splitgraph source code into the engine."""
+
+    assert _convert_source_path("/c/Users/username/splitgraph") == "/c/Users/username/splitgraph"
+
+    # a lot of patching here because we're not actually running on Win but this is what
+    # I observed happens there.
+    path = PureWindowsPath("C:\\Projects\\Splitgraph")
+
+    with patch.object(PureWindowsPath, "as_posix", return_value="C:/Projects/Splitgraph"):
+        with patch("splitgraph.commandline.engine.logging") as log:
+            # Check user is warned if the directory might not get bind mounted on Docker VM.
+            with patch(
+                "splitgraph.commandline.engine.Path", return_value=path,
+            ):
+                assert _convert_source_path("C:\\Projects\\Splitgraph") == "/c/Projects/Splitgraph"
+                assert log.warning.call_count == 1
+
+
+def test_list_engines_docker_unavailable():
+    client = Mock()
+    client.api.base_url = "tcp://localhost:3333"
+    client.ping.side_effect = requests.exceptions.ConnectionError
+
+    with patch("docker.from_env", return_value=client):
+        with patch("splitgraph.commandline.engine.logging") as log:
+            assert list_engines("some_prefix", unavailable_ok=True) == []
+            assert log.warning.call_count == 1
+
+        with pytest.raises(DockerUnavailableError):
+            list_engines("some_prefix", unavailable_ok=False)
