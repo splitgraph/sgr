@@ -104,7 +104,7 @@ jobs:
         - provider: script
           # Remove -r testpypi to publish to the real PyPI
           # NB PyPI is write-once: once we've published a version, we can't overwrite it!
-          script: poetry publish -r testpypi
+          script: echo "skip pypi" #poetry publish -r testpypi
           skip_cleanup: true
           on:
             repo: splitgraph/splitgraph
