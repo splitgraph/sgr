@@ -11,12 +11,12 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.config import SPLITGRAPH_API_SCHEMA, SPLITGRAPH_META_SCHEMA
 from splitgraph.core.types import TableSchema
 from splitgraph.engine import ResultShape
+from splitgraph.engine.postgres.engine import API_MAX_VARIADIC_ARGS, chunk
 from .sql import select
 
 if TYPE_CHECKING:
     from splitgraph.core.repository import Repository
     from splitgraph.engine.postgres.engine import PostgresEngine
-
 
 OBJECT_COLS = [
     "object_id",
@@ -91,9 +91,26 @@ class MetadataManager:
             (repository.namespace, repository.repository, o[0], o[1], Json(o[2]), o[3])
             for o in table_meta
         ]
+
+        # We're about to send len(table_meta) statements to the API and if one of them
+        # is larger than the max query length, this won't work. We can't use run_chunk_sql
+        # either since that only works on one statement and we might have several here
+        # (still want to minimize the number of roundtrips). So we chunk the parameters
+        # ourselves.
+
+        rechunked_meta = []
+        for meta in table_meta:
+            rest, objects = meta[:-1], meta[-1]
+            if len(objects) <= API_MAX_VARIADIC_ARGS:
+                rechunked_meta.append(meta)
+                continue
+            rechunked_meta.extend(
+                [rest + (c,) for c in chunk(objects, chunk_size=API_MAX_VARIADIC_ARGS)]
+            )
+
         self.metadata_engine.run_sql_batch(
             SQL("SELECT {}.add_table(%s,%s,%s,%s,%s,%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
-            table_meta,
+            rechunked_meta,
         )
 
     def register_object_locations(self, object_locations: List[Tuple[str, str, str]]) -> None:
@@ -132,10 +149,11 @@ class MetadataManager:
         """
         return cast(
             List[str],
-            self.metadata_engine.run_sql(
+            self.metadata_engine.run_chunked_sql(
                 SQL("SELECT {}.get_new_objects(%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
                 (object_ids,),
                 return_shape=ResultShape.ONE_ONE,
+                chunk_position=0,
             ),
         )
 
@@ -148,7 +166,7 @@ class MetadataManager:
         """
         return cast(
             List[Tuple[str, str, str]],
-            self.metadata_engine.run_sql(
+            self.metadata_engine.run_chunked_sql(
                 select(
                     "get_object_locations",
                     "object_id, location, protocol",
@@ -156,6 +174,7 @@ class MetadataManager:
                     table_args="(%s)",
                 ),
                 (objects,),
+                chunk_position=0,
             ),
         )
 
@@ -169,7 +188,7 @@ class MetadataManager:
         if not objects:
             return {}
 
-        metadata = self.metadata_engine.run_sql(
+        metadata = self.metadata_engine.run_chunked_sql(
             select(
                 "get_object_meta",
                 ",".join(OBJECT_COLS),
@@ -177,6 +196,7 @@ class MetadataManager:
                 table_args="(%s)",
             ),
             (list(objects),),
+            chunk_position=0,
         )
         result = [Object(*m) for m in metadata]
         return {o.object_id: o for o in result}

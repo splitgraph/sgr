@@ -405,21 +405,27 @@ SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 -- add_table(namespace, repository, table_name, table_schema, object_ids) -- add a table to an existing image.
 -- Technically, we shouldn't allow this to be done once the image has been created (so maybe that idea with only having
 -- two API calls: once to register the objects and one to register the images+tables might work?)
+-- Also here we allow calling add_table multiple times for the same table: this will add new objects
+-- to it. This is because with the default query size limit we can only have ~400 object IDs here
+-- and we might obviously want to have larger tables, so the API call to add_table can get batched up.
 CREATE OR REPLACE FUNCTION splitgraph_api.add_table (
-    namespace varchar,
-    repository varchar,
-    image_hash varchar,
-    table_name varchar,
-    table_schema jsonb,
-    object_ids varchar[]
+    _namespace varchar,
+    _repository varchar,
+    _image_hash varchar,
+    _table_name varchar,
+    _table_schema jsonb,
+    _object_ids varchar[]
 )
     RETURNS void
     AS $$
 BEGIN
-    PERFORM splitgraph_api.check_privilege (namespace);
+    PERFORM splitgraph_api.check_privilege (_namespace);
     INSERT INTO splitgraph_meta.tables (namespace, repository, image_hash,
 	table_name, table_schema, object_ids)
-        VALUES (namespace, repository, image_hash, table_name, table_schema, object_ids);
+        VALUES (_namespace, _repository, _image_hash, _table_name, _table_schema, _object_ids)
+    ON CONFLICT (namespace, repository, image_hash, table_name)
+        DO UPDATE SET object_ids = splitgraph_meta.tables.object_ids || EXCLUDED.object_ids,
+        table_schema = EXCLUDED.table_schema;
 END
 $$
 LANGUAGE plpgsql

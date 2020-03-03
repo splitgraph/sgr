@@ -1,5 +1,6 @@
 from io import StringIO
 from unittest import mock
+from unittest.mock import Mock, MagicMock, call
 
 import psycopg2
 import pytest
@@ -12,7 +13,12 @@ from splitgraph.core.engine import get_current_repositories, lookup_repository, 
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.repository import Repository
 from splitgraph.engine import _prepare_engine_config, ResultShape
-from splitgraph.engine.postgres.engine import PostgresEngine, _API_VERSION
+from splitgraph.engine.postgres.engine import (
+    PostgresEngine,
+    _API_VERSION,
+    _paginate_by_size,
+    PsycopgEngine,
+)
 from splitgraph.exceptions import (
     EngineInitializationError,
     ObjectNotFoundError,
@@ -195,3 +201,119 @@ def test_client_api_compat(unprivileged_remote_engine):
             unprivileged_remote_engine.run_sql("SELECT 1")
 
             assert "Client has a different API version" in log.warning.mock_calls[0][1][0]
+
+
+def test_client_large_query_chunking():
+    cursor = Mock()
+    cursor.mogrify = lambda query, args: (query % args).encode("utf-8")
+
+    query = "SELECT splitgraph_api.do_thing(arg1, %s, arg3)"
+    args = [("arg2")] * 3
+    mogrified = b"SELECT splitgraph_api.do_thing(arg1, arg2, arg3);"
+
+    # Query fits in max_size
+    assert list(_paginate_by_size(cursor, query, args, max_size=200)) == [
+        mogrified + mogrified + mogrified
+    ]
+
+    # First two queries fit
+    assert list(_paginate_by_size(cursor, query, args, max_size=100)) == [
+        mogrified + mogrified,
+        mogrified,
+    ]
+
+    # First two queries barely fit (49 + 49 = 98 with semicolons)
+    assert list(_paginate_by_size(cursor, query, args, max_size=98)) == [
+        mogrified + mogrified,
+        mogrified,
+    ]
+
+    # First two queries barely don't fit
+    assert list(_paginate_by_size(cursor, query, args, max_size=97)) == [
+        mogrified,
+        mogrified,
+        mogrified,
+    ]
+
+    # Window slightly larger than query size
+    assert list(_paginate_by_size(cursor, query, args, max_size=60)) == [
+        mogrified,
+        mogrified,
+        mogrified,
+    ]
+
+    # Query doesn't fit
+    with pytest.raises(ValueError):
+        assert list(_paginate_by_size(cursor, query, args, max_size=30)) == [
+            mogrified,
+            mogrified,
+            mogrified,
+        ]
+
+
+def test_client_query_batch_chunk_whole():
+    engine = MagicMock(spec=PsycopgEngine)
+    query = "SELECT splitgraph_api.get_thing(%s, %s, arg3)"
+    args = [("arg1_1", "arg2_1"), ("arg1_2", "arg2_2"), ("arg1_3", "arg2_3")]
+
+    # Return list of singletons
+    engine.run_sql.side_effect = (["result_1", "result_2"], ["result_3"])
+    assert PsycopgEngine.run_chunked_sql(
+        engine, query, args, return_shape=ResultShape.MANY_ONE, chunk_size=2,
+    ) == ["result_1", "result_2", "result_3"]
+    assert engine.run_sql.mock_calls == [
+        call(query, args[:2], ResultShape.MANY_ONE),
+        call(query, args[2:], ResultShape.MANY_ONE),
+    ]
+    engine.reset_mock()
+
+    # Return list of tuples
+    engine.run_sql.side_effect = (
+        [("result_1_1", "result_1_2"), ("result_2_1", "result_2_2")],
+        [("result_3_1", "result_3_2")],
+    )
+    assert PsycopgEngine.run_chunked_sql(
+        engine, query, args, return_shape=ResultShape.MANY_MANY, chunk_size=2,
+    ) == [("result_1_1", "result_1_2"), ("result_2_1", "result_2_2"), ("result_3_1", "result_3_2")]
+    assert engine.run_sql.mock_calls == [
+        call(query, args[:2], ResultShape.MANY_MANY),
+        call(query, args[2:], ResultShape.MANY_MANY),
+    ]
+    engine.reset_mock()
+
+    # Return None
+    # (we return empty list here)
+    engine.run_sql.side_effect = (None, None)
+    assert (
+        PsycopgEngine.run_chunked_sql(
+            engine, query, args, return_shape=ResultShape.MANY_ONE, chunk_size=2,
+        )
+        == []
+    )
+    assert engine.run_sql.mock_calls == [
+        call(query, args[:2], ResultShape.MANY_ONE),
+        call(query, args[2:], ResultShape.MANY_ONE),
+    ]
+    engine.reset_mock()
+
+
+def test_client_query_batch_chunk_part():
+    # This is useful for when we do e.g. get_object_upload_urls(s3_host, [o1, o2, o3, ...])
+    # and want to batch it up to turn into
+    #   get_object_upload_urls(s3_host, [o1, o2]);
+    #   get_object_upload_urls(s3_host, [o3]);
+
+    engine = MagicMock(spec=PsycopgEngine)
+    query = "SELECT splitgraph_api.get_thing(%s, %s, arg3)"
+    args = ("arg1", ["arg2_1", "arg2_2", "arg2_3"])
+    expected_args = [("arg1", ["arg2_1", "arg2_2"]), ("arg1", ["arg2_3"])]
+
+    engine.run_sql.side_effect = (["result_1", "result_2"], ["result_3"])
+    assert PsycopgEngine.run_chunked_sql(
+        engine, query, args, return_shape=ResultShape.MANY_ONE, chunk_size=2, chunk_position=1
+    ) == ["result_1", "result_2", "result_3"]
+    assert engine.run_sql.mock_calls == [
+        call(query, expected_args[0], ResultShape.MANY_ONE),
+        call(query, expected_args[1], ResultShape.MANY_ONE),
+    ]
+    engine.reset_mock()

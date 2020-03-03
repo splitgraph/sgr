@@ -562,7 +562,7 @@ class FragmentManager(MetadataManager):
 
         result = {
             r[0]: (r[1], r[2])
-            for r in self.metadata_engine.run_sql(
+            for r in self.metadata_engine.run_chunked_sql(
                 select(
                     "get_object_meta",
                     fields.as_string(self.metadata_engine.connection),
@@ -570,6 +570,7 @@ class FragmentManager(MetadataManager):
                     schema=SPLITGRAPH_API_SCHEMA,
                 ),
                 (fragments,),
+                chunk_position=0,
             )
         }
 

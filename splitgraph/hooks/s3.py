@@ -22,6 +22,26 @@ from splitgraph.hooks.external_objects import ExternalObjectHandler
 # just exist on a hard drive somewhere.
 
 
+def get_object_upload_urls(remote_engine, objects):
+    urls = remote_engine.run_chunked_sql(
+        "SELECT splitgraph_api.get_object_upload_urls(%s, %s)",
+        ("default", objects),
+        return_shape=ResultShape.ONE_ONE,
+        chunk_position=1,
+    )
+    return urls
+
+
+def get_object_download_urls(remote_engine, remote_object_ids):
+    urls = remote_engine.run_chunked_sql(
+        "SELECT splitgraph_api.get_object_download_urls(%s, %s)",
+        ("default", remote_object_ids),
+        return_shape=ResultShape.ONE_ONE,
+        chunk_position=1,
+    )
+    return urls
+
+
 class S3ExternalObjectHandler(ExternalObjectHandler):
     """Uploads/downloads the objects to/from S3/S3-compatible host using the Minio client.
 
@@ -48,11 +68,7 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
 
         # Determine upload URLs
         logging.info("Getting upload URLs from the registry...")
-        urls = remote_engine.run_sql(
-            "SELECT splitgraph_api.get_object_upload_urls(%s, %s)",
-            ("default", objects),
-            return_shape=ResultShape.ONE_ONE,
-        )
+        urls = get_object_upload_urls(remote_engine, objects)
 
         local_engine = get_engine()
 
@@ -114,11 +130,7 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
         logging.info("Getting download URLs from registry %s...", remote_engine)
         object_ids = [o[0] for o in objects]
         remote_object_ids = [o[1] for o in objects]
-        urls = remote_engine.run_sql(
-            "SELECT splitgraph_api.get_object_download_urls(%s, %s)",
-            ("default", remote_object_ids),
-            return_shape=ResultShape.ONE_ONE,
-        )
+        urls = get_object_download_urls(remote_engine, remote_object_ids)
 
         local_engine = get_engine()
 
