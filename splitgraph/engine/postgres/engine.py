@@ -11,7 +11,20 @@ from io import BytesIO
 from io import TextIOWrapper
 from pathlib import PurePosixPath
 from threading import get_ident
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING, Sequence, cast
+from typing import (
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    TYPE_CHECKING,
+    Sequence,
+    cast,
+    TypeVar,
+    Iterable,
+)
 
 import psycopg2
 from packaging.version import Version
@@ -46,7 +59,6 @@ if TYPE_CHECKING:
 _AUDIT_SCHEMA = "audit"
 _AUDIT_TRIGGER = "resources/static/audit_trigger.sql"
 _PUSH_PULL = "resources/static/splitgraph_api.sql"
-_API_VERSION = "0.0.1"
 _CSTORE = "resources/static/cstore.sql"
 CSTORE_SERVER = "cstore_server"
 _PACKAGE = "splitgraph"
@@ -62,6 +74,23 @@ POOL_RETRY_AMOUNT = 20
 RETRY_DELAY = 5
 RETRY_AMOUNT = 12
 
+# Internal API data
+_API_VERSION = "0.0.1"
+
+# Limitations for SQL API that the client uses to talk to the registry. Because
+# we let the client run SQL in a controlled environment on the registry, it allows
+# us to batch query calls or add custom filters without adding a new API call,
+# however we'd still like to limit what the client can do to make each API's
+# footprint more predictable. We hence chunk some heavy queries like object
+# index uploading to allow registering multiple objects at the same time whilst
+# also limiting the query's maximum size.
+API_MAX_QUERY_LENGTH = 32768
+
+# In addition, some API calls (like get_object_meta) allow variadic arguments
+# to decrease the number of roundtrips the client has to do -- limit this to a sane
+# number (in the standard config 400 objects is about 4-10M rows).
+API_MAX_VARIADIC_ARGS = 400
+
 
 def _handle_fatal(e):
     """Handle some Postgres exceptions that aren't transient."""
@@ -74,6 +103,43 @@ def _handle_fatal(e):
             "Check your credentials using sgr config and make sure you've "
             "logged into the registry using sgr cloud login."
         )
+
+
+def _paginate_by_size(cur, query, argslist, max_size=API_MAX_QUERY_LENGTH):
+    """Take a query and a list of args and return a list of binary strings
+    (each shorter than max_size) chunking the query up into batches.
+    """
+    buf = b""
+    for args in argslist:
+        statement = cur.mogrify(query, args)
+        if len(statement) > max_size:
+            raise ValueError(
+                "Statement %s... exceeds maximum query size %d!" % (statement[:100], max_size)
+            )
+        if len(statement) + len(buf) + 1 > max_size:
+            yield buf
+            buf = b""
+        buf += statement + b";"
+
+    if buf:
+        yield buf
+
+
+T = TypeVar("T")
+
+
+def chunk(sequence: Sequence[T], chunk_size: int = API_MAX_VARIADIC_ARGS) -> Iterator[List[T]]:
+    curr_chunk: List[T] = []
+    i = 0
+    for curr in sequence:
+        i += 1
+        curr_chunk.append(curr)
+        if i >= chunk_size:
+            yield curr_chunk
+            i = 0
+            curr_chunk = []
+    if curr_chunk:
+        yield curr_chunk
 
 
 class PsycopgEngine(SQLEngine):
@@ -296,6 +362,38 @@ class PsycopgEngine(SQLEngine):
                 % (_API_VERSION, self.name, remote_version)
             )
 
+    def run_chunked_sql(
+        self,
+        statement: Union[bytes, Composed, str, SQL],
+        arguments: Sequence[Any],
+        return_shape: Optional[ResultShape] = ResultShape.MANY_MANY,
+        chunk_size: int = API_MAX_VARIADIC_ARGS,
+        chunk_position: int = -1,
+    ) -> Any:
+        """Because the Splitgraph API has a request size limitation, certain
+        SQL calls with variadic arguments are going to be too long to fit that. This function
+        runs an SQL query against a set of broken up arguments and returns the combined result.
+        """
+
+        # Calculate arguments
+        batches: Iterable[Any]
+        if chunk_position == -1:
+            # The whole arguments sequence is chunked up (treated as a list of tuples)
+            batches = chunk(arguments, chunk_size)
+        else:
+            # Treat the nth argument as a list and chunk in that instead
+            subbatches = chunk(arguments[chunk_position], chunk_size)
+            batches = [
+                tuple(arguments[:chunk_position]) + (s,) + tuple(arguments[chunk_position + 1 :])
+                for s in subbatches
+            ]
+
+        results = [self.run_sql(statement, batch, return_shape) for batch in batches]
+
+        # Join up the results -- we can only have one row-many cols (a list of lists of singletons)
+        # or many rows-many cols (a list of lists of tuples) here
+        return [r for rs in results if rs for r in rs]
+
     def run_sql(
         self,
         statement: Union[bytes, Composed, str, SQL],
@@ -370,13 +468,29 @@ class PsycopgEngine(SQLEngine):
         )
 
     def run_sql_batch(
-        self, statement: Union[Composed, str], arguments: Any, schema: Optional[str] = None
+        self,
+        statement: Union[Composed, str],
+        arguments: Any,
+        schema: Optional[str] = None,
+        max_size=API_MAX_QUERY_LENGTH,
     ) -> None:
+        if not arguments:
+            return
         with self.connection.cursor() as cur:
             try:
                 if schema:
                     cur.execute("SET search_path to %s;", (schema,))
-                execute_batch(cur, statement, [_convert_vals(a) for a in arguments], page_size=1000)
+
+                batches = (
+                    _paginate_by_size(
+                        cur,
+                        statement,
+                        [_convert_vals(a) for a in arguments],
+                        max_size=API_MAX_QUERY_LENGTH,
+                    ),
+                )
+                for batch in batches:
+                    cur.execute(b";".join(batch))
                 if schema:
                     cur.execute("SET search_path to public")
             except DatabaseError:

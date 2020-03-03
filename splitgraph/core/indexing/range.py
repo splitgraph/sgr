@@ -272,7 +272,7 @@ def filter_range_index(
 
     return cast(
         List[str],
-        metadata_engine.run_sql(
-            query, [object_ids] + list(args), return_shape=ResultShape.MANY_ONE
+        metadata_engine.run_chunked_sql(
+            query, [object_ids] + list(args), return_shape=ResultShape.MANY_ONE, chunk_position=0
         ),
     )
