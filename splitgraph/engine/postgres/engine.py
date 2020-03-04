@@ -481,16 +481,14 @@ class PsycopgEngine(SQLEngine):
                 if schema:
                     cur.execute("SET search_path to %s;", (schema,))
 
-                batches = (
-                    _paginate_by_size(
-                        cur,
-                        statement,
-                        [_convert_vals(a) for a in arguments],
-                        max_size=API_MAX_QUERY_LENGTH,
-                    ),
+                batches = _paginate_by_size(
+                    cur,
+                    statement,
+                    [_convert_vals(a) for a in arguments],
+                    max_size=API_MAX_QUERY_LENGTH,
                 )
                 for batch in batches:
-                    cur.execute(b";".join(batch))
+                    cur.execute(batch)
                 if schema:
                     cur.execute("SET search_path to public")
             except DatabaseError:
