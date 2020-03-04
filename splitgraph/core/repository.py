@@ -161,37 +161,29 @@ class Repository:
         unless init() is called again.
 
         :param unregister: Whether to purge repository history/metadata
-        :param uncheckout: Whether to delete the actual checked out repo
+        :param uncheckout: Whether to delete the actual checked out repo. This has no effect
+            if the repository is backed by a registry (rather than a local engine).
         """
         # Make sure to discard changes to this repository if they exist, otherwise they might
         # be applied/recorded if a new repository with the same name appears.
-        if uncheckout:
-            # If we're talking to a bare repo / a remote that doesn't have checked out repositories,
-            # there's no point in touching the audit trigger.
-            try:
-                self.object_engine.discard_pending_changes(self.to_schema())
-            except EngineInitializationError:
-                # If the audit trigger doesn't exist,
-                logging.warning(
-                    "Audit triggers don't exist on engine %s, not running uncheckout.",
-                    self.object_engine,
+        if uncheckout and not self.engine.registry:
+            self.object_engine.discard_pending_changes(self.to_schema())
+
+            # Dispose of the foreign servers (LQ FDW, other FDWs) for this schema if it exists
+            # (otherwise its connection won't be recycled and we can get deadlocked).
+            self.object_engine.run_sql(
+                SQL("DROP SERVER IF EXISTS {} CASCADE").format(
+                    Identifier("%s_lq_checkout_server" % self.to_schema())
                 )
-            else:
-                # Dispose of the foreign servers (LQ FDW, other FDWs) for this schema if it exists
-                # (otherwise its connection won't be recycled and we can get deadlocked).
-                self.object_engine.run_sql(
-                    SQL("DROP SERVER IF EXISTS {} CASCADE").format(
-                        Identifier("%s_lq_checkout_server" % self.to_schema())
-                    )
+            )
+            self.object_engine.run_sql(
+                SQL("DROP SERVER IF EXISTS {} CASCADE").format(
+                    Identifier(self.to_schema() + "_server")
                 )
-                self.object_engine.run_sql(
-                    SQL("DROP SERVER IF EXISTS {} CASCADE").format(
-                        Identifier(self.to_schema() + "_server")
-                    )
-                )
-                self.object_engine.run_sql(
-                    SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(self.to_schema()))
-                )
+            )
+            self.object_engine.run_sql(
+                SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(self.to_schema()))
+            )
         if unregister:
             # Use the API call in case we're deleting a remote repository.
             self.engine.run_sql(
@@ -200,7 +192,7 @@ class Repository:
             )
 
             # On local repos, also forget about the repository's upstream.
-            if self.engine.table_exists(SPLITGRAPH_META_SCHEMA, "upstream"):
+            if not self.engine.registry:
                 self.engine.run_sql(
                     SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s").format(
                         Identifier(SPLITGRAPH_META_SCHEMA), Identifier("upstream")

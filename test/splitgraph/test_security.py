@@ -1,3 +1,4 @@
+import psycopg2
 import pytest
 from psycopg2._psycopg import ProgrammingError
 from psycopg2.sql import SQL, Identifier
@@ -144,14 +145,12 @@ def test_impersonate_external_object(readonly_pg_repo):
 def test_no_direct_table_access(unprivileged_pg_repo):
     # Canary to check users can't manipulate splitgraph_meta tables directly
     for table in META_TABLES:
-        with pytest.raises(ProgrammingError) as e:
+        with pytest.raises(psycopg2.Error) as e:
             unprivileged_pg_repo.engine.run_sql(select(table, "1"))
-        assert "permission denied for table" in str(e.value)
 
-        with pytest.raises(ProgrammingError) as e:
+        with pytest.raises(psycopg2.Error) as e:
             unprivileged_pg_repo.engine.run_sql(
                 SQL("DELETE FROM {}.{} WHERE 1 = 2").format(
                     Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table)
                 )
             )
-        assert "permission denied for table" in str(e.value)

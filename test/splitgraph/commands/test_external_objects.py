@@ -34,7 +34,7 @@ def test_s3_presigned_url(local_engine_empty, unprivileged_pg_repo, clean_minio)
     assert len(urls_local) == 1
     assert len(urls_local[0]) == 3
 
-    urls = unprivileged_pg_repo.run_sql(
+    urls = unprivileged_pg_repo.engine.run_sql(
         "SELECT * FROM splitgraph_api.get_object_upload_urls(%s, %s)",
         ("%s:%s" % (S3_HOST, S3_PORT), [object_id]),
         return_shape=ResultShape.ONE_ONE,
