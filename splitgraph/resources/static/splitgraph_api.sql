@@ -402,6 +402,33 @@ $$
 LANGUAGE plpgsql
 SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 
+-- get_tables(namespace, repository): list all tables in a given repository together with
+-- images they belong to.
+CREATE OR REPLACE FUNCTION splitgraph_api.get_all_tables (
+    _namespace varchar,
+    _repository varchar
+)
+    RETURNS TABLE (
+            image_hash varchar,
+            table_name varchar,
+            table_schema jsonb,
+            object_ids varchar[]
+        )
+        AS $$
+BEGIN
+    RETURN QUERY
+    SELECT t.image_hash,
+        t.table_name,
+        t.table_schema,
+        t.object_ids
+    FROM splitgraph_meta.tables t
+    WHERE t.namespace = _namespace
+        AND t.repository = _repository;
+END
+$$
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+
 -- add_table(namespace, repository, table_name, table_schema, object_ids) -- add a table to an existing image.
 -- Technically, we shouldn't allow this to be done once the image has been created (so maybe that idea with only having
 -- two API calls: once to register the objects and one to register the images+tables might work?)
