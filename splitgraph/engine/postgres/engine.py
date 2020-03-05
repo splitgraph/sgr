@@ -84,12 +84,12 @@ _API_VERSION = "0.0.1"
 # footprint more predictable. We hence chunk some heavy queries like object
 # index uploading to allow registering multiple objects at the same time whilst
 # also limiting the query's maximum size.
-API_MAX_QUERY_LENGTH = 32768
+API_MAX_QUERY_LENGTH = 65000
 
 # In addition, some API calls (like get_object_meta) allow variadic arguments
 # to decrease the number of roundtrips the client has to do -- limit this to a sane
-# number (in the standard config 400 objects is about 4-10M rows).
-API_MAX_VARIADIC_ARGS = 400
+# number (in the standard config 800 objects is 8M rows).
+API_MAX_VARIADIC_ARGS = 800
 
 
 def _handle_fatal(e):

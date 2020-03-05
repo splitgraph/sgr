@@ -227,7 +227,7 @@ def gather_sync_metadata(
             ),
             (source.namespace, source.repository),
         )
-        if t[0] in new_images
+        if t[0] in new_image_hashes
     ]
 
     # Get the tags too
