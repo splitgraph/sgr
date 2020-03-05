@@ -191,28 +191,6 @@ def test_metadata_constraints_table_objects(local_engine_empty):
         assert "Some objects in the object_ids array aren''t registered!" in str(e)
 
 
-def test_remove_with_no_audit_triggers(local_engine_empty):
-    # Test deleting a repository with uncheckout=True doesn't fail if the engine
-    # doesn't support checkouts to begin with: used if someone does "sgr rm -r [registry]"
-    try:
-        repo = Repository("some", "repo")
-        repo.init()
-        local_engine_empty.run_sql("DROP SCHEMA audit CASCADE")
-        local_engine_empty.commit()
-        # This still raises
-        with pytest.raises(EngineInitializationError):
-            local_engine_empty.discard_pending_changes("some/repo")
-
-        # This doesn't.
-        assert repository_exists(repo)
-        Repository("some", "repo").delete()
-        assert not repository_exists(repo)
-
-    finally:
-        local_engine_empty.initialize()
-        local_engine_empty.commit()
-
-
 @pytest.mark.registry
 def test_large_api_calls(unprivileged_pg_repo):
     # Test query chunking for API calls that exceed length/vararg limits
