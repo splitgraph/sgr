@@ -34,6 +34,7 @@ from .common import (
     aggregate_changes,
     slow_diff,
     gather_sync_metadata,
+    set_tags_batch,
 )
 from .engine import lookup_repository, get_engine
 from .object_manager import ObjectManager
@@ -504,10 +505,12 @@ class Repository:
 
         :param tags: List of (image_hash, tag)
         """
+        args = []
         for tag, image_id in tags.items():
             if tag != "HEAD":
                 assert image_id is not None
-                self.images.by_hash(image_id).tag(tag)
+                args.append((image_id, tag))
+        set_tags_batch(self, args)
 
     def run_sql(
         self,

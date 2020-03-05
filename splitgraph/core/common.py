@@ -47,6 +47,19 @@ def set_tag(repository: "Repository", image_hash: Optional[str], tag: str) -> No
     )
 
 
+def set_tags_batch(repository: "Repository", hashes_tags: List[Tuple[str, str]]) -> None:
+    engine = repository.engine
+
+    args = [
+        (repository.namespace, repository.repository, image_hash, tag)
+        for image_hash, tag in hashes_tags
+    ]
+
+    engine.run_sql_batch(
+        SQL("SELECT {}.tag_image(%s,%s,%s,%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)), args,
+    )
+
+
 def set_head(repository: "Repository", image: Optional[str]) -> None:
     """Sets the HEAD pointer of a given repository to a given image. Shouldn't be used directly."""
     set_tag(repository, image, "HEAD")
@@ -199,27 +212,24 @@ def gather_sync_metadata(
     # Currently, images can't be altered once pushed out. We intend to relax this: same image hash means
     # same contents and same tables but the composition of an image can change (if we refragment a table
     # so that querying it is faster).
-    table_meta = []
-    new_images = []
     new_image_hashes = [i for i in source_images if i not in target_images]
-    for image_hash in new_image_hashes:
-        image = source_images[image_hash]
-        new_images.append(image)
-        # Get the meta for all objects we'll need to fetch.
-        table_meta.extend(
-            [
-                (image_hash,) + t
-                for t in source.engine.run_sql(
-                    select(
-                        "get_tables",
-                        "table_name, table_schema, object_ids",
-                        schema=SPLITGRAPH_API_SCHEMA,
-                        table_args="(%s,%s,%s)",
-                    ),
-                    (source.namespace, source.repository, image_hash),
-                )
-            ]
+    new_images = [source_images[i] for i in new_image_hashes]
+
+    # Get the meta for all objects we'll need to fetch.
+    table_meta = [
+        t
+        for t in source.engine.run_sql(
+            select(
+                "get_all_tables",
+                "image_hash, table_name, table_schema, object_ids",
+                schema=SPLITGRAPH_API_SCHEMA,
+                table_args="(%s,%s)",
+            ),
+            (source.namespace, source.repository),
         )
+        if t[0] in new_images
+    ]
+
     # Get the tags too
     existing_tags = [t for s, t in target.get_all_hashes_tags()]
     tags = {t: s for s, t in source.get_all_hashes_tags() if t not in existing_tags}
@@ -236,7 +246,7 @@ def gather_sync_metadata(
         object_locations = []
 
     if overwrite_objects:
-        new_objects = source.objects.get_objects_for_repository(source)
+        new_objects = table_objects
 
     if new_objects:
         object_meta = source.objects.get_object_meta(new_objects)
