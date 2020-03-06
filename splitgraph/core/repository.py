@@ -167,7 +167,7 @@ class Repository:
         """
         # Make sure to discard changes to this repository if they exist, otherwise they might
         # be applied/recorded if a new repository with the same name appears.
-        if uncheckout and not self.engine.registry:
+        if uncheckout and not self.object_engine.registry:
             self.object_engine.discard_pending_changes(self.to_schema())
 
             # Dispose of the foreign servers (LQ FDW, other FDWs) for this schema if it exists

@@ -7,7 +7,7 @@ from datetime import date, datetime, time
 from decimal import Decimal
 from functools import wraps
 from pkgutil import get_data
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING, cast, Set
 
 from psycopg2.sql import Identifier, SQL
 
@@ -215,20 +215,23 @@ def gather_sync_metadata(
     new_image_hashes = [i for i in source_images if i not in target_images]
     new_images = [source_images[i] for i in new_image_hashes]
 
-    # Get the meta for all objects we'll need to fetch.
-    table_meta = [
-        t
-        for t in source.engine.run_sql(
-            select(
-                "get_all_tables",
-                "image_hash, table_name, table_schema, object_ids",
-                schema=SPLITGRAPH_API_SCHEMA,
-                table_args="(%s,%s)",
-            ),
-            (source.namespace, source.repository),
-        )
-        if t[0] in new_image_hashes
-    ]
+    # Get the meta for all tables we'll need to fetch.
+    table_meta = []
+
+    # Also grab the list of all objects in this repository in case overwrite_objects=True
+    all_objects: Set[str] = set()
+    for t in source.engine.run_sql(
+        select(
+            "get_all_tables",
+            "image_hash, table_name, table_schema, object_ids",
+            schema=SPLITGRAPH_API_SCHEMA,
+            table_args="(%s,%s)",
+        ),
+        (source.namespace, source.repository),
+    ):
+        if t[0] in new_image_hashes:
+            table_meta.append(t)
+        all_objects = all_objects.union(t[-1])
 
     # Get the tags too
     existing_tags = [t for s, t in target.get_all_hashes_tags()]
@@ -246,7 +249,7 @@ def gather_sync_metadata(
         object_locations = []
 
     if overwrite_objects:
-        new_objects = table_objects
+        new_objects = list(all_objects)
 
     if new_objects:
         object_meta = source.objects.get_object_meta(new_objects)
