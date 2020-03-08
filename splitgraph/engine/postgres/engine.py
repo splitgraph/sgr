@@ -1030,8 +1030,20 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             args = [p for pk in deleted for p in [False] + list(pk)]
             self.run_sql(query, args)
 
-    def store_object(self, object_id: str, source_schema: str, source_table: str) -> None:
+    def store_object(
+        self,
+        object_id: str,
+        source_schema: str,
+        source_table: str,
+        in_fragment_order: Optional[List[str]] = None,
+    ) -> None:
         schema_spec = self.get_full_table_schema(source_schema, source_table)
+
+        column_names = [s.name for s in schema_spec]
+        if in_fragment_order:
+            for c in in_fragment_order:
+                if not c in column_names:
+                    raise ValueError("Unknown column name %s, can't sort by it!" % c)
 
         # The physical object storage (/var/lib/splitgraph/objects) and the actual
         # foreign tables in spligraph_meta might be desynced for a variety of reasons,
@@ -1076,14 +1088,19 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
         # At this point, the foreign table mounting the object exists and we've established
         # that it's a brand new table, so insert data into it.
-        self.run_sql(
-            SQL("INSERT INTO {}.{} SELECT * FROM {}.{}").format(
-                Identifier(SPLITGRAPH_META_SCHEMA),
-                Identifier(object_id),
-                Identifier(source_schema),
-                Identifier(source_table),
-            )
+
+        query = SQL("INSERT INTO {}.{} SELECT * FROM {}.{}").format(
+            Identifier(SPLITGRAPH_META_SCHEMA),
+            Identifier(object_id),
+            Identifier(source_schema),
+            Identifier(source_table),
         )
+        # Also support sorting data in-chunk to leverage CStore striping for queries
+        # on a secondary key.
+        if in_fragment_order:
+            query += SQL(" ORDER BY ") + SQL(",").join(Identifier(c) for c in in_fragment_order)
+
+        self.run_sql(query)
 
         # Also store the table schema in a file
         self._set_object_schema(object_id, schema_spec)

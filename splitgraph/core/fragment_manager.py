@@ -208,6 +208,7 @@ class FragmentManager(MetadataManager):
         object_id: str,
         table_schema: TableSchema,
         changeset: Optional[Changeset] = None,
+        range_index: Optional[List[str]] = None,
         extra_indexes: Optional[ExtraIndexInfo] = None,
     ) -> Dict[str, Any]:
         """
@@ -216,13 +217,14 @@ class FragmentManager(MetadataManager):
         :param object_id: ID of an object
         :param table_schema: Schema of the table the object belongs to.
         :param changeset: Optional, if specified, the old row values are included in the index.
+        :param range_index: List of columns to run the range index on, default all.
         :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
         :return: Dict containing the object index.
         """
         extra_indexes: ExtraIndexInfo = extra_indexes or {}
 
         range_index: Dict[str, Any] = generate_range_index(
-            self.object_engine, object_id, table_schema, changeset
+            self.object_engine, object_id, table_schema, changeset, range_index
         )
         indexes = {"range": range_index}
 
@@ -254,6 +256,7 @@ class FragmentManager(MetadataManager):
         deletion_hash: str,
         table_schema: TableSchema,
         changeset: Optional[Changeset] = None,
+        range_index: Optional[List[str]] = None,
         extra_indexes: Optional[ExtraIndexInfo] = None,
     ) -> None:
         """
@@ -270,10 +273,13 @@ class FragmentManager(MetadataManager):
             {PK: (True for upserted/False for deleted, old row (if updated or deleted))}. The old values
             are used to generate the min/max index for an object to know if it removes/updates some rows
             that might be pertinent to a query.
+        :param range_index: A list of columns to run the range index on. Default all.
         :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
         """
         object_size = self.object_engine.get_object_size(object_id)
-        object_index = self.generate_object_index(object_id, table_schema, changeset, extra_indexes)
+        object_index = self.generate_object_index(
+            object_id, table_schema, changeset, range_index, extra_indexes
+        )
         self.register_objects(
             [
                 Object(
@@ -625,7 +631,9 @@ class FragmentManager(MetadataManager):
         namespace: str,
         limit: Optional[int] = None,
         after_pk: Optional[Tuple[Any]] = None,
+        range_index: Optional[List[str]] = None,
         extra_indexes: Optional[ExtraIndexInfo] = None,
+        in_fragment_order: Optional[List[str]] = None,
     ) -> str:
         # Store the fragment in a temporary location first and hash that (much faster since PG doesn't need
         # to go through the source table multiple times for every offset)
@@ -675,6 +683,7 @@ class FragmentManager(MetadataManager):
                 object_id=object_id,
                 source_schema=SPLITGRAPH_META_SCHEMA,
                 source_table=tmp_object_id,
+                in_fragment_order=in_fragment_order,
             )
         with self.metadata_engine.savepoint("object_register"):
             try:
@@ -684,6 +693,7 @@ class FragmentManager(MetadataManager):
                     insertion_hash=content_hash,
                     deletion_hash="0" * 64,
                     table_schema=table_schema,
+                    range_index=range_index,
                     extra_indexes=extra_indexes,
                 )
             except UniqueViolation:

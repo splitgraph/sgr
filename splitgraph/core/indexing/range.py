@@ -191,6 +191,7 @@ def generate_range_index(
     object_id: str,
     table_schema: "TableSchema",
     changeset: Optional[Changeset],
+    columns: Optional[List[str]] = None,
 ) -> Dict[str, Tuple[T, T]]:
     """
     Calculate the minimum/maximum values of every column in the object (including deleted values).
@@ -199,13 +200,20 @@ def generate_range_index(
     :param object_id: ID of the object.
     :param table_schema: Schema of the table
     :param changeset: Changeset (old values will be included in the index)
+    :param columns: Columns to run the index on (default all)
     :return: Dictionary of {column: [min, max]}
     """
+    columns = columns or [c.name for c in table_schema]
+
     object_pk = [c.name for c in table_schema if c.is_pk]
     if not object_pk:
         object_pk = [c.name for c in table_schema]
     column_types = {c.name: c.pg_type for c in table_schema}
-    columns_to_index = [c.name for c in table_schema if c.pg_type in _PG_INDEXABLE_TYPES]
+    columns_to_index = [
+        c.name
+        for c in table_schema
+        if c.pg_type in _PG_INDEXABLE_TYPES and (c.is_pk or c.name in columns)
+    ]
 
     logging.debug("Running range index on columns %s", columns_to_index)
     query = SQL("SELECT ") + SQL(",").join(
