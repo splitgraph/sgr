@@ -10,7 +10,7 @@ from abc import ABC
 from contextlib import contextmanager
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING, cast
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING, cast, Sequence
 
 from psycopg2.sql import Composed
 from psycopg2.sql import SQL, Identifier
@@ -613,16 +613,21 @@ class ObjectEngine:
         """
         raise NotImplementedError()
 
-    def store_object(self, object_id, source_schema, source_table):
+    def store_object(
+        self,
+        object_id: str,
+        source_query: Union[bytes, Composed, str, SQL],
+        schema_spec: TableSchema,
+        source_query_args: Optional[Sequence[Any]],
+    ):
         """
-        Stores a Splitgraph object located in a staging table in the actual format
+        Stores a Splitgraph object using a source query in the actual format
         implemented by this engine.
 
-        At the end of this operation, the staging table must be deleted.
-
-        :param source_schema: Schema the staging table is located in.
-        :param source_table: Name of the staging table
         :param object_id: Name of the object
+        :param source_query: SELECT query that produces data required by the object
+        :param schema_spec: Schema of the source table
+        :param source_query_args: Arguments to mogrify into the source query.
         """
 
 

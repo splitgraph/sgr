@@ -934,6 +934,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         source_schema: str,
         source_table: str,
     ) -> None:
+        temporary = schema == "pg_temp"
 
         schema_spec = self.get_full_table_schema(source_schema, source_table)
         # Assuming the schema_spec has the whole tuple as PK if the table has no PK.
@@ -949,6 +950,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             schema,
             table,
             schema_spec=([TableColumn(0, SG_UD_FLAG, "boolean", False)] + schema_spec),
+            temporary=temporary,
         )
 
         # Store upserts
@@ -1033,17 +1035,10 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
     def store_object(
         self,
         object_id: str,
-        source_schema: str,
-        source_table: str,
-        in_fragment_order: Optional[List[str]] = None,
+        source_query: Union[bytes, Composed, str, SQL],
+        schema_spec: TableSchema,
+        source_query_args=None,
     ) -> None:
-        schema_spec = self.get_full_table_schema(source_schema, source_table)
-
-        column_names = [s.name for s in schema_spec]
-        if in_fragment_order:
-            for c in in_fragment_order:
-                if not c in column_names:
-                    raise ValueError("Unknown column name %s, can't sort by it!" % c)
 
         # The physical object storage (/var/lib/splitgraph/objects) and the actual
         # foreign tables in spligraph_meta might be desynced for a variety of reasons,
@@ -1064,10 +1059,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             # physical object file, we'll have to write into the table anyway.
             if not object_exists:
                 logging.info(
-                    "Object storage, %s/%s -> %s, mounted but no physical file, recreating",
-                    source_schema,
-                    source_table,
-                    object_id,
+                    "Object storage, %s, mounted but no physical file, recreating", object_id,
                 )
 
             # In addition, there's a corner case where the object was mounted with different FDW
@@ -1078,33 +1070,22 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
         if object_exists:
             logging.info(
-                "Object storage, %s/%s -> %s, already exists, deleting source table",
-                source_schema,
-                source_table,
-                object_id,
+                "Object storage, %s, already exists", object_id,
             )
-            self.delete_table(source_schema, source_table)
             return
 
         # At this point, the foreign table mounting the object exists and we've established
         # that it's a brand new table, so insert data into it.
-
-        query = SQL("INSERT INTO {}.{} SELECT * FROM {}.{}").format(
-            Identifier(SPLITGRAPH_META_SCHEMA),
-            Identifier(object_id),
-            Identifier(source_schema),
-            Identifier(source_table),
+        self.run_sql(
+            SQL("INSERT INTO {}.{}").format(
+                Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)
+            )
+            + source_query,
+            source_query_args,
         )
-        # Also support sorting data in-chunk to leverage CStore striping for queries
-        # on a secondary key.
-        if in_fragment_order:
-            query += SQL(" ORDER BY ") + SQL(",").join(Identifier(c) for c in in_fragment_order)
-
-        self.run_sql(query)
 
         # Also store the table schema in a file
         self._set_object_schema(object_id, schema_spec)
-        self.delete_table(source_schema, source_table)
 
     @staticmethod
     def _schema_spec_to_cols(schema_spec: "TableSchema") -> Tuple[List[str], List[str]]:
