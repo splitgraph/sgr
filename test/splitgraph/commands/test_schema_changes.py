@@ -81,8 +81,8 @@ def test_schema_changes(pg_repo_local, test_case):
     assert len(new_head.get_table("fruits").objects) == 1
     new_snap = new_head.get_table("fruits").objects[0]
     assert pg_repo_local.engine.get_object_schema(new_snap) == _drop_comments(
-        _reassign_ordinals(expected_new_schema)
-        + [TableColumn(len(expected_new_schema) + 1, SG_UD_FLAG, "boolean", False)]
+        expected_new_schema
+        + [TableColumn(expected_new_schema[-1].ordinal + 1, SG_UD_FLAG, "boolean", False)]
     )
 
     head.checkout()
