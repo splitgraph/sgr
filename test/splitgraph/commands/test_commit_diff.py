@@ -120,7 +120,7 @@ def test_commit_chunking(local_engine_empty):
     OUTPUT.init()
     OUTPUT.run_sql("CREATE TABLE test (key INTEGER PRIMARY KEY, value_1 VARCHAR, value_2 INTEGER)")
     for i in range(11):
-        OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (i + 1, chr(ord("a") + i), i * 2))
+        OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (i + 1, chr(ord("z") - i), i * 2))
     with patch("splitgraph.core.fragment_manager.datetime") as dtp:
         dtp.now.return_value = dt(2019, 1, 1)
         head = OUTPUT.commit(chunk_size=5)
@@ -151,7 +151,7 @@ def test_commit_chunking(local_engine_empty):
                 {
                     "range": {
                         "key": [min_key, max_key],
-                        "value_1": [chr(ord("a") + min_key - 1), chr(ord("a") + max_key - 1)],
+                        "value_1": [chr(ord("z") - max_key + 1), chr(ord("z") - min_key + 1)],
                         "value_2": [(min_key - 1) * 2, (max_key - 1) * 2],
                     }
                 },
@@ -169,11 +169,13 @@ def test_commit_chunking(local_engine_empty):
 
 def test_commit_chunking_order(local_engine_empty):
     # Same but make sure the chunks order by PK for more efficient indexing
+    # Also test in-chunk ordering (order by value_1 which will make the actual
+    # chunk query more efficiently by that column)
     OUTPUT.init()
     OUTPUT.run_sql("CREATE TABLE test (key INTEGER PRIMARY KEY, value_1 VARCHAR, value_2 INTEGER)")
     for i in range(10, -1, -1):
-        OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (i + 1, chr(ord("a") + i), i * 2))
-    head = OUTPUT.commit(chunk_size=5)
+        OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (i + 1, chr(ord("z") - i), i * 2))
+    head = OUTPUT.commit(chunk_size=5, in_fragment_order={"test": ["value_1"]})
 
     objects = head.get_table("test").objects
     assert len(objects) == 3
@@ -187,6 +189,16 @@ def test_commit_chunking_order(local_engine_empty):
             return_shape=ResultShape.MANY_ONE,
         ) == list(range(min_key, max_key + 1))
 
+        # When queried without an order, we should get the natural order
+        # of values in the chunk which is backwards (since we're sorting
+        # by value_1)
+        assert local_engine_empty.run_sql(
+            SQL("SELECT key FROM {}.{}").format(
+                Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj)
+            ),
+            return_shape=ResultShape.MANY_ONE,
+        ) == list(range(max_key, min_key - 1, -1))
+
 
 def test_commit_diff_splitting(local_engine_empty):
     # Similar setup to the chunking test
@@ -194,7 +206,9 @@ def test_commit_diff_splitting(local_engine_empty):
     OUTPUT.run_sql("CREATE TABLE test (key INTEGER PRIMARY KEY, value_1 VARCHAR, value_2 INTEGER)")
     for i in range(11):
         OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (i + 1, chr(ord("a") + i), i * 2))
-    head = OUTPUT.commit(chunk_size=5)
+    # Smoke test in-chunk ordering here as well even though it's not going to change (all values
+    # are increasing) + some of them are Nones + we don't really query diffs directly.
+    head = OUTPUT.commit(chunk_size=5, in_fragment_order={"test": ["key", "value_1"]})
 
     # Store the IDs of the base fragments
     base_objects = head.get_table("test").objects
@@ -652,25 +666,31 @@ def _write_multitype_dataset():
          m date,
          n boolean not null,
          o json,
-         p tsvector, PRIMARY KEY(b, c, d));"""
+         p tsvector, 
+         q text, PRIMARY KEY(b, c, d));"""
     )
 
     OUTPUT.run_sql(
-        """INSERT INTO test (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p)
+        """INSERT INTO test (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q)
         VALUES(1, 2, 3, 3.54, 876.563452345, 1.23, 'test', 'testtesttesttest', 'testtesttesttesttesttesttest',
         B'001110010101010', '2013-11-02 17:30:52', '2013-02-04', true, '{ "a": 123 }',
-        'Old Old Parr'::tsvector);"""
+        'Old Old Parr'::tsvector, 'a_test_range');"""
     )
 
     # Write another row to test min/max indexing on the resulting object
     OUTPUT.run_sql(
-        """INSERT INTO test (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p)
+        """INSERT INTO test (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q)
         VALUES(15, 22, 1, -1.23, 9.8811, 0.23, 'abcd', '0testtesttesttes', '0testtesttesttesttesttesttes',
         B'111110011111111', '2016-01-01 01:01:05', '2011-11-11', false, '{ "b": 456 }',
-        'AAA AAA Bb '::tsvector);"""
+        'AAA AAA Bb '::tsvector, 'z_test_range');"""
     )
 
-    new_head = OUTPUT.commit()
+    # Get range index to omit column q (skip specifying the pk since it's there by default).
+    new_head = OUTPUT.commit(
+        extra_indexes={
+            "test": {"range": ["a", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p"]}
+        }
+    )
     # Check out the new image again to verify that writing the new image works
     new_head.checkout()
 
@@ -698,6 +718,7 @@ def test_various_types(local_engine_empty):
             True,
             {"a": 123},
             "'Old' 'Parr'",
+            "a_test_range",
         ),
         (
             (
@@ -717,6 +738,7 @@ def test_various_types(local_engine_empty):
                 False,
                 {"b": 456},
                 "'AAA' 'Bb'",
+                "z_test_range",
             )
         ),
     ]
@@ -751,14 +773,18 @@ def test_various_types_with_deletion_index(local_engine_empty):
     _write_multitype_dataset()
     # Insert a row, update a row and delete a row -- check the old rows are included in the index correctly.
     OUTPUT.run_sql(
-        """INSERT INTO test (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p)
+        """INSERT INTO test (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q)
         VALUES(16, 23, 2, 7.89, 10.01, 9.45, 'defg', '00esttesttesttes', '00esttesttesttesttesttesttes',
         B'111110011111111', '2016-02-01 01:01:05.123456', '2012-12-12', false, '{ "b": 789 }',
-        'BBB BBB Cc '::tsvector);"""
+        'BBB BBB Cc '::tsvector, 'r_test_range');"""
     )
     OUTPUT.run_sql("DELETE FROM test WHERE b = 15")
     OUTPUT.run_sql("UPDATE test SET m = '2019-01-01' WHERE m = '2013-02-04'")
-    new_head = OUTPUT.commit()
+    new_head = OUTPUT.commit(
+        extra_indexes={
+            "test": {"range": ["a", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p"]}
+        }
+    )
 
     # New object is the second object in the table objects' list
     object_id = new_head.get_table("test").objects[1]

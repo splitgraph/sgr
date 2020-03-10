@@ -1,6 +1,7 @@
 """
 Various common functions used by the command line interface.
 """
+import json
 from typing import Optional, Tuple, List, TYPE_CHECKING
 
 import click
@@ -61,6 +62,16 @@ class RepositoryType(click.ParamType):
             if not repository_exists(result):
                 raise RepositoryNotFoundError("Unknown repository %s" % result)
         return result
+
+
+class JsonType(click.ParamType):
+    """Parser for Json -- a wrapper around json.loads because without specifying
+    the name Click shows the type for the option/arg as LOADS."""
+
+    name = "Json"
+
+    def convert(self, value: str, param: Optional[Parameter], ctx: Optional[Context]):
+        return json.loads(value)
 
 
 class Color:
