@@ -7,7 +7,7 @@ from collections import defaultdict
 
 import click
 
-from splitgraph.commandline.common import ImageType, RepositoryType
+from splitgraph.commandline.common import ImageType, RepositoryType, JsonType
 from splitgraph.exceptions import TableNotFoundError
 
 
@@ -75,7 +75,14 @@ def checkout_c(image_spec, force, uncheckout, layered):
     "--chunk-size",
     default=10000,
     type=int,
-    help="Split new tables into chunks of this many rows.",
+    help="Split new tables into chunks of this many rows (by primary key).",
+)
+@click.option(
+    "-k",
+    "--chunk-sort-keys",
+    default=None,
+    type=JsonType(),
+    help="Sort the data inside each chunk by this/these key(s)",
 )
 @click.option(
     "-t",
@@ -87,11 +94,13 @@ def checkout_c(image_spec, force, uncheckout, layered):
 @click.option(
     "-i",
     "--index-options",
-    type=json.loads,
+    type=JsonType(),
     help="JSON dictionary of extra indexes to calculate on the new objects.",
 )
 @click.option("-m", "--message", help="Optional commit message")
-def commit_c(repository, snap, chunk_size, split_changesets, index_options, message):
+def commit_c(
+    repository, snap, chunk_size, chunk_sort_keys, split_changesets, index_options, message
+):
     """
     Commit changes to a checked-out Splitgraph repository.
 
@@ -100,12 +109,16 @@ def commit_c(repository, snap, chunk_size, split_changesets, index_options, mess
     store them as full table snapshots.
 
     When a table is stored as a full snapshot, `--chunk-size` sets the maximum size, in rows, of the fragments
-    that the table will be split into (default is no splitting).
+    that the table will be split into (default is no splitting). The splitting is done by the
+    table's primary key.
 
     If `--split-changesets` is passed, delta-compressed changes will also be split up according to the original
     table chunk boundaries. For example, if there's a change to the first and the 20000th row of a table that was
     originally committed with `--chunk-size=10000`, this will create 2 fragments: one based on the first chunk
     and one on the second chunk of the table.
+
+    If `--chunk-sort-keys` is passed, data inside the chunk is sorted by this key (or multiple keys).
+    This helps speed up queries on those keys for storage layers than can leverage that (e.g. CStore). The expected format is JSON, e.g. `{table_1: [col_1, col_2]}`
 
     `--index-options` expects a JSON-serialized dictionary of `{table: index_type: column: index_specific_kwargs}`.
     Indexes are used to narrow down the amount of chunks to scan through when running a query. By default, each column
@@ -115,7 +128,7 @@ def commit_c(repository, snap, chunk_size, split_changesets, index_options, mess
     Bloom filtering allows to trade off between the space overhead of the index and the probability of a false
     positive (claiming that an object contains a record when it actually doesn't, leading to extra scans).
 
-    An example bloom filter `index-options` dictionary:
+    An example `index-options` dictionary:
 
     \b
     ```
@@ -126,7 +139,11 @@ def commit_c(repository, snap, chunk_size, split_changesets, index_options, mess
                     "probability": 0.01,   # Only one of probability
                     "size": 10000          # or size can be specified.
                 }
-            }
+            },
+            # Only compute the range index on these columns. By default,
+            # it's computed on all columns and is always computed on the
+            # primary key no matter what.
+            "range": ["column_2", "column_3"]
         }
     }
     ```
@@ -137,6 +154,7 @@ def commit_c(repository, snap, chunk_size, split_changesets, index_options, mess
         chunk_size=chunk_size,
         split_changeset=split_changesets,
         extra_indexes=index_options,
+        in_fragment_order=chunk_sort_keys,
     ).image_hash
     click.echo("Committed %s as %s." % (str(repository), new_hash[:12]))
 

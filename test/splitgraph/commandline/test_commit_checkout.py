@@ -11,7 +11,16 @@ def test_commandline_commit_chunk(pg_repo_local):
     pg_repo_local.run_sql("ALTER TABLE fruits ADD PRIMARY KEY (fruit_id)")
     pg_repo_local.run_sql("ALTER TABLE vegetables ADD PRIMARY KEY (vegetable_id)")
 
-    result = runner.invoke(commit_c, [str(pg_repo_local), "--snap", "--chunk-size=1"])
+    result = runner.invoke(
+        commit_c,
+        [
+            str(pg_repo_local),
+            "--snap",
+            "--chunk-size=1",
+            "--chunk-sort-keys",
+            '{"fruits": ["fruit_id", "name"], "vegetables": ["vegetable_id", "name"]}',
+        ],
+    )
     assert result.exit_code == 0
 
     original_objects = pg_repo_local.head.get_table("fruits").objects

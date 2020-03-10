@@ -22,7 +22,6 @@ from tqdm import tqdm
 from splitgraph.config import SPLITGRAPH_API_SCHEMA
 from splitgraph.core.indexing.bloom import generate_bloom_index, filter_bloom_index
 from splitgraph.core.indexing.range import (
-    extract_min_max_pks,
     generate_range_index,
     filter_range_index,
 )
@@ -179,8 +178,8 @@ class Digest:
         return struct.pack(">16H", *self.shorts).hex()
 
 
-"""Dictionary of {index_type: column: index_specific_kwargs}."""
-ExtraIndexInfo = Dict[str, Dict[str, Dict[str, Any]]]
+"""Dictionary of {index_type: [column: index_specific_kwargs or list of columns]}."""
+ExtraIndexInfo = Dict[str, Union[List[str], Dict[str, Dict[str, Any]]]]
 
 
 class FragmentManager(MetadataManager):
@@ -208,7 +207,6 @@ class FragmentManager(MetadataManager):
         object_id: str,
         table_schema: TableSchema,
         changeset: Optional[Changeset] = None,
-        range_index: Optional[List[str]] = None,
         extra_indexes: Optional[ExtraIndexInfo] = None,
     ) -> Dict[str, Any]:
         """
@@ -217,21 +215,33 @@ class FragmentManager(MetadataManager):
         :param object_id: ID of an object
         :param table_schema: Schema of the table the object belongs to.
         :param changeset: Optional, if specified, the old row values are included in the index.
-        :param range_index: List of columns to run the range index on, default all.
         :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
         :return: Dict containing the object index.
         """
         extra_indexes: ExtraIndexInfo = extra_indexes or {}
 
+        # Default None, meaning run range index on all columns.
+        range_index_columns: Optional[List[str]]
+        try:
+            range_index_columns = list(extra_indexes["range"])
+        except KeyError:
+            range_index_columns = None
         range_index: Dict[str, Any] = generate_range_index(
-            self.object_engine, object_id, table_schema, changeset, range_index
+            self.object_engine, object_id, table_schema, changeset, columns=range_index_columns
         )
         indexes = {"range": range_index}
 
         # Process extra indexes
         for index_name, index_cols in extra_indexes.items():
+            if index_name == "range":
+                continue
             if index_name != "bloom":
                 raise ValueError("Unsupported index type %s!" % index_name)
+            if isinstance(index_cols, list):
+                raise ValueError(
+                    "Unexpected options for index 'bloom': "
+                    "got list, expected dictionary {column: {probability/size: ...}}!"
+                )
 
             index_dict = {}
             for index_col, index_kwargs in index_cols.items():
@@ -256,7 +266,6 @@ class FragmentManager(MetadataManager):
         deletion_hash: str,
         table_schema: TableSchema,
         changeset: Optional[Changeset] = None,
-        range_index: Optional[List[str]] = None,
         extra_indexes: Optional[ExtraIndexInfo] = None,
     ) -> None:
         """
@@ -273,13 +282,10 @@ class FragmentManager(MetadataManager):
             {PK: (True for upserted/False for deleted, old row (if updated or deleted))}. The old values
             are used to generate the min/max index for an object to know if it removes/updates some rows
             that might be pertinent to a query.
-        :param range_index: A list of columns to run the range index on. Default all.
         :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
         """
         object_size = self.object_engine.get_object_size(object_id)
-        object_index = self.generate_object_index(
-            object_id, table_schema, changeset, range_index, extra_indexes
-        )
+        object_index = self.generate_object_index(object_id, table_schema, changeset, extra_indexes)
         self.register_objects(
             [
                 Object(
@@ -355,6 +361,7 @@ class FragmentManager(MetadataManager):
         changesets: Any,
         schema: str,
         extra_indexes: Optional[ExtraIndexInfo] = None,
+        in_fragment_order: Optional[List[str]] = None,
     ) -> List[str]:
         """
         Store and register multiple changesets as fragments.
@@ -384,11 +391,18 @@ class FragmentManager(MetadataManager):
             # Wrap this rename in a SAVEPOINT so that if the table already exists,
             # the error doesn't roll back the whole transaction (us creating and registering all other objects).
             with self.object_engine.savepoint("object_rename"):
+                source_query = SQL("SELECT * FROM {}.{}").format(
+                    Identifier("pg_temp"), Identifier(tmp_object_id)
+                )
+
+                if in_fragment_order:
+                    source_query += SQL(" ") + self._get_order_by_clause(
+                        in_fragment_order, table.table_schema
+                    )
+
                 self.object_engine.store_object(
                     object_id=object_id,
-                    source_query=SQL("SELECT * FROM {}.{}").format(
-                        Identifier("pg_temp"), Identifier(tmp_object_id)
-                    ),
+                    source_query=source_query,
                     # For some reason the UD flag comes first in diffs and last in base fragments.
                     # (shouldn't be an issue at query time since we always explicitly enumerate
                     # columns)
@@ -481,6 +495,7 @@ class FragmentManager(MetadataManager):
         new_schema_spec: TableSchema = None,
         split_changeset: bool = False,
         extra_indexes: Optional[ExtraIndexInfo] = None,
+        in_fragment_order: Optional[List[str]] = None,
     ) -> None:
         """
         Flushes the pending changes from the audit table for a given table and records them,
@@ -535,7 +550,9 @@ class FragmentManager(MetadataManager):
                 changesets = [changeset]
 
             # Store the changesets and find out their object IDs.
-            object_ids = self._store_changesets(old_table, changesets, schema, extra_indexes)
+            object_ids = self._store_changesets(
+                old_table, changesets, schema, extra_indexes, in_fragment_order=in_fragment_order
+            )
             # Finally, link the table to the new set of objects.
             self.register_tables(
                 old_table.repository,
@@ -658,7 +675,6 @@ class FragmentManager(MetadataManager):
         namespace: str,
         chunk_id_col: Optional[str] = None,
         chunk_id: Optional[int] = None,
-        range_index: Optional[List[str]] = None,
         extra_indexes: Optional[ExtraIndexInfo] = None,
         in_fragment_order: Optional[List[str]] = None,
         table_schema: Optional[TableSchema] = None,
@@ -672,12 +688,6 @@ class FragmentManager(MetadataManager):
             for c in self.object_engine.get_full_table_schema(source_schema, source_table)
             if c.name != chunk_id_col
         ]
-
-        column_names = [s.name for s in table_schema]
-        if in_fragment_order:
-            for c in in_fragment_order:
-                if c not in column_names:
-                    raise ValueError("Unknown column name %s, can't sort by it!" % c)
 
         schema_hash = self._calculate_schema_hash(table_schema)
         # Get content hash for this chunk.
@@ -707,6 +717,10 @@ class FragmentManager(MetadataManager):
                 source_query += SQL("WHERE {} = %s").format(Identifier(chunk_id_col))
                 source_query_args = [chunk_id]
 
+            if in_fragment_order:
+                source_query += SQL(" ") + self._get_order_by_clause(
+                    in_fragment_order, table_schema
+                )
             self.object_engine.store_object(
                 object_id=object_id,
                 source_query=source_query,
@@ -722,7 +736,6 @@ class FragmentManager(MetadataManager):
                     insertion_hash=content_hash,
                     deletion_hash="0" * 64,
                     table_schema=table_schema,
-                    range_index=range_index,
                     extra_indexes=extra_indexes,
                 )
             except UniqueViolation:
@@ -735,6 +748,15 @@ class FragmentManager(MetadataManager):
                 )
 
         return object_id
+
+    @staticmethod
+    def _get_order_by_clause(in_fragment_order, table_schema):
+        column_names = [s.name for s in table_schema]
+        if in_fragment_order:
+            for c in in_fragment_order:
+                if c not in column_names:
+                    raise ValueError("Unknown column name %s, can't sort by it!" % c)
+        return SQL("ORDER BY ") + SQL(",").join(Identifier(c) for c in in_fragment_order)
 
     @staticmethod
     def _calculate_schema_hash(table_schema):
@@ -752,6 +774,7 @@ class FragmentManager(MetadataManager):
         source_schema: Optional[str] = None,
         source_table: Optional[str] = None,
         extra_indexes: Optional[ExtraIndexInfo] = None,
+        in_fragment_order: Optional[List[str]] = None,
     ) -> List[str]:
         """
         Copies the full table verbatim into one or more new base fragments and registers them.
@@ -763,6 +786,7 @@ class FragmentManager(MetadataManager):
         :param source_schema: Override the schema the source table is stored in
         :param source_table: Override the name of the table the source is stored in
         :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
+        :param in_fragment_order: Key to sort data inside each chunk by.
         """
         source_schema = source_schema or repository.to_schema()
         source_table = source_table or table_name
@@ -777,7 +801,13 @@ class FragmentManager(MetadataManager):
         table_schema = self.object_engine.get_full_table_schema(source_schema, source_table)
         if chunk_size and table_size:
             object_ids = self._chunk_table(
-                repository, source_schema, source_table, table_size, chunk_size, extra_indexes
+                repository,
+                source_schema,
+                source_table,
+                table_size,
+                chunk_size,
+                extra_indexes,
+                in_fragment_order=in_fragment_order,
             )
 
         elif table_size:
@@ -788,6 +818,7 @@ class FragmentManager(MetadataManager):
                     repository.namespace,
                     extra_indexes=extra_indexes,
                     table_schema=table_schema,
+                    in_fragment_order=in_fragment_order,
                 )
             ]
         else:
@@ -805,6 +836,7 @@ class FragmentManager(MetadataManager):
         chunk_size: int,
         extra_indexes: Optional[ExtraIndexInfo] = None,
         table_schema: Optional[TableSchema] = None,
+        in_fragment_order: Optional[List[str]] = None,
     ) -> List[str]:
         table_pk = [p[0] for p in self.object_engine.get_change_key(source_schema, source_table)]
         table_schema = table_schema or self.object_engine.get_full_table_schema(
@@ -879,6 +911,7 @@ class FragmentManager(MetadataManager):
                 chunk_id=chunk_id,
                 extra_indexes=extra_indexes,
                 table_schema=table_schema,
+                in_fragment_order=in_fragment_order,
             )
             object_ids.append(new_fragment)
 

@@ -23,7 +23,6 @@ from splitgraph.core.types import TableSchema
 from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import (
     CheckoutError,
-    EngineInitializationError,
     TableNotFoundError,
     IncompleteObjectUploadError,
 )
@@ -339,7 +338,8 @@ class Repository:
         snap_only: bool = False,
         chunk_size: Optional[int] = 10000,
         split_changeset: bool = False,
-        extra_indexes: Optional[ExtraIndexInfo] = None,
+        extra_indexes: Optional[Dict[str, ExtraIndexInfo]] = None,
+        in_fragment_order: Optional[Dict[str, List[str]]] = None,
     ) -> Image:
         """
         Commits all pending changes to a given repository, creating a new image.
@@ -359,6 +359,8 @@ class Repository:
             If False, the changeset will be stored as a single fragment inheriting from the last fragment in the
             table.
         :param extra_indexes: Dictionary of {table: index_type: column: index_specific_kwargs}.
+        :param in_fragment_order: Dictionary of {table: list of columns}. If specified, will
+        sort the data inside each chunk by this/these key(s) for each table.
         :return: The newly created Image object.
         """
 
@@ -381,6 +383,7 @@ class Repository:
             chunk_size=chunk_size,
             split_changeset=split_changeset,
             extra_indexes=extra_indexes,
+            in_fragment_order=in_fragment_order,
         )
 
         set_head(self, image_hash)
@@ -397,7 +400,8 @@ class Repository:
         chunk_size: Optional[int] = 10000,
         split_changeset: bool = False,
         schema: str = None,
-        extra_indexes: Optional[ExtraIndexInfo] = None,
+        extra_indexes: Optional[Dict[str, ExtraIndexInfo]] = None,
+        in_fragment_order: Optional[Dict[str, List[str]]] = None,
     ) -> None:
         """
         Reads the recorded pending changes to all tables in a given checked-out image,
@@ -407,17 +411,10 @@ class Repository:
             * If a table hasn't changed since the last revision, no new objects are created and it's linked to the
                 previous objects belonging to the last revision.
             * Otherwise, the table is stored as a conflated (1 change per PK) patch.
-
-        :param head: Current HEAD image to base the commit on.
-        :param image_hash: Hash of the image to commit changes under.
-        :param snap_only: If True, only stores the table as a snapshot.
-        :param chunk_size: Split table snapshots into chunks of this size (None to disable)
-        :param split_changeset: Split deltas to match original table snapshot boundaries
-        :param schema: Schema that the image is checked out into. By default, `namespace/repository` is used.
-        :param extra_indexes: Dictionary of {table: index_type: column: index_specific_kwargs}.
         """
         schema = schema or self.to_schema()
-        extra_indexes: ExtraIndexInfo = extra_indexes or {}
+        extra_indexes: Dict[str, ExtraIndexInfo] = extra_indexes or {}
+        in_fragment_order: Dict[str, List[str]] = in_fragment_order or {}
 
         changed_tables = self.object_engine.get_changed_tables(schema)
         for table in self.object_engine.get_all_tables(schema):
@@ -440,6 +437,7 @@ class Repository:
                     chunk_size=chunk_size,
                     source_schema=schema,
                     extra_indexes=extra_indexes.get(table),
+                    in_fragment_order=in_fragment_order.get(table),
                 )
                 continue
 
@@ -452,6 +450,7 @@ class Repository:
                     new_schema_spec=new_schema,
                     split_changeset=split_changeset,
                     extra_indexes=extra_indexes.get(table),
+                    in_fragment_order=in_fragment_order.get(table),
                 )
                 continue
 
