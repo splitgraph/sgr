@@ -31,7 +31,7 @@ DEFAULTS: ConfigDict = {
     "SG_ENGINE_POSTGRES_DB_NAME": "postgres",
     "SG_ENGINE_OBJECT_PATH": "/var/lib/splitgraph/objects",
     # Size of the connection pool used to download/upload objects + talk to the engine
-    "SG_ENGINE_POOL": "5",
+    "SG_ENGINE_POOL": "16",
     "SG_CONFIG_FILE": "",
     "SG_META_SCHEMA": "splitgraph_meta",
     "SG_CONFIG_DIRS": "",
