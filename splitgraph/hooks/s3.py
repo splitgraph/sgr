@@ -81,8 +81,6 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
                 local_engine.run_sql(
                     "SELECT splitgraph_api.upload_object(%s, %s)", (object_id, url)
                 )
-                local_engine.commit()
-                local_engine.close()
                 return object_id
             except DatabaseError:
                 logging.exception("Error uploading object %s", object_id)
@@ -90,6 +88,7 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
 
         successful: List[str] = []
         try:
+            local_engine.autocommit = True
             with ThreadPoolExecutor(max_workers=worker_threads) as tpe:
                 pbar = tqdm(
                     tpe.map(_do_upload, zip(objects, urls)),
@@ -112,6 +111,9 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
             raise IncompleteObjectUploadError(
                 reason=e, successful_objects=successful, successful_object_urls=successful,
             )
+        finally:
+            local_engine.autocommit = False
+            local_engine.close_others()
 
     def download_objects(
         self, objects: List[Tuple[str, str]], remote_engine: PostgresEngine
@@ -146,29 +148,24 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
                 logging.exception("Error downloading object %s", object_id)
                 return None
 
-            try:
-                local_engine.mount_object(object_id)
-            except DuplicateTable:
-                logging.warning("Object %s already exists locally." % object_id)
-            # Commit and release the connection (each is keyed by the thread ID)
-            # back into the pool.
-            # NB this should only be done when the loader is running in a different thread, since
-            # otherwise this will also commit the transaction that's opened by the ObjectManager, messing
-            # with its refcounting.
-            local_engine.commit()
-            local_engine.close()
-
+            local_engine.mount_object(object_id)
             return object_id
 
         successful: List[str] = []
 
         try:
+            # Temporarily set the engine into autocommit mode. This is because a transaction
+            # commit resets session state and makes the download_object engine API call
+            # import all of its Python modules again (which takes about 300ms). It also
+            # resets the SD and GD dictionaries so it's not possible to cache those modules
+            # there either.
+            local_engine.autocommit = True
             with ThreadPoolExecutor(max_workers=worker_threads) as tpe:
                 # Evaluate the results so that exceptions thrown by the downloader get raised
                 pbar = tqdm(
                     tpe.map(_do_download, zip(object_ids, urls)),
                     total=len(objects),
-                    unit="objs",
+                    unit="obj",
                     ascii=True,
                 )
                 for object_id in pbar:
@@ -180,3 +177,7 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
             return successful
         except KeyboardInterrupt as e:
             raise IncompleteObjectDownloadError(reason=e, successful_objects=successful)
+        finally:
+            # Flip the engine back and close all but one pool connection.
+            local_engine.autocommit = False
+            local_engine.close_others()

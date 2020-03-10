@@ -217,6 +217,23 @@ class PsycopgEngine(SQLEngine):
         if self.connected:
             conn = self.connection
             conn.commit()
+            self._pool.putconn(conn)
+
+    def close_others(self) -> None:
+        """
+        Close and release all other connections to the connection pool.
+        """
+        # This is here because of the way ThreadPoolExecutor works: from within the function
+        # that it calls, we have no way of knowing if we'll be called again in that thread.
+        # We also can't release the connection back into the pool because that causes the
+        # pool to reset it, clearing all state that we might need. Hence this has to be
+        # called after the TPE has finished.
+
+        if self.connected:
+            us = get_ident()
+            other_conns = [v for k, v in self._pool._used.items() if k != us]
+            for c in other_conns:
+                self._pool.putconn(c, close=True)
 
     def close(self) -> None:
         if self.connected:
@@ -922,7 +939,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         :param schema: Schema to mount the object into
         :param schema_spec: Schema of the object.
         """
-        query = self.dump_object_creation(object_id, schema, table, schema_spec)
+        query = self.dump_object_creation(object_id, schema, table, schema_spec, if_not_exists=True)
         self.run_sql(query)
 
     def store_fragment(
