@@ -5,8 +5,7 @@ CREATE TABLE splitgraph_meta.images (
     namespace varchar NOT NULL,
     repository varchar NOT NULL,
     image_hash varchar(64) NOT NULL CHECK (image_hash ~ '^[a-f0-9]{64}$'),
-    parent_id varchar(64) CHECK (parent_id ~ '^[a-f0-9]{64}$' AND parent_id
-	!= image_hash),
+    parent_id varchar(64) CHECK (parent_id ~ '^[a-f0-9]{64}$' AND parent_id != image_hash),
     created timestamp,
     comment varchar(4096),
     provenance_type varchar(10),

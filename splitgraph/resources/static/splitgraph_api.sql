@@ -6,7 +6,7 @@ DROP SCHEMA IF EXISTS splitgraph_api CASCADE;
 
 CREATE SCHEMA splitgraph_api;
 
-CREATE OR REPLACE FUNCTION splitgraph_api.get_version()
+CREATE OR REPLACE FUNCTION splitgraph_api.get_version ()
     RETURNS TEXT
     AS $$
 BEGIN
@@ -106,6 +106,41 @@ $$
 LANGUAGE plpgsql
 SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 
+-- Search for an image by its hash prefix. Currently the prefix feature
+-- is only used for better API/cmdline UX -- pushes/pulls to the registry
+-- use full IDs.
+CREATE OR REPLACE FUNCTION splitgraph_api.get_image (
+    _namespace varchar,
+    _repository varchar,
+    _image_hash_prefix varchar
+)
+    RETURNS TABLE (
+            image_hash varchar,
+            parent_id varchar,
+            created timestamp,
+            comment varchar,
+            provenance_type varchar,
+            provenance_data jsonb
+        )
+        AS $$
+BEGIN
+    RETURN QUERY
+    SELECT i.image_hash,
+        i.parent_id,
+        i.created,
+        i.comment,
+        i.provenance_type,
+        i.provenance_data
+    FROM splitgraph_meta.images i
+    WHERE i.namespace = _namespace
+        AND i.repository = _repository
+        AND i.image_hash LIKE _image_hash_prefix || '%'
+    ORDER BY created ASC;
+END
+$$
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+
 -- get_tagged_images(namespace, repository): get hashes of all images with a tag.
 CREATE OR REPLACE FUNCTION splitgraph_api.get_tagged_images (
     _namespace varchar,
@@ -194,12 +229,18 @@ CREATE OR REPLACE FUNCTION splitgraph_api.delete_image (
     AS $$
 BEGIN
     PERFORM splitgraph_api.check_privilege (_namespace);
-    DELETE FROM splitgraph_meta.tags WHERE namespace = _namespace
-        AND repository = _repository AND image_hash = _image_hash;
-    DELETE FROM splitgraph_meta.tables WHERE namespace = _namespace
-        AND repository = _repository AND image_hash = _image_hash;
-    DELETE FROM splitgraph_meta.images WHERE namespace = _namespace
-        AND repository = _repository AND image_hash = _image_hash;
+    DELETE FROM splitgraph_meta.tags
+    WHERE namespace = _namespace
+        AND repository = _repository
+        AND image_hash = _image_hash;
+    DELETE FROM splitgraph_meta.tables
+    WHERE namespace = _namespace
+        AND repository = _repository
+        AND image_hash = _image_hash;
+    DELETE FROM splitgraph_meta.images
+    WHERE namespace = _namespace
+        AND repository = _repository
+        AND image_hash = _image_hash;
 END
 $$
 LANGUAGE plpgsql
@@ -476,8 +517,9 @@ BEGIN
 	table_name, table_schema, object_ids)
         VALUES (_namespace, _repository, _image_hash, _table_name, _table_schema, _object_ids)
     ON CONFLICT (namespace, repository, image_hash, table_name)
-        DO UPDATE SET object_ids = splitgraph_meta.tables.object_ids || EXCLUDED.object_ids,
-        table_schema = EXCLUDED.table_schema;
+        DO UPDATE SET
+	    object_ids = splitgraph_meta.tables.object_ids ||
+		EXCLUDED.object_ids, table_schema = EXCLUDED.table_schema;
 END
 $$
 LANGUAGE plpgsql
@@ -510,7 +552,6 @@ END
 $$
 LANGUAGE plpgsql
 SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
-
 
 --
 -- S3 UPLOAD/DOWNLOAD API

@@ -105,13 +105,12 @@ class ImageManager:
         """
         result = self.engine.run_sql(
             select(
-                "get_images",
+                "get_image",
                 ",".join(IMAGE_COLS),
                 schema=SPLITGRAPH_API_SCHEMA,
-                table_args="(%s, %s)",
-                where="image_hash LIKE %s",
+                table_args="(%s, %s, %s)",
             ),
-            (self.repository.namespace, self.repository.repository, image_hash.lower() + "%"),
+            (self.repository.namespace, self.repository.repository, image_hash.lower()),
             return_shape=ResultShape.MANY_MANY,
         )
         if not result:
