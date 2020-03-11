@@ -287,13 +287,20 @@ def _make_dummy_config_dict():
 @pytest.mark.parametrize(
     "test_case",
     [
-        ("ns/repo/image/table?id=eq.5", "http://some-query-service/ns/repo/image/table?id=eq.5"),
-        ("ns/repo/latest/table?id=eq.5", "http://some-query-service/ns/repo/latest/table?id=eq.5"),
+        (
+            ["ns/repo", "table?id=eq.5"],
+            "http://some-query-service/ns/repo/latest/-/rest/table?id=eq.5",
+        ),
+        (
+            ["ns/repo:image", "/table?id=eq.5"],
+            "http://some-query-service/ns/repo/image/-/rest/table?id=eq.5",
+        ),
+        (["ns/repo"], "http://some-query-service/ns/repo/latest/-/rest",),
     ],
 )
 def test_commandline_curl_normal(test_case):
     runner = CliRunner()
-    request, result_url = test_case
+    args, result_url = test_case
 
     with patch(
         "splitgraph.cloud.AuthAPIClient.access_token",
@@ -303,7 +310,7 @@ def test_commandline_curl_normal(test_case):
         with patch("splitgraph.commandline.cloud.subprocess.call") as sc:
             result = runner.invoke(
                 curl_c,
-                ["--remote", _REMOTE, request, "--some-curl-arg", "-Ssl"],
+                ["--remote", _REMOTE] + args + ["-c", "--some-curl-arg", "-c", "-Ssl"],
                 catch_exceptions=False,
             )
             assert result.exit_code == 0
