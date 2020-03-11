@@ -6,6 +6,7 @@ from urllib.parse import urlsplit
 import click
 
 from splitgraph.cloud import get_token_claim, get_headers
+from splitgraph.commandline.common import ImageType
 from splitgraph.commandline.engine import patch_and_save_config, inject_config_into_engines
 
 
@@ -136,9 +137,16 @@ def login_c(username, password, remote, overwrite):
 @click.option(
     "--remote", default="data.splitgraph.com", help="Name of the remote cloud engine to use."
 )
-@click.argument("request")
-@click.argument("curl_args", nargs=-1, type=click.UNPROCESSED)
-def curl_c(remote, request, curl_args):
+@click.argument("image", type=ImageType(default="latest"))
+@click.argument("request_params", type=str, default="")
+# This is kind of awkward: we want to support not passing in any request params to default
+# them to / but also want to be able to support multiple curl args which click doesn't let
+# us do (click.argument with nargs=-1 makes "request_params" consume the first arg even
+# if we use the posix standard separator --).
+@click.option(
+    "-c", "--curl-args", type=str, multiple=True, help="Extra arguments to be passed to curl"
+)
+def curl_c(remote, image, request_params, curl_args):
     """A thin wrapper around curl that performs an HTTP request to Splitgraph Cloud to
     query a dataset using Postgrest (http://postgrest.org).
 
@@ -146,24 +154,31 @@ def curl_c(remote, request, curl_args):
 
         curl [API endpoint][request] -H [access_token] [extra curl args].
 
-    The request must be of the form `namespace/repository/hash_or_tag/table?[postgrest request]`.
+    The image must be of the form `namespace/repository:[hash_or_tag (default latest)]`.
+
+    The actual request must be of the form `/table?[postgrest request]` or
+    empty to get the OpenAPI spec for this image.
 
     For a reference on how to perform Postgrest requests, see http://postgrest.org/en/v6.0/api.html.
+
+    --curl-args allows to pass extra arguments to curl. Note that every argument must be prefixed
+    with --curl-args, e.g. --curl-args --cacert --curl-args /path/to/ca.pem
     """
     from splitgraph.config import CONFIG
     from splitgraph.cloud import AuthAPIClient
 
-    # Do some early validation
-    request_parsed = urlsplit(request)
-    path_segments = request_parsed.path.lstrip("/").split("/")
+    repository, hash_or_tag = image
+
+    if request_params and not request_params.startswith("/"):
+        request_params = "/" + request_params
 
     # Craft a request
     config = CONFIG["remotes"][remote]
     full_request = (
         config["SG_QUERY_API"]
-        + "/"
-        + "/".join(path_segments)
-        + (("?" + request_parsed.query) if request_parsed.query else "")
+        + "/%s/%s" % (str(repository), str(hash_or_tag))
+        + "/-/rest"
+        + request_params
     )
 
     access_token = AuthAPIClient(remote).access_token
