@@ -34,8 +34,13 @@ def test_push_own_delete_own(local_engine_empty, unprivileged_pg_repo):
     destination.upstream = remote_destination
 
     destination.push(handler="S3")
+    # Test we can delete a single image from our own repo
+    assert len(remote_destination.images()) == 3
+    remote_destination.images.delete([destination.images["latest"].image_hash])
+    assert len(remote_destination.images()) == 2
+
     # Test we can delete our own repo once we've pushed it
-    remote_destination.delete(uncheckout=False)
+    remote_destination.delete()
     assert len(remote_destination.images()) == 0
 
 
@@ -94,6 +99,9 @@ def test_delete_others(readonly_pg_repo):
     with pytest.raises(ProgrammingError) as e:
         readonly_pg_repo.delete(uncheckout=False)
     assert "You do not have access to this namespace!" in str(e.value)
+
+    with pytest.raises(ProgrammingError) as e:
+        readonly_pg_repo.images.delete([readonly_pg_repo.images["latest"].image_hash])
 
     # Check the repository still exists on the remote.
     assert len(readonly_pg_repo.images()) > 0

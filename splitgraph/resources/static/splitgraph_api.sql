@@ -180,6 +180,31 @@ $$
 LANGUAGE plpgsql
 SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 
+-- Delete image.
+-- Note this doesn't delete references to the image, e.g. where
+-- it's pointed to by a Splitfile chain. It's arguable whether we want to
+-- have an FK constraint to make sure this doesn't happen or let splitfiles
+-- break instead if really needed.
+CREATE OR REPLACE FUNCTION splitgraph_api.delete_image (
+    _namespace varchar,
+    _repository varchar,
+    _image_hash varchar
+)
+    RETURNS void
+    AS $$
+BEGIN
+    PERFORM splitgraph_api.check_privilege (_namespace);
+    DELETE FROM splitgraph_meta.tags WHERE namespace = _namespace
+        AND repository = _repository AND image_hash = _image_hash;
+    DELETE FROM splitgraph_meta.tables WHERE namespace = _namespace
+        AND repository = _repository AND image_hash = _image_hash;
+    DELETE FROM splitgraph_meta.images WHERE namespace = _namespace
+        AND repository = _repository AND image_hash = _image_hash;
+END
+$$
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+
 -- tag_image (namespace, repository, image_hash, tag)
 CREATE OR REPLACE FUNCTION splitgraph_api.tag_image (
     _namespace varchar,

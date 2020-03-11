@@ -53,7 +53,7 @@ def rm_c(image_spec, remote, yes):
 
     Deletes ``temporary_schema`` from the local engine.
 
-    ``sgr rm --remote splitgraph.com username/repo``
+    ``sgr rm --remote data.splitgraph.com username/repo``
 
     Deletes ``username/repo`` from the Splitgraph registry.
 
