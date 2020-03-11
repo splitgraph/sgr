@@ -232,7 +232,7 @@ def tag_c(image_spec, tag, remove):
 
 
 @click.command(name="import")
-@click.argument("image_spec", type=ImageType(get_image=True))
+@click.argument("image_spec", type=ImageType())
 @click.argument("table_or_query")
 @click.argument("target_repository", type=RepositoryType())
 @click.argument("target_table", required=False)
@@ -273,6 +273,7 @@ def import_c(image_spec, table_or_query, target_repository, target_table):
 
     if repository_exists(repository):
         foreign_table = False
+        image = repository.images[image]
         # If the source table doesn't exist in the image, we'll treat it as a query instead.
         try:
             image.get_table(table_or_query)
@@ -283,7 +284,7 @@ def import_c(image_spec, table_or_query, target_repository, target_table):
         # If the source schema isn't actually a Splitgraph repo, we'll be copying the table verbatim.
         foreign_table = True
         is_query = table_or_query not in repository.engine.get_all_tables(repository.to_schema())
-        assert image is None
+        image = None
 
     if is_query and not target_table:
         click.echo("TARGET_TABLE is required when the source is a query!")
