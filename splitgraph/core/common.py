@@ -14,7 +14,7 @@ from psycopg2.sql import Identifier, SQL
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.core.migration import source_files_to_apply, set_installed_version
 from splitgraph.core.sql import select
-from splitgraph.exceptions import EngineInitializationError
+from splitgraph.exceptions import EngineInitializationError, ImageNotFoundError
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PsycopgEngine, PostgresEngine
@@ -192,7 +192,10 @@ def slow_diff(
 
 
 def gather_sync_metadata(
-    target: "Repository", source: "Repository", overwrite_objects=False
+    target: "Repository",
+    source: "Repository",
+    overwrite_objects=False,
+    single_image: Optional[str] = None,
 ) -> Any:
     """
     Inspects two Splitgraph repositories and gathers metadata that is required to bring target up to
@@ -202,18 +205,32 @@ def gather_sync_metadata(
     :param source: Source repository object
     :param overwrite_objects: If True, will return metadata for _all_ objects (not images or tables)
         in the source repository to overwrite target.
+    :param single_image: If set, only grab a single image with this hash/tag from the source.
 
     :returns: Tuple of metadata for  new_images, new_tables, object_locations, object_meta, tags
     """
 
-    target_images = {i.image_hash: i for i in target.images()}
-    source_images = {i.image_hash: i for i in source.images()}
-
-    # Currently, images can't be altered once pushed out. We intend to relax this: same image hash means
-    # same contents and same tables but the composition of an image can change (if we refragment a table
-    # so that querying it is faster).
-    new_image_hashes = [i for i in source_images if i not in target_images]
-    new_images = [source_images[i] for i in new_image_hashes]
+    # Currently, images can't be altered once pushed out. We intend to relax this:
+    # same image hash means same contents and same tables but the composition of an image
+    # can change (if we refragment a table so that querying it is faster). But it's frowned
+    # upon.
+    if single_image:
+        image = source.images[single_image]
+        try:
+            # If the image already exists on the target, we shouldn't overwrite it.
+            # The user can get around this by deleting the image manually.
+            _ = target.images[single_image]
+            new_images = []
+            new_image_hashes = []
+        except ImageNotFoundError:
+            new_images = [image]
+            new_image_hashes = [image.image_hash]
+    else:
+        # If an image hasn't been specified, get/push all non-existing images.
+        target_images = {i.image_hash: i for i in target.images()}
+        source_images = {i.image_hash: i for i in source.images()}
+        new_image_hashes = [i for i in source_images if i not in target_images]
+        new_images = [source_images[i] for i in new_image_hashes]
 
     # Get the meta for all tables we'll need to fetch.
     table_meta = []
