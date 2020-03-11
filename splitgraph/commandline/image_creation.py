@@ -12,7 +12,7 @@ from splitgraph.exceptions import TableNotFoundError
 
 
 @click.command(name="checkout")
-@click.argument("image_spec", type=ImageType(default="HEAD"))
+@click.argument("image_spec", type=ImageType(default="HEAD", get_image=True))
 @click.option(
     "-f", "--force", help="Discard all pending changes to the schema", is_flag=True, default=False
 )
@@ -55,7 +55,6 @@ def checkout_c(image_spec, force, uncheckout, layered):
         repository.uncheckout(force=force)
         click.echo("Unchecked out %s." % (str(repository),))
     else:
-        image = repository.images[image]
         image.checkout(force=force, layered=layered)
         click.echo("Checked out %s:%s." % (str(repository), image.image_hash[:12]))
 
@@ -233,7 +232,7 @@ def tag_c(image_spec, tag, remove):
 
 
 @click.command(name="import")
-@click.argument("image_spec", type=ImageType())
+@click.argument("image_spec", type=ImageType(get_image=True))
 @click.argument("table_or_query")
 @click.argument("target_repository", type=RepositoryType())
 @click.argument("target_table", required=False)
@@ -274,7 +273,6 @@ def import_c(image_spec, table_or_query, target_repository, target_table):
 
     if repository_exists(repository):
         foreign_table = False
-        image = repository.images[image]
         # If the source table doesn't exist in the image, we'll treat it as a query instead.
         try:
             image.get_table(table_or_query)
@@ -285,7 +283,7 @@ def import_c(image_spec, table_or_query, target_repository, target_table):
         # If the source schema isn't actually a Splitgraph repo, we'll be copying the table verbatim.
         foreign_table = True
         is_query = table_or_query not in repository.engine.get_all_tables(repository.to_schema())
-        image = None
+        assert image is None
 
     if is_query and not target_table:
         click.echo("TARGET_TABLE is required when the source is a query!")
@@ -313,7 +311,7 @@ def import_c(image_spec, table_or_query, target_repository, target_table):
 
 
 @click.command(name="reindex")
-@click.argument("image_spec", type=ImageType(default="HEAD"))
+@click.argument("image_spec", type=ImageType(default="HEAD", get_image=True))
 @click.argument("table_name", type=str)
 @click.option(
     "-i",
@@ -345,7 +343,6 @@ def reindex_c(image_spec, table_name, index_options, ignore_patch_objects):
     Image spec must be of the format ``[NAMESPACE/]REPOSITORY[:HASH_OR_TAG]``. If no tag is specified, ``HEAD`` is used.
     """
     repository, image = image_spec
-    image = repository.images[image]
     table = image.get_table(table_name)
     click.echo("Reindexing table %s:%s/%s" % (repository.to_schema(), image.image_hash, table_name))
     reindexed = table.reindex(

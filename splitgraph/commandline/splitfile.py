@@ -52,7 +52,7 @@ def build_c(splitfile, args, output_repository):
 
 
 @click.command(name="provenance")
-@click.argument("image_spec", type=ImageType())
+@click.argument("image_spec", type=ImageType(get_image=True))
 @click.option(
     "-f",
     "--full",
@@ -115,7 +115,6 @@ def provenance_c(image_spec, full, error_on_end):
         FROM noaa/climate:[hash_3] IMPORT {SELECT * FROM rainfall_data WHERE state = 'AZ'}
     """
     repository, image = image_spec
-    image = repository.images[image]
 
     if full:
         splitfile_commands = image.to_splitfile(err_on_end=error_on_end)
@@ -130,7 +129,7 @@ def provenance_c(image_spec, full, error_on_end):
 
 
 @click.command(name="rebuild")
-@click.argument("image_spec", type=ImageType())
+@click.argument("image_spec", type=ImageType(get_image=True))
 @click.option(
     "-u",
     "--update",
@@ -167,7 +166,6 @@ def rebuild_c(image_spec, update, against):
     out.
     """
     repository, image = image_spec
-    image = repository.images[image]
 
     # Replace the sources used to construct the image with either the latest ones or the images specified by the user.
     # This doesn't require us at this point to have pulled all the dependencies: the Splitfile executor will do it
