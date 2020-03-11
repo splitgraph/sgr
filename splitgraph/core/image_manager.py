@@ -238,15 +238,10 @@ class ImageManager:
         # Maybe better to have ON DELETE CASCADE on the FK constraints instead of going through
         # all tables to clean up -- but then we won't get alerted when we accidentally try
         # to delete something that does have FKs relying on it.
-        args = tuple([self.repository.namespace, self.repository.repository] + list(images))
-        for table in ["tags", "tables", "images"]:
-            self.engine.run_sql(
-                SQL(
-                    "DELETE FROM {}.{} WHERE namespace = %s AND repository = %s "
-                    "AND image_hash IN (" + ",".join(itertools.repeat("%s", len(images))) + ")"
-                ).format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table)),
-                args,
-            )
+        self.engine.run_sql_batch(
+            SQL("SELECT {}.delete_image(%s, %s, %s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
+            arguments=[(self.repository.namespace, self.repository.repository, i) for i in images],
+        )
 
     def __iter__(self):
         return iter(self())
