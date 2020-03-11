@@ -18,11 +18,18 @@ class ImageType(click.ParamType):
 
     name = "Image"
 
-    def __init__(self, default: Optional[str] = "latest") -> None:
+    def __init__(
+        self,
+        default: Optional[str] = "latest",
+        repository_exists: bool = False,
+        image_exists: bool = False,
+    ) -> None:
         """
         :param default: Default tag/hash for image where it's not specified.
         """
         self.default = default
+        self.repository_exists = repository_exists
+        self.image_exists = image_exists
 
     def convert(
         self, value: str, param: Optional[Parameter], ctx: Optional[Context]
@@ -41,7 +48,20 @@ class ImageType(click.ParamType):
             tag_or_hash = self.default
         from splitgraph.core.repository import Repository
 
-        return Repository.from_schema(repo_image[0]), tag_or_hash
+        repo = Repository.from_schema(repo_image[0])
+
+        if self.image_exists or self.repository_exists:
+            # Check image/repo exists if we're asked
+            # image_exists supersedes repository_exists
+            from splitgraph.core.engine import repository_exists
+
+            if not repository_exists(repo):
+                raise RepositoryNotFoundError("Unknown repository %s" % repo)
+
+            if self.image_exists and tag_or_hash is not None:
+                _ = repo.images[tag_or_hash]
+
+        return repo, tag_or_hash
 
 
 class RepositoryType(click.ParamType):

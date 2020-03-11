@@ -112,17 +112,34 @@ def test_pull_push(local_engine_empty, pg_repo_remote):
     runner = CliRunner()
     pg_repo_local = Repository.from_template(pg_repo_remote, engine=local_engine_empty)
 
+    # Clone the base 0000.. image first to check single-image clones
+    assert len(pg_repo_local.images()) == 0
+    result = runner.invoke(clone_c, [str(pg_repo_local) + ":" + "00000000"])
+    assert result.exit_code == 0
+    assert len(pg_repo_local.images()) == 1
+    assert repository_exists(pg_repo_local)
+
+    # Clone the rest of the repo
     result = runner.invoke(clone_c, [str(pg_repo_local)])
     assert result.exit_code == 0
-    assert repository_exists(pg_repo_local)
+    assert len(pg_repo_local.images()) == 2
 
     pg_repo_remote.run_sql("INSERT INTO fruits VALUES (3, 'mayonnaise')")
     remote_engine_head = pg_repo_remote.commit()
 
+    # Pull the new image
+    result = runner.invoke(pull_c, [str(pg_repo_local) + ":" + remote_engine_head.image_hash[:10]])
+    assert result.exit_code == 0
+    assert len(pg_repo_local.objects.get_downloaded_objects()) == 0
+    assert len(pg_repo_local.images()) == 3
+
+    # Pull the whole repo (should be no changes)
     result = runner.invoke(pull_c, [str(pg_repo_local)])
     assert result.exit_code == 0
     assert len(pg_repo_local.objects.get_downloaded_objects()) == 0
+    assert len(pg_repo_local.images()) == 3
 
+    # Pull repo downloading everything
     result = runner.invoke(pull_c, [str(pg_repo_local), "--download-all"])
     assert result.exit_code == 0
     assert len(pg_repo_local.objects.get_downloaded_objects()) == 3
@@ -133,6 +150,15 @@ def test_pull_push(local_engine_empty, pg_repo_remote):
     local_head = pg_repo_local.commit()
 
     assert local_head.image_hash not in list(pg_repo_remote.images)
+
+    # Push out the single new image first
+    result = runner.invoke(
+        push_c, [str(pg_repo_local) + ":" + local_head.image_hash[:10], "-h", "DB"]
+    )
+    assert result.exit_code == 0
+    assert len(pg_repo_remote.images()) == 4
+
+    # Push out the whole repo
     result = runner.invoke(push_c, [str(pg_repo_local), "-h", "DB"])
     assert result.exit_code == 0
     assert pg_repo_local.head.get_table("fruits")

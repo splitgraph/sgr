@@ -7,28 +7,31 @@ import sys
 
 import click
 
-from splitgraph.commandline.common import RepositoryType
+from splitgraph.commandline.common import RepositoryType, ImageType
 from splitgraph.config import CONFIG
 from splitgraph.config.config import get_from_subsection
 
 
 @click.command(name="pull")
-@click.argument("repository", type=RepositoryType(exists=True))
+@click.argument(
+    "repository_or_image", type=ImageType(repository_exists=True, image_exists=False, default=None)
+)
 @click.option(
     "-d",
     "--download-all",
     is_flag=True,
     help="Download all objects immediately instead on checkout.",
 )
-def pull_c(repository, download_all):
+def pull_c(repository_or_image, download_all):
     """
-    Pull changes from an upstream repository.
+    Pull changes from an upstream repository or download a single image.
     """
-    repository.pull(download_all)
+    repository, image = repository_or_image
+    repository.pull(download_all, single_image=image)
 
 
 @click.command(name="clone")
-@click.argument("remote_repository", type=RepositoryType())
+@click.argument("remote_repository_or_image", type=ImageType(default=None))
 @click.argument("local_repository", required=False, type=RepositoryType())
 @click.option("-r", "--remote", help="Alias or full connection string for the remote engine")
 @click.option(
@@ -38,9 +41,9 @@ def pull_c(repository, download_all):
     default=False,
     is_flag=True,
 )
-def clone_c(remote_repository, local_repository, remote, download_all):
+def clone_c(remote_repository_or_image, local_repository, remote, download_all):
     """
-    Clone a remote Splitgraph repository into a local one.
+    Clone a remote Splitgraph repository/image into a local one.
 
     The lookup path for the repository is governed by the ``SG_REPO_LOOKUP`` and ``SG_REPO_LOOKUP_OVERRIDE``
     config parameters and can be overriden by the command line ``--remote`` option.
@@ -48,6 +51,8 @@ def clone_c(remote_repository, local_repository, remote, download_all):
     from splitgraph.core.repository import Repository
     from splitgraph.engine import get_engine
     from splitgraph.core.repository import clone
+
+    remote_repository, image = remote_repository_or_image
 
     # If the user passed in a remote, we can inject that into the repository spec.
     # Otherwise, we have to turn the repository into a string and let clone() look up the
@@ -57,14 +62,19 @@ def clone_c(remote_repository, local_repository, remote, download_all):
     else:
         remote_repository = remote_repository.to_schema()
 
-    clone(remote_repository, local_repository=local_repository, download_all=download_all)
+    clone(
+        remote_repository,
+        local_repository=local_repository,
+        download_all=download_all,
+        single_image=image,
+    )
 
 
 _REMOTES = list(CONFIG.get("remotes", []))
 
 
 @click.command(name="push")
-@click.argument("repository", type=RepositoryType(exists=True))
+@click.argument("repository_or_image", type=ImageType(image_exists=True, default=None))
 @click.argument("remote_repository", required=False, type=RepositoryType())
 @click.option(
     "-r",
@@ -84,7 +94,7 @@ _REMOTES = list(CONFIG.get("remotes", []))
     type=bool,
 )
 def push_c(
-    repository,
+    repository_or_image,
     remote_repository,
     remote,
     upload_handler,
@@ -92,7 +102,9 @@ def push_c(
     overwrite_object_meta,
 ):
     """
-    Push changes from a local repository to the Splitgraph registry or another engine.
+    Push images from a local repository to the Splitgraph registry or another engine.
+
+    If an image is not specified (e.g. `sgr push noaa/climate`, this will push all new images.
 
     By default, the repository will be pushed to a repository with the same name in the user's namespace
     (SG_NAMESPACE configuration value which defaults to the username).
@@ -105,9 +117,11 @@ def push_c(
 
     Finally, if `remote_repository` or `--remote` are passed, they will take precedence.
 
-    The actual objects will be uploaded to S3 via Minio. When pushing to another engine,
+    The actual objects will be uploaded to S3 using Minio. When pushing to another engine,
     you can choose to upload them directly by passing --handler DB.
     """
+    repository, image = repository_or_image
+
     remote_repository = _determine_push_target(repository, remote_repository, remote)
 
     click.echo(
@@ -120,6 +134,7 @@ def push_c(
         handler=upload_handler,
         handler_options=json.loads(upload_handler_options),
         overwrite=overwrite_object_meta,
+        single_image=image,
     )
 
 

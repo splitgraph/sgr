@@ -201,16 +201,20 @@ class MetadataManager:
         result = [Object(*m) for m in metadata]
         return {o.object_id: o for o in result}
 
-    def get_objects_for_repository(self, repository: "Repository") -> List[str]:
+    def get_objects_for_repository(
+        self, repository: "Repository", image_hash: Optional[str] = None
+    ) -> List[str]:
+        query = SQL(
+            "SELECT object_ids FROM {}.tables WHERE namespace = %s AND repository = %s"
+        ).format(Identifier(SPLITGRAPH_META_SCHEMA))
+        args = [repository.namespace, repository.repository]
+        if image_hash:
+            query += SQL(" AND image_hash = %s")
+            args.append(image_hash)
+
         table_objects = {
             o
-            for os in self.metadata_engine.run_sql(
-                SQL(
-                    "SELECT object_ids FROM {}.tables WHERE namespace = %s AND repository = %s"
-                ).format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                (repository.namespace, repository.repository),
-                return_shape=ResultShape.MANY_ONE,
-            )
+            for os in self.metadata_engine.run_sql(query, args, return_shape=ResultShape.MANY_ONE,)
             for o in os
         }
 

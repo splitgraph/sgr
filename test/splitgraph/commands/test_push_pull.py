@@ -1,8 +1,29 @@
 import pytest
 from test.splitgraph.conftest import PG_MNT
 
-from splitgraph.core.repository import clone
+from splitgraph.core.repository import clone, Repository
 from splitgraph.exceptions import ImageNotFoundError
+
+
+def _add_image_to_repo(repository):
+    remote_head = repository.head
+    # Do something to fruits on the remote
+    repository.run_sql("INSERT INTO fruits VALUES (3, 'mayonnaise')")
+    head_1 = repository.commit()
+    # Canary to make sure everything got committed on the remote
+    assert repository.diff("fruits", remote_head.image_hash, head_1, aggregate=False) == [
+        (True, (3, "mayonnaise"))
+    ]
+    # Check that the fruits table changed on the original repository
+    assert repository.run_sql("SELECT * FROM fruits") == [
+        (1, "apple"),
+        (2, "orange"),
+        (3, "mayonnaise"),
+    ]
+    # Since the pull procedure initializes a new connection, we have to commit our changes
+    # in order to see them.
+    repository.commit_engines()
+    return head_1
 
 
 @pytest.mark.parametrize("download_all", [True, False])
@@ -12,35 +33,16 @@ def test_pull(local_engine_empty, pg_repo_remote, download_all):
     # (as opposed to the one exposed to us). However, the clone procedure also uses that connection string to talk to
     # the remote. Hence, there's an /etc/hosts indirection on the host mapping the remote engine to localhost.
     clone(pg_repo_remote, local_repository=PG_MNT, download_all=download_all)
+    PG_MNT.images.by_hash(pg_repo_remote.head.image_hash).checkout()
 
-    remote_head = pg_repo_remote.head
-    PG_MNT.images.by_hash(remote_head.image_hash).checkout()
+    head_1 = _add_image_to_repo(pg_repo_remote)
 
-    # Do something to fruits on the remote
-    pg_repo_remote.run_sql("INSERT INTO fruits VALUES (3, 'mayonnaise')")
-    head_1 = pg_repo_remote.commit()
-
-    # Canary to make sure everything got committed on the remote
-    assert pg_repo_remote.diff("fruits", remote_head.image_hash, head_1, aggregate=False) == [
-        (True, (3, "mayonnaise"))
-    ]
-
-    # Check that the fruits table changed on the original repository
-    assert pg_repo_remote.run_sql("SELECT * FROM fruits") == [
-        (1, "apple"),
-        (2, "orange"),
-        (3, "mayonnaise"),
-    ]
-
-    # ...and check it's unchanged on the pulled one.
+    # Check the data is unchanged on the pulled one.
     assert PG_MNT.run_sql("SELECT * FROM fruits") == [(1, "apple"), (2, "orange")]
 
     with pytest.raises(ImageNotFoundError):
         PG_MNT.images.by_hash(head_1.image_hash)
 
-    # Since the pull procedure initializes a new connection, we have to commit our changes
-    # in order to see them.
-    pg_repo_remote.commit_engines()
     PG_MNT.pull()
     head_1 = PG_MNT.images.by_hash(head_1.image_hash)
 
@@ -53,6 +55,50 @@ def test_pull(local_engine_empty, pg_repo_remote, download_all):
         (3, "mayonnaise"),
     ]
     assert PG_MNT.head == head_1
+
+
+@pytest.mark.parametrize("download_all", [True, False])
+def test_pull_single_image(local_engine_empty, pg_repo_remote, download_all):
+    head = pg_repo_remote.head
+    head_1 = _add_image_to_repo(pg_repo_remote)
+
+    # Clone a single image first
+    assert len(PG_MNT.images()) == 0
+    assert len(PG_MNT.objects.get_downloaded_objects()) == 0
+    assert len(pg_repo_remote.images()) == 3
+    clone(
+        pg_repo_remote,
+        local_repository=PG_MNT,
+        download_all=download_all,
+        single_image=head.image_hash[:12],
+    )
+
+    # Check only one image got downloaded
+    assert len(PG_MNT.images()) == 1
+    assert PG_MNT.images()[0] == head
+
+    # Try doing the same thing again
+    clone(
+        pg_repo_remote,
+        local_repository=PG_MNT,
+        download_all=download_all,
+        single_image=head.image_hash[:12],
+    )
+    assert len(PG_MNT.images()) == 1
+
+    # If we're downloading objects too, check only the original objects got downloaded
+    if download_all:
+        assert len(PG_MNT.objects.get_downloaded_objects()) == 2
+
+    # Pull the remainder of the repo
+    PG_MNT.pull(single_image=head_1.image_hash, download_all=download_all)
+    assert len(PG_MNT.images()) == 2
+    if download_all:
+        assert len(PG_MNT.objects.get_downloaded_objects()) == 3
+
+    # Pull the whole repo
+    PG_MNT.pull()
+    assert len(PG_MNT.images()) == 3
 
 
 def test_pulls_with_lazy_object_downloads(local_engine_empty, pg_repo_remote):
@@ -125,3 +171,28 @@ def test_push(local_engine_empty, pg_repo_remote):
         (2, "orange"),
         (3, "mayonnaise"),
     ]
+
+
+def test_push_single_image(pg_repo_local, remote_engine):
+    original_head = pg_repo_local.head
+    _add_image_to_repo(pg_repo_local)
+    remote_repo = Repository.from_template(pg_repo_local, engine=remote_engine)
+    assert len(remote_repo.images()) == 0
+    assert len(remote_repo.objects.get_all_objects()) == 0
+
+    pg_repo_local.push(remote_repository=remote_repo, single_image=original_head.image_hash)
+    assert len(remote_repo.images()) == 1
+    assert len(remote_repo.objects.get_all_objects()) == 2
+
+    # Try pushing the same image again
+    pg_repo_local.push(remote_repository=remote_repo, single_image=original_head.image_hash)
+    assert len(remote_repo.images()) == 1
+    assert len(remote_repo.objects.get_all_objects()) == 2
+
+    # Test we can check the repo out on the remote.
+    remote_repo.images[original_head.image_hash].checkout()
+
+    # Push the rest
+    pg_repo_local.push(remote_repo)
+    assert len(remote_repo.images()) == 3
+    assert len(remote_repo.objects.get_all_objects()) == 3

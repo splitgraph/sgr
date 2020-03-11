@@ -827,6 +827,7 @@ class Repository:
         overwrite: bool = False,
         handler: str = "DB",
         handler_options: Optional[Dict[str, Any]] = None,
+        single_image: Optional[str] = None,
     ) -> "Repository":
         """
         Inverse of ``pull``: Pushes all local changes to the remote and uploads new objects.
@@ -838,6 +839,7 @@ class Repository:
         :param overwrite: If True, will overwrite object metadata on the remote repository for existing objects.
         :param handler_options: Extra options to pass to the handler. For example, see
             :class:`splitgraph.hooks.s3.S3ExternalObjectHandler`.
+        :param single_image: Limit the upload to a single image hash/tag.
         """
         remote_repository = remote_repository or self.upstream
         if not remote_repository:
@@ -853,6 +855,7 @@ class Repository:
                 overwrite=overwrite,
                 handler=handler,
                 handler_options=handler_options,
+                single_image=single_image,
             )
 
             if not self.upstream:
@@ -864,7 +867,12 @@ class Repository:
             remote_repository.engine.close()
         return remote_repository
 
-    def pull(self, download_all: Optional[bool] = False, overwrite: bool = False) -> None:
+    def pull(
+        self,
+        download_all: Optional[bool] = False,
+        overwrite: bool = False,
+        single_image: Optional[str] = None,
+    ) -> None:
         """
         Synchronizes the state of the local Splitgraph repository with its upstream, optionally downloading all new
         objects created on the remote.
@@ -872,6 +880,7 @@ class Repository:
         :param download_all: If True, downloads all objects and stores them locally. Otherwise, will only download
             required objects when a table is checked out.
         :param overwrite: If True, will overwrite object metadata on the local repository for existing objects.
+        :param single_image: Limit the download to a single image hash/tag.
         """
         if not self.upstream:
             raise ValueError("No upstream found for repository %s!" % self.to_schema())
@@ -881,6 +890,7 @@ class Repository:
             local_repository=self,
             download_all=download_all,
             overwrite=overwrite,
+            single_image=single_image,
         )
 
     def diff(
@@ -1004,6 +1014,7 @@ def _sync(
     overwrite: bool = False,
     handler: str = "DB",
     handler_options: Optional[Dict[str, Any]] = None,
+    single_image: Optional[str] = None,
 ) -> None:
     """
     Generic routine for syncing two repositories: fetches images, hashes, objects and tags
@@ -1019,6 +1030,7 @@ def _sync(
     :param overwrite: If True, overwrites remote object metadata for the target repository.
     :param handler: Upload handler
     :param handler_options: Upload handler options
+    :param single_image: Limit the download/upload to a single image hash/tag.
     """
     if handler_options is None:
         handler_options = {}
@@ -1030,7 +1042,7 @@ def _sync(
 
     try:
         new_images, table_meta, object_locations, object_meta, tags = gather_sync_metadata(
-            target, source, overwrite_objects=overwrite
+            target, source, overwrite_objects=overwrite, single_image=single_image,
         )
         if not new_images and not object_meta and not object_locations:
             logging.info("Nothing to do.")
@@ -1115,6 +1127,7 @@ def clone(
     local_repository: Optional["Repository"] = None,
     overwrite: bool = False,
     download_all: Optional[bool] = False,
+    single_image: Optional[str] = None,
 ) -> "Repository":
     """
     Clones a remote Splitgraph repository or synchronizes remote changes with the local ones.
@@ -1128,6 +1141,7 @@ def clone(
     :param download_all: If True, downloads all objects and stores them locally. Otherwise, will only download required
         objects when a table is checked out.
     :param overwrite: If True, will overwrite object metadata on the local repository for existing objects.
+    :param single_image: If set, only get a single image with this hash/tag from the source.
     :return: A locally cloned Repository object.
     """
     if isinstance(remote_repository, str):
@@ -1137,7 +1151,13 @@ def clone(
     if not local_repository:
         local_repository = Repository(remote_repository.namespace, remote_repository.repository)
 
-    _sync(local_repository, remote_repository, download=True, overwrite=overwrite)
+    _sync(
+        local_repository,
+        remote_repository,
+        download=True,
+        overwrite=overwrite,
+        single_image=single_image,
+    )
 
     # Perform the optional download of all objects as a final step (normally we do it when the user
     # tries to check out a revision) and do it using the object manager as it has some handling
@@ -1147,7 +1167,12 @@ def clone(
         logging.info("Fetching remote objects...")
         with local_om.ensure_objects(
             table=None,
-            objects=local_om.get_objects_for_repository(local_repository),
+            objects=local_om.get_objects_for_repository(
+                local_repository,
+                image_hash=local_repository.images[single_image].image_hash
+                if single_image
+                else None,
+            ),
             upstream_manager=remote_repository.objects,
         ):
             pass
