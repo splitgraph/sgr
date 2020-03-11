@@ -171,11 +171,11 @@ RUN /build/build_splitgraph.sh
 # package itself without dependencies (deps are libc>=2.14 -- we have 2.24 -- and libpython3.7
 # which we compiled earlier)
 
-RUN wget http://http.us.debian.org/debian/pool/main/p/postgresql-11/postgresql-plpython3-11_11.6-2~sid1_amd64.deb && \
-    echo "59980cdd6b7e30187ba851fbc3123c47b9a8ff99fd1327a1531f07dcc93dbefb  postgresql-plpython3-11_11.6-2~sid1_amd64.deb" | sha256sum -c - && \
-    dpkg --force-all -i postgresql-plpython3-11_11.6-2~sid1_amd64.deb
+RUN wget http://security.debian.org/debian-security/pool/updates/main/p/postgresql-11/postgresql-plpython3-11_11.7-0+deb10u1_amd64.deb && \
+    echo "f25eea162ffcc1c0fd3c5295fe29b7127ca01c45fc27fd0149aa5ffe31a769bf  postgresql-plpython3-11_11.7-0+deb10u1_amd64.deb" | sha256sum -c - && \
+    dpkg --force-all -i postgresql-plpython3-11_11.7-0+deb10u1_amd64.deb
 # Fix to make the dpkg status file usable (so that APT doesn't fail on future installs in the container)
-RUN sed -i "s/postgresql-11 (= 11.6-2~sid1), libc6 (>= 2.14), libpython3.7 (>= 3.7.0)/Depends: /" -i /var/lib/dpkg/status
+RUN sed -i "s/Depends: postgresql-11 (= 11.7-0+deb10u1), libc6 (>= 2.14), libpython3.7 (>= 3.7.0)/Depends: /" -i /var/lib/dpkg/status
 
 # Copy the actual Splitgraph code over at this point.
 COPY ./splitgraph /splitgraph/splitgraph
