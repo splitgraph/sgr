@@ -13,9 +13,7 @@ from splitgraph.config.config import get_from_subsection
 
 
 @click.command(name="pull")
-@click.argument(
-    "repository_or_image", type=ImageType(repository_exists=True, image_exists=False, default=None)
-)
+@click.argument("repository_or_image", type=ImageType(repository_exists=True, default=None))
 @click.option(
     "-d",
     "--download-all",
@@ -74,7 +72,7 @@ _REMOTES = list(CONFIG.get("remotes", []))
 
 
 @click.command(name="push")
-@click.argument("repository_or_image", type=ImageType(image_exists=True, default=None))
+@click.argument("repository_or_image", type=ImageType(default=None))
 @click.argument("remote_repository", required=False, type=RepositoryType())
 @click.option(
     "-r",

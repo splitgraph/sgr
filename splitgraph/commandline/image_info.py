@@ -156,7 +156,7 @@ def _get_actual_hashes(
 
 
 @click.command(name="show")
-@click.argument("image_spec", type=ImageType(default="HEAD"))
+@click.argument("image_spec", type=ImageType(default="HEAD", get_image=True))
 def show_c(image_spec):
     """
     Show information about a Splitgraph image. This includes its parent, comment, size and creation time.
@@ -167,7 +167,6 @@ def show_c(image_spec):
     Image spec must be of the format ``[NAMESPACE/]REPOSITORY[:HASH_OR_TAG]``. If no tag is specified, ``HEAD`` is used.
     """
     repository, image = image_spec
-    image = repository.images[image]
 
     click.echo("Image %s:%s" % (repository.to_schema(), image.image_hash))
     click.echo(image.comment or "")
@@ -184,7 +183,7 @@ def show_c(image_spec):
 
 
 @click.command(name="table")
-@click.argument("image_spec", type=ImageType(default="HEAD"))
+@click.argument("image_spec", type=ImageType(default="HEAD", get_image=True))
 @click.argument("table_name", type=str)
 @click.option(
     "-v", "--verbose", type=bool, is_flag=True, default=False, help="Show all of table's objects."
@@ -196,7 +195,6 @@ def table_c(image_spec, table_name, verbose):
     Image spec must be of the format ``[NAMESPACE/]REPOSITORY[:HASH_OR_TAG]``. If no tag is specified, ``HEAD`` is used.
     """
     repository, image = image_spec
-    image = repository.images[image]
     table = image.get_table(table_name)
     click.echo("Table %s:%s/%s" % (repository.to_schema(), image.image_hash, table_name))
     click.echo()
@@ -309,7 +307,12 @@ def _to_str(results: List[Tuple[Any]]) -> str:
 @click.command(name="sql")
 @click.argument("sql")
 @click.option("-s", "--schema", help="Run SQL against this schema.")
-@click.option("-i", "--image", help="Run SQL against this image.", type=ImageType(default="latest"))
+@click.option(
+    "-i",
+    "--image",
+    help="Run SQL against this image.",
+    type=ImageType(default="latest", get_image=True),
+)
 @click.option("-a", "--show-all", is_flag=True, help="Returns all results of the query.")
 def sql_c(sql, schema, image, show_all):
     """
@@ -339,8 +342,8 @@ def sql_c(sql, schema, image, show_all):
             get_engine().run_sql("SET search_path TO %s", (schema,))
         results = get_engine().run_sql(sql)
     else:
-        repo, hash_or_tag = image
-        with repo.images[hash_or_tag].query_schema() as s:
+        repo, image = image
+        with image.query_schema() as s:
             results = get_engine().run_sql_in(s, sql)
 
     if results is None:

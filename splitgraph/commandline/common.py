@@ -2,7 +2,7 @@
 Various common functions used by the command line interface.
 """
 import json
-from typing import Optional, Tuple, List, TYPE_CHECKING
+from typing import Optional, Tuple, List, TYPE_CHECKING, Union
 
 import click
 from click.core import Context, Parameter
@@ -11,6 +11,7 @@ from splitgraph.exceptions import RepositoryNotFoundError
 
 if TYPE_CHECKING:
     from splitgraph.core.repository import Repository
+    from splitgraph.core.image import Image
 
 
 class ImageType(click.ParamType):
@@ -22,18 +23,18 @@ class ImageType(click.ParamType):
         self,
         default: Optional[str] = "latest",
         repository_exists: bool = False,
-        image_exists: bool = False,
+        get_image: bool = False,
     ) -> None:
         """
         :param default: Default tag/hash for image where it's not specified.
         """
         self.default = default
         self.repository_exists = repository_exists
-        self.image_exists = image_exists
+        self.get_image = get_image
 
     def convert(
         self, value: str, param: Optional[Parameter], ctx: Optional[Context]
-    ) -> Tuple["Repository", Optional[str]]:
+    ) -> Tuple["Repository", Optional[Union["Image", str]]]:
         """
         Image specification must have the format [NAMESPACE/]REPOSITORY[:HASH_OR_TAG].
 
@@ -50,18 +51,18 @@ class ImageType(click.ParamType):
 
         repo = Repository.from_schema(repo_image[0])
 
-        if self.image_exists or self.repository_exists:
-            # Check image/repo exists if we're asked
-            # image_exists supersedes repository_exists
+        if self.get_image or self.repository_exists:
+            # Check image/repo exists if we're asked (or if we need to produce
+            # an actual Image object)
             from splitgraph.core.engine import repository_exists
 
             if not repository_exists(repo):
                 raise RepositoryNotFoundError("Unknown repository %s" % repo)
 
-            if self.image_exists and tag_or_hash is not None:
-                _ = repo.images[tag_or_hash]
-
-        return repo, tag_or_hash
+        if tag_or_hash is not None and self.get_image:
+            return repo, repo.images[tag_or_hash]
+        else:
+            return repo, tag_or_hash
 
 
 class RepositoryType(click.ParamType):
