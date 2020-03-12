@@ -252,7 +252,11 @@ def gather_sync_metadata(
 
     # Get the tags too
     existing_tags = [t for s, t in target.get_all_hashes_tags()]
-    tags = {t: s for s, t in source.get_all_hashes_tags() if t not in existing_tags}
+    tags = {
+        t: s
+        for s, t in source.get_all_hashes_tags()
+        if t not in existing_tags and s in new_image_hashes
+    }
 
     # Get objects that don't exist on the target
     table_objects = list({o for table in table_meta for o in table[3]})
