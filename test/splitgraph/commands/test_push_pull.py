@@ -62,6 +62,10 @@ def test_pull_single_image(local_engine_empty, pg_repo_remote, download_all):
     head = pg_repo_remote.head
     head_1 = _add_image_to_repo(pg_repo_remote)
 
+    head.tag("tag_1")
+    head_1.tag("tag_2")
+    pg_repo_remote.commit_engines()
+
     # Clone a single image first
     assert len(PG_MNT.images()) == 0
     assert len(PG_MNT.objects.get_downloaded_objects()) == 0
@@ -73,9 +77,12 @@ def test_pull_single_image(local_engine_empty, pg_repo_remote, download_all):
         single_image=head.image_hash[:12],
     )
 
-    # Check only one image got downloaded
+    # Check only one image got downloaded and check we didn't try
+    # to pull tags for images that we weren't pulling.
     assert len(PG_MNT.images()) == 1
     assert PG_MNT.images()[0] == head
+    assert PG_MNT.images["tag_1"] == head
+    assert PG_MNT.images.by_tag("tag_2", raise_on_none=False) is None
 
     # Try doing the same thing again
     clone(
@@ -95,6 +102,8 @@ def test_pull_single_image(local_engine_empty, pg_repo_remote, download_all):
     assert len(PG_MNT.images()) == 2
     if download_all:
         assert len(PG_MNT.objects.get_downloaded_objects()) == 3
+
+    assert PG_MNT.images["tag_2"] == head_1
 
     # Pull the whole repo
     PG_MNT.pull()
