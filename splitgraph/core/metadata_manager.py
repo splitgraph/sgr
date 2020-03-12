@@ -16,7 +16,7 @@ from .sql import select
 
 if TYPE_CHECKING:
     from splitgraph.core.repository import Repository
-    from splitgraph.engine.postgres.engine import PostgresEngine
+    from splitgraph.engine.postgres.engine import PsycopgEngine
 
 OBJECT_COLS = [
     "object_id",
@@ -49,7 +49,7 @@ class MetadataManager:
     with image, table and object information.
     """
 
-    def __init__(self, metadata_engine: "PostgresEngine") -> None:
+    def __init__(self, metadata_engine: "PsycopgEngine") -> None:
         self.metadata_engine = metadata_engine
 
     def register_objects(self, objects: List[Object], namespace: Optional[str] = None) -> None:

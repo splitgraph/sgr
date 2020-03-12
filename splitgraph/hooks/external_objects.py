@@ -9,7 +9,7 @@ from splitgraph.config.config import get_from_section
 from splitgraph.exceptions import ExternalHandlerError
 
 if TYPE_CHECKING:
-    from splitgraph.engine import PostgresEngine
+    from splitgraph.engine.postgres.engine import PsycopgEngine
 
 
 class ExternalObjectHandler:
@@ -40,7 +40,7 @@ class ExternalObjectHandler:
         self.params = params
 
     def upload_objects(
-        self, objects: List[str], remote_engine: "PostgresEngine"
+        self, objects: List[str], remote_engine: "PsycopgEngine"
     ) -> Sequence[Tuple[str, str]]:
         """Upload objects from the Splitgraph cache to an external location
 
@@ -50,7 +50,7 @@ class ExternalObjectHandler:
         """
 
     def download_objects(
-        self, objects: List[Tuple[str, str]], remote_engine: "PostgresEngine"
+        self, objects: List[Tuple[str, str]], remote_engine: "PsycopgEngine"
     ) -> Sequence[str]:
         """Download objects from the external location into the Splitgraph cache.
 

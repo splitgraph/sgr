@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, cast, TYPE_CHECKING
 
 from psycopg2.sql import Composed, SQL, Composable
 from psycopg2.sql import Identifier
@@ -9,7 +9,9 @@ from splitgraph.core.common import adapt, coerce_val_to_json
 from splitgraph.core.sql import select
 from splitgraph.core.types import Quals, Changeset, TableSchema
 from splitgraph.engine import ResultShape
-from splitgraph.engine.postgres.engine import PostgresEngine
+
+if TYPE_CHECKING:
+    from splitgraph.engine.postgres.engine import PsycopgEngine
 
 # PG types we can run max/min on
 _PG_INDEXABLE_TYPES = [
@@ -135,7 +137,7 @@ def quals_to_sql(quals: Optional[Quals], column_types: Dict[str, str]) -> Tuple[
     return _quals_to_clause(quals, column_types, qual_to_clause=_qual_to_sql_clause)
 
 
-def extract_min_max_pks(engine: PostgresEngine, fragments: List[str], table_pks: List[str]) -> Any:
+def extract_min_max_pks(engine: "PsycopgEngine", fragments: List[str], table_pks: List[str]) -> Any:
     """
     Extract minimum/maximum PK values for given fragments.
 
@@ -187,7 +189,7 @@ def extract_min_max_pks(engine: PostgresEngine, fragments: List[str], table_pks:
 
 
 def generate_range_index(
-    object_engine: PostgresEngine,
+    object_engine: "PsycopgEngine",
     object_id: str,
     table_schema: "TableSchema",
     changeset: Optional[Changeset],
@@ -269,7 +271,10 @@ def generate_range_index(
 
 
 def filter_range_index(
-    metadata_engine: PostgresEngine, object_ids: List[str], quals: Any, column_types: Dict[str, str]
+    metadata_engine: "PsycopgEngine",
+    object_ids: List[str],
+    quals: Any,
+    column_types: Dict[str, str],
 ) -> List[str]:
     clause, args = _quals_to_clause(quals, column_types)
     query = (
