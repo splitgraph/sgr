@@ -131,8 +131,6 @@ def _df_to_empty_table(
             ).format(Identifier(target_table), Identifier(table_schema[-1].name)),
         )
 
-    engine.commit()
-
 
 def df_to_table_fast(
     engine: PostgresEngine, df: DataFrame, target_schema: str, target_table: str
@@ -165,7 +163,6 @@ def df_to_table_fast(
             ),
             buffer,
         )
-    engine.commit()
 
 
 def _schema_compatible(source_schema: TableSchema, target_schema: TableSchema) -> bool:

@@ -679,6 +679,11 @@ class FragmentManager(MetadataManager):
         in_fragment_order: Optional[List[str]] = None,
         table_schema: Optional[TableSchema] = None,
     ) -> str:
+        if source_schema == "pg_temp" and not table_schema:
+            raise ValueError(
+                "Cannot infer the schema of temporary tables, " "pass in table_schema!"
+            )
+
         # Get schema (apart from the chunk ID column)
         # Fragments can't be reused in tables with different schemas
         # even if the contents match (e.g. '1' vs 1). Hence, include the table schema

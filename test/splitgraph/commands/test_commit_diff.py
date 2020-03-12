@@ -12,6 +12,7 @@ from test.splitgraph.conftest import OUTPUT, PG_DATA, SMALL_OBJECT_SIZE
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.fragment_manager import Digest
 from splitgraph.core.metadata_manager import OBJECT_COLS
+from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.repository import Repository
 from splitgraph.core.sql import select
 from splitgraph.core.types import TableColumn
@@ -972,3 +973,37 @@ def test_multiengine_object_gets_recreated(local_engine_empty, pg_repo_remote, c
     assert object_to_delete not in list_objects(clean_minio)
     pg_repo_local.objects.make_objects_external([object_to_delete], handler="S3", handler_params={})
     assert object_to_delete in list_objects(clean_minio)
+
+
+def test_create_object_out_of_band(local_engine_empty):
+    table_schema = [
+        TableColumn(1, "key", "integer", True),
+        TableColumn(2, "value", "character varying", False),
+    ]
+    local_engine_empty.create_table(
+        schema=None, table="test", schema_spec=table_schema, temporary=True
+    )
+    local_engine_empty.run_sql("INSERT INTO pg_temp.test VALUES (1, 'one'), (2, 'two')")
+
+    object_manager = ObjectManager(object_engine=local_engine_empty)
+    with pytest.raises(ValueError):
+        # Test passing pg_temp without a schema fails (temporary tables aren't
+        # in information_schema and so we can't infer their schema)
+        object_manager.create_base_fragment(
+            source_schema="pg_temp", source_table="test", namespace="test",
+        )
+
+    object_id = object_manager.create_base_fragment(
+        source_schema="pg_temp", source_table="test", namespace="test", table_schema=table_schema
+    )
+    local_engine_empty.commit()
+
+    assert object_manager.get_object_meta([object_id]) != {}
+    assert (
+        len(
+            local_engine_empty.run_sql(
+                SQL("SELECT * FROM splitgraph_meta.{}").format(Identifier(object_id))
+            )
+        )
+        == 2
+    )
