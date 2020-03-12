@@ -765,26 +765,26 @@ class ObjectManager(FragmentManager):
         with switch_engine(self.object_engine):
             return external_handler.upload_objects(objects_to_push, target.metadata_engine)
 
-    def cleanup(self) -> Set[str]:
+    def cleanup(self) -> List[str]:
         """
         Deletes all objects in the object_tree not required by any current repository, including their dependencies and
         their remote locations. Also deletes all objects not registered in the object_tree.
         """
-        required_objects = self.cleanup_metadata()
+        deleted_objects = self.cleanup_metadata()
+        registered_objects = self.get_all_objects()
 
-        # Delete unneeded objects from the cache status table
+        # Delete unneeded/dangling objects from the cache status table
         query = SQL("DELETE FROM {}.object_cache_status").format(Identifier(SPLITGRAPH_META_SCHEMA))
-        if required_objects:
-            query += SQL(
-                " WHERE object_id NOT IN ("
-                + ",".join("%s" for _ in range(len(required_objects)))
-                + ")"
-            )
-        self.object_engine.run_sql(query, list(required_objects))
+        if registered_objects:
+            query += SQL(" WHERE object_id != ALL(%s)")
+            self.object_engine.run_chunked_sql(query, (registered_objects,), chunk_position=0)
+        else:
+            self.object_engine.run_sql(query)
 
         # Go through the physical objects and delete them as well
-        # This is slightly dirty, but since the info about the objects was deleted on rm, we just say that
-        # anything in splitgraph_meta that's not a system table is fair game.
+        # This is slightly dirty, but since the info about the objects
+        # was deleted on rm, we just say that anything in splitgraph_meta
+        # that's not a system table is fair game.
         tables_in_meta = {
             c
             for c in self.object_engine.get_all_tables(SPLITGRAPH_META_SCHEMA)
@@ -792,7 +792,9 @@ class ObjectManager(FragmentManager):
         }
         tables_in_meta.update(self.get_downloaded_objects())
 
-        to_delete = tables_in_meta.difference(required_objects)
+        to_delete = [
+            t for t in tables_in_meta if t not in registered_objects or t in deleted_objects
+        ]
         self.delete_objects(to_delete)
 
         # Recalculate the object cache occupancy
@@ -802,7 +804,7 @@ class ObjectManager(FragmentManager):
             ),
             (self._recalculate_cache_occupancy(),),
         )
-        return to_delete
+        return deleted_objects
 
 
 def _fetch_external_objects(
