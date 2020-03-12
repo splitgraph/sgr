@@ -3,7 +3,7 @@ Classes related to managing table/image/object metadata tables.
 """
 import itertools
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set, Tuple, TYPE_CHECKING, NamedTuple, cast
+from typing import Any, Dict, List, Optional, Set, Tuple, TYPE_CHECKING, NamedTuple, cast, Sequence
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
@@ -220,32 +220,51 @@ class MetadataManager:
 
         return list(table_objects)
 
-    def cleanup_metadata(self) -> Set[str]:
+    def delete_object_meta(self, object_ids: Sequence[str]):
+        """
+        Delete metadata for multiple objects (external locations, indexes, hashes).
+        This doesn't delete physical objects.
+
+        :param object_ids: Object IDs to delete
+        """
+        for table_name in ["object_locations", "objects"]:
+            self.metadata_engine.run_chunked_sql(
+                SQL("DELETE FROM {}.{} WHERE object_id = ANY(%s)").format(
+                    Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table_name)
+                ),
+                arguments=(object_ids,),
+                chunk_position=0,
+            )
+
+    def get_unused_objects(self, threshold: int = 0) -> List[Tuple[str, datetime]]:
+        """
+        Get a list of all objects in the metadata that aren't used by any table and can be
+        safely deleted.
+
+        :param threshold: Only return objects that were created earlier than this (in minutes)
+        :return: List of objects and their creation times.
+        """
+        candidates = self.metadata_engine.run_sql(
+            SQL(
+                "SELECT object_id, created FROM {0}.objects "
+                "WHERE object_id NOT IN (SELECT unnest(object_ids) "
+                "FROM {0}.tables) "
+                "AND created < now() - INTERVAL '%s minutes' "
+                "ORDER BY created"
+            ).format(Identifier(SPLITGRAPH_META_SCHEMA)),
+            (threshold,),
+        )
+        return cast(List[Tuple[str, datetime]], candidates)
+
+    def cleanup_metadata(self) -> List[str]:
         """
         Go through the current metadata and delete all objects that aren't required
         by any table on the engine.
 
-        :return: List of objects that are still required.
+        :return: List of objects that have been deleted.
         """
-        # First, get a list of all objects required by a table.
-        table_objects = {
-            o
-            for os in self.metadata_engine.run_sql(
-                SQL("SELECT object_ids FROM {}.tables").format(Identifier(SPLITGRAPH_META_SCHEMA)),
-                return_shape=ResultShape.MANY_ONE,
-            )
-            for o in os
-        }
-        # Go through the tables that aren't repository-dependent and delete entries there.
-        for table_name in ["object_locations", "objects"]:
-            query = SQL("DELETE FROM {}.{}").format(
-                Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table_name)
-            )
-            if table_objects:
-                query += SQL(
-                    " WHERE object_id NOT IN ("
-                    + ",".join("%s" for _ in range(len(table_objects)))
-                    + ")"
-                )
-            self.metadata_engine.run_sql(query, list(table_objects))
-        return table_objects
+        candidates = self.get_unused_objects()
+        to_delete = [c for c, _ in candidates]
+
+        self.delete_object_meta(to_delete)
+        return to_delete
