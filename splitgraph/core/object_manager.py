@@ -38,7 +38,7 @@ from .sql import select, insert
 
 if TYPE_CHECKING:
     from splitgraph.core.table import Table
-    from splitgraph.engine.postgres.engine import PostgresEngine
+    from splitgraph.engine.postgres.engine import PsycopgEngine, PostgresEngine
 
 
 class ObjectManager(FragmentManager):
@@ -807,7 +807,7 @@ class ObjectManager(FragmentManager):
 
 def _fetch_external_objects(
     engine: "PostgresEngine",
-    source_engine: "PostgresEngine",
+    source_engine: "PsycopgEngine",
     object_locations: List[Tuple[str, str, str]],
     handler_params: Dict[str, Any],
 ) -> List[str]:

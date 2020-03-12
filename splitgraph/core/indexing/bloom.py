@@ -5,15 +5,17 @@ import struct
 from datetime import datetime
 from hashlib import sha256
 from math import ceil, log, exp
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union, cast, TYPE_CHECKING
 
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.common import pretty_size
 from splitgraph.core.types import Changeset
-from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.engine.postgres.engine import SG_UD_FLAG
+
+if TYPE_CHECKING:
+    from splitgraph.engine.postgres.engine import PsycopgEngine
 
 
 def _hash_value(value: Union[datetime, int, str]) -> Tuple[bytes, bytes]:
@@ -28,7 +30,7 @@ def _hash_value(value: Union[datetime, int, str]) -> Tuple[bytes, bytes]:
 
 
 def generate_bloom_index(
-    engine: PostgresEngine,
+    engine: "PsycopgEngine",
     object_id: str,
     changeset: Optional[Changeset],
     column: str,
@@ -234,7 +236,7 @@ def _match(qual: Tuple[str, int, int], bloom_index: Dict[str, Tuple[int, bytes]]
     return True
 
 
-def filter_bloom_index(engine: PostgresEngine, object_ids: List[str], quals: Any) -> List[str]:
+def filter_bloom_index(engine: "PsycopgEngine", object_ids: List[str], quals: Any) -> List[str]:
     """
     Runs a bloom filter on given qualifiers using the given objects' previously-generated
     fingerprints.

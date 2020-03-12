@@ -3,18 +3,18 @@ Plugin for uploading Splitgraph objects from the cache to an external S3-like ob
 """
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Tuple
+from typing import List, Tuple, TYPE_CHECKING
 
 from psycopg2 import DatabaseError
-from psycopg2.errors import DuplicateTable
 from tqdm import tqdm
 
 from splitgraph.config import CONFIG, get_singleton
 from splitgraph.engine import get_engine, ResultShape
-from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import IncompleteObjectUploadError, IncompleteObjectDownloadError
 from splitgraph.hooks.external_objects import ExternalObjectHandler
 
+if TYPE_CHECKING:
+    from splitgraph.engine.postgres.engine import PsycopgEngine
 
 # Downloading/uploading objects to/from S3.
 # In the beginning, let's say that we just mount all objects as soon as they are downloaded -- otherwise
@@ -53,7 +53,7 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
     """
 
     def upload_objects(
-        self, objects: List[str], remote_engine: PostgresEngine
+        self, objects: List[str], remote_engine: "PsycopgEngine"
     ) -> List[Tuple[str, str]]:
         """
         Upload objects to Minio
@@ -116,7 +116,7 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
             local_engine.close_others()
 
     def download_objects(
-        self, objects: List[Tuple[str, str]], remote_engine: PostgresEngine
+        self, objects: List[Tuple[str, str]], remote_engine: "PsycopgEngine"
     ) -> List[str]:
         """
         Download objects from Minio.
