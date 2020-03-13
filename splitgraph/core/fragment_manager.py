@@ -26,9 +26,9 @@ from splitgraph.core.indexing.range import (
     filter_range_index,
 )
 from splitgraph.core.metadata_manager import MetadataManager, Object
-from splitgraph.core.types import Changeset, TableSchema, TableColumn
+from splitgraph.core.types import Changeset, TableSchema
 from splitgraph.engine import ResultShape
-from splitgraph.engine.postgres.engine import SG_UD_FLAG
+from splitgraph.engine.postgres.engine import SG_UD_FLAG, add_ud_flag_column
 from splitgraph.exceptions import SplitGraphError
 from .common import adapt, SPLITGRAPH_META_SCHEMA
 from .sql import select
@@ -403,10 +403,7 @@ class FragmentManager(MetadataManager):
                 self.object_engine.store_object(
                     object_id=object_id,
                     source_query=source_query,
-                    # For some reason the UD flag comes first in diffs and last in base fragments.
-                    # (shouldn't be an issue at query time since we always explicitly enumerate
-                    # columns)
-                    schema_spec=[TableColumn(0, SG_UD_FLAG, "boolean", False)] + table.table_schema,
+                    schema_spec=add_ud_flag_column(table.table_schema),
                 )
                 self.object_engine.delete_table("pg_temp", tmp_object_id)
                 # There are some cases where an object can already exist in the object engine (in the cache)
@@ -729,8 +726,7 @@ class FragmentManager(MetadataManager):
             self.object_engine.store_object(
                 object_id=object_id,
                 source_query=source_query,
-                schema_spec=table_schema
-                + [TableColumn(table_schema[-1].ordinal + 1, SG_UD_FLAG, "boolean", False)],
+                schema_spec=add_ud_flag_column(table_schema),
                 source_query_args=source_query_args,
             )
         with self.metadata_engine.savepoint("object_register"):

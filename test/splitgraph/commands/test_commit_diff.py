@@ -257,17 +257,17 @@ def test_commit_diff_splitting(local_engine_empty):
 
     # Check the contents of the newly created objects.
     assert OUTPUT.run_sql(select(added_objects[0])) == [
-        (True, 0, "zero", -1)
+        (0, "zero", -1, True)
     ]  # upserted=True, key, new_value_1, new_value_2
     assert OUTPUT.run_sql(select(added_objects[1])) == [
-        (True, 5, "UPDATED", 8),  # upserted=True, key, new_value_1, new_value_2
-        (False, 4, None, None),
+        (5, "UPDATED", 8, True),  # upserted=True, key, new_value_1, new_value_2
+        (4, None, None, False),
     ]  # upserted=False, key, None, None
     assert OUTPUT.run_sql(select(added_objects[2])) == [
-        (False, 6, None, None)
+        (6, None, None, False)
     ]  # upserted=False, key, None, None
     assert OUTPUT.run_sql(select(added_objects[3])) == [
-        (True, 12, "l", 22)
+        (12, "l", 22, True)
     ]  # upserted=True, key, new_value_1, new_value_2
 
     object_meta = OUTPUT.objects.get_object_meta(added_objects)
@@ -484,11 +484,11 @@ def test_commit_mode_change(pg_repo_local):
 
     # Check object contents
     assert OUTPUT.run_sql(select(table.objects[2])) == [
-        (True, -1, "UPDATED", -4),
-        (True, 6, "UPDATED", 10),
+        (-1, "UPDATED", -4, True),
+        (6, "UPDATED", 10, True),
     ]
 
-    assert OUTPUT.run_sql(select(table.objects[3])) == [(True, 8, "something", 42)]
+    assert OUTPUT.run_sql(select(table.objects[3])) == [(8, "something", 42, True)]
 
 
 def test_drop_recreate(pg_repo_local):
