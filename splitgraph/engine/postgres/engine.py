@@ -67,10 +67,7 @@ STM_TRIGGER_NAME = "audit_trigger_stm"
 REMOTE_TMP_SCHEMA = "tmp_remote_data"
 SG_UD_FLAG = "sg_ud_flag"
 
-# Max number of retries before failing
-POOL_RETRY_AMOUNT = 20
-
-# Retry policy for other connection errors
+# Retry policy for connection errors
 RETRY_DELAY = 5
 RETRY_AMOUNT = 12
 
@@ -964,10 +961,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         non_ri_cols = [c.name for c in schema_spec if not c.is_pk]
         all_cols = ri_cols + non_ri_cols
         self.create_table(
-            schema,
-            table,
-            schema_spec=([TableColumn(0, SG_UD_FLAG, "boolean", False)] + schema_spec),
-            temporary=temporary,
+            schema, table, schema_spec=add_ud_flag_column(schema_spec), temporary=temporary,
         )
 
         # Store upserts
@@ -1420,3 +1414,7 @@ def _generate_where_clause(table: str, cols: List[str], table_2: str) -> Compose
         )
         for c in cols
     )
+
+
+def add_ud_flag_column(table_schema: TableSchema) -> TableSchema:
+    return table_schema + [TableColumn(table_schema[-1].ordinal + 1, SG_UD_FLAG, "boolean", False)]
