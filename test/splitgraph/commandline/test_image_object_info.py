@@ -1,4 +1,5 @@
 from datetime import datetime
+from unittest import mock
 
 from click.testing import CliRunner
 from test.splitgraph.conftest import OUTPUT
@@ -161,7 +162,7 @@ def test_commandline_show_empty_image(local_engine_empty):
     assert "Size: 0.00 B" in result.output
 
 
-def test_object_info(local_engine_empty):
+def test_object_info(local_engine_empty, remote_engine_registry, unprivileged_remote_engine):
     runner = CliRunner()
 
     base_1 = "o" + "0" * 62
@@ -170,22 +171,25 @@ def test_object_info(local_engine_empty):
     dt = datetime(2019, 1, 1)
 
     q = insert("objects", OBJECT_COLS)
-    local_engine_empty.run_sql(
-        q,
-        (
-            base_1,
-            "FRAG",
-            "ns1",
-            12345,
-            dt,
-            "0" * 64,
-            "0" * 64,
-            {
-                "range": {"col_1": [10, 20]},
-                "bloom": {"col_1": [7, "uSP6qzHHDqVq/qHMlqrAoHhpxEuZ08McrB0J6c9M"]},
-            },
-        ),
+    base_1_meta = (
+        base_1,
+        "FRAG",
+        "ns1",
+        12345,
+        dt,
+        "0" * 64,
+        "0" * 64,
+        {
+            "range": {"col_1": [10, 20]},
+            "bloom": {"col_1": [7, "uSP6qzHHDqVq/qHMlqrAoHhpxEuZ08McrB0J6c9M"]},
+        },
     )
+    local_engine_empty.run_sql(q, base_1_meta)
+    # Add this object to the remote engine too to check that we can run
+    # SG_ENGINE=... sgr object o...
+    remote_engine_registry.run_sql(q, base_1_meta)
+    remote_engine_registry.commit()
+
     local_engine_empty.run_sql(
         q, (patch_1, "FRAG", "ns1", 6789, dt, "0" * 64, "0" * 64, {"range": {"col_1": [10, 20]}})
     )
@@ -239,6 +243,13 @@ Location: cached locally
 Original location: example.com/objects/base_1.tgz (HTTP)
 """
     )
+
+    with mock.patch("splitgraph.engine.get_engine", return_value=unprivileged_remote_engine):
+        result = runner.invoke(object_c, [base_1])
+        assert result.exit_code == 0
+        assert "Size: 12.06 KiB" in result.output
+        # Since we're talking to a registry, don't try to find the object's location.
+        assert "Location: " not in result.output
 
     result = runner.invoke(object_c, [patch_1])
     assert result.exit_code == 0
