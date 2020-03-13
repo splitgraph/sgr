@@ -255,6 +255,12 @@ def object_c(object_id):
         click.echo("Bloom index: ")
         for col_name, col_bloom in sg_object.object_index["bloom"].items():
             click.echo("  %s: %s" % (col_name, describe(col_bloom)))
+
+    if object_manager.object_engine.registry:
+        # Don't try to figure out the object's location if we're talking
+        # to the registry.
+        return
+
     click.echo()
     object_in_cache = object_manager.object_engine.run_sql(
         select("object_cache_status", "1", "object_id = %s"),
