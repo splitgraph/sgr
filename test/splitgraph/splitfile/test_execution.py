@@ -177,7 +177,7 @@ def test_import_updating_splitfile_with_uploading(
 
 @pytest.mark.mounting
 def test_splitfile_end_to_end_with_uploading(
-    local_engine_empty, remote_engine, pg_repo_remote_multitag, mg_repo_remote
+    local_engine_empty, remote_engine, pg_repo_remote_multitag, mg_repo_remote, clean_minio
 ):
     # An end-to-end test:
     #   * Create a derived dataset from some tables imported from the remote engine

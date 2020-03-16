@@ -8,6 +8,16 @@ from splitgraph.commandline.common import ImageType, RepositoryType
 # This commandline entry point doesn't actually import splitgraph.ingestion directly
 # as it pulls in Pandas (which can take a second) -- instead it lazily imports it ai
 # invocation time and asks the user to install the ingestion extra if Pandas isn't found.
+def _get_imports():
+    try:
+        import pandas as pd
+        from splitgraph.ingestion.pandas import df_to_table
+        from splitgraph.ingestion.pandas import sql_to_df
+
+        return pd, df_to_table, sql_to_df
+    except ImportError:
+        click.echo('Install the "ingestion" setuptools extra to enable this feature!')
+        exit(1)
 
 
 @click.group(name="csv")
@@ -51,15 +61,10 @@ def csv_export(image_spec, query, file, layered):
     Uses layered querying instead to execute a join on tables in a certain image (satisfying the query without
     having to check the image out).
     """
-    try:
-        from splitgraph.ingestion.pandas import sql_to_df
-
-        repository, image = image_spec
-        df = sql_to_df(query, image=image, repository=repository, use_lq=layered)
-        df.to_csv(file, index=df.index.names != [None])
-    except ImportError:
-        click.echo('Install the "ingestion" setuptools extra to enable this feature!')
-        exit(1)
+    _, _, sql_to_df = _get_imports()
+    repository, image = image_spec
+    df = sql_to_df(query, image=image, repository=repository, use_lq=layered)
+    df.to_csv(file, index=df.index.names != [None])
 
 
 @click.command(name="import")
@@ -127,6 +132,7 @@ def csv_import(
 
     If `-r` is passed, the table will instead be deleted and recreated from the CSV file if it exists.
     """
+    pd, df_to_table, _ = _get_imports()
     # read_csv is a monster of a function, perhaps we should expose some of its configs here.
     # The reason we don't ingest directly into the engine by using COPY FROM STDIN is so that we can let Pandas do
     # some type inference/preprocessing on the CSV.
@@ -135,30 +141,24 @@ def csv_import(
             "Warning: primary key is not specified, using the whole row as primary key."
             "This is probably not something that you want."
         )
-    try:
-        import pandas as pd
-        from splitgraph.ingestion.pandas import df_to_table
 
-        df = pd.read_csv(
-            file,
-            sep=separator,
-            index_col=primary_key,
-            parse_dates=list(datetime) if datetime else False,
-            infer_datetime_format=True,
-            header=(None if no_header else "infer"),
-            encoding=encoding,
-        )
-        click.echo("Read %d line(s)" % len(df))
-        df_to_table(
-            df,
-            repository,
-            table,
-            if_exists="replace" if replace else "patch",
-            schema_check=not skip_schema_check,
-        )
-    except ImportError:
-        click.echo('Install the "ingestion" setuptools extra to enable this feature!')
-        exit(1)
+    df = pd.read_csv(
+        file,
+        sep=separator,
+        index_col=primary_key,
+        parse_dates=list(datetime) if datetime else False,
+        infer_datetime_format=True,
+        header=(None if no_header else "infer"),
+        encoding=encoding,
+    )
+    click.echo("Read %d line(s)" % len(df))
+    df_to_table(
+        df,
+        repository,
+        table,
+        if_exists="replace" if replace else "patch",
+        schema_check=not skip_schema_check,
+    )
 
 
 csv.add_command(csv_export)

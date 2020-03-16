@@ -5,6 +5,7 @@ import docker
 import docker.errors
 import pytest
 from minio.error import BucketAlreadyExists, BucketAlreadyOwnedByYou
+from psycopg2.sql import Identifier, SQL
 
 from splitgraph.commandline.engine import copy_to_container
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
@@ -233,6 +234,10 @@ def clean_out_engine(engine):
         mountpoint.delete()
     for mountpoint in TEST_MOUNTPOINTS:
         Repository.from_template(mountpoint, engine=engine).delete()
+        # Make sure schemata, not only repositories, are deleted on the engine.
+        engine.run_sql(
+            SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(mountpoint.to_schema()))
+        )
     ObjectManager(engine).cleanup()
     engine.commit()
 

@@ -2,6 +2,7 @@ from io import StringIO
 from unittest import mock
 from unittest.mock import Mock, MagicMock, call
 
+import docker
 import psycopg2
 import pytest
 from packaging.version import Version
@@ -24,6 +25,7 @@ from splitgraph.exceptions import (
     ObjectNotFoundError,
     APICompatibilityError,
 )
+from test.splitgraph.conftest import SPLITGRAPH_ENGINE_CONTAINER
 
 
 def test_metadata_schema(pg_repo_local):
@@ -171,6 +173,10 @@ def test_engine_autocommit(local_engine_empty):
 
 @pytest.mark.registry
 def test_client_api_compat(unprivileged_remote_engine):
+    with pytest.raises(ValueError) as e:
+        _ = unprivileged_remote_engine.splitgraph_version
+    assert "is a registry" in str(e.value)
+
     # Check client version gets set as an application name + test API
     # version gets verified by the client.
     assert (
@@ -317,3 +323,79 @@ def test_client_query_batch_chunk_part():
         call(query, expected_args[1], ResultShape.MANY_ONE),
     ]
     engine.reset_mock()
+
+
+def test_savepoint_stack(pg_repo_local):
+    def _count():
+        return pg_repo_local.run_sql(
+            "SELECT count(*) FROM fruits", return_shape=ResultShape.ONE_ONE
+        )
+
+    pg_repo_local.images["latest"].checkout()
+    assert _count() == 2
+    pg_repo_local.run_sql("INSERT INTO fruits VALUES(3, 'banana')")
+    assert _count() == 3
+
+    with pg_repo_local.object_engine.savepoint("banana"):
+        pg_repo_local.run_sql("INSERT INTO fruits VALUES(4, 'pineapple')")
+        assert _count() == 4
+
+        # Even though we did a rollback, we had a savepoint so we don't delete
+        # the first line we inserted.
+        pg_repo_local.rollback_engines()
+        assert _count() == 3
+
+    # Leave the context manager and roll back now
+    assert _count() == 3
+    pg_repo_local.rollback_engines()
+    assert _count() == 2
+
+
+def test_object_storage_remounting(pg_repo_local):
+    # Simulate physical object file going away and recommitted again.
+    missing_object = pg_repo_local.images["latest"].get_table("fruits").objects[0]
+    pg_repo_local.images["latest"].checkout()
+
+    assert (
+        pg_repo_local.object_engine.run_sql(
+            "SELECT splitgraph_api.object_exists(%s)",
+            (missing_object,),
+            return_shape=ResultShape.ONE_ONE,
+        )
+        is True
+    )
+    # Commit again -- this should try to recreate the cstore foreign table but not do
+    # anything else since the object files and the table already exist.
+    with mock.patch("splitgraph.engine.postgres.engine.logging") as log:
+        head = pg_repo_local.commit(snap_only=True)
+        assert head.get_table("fruits").objects == [missing_object]
+        assert any(
+            "already exists" in c[1][0] and c[1][1] == missing_object for c in log.info.mock_calls
+        )
+
+    # Now delete the physical object files.
+    # Test the corner case of a commit being terminated mid-object writing where
+    # one of the object files doesn't actually get written (even though we're
+    # doing it inside of a transaction, we write the .schema file separately,
+    # so that might not be in place). We have to delete the file manually with Docker.
+
+    client = docker.from_env()
+    container = client.containers.get(SPLITGRAPH_ENGINE_CONTAINER)
+    container.exec_run(["rm", "/var/lib/splitgraph/objects/%s.schema" % missing_object])
+
+    assert (
+        pg_repo_local.object_engine.run_sql(
+            "SELECT splitgraph_api.object_exists(%s)",
+            (missing_object,),
+            return_shape=ResultShape.ONE_ONE,
+        )
+        is False
+    )
+
+    with mock.patch("splitgraph.engine.postgres.engine.logging") as log:
+        head = pg_repo_local.commit(snap_only=True)
+        assert head.get_table("fruits").objects == [missing_object]
+        assert any(
+            "no physical file, recreating" in c[1][0] and c[1][1] == missing_object
+            for c in log.info.mock_calls
+        )

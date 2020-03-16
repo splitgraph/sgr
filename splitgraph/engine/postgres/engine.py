@@ -1063,9 +1063,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         )
 
         # Try mounting the object
-        try:
-            self.mount_object(object_id, schema_spec=schema_spec)
-        except DuplicateTable:
+        if self.table_exists(SPLITGRAPH_META_SCHEMA, object_id):
             # Foreign table with that name already exists. If it does exist but there's no
             # physical object file, we'll have to write into the table anyway.
             if not object_exists:
@@ -1077,6 +1075,8 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             # parameters (e.g. object path in /var/lib/splitgraph/objects has changed)
             # and we want that to be overwritten in any case, so we remount the object.
             self.unmount_objects([object_id])
+            self.mount_object(object_id, schema_spec=schema_spec)
+        else:
             self.mount_object(object_id, schema_spec=schema_spec)
 
         if object_exists:
