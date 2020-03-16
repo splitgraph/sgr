@@ -238,7 +238,7 @@ def test_commit_diff_splitting(local_engine_empty):
     # Now check the objects that were created.
     with patch("splitgraph.core.fragment_manager.datetime") as dtp:
         dtp.now.return_value = dt(2019, 1, 1)
-        new_head = OUTPUT.commit(split_changeset=True)
+        new_head = OUTPUT.commit(split_changeset=True, in_fragment_order={"test": ["key"]})
     new_head.checkout()
     new_objects = new_head.get_table("test").objects
 
@@ -260,9 +260,12 @@ def test_commit_diff_splitting(local_engine_empty):
         (0, "zero", -1, True)
     ]  # upserted=True, key, new_value_1, new_value_2
     assert OUTPUT.run_sql(select(added_objects[1])) == [
+        # Check ordering here: we order by key_1 even though when writing, upserts
+        # come before deletes (ordering more relevant for non-diffs since we can scan through
+        # them directly with cstore though).
+        (4, None, None, False),  # upserted=False, key, None, None
         (5, "UPDATED", 8, True),  # upserted=True, key, new_value_1, new_value_2
-        (4, None, None, False),
-    ]  # upserted=False, key, None, None
+    ]
     assert OUTPUT.run_sql(select(added_objects[2])) == [
         (6, None, None, False)
     ]  # upserted=False, key, None, None

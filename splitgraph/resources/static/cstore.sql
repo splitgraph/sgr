@@ -182,7 +182,11 @@ CREATE OR REPLACE FUNCTION splitgraph_api.object_exists (
 
     SG_ENGINE_OBJECT_PATH = CONFIG["SG_ENGINE_OBJECT_PATH"]
 
-    return os.path.exists(os.path.join(SG_ENGINE_OBJECT_PATH, object_id))
+    # Make sure to check for all 3 files to guard against partially failed writes.
+    return all(
+        os.path.exists(os.path.join(SG_ENGINE_OBJECT_PATH, object_id + suffix))
+        for suffix in ("", ".footer", ".schema")
+    )
 $BODY$
 LANGUAGE plpython3u
 VOLATILE;

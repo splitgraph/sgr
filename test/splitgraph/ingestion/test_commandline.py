@@ -1,5 +1,6 @@
 import os
 from datetime import datetime as dt
+from unittest import mock
 
 from click.testing import CliRunner
 from test.splitgraph.conftest import INGESTION_RESOURCES
@@ -178,3 +179,17 @@ def test_export_lq(ingestion_test_repo):
     # datetime format not preserved (was 2018-12-30 00:00:00) but we can't detect what it was anyway
     # without the user passing it in.
     assert result.stdout == "fruit_id,timestamp,name\n4,2018-12-30,chandelier\n"
+
+
+def test_ingestion_import_error(ingestion_test_repo):
+    runner = CliRunner()
+    original_import = __import__
+
+    def no_pandas_import(name, *args, **kwargs):
+        if "pandas" in name:
+            raise ImportError
+        return original_import(name, *args, **kwargs)
+
+    with mock.patch("builtins.__import__", side_effect=no_pandas_import):
+        result = runner.invoke(csv_import, [str(ingestion_test_repo), "table"])
+        assert 'Install the "ingestion" setuptools extra to enable this feature!' in result.output

@@ -11,7 +11,7 @@ from click.testing import CliRunner
 from test.splitgraph.conftest import API_RESOURCES
 
 from splitgraph.commandline import upstream_c, import_c, rm_c, prune_c, config_c, dump_c, eval_c
-from splitgraph.commandline.common import ImageType
+from splitgraph.commandline.common import ImageType, RepositoryType
 from splitgraph.commandline.example import generate_c, alter_c, splitfile_c
 from splitgraph.commandline.misc import (
     _get_binary_url_for,
@@ -23,7 +23,7 @@ from splitgraph.config import PG_PWD, PG_USER
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.repository import Repository
 from splitgraph.engine import ResultShape
-from splitgraph.exceptions import TableNotFoundError, ImageNotFoundError
+from splitgraph.exceptions import TableNotFoundError, ImageNotFoundError, RepositoryNotFoundError
 
 
 def test_image_spec_parsing():
@@ -36,6 +36,23 @@ def test_image_spec_parsing():
         Repository("", "pg_mount"),
         "some_tag",
     )
+
+
+def test_image_repo_parsing_errors(pg_repo_local):
+    repo = Repository("test", "pg_mount")
+    assert ImageType(get_image=True, default="latest")("test/pg_mount")[1] == repo.images["latest"]
+    assert (
+        ImageType(get_image=True, default="latest")("test/pg_mount:00")[1] == repo.images["00000"]
+    )
+
+    with pytest.raises(ImageNotFoundError):
+        ImageType(get_image=True, default="latest")("test/pg_mount:doesnt_exist")
+
+    with pytest.raises(RepositoryNotFoundError):
+        ImageType(get_image=True, default="latest")("test/doesntexist:latest")
+
+    with pytest.raises(RepositoryNotFoundError):
+        RepositoryType(exists=True)("test/doesntexist")
 
 
 def test_upstream_management(pg_repo_local):
