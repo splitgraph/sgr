@@ -93,7 +93,11 @@ def _emit_command_invocation(command, prefix="sgr "):
 
 
 def _emit_command_options(command):
-    help_records = [p.get_help_record(None) for p in command.params if isinstance(p, click.Option)]
+    help_records = [
+        p.get_help_record(click.Context(command))
+        for p in command.params
+        if isinstance(p, click.Option)
+    ]
 
     if help_records:
         result = "\n\n" + _emit_header("Options", level=3) + "\n\n"
@@ -119,7 +123,7 @@ def _emit_command(command_name):
     command = STRUCTURE_CMD_OVERRIDE.get(command_name)
     if not command:
         command = getattr(cmd, command_name + "_c")
-    result = _emit_header(command_name, level=2) + "\n"
+    result = _emit_header("sgr " + command_name, level=2) + "\n"
     result += "\n" + _emit_command_invocation(command)
     # Future: move examples under options?
     result += "\n" + command.help.replace("Examples:", "### Examples")
