@@ -137,6 +137,9 @@ def login_c(username, password, remote, overwrite):
 @click.option(
     "--remote", default="data.splitgraph.com", help="Name of the remote cloud engine to use."
 )
+@click.option(
+    "-t", "--request-type", default="postgrest", type=click.Choice(["postgrest", "splitfile"])
+)
 @click.argument("image", type=ImageType(default="latest"))
 @click.argument("request_params", type=str, default="")
 # This is kind of awkward: we want to support not passing in any request params to default
@@ -146,9 +149,9 @@ def login_c(username, password, remote, overwrite):
 @click.option(
     "-c", "--curl-args", type=str, multiple=True, help="Extra arguments to be passed to curl"
 )
-def curl_c(remote, image, request_params, curl_args):
+def curl_c(remote, request_type, image, request_params, curl_args):
     """A thin wrapper around curl that performs an HTTP request to Splitgraph Cloud to
-    query a dataset using Postgrest (http://postgrest.org).
+    interact with a dataset using PostgREST (http://postgrest.org) or the Splitfile executor.
 
     The actual invocation is:
 
@@ -156,10 +159,12 @@ def curl_c(remote, image, request_params, curl_args):
 
     The image must be of the form `namespace/repository:[hash_or_tag (default latest)]`.
 
-    The actual request must be of the form `/table?[postgrest request]` or
-    empty to get the OpenAPI spec for this image.
+    The actual request parameters depend on the request type:
 
-    For a reference on how to perform Postgrest requests, see http://postgrest.org/en/v6.0/api.html.
+      * For PostgREST: `/table?[postgrest request]` or empty to get the OpenAPI spec for this image.
+        For a reference on how to perform Postgrest requests, see http://postgrest.org/en/v6.0/api.html.
+      * For the Splitfile executor: a JSON array to be POSTed to the executor, e.g.
+        `'{"command": "FROM some/repo IMPORT some_table AS alias", "tag": "new_tag"}'`.
 
     --curl-args allows to pass extra arguments to curl. Note that every argument must be prefixed
     with --curl-args, e.g. --curl-args --cacert --curl-args /path/to/ca.pem
@@ -169,21 +174,27 @@ def curl_c(remote, image, request_params, curl_args):
 
     repository, hash_or_tag = image
 
-    if request_params and not request_params.startswith("/"):
-        request_params = "/" + request_params
-
     # Craft a request
     config = CONFIG["remotes"][remote]
-    full_request = (
-        config["SG_QUERY_API"]
-        + "/%s/%s" % (str(repository), str(hash_or_tag))
-        + "/-/rest"
-        + request_params
-    )
-
     access_token = AuthAPIClient(remote).access_token
     headers = get_headers()
     headers.update({"Authorization": "Bearer " + access_token})
+
+    if request_type == "postgrest":
+        if request_params and not request_params.startswith("/"):
+            request_params = "/" + request_params
+        full_request = (
+            config["SG_QUERY_API"]
+            + "/%s/%s" % (str(repository), str(hash_or_tag))
+            + "/-/rest"
+            + request_params
+        )
+    else:
+        full_request = (
+            config["SG_QUERY_API"] + "/%s/%s" % (str(repository), str(hash_or_tag)) + "/-/splitfile"
+        )
+        curl_args = ["-X", "POST", "-d", request_params] + list(curl_args)
+        headers.update({"Content-Type": "application/json"})
 
     header_invocation = [h for i in headers.items() for h in ("-H", "%s: %s" % i)]
     subprocess_args = ["curl", full_request] + header_invocation + list(curl_args)

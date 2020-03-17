@@ -290,17 +290,36 @@ def _make_dummy_config_dict():
         (
             ["ns/repo", "table?id=eq.5"],
             "http://some-query-service/ns/repo/latest/-/rest/table?id=eq.5",
+            [],
         ),
         (
             ["ns/repo:image", "/table?id=eq.5"],
             "http://some-query-service/ns/repo/image/-/rest/table?id=eq.5",
+            [],
         ),
-        (["ns/repo"], "http://some-query-service/ns/repo/latest/-/rest",),
+        (["ns/repo"], "http://some-query-service/ns/repo/latest/-/rest", [],),
+        (
+            [
+                "ns/repo",
+                "-t",
+                "splitfile",
+                '{"command": "FROM some/repo IMPORT some_table AS alias", "tag": "new_tag"}',
+            ],
+            "http://some-query-service/ns/repo/latest/-/splitfile",
+            [
+                "-H",
+                "Content-Type: application/json",
+                "-X",
+                "POST",
+                "-d",
+                '{"command": "FROM some/repo IMPORT some_table AS alias", "tag": "new_tag"}',
+            ],
+        ),
     ],
 )
-def test_commandline_curl_normal(test_case):
+def test_commandline_curl(test_case):
     runner = CliRunner()
-    args, result_url = test_case
+    args, result_url, extra_curl_args = test_case
 
     with patch(
         "splitgraph.cloud.AuthAPIClient.access_token",
@@ -322,7 +341,7 @@ def test_commandline_curl_normal(test_case):
                     "User-Agent: sgr %s" % __version__,
                     "-H",
                     "Authorization: Bearer AAAABBBBCCCCDDDD",
-                    "--some-curl-arg",
-                    "-Ssl",
                 ]
+                + extra_curl_args
+                + ["--some-curl-arg", "-Ssl",]
             )
