@@ -17,13 +17,22 @@ minio = ">=4"
 pglast = {version = ">=1.6", markers = 'sys_platform != "win32"'}
 requests = ">=2.22"
 docker = ">=4.0"
-
-# Extra requirements for ingestion (CSV)
-pandas = {version = ">=0.24", extras = ["ingestion"], optional = true }
-sqlalchemy = { version = "^1.3", extras = ["ingestion"], optional = true }
 click_log = "^0.3.2"
 tqdm = "^4.40.0"
 packaging = "^20.1"
+# Required for CSV ingestion and type inference
+tableschema = "^1.15.0"
+# Hack to avoid poetry lock downloading every single botocore version forever
+# https://github.com/python-poetry/poetry/issues/1116 -- pin botocore to something recent.
+# This is pulled in by tableschema (it pulls in tabulator which supports
+# data export to S3). It's kind of sad that there's no way to turn this into an extra,
+# but it (and a bunch of other S3 deps) doesn't seem to inflate the final `sgr`
+# executable size by much.
+botocore = "==1.15.23"
+
+# Extra requirements for Pandas ingestion
+pandas = {version = ">=0.24", extras = ["ingestion"], optional = true }
+sqlalchemy = { version = "^1.3", extras = ["ingestion"], optional = true }
 
 
 [tool.poetry.dev-dependencies]
@@ -43,7 +52,7 @@ mypy = ">=0.720"
 bump2version = "^1.0.0"
 
 [tool.poetry.extras]
-ingestion = ["pandas", "sqlalchemy"]
+pandas = ["pandas", "sqlalchemy"]
 
 [tool.poetry.scripts]
 sgr = "splitgraph.commandline:cli"

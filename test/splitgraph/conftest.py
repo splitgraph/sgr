@@ -479,6 +479,7 @@ def ingestion_test_repo():
         repo.init()
         yield repo
     finally:
+        repo.rollback_engines()
         repo.delete()
 
 

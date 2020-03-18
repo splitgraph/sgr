@@ -1,27 +1,14 @@
 """Command line tools for ingesting/exporting Splitgraph images into other formats."""
+import logging
+from itertools import islice
 
 import click
 
 from splitgraph.commandline.common import ImageType, RepositoryType
 
 
-# This commandline entry point doesn't actually import splitgraph.ingestion directly
-# as it pulls in Pandas (which can take a second) -- instead it lazily imports it ai
-# invocation time and asks the user to install the ingestion extra if Pandas isn't found.
-def _get_imports():
-    try:
-        import pandas as pd
-        from splitgraph.ingestion.pandas import df_to_table
-        from splitgraph.ingestion.pandas import sql_to_df
-
-        return pd, df_to_table, sql_to_df
-    except ImportError:
-        click.echo('Install the "ingestion" setuptools extra to enable this feature!')
-        exit(1)
-
-
 @click.group(name="csv")
-def csv():
+def csv_group():
     """Import/export Splitgraph images in CSV format."""
 
 
@@ -61,10 +48,10 @@ def csv_export(image_spec, query, file, layered):
     Uses layered querying instead to execute a join on tables in a certain image (satisfying the query without
     having to check the image out).
     """
-    _, _, sql_to_df = _get_imports()
+    from splitgraph.ingestion.csv import csv_adapter
+
     repository, image = image_spec
-    df = sql_to_df(query, image=image, repository=repository, use_lq=layered)
-    df.to_csv(file, index=df.index.names != [None])
+    csv_adapter.to_data(query, image, repository, layered, buffer=file)
 
 
 @click.command(name="import")
@@ -88,11 +75,11 @@ def csv_export(image_spec, query, file, layered):
     default=False,
 )
 @click.option(
-    "-d",
-    "--datetime",
+    "-t",
+    "--override-type",
     multiple=True,
-    help="Try to parse the specified column(s) as timestamps.",
-    default=False,
+    type=(str, str),
+    help="Explicitly set types of these columns to PG types",
 )
 @click.option("--encoding", help="Encoding to use for the CSV file", default=None)
 @click.option("--separator", default=",", help="CSV separator to use")
@@ -114,7 +101,7 @@ def csv_import(
     file,
     replace,
     primary_key,
-    datetime,
+    override_type,
     encoding,
     separator,
     no_header,
@@ -132,34 +119,49 @@ def csv_import(
 
     If `-r` is passed, the table will instead be deleted and recreated from the CSV file if it exists.
     """
-    pd, df_to_table, _ = _get_imports()
-    # read_csv is a monster of a function, perhaps we should expose some of its configs here.
-    # The reason we don't ingest directly into the engine by using COPY FROM STDIN is so that we can let Pandas do
-    # some type inference/preprocessing on the CSV.
+    import csv
+    import tableschema
+    from splitgraph.ingestion.tableschema import tableschema_to_sg
+    from splitgraph.ingestion.csv import csv_adapter
+
     if not primary_key:
         click.echo(
             "Warning: primary key is not specified, using the whole row as primary key."
             "This is probably not something that you want."
         )
 
-    df = pd.read_csv(
-        file,
-        sep=separator,
-        index_col=primary_key,
-        parse_dates=list(datetime) if datetime else False,
-        infer_datetime_format=True,
-        header=(None if no_header else "infer"),
-        encoding=encoding,
+    click.echo("Inferring the CSV schema")
+    reader = csv.reader(file, delimiter=separator or ",")
+
+    # Grab the first few rows from the CSV and give them to TableSchema.
+    sample = list(islice(reader, 100))
+
+    if no_header:
+        # Patch in a dummy header
+        sample = [[str(i) for i in range(len(sample))]] + sample
+
+    ts_schema = tableschema.infer(sample)
+
+    type_overrides = dict(override_type or [])
+    sg_schema = tableschema_to_sg(
+        ts_schema, override_types=type_overrides, primary_keys=primary_key
     )
-    click.echo("Read %d line(s)" % len(df))
-    df_to_table(
-        df,
+    logging.debug("Using Splitgraph schema: %r", sg_schema)
+
+    # Seek the file back to beginning and pass it to the csv writer
+    file.seek(0)
+    csv_adapter.to_table(
+        file,
         repository,
         table,
         if_exists="replace" if replace else "patch",
         schema_check=not skip_schema_check,
+        no_header=no_header,
+        delimiter=separator,
+        encoding=encoding,
+        schema_spec=sg_schema,
     )
 
 
-csv.add_command(csv_export)
-csv.add_command(csv_import)
+csv_group.add_command(csv_export)
+csv_group.add_command(csv_import)

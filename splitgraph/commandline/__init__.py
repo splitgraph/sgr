@@ -25,7 +25,7 @@ from splitgraph.commandline.image_info import (
     objects_c,
     table_c,
 )
-from splitgraph.commandline.ingestion import csv
+from splitgraph.commandline.ingestion import csv_group
 from splitgraph.commandline.misc import (
     rm_c,
     init_c,
@@ -147,7 +147,7 @@ cli.add_command(rebuild_c)
 cli.add_command(example)
 
 # CSV
-cli.add_command(csv)
+cli.add_command(csv_group)
 
 # Cloud
 cli.add_command(cloud_c)
