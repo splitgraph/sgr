@@ -130,7 +130,6 @@ def csv_import(
             "This is probably not something that you want."
         )
 
-    click.echo("Inferring the CSV schema")
     reader = csv.reader(file, delimiter=separator or ",")
 
     # Grab the first few rows from the CSV and give them to TableSchema.

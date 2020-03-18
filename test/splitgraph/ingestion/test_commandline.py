@@ -1,23 +1,22 @@
 import os
 from datetime import datetime as dt
 
+import pytest
 from click.testing import CliRunner
 from test.splitgraph.conftest import INGESTION_RESOURCES
 
 from splitgraph.commandline.ingestion import csv_import, csv_export
 
 
-def test_import_empty(ingestion_test_repo):
+@pytest.mark.parametrize("custom_separator", [False, True])
+def test_import_empty(ingestion_test_repo, custom_separator):
     runner = CliRunner()
+    filename = "base_df.csv" if not custom_separator else "separator_df.csv"
     # Import without PKs/type conversion.
     result = runner.invoke(
         csv_import,
-        [
-            str(ingestion_test_repo),
-            "test_table",
-            "-f",
-            os.path.join(INGESTION_RESOURCES, "base_df.csv"),
-        ],
+        [str(ingestion_test_repo), "test_table", "-f", os.path.join(INGESTION_RESOURCES, filename),]
+        + (["--separator", ";"] if custom_separator else []),
         catch_exceptions=False,
     )
 
