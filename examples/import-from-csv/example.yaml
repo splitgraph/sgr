@@ -22,7 +22,7 @@
   - |
     sgr csv import -f rdu-weather-history.csv \
                    -k date \
-                   -d date \
+                   -t date timestamp \
                    --separator ";" \
                    demo/weather rdu
 - commands:

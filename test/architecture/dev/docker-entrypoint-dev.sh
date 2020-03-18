@@ -11,7 +11,7 @@ install_latest_sgr() {
         && poetry config virtualenvs.create true \
         && poetry config virtualenvs.path /src/venvs \
         && cd /src/splitgraph \
-        && poetry install -E ingestion
+        && poetry install -E pandas
 }
 
 # Because we are bind-mounting the root of the repository with /src/splitgraph

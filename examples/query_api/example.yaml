@@ -15,7 +15,7 @@
   - |
     sgr csv import -f ../import-from-csv/rdu-weather-history.csv \
                    -k date \
-                   -d date \
+                   -t date timestamp \
                    --separator ";" \
                    weather rdu
   - sgr commit weather

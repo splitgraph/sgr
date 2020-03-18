@@ -1,6 +1,5 @@
 import os
 from datetime import datetime as dt
-from unittest import mock
 
 from click.testing import CliRunner
 from test.splitgraph.conftest import INGESTION_RESOURCES
@@ -19,6 +18,7 @@ def test_import_empty(ingestion_test_repo):
             "-f",
             os.path.join(INGESTION_RESOURCES, "base_df.csv"),
         ],
+        catch_exceptions=False,
     )
 
     assert result.exit_code == 0
@@ -43,9 +43,12 @@ def test_import_empty_pk_datetimes(ingestion_test_repo):
             os.path.join(INGESTION_RESOURCES, "base_df.csv"),
             "-k",
             "fruit_id",
-            "-d",
+            # Set type of the "timestamp" col to timestamp
+            "-t",
+            "timestamp",
             "timestamp",
         ],
+        catch_exceptions=False,
     )
     assert result.exit_code == 0
     # Check a line in the table
@@ -53,7 +56,7 @@ def test_import_empty_pk_datetimes(ingestion_test_repo):
         (4, dt(2018, 1, 4, 0, 44, 44), "mustard")
     ]
     assert ingestion_test_repo.engine.get_primary_keys(str(ingestion_test_repo), "test_table") == [
-        ("fruit_id", "bigint")
+        ("fruit_id", "integer")
     ]
 
 
@@ -68,9 +71,11 @@ def test_import_patch(ingestion_test_repo):
             os.path.join(INGESTION_RESOURCES, "base_df.csv"),
             "-k",
             "fruit_id",
-            "-d",
+            "-t",
+            "timestamp",
             "timestamp",
         ],
+        catch_exceptions=False,
     )
     ingestion_test_repo.commit()
 
@@ -83,7 +88,8 @@ def test_import_patch(ingestion_test_repo):
             os.path.join(INGESTION_RESOURCES, "patch_df.csv"),
             "-k",
             "fruit_id",
-            "-d",
+            "-t",
+            "timestamp",
             "timestamp",
         ],
         catch_exceptions=False,
@@ -105,9 +111,11 @@ def test_export_basic(ingestion_test_repo):
             os.path.join(INGESTION_RESOURCES, "base_df.csv"),
             "-k",
             "fruit_id",
-            "-d",
+            "-t",
+            "timestamp",
             "timestamp",
         ],
+        catch_exceptions=False,
     )
     ingestion_test_repo.commit()
 
@@ -117,6 +125,7 @@ def test_export_basic(ingestion_test_repo):
             str(ingestion_test_repo) + ":" + ingestion_test_repo.head.image_hash[:10],
             "SELECT * FROM test_table WHERE fruit_id = 4",
         ],
+        catch_exceptions=False,
     )
     assert result.exit_code == 0
     assert result.stdout == "fruit_id,timestamp,name\n4,2018-01-04 00:44:44,mustard\n"
@@ -133,9 +142,11 @@ def test_export_lq(ingestion_test_repo):
             os.path.join(INGESTION_RESOURCES, "base_df.csv"),
             "-k",
             "fruit_id",
-            "-d",
+            "-t",
+            "timestamp",
             "timestamp",
         ],
+        catch_exceptions=False,
     )
     old = ingestion_test_repo.commit()
     runner.invoke(
@@ -147,9 +158,11 @@ def test_export_lq(ingestion_test_repo):
             os.path.join(INGESTION_RESOURCES, "patch_df.csv"),
             "-k",
             "fruit_id",
-            "-d",
+            "-t",
+            "timestamp",
             "timestamp",
         ],
+        catch_exceptions=False,
     )
     new = ingestion_test_repo.commit()
     ingestion_test_repo.delete(uncheckout=True, unregister=False)
@@ -162,6 +175,7 @@ def test_export_lq(ingestion_test_repo):
             "SELECT * FROM test_table WHERE fruit_id = 4",
             "--layered",
         ],
+        catch_exceptions=False,
     )
     assert result.exit_code == 0
     assert result.stdout == "fruit_id,timestamp,name\n4,2018-01-04 00:44:44,mustard\n"
@@ -174,22 +188,7 @@ def test_export_lq(ingestion_test_repo):
             "SELECT * FROM test_table WHERE fruit_id = 4",
             "--layered",
         ],
+        catch_exceptions=False,
     )
     assert result.exit_code == 0
-    # datetime format not preserved (was 2018-12-30 00:00:00) but we can't detect what it was anyway
-    # without the user passing it in.
-    assert result.stdout == "fruit_id,timestamp,name\n4,2018-12-30,chandelier\n"
-
-
-def test_ingestion_import_error(ingestion_test_repo):
-    runner = CliRunner()
-    original_import = __import__
-
-    def no_pandas_import(name, *args, **kwargs):
-        if "pandas" in name:
-            raise ImportError
-        return original_import(name, *args, **kwargs)
-
-    with mock.patch("builtins.__import__", side_effect=no_pandas_import):
-        result = runner.invoke(csv_import, [str(ingestion_test_repo), "table"])
-        assert 'Install the "ingestion" setuptools extra to enable this feature!' in result.output
+    assert result.stdout == "fruit_id,timestamp,name\n4,2018-12-30 00:00:00,chandelier\n"

@@ -45,10 +45,10 @@ jobs:
         # the project's requirements, pip installing them and then
         # running poetry install on top of that to install the project
         # itself in editable mode.
-        - poetry export --dev -f requirements.txt --without-hashes -o /tmp/requirements.txt -E ingestion
+        - poetry export --dev -f requirements.txt --without-hashes -o /tmp/requirements.txt -E pandas
         - sed -i "/^-e/d" /tmp/requirements.txt
         - pip install -r /tmp/requirements.txt
-        - poetry install -E ingestion
+        - poetry install -E pandas
         - sudo cat /etc/docker/daemon.json
         - cd engine && make && cd ..
       script:
