@@ -109,9 +109,12 @@ def _emit_command_options(command):
         return ""
 
 
-def _emit_mdx_metadata(doc_id, title):
+def _emit_mdx_metadata(doc_id, title, sidebar_title=None):
+    sidebar_title = sidebar_title or title
     return (
-        "export const meta = {id: %s, title: %s};" % (json.dumps(doc_id), json.dumps(title)) + "\n"
+        "export const meta = {id: %s, title: %s, sidebarTitle: %s};"
+        % (json.dumps(doc_id), json.dumps(title), json.dumps(sidebar_title))
+        + "\n"
     )
 
 
@@ -123,8 +126,7 @@ def _emit_command(command_name):
     command = STRUCTURE_CMD_OVERRIDE.get(command_name)
     if not command:
         command = getattr(cmd, command_name + "_c")
-    result = _emit_header("sgr " + command_name, level=2) + "\n"
-    result += "\n" + _emit_command_invocation(command)
+    result = _emit_command_invocation(command)
     # Future: move examples under options?
     result += "\n" + command.help.replace("Examples:", "### Examples")
     result += _emit_command_options(command)
@@ -161,7 +163,9 @@ def main(output, force):
             command_path = os.path.join(section_path, doc_filename)
             print("Making %s: %s..." % (command_path, command))
             with open(command_path, "w") as f:
-                f.write(_emit_mdx_metadata(doc_id=doc_id, title=command))
+                f.write(
+                    _emit_mdx_metadata(doc_id=doc_id, title="sgr " + command, sidebar_title=command)
+                )
                 f.write("\n")
                 f.write(_emit_command(command) + "\n")
 
