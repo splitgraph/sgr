@@ -156,6 +156,11 @@ class TestLayeredQuerying:
             table.query(columns=["name", "timestamp"], quals=quals)
             assert fo.call_count == 1
 
+        query_plan = table.get_query_plan(quals=quals, columns=["name", "timestamp"])
+        assert query_plan.estimated_rows == 2
+        assert len(query_plan.required_objects) == 4
+        assert len(query_plan.filtered_objects) == 2
+
 
 def test_layered_querying_against_single_fragment(pg_repo_local):
     # Test the case where the query is satisfied by a single fragment.

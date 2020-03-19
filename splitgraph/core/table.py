@@ -84,10 +84,12 @@ class QueryPlan:
             self.required_objects, table, quals
         )
         # Estimate the number of rows in the filtered objects
-        self.estimated_rows = [
-            o.rows_inserted - o.rows_deleted
-            for o in self.object_manager.get_object_meta(self.filtered_objects).values()
-        ]
+        self.estimated_rows = sum(
+            [
+                o.rows_inserted - o.rows_deleted
+                for o in self.object_manager.get_object_meta(self.filtered_objects).values()
+            ]
+        )
         self.tracer.log("filter_objects")
 
 
