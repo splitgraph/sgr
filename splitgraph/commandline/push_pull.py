@@ -18,7 +18,7 @@ from splitgraph.config.config import get_from_subsection
     "-d",
     "--download-all",
     is_flag=True,
-    help="Download all objects immediately instead on checkout.",
+    help="Download all objects immediately instead of on checkout.",
 )
 def pull_c(repository_or_image, download_all):
     """
@@ -35,7 +35,7 @@ def pull_c(repository_or_image, download_all):
 @click.option(
     "-d",
     "--download-all",
-    help="Download all objects immediately instead on checkout.",
+    help="Download all objects immediately instead of on checkout.",
     default=False,
     is_flag=True,
 )
