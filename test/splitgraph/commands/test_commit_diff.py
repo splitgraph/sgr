@@ -156,6 +156,9 @@ def test_commit_chunking(local_engine_empty):
                         "value_2": [(min_key - 1) * 2, (max_key - 1) * 2],
                     }
                 },
+                # Added 5 (1 in last chunk), removed 0 rows
+                5 if i < 2 else 1,
+                0,
             ),
         )
 
@@ -286,6 +289,8 @@ def test_commit_diff_splitting(local_engine_empty):
             # no deletions in this fragment
             "0000000000000000000000000000000000000000000000000000000000000000",
             {"range": {"key": [0, 0], "value_1": ["zero", "zero"], "value_2": [-1, -1]}},
+            1,
+            0,
         ),
         (
             added_objects[1],
@@ -298,6 +303,9 @@ def test_commit_diff_splitting(local_engine_empty):
             # for value_1 we have old values for k=4,5 ('d', 'e') and new value
             # for k=5 ('UPDATED') included here; same for value_2.
             {"range": {"key": [4, 5], "value_1": ["UPDATED", "e"], "value_2": [6, 8]}},
+            # 1 row inserted, 2 deleted (deletion and old pre-upsert value counts)
+            1,
+            2,
         ),
         (
             added_objects[2],
@@ -310,6 +318,9 @@ def test_commit_diff_splitting(local_engine_empty):
             "d7df15e62c1c8799ef3a3677e3eb7661cedf898d73449a80251b93c501b5bdeb",
             # Turned into one deletion, old values included here
             {"range": {"key": [6, 6], "value_1": ["f", "f"], "value_2": [10, 10]}},
+            # 0 rows inserted, 1 deleted
+            0,
+            1,
         ),
         (
             added_objects[3],
@@ -320,6 +331,9 @@ def test_commit_diff_splitting(local_engine_empty):
             "96f0a7394f3839b048b492b789f7d57cf976345b04938a69d82b3512f72c3e9e",
             "0000000000000000000000000000000000000000000000000000000000000000",
             {"range": {"key": [12, 12], "value_1": ["l", "l"], "value_2": [22, 22]}},
+            # Single insert
+            1,
+            0,
         ),
     ]
     for added_object, expected in zip(added_objects, expected_meta):
@@ -327,7 +341,8 @@ def test_commit_diff_splitting(local_engine_empty):
 
     # Also check that the insertion - deletion hashes of objects add up to the final content hash of the materialized
     # table.
-    table_hash = OUTPUT.objects.calculate_content_hash(OUTPUT.to_schema(), "test")
+    table_hash, total_rows = OUTPUT.objects.calculate_content_hash(OUTPUT.to_schema(), "test")
+    assert total_rows == 11
 
     all_meta = OUTPUT.objects.get_object_meta(new_objects)
     hash_sum = reduce(
@@ -415,6 +430,8 @@ def test_commit_diff_splitting_composite(local_engine_empty):
                     "value": ["4", "UPD"],
                 }
             },
+            2,
+            1,
         ),
     )
     # The third chunk is new, contains (4/1/2019, 2, NEW)
@@ -437,6 +454,8 @@ def test_commit_diff_splitting_composite(local_engine_empty):
                     "value": ["NEW", "NEW"],
                 }
             },
+            1,
+            0,
         ),
     )
 

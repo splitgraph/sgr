@@ -323,7 +323,9 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_object_meta (
             created timestamp,
             insertion_hash varchar(64),
             deletion_hash varchar(64),
-            INDEX JSONB
+            INDEX JSONB,
+            rows_inserted integer,
+            rows_deleted integer
         )
         AS $$
 BEGIN
@@ -335,7 +337,9 @@ BEGIN
         o.created,
         o.insertion_hash,
         o.deletion_hash,
-        o.index
+        o.index,
+        o.rows_inserted,
+        o.rows_deleted
     FROM splitgraph_meta.objects o
     WHERE o.object_id = ANY (object_ids);
 END
@@ -376,7 +380,9 @@ CREATE OR REPLACE FUNCTION splitgraph_api.add_object (
     _created timestamp,
     _insertion_hash varchar(64),
     _deletion_hash varchar(64),
-    _index jsonb
+    _index jsonb,
+    _rows_inserted integer,
+    _rows_deleted integer
 )
     RETURNS void
     AS $$
@@ -392,9 +398,9 @@ BEGIN
     FOR UPDATE;
     IF NOT FOUND THEN
 	INSERT INTO splitgraph_meta.objects (object_id, format, namespace,
-	    size, created, insertion_hash, deletion_hash, INDEX)
+	    size, created, insertion_hash, deletion_hash, index, rows_inserted, rows_deleted)
 		VALUES (_object_id, _format, _namespace, _size, _created,
-		    _insertion_hash, _deletion_hash, _index);
+		    _insertion_hash, _deletion_hash, _index, _rows_inserted, _rows_deleted);
     ELSE
         PERFORM splitgraph_api.check_privilege (existing.namespace);
         UPDATE
@@ -405,7 +411,9 @@ BEGIN
             created = _created,
             insertion_hash = _insertion_hash,
             deletion_hash = _deletion_hash,
-            INDEX = _index
+            INDEX = _index,
+            rows_inserted = _rows_inserted,
+            rows_deleted = _rows_deleted
         WHERE object_id = _object_id;
     END IF;
 END
@@ -525,8 +533,7 @@ $$
 LANGUAGE plpgsql
 SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 
--- get_table_size(namespace, repository, image_hash, table_name): get table size in bytes (counting tables
--- that share objects only once)
+-- get_table_size(namespace, repository, image_hash, table_name): get table size in bytes
 CREATE OR REPLACE FUNCTION splitgraph_api.get_table_size (
     _namespace varchar,
     _repository varchar,
@@ -537,8 +544,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_table_size (
     AS $$
 BEGIN
     RETURN (WITH iob AS (
-            SELECT DISTINCT image_hash,
-                unnest(object_ids) AS object_id
+            SELECT unnest(object_ids) AS object_id
             FROM splitgraph_meta.tables t
             WHERE t.namespace = _namespace
                 AND t.repository = _repository
@@ -546,6 +552,33 @@ BEGIN
                 AND t.table_name = _table_name
 )
         SELECT sum(o.size)
+        FROM iob
+            JOIN splitgraph_meta.objects o ON iob.object_id = o.object_id);
+END
+$$
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+
+-- get_table_length: use object metadata to get the number of rows in a table. Will return
+-- NULL if some objects have an unknown number of rows.
+CREATE OR REPLACE FUNCTION splitgraph_api.get_table_length (
+    _namespace varchar,
+    _repository varchar,
+    _image_hash varchar,
+    _table_name varchar
+)
+    RETURNS INTEGER
+    AS $$
+BEGIN
+    RETURN (WITH iob AS (
+            SELECT unnest(object_ids) AS object_id
+            FROM splitgraph_meta.tables t
+            WHERE t.namespace = _namespace
+                AND t.repository = _repository
+                AND t.image_hash = _image_hash
+                AND t.table_name = _table_name
+)
+        SELECT sum(o.rows_inserted - o.rows_deleted)
         FROM iob
             JOIN splitgraph_meta.objects o ON iob.object_id = o.object_id);
 END

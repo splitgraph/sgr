@@ -199,6 +199,7 @@ def table_c(image_spec, table_name, verbose):
     click.echo("Table %s:%s/%s" % (repository.to_schema(), image.image_hash, table_name))
     click.echo()
     click.echo("Size: %s" % pretty_size(table.get_size()))
+    click.echo("Rows: %d" % table.get_length())
     click.echo("Columns: ")
     for column in table.table_schema:
         column_str = "  " + column.name + " (" + column.pg_type
@@ -246,7 +247,9 @@ def object_c(object_id):
     click.echo("Format: %s" % sg_object.format)
     click.echo("Size: %s" % pretty_size(sg_object.size))
     click.echo("Created: %s" % sg_object.created)
+    click.echo("Rows inserted: %s" % sg_object.rows_inserted)
     click.echo("Insertion hash: %s" % sg_object.insertion_hash)
+    click.echo("Rows deleted: %s" % sg_object.rows_deleted)
     click.echo("Deletion hash: %s" % sg_object.deletion_hash)
     click.echo("Column index:")
     for col_name, col_range in sg_object.object_index["range"].items():

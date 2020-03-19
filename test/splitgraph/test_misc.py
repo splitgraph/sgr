@@ -80,6 +80,8 @@ def test_metadata_constraints_object_ids_hashes(local_engine_empty):
                     insertion_hash="0" * 64,
                     deletion_hash="0" * 64,
                     object_index={},
+                    rows_inserted=10,
+                    rows_deleted=2,
                 )
             ]
         )
@@ -96,6 +98,8 @@ def test_metadata_constraints_object_ids_hashes(local_engine_empty):
                     insertion_hash="0" * 64,
                     deletion_hash="0" * 64,
                     object_index={},
+                    rows_inserted=10,
+                    rows_deleted=2,
                 )
             ]
         )
@@ -112,6 +116,8 @@ def test_metadata_constraints_object_ids_hashes(local_engine_empty):
                     insertion_hash="0" * 64,
                     deletion_hash="0" * 64,
                     object_index={},
+                    rows_inserted=10,
+                    rows_deleted=2,
                 )
             ]
         )
@@ -128,6 +134,8 @@ def test_metadata_constraints_object_ids_hashes(local_engine_empty):
                     insertion_hash="broken",
                     deletion_hash="0" * 64,
                     object_index={},
+                    rows_inserted=10,
+                    rows_deleted=2,
                 )
             ]
         )
@@ -144,6 +152,8 @@ def test_metadata_constraints_object_ids_hashes(local_engine_empty):
                     insertion_hash="0" * 64,
                     deletion_hash="broken",
                     object_index={},
+                    rows_inserted=10,
+                    rows_deleted=2,
                 )
             ]
         )
@@ -163,6 +173,8 @@ def test_metadata_constraints_table_objects(local_engine_empty):
                 insertion_hash="0" * 64,
                 deletion_hash="0" * 64,
                 object_index={},
+                rows_inserted=10,
+                rows_deleted=2,
             )
         ]
     )
@@ -206,6 +218,8 @@ def test_large_api_calls(unprivileged_pg_repo):
         insertion_hash="0" * 64,
         deletion_hash="0" * 64,
         object_index={"bloom": [42, "A" * 65536]},
+        rows_inserted=10,
+        rows_deleted=2,
     )
 
     with pytest.raises(ValueError) as e:
@@ -227,6 +241,8 @@ def test_large_api_calls(unprivileged_pg_repo):
             insertion_hash="0" * 64,
             deletion_hash="0" * 64,
             object_index={"bloom": [42, "A" * 1024]},
+            rows_inserted=42,
+            rows_deleted=0,
         )
         for i in range(1000)
     ]
