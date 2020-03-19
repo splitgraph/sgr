@@ -361,6 +361,7 @@ class Repository:
         :param extra_indexes: Dictionary of {table: index_type: column: index_specific_kwargs}.
         :param in_fragment_order: Dictionary of {table: list of columns}. If specified, will
         sort the data inside each chunk by this/these key(s) for each table.
+
         :return: The newly created Image object.
         """
 
