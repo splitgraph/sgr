@@ -148,6 +148,7 @@ def test_commandline_basics(pg_repo_local):
     assert new_head.get_table("fruits").get_size() == 260
     result = runner.invoke(table_c, [str(pg_repo_local) + ":" + new_head.image_hash[:20], "fruits"])
     assert "Size: 260.00 B" in result.output
+    assert "Rows: 2" in result.output
     assert "fruit_id (integer)" in result.output
     assert new_head.get_table("fruits").objects[0] in result.output
     assert "Name of the fruit" in result.output
@@ -183,6 +184,8 @@ def test_object_info(local_engine_empty, remote_engine_registry, unprivileged_re
             "range": {"col_1": [10, 20]},
             "bloom": {"col_1": [7, "uSP6qzHHDqVq/qHMlqrAoHhpxEuZ08McrB0J6c9M"]},
         },
+        1000,
+        500,
     )
     local_engine_empty.run_sql(q, base_1_meta)
     # Add this object to the remote engine too to check that we can run
@@ -191,7 +194,19 @@ def test_object_info(local_engine_empty, remote_engine_registry, unprivileged_re
     remote_engine_registry.commit()
 
     local_engine_empty.run_sql(
-        q, (patch_1, "FRAG", "ns1", 6789, dt, "0" * 64, "0" * 64, {"range": {"col_1": [10, 20]}})
+        q,
+        (
+            patch_1,
+            "FRAG",
+            "ns1",
+            6789,
+            dt,
+            "0" * 64,
+            "0" * 64,
+            {"range": {"col_1": [10, 20]}},
+            1000,
+            500,
+        ),
     )
     local_engine_empty.run_sql(
         q,
@@ -204,6 +219,8 @@ def test_object_info(local_engine_empty, remote_engine_registry, unprivileged_re
             "0" * 64,
             "0" * 64,
             {"range": {"col_1": [10, 20], "col_2": ["bla", "ble"]}},
+            420,
+            0,
         ),
     )
     # base_1: external, cached locally
@@ -232,7 +249,9 @@ Namespace: ns1
 Format: FRAG
 Size: 12.06 KiB
 Created: 2019-01-01 00:00:00
+Rows inserted: 1000
 Insertion hash: {"0" * 64}
+Rows deleted: 500
 Deletion hash: {"0" * 64}
 Column index:
   col_1: [10, 20]

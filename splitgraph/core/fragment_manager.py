@@ -265,6 +265,8 @@ class FragmentManager(MetadataManager):
         insertion_hash: str,
         deletion_hash: str,
         table_schema: TableSchema,
+        rows_inserted: int,
+        rows_deleted: int,
         changeset: Optional[Changeset] = None,
         extra_indexes: Optional[ExtraIndexInfo] = None,
     ) -> None:
@@ -297,6 +299,8 @@ class FragmentManager(MetadataManager):
                     insertion_hash=insertion_hash,
                     deletion_hash=deletion_hash,
                     object_index=object_index,
+                    rows_inserted=rows_inserted,
+                    rows_deleted=rows_deleted,
                 )
             ]
         )
@@ -324,7 +328,9 @@ class FragmentManager(MetadataManager):
             rows.append(row)
         return rows
 
-    def _hash_old_changeset_values(self, changeset: Any, table_schema: TableSchema) -> Digest:
+    def _hash_old_changeset_values(
+        self, changeset: Any, table_schema: TableSchema
+    ) -> Tuple[Digest, int]:
         """
         Since we're not storing the values of the deleted rows (and we don't have access to them in the staging table
         because they've been deleted), we have to hash them in Python. This involves mimicking the return value of
@@ -332,11 +338,11 @@ class FragmentManager(MetadataManager):
 
         :param changeset: Map PK -> (upserted/deleted, Map col -> old val)
         :param table_schema: Table schema
-        :return: `Digest` object.
+        :return: `Digest` object and the number of deleted rows.
         """
         rows = self._extract_deleted_rows(changeset, table_schema)
         if not rows:
-            return Digest.empty()
+            return Digest.empty(), 0
 
         # Horror alert: we hash newly created tables by essentially calling digest(row::text) in Postgres and
         # we don't really know how it turns some types to strings. So instead we give Postgres all of its deleted
@@ -353,7 +359,10 @@ class FragmentManager(MetadataManager):
         digests = self.object_engine.run_sql(
             query, [o for row in rows for o in row], return_shape=ResultShape.MANY_ONE
         )
-        return reduce(operator.add, map(Digest.from_memoryview, digests), Digest.empty())
+        return (
+            reduce(operator.add, map(Digest.from_memoryview, digests), Digest.empty()),
+            len(digests),
+        )
 
     def _store_changesets(
         self,
@@ -382,9 +391,13 @@ class FragmentManager(MetadataManager):
             # avoid storing the object altogether if it's a duplicate.
             tmp_object_id = self._store_changeset(sub_changeset, table.table_name, schema)
 
-            deletion_hash, insertion_hash, object_id = self._get_patch_fragment_hashes(
-                sub_changeset, table, tmp_object_id
-            )
+            (
+                deletion_hash,
+                insertion_hash,
+                object_id,
+                rows_inserted,
+                rows_deleted,
+            ) = self._get_patch_fragment_hashes_stats(sub_changeset, table, tmp_object_id)
 
             object_ids.append(object_id)
 
@@ -424,6 +437,8 @@ class FragmentManager(MetadataManager):
                         table_schema=table.table_schema,
                         changeset=sub_changeset,
                         extra_indexes=extra_indexes,
+                        rows_inserted=rows_inserted,
+                        rows_deleted=rows_deleted,
                     )
                 except UniqueViolation:
                     logging.info(
@@ -435,18 +450,20 @@ class FragmentManager(MetadataManager):
 
         return object_ids
 
-    def _get_patch_fragment_hashes(
+    def _get_patch_fragment_hashes_stats(
         self, sub_changeset: Any, table: "Table", tmp_object_id: str
-    ) -> Tuple[Digest, Digest, str]:
+    ) -> Tuple[Digest, Digest, str, int, int]:
         # Digest the rows.
-        deletion_hash = self._hash_old_changeset_values(sub_changeset, table.table_schema)
-        insertion_hash = self.calculate_fragment_insertion_hash(
+        deletion_hash, rows_deleted = self._hash_old_changeset_values(
+            sub_changeset, table.table_schema
+        )
+        insertion_hash, rows_inserted = self.calculate_fragment_insertion_hash_stats(
             "pg_temp", tmp_object_id, table.table_schema
         )
         content_hash = (insertion_hash - deletion_hash).hex()
         schema_hash = self._calculate_schema_hash(table.table_schema)
         object_id = "o" + sha256((content_hash + schema_hash).encode("ascii")).hexdigest()[:-2]
-        return deletion_hash, insertion_hash, object_id
+        return deletion_hash, insertion_hash, object_id, rows_inserted, rows_deleted
 
     def _store_changeset(self, sub_changeset: Any, table: str, schema: str) -> str:
         tmp_object_id = get_temporary_table_id()
@@ -457,14 +474,14 @@ class FragmentManager(MetadataManager):
         )
         return tmp_object_id
 
-    def calculate_fragment_insertion_hash(
+    def calculate_fragment_insertion_hash_stats(
         self, schema: str, table: str, table_schema: TableSchema = None
-    ) -> Digest:
+    ) -> Tuple[Digest, int]:
         """
         Calculate the homomorphic hash of just the rows that a given fragment inserts
         :param schema: Schema the fragment is stored in.
         :param table: Name of the table the fragment is stored in.
-        :return: A `Digest` object
+        :return: A `Digest` object and the number of inserted rows
         """
         table_schema = table_schema or self.object_engine.get_full_table_schema(schema, table)
         columns_sql = SQL(",").join(
@@ -482,7 +499,7 @@ class FragmentManager(MetadataManager):
         insertion_hash = reduce(
             operator.add, (Digest.from_memoryview(r) for r in row_digests), Digest.empty()
         )
-        return insertion_hash
+        return insertion_hash, len(row_digests)
 
     def record_table_as_patch(
         self,
@@ -635,7 +652,7 @@ class FragmentManager(MetadataManager):
         table_schema: Optional[TableSchema] = None,
         chunk_id_col: Optional[str] = None,
         chunk_id: Optional[int] = None,
-    ) -> str:
+    ) -> Tuple[str, int]:
         """
         Calculates the homomorphic hash of table contents.
 
@@ -644,7 +661,8 @@ class FragmentManager(MetadataManager):
         :param table_schema: Schema of the table
         :param chunk_id_col: Column the table is partitioned on
         :param chunk_id: Column value to get rows from
-        :return: A 64-character (256-bit) hexadecimal string with the content hash of the table.
+        :return: A 64-character (256-bit) hexadecimal string with the content hash of the table
+            and the number of rows in the hash.
         """
         table_schema = table_schema or self.object_engine.get_full_table_schema(schema, table)
         digest_query = (
@@ -663,7 +681,10 @@ class FragmentManager(MetadataManager):
             digest_query, args, return_shape=ResultShape.MANY_ONE
         )
 
-        return reduce(operator.add, (Digest.from_memoryview(r) for r in row_digests)).hex()
+        return (
+            reduce(operator.add, (Digest.from_memoryview(r) for r in row_digests)).hex(),
+            len(row_digests),
+        )
 
     def create_base_fragment(
         self,
@@ -693,7 +714,7 @@ class FragmentManager(MetadataManager):
 
         schema_hash = self._calculate_schema_hash(table_schema)
         # Get content hash for this chunk.
-        content_hash = self.calculate_content_hash(
+        content_hash, rows_inserted = self.calculate_content_hash(
             source_schema, source_table, table_schema, chunk_id_col=chunk_id_col, chunk_id=chunk_id
         )
 
@@ -738,6 +759,8 @@ class FragmentManager(MetadataManager):
                     deletion_hash="0" * 64,
                     table_schema=table_schema,
                     extra_indexes=extra_indexes,
+                    rows_inserted=rows_inserted,
+                    rows_deleted=0,
                 )
             except UniqueViolation:
                 # Someone registered this object (perhaps a concurrent pull) already.

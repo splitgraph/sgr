@@ -83,6 +83,11 @@ class QueryPlan:
         self.filtered_objects = self.object_manager.filter_fragments(
             self.required_objects, table, quals
         )
+        # Estimate the number of rows in the filtered objects
+        self.estimated_rows = [
+            o.rows_inserted - o.rows_deleted
+            for o in self.object_manager.get_object_meta(self.filtered_objects).values()
+        ]
         self.tracer.log("filter_objects")
 
 
@@ -429,6 +434,32 @@ class Table:
             int,
             self.repository.engine.run_sql(
                 select("get_table_size", table_args="(%s,%s,%s,%s)", schema=SPLITGRAPH_API_SCHEMA),
+                (
+                    self.repository.namespace,
+                    self.repository.repository,
+                    self.image.image_hash,
+                    self.table_name,
+                ),
+                return_shape=ResultShape.ONE_ONE,
+            )
+            or 0,
+        )
+
+    def get_length(self) -> int:
+        """
+        Get the number of rows in this table.
+
+        This might be smaller than the total number of rows in all objects belonging to this
+        table as some objects might overwrite each other.
+
+        :return: Number of rows in table
+        """
+        return cast(
+            int,
+            self.repository.engine.run_sql(
+                select(
+                    "get_table_length", table_args="(%s,%s,%s,%s)", schema=SPLITGRAPH_API_SCHEMA
+                ),
                 (
                     self.repository.namespace,
                     self.repository.repository,

@@ -27,6 +27,8 @@ OBJECT_COLS = [
     "insertion_hash",
     "deletion_hash",
     "index",
+    "rows_inserted",
+    "rows_deleted",
 ]
 
 
@@ -41,6 +43,8 @@ class Object(NamedTuple):
     insertion_hash: str
     deletion_hash: str
     object_index: Dict[str, Any]  # Clashes with NamedTuple's "index"
+    rows_inserted: int
+    rows_deleted: int
 
 
 class MetadataManager:

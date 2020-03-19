@@ -66,11 +66,13 @@ def test_base_fragment_hashing(pg_repo_local):
 
     om = pg_repo_local.objects
 
-    insertion_hash = om.calculate_fragment_insertion_hash(
+    insertion_hash_digest, rows_inserted = om.calculate_fragment_insertion_hash_stats(
         SPLITGRAPH_META_SCHEMA, expected_object
-    ).hex()
+    )
+    insertion_hash = insertion_hash_digest.hex()
     assert insertion_hash == "c01cce6c17bde5b999147b43c6133b11872298842a7388a0b82aee834e9454b0"
     assert insertion_hash == om.get_object_meta([expected_object])[expected_object].insertion_hash
+    assert rows_inserted == 2
 
     schema_hash = om._calculate_schema_hash(fruits.table_schema)
     assert schema_hash == "3e022317e6dd31edb92c18a464dab55750ca16d5f4f111d383b1bdbc53ded5b5"
@@ -80,7 +82,7 @@ def test_base_fragment_hashing(pg_repo_local):
 
     # Check the actual content hash of the final table -- in this case, since it only consists of one
     # object that doesn't replace anything, it should be equal to the insertion hash of that object.
-    assert om.calculate_content_hash(pg_repo_local.to_schema(), "fruits") == insertion_hash
+    assert om.calculate_content_hash(pg_repo_local.to_schema(), "fruits") == (insertion_hash, 2)
 
 
 def test_base_fragment_reused(pg_repo_local):
@@ -155,7 +157,9 @@ def test_diff_fragment_hashing(pg_repo_local):
 
     om = pg_repo_local.objects
 
-    insertion_hash = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, expected_object)
+    insertion_hash, rows_inserted = om.calculate_fragment_insertion_hash_stats(
+        SPLITGRAPH_META_SCHEMA, expected_object
+    )
     assert (
         insertion_hash.hex() == "71a5c6d67b2466cb57cb8c05aa39400af342dfd4027ae5f333c97265710da844"
     )
@@ -163,6 +167,7 @@ def test_diff_fragment_hashing(pg_repo_local):
         insertion_hash.hex()
         == om.get_object_meta([expected_object])[expected_object].insertion_hash
     )
+    assert rows_inserted == 1
 
     # The homomorphic hash of all deleted rows: we can't yet access it directly but we can recalculate it
     # since we know which rows were deleted
@@ -190,7 +195,10 @@ def test_diff_fragment_hashing(pg_repo_local):
 
     # Check the actual content hash of the final table. Since the whole of the old fragment got replaced,
     # the hash should be old_insertion_hash - deletion_hash + new_insertion_hash == new_insertion_hash
-    assert om.calculate_content_hash(pg_repo_local.to_schema(), "fruits") == insertion_hash.hex()
+    assert om.calculate_content_hash(pg_repo_local.to_schema(), "fruits") == (
+        insertion_hash.hex(),
+        1,
+    )
 
 
 def test_diff_fragment_hashing_long_chain(local_engine_empty):
@@ -227,19 +235,26 @@ def test_diff_fragment_hashing_long_chain(local_engine_empty):
     v3 = OUTPUT.head.get_table("test")
 
     om = OUTPUT.objects
-    final_hash = OUTPUT.objects.calculate_content_hash(OUTPUT.to_schema(), "test")
+    final_hash, rows_inserted = OUTPUT.objects.calculate_content_hash(OUTPUT.to_schema(), "test")
+    assert rows_inserted == 4
 
     schema_hash = om._calculate_schema_hash(base.table_schema)
 
     # Check that the final hash can be assembled out of intermediate objects' insertion and deletion hashes
 
-    ins_hash_base = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, base.objects[0])
+    ins_hash_base, rows_inserted = om.calculate_fragment_insertion_hash_stats(
+        SPLITGRAPH_META_SCHEMA, base.objects[0]
+    )
     assert (
         "o" + sha256((ins_hash_base.hex() + schema_hash).encode("ascii")).hexdigest()[:-2]
         == base.objects[-1]
     )
+    assert rows_inserted == 4
 
-    ins_hash_v1 = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, v1.objects[-1])
+    ins_hash_v1, rows_inserted = om.calculate_fragment_insertion_hash_stats(
+        SPLITGRAPH_META_SCHEMA, v1.objects[-1]
+    )
+    assert rows_inserted == 1
 
     # timestamp cast to text in a tuple is wrapped with double quotes in PG.
     # As long as hashing is consistent (this happens with all engines no matter what their conventions are),
@@ -260,7 +275,9 @@ def test_diff_fragment_hashing_long_chain(local_engine_empty):
         == v1.objects[-1]
     )
 
-    ins_hash_v2 = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, v2.objects[-1])
+    ins_hash_v2, rows_inserted = om.calculate_fragment_insertion_hash_stats(
+        SPLITGRAPH_META_SCHEMA, v2.objects[-1]
+    )
     del_hash_v2 = Digest.from_hex(
         sha256('("2019-01-02 02:02:02.222",2,two,2.2)'.encode("ascii")).hexdigest()
     )
@@ -271,12 +288,15 @@ def test_diff_fragment_hashing_long_chain(local_engine_empty):
         + sha256(((ins_hash_v2 - del_hash_v2).hex() + schema_hash).encode("ascii")).hexdigest()[:-2]
         == v2.objects[-1]
     )
+    assert rows_inserted == 1
 
     v2_meta = om.get_object_meta(v2.objects)[v2.objects[-1]]
     assert ins_hash_v2.hex() == v2_meta.insertion_hash
     assert del_hash_v2.hex() == v2_meta.deletion_hash
 
-    ins_hash_v3 = om.calculate_fragment_insertion_hash(SPLITGRAPH_META_SCHEMA, v3.objects[-1])
+    ins_hash_v3, rows_inserted = om.calculate_fragment_insertion_hash_stats(
+        SPLITGRAPH_META_SCHEMA, v3.objects[-1]
+    )
     del_hash_v3 = Digest.from_hex(
         sha256('("2019-01-02 02:02:02.222",42,UPDATED,2.2)'.encode("ascii")).hexdigest()
     )
@@ -289,6 +309,7 @@ def test_diff_fragment_hashing_long_chain(local_engine_empty):
     v3_meta = om.get_object_meta(v3.objects)[v3.objects[-1]]
     assert ins_hash_v3.hex() == v3_meta.insertion_hash
     assert del_hash_v3.hex() == v3_meta.deletion_hash
+    assert rows_inserted == 1
 
     assert (
         ins_hash_base
