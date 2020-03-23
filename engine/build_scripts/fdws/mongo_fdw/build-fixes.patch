@@ -1,3 +1,15 @@
+diff --git a/Makefile.meta b/Makefile.meta
+index b696181..6b02bad 100644
+--- a/Makefile.meta
++++ b/Makefile.meta
+@@ -42,7 +42,3 @@ include $(PGXS)
+ ifndef MAJORVERSION
+     MAJORVERSION := $(basename $(VERSION))
+ endif
+-
+-ifeq (,$(findstring $(MAJORVERSION), 9.3 9.4 9.5 9.6 10.0 11.0))
+-    $(error PostgreSQL 9.3, 9.4, 9.5, 9.6 10.0 or 11.0 is required to compile this extension)
+-endif
 diff --git a/autogen.sh b/autogen.sh
 index 9e068f3..16d781d 100755
 --- a/autogen.sh
@@ -26,3 +38,52 @@ index 9e068f3..16d781d 100755
  }
  
  ###
+diff --git a/mongo_fdw.c b/mongo_fdw.c
+index 2d07473..4ba51b8 100644
+--- a/mongo_fdw.c
++++ b/mongo_fdw.c
+@@ -22,6 +22,7 @@
+ #include "mongo_query.h"
+
+ #include "access/reloptions.h"
++#include "access/table.h"
+ #include "catalog/pg_type.h"
+ #include "commands/defrem.h"
+ #include "commands/explain.h"
+@@ -57,7 +58,7 @@
+ #include "optimizer/planmain.h"
+ #include "optimizer/prep.h"
+ #include "optimizer/restrictinfo.h"
+-#include "optimizer/var.h"
++#include "optimizer/optimizer.h"
+ #include "parser/parsetree.h"
+ #include "utils/builtins.h"
+ #include "utils/guc.h"
+dif f --git a/mongo_fdw.h b/mongo_fdw.h
+index d5dd1a7..d727445 100644
+--- a/mongo_fdw.h
++++ b/mongo_fdw.h
+@@ -33,7 +33,7 @@
+ #include "catalog/pg_foreign_table.h"
+ #include "utils/datetime.h"
+ #include "nodes/pg_list.h"
+-#include "nodes/relation.h"
++#include "nodes/pathnodes.h"
+ #include "utils/timestamp.h"
+ #include "access/reloptions.h"
+ #include "catalog/pg_type.h"
+diff --git a/mongo_query.c b/mongo_query.c
+index cff6eeb..3e06863 100644
+--- a/mongo_query.c
++++ b/mongo_query.c
+@@ -33,8 +33,8 @@
+
+ #include "catalog/pg_type.h"
+ #include "nodes/makefuncs.h"
+-#include "nodes/relation.h"
+-#include "optimizer/var.h"
++#include "nodes/pathnodes.h"
++#include "optimizer/optimizer.h"
+ #include "utils/array.h"
+ #include "utils/builtins.h"
+ #include "utils/date.h"
