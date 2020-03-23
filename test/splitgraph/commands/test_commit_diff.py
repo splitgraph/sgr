@@ -695,7 +695,7 @@ def _write_multitype_dataset():
 
     OUTPUT.run_sql(
         """INSERT INTO test (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q)
-        VALUES(1, 2, 3, 3.54, 876.563452345, 1.23, 'test', 'testtesttesttest', 'testtesttesttesttesttesttest',
+        VALUES(1, 2, 3, 3.54, 876.563, 1.23, 'test', 'testtesttesttest', 'testtesttesttesttesttesttest',
         B'001110010101010', '2013-11-02 17:30:52', '2013-02-04', true, '{ "a": 123 }',
         'Old Old Parr'::tsvector, 'a_test_range');"""
     )
@@ -744,25 +744,23 @@ def test_various_types(local_engine_empty):
             "a_test_range",
         ),
         (
-            (
-                2,
-                15,
-                22,
-                1,
-                Decimal("-1.230"),
-                9.8811,
-                0.23,
-                "abcd",
-                "0testtesttesttes",
-                "0testtesttesttesttesttesttes",
-                "111110011111111",
-                dt(2016, 1, 1, 1, 1, 5),
-                date(2011, 11, 11),
-                False,
-                {"b": 456},
-                "'AAA' 'Bb'",
-                "z_test_range",
-            )
+            2,
+            15,
+            22,
+            1,
+            Decimal("-1.230"),
+            9.8811,
+            0.23,
+            "abcd",
+            "0testtesttesttes",
+            "0testtesttesttesttesttesttes",
+            "111110011111111",
+            dt(2016, 1, 1, 1, 1, 5),
+            date(2011, 11, 11),
+            False,
+            {"b": 456},
+            "'AAA' 'Bb'",
+            "z_test_range",
         ),
     ]
 

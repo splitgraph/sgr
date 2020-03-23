@@ -10,7 +10,10 @@
 ##### toolchain
 #####
 
-FROM postgres:11.7 AS toolchain
+FROM postgres:12.2 AS toolchain
+
+# Add Debian bullseye (testing) repo since it has Python 3.8 and postgresql-plpython3-12
+RUN echo "deb http://deb.debian.org/debian bullseye main" >> /etc/apt/sources.list.d/debian-bullseye.list
 
 RUN apt-get update -qq && \
     apt-get install -y --allow-downgrades \
@@ -30,27 +33,34 @@ RUN apt-get update -qq && \
         libmongoc-1.0.0 \
         libmongoc-dev \
         protobuf-c-compiler \
-        libprotobuf-c0-dev \
-        zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev \
+        libprotobuf-c-dev \
+        libpython3.8-dev \
+        python3.8 \
+        python3-setuptools \
         cmake && \
     rm -rf /var/lib/apt/lists/*
+
+# python3.8 executable required by Multicorn to install itself
+# python3-setuptools also needed by Multicorn and it pulls in python3.7 but
+# we'll get rid of all this junk in the next build stage.
+
+# Set locale to C instead of en-US, Postgres initdb breaks with default
+# locale otherwise + we get build warnings for FDWs.
+ENV LANG C.UTF-8
+ENV LC_ALL C.UTF-8
 
 # Fix taken from https://github.com/f-secure-foundry/usbarmory-debian-base_image/issues/9
 RUN mkdir ~/.gnupg && echo "disable-ipv6" >> ~/.gnupg/dirmngr.conf && \
     apt-key adv --homedir ~/.gnupg --keyserver hkp://keyserver.ubuntu.com --recv-keys 5072E1F5 && \
-    echo "deb http://repo.mysql.com/apt/debian/ stretch mysql-8.0" > /etc/apt/sources.list.d/mysql.list && \
+    echo "deb http://repo.mysql.com/apt/debian/ buster mysql-8.0" > /etc/apt/sources.list.d/mysql.list && \
     apt-get update -qq && apt-get install -y libmysqlclient-dev && rm -rf /var/lib/apt/lists/*
 
 # Build scripts for subsequent FDW builder images
 RUN mkdir -p /build
 
-# Also build and install Python
-COPY ./engine/build_scripts/build_python.sh /build/
-RUN /build/build_python.sh
-
 RUN ldconfig
 
-# Output root for the FDW builders (e.g. /output/root/usr/lib/postgresql/11/extensions...)
+# Output root for the FDW builders (e.g. /output/root/usr/lib/postgresql/12/extensions...)
 RUN mkdir -p /output/root
 
 #####
@@ -77,7 +87,7 @@ RUN /build/build_multicorn.sh
 ##### mongo_fdw
 #####
 
-FROM toolchain AS builder_mongo
+FROM toolchain AS builder_mongo_fdw
 COPY ./engine/build_scripts/fdws/mongo_fdw /build
 RUN /build/build_mongo_fdw.sh
 
@@ -86,7 +96,7 @@ RUN /build/build_mongo_fdw.sh
 ##### mysql_fdw
 #####
 
-FROM toolchain AS builder_mysql
+FROM toolchain AS builder_mysql_fdw
 COPY ./engine/build_scripts/fdws/mysql_fdw /build
 RUN /build/build_mysql_fdw.sh
 
@@ -95,26 +105,46 @@ RUN /build/build_mysql_fdw.sh
 ##### splitgraph/engine
 #####
 
-FROM postgres:11.7
+FROM postgres:12.2
 
 # We still have to install some runtime libraries here, but no dev.
 
+RUN echo "deb http://deb.debian.org/debian bullseye main" >> /etc/apt/sources.list.d/debian-bullseye.list
 RUN apt-get update -qq && \
     apt-get install -y \
         curl \
         libprotobuf-c1 \
         libmongoc-1.0-0 \
+        libpython3.8 \
+        python3.8 \
         wget && \
+    # Featuring a hack to install distutils + pip in a way that doesn't pull in all of py3.7 and apparmor
+    # (even though we get python3-distutils_3.8.2-2_all.deb, an actual install grabs all of that)
+    apt-get download python3-distutils && \
+    dpkg-deb -x python3-distutils*.deb / && \
+    curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
+    python3.8 get-pip.py && \
+    rm python3-distutils*.deb get-pip.py && \
+
+    # Same hack for plpython3 for pg12 that uses 3.8 rather than 3.7:
+    # normal apt install causes compat issues.
+    apt-get download -t bullseye postgresql-plpython3-12 && \
+    dpkg-deb -x postgresql-plpython3-12*.deb / && \
+    rm postgresql-plpython3-12*.deb && \
     rm -rf /var/lib/apt/lists/*
+
+# Set locale to C instead of en-US, Postgres initdb breaks with default
+# locale otherwise + we get build warnings for FDWs.
+ENV LANG C.UTF-8
+ENV LC_ALL C.UTF-8
 
 RUN mkdir ~/.gnupg && echo "disable-ipv6" >> ~/.gnupg/dirmngr.conf && \
     apt-key adv --homedir ~/.gnupg --keyserver hkp://keyserver.ubuntu.com --recv-keys 5072E1F5 && \
-    echo "deb http://repo.mysql.com/apt/debian/ stretch mysql-8.0" > /etc/apt/sources.list.d/mysql.list && \
+    echo "deb http://repo.mysql.com/apt/debian/ buster mysql-8.0" > /etc/apt/sources.list.d/mysql.list && \
     apt-get update -qq && apt-get install -y libmysqlclient-dev && rm -rf /var/lib/apt/lists/*
 
 # Extract and copy over all binaries from the builder containers
 
-COPY --from=toolchain /output/python /
 COPY --from=builder_cstore /output/root /
 
 # This is slightly sad: whilst multicorn's make install respects DESTDIR,
@@ -123,14 +153,14 @@ COPY --from=builder_cstore /output/root /
 
 COPY --from=builder_multicorn /output/root /
 COPY --from=builder_multicorn \
-    /usr/local/lib/python3.7/site-packages/easy-install.pth \
-    /usr/local/lib/python3.7/site-packages/easy-install.pth
+    /usr/local/lib/python3.8/dist-packages/easy-install.pth \
+    /usr/local/lib/python3.8/dist-packages/easy-install.pth
 COPY --from=builder_multicorn \
-    /usr/local/lib/python3.7/site-packages/multicorn-1.3.4.dev0-py3.7-linux-x86_64.egg/ \
-    /usr/local/lib/python3.7/site-packages/
+    /usr/local/lib/python3.8/dist-packages/multicorn-1.3.4.dev0-py3.8-linux-x86_64.egg \
+    /usr/local/lib/python3.8/dist-packages/multicorn-1.3.4.dev0-py3.8-linux-x86_64.egg
 
-COPY --from=builder_mongo /output/root /
-COPY --from=builder_mysql /output/root /
+COPY --from=builder_mongo_fdw /output/root /
+COPY --from=builder_mysql_fdw /output/root /
 
 RUN ldconfig
 
@@ -160,23 +190,6 @@ RUN mkdir /build
 COPY ./engine/build_scripts/build_splitgraph.sh /build/
 RUN /build/build_splitgraph.sh
 
-# pl/python
-# The postgresql-plpython3-11 in stretch (debian that the pg11 image is currently based on)
-# is built against python 3.5 whereas we want to use at least 3.6 and already build multicorn against it.
-# Building just plpython3 ourselves is non-trivial, as it requires
-# the whole Postgres source tree to be in place (can't just do a shallow clone
-# and build only that extension.)
-#
-# So, hack time, get the archive from debian sid and install just the
-# package itself without dependencies (deps are libc>=2.14 -- we have 2.24 -- and libpython3.7
-# which we compiled earlier)
-
-RUN wget http://security.debian.org/debian-security/pool/updates/main/p/postgresql-11/postgresql-plpython3-11_11.7-0+deb10u1_amd64.deb && \
-    echo "f25eea162ffcc1c0fd3c5295fe29b7127ca01c45fc27fd0149aa5ffe31a769bf  postgresql-plpython3-11_11.7-0+deb10u1_amd64.deb" | sha256sum -c - && \
-    dpkg --force-all -i postgresql-plpython3-11_11.7-0+deb10u1_amd64.deb
-# Fix to make the dpkg status file usable (so that APT doesn't fail on future installs in the container)
-RUN sed -i "s/Depends: postgresql-11 (= 11.7-0+deb10u1), libc6 (>= 2.14), libpython3.7 (>= 3.7.0)/Depends: /" -i /var/lib/dpkg/status
-
 # Copy the actual Splitgraph code over at this point.
 COPY ./splitgraph /splitgraph/splitgraph
 
@@ -186,11 +199,10 @@ COPY ./splitgraph /splitgraph/splitgraph
 
 ARG with_postgis
 RUN test -z "${with_postgis}" || (\
-    echo "deb http://deb.debian.org/debian stretch-backports main" >> /etc/apt/sources.list && \
     apt-get update -qq && \
-    apt-get install -t stretch-backports --no-install-recommends -y \
-        postgresql-11-postgis-2.5 \
-        postgresql-11-postgis-2.5-scripts && \
+    apt-get install -t bullseye --no-install-recommends -y \
+        postgresql-12-postgis-3 \
+        postgresql-12-postgis-3-scripts && \
     rm -rf /var/lib/apt/lists/* && \
     echo "CREATE EXTENSION postgis;" >> /docker-entrypoint-initdb.d/000_create_extensions.sql)
 
