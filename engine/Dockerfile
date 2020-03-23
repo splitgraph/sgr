@@ -1,3 +1,5 @@
+# syntax = docker/dockerfile:experimental
+
 # Multistage Dockerfile to build the Splitgraph engine: because of all the compilation of
 # FDWs/libraries needed, we have to download a few hundred MB of dev tooling which we don't
 # need at runtime. So, we define a single "toolchain" image, multiple images that build various
@@ -188,7 +190,7 @@ RUN mkdir -p /splitgraph/splitgraph && touch /splitgraph/splitgraph/__init__.py
 COPY poetry.lock pyproject.toml README.md /splitgraph/
 RUN mkdir /build
 COPY ./engine/build_scripts/build_splitgraph.sh /build/
-RUN /build/build_splitgraph.sh
+RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip /build/build_splitgraph.sh
 
 # Copy the actual Splitgraph code over at this point.
 COPY ./splitgraph /splitgraph/splitgraph
