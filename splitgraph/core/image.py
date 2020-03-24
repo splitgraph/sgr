@@ -479,5 +479,5 @@ def _prov_command_to_splitfile(
         return "FROM %s:%s" % (str(repo), source_replacement.get(repo, image_hash))
     if prov_type == "SQL":
         assert isinstance(prov_data, str)
-        return "SQL " + cast(str, prov_data).replace("\n", "\\\n")
+        return "SQL " + "{" + cast(str, prov_data).replace("}", "\\}") + "}"
     raise SplitGraphError("Cannot reconstruct provenance %s!" % prov_type)
