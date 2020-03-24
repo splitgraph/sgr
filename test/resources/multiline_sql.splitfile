@@ -1,0 +1,7 @@
+FROM test/pg_mount
+
+SQL {
+INSERT INTO FRUITS VALUES
+    (3, 'banana'),
+    (4, 'pineapple');
+}

@@ -37,7 +37,7 @@ def test_splitfile_recreate(local_engine_empty, pg_repo_remote_multitag):
         % pg_repo_remote_multitag.images["v1"].image_hash
         + "my_fruits, {SELECT * FROM vegetables WHERE name LIKE '%o'} AS o_vegetables, "
         "vegetables AS vegetables, fruits AS all_fruits",
-        "SQL CREATE TABLE test_table AS SELECT * FROM all_fruits",
+        "SQL {CREATE TABLE test_table AS SELECT * FROM all_fruits}",
     ]
 
 
@@ -48,9 +48,9 @@ def test_splitfile_recreate_custom_from(local_engine_empty, pg_repo_remote_multi
     # Parser strips newlines in sql but not the whitespace, so we have to reproduce the query here verbatim.
     assert recreated_commands == [
         "FROM test/pg_mount:%s" % pg_repo_remote_multitag.images["v1"].image_hash,
-        "SQL CREATE TABLE join_table AS SELECT fruit_id AS id, fruits.name AS fruit, "
+        "SQL {CREATE TABLE join_table AS SELECT fruit_id AS id, fruits.name AS fruit, "
         "vegetables.name AS vegetable                                 FROM fruits "
-        "JOIN vegetables                                ON fruit_id = vegetable_id",
+        "JOIN vegetables                                ON fruit_id = vegetable_id}",
     ]
 
 
@@ -127,3 +127,19 @@ def test_rerun_with_from_import(local_engine_empty, pg_repo_remote_multitag):
     # ov2_log: CREATE TABLE commit, then FROM v1, then the 00000.. commit
     assert ov1_log[2:] == ov2_log[2:]
     assert len(ov1_log) == 3
+
+
+def test_rerun_multiline_sql_roundtripping(pg_repo_local):
+    # Test that with a multiline SQL sgr rebuild doesn't create a new image
+    # when rebuilding the same one.
+    execute_commands(load_splitfile("multiline_sql.splitfile"), output=OUTPUT)
+
+    head = OUTPUT.head
+    expected_sql = "SQL {\nINSERT INTO FRUITS VALUES\n    (3, 'banana'),\n    (4, 'pineapple');\n}"
+
+    assert head.to_splitfile()[1] == expected_sql
+
+    rebuild_image(head, {})
+    head_v2 = OUTPUT.head
+    assert head_v2.to_splitfile()[1] == expected_sql
+    assert head_v2 == head
