@@ -29,14 +29,19 @@
 env:
   global:
     - COMPOSE_VERSION: '1.25.4'
-    - POETRY_VERSION: '1.0.3'
+    - POETRY_VERSION: '1.0.5'
     - DOCKER_REPO: splitgraph
     - DOCKER_ENGINE_IMAGE: engine
     - DOCKER_TAG: development
 
+stages:
+  - name: build_and_test
+  - name: build_binaries
+    if: tag IS present
+
 jobs:
   include:
-    - stage: Build engine and test on Linux
+    - stage: build_and_test
       language: python
       python:
         - '3.6'
@@ -100,7 +105,7 @@ jobs:
       before_deploy:
         # Travis runs before_deploy for every deploy provider (of which we have three)
         # and we don't want to re-record asciinema examples every time.
-        - test -z "$CI_BEFORE_DEPLOY_RUN" && ./.ci/before_deploy.sh || echo "before_deploy already run, skipping"
+        - test -z "$CI_BEFORE_DEPLOY_RUN" && ./.ci/before_deploy.sh
         - export CI_BEFORE_DEPLOY_RUN=1
       deploy:
         # Push Splitgraph package to PyPI
@@ -145,7 +150,7 @@ jobs:
     # image, this stage will wipe that directory from the cache (since just the pip cache will be
     # unpacked and packed again without the docker_images dir). So the choice is between a few
     # seconds lost to no pip cache and a minute lost to unpacking/repacking the engine.
-    - stage: Build and deploy single binary
+    - stage: build_binaries
       os: linux
       language: python
       python:
@@ -186,7 +191,7 @@ jobs:
           tags: true
           # Uncomment this to trigger deploys from all branches
           # all_branches: true
-    - stage: Build and deploy single binary
+    - stage: build_binaries
       os: osx
       language: sh
       # Travis OSX workers have "a" version of Python installed + pyenv
@@ -204,7 +209,7 @@ jobs:
         *before_deploy
       deploy:
         *deploy
-    - stage: Build and deploy single binary
+    - stage: build_binaries
       os: windows
       language: sh
       before_install:
