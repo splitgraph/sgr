@@ -109,7 +109,7 @@ def _get_plan_cache_key(quals: Optional[Quals], columns: Sequence[str]) -> Query
     return quals, columns
 
 
-def _merge_index_data(current_index, new_index):
+def merge_index_data(current_index: Dict[str, Any], new_index: Dict[str, Any]):
     for index_type, index_data in new_index.items():
         for col_name, col_index_data in index_data.items():
             if index_type not in current_index:
@@ -514,7 +514,7 @@ class Table:
                 )
 
                 # Update the index in-place and overwrite it
-                _merge_index_data(current_index, index_struct)
+                merge_index_data(current_index, index_struct)
 
         object_manager.register_objects(list(valid_objects.values()))
         return list(valid_objects)

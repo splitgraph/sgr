@@ -419,9 +419,10 @@ def test_multiengine_flow(
 
 
 def _get_chunk_groups(table):
-    pks = [c[1] for c in table.table_schema if c[3]]
+    pks = [c.name for c in table.table_schema if c.is_pk]
+    pk_types = [c.pg_type for c in table.table_schema if c.is_pk]
     chunk_boundaries = extract_min_max_pks(
-        table.repository.objects.object_engine, table.objects, pks
+        table.repository.objects.object_engine, table.objects, pks, pk_types
     )
     return get_chunk_groups(
         [(o, min_max[0], min_max[1]) for o, min_max in zip(table.objects, chunk_boundaries)]

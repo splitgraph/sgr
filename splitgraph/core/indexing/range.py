@@ -52,6 +52,15 @@ def _max(left: Optional[T], right: Optional[T]) -> Optional[T]:
     return right if left is None else (left if right is None else max(left, right))
 
 
+def _inject_collation(qual: str, ctype: str):
+    # On engines that have LC_COLLATE set to something like en_US, we still
+    # want string comparison to mimic C/Python since we rely on that order
+    # in range indexing.
+    if ctype in ("text", "varchar", "character varying", "char"):
+        return qual + ' COLLATE "C"'
+    return qual
+
+
 def _qual_to_index_clause(qual: Tuple[str, str, Any], ctype: str) -> Tuple[SQL, Tuple]:
     """Convert our internal qual format into a WHERE clause that runs against an object's index entry.
     Returns a Postgres clause (as a Composable) and a tuple of arguments to be mogrified into it."""
@@ -68,22 +77,35 @@ def _qual_to_index_clause(qual: Tuple[str, str, Any], ctype: str) -> Tuple[SQL, 
     # If the column has to be greater than (or equal to) X, it only might exist in objects
     # whose maximum value is greater than (or equal to) X.
     if qual_op in (">", ">="):
-        query += SQL("(index #>> '{{range,{},1}}')::" + ctype + "  " + qual_op + " %s").format(
-            (Identifier(column_name))
-        )
+        query += SQL(
+            _inject_collation("(index #>> '{{range,{},1}}'", ctype)
+            + ")::"
+            + ctype
+            + "  "
+            + qual_op
+            + " %s"
+        ).format((Identifier(column_name)))
         args.append(value)
     # Similar for smaller than, but here we check that the minimum value is smaller than X.
     elif qual_op in ("<", "<="):
-        query += SQL("(index #>> '{{range,{},0}}')::" + ctype + " " + qual_op + " %s").format(
-            (Identifier(column_name))
-        )
+        query += SQL(
+            _inject_collation("(index #>> '{{range,{},0}}'", ctype)
+            + ")::"
+            + ctype
+            + " "
+            + qual_op
+            + " %s"
+        ).format((Identifier(column_name)))
         args.append(value)
     elif qual_op == "=":
         query += SQL(
-            "%s BETWEEN (index #>> '{{range,{0},0}}')::"
-            + ctype
-            + " AND (index #>> '{{range,{0},1}}')::"
-            + ctype
+            _inject_collation(
+                "%s BETWEEN (index #>> '{{range,{0},0}}')::"
+                + ctype
+                + " AND (index #>> '{{range,{0},1}}')::"
+                + ctype,
+                ctype,
+            )
         ).format((Identifier(column_name)))
         args.append(value)
     # Currently, we ignore the LIKE (~~) qualifier since we can only make a judgement when the % pattern is at
@@ -137,13 +159,16 @@ def quals_to_sql(quals: Optional[Quals], column_types: Dict[str, str]) -> Tuple[
     return _quals_to_clause(quals, column_types, qual_to_clause=_qual_to_sql_clause)
 
 
-def extract_min_max_pks(engine: "PsycopgEngine", fragments: List[str], table_pks: List[str]) -> Any:
+def extract_min_max_pks(
+    engine: "PsycopgEngine", fragments: List[str], table_pks: List[str], table_pk_types: List[str]
+) -> Any:
     """
     Extract minimum/maximum PK values for given fragments.
 
     :param engine: Engine the objects live on
     :param fragments: IDs of objects
     :param table_pks: List of columns forming the table primary key
+    :param table_pk_types: List of types for table PK columns
     :return: List of min/max primary key for every object.
     """
 
@@ -156,16 +181,13 @@ def extract_min_max_pks(engine: "PsycopgEngine", fragments: List[str], table_pks
     # (2, 2)   <- pk1: min 2, max 2; pk2: min 2, max 2;
     #
     # Say we have a changeset doing UPDATE pk=(2,2). If we use the index by each part of the key separately,
-    # it fits both the first and the second chunk. This essentially means that chunks now overlap:
-    # we now have to apply chunk 2 (and everything inheriting from it) after chunk 1 (and everything that
-    # inherits from it) and make sure to attach the new fragment to chunk 2.
-    # This could be solved by including composite PKs in the index as well, not just individual columns.
-    # Currently, we assume the objects are local so doing this is mostly OK but that's a strong assumption
-    # (there isn't much preventing us from evicting objects once they've been used to materialize a table,
-    # so if we do that, we won't want to redownload them again just to find their boundaries).
+    # it fits both the first and the second chunk. This essentially means that chunks now overlap,
+    # so we'll be fetching/scanning through them when it might not be necessary.
 
     min_max = []
-    pk_sql = SQL(",").join(Identifier(p) for p in table_pks)
+    pk_sql = SQL(",").join(
+        Identifier(p) + SQL(_inject_collation("", t)) for p, t in zip(table_pks, table_pk_types)
+    )
     for fragment in fragments:
         query = (
             SQL("SELECT ")
@@ -179,7 +201,10 @@ def extract_min_max_pks(engine: "PsycopgEngine", fragments: List[str], table_pks
         )
         frag_max = engine.run_sql(
             query
-            + SQL(",").join(Identifier(p) + SQL(" DESC") for p in table_pks)
+            + SQL(",").join(
+                Identifier(p) + SQL(_inject_collation("", t) + " DESC")
+                for p, t in zip(table_pks, table_pk_types)
+            )
             + SQL(" LIMIT 1"),
             return_shape=ResultShape.ONE_MANY,
         )
@@ -219,7 +244,13 @@ def generate_range_index(
 
     logging.debug("Running range index on columns %s", columns_to_index)
     query = SQL("SELECT ") + SQL(",").join(
-        SQL("MIN({0}), MAX({0})").format(Identifier(c)) for c in columns_to_index
+        SQL(
+            _inject_collation("MIN({0}", column_types[c])
+            + "), "
+            + _inject_collation("MAX({0}", column_types[c])
+            + ")"
+        ).format(Identifier(c))
+        for c in columns_to_index
     )
     query += SQL(" FROM {}.{}").format(Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id))
     result = object_engine.run_sql(query, return_shape=ResultShape.ONE_MANY)
@@ -231,7 +262,9 @@ def generate_range_index(
     if len(object_pk) > 1:
         # Add the PK to the same index dict but prefix it with a dollar sign so that
         # it explicitly doesn't clash with any other columns.
-        index["$pk"] = extract_min_max_pks(object_engine, [object_id], object_pk)[0]
+        index["$pk"] = extract_min_max_pks(
+            object_engine, [object_id], object_pk, [column_types[c] for c in object_pk]
+        )[0]
     if changeset:
         # Expand the index ranges to include the old row values in this chunk.
         # Why is this necessary? Say we have a table of (key (PK), value) and a
