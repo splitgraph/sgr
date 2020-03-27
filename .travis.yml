@@ -105,7 +105,7 @@ jobs:
       before_deploy:
         # Travis runs before_deploy for every deploy provider (of which we have three)
         # and we don't want to re-record asciinema examples every time.
-        - test -z "$CI_BEFORE_DEPLOY_RUN" && ./.ci/before_deploy.sh
+        - if [ -z $CI_BEFORE_DEPLOY_RUN ]; then ./.ci/before_deploy.sh; fi
         - export CI_BEFORE_DEPLOY_RUN=1
       deploy:
         # Push Splitgraph package to PyPI
