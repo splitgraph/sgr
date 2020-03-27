@@ -110,7 +110,7 @@ BEGIN
         audit_row.row_data = row_to_json(NEW)::jsonb;
     ELSE
         RAISE EXCEPTION '[audit.if_modified_func] - Trigger func added as
-    	    trigger for unhandled case: %, %', TG_OP, TG_LEVEL;
+     	    trigger for unhandled case: %, %', TG_OP, TG_LEVEL;
         RETURN NULL;
     END IF;
     INSERT INTO audit.logged_actions
@@ -144,8 +144,8 @@ DECLARE
 BEGIN
     EXECUTE 'DROP TRIGGER IF EXISTS audit_trigger_row ON ' || target_table;
     _q_txt = 'CREATE TRIGGER audit_trigger_row AFTER INSERT OR UPDATE OR DELETE
-    	ON ' || target_table || ' FOR EACH ROW EXECUTE PROCEDURE
-    	audit.if_modified_func();';
+     	ON ' || target_table || ' FOR EACH ROW EXECUTE PROCEDURE
+     	audit.if_modified_func();';
     RAISE NOTICE '%', _q_txt;
     EXECUTE _q_txt;
 END;

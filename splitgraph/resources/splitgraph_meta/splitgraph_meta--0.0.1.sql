@@ -12,6 +12,10 @@ CREATE TABLE splitgraph_meta.images (
     PRIMARY KEY (namespace, repository, image_hash)
 );
 
+-- Create an index on the provenance field to allow reverse lookups.
+CREATE INDEX idx_image_provenance ON splitgraph_meta.images USING GIN
+    (provenance_data jsonb_path_ops);
+
 CREATE TABLE splitgraph_meta.tags (
     namespace varchar NOT NULL,
     repository varchar NOT NULL,

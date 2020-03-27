@@ -15,6 +15,13 @@ def test_provenance(local_engine_empty, pg_repo_remote_multitag):
         (pg_repo_remote_multitag, pg_repo_remote_multitag.images["v1"].image_hash)
     ]
 
+    # Check reverse provenance. Since the repository lives on the remote engine, we need to
+    # search for dependants on the local engine instead.
+    source = pg_repo_remote_multitag.images["v1"]
+    assert source.provenance(reverse=True, engine=local_engine_empty) == [
+        (OUTPUT, OUTPUT.head.image_hash)
+    ]
+
 
 def test_provenance_with_from(local_engine_empty, pg_repo_remote_multitag):
     execute_commands(load_splitfile("from_remote.splitfile"), params={"TAG": "v1"}, output=OUTPUT)
@@ -22,6 +29,11 @@ def test_provenance_with_from(local_engine_empty, pg_repo_remote_multitag):
 
     assert dependencies == [
         (pg_repo_remote_multitag, pg_repo_remote_multitag.images["v1"].image_hash)
+    ]
+
+    source = pg_repo_remote_multitag.images["v1"]
+    assert source.provenance(reverse=True, engine=local_engine_empty) == [
+        (OUTPUT, OUTPUT.head.image_hash)
     ]
 
 
