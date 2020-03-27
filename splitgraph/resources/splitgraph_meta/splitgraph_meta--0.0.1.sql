@@ -8,7 +8,6 @@ CREATE TABLE splitgraph_meta.images (
     parent_id varchar(64) CHECK (parent_id ~ '^[a-f0-9]{64}$' AND parent_id != image_hash),
     created timestamp,
     comment varchar(4096),
-    provenance_type varchar(10),
     provenance_data jsonb,
     PRIMARY KEY (namespace, repository, image_hash)
 );

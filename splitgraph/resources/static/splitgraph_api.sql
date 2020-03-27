@@ -85,7 +85,6 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_images (
             parent_id varchar,
             created timestamp,
             comment varchar,
-            provenance_type varchar,
             provenance_data jsonb
         )
         AS $$
@@ -95,7 +94,6 @@ BEGIN
         i.parent_id,
         i.created,
         i.comment,
-        i.provenance_type,
         i.provenance_data
     FROM splitgraph_meta.images i
     WHERE i.namespace = _namespace
@@ -119,7 +117,6 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_image (
             parent_id varchar,
             created timestamp,
             comment varchar,
-            provenance_type varchar,
             provenance_data jsonb
         )
         AS $$
@@ -129,7 +126,6 @@ BEGIN
         i.parent_id,
         i.created,
         i.comment,
-        i.provenance_type,
         i.provenance_data
     FROM splitgraph_meta.images i
     WHERE i.namespace = _namespace
@@ -189,9 +185,39 @@ $$
 LANGUAGE plpgsql
 SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 
+CREATE OR REPLACE FUNCTION splitgraph_api.get_image_dependencies (
+    _namespace varchar,
+    _repository varchar,
+    _image_hash varchar
+)
+    RETURNS TABLE (
+            namespace varchar,
+            repository varchar,
+            image_hash varchar
+        )
+        AS $$
+BEGIN
+    RETURN QUERY WITH p AS (
+        SELECT jsonb_array_elements(i.provenance_data) AS d
+        FROM splitgraph_meta.images i
+        WHERE i.namespace = _namespace
+            AND i.repository = _repository
+            AND i.image_hash = _image_hash
+)
+    SELECT DISTINCT (d ->> 'source_namespace')::character varying AS namespace,
+        (d ->> 'source')::character varying AS repository,
+        (d ->> 'source_hash')::character varying AS image_hash
+    FROM p
+    WHERE d ->> 'source_namespace' IS NOT NULL
+        AND d ->> 'source' IS NOT NULL;
+END
+$$
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+
 -- Consider merging writes to all tables into one big routine (e.g. also include a list of tables here, which
 -- will get added to the tables table)
--- add_image(namespace, repository, image_hash, parent_id, created, comment, provenance_type, provenance_data)
+-- add_image(namespace, repository, image_hash, parent_id, created, comment, provenance_data)
 CREATE OR REPLACE FUNCTION splitgraph_api.add_image (
     namespace varchar,
     repository varchar,
@@ -199,7 +225,6 @@ CREATE OR REPLACE FUNCTION splitgraph_api.add_image (
     parent_id varchar,
     created timestamp,
     comment varchar,
-    provenance_type varchar,
     provenance_data jsonb
 )
     RETURNS void
@@ -207,9 +232,9 @@ CREATE OR REPLACE FUNCTION splitgraph_api.add_image (
 BEGIN
     PERFORM splitgraph_api.check_privilege (namespace);
     INSERT INTO splitgraph_meta.images (namespace, repository, image_hash,
-	parent_id, created, comment, provenance_type, provenance_data)
+	parent_id, created, comment, provenance_data)
 	VALUES (namespace, repository, image_hash, parent_id, created, comment,
-	    provenance_type, provenance_data);
+	    provenance_data);
 END
 $$
 LANGUAGE plpgsql
@@ -398,9 +423,11 @@ BEGIN
     FOR UPDATE;
     IF NOT FOUND THEN
 	INSERT INTO splitgraph_meta.objects (object_id, format, namespace,
-	    size, created, insertion_hash, deletion_hash, index, rows_inserted, rows_deleted)
+	    size, created, insertion_hash, deletion_hash, INDEX, rows_inserted,
+	    rows_deleted)
 		VALUES (_object_id, _format, _namespace, _size, _created,
-		    _insertion_hash, _deletion_hash, _index, _rows_inserted, _rows_deleted);
+		    _insertion_hash, _deletion_hash, _index, _rows_inserted,
+		    _rows_deleted);
     ELSE
         PERFORM splitgraph_api.check_privilege (existing.namespace);
         UPDATE
@@ -411,9 +438,7 @@ BEGIN
             created = _created,
             insertion_hash = _insertion_hash,
             deletion_hash = _deletion_hash,
-            INDEX = _index,
-            rows_inserted = _rows_inserted,
-            rows_deleted = _rows_deleted
+            INDEX = _index, rows_inserted = _rows_inserted, rows_deleted = _rows_deleted
         WHERE object_id = _object_id;
     END IF;
 END

@@ -9,7 +9,7 @@ from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.image import IMAGE_COLS, Image
 from splitgraph.core.sql import select
-from splitgraph.core.types import ProvenanceData
+from splitgraph.core.types import ProvenanceLine
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import ImageNotFoundError
 
@@ -162,8 +162,7 @@ class ImageManager:
         image: str,
         created: Optional[datetime] = None,
         comment: Optional[str] = None,
-        provenance_type: Optional[str] = None,
-        provenance_data: Optional[ProvenanceData] = None,
+        provenance_data: Optional[List[ProvenanceLine]] = None,
     ) -> None:
         """
         Registers a new image in the Splitgraph image tree.
@@ -174,13 +173,11 @@ class ImageManager:
         :param image: Image hash
         :param created: Creation time (defaults to current timestamp)
         :param comment: Comment (defaults to empty)
-        :param provenance_type: Image provenance that can be used to rebuild the image
-            (one of None, FROM, MOUNT, IMPORT, SQL)
-        :param provenance_data: Extra provenance data (dictionary).
+        :param provenance_data: Provenance data that can be used to reconstruct the image.
         """
 
         self.engine.run_sql(
-            SQL("SELECT {}.add_image(%s, %s, %s, %s, %s, %s, %s, %s)").format(
+            SQL("SELECT {}.add_image(%s, %s, %s, %s, %s, %s, %s)").format(
                 Identifier(SPLITGRAPH_API_SCHEMA)
             ),
             (
@@ -190,7 +187,6 @@ class ImageManager:
                 parent_id,
                 created or datetime.now(),
                 comment,
-                provenance_type,
                 Json(provenance_data),
             ),
         )
@@ -204,7 +200,7 @@ class ImageManager:
         """
         now = datetime.now()
         self.engine.run_sql_batch(
-            SQL("SELECT {}.add_image(%s, %s, %s, %s, %s, %s, %s, %s)").format(
+            SQL("SELECT {}.add_image(%s, %s, %s, %s, %s, %s, %s)").format(
                 Identifier(SPLITGRAPH_API_SCHEMA)
             ),
             [
@@ -215,7 +211,6 @@ class ImageManager:
                     image.parent_id,
                     image.created or now,
                     image.comment,
-                    image.provenance_type,
                     Json(image.provenance_data),
                 )
                 for image in images

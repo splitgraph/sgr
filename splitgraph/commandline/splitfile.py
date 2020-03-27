@@ -62,17 +62,17 @@ def build_c(splitfile, args, output_repository):
 )
 @click.option(
     "-e",
-    "--error-on-end",
+    "--ignore-errors",
     required=False,
-    default=True,
+    default=False,
     is_flag=True,
-    help="If False, bases the recreated Splitfile on the last image where the provenance chain breaks",
+    help="If set, ignore commands that aren't reproducible (like MOUNT or custom commands)",
 )
-def provenance_c(image_spec, full, error_on_end):
+def provenance_c(image_spec, full, ignore_errors):
     """
     Reconstruct the provenance of an image.
 
-    This crawls the history of a Splitgraph image to produce a list of images that were used by the Splitfile
+    This inspects the image to produce a list of images that were used by the Splitfile
     that created it, or a Splitfile with the same effect.
 
     ``IMAGE_SPEC`` must be of the form ``[NAMESPACE/]REPOSITORY[:HASH_OR_TAG]``.
@@ -106,18 +106,18 @@ def provenance_c(image_spec, full, error_on_end):
     Will try to reconstruct the Splitfile that can be used to build this image. Since the FROM MOUNT command isn't
     reproducible (requires access to the original external database, which is a moving target), this will fail.
 
-    If ``-e`` is passed, this will base the image on the first image that can't be reproduced:
+    If ``-e`` is passed, this will emit information about irreproducible commands instead of failing.
 
         sgr provenance -ef my/repo
 
-        # Splitfile commands used to reconstruct my/repo:[hash of the second layer]
-        FROM my/repo:[hash_1]
+        # Splitfile commands used to reconstruct my/repo:[image_hash]
+        # Irreproducible Splitfile command of type MOUNT
         FROM noaa/climate:[hash_3] IMPORT {SELECT * FROM rainfall_data WHERE state = 'AZ'}
     """
     repository, image = image_spec
 
     if full:
-        splitfile_commands = image.to_splitfile(err_on_end=error_on_end)
+        splitfile_commands = image.to_splitfile(ignore_irreproducible=ignore_errors)
         click.echo(
             "# Splitfile commands used to recreate %s:%s" % (str(repository), image.image_hash)
         )

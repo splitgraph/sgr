@@ -6,7 +6,7 @@ import json
 from hashlib import sha256
 from importlib import import_module
 from random import getrandbits
-from typing import Callable, Dict, List, Optional, cast
+from typing import Callable, Dict, List, Optional, cast, Tuple
 
 from parsimonious.nodes import Node
 
@@ -27,6 +27,7 @@ from ._parsing import (
     extract_all_table_aliases,
     parse_custom_command,
 )
+from ..core.types import ProvenanceLine
 
 
 def _combine_hashes(hashes: List[str]) -> str:
@@ -90,6 +91,10 @@ def execute_commands(
     from splitgraph.commandline.common import Color, truncate_line
 
     node_list = parse_commands(commands, params=params)
+
+    # Record the internal structure of commands used to create the final image.
+    provenance: List[ProvenanceLine] = []
+
     try:
         for i, node in enumerate(node_list):
             print(
@@ -98,20 +103,28 @@ def execute_commands(
                 + Color.END
             )
             if node.expr_name == "from":
-                output = _execute_from(node, output)
+                output, maybe_provenance_line = _execute_from(node, output)
+                if maybe_provenance_line:
+                    provenance.append(maybe_provenance_line)
 
             elif node.expr_name == "import":
                 _initialize_output(output)
-                _execute_import(node, output)
+                provenance_line = _execute_import(node, output)
+                provenance.append(provenance_line)
 
             elif node.expr_name == "sql" or node.expr_name == "sql_file":
                 _initialize_output(output)
-                _execute_sql(node, output)
+                provenance_line = _execute_sql(node, output)
+                provenance.append(provenance_line)
 
             elif node.expr_name == "custom":
                 _initialize_output(output)
-                _execute_custom(node, output)
+                provenance_line = _execute_custom(node, output)
+                provenance.append(provenance_line)
+
+        output.head_strict.set_provenance(provenance)
         get_engine().commit()
+
     except Exception:
         if repo_created and len(output.images()) == 1:
             # As a corner case, if we created a repository and there's been
@@ -122,7 +135,7 @@ def execute_commands(
         raise
 
 
-def _execute_sql(node: Node, output: Repository) -> None:
+def _execute_sql(node: Node, output: Repository) -> ProvenanceLine:
     # Calculate the hash of the layer we are trying to create.
     # Since we handle the "input" hashing in the import step, we don't need to care about the sources here.
     # Later on, we could enhance the caching and base the hash of the command on the hashes of objects that
@@ -149,15 +162,17 @@ def _execute_sql(node: Node, output: Repository) -> None:
         print("Executing SQL...")
         output.run_sql(sql_command)
         output.commit(target_hash, comment=sql_command)
-        output.images.by_hash(target_hash).set_provenance("SQL", sql=sql_command)
 
     _checkout_or_calculate_layer(output, target_hash, _calc)
+    return {"type": "SQL", "sql": sql_command}
 
 
-def _execute_from(node: Node, output: Repository) -> Repository:
+def _execute_from(node: Node, output: Repository) -> Tuple[Repository, Optional[ProvenanceLine]]:
     interesting_nodes = extract_nodes(node, ["repo_source", "repository"])
     repo_source = get_first_or_none(interesting_nodes, "repo_source")
     output_node = get_first_or_none(interesting_nodes, "repository")
+    provenance: Optional[ProvenanceLine] = None
+
     if output_node:
         # AS (output) detected, change the current output repository to it.
         output = Repository.from_schema(output_node.match.group(0))
@@ -179,11 +194,17 @@ def _execute_from(node: Node, output: Repository) -> Repository:
             if source_repo.upstream:
                 source_repo.pull()
 
-        # Get the target snap ID from the source repo: otherwise, if the tag is, say, 'latest' and
+        # Get the target image hash from the source repo: otherwise, if the tag is, say, 'latest' and
         # the output has just had the base commit (000...) created in it, that commit will be the latest.
         clone(source_repo, local_repository=output, download_all=False)
-        output.images.by_hash(source_repo.images[tag_or_hash].image_hash).checkout()
-        output.head_strict.set_provenance("FROM", source=source_repo)
+        source_hash = source_repo.images[tag_or_hash].image_hash
+        output.images.by_hash(source_hash).checkout()
+        provenance = {
+            "type": "FROM",
+            "source_namespace": source_repo.namespace,
+            "source": source_repo.repository,
+            "source_hash": source_hash,
+        }
     else:
         # FROM EMPTY AS repository -- initializes an empty repository (say to create a table or import
         # the results of a previous stage in a multistage build.
@@ -191,16 +212,16 @@ def _execute_from(node: Node, output: Repository) -> Repository:
         # literally does nothing
         if not output_node:
             raise SplitfileError("FROM EMPTY without AS (repository) does nothing!")
-    return output
+    return output, provenance
 
 
-def _execute_import(node: Node, output: Repository) -> None:
+def _execute_import(node: Node, output: Repository) -> ProvenanceLine:
     interesting_nodes = extract_nodes(node, ["repo_source", "mount_source", "tables"])
     table_names, table_aliases, table_queries = extract_all_table_aliases(interesting_nodes[-1])
     if interesting_nodes[0].expr_name == "repo_source":
         # Import from a repository (local or remote)
         repository, tag_or_hash = parse_image_spec(interesting_nodes[0])
-        _execute_repo_import(
+        return _execute_repo_import(
             repository, table_names, tag_or_hash, output, table_aliases, table_queries
         )
     else:
@@ -213,14 +234,14 @@ def _execute_import(node: Node, output: Repository) -> None:
         conn_string = mount_nodes[1].match
         fdw_params = mount_nodes[2].match.group(0).replace("\\'", "'")  # Unescape the single quote
 
-        _execute_db_import(
+        return _execute_db_import(
             conn_string, fdw_name, fdw_params, table_names, output, table_aliases, table_queries
         )
 
 
 def _execute_db_import(
     conn_string, fdw_name, fdw_params, table_names, target_mountpoint, table_aliases, table_queries
-):
+) -> ProvenanceLine:
     mount_handler = get_mount_handler(fdw_name)
     tmp_mountpoint = Repository.from_schema(fdw_name + "_tmp_staging")
     tmp_mountpoint.delete()
@@ -246,7 +267,7 @@ def _execute_db_import(
             foreign_tables=True,
             table_queries=table_queries,
         )
-        target_mountpoint.images.by_hash(target_hash).set_provenance("MOUNT")
+        return {"type": "MOUNT"}
     finally:
         tmp_mountpoint.delete()
 
@@ -258,7 +279,7 @@ def _execute_repo_import(
     target_repository: Repository,
     table_aliases: List[str],
     table_queries: List[bool],
-) -> None:
+) -> ProvenanceLine:
     # Don't use the actual routine here as we want more control: clone the remote repo in order to turn
     # the tag into an actual hash
 
@@ -304,21 +325,22 @@ def _execute_repo_import(
                 target_hash=target_hash,
                 table_queries=table_queries,
             )
-            target_repository.images.by_hash(target_hash).set_provenance(
-                "IMPORT",
-                source_repository=repository,
-                source_hash=source_hash,
-                tables=table_names,
-                table_aliases=table_aliases,
-                table_queries=table_queries,
-            )
 
         _checkout_or_calculate_layer(target_repository, target_hash, _calc)
+        return {
+            "type": "IMPORT",
+            "source_namespace": repository.namespace,
+            "source": repository.repository,
+            "source_hash": source_hash,
+            "tables": table_names,
+            "table_aliases": table_aliases,
+            "table_queries": table_queries,
+        }
     finally:
         tmp_repo.delete()
 
 
-def _execute_custom(node: Node, output: Repository) -> None:
+def _execute_custom(node: Node, output: Repository) -> ProvenanceLine:
     assert output.head is not None
     command, args = parse_custom_command(node)
 
@@ -351,7 +373,7 @@ def _execute_custom(node: Node, output: Repository) -> None:
         try:
             output.images.by_hash(image_hash).checkout()
             print(" ---> Using cache")
-            return
+            return {"type": "CUSTOM"}
         except ImageNotFoundError:
             pass
 
@@ -368,7 +390,7 @@ def _execute_custom(node: Node, output: Repository) -> None:
     except ImageNotFoundError:
         # Full command as a commit comment
         output.commit(image_hash, comment=node.text)
-        # Worth storing provenance here anyway?
+    return {"type": "CUSTOM"}
 
 
 def rebuild_image(image: Image, source_replacement: Dict[Repository, str]) -> None:
@@ -379,6 +401,8 @@ def rebuild_image(image: Image, source_replacement: Dict[Repository, str]) -> No
     :param image: Image object
     :param source_replacement: A map that specifies replacement images/tags for repositories that the image depends on
     """
-    splitfile_commands = image.to_splitfile(err_on_end=False, source_replacement=source_replacement)
+    splitfile_commands = image.to_splitfile(
+        ignore_irreproducible=False, source_replacement=source_replacement
+    )
     # Params are supposed to be stored in the commands already (baked in) -- what if there's sensitive data there?
     execute_commands("\n".join(splitfile_commands), output=image.repository)
