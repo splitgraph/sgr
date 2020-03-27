@@ -185,6 +185,8 @@ $$
 LANGUAGE plpgsql
 SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 
+-- get_image_dependencies(namespace, repository, image_hash): get all images
+-- that this Splitfile-built image depends on.
 CREATE OR REPLACE FUNCTION splitgraph_api.get_image_dependencies (
     _namespace varchar,
     _repository varchar,
@@ -210,6 +212,33 @@ BEGIN
     FROM p
     WHERE d ->> 'source_namespace' IS NOT NULL
         AND d ->> 'source' IS NOT NULL;
+END
+$$
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+
+-- get_image_dependants(namespace, repository, image_hash): get all images in this
+-- repository that were built by a Splitfile and used this image through a FROM command.
+CREATE OR REPLACE FUNCTION splitgraph_api.get_image_dependants (
+    _namespace varchar,
+    _repository varchar,
+    _image_hash varchar
+)
+    RETURNS TABLE (
+            namespace varchar,
+            repository varchar,
+            image_hash varchar
+        )
+        AS $$
+BEGIN
+    RETURN QUERY
+    SELECT i.namespace,
+        i.repository,
+        i.image_hash
+    FROM splitgraph_meta.images i
+    WHERE i.provenance_data @> jsonb_build_array
+	(jsonb_build_object('source_namespace', _namespace, 'source',
+	_repository, 'source_hash', _image_hash));
 END
 $$
 LANGUAGE plpgsql

@@ -22,7 +22,7 @@ from splitgraph.config.config import get_from_subsection
 )
 def pull_c(repository_or_image, download_all):
     """
-    Pull changes from an upstream repository or download a single image.
+    Pull changes / download a single image.
     """
     repository, image = repository_or_image
     repository.pull(download_all, single_image=image)
@@ -100,7 +100,7 @@ def push_c(
     overwrite_object_meta,
 ):
     """
-    Push images from a local repository to the Splitgraph registry or another engine.
+    Push images the Splitgraph registry or another engine.
 
     If an image is not specified (e.g. `sgr push noaa/climate`, this will push all new images.
 

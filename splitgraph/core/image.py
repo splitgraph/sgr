@@ -306,18 +306,26 @@ class Image(NamedTuple):
                 )
         return splitfile_commands
 
-    def provenance(self) -> List[Tuple["Repository", str]]:
+    def provenance(self, reverse=False, engine=None) -> List[Tuple["Repository", str]]:
         """
         Inspects the image's parent chain to come up with a set of repositories and their hashes
         that it was created from.
+
+        If `reverse` is True, returns a list of images that were created _from_ this image. If
+        this image is on a remote repository, `engine` can be passed in to override the engine
+        used for the lookup of dependants.
 
         :return: List of (repository, image_hash)
         """
         from splitgraph.core.repository import Repository
 
+        api_call = "get_image_dependants" if reverse else "get_image_dependencies"
+
+        engine = engine or self.engine
+
         result = set()
-        for namespace, repository, image_hash in self.engine.run_sql(
-            select("get_image_dependencies", table_args="(%s,%s,%s)", schema=SPLITGRAPH_API_SCHEMA),
+        for namespace, repository, image_hash in engine.run_sql(
+            select(api_call, table_args="(%s,%s,%s)", schema=SPLITGRAPH_API_SCHEMA),
             (self.repository.namespace, self.repository.repository, self.image_hash),
         ):
             result.add((Repository(namespace, repository), image_hash))
