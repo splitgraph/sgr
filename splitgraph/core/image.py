@@ -45,7 +45,7 @@ class Image(NamedTuple):
     parent_id: str
     created: datetime
     comment: str
-    provenance_data: dict
+    provenance_data: List[ProvenanceLine]
     repository: "Repository"
 
     @property
