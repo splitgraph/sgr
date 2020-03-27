@@ -10,7 +10,7 @@ SHELL=/bin/bash
 .PHONY: build toolchain
 .DEFAULT_GOAL := build
 
-with_postgis ?= 0
+with_postgis ?= ""
 
 
 build:
