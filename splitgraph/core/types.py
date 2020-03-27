@@ -15,4 +15,4 @@ TableSchema = List[TableColumn]
 Quals = Sequence[Sequence[Tuple[str, str, Any]]]
 
 
-ProvenanceData = Dict[str, Union[str, List[str], List[bool]]]
+ProvenanceLine = Dict[str, Union[str, List[str], List[bool]]]

@@ -27,16 +27,12 @@ from splitgraph.hooks.mount_handlers import init_fdw
 from .common import set_tag, manage_audit, set_head
 from .sql import select
 from .table import Table
-from .types import TableColumn
+from .types import TableColumn, ProvenanceLine
 
 if TYPE_CHECKING:
     from .repository import Repository
 
-IMAGE_COLS = ["image_hash", "parent_id", "created", "comment", "provenance_type", "provenance_data"]
-_PROV_QUERY = SQL(
-    """UPDATE {}.images SET provenance_type = %s, provenance_data = %s WHERE
-                            namespace = %s AND repository = %s AND image_hash = %s"""
-).format(Identifier(SPLITGRAPH_META_SCHEMA))
+IMAGE_COLS = ["image_hash", "parent_id", "created", "comment", "provenance_data"]
 
 
 class Image(NamedTuple):
@@ -49,7 +45,6 @@ class Image(NamedTuple):
     parent_id: str
     created: datetime
     comment: str
-    provenance_type: str
     provenance_data: dict
     repository: "Repository"
 
@@ -276,13 +271,15 @@ class Image(NamedTuple):
         )
 
     def to_splitfile(
-        self, err_on_end: bool = True, source_replacement: Optional[Dict["Repository", str]] = None
+        self,
+        ignore_irreproducible: bool = False,
+        source_replacement: Optional[Dict["Repository", str]] = None,
     ) -> List[str]:
         """
-        Crawls the image's parent chain to recreates a Splitfile that can be used to reconstruct it.
+        Recreate the Splitfile that can be used to reconstruct this image.
 
-        :param err_on_end: If False, when an image with no provenance is reached and it still has a parent, then instead
-            of raising an exception, it will base the Splitfile (using the FROM command) on that image.
+        :param ignore_irreproducible: If True, ignore commands from irreproducible Splitfile lines
+            (like MOUNT or custom commands) and instead emit a comment (this results in an invalid Splitfile).
         :param source_replacement: A dictionary of repositories and image hashes/tags specifying how to replace the
             dependencies of this Splitfile (table imports and FROM commands).
         :return: A list of Splitfile commands that can be fed back into the executor.
@@ -291,33 +288,23 @@ class Image(NamedTuple):
         if source_replacement is None:
             source_replacement = {}
         splitfile_commands = []
-        image = self
-        while True:
-            image_hash, parent, prov_type, prov_data = (
-                image.image_hash,
-                image.parent_id,
-                image.provenance_type,
-                image.provenance_data,
-            )
+        for provenance_line in self.provenance_data:
+            prov_type = provenance_line["type"]
+            assert isinstance(prov_type, str)
             if prov_type in ("IMPORT", "SQL", "FROM"):
                 splitfile_commands.append(
-                    _prov_command_to_splitfile(prov_type, prov_data, image_hash, source_replacement)
+                    _prov_command_to_splitfile(provenance_line, source_replacement)
                 )
-                if prov_type == "FROM":
-                    break
-            elif prov_type in (None, "MOUNT") and parent:
-                if err_on_end:
+            elif prov_type in ("MOUNT", "CUSTOM"):
+                if not ignore_irreproducible:
                     raise SplitGraphError(
-                        "Image %s is linked to its parent with provenance %s"
-                        " that can't be reproduced!" % (image_hash, prov_type)
+                        "Image %s used a Splitfile command %s"
+                        " that can't be reproduced!" % (self.image_hash, prov_type)
                     )
-                splitfile_commands.append("FROM %s:%s" % (image.repository, image_hash))
-                break
-            if not parent:
-                break
-            else:
-                image = self.repository.images.by_hash(parent)
-        return list(reversed(splitfile_commands))
+                splitfile_commands.append(
+                    "# Irreproducible Splitfile command of type %s" % prov_type
+                )
+        return splitfile_commands
 
     def provenance(self) -> List[Tuple["Repository", str]]:
         """
@@ -329,136 +316,51 @@ class Image(NamedTuple):
         from splitgraph.core.repository import Repository
 
         result = set()
-        image = self
-        while True:
-            parent, prov_type, prov_data = (
-                image.parent_id,
-                image.provenance_type,
-                image.provenance_data,
-            )
-            if prov_type == "IMPORT":
-                result.add(
-                    (
-                        Repository(prov_data["source_namespace"], prov_data["source"]),
-                        prov_data["source_hash"],
-                    )
-                )
-            if prov_type == "FROM":
-                # If we reached "FROM", then that's the first statement in the image build process (as it bases the
-                # build on a completely different base image). Otherwise, let's say we have several versions of the
-                # source repo and base some Splitfile builds on each of them sequentially. In that case, the newest
-                # build will have all of the previous FROM statements in it (since we clone the upstream commit history
-                # locally and then add the FROM ... provenance data into it).
-                result.add(
-                    (
-                        Repository(prov_data["source_namespace"], prov_data["source"]),
-                        image.image_hash,
-                    )
-                )
-                break
-            if parent is None:
-                break
-            if prov_type in (None, "MOUNT"):
-                logging.warning(
-                    "Image %s has provenance type %s, which means it might not be rederiveable.",
-                    image.image_hash[:12],
-                    prov_type,
-                )
-            image = self.repository.images.by_hash(parent)
+        for namespace, repository, image_hash in self.engine.run_sql(
+            select("get_image_dependencies", table_args="(%s,%s,%s)", schema=SPLITGRAPH_API_SCHEMA),
+            (self.repository.namespace, self.repository.repository, self.image_hash),
+        ):
+            result.add((Repository(namespace, repository), image_hash))
         return list(result)
 
-    def set_provenance(self, provenance_type: str, **kwargs) -> None:
+    def set_provenance(self, provenance_data: List[ProvenanceLine]) -> None:
         """
         Sets the image's provenance. Internal function called by the Splitfile interpreter, shouldn't
         be called directly as it changes the image after it's been created.
 
-        :param provenance_type: One of "SQL", "MOUNT", "IMPORT" or "FROM"
-        :param kwargs: Extra provenance-specific arguments
+        :param provenance_data: List of parsed Splitfile commands and their data.
         """
-        if provenance_type == "IMPORT":
-            self.engine.run_sql(
-                _PROV_QUERY,
-                (
-                    "IMPORT",
-                    Json(
-                        {
-                            "source": kwargs["source_repository"].repository,
-                            "source_namespace": kwargs["source_repository"].namespace,
-                            "source_hash": kwargs["source_hash"],
-                            "tables": kwargs["tables"],
-                            "table_aliases": kwargs["table_aliases"],
-                            "table_queries": kwargs["table_queries"],
-                        }
-                    ),
-                    self.repository.namespace,
-                    self.repository.repository,
-                    self.image_hash,
-                ),
-            )
-        elif provenance_type == "SQL":
-            self.engine.run_sql(
-                _PROV_QUERY,
-                (
-                    "SQL",
-                    Json(kwargs["sql"]),
-                    self.repository.namespace,
-                    self.repository.repository,
-                    self.image_hash,
-                ),
-            )
-        elif provenance_type == "MOUNT":
-            # We don't store the details of images that come from an sgr MOUNT command
-            # since those are assumed to be based on an inaccessible db.
-            self.engine.run_sql(
-                _PROV_QUERY,
-                (
-                    "MOUNT",
-                    None,
-                    self.repository.namespace,
-                    self.repository.repository,
-                    self.image_hash,
-                ),
-            )
-        elif provenance_type == "FROM":
-            self.engine.run_sql(
-                _PROV_QUERY,
-                (
-                    "FROM",
-                    Json(
-                        {
-                            "source": kwargs["source"].repository,
-                            "source_namespace": kwargs["source"].namespace,
-                        }
-                    ),
-                    self.repository.namespace,
-                    self.repository.repository,
-                    self.image_hash,
-                ),
-            )
-        else:
-            raise ValueError("Provenance type %s not supported!" % provenance_type)
+        self.engine.run_sql(
+            SQL(
+                """UPDATE {}.images SET provenance_data = %s WHERE
+                            namespace = %s AND repository = %s AND image_hash = %s"""
+            ).format(Identifier(SPLITGRAPH_META_SCHEMA)),
+            (
+                Json(provenance_data),
+                self.repository.namespace,
+                self.repository.repository,
+                self.image_hash,
+            ),
+        )
 
 
 def _prov_command_to_splitfile(
-    prov_type: str,
-    prov_data: Union[str, Dict[str, str], Dict[str, Union[str, List[str], List[bool]]]],
-    image_hash: str,
-    source_replacement: Dict["Repository", str],
+    prov_data: ProvenanceLine, source_replacement: Dict["Repository", str],
 ) -> str:
     """
     Converts the image's provenance data stored by the Splitfile executor back to a Splitfile used to
     reconstruct it.
 
-    :param prov_type: Provenance type (one of 'IMPORT' or 'SQL'). Any other provenances can't be reconstructed.
-    :param prov_data: Provenance data as stored in the database.
-    :param image_hash: Hash of the image
+    :param prov_data: Provenance line for one command
     :param source_replacement: Replace repository imports with different versions
     :return: String with the Splitfile command.
     """
     from splitgraph.core.repository import Repository
 
+    prov_type = prov_data["type"]
+    assert isinstance(prov_type, str)
+
     if prov_type == "IMPORT":
-        assert isinstance(prov_data, dict)
         repo, image = (
             Repository(cast(str, prov_data["source_namespace"]), cast(str, prov_data["source"])),
             cast(str, prov_data["source_hash"]),
@@ -474,10 +376,8 @@ def _prov_command_to_splitfile(
         )
         return result
     if prov_type == "FROM":
-        assert isinstance(prov_data, dict)
         repo = Repository(cast(str, prov_data["source_namespace"]), cast(str, prov_data["source"]))
-        return "FROM %s:%s" % (str(repo), source_replacement.get(repo, image_hash))
+        return "FROM %s:%s" % (str(repo), source_replacement.get(repo, prov_data["source_hash"]))
     if prov_type == "SQL":
-        assert isinstance(prov_data, str)
-        return "SQL " + "{" + cast(str, prov_data).replace("}", "\\}") + "}"
+        return "SQL " + "{" + cast(str, prov_data["sql"]).replace("}", "\\}") + "}"
     raise SplitGraphError("Cannot reconstruct provenance %s!" % prov_type)

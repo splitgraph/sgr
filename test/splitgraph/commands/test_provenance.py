@@ -31,7 +31,7 @@ def test_splitfile_recreate(local_engine_empty, pg_repo_remote_multitag):
         params={"TAG": "v1"},
         output=OUTPUT,
     )
-    recreated_commands = OUTPUT.head.to_splitfile(err_on_end=False)
+    recreated_commands = OUTPUT.head.to_splitfile()
     assert recreated_commands == [
         "FROM test/pg_mount:%s IMPORT {SELECT * FROM fruits WHERE name = 'orange'} AS "
         % pg_repo_remote_multitag.images["v1"].image_hash
@@ -43,9 +43,8 @@ def test_splitfile_recreate(local_engine_empty, pg_repo_remote_multitag):
 
 def test_splitfile_recreate_custom_from(local_engine_empty, pg_repo_remote_multitag):
     execute_commands(load_splitfile("from_remote.splitfile"), params={"TAG": "v1"}, output=OUTPUT)
-    recreated_commands = OUTPUT.head.to_splitfile(err_on_end=False)
+    recreated_commands = OUTPUT.head.to_splitfile()
 
-    # Parser strips newlines in sql but not the whitespace, so we have to reproduce the query here verbatim.
     assert recreated_commands == [
         "FROM test/pg_mount:%s" % pg_repo_remote_multitag.images["v1"].image_hash,
         "SQL {CREATE TABLE join_table AS SELECT fruit_id AS id, fruits.name AS fruit, "
@@ -56,8 +55,8 @@ def test_splitfile_recreate_custom_from(local_engine_empty, pg_repo_remote_multi
 
 @pytest.mark.mounting
 def test_splitfile_incomplete_provenance(local_engine_empty, pg_repo_remote_multitag):
-    # This splitfile has a MOUNT as its first command. We're expecting image_hash_to_splitfile to base the result
-    # on the image created by MOUNT and not regenerate the MOUNT command.
+    # This splitfile has a MOUNT as its first command. Check we emit partial splitfiles
+    # instead of errors (we can't reproduce MOUNT commands).
     execute_commands(
         load_splitfile("import_from_mounted_db_with_sql.splitfile"),
         params={"TAG": "v1"},
@@ -65,10 +64,10 @@ def test_splitfile_incomplete_provenance(local_engine_empty, pg_repo_remote_mult
     )
     head_img = OUTPUT.head
     image_with_mount = head_img.get_log()[-2]
-    recreated_commands = head_img.to_splitfile(err_on_end=False)
+    recreated_commands = head_img.to_splitfile(ignore_irreproducible=True)
 
     assert recreated_commands == [
-        "FROM output:%s" % image_with_mount.image_hash,
+        "# Irreproducible Splitfile command of type MOUNT",
         "SQL {CREATE TABLE new_table AS SELECT * FROM all_fruits}",
     ]
 
