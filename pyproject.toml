@@ -18,7 +18,7 @@ pglast = {version = ">=1.6", markers = 'sys_platform != "win32"'}
 requests = ">=2.22"
 docker = ">=4.0"
 click_log = "^0.3.2"
-tqdm = "^4.40.0"
+tqdm = "^4.44.1"
 packaging = "^20.1"
 # Required for CSV ingestion and type inference
 tableschema = "^1.15.0"
