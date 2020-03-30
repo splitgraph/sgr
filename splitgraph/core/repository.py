@@ -143,7 +143,7 @@ class Repository:
         initial_image = "0" * 64
         self.engine.run_sql(
             insert("images", ("image_hash", "namespace", "repository", "parent_id", "created")),
-            (initial_image, self.namespace, self.repository, None, datetime.now()),
+            (initial_image, self.namespace, self.repository, None, datetime.utcnow()),
         )
         # Strictly speaking this is redundant since the checkout (of the "HEAD" commit) updates the tag table.
         self.engine.run_sql(

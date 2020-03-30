@@ -353,7 +353,7 @@ class ObjectManager(FragmentManager):
         new_objects = sorted(new_objects)
 
         # Insert the objects into the cache status table (marking them as not ready)
-        now = dt.now()
+        now = dt.utcnow()
         self.object_engine.run_sql_batch(
             insert("object_cache_status", ("object_id", "ready", "refcount", "last_used"))
             + SQL("ON CONFLICT (object_id) DO UPDATE SET ready = 'f'"),

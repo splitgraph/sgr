@@ -86,7 +86,7 @@ def set_installed_version(
         _create_version_tracking_schema(engine, schema_name, version_table)
     engine.run_sql(
         insert(version_table, ["version", "installed"], schema=schema_name),
-        (version, datetime.now()),
+        (version, datetime.utcnow()),
     )
 
 
