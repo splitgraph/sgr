@@ -786,7 +786,7 @@ class FragmentManager(MetadataManager):
     def _calculate_schema_hash(table_schema):
         # Don't include column comments in the schema hash.
         return sha256(
-            str([(c.ordinal, c.name, c.pg_type, c.is_pk) for c in table_schema]).encode("ascii")
+            str([(c.ordinal, c.name, c.pg_type, c.is_pk) for c in table_schema]).encode("utf-8")
         ).hexdigest()
 
     def record_table_as_base(
