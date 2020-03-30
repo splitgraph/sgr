@@ -1027,3 +1027,28 @@ def test_create_object_out_of_band(local_engine_empty):
         )
         == 2
     )
+
+
+def test_unicode_columns(local_engine_empty):
+    OUTPUT.init()
+    OUTPUT.run_sql("CREATE TABLE таблица (key INTEGER PRIMARY KEY, столбец VARCHAR)")
+    OUTPUT.run_sql("COMMENT ON COLUMN таблица.столбец IS 'комментарий';")
+    OUTPUT.run_sql("INSERT INTO таблица (key, столбец) VALUES (1, 'one'), (2, 'two')")
+
+    image = OUTPUT.commit()
+
+    assert image.get_table("таблица").table_schema == [
+        TableColumn(ordinal=1, name="key", pg_type="integer", is_pk=True, comment=None),
+        TableColumn(
+            ordinal=2,
+            name="столбец",
+            pg_type="character varying",
+            is_pk=False,
+            comment="комментарий",
+        ),
+    ]
+    image.checkout()
+    assert OUTPUT.run_sql("SELECT * FROM таблица WHERE столбец = 'two'") == [(2, "two")]
+
+    image.checkout(layered=True)
+    assert OUTPUT.run_sql("SELECT * FROM таблица WHERE столбец = 'one'") == [(1, "one")]
