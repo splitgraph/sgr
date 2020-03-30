@@ -240,7 +240,7 @@ class MetadataManager:
                 chunk_position=0,
             )
 
-    def get_unused_objects(self, threshold: int = 0) -> List[Tuple[str, datetime]]:
+    def get_unused_objects(self, threshold: Optional[int] = None) -> List[Tuple[str, datetime]]:
         """
         Get a list of all objects in the metadata that aren't used by any table and can be
         safely deleted.
@@ -253,10 +253,10 @@ class MetadataManager:
                 "SELECT object_id, created FROM {0}.objects "
                 "WHERE object_id NOT IN (SELECT unnest(object_ids) "
                 "FROM {0}.tables) "
-                "AND created < now() - INTERVAL '%s minutes' "
-                "ORDER BY created"
+                + ("AND created < now() - INTERVAL '%s minutes' " if threshold is not None else "")
+                + "ORDER BY created"
             ).format(Identifier(SPLITGRAPH_META_SCHEMA)),
-            (threshold,),
+            (threshold,) if threshold is not None else None,
         )
         return cast(List[Tuple[str, datetime]], candidates)
 

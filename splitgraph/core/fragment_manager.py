@@ -295,7 +295,7 @@ class FragmentManager(MetadataManager):
                     format="FRAG",
                     namespace=namespace,
                     size=object_size,
-                    created=datetime.now(),
+                    created=datetime.utcnow(),
                     insertion_hash=insertion_hash,
                     deletion_hash=deletion_hash,
                     object_index=object_index,

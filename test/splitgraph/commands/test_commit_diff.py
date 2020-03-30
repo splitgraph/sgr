@@ -123,7 +123,7 @@ def test_commit_chunking(local_engine_empty):
     for i in range(11):
         OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (i + 1, chr(ord("z") - i), i * 2))
     with patch("splitgraph.core.fragment_manager.datetime") as dtp:
-        dtp.now.return_value = dt(2019, 1, 1)
+        dtp.utcnow.return_value = dt(2019, 1, 1)
         head = OUTPUT.commit(chunk_size=5)
 
     # Should produce 3 objects: PK 1..5, PK 6..10, PK 11
@@ -240,7 +240,7 @@ def test_commit_diff_splitting(local_engine_empty):
 
     # Now check the objects that were created.
     with patch("splitgraph.core.fragment_manager.datetime") as dtp:
-        dtp.now.return_value = dt(2019, 1, 1)
+        dtp.utcnow.return_value = dt(2019, 1, 1)
         new_head = OUTPUT.commit(split_changeset=True, in_fragment_order={"test": ["key"]})
     new_head.checkout()
     new_objects = new_head.get_table("test").objects
@@ -400,7 +400,7 @@ def test_commit_diff_splitting_composite(local_engine_empty):
     OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (dt(2019, 1, 4), 2, "NEW"))
 
     with patch("splitgraph.core.fragment_manager.datetime") as dtp:
-        dtp.now.return_value = dt(2019, 1, 1)
+        dtp.utcnow.return_value = dt(2019, 1, 1)
         new_head = OUTPUT.commit(split_changeset=True)
     new_head.checkout()
     new_objects = new_head.get_table("test").objects

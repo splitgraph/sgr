@@ -87,7 +87,7 @@ from splitgraph.engine.postgres.engine import PsycopgEngine
 )
 def test_source_files_to_apply(files, current_version, target_version, expected_files):
     schema_name = "test_static" if any("test_static" in f for f in files) else "test"
-    installed_version = (current_version, datetime.now()) if current_version else None
+    installed_version = (current_version, datetime.utcnow()) if current_version else None
 
     engine = MagicMock(spec=PsycopgEngine)
     engine.run_sql.return_value = installed_version

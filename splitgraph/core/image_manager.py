@@ -185,7 +185,7 @@ class ImageManager:
                 self.repository.repository,
                 image,
                 parent_id,
-                created or datetime.now(),
+                created or datetime.utcnow(),
                 comment,
                 Json(provenance_data),
             ),
@@ -198,7 +198,7 @@ class ImageManager:
         :param images: List of Image objects. Namespace and repository will be patched
             with this repository.
         """
-        now = datetime.now()
+        now = datetime.utcnow()
         self.engine.run_sql_batch(
             SQL("SELECT {}.add_image(%s, %s, %s, %s, %s, %s, %s)").format(
                 Identifier(SPLITGRAPH_API_SCHEMA)
