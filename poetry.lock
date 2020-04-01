@@ -307,11 +307,8 @@ category = "dev"
 description = "HTTP client mock for Python"
 name = "httpretty"
 optional = false
-python-versions = "*"
-version = "0.9.7"
-
-[package.dependencies]
-six = "*"
+python-versions = ">=3"
+version = "1.0.2"
 
 [[package]]
 category = "dev"
@@ -1250,7 +1247,7 @@ testing = ["jaraco.itertools", "func-timeout"]
 pandas = ["pandas", "sqlalchemy"]
 
 [metadata]
-content-hash = "c0644a30b19a4db4027cb59c29e7784b2754b97e7052d34dd3a8fecd839dd30f"
+content-hash = "0cdcb2dee24e5fa465ed2d1b0001245cbee8fbde9335684365bb32b1468b0712"
 python-versions = "~=3.6"
 
 [metadata.files]
@@ -1395,7 +1392,7 @@ filelock = [
     {file = "filelock-3.0.12.tar.gz", hash = "sha256:18d82244ee114f543149c66a6e0c14e9c4f8a1044b5cdaadd0f82159d6a6ff59"},
 ]
 httpretty = [
-    {file = "httpretty-0.9.7.tar.gz", hash = "sha256:66216f26b9d2c52e81808f3e674a6fb65d4bf719721394a1a9be926177e55fbe"},
+    {file = "httpretty-1.0.2.tar.gz", hash = "sha256:24a6fd2fe1c76e94801b74db8f52c0fb42718dc4a199a861b305b1a492b9d868"},
 ]
 identify = [
     {file = "identify-1.4.13-py2.py3-none-any.whl", hash = "sha256:a7577a1f55cee1d21953a5cf11a3c839ab87f5ef909a4cba6cf52ed72b4c6059"},
