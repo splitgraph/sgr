@@ -205,6 +205,7 @@ BEGIN
         WHERE i.namespace = _namespace
             AND i.repository = _repository
             AND i.image_hash = _image_hash
+            AND jsonb_typeof(i.provenance_data) = 'array'
 )
     SELECT DISTINCT (d ->> 'source_namespace')::character varying AS namespace,
         (d ->> 'source')::character varying AS repository,

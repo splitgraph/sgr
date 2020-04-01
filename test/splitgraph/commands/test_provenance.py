@@ -22,6 +22,8 @@ def test_provenance(local_engine_empty, pg_repo_remote_multitag):
         (OUTPUT, OUTPUT.head.image_hash)
     ]
 
+    assert source.provenance() == []
+
 
 def test_provenance_with_from(local_engine_empty, pg_repo_remote_multitag):
     execute_commands(load_splitfile("from_remote.splitfile"), params={"TAG": "v1"}, output=OUTPUT)
@@ -35,6 +37,8 @@ def test_provenance_with_from(local_engine_empty, pg_repo_remote_multitag):
     assert source.provenance(reverse=True, engine=local_engine_empty) == [
         (OUTPUT, OUTPUT.head.image_hash)
     ]
+
+    assert source.provenance() == []
 
 
 def test_splitfile_recreate(local_engine_empty, pg_repo_remote_multitag):
