@@ -711,8 +711,8 @@ category = "dev"
 description = "pyfakefs implements a fake file system that mocks the Python file system modules."
 name = "pyfakefs"
 optional = false
-python-versions = "*"
-version = "3.7.2"
+python-versions = ">=3.5"
+version = "4.0.2"
 
 [[package]]
 category = "dev"
@@ -1250,7 +1250,7 @@ testing = ["jaraco.itertools", "func-timeout"]
 pandas = ["pandas", "sqlalchemy"]
 
 [metadata]
-content-hash = "c0644a30b19a4db4027cb59c29e7784b2754b97e7052d34dd3a8fecd839dd30f"
+content-hash = "a9737be08590b39cbe0615cae46440004f2df842157bb53d5f937e35523cbebe"
 python-versions = "~=3.6"
 
 [metadata.files]
@@ -1680,8 +1680,8 @@ py = [
     {file = "py-1.8.1.tar.gz", hash = "sha256:5e27081401262157467ad6e7f851b7aa402c5852dbcb3dae06768434de5752aa"},
 ]
 pyfakefs = [
-    {file = "pyfakefs-3.7.2-py2.py3-none-any.whl", hash = "sha256:f415f38fe488b46974700af95f22b37e951a51159403eb9011ca37db0fde8b97"},
-    {file = "pyfakefs-3.7.2.tar.gz", hash = "sha256:735ce6a71f26ead335df8a1f2c1cc8355ef091d98ffdc3bf73a5a3b0214e055e"},
+    {file = "pyfakefs-4.0.2-py3-none-any.whl", hash = "sha256:42cf165adc821fc9e205d3fc14033d45e0b8224e1d2fea4f67b487c6b7b3230e"},
+    {file = "pyfakefs-4.0.2.tar.gz", hash = "sha256:c415e1c737e3aa72b92af41832a7e0a2c325eb8d3a72a210750714e00fcaeace"},
 ]
 pygments = [
     {file = "Pygments-2.6.1-py3-none-any.whl", hash = "sha256:ff7a40b4860b727ab48fad6360eb351cc1b33cbf9b15a0f689ca5353e9463324"},
