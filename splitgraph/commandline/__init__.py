@@ -38,7 +38,7 @@ from splitgraph.commandline.misc import (
 )
 from splitgraph.commandline.mount import mount_c
 from splitgraph.commandline.push_pull import pull_c, clone_c, push_c, upstream_c
-from splitgraph.commandline.splitfile import build_c, provenance_c, rebuild_c, dependants_c
+from splitgraph.commandline.splitfile import build_c, provenance_c, rebuild_c, dependents_c
 
 logger = logging.getLogger()
 click_log.basic_config(logger)
@@ -140,7 +140,7 @@ cli.add_command(upstream_c)
 
 # Splitfile execution
 cli.add_command(build_c)
-cli.add_command(dependants_c)
+cli.add_command(dependents_c)
 cli.add_command(provenance_c)
 cli.add_command(rebuild_c)
 

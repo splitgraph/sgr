@@ -217,9 +217,9 @@ $$
 LANGUAGE plpgsql
 SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 
--- get_image_dependants(namespace, repository, image_hash): get all images in this
+-- get_image_dependents(namespace, repository, image_hash): get all images in this
 -- repository that were built by a Splitfile and used this image through a FROM command.
-CREATE OR REPLACE FUNCTION splitgraph_api.get_image_dependants (
+CREATE OR REPLACE FUNCTION splitgraph_api.get_image_dependents (
     _namespace varchar,
     _repository varchar,
     _image_hash varchar
