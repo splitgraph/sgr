@@ -16,7 +16,7 @@ def test_provenance(local_engine_empty, pg_repo_remote_multitag):
     ]
 
     # Check reverse provenance. Since the repository lives on the remote engine, we need to
-    # search for dependants on the local engine instead.
+    # search for dependents on the local engine instead.
     source = pg_repo_remote_multitag.images["v1"]
     assert source.provenance(reverse=True, engine=local_engine_empty) == [
         (OUTPUT, OUTPUT.head.image_hash)

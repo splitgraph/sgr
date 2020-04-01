@@ -126,7 +126,7 @@ def provenance_c(image_spec, full, ignore_errors):
         click.echo("\n".join("%s:%s" % rs for rs in result))
 
 
-@click.command(name="dependants")
+@click.command(name="dependents")
 @click.argument("image_spec", type=ImageType(get_image=False))
 @click.option(
     "-O",
@@ -137,12 +137,12 @@ def provenance_c(image_spec, full, ignore_errors):
 )
 @click.option(
     "-o",
-    "--dependants-on",
+    "--dependents-on",
     type=str,
     default=None,
-    help="Override the engine to list dependants from",
+    help="Override the engine to list dependents from",
 )
-def dependants_c(image_spec, source_on, dependants_on):
+def dependents_c(image_spec, source_on, dependents_on):
     """
     List images that were created from an image.
 
@@ -150,9 +150,9 @@ def dependants_c(image_spec, source_on, dependants_on):
     created using a Splitfile that imported data from this image.
 
     By default, this will look at images on the local engine. The engine can be overridden
-    with --source-on and --dependants-on. For example:
+    with --source-on and --dependents-on. For example:
 
-        sgr dependants --source-on data.splitgraph.com --dependants-on LOCAL noaa/climate:latest
+        sgr dependents --source-on data.splitgraph.com --dependents-on LOCAL noaa/climate:latest
 
     will show all images on the local engine that derived data from `noaa/climate:latest`
     on the Splitgraph registry.
@@ -165,7 +165,7 @@ def dependants_c(image_spec, source_on, dependants_on):
     repository = Repository.from_template(repository, engine=source_engine)
     image = repository.images[image]
 
-    target_engine = get_engine(dependants_on) if dependants_on else get_engine()
+    target_engine = get_engine(dependents_on) if dependents_on else get_engine()
 
     result = image.provenance(reverse=True, engine=target_engine)
     click.echo("%s:%s is depended on by:" % (str(repository), image.image_hash))

@@ -1,7 +1,7 @@
 from click.testing import CliRunner
 from test.splitgraph.conftest import SPLITFILE_ROOT, OUTPUT
 
-from splitgraph.commandline import build_c, provenance_c, rebuild_c, dependants_c
+from splitgraph.commandline import build_c, provenance_c, rebuild_c, dependents_c
 
 
 def test_splitfile(local_engine_empty, pg_repo_remote):
@@ -38,16 +38,16 @@ def test_splitfile(local_engine_empty, pg_repo_remote):
     # Test reverse dependencies
     # We're looking at test/pg_mount on the local engine which doesn't exist -- this should fail.
     result = runner.invoke(
-        dependants_c, ["test/pg_mount:%s" % pg_repo_remote.images["latest"].image_hash,],
+        dependents_c, ["test/pg_mount:%s" % pg_repo_remote.images["latest"].image_hash,],
     )
     assert result.exit_code == 1
 
-    # Now look at test/pg_mount on the remote and look for dependants on the local engine.
+    # Now look at test/pg_mount on the remote and look for dependents on the local engine.
     result = runner.invoke(
-        dependants_c,
+        dependents_c,
         [
             "test/pg_mount:%s" % pg_repo_remote.images["latest"].image_hash,
-            "--dependants-on",
+            "--dependents-on",
             "LOCAL",
             "--source-on",
             pg_repo_remote.engine.name,

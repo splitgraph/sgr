@@ -313,13 +313,13 @@ class Image(NamedTuple):
 
         If `reverse` is True, returns a list of images that were created _from_ this image. If
         this image is on a remote repository, `engine` can be passed in to override the engine
-        used for the lookup of dependants.
+        used for the lookup of dependents.
 
         :return: List of (repository, image_hash)
         """
         from splitgraph.core.repository import Repository
 
-        api_call = "get_image_dependants" if reverse else "get_image_dependencies"
+        api_call = "get_image_dependents" if reverse else "get_image_dependencies"
 
         engine = engine or self.engine
 
