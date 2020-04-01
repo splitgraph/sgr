@@ -46,7 +46,7 @@ sphinx = "^2.0"
 sphinx_rtd_theme = "^0.4.2"
 pylint = "^2.4"
 black = { version = "*", allow-prereleases = true }
-pre-commit = "^1.18"
+pre-commit = "^2.1"
 httpretty = "^0.9.6"
 mypy = ">=0.720"
 bump2version = "^1.0.0"
