@@ -755,7 +755,7 @@ class ObjectManager(FragmentManager):
             handler_params = {}
 
         if not objects_to_push:
-            logging.info("Nothing to upload.")
+            logging.info("No objects to upload.")
             return []
         total_size = sum(o.size for o in self.get_object_meta(objects_to_push).values())
         logging.info(

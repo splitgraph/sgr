@@ -8,6 +8,7 @@ from splitgraph.core.common import Tracer
 from splitgraph.core.engine import lookup_repository, repository_exists
 from splitgraph.core.metadata_manager import Object
 from splitgraph.core.repository import Repository
+from splitgraph.engine.postgres.engine import API_MAX_QUERY_LENGTH
 from splitgraph.exceptions import RepositoryNotFoundError, EngineInitializationError
 from splitgraph.hooks.s3 import get_object_upload_urls
 
@@ -217,7 +218,7 @@ def test_large_api_calls(unprivileged_pg_repo):
         created=datetime.utcnow(),
         insertion_hash="0" * 64,
         deletion_hash="0" * 64,
-        object_index={"bloom": [42, "A" * 65536]},
+        object_index={"bloom": [42, "A" * API_MAX_QUERY_LENGTH]},
         rows_inserted=10,
         rows_deleted=2,
     )
@@ -244,7 +245,7 @@ def test_large_api_calls(unprivileged_pg_repo):
             rows_inserted=42,
             rows_deleted=0,
         )
-        for i in range(1000)
+        for i in range(2000)
     ]
     all_ids = [o.object_id for o in objects]
     # Check objects don't exist (query should also get chunked up) and register them
@@ -254,11 +255,11 @@ def test_large_api_calls(unprivileged_pg_repo):
 
     # Get presigned URLs for these objects
     urls = get_object_upload_urls(unprivileged_pg_repo.engine, all_ids)
-    assert len(urls) == 1000
+    assert len(urls) == 2000
 
     # Get our objects back
     meta = unprivileged_pg_repo.objects.get_object_meta(all_ids)
-    assert len(meta) == 1000
+    assert len(meta) == 2000
 
     # Now make an image with a lot of objects
     image_hash = "0" * 63 + "1"
