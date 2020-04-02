@@ -123,7 +123,8 @@ def test_object_cache_non_existing_objects(local_engine_empty, pg_repo_remote, c
     with pytest.raises(ObjectCacheError) as e:
         with object_manager.ensure_objects(fruits_v3):
             pass
-    assert "Missing 1 object (%s)" % fruits_v3.objects[0] in str(e.value)
+    assert "Missing 1 object " in str(e.value)
+    assert fruits_v3.objects[0] in str(e.value)
 
     # Make sure the claims have been released on failure (not inserted into the table at all)
     assert _get_refcount(object_manager, fruits_v3.objects[0]) is None
@@ -137,7 +138,8 @@ def test_object_cache_non_existing_objects(local_engine_empty, pg_repo_remote, c
     with pytest.raises(ObjectCacheError) as e:
         with object_manager.ensure_objects(fruits_v3):
             pass
-    assert "Missing 1 object (%s)" % fruits_v3.objects[0] in str(e.value)
+    assert "Missing 2 objects" in str(e.value)
+    assert fruits_v3.objects[0] in str(e.value)
 
 
 def test_object_cache_eviction(local_engine_empty, pg_repo_remote, clean_minio):

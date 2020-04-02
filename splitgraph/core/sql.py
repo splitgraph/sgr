@@ -108,7 +108,7 @@ def _emit_ast(ast: "Node") -> str:
     from pglast import printers  # noqa
 
     stream = IndentedStream()
-    return stream(ast)
+    return str(stream(ast))
 
 
 def validate_splitfile_sql(sql: str) -> str:

@@ -156,9 +156,11 @@ def _execute_sql(node: Node, output: Repository) -> ProvenanceLine:
             nodes = extract_nodes(node, ["non_curly_brace"])
         sql_command = nodes[0].text.replace("\\{", "{").replace("\\}", "}").replace("\\\\", "\\")
     # Canonicalize the SQL command by formatting it.
-    sql_command = validate_splitfile_sql(sql_command)
+    sql_command_canonical = validate_splitfile_sql(sql_command)
     output_head = output.head_strict.image_hash
-    target_hash = _combine_hashes([output_head, sha256(sql_command.encode("utf-8")).hexdigest()])
+    target_hash = _combine_hashes(
+        [output_head, sha256(sql_command_canonical.encode("utf-8")).hexdigest()]
+    )
 
     def _calc():
         print("Executing SQL...")
@@ -166,7 +168,7 @@ def _execute_sql(node: Node, output: Repository) -> ProvenanceLine:
         output.commit(target_hash, comment=sql_command)
 
     _checkout_or_calculate_layer(output, target_hash, _calc)
-    return {"type": "SQL", "sql": sql_command}
+    return {"type": "SQL", "sql": sql_command_canonical}
 
 
 def _execute_from(node: Node, output: Repository) -> Tuple[Repository, Optional[ProvenanceLine]]:
@@ -316,12 +318,12 @@ def _execute_repo_import(
         # Perform validation here rather than in the import routine. This is to
         # canonicalize SQL that goes into provenance data so that we don't get cache misses
         # from formatting changes to SQL statements.
-        table_names = prevalidate_imports(table_names, table_queries)
+        table_names_canonical = prevalidate_imports(table_names, table_queries)
 
         output_head = target_repository.head_strict.image_hash
         target_hash = _combine_hashes(
             [output_head, source_hash]
-            + [sha256(n.encode("utf-8")).hexdigest() for n in table_names + table_aliases]
+            + [sha256(n.encode("utf-8")).hexdigest() for n in table_names_canonical + table_aliases]
         )
 
         def _calc():
@@ -350,7 +352,7 @@ def _execute_repo_import(
             "source_namespace": repository.namespace,
             "source": repository.repository,
             "source_hash": source_hash,
-            "tables": table_names,
+            "tables": table_names_canonical,
             "table_aliases": table_aliases,
             "table_queries": table_queries,
         }
