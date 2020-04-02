@@ -15,7 +15,7 @@ from splitgraph.config.config import get_all_in_section
 from splitgraph.core.engine import repository_exists, lookup_repository
 from splitgraph.core.image import Image
 from splitgraph.core.repository import Repository, clone
-from splitgraph.core.sql import validate_splitfile_sql
+from splitgraph.core.sql import validate_splitfile_sql, validate_import_sql
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import ImageNotFoundError, SplitfileError
 from splitgraph.hooks.mount_handlers import get_mount_handler
@@ -155,7 +155,8 @@ def _execute_sql(node: Node, output: Repository) -> ProvenanceLine:
         if not nodes:
             nodes = extract_nodes(node, ["non_curly_brace"])
         sql_command = nodes[0].text.replace("\\{", "{").replace("\\}", "}").replace("\\\\", "\\")
-    validate_splitfile_sql(sql_command)
+    # Canonicalize the SQL command by formatting it.
+    sql_command = validate_splitfile_sql(sql_command)
     output_head = output.head_strict.image_hash
     target_hash = _combine_hashes([output_head, sha256(sql_command.encode("utf-8")).hexdigest()])
 
@@ -273,6 +274,10 @@ def _execute_db_import(
         tmp_mountpoint.delete()
 
 
+def prevalidate_imports(table_names: List[str], table_queries: List[bool]) -> List[str]:
+    return [validate_import_sql(t) if q else t for t, q in zip(table_names, table_queries)]
+
+
 def _execute_repo_import(
     repository: Repository,
     table_names: List[str],
@@ -307,6 +312,12 @@ def _execute_repo_import(
                 source_repo.pull()
             source_hash = source_repo.images[tag_or_hash].image_hash
             source_mountpoint = source_repo
+
+        # Perform validation here rather than in the import routine. This is to
+        # canonicalize SQL that goes into provenance data so that we don't get cache misses
+        # from formatting changes to SQL statements.
+        table_names = prevalidate_imports(table_names, table_queries)
+
         output_head = target_repository.head_strict.image_hash
         target_hash = _combine_hashes(
             [output_head, source_hash]
@@ -330,6 +341,7 @@ def _execute_repo_import(
                 image_hash=source_hash,
                 target_hash=target_hash,
                 table_queries=table_queries,
+                skip_validation=True,
             )
 
         _checkout_or_calculate_layer(target_repository, target_hash, _calc)

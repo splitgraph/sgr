@@ -49,11 +49,14 @@ def test_splitfile_recreate(local_engine_empty, pg_repo_remote_multitag):
     )
     recreated_commands = OUTPUT.head.to_splitfile()
     assert recreated_commands == [
-        "FROM test/pg_mount:%s IMPORT {SELECT * FROM fruits WHERE name = 'orange'} AS "
-        % pg_repo_remote_multitag.images["v1"].image_hash
-        + "my_fruits, {SELECT * FROM vegetables WHERE name LIKE '%o'} AS o_vegetables, "
-        "vegetables AS vegetables, fruits AS all_fruits",
-        "SQL {CREATE TABLE test_table AS SELECT * FROM all_fruits}",
+        "FROM test/pg_mount:%s IMPORT {SELECT *\n" % pg_repo_remote_multitag.images["v1"].image_hash
+        + """FROM fruits
+WHERE name = 'orange'} AS my_fruits, {SELECT *
+FROM vegetables
+WHERE name LIKE '%o'} AS o_vegetables, vegetables AS vegetables, fruits AS all_fruits""",
+        """SQL {CREATE TABLE test_table
+  AS SELECT *
+     FROM all_fruits}""",
     ]
 
 
@@ -63,9 +66,13 @@ def test_splitfile_recreate_custom_from(local_engine_empty, pg_repo_remote_multi
 
     assert recreated_commands == [
         "FROM test/pg_mount:%s" % pg_repo_remote_multitag.images["v1"].image_hash,
-        "SQL {CREATE TABLE join_table AS SELECT fruit_id AS id, fruits.name AS fruit, "
-        "vegetables.name AS vegetable                                 FROM fruits "
-        "JOIN vegetables                                ON fruit_id = vegetable_id}",
+        # Test provenance is recorded using the reformatted SQL
+        """SQL {CREATE TABLE join_table
+  AS SELECT fruit_id AS id
+          , fruits.name AS fruit
+          , vegetables.name AS vegetable
+     FROM fruits
+          INNER JOIN vegetables ON fruit_id = vegetable_id}""",
     ]
 
 
@@ -84,7 +91,7 @@ def test_splitfile_incomplete_provenance(local_engine_empty, pg_repo_remote_mult
 
     assert recreated_commands == [
         "# Irreproducible Splitfile command of type MOUNT",
-        "SQL {CREATE TABLE new_table AS SELECT * FROM all_fruits}",
+        "SQL {CREATE TABLE new_table\n" "  AS SELECT *\n" "     FROM all_fruits}",
     ]
 
 
@@ -150,7 +157,7 @@ def test_rerun_multiline_sql_roundtripping(pg_repo_local):
     execute_commands(load_splitfile("multiline_sql.splitfile"), output=OUTPUT)
 
     head = OUTPUT.head
-    expected_sql = "SQL {\nINSERT INTO FRUITS VALUES\n    (3, 'banana'),\n    (4, 'pineapple');\n}"
+    expected_sql = "SQL {INSERT INTO fruits \n" "VALUES (3, 'banana')\n" "     , (4, 'pineapple')}"
 
     assert head.to_splitfile()[1] == expected_sql
 
