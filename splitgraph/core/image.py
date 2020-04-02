@@ -285,26 +285,9 @@ class Image(NamedTuple):
         :return: A list of Splitfile commands that can be fed back into the executor.
         """
 
-        if source_replacement is None:
-            source_replacement = {}
-        splitfile_commands = []
-        for provenance_line in self.provenance_data:
-            prov_type = provenance_line["type"]
-            assert isinstance(prov_type, str)
-            if prov_type in ("IMPORT", "SQL", "FROM"):
-                splitfile_commands.append(
-                    _prov_command_to_splitfile(provenance_line, source_replacement)
-                )
-            elif prov_type in ("MOUNT", "CUSTOM"):
-                if not ignore_irreproducible:
-                    raise SplitGraphError(
-                        "Image %s used a Splitfile command %s"
-                        " that can't be reproduced!" % (self.image_hash, prov_type)
-                    )
-                splitfile_commands.append(
-                    "# Irreproducible Splitfile command of type %s" % prov_type
-                )
-        return splitfile_commands
+        return reconstruct_splitfile(
+            self.provenance_data, ignore_irreproducible, source_replacement
+        )
 
     def provenance(self, reverse=False, engine=None) -> List[Tuple["Repository", str]]:
         """
@@ -350,6 +333,34 @@ class Image(NamedTuple):
                 self.image_hash,
             ),
         )
+
+
+def reconstruct_splitfile(
+    provenance_data: List[ProvenanceLine],
+    ignore_irreproducible: bool = False,
+    source_replacement: Optional[Dict["Repository", str]] = None,
+) -> List[str]:
+    """
+    Recreate the Splitfile that can be used to reconstruct an image.
+    """
+
+    if source_replacement is None:
+        source_replacement = {}
+    splitfile_commands = []
+    for provenance_line in provenance_data:
+        prov_type = provenance_line["type"]
+        assert isinstance(prov_type, str)
+        if prov_type in ("IMPORT", "SQL", "FROM"):
+            splitfile_commands.append(
+                _prov_command_to_splitfile(provenance_line, source_replacement)
+            )
+        elif prov_type in ("MOUNT", "CUSTOM"):
+            if not ignore_irreproducible:
+                raise SplitGraphError(
+                    "Image used a Splitfile command %s" " that can't be reproduced!" % prov_type
+                )
+            splitfile_commands.append("# Irreproducible Splitfile command of type %s" % prov_type)
+    return splitfile_commands
 
 
 def _prov_command_to_splitfile(
