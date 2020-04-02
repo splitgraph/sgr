@@ -26,7 +26,7 @@ def test_misc_mountpoint_management(pg_repo_local, mg_repo_local):
 
     # sgr cleanup
     result = runner.invoke(cleanup_c)
-    assert "Deleted 1 physical object(s)" in result.output
+    assert "Deleted 1 object" in result.output
 
     # sgr init
     result = runner.invoke(init_c, ["output"])

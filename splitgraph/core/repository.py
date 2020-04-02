@@ -34,6 +34,7 @@ from .common import (
     slow_diff,
     gather_sync_metadata,
     set_tags_batch,
+    pluralise,
 )
 from .engine import lookup_repository, get_engine
 from .object_manager import ObjectManager
@@ -1046,7 +1047,7 @@ def _sync(
             target, source, overwrite_objects=overwrite, single_image=single_image,
         )
         if not new_images and not object_meta and not object_locations:
-            logging.info("Nothing to do.")
+            logging.info("No image/object metadata to pull.")
             return
 
         if download:
@@ -1115,11 +1116,12 @@ def _sync(
     source.commit_engines()
 
     logging.info(
-        "%s metadata for %d object(s), %d table version(s) and %d tag(s).",
+        "%s metadata for %s, %s, %s and %s.",
         ("Fetched" if download else "Uploaded"),
-        len(object_meta),
-        len(table_meta),
-        len([t for t in tags if t != "HEAD"]),
+        pluralise("image", len(new_images)),
+        pluralise("table", len(table_meta)),
+        pluralise("object", len(object_meta)),
+        pluralise("tag", len([t for t in tags if t != "HEAD"])),
     )
 
 
@@ -1165,7 +1167,6 @@ def clone(
     # of error cases.
     if download_all:
         local_om = local_repository.objects
-        logging.info("Fetching remote objects...")
         with local_om.ensure_objects(
             table=None,
             objects=local_om.get_objects_for_repository(

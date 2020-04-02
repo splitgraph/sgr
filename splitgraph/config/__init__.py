@@ -27,6 +27,8 @@ SPLITGRAPH_API_SCHEMA = "splitgraph_api"
 
 FDW_CLASS = get_singleton(CONFIG, "SG_FDW_CLASS")
 
+SG_CMD_ASCII = get_singleton(CONFIG, "SG_CMD_ASCII") == "true"
+
 # This is a global variable that gets flipped to True by the Multicorn FDW class
 # at startup. When we're running from within an engine as an FDW, we might need to use
 # different connection parameters to connect to other engines. It's not trivial to detect

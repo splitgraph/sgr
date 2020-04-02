@@ -19,7 +19,7 @@ from psycopg2.errors import UniqueViolation
 from psycopg2.sql import SQL, Identifier
 from tqdm import tqdm
 
-from splitgraph.config import SPLITGRAPH_API_SCHEMA
+from splitgraph.config import SPLITGRAPH_API_SCHEMA, SG_CMD_ASCII
 from splitgraph.core.indexing.bloom import generate_bloom_index, filter_bloom_index
 from splitgraph.core.indexing.range import (
     generate_range_index,
@@ -383,7 +383,7 @@ class FragmentManager(MetadataManager):
         """
         object_ids = []
         logging.info("Storing and indexing table %s", table.table_name)
-        for sub_changeset in tqdm(changesets, unit="objs", ascii=True):
+        for sub_changeset in tqdm(changesets, unit="objs", ascii=SG_CMD_ASCII):
             if not sub_changeset:
                 continue
             # Store the fragment in a temporary location and then find out its hash and rename to the actual target.
@@ -924,7 +924,7 @@ class FragmentManager(MetadataManager):
 
         logging.info("Storing and indexing the table")
         no_chunks = int(math.ceil(table_size / chunk_size))
-        pbar = tqdm(range(0, no_chunks), unit="objs", total=no_chunks, ascii=True)
+        pbar = tqdm(range(0, no_chunks), unit="objs", total=no_chunks, ascii=SG_CMD_ASCII)
 
         for chunk_id in pbar:
             new_fragment = self.create_base_fragment(

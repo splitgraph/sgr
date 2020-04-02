@@ -176,7 +176,7 @@ def test_reindex_and_force_push(pg_repo_local, pg_repo_remote):
         [str(pg_repo_local) + ":latest", "fruits", '-i {"bloom": {"name": {"probability": 0.01}}}'],
     )
     assert result.exit_code == 0
-    assert "Reindexed 1 object(s)" in result.output
+    assert "Reindexed 1 object" in result.output
 
     result = runner.invoke(push_c, [str(pg_repo_local), "-f"], catch_exceptions=False)
     assert result.exit_code == 0

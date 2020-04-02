@@ -419,3 +419,20 @@ def get_data_safe(package: str, resource: str) -> bytes:
             "Resource %s not found in package %s!" % (resource, package)
         )
     return result
+
+
+def pluralise(word: str, number: int) -> str:
+    """1 banana, 2 bananas"""
+    return "%d %s%s" % (number, word, "" if number == 1 else "s")
+
+
+def truncate_line(line: str, length: int = 80) -> str:
+    """Truncates a line to a given length, replacing the remainder with ..."""
+    return (line if len(line) <= length else line[: length - 3] + "...").replace("\n", "")
+
+
+def truncate_list(items: List[Any], max_entries: int = 10) -> str:
+    """Print a list, possibly truncating it to the specified number of entries"""
+    return ",".join(str(i) for i in items[:max_entries]) + (
+        ", ..." if len(items) > max_entries else ""
+    )

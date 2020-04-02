@@ -8,7 +8,7 @@ from typing import List, Tuple, TYPE_CHECKING
 from psycopg2 import DatabaseError
 from tqdm import tqdm
 
-from splitgraph.config import CONFIG, get_singleton
+from splitgraph.config import CONFIG, get_singleton, SG_CMD_ASCII
 from splitgraph.engine import get_engine, ResultShape
 from splitgraph.exceptions import IncompleteObjectUploadError, IncompleteObjectDownloadError
 from splitgraph.hooks.external_objects import ExternalObjectHandler
@@ -94,7 +94,7 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
                     tpe.map(_do_upload, zip(objects, urls)),
                     total=len(objects),
                     unit="objs",
-                    ascii=True,
+                    ascii=SG_CMD_ASCII,
                 )
                 for object_id in pbar:
                     if object_id:
@@ -166,7 +166,7 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
                     tpe.map(_do_download, zip(object_ids, urls)),
                     total=len(objects),
                     unit="obj",
-                    ascii=True,
+                    ascii=SG_CMD_ASCII,
                 )
                 for object_id in pbar:
                     if object_id:

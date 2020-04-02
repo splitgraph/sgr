@@ -19,8 +19,8 @@ from typing import (
 from psycopg2.sql import SQL, Identifier, Composable
 from tqdm import tqdm
 
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
-from splitgraph.core.common import Tracer
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA, SG_CMD_ASCII
+from splitgraph.core.common import Tracer, pluralise, truncate_list
 from splitgraph.core.fragment_manager import (
     get_temporary_table_id,
     get_chunk_groups,
@@ -205,7 +205,7 @@ class Table:
                     unlogged=True,
                 )
                 if required_objects:
-                    logging.info("Applying %d fragment(s)...", (len(required_objects)))
+                    logging.info("Applying %s...", pluralise("fragment", len(required_objects)))
                     engine.apply_fragments(
                         [(SPLITGRAPH_META_SCHEMA, d) for d in cast(List[str], required_objects)],
                         destination_schema,
@@ -262,7 +262,11 @@ class Table:
         required_objects = plan.filtered_objects
 
         object_manager = self.repository.objects
-        logging.info("Using fragments %r to satisfy the query", required_objects)
+        logging.info(
+            "Using %d fragments (%s) to satisfy the query",
+            required_objects,
+            truncate_list(required_objects),
+        )
         if not required_objects:
             return cast(Iterator[bytes], []), cast(Callable, _empty_callback), plan
 
@@ -506,7 +510,7 @@ class Table:
 
         # Download the objects to reindex them
         with object_manager.ensure_objects(self, objects=list(valid_objects)):
-            for object_id in tqdm(valid_objects, unit="objs", ascii=True):
+            for object_id in tqdm(valid_objects, unit="objs", ascii=SG_CMD_ASCII):
                 current_index = valid_objects[object_id].object_index
 
                 index_struct = object_manager.generate_object_index(

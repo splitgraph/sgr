@@ -27,6 +27,7 @@ from ._parsing import (
     extract_all_table_aliases,
     parse_custom_command,
 )
+from ..core.common import pluralise, truncate_line
 from ..core.types import ProvenanceLine
 
 
@@ -88,7 +89,7 @@ def execute_commands(
             output.init()
             repo_created = True
 
-    from splitgraph.commandline.common import Color, truncate_line
+    from splitgraph.commandline.common import Color
 
     node_list = parse_commands(commands, params=params)
 
@@ -314,8 +315,13 @@ def _execute_repo_import(
 
         def _calc():
             print(
-                "Importing %d table(s) from %s:%s into %s"
-                % (len(table_names), str(repository), source_hash[:12], str(target_repository))
+                "Importing %s from %s:%s into %s"
+                % (
+                    pluralise("table", len(table_names)),
+                    str(repository),
+                    source_hash[:12],
+                    str(target_repository),
+                )
             )
             target_repository.import_tables(
                 table_aliases,

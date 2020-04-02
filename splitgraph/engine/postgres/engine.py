@@ -29,7 +29,7 @@ from typing import (
 import psycopg2
 from packaging.version import Version
 from psycopg2 import DatabaseError
-from psycopg2.errors import InvalidSchemaName, UndefinedTable, DuplicateTable
+from psycopg2.errors import InvalidSchemaName, UndefinedTable
 from psycopg2.extras import execute_batch, Json
 from psycopg2.pool import ThreadedConnectionPool, AbstractConnectionPool
 from psycopg2.sql import Composed, SQL
@@ -37,7 +37,7 @@ from psycopg2.sql import Identifier
 from tqdm import tqdm
 
 from splitgraph.__version__ import __version__
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCHEMA
+from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCHEMA, SG_CMD_ASCII
 from splitgraph.core.common import ensure_metadata_schema, META_TABLES, get_data_safe
 from splitgraph.core.sql import select
 from splitgraph.core.types import TableColumn, TableSchema
@@ -48,6 +48,7 @@ from splitgraph.exceptions import (
     AuthAPIError,
     IncompleteObjectDownloadError,
     APICompatibilityError,
+    ObjectMountingError,
 )
 from splitgraph.hooks.mount_handlers import mount_postgres
 
@@ -938,7 +939,13 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         :param schema_spec: Schema of the object.
         """
         query = self.dump_object_creation(object_id, schema, table, schema_spec, if_not_exists=True)
-        self.run_sql(query)
+        try:
+            self.run_sql(query)
+        except psycopg2.errors.UndefinedObject as e:
+            raise ObjectMountingError(
+                "Error loading object %s. It's possible that it was created "
+                "using an extension that's not installed on this engine."
+            ) from e
 
     def store_fragment(
         self,
@@ -1192,7 +1199,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         #
         # Perhaps we should drop direct uploading altogether and require people to use S3 throughout.
 
-        pbar = tqdm(objects, unit="objs", ascii=True)
+        pbar = tqdm(objects, unit="objs", ascii=SG_CMD_ASCII)
         for object_id in pbar:
             pbar.set_postfix(object=object_id[:10] + "...")
             schema_spec = self.get_object_schema(object_id)
@@ -1267,7 +1274,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
 
         with self._mount_remote_engine(remote_engine) as remote_schema:
             downloaded_objects = []
-            pbar = tqdm(objects, unit="objs", ascii=True)
+            pbar = tqdm(objects, unit="objs", ascii=SG_CMD_ASCII)
             for object_id in pbar:
                 pbar.set_postfix(object=object_id[:10] + "...")
                 if not self.table_exists(remote_schema, object_id):

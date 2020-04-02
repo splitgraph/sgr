@@ -112,16 +112,6 @@ class Color:
     END = "\033[0m"
 
 
-def truncate_line(line: str, length: int = 80) -> str:
-    """Truncates a line to a given length, replacing the remainder with ..."""
-    return (line if len(line) <= length else line[: length - 3] + "...").replace("\n", "")
-
-
-def pluralise(word: str, number: int) -> str:
-    """1 banana, 2 bananas"""
-    return "%d %s%s" % (number, word, "" if number == 1 else "s")
-
-
 def print_table(rows: List[Tuple[str, ...]], column_width: int = 15) -> None:
     """Print a list of rows with a constant column width"""
     click.echo(

@@ -204,9 +204,10 @@ def cleanup_c():
     """
     from splitgraph.core.object_manager import ObjectManager
     from splitgraph.engine import get_engine
+    from splitgraph.core.common import pluralise
 
     deleted = ObjectManager(get_engine()).cleanup()
-    click.echo("Deleted %d physical object(s)" % len(deleted))
+    click.echo("Deleted %s." % pluralise("object", len(deleted)))
 
 
 @click.command(name="config")
@@ -370,9 +371,9 @@ def upgrade_c(skip_engine_upgrade, path, force, version):
     This method is only supported for single-binary installs and engines managed
     by `sgr engine`.
     """
-    from splitgraph.config import CONFIG
     import requests
     from tqdm import tqdm
+    from splitgraph.config import CONFIG, SG_CMD_ASCII
 
     # Detect if we're running from a Pyinstaller binary
     if not hasattr(sys, "frozen") and not force and not path:
@@ -419,7 +420,10 @@ def upgrade_c(skip_engine_upgrade, path, force, version):
     headers = get_headers()
     response = requests.get(download_url, headers=headers, allow_redirects=True, stream=True)
     response.raise_for_status()
-    with tqdm(total=int(response.headers["Content-Length"]), unit="B", unit_scale=True) as pbar:
+
+    with tqdm(
+        total=int(response.headers["Content-Length"]), unit="B", unit_scale=True, ascii=SG_CMD_ASCII
+    ) as pbar:
         with (open(str(temp_path), "wb")) as f:
             for chunk in response.iter_content(chunk_size=1024):
                 f.write(chunk)
