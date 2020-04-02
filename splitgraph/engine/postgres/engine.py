@@ -81,12 +81,12 @@ _API_VERSION = "0.0.1"
 # footprint more predictable. We hence chunk some heavy queries like object
 # index uploading to allow registering multiple objects at the same time whilst
 # also limiting the query's maximum size.
-API_MAX_QUERY_LENGTH = 65000
+API_MAX_QUERY_LENGTH = 261000
 
 # In addition, some API calls (like get_object_meta) allow variadic arguments
 # to decrease the number of roundtrips the client has to do -- limit this to a sane
-# number (in the standard config 800 objects is 8M rows).
-API_MAX_VARIADIC_ARGS = 800
+# number.
+API_MAX_VARIADIC_ARGS = 1000
 
 
 def _handle_fatal(e):
@@ -111,7 +111,8 @@ def _paginate_by_size(cur, query, argslist, max_size=API_MAX_QUERY_LENGTH):
         statement = cur.mogrify(query, args)
         if len(statement) > max_size:
             raise ValueError(
-                "Statement %s... exceeds maximum query size %d!" % (statement[:100], max_size)
+                ("Statement %s... exceeds maximum query size %d. " % (statement[:100], max_size))
+                + "Are you trying to upload an object with a large amount of metadata?"
             )
         if len(statement) + len(buf) + 1 > max_size:
             yield buf
