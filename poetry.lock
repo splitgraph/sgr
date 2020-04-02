@@ -112,7 +112,7 @@ description = "Low-level, data-driven core of boto 3."
 name = "botocore"
 optional = false
 python-versions = "*"
-version = "1.15.33"
+version = "1.15.34"
 
 [package.dependencies]
 docutils = ">=0.10,<0.16"
@@ -1234,7 +1234,7 @@ testing = ["jaraco.itertools", "func-timeout"]
 pandas = ["pandas", "sqlalchemy"]
 
 [metadata]
-content-hash = "fb40b72ea31edd0f3cb95f399391977ac1136a6ed0319f71b9eba04881a09960"
+content-hash = "552c4ebbe866ca4dc0a9f9b143e1224bc7b2ccea3bb6c14b112f4aeec43ffa66"
 python-versions = "~=3.6"
 
 [metadata.files]
@@ -1275,8 +1275,8 @@ boto3 = [
     {file = "boto3-1.12.33.tar.gz", hash = "sha256:ad774b0e98d093ae425b85fdb25e5ae70a02ebe036c4222e1b93444699719221"},
 ]
 botocore = [
-    {file = "botocore-1.15.33-py2.py3-none-any.whl", hash = "sha256:4240f2fb38c4cccc0fd319e6620a30a1c19b869c1e33ff864eec9cde7965a6ba"},
-    {file = "botocore-1.15.33.tar.gz", hash = "sha256:078a9731e054f9ee914a8eac77e445de3c1344a00d7eebfee9cae7f40b7f48e8"},
+    {file = "botocore-1.15.34-py2.py3-none-any.whl", hash = "sha256:db0fba3f4adfb9bf3976aae10efa9acb59e3efe52ce8feac71ecac0b7be2fc2e"},
+    {file = "botocore-1.15.34.tar.gz", hash = "sha256:c799623598d04c66b0be4cb990c01a24bd3c06023f0c7221adead38a7431c994"},
 ]
 bump2version = [
     {file = "bump2version-1.0.0-py2.py3-none-any.whl", hash = "sha256:477f0e18a0d58e50bb3dbc9af7fcda464fd0ebfc7a6151d8888602d7153171a0"},
