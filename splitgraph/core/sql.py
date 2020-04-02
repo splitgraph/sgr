@@ -2,6 +2,7 @@
 import logging
 from typing import Callable, Dict, List, Union, Optional, Sequence
 
+from pglast.printer import RawStream, IndentedStream
 from psycopg2.sql import Composed, SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
@@ -101,7 +102,16 @@ def _validate_node(
         raise UnsupportedSQLError(message + "!")
 
 
-def validate_splitfile_sql(sql: str) -> None:
+def _emit_ast(ast: "Node") -> str:
+    # required to instantiate all pglast node printers.
+    # noinspection PyUnresolvedReferences
+    from pglast import printers  # noqa
+
+    stream = IndentedStream()
+    return stream(ast)
+
+
+def validate_splitfile_sql(sql: str) -> str:
     """
     Check an SQL query to see if it can be safely used in a Splitfile SQL command. The rules for usage are:
 
@@ -111,12 +121,12 @@ def validate_splitfile_sql(sql: str) -> None:
       * Function invocations are forbidden.
 
     :param sql: SQL query
-    :return: None if validation is successful
+    :return: Canonical (reformatted) form of the SQL.
     :raises: UnsupportedSQLException if validation failed
     """
     if not _VALIDATION_SUPPORTED:
         logging.warning("SQL validation is unsupported on Windows. SQL will be run unvalidated.")
-        return
+        return sql
 
     try:
         tree = Node(parse_sql(sql))
@@ -126,21 +136,22 @@ def validate_splitfile_sql(sql: str) -> None:
         _validate_node(
             node, permitted_nodes=_SPLITFILE_SQL_PERMITTED_NODES, node_validators=_SQL_VALIDATORS
         )
+    return _emit_ast(tree)
 
 
-def validate_import_sql(sql: str) -> None:
+def validate_import_sql(sql: str) -> str:
     """
     Check an SQL query to see if it can be safely used in an IMPORT statement
     (e.g. `FROM noaa/climate:latest IMPORT {SELECT * FROM rainfall WHERE state = 'AZ'} AS rainfall`.
     In this case, only a single SELECT statement is supported.
 
     :param sql: SQL query
-    :return: None if validation is successful
+    :return: Canonical (formatted) form of the SQL statement
     :raises: UnsupportedSQLException if validation failed
     """
     if not _VALIDATION_SUPPORTED:
         logging.warning("SQL validation is unsupported on Windows. SQL will be run unvalidated.")
-        return
+        return sql
 
     try:
         tree = Node(parse_sql(sql))
@@ -153,6 +164,7 @@ def validate_import_sql(sql: str) -> None:
         _validate_node(
             node, permitted_nodes=_IMPORT_SQL_PERMITTED_NODES, node_validators=_SQL_VALIDATORS
         )
+    return _emit_ast(tree)
 
 
 def select(

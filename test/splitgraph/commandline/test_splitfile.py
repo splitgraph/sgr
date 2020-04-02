@@ -33,7 +33,7 @@ def test_splitfile(local_engine_empty, pg_repo_remote):
     assert (
         "FROM test/pg_mount:%s IMPORT" % pg_repo_remote.images["latest"].image_hash in result.output
     )
-    assert "SQL {CREATE TABLE join_table AS" in result.output
+    assert "SQL {CREATE TABLE join_table" in result.output
 
     # Test reverse dependencies
     # We're looking at test/pg_mount on the local engine which doesn't exist -- this should fail.

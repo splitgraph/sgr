@@ -623,6 +623,7 @@ class Repository:
         table_queries: Optional[Sequence[bool]] = None,
         parent_hash: Optional[str] = None,
         wrapper: Optional[str] = FDW_CLASS,
+        skip_validation: bool = False,
     ) -> str:
         """
         Creates a new commit in target_repository with one or more tables linked to already-existing tables.
@@ -648,6 +649,7 @@ class Repository:
             Existing tables from the parent image are preserved in the new image. If None, the current repository
             HEAD is used.
         :param wrapper: Override the default class for the layered querying foreign data wrapper.
+        :param skip_validation: Don't validate SQL used in import statements (used by the Splitfile executor that pre-formats the SQL).
         :return: Hash that the new image was stored under.
         """
         # Sanitize/validate the parameters and call the internal function.
@@ -702,6 +704,7 @@ class Repository:
             foreign_tables,
             parent_hash,
             wrapper,
+            skip_validation,
         )
 
     def _import_tables(
@@ -716,6 +719,7 @@ class Repository:
         foreign_tables: bool,
         base_hash: Optional[str],
         wrapper: Optional[str],
+        skip_validation: bool,
     ) -> str:
         # This importing route only supported between local repos.
         assert self.engine == source_repository.engine
@@ -737,7 +741,13 @@ class Repository:
                 assert image is not None
                 with image.query_schema(wrapper=wrapper) as tmp_schema:
                     self._import_new_table(
-                        tmp_schema, source_table, target_hash, target_table, is_query, do_checkout
+                        tmp_schema,
+                        source_table,
+                        target_hash,
+                        target_table,
+                        is_query,
+                        do_checkout,
+                        skip_validation,
                     )
             elif foreign_tables:
                 self._import_new_table(
@@ -786,13 +796,15 @@ class Repository:
         target_table: str,
         is_query: bool,
         do_checkout: bool,
+        skip_validation: bool = False,
     ) -> List[str]:
         # First, import the query (or the foreign table) into a temporary table.
         tmp_object_id = get_temporary_table_id()
         if is_query:
             # is_query precedes foreign_tables: if we're importing using a query, we don't care if it's a
             # foreign table or not since we're storing it as a full snapshot.
-            validate_import_sql(source_table)
+            if not skip_validation:
+                source_table = validate_import_sql(source_table)
             self.object_engine.run_sql_in(
                 source_schema,
                 SQL("CREATE TABLE {}.{} AS ").format(
