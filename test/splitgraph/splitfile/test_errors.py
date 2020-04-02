@@ -42,7 +42,7 @@ def test_splitfile_object_download_failure(local_engine_empty, pg_repo_remote_mu
         execute_commands(
             load_splitfile("import_remote_multiple.splitfile"), params={"TAG": "v1"}, output=OUTPUT
         )
-    assert "Missing objects: ['%s']" % object_id in str(e.value)
+    assert "Missing 1 object (%s)" % object_id in str(e.value)
 
     # Check the execution didn't create the image
     assert len(OUTPUT.images()) == 0
