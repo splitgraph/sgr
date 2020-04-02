@@ -54,6 +54,9 @@ DEFAULTS: ConfigDict = {
     "SG_EVICTION_FLOOR": "1",
     "SG_EVICTION_MIN_FRACTION": "0.05",
     "SG_FDW_CLASS": "splitgraph.core.fdw_checkout.QueryingForeignDataWrapper",
+    # sgr commandline config
+    # Set to true to disable Unicode progressbars (done in asciinema recording).
+    "SG_CMD_ASCII": "false",
     # Some default sections: these can't be overridden via envvars.
     # Default remote engine (data.splitgraph.com).
     # No credentials here: they are fetched from data.splitgraph.com/auth

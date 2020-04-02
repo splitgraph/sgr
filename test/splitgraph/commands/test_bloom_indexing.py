@@ -285,7 +285,7 @@ def test_bloom_reindex_changed_table(local_engine_empty):
     # can't reindex that object.
     with pytest.raises(ObjectIndexingError) as e:
         head.get_table("test").reindex(extra_indexes=index_spec)
-    assert "1 object(s)" in str(e.value)
+    assert "1 object" in str(e.value)
 
     reindexed = head.get_table("test").reindex(
         extra_indexes=index_spec, raise_on_patch_objects=False

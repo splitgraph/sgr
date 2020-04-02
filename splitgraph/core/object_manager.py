@@ -11,7 +11,6 @@ from typing import (
     Iterator,
     List,
     Optional,
-    Set,
     Tuple,
     Union,
     TYPE_CHECKING,
@@ -33,7 +32,7 @@ from splitgraph.exceptions import (
     IncompleteObjectDownloadError,
 )
 from splitgraph.hooks.external_objects import get_external_object_handler
-from .common import META_TABLES, pretty_size, Tracer, CallbackList
+from .common import META_TABLES, pretty_size, Tracer, CallbackList, pluralise, truncate_list
 from .sql import select, insert
 
 if TYPE_CHECKING:
@@ -193,7 +192,7 @@ class ObjectManager(FragmentManager):
             tracer.log("filter_objects")
 
         # Increase the refcount on all of the objects we're giving back to the caller so that others don't GC them.
-        logging.debug("Claiming %d object(s)", len(required_objects))
+        logging.debug("Claiming %s", pluralise("object", len(required_objects)))
 
         self._claim_objects(required_objects)
         tracer.log("claim_objects")
@@ -231,10 +230,11 @@ class ObjectManager(FragmentManager):
             except IncompleteObjectDownloadError as e:
                 successful = e.successful_objects
                 difference = list(set(to_fetch).difference(successful))
-                if e.reason:
-                    partial_failure = e.reason
-                else:
-                    partial_failure = self._generate_download_error(table, difference)
+                if difference:
+                    if e.reason:
+                        partial_failure = e.reason
+                    else:
+                        partial_failure = self._generate_download_error(table, difference)
             except Exception:
                 successful = self.get_downloaded_objects(to_fetch)
                 difference = list(set(to_fetch).difference(successful))
@@ -256,7 +256,7 @@ class ObjectManager(FragmentManager):
 
             self._set_ready_flags(to_fetch, is_ready=True)
         tracer.log("fetch_objects")
-        logging.debug("Yielding to the caller")
+        logging.debug("Object manager finished.")
 
         release_callback = self._make_release_callback(required_objects, table, tracer)
         try:
@@ -274,17 +274,18 @@ class ObjectManager(FragmentManager):
 
     def _generate_download_error(self, table, difference):
         if table:
-            error = (
-                "Not all objects required to materialize %s:%s:%s have been fetched. Missing objects: %r"
-                % (
-                    table.repository.to_schema(),
-                    table.image.image_hash,
-                    table.table_name,
-                    difference,
-                )
+            error = "Not all objects required for %s:%s:%s have been fetched. Missing %s (%s)" % (
+                table.repository.to_schema(),
+                table.image.image_hash,
+                table.table_name,
+                pluralise("object", len(difference)),
+                truncate_list(difference),
             )
         else:
-            error = "Not all objects have been fetched. Missing objects: %r" % difference
+            error = "Not all objects have been fetched. Missing %s (%s)" % (
+                pluralise("object", len(difference)),
+                truncate_list(difference),
+            )
         logging.error(error)
         partial_failure = ObjectCacheError(error)
         return partial_failure
@@ -307,7 +308,7 @@ class ObjectManager(FragmentManager):
             self.object_engine.run_sql("SET LOCAL synchronous_commit TO off")
             self._release_objects(required_objects)
             tracer.log("release_objects")
-            logging.debug("Releasing %d object(s)", len(required_objects))
+            logging.debug("Releasing %s", pluralise("object", len(required_objects)))
             if table:
                 logging.debug(
                     "Timing stats for %s/%s/%s/%s: \n%s",
@@ -339,8 +340,8 @@ class ObjectManager(FragmentManager):
         new_objects = [o for o in objects if o not in uploaded_objects]
 
         logging.debug(
-            "%d object(s) of %d haven't been uploaded yet: %r",
-            len(new_objects),
+            "%s of %d haven't been uploaded yet: %r",
+            pluralise("object", len(new_objects)),
             len(objects),
             new_objects,
         )
@@ -444,8 +445,8 @@ class ObjectManager(FragmentManager):
             required_space = sum(o.size for o in self.get_object_meta(list(to_fetch)).values())
             current_occupied = self.get_cache_occupancy()
             logging.info(
-                "Need to download %d object(s) (%s), cache occupancy: %s/%s",
-                len(to_fetch),
+                "Need to download %s (%s), cache occupancy: %s/%s",
+                pluralise("object", len(required_objects)),
                 pretty_size(required_space),
                 pretty_size(current_occupied),
                 pretty_size(self.cache_size),
@@ -585,8 +586,8 @@ class ObjectManager(FragmentManager):
         orphaned_object_sizes = {o: self.object_engine.get_object_size(o) for o in orphaned_objects}
         if orphaned_objects:
             logging.info(
-                "Found %d orphaned object(s), total size %s: %s",
-                len(orphaned_objects),
+                "Found %s, total size %s: %s",
+                pluralise("orphaned object", len(orphaned_objects)),
                 pretty_size(sum(orphaned_object_sizes.values())),
                 orphaned_objects,
             )
@@ -596,7 +597,9 @@ class ObjectManager(FragmentManager):
             to_delete = [o[0] for o in candidates]
             freed_space = sum(object_sizes.values()) + sum(orphaned_object_sizes.values())
             logging.info(
-                "Will delete %d object(s), total size %s", len(to_delete), pretty_size(freed_space)
+                "Will delete %s, total size %s",
+                pluralise("object", len(to_delete)),
+                pretty_size(freed_space),
             )
         else:
             if required_space > sum(object_sizes.values()) + sum(orphaned_object_sizes.values()):
@@ -658,8 +661,8 @@ class ObjectManager(FragmentManager):
             to_delete.append(object_id)
             freed_space += object_sizes[object_id]
         logging.info(
-            "Will delete %d object(s) last used between %s and %s, total size %s: %s",
-            len(to_delete),
+            "Will delete %s last used between %s and %s, total size %s: %s",
+            pluralise("object", len(to_delete)),
             min(last_useds).isoformat(),
             max(last_useds).isoformat(),
             pretty_size(freed_space),
@@ -696,11 +699,14 @@ class ObjectManager(FragmentManager):
         logging.debug("Need to fetch %r, already exist: %r", objects_to_fetch, existing_objects)
         objects_to_fetch = list(set(o for o in objects_to_fetch if o not in existing_objects))
         if not objects_to_fetch:
+            logging.info("No new objects to download.")
             return []
 
         total_size = sum(o.size for o in self.get_object_meta(objects_to_fetch).values())
         logging.info(
-            "Fetching %d object(s), total size %s", len(objects_to_fetch), pretty_size(total_size)
+            "Fetching %s, total size %s",
+            pluralise("object", len(objects_to_fetch)),
+            pretty_size(total_size),
         )
 
         # We don't actually seem to pass extra handler parameters when downloading objects since
@@ -753,7 +759,9 @@ class ObjectManager(FragmentManager):
             return []
         total_size = sum(o.size for o in self.get_object_meta(objects_to_push).values())
         logging.info(
-            "Uploading %d object(s), total size %s", len(objects_to_push), pretty_size(total_size)
+            "Uploading %s, total size %s",
+            pluralise("object", len(objects_to_push)),
+            pretty_size(total_size),
         )
 
         if handler == "DB":
@@ -821,7 +829,6 @@ def _fetch_external_objects(
 
     successful: List[str] = []
     if non_remote_objects:
-        logging.info("Fetching external objects...")
         for method, objects in non_remote_by_method.items():
             handler = get_external_object_handler(method, handler_params)
             # In case we're calling this from inside the FDW

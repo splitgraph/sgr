@@ -33,6 +33,10 @@ class ObjectIndexingError(SplitGraphError):
     """Errors related to indexing objects"""
 
 
+class ObjectMountingError(SplitGraphError):
+    """Errors related to incompatible objects."""
+
+
 class RepositoryNotFoundError(SplitGraphError):
     """A Splitgraph repository doesn't exist."""
 

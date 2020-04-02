@@ -7,8 +7,8 @@ from typing import List, Optional, Tuple, Union, Dict, cast, TYPE_CHECKING, Any
 
 import click
 
-from splitgraph.core.common import pretty_size
-from .common import ImageType, pluralise, RepositoryType
+from splitgraph.core.common import pretty_size, pluralise
+from .common import ImageType, RepositoryType
 
 if TYPE_CHECKING:
     from splitgraph.core.repository import Repository

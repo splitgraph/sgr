@@ -1,11 +1,10 @@
-import itertools
 from datetime import datetime
 from typing import Any, List, Optional, Set, TYPE_CHECKING, Sequence
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
+from splitgraph.config import SPLITGRAPH_API_SCHEMA
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.image import IMAGE_COLS, Image
 from splitgraph.core.sql import select
@@ -89,7 +88,7 @@ class ImageManager:
                 if tag == "HEAD":
                     raise ImageNotFoundError(
                         'No current checked out revision found for %s. Check one out with "sgr '
-                        'checkout %s image_hash".' % (schema, schema)
+                        'checkout %s:image_hash".' % (schema, schema)
                     )
                 raise ImageNotFoundError("Tag %s not found in repository %s" % (tag, schema))
             return None

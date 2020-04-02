@@ -343,10 +343,12 @@ def reindex_c(image_spec, table_name, index_options, ignore_patch_objects):
 
     Image spec must be of the format ``[NAMESPACE/]REPOSITORY[:HASH_OR_TAG]``. If no tag is specified, ``HEAD`` is used.
     """
+    from splitgraph.core.common import pluralise
+
     repository, image = image_spec
     table = image.get_table(table_name)
     click.echo("Reindexing table %s:%s/%s" % (repository.to_schema(), image.image_hash, table_name))
     reindexed = table.reindex(
         extra_indexes=index_options, raise_on_patch_objects=not ignore_patch_objects
     )
-    click.echo("Reindexed %d object(s)" % len(reindexed))
+    click.echo("Reindexed %s" % pluralise("object", len(reindexed)))
