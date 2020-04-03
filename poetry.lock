@@ -99,10 +99,10 @@ description = "The AWS SDK for Python"
 name = "boto3"
 optional = false
 python-versions = "*"
-version = "1.12.33"
+version = "1.12.23"
 
 [package.dependencies]
-botocore = ">=1.15.33,<1.16.0"
+botocore = ">=1.15.23,<1.16.0"
 jmespath = ">=0.7.1,<1.0.0"
 s3transfer = ">=0.3.0,<0.4.0"
 
@@ -112,7 +112,7 @@ description = "Low-level, data-driven core of boto 3."
 name = "botocore"
 optional = false
 python-versions = "*"
-version = "1.15.33"
+version = "1.15.23"
 
 [package.dependencies]
 docutils = ">=0.10,<0.16"
@@ -324,7 +324,7 @@ description = "Iterative JSON parser with a standard Python iterator interface"
 name = "ijson"
 optional = false
 python-versions = "*"
-version = "2.6.1"
+version = "3.0"
 
 [[package]]
 category = "dev"
@@ -1114,7 +1114,7 @@ description = "Fast, Extensible Progress Meter"
 name = "tqdm"
 optional = false
 python-versions = ">=2.6, !=3.0.*, !=3.1.*"
-version = "4.44.1"
+version = "4.45.0"
 
 [package.extras]
 dev = ["py-make (>=0.1.0)", "twine", "argopt", "pydoc-markdown"]
@@ -1133,7 +1133,7 @@ description = "Backported and Experimental Type Hints for Python 3.5+"
 name = "typing-extensions"
 optional = false
 python-versions = "*"
-version = "3.7.4.1"
+version = "3.7.4.2"
 
 [[package]]
 category = "main"
@@ -1234,7 +1234,7 @@ testing = ["jaraco.itertools", "func-timeout"]
 pandas = ["pandas", "sqlalchemy"]
 
 [metadata]
-content-hash = "fb40b72ea31edd0f3cb95f399391977ac1136a6ed0319f71b9eba04881a09960"
+content-hash = "30b619955794cd738f9604018c70566da403ed3b7d156724b1661a68ee691d54"
 python-versions = "~=3.6"
 
 [metadata.files]
@@ -1271,12 +1271,12 @@ black = [
     {file = "black-19.10b0.tar.gz", hash = "sha256:c2edb73a08e9e0e6f65a0e6af18b059b8b1cdd5bef997d7a0b181df93dc81539"},
 ]
 boto3 = [
-    {file = "boto3-1.12.33-py2.py3-none-any.whl", hash = "sha256:6f239e3798a1e4d5c9a8093b80c85110d1f872d4f61ea348aa89269b14da186f"},
-    {file = "boto3-1.12.33.tar.gz", hash = "sha256:ad774b0e98d093ae425b85fdb25e5ae70a02ebe036c4222e1b93444699719221"},
+    {file = "boto3-1.12.23-py2.py3-none-any.whl", hash = "sha256:a3a89a254b068dbcc23298dea11d15b9e6e19f825290ebe43fcf4ccbbe423994"},
+    {file = "boto3-1.12.23.tar.gz", hash = "sha256:0080ea1cce4c87d9f1e4e47fed4b994451b0022fcf6e120d1fb653eb3874506d"},
 ]
 botocore = [
-    {file = "botocore-1.15.33-py2.py3-none-any.whl", hash = "sha256:4240f2fb38c4cccc0fd319e6620a30a1c19b869c1e33ff864eec9cde7965a6ba"},
-    {file = "botocore-1.15.33.tar.gz", hash = "sha256:078a9731e054f9ee914a8eac77e445de3c1344a00d7eebfee9cae7f40b7f48e8"},
+    {file = "botocore-1.15.23-py2.py3-none-any.whl", hash = "sha256:5b6bf68bd484fbf83e27f56a0a92e38cee223b689121c1184a0292311b88f888"},
+    {file = "botocore-1.15.23.tar.gz", hash = "sha256:e4fc86574043b20267f863b9168bd1c9ed50a53f0f7222ce8c99f64355174515"},
 ]
 bump2version = [
     {file = "bump2version-1.0.0-py2.py3-none-any.whl", hash = "sha256:477f0e18a0d58e50bb3dbc9af7fcda464fd0ebfc7a6151d8888602d7153171a0"},
@@ -1386,18 +1386,27 @@ idna = [
     {file = "idna-2.9.tar.gz", hash = "sha256:7588d1c14ae4c77d74036e8c22ff447b26d0fde8f007354fd48a7814db15b7cb"},
 ]
 ijson = [
-    {file = "ijson-2.6.1-cp27-cp27m-macosx_10_6_x86_64.whl", hash = "sha256:60393946d73792d5adeeaa25e82ff2f5bf19b17f6617a468743a4db4a07298a0"},
-    {file = "ijson-2.6.1-cp27-cp27m-manylinux1_x86_64.whl", hash = "sha256:d320dc1c1c9adbe404668b0fed6bfa0ac8693911159564f4655a5f2059746993"},
-    {file = "ijson-2.6.1-cp27-cp27mu-manylinux1_x86_64.whl", hash = "sha256:a4cd7f8ecf035d0e23db1cc6d6036e6c563f31abacbceae88904bb8b7f88b1f6"},
-    {file = "ijson-2.6.1-cp34-cp34m-macosx_10_6_x86_64.whl", hash = "sha256:9904bf55bc1f170353c32144861d8295f0bdc41034e5e6ae58cbf30610023ca6"},
-    {file = "ijson-2.6.1-cp34-cp34m-manylinux1_x86_64.whl", hash = "sha256:7bac04b23691e6ab122d8f9ff06b26dbbb6df01babbf6bf8856ccad1c505278b"},
-    {file = "ijson-2.6.1-cp35-cp35m-macosx_10_6_x86_64.whl", hash = "sha256:ae9cc3ebbe8fa030b923b5dff912a61980edd03dc00b92f5c0223e44cbc51d9f"},
-    {file = "ijson-2.6.1-cp35-cp35m-manylinux1_x86_64.whl", hash = "sha256:8ce67b7d3435c3fc831d5c06f60b2d20a853b599cdf885478e575a3416fbf655"},
-    {file = "ijson-2.6.1-cp36-cp36m-macosx_10_6_x86_64.whl", hash = "sha256:a8b486bdf24e389947e588f4021498f6cc56cafdfaec1c78e9952e0f338aef23"},
-    {file = "ijson-2.6.1-cp36-cp36m-manylinux1_x86_64.whl", hash = "sha256:c0042bb768fb890c177af923c0ead157cdc70c6dfa64827765c1a3676a879190"},
-    {file = "ijson-2.6.1-cp37-cp37m-macosx_10_6_x86_64.whl", hash = "sha256:26978c02314233c87bddad8800b7b9a56a052334f495e2bce93b282397c6931d"},
-    {file = "ijson-2.6.1-cp37-cp37m-manylinux1_x86_64.whl", hash = "sha256:25d4d159405f75a7443c1fe83b6d7be5a7da017b4aa9cc1bb5cda3feb74aaf32"},
-    {file = "ijson-2.6.1.tar.gz", hash = "sha256:75ebc60b23abfb1c97f475ab5d07a5ed725ad4bd1f58513d8b258c21f02703d0"},
+    {file = "ijson-3.0-cp27-cp27m-macosx_10_6_x86_64.whl", hash = "sha256:a903cab278976c3af40bfc49af70b0b2371a1ea2469cc38be7f861a1e5fb1fdb"},
+    {file = "ijson-3.0-cp27-cp27m-manylinux1_x86_64.whl", hash = "sha256:fe82ef39fdd8fc4417c2151f8325d0c492ec6caaf5eee943dedbe407a0cd30c4"},
+    {file = "ijson-3.0-cp27-cp27mu-manylinux1_x86_64.whl", hash = "sha256:da4c7f4e8069d824c9645f72e8fd18bdf924fe2326fce0478b3be3e15b7a1a8e"},
+    {file = "ijson-3.0-cp34-cp34m-macosx_10_6_x86_64.whl", hash = "sha256:8aecd80e655bd3e450718ae04434dd0eed49e449397ea5b3839314d303ebe77b"},
+    {file = "ijson-3.0-cp34-cp34m-manylinux1_x86_64.whl", hash = "sha256:e43b1522cfb6c9926a6e1d819f0157afdc1c75c9e9f1e7b5b137b7af9c9d1692"},
+    {file = "ijson-3.0-cp35-cp35m-macosx_10_6_x86_64.whl", hash = "sha256:ace2077bf25a8701edbe6fbfab32711158cb1822e46e83dc379ffa4ac77d79c3"},
+    {file = "ijson-3.0-cp35-cp35m-manylinux1_x86_64.whl", hash = "sha256:393868911d41fcc9da32a0cb668dbf4f590e6c61a874eb76d74cca80a530c7fe"},
+    {file = "ijson-3.0-cp35-cp35m-win32.whl", hash = "sha256:b5198a70411355374d1c89c3172d84b112a235552b5c52f088f789a29766939d"},
+    {file = "ijson-3.0-cp35-cp35m-win_amd64.whl", hash = "sha256:ca1728997c2c5fc3674c782efb82e894bc69bb36103f503c98787590bed4f833"},
+    {file = "ijson-3.0-cp36-cp36m-macosx_10_6_x86_64.whl", hash = "sha256:62a5f46d4791a575e97e0445fc3009f5b1f7acfaa9637c166c90e0c69901c02d"},
+    {file = "ijson-3.0-cp36-cp36m-manylinux1_x86_64.whl", hash = "sha256:8f0a017c393849b1732b7ed6fdfff48f783f0a929de15b31563e8e532995b406"},
+    {file = "ijson-3.0-cp36-cp36m-win32.whl", hash = "sha256:7d40d8dced75715b43c05d6d32fbbc5bf1627a212b1c220785c92ba42527d8ee"},
+    {file = "ijson-3.0-cp36-cp36m-win_amd64.whl", hash = "sha256:88df625095b40657bf0bebbf5d29d50fe738c5e3a8f5162fc45e20e886cf9879"},
+    {file = "ijson-3.0-cp37-cp37m-macosx_10_6_x86_64.whl", hash = "sha256:c07b4b2f3905fe9cf7f1fe234e3bb7690952af4229bdcccaf4af30d18811c552"},
+    {file = "ijson-3.0-cp37-cp37m-manylinux1_x86_64.whl", hash = "sha256:af7c32c23a590fe6fd6926f635664c39c6bc2478a1f45d8ce1792ab6a0fdf9ce"},
+    {file = "ijson-3.0-cp37-cp37m-win32.whl", hash = "sha256:bf19611ecc79b0505aeb2a1d712d54adac57d609f5785ab661c53e37d9d262f2"},
+    {file = "ijson-3.0-cp37-cp37m-win_amd64.whl", hash = "sha256:f6f6979e8111e23bb40c95e9d4af07fce3ec33c11ebf87faffa82e5979147fa4"},
+    {file = "ijson-3.0-cp38-cp38-manylinux1_x86_64.whl", hash = "sha256:5682bf555202e55d135dc31d2c8089738896ad1e962c92c7aa88ecf73dd6013f"},
+    {file = "ijson-3.0-cp38-cp38-win32.whl", hash = "sha256:eaf0c69f38169ed86f046c66e2c3186df23bbee4200326acaca4a2a72c5a9af1"},
+    {file = "ijson-3.0-cp38-cp38-win_amd64.whl", hash = "sha256:fbeebd976881ea025a0b72739921471657952aaf94e1cb235714db897ecea4ee"},
+    {file = "ijson-3.0.tar.gz", hash = "sha256:13507564c2798a2af9250211b0be246ca75bbf499fd7375803d3f91dccc7c2c1"},
 ]
 imagesize = [
     {file = "imagesize-1.2.0-py2.py3-none-any.whl", hash = "sha256:6965f19a6a2039c7d48bca7dba2473069ff854c36ae6f19d2cde309d998228a1"},
@@ -1823,8 +1832,8 @@ toml = [
     {file = "toml-0.10.0.tar.gz", hash = "sha256:229f81c57791a41d65e399fc06bf0848bab550a9dfd5ed66df18ce5f05e73d5c"},
 ]
 tqdm = [
-    {file = "tqdm-4.44.1-py2.py3-none-any.whl", hash = "sha256:be5ddeec77d78ba781ea41eacb2358a77f74cc2407f54b82222d7ee7dc8c8ccf"},
-    {file = "tqdm-4.44.1.tar.gz", hash = "sha256:03d2366c64d44c7f61e74c700d9b202d57e9efe355ea5c28814c52bfe7a50b8c"},
+    {file = "tqdm-4.45.0-py2.py3-none-any.whl", hash = "sha256:ea9e3fd6bd9a37e8783d75bfc4c1faf3c6813da6bd1c3e776488b41ec683af94"},
+    {file = "tqdm-4.45.0.tar.gz", hash = "sha256:00339634a22c10a7a22476ee946bbde2dbe48d042ded784e4d88e0236eca5d81"},
 ]
 typed-ast = [
     {file = "typed_ast-1.4.1-cp35-cp35m-manylinux1_i686.whl", hash = "sha256:73d785a950fc82dd2a25897d525d003f6378d1cb23ab305578394694202a58c3"},
@@ -1850,9 +1859,9 @@ typed-ast = [
     {file = "typed_ast-1.4.1.tar.gz", hash = "sha256:8c8aaad94455178e3187ab22c8b01a3837f8ee50e09cf31f1ba129eb293ec30b"},
 ]
 typing-extensions = [
-    {file = "typing_extensions-3.7.4.1-py2-none-any.whl", hash = "sha256:910f4656f54de5993ad9304959ce9bb903f90aadc7c67a0bef07e678014e892d"},
-    {file = "typing_extensions-3.7.4.1-py3-none-any.whl", hash = "sha256:cf8b63fedea4d89bab840ecbb93e75578af28f76f66c35889bd7065f5af88575"},
-    {file = "typing_extensions-3.7.4.1.tar.gz", hash = "sha256:091ecc894d5e908ac75209f10d5b4f118fbdb2eb1ede6a63544054bb1edb41f2"},
+    {file = "typing_extensions-3.7.4.2-py2-none-any.whl", hash = "sha256:f8d2bd89d25bc39dabe7d23df520442fa1d8969b82544370e03d88b5a591c392"},
+    {file = "typing_extensions-3.7.4.2-py3-none-any.whl", hash = "sha256:6e95524d8a547a91e08f404ae485bbb71962de46967e1b71a0cb89af24e761c5"},
+    {file = "typing_extensions-3.7.4.2.tar.gz", hash = "sha256:79ee589a3caca649a9bfd2a8de4709837400dfa00b6cc81962a1e6a1815969ae"},
 ]
 unicodecsv = [
     {file = "unicodecsv-0.14.1.tar.gz", hash = "sha256:018c08037d48649a0412063ff4eda26eaa81eff1546dbffa51fa5293276ff7fc"},
