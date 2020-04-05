@@ -205,7 +205,7 @@ class Table:
                     unlogged=True,
                 )
                 if required_objects:
-                    logging.info("Applying %s...", pluralise("fragment", len(required_objects)))
+                    logging.debug("Applying %s...", pluralise("fragment", len(required_objects)))
                     engine.apply_fragments(
                         [(SPLITGRAPH_META_SCHEMA, d) for d in cast(List[str], required_objects)],
                         destination_schema,

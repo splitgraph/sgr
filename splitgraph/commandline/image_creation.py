@@ -38,7 +38,7 @@ def checkout_c(image_spec, force, uncheckout, layered):
     Since the tables aren't materialized, layered querying is faster to set up, but since each query now results in a
     subquery to each object comprising the table, actual query execution is slower than to materialized Postgres tables.
 
-    Layered querying is only supported for reading from tables and only with the official Splitgraph engine.
+    Layered querying is only supported for read-only queries.
 
     Image spec must be of the format ``[NAMESPACE/]REPOSITORY[:HASH_OR_TAG]``. Note that currently, the schema that the
     image is checked out into has to have the same name as the repository. If no image hash or tag is passed,
