@@ -115,7 +115,9 @@ class ImageManager:
         if not result:
             raise ImageNotFoundError("No images starting with %s found!" % image_hash)
         if len(result) > 1:
-            result = "Multiple suitable candidates found: \n * " + "\n * ".join(result)
+            result = "Multiple suitable candidates found: \n * " + "\n * ".join(
+                [r[0] for r in result]
+            )
             raise ImageNotFoundError(result)
         return self._make_image(result[0])
 

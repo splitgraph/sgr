@@ -42,7 +42,8 @@ def test_image_repo_parsing_errors(pg_repo_local):
     repo = Repository("test", "pg_mount")
     assert ImageType(get_image=True, default="latest")("test/pg_mount")[1] == repo.images["latest"]
     assert (
-        ImageType(get_image=True, default="latest")("test/pg_mount:00")[1] == repo.images["00000"]
+        ImageType(get_image=True, default="latest")("test/pg_mount:00000000")[1]
+        == repo.images["00000000"]
     )
 
     with pytest.raises(ImageNotFoundError):
