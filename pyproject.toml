@@ -28,7 +28,7 @@ tableschema = "^1.15.0"
 # data export to S3). It's kind of sad that there's no way to turn this into an extra,
 # but it (and a bunch of other S3 deps) doesn't seem to inflate the final `sgr`
 # executable size by much.
-botocore = "==1.15.23"
+botocore = "==1.15.36"
 
 # Extra requirements for Pandas ingestion
 pandas = {version = ">=0.24", extras = ["ingestion"], optional = true }
