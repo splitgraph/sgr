@@ -7,4 +7,4 @@ This example will:
 
 ## Running the example
 
-`../run_example.py example.yaml`
+`../run_example.py example.yaml` and press ENTER when prompted to go through the steps.
