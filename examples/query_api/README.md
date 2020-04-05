@@ -16,4 +16,4 @@ data.splitgraph.com). If you don't have them yet, take a look at the
 
 Change the `splitgraph_demo` username in the example file to yours.
 
-Then, run `../run_example.py example.yaml`.
+Then, run `../run_example.py example.yaml` and press ENTER when prompted to go through the steps.

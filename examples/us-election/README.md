@@ -18,4 +18,4 @@ Copy your .sgconfig file into this directory (it must contain API credentials to
 data.splitgraph.com). If you don't have them yet, take a look at the
 [getting started example](../get-started/README.md) or register using `sgr cloud register`.
 
-Then, run `../run_example.py example.yaml`.
+Then, run `../run_example.py example.yaml` and press ENTER when prompted to go through the steps.
