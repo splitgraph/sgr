@@ -32,11 +32,17 @@ external databases (only mongo and postgres at the moment):
 * Installs the [Splitgraph command line client and library](https://github.com/splitgraph/splitgraph.git)
     that is required for layered querying.
 * Optionally installs the [PostGIS](https://postgis.net/) extension to handle geospatial
-  data: to build the engine with PostGIS, add `--build-arg with_postgis=1` to your `docker build` command.
+  data: to build the engine with PostGIS, add `with_postgis=1` to your `make` command.
+  
+## Building the engine
+
+Run `make`. You can use environment variables `DOCKER_REPO` and `DOCKER_TAG` to override the tag that's given to the engine.
 
 ## Running the engine
 
-Simply use `docker run`, or alternatively `docker-compose`.
+For basic cases, we recommend you to use `sgr engine` to manage the engine Docker container.
+
+You can also use `docker run`, or alternatively `docker-compose`.
 
 For example, to run with forwarding from the host
 port `5432` to the `splitgraph/engine` image using password `supersecure`,
@@ -99,14 +105,6 @@ a volume in  `/docker-entrypoint-initdb.d/`.
 mounting a volume), Postgres will only run these init scripts on the *first run*
 of the container, so if you want to add new scripts you will need to `docker rm`
 the container to force the initialization to run again.
-
-**Note on building the engine:** The Splitgraph command line client and library is imported in this repository
-as a Git submodule in the directory `splitgraph`. Do `git submodule update` before
-building the Docker image to fetch it. If you wish to install a different version of
-Splitgraph into the engine (note this is only relevant for layered querying,
-as normal Splitgraph functionality is driven by the `sgr` command line client), you
-can either check out a different commit in the submodule or copy your development
-version into `splitgraph`.
 
 ### Adding additional init scripts at build time by creating a new image
 
