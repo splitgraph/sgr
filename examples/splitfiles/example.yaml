@@ -39,6 +39,9 @@
   - sgr provenance demo/summary
   - sgr provenance --full demo/summary
 - commands:
+  - "# We can also see that a new image has been derived from demo/weather"
+  - sgr dependents demo/weather
+- commands:
   - "# Now pretend there's been a revision to the source historical weather data"
   - sgr sql -s demo/weather "UPDATE rdu SET precipitation = precipitation * 1.2 WHERE EXTRACT (year FROM date) = 2012"
   - sgr commit -m "Revision to the 2012 rainfall data" demo/weather

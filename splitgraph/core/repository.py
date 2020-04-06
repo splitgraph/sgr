@@ -728,7 +728,9 @@ class Repository:
             self.object_engine.create_schema(self.to_schema())
 
         self.images.add(
-            base_hash, target_hash, comment="Importing %s from %s" % (tables, source_repository)
+            base_hash,
+            target_hash,
+            comment="Importing %s from %s" % (pluralise("table", len(tables)), source_repository),
         )
 
         # Materialize the actual tables in the target repository and register them.
