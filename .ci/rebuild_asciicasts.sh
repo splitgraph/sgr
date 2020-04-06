@@ -5,7 +5,7 @@ REPO_ROOT_DIR="${CI_DIR}/.."
 ASCIINEMA_CASTS=${ASCIINEMA_CASTS-"bloom-filter import-from-csv import-from-mongo push-to-other-engine query_api splitfiles us-election"}
 
 # Asciicasts for which we need to log into the splitgraph registry to pull datasets
-LOGIN_REQUIRED_CASTS="bloom-filter query_api election"
+LOGIN_REQUIRED_CASTS="bloom-filter query_api us-election"
 
 test -z "$TARGET_DIR" && { echo "Fatal Error: No TARGET_DIR set" ; exit 1 ; }
 test -z "$SG_DEMO_USER" && { echo "Fatal Error: No SG_DEMO_USER set" ; exit 1 ; }
