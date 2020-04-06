@@ -153,7 +153,7 @@ def list_engines(prefix, include_all=False, unavailable_ok=True):
         if not unavailable_ok:
             raise
         logging.warning(
-            "Could not connect to the Docker daemon to enumerate engines managed by sgr."
+            "Could not connect to the Docker daemon to enumerate engines managed by sgr. This is fine if you're managing the engine yourself with Docker or Compose."
         )
         return []
     containers = client.containers.list(all=include_all)
