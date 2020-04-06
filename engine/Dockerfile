@@ -39,7 +39,8 @@ RUN apt-get update -qq && \
         libpython3.8-dev \
         python3.8 \
         python3-setuptools \
-        cmake && \
+        cmake \
+        clang-7 && \
     rm -rf /var/lib/apt/lists/*
 
 # python3.8 executable required by Multicorn to install itself
