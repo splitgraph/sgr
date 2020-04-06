@@ -1,0 +1,52 @@
+- commands:
+  - "# Build and start the containers -- use the same project name so that"
+  - "# containers from other examples are removed"
+  - docker-compose --project-name splitgraph_example down -v --remove-orphans
+  - docker-compose --project-name splitgraph_example build
+  - docker-compose --project-name splitgraph_example up -d
+  record: False
+- commands:
+  - "# The .sgconfig file is written from the point of view of the first engine."
+  - "# Here, the first engine is local and default and the second one is remote."
+  - cat .sgconfig
+- commands:
+  - "# Initialize the two engines"
+  - sgr init
+  - SG_ENGINE=engine_2 sgr init
+- commands:
+  - "# Ingest the weather dataset at Raleigh-Durham Airport from the CSV example"
+  - sgr init demo/weather
+  - |
+    sgr csv import -f ../import-from-csv/rdu-weather-history.csv \
+                   -k date \
+                   -t date timestamp \
+                   --separator ";" \
+                   demo/weather rdu
+  - sgr commit demo/weather
+  - sgr tag demo/weather initial_data
+- commands:
+  - "# Push the dataset out to the other engine"
+  - "# Since by default Splitgraph is configured to use S3 for uploading, we need"
+  - "# to override the upload handler and upload data to the actual database."
+  - sgr push demo/weather --remote engine_2 demo/weather --upload-handler DB
+- commands:
+  - "# Check that the dataset exists on the remote engine"
+  - SG_ENGINE=engine_2 sgr show demo/weather:latest
+- commands:
+  - "# Update the dataset on the local engine"
+  - sgr sql -s demo/weather "UPDATE rdu SET temperaturemax = temperaturemax * 1.05 WHERE EXTRACT(year FROM date) = 2007"
+  - sgr commit demo/weather
+  - sgr tag demo/weather new_data
+- commands:
+  - "# Inspect our changes"
+  - sgr diff demo/weather initial_data new_data
+- commands:
+  - "# Push the changes out to the remote engine"
+  - sgr push demo/weather --upload-handler DB
+- commands:
+  - "# Inspect the dataset on the remote engine"
+  - SG_ENGINE=engine_2 sgr show demo/weather:latest
+- commands:
+  - "# Delete the docker-compose project and cleanup"
+  - docker-compose --project-name splitgraph_example down -v --remove-orphans
+  record: False
