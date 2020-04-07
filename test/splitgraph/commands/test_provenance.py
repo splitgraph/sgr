@@ -1,6 +1,9 @@
+import datetime
+
 import pytest
 from test.splitgraph.conftest import OUTPUT, load_splitfile, prepare_lq_repo
 
+from splitgraph.core.repository import Repository
 from splitgraph.splitfile import execute_commands
 from splitgraph.splitfile.execution import rebuild_image
 
@@ -180,10 +183,13 @@ def test_provenance_inline_sql(readonly_pg_repo, pg_repo_local):
     remote_input = readonly_pg_repo.images["latest"]
     local_input = pg_repo_local.images["latest"]
 
-    assert new_head.provenance() == [
+    assert set(new_head.provenance()) == {
+        (
+            Repository(readonly_pg_repo.namespace, readonly_pg_repo.repository),
+            remote_input.image_hash,
+        ),
         (pg_repo_local, local_input.image_hash),
-        (readonly_pg_repo, remote_input.image_hash),
-    ]
+    }
 
     assert remote_input.provenance(reverse=True, engine=OUTPUT.engine) == [
         (OUTPUT, OUTPUT.head.image_hash)
@@ -191,4 +197,66 @@ def test_provenance_inline_sql(readonly_pg_repo, pg_repo_local):
 
     assert local_input.provenance(reverse=True, engine=OUTPUT.engine) == [
         (OUTPUT, OUTPUT.head.image_hash)
+    ]
+    expected_sql = (
+        "SQL {{CREATE TABLE balanced_diet\n"
+        "  AS SELECT fruits.fruit_id AS id\n"
+        "          , fruits.name AS fruit\n"
+        "          , my_fruits.timestamp AS timestamp\n"
+        "          , vegetables.name AS vegetable\n"
+        "     FROM "
+        '"otheruser/pg_mount:{0}".fruits AS '
+        "fruits\n"
+        "          INNER JOIN "
+        '"otheruser/pg_mount:{0}".vegetables '
+        "AS vegetables ON fruits.fruit_id = vegetable_id\n"
+        "          LEFT JOIN "
+        '"test/pg_mount:{1}".fruits AS '
+        "my_fruits ON my_fruits.fruit_id = fruits.fruit_id;\n"
+        "\n"
+        "ALTER TABLE balanced_diet ADD PRIMARY KEY (id)}}"
+    ).format(remote_input.image_hash, local_input.image_hash)
+
+    assert new_head.to_splitfile() == [expected_sql]
+
+    assert new_head.to_splitfile(
+        source_replacement={
+            pg_repo_local: "new_local_tag",
+            Repository(readonly_pg_repo.namespace, readonly_pg_repo.repository): "new_remote_tag",
+        }
+    ) == [
+        expected_sql.replace(remote_input.image_hash, "new_remote_tag").replace(
+            local_input.image_hash, "new_local_tag"
+        )
+    ]
+
+    assert len(OUTPUT.images()) == 2
+
+    # Try rerunning the Splitfile against the same original data (check caching)
+    rebuild_image(
+        OUTPUT.head,
+        source_replacement={
+            pg_repo_local: "latest",
+            Repository(readonly_pg_repo.namespace, readonly_pg_repo.repository): "latest",
+        },
+    )
+
+    assert len(OUTPUT.images()) == 2
+
+    # Change pg_repo_local and rerun the Splitfile against it.
+    pg_repo_local.run_sql("UPDATE fruits SET timestamp = '2020-01-01 12:00:00' WHERE fruit_id = 2")
+    new_head = pg_repo_local.commit()
+
+    rebuild_image(
+        OUTPUT.head,
+        source_replacement={
+            pg_repo_local: new_head.image_hash,
+            Repository(readonly_pg_repo.namespace, readonly_pg_repo.repository): "latest",
+        },
+    )
+
+    assert len(OUTPUT.images()) == 3
+    assert OUTPUT.run_sql("SELECT * FROM balanced_diet") == [
+        (1, "apple", None, "potato"),
+        (2, "orange", datetime.datetime(2020, 1, 1, 12, 0), "carrot"),
     ]
