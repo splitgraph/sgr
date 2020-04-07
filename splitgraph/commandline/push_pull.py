@@ -20,12 +20,20 @@ from splitgraph.config.config import get_from_subsection
     is_flag=True,
     help="Download all objects immediately instead of on checkout.",
 )
-def pull_c(repository_or_image, download_all):
+@click.option(
+    "-f",
+    "--overwrite-object-meta",
+    help="Overwrite metadata for existing objects",
+    default=False,
+    is_flag=True,
+    type=bool,
+)
+def pull_c(repository_or_image, download_all, overwrite_object_meta):
     """
     Pull changes / download a single image.
     """
     repository, image = repository_or_image
-    repository.pull(download_all, single_image=image)
+    repository.pull(download_all, single_image=image, overwrite=overwrite_object_meta)
 
 
 @click.command(name="clone")
@@ -39,7 +47,17 @@ def pull_c(repository_or_image, download_all):
     default=False,
     is_flag=True,
 )
-def clone_c(remote_repository_or_image, local_repository, remote, download_all):
+@click.option(
+    "-f",
+    "--overwrite-object-meta",
+    help="Overwrite metadata for existing objects",
+    default=False,
+    is_flag=True,
+    type=bool,
+)
+def clone_c(
+    remote_repository_or_image, local_repository, remote, download_all, overwrite_object_meta
+):
     """
     Clone a remote Splitgraph repository/image into a local one.
 
@@ -65,6 +83,7 @@ def clone_c(remote_repository_or_image, local_repository, remote, download_all):
         local_repository=local_repository,
         download_all=download_all,
         single_image=image,
+        overwrite=overwrite_object_meta,
     )
 
 

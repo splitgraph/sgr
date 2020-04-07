@@ -10,7 +10,7 @@ from splitgraph.core.image import IMAGE_COLS, Image
 from splitgraph.core.sql import select
 from splitgraph.core.types import ProvenanceLine
 from splitgraph.engine import ResultShape
-from splitgraph.exceptions import ImageNotFoundError
+from splitgraph.exceptions import ImageNotFoundError, RepositoryNotFoundError
 
 if TYPE_CHECKING:
     from splitgraph.core.repository import Repository
@@ -51,8 +51,8 @@ class ImageManager:
         :param raise_on_none: Whether to raise an error or return None if the tag doesn't exist.
         """
         engine = self.engine
-        if not repository_exists(self.repository) and raise_on_none:
-            raise ImageNotFoundError("%s does not exist!" % str(self))
+        if not repository_exists(self.repository):
+            raise RepositoryNotFoundError("Unknown repository %s!" % str(self.repository))
 
         if tag == "latest":
             # Special case, return the latest commit from the repository.

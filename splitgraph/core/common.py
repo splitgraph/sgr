@@ -14,7 +14,11 @@ from psycopg2.sql import Identifier, SQL
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.core.migration import source_files_to_apply, set_installed_version
 from splitgraph.core.sql import select
-from splitgraph.exceptions import EngineInitializationError, ImageNotFoundError
+from splitgraph.exceptions import (
+    EngineInitializationError,
+    ImageNotFoundError,
+    RepositoryNotFoundError,
+)
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PsycopgEngine, PostgresEngine
@@ -223,6 +227,9 @@ def gather_sync_metadata(
             new_images = []
             new_image_hashes = []
         except ImageNotFoundError:
+            new_images = [image]
+            new_image_hashes = [image.image_hash]
+        except RepositoryNotFoundError:
             new_images = [image]
             new_image_hashes = [image.image_hash]
     else:
