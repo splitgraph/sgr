@@ -1,5 +1,5 @@
 import pytest
-from test.splitgraph.conftest import OUTPUT, load_splitfile
+from test.splitgraph.conftest import OUTPUT, load_splitfile, prepare_lq_repo
 
 from splitgraph.splitfile import execute_commands
 from splitgraph.splitfile.execution import rebuild_image
@@ -165,3 +165,30 @@ def test_rerun_multiline_sql_roundtripping(pg_repo_local):
     head_v2 = OUTPUT.head
     assert head_v2.to_splitfile()[1] == expected_sql
     assert head_v2 == head
+
+
+def test_provenance_inline_sql(readonly_pg_repo, pg_repo_local):
+    prepare_lq_repo(pg_repo_local, commit_after_every=False, include_pk=True)
+    pg_repo_local.head.tag("v2")
+
+    execute_commands(
+        load_splitfile("inline_sql.splitfile"), output=OUTPUT,
+    )
+
+    new_head = OUTPUT.head
+
+    remote_input = readonly_pg_repo.images["latest"]
+    local_input = pg_repo_local.images["latest"]
+
+    assert new_head.provenance() == [
+        (pg_repo_local, local_input.image_hash),
+        (readonly_pg_repo, remote_input.image_hash),
+    ]
+
+    assert remote_input.provenance(reverse=True, engine=OUTPUT.engine) == [
+        (OUTPUT, OUTPUT.head.image_hash)
+    ]
+
+    assert local_input.provenance(reverse=True, engine=OUTPUT.engine) == [
+        (OUTPUT, OUTPUT.head.image_hash)
+    ]
