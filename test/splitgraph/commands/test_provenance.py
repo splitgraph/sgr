@@ -184,10 +184,7 @@ def test_provenance_inline_sql(readonly_pg_repo, pg_repo_local):
     local_input = pg_repo_local.images["latest"]
 
     assert set(new_head.provenance()) == {
-        (
-            Repository(readonly_pg_repo.namespace, readonly_pg_repo.repository),
-            remote_input.image_hash,
-        ),
+        (readonly_pg_repo, remote_input.image_hash,),
         (pg_repo_local, local_input.image_hash),
     }
 
@@ -220,10 +217,7 @@ def test_provenance_inline_sql(readonly_pg_repo, pg_repo_local):
     assert new_head.to_splitfile() == [expected_sql]
 
     assert new_head.to_splitfile(
-        source_replacement={
-            pg_repo_local: "new_local_tag",
-            Repository(readonly_pg_repo.namespace, readonly_pg_repo.repository): "new_remote_tag",
-        }
+        source_replacement={pg_repo_local: "new_local_tag", readonly_pg_repo: "new_remote_tag"}
     ) == [
         expected_sql.replace(remote_input.image_hash, "new_remote_tag").replace(
             local_input.image_hash, "new_local_tag"
@@ -234,11 +228,7 @@ def test_provenance_inline_sql(readonly_pg_repo, pg_repo_local):
 
     # Try rerunning the Splitfile against the same original data (check caching)
     rebuild_image(
-        OUTPUT.head,
-        source_replacement={
-            pg_repo_local: "latest",
-            Repository(readonly_pg_repo.namespace, readonly_pg_repo.repository): "latest",
-        },
+        OUTPUT.head, source_replacement={pg_repo_local: "latest", readonly_pg_repo: "latest"},
     )
 
     assert len(OUTPUT.images()) == 2
@@ -249,10 +239,7 @@ def test_provenance_inline_sql(readonly_pg_repo, pg_repo_local):
 
     rebuild_image(
         OUTPUT.head,
-        source_replacement={
-            pg_repo_local: new_head.image_hash,
-            Repository(readonly_pg_repo.namespace, readonly_pg_repo.repository): "latest",
-        },
+        source_replacement={pg_repo_local: new_head.image_hash, readonly_pg_repo: "latest"},
     )
 
     assert len(OUTPUT.images()) == 3
