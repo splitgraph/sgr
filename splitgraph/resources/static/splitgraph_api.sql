@@ -209,7 +209,7 @@ BEGIN
 ), flattened AS (
     SELECT d
     FROM provenance_data
-    WHERE d ->> 'type' = 'IMPORT'
+    WHERE d ->> 'type' IN ('IMPORT', 'FROM')
     UNION
     SELECT jsonb_array_elements(d -> 'sources')
     FROM provenance_data
