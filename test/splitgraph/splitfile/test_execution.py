@@ -21,7 +21,7 @@ def test_splitfile_parsing_qoz_regression():
         os.path.join(SPLITFILE_ROOT, "../../examples/us-election/qoz_vote_fraction.splitfile")
     ) as f:
         commands = f.read()
-    assert len(parse_commands(commands)) == 4
+    assert len(parse_commands(commands)) == 3
 
 
 def test_splitfile_preprocessor_missing_params():
