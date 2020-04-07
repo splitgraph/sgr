@@ -1,7 +1,8 @@
+import datetime
 import os
 
 import pytest
-from test.splitgraph.conftest import OUTPUT, SPLITFILE_ROOT, load_splitfile
+from test.splitgraph.conftest import OUTPUT, SPLITFILE_ROOT, load_splitfile, prepare_lq_repo
 
 from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.repository import clone, Repository
@@ -405,4 +406,60 @@ def test_splitfile_with_external_sql(readonly_pg_repo):
     assert OUTPUT.run_sql("SELECT id, fruit, vegetable FROM join_table") == [
         (1, "apple", "potato"),
         (2, "orange", "carrot"),
+    ]
+
+
+@pytest.mark.registry
+def test_splitfile_inline_sql(readonly_pg_repo, pg_repo_local):
+    # Test SQL commands accessing repos directly -- join a remote repo with
+    # some local data.
+
+    prepare_lq_repo(pg_repo_local, commit_after_every=False, include_pk=True)
+    pg_repo_local.head.tag("v2")
+
+    execute_commands(
+        load_splitfile("inline_sql.splitfile"), output=OUTPUT,
+    )
+
+    new_head = OUTPUT.head
+    new_head.checkout()
+    assert new_head.get_tables() == ["balanced_diet"]
+    assert OUTPUT.run_sql("SELECT * FROM balanced_diet") == [
+        (1, "apple", None, "potato"),
+        (2, "orange", datetime.datetime(2019, 1, 1, 12, 0), "carrot"),
+    ]
+
+    local_repo_head = pg_repo_local.head.image_hash
+    other_repo_head = readonly_pg_repo.images["latest"].image_hash
+
+    assert new_head.provenance_data == [
+        {
+            "sources": [
+                {
+                    "source": "pg_mount",
+                    "source_hash": other_repo_head,
+                    "source_namespace": "otheruser",
+                },
+                {"source": "pg_mount", "source_hash": local_repo_head, "source_namespace": "test"},
+            ],
+            "sql": (
+                "CREATE TABLE balanced_diet\n"
+                "  AS SELECT fruits.fruit_id AS id\n"
+                "          , fruits.name AS fruit\n"
+                "          , my_fruits.timestamp AS timestamp\n"
+                "          , vegetables.name AS vegetable\n"
+                "     FROM "
+                '"otheruser/pg_mount:{0}".fruits '
+                "AS fruits\n"
+                "          INNER JOIN "
+                '"otheruser/pg_mount:{0}".vegetables '
+                "AS vegetables ON fruits.fruit_id = vegetable_id\n"
+                "          LEFT JOIN "
+                '"test/pg_mount:{1}".fruits '
+                "AS my_fruits ON my_fruits.fruit_id = fruits.fruit_id;\n"
+                "\n"
+                "ALTER TABLE balanced_diet ADD PRIMARY KEY (id)"
+            ).format(other_repo_head, local_repo_head),
+            "type": "SQL",
+        },
     ]

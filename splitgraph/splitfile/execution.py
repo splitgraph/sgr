@@ -3,19 +3,21 @@ Functions for executing Splitfiles.
 """
 
 import json
+import logging
 from hashlib import sha256
 from importlib import import_module
 from random import getrandbits
 from typing import Callable, Dict, List, Optional, cast, Tuple
 
 from parsimonious.nodes import Node
+from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import CONFIG
 from splitgraph.config.config import get_all_in_section
 from splitgraph.core.engine import repository_exists, lookup_repository
 from splitgraph.core.image import Image
 from splitgraph.core.repository import Repository, clone
-from splitgraph.core.sql import validate_splitfile_sql, validate_import_sql
+from splitgraph.core.sql import prepare_splitfile_sql, validate_import_sql
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import ImageNotFoundError, SplitfileError
 from splitgraph.hooks.mount_handlers import get_mount_handler
@@ -28,6 +30,7 @@ from ._parsing import (
     parse_custom_command,
 )
 from ..core.common import pluralise, truncate_line
+from ..core.object_manager import ObjectManager
 from ..core.types import ProvenanceLine
 
 
@@ -54,6 +57,75 @@ def _checkout_or_calculate_layer(output: Repository, image_hash: str, calc_func:
             output.images.delete([image_hash])
             raise
     print(" ---> %s" % image_hash[:12])
+
+
+class ImageMapper:
+    def __init__(self, object_manager: ObjectManager):
+        self.object_manager = object_manager
+
+        self.image_map: Dict[Tuple[Repository, str], Tuple[str, str, Image]] = {}
+
+    def _calculate_map(self, repository: Repository, hash_or_tag: str):
+        tmp_repo = Repository(repository.namespace, repository.repository)
+
+        logging.info("Resolving repository %s", repository)
+        source_repo = lookup_repository(repository.to_schema(), include_local=True)
+
+        if source_repo.engine.name != "LOCAL":
+            clone(source_repo, local_repository=tmp_repo, download_all=False)
+            source_image = tmp_repo.images[hash_or_tag]
+        else:
+            # For local repositories, first try to pull them to see if they are clones of a remote.
+            if source_repo.upstream:
+                source_repo.pull()
+            source_image = source_repo.images[hash_or_tag]
+
+        canonical_form = "%s/%s:%s" % (
+            repository.namespace,
+            repository.repository,
+            source_image.image_hash,
+        )
+
+        temporary_schema = sha256(canonical_form.encode("utf-8")).hexdigest()[:63]
+
+        return temporary_schema, canonical_form, source_image
+
+    def __call__(self, repository: Repository, hash_or_tag: str):
+        key = (repository, hash_or_tag)
+        if key not in self.image_map:
+            self.image_map[key] = self._calculate_map(key[0], key[1])
+
+        temporary_schema, canonical_form, _ = self.image_map[key]
+        return temporary_schema, canonical_form
+
+    def setup_lq_mounts(self):
+        for temporary_schema, _, source_image in self.image_map.values():
+            self.object_manager.object_engine.delete_schema(temporary_schema)
+            self.object_manager.object_engine.create_schema(temporary_schema)
+            source_image._lq_checkout(target_schema=temporary_schema)
+
+    def teardown_lq_mounts(self):
+        for temporary_schema, _, _ in self.image_map.values():
+            self.object_manager.object_engine.run_sql(
+                SQL("DROP SERVER IF EXISTS {} CASCADE").format(
+                    Identifier("%s_lq_checkout_server" % temporary_schema)
+                )
+            )
+            self.object_manager.object_engine.run_sql(
+                SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(temporary_schema))
+            )
+
+    def get_provenance_data(self):
+        return {
+            "sources": [
+                {
+                    "source_namespace": source_repo.namespace,
+                    "source": source_repo.repository,
+                    "source_hash": source_image.image_hash,
+                }
+                for (source_repo, _), (_, _, source_image) in self.image_map.items()
+            ]
+        }
 
 
 def execute_commands(
@@ -155,20 +227,28 @@ def _execute_sql(node: Node, output: Repository) -> ProvenanceLine:
         if not nodes:
             nodes = extract_nodes(node, ["non_curly_brace"])
         sql_command = nodes[0].text.replace("\\{", "{").replace("\\}", "}").replace("\\\\", "\\")
+
+    # Prepare the SQL by rewriting outside image references into LQ schemas
     # Canonicalize the SQL command by formatting it.
-    sql_command_canonical = validate_splitfile_sql(sql_command)
+    image_mapper = ImageMapper(output.objects)
+    sql_rewritten, sql_canonical = prepare_splitfile_sql(sql_command, image_mapper)
+
     output_head = output.head_strict.image_hash
-    target_hash = _combine_hashes(
-        [output_head, sha256(sql_command_canonical.encode("utf-8")).hexdigest()]
-    )
+    target_hash = _combine_hashes([output_head, sha256(sql_canonical.encode("utf-8")).hexdigest()])
 
     def _calc():
         print("Executing SQL...")
-        output.run_sql(sql_command)
+        try:
+            image_mapper.setup_lq_mounts()
+            output.run_sql(sql_rewritten)
+        finally:
+            image_mapper.teardown_lq_mounts()
         output.commit(target_hash, comment=sql_command)
 
     _checkout_or_calculate_layer(output, target_hash, _calc)
-    return {"type": "SQL", "sql": sql_command_canonical}
+    provenance = {"type": "SQL", "sql": sql_canonical}
+    provenance.update(image_mapper.get_provenance_data())
+    return provenance
 
 
 def _execute_from(node: Node, output: Repository) -> Tuple[Repository, Optional[ProvenanceLine]]:
@@ -291,17 +371,9 @@ def _execute_repo_import(
     # Don't use the actual routine here as we want more control: clone the remote repo in order to turn
     # the tag into an actual hash
 
-    tmp_repo = Repository(repository.namespace, repository.repository + "_clone_tmp")
+    tmp_repo = Repository(repository.namespace, repository.repository)
     try:
-        # Calculate the hash of the new layer by combining the hash of the previous layer,
-        # the hash of the source and all the table names/aliases getting imported.
-        # This can be made more granular later by using, say, the object IDs of the tables
-        # that are getting imported (so that if there's a new commit with some of the same objects,
-        # we don't invalidate the downstream).
-        # If table_names actually contains queries that generate data from tables, we can still use
-        # it for hashing: we assume that the queries are deterministic, so if the query is changed,
-        # the whole layer is invalidated.
-        print("Resolving repository %s" % str(repository))
+        logging.info("Resolving repository %s", repository)
         source_repo = lookup_repository(repository.to_schema(), include_local=True)
 
         if source_repo.engine.name != "LOCAL":
@@ -320,6 +392,14 @@ def _execute_repo_import(
         # from formatting changes to SQL statements.
         table_names_canonical = prevalidate_imports(table_names, table_queries)
 
+        # Calculate the hash of the new layer by combining the hash of the previous layer,
+        # the hash of the source and all the table names/aliases getting imported.
+        # This can be made more granular later by using, say, the object IDs of the tables
+        # that are getting imported (so that if there's a new commit with some of the same objects,
+        # we don't invalidate the downstream).
+        # If table_names actually contains queries that generate data from tables, we can still use
+        # it for hashing: we assume that the queries are deterministic, so if the query is changed,
+        # the whole layer is invalidated.
         output_head = target_repository.head_strict.image_hash
         target_hash = _combine_hashes(
             [output_head, source_hash]
@@ -327,14 +407,12 @@ def _execute_repo_import(
         )
 
         def _calc():
-            print(
-                "Importing %s from %s:%s into %s"
-                % (
-                    pluralise("table", len(table_names)),
-                    str(repository),
-                    source_hash[:12],
-                    str(target_repository),
-                )
+            logging.info(
+                "Importing %s from %s:%s into %s",
+                pluralise("table", len(table_names)),
+                str(repository),
+                source_hash[:12],
+                str(target_repository),
             )
             target_repository.import_tables(
                 table_aliases,

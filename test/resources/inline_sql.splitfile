@@ -1,0 +1,16 @@
+# Test SQL commands that import data directly from other images
+
+SQL {
+    CREATE TABLE balanced_diet AS
+    SELECT
+        fruits.fruit_id AS id,
+        fruits.name AS fruit,
+        my_fruits.timestamp AS timestamp,
+        vegetables.name AS vegetable
+    FROM "otheruser/pg_mount".fruits fruits
+    JOIN "otheruser/pg_mount".vegetables vegetables
+        ON fruits.fruit_id = vegetable_id
+    LEFT JOIN "test/pg_mount:v2".fruits my_fruits
+        ON my_fruits.fruit_id = fruits.fruit_id;
+    ALTER TABLE balanced_diet ADD PRIMARY KEY (id)
+}

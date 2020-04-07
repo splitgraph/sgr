@@ -1,23 +1,27 @@
 import pytest
 
-from splitgraph.core.sql import validate_splitfile_sql, validate_import_sql
+from splitgraph.core.sql import prepare_splitfile_sql, validate_import_sql
 from splitgraph.exceptions import UnsupportedSQLError
 
 
+def dummy_mapper(*_):
+    return "dummy_schema", "dummy_canonical"
+
+
 def succeeds_on_both(sql):
-    validate_splitfile_sql(sql)
+    prepare_splitfile_sql(sql, dummy_mapper)
     validate_import_sql(sql)
 
 
 def fails_on_both(sql):
     with pytest.raises(UnsupportedSQLError) as e:
-        validate_splitfile_sql(sql)
+        prepare_splitfile_sql(sql, dummy_mapper)
     with pytest.raises(UnsupportedSQLError) as e:
         validate_import_sql(sql)
 
 
 def succeeds_on_sql_fails_on_import(sql):
-    validate_splitfile_sql(sql)
+    prepare_splitfile_sql(sql, dummy_mapper)
     with pytest.raises(UnsupportedSQLError) as e:
         validate_import_sql(sql)
 
@@ -151,14 +155,6 @@ def test_validate_no_lock_table():
     fails_on_both("LOCK TABLE table1 IN EXCLUSIVE MODE")
 
 
-def test_validate_no_information_schema():
-    fails_on_both("SELECT * FROM information_schema.tables")
-
-
-def test_validate_no_schema():
-    fails_on_both("SELECT a FROM other_schema.my_table")
-
-
 def test_validate_function_call():
     succeeds_on_both("SELECT extract_date(42)")
 
@@ -173,3 +169,65 @@ def test_validate_no_set():
 
 def test_validate_case():
     succeeds_on_both("SELECT (CASE WHEN a = 'YES' THEN 1 ELSE 0 END) FROM some_table")
+
+
+def test_validate_no_information_schema():
+    succeeds_on_sql_fails_on_import("SELECT * FROM information_schema.tables")
+
+
+def test_validate_no_schema():
+    succeeds_on_sql_fails_on_import("SELECT a FROM other_schema.my_table")
+
+
+_IMAGE_MAP = {
+    ("ns", "repo", "tag"): ("ns_repo_shim", "ns_repo_canonical"),
+    ("", "repo_2", "other_tag"): ("repo_2_other_shim", "repo_2_other_canonical"),
+    ("", "repo_2", "latest"): ("repo_2_shim", "repo_2_canonical"),
+}
+
+
+def _mapper(repo, hash_or_tag):
+    return _IMAGE_MAP[(repo.namespace, repo.repository, hash_or_tag)]
+
+
+@pytest.mark.parametrize(
+    "source,rewritten,canonical",
+    [
+        (
+            'CREATE TABLE output AS SELECT * FROM "ns/repo:tag".input',
+            "CREATE TABLE output\n  AS SELECT *\n     FROM ns_repo_shim.input",
+            "CREATE TABLE output\n  AS SELECT *\n     FROM ns_repo_canonical.input",
+        ),
+        (
+            'CREATE TABLE output AS SELECT * FROM "ns/repo:tag".input JOIN repo_2.input_2 ON key',
+            "CREATE TABLE output\n  AS SELECT *\n"
+            "     FROM ns_repo_shim.input\n"
+            "          INNER JOIN repo_2_shim.input_2 ON key",
+            "CREATE TABLE output\n  AS SELECT *\n"
+            "     FROM ns_repo_canonical.input\n"
+            "          INNER JOIN repo_2_canonical.input_2 ON key",
+        ),
+        (
+            'CREATE TABLE dst AS WITH src AS (SELECT * FROM "repo_2:other_tag".input) '
+            "SELECT * FROM src; ALTER TABLE dst ADD PRIMARY KEY(key);",
+            "CREATE TABLE dst\n"
+            "  AS WITH src AS (SELECT *\n"
+            "                  FROM repo_2_other_shim.input)\n"
+            "\n"
+            "       SELECT *\n"
+            "       FROM src;\n"
+            "\n"
+            "ALTER TABLE dst ADD PRIMARY KEY (key)",
+            "CREATE TABLE dst\n"
+            "  AS WITH src AS (SELECT *\n"
+            "                  FROM repo_2_other_canonical.input)\n"
+            "\n"
+            "       SELECT *\n"
+            "       FROM src;\n"
+            "\n"
+            "ALTER TABLE dst ADD PRIMARY KEY (key)",
+        ),
+    ],
+)
+def test_rewrite(source, rewritten, canonical):
+    assert prepare_splitfile_sql(source, _mapper) == (rewritten, canonical)

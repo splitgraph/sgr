@@ -1,8 +1,8 @@
 """Routines for managing SQL statements"""
 import logging
-from typing import Callable, Dict, List, Union, Optional, Sequence
+from typing import Callable, Dict, List, Union, Optional, Sequence, Tuple
 
-from pglast.printer import RawStream, IndentedStream
+from pglast.printer import IndentedStream
 from psycopg2.sql import Composed, SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
@@ -69,6 +69,7 @@ _IMPORT_SQL_PERMITTED_NODES = [
 ]
 
 _SPLITFILE_SQL_PERMITTED_NODES = _IMPORT_SQL_PERMITTED_NODES + [
+    "RangeVar",
     "InsertStmt",
     "UpdateStmt",
     "DeleteStmt",
@@ -84,7 +85,8 @@ _SPLITFILE_SQL_PERMITTED_NODES = _IMPORT_SQL_PERMITTED_NODES + [
 
 # Nodes in this list have extra validators that are supposed to return None or raise an Exception if they
 # fail validation.
-_SQL_VALIDATORS = {"RangeVar": _validate_range_var, "FuncCall": _validate_funccall}
+_SQL_VALIDATORS = {"FuncCall": _validate_funccall}
+_IMPORT_SQL_VALIDATORS = {"RangeVar": _validate_range_var, "FuncCall": _validate_funccall}
 
 
 def _validate_node(
@@ -111,32 +113,75 @@ def _emit_ast(ast: "Node") -> str:
     return str(stream(ast))
 
 
-def validate_splitfile_sql(sql: str) -> str:
+def prepare_splitfile_sql(sql: str, image_mapper: Callable) -> Tuple[str, str]:
     """
-    Check an SQL query to see if it can be safely used in a Splitfile SQL command. The rules for usage are:
+    Transform an SQL query to prepare for it to be used in a Splitfile SQL command and validate it.
+    The rules are:
 
       * Only basic DDL (CREATE/ALTER/DROP table) and DML (SELECT/INSERT/UPDATE/DELETE) are permitted.
-      * All tables must be non-schema-qualified (the statement is run with `search_path` set to the single
-        schema that a Splitgraph image is checked out into).
+      * All tables must be either non-schema qualified (the statement is run with `search_path`
+      set to the single schema that a Splitgraph image is checked out into) or have schemata of
+      format namespace/repository:hash_or_tag. In the second case, the
       * Function invocations are forbidden.
 
     :param sql: SQL query
-    :return: Canonical (reformatted) form of the SQL.
+    :param image_mapper: Takes in an image and gives back the schema it should be rewritten to
+        (for the purposes of execution) and the canonical form of the image.
+    :return: Transformed form of the SQL with substituted schema shims for Splitfile execution
+        and the canonical form (with e.g. tags resolved into at-the-time full image hashes)
     :raises: UnsupportedSQLException if validation failed
     """
+
     if not _VALIDATION_SUPPORTED:
         logging.warning("SQL validation is unsupported on Windows. SQL will be run unvalidated.")
-        return sql
+
+        # TODO compatibility layer that uses regexes
+        return sql, sql
+
+    # Avoid circular import
+    from splitgraph.core.common import parse_repo_tag_or_hash
 
     try:
         tree = Node(parse_sql(sql))
     except ParseError as e:
         raise UnsupportedSQLError("Could not parse %s: %s" % (sql, str(e)))
+
+    # List of dict pointers (into parts of the AST) and new schema names we have
+    # to rewrite them to. We need to emit two kinds of rewritten SQL: one with schemata
+    # replaced with LQ shims (that we send to PostgreSQL for execution) and one with
+    # schemata replaced with full image names that we store in provenance_data for reruns etc.
+    # On the first pass, we rewrite the parse tree to have the first kind of schemata, then
+    # get pglast to serialize it, then use this dictionary to rewrite just the interesting
+    # parts of the parse tree (instead of having to re-traverse/re-crawl the tree).
+    future_rewrites = []
+
     for node in tree.traverse():
         _validate_node(
             node, permitted_nodes=_SPLITFILE_SQL_PERMITTED_NODES, node_validators=_SQL_VALIDATORS
         )
-    return _emit_ast(tree)
+
+        if (
+            not isinstance(node, Node)
+            or node.node_tag != "RangeVar"
+            or "schemaname" not in node.attribute_names
+        ):
+            continue
+
+        # If the table name is schema-qualified, rewrite it to talk to a LQ shim
+        repo, hash_or_tag = parse_repo_tag_or_hash(node["schemaname"].value, default="latest")
+        temporary_schema, canonical_name = image_mapper(repo, hash_or_tag)
+
+        # We have to access the internal parse tree here to rewrite the schema.
+        node._parse_tree["schemaname"] = temporary_schema
+        future_rewrites.append((node._parse_tree, canonical_name))
+
+    rewritten_sql = _emit_ast(tree)
+
+    for tree_subset, canonical_name in future_rewrites:
+        tree_subset["schemaname"] = canonical_name
+
+    canonical_sql = _emit_ast(tree)
+    return rewritten_sql, canonical_sql
 
 
 def validate_import_sql(sql: str) -> str:
@@ -162,7 +207,9 @@ def validate_import_sql(sql: str) -> str:
 
     for node in tree.traverse():
         _validate_node(
-            node, permitted_nodes=_IMPORT_SQL_PERMITTED_NODES, node_validators=_SQL_VALIDATORS
+            node,
+            permitted_nodes=_IMPORT_SQL_PERMITTED_NODES,
+            node_validators=_IMPORT_SQL_VALIDATORS,
         )
     return _emit_ast(tree)
 

@@ -436,3 +436,16 @@ def truncate_list(items: List[Any], max_entries: int = 10) -> str:
     return ",".join(str(i) for i in items[:max_entries]) + (
         ", ..." if len(items) > max_entries else ""
     )
+
+
+def parse_repo_tag_or_hash(value, default="latest"):
+    repo_image = value.split(":")
+    tag_or_hash: Optional[str]
+    if len(repo_image) == 2:
+        tag_or_hash = repo_image[1]
+    else:
+        tag_or_hash = default
+    from splitgraph.core.repository import Repository
+
+    repo = Repository.from_schema(repo_image[0])
+    return repo, tag_or_hash
