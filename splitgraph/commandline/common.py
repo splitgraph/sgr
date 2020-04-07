@@ -7,6 +7,7 @@ from typing import Optional, Tuple, List, TYPE_CHECKING, Union
 import click
 from click.core import Context, Parameter
 
+from splitgraph.core.common import parse_repo_tag_or_hash
 from splitgraph.exceptions import RepositoryNotFoundError
 
 if TYPE_CHECKING:
@@ -40,16 +41,7 @@ class ImageType(click.ParamType):
 
         The parser returns a tuple of (repository object, tag or hash).
         """
-        repo_image = value.split(":")
-
-        tag_or_hash: Optional[str]
-        if len(repo_image) == 2:
-            tag_or_hash = repo_image[1]
-        else:
-            tag_or_hash = self.default
-        from splitgraph.core.repository import Repository
-
-        repo = Repository.from_schema(repo_image[0])
+        repo, tag_or_hash = parse_repo_tag_or_hash(value, default=self.default)
 
         if self.get_image or self.repository_exists:
             # Check image/repo exists if we're asked (or if we need to produce
