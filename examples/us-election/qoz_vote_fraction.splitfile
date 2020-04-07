@@ -1,21 +1,26 @@
-# Calculate the number of Census tracts in each county.
 # See the README for data sources.
 
-FROM splitgraph/census IMPORT {
-     SELECT COUNT(*) AS total_tract_count,
-         substring(lpad("TractId"::text, 11, '0') from 0 for 6) AS county_id
-     FROM acs2017_census_tract_data GROUP BY county_id
-} AS county_tracts
+# Calculate the number of Census tracts in each county and fraction of QOZ-eligible tracts.
 
-
-# Calculate the number of QOZ-eligible census tracts in each county
-
-FROM splitgraph/qoz IMPORT {
-    SELECT COUNT(*) AS qoz_tract_count,
-        substring(lpad("Census Tract Number"::text, 11, '0') from 0 for 6) AS county_id
-    FROM qoz GROUP BY county_id
-} AS qoz_tracts
-
+SQL {
+    CREATE TABLE qoz_tract_fraction AS
+        WITH county_tracts AS (SELECT
+                COUNT(*) AS total_tract_count,
+                substring(lpad("TractId"::text, 11, '0') from 0 for 6) AS county_id
+            FROM "splitgraph/census:latest".acs2017_census_tract_data
+            GROUP BY county_id
+        ), qoz_tracts AS (SELECT
+                COUNT(*) AS qoz_tract_count,
+                substring(lpad("Census Tract Number"::text, 11, '0') from 0 for 6) AS county_id
+            FROM "splitgraph/qoz:latest".qoz
+            GROUP BY county_id
+        )
+    SELECT
+        c.county_id AS county_id,
+        COALESCE(q.qoz_tract_count::numeric, 0.0) / total_tract_count AS qoz_tract_fraction
+    FROM qoz_tracts q JOIN county_tracts c
+        ON q.county_id = c.county_id
+}
 
 # Summarize the Trump/Clinton vote fraction in each county.
 
@@ -43,10 +48,10 @@ FROM splitgraph/2016_election IMPORT {
 # with the vote fraction for each candidate.
 
 SQL { CREATE TABLE qoz_vote_fraction AS
-    SELECT v.county_id, (COALESCE(q.qoz_tract_count::numeric, 0.0) / t.total_tract_count)
-        AS qoz_tract_fraction, trump_vote_fraction, clinton_vote_fraction, total_votes
+    SELECT
+        v.county_id, qoz_tract_fraction, trump_vote_fraction,
+        clinton_vote_fraction, total_votes
     FROM vote_fraction v
-    JOIN county_tracts t ON t.county_id = v.county_id
-    LEFT JOIN qoz_tracts q ON t.county_id = q.county_id;
+    JOIN qoz_tract_fraction q ON q.county_id = v.county_id;
     ALTER TABLE qoz_vote_fraction ADD PRIMARY KEY (county_id);
 }
