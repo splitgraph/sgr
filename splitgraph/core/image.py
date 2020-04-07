@@ -25,7 +25,7 @@ from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphError, TableNotFoundError
 from splitgraph.hooks.mount_handlers import init_fdw
 from .common import set_tag, manage_audit, set_head
-from .sql import select
+from .sql import select, prepare_splitfile_sql
 from .table import Table
 from .types import TableColumn, ProvenanceLine
 
@@ -398,5 +398,14 @@ def _prov_command_to_splitfile(
         repo = Repository(cast(str, prov_data["source_namespace"]), cast(str, prov_data["source"]))
         return "FROM %s:%s" % (str(repo), source_replacement.get(repo, prov_data["source_hash"]))
     if prov_type == "SQL":
-        return "SQL " + "{" + cast(str, prov_data["sql"]).replace("}", "\\}") + "}"
+        # Use the SQL validator/replacer to rewrite old image hashes into new hashes/tags.
+
+        def image_mapper(repository: Repository, image_hash: str):
+            new_image = (
+                repository.to_schema() + ":" + source_replacement.get(repository, image_hash)
+            )
+            return new_image, new_image
+
+        _, replaced_sql = prepare_splitfile_sql(str(prov_data["sql"]), image_mapper)
+        return "SQL " + "{" + replaced_sql.replace("}", "\\}") + "}"
     raise SplitGraphError("Cannot reconstruct provenance %s!" % prov_type)

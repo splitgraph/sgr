@@ -1,5 +1,6 @@
 """Routines for managing SQL statements"""
 import logging
+import re
 from typing import Callable, Dict, List, Union, Optional, Sequence, Tuple
 
 from pglast.printer import IndentedStream
@@ -113,6 +114,26 @@ def _emit_ast(ast: "Node") -> str:
     return str(stream(ast))
 
 
+def _recover_original_schema_name(sql: str, schema_name: str) -> str:
+    """Postgres truncates identifiers to 63 characters at parse time and, as pglast
+    uses bits of PG to parse queries, image names like noaa/climate:64_chars_of_hash
+    get truncated which can cause ambiguities and issues in provenance. We can't
+    get pglast to give us back the full identifier, but we can try and figure out
+    what it used to be and patch the AST to have it again.
+    """
+    if len(schema_name) < 63:
+        return schema_name
+
+    candidates = list(set(re.findall(r"(" + re.escape(schema_name) + r"[^.\"]*)[.\"]", sql)))
+    # Us finding more than one candidate schema is pretty unlikely to happen:
+    # we'd have to have a truncated schema name that's 63 characters long
+    # (of kind some_namespace/some_repo:abcdef1234567890....)
+    # which also somehow features in this query as a non-identifier. Raise an error here if
+    # this does happen.
+    assert len(candidates) == 1
+    return candidates[0]
+
+
 def prepare_splitfile_sql(sql: str, image_mapper: Callable) -> Tuple[str, str]:
     """
     Transform an SQL query to prepare for it to be used in a Splitfile SQL command and validate it.
@@ -167,8 +188,10 @@ def prepare_splitfile_sql(sql: str, image_mapper: Callable) -> Tuple[str, str]:
         ):
             continue
 
+        schema_name = _recover_original_schema_name(sql, node["schemaname"].value)
+
         # If the table name is schema-qualified, rewrite it to talk to a LQ shim
-        repo, hash_or_tag = parse_repo_tag_or_hash(node["schemaname"].value, default="latest")
+        repo, hash_or_tag = parse_repo_tag_or_hash(schema_name, default="latest")
         temporary_schema, canonical_name = image_mapper(repo, hash_or_tag)
 
         # We have to access the internal parse tree here to rewrite the schema.

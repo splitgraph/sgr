@@ -371,7 +371,7 @@ def _execute_repo_import(
     # Don't use the actual routine here as we want more control: clone the remote repo in order to turn
     # the tag into an actual hash
 
-    tmp_repo = Repository(repository.namespace, repository.repository)
+    tmp_repo = Repository(repository.namespace, repository.repository + "_tmp_clone")
     try:
         logging.info("Resolving repository %s", repository)
         source_repo = lookup_repository(repository.to_schema(), include_local=True)
