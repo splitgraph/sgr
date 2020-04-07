@@ -199,20 +199,28 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_image_dependencies (
         )
         AS $$
 BEGIN
-    RETURN QUERY WITH p AS (
+    RETURN QUERY WITH provenance_data AS (
         SELECT jsonb_array_elements(i.provenance_data) AS d
         FROM splitgraph_meta.images i
         WHERE i.namespace = _namespace
             AND i.repository = _repository
             AND i.image_hash = _image_hash
             AND jsonb_typeof(i.provenance_data) = 'array'
+), flattened AS (
+    SELECT d
+    FROM provenance_data
+    WHERE d ->> 'type' = 'IMPORT'
+    UNION
+    SELECT jsonb_array_elements(d -> 'sources')
+    FROM provenance_data
+    WHERE d ->> 'type' = 'SQL'
 )
-    SELECT DISTINCT (d ->> 'source_namespace')::character varying AS namespace,
-        (d ->> 'source')::character varying AS repository,
-        (d ->> 'source_hash')::character varying AS image_hash
-    FROM p
-    WHERE d ->> 'source_namespace' IS NOT NULL
-        AND d ->> 'source' IS NOT NULL;
+SELECT DISTINCT (d ->> 'source_namespace')::character varying AS namespace,
+    (d ->> 'source')::character varying AS repository,
+    (d ->> 'source_hash')::character varying AS image_hash
+FROM flattened
+WHERE d ->> 'source_namespace' IS NOT NULL
+    AND d ->> 'source' IS NOT NULL;
 END
 $$
 LANGUAGE plpgsql
@@ -231,15 +239,18 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_image_dependents (
             image_hash varchar
         )
         AS $$
+DECLARE
+    FILTER JSONB;
 BEGIN
+    FILTER = jsonb_build_array (jsonb_build_object('source_namespace',
+	_namespace, 'source', _repository, 'source_hash', _image_hash));
     RETURN QUERY
     SELECT i.namespace,
         i.repository,
         i.image_hash
     FROM splitgraph_meta.images i
-    WHERE i.provenance_data @> jsonb_build_array
-	(jsonb_build_object('source_namespace', _namespace, 'source',
-	_repository, 'source_hash', _image_hash));
+    WHERE i.provenance_data @> FILTER
+        OR i.provenance_data @> jsonb_build_array (jsonb_build_object('sources', FILTER));
 END
 $$
 LANGUAGE plpgsql
