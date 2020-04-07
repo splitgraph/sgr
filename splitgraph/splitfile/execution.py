@@ -19,6 +19,7 @@ from splitgraph.core.image import Image
 from splitgraph.core.repository import Repository, clone
 from splitgraph.core.sql import prepare_splitfile_sql, validate_import_sql
 from splitgraph.engine import get_engine
+from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import ImageNotFoundError, SplitfileError
 from splitgraph.hooks.mount_handlers import get_mount_handler
 from ._parsing import (
@@ -30,7 +31,6 @@ from ._parsing import (
     parse_custom_command,
 )
 from ..core.common import pluralise, truncate_line
-from ..core.object_manager import ObjectManager
 from ..core.types import ProvenanceLine
 
 
@@ -59,26 +59,37 @@ def _checkout_or_calculate_layer(output: Repository, image_hash: str, calc_func:
     print(" ---> %s" % image_hash[:12])
 
 
+def _get_local_image_for_import(hash_or_tag, repository):
+    tmp_repo = Repository(repository.namespace, repository.repository + "_tmp_clone")
+    repo_is_temporary = False
+
+    logging.info("Resolving repository %s", repository)
+    source_repo = lookup_repository(repository.to_schema(), include_local=True)
+    if source_repo.engine.name != "LOCAL":
+        clone(source_repo, local_repository=tmp_repo, download_all=False)
+        source_image = tmp_repo.images[hash_or_tag]
+        repo_is_temporary = True
+    else:
+        # For local repositories, first try to pull them to see if they are clones of a remote.
+        if source_repo.upstream:
+            source_repo.pull()
+        source_image = source_repo.images[hash_or_tag]
+
+    return source_image, repo_is_temporary
+
+
 class ImageMapper:
-    def __init__(self, object_manager: ObjectManager):
-        self.object_manager = object_manager
+    def __init__(self, object_engine: "PostgresEngine"):
+        self.object_engine = object_engine
 
         self.image_map: Dict[Tuple[Repository, str], Tuple[str, str, Image]] = {}
 
+        self._temporary_repositories: List[Repository] = []
+
     def _calculate_map(self, repository: Repository, hash_or_tag: str):
-        tmp_repo = Repository(repository.namespace, repository.repository)
-
-        logging.info("Resolving repository %s", repository)
-        source_repo = lookup_repository(repository.to_schema(), include_local=True)
-
-        if source_repo.engine.name != "LOCAL":
-            clone(source_repo, local_repository=tmp_repo, download_all=False)
-            source_image = tmp_repo.images[hash_or_tag]
-        else:
-            # For local repositories, first try to pull them to see if they are clones of a remote.
-            if source_repo.upstream:
-                source_repo.pull()
-            source_image = source_repo.images[hash_or_tag]
+        source_image, repo_is_temporary = _get_local_image_for_import(hash_or_tag, repository)
+        if repo_is_temporary:
+            self._temporary_repositories.append(source_image.repository)
 
         canonical_form = "%s/%s:%s" % (
             repository.namespace,
@@ -100,20 +111,23 @@ class ImageMapper:
 
     def setup_lq_mounts(self):
         for temporary_schema, _, source_image in self.image_map.values():
-            self.object_manager.object_engine.delete_schema(temporary_schema)
-            self.object_manager.object_engine.create_schema(temporary_schema)
+            self.object_engine.delete_schema(temporary_schema)
+            self.object_engine.create_schema(temporary_schema)
             source_image._lq_checkout(target_schema=temporary_schema)
 
     def teardown_lq_mounts(self):
         for temporary_schema, _, _ in self.image_map.values():
-            self.object_manager.object_engine.run_sql(
+            self.object_engine.run_sql(
                 SQL("DROP SERVER IF EXISTS {} CASCADE").format(
                     Identifier("%s_lq_checkout_server" % temporary_schema)
                 )
             )
-            self.object_manager.object_engine.run_sql(
+            self.object_engine.run_sql(
                 SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(temporary_schema))
             )
+        # Delete temporary repositories that were cloned just for the SQL execution.
+        for repo in self._temporary_repositories:
+            repo.delete()
 
     def get_provenance_data(self):
         return {
@@ -230,16 +244,17 @@ def _execute_sql(node: Node, output: Repository) -> ProvenanceLine:
 
     # Prepare the SQL by rewriting outside image references into LQ schemas
     # Canonicalize the SQL command by formatting it.
-    image_mapper = ImageMapper(output.objects)
+    image_mapper = ImageMapper(output.object_engine)
     sql_rewritten, sql_canonical = prepare_splitfile_sql(sql_command, image_mapper)
 
     output_head = output.head_strict.image_hash
     target_hash = _combine_hashes([output_head, sha256(sql_canonical.encode("utf-8")).hexdigest()])
 
     def _calc():
-        print("Executing SQL...")
+        logging.info("Executing SQL...")
         try:
             image_mapper.setup_lq_mounts()
+            logging.debug("Running rewritten SQL %s against %s", sql_rewritten, output)
             output.run_sql(sql_rewritten)
         finally:
             image_mapper.teardown_lq_mounts()
@@ -370,22 +385,10 @@ def _execute_repo_import(
 ) -> ProvenanceLine:
     # Don't use the actual routine here as we want more control: clone the remote repo in order to turn
     # the tag into an actual hash
-
-    tmp_repo = Repository(repository.namespace, repository.repository + "_tmp_clone")
+    local_image, repo_is_temporary = _get_local_image_for_import(tag_or_hash, repository)
+    source_hash = local_image.image_hash
+    source_mountpoint = local_image.repository
     try:
-        logging.info("Resolving repository %s", repository)
-        source_repo = lookup_repository(repository.to_schema(), include_local=True)
-
-        if source_repo.engine.name != "LOCAL":
-            clone(source_repo, local_repository=tmp_repo, download_all=False)
-            source_hash = tmp_repo.images[tag_or_hash].image_hash
-            source_mountpoint = tmp_repo
-        else:
-            # For local repositories, first try to pull them to see if they are clones of a remote.
-            if source_repo.upstream:
-                source_repo.pull()
-            source_hash = source_repo.images[tag_or_hash].image_hash
-            source_mountpoint = source_repo
 
         # Perform validation here rather than in the import routine. This is to
         # canonicalize SQL that goes into provenance data so that we don't get cache misses
@@ -435,7 +438,8 @@ def _execute_repo_import(
             "table_queries": table_queries,
         }
     finally:
-        tmp_repo.delete()
+        if repo_is_temporary:
+            source_mountpoint.delete()
 
 
 def _execute_custom(node: Node, output: Repository) -> ProvenanceLine:
