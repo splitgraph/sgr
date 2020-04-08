@@ -131,7 +131,7 @@ def _recover_original_schema_name(sql: str, schema_name: str) -> str:
     # which also somehow features in this query as a non-identifier. Raise an error here if
     # this does happen.
     assert len(candidates) == 1
-    return candidates[0]
+    return str(candidates[0])
 
 
 def prepare_splitfile_sql(sql: str, image_mapper: Callable) -> Tuple[str, str]:
