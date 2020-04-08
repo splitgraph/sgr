@@ -7,6 +7,11 @@ from pglast.printer import IndentedStream
 from psycopg2.sql import Composed, SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
+from splitgraph.core.sql._blacklist import (
+    IMPORT_SQL_PERMITTED_NODES,
+    SPLITFILE_SQL_PERMITTED_NODES,
+    TABLE_NAME_BLACKLIST,
+)
 
 try:
     from pglast import parse_sql
@@ -23,6 +28,8 @@ from splitgraph.exceptions import UnsupportedSQLError
 def _validate_range_var(node: "Node") -> None:
     if "schemaname" in node.attribute_names:
         raise UnsupportedSQLError("Table names must not be schema-qualified!")
+    if node["relname"].value in TABLE_NAME_BLACKLIST:
+        raise UnsupportedSQLError("Invalid table name %s!" % node["relname"].value)
 
 
 def _validate_funccall(node: "Node"):
@@ -38,51 +45,6 @@ def _validate_funccall(node: "Node"):
     if funcname.string_value.startswith("pg_"):
         raise UnsupportedSQLError("Unsupported function name %s!" % funcname)
 
-
-# Whitelist of permitted AST nodes. When crawling the parse tree, a node not in this list fails validation. If a node
-# is in this list, the crawler continues down the tree.
-_IMPORT_SQL_PERMITTED_NODES = [
-    "RawStmt",
-    "SelectStmt",
-    "ResTarget",
-    "ColumnRef",
-    "A_Star",
-    "String",
-    "A_Expr",
-    "A_Const",
-    "Integer",
-    "JoinExpr",
-    "SortBy",
-    "NullTest",
-    "BoolExpr",
-    "CoalesceExpr",
-    "RangeFunction",
-    "TypeCast",
-    "TypeName",
-    "SubLink",
-    "WithClause",
-    "CommonTableExpr",
-    "A_ArrayExpr",
-    "Float",
-    "CaseExpr",
-    "CaseWhen",
-    "Alias",
-]
-
-_SPLITFILE_SQL_PERMITTED_NODES = _IMPORT_SQL_PERMITTED_NODES + [
-    "RangeVar",
-    "InsertStmt",
-    "UpdateStmt",
-    "DeleteStmt",
-    "CreateStmt",
-    "CreateTableAsStmt",
-    "IntoClause",
-    "AlterTableStmt",
-    "AlterTableCmd",
-    "DropStmt",
-    "ColumnDef",
-    "Constraint",
-]
 
 # Nodes in this list have extra validators that are supposed to return None or raise an Exception if they
 # fail validation.
@@ -177,6 +139,7 @@ def prepare_splitfile_sql(sql: str, image_mapper: Callable) -> Tuple[str, str]:
     :param sql: SQL query
     :param image_mapper: Takes in an image and gives back the schema it should be rewritten to
         (for the purposes of execution) and the canonical form of the image.
+    :param schema: Schema to add to all non-qualified tables
     :return: Transformed form of the SQL with substituted schema shims for Splitfile execution
         and the canonical form (with e.g. tags resolved into at-the-time full image hashes)
     :raises: UnsupportedSQLException if validation failed
@@ -206,14 +169,15 @@ def prepare_splitfile_sql(sql: str, image_mapper: Callable) -> Tuple[str, str]:
 
     for node in tree.traverse():
         _validate_node(
-            node, permitted_nodes=_SPLITFILE_SQL_PERMITTED_NODES, node_validators=_SQL_VALIDATORS
+            node, permitted_nodes=SPLITFILE_SQL_PERMITTED_NODES, node_validators=_SQL_VALIDATORS
         )
 
-        if (
-            not isinstance(node, Node)
-            or node.node_tag != "RangeVar"
-            or "schemaname" not in node.attribute_names
-        ):
+        if not isinstance(node, Node) or node.node_tag != "RangeVar":
+            continue
+
+        if node["relname"].value in TABLE_NAME_BLACKLIST:
+            raise UnsupportedSQLError("Invalid table name %s!" % node["relname"].value)
+        if "schemaname" not in node.attribute_names:
             continue
 
         schema_name = recover_original_schema_name(sql, node["schemaname"].value)
@@ -259,7 +223,7 @@ def validate_import_sql(sql: str) -> str:
     for node in tree.traverse():
         _validate_node(
             node,
-            permitted_nodes=_IMPORT_SQL_PERMITTED_NODES,
+            permitted_nodes=IMPORT_SQL_PERMITTED_NODES,
             node_validators=_IMPORT_SQL_VALIDATORS,
         )
     return _emit_ast(tree)
