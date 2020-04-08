@@ -1,0 +1,62 @@
+# This Splitfile uses the geonames (http://download.geonames.org/export/dump/readme.txt) all
+# countries dataset and joins it with the 2016 US presidential election dataset
+# (https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/LYWX3D)
+# to create a table of Trump/Clinton votes in each county as well as that county's population.
+
+SQL {
+    CREATE TABLE county_votes AS
+    WITH votes_by_county AS (
+        -- Trump/Clinton/total votes in each county
+        SELECT
+            state_postal,
+            -- Extract the short county FIPS (that doesn't contain the state FIPS)
+            substring(lpad(county_fips::TEXT, 5, '0'), 3, 6) AS county_fips_short,
+            SUM(CASE WHEN candidate_normalized = 'trump' THEN votes ELSE 0 END) AS trump_votes,
+            SUM(CASE WHEN candidate_normalized = 'clinton' THEN votes ELSE 0 END) AS clinton_votes,
+            SUM(votes) AS total_votes
+        FROM "splitgraph/2016_election:latest".precinct_results
+        GROUP BY state_postal, county_fips_short
+    ), us_counties AS (
+        # List of all US counties, their names and population
+        SELECT
+            c.admin1_code AS state,
+            c.admin2_code AS county_fips,
+            c.name AS county_name,
+            c.population
+        FROM "splitgraph/geonames:latest".all_countries c
+        WHERE
+            -- Filter on "second-order administrative divisions" (counties)
+            c.feature_class = 'A'
+            AND c.feature_code = 'ADM2'
+            AND c.country_code = 'US'
+    )
+    SELECT
+        v.state_postal,
+        county_name,
+        v.county_fips_short,
+        trump_votes,
+        clinton_votes,
+        total_votes,
+        population
+    FROM us_counties c JOIN votes_by_county v
+        ON v.state_postal = c.state
+        AND v.county_fips_short = c.county_fips
+}
+
+# Example output:
+# SELECT * FROM county_votes.county_votes LIMIT 10;
+# +----------------+-----------------+---------------------+---------------+-----------------+---------------+--------------+
+# | state_postal   | county_name     | county_fips_short   | trump_votes   | clinton_votes   | total_votes   | population   |
+# |----------------+-----------------+---------------------+---------------+-----------------+---------------+--------------|
+# | AL             | Russell County  | 113                 | 9210          | 9577            | 31804         | 52947        |
+# | GA             | Long County     | 183                 | 2626          | 1360            | 4117          | 14464        |
+# | KY             | Boone County    | 015                 | 39082         | 15026           | 57570         | 118811       |
+# | KY             | Rowan County    | 205                 | 5174          | 3295            | 8842          | 23333        |
+# | AL             | Bibb County     | 007                 | 6738          | 1874            | 13889         | 22915        |
+# | TN             | Campbell County | 013                 | 9870          | 2248            | 12532         | 40716        |
+# | AL             | Blount County   | 009                 | 22808         | 2150            | 38788         | 57322        |
+# | AL             | Bullock County  | 011                 | 1139          | 3530            | 7903          | 10914        |
+# | AL             | Butler County   | 013                 | 4901          | 3726            | 13415         | 20947        |
+# | AL             | Calhoun County  | 015                 | 32865         | 13242           | 73438         | 118572       |
+# +----------------+-----------------+---------------------+---------------+-----------------+---------------+--------------+
+# SELECT 10
