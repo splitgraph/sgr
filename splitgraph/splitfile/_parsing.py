@@ -19,7 +19,7 @@ SPLITFILE_GRAMMAR = Grammar(
     r"""
     commands = space_nn command space_nn (newline space_nn command space_nn)* newline?
     command = comment / import / from / sql_file / sql / custom
-    comment = space "#" non_newline
+    comment = space "#" non_newline?
     from = "FROM" space ("EMPTY" / repo_source) (space "AS" space repository)?
     import = "FROM" space source space "IMPORT" space tables
     sql_file = "SQL" space "FILE" space non_newline
