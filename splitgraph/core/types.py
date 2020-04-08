@@ -14,5 +14,5 @@ class TableColumn(NamedTuple):
 TableSchema = List[TableColumn]
 Quals = Sequence[Sequence[Tuple[str, str, Any]]]
 
-
-ProvenanceLine = Dict[str, Union[str, List[str], List[bool]]]
+SourcesList = List[Dict[str, str]]
+ProvenanceLine = Dict[str, Union[str, List[str], List[bool], SourcesList]]

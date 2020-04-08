@@ -59,7 +59,16 @@ def _checkout_or_calculate_layer(output: Repository, image_hash: str, calc_func:
     print(" ---> %s" % image_hash[:12])
 
 
-def _get_local_image_for_import(hash_or_tag, repository):
+def _get_local_image_for_import(hash_or_tag: str, repository: Repository) -> Tuple[Image, bool]:
+    """
+    Converts a remote repository and tag into an Image object that exists on the engine,
+    optionally pulling the repository or cloning it into a temporary location.
+
+    :param hash_or_tag: Hash/tag
+    :param repository: Name of the repository (doesn't need to be local)
+    :return: Image object and a boolean flag showing whether the repository should be deleted
+    when the image is no longer needed.
+    """
     tmp_repo = Repository(repository.namespace, repository.repository + "_tmp_clone")
     repo_is_temporary = False
 
@@ -86,7 +95,7 @@ class ImageMapper:
 
         self._temporary_repositories: List[Repository] = []
 
-    def _calculate_map(self, repository: Repository, hash_or_tag: str):
+    def _calculate_map(self, repository: Repository, hash_or_tag: str) -> Tuple[str, str, Image]:
         source_image, repo_is_temporary = _get_local_image_for_import(hash_or_tag, repository)
         if repo_is_temporary:
             self._temporary_repositories.append(source_image.repository)
@@ -101,7 +110,7 @@ class ImageMapper:
 
         return temporary_schema, canonical_form, source_image
 
-    def __call__(self, repository: Repository, hash_or_tag: str):
+    def __call__(self, repository: Repository, hash_or_tag: str) -> Tuple[str, str]:
         key = (repository, hash_or_tag)
         if key not in self.image_map:
             self.image_map[key] = self._calculate_map(key[0], key[1])
@@ -109,13 +118,13 @@ class ImageMapper:
         temporary_schema, canonical_form, _ = self.image_map[key]
         return temporary_schema, canonical_form
 
-    def setup_lq_mounts(self):
+    def setup_lq_mounts(self) -> None:
         for temporary_schema, _, source_image in self.image_map.values():
             self.object_engine.delete_schema(temporary_schema)
             self.object_engine.create_schema(temporary_schema)
             source_image._lq_checkout(target_schema=temporary_schema)
 
-    def teardown_lq_mounts(self):
+    def teardown_lq_mounts(self) -> None:
         for temporary_schema, _, _ in self.image_map.values():
             self.object_engine.run_sql(
                 SQL("DROP SERVER IF EXISTS {} CASCADE").format(
@@ -129,7 +138,7 @@ class ImageMapper:
         for repo in self._temporary_repositories:
             repo.delete()
 
-    def get_provenance_data(self):
+    def get_provenance_data(self) -> ProvenanceLine:
         return {
             "sources": [
                 {
@@ -261,7 +270,7 @@ def _execute_sql(node: Node, output: Repository) -> ProvenanceLine:
         output.commit(target_hash, comment=sql_command)
 
     _checkout_or_calculate_layer(output, target_hash, _calc)
-    provenance = {"type": "SQL", "sql": sql_canonical}
+    provenance: ProvenanceLine = {"type": "SQL", "sql": sql_canonical}
     provenance.update(image_mapper.get_provenance_data())
     return provenance
 

@@ -25,6 +25,7 @@ from splitgraph.exceptions import (
     CheckoutError,
     TableNotFoundError,
     IncompleteObjectUploadError,
+    RepositoryNotFoundError,
 )
 from .common import (
     manage_audit_triggers,
@@ -687,7 +688,10 @@ class Repository:
         if parent_hash:
             existing_tables = self.images[parent_hash].get_tables()
         else:
-            parent_hash = self.head.image_hash if self.head else None
+            try:
+                parent_hash = self.head.image_hash if self.head else None
+            except RepositoryNotFoundError:
+                parent_hash = None
             existing_tables = self.object_engine.get_all_tables(self.to_schema())
         clashing = [t for t in tables if t in existing_tables]
         if clashing:
