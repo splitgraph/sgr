@@ -1,6 +1,6 @@
 import pytest
 
-from splitgraph.core.sql import prepare_splitfile_sql, validate_import_sql
+from splitgraph.core.sql import prepare_splitfile_sql, validate_import_sql, _rewrite_sql_fallback
 from splitgraph.exceptions import UnsupportedSQLError
 
 
@@ -231,3 +231,30 @@ def _mapper(repo, hash_or_tag):
 )
 def test_rewrite(source, rewritten, canonical):
     assert prepare_splitfile_sql(source, _mapper) == (rewritten, canonical)
+
+
+@pytest.mark.parametrize(
+    "source,rewritten,canonical",
+    [
+        (
+            'CREATE TABLE output AS SELECT * FROM "ns/repo:tag".input',
+            'CREATE TABLE output AS SELECT * FROM "ns_repo_shim".input',
+            'CREATE TABLE output AS SELECT * FROM "ns_repo_canonical".input',
+        ),
+        (
+            # Note on Windows we always have to quote images and add hash/tag (e.g. :latest)
+            'CREATE TABLE output AS SELECT * FROM "ns/repo:tag".input JOIN "repo_2:latest".input_2 ON key',
+            'CREATE TABLE output AS SELECT * FROM "ns_repo_shim".input JOIN '
+            '"repo_2_shim".input_2 ON key',
+            'CREATE TABLE output AS SELECT * FROM "ns_repo_canonical".input JOIN '
+            '"repo_2_canonical".input_2 ON key',
+        ),
+        (
+            'CREATE TABLE dst AS WITH src AS (SELECT * FROM "repo_2:other_tag".input) ',
+            'CREATE TABLE dst AS WITH src AS (SELECT * FROM "repo_2_other_shim".input) ',
+            'CREATE TABLE dst AS WITH src AS (SELECT * FROM "repo_2_other_canonical".input) ',
+        ),
+    ],
+)
+def test_rewrite_fallback(source, rewritten, canonical):
+    assert _rewrite_sql_fallback(source, _mapper) == (rewritten, canonical)

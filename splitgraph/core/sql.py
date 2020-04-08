@@ -89,6 +89,9 @@ _SPLITFILE_SQL_PERMITTED_NODES = _IMPORT_SQL_PERMITTED_NODES + [
 _SQL_VALIDATORS = {"FuncCall": _validate_funccall}
 _IMPORT_SQL_VALIDATORS = {"RangeVar": _validate_range_var, "FuncCall": _validate_funccall}
 
+# Fallback regex to do best-effort SQL rewriting on Windows where pglast doesn't work.
+_SCHEMA_RE = re.compile(r'"([\w-]+/)?([\w-]+):([\w-]+)"')
+
 
 def _validate_node(
     node: Union["Scalar", "Node"], permitted_nodes: List[str], node_validators: Dict[str, Callable]
@@ -114,7 +117,7 @@ def _emit_ast(ast: "Node") -> str:
     return str(stream(ast))
 
 
-def _recover_original_schema_name(sql: str, schema_name: str) -> str:
+def recover_original_schema_name(sql: str, schema_name: str) -> str:
     """Postgres truncates identifiers to 63 characters at parse time and, as pglast
     uses bits of PG to parse queries, image names like noaa/climate:64_chars_of_hash
     get truncated which can cause ambiguities and issues in provenance. We can't
@@ -132,6 +135,32 @@ def _recover_original_schema_name(sql: str, schema_name: str) -> str:
     # this does happen.
     assert len(candidates) == 1
     return str(candidates[0])
+
+
+def _rewrite_sql_fallback(sql: str, image_mapper: Callable) -> Tuple[str, str]:
+    from splitgraph.core.repository import Repository
+
+    replacements: List[Tuple[str, str, str]] = []
+
+    for namespace, repository, image_hash in _SCHEMA_RE.findall(sql):
+        original_text = namespace + repository + ":" + image_hash
+        if namespace:
+            # Strip the / at the end
+            namespace = namespace[:-1]
+
+        temporary_schema, canonical_name = image_mapper(
+            Repository(namespace, repository), image_hash
+        )
+        replacements.append((original_text, temporary_schema, canonical_name))
+
+    canonical_sql = sql
+    rewritten_sql = sql
+
+    for original_text, temporary_schema, canonical_name in replacements:
+        rewritten_sql = rewritten_sql.replace(original_text, temporary_schema)
+        canonical_sql = canonical_sql.replace(original_text, canonical_name)
+
+    return rewritten_sql, canonical_sql
 
 
 def prepare_splitfile_sql(sql: str, image_mapper: Callable) -> Tuple[str, str]:
@@ -156,8 +185,7 @@ def prepare_splitfile_sql(sql: str, image_mapper: Callable) -> Tuple[str, str]:
     if not _VALIDATION_SUPPORTED:
         logging.warning("SQL validation is unsupported on Windows. SQL will be run unvalidated.")
 
-        # TODO compatibility layer that uses regexes
-        return sql, sql
+        return _rewrite_sql_fallback(sql, image_mapper)
 
     # Avoid circular import
     from splitgraph.core.common import parse_repo_tag_or_hash
@@ -188,7 +216,7 @@ def prepare_splitfile_sql(sql: str, image_mapper: Callable) -> Tuple[str, str]:
         ):
             continue
 
-        schema_name = _recover_original_schema_name(sql, node["schemaname"].value)
+        schema_name = recover_original_schema_name(sql, node["schemaname"].value)
 
         # If the table name is schema-qualified, rewrite it to talk to a LQ shim
         repo, hash_or_tag = parse_repo_tag_or_hash(schema_name, default="latest")
