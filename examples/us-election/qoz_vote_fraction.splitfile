@@ -25,24 +25,15 @@ SQL {
 # Summarize the Trump/Clinton vote fraction in each county.
 
 FROM splitgraph/2016_election IMPORT {
-    WITH
-        by_candidate AS (SELECT
-                lpad(county_fips::text, 5, '0') AS county_id,
-                candidate, SUM(votes) AS votes
-                FROM precinct_results GROUP BY county_id, candidate),
-        total_votes AS (SELECT
-                county_id, SUM(votes) AS votes FROM by_candidate GROUP BY county_id),
-        trump_votes AS (SELECT
-                county_id, votes FROM by_candidate WHERE candidate = 'Donald Trump'),
-        clinton_votes AS (SELECT
-                county_id, votes FROM by_candidate WHERE candidate = 'Hillary Clinton')
-        SELECT v.county_id, (t.votes::numeric / v.votes) AS trump_vote_fraction,
-            (hc.votes::numeric / v.votes) AS clinton_vote_fraction,
-            v.votes AS total_votes
-        FROM total_votes v JOIN trump_votes t ON v.county_id = t.county_id
-            JOIN clinton_votes hc ON hc.county_id = v.county_id
+    SELECT lpad(county_fips::TEXT, 5, '0') AS county_id,
+        SUM(CASE WHEN candidate_normalized = 'trump' THEN votes ELSE 0 END) / SUM(votes)
+            AS trump_vote_fraction,
+        SUM(CASE WHEN candidate_normalized = 'clinton' THEN votes ELSE 0 END) / SUM(votes)
+            AS clinton_vote_fraction,
+    SUM(votes) AS total_votes
+    FROM precinct_results
+    GROUP BY county_id
 } AS vote_fraction
-
 
 # Create the final table: join the fraction of QOZ-eligible tracts in every county
 # with the vote fraction for each candidate.
@@ -52,6 +43,7 @@ SQL { CREATE TABLE qoz_vote_fraction AS
         v.county_id, COALESCE(qoz_tract_fraction, 0), trump_vote_fraction,
         clinton_vote_fraction, total_votes
     FROM vote_fraction v
-    LEFT JOIN qoz_tract_fraction q ON q.county_id = v.county_id;
+    LEFT JOIN qoz_tract_fraction q ON q.county_id = v.county_id
+    WHERE v.county_id IS NOT NULL;
     ALTER TABLE qoz_vote_fraction ADD PRIMARY KEY (county_id);
 }
