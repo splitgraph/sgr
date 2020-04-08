@@ -49,9 +49,9 @@ FROM splitgraph/2016_election IMPORT {
 
 SQL { CREATE TABLE qoz_vote_fraction AS
     SELECT
-        v.county_id, qoz_tract_fraction, trump_vote_fraction,
+        v.county_id, COALESCE(qoz_tract_fraction, 0), trump_vote_fraction,
         clinton_vote_fraction, total_votes
     FROM vote_fraction v
-    JOIN qoz_tract_fraction q ON q.county_id = v.county_id;
+    LEFT JOIN qoz_tract_fraction q ON q.county_id = v.county_id;
     ALTER TABLE qoz_vote_fraction ADD PRIMARY KEY (county_id);
 }
