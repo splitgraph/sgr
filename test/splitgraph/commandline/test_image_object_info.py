@@ -40,6 +40,10 @@ def test_commandline_basics(pg_repo_local):
     result = runner.invoke(sql_c, ['SELECT * FROM "test/pg_mount".fruits'])
     assert "3\tmayonnaise" in result.output
     assert "1\tapple" not in result.output
+
+    result = runner.invoke(sql_c, ["--json", 'SELECT * FROM "test/pg_mount".fruits'])
+    assert result.output == '[[2, "orange"], [3, "mayonnaise"]]\n'
+
     # Test schema search_path
     result = runner.invoke(sql_c, ["--schema", "test/pg_mount", "SELECT * FROM fruits"])
     assert "3\tmayonnaise" in result.output
