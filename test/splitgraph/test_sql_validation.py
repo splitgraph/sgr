@@ -163,6 +163,10 @@ def test_validate_pg_function_call():
     fails_on_both("SELECT pg_do_shady_things(42)")
 
 
+def test_validate_pg_catalog_table():
+    fails_on_both("SELECT * FROM pg_stat_activity")
+
+
 def test_validate_no_set():
     fails_on_both("SET search_path=some_schema;")
 

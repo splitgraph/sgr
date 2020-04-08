@@ -406,6 +406,9 @@ def _prov_command_to_splitfile(
             )
             return new_image, new_image
 
-        _, replaced_sql = prepare_splitfile_sql(str(prov_data["sql"]), image_mapper)
+        if source_replacement:
+            _, replaced_sql = prepare_splitfile_sql(str(prov_data["sql"]), image_mapper)
+        else:
+            replaced_sql = str(prov_data["sql"])
         return "SQL " + "{" + replaced_sql.replace("}", "\\}") + "}"
     raise SplitGraphError("Cannot reconstruct provenance %s!" % prov_type)
