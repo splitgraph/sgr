@@ -309,7 +309,11 @@ def objects_c(local):
     click.echo("\n".join(sorted(objects)))
 
 
-def _to_str(results: List[Tuple[Any]]) -> str:
+def _to_str(results: List[Tuple[Any]], use_json: bool = False) -> str:
+    if use_json:
+        import json
+
+        return json.dumps(results)
     return "\n".join("\t".join(str(t) for t in ts) for ts in results)
 
 
@@ -322,8 +326,9 @@ def _to_str(results: List[Tuple[Any]]) -> str:
     help="Run SQL against this image.",
     type=ImageType(default="latest", get_image=True),
 )
-@click.option("-a", "--show-all", is_flag=True, help="Returns all results of the query.")
-def sql_c(sql, schema, image, show_all):
+@click.option("-a", "--show-all", is_flag=True, help="Return all results of the query.")
+@click.option("-j", "--json", is_flag=True, help="Return results as JSON")
+def sql_c(sql, schema, image, show_all, json):
     """
     Run an SQL statement against the Splitgraph engine.
 
@@ -359,10 +364,11 @@ def sql_c(sql, schema, image, show_all):
         return
 
     if len(results) > 10 and not show_all:
-        click.echo(_to_str(results[:10]))
-        click.echo("...")
+        click.echo(_to_str(results[:10], json))
+        if not json:
+            click.echo("...")
     else:
-        click.echo(_to_str(results))
+        click.echo(_to_str(results, json))
 
 
 @click.command(name="status")
