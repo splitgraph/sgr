@@ -1,0 +1,89 @@
+# This dataset joins the US domestic flights dataset
+# (http://academictorrents.com/details/a2ccf94bbb4af222bf8e69dad60a68a29f310d9a/tech) with
+# the geonames (http://download.geonames.org/export/dump/readme.txt) database, getting the
+# coordinates (from geonames) and total number of flights between all US airports in 2009.
+
+# This is useful for e.g. preparing a data image that will feed a visualization.
+
+# The geonames dataset doesn't have airport IATA codes (e.g. LAX) available directly,
+# so we have to resort to some regexp magic to extract a candidate from the alternative
+# names field.
+
+FROM splitgraph/geonames:latest IMPORT {
+    SELECT
+        -- Note we need to escape the closing curly brace here for the
+        -- Splitfile executor.
+        substring(alternatenames FROM ',([A-Z]{3\}),') AS iata_code,
+        name,
+        latitude,
+        longitude,
+        geonameid
+    FROM all_countries
+    WHERE feature_code = 'AIRP'
+    AND country_code = 'US'
+    AND substring(alternatenames FROM ',([A-Z]{3\}),') IS NOT NULL
+} AS airports
+
+SQL {
+    CREATE TABLE us_flights_2009 AS
+    SELECT
+        origin_airport AS origin_iata,
+        ao.name AS origin_name,
+        ao.latitude AS origin_lat,
+        ao.longitude AS origin_lon,
+
+        destination_airport AS destination_iata,
+        ad.name AS destination_name,
+        ad.latitude AS destination_lat,
+        ad.longitude AS destination_lon,
+
+        SUM(passengers) AS total_passengers,
+        SUM(seats) AS total_seats,
+        SUM(flights) AS flights
+    FROM "splitgraph/domestic_us_flights:latest".flights f
+        JOIN airports ao ON f.origin_airport = ao.iata_code
+        JOIN airports ad ON f.destination_airport = ad.iata_code
+    WHERE
+        EXTRACT('year' FROM fly_month) = 2009
+        GROUP BY origin_airport, destination_airport,
+            ao.name, ao.latitude, ao.longitude,
+            ad.name, ad.latitude, ad.longitude
+}
+
+# Sample output:
+# Time: 0.000s
+# sgr@localhost:splitgraph> SELECT * FROM "us_flights_2009".airports LIMIT 10;
+# +-------------+------------------------------------+------------+-------------+-------------+
+# | iata_code   | name                               | latitude   | longitude   | geonameid   |
+# |-------------+------------------------------------+------------+-------------+-------------|
+# | ADT         | Ada Municipal Airport              | 34.80314   | -96.6714    | 4529103     |
+# | AFM         | Ambler Airport                     | 67.10236   | -157.85951  | 5879298     |
+# | AHD         | Ardmore Downtown Executive Airport | 34.1506    | -97.12114   | 4529471     |
+# | AKB         | Atka Airport                       | 52.22016   | -174.20673  | 5879733     |
+# | AKR         | Akron Fulton International Airport | 41.03728   | -81.46678   | 5145491     |
+# | ARM         | Wharton Regional Airport           | 29.25417   | -96.15417   | 6297596     |
+# | AUZ         | Chicago/Aurora Municipal Airport   | 41.77086   | -88.47285   | 4883831     |
+# | AXG         | Algona Municipal Airport           | 43.07774   | -94.27191   | 4846611     |
+# | BAF         | Westfield-Barnes Regional Airport  | 42.15759   | -72.71509   | 4929766     |
+# | BBB         | Benson Municipal Airport           | 45.33163   | -95.65087   | 5017898     |
+# +-------------+------------------------------------+------------+-------------+-------------+
+# SELECT 10
+# Time: 0.041s
+#
+#
+# sgr@localhost:splitgraph> SELECT * FROM "us_flights_2009".us_flights_2009 WHERE origin_iata = 'LAX' ORDER BY total_passengers DESC LIMIT 10;
+# +---------------+-----------------------------------+--------------+--------------+--------------------+------------------------------------------+-------------------+-------------------+--------------------+---------------+-----------+
+# | origin_iata   | origin_name                       | origin_lat   | origin_lon   | destination_iata   | destination_name                         | destination_lat   | destination_lon   | total_passengers   | total_seats   | flights   |
+# |---------------+-----------------------------------+--------------+--------------+--------------------+------------------------------------------+-------------------+-------------------+--------------------+---------------+-----------|
+# | LAX           | Los Angeles International Airport | 33.94251     | -118.40897   | SFO                | San Francisco International Airport      | 37.61882          | -122.3758         | 1494141            | 1985435       | 15766     |
+# | LAX           | Los Angeles International Airport | 33.94251     | -118.40897   | JFK                | John F. Kennedy International Airport    | 40.63983          | -73.77874         | 1399495            | 1632668       | 10303     |
+# | LAX           | Los Angeles International Airport | 33.94251     | -118.40897   | ORD                | Chicago O'Hare International Airport     | 41.97959          | -87.90446         | 1051961            | 1188897       | 7349      |
+# | LAX           | Los Angeles International Airport | 33.94251     | -118.40897   | HNL                | Daniel K. Inouye International Airport   | 21.32452          | -157.92507        | 976228             | 1100190       | 5407      |
+# | LAX           | Los Angeles International Airport | 33.94251     | -118.40897   | LAS                | McCarran International Airport           | 36.08521          | -115.15068        | 935519             | 1463262       | 10605     |
+# | LAX           | Los Angeles International Airport | 33.94251     | -118.40897   | DFW                | Dallas/Fort Worth International Airport  | 32.89595          | -97.0372          | 856753             | 1015768       | 6642      |
+# | LAX           | Los Angeles International Airport | 33.94251     | -118.40897   | SEA                | Seattle-Tacoma International Airport     | 47.44899          | -122.30929        | 721599             | 843138        | 6704      |
+# | LAX           | Los Angeles International Airport | 33.94251     | -118.40897   | PHX                | Phoenix Sky Harbor International Airport | 33.43551          | -111.99807        | 696075             | 981447        | 8124      |
+# | LAX           | Los Angeles International Airport | 33.94251     | -118.40897   | IAD                | Washington Dulles International Airport  | 38.94877          | -77.4491          | 686418             | 785134        | 4636      |
+# | LAX           | Los Angeles International Airport | 33.94251     | -118.40897   | IAH                | George Bush Intercontinental Airport     | 29.98687          | -95.34212         | 557819             | 651382        | 3607      |
+# +---------------+-----------------------------------+--------------+--------------+--------------------+------------------------------------------+-------------------+-------------------+--------------------+---------------+-----------+
+#
