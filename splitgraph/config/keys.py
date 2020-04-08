@@ -30,6 +30,13 @@ DEFAULTS: ConfigDict = {
     "SG_ENGINE_ADMIN_PWD": "supersecure",
     "SG_ENGINE_POSTGRES_DB_NAME": "postgres",
     "SG_ENGINE_OBJECT_PATH": "/var/lib/splitgraph/objects",
+    # Postgres query planner configuration for Splitfile execution/table imports that uses layered
+    # querying a lot. Multicorn/LQFDW currently doesn't give good estimates for GroupBy
+    # aggregations (returns 1 distinct group) which makes Postgres use a Sort + GroupAgg
+    # aggregation method, so we force it to use hash aggregations for that. This speeds up the
+    # US election dataset build by about 30% (82s -> 56s) for the version that uses FROM IMPORT and
+    # by about 50% (101s -> 53s) for the version that runs a single big join against multiple images.
+    "SG_LQ_TUNING": "SET enable_sort=off; SET enable_hashagg=on;",
     # Size of the connection pool used to download/upload objects + talk to the engine
     "SG_ENGINE_POOL": "16",
     "SG_CONFIG_FILE": "",

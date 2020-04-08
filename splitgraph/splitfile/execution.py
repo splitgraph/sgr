@@ -13,7 +13,7 @@ from parsimonious.nodes import Node
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.config import CONFIG
-from splitgraph.config.config import get_all_in_section
+from splitgraph.config.config import get_all_in_section, get_singleton
 from splitgraph.core.engine import repository_exists, lookup_repository
 from splitgraph.core.image import Image
 from splitgraph.core.repository import Repository, clone
@@ -263,8 +263,9 @@ def _execute_sql(node: Node, output: Repository) -> ProvenanceLine:
         logging.info("Executing SQL...")
         try:
             image_mapper.setup_lq_mounts()
-            logging.debug("Running rewritten SQL %s against %s", sql_rewritten, output)
-            output.run_sql(sql_rewritten)
+            sql_to_run = get_singleton(CONFIG, "SG_LQ_TUNING") + sql_rewritten
+            logging.debug("Running rewritten SQL %s against %s", sql_to_run, output)
+            output.run_sql(sql_to_run)
         finally:
             image_mapper.teardown_lq_mounts()
         output.commit(target_hash, comment=sql_command)

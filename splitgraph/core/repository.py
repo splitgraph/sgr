@@ -13,7 +13,13 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, Set, Seque
 from psycopg2.sql import Composed
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA, FDW_CLASS
+from splitgraph.config import (
+    SPLITGRAPH_META_SCHEMA,
+    SPLITGRAPH_API_SCHEMA,
+    FDW_CLASS,
+    get_singleton,
+    CONFIG,
+)
 from splitgraph.core.fragment_manager import get_temporary_table_id, ExtraIndexInfo
 from splitgraph.core.image import Image
 from splitgraph.core.image_manager import ImageManager
@@ -811,9 +817,12 @@ class Repository:
             # foreign table or not since we're storing it as a full snapshot.
             if not skip_validation:
                 source_table = validate_import_sql(source_table)
+
+            # Prepend query planner instructions to the query
             self.object_engine.run_sql_in(
                 source_schema,
-                SQL("CREATE TABLE {}.{} AS ").format(
+                SQL(get_singleton(CONFIG, "SG_LQ_TUNING"))
+                + SQL("CREATE TABLE {}.{} AS ").format(
                     Identifier(SPLITGRAPH_META_SCHEMA), Identifier(tmp_object_id)
                 )
                 + SQL(source_table),
