@@ -392,6 +392,10 @@ def test_object_storage_remounting(pg_repo_local):
         is False
     )
 
+    assert missing_object not in pg_repo_local.object_engine.run_sql(
+        "SELECT splitgraph_api.get_objects()", return_shape=ResultShape.ONE_ONE,
+    )
+
     with mock.patch("splitgraph.engine.postgres.engine.logging") as log:
         head = pg_repo_local.commit(snap_only=True)
         assert head.get_table("fruits").objects == [missing_object]

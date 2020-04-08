@@ -159,13 +159,21 @@ CREATE OR REPLACE FUNCTION splitgraph_api.list_objects ()
     AS $BODY$
     import os
     from splitgraph.config import CONFIG
+    from collections import defaultdict
 
     SG_ENGINE_OBJECT_PATH = CONFIG["SG_ENGINE_OBJECT_PATH"]
 
     # Crude but faster than listing foreign tables (and hopefully consistent).
 
     files = os.listdir(SG_ENGINE_OBJECT_PATH)
-    return [f for f in files if not f.endswith(".schema") and not f.endswith(".footer")]
+
+    # Make sure to only return objects that have been fully downloaded.
+
+    objects = defaultdict(list)
+    for f in files:
+        objects[f.replace(".schema", "").replace(".footer", "")].append(f)
+
+    return [f for f, fs in objects.items() if len(fs) == 3]
 $BODY$
 LANGUAGE plpython3u
 VOLATILE;
