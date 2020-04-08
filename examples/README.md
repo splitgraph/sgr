@@ -18,6 +18,7 @@ Each example has a README file. Some of these examples get or push data from/to 
   * [splitfiles](./splitfiles): Use Splitfiles to build Splitgraph data images, track their provenance and keep them up to date.
   * [query_api](./query_api): Try out the REST API that gets generated for every dataset on Splitgraph Cloud.
   * [us-election](./us-election): A real-world Splitfile example that joins multiple datasets.
+  * [sample_splitfiles](./sample_splitfiles): A collection of loose Splitfiles that run against interesting datasets on Splitgraph Cloud.
 
 ## Contributing
 

@@ -1,4 +1,5 @@
-# This is a similar Splitfile but instead of using the IMPORT statements, it generates
+# This is a similar Splitfile to the one used in the us-election dataset,
+# but instead of using the IMPORT statements, it generates
 # the whole dataset using a big query that joins across three Splitgraph datasets.
 # The tradeoff here is that the whole image is cached as a single unit (changes to a single
 # source image force a rebuild), but the final image takes up less space (since it doesn't
@@ -20,46 +21,19 @@ CREATE TABLE qoz_vote_fraction AS
       ),
     by_candidate AS (
       SELECT lpad(county_fips::TEXT, 5, '0') AS county_id,
-        candidate,
-        sum(votes) AS votes
+        SUM(CASE WHEN candidate_normalized = 'trump' THEN votes ELSE 0 END) AS trump_votes,
+        SUM(CASE WHEN candidate_normalized = 'clinton' THEN votes ELSE 0 END) AS clinton_votes,
+        SUM(votes) AS total_votes
       FROM "splitgraph/2016_election:latest".precinct_results
-      GROUP BY county_id,
-        candidate
-      ),
-    total_votes AS (
-      SELECT county_id,
-        sum(votes) AS votes
-      FROM by_candidate
       GROUP BY county_id
-      ),
-    trump_votes AS (
-      SELECT county_id,
-        votes
-      FROM by_candidate
-      WHERE candidate = 'Donald Trump'
-      ),
-    clinton_votes AS (
-      SELECT county_id,
-        votes
-      FROM by_candidate
-      WHERE candidate = 'Hillary Clinton'
-      ),
-    vote_fraction AS (
-      SELECT v.county_id,
-        (t.votes)::NUMERIC / v.votes AS trump_vote_fraction,
-        (hc.votes)::NUMERIC / v.votes AS clinton_vote_fraction,
-        v.votes AS total_votes
-      FROM total_votes AS v
-      INNER JOIN trump_votes AS t ON v.county_id = t.county_id
-      INNER JOIN clinton_votes AS hc ON hc.county_id = v.county_id
       )
 
 SELECT v.county_id,
   COALESCE(q.qoz_tract_count::NUMERIC / t.total_tract_count::NUMERIC, 0.0) AS qoz_tract_fraction,
-  trump_vote_fraction,
-  clinton_vote_fraction,
+  trump_votes / total_votes AS trump_vote_fraction,
+  clinton_votes / total_votes AS clinton_vote_fraction,
   total_votes
-FROM vote_fraction AS v
+FROM by_candidate AS v
 LEFT JOIN county_tracts AS t ON t.county_id = v.county_id
 LEFT JOIN qoz_tracts AS q ON t.county_id = q.county_id
 }
