@@ -104,6 +104,30 @@ $$
 LANGUAGE plpgsql
 SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 
+
+-- get_repository_size(namespace, repository): get repository size in bytes (counting tables
+-- that share objects only once)
+CREATE OR REPLACE FUNCTION splitgraph_api.get_repository_size (
+    _namespace varchar,
+    _repository varchar
+)
+    RETURNS BIGINT
+    AS $$
+BEGIN
+    RETURN (WITH iob AS (
+            SELECT DISTINCT unnest(object_ids) AS object_id
+            FROM splitgraph_meta.tables t
+            WHERE t.namespace = _namespace
+                AND t.repository = _repository
+)
+        SELECT sum(o.size)
+        FROM iob
+            JOIN splitgraph_meta.objects o ON iob.object_id = o.object_id);
+END
+$$
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+
 -- Search for an image by its hash prefix. Currently the prefix feature
 -- is only used for better API/cmdline UX -- pushes/pulls to the registry
 -- use full IDs.
@@ -166,7 +190,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_image_size (
     _repository varchar,
     _image_hash varchar
 )
-    RETURNS INTEGER
+    RETURNS BIGINT
     AS $$
 BEGIN
     RETURN (WITH iob AS (
@@ -606,7 +630,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_table_size (
     _image_hash varchar,
     _table_name varchar
 )
-    RETURNS INTEGER
+    RETURNS BIGINT
     AS $$
 BEGIN
     RETURN (WITH iob AS (

@@ -1074,6 +1074,17 @@ develop = ["mock", "pylama", "pytest", "pytest-cov", "tox"]
 
 [[package]]
 category = "main"
+description = "Pretty-print tabular data"
+name = "tabulate"
+optional = false
+python-versions = "*"
+version = "0.8.7"
+
+[package.extras]
+widechars = ["wcwidth"]
+
+[[package]]
+category = "main"
 description = "Consistent interface for stream reading and writing tabular data (csv/xls/json/etc)"
 name = "tabulator"
 optional = false
@@ -1235,7 +1246,7 @@ testing = ["jaraco.itertools", "func-timeout"]
 pandas = ["pandas", "sqlalchemy"]
 
 [metadata]
-content-hash = "75457e1b2e74b53e8f6dd6667515975836ce29be0094b4862b5686233c0f0eab"
+content-hash = "a03b4e224e7026573a950cf42d889f8c7210675c769e503a501ddd56a347cf0e"
 python-versions = "~=3.6"
 
 [metadata.files]
@@ -1822,6 +1833,10 @@ sqlalchemy = [
 tableschema = [
     {file = "tableschema-1.15.3-py2.py3-none-any.whl", hash = "sha256:5ac743b29b079fc270cf33fcaf92ad3ce2b77739c82059a6bf6a9fbd6c4478f1"},
     {file = "tableschema-1.15.3.tar.gz", hash = "sha256:5426ac04ca9dddb47cae24c407857d70f94a7835ed693fbdbb1cc739a0c0f769"},
+]
+tabulate = [
+    {file = "tabulate-0.8.7-py3-none-any.whl", hash = "sha256:ac64cb76d53b1231d364babcd72abbb16855adac7de6665122f97b593f1eb2ba"},
+    {file = "tabulate-0.8.7.tar.gz", hash = "sha256:db2723a20d04bcda8522165c73eea7c300eda74e0ce852d9022e0159d7895007"},
 ]
 tabulator = [
     {file = "tabulator-1.38.1-py2.py3-none-any.whl", hash = "sha256:7a5866355261fc857f6f11e118bdebfbdb985ea02160268d251c23fd737b806e"},

@@ -22,8 +22,11 @@ from splitgraph.commandline.engine import patch_and_save_config, inject_config_i
 @click.option("--accept-tos", is_flag=True, help="Accept the registry's Terms of Service")
 def register_c(username, password, email, remote, accept_tos):
     """
-    Register the user on splitgraph.com, obtain a set of machine credentials
-    and configure the data.splitgraph.com engine.
+    Register the user on a Splitgraph registry.
+
+    By default, this registers the user on data.splitgraph.com,
+    obtains a set of machine (API) credentials for the client to communicate
+    with the registry and configures the data.splitgraph.com engine.
     """
     from splitgraph.cloud import AuthAPIClient
     from splitgraph.config import CONFIG
@@ -150,7 +153,10 @@ def login_c(username, password, remote, overwrite):
     "-c", "--curl-args", type=str, multiple=True, help="Extra arguments to be passed to curl"
 )
 def curl_c(remote, request_type, image, request_params, curl_args):
-    """A thin wrapper around curl that performs an HTTP request to Splitgraph Cloud to
+    """
+    Query a Splitgraph REST API.
+
+    This is a thin wrapper around curl that performs an HTTP request to Splitgraph Cloud to
     interact with a dataset using PostgREST (http://postgrest.org) or the Splitfile executor.
 
     The actual invocation is:
