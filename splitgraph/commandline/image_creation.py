@@ -7,7 +7,7 @@ from collections import defaultdict
 
 import click
 
-from splitgraph.commandline.common import ImageType, RepositoryType, JsonType
+from splitgraph.commandline.common import ImageType, RepositoryType, JsonType, remote_switch_option
 from splitgraph.exceptions import TableNotFoundError
 
 
@@ -161,8 +161,9 @@ def commit_c(
 @click.command(name="tag")
 @click.argument("image_spec", type=ImageType(default=None))
 @click.argument("tag", required=False)
-@click.option("-r", "--remove", required=False, is_flag=True, help="Remove the tag instead.")
-def tag_c(image_spec, tag, remove):
+@click.option("-d", "--delete", is_flag=True, help="Delete the tag instead.")
+@remote_switch_option()
+def tag_c(image_spec, tag, delete):
     """
     Manage tags on images.
 
@@ -188,17 +189,17 @@ def tag_c(image_spec, tag, remove):
 
     Tag the current ``HEAD`` of ``noaa/climate`` with ``my_new_tag``.
 
-    ``sgr tag --remove noaa/climate:my_new_tag``
+    ``sgr tag --delete noaa/climate:my_new_tag``
 
-    Remove the tag ``my_new_tag`` from ``noaa/climate``.
+    Delete the tag ``my_new_tag`` from ``noaa/climate``.
     """
     repository, image = image_spec
 
-    if remove:
+    if delete:
         # In this case the tag must be a part of the image spec.
         if tag is not None or image is None:
             raise click.BadArgumentUsage(
-                "Use sgr tag --remove %s:TAG_TO_DELETE" % repository.to_schema()
+                "Use sgr tag --delete %s:TAG_TO_DELETE" % repository.to_schema()
             )
         if image in ("latest", "HEAD"):
             raise click.BadArgumentUsage("%s is a reserved tag!" % image)

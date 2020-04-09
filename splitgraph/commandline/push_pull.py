@@ -8,7 +8,7 @@ import sys
 import click
 
 from splitgraph.commandline.common import RepositoryType, ImageType
-from splitgraph.config import CONFIG
+from splitgraph.config import CONFIG, REMOTES
 from splitgraph.config.config import get_from_subsection
 
 
@@ -85,9 +85,6 @@ def clone_c(
     )
 
 
-_REMOTES = list(CONFIG.get("remotes", []))
-
-
 @click.command(name="push")
 @click.argument("repository_or_image", type=ImageType(default=None))
 @click.argument("remote_repository", required=False, type=RepositoryType())
@@ -95,7 +92,7 @@ _REMOTES = list(CONFIG.get("remotes", []))
     "-r",
     "--remote",
     help="Alias or full connection string for the remote engine",
-    type=click.Choice(_REMOTES),
+    type=click.Choice(REMOTES),
     default=None,
 )
 @click.option("-h", "--upload-handler", help="Upload handler", default="S3")
@@ -195,11 +192,11 @@ def _determine_push_target(repository, remote_repository, remote):
 
 
 def _get_default_remote():
-    if len(_REMOTES) != 1:
+    if len(REMOTES) != 1:
         raise click.UsageError(
-            "Could not infer a repository to push to, specify a remote explicitly with -r!"
+            "More than one remote registered, specify a remote explicitly with -r!"
         )
-    remote = _REMOTES[0]
+    remote = REMOTES[0]
     return remote
 
 

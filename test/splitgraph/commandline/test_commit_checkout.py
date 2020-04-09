@@ -159,11 +159,11 @@ def test_commandline_tag_checkout(pg_repo_local):
     assert not get_engine().schema_exists(str(pg_repo_local))
 
     # Delete the tag -- check the help entry correcting the command
-    result = runner.invoke(tag_c, ["--remove", str(pg_repo_local), "v1"])
+    result = runner.invoke(tag_c, ["--delete", str(pg_repo_local), "v1"])
     assert result.exit_code != 0
-    assert "--remove test/pg_mount:TAG_TO_DELETE" in result.output
+    assert "--delete test/pg_mount:TAG_TO_DELETE" in result.output
 
-    result = runner.invoke(tag_c, ["--remove", str(pg_repo_local) + ":" + "v1"])
+    result = runner.invoke(tag_c, ["--delete", str(pg_repo_local) + ":" + "v1"])
     assert result.exit_code == 0
     assert pg_repo_local.images.by_tag("v1", raise_on_none=False) is None
 

@@ -7,7 +7,7 @@ from typing import List, Optional, Tuple, Union, Dict, cast, TYPE_CHECKING, Any
 
 import click
 
-from .common import ImageType, RepositoryType
+from .common import ImageType, RepositoryType, remote_switch_option
 from ..core._drawing import format_image_hash, format_tags, format_time
 
 if TYPE_CHECKING:
@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 @click.command(name="log")
 @click.argument("image_spec", type=ImageType(get_image=False, default="HEAD"))
 @click.option("-t", "--tree", is_flag=True)
+@remote_switch_option()
 def log_c(image_spec, tree):
     """
     Show the history of a Splitgraph repository/image
@@ -172,6 +173,7 @@ def _get_actual_hashes(
 
 
 @click.command(name="show")
+@remote_switch_option()
 @click.argument("image_spec", type=ImageType(default="HEAD", get_image=True))
 def show_c(image_spec):
     """
@@ -201,6 +203,7 @@ def show_c(image_spec):
 
 
 @click.command(name="table")
+@remote_switch_option()
 @click.argument("image_spec", type=ImageType(default="HEAD", get_image=True))
 @click.argument("table_name", type=str)
 @click.option(
@@ -239,6 +242,7 @@ def table_c(image_spec, table_name, verbose):
 
 
 @click.command(name="object")
+@remote_switch_option()
 @click.argument("object_id", type=str)
 def object_c(object_id):
     """
@@ -342,6 +346,7 @@ def _to_str(results: List[Tuple[Any]], use_json: bool = False) -> str:
 
 @click.command(name="sql")
 @click.argument("sql")
+@remote_switch_option()
 @click.option("-s", "--schema", help="Run SQL against this schema.")
 @click.option(
     "-i",
@@ -374,14 +379,16 @@ def sql_c(sql, schema, image, show_all, json):
     if schema and image:
         raise click.UsageError("Only one of --schema and --image can be specified!")
 
+    engine = get_engine()
+
     if not image:
         if schema:
-            get_engine().run_sql("SET search_path TO %s", (schema,))
-        results = get_engine().run_sql(sql)
+            engine.run_sql("SET search_path TO %s", (schema,))
+        results = engine.run_sql(sql)
     else:
         repo, image = image
         with image.query_schema() as s:
-            results = get_engine().run_sql_in(s, sql)
+            results = engine.run_sql_in(s, sql)
 
     if results is None:
         return

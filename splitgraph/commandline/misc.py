@@ -17,20 +17,18 @@ from packaging.version import Version
 
 from splitgraph.__version__ import __version__
 from splitgraph.exceptions import CheckoutError
-from .common import ImageType, RepositoryType
+from .common import ImageType, RepositoryType, remote_switch_option
 from .engine import list_engines
 from ..cloud import get_headers
 
 
 @click.command(name="rm")
 @click.argument("image_spec", type=ImageType(default=None))
-@click.option(
-    "-r", "--remote", help="Perform the deletion on a remote instead, specified by its alias"
-)
+@remote_switch_option()
 @click.option(
     "-y", "--yes", help="Agree to deletion without confirmation", is_flag=True, default=False
 )
-def rm_c(image_spec, remote, yes):
+def rm_c(image_spec, yes):
     """
     Delete schemas, repositories or images.
 
@@ -68,8 +66,10 @@ def rm_c(image_spec, remote, yes):
     from splitgraph.engine import get_engine
     from splitgraph.core.engine import repository_exists
 
+    engine = get_engine()
+
     repository, image = image_spec
-    repository = Repository.from_template(repository, engine=get_engine(remote or "LOCAL"))
+    repository = Repository.from_template(repository, engine=engine)
     if not image:
         click.echo(
             ("Repository" if repository_exists(repository) else "Postgres schema")
@@ -79,7 +79,7 @@ def rm_c(image_spec, remote, yes):
             click.confirm("Continue? ", abort=True)
 
         # Don't try to "uncheckout" repositories on the registry/other remote engines
-        repository.delete(uncheckout=remote is None)
+        repository.delete(uncheckout=engine.name == "LOCAL")
         repository.commit_engines()
     else:
         image = repository.images[image]
@@ -112,13 +112,11 @@ def rm_c(image_spec, remote, yes):
 
 @click.command(name="prune")
 @click.argument("repository", type=RepositoryType(exists=True))
-@click.option(
-    "-r", "--remote", help="Perform the deletion on a remote instead, specified by its alias"
-)
+@remote_switch_option()
 @click.option(
     "-y", "--yes", help="Agree to deletion without confirmation", is_flag=True, default=False
 )
-def prune_c(repository, remote, yes):
+def prune_c(repository, yes):
     """
     Cleanup dangling images from a repository.
 
@@ -135,7 +133,7 @@ def prune_c(repository, remote, yes):
     from splitgraph.core.repository import Repository
     from splitgraph.engine import get_engine
 
-    repository = Repository.from_template(repository, engine=get_engine(remote or "LOCAL"))
+    repository = Repository.from_template(repository, engine=get_engine())
 
     all_images = set(image.image_hash for image in repository.images())
     all_tagged_images = {i for i, t in repository.get_all_hashes_tags()}

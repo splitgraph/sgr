@@ -44,14 +44,6 @@ logger = logging.getLogger()
 click_log.basic_config(logger)
 
 
-def _commit_connection(_):
-    """Commit and close the PG connection when the application finishes."""
-    from splitgraph.engine import get_engine
-
-    get_engine().commit()
-    get_engine().close()
-
-
 def _fullname(o):
     module = o.__class__.__module__
     if module is None or module == str.__class__.__module__:
@@ -77,9 +69,14 @@ class WithExceptionHandler(click.Group):
             else:
                 logger.error("%s: %s" % (_fullname(exc), exc))
             ctx.exit(code=2)
+        finally:
+            from splitgraph.engine import get_engine
+
+            get_engine().commit()
+            get_engine().close()
 
 
-@click.group(cls=WithExceptionHandler, result_callback=_commit_connection)
+@click.group(cls=WithExceptionHandler)
 @click_log.simple_verbosity_option(logger)
 @click.version_option(prog_name="sgr", version=__version__)
 def cli():
