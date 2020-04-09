@@ -90,6 +90,12 @@ API_MAX_QUERY_LENGTH = 261000
 API_MAX_VARIADIC_ARGS = 1000
 
 
+def _quiet():
+    # Don't spam connection error messages if we're in interactive mode and
+    # loglevel is default (INFO/WARNING).
+    return sys.stdin.isatty() and logging.getLogger().getEffectiveLevel() >= logging.INFO
+
+
 def _handle_fatal(e):
     """Handle some Postgres exceptions that aren't transient."""
 
@@ -314,7 +320,7 @@ class PsycopgEngine(SQLEngine):
                     raise
                 _handle_fatal(e)
                 retries += 1
-                if sys.stdin.isatty() and logging.getLogger().getEffectiveLevel() >= logging.INFO:
+                if _quiet():
                     _notify()
                 else:
                     logging.error(
@@ -577,7 +583,7 @@ class PsycopgEngine(SQLEngine):
                     raise
                 _handle_fatal(e)
                 retries += 1
-                if sys.stdin.isatty() and logging.getLogger().getEffectiveLevel() >= logging.INFO:
+                if _quiet():
                     _notify()
                 else:
                     logging.error(
