@@ -6,6 +6,7 @@ import docker
 import psycopg2
 import pytest
 from packaging.version import Version
+from test.splitgraph.conftest import SPLITGRAPH_ENGINE_CONTAINER
 
 from splitgraph.__version__ import __version__
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
@@ -25,7 +26,6 @@ from splitgraph.exceptions import (
     ObjectNotFoundError,
     APICompatibilityError,
 )
-from test.splitgraph.conftest import SPLITGRAPH_ENGINE_CONTAINER
 
 
 def test_metadata_schema(pg_repo_local):
@@ -393,7 +393,7 @@ def test_object_storage_remounting(pg_repo_local):
     )
 
     assert missing_object not in pg_repo_local.object_engine.run_sql(
-        "SELECT splitgraph_api.get_objects()", return_shape=ResultShape.ONE_ONE,
+        "SELECT splitgraph_api.list_objects()", return_shape=ResultShape.ONE_ONE,
     )
 
     with mock.patch("splitgraph.engine.postgres.engine.logging") as log:

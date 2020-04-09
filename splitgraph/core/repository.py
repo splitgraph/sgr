@@ -885,7 +885,8 @@ class Repository:
     def push(
         self,
         remote_repository: Optional["Repository"] = None,
-        overwrite: bool = False,
+        overwrite_objects: bool = False,
+        overwrite_tags: bool = False,
         handler: str = "DB",
         handler_options: Optional[Dict[str, Any]] = None,
         single_image: Optional[str] = None,
@@ -897,7 +898,8 @@ class Repository:
             upstream is used.
         :param handler: Name of the handler to use to upload objects. Use `DB` to push them to the remote or `S3`
             to store them in an S3 bucket.
-        :param overwrite: If True, will overwrite object metadata on the remote repository for existing objects.
+        :param overwrite_objects: If True, will overwrite object metadata on the remote repository for existing objects.
+        :param overwrite_tags: If True, will overwrite existing tags on the remote repository.
         :param handler_options: Extra options to pass to the handler. For example, see
             :class:`splitgraph.hooks.s3.S3ExternalObjectHandler`.
         :param single_image: Limit the upload to a single image hash/tag.
@@ -913,7 +915,8 @@ class Repository:
                 target=remote_repository,
                 source=self,
                 download=False,
-                overwrite=overwrite,
+                overwrite_objects=overwrite_objects,
+                overwrite_tags=overwrite_tags,
                 handler=handler,
                 handler_options=handler_options,
                 single_image=single_image,
@@ -931,7 +934,8 @@ class Repository:
     def pull(
         self,
         download_all: Optional[bool] = False,
-        overwrite: bool = False,
+        overwrite_objects: bool = False,
+        overwrite_tags: bool = False,
         single_image: Optional[str] = None,
     ) -> None:
         """
@@ -940,7 +944,8 @@ class Repository:
 
         :param download_all: If True, downloads all objects and stores them locally. Otherwise, will only download
             required objects when a table is checked out.
-        :param overwrite: If True, will overwrite object metadata on the local repository for existing objects.
+        :param overwrite_objects: If True, will overwrite object metadata on the local repository for existing objects.
+        :param overwrite_tags: If True, will overwrite existing tags.
         :param single_image: Limit the download to a single image hash/tag.
         """
         if not self.upstream:
@@ -950,7 +955,8 @@ class Repository:
             remote_repository=self.upstream,
             local_repository=self,
             download_all=download_all,
-            overwrite=overwrite,
+            overwrite_objects=overwrite_objects,
+            overwrite_tags=overwrite_tags,
             single_image=single_image,
         )
 
@@ -1072,7 +1078,8 @@ def _sync(
     target: "Repository",
     source: "Repository",
     download: bool = True,
-    overwrite: bool = False,
+    overwrite_objects: bool = False,
+    overwrite_tags: bool = False,
     handler: str = "DB",
     handler_options: Optional[Dict[str, Any]] = None,
     single_image: Optional[str] = None,
@@ -1088,7 +1095,9 @@ def _sync(
     :param source: Source Repository object
     :param download: If True, uses the download routines to download physical objects to self.
         If False, uses the upload routines to get `source` to upload physical objects to self / external.
-    :param overwrite: If True, overwrites remote object metadata for the target repository.
+    :param overwrite_objects: If True, overwrites remote object metadata for the target repository.
+    :param overwrite_tags: If True, overwrites tags for all (if syncing the whole repository)
+        or the single image.
     :param handler: Upload handler
     :param handler_options: Upload handler options
     :param single_image: Limit the download/upload to a single image hash/tag.
@@ -1103,9 +1112,13 @@ def _sync(
 
     try:
         new_images, table_meta, object_locations, object_meta, tags = gather_sync_metadata(
-            target, source, overwrite_objects=overwrite, single_image=single_image,
+            target,
+            source,
+            overwrite_objects=overwrite_objects,
+            single_image=single_image,
+            overwrite_tags=overwrite_tags,
         )
-        if not new_images and not object_meta and not object_locations:
+        if not new_images and not object_meta and not object_locations and not tags:
             logging.info("No image/object metadata to pull.")
             return
 
@@ -1187,7 +1200,8 @@ def _sync(
 def clone(
     remote_repository: Union["Repository", str],
     local_repository: Optional["Repository"] = None,
-    overwrite: bool = False,
+    overwrite_objects: bool = False,
+    overwrite_tags: bool = False,
     download_all: Optional[bool] = False,
     single_image: Optional[str] = None,
 ) -> "Repository":
@@ -1202,7 +1216,8 @@ def clone(
     :param local_repository: Local repository to clone into. If None, uses the same name as the remote.
     :param download_all: If True, downloads all objects and stores them locally. Otherwise, will only download required
         objects when a table is checked out.
-    :param overwrite: If True, will overwrite object metadata on the local repository for existing objects.
+    :param overwrite_objects: If True, will overwrite object metadata on the local repository for existing objects.
+    :param overwrite_tags: If True, will overwrite existing tags.
     :param single_image: If set, only get a single image with this hash/tag from the source.
     :return: A locally cloned Repository object.
     """
@@ -1217,7 +1232,8 @@ def clone(
         local_repository,
         remote_repository,
         download=True,
-        overwrite=overwrite,
+        overwrite_objects=overwrite_objects,
+        overwrite_tags=overwrite_tags,
         single_image=single_image,
     )
 

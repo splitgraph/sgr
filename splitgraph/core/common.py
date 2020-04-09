@@ -38,7 +38,6 @@ META_TABLES = [
     "version",
 ]
 OBJECT_MANAGER_TABLES = ["object_cache_status", "object_cache_occupancy"]
-_PUBLISH_PREVIEW_SIZE = 100
 _SPLITGRAPH_META_DIR = "resources/splitgraph_meta"
 
 
@@ -199,6 +198,7 @@ def gather_sync_metadata(
     target: "Repository",
     source: "Repository",
     overwrite_objects=False,
+    overwrite_tags=False,
     single_image: Optional[str] = None,
 ) -> Any:
     """
@@ -207,9 +207,12 @@ def gather_sync_metadata(
 
     :param target: Target Repository object
     :param source: Source repository object
-    :param overwrite_objects: If True, will return metadata for _all_ objects (not images or tables)
-        in the source repository to overwrite target.
+    :param overwrite_objects: If True, will return metadata for _all_ objects
+        (not images or tables) in the source repository to overwrite target.
     :param single_image: If set, only grab a single image with this hash/tag from the source.
+    :param overwrite_tags: If True and single_image is set, will return all tags for that image.
+        If single_image is not set, will return all tags in the source repository.
+        If False, will only return tags in the source that don't exist on the target.
 
     :returns: Tuple of metadata for  new_images, new_tables, object_locations, object_meta, tags
     """
@@ -220,20 +223,22 @@ def gather_sync_metadata(
     # upon.
     if single_image:
         image = source.images[single_image]
+        single_image_hash = image.image_hash
         try:
             # If the image already exists on the target, we shouldn't overwrite it.
             # The user can get around this by deleting the image manually.
-            _ = target.images[single_image]
+            _ = target.images[single_image_hash]
             new_images = []
             new_image_hashes = []
         except ImageNotFoundError:
             new_images = [image]
-            new_image_hashes = [image.image_hash]
+            new_image_hashes = [single_image_hash]
         except RepositoryNotFoundError:
             new_images = [image]
-            new_image_hashes = [image.image_hash]
+            new_image_hashes = [single_image_hash]
     else:
         # If an image hasn't been specified, get/push all non-existing images.
+        single_image_hash = None
         target_images = {i.image_hash: i for i in target.images()}
         source_images = {i.image_hash: i for i in source.images()}
         new_image_hashes = [i for i in source_images if i not in target_images]
@@ -257,12 +262,21 @@ def gather_sync_metadata(
             table_meta.append(t)
         all_objects = all_objects.union(t[-1])
 
-    # Get the tags too
+    # Get the tags
     existing_tags = [t for s, t in target.get_all_hashes_tags()]
     tags = {
         t: s
         for s, t in source.get_all_hashes_tags()
-        if t not in existing_tags and s in new_image_hashes
+        if (
+            # Only get new tags (unless we're overwriting them)
+            t not in existing_tags
+            or overwrite_tags
+        )
+        and (
+            # Only get tags for the new image (unless we're pulling the whole repo)
+            not single_image
+            or s == single_image_hash
+        )
     }
 
     # Get objects that don't exist on the target
