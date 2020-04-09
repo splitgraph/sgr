@@ -124,7 +124,7 @@ def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
 
     # Check engine version
     # (we didn't put it into the .sgconfig so have to patch instead)
-    with patch("splitgraph.commandline.engine.get_engine", return_value=engine):
+    with patch("splitgraph.engine.get_engine", return_value=engine):
         result = runner.invoke(version_engine_c, [TEST_ENGINE_NAME])
         assert result.exit_code == 0
         assert __version__ in result.stdout
@@ -162,7 +162,7 @@ def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
     assert "running" in result.stdout
 
     # Try upgrading it to the same engine version as a smoke test
-    with patch("splitgraph.commandline.engine.get_engine", return_value=engine):
+    with patch("splitgraph.engine.get_engine", return_value=engine):
         # Make sure the connection is closed as the client will use this Engine reference
         # after the upgrade to initialize it.
         engine.close()
