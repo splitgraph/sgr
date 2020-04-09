@@ -131,10 +131,13 @@ jobs:
             # all_branches: true
             tags: true
         # Push the binary Sphinx bundle as a release for build by splitgraph.com
+        # Also upload the single installer script.
         - provider: releases
           api_key:
             secure: MWwqUDXZDI/Wi4qk3EM5afR5XVn/DayFQCkct4lRFw9TgpB1uKbyQKuPJnycE7nOPmdAdzQhsSIHfmoFRuO9ReQsADlOR1BbSkI1KGLIbPx/74tQTQ6Htf+VQrfX7R1Yk9C3mIfd51Ix9ffvPzmWfeF6At/fcPrVvTK/jWvyQ2NZimEAGSgELB1KItZWAighoT4x5cVEc11MBMj7JkD4wOrBrP4aaNq3HLIZW7cMIjBHMhvDvcd/ry7kZLjAQtSzEPL8bsulRjYW0nJzLJyGci5dCSga1Qd2VBdLlkCZHcL0OoUqCQmFTYT0AwkjHwO96oVFy8WYvP57Vvf/613w1w43kr8FrQAu37Ahhg+douplo4owvXhJUm+G53BwtXeY2MFvBqxROdOLTD9yjAyAH+3mMBAFtWswfQhxP4dpn4m+Js5Lp4j7PwM4V+x4XZ/bP1HiBGLS4NHd4sBrNFSTEbY5WuuRSBx/HJP5AEtu60gMKUQwdVNz9XEDXxKRCWaxihcYTCHCnJBt4MLp7WtUNjymt4zz9IZLRy05rskx/KXE0nT7aM0KeyZqFEz0+dkI9srSsAJSxQKtJp3rBfPgRq9m8RQ6GvFeqx+fXiS5LBlICHE7S9Ql8QHVI0ut+ru33k8IUgtvElUvZgl7x7BxeBYGzNYO8GzyKNksKsMpHWo=
-          file: dist/sgr-docs-bin.tar.gz
+          file:
+            - "dist/sgr-docs-bin.tar.gz"
+            - "./install.sh"
           # Set draft to false to disable draft releases (available to public straightaway,
           # not just the collaborators).
           draft: true
