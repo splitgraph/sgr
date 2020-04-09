@@ -101,7 +101,7 @@ def _handle_fatal(e):
             "Check your credentials using sgr config and make sure you've "
             "logged into the registry using sgr cloud login."
         )
-    if "FATAL" in str(e):
+    if "password authentication failed" in str(e):
         raise e
 
 
