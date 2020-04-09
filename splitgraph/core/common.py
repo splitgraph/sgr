@@ -3,6 +3,7 @@ Common internal functions used by Splitgraph commands.
 """
 import logging
 import os
+import sys
 from datetime import date, datetime, time
 from decimal import Decimal
 from functools import wraps
@@ -39,6 +40,11 @@ META_TABLES = [
 ]
 OBJECT_MANAGER_TABLES = ["object_cache_status", "object_cache_occupancy"]
 _SPLITGRAPH_META_DIR = "resources/splitgraph_meta"
+
+
+def resource_path(relative_path):
+    base_path = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_path, relative_path)
 
 
 def set_tag(repository: "Repository", image_hash: Optional[str], tag: str) -> None:
@@ -139,10 +145,7 @@ def ensure_metadata_schema(engine: "PsycopgEngine") -> None:
     files, target_version = source_files_to_apply(
         engine,
         schema_name=SPLITGRAPH_META_SCHEMA,
-        # resource_listdir breaks with pyinstaller
-        schema_files=os.listdir(
-            os.path.join(os.path.dirname(__file__), "..", _SPLITGRAPH_META_DIR)
-        ),
+        schema_files=os.listdir(resource_path(os.path.join("splitgraph", _SPLITGRAPH_META_DIR))),
     )
 
     if not files:
