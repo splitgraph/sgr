@@ -9,9 +9,6 @@ block_cipher = None
 a = Analysis(['bin/sgr'],
              pathex=['.'],
              hiddenimports=[],
-             # Disable ingestion extras for now (we're looking at replacing this
-             # with something more lightweight)
-             excludes=['pandas','numpy','scipy', 'sqlalchemy'],
              hookspath=[],
              runtime_hooks=[],
              cipher=block_cipher)
