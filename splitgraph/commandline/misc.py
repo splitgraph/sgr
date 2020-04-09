@@ -372,6 +372,7 @@ def upgrade_c(skip_engine_upgrade, path, force, version):
     import requests
     from tqdm import tqdm
     from splitgraph.config import CONFIG, SG_CMD_ASCII
+    from splitgraph.cloud import get_headers
 
     # Detect if we're running from a Pyinstaller binary
     if not hasattr(sys, "frozen") and not force and not path:
