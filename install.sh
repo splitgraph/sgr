@@ -1,12 +1,16 @@
-#!/bin/bash -e
+#!/bin/bash
 
 # Script that downloads the sgr client, adds a default engine and (optionally)
 # registers the user on Splitgraph Cloud.
 #
-# Works on Linux/OSX.
+# Works on Linux/OSX:
+#
+# bash -c "$(curl -sL https://github.com/splitgraph/splitgraph/releases/latest/download/install.sh)"
 #
 # For other installation methods, including Windows/pip/docker-compose, see
 # https://www.splitgraph.com/docs/installation/.
+
+set -eo pipefail
 
 SGR_VERSION=${SGR_VERSION-0.1.0}
 INSTALL_DIR=${INSTALL_DIR-$HOME/.splitgraph}
@@ -14,6 +18,7 @@ INSTALL_DIR=${INSTALL_DIR-$HOME/.splitgraph}
 # Set SKIP_BINARY=1 to skip downloading sgr
 # Set SKIP_ENGINE=1 to skip setting up the engine.
 BINARY=
+ENGINE_PORT=${ENGINE_PORT-5432}
 
 CLOUD_SKIPPED=
 
@@ -33,8 +38,10 @@ _die() {
 }
 
 _check_sgr_exists() {
-  current_sgr=$(sgr --version)
+  set +e
+  current_sgr=$(sgr --version 2>/dev/null)
   ret=$?
+  set -e
   if [ $ret == 0 ]; then
     if [ -n "$IGNORE_SGR_EXISTS" ]; then
       echo "$current_sgr already exists on this machine. Continuing anyway."
@@ -67,6 +74,8 @@ _install_binary () {
     return
   fi
 
+  _check_sgr_exists
+
   URL="https://github.com/splitgraph/splitgraph/releases/download/v${SGR_VERSION}"/$BINARY
   echo "Installing the sgr binary from $URL into $INSTALL_DIR"
   mkdir -p "$INSTALL_DIR"
@@ -93,11 +102,13 @@ _setup_engine() {
   echo "${blue}"
   echo "username: sgr"
   echo "password: password"
-  echo "port: 5432"
+  echo "port: ${ENGINE_PORT}"
   echo "${end}"
-  echo "This is just to protect this local Postgres installation and can be changed after install."
-  "$INSTALL_DIR/sgr" engine add --password password || (
-    _die "Error setting up the engine. If an engine already exists, you can skip this step by setting \$SKIP_ENGINE=1."
+  echo "These credentials are just for this local Postgres installation"
+  echo "and can be changed after install."
+  echo
+  "$INSTALL_DIR/sgr" engine add --password password --port "${ENGINE_PORT}" || (
+    _die "Error setting up the engine. If an engine already exists, you can skip this step by setting \$SKIP_ENGINE=1. In case of a port conflict, you can restart the installer with ENGINE_PORT set to some other port."
   )
 
   "$INSTALL_DIR/sgr" engine version
@@ -157,7 +168,6 @@ _welcome() {
   echo "or email (${bblue}support@splitgraph.com${end})!"
 }
 
-_check_sgr_exists
 _get_binary_name
 _install_binary
 _setup_engine
