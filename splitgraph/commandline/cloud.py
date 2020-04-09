@@ -1,11 +1,9 @@
 """Command line routines related to registering/setting up connections to the Splitgraph registry."""
 import logging
 import subprocess
-from urllib.parse import urlsplit
 
 import click
 
-from splitgraph.cloud import get_token_claim, get_headers
 from splitgraph.commandline.common import ImageType
 from splitgraph.commandline.engine import patch_and_save_config, inject_config_into_engines
 
@@ -95,6 +93,7 @@ def login_c(username, password, remote, overwrite):
     """
     from splitgraph.config import CONFIG
     from splitgraph.cloud import AuthAPIClient
+    from splitgraph.cloud import get_token_claim
 
     client = AuthAPIClient(remote)
 
@@ -176,7 +175,7 @@ def curl_c(remote, request_type, image, request_params, curl_args):
     with --curl-args, e.g. --curl-args --cacert --curl-args /path/to/ca.pem
     """
     from splitgraph.config import CONFIG
-    from splitgraph.cloud import AuthAPIClient
+    from splitgraph.cloud import AuthAPIClient, get_headers
 
     repository, hash_or_tag = image
 

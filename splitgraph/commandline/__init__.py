@@ -88,6 +88,12 @@ def cli():
 # * All docstrings are in the imperative mood
 #   (e.g. "Commit a Splitgraph schema" instead of "Commits a Splitgraph schema".)
 
+# Note on performance:
+# To avoid Python's famously slow imports which tank the performance of something like sgr --help,
+# none of the CLI modules import the rest of splitgraph at toplevel apart from lightweight helpers:
+# splitgraph.config and splitgraph.exceptions.
+# All other imports are recommended to be pushed into the actual command definition.
+
 # Possible extra commands:
 # * sgr squash namespace/repo:image: takes an image, turns all of its objects into snapshots and creates
 #   a new image (useful for publishing?)
