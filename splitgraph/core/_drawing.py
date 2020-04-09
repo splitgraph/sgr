@@ -2,93 +2,102 @@
 """
 Routines for rendering a Splitgraph repository as a tree of images
 """
-from collections import defaultdict
-from typing import Dict, List, DefaultDict
+from collections import defaultdict, OrderedDict
+from datetime import datetime
+from typing import TYPE_CHECKING, List
 
-from splitgraph.core.repository import Repository
-from splitgraph.exceptions import SplitGraphError
+import click
 
+from splitgraph.commandline.common import Color
 
-def _calc_columns(children: DefaultDict[str, List[str]], start: str) -> Dict[str, int]:
-    def dfs(node: str) -> Dict[str, int]:
-        result = {node: 0}
-        base = 0
-        for child in children[node]:
-            child_res = _calc_columns(children, child)
-            result.update({cname: ccol + base for cname, ccol in iter(child_res.items())})
-            base += max(child_res.values()) + 1
-        return result
-
-    return dfs(start)
+if TYPE_CHECKING:
+    from splitgraph.core.repository import Repository
 
 
-def _render_node(
-    node_id: str,
-    children: DefaultDict[str, List[str]],
-    node_cols: Dict[str, int],
-    max_col: int,
-    mark_node: str = "",
-    node_width: int = 8,
-    col_width: int = 12,
-) -> None:
-    # First, render all the edges that come before the node
-    line = ("│" + " " * (col_width - 1)) * node_cols[node_id]
-    # Then, render the node itself.
-    line += (
-        "├─"
-        + node_id[:node_width]
-        + mark_node
-        + " " * (col_width - node_width - 2 - len(mark_node))
-    )
-    # Finally, render all the edges on the right of the node.
-    children_cols = set(node_cols[c] for c in children[node_id])
+def _pull_up_children(tree):
+    """Pull up nodes with only one child to avoid ladders for long
+    chains of commits on one branch. Technically, asciitree draws vertical trees,
+    but we try to flatten them a bit."""
 
-    for col in range(node_cols[node_id] + 1, max_col + 1):
-        # If there's a child in this column, draw an inverse T.
-        child_found = False
-        for child in children[node_id]:
-            if node_cols[child] == col:
-                child_found = True
-                # Draw a branch
-                if col == max_col:
-                    line += "┘"
-                else:
-                    line += "┴" + "─" * (col_width - 1)
-                break
-        if not child_found:
-            # Otherwise, pad it with dashes.
-            if not children_cols or col >= max(children_cols):
-                line += "│" + " " * (col_width - 1)
-            else:
-                line += "─" * col_width
-    print(line)
+    # TODO this creates ambiguous trees where a line of commits renders the same
+    #   as a bunch of siblings of a single node.
+    new_tree = OrderedDict()
+    one_child = len(tree) == 1
+
+    for child_name, child in tree.items():
+        flatten = len(child) == 1
+        child = _pull_up_children(child)
+
+        # If this node has a single child that itself only had a single child before
+        # flattening, we can pull that tree's new children up (straighten the branch).
+        if flatten and one_child:
+            new_tree[child_name] = OrderedDict()
+            new_tree.update(child)
+        else:
+            new_tree[child_name] = child
+
+    return new_tree
 
 
-def render_tree(repository: Repository) -> None:
+def format_image_hash(image_hash: str) -> str:
+    return Color.BOLD + Color.RED + image_hash[:10] + Color.END
+
+
+def format_tags(tags: List[str]) -> str:
+    if tags:
+        return Color.BOLD + Color.YELLOW + " [" + ", ".join(tags) + "]" + Color.END
+    return ""
+
+
+def format_time(time: datetime) -> str:
+    return " " + Color.GREEN + time.strftime("%Y-%m-%d %H:%M:%S") + Color.END
+
+
+def render_tree(repository: "Repository") -> None:
     """Draws the repository's commit graph as a Git-like tree."""
-    # Prepare the tree structure by loading the index from the db and flipping it
-    children: DefaultDict[str, List[str]] = defaultdict(list)
-    base_node = None
-    head = repository.head.image_hash if repository.head else None
+
+    import asciitree
+    from splitgraph.core.common import truncate_line
 
     # Get all commits in ascending time order
-    all_images = repository.images()
-    for image in all_images:
+    all_images = {i.image_hash: i for i in repository.images()}
+
+    if not all_images:
+        return
+
+    latest = repository.images["latest"]
+
+    tag_dict = defaultdict(list)
+    for img, img_tag in repository.get_all_hashes_tags():
+        tag_dict[img].append(img_tag)
+    tag_dict[latest.image_hash].append("latest")
+
+    class ImageTraversal(asciitree.DictTraversal):
+        def get_text(self, node):
+            image = all_images[node[0]]
+            result = format_image_hash(image.image_hash)
+            result += format_tags(tag_dict[image.image_hash])
+            result += format_time(image.created)
+            if image.comment:
+                result += " " + truncate_line(image.comment)
+            return result
+
+    tree = OrderedDict((image, OrderedDict()) for image in all_images)
+    tree_elements = tree.copy()
+
+    # Join children to parents to prepare a tree structure for asciitree
+    for image in all_images.values():
         if image.parent_id is None:
-            base_node = image.image_hash
-        children[image.parent_id].append(image.image_hash)
+            continue
 
-    if base_node is None:
-        raise SplitGraphError("Something is seriously wrong with the index.")
+        tree_elements[image.parent_id][image.image_hash] = tree_elements[image.image_hash]
+        del tree[image.image_hash]
 
-    # Calculate the column in which each node should be displayed.
-    node_cols = _calc_columns(children, base_node)
+    # tree = _pull_up_children(tree)
 
-    for image in reversed(all_images):
-        _render_node(
-            image.image_hash,
-            children,
-            node_cols,
-            mark_node=" H" if image.image_hash == head else "",
-            max_col=max(node_cols.values()),
-        )
+    renderer = asciitree.LeftAligned(
+        draw=asciitree.BoxStyle(gfx=asciitree.drawing.BOX_LIGHT, label_space=1, horiz_len=0),
+        traverse=ImageTraversal(),
+    )
+    for root, root_tree in tree.items():
+        click.echo(renderer({root: root_tree}))

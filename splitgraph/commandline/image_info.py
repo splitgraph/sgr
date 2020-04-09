@@ -2,26 +2,29 @@
 sgr commands related to getting information out of / about images
 """
 
-from collections import Counter
+from collections import Counter, defaultdict
 from typing import List, Optional, Tuple, Union, Dict, cast, TYPE_CHECKING, Any
 
 import click
 
 from .common import ImageType, RepositoryType
+from ..core._drawing import format_image_hash, format_tags, format_time
 
 if TYPE_CHECKING:
     from splitgraph.core.repository import Repository
 
 
 @click.command(name="log")
-@click.argument("repository", type=RepositoryType(exists=True))
+@click.argument("image_spec", type=ImageType(get_image=False, default="HEAD"))
 @click.option("-t", "--tree", is_flag=True)
-def log_c(repository, tree):
+def log_c(image_spec, tree):
     """
-    Show the history of a Splitgraph repository.
+    Show the history of a Splitgraph repository/image
 
     By default, this shows the history of the current branch, starting from the HEAD pointer and following its
     parent chain.
+
+    Alternatively, it can follow the parent chain of any other image.
 
     If ``-t`` or ``--tree`` is passed, this instead renders the full image tree. The repository doesn't need to have
     been checked out in this case.
@@ -30,22 +33,31 @@ def log_c(repository, tree):
     from splitgraph.core.common import truncate_line
     from tabulate import tabulate
 
+    repository, hash_or_tag = image_spec
+
     if tree:
         render_tree(repository)
     else:
-        head = repository.head
-        log = head.get_log()
+        latest = repository.images["latest"]
+
+        tag_dict = defaultdict(list)
+        for img, img_tag in repository.get_all_hashes_tags():
+            tag_dict[img].append(img_tag)
+        tag_dict[latest.image_hash].append("latest")
+
+        image = repository.images[hash_or_tag]
+        log = image.get_log()
         table = []
         for entry in log:
             table.append(
                 (
-                    "H -> " if entry == head else "   ",
-                    entry.image_hash[:16],
-                    entry.created,
+                    format_image_hash(entry.image_hash),
+                    format_tags(tag_dict[entry.image_hash]),
+                    format_time(entry.created),
                     truncate_line(entry.comment or ""),
                 )
             )
-        click.echo(tabulate(table))
+        click.echo(tabulate(table, tablefmt="plain"))
 
 
 @click.command(name="diff")
@@ -397,7 +409,7 @@ def _emit_repository_data(repositories, engine):
         metadata_size = pretty_size(repo.get_size())
         actual_size = pretty_size(repo.get_local_size())
         if head:
-            head = head.image_hash[:16]
+            head = head.image_hash[:10]
             if (
                 engine.run_sql(
                     "SELECT 1 FROM pg_foreign_server WHERE srvname = %s",
