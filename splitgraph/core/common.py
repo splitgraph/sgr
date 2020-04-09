@@ -221,6 +221,7 @@ def gather_sync_metadata(
     # same image hash means same contents and same tables but the composition of an image
     # can change (if we refragment a table so that querying it is faster). But it's frowned
     # upon.
+    single_image_hash: Optional[str] = None
     if single_image:
         image = source.images[single_image]
         single_image_hash = image.image_hash
@@ -238,7 +239,6 @@ def gather_sync_metadata(
             new_image_hashes = [single_image_hash]
     else:
         # If an image hasn't been specified, get/push all non-existing images.
-        single_image_hash = None
         target_images = {i.image_hash: i for i in target.images()}
         source_images = {i.image_hash: i for i in source.images()}
         new_image_hashes = [i for i in source_images if i not in target_images]
