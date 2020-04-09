@@ -278,14 +278,18 @@ Original location: example.com/objects/base_1.tgz (HTTP)
     assert result.exit_code == 0
     assert "Location: remote engine" in result.output
 
-    result = runner.invoke(object_c, [patch_2])
-    assert result.exit_code == 0
-    assert "Location: created locally" in result.output
+    with mock.patch(
+        "splitgraph.core.object_manager.ObjectManager.get_downloaded_objects",
+        return_value=[base_1, patch_2],
+    ):
+        result = runner.invoke(object_c, [patch_2])
+        assert result.exit_code == 0
+        assert "Location: created locally" in result.output
 
-    result = runner.invoke(objects_c)
-    assert result.exit_code == 0
-    assert result.output == "\n".join([base_1, patch_1, patch_2]) + "\n"
+        result = runner.invoke(objects_c)
+        assert result.exit_code == 0
+        assert result.output == "\n".join([base_1, patch_1, patch_2]) + "\n"
 
-    result = runner.invoke(objects_c, ["--local"])
-    assert result.exit_code == 0
-    assert result.output == base_1 + "\n" + patch_2 + "\n"
+        result = runner.invoke(objects_c, ["--local"])
+        assert result.exit_code == 0
+        assert result.output == base_1 + "\n" + patch_2 + "\n"
