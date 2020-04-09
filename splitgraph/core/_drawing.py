@@ -82,7 +82,9 @@ def render_tree(repository: "Repository") -> None:
                 result += " " + truncate_line(image.comment)
             return result
 
-    tree = OrderedDict((image, OrderedDict()) for image in all_images)
+    tree: OrderedDict[str, OrderedDict] = OrderedDict(
+        (image, OrderedDict()) for image in all_images
+    )
     tree_elements = tree.copy()
 
     # Join children to parents to prepare a tree structure for asciitree
