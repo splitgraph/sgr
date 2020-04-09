@@ -54,9 +54,7 @@ def test_engine_retry(local_engine_empty):
 
     with mock.patch("splitgraph.engine.postgres.engine.RETRY_DELAY", 0.1):
         with mock.patch.object(local_engine_empty, "_pool") as pool:
-            with mock.patch(
-                "splitgraph.engine.postgres.engine.sys.stdin.isatty", return_value=True
-            ):
+            with mock.patch("splitgraph.engine.postgres.engine._quiet", return_value=True):
                 stdout = StringIO()
                 with mock.patch("sys.stdout", stdout):
                     pool.getconn.side_effect = [
@@ -84,9 +82,7 @@ def test_engine_retry_admin(local_engine_empty):
 
     with mock.patch("splitgraph.engine.postgres.engine.RETRY_DELAY", 0.1):
         with mock.patch("splitgraph.engine.postgres.engine.psycopg2.connect") as connect:
-            with mock.patch(
-                "splitgraph.engine.postgres.engine.sys.stdin.isatty", return_value=True
-            ):
+            with mock.patch("splitgraph.engine.postgres.engine._quiet", return_value=True):
                 stdout = StringIO()
                 with mock.patch("sys.stdout", stdout):
                     connect.side_effect = [
