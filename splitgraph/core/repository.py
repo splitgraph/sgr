@@ -277,6 +277,38 @@ class Repository:
             return_shape=None,
         )
 
+    def get_size(self) -> int:
+        """
+        Get the physical size used by the repository's data, counting objects that are used
+        by multiple images only once. This is calculated from the metadata, the on-disk
+        footprint might be smaller if not all of repository's objects have been downloaded.
+
+        :return: Size of the repository in bytes.
+        """
+        return cast(
+            int,
+            self.engine.run_sql(
+                select("get_repository_size", table_args="(%s,%s)", schema=SPLITGRAPH_API_SCHEMA),
+                (self.namespace, self.repository),
+                return_shape=ResultShape.ONE_ONE,
+            )
+            or 0,
+        )
+
+    def get_local_size(self) -> int:
+        """
+        Get the actual size used by this repository's downloaded objects.
+
+        This might still be double-counted if the repository shares objects
+        with other repositores.
+
+        :return: Size of the repository in bytes.
+        """
+        repo_objects = self.objects.get_objects_for_repository(self)
+        local_objects = self.objects.get_downloaded_objects(limit_to=repo_objects)
+        local_object_meta = self.objects.get_object_meta(local_objects)
+        return sum(o.size for o in local_object_meta.values())
+
     # --- COMMITS / CHECKOUTS ---
 
     @contextmanager

@@ -16,20 +16,31 @@ from splitgraph.commandline import (
     objects_c,
 )
 from splitgraph.core.metadata_manager import OBJECT_COLS
+from splitgraph.core.repository import Repository
 from splitgraph.core.sql import insert
 from splitgraph.core.types import TableColumn
 
 
 def test_commandline_basics(pg_repo_local):
     runner = CliRunner()
+    old_head = pg_repo_local.head
 
     # sgr status
     result = runner.invoke(status_c, [])
-    assert pg_repo_local.to_schema() in result.output
-    old_head = pg_repo_local.head
-    assert old_head.image_hash in result.output
+    assert (
+        """test/pg_mount         2       0  516.00 B    516.00 B    %s  --"""
+        % pg_repo_local.head.image_hash[:16]
+    ) in result.output
+
+    # sgr status with LQ etc
+    old_head.checkout(layered=True)
+    pg_repo_local.upstream = Repository("some", "upstream", engine=pg_repo_local.engine)
+    result = runner.invoke(status_c, [])
+    assert old_head.image_hash[:16] + " (LQ)" in result.output
+    assert "some/upstream (LOCAL)" in result.output
 
     # sgr sql
+    pg_repo_local.head.checkout()
     runner.invoke(sql_c, ["INSERT INTO \"test/pg_mount\".fruits VALUES (3, 'mayonnaise')"])
     runner.invoke(
         sql_c, ['CREATE TABLE "test/pg_mount".mushrooms (mushroom_id integer, name varchar)']
@@ -38,23 +49,23 @@ def test_commandline_basics(pg_repo_local):
     runner.invoke(sql_c, ['DELETE FROM "test/pg_mount".fruits WHERE fruit_id = 1'])
     runner.invoke(sql_c, ["COMMENT ON COLUMN \"test/pg_mount\".fruits.name IS 'Name of the fruit'"])
     result = runner.invoke(sql_c, ['SELECT * FROM "test/pg_mount".fruits'])
-    assert "3\tmayonnaise" in result.output
-    assert "1\tapple" not in result.output
+    assert "mayonnaise" in result.output
+    assert "apple" not in result.output
 
     result = runner.invoke(sql_c, ["--json", 'SELECT * FROM "test/pg_mount".fruits'])
     assert result.output == '[[2, "orange"], [3, "mayonnaise"]]\n'
 
     # Test schema search_path
     result = runner.invoke(sql_c, ["--schema", "test/pg_mount", "SELECT * FROM fruits"])
-    assert "3\tmayonnaise" in result.output
-    assert "1\tapple" not in result.output
+    assert "mayonnaise" in result.output
+    assert "apple" not in result.output
 
     # Test sql using LQ against current HEAD (without the changes we've made)
     result = runner.invoke(sql_c, ["--image", "test/pg_mount:latest", "SELECT * FROM fruits"])
     assert result.exit_code == 0
-    assert "1\tapple" in result.output
-    assert "2\torange" in result.output
-    assert "3\tmayonnaise" not in result.output
+    assert "apple" in result.output
+    assert "orange" in result.output
+    assert "mayonnaise" not in result.output
 
     def check_diff(args):
         result = runner.invoke(diff_c, [str(a) for a in args])
@@ -130,8 +141,8 @@ def test_commandline_basics(pg_repo_local):
 
     # sgr log
     result = runner.invoke(log_c, [str(pg_repo_local)])
-    assert old_head.image_hash in result.output
-    assert new_head.image_hash in result.output
+    assert old_head.image_hash[:16] in result.output
+    assert new_head.image_hash[:16] in result.output
     assert "Test commit" in result.output
 
     # sgr log (tree)

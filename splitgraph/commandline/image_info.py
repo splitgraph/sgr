@@ -7,7 +7,6 @@ from typing import List, Optional, Tuple, Union, Dict, cast, TYPE_CHECKING, Any
 
 import click
 
-from splitgraph.core.common import pretty_size, pluralise
 from .common import ImageType, RepositoryType
 
 if TYPE_CHECKING:
@@ -28,22 +27,25 @@ def log_c(repository, tree):
     been checked out in this case.
     """
     from splitgraph.core._drawing import render_tree
+    from splitgraph.core.common import truncate_line
+    from tabulate import tabulate
 
     if tree:
         render_tree(repository)
     else:
         head = repository.head
         log = head.get_log()
+        table = []
         for entry in log:
-            click.echo(
-                "%s %s %s %s"
-                % (
-                    "H->" if entry == head else "   ",
-                    entry.image_hash,
+            table.append(
+                (
+                    "H -> " if entry == head else "   ",
+                    entry.image_hash[:16],
                     entry.created,
-                    entry.comment or "",
+                    truncate_line(entry.comment or ""),
                 )
             )
+        click.echo(tabulate(table))
 
 
 @click.command(name="diff")
@@ -102,6 +104,8 @@ def _emit_table_diff(
     diff_result: Union[bool, Tuple[int, int, int], List[Tuple[bool, Tuple]]],
     verbose: bool,
 ) -> None:
+    from splitgraph.core.common import pluralise
+
     to_print = "%s: " % table_name
     if isinstance(diff_result, (list, tuple)):
         if verbose:
@@ -166,6 +170,8 @@ def show_c(image_spec):
 
     Image spec must be of the format ``[NAMESPACE/]REPOSITORY[:HASH_OR_TAG]``. If no tag is specified, ``HEAD`` is used.
     """
+    from splitgraph.core.common import pretty_size
+
     repository, image = image_spec
 
     click.echo("Image %s:%s" % (repository.to_schema(), image.image_hash))
@@ -194,6 +200,8 @@ def table_c(image_spec, table_name, verbose):
 
     Image spec must be of the format ``[NAMESPACE/]REPOSITORY[:HASH_OR_TAG]``. If no tag is specified, ``HEAD`` is used.
     """
+    from splitgraph.core.common import pretty_size
+
     repository, image = image_spec
     table = image.get_table(table_name)
     click.echo("Table %s:%s/%s" % (repository.to_schema(), image.image_hash, table_name))
@@ -314,7 +322,10 @@ def _to_str(results: List[Tuple[Any]], use_json: bool = False) -> str:
         import json
 
         return json.dumps(results)
-    return "\n".join("\t".join(str(t) for t in ts) for ts in results)
+
+    from tabulate import tabulate
+
+    return tabulate(results, tablefmt="plain")
 
 
 @click.command(name="sql")
@@ -371,23 +382,82 @@ def sql_c(sql, schema, image, show_all, json):
         click.echo(_to_str(results, json))
 
 
+def _emit_repository_data(repositories, engine):
+    from splitgraph.engine import ResultShape
+    from tabulate import tabulate
+    from splitgraph.core.common import pretty_size
+
+    click.echo("Local repositories: \n")
+
+    table = []
+    for repo, head in repositories:
+        no_images = len(repo.images())
+        all_tags = repo.get_all_hashes_tags()
+        no_tags = len([i for i, t in all_tags if t != "HEAD"])
+        metadata_size = pretty_size(repo.get_size())
+        actual_size = pretty_size(repo.get_local_size())
+        if head:
+            head = head.image_hash[:16]
+            if (
+                engine.run_sql(
+                    "SELECT 1 FROM pg_foreign_server WHERE srvname = %s",
+                    (("%s_lq_checkout_server" % repo.to_schema())[:63],),
+                    return_shape=ResultShape.ONE_ONE,
+                )
+                is not None
+            ):
+                head += " (LQ)"
+        else:
+            head = "--"
+
+        upstream = repo.upstream
+        if upstream:
+            upstream_text = "%s (%s)" % (upstream.to_schema(), upstream.engine.name)
+        else:
+            upstream_text = "--"
+
+        table.append(
+            (repo.to_schema(), no_images, no_tags, metadata_size, actual_size, head, upstream_text)
+        )
+
+    click.echo(
+        tabulate(
+            table,
+            headers=[
+                "Repository",
+                "Images",
+                "Tags",
+                "Size (T)",
+                "Size (A)",
+                "Checkout",
+                "Upstream",
+            ],
+        )
+    )
+    click.echo("\nUse sgr status REPOSITORY to get information about a given repository.")
+    click.echo("Use sgr show REPOSITORY:[HASH_OR_TAG] to get information about a given image.")
+
+
 @click.command(name="status")
 @click.argument("repository", required=False, type=RepositoryType(exists=True))
 def status_c(repository):
     """
-    Show the status of the Splitgraph engine. If a repository is passed, show information about
-    the repository. If not, show information about all repositories local to the engine.
+    Show the status of the Splitgraph engine.
+
+    If a repository is passed, show in-depth information about a repository.
+
+    If not, show information about all repositories local to the engine. This will show a list
+    of all repositories, number of local images and tags, total repository size (theoretical
+    maximum size and current on-disk footprint of cached objects) and the current checked
+    out image (with LQ if the image is checked out using read-only layered querying).
     """
     from splitgraph.core.engine import get_current_repositories
     from splitgraph.engine import get_engine
 
     if repository is None:
-        repositories = get_current_repositories(get_engine())
-        click.echo("Local repositories and checked out images: ")
-        for mp_name, mp_head in repositories:
-            # Maybe should also show the remote DB address/server
-            click.echo("%s: \t %s" % (mp_name, mp_head.image_hash if mp_head else None))
-        click.echo("\nUse sgr status repository to get information about a given repository.")
+        engine = get_engine()
+        repositories = get_current_repositories(engine)
+        _emit_repository_data(repositories, engine)
     else:
         head = repository.head
         if not head:
