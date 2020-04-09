@@ -21,19 +21,20 @@ from splitgraph.config.config import get_from_subsection
     help="Download all objects immediately instead of on checkout.",
 )
 @click.option(
-    "-f",
-    "--overwrite-object-meta",
-    help="Overwrite metadata for existing objects",
-    default=False,
-    is_flag=True,
-    type=bool,
+    "-f", "--overwrite-object-meta", help="Overwrite metadata for existing objects", is_flag=True,
 )
-def pull_c(repository_or_image, download_all, overwrite_object_meta):
+@click.option("-t", "--tags", help="Overwrite tags for pulled image/repo", is_flag=True)
+def pull_c(repository_or_image, download_all, overwrite_object_meta, tags):
     """
     Pull changes / download a single image.
     """
     repository, image = repository_or_image
-    repository.pull(download_all, single_image=image, overwrite=overwrite_object_meta)
+    repository.pull(
+        download_all,
+        single_image=image,
+        overwrite_objects=overwrite_object_meta,
+        overwrite_tags=tags,
+    )
 
 
 @click.command(name="clone")
@@ -48,15 +49,11 @@ def pull_c(repository_or_image, download_all, overwrite_object_meta):
     is_flag=True,
 )
 @click.option(
-    "-f",
-    "--overwrite-object-meta",
-    help="Overwrite metadata for existing objects",
-    default=False,
-    is_flag=True,
-    type=bool,
+    "-f", "--overwrite-object-meta", help="Overwrite metadata for existing objects", is_flag=True,
 )
+@click.option("-t", "--tags", help="Overwrite tags for pulled image/repo", is_flag=True)
 def clone_c(
-    remote_repository_or_image, local_repository, remote, download_all, overwrite_object_meta
+    remote_repository_or_image, local_repository, remote, download_all, overwrite_object_meta, tags
 ):
     """
     Clone a remote Splitgraph repository/image into a local one.
@@ -83,7 +80,8 @@ def clone_c(
         local_repository=local_repository,
         download_all=download_all,
         single_image=image,
-        overwrite=overwrite_object_meta,
+        overwrite_objects=overwrite_object_meta,
+        overwrite_tags=tags,
     )
 
 
@@ -106,10 +104,9 @@ _REMOTES = list(CONFIG.get("remotes", []))
     "-f",
     "--overwrite-object-meta",
     help="Overwrite metadata for existing remote objects",
-    default=False,
     is_flag=True,
-    type=bool,
 )
+@click.option("-t", "--tags", help="Overwrite tags for pushed image/repo", is_flag=True)
 def push_c(
     repository_or_image,
     remote_repository,
@@ -117,6 +114,7 @@ def push_c(
     upload_handler,
     upload_handler_options,
     overwrite_object_meta,
+    tags,
 ):
     """
     Push images the Splitgraph registry or another engine.
@@ -150,7 +148,8 @@ def push_c(
         remote_repository,
         handler=upload_handler,
         handler_options=json.loads(upload_handler_options),
-        overwrite=overwrite_object_meta,
+        overwrite_objects=overwrite_object_meta,
+        overwrite_tags=tags,
         single_image=image,
     )
 

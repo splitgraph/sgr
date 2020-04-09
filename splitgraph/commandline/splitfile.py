@@ -1,6 +1,7 @@
 """
 sgr commands related to building and rebuilding Splitfiles.
 """
+import os
 
 import click
 
@@ -31,8 +32,8 @@ def build_c(splitfile, args, output_repository):
 
     ``sgr build my.splitfile``
 
-    Executes ``my.splitfile`` and writes its output into a new repository with a random name unless
-    the name is specified in the Splitfile.
+    Executes ``my.splitfile`` and writes its output into a new repository with the same name
+    as the Splitfile (my) unless the name is specified in the Splitfile.
 
     ``sgr build my.splitfile -o mynew/repo``
 
@@ -44,9 +45,14 @@ def build_c(splitfile, args, output_repository):
     ``VAL1`` and  ``VAL2``, respectively.
     """
     from splitgraph.splitfile import execute_commands
+    from splitgraph.core.repository import Repository
 
     args = {k: v for k, v in args}
     click.echo("Executing Splitfile %s with arguments %r" % (splitfile.name, args))
+
+    if output_repository is None:
+        file_name = os.path.splitext(os.path.basename(splitfile.name))[0]
+        output_repository = Repository.from_schema(file_name)
 
     execute_commands(splitfile.read(), args, output=output_repository)
 

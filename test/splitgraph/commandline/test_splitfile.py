@@ -1,7 +1,23 @@
+from unittest import mock
+from unittest.mock import call
+
 from click.testing import CliRunner
 from test.splitgraph.conftest import SPLITFILE_ROOT, OUTPUT
 
 from splitgraph.commandline import build_c, provenance_c, rebuild_c, dependents_c
+from splitgraph.core.repository import Repository
+
+
+def test_splitfile_default():
+    runner = CliRunner()
+
+    with mock.patch("splitgraph.splitfile.execute_commands") as ec:
+        runner.invoke(
+            build_c, [SPLITFILE_ROOT + "import_remote_multiple.splitfile", "-a", "TAG", "latest"],
+        )
+    assert ec.mock_calls == [
+        call(mock.ANY, {"TAG": "latest"}, output=Repository("", "import_remote_multiple"))
+    ]
 
 
 def test_splitfile(local_engine_empty, pg_repo_remote):

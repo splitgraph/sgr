@@ -57,6 +57,78 @@ def test_pull(local_engine_empty, pg_repo_remote, download_all):
     assert PG_MNT.head == head_1
 
 
+def test_pull_tag_overwriting(local_engine_empty, pg_repo_remote):
+    head = pg_repo_remote.head
+    head_1 = _add_image_to_repo(pg_repo_remote)
+
+    head.tag("tag_1")
+    head_1.tag("tag_2")
+    head_1.tag("tag_3")
+    pg_repo_remote.commit_engines()
+
+    # Clone a single image
+    clone(
+        pg_repo_remote, local_repository=PG_MNT, single_image=head.image_hash[:12],
+    )
+    assert len(PG_MNT.images()) == 1
+    assert PG_MNT.images()[0] == head
+    assert PG_MNT.images["tag_1"] == head
+    assert PG_MNT.images.by_tag("tag_2", raise_on_none=False) is None
+
+    # Clone again, check nothing has changed.
+    clone(
+        pg_repo_remote, local_repository=PG_MNT, single_image=head.image_hash[:12],
+    )
+    assert len(PG_MNT.images()) == 1
+    assert PG_MNT.images["tag_1"] == head
+    assert PG_MNT.images.by_tag("tag_2", raise_on_none=False) is None
+
+    # Pull the remainder of the repo
+    PG_MNT.pull(single_image=head_1.image_hash)
+    assert len(PG_MNT.images()) == 2
+    assert PG_MNT.images["tag_2"] == head_1
+
+    # Now update the tag on the remote
+    head.tag("tag_2")
+    pg_repo_remote.commit_engines()
+
+    # Clone head again, check tag_2 wasn't overwritten (is still pointing to head_1)
+    clone(
+        pg_repo_remote, local_repository=PG_MNT, single_image=head.image_hash[:12],
+    )
+    assert PG_MNT.images["tag_1"] == head
+    assert PG_MNT.images["tag_2"] == head_1
+    assert PG_MNT.images["tag_3"] == head_1
+
+    # Clone head again, this time overwriting the tag
+    clone(
+        pg_repo_remote,
+        local_repository=PG_MNT,
+        single_image=head.image_hash[:12],
+        overwrite_tags=True,
+    )
+    assert len(PG_MNT.images()) == 2
+    assert PG_MNT.images["tag_1"] == head
+    assert PG_MNT.images["tag_2"] == head
+    assert PG_MNT.images["tag_3"] == head_1
+
+    # Update tag_3 to point to head as well
+    head.tag("tag_3")
+    pg_repo_remote.commit_engines()
+
+    # Pull repo, check tag_3 hasn't moved.
+    PG_MNT.pull()
+    assert PG_MNT.images["tag_1"] == head
+    assert PG_MNT.images["tag_2"] == head
+    assert PG_MNT.images["tag_3"] == head_1
+
+    # Pull again overwriting all tags, check tags have moved.
+    PG_MNT.pull(overwrite_tags=True)
+    assert PG_MNT.images["tag_1"] == head
+    assert PG_MNT.images["tag_2"] == head
+    assert PG_MNT.images["tag_3"] == head
+
+
 @pytest.mark.parametrize("download_all", [True, False])
 def test_pull_single_image(local_engine_empty, pg_repo_remote, download_all):
     head = pg_repo_remote.head
