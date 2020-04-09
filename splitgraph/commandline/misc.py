@@ -19,7 +19,6 @@ from splitgraph.__version__ import __version__
 from splitgraph.exceptions import CheckoutError
 from .common import ImageType, RepositoryType, remote_switch_option
 from .engine import list_engines
-from ..cloud import get_headers
 
 
 @click.command(name="rm")
@@ -332,6 +331,7 @@ def eval_c(i_know_what_im_doing, command, arg):
 
 def _get_binary_url_for(system, release: str = "latest") -> Tuple[str, str]:
     import requests
+    from splitgraph.cloud import get_headers
 
     if release == "latest":
         endpoint = "https://api.github.com/repos/splitgraph/splitgraph/releases/%s" % release

@@ -3,13 +3,12 @@ Various common functions used by the command line interface.
 """
 import json
 from functools import wraps
-from typing import Optional, Tuple, List, TYPE_CHECKING, Union
+from typing import Optional, Tuple, TYPE_CHECKING, Union
 
 import click
 from click.core import Context, Parameter
 
 from splitgraph.config import REMOTES
-from splitgraph.core.common import parse_repo_tag_or_hash
 from splitgraph.exceptions import RepositoryNotFoundError
 
 if TYPE_CHECKING:
@@ -43,6 +42,8 @@ class ImageType(click.ParamType):
 
         The parser returns a tuple of (repository object, tag or hash).
         """
+        from splitgraph.core.common import parse_repo_tag_or_hash
+
         repo, tag_or_hash = parse_repo_tag_or_hash(value, default=self.default)
 
         if self.get_image or self.repository_exists:

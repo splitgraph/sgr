@@ -7,11 +7,8 @@ import logging
 from importlib import import_module
 from typing import Callable, Dict, List, Optional, Union, TYPE_CHECKING, cast
 
-from psycopg2.sql import Identifier, SQL
-
 from splitgraph.config import PG_USER, CONFIG
 from splitgraph.config.config import get_all_in_section
-from splitgraph.engine import get_engine
 from splitgraph.exceptions import MountHandlerError
 
 if TYPE_CHECKING:
@@ -60,6 +57,7 @@ def init_fdw(
     :param user_options: Dictionary of user options
     :param overwrite: If the server already exists, delete and recreate it.
     """
+    from psycopg2.sql import Identifier, SQL
 
     if overwrite:
         engine.run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(server_id)))
@@ -117,6 +115,9 @@ def mount_postgres(
     :param remote_schema: Remote schema name.
     :param tables: Tables to mount (default all).
     """
+    from splitgraph.engine import get_engine
+    from psycopg2.sql import Identifier, SQL
+
     if tables is None:
         tables = []
     engine = get_engine()
@@ -141,6 +142,8 @@ def mount_postgres(
 def _import_foreign_schema(
     engine: "PostgresEngine", mountpoint: str, remote_schema: str, server_id: str, tables: List[str]
 ) -> None:
+    from psycopg2.sql import Identifier, SQL
+
     # Construct a query: import schema limit to (%s, %s, ...) from server mountpoint_server into mountpoint
     query = SQL("IMPORT FOREIGN SCHEMA {} ").format(Identifier(remote_schema))
     if tables:
@@ -166,6 +169,9 @@ def mount_mongo(
     :param table_spec: A dictionary of form `{"table_name": {"db": <dbname>, "coll": <collection>,
         "schema": {"col1": "type1"...}}}`.
     """
+    from splitgraph.engine import get_engine
+    from psycopg2.sql import Identifier, SQL
+
     engine = get_engine()
     server_id = mountpoint + "_server"
     init_fdw(
@@ -220,6 +226,9 @@ def mount_mysql(
     :param remote_schema: Remote schema name.
     :param tables: Tables to mount (default all).
     """
+    from splitgraph.engine import get_engine
+    from psycopg2.sql import Identifier, SQL
+
     if tables is None:
         tables = []
     engine = get_engine()
@@ -252,6 +261,9 @@ def mount(
     :param mount_handler: The type of the mounted database. Must be one of `postgres_fdw` or `mongo_fdw`.
     :param handler_kwargs: Dictionary of options to pass to the mount handler.
     """
+    from splitgraph.engine import get_engine
+    from psycopg2.sql import Identifier, SQL
+
     engine = get_engine()
     mh_func = get_mount_handler(mount_handler)
     logging.info("Connecting to remote server...")
