@@ -11,7 +11,6 @@ import click
 from tqdm import tqdm
 
 from splitgraph.__version__ import __version__
-from splitgraph.commandline.common import print_table
 from splitgraph.config import CONFIG
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import DockerUnavailableError
@@ -173,6 +172,7 @@ def list_engines_c(include_all):
     use Docker CLI directly.
     """
     from splitgraph.config import CONFIG
+    from tabulate import tabulate
 
     containers = list_engines(include_all=include_all, prefix=CONFIG["SG_ENGINE_PREFIX"])
     if containers:
@@ -183,7 +183,11 @@ def list_engines_c(include_all):
             ports = ",".join("%s -> %s" % i for i in ports.items())
             our_containers.append((engine_name, container.short_id, container.status, ports))
 
-        print_table([("Name", "Docker ID", "Status", "ports")] + our_containers)
+        click.echo(
+            tabulate(
+                our_containers, headers=("Name", "Docker ID", "Status", "ports"), tablefmt="plain"
+            )
+        )
 
 
 def _pretty_pull(client, image):

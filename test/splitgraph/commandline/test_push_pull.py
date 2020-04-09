@@ -87,7 +87,7 @@ def test_push_target(
 
     with mock.patch.object(Repository, "upstream", new_callable=PropertyMock) as up:
         up.return_value = upstream
-        with mock.patch("splitgraph.commandline.push_pull._REMOTES", available_remotes):
+        with mock.patch("splitgraph.commandline.push_pull.REMOTES", available_remotes):
             with mock.patch("splitgraph.commandline.push_pull.CONFIG", fake_config):
                 with mock.patch("splitgraph.engine.get_engine") as ge:
                     ge.return_value = Mock()

@@ -677,6 +677,16 @@ def get_engine(
     return _ENGINES[name]
 
 
+def set_engine(engine: "PostgresEngine") -> None:
+    """
+    Switch the global engine to a different one.
+
+    :param engine: Engine
+    """
+    global _ENGINE
+    _ENGINE = engine
+
+
 @contextmanager
 def switch_engine(engine: "PostgresEngine") -> Iterator[None]:
     """

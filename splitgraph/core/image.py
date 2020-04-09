@@ -245,9 +245,10 @@ class Image(NamedTuple):
 
     def get_log(self) -> List["Image"]:
         """Repeatedly gets the parent of a given image until it reaches the bottom."""
+        all_images = {i.image_hash: i for i in self.repository.images()}
         result = [self]
         while result[-1].parent_id is not None:
-            result.append(self.repository.images.by_hash(result[-1].parent_id))
+            result.append(all_images[result[-1].parent_id])
         return result
 
     def get_size(self) -> int:

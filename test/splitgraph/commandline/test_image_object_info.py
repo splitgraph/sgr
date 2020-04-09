@@ -204,7 +204,7 @@ def test_object_info(local_engine_empty, remote_engine_registry, unprivileged_re
     )
     local_engine_empty.run_sql(q, base_1_meta)
     # Add this object to the remote engine too to check that we can run
-    # SG_ENGINE=... sgr object o...
+    # sgr object -r remote_engine o...
     remote_engine_registry.run_sql(q, base_1_meta)
     remote_engine_registry.commit()
 
@@ -278,12 +278,11 @@ Original location: example.com/objects/base_1.tgz (HTTP)
 """
     )
 
-    with mock.patch("splitgraph.engine.get_engine", return_value=unprivileged_remote_engine):
-        result = runner.invoke(object_c, [base_1])
-        assert result.exit_code == 0
-        assert "Size: 12.06 KiB" in result.output
-        # Since we're talking to a registry, don't try to find the object's location.
-        assert "Location: " not in result.output
+    result = runner.invoke(object_c, [base_1, "-r", unprivileged_remote_engine.name])
+    assert result.exit_code == 0
+    assert "Size: 12.06 KiB" in result.output
+    # Since we're talking to a registry, don't try to find the object's location.
+    assert "Location: " not in result.output
 
     result = runner.invoke(object_c, [patch_1])
     assert result.exit_code == 0

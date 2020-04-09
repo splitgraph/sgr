@@ -2,11 +2,13 @@
 Various common functions used by the command line interface.
 """
 import json
+from functools import wraps
 from typing import Optional, Tuple, List, TYPE_CHECKING, Union
 
 import click
 from click.core import Context, Parameter
 
+from splitgraph.config import REMOTES
 from splitgraph.core.common import parse_repo_tag_or_hash
 from splitgraph.exceptions import RepositoryNotFoundError
 
@@ -104,8 +106,56 @@ class Color:
     END = "\033[0m"
 
 
-def print_table(rows: List[Tuple[str, ...]], column_width: int = 15) -> None:
-    """Print a list of rows with a constant column width"""
-    click.echo(
-        "\n".join(["".join([("{:" + str(column_width) + "}").format(x) for x in r]) for r in rows])
-    )
+def remote_switch_option(*names, **kwargs):
+    """
+    Adds an option to switch global SG_ENGINE for this invocation of sgr.
+
+    This is useful for e.g. tagging or viewing image information on a remote
+    registry. This is not used in operations like commit/checkout (even though
+    nothing is preventing SG_ENGINE switch from working on that if the remote engine
+    supports this), the user should switch SG_ENGINE envvar themselves in that case.
+
+    :param names: Names
+    :param kwargs: Passed to click.option
+    """
+
+    if not names:
+        names = ["--remote", "-r"]
+
+    kwargs.setdefault("default", None)
+    kwargs.setdefault("expose_value", False)
+    kwargs.setdefault("help", "Perform operation on a different remote engine")
+    kwargs.setdefault("is_eager", True)
+    kwargs.setdefault("type", click.Choice(REMOTES))
+
+    def switch_engine_back(f):
+        @wraps(f)
+        def wrapped(*args, **kwargs):
+            try:
+                f(*args, **kwargs)
+            finally:
+                from splitgraph.engine import get_engine, set_engine
+
+                # In the context of a test run, we need to switch the global engine
+                # back to LOCAL (since the engine-switching decorator doesn't
+                # get control, so we can't do it there).
+                set_engine(get_engine("LOCAL"))
+
+        return wrapped
+
+    def decorator(f):
+        def _set_engine(ctx, param, value):
+            if not value:
+                return
+            try:
+                from splitgraph.engine import get_engine, set_engine
+
+                engine = get_engine(value)
+
+                set_engine(engine)
+            except KeyError:
+                raise click.BadParameter("Unknown remote %s!" % value)
+
+        return click.option(*names, callback=_set_engine, **kwargs)(switch_engine_back(f))
+
+    return decorator
