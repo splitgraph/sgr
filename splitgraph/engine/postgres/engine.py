@@ -101,6 +101,8 @@ def _handle_fatal(e):
             "Check your credentials using sgr config and make sure you've "
             "logged into the registry using sgr cloud login."
         )
+    if "FATAL" in str(e):
+        raise e
 
 
 def _paginate_by_size(cur, query, argslist, max_size=API_MAX_QUERY_LENGTH):
@@ -312,11 +314,13 @@ class PsycopgEngine(SQLEngine):
                     raise
                 _handle_fatal(e)
                 retries += 1
-                if sys.stdin.isatty():
+                if sys.stdin.isatty() and logging.getLogger().getEffectiveLevel() >= logging.INFO:
                     _notify()
                 else:
                     logging.error(
-                        "Error connecting to the engine (%s), sleeping %.2fs and retrying (%d/%d)...",
+                        "Error connecting to the engine (%s: %s), "
+                        "sleeping %.2fs and retrying (%d/%d)...",
+                        str(e.__class__.__name__),
                         e,
                         RETRY_DELAY,
                         retries,
@@ -571,12 +575,15 @@ class PsycopgEngine(SQLEngine):
                         "Error connecting to the engine after %d retries", RETRY_AMOUNT
                     )
                     raise
+                _handle_fatal(e)
                 retries += 1
-                if sys.stdin.isatty():
+                if sys.stdin.isatty() and logging.getLogger().getEffectiveLevel() >= logging.INFO:
                     _notify()
                 else:
                     logging.error(
-                        "Error connecting to the engine (%s), sleeping %.2fs and retrying (%d/%d)...",
+                        "Error connecting to the engine (%s: %s), "
+                        "sleeping %.2fs and retrying (%d/%d)...",
+                        str(e.__class__.__name__),
                         e,
                         RETRY_DELAY,
                         retries,

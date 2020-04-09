@@ -329,12 +329,6 @@ def add_engine_c(
         "SG_ENGINE_ADMIN_PWD": password,
     }
 
-    if not no_init:
-        engine = PostgresEngine(name=name, conn_params=conn_params)
-        engine.initialize()
-        engine.commit()
-        click.echo("Engine initialized successfully.")
-
     if not no_sgconfig:
         if name != DEFAULT_ENGINE and not set_default:
             config_patch = {"remotes": {name: conn_params}}
@@ -344,6 +338,12 @@ def add_engine_c(
         config_path = patch_and_save_config(CONFIG, config_patch)
     else:
         config_path = CONFIG["SG_CONFIG_FILE"]
+
+    if not no_init:
+        engine = PostgresEngine(name=name, conn_params=conn_params)
+        engine.initialize()
+        engine.commit()
+        click.echo("Engine initialized successfully.")
 
     inject_config_into_engines(CONFIG["SG_ENGINE_PREFIX"], config_path)
     click.echo("Done.")
