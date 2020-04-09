@@ -30,6 +30,7 @@ tableschema = "^1.15.0"
 # executable size by much.
 botocore = "==1.15.23"
 tabulate = "^0.8.7"
+asciitree = "^0.3.3"
 
 # Extra requirements for Pandas ingestion
 pandas = {version = ">=0.24", extras = ["ingestion"], optional = true }

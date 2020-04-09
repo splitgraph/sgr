@@ -29,14 +29,14 @@ def test_commandline_basics(pg_repo_local):
     result = runner.invoke(status_c, [])
     assert (
         """test/pg_mount         2       0  516.00 B    516.00 B    %s  --"""
-        % pg_repo_local.head.image_hash[:16]
+        % pg_repo_local.head.image_hash[:10]
     ) in result.output
 
     # sgr status with LQ etc
     old_head.checkout(layered=True)
     pg_repo_local.upstream = Repository("some", "upstream", engine=pg_repo_local.engine)
     result = runner.invoke(status_c, [])
-    assert old_head.image_hash[:16] + " (LQ)" in result.output
+    assert old_head.image_hash[:10] + " (LQ)" in result.output
     assert "some/upstream (LOCAL)" in result.output
 
     # sgr sql
@@ -141,8 +141,8 @@ def test_commandline_basics(pg_repo_local):
 
     # sgr log
     result = runner.invoke(log_c, [str(pg_repo_local)])
-    assert old_head.image_hash[:16] in result.output
-    assert new_head.image_hash[:16] in result.output
+    assert old_head.image_hash[:10] in result.output
+    assert new_head.image_hash[:10] in result.output
     assert "Test commit" in result.output
 
     # sgr log (tree)
