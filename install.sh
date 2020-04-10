@@ -143,7 +143,9 @@ _welcome() {
   echo
   echo "sgr $SGR_VERSION has been installed to ${blue}$INSTALL_DIR/sgr${end}."
   echo "Your configuration file is located at ${blue}$INSTALL_DIR/.sgconfig${end}."
-  echo "Make sure to add $INSTALL_DIR to your \$PATH."
+  echo "Make sure to add sgr to your \$PATH, for example by doing:"
+  echo
+  echo "    ${blue}sudo ln -s $INSTALL_DIR/sgr /usr/local/bin/sgr${end}"
   echo
   echo
   echo "Next steps: "
