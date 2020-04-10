@@ -102,36 +102,6 @@ typed-ast = ">=1.4.0"
 d = ["aiohttp (>=3.3.2)", "aiohttp-cors"]
 
 [[package]]
-category = "main"
-description = "The AWS SDK for Python"
-name = "boto3"
-optional = false
-python-versions = "*"
-version = "1.12.23"
-
-[package.dependencies]
-botocore = ">=1.15.23,<1.16.0"
-jmespath = ">=0.7.1,<1.0.0"
-s3transfer = ">=0.3.0,<0.4.0"
-
-[[package]]
-category = "main"
-description = "Low-level, data-driven core of boto 3."
-name = "botocore"
-optional = false
-python-versions = "*"
-version = "1.15.23"
-
-[package.dependencies]
-docutils = ">=0.10,<0.16"
-jmespath = ">=0.7.1,<1.0.0"
-python-dateutil = ">=2.1,<3.0.0"
-
-[package.dependencies.urllib3]
-python = "<3.4.0 || >=3.5.0"
-version = ">=1.20,<1.26"
-
-[[package]]
 category = "dev"
 description = "Version-bump your software with a single command!"
 name = "bump2version"
@@ -276,20 +246,12 @@ python-versions = "*"
 version = "0.6.2"
 
 [[package]]
-category = "main"
+category = "dev"
 description = "Docutils -- Python Documentation Utilities"
 name = "docutils"
 optional = false
-python-versions = ">=2.6, !=3.0.*, !=3.1.*, !=3.2.*"
-version = "0.15.2"
-
-[[package]]
-category = "main"
-description = "An implementation of lxml.xmlfile for the standard library"
-name = "et-xmlfile"
-optional = false
-python-versions = "*"
-version = "1.0.1"
+python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
+version = "0.16"
 
 [[package]]
 category = "dev"
@@ -325,14 +287,6 @@ name = "idna"
 optional = false
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 version = "2.9"
-
-[[package]]
-category = "main"
-description = "Iterative JSON parser with a standard Python iterator interface"
-name = "ijson"
-optional = false
-python-versions = "*"
-version = "3.0"
 
 [[package]]
 category = "dev"
@@ -405,14 +359,6 @@ requirements = ["pipreqs", "pip-api"]
 xdg_home = ["appdirs (>=1.4.0)"]
 
 [[package]]
-category = "main"
-description = "Julian dates from proleptic Gregorian and Julian calendars."
-name = "jdcal"
-optional = false
-python-versions = "*"
-version = "1.4.1"
-
-[[package]]
 category = "dev"
 description = "A very fast and expressive template engine."
 name = "jinja2"
@@ -425,25 +371,6 @@ MarkupSafe = ">=0.23"
 
 [package.extras]
 i18n = ["Babel (>=0.8)"]
-
-[[package]]
-category = "main"
-description = "JSON Matching Expressions"
-name = "jmespath"
-optional = false
-python-versions = "*"
-version = "0.9.5"
-
-[[package]]
-category = "main"
-description = "Library with helpers for the jsonlines file format"
-name = "jsonlines"
-optional = false
-python-versions = "*"
-version = "1.2.0"
-
-[package.dependencies]
-six = "*"
 
 [[package]]
 category = "main"
@@ -474,20 +401,6 @@ name = "lazy-object-proxy"
 optional = false
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 version = "1.4.3"
-
-[[package]]
-category = "main"
-description = "Line-oriented, tab-separated value format"
-name = "linear-tsv"
-optional = false
-python-versions = "*"
-version = "1.1.0"
-
-[package.dependencies]
-six = "*"
-
-[package.extras]
-develop = ["tox"]
 
 [[package]]
 category = "dev"
@@ -567,18 +480,6 @@ name = "numpy"
 optional = true
 python-versions = ">=3.5"
 version = "1.18.2"
-
-[[package]]
-category = "main"
-description = "A Python library to read/write Excel 2010 xlsx/xlsm files"
-name = "openpyxl"
-optional = false
-python-versions = ">=3.6,"
-version = "3.0.3"
-
-[package.dependencies]
-et_xmlfile = "*"
-jdcal = "*"
 
 [[package]]
 category = "main"
@@ -899,17 +800,6 @@ idna2008 = ["idna"]
 
 [[package]]
 category = "main"
-description = "An Amazon S3 Transfer Manager"
-name = "s3transfer"
-optional = false
-python-versions = "*"
-version = "0.3.3"
-
-[package.dependencies]
-botocore = ">=1.12.36,<2.0a.0"
-
-[[package]]
-category = "main"
 description = "Python 2 and 3 compatibility utilities"
 name = "six"
 optional = false
@@ -1042,7 +932,7 @@ test = ["pytest"]
 category = "main"
 description = "Database Abstraction Library"
 name = "sqlalchemy"
-optional = false
+optional = true
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 version = "1.3.16"
 
@@ -1100,26 +990,24 @@ python-versions = "*"
 version = "1.38.2"
 
 [package.dependencies]
-boto3 = ">=1.9"
 chardet = ">=3.0"
 click = ">=6.0"
-ijson = ">=2.5"
-jsonlines = ">=1.1"
-linear-tsv = ">=1.0"
-openpyxl = ">=2.6"
 requests = ">=2.8"
 six = ">=1.9"
-sqlalchemy = ">=0.9.6"
 unicodecsv = ">=0.14"
-xlrd = ">=1.0"
 
 [package.extras]
+all_formats = ["boto3 (>=1.9)", "ijson (>=2.5)", "jsonlines (>=1.1)", "sqlalchemy (>=0.9.6)", "linear-tsv (>=1.0)", "xlrd (>=1.0)", "openpyxl (>=2.6)"]
 cchardet = ["cchardet (>=2.0)"]
 datapackage = ["datapackage (>=1.12)"]
 develop = ["mock", "pylama", "pytest", "pytest-cov", "moto", "tox"]
 html = ["pyquery (<2)"]
 ods = ["ezodf (>=0.3)", "lxml (>=3.0)"]
 
+[package.source]
+reference = "b3b831a99fdfc4ab418aca9d4231382e1e694baa"
+type = "git"
+url = "https://github.com/splitgraph/tabulator-py.git"
 [[package]]
 category = "dev"
 description = "Python Library for Tom's Obvious, Minimal Language"
@@ -1231,14 +1119,6 @@ version = "1.11.2"
 
 [[package]]
 category = "main"
-description = "Library for developers to extract data from Microsoft Excel (tm) spreadsheet files"
-name = "xlrd"
-optional = false
-python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
-version = "1.2.0"
-
-[[package]]
-category = "main"
 description = "Backport of pathlib-compatible object wrapper for zip files"
 marker = "python_version < \"3.8\""
 name = "zipp"
@@ -1254,7 +1134,7 @@ testing = ["jaraco.itertools", "func-timeout"]
 pandas = ["pandas", "sqlalchemy"]
 
 [metadata]
-content-hash = "2dd1d5a84542a58c32ea10a49a3685f22f4b112acb67659fb93be3deb9acbb83"
+content-hash = "6bfcbb879b987cd25390cddbd324e006e0eb8e6a0eecfb4820ba3c7c0f9ee856"
 python-versions = "~=3.6"
 
 [metadata.files]
@@ -1292,14 +1172,6 @@ babel = [
 black = [
     {file = "black-19.10b0-py36-none-any.whl", hash = "sha256:1b30e59be925fafc1ee4565e5e08abef6b03fe455102883820fe5ee2e4734e0b"},
     {file = "black-19.10b0.tar.gz", hash = "sha256:c2edb73a08e9e0e6f65a0e6af18b059b8b1cdd5bef997d7a0b181df93dc81539"},
-]
-boto3 = [
-    {file = "boto3-1.12.23-py2.py3-none-any.whl", hash = "sha256:a3a89a254b068dbcc23298dea11d15b9e6e19f825290ebe43fcf4ccbbe423994"},
-    {file = "boto3-1.12.23.tar.gz", hash = "sha256:0080ea1cce4c87d9f1e4e47fed4b994451b0022fcf6e120d1fb653eb3874506d"},
-]
-botocore = [
-    {file = "botocore-1.15.23-py2.py3-none-any.whl", hash = "sha256:5b6bf68bd484fbf83e27f56a0a92e38cee223b689121c1184a0292311b88f888"},
-    {file = "botocore-1.15.23.tar.gz", hash = "sha256:e4fc86574043b20267f863b9168bd1c9ed50a53f0f7222ce8c99f64355174515"},
 ]
 bump2version = [
     {file = "bump2version-1.0.0-py2.py3-none-any.whl", hash = "sha256:477f0e18a0d58e50bb3dbc9af7fcda464fd0ebfc7a6151d8888602d7153171a0"},
@@ -1386,12 +1258,8 @@ docopt = [
     {file = "docopt-0.6.2.tar.gz", hash = "sha256:49b3a825280bd66b3aa83585ef59c4a8c82f2c8a522dbe754a8bc8d08c85c491"},
 ]
 docutils = [
-    {file = "docutils-0.15.2-py2-none-any.whl", hash = "sha256:9e4d7ecfc600058e07ba661411a2b7de2fd0fafa17d1a7f7361cd47b1175c827"},
-    {file = "docutils-0.15.2-py3-none-any.whl", hash = "sha256:6c4f696463b79f1fb8ba0c594b63840ebd41f059e92b31957c46b74a4599b6d0"},
-    {file = "docutils-0.15.2.tar.gz", hash = "sha256:a2aeea129088da402665e92e0b25b04b073c04b2dce4ab65caaa38b7ce2e1a99"},
-]
-et-xmlfile = [
-    {file = "et_xmlfile-1.0.1.tar.gz", hash = "sha256:614d9722d572f6246302c4491846d2c393c199cfa4edc9af593437691683335b"},
+    {file = "docutils-0.16-py2.py3-none-any.whl", hash = "sha256:0c5b78adfbf7762415433f5515cd5c9e762339e23369dbe8000d84a4bf4ab3af"},
+    {file = "docutils-0.16.tar.gz", hash = "sha256:c2de3a60e9e7d07be26b7f2b00ca0309c207e06c100f9cc2a94931fc75a478fc"},
 ]
 filelock = [
     {file = "filelock-3.0.12-py3-none-any.whl", hash = "sha256:929b7d63ec5b7d6b71b0fa5ac14e030b3f70b75747cef1b10da9b879fef15836"},
@@ -1407,29 +1275,6 @@ identify = [
 idna = [
     {file = "idna-2.9-py2.py3-none-any.whl", hash = "sha256:a068a21ceac8a4d63dbfd964670474107f541babbd2250d61922f029858365fa"},
     {file = "idna-2.9.tar.gz", hash = "sha256:7588d1c14ae4c77d74036e8c22ff447b26d0fde8f007354fd48a7814db15b7cb"},
-]
-ijson = [
-    {file = "ijson-3.0-cp27-cp27m-macosx_10_6_x86_64.whl", hash = "sha256:a903cab278976c3af40bfc49af70b0b2371a1ea2469cc38be7f861a1e5fb1fdb"},
-    {file = "ijson-3.0-cp27-cp27m-manylinux1_x86_64.whl", hash = "sha256:fe82ef39fdd8fc4417c2151f8325d0c492ec6caaf5eee943dedbe407a0cd30c4"},
-    {file = "ijson-3.0-cp27-cp27mu-manylinux1_x86_64.whl", hash = "sha256:da4c7f4e8069d824c9645f72e8fd18bdf924fe2326fce0478b3be3e15b7a1a8e"},
-    {file = "ijson-3.0-cp34-cp34m-macosx_10_6_x86_64.whl", hash = "sha256:8aecd80e655bd3e450718ae04434dd0eed49e449397ea5b3839314d303ebe77b"},
-    {file = "ijson-3.0-cp34-cp34m-manylinux1_x86_64.whl", hash = "sha256:e43b1522cfb6c9926a6e1d819f0157afdc1c75c9e9f1e7b5b137b7af9c9d1692"},
-    {file = "ijson-3.0-cp35-cp35m-macosx_10_6_x86_64.whl", hash = "sha256:ace2077bf25a8701edbe6fbfab32711158cb1822e46e83dc379ffa4ac77d79c3"},
-    {file = "ijson-3.0-cp35-cp35m-manylinux1_x86_64.whl", hash = "sha256:393868911d41fcc9da32a0cb668dbf4f590e6c61a874eb76d74cca80a530c7fe"},
-    {file = "ijson-3.0-cp35-cp35m-win32.whl", hash = "sha256:b5198a70411355374d1c89c3172d84b112a235552b5c52f088f789a29766939d"},
-    {file = "ijson-3.0-cp35-cp35m-win_amd64.whl", hash = "sha256:ca1728997c2c5fc3674c782efb82e894bc69bb36103f503c98787590bed4f833"},
-    {file = "ijson-3.0-cp36-cp36m-macosx_10_6_x86_64.whl", hash = "sha256:62a5f46d4791a575e97e0445fc3009f5b1f7acfaa9637c166c90e0c69901c02d"},
-    {file = "ijson-3.0-cp36-cp36m-manylinux1_x86_64.whl", hash = "sha256:8f0a017c393849b1732b7ed6fdfff48f783f0a929de15b31563e8e532995b406"},
-    {file = "ijson-3.0-cp36-cp36m-win32.whl", hash = "sha256:7d40d8dced75715b43c05d6d32fbbc5bf1627a212b1c220785c92ba42527d8ee"},
-    {file = "ijson-3.0-cp36-cp36m-win_amd64.whl", hash = "sha256:88df625095b40657bf0bebbf5d29d50fe738c5e3a8f5162fc45e20e886cf9879"},
-    {file = "ijson-3.0-cp37-cp37m-macosx_10_6_x86_64.whl", hash = "sha256:c07b4b2f3905fe9cf7f1fe234e3bb7690952af4229bdcccaf4af30d18811c552"},
-    {file = "ijson-3.0-cp37-cp37m-manylinux1_x86_64.whl", hash = "sha256:af7c32c23a590fe6fd6926f635664c39c6bc2478a1f45d8ce1792ab6a0fdf9ce"},
-    {file = "ijson-3.0-cp37-cp37m-win32.whl", hash = "sha256:bf19611ecc79b0505aeb2a1d712d54adac57d609f5785ab661c53e37d9d262f2"},
-    {file = "ijson-3.0-cp37-cp37m-win_amd64.whl", hash = "sha256:f6f6979e8111e23bb40c95e9d4af07fce3ec33c11ebf87faffa82e5979147fa4"},
-    {file = "ijson-3.0-cp38-cp38-manylinux1_x86_64.whl", hash = "sha256:5682bf555202e55d135dc31d2c8089738896ad1e962c92c7aa88ecf73dd6013f"},
-    {file = "ijson-3.0-cp38-cp38-win32.whl", hash = "sha256:eaf0c69f38169ed86f046c66e2c3186df23bbee4200326acaca4a2a72c5a9af1"},
-    {file = "ijson-3.0-cp38-cp38-win_amd64.whl", hash = "sha256:fbeebd976881ea025a0b72739921471657952aaf94e1cb235714db897ecea4ee"},
-    {file = "ijson-3.0.tar.gz", hash = "sha256:13507564c2798a2af9250211b0be246ca75bbf499fd7375803d3f91dccc7c2c1"},
 ]
 imagesize = [
     {file = "imagesize-1.2.0-py2.py3-none-any.whl", hash = "sha256:6965f19a6a2039c7d48bca7dba2473069ff854c36ae6f19d2cde309d998228a1"},
@@ -1451,21 +1296,9 @@ isort = [
     {file = "isort-4.3.21-py2.py3-none-any.whl", hash = "sha256:6e811fcb295968434526407adb8796944f1988c5b65e8139058f2014cbe100fd"},
     {file = "isort-4.3.21.tar.gz", hash = "sha256:54da7e92468955c4fceacd0c86bd0ec997b0e1ee80d97f67c35a78b719dccab1"},
 ]
-jdcal = [
-    {file = "jdcal-1.4.1-py2.py3-none-any.whl", hash = "sha256:1abf1305fce18b4e8aa248cf8fe0c56ce2032392bc64bbd61b5dff2a19ec8bba"},
-    {file = "jdcal-1.4.1.tar.gz", hash = "sha256:472872e096eb8df219c23f2689fc336668bdb43d194094b5cc1707e1640acfc8"},
-]
 jinja2 = [
     {file = "Jinja2-2.11.1-py2.py3-none-any.whl", hash = "sha256:b0eaf100007721b5c16c1fc1eecb87409464edc10469ddc9a22a27a99123be49"},
     {file = "Jinja2-2.11.1.tar.gz", hash = "sha256:93187ffbc7808079673ef52771baa950426fd664d3aad1d0fa3e95644360e250"},
-]
-jmespath = [
-    {file = "jmespath-0.9.5-py2.py3-none-any.whl", hash = "sha256:695cb76fa78a10663425d5b73ddc5714eb711157e52704d69be03b1a02ba4fec"},
-    {file = "jmespath-0.9.5.tar.gz", hash = "sha256:cca55c8d153173e21baa59983015ad0daf603f9cb799904ff057bfb8ff8dc2d9"},
-]
-jsonlines = [
-    {file = "jsonlines-1.2.0-py2.py3-none-any.whl", hash = "sha256:0ebd5b0c3efe0d4b5018b320fb0ee1a7b680ab39f6eb853715859f818d386cc8"},
-    {file = "jsonlines-1.2.0.tar.gz", hash = "sha256:43b8d5588a9d4862c8a4a49580e38e20ec595aee7ad6fe469b10fb83fbefde88"},
 ]
 jsonschema = [
     {file = "jsonschema-3.2.0-py2.py3-none-any.whl", hash = "sha256:4e5b3cf8216f577bee9ce139cbe72eca3ea4f292ec60928ff24758ce626cd163"},
@@ -1493,9 +1326,6 @@ lazy-object-proxy = [
     {file = "lazy_object_proxy-1.4.3-cp38-cp38-manylinux1_x86_64.whl", hash = "sha256:a6ae12d08c0bf9909ce12385803a543bfe99b95fe01e752536a60af2b7797c62"},
     {file = "lazy_object_proxy-1.4.3-cp38-cp38-win32.whl", hash = "sha256:5541cada25cd173702dbd99f8e22434105456314462326f06dba3e180f203dfd"},
     {file = "lazy_object_proxy-1.4.3-cp38-cp38-win_amd64.whl", hash = "sha256:59f79fef100b09564bc2df42ea2d8d21a64fdcda64979c0fa3db7bdaabaf6239"},
-]
-linear-tsv = [
-    {file = "linear-tsv-1.1.0.tar.gz", hash = "sha256:b504d78f4075615ae75de86a16e5680701a441fc84da2a2cf9f94351ab1ccbf5"},
 ]
 markupsafe = [
     {file = "MarkupSafe-1.1.1-cp27-cp27m-macosx_10_6_intel.whl", hash = "sha256:09027a7803a62ca78792ad89403b1b7a73a01c8cb65909cd876f7fcebd79b161"},
@@ -1590,9 +1420,6 @@ numpy = [
     {file = "numpy-1.18.2-cp38-cp38-win32.whl", hash = "sha256:5e0feb76849ca3e83dd396254e47c7dba65b3fa9ed3df67c2556293ae3e16de3"},
     {file = "numpy-1.18.2-cp38-cp38-win_amd64.whl", hash = "sha256:ba3c7a2814ec8a176bb71f91478293d633c08582119e713a0c5351c0f77698da"},
     {file = "numpy-1.18.2.zip", hash = "sha256:e7894793e6e8540dbeac77c87b489e331947813511108ae097f1715c018b8f3d"},
-]
-openpyxl = [
-    {file = "openpyxl-3.0.3.tar.gz", hash = "sha256:547a9fc6aafcf44abe358b89ed4438d077e9d92e4f182c87e2dc294186dc4b64"},
 ]
 packaging = [
     {file = "packaging-20.3-py2.py3-none-any.whl", hash = "sha256:82f77b9bee21c1bafbf35a84905d604d5d1223801d639cf3ed140bd651c08752"},
@@ -1792,10 +1619,6 @@ rfc3986 = [
     {file = "rfc3986-1.4.0-py2.py3-none-any.whl", hash = "sha256:af9147e9aceda37c91a05f4deb128d4b4b49d6b199775fd2d2927768abdc8f50"},
     {file = "rfc3986-1.4.0.tar.gz", hash = "sha256:112398da31a3344dc25dbf477d8df6cb34f9278a94fee2625d89e4514be8bb9d"},
 ]
-s3transfer = [
-    {file = "s3transfer-0.3.3-py2.py3-none-any.whl", hash = "sha256:2482b4259524933a022d59da830f51bd746db62f047d6eb213f2f8855dcb8a13"},
-    {file = "s3transfer-0.3.3.tar.gz", hash = "sha256:921a37e2aefc64145e7b73d50c71bb4f26f46e4c9f414dc648c6245ff92cf7db"},
-]
 six = [
     {file = "six-1.14.0-py2.py3-none-any.whl", hash = "sha256:8f3cd2e254d8f793e7f3d6d9df77b92252b52637291d0f0da013c76ea2724b6c"},
     {file = "six-1.14.0.tar.gz", hash = "sha256:236bdbdce46e6e6a3d61a337c0f8b763ca1e8717c03b369e87a7ec7ce1319c0a"},
@@ -1847,10 +1670,7 @@ tabulate = [
     {file = "tabulate-0.8.7-py3-none-any.whl", hash = "sha256:ac64cb76d53b1231d364babcd72abbb16855adac7de6665122f97b593f1eb2ba"},
     {file = "tabulate-0.8.7.tar.gz", hash = "sha256:db2723a20d04bcda8522165c73eea7c300eda74e0ce852d9022e0159d7895007"},
 ]
-tabulator = [
-    {file = "tabulator-1.38.2-py2.py3-none-any.whl", hash = "sha256:f5cc24485df9e534bc216ddceba9c8a4f9d086d86c1829c23531d4af08780aaa"},
-    {file = "tabulator-1.38.2.tar.gz", hash = "sha256:ba3903ac652b69c555dd3327a0ce815767f74fe4f7727967992e9ca53b69d780"},
-]
+tabulator = []
 toml = [
     {file = "toml-0.10.0-py2.7.egg", hash = "sha256:f1db651f9657708513243e61e6cc67d101a39bad662eaa9b5546f789338e07a3"},
     {file = "toml-0.10.0-py2.py3-none-any.whl", hash = "sha256:235682dd292d5899d361a811df37e04a8828a5b1da3115886b73cf81ebc9100e"},
@@ -1909,10 +1729,6 @@ websocket-client = [
 ]
 wrapt = [
     {file = "wrapt-1.11.2.tar.gz", hash = "sha256:565a021fd19419476b9362b05eeaa094178de64f8361e44468f9e9d7843901e1"},
-]
-xlrd = [
-    {file = "xlrd-1.2.0-py2.py3-none-any.whl", hash = "sha256:e551fb498759fa3a5384a94ccd4c3c02eb7c00ea424426e212ac0c57be9dfbde"},
-    {file = "xlrd-1.2.0.tar.gz", hash = "sha256:546eb36cee8db40c3eaa46c351e67ffee6eeb5fa2650b71bc4c758a29a1b29b2"},
 ]
 zipp = [
     {file = "zipp-3.1.0-py3-none-any.whl", hash = "sha256:aa36550ff0c0b7ef7fa639055d797116ee891440eac1a56f378e2d3179e0320b"},
