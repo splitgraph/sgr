@@ -264,7 +264,7 @@ class Table:
         object_manager = self.repository.objects
         logging.info(
             "Using %d fragments (%s) to satisfy the query",
-            required_objects,
+            len(required_objects),
             truncate_list(required_objects),
         )
         if not required_objects:
