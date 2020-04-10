@@ -10,6 +10,8 @@ a = Analysis(['bin/sgr'],
              pathex=['.'],
              hiddenimports=[],
              hookspath=[],
+             # Linux build on Travis pulls in numpy for no obvious reason
+             excludes=['numpy'],
              runtime_hooks=[],
              cipher=block_cipher)
 
