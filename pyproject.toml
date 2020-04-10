@@ -22,13 +22,11 @@ tqdm = "^4.40.0"
 packaging = "^20.1"
 # Required for CSV ingestion and type inference
 tableschema = "^1.15.0"
-# Hack to avoid poetry lock downloading every single botocore version forever
-# https://github.com/python-poetry/poetry/issues/1116 -- pin botocore to something recent.
-# This is pulled in by tableschema (it pulls in tabulator which supports
-# data export to S3). It's kind of sad that there's no way to turn this into an extra,
-# but it (and a bunch of other S3 deps) doesn't seem to inflate the final `sgr`
-# executable size by much.
-botocore = "==1.15.23"
+# Pin tabulator (depended on by tableschema) to our fork that doesn't
+# include S3/SQLAlchemy deps (we only use schema inference for CSVs and
+# these libraries add ~40MB to the total install size).
+tabulator = { git = "https://github.com/splitgraph/tabulator-py.git" }
+
 tabulate = "^0.8.7"
 asciitree = "^0.3.3"
 
