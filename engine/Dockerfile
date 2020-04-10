@@ -193,23 +193,26 @@ RUN mkdir /build
 COPY ./engine/build_scripts/build_splitgraph.sh /build/
 RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip /build/build_splitgraph.sh
 
+# Delete bullseye from the apt sources list -- it can break things that inherit from
+# this image (and definitely breaks postgis install).
+RUN rm /etc/apt/sources.list.d/debian-bullseye.list
+
 ENV PYTHONPATH "${PYTHONPATH}:/splitgraph"
 
 # Copy the actual Splitgraph code over at this point.
 COPY ./splitgraph /splitgraph/splitgraph
 
-# postgis
-# Install from stretch-backports rather than pgdg repo to prevent SCFGAL pulling in OSG and X11:
-#   see https://github.com/Oslandia/SFCGAL/issues/136
-
+# https://github.com/postgis/docker-postgis/blob/master/12-3.0/Dockerfile
 ARG with_postgis
 RUN test -z "${with_postgis}" || (\
-    apt-get update -qq && \
-    apt-get install -t bullseye --no-install-recommends -y \
-        postgresql-12-postgis-3 \
-        postgresql-12-postgis-3-scripts && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/* && \
+    export POSTGIS_MAJOR=3 && \
+    export POSTGIS_VERSION=3.0.1+dfsg-2.pgdg100+1 && \
+    apt-get update \
+      && apt-cache showpkg postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR \
+      && apt-get install -y --no-install-recommends \
+           postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR=$POSTGIS_VERSION \
+           postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR-scripts=$POSTGIS_VERSION \
+      && rm -rf /var/lib/apt/lists/* && \
     echo "CREATE EXTENSION postgis;" >> /docker-entrypoint-initdb.d/000_create_extensions.sql)
 
 CMD ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
