@@ -193,6 +193,8 @@ RUN mkdir /build
 COPY ./engine/build_scripts/build_splitgraph.sh /build/
 RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip /build/build_splitgraph.sh
 
+ENV PYTHONPATH "${PYTHONPATH}:/splitgraph"
+
 # Copy the actual Splitgraph code over at this point.
 COPY ./splitgraph /splitgraph/splitgraph
 
@@ -206,6 +208,7 @@ RUN test -z "${with_postgis}" || (\
     apt-get install -t bullseye --no-install-recommends -y \
         postgresql-12-postgis-3 \
         postgresql-12-postgis-3-scripts && \
+    apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
     echo "CREATE EXTENSION postgis;" >> /docker-entrypoint-initdb.d/000_create_extensions.sql)
 

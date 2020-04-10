@@ -9,9 +9,18 @@ curl -sSL https://raw.githubusercontent.com/sdispater/poetry/master/get-poetry.p
 
 # Install globally (otherwise we'll need to find a way to get Multicorn to see the venv)
 ln -s /usr/bin/python3.8 /usr/bin/python
-source $HOME/.poetry/env
+# shellcheck disable=SC1090
+source "$HOME"/.poetry/env
 poetry config virtualenvs.create false
 
+# Export the requirements into pip and install them separately (faster than Poetry)
 poetry export -f requirements.txt --without-hashes -o requirements.txt && sed -i "/^-e/d" requirements.txt
-pip install -r requirements.txt
-poetry install --no-dev
+pip install --no-deps -r requirements.txt
+
+# We don't use pip/poetry here to install the package in "editable" mode as we
+# don't care about setuptools entrypoints etc. The Dockerfile just appends
+# /splitgraph to the PYTHONPATH.
+
+# Poetry vendors its packages which adds about 70MB to the final image size -- we
+# don't need it at this point, so delete it.
+rm "$HOME"/.poetry -rf
