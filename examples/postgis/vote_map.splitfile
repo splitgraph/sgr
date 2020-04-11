@@ -1,0 +1,48 @@
+# This Splitfile joins New York City precinct-level results in the 2016 election
+# with voting precinct boundaries data (using PostGIS) to prepare it for plotting.
+
+SQL {
+    CREATE TABLE vote_fraction_geo AS
+    WITH vote_fraction AS (
+        SELECT
+            -- Prepare NY precincts for joining on election-geodata precinct field
+            -- NY precincts are of the format 004/65 whereas geodata precincts are
+            -- 3606165004 (36 for NY State FIPS, 061 for county FIPS) -- note
+            -- that precinct blocks are flipped.
+            -- Also, all NYC boroughs are mapped to the Manhattan FIPS (36061)
+            -- in the election-geodata dataset, so we use that county FIPS
+            -- when computing the join key.
+            '36061' || regexp_replace(precinct, '(.*)/(.*)', '\2\1') AS precinct,
+            SUM(CASE WHEN candidate_normalized = 'trump' THEN votes ELSE 0 END) / NULLIF(SUM(votes), 0)
+                AS trump_vote_fraction,
+            SUM(CASE WHEN candidate_normalized = 'clinton' THEN votes ELSE 0 END) / NULLIF(SUM(votes), 0)
+                AS clinton_vote_fraction,
+            SUM(votes) AS total_votes
+        FROM
+            "splitgraph/2016_election:latest".precinct_results
+        WHERE
+            -- Get data for the five boroughs in New York City.
+            county_fips IN
+            (
+             '36061', -- New York County (Manhattan)
+             '36047', -- Kings County (Brooklyn)
+             '36005', -- Bronx County (The Bronx)
+             '36085', -- Richmond County (Staten Island)
+             '36081' -- Queens County (Queens)
+            )
+        GROUP BY county_fips, precinct
+        HAVING SUM(votes) > 0)
+    SELECT v.precinct,
+        COALESCE(v.trump_vote_fraction, 0) AS trump_vote_fraction,
+        COALESCE(v.clinton_vote_fraction, 0) AS clinton_vote_fraction,
+        v.total_votes,
+        g.year,
+        g.geom AS geometry
+    FROM vote_fraction v
+    JOIN "splitgraph/election-geodata:latest".nation g
+        ON g.precinct = v.precinct
+    WHERE g.state = '36'
+        AND g.county = '061'
+        AND public.ST_IsValid(geom);
+    ALTER TABLE vote_fraction_geo ADD PRIMARY KEY(precinct);
+}

@@ -360,6 +360,8 @@ def adapt(value: Any, pg_type: str) -> Any:
     :param pg_type: Postgres datatype
     :return: Coerced value.
     """
+    if value is None:
+        return None
     if pg_type in _TYPE_MAP:
         return _TYPE_MAP[pg_type](value)
     return value
