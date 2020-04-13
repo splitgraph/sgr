@@ -4,6 +4,18 @@
 
 docker login -u "$DOCKER_USERNAME" -p "$DOCKER_PASSWORD"
 
+# The engine that's pointed to by $DOCKER_ENGINE_TAG was built with postgis. We want to build
+# a version without postgis as well and swap the tags we're pushing it out under. So the engine
+# $DOCKER_ENGINE_TAG will be the one without PostGIS and the engine $DOCKER_ENGINE_TAG-postgis
+# is the one with it.
+
+docker tag "$DOCKER_REPO"/"$DOCKER_ENGINE_IMAGE":"$DOCKER_TAG" \
+  "$DOCKER_REPO"/"$DOCKER_ENGINE_IMAGE":"$DOCKER_TAG"-postgis
+
+cd engine
+DOCKER_CACHE_TAG=$DOCKER_TAG-postgis make build
+cd ..
+
 # Determine the tags we're pushing the image out under.
 
 # If the Git commit tag is specified, treat this as a release and push
@@ -27,5 +39,7 @@ source="$DOCKER_REPO"/"$DOCKER_ENGINE_IMAGE":"$DOCKER_TAG"
 for tag in $TAGS; do
   target="$DOCKER_REPO"/"$DOCKER_ENGINE_IMAGE":$tag
   docker tag "$source" "$target"
+  docker tag "$source"-postgis "$target"-postgis
   docker push "$target"
+  docker push "$target"-postgis
 done
