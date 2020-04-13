@@ -364,15 +364,19 @@ def sql_c(sql, schema, image, show_all, json):
     from any other PostgreSQL client.
 
     If ``--schema`` is specified, the statement is run with the ``search_path`` set to that schema. This means
-    that these statements are equivalent::
+    that these statements are equivalent:
 
-        sgr sql "SELECT * FROM \"noaa/climate\".table"
-        sgr sql -s noaa/climate "SELECT * FROM table"
+    ```
+    sgr sql "SELECT * FROM \"noaa/climate\".table"
+    sgr sql -s noaa/climate "SELECT * FROM table"
+    ```
 
     If `--image` is specified, this will run the statement against that image using layered querying.
     Only read-only statements are supported. For example:
 
-        sgr sql -i noaa/climate:latest "SELECT * FROM table"
+    ```
+    sgr sql -i noaa/climate:latest "SELECT * FROM table"
+    ```
     """
     from splitgraph.engine import get_engine
 

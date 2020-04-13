@@ -18,7 +18,7 @@
   - sgr init demo/weather
   - sgr csv import --help
 - commands:
-  - "# Ingest the data into a new table (wrapper around Pandas + SQL)"
+  - "# Ingest the data into a new table (wrapper around COPY FROM STDIN)"
   - |
     sgr csv import -f rdu-weather-history.csv \
                    -k date \

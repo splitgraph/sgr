@@ -18,7 +18,7 @@ will need to download and inspect all fragments in the dataset (since almost eve
 have county names spanning from A to Z).
 
 Splitgraph allows the user to add an extra [bloom filter](https://en.wikipedia.org/wiki/Bloom_filter)
-index on such columns. Bloom filters can use a small amount of space to make a judgement of
+index on such columns. Bloom filters can use a small amount of space to make a judgement on
 whether a set definitely doesn't or might have a certain value. This is perfect for this use case:
 with about 1KB of overhead in the bloom filter signature we can determine whether a fragment
 contains a certain county name with a 1% false positive rate.

@@ -79,44 +79,54 @@ def provenance_c(image_spec, full, ignore_errors):
     This inspects the image to produce a list of images that were used by the Splitfile
     that created it, or a Splitfile with the same effect.
 
-    ``IMAGE_SPEC`` must be of the form ``[NAMESPACE/]REPOSITORY[:HASH_OR_TAG]``.
-    If no tag is specified, ``latest`` is used.
+    `IMAGE_SPEC` must be of the form `[NAMESPACE/]REPOSITORY[:HASH_OR_TAG]`.
+    If no tag is specified, `latest` is used.
 
     Examples:
 
-    Assume ``my/repo`` is produced by the following Splitfile:
+    Assume `my/repo` is produced by the following Splitfile:
 
-        FROM MOUNT [...] IMPORT external_table
-        FROM noaa/climate IMPORT {SELECT * FROM rainfall_data WHERE state = 'AZ'} AS rainfall_data
+    ```
+    FROM MOUNT [...] IMPORT external_table
+    FROM noaa/climate IMPORT {SELECT * FROM rainfall_data WHERE state = 'AZ'} AS rainfall_data
+    ```
 
-    ``my/repo`` will have 2 images: one having ``hash_1`` (with the ``external_table`` imported from a mounted database)
-    and one having ``hash_2`` (with both ``external_table`` and the ``rainfall_data`` containing the result
-    of the query run against the then-latest image in the ``noaa/climate`` repository).
+    `my/repo` will have 2 images: one having `hash_1` (with the `external_table` imported from a mounted database)
+    and one having `hash_2` (with both `external_table` and the `rainfall_data` containing the result
+    of the query run against the then-latest image in the `noaa/climate` repository).
 
     In this case:
 
-    ``sgr provenance my/repo``
+    ```
+    sgr provenance my/repo
+    ```
 
     Returns a list of repositories and images that were imported by the Splitfile that constructed this image::
 
-        my/repo:[hash_2] depends on:
-        noaa/climate:[hash_3]
+    ```
+    my/repo:[hash_2] depends on:
+    noaa/climate:[hash_3]
+    ```
 
-    Where ``hash_3`` is the hash of the latest image in the ``noaa/climate`` repository at the time the original
+    Where `hash_3` is the hash of the latest image in the `noaa/climate` repository at the time the original
     Splitfile was run. However:
 
-    ``sgr provenance -f my/repo``
+    ```
+    sgr provenance -f my/repo
+    ```
 
     Will try to reconstruct the Splitfile that can be used to build this image. Since the FROM MOUNT command isn't
     reproducible (requires access to the original external database, which is a moving target), this will fail.
 
-    If ``-e`` is passed, this will emit information about irreproducible commands instead of failing.
+    If `-e` is passed, this will emit information about irreproducible commands instead of failing.
 
-        sgr provenance -ef my/repo
+    ```
+    sgr provenance -ef my/repo
 
-        # Splitfile commands used to reconstruct my/repo:[image_hash]
-        # Irreproducible Splitfile command of type MOUNT
-        FROM noaa/climate:[hash_3] IMPORT {SELECT * FROM rainfall_data WHERE state = 'AZ'}
+    # Splitfile commands used to reconstruct my/repo:[image_hash]
+    # Irreproducible Splitfile command of type MOUNT
+    FROM noaa/climate:[hash_3] IMPORT {SELECT * FROM rainfall_data WHERE state = 'AZ'}
+    ```
     """
     repository, image = image_spec
 

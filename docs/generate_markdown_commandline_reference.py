@@ -79,12 +79,12 @@ def _emit_argument(argument):
     return argument.make_metavar()
 
 
-def _emit_command_invocation(command, prefix="sgr "):
+def _emit_command_invocation(command, name, prefix="sgr "):
     # e.g. sgr import [OPTIONS] IMAGE_SPEC ...
     result = (
         "```"
         + prefix
-        + command.name
+        + name
         + " [OPTIONS] "
         + " ".join(_emit_argument(a) for a in command.params if isinstance(a, click.Argument))
         + "```\n"
@@ -126,7 +126,7 @@ def _emit_command(command_name):
     command = STRUCTURE_CMD_OVERRIDE.get(command_name)
     if not command:
         command = getattr(cmd, command_name + "_c")
-    result = _emit_command_invocation(command)
+    result = _emit_command_invocation(command, command_name)
     # Future: move examples under options?
     result += "\n" + command.help.replace("Examples:", "### Examples")
     result += _emit_command_options(command)
