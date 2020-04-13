@@ -156,11 +156,13 @@ def curl_c(remote, request_type, image, request_params, curl_args):
     Query a Splitgraph REST API.
 
     This is a thin wrapper around curl that performs an HTTP request to Splitgraph Cloud to
-    interact with a dataset using PostgREST (http://postgrest.org) or the Splitfile executor.
+    interact with a dataset using PostgREST (http://postgrest.org) or the Splitfile execution service.
 
     The actual invocation is:
 
-        curl [API endpoint][request] -H [access_token] [extra curl args].
+    ```
+    curl [API endpoint][request] -H [access_token] [extra curl args].
+    ```
 
     The image must be of the form `namespace/repository:[hash_or_tag (default latest)]`.
 
@@ -171,8 +173,8 @@ def curl_c(remote, request_type, image, request_params, curl_args):
       * For the Splitfile executor: a JSON array to be POSTed to the executor, e.g.
         `'{"command": "FROM some/repo IMPORT some_table AS alias", "tag": "new_tag"}'`.
 
-    --curl-args allows to pass extra arguments to curl. Note that every argument must be prefixed
-    with --curl-args, e.g. --curl-args --cacert --curl-args /path/to/ca.pem
+    `--curl-args` allows to pass extra arguments to curl. Note that every argument must be prefixed
+    with `--curl-args`, e.g. `--curl-args --cacert --curl-args /path/to/ca.pem`.
     """
     from splitgraph.config import CONFIG
     from splitgraph.cloud import AuthAPIClient, get_headers

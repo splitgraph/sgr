@@ -167,7 +167,7 @@ def list_engines_c(include_all):
     """List Splitgraph engines.
 
     This only lists Docker containers that were created by sgr engine
-    (whose names start with "splitgraph_engine_". To operate other engines,
+    (whose names start with `splitgraph_engine_`. To manage other engines,
     use Docker CLI directly.
     """
     from splitgraph.config import CONFIG
@@ -398,7 +398,7 @@ def start_engine_c(name):
 )
 @click.argument("name", default=DEFAULT_ENGINE)
 def delete_engine_c(yes, force, with_volumes, name):
-    """Stop a Splitgraph engine."""
+    """Delete the Splitgraph engine container."""
 
     client = get_docker_client()
     container_name = _get_container_name(name)
@@ -445,8 +445,9 @@ def log_engine_c(name, follow):
 @click.command("configure")
 @click.argument("name", default=DEFAULT_ENGINE)
 def configure_engine_c(name):
-    """Inject configuration file into an engine. This copies
-    the current .sgconfig file (pointed to by SG_CONFIG_FILE) into
+    """Inject a configuration file into an engine.
+
+    This copies the current .sgconfig file (pointed to by SG_CONFIG_FILE) into
     the engine container, making it use that configuration for
     when it's queried through an application other than the sgr client
     (layered querying)."""

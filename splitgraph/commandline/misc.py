@@ -231,11 +231,15 @@ def config_c(no_shielding, config_format):
 
     This command can be used to dump the current Splitgraph configuration into a file:
 
-        sgr config --no-shielding --config-format > .sgconfig
+    ```
+    sgr config --no-shielding --config-format > .sgconfig
+    ```
 
     ...or save a config file overriding an entry:
 
-        SG_REPO_LOOKUP=engine1,engine2 sgr config -sc > .sgconfig
+    ```
+    SG_REPO_LOOKUP=engine1,engine2 sgr config -sc > .sgconfig
+    ```
     """
 
     from splitgraph.config.export import serialize_config
@@ -246,7 +250,12 @@ def config_c(no_shielding, config_format):
 
 @click.command(name="dump")
 @click.argument("repository", type=RepositoryType(exists=True))
-@click.option("--exclude-object-contents", is_flag=True, default=False)
+@click.option(
+    "--exclude-object-contents",
+    is_flag=True,
+    default=False,
+    help="Don't dump the commands needed to recreate objects required by the repository.",
+)
 def dump_c(repository, exclude_object_contents):
     """
     Dump a repository to SQL.
@@ -305,12 +314,14 @@ def eval_c(i_know_what_im_doing, command, arg):
 
     \b
     Example:
-        sgr eval 'import json; print(json.dumps(Repository\\
-            .from_schema(repo_name)\\
-            .images["latest"]\\
-            .get_table(table_name)\\
-            .table_schema))' \\
-        -a repo_name my_repo -a table_name my_table
+    ```
+    sgr eval 'import json; print(json.dumps(Repository\\
+        .from_schema(repo_name)\\
+        .images["latest"]\\
+        .get_table(table_name)\\
+        .table_schema))' \\
+    -a repo_name my_repo -a table_name my_table
+    ```
 
     Will dump the schema of table my_table in the most recent image in my_repo in JSON format.
 

@@ -40,7 +40,7 @@ def pull_c(repository_or_image, download_all, overwrite_object_meta, tags):
 @click.command(name="clone")
 @click.argument("remote_repository_or_image", type=ImageType(default=None))
 @click.argument("local_repository", required=False, type=RepositoryType())
-@click.option("-r", "--remote", help="Alias or full connection string for the remote engine")
+@click.option("-r", "--remote", help="Name of the remote engine")
 @click.option(
     "-d",
     "--download-all",
@@ -89,11 +89,7 @@ def clone_c(
 @click.argument("repository_or_image", type=ImageType(default=None))
 @click.argument("remote_repository", required=False, type=RepositoryType())
 @click.option(
-    "-r",
-    "--remote",
-    help="Alias or full connection string for the remote engine",
-    type=click.Choice(REMOTES),
-    default=None,
+    "-r", "--remote", help="Name of the remote engine", type=click.Choice(REMOTES), default=None,
 )
 @click.option("-h", "--upload-handler", help="Upload handler", default="S3")
 @click.option("-o", "--upload-handler-options", help="Upload handler parameters", default="{}")
@@ -130,7 +126,7 @@ def push_c(
     Finally, if `remote_repository` or `--remote` are passed, they will take precedence.
 
     The actual objects will be uploaded to S3 using Minio. When pushing to another engine,
-    you can choose to upload them directly by passing --handler DB.
+    you can choose to upload them directly by passing `--handler DB`.
     """
     repository, image = repository_or_image
 
