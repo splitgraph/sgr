@@ -55,7 +55,7 @@ jobs:
         - pip install --no-deps -r /tmp/requirements.txt
         - poetry install -E pandas
         - sudo cat /etc/docker/daemon.json
-        - cd engine && make && cd ..
+        - cd engine && make with_postgis=1 && cd ..
       script:
         # Run static type checker first to short circuit obvious errors
         - poetry run mypy splitgraph
