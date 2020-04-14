@@ -23,6 +23,7 @@ from splitgraph.commandline.engine import (
 from splitgraph.commandline.ingestion import csv_export, csv_import
 
 # Map category to Click commands -- maybe eventually we'll read this dynamically...
+from splitgraph.config.keys import KEYS, KEY_DOCS, DEFAULTS
 
 STRUCTURE = [
     ("Image management/creation", ["checkout", "commit", "tag", "import", "reindex"]),
@@ -137,10 +138,10 @@ def _slug_section(section):
     return section.lower().replace(" ", "_").replace("/", "_")
 
 
-@click.command(name="main")
+@click.command(name="sgr")
 @click.argument("output", default="../docs/sgr", required=False)
 @click.option("-f", "--force", default=False, is_flag=True)
-def main(output, force):
+def sgr(output, force):
     if os.path.exists(output):
         if not force:
             raise click.ClickException("%s already exists, pass -f" % output)
@@ -170,6 +171,40 @@ def main(output, force):
                 f.write(_emit_command(command) + "\n")
 
     print("Done.")
+
+
+@click.command(name="config")
+@click.argument("output", default="../docs/0100_config_flag_reference.mdx", required=False)
+@click.option("-f", "--force", default=False, is_flag=True)
+def config(output, force):
+    if os.path.exists(output):
+        if not force:
+            raise click.ClickException("%s already exists, pass -f" % output)
+
+    with open(output, "w") as f:
+        f.write(
+            _emit_mdx_metadata(doc_id="config_flag_reference", title="Configuration flag reference")
+        )
+        f.write("\n\n")
+
+        for key in KEYS:
+            if key not in KEY_DOCS:
+                continue
+
+            docstring = KEY_DOCS[key]
+            f.write(f"### `{key}`\n{docstring}")
+            if DEFAULTS.get(key):
+                f.write(f"  \n**Default**: `{DEFAULTS[key]}`")
+            f.write("\n\n")
+
+
+@click.group(name="main")
+def main():
+    """Generate dynamic Markdown documentation for Splitgraph to be embedded into the website."""
+
+
+main.add_command(sgr)
+main.add_command(config)
 
 
 if __name__ == "__main__":

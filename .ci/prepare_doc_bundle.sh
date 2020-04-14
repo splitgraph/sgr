@@ -21,7 +21,10 @@ make json
 mv _build/json "$TARGET_DIR"
 
 echo "Generating Markdown sgr reference"
-python generate_markdown_commandline_reference.py "$TARGET_DIR"/sgr
+python generate_reference.py sgr "$TARGET_DIR"/sgr
+
+echo "Generating configuration reference"
+python generate_reference.py config "$TARGET_DIR"/0100_config_flag_reference.mdx
 
 echo "Building Asciinema casts"
 TARGET_DIR=$TARGET_DIR "$CI_DIR"/rebuild_asciicasts.sh
