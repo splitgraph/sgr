@@ -1,9 +1,7 @@
-# These are the requirements to run the Postgis Jupyter notebook
-
 [tool.poetry]
-name = "splitgraph-postgis"
+name = "splitgraph-iris"
 version = "0.0.0"
-description = "Splitgraph PostGIS example"
+description = "Splitgraph Iris Dataset Example"
 license = "Apache 2.0"
 authors = ["Splitgraph Limited"]
 readme = "README.md"
@@ -13,13 +11,11 @@ repository = "https://github.com/splitgraph/splitgraph"
 [tool.poetry.dependencies]
 python = "~=3.6"
 splitgraph = { path = "../.." }
-pandas = ">=0.24"
-jupyter = ">=1.0"
-# For plotting
-geopandas = "^0.7.0"
-descartes = "^1.1.0"
-shapely = "^1.7.0"
 
+# Requirements to get the actual demo running
+pandas = ">=0.24"
+jupyter = "^1.0"
+seaborn = "^0.10.0"
 
 [build-system]
 requires = ["poetry>=0.12"]
