@@ -32,12 +32,14 @@ def patch_os_environ(update):
 
 
 def test_every_key_has_matching_arg_key():
-    KEYS = keys.KEYS
-    ARGUMENT_KEY_MAP = keys.ARGUMENT_KEY_MAP
-    ARG_KEYS = keys.ARG_KEYS
+    for arg_key in keys.ARG_KEYS:
+        assert keys.ARGUMENT_KEY_MAP[arg_key] in keys.KEYS
 
-    for arg_key in ARG_KEYS:
-        assert ARGUMENT_KEY_MAP[arg_key] in KEYS
+
+def test_every_key_has_docs():
+    _docs_ignore = []
+    for key in keys.KEYS:
+        assert key in keys.KEY_DOCS
 
 
 def test_get_arg_tuples():
