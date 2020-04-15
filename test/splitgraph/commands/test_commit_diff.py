@@ -2,6 +2,7 @@ import operator
 from datetime import date, datetime as dt
 from decimal import Decimal
 from functools import reduce
+from unittest import mock
 from unittest.mock import patch
 
 import pytest
@@ -17,6 +18,7 @@ from splitgraph.core.repository import Repository
 from splitgraph.core.sql import select
 from splitgraph.core.types import TableColumn
 from splitgraph.engine import ResultShape
+from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.hooks.s3_server import delete_objects, list_objects
 
 
@@ -169,6 +171,16 @@ def test_commit_chunking(local_engine_empty):
             ),
             return_shape=ResultShape.MANY_ONE,
         ) == list(range(min_key, max_key + 1))
+
+    # Test checkout progress reporting
+    with mock.patch("splitgraph.core.table._PROGRESS_EVERY", 1):
+        with mock.patch.object(PostgresEngine, "_apply_batch") as ab:
+            head.checkout()
+
+    assert ab.call_count == 3
+    assert ab.mock_calls[0][1][0] == [("splitgraph_meta", objects[0])]
+    assert ab.mock_calls[1][1][0] == [("splitgraph_meta", objects[1])]
+    assert ab.mock_calls[2][1][0] == [("splitgraph_meta", objects[2])]
 
 
 def test_commit_chunking_order(local_engine_empty):
