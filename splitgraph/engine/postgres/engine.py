@@ -1185,6 +1185,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         extra_quals: Optional[Composed] = None,
         extra_qual_args: Optional[Tuple[str]] = None,
         schema_spec: Optional["TableSchema"] = None,
+        progress_every: Optional[int] = None,
     ) -> None:
         if not objects:
             return
@@ -1192,6 +1193,24 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         # Assume that the target table already has the required schema (including PKs)
         # and use that to generate queries to apply fragments.
         cols = self._schema_spec_to_cols(schema_spec)
+
+        if progress_every:
+            batches = list(chunk(objects, chunk_size=progress_every))
+            with tqdm(total=len(objects), unit="obj") as pbar:
+                for batch in batches:
+                    self._apply_batch(
+                        batch, target_schema, target_table, extra_quals, cols, extra_qual_args
+                    )
+                    pbar.update(len(batch))
+                    pbar.set_postfix({"object": batch[-1][1][:10] + "..."})
+        else:
+            self._apply_batch(
+                objects, target_schema, target_table, extra_quals, cols, extra_qual_args
+            )
+
+    def _apply_batch(
+        self, objects, target_schema, target_table, extra_quals, cols, extra_qual_args
+    ):
         query = SQL(";").join(
             self._generate_fragment_application(
                 ss, st, target_schema, target_table, cols, extra_quals

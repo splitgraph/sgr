@@ -3,6 +3,7 @@ import itertools
 import logging
 import threading
 from contextlib import contextmanager
+from math import ceil
 from typing import (
     Any,
     Callable,
@@ -37,6 +38,11 @@ if TYPE_CHECKING:
     from splitgraph.core.object_manager import ObjectManager
     from splitgraph.core.repository import Repository
     from splitgraph.engine.postgres.engine import PostgresEngine
+
+
+# Output checkout progress every 5MB to trade off between the latency
+# of initializing a batch of object applications and not reporting anything at all
+_PROGRESS_EVERY = 5 * 1024 * 1024
 
 
 def _delete_temporary_table(engine: "PostgresEngine", schema: str, table: str) -> None:
@@ -206,10 +212,22 @@ class Table:
                 )
                 if required_objects:
                     logging.debug("Applying %s...", pluralise("fragment", len(required_objects)))
+
+                    table_size = self.get_size()
+
+                    progress_every: Optional[int]
+                    if table_size > _PROGRESS_EVERY:
+                        progress_every = int(
+                            ceil(len(required_objects) * _PROGRESS_EVERY / float(table_size))
+                        )
+                    else:
+                        progress_every = None
+
                     engine.apply_fragments(
                         [(SPLITGRAPH_META_SCHEMA, d) for d in cast(List[str], required_objects)],
                         destination_schema,
                         destination,
+                        progress_every=progress_every,
                     )
         else:
             query = SQL("CREATE FOREIGN TABLE {}.{} (").format(
