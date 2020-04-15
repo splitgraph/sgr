@@ -108,21 +108,21 @@ def test_config_exports_dict():
     assert json.dumps(CONFIG) == json.dumps(create_config_dict())
 
 
-def test_sanity_pyfakefs_is_working(fs):
+def test_sanity_pyfakefs_is_working(fs_fast):
     """ Sanity check that fs is provided magically by pyfakefs
         http://jmcgeheeiv.github.io/pyfakefs/release/usage.html#test-scenarios
     """
-    fs.create_file("/var/bogus/directory/bogus_file.txt")
+    fs_fast.create_file("/var/bogus/directory/bogus_file.txt")
     assert os.path.exists("/var/bogus/directory/bogus_file.txt")
 
 
-def test_get_explicit_config_file_location_from_env_existing_file(fs):
+def test_get_explicit_config_file_location_from_env_existing_file(fs_fast):
     """ get_explicit_config_file_location()
         from env var when file exists should return the location
     """
     existing_file = "/var/mock/foo_bar.cfg"
 
-    fs.create_file(existing_file)
+    fs_fast.create_file(existing_file)
 
     mock_environ = {"SG_CONFIG_FILE": existing_file}
 
@@ -134,7 +134,7 @@ def test_get_explicit_config_file_location_from_env_existing_file(fs):
         assert loc == "/var/mock/foo_bar.cfg"
 
 
-def test_get_explicit_config_file_location_from_env_nonexisting_file(fs):
+def test_get_explicit_config_file_location_from_env_nonexisting_file(fs_fast):
     """ get_explicit_config_file_location()
         from env var when file does NOT exist should return None
     """
@@ -150,13 +150,13 @@ def test_get_explicit_config_file_location_from_env_nonexisting_file(fs):
         assert loc is None
 
 
-def test_get_explicit_config_file_location_from_arg_existing_file(fs):
+def test_get_explicit_config_file_location_from_arg_existing_file(fs_fast):
     """ get_explicit_config_file_location()
         from arg flag when file exists should return the location
     """
     existing_file = "/var/mock/foo_bar.cfg"
 
-    fs.create_file(existing_file)
+    fs_fast.create_file(existing_file)
 
     mock_sysargv = ["sg", "--config-file", existing_file]
 
@@ -168,13 +168,13 @@ def test_get_explicit_config_file_location_from_arg_existing_file(fs):
         assert loc == "/var/mock/foo_bar.cfg"
 
 
-def test_get_explicit_config_file_location_from_arg_nonexisting_file(fs):
+def test_get_explicit_config_file_location_from_arg_nonexisting_file(fs_fast):
     """ get_explicit_config_file_location()
         from arg flag when file does NOT exist should return None
     """
     dne_file = "/var/doesnotexist/foo_bar.cfg"
 
-    mock_sysargv = ["sg", "--config-file", dne_file]
+    mock_sysargv = ["sgr", "--config-file", dne_file]
 
     assert not os.path.isfile(dne_file)
 
@@ -184,12 +184,12 @@ def test_get_explicit_config_file_location_from_arg_nonexisting_file(fs):
         assert loc is None
 
 
-def test_get_explicit_config_file_existing_dirs_via_env(fs):
+def test_get_explicit_config_file_existing_dirs_via_env(fs_fast):
     exists_dir_1 = "/var/some-dir-to-look-for-configs"
     exists_dir_2 = "/var/another-dir-to-look-for-configs"
 
-    fs.create_dir(exists_dir_1)
-    fs.create_dir(exists_dir_2)
+    fs_fast.create_dir(exists_dir_1)
+    fs_fast.create_dir(exists_dir_2)
 
     assert os.path.isdir(exists_dir_1)
     assert os.path.isdir(exists_dir_2)
@@ -205,10 +205,10 @@ def test_get_explicit_config_file_existing_dirs_via_env(fs):
         assert exists_dir_2 in dirs
 
 
-def test_get_explicit_config_file_existing_single_dir_via_env(fs):
+def test_get_explicit_config_file_existing_single_dir_via_env(fs_fast):
     exists_dir = "/var/some-dir-to-look-for-configs"
 
-    fs.create_dir(exists_dir)
+    fs_fast.create_dir(exists_dir)
 
     assert os.path.isdir(exists_dir)
 
@@ -222,7 +222,7 @@ def test_get_explicit_config_file_existing_single_dir_via_env(fs):
         assert exists_dir in dirs
 
 
-def test_get_explicit_config_file_non_existing_single_dir_via_env(fs):
+def test_get_explicit_config_file_non_existing_single_dir_via_env(fs_fast):
     dne_dir = "/var/some-nonexisting-dir-to-look-for-configs"
 
     assert not os.path.isdir(dne_dir)
@@ -236,14 +236,14 @@ def test_get_explicit_config_file_non_existing_single_dir_via_env(fs):
         assert len(dirs) == 0
 
 
-def test_get_explicit_config_file_existing_single_and_plural_dir_via_env(fs):
+def test_get_explicit_config_file_existing_single_and_plural_dir_via_env(fs_fast):
     exists_dir_1 = "/var/some-dir-to-look-for-configs"
     exists_dir_2 = "/var/another-dir-to-look-for-configs"
     exists_dir_3 = "/var/yet-anothe-dir-to-look-for-configs"
 
-    fs.create_dir(exists_dir_1)
-    fs.create_dir(exists_dir_2)
-    fs.create_dir(exists_dir_3)
+    fs_fast.create_dir(exists_dir_1)
+    fs_fast.create_dir(exists_dir_2)
+    fs_fast.create_dir(exists_dir_3)
 
     assert os.path.isdir(exists_dir_1)
     assert os.path.isdir(exists_dir_2)
@@ -264,7 +264,7 @@ def test_get_explicit_config_file_existing_single_and_plural_dir_via_env(fs):
         assert exists_dir_3 in dirs
 
 
-def test_get_explicit_config_file_non_existing_dirs_via_env(fs):
+def test_get_explicit_config_file_non_existing_dirs_via_env(fs_fast):
     non_exist_dir_1 = "/var/some-non-existing-dir-to-look-for-configs"
     non_exist_dir_2 = "/var/another-non-existing-dir-to-look-for-configs"
 
@@ -285,12 +285,12 @@ def test_get_explicit_config_file_non_existing_dirs_via_env(fs):
 ##
 
 
-def test_get_explicit_config_file_existing_dirs_via_arg(fs):
+def test_get_explicit_config_file_existing_dirs_via_arg(fs_fast):
     exists_dir_1 = "/var/some-dir-to-look-for-configs"
     exists_dir_2 = "/var/another-dir-to-look-for-configs"
 
-    fs.create_dir(exists_dir_1)
-    fs.create_dir(exists_dir_2)
+    fs_fast.create_dir(exists_dir_1)
+    fs_fast.create_dir(exists_dir_2)
 
     assert os.path.isdir(exists_dir_1)
     assert os.path.isdir(exists_dir_2)
@@ -306,10 +306,10 @@ def test_get_explicit_config_file_existing_dirs_via_arg(fs):
         assert exists_dir_2 in dirs
 
 
-def test_get_explicit_config_file_existing_single_dir_via_arg(fs):
+def test_get_explicit_config_file_existing_single_dir_via_arg(fs_fast):
     exists_dir = "/var/some-dir-to-look-for-configs"
 
-    fs.create_dir(exists_dir)
+    fs_fast.create_dir(exists_dir)
 
     assert os.path.isdir(exists_dir)
 
@@ -323,7 +323,7 @@ def test_get_explicit_config_file_existing_single_dir_via_arg(fs):
         assert exists_dir in dirs
 
 
-def test_get_explicit_config_file_non_existing_single_dir_via_arg(fs):
+def test_get_explicit_config_file_non_existing_single_dir_via_arg(fs_fast):
     dne_dir = "/var/some-nonexisting-dir-to-look-for-configs"
 
     assert not os.path.isdir(dne_dir)
@@ -337,14 +337,14 @@ def test_get_explicit_config_file_non_existing_single_dir_via_arg(fs):
         assert len(dirs) == 0
 
 
-def test_get_explicit_config_file_existing_single_and_plural_dir_via_arg(fs):
+def test_get_explicit_config_file_existing_single_and_plural_dir_via_arg(fs_fast):
     exists_dir_1 = "/var/some-dir-to-look-for-configs"
     exists_dir_2 = "/var/another-dir-to-look-for-configs"
     exists_dir_3 = "/var/yet-anothe-dir-to-look-for-configs"
 
-    fs.create_dir(exists_dir_1)
-    fs.create_dir(exists_dir_2)
-    fs.create_dir(exists_dir_3)
+    fs_fast.create_dir(exists_dir_1)
+    fs_fast.create_dir(exists_dir_2)
+    fs_fast.create_dir(exists_dir_3)
 
     assert os.path.isdir(exists_dir_1)
     assert os.path.isdir(exists_dir_2)
@@ -368,7 +368,7 @@ def test_get_explicit_config_file_existing_single_and_plural_dir_via_arg(fs):
         assert exists_dir_3 in dirs
 
 
-def test_get_explicit_config_file_non_existing_dirs_via_arg(fs):
+def test_get_explicit_config_file_non_existing_dirs_via_arg(fs_fast):
     non_exist_dir_1 = "/var/some-non-existing-dir-to-look-for-configs"
     non_exist_dir_2 = "/var/another-non-existing-dir-to-look-for-configs"
 
@@ -387,21 +387,21 @@ def test_get_explicit_config_file_non_existing_dirs_via_arg(fs):
         assert len(dirs) == 0
 
 
-def test_SG_CONFIG_FILE_none_exists(fs):
-    assert get_config_file() == None
+def test_SG_CONFIG_FILE_none_exists(fs_fast):
+    assert get_config_file() is None
 
 
 @pytest.mark.parametrize("config_file_name", VALID_CONFIG_FILE_NAMES)
-def test_SG_CONFIG_FILE_valid_names_home_sub_dir(fs, config_file_name):
+def test_SG_CONFIG_FILE_valid_names_home_sub_dir(fs_fast, config_file_name):
     mock_environ = {"HOME": "/fake/home/dir"}
 
     home_sub_dir = os.path.join(mock_environ["HOME"], ".splitgraph")
 
-    fs.create_dir(home_sub_dir)
+    fs_fast.create_dir(home_sub_dir)
 
     config_file = os.path.join(home_sub_dir, config_file_name)
 
-    fs.create_file(config_file)
+    fs_fast.create_file(config_file)
 
     with patch_os_environ(mock_environ):
         assert os.path.isdir(home_sub_dir)
@@ -411,27 +411,27 @@ def test_SG_CONFIG_FILE_valid_names_home_sub_dir(fs, config_file_name):
 
 
 @pytest.mark.parametrize("config_file_name", VALID_CONFIG_FILE_NAMES)
-def test_SG_CONFIG_FILE_valid_names_cwd(fs, config_file_name):
+def test_SG_CONFIG_FILE_valid_names_cwd(fs_fast, config_file_name):
     fake_cwd = os.getcwd()
     fake_config_file = os.path.join(fake_cwd, config_file_name)
 
-    fs.create_file(fake_config_file)
+    fs_fast.create_file(fake_config_file)
 
     assert get_config_file() == fake_config_file
 
 
 @pytest.mark.parametrize("config_file_name", VALID_CONFIG_FILE_NAMES)
-def test_SG_CONFIG_FILE_explicit_dir_supercedes_valid_names_cwd(fs, config_file_name):
+def test_SG_CONFIG_FILE_explicit_dir_supercedes_valid_names_cwd(fs_fast, config_file_name):
     fake_cwd = os.getcwd()
     fake_config_file = os.path.join(fake_cwd, config_file_name)
 
-    fs.create_file(fake_config_file)
+    fs_fast.create_file(fake_config_file)
 
     assert get_config_file() == fake_config_file
 
     exists_dir = "/var/some-dir-to-look-for-configs"
 
-    fs.create_dir(exists_dir)
+    fs_fast.create_dir(exists_dir)
 
     assert os.path.isdir(exists_dir)
 
@@ -440,13 +440,13 @@ def test_SG_CONFIG_FILE_explicit_dir_supercedes_valid_names_cwd(fs, config_file_
 
     explicit_config_file = os.path.join(exists_dir, config_file_name)
 
-    fs.create_file(explicit_config_file)
+    fs_fast.create_file(explicit_config_file)
 
     with patch.object(sys, "argv", mock_sysargv):
         assert get_config_file() == explicit_config_file
 
 
-def _write_config_file(fs, lines):
+def _write_config_file(fs_fast, lines):
     fake_cwd = os.getcwd()
     fake_config_file = os.path.join(fake_cwd, ".sgconfig")
 
@@ -457,8 +457,8 @@ def _write_config_file(fs, lines):
     return fake_config_file
 
 
-def test_key_set_in_config_file(fs):
-    fake_config_file = _write_config_file(fs, ["[defaults]", "SG_NAMESPACE=pass-the-test"])
+def test_key_set_in_config_file(fs_fast):
+    fake_config_file = _write_config_file(fs_fast, ["[defaults]", "SG_NAMESPACE=pass-the-test"])
 
     with patch_os_environ({"SG_CONFIG_FILE": fake_config_file}):
         config = create_config_dict()
@@ -475,9 +475,9 @@ def test_hoist_section():
     assert "hoistableSection" not in new_config_dict.keys()
 
 
-def test_config_file_accumulation(fs):
+def test_config_file_accumulation(fs_fast):
     fake_config_file = _write_config_file(
-        fs,
+        fs_fast,
         [
             "[remote: blah]",
             "SG_ENGINE_HOST=pass-the-test",
@@ -494,7 +494,7 @@ def test_config_file_accumulation(fs):
 
 
 # Hardcoded default key to check that it's passed through
-def test_default_key(fs):
+def test_default_key(fs_fast):
     assert CONFIG["SG_ENGINE_DB_NAME"] == "splitgraph"
 
 
@@ -515,11 +515,11 @@ def test_key_set_in_env_var():
         assert config["SG_NAMESPACE"] == "pass-env-namespace-test"
 
 
-def test_arg_flag_supercedes_config_file(fs):
+def test_arg_flag_supercedes_config_file(fs_fast):
     mock_argv = ["sg", "--namespace", "namespace-from-arg"]
 
     fake_config_file = _write_config_file(
-        fs, ["[defaults]", "SG_NAMESPACE=namespace-from-config-file"]
+        fs_fast, ["[defaults]", "SG_NAMESPACE=namespace-from-config-file"]
     )
 
     with patch_os_environ({"SG_CONFIG_FILE": fake_config_file}):
@@ -531,7 +531,7 @@ def test_arg_flag_supercedes_config_file(fs):
             assert config["SG_NAMESPACE"] == "namespace-from-arg"
 
 
-def test_arg_flag_supercedes_env_var(fs):
+def test_arg_flag_supercedes_env_var(fs_fast):
     mock_environ = {"SG_NAMESPACE": "namespace-from-env-var"}
 
     mock_argv = ["sg", "--namespace", "namespace-from-arg"]
@@ -546,9 +546,9 @@ def test_arg_flag_supercedes_env_var(fs):
             assert config["SG_NAMESPACE"] == "namespace-from-arg"
 
 
-def test_env_var_supercedes_config_file(fs):
+def test_env_var_supercedes_config_file(fs_fast):
     fake_config_file = _write_config_file(
-        fs, ["[defaults]", "SG_NAMESPACE=namespace-from-config-file"]
+        fs_fast, ["[defaults]", "SG_NAMESPACE=namespace-from-config-file"]
     )
 
     with patch_os_environ({"SG_CONFIG_FILE": fake_config_file}):

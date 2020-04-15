@@ -232,12 +232,13 @@ def clean_out_engine(engine):
     logging.info("Cleaning out engine %r", engine)
     for mountpoint, _ in get_current_repositories(engine):
         mountpoint.delete()
-    for mountpoint in TEST_MOUNTPOINTS:
-        Repository.from_template(mountpoint, engine=engine).delete()
-        # Make sure schemata, not only repositories, are deleted on the engine.
-        engine.run_sql(
+
+    engine.run_sql(
+        SQL(";").join(
             SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(mountpoint.to_schema()))
+            for mountpoint in TEST_MOUNTPOINTS
         )
+    )
     ObjectManager(engine).cleanup()
     engine.commit()
 
@@ -248,12 +249,42 @@ with open(
     PG_DATA = f.read()
 
 
+@pytest.fixture(scope="session")
+def global_fs(request):
+    # pyfakefs's setup takes a couple seconds (or maybe it's the profiler
+    # recording 2148994 function calls) as it
+    # scans all modules in the venv and all the functions in them
+    # to see if they open files (so that it can patch them).
+    # So we initialize pyfakefs only once and reset the filesystem
+    # (a cheap operation) after every test instead.
+
+    from pyfakefs.fake_filesystem_unittest import Patcher
+    import tokenize
+
+    patcher = Patcher()
+    patcher.setUp()
+    tokenize._builtin_open = patcher.original_open
+    try:
+        yield patcher.fs
+    finally:
+        patcher.tearDown()
+
+
+@pytest.fixture
+def fs_fast(global_fs):
+    global_fs.resume()
+    try:
+        yield global_fs
+    finally:
+        global_fs.reset()
+        global_fs.pause()
+
+
 def make_pg_repo(engine, repository=None):
     repository = repository or Repository("test", "pg_mount")
     repository = Repository.from_template(repository, engine=engine)
     repository.init()
     repository.run_sql(PG_DATA)
-    assert repository.has_pending_changes()
     repository.commit()
     return repository
 
