@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 from psycopg2.errors import CheckViolation
 
-from splitgraph.core.common import Tracer
+from splitgraph.core.common import Tracer, adapt, coerce_val_to_json, _parse_dt
 from splitgraph.core.engine import lookup_repository, repository_exists
 from splitgraph.core.metadata_manager import Object
 from splitgraph.core.repository import Repository
@@ -280,3 +280,29 @@ def test_large_api_calls(unprivileged_pg_repo):
     assert table.objects == all_ids
     small_table = unprivileged_pg_repo.images[image_hash].get_table("small_table")
     assert small_table.objects == [all_ids[0]]
+
+
+def test_pg_type_adapt():
+    assert adapt(None, "character varying") is None
+    assert adapt("test", "character varying") == "test"
+    assert adapt("42", "bigint") == 42
+    assert adapt(42, "bigint") == 42
+    assert adapt("2.0", "numeric") == 2.0
+
+
+def test_val_to_json():
+    assert coerce_val_to_json(datetime(2010, 1, 1)) == "2010-01-01 00:00:00"
+    assert coerce_val_to_json([1, 2, datetime(2010, 1, 1)]) == [1, 2, "2010-01-01 00:00:00"]
+    assert coerce_val_to_json({"one": 1, "two": 2, "datetime": datetime(2010, 1, 1)}) == {
+        "one": 1,
+        "two": 2,
+        "datetime": "2010-01-01 00:00:00",
+    }
+
+
+def test_parse_dt():
+    assert _parse_dt("2020-01-01 12:00:01.123456") == datetime(2020, 1, 1, 12, 0, 1, 123456)
+    assert _parse_dt("2020-01-01T12:34:56") == datetime(2020, 1, 1, 12, 34, 56)
+
+    with pytest.raises(ValueError):
+        _parse_dt("not a dt")
