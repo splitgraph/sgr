@@ -4,6 +4,7 @@ Public API for managing images in a Splitgraph repository.
 
 import itertools
 import logging
+import re
 from contextlib import contextmanager
 from datetime import datetime
 from io import TextIOWrapper
@@ -53,6 +54,13 @@ class Repository:
     Splitgraph repository API
     """
 
+    # Whilst these are enforced by PostgreSQL in the Splitgraph schema, it's good to
+    # prevalidate namespace/repository values when the Repository object is constructed.
+    _MAX_NAMESPACE_LEN = 64
+    _MAX_REPOSITORY_LEN = 64
+    _NAMESPACE_RE = re.compile(r"^[-A-Za-z0-9_]*$")
+    _REPOSITORY_RE = re.compile(r"^[-A-Za-z0-9_]+$")
+
     def __init__(
         self,
         namespace: str,
@@ -61,6 +69,18 @@ class Repository:
         object_engine: Optional[PostgresEngine] = None,
         object_manager: Optional[ObjectManager] = None,
     ) -> None:
+        if len(namespace) > self._MAX_NAMESPACE_LEN or not self._NAMESPACE_RE.match(namespace):
+            raise ValueError(
+                "Invalid namespace. Namespace must contain at most 64 "
+                "alphanumerics, dashes or underscores."
+            )
+
+        if len(repository) > self._MAX_REPOSITORY_LEN or not self._REPOSITORY_RE.match(repository):
+            raise ValueError(
+                "Invalid namespace. Namespace must contain at most 64 "
+                "alphanumerics, dashes or underscores."
+            )
+
         self.namespace = namespace
         self.repository = repository
 

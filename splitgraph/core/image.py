@@ -31,7 +31,7 @@ from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphError, TableNotFoundError
 from splitgraph.hooks.mount_handlers import init_fdw
 from .common import set_tag, manage_audit, set_head
-from .sql import select, prepare_splitfile_sql
+from .sql import select, prepare_splitfile_sql, POSTGRES_MAX_IDENTIFIER
 from .table import Table
 from .types import TableColumn, ProvenanceLine
 
@@ -134,6 +134,17 @@ class Image(NamedTuple):
             inside of it).
         """
         target_schema = self.repository.to_schema()
+        if len(target_schema) > POSTGRES_MAX_IDENTIFIER:
+            logging.warning(
+                "The full repository name %s is longer than PostgreSQL's maximum "
+                "identifier length of %d. PostgreSQL will truncate the schema name "
+                "down to %d characters in all queries, which might cause clashes "
+                "with other checked-out repositories.",
+                target_schema,
+                POSTGRES_MAX_IDENTIFIER,
+                POSTGRES_MAX_IDENTIFIER,
+            )
+
         if self.repository.has_pending_changes():
             if not force:
                 raise SplitGraphError(

@@ -1,5 +1,6 @@
 import pytest
 
+from splitgraph.core.repository import Repository
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import ImageNotFoundError
 
@@ -149,3 +150,23 @@ def test_upstream_goes_away(pg_repo_local):
     )
 
     assert pg_repo_local.upstream is None
+
+
+def test_repository_validation():
+    with pytest.raises(ValueError):
+        Repository("namespace", "")
+
+    with pytest.raises(ValueError):
+        Repository("namespace" * 10, "repository")
+
+    with pytest.raises(ValueError):
+        Repository("@@@", "repository")
+
+    with pytest.raises(ValueError):
+        Repository("", "repository" * 10)
+
+    with pytest.raises(ValueError):
+        Repository("", "@@@repo")
+
+    Repository("", "repository")
+    Repository("namespace", "repository")
