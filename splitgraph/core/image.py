@@ -20,7 +20,13 @@ from typing import (
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA, FDW_CLASS
+from splitgraph.config import (
+    SPLITGRAPH_META_SCHEMA,
+    SPLITGRAPH_API_SCHEMA,
+    FDW_CLASS,
+    get_singleton,
+    CONFIG,
+)
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphError, TableNotFoundError
 from splitgraph.hooks.mount_handlers import init_fdw
@@ -204,6 +210,11 @@ class Image(NamedTuple):
             self.object_engine.create_schema(tmp_schema)
             self._lq_checkout(target_schema=tmp_schema, wrapper=wrapper)
             self.object_engine.commit()  # Make sure the new tables are seen by other connections
+
+            # Inject extra query planner hints as session variables if specified.
+            lq_tuning = get_singleton(CONFIG, "SG_LQ_TUNING")
+            if lq_tuning:
+                self.object_engine.run_sql(lq_tuning)
             yield tmp_schema
         finally:
             self.object_engine.run_sql(
