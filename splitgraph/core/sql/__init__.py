@@ -24,6 +24,9 @@ except ImportError:
 
 from splitgraph.exceptions import UnsupportedSQLError
 
+# https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS
+POSTGRES_MAX_IDENTIFIER = 63
+
 
 def _validate_range_var(node: "Node") -> None:
     if "schemaname" in node.attribute_names:
@@ -86,7 +89,7 @@ def recover_original_schema_name(sql: str, schema_name: str) -> str:
     get pglast to give us back the full identifier, but we can try and figure out
     what it used to be and patch the AST to have it again.
     """
-    if len(schema_name) < 63:
+    if len(schema_name) < POSTGRES_MAX_IDENTIFIER:
         return schema_name
 
     candidates = list(set(re.findall(r"(" + re.escape(schema_name) + r"[^.\"]*)[.\"]", sql)))
