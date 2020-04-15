@@ -546,6 +546,7 @@ class ObjectEngine:
         extra_quals=None,
         extra_qual_args=None,
         schema_spec=None,
+        progress_every: Optional[int] = None,
     ):
         """
         Apply multiple fragments to a target table as a single-query batch operation.
@@ -558,6 +559,8 @@ class ObjectEngine:
         :param extra_qual_args: Optional, a tuple of arguments to use with `extra_quals`
         :param schema_spec: Optional, list of (ordinal, column_name, column_type, is_pk).
             If not specified, uses the schema of target_table.
+        :param progress_every: If set, will report the materialization progress via
+            tqdm every `progress_every` objects.
         """
         raise NotImplementedError()
 

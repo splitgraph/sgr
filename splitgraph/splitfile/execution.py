@@ -218,8 +218,10 @@ def execute_commands(
                 provenance_line = _execute_custom(node, output)
                 provenance.append(provenance_line)
 
-        output.head_strict.set_provenance(provenance)
+        final_image = output.head_strict
+        final_image.set_provenance(provenance)
         get_engine().commit()
+        print("Successfully built %s:%s." % (str(output), final_image.image_hash[:12]))
 
     except Exception:
         if repo_created and len(output.images()) == 1:
