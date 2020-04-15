@@ -283,7 +283,7 @@ _PULL_PROGRESS = [
         ),
     ],
 )
-def test_commandline_engine_creation_config_patching(test_case, fs):
+def test_commandline_engine_creation_config_patching(test_case, fs_fast):
     runner = CliRunner()
 
     source_config_patch, engine_name, target_path, target_config = test_case

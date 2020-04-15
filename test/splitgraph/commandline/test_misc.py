@@ -458,7 +458,7 @@ def test_system_id_not_exists():
         (None, "/usr/local/bin/sgr"),
     ],
 )
-def test_get_download_paths(fs, path, final_path):
+def test_get_download_paths(fs_fast, path, final_path):
     Path("/home/user/").mkdir(parents=True)
 
     with mock.patch("splitgraph.commandline.misc.sys") as m_sys:
