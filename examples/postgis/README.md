@@ -13,6 +13,8 @@ This example will:
 **Data sources**:
   * Precinct-level maps from [election-geodata](https://github.com/nvkelso/election-geodata) compiled by Nathaniel Kelso and Michal Migurski.
   * 2016 US Presidential Election precinct-level returns ([source](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/LYWX3D))
+  
+You can view the [notebook](./vote_map.ipynb) directly or run it yourself.
 
 ## Running the example
 
@@ -42,7 +44,7 @@ If you're using the `sgr engine` wrapper, you can upgrade your engine to use Pos
 sgr engine upgrade --image splitgraph/engine:[your_engine_version]-postgis 
 ```
 
-Make sure that you've logged into Splitgraph Cloud with `sgr cloud login`.
+Make sure that you've logged into Splitgraph Cloud with `sgr cloud login` or `sgr cloud login-api`.
 
 ### Setting up and running the Jupyter notebook
 

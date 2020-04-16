@@ -8,8 +8,8 @@ ASCIINEMA_CASTS=${ASCIINEMA_CASTS-"bloom-filter import-from-csv import-from-mong
 LOGIN_REQUIRED_CASTS="bloom-filter query_api us-election"
 
 test -z "$TARGET_DIR" && { echo "Fatal Error: No TARGET_DIR set" ; exit 1 ; }
-test -z "$SG_DEMO_USER" && { echo "Fatal Error: No SG_DEMO_USER set" ; exit 1 ; }
-test -z "$SG_DEMO_PASSWORD" && { echo "Fatal Error: No SG_DEMO_PASSWORD set" ; exit 1 ; }
+test -z "$SG_DEMO_KEY" && { echo "Fatal Error: No SG_DEMO_KEY set" ; exit 1 ; }
+test -z "$SG_DEMO_SECRET" && { echo "Fatal Error: No SG_DEMO_SECRET set" ; exit 1 ; }
 
 
 # Generate a throwaway sg config file to be used for making the demos in order to not log into
@@ -18,7 +18,7 @@ test -z "$SG_DEMO_PASSWORD" && { echo "Fatal Error: No SG_DEMO_PASSWORD set" ; e
 # If there are weird config issues, maybe this is the culprit.
 ASCIINEMA_CONFIG="$REPO_ROOT_DIR"/examples/asciinema.sgconfig
 cp "$REPO_ROOT_DIR"/examples/import-from-mongo/.sgconfig "$ASCIINEMA_CONFIG"
-SG_CONFIG_FILE=$ASCIINEMA_CONFIG sgr cloud login --username "$SG_DEMO_USER" --password "$SG_DEMO_PASSWORD"
+SG_CONFIG_FILE=$ASCIINEMA_CONFIG sgr cloud login-api --api-key "$SG_DEMO_KEY" --api-secret "$SG_DEMO_SECRET"
 
 # TODO the us-election asciicast requires scipy for the last part, consider replacing
 pip install scipy

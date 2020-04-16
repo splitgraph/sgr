@@ -8,7 +8,7 @@ import shutil
 import click
 
 import splitgraph.commandline as cmd
-from splitgraph.commandline.cloud import register_c, login_c, curl_c
+from splitgraph.commandline.cloud import register_c, login_c, curl_c, login_api_c
 from splitgraph.commandline.engine import (
     add_engine_c,
     delete_engine_c,
@@ -46,7 +46,7 @@ STRUCTURE = [
     ("Miscellaneous", ["rm", "init", "cleanup", "prune", "config", "dump", "eval", "upgrade"]),
     ("Sharing images", ["clone", "push", "pull", "upstream"]),
     ("Splitfile execution", ["build", "rebuild", "provenance", "dependents"]),
-    ("Splitgraph Cloud", ["cloud register", "cloud login", "cloud curl"]),
+    ("Splitgraph Cloud", ["cloud register", "cloud login", "cloud login-api", "cloud curl"]),
 ]
 
 # Map command names to Click command instances where they don't have the expected (cmd_name + '_c') format
@@ -64,6 +64,7 @@ STRUCTURE_CMD_OVERRIDE = {
     "engine version": version_engine_c,
     "cloud register": register_c,
     "cloud login": login_c,
+    "cloud login-api": login_api_c,
     "cloud curl": curl_c,
 }
 

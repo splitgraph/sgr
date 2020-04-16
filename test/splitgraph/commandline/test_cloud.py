@@ -7,7 +7,7 @@ import pytest
 from click.testing import CliRunner
 
 from splitgraph.__version__ import __version__
-from splitgraph.commandline.cloud import register_c, login_c, curl_c
+from splitgraph.commandline.cloud import register_c, login_c, curl_c, login_api_c
 from splitgraph.config import create_config_dict
 from splitgraph.exceptions import AuthAPIError
 
@@ -15,6 +15,8 @@ _REMOTE = "remote_engine"
 _ENDPOINT = "http://some-auth-service"
 _SAMPLE_ACCESS = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYmYiOjE1ODA1OTQyMzQsImVtYWlsX3ZlcmlmaWVkIjpmYWxzZSwiZW1haWwiOiJzb21ldXNlckBleGFtcGxlLmNvbSIsImV4cCI6MTU4MDU5NzgzNCwidXNlcl9pZCI6IjEyM2U0NTY3LWU4OWItMTJkMy1hNDU2LTQyNjY1NTQ0MDAwMCIsImdyYW50IjoiYWNjZXNzIiwidXNlcm5hbWUiOiJzb21ldXNlciIsImlhdCI6MTU4MDU5NDIzNH0.YEuNhqKfFoxHloohfxInSEV9rnivXcF9SvFP72Vv1mDDsaqlRqCjKYM4S7tdSMap5__e3_UTwE_CpH8eI7DdePjMu8AOFXwFHPl34AAxZgavP4Mly0a0vrMsxNJ4KbtmL5-7ih3uneTEuZLt9zQLUh-Bi_UYlEYwGl8xgz5dDZ1YlwTEMsqSrDnXdjl69CTk3vVHIQdxtki4Ng7dZhbOnEdJIRsZi9_VdMlsg2TIU-0FsU2bYYBWktms5hyAAH0RkHYfvjGwIRirSEjxTpO9vci-eAsF8C4ohTUg6tajOcyWz8d7JSaJv_NjLFMZI9mC09hchbQZkw-37CdbS_8Yvw"
 _SAMPLE_REFRESH = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYmYiOjE1NzYzMTk5MTYsImlhdCI6MTU3NjMxOTkxNiwiZW1haWwiOiJzb21ldXNlckBleGFtcGxlLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjpmYWxzZSwicmVmcmVzaF90b2tlbl9zZWNyZXQiOiJzb21lc2VjcmV0IiwiZXhwIjoxNTc4OTExOTE2LCJ1c2VyX2lkIjoiMTIzZTQ1NjctZTg5Yi0xMmQzLWE0NTYtNDI2NjU1NDQwMDAwIiwidXNlcm5hbWUiOiJzb21ldXNlciIsInJlZnJlc2hfdG9rZW5fa2V5Ijoic29tZWtleSIsImdyYW50IjoicmVmcmVzaCJ9.lO3nN3Tmu3twwUjrWsVpBq7nHHEvLnOGXeMkXXv4PRBADUAHyhmmaIPzgccq9XlwpLIexBAxTKJ4GaxSQufKUVLbzAKIMHqxiGTzELY6JMyUvMDHKeKNsq6FdhHxXoKa96fHaDDa65eGcSRSKS3Yr-9sBiANMBJGRbwypYw41gf61pewMA8TXqBmA-mvsBzMUaQNz1DfjkkpHs4SCERPK0GhYSJwDAwK8U3wG47S9k-CQqpq2B99yRRrdSVRzA_lcKe7GlF-Pw6hbRR7xBPBtX61pPME5hFUCPcwYWYXa_KhqEx9IF9edt9UahZuBudaVLmTdKKWgE9M53jQofxNzg"
+_SAMPLE_API_KEY = "abcdef123456"
+_SAMPLE_API_SECRET = "654321fedcba"
 
 
 def _register_callback(request, uri, response_headers):
@@ -46,13 +48,25 @@ def _refresh_token_callback(request, uri, response_headers):
     ]
 
 
+def _access_token_callback(request, uri, response_headers):
+    assert json.loads(request.body) == {
+        "api_key": _SAMPLE_API_KEY,
+        "api_secret": _SAMPLE_API_SECRET,
+    }
+    return [
+        200,
+        response_headers,
+        json.dumps({"access_token": _SAMPLE_ACCESS}),
+    ]
+
+
 def _create_creds_callback(request, uri, response_headers):
     assert json.loads(request.body) == {"password": "somepassword"}
     assert request.headers["Authorization"] == "Bearer %s" % _SAMPLE_ACCESS
     return [
         200,
         response_headers,
-        json.dumps({"key": "abcdef123456", "secret": "654321fedcba"}),
+        json.dumps({"key": _SAMPLE_API_KEY, "secret": _SAMPLE_API_SECRET}),
     ]
 
 
@@ -115,8 +129,8 @@ def test_commandline_registration_normal():
             "SG_REPO_LOOKUP": "remote_engine",
             "remotes": {
                 "remote_engine": {
-                    "SG_ENGINE_USER": "abcdef123456",
-                    "SG_ENGINE_PWD": "654321fedcba",
+                    "SG_ENGINE_USER": _SAMPLE_API_KEY,
+                    "SG_ENGINE_PWD": _SAMPLE_API_SECRET,
                     "SG_NAMESPACE": "someuser",
                     "SG_CLOUD_REFRESH_TOKEN": _SAMPLE_REFRESH,
                     "SG_CLOUD_ACCESS_TOKEN": _SAMPLE_ACCESS,
@@ -235,8 +249,8 @@ def test_commandline_login_normal():
             "SG_REPO_LOOKUP": _REMOTE,
             "remotes": {
                 "remote_engine": {
-                    "SG_ENGINE_USER": "abcdef123456",
-                    "SG_ENGINE_PWD": "654321fedcba",
+                    "SG_ENGINE_USER": _SAMPLE_API_KEY,
+                    "SG_ENGINE_PWD": _SAMPLE_API_SECRET,
                     "SG_NAMESPACE": "someuser",
                     "SG_CLOUD_REFRESH_TOKEN": _SAMPLE_REFRESH,
                     "SG_CLOUD_ACCESS_TOKEN": _SAMPLE_ACCESS,
@@ -262,8 +276,8 @@ def test_commandline_login_normal():
             "SG_REPO_LOOKUP": _REMOTE,
             "remotes": {
                 "remote_engine": {
-                    "SG_ENGINE_USER": "abcdef123456",
-                    "SG_ENGINE_PWD": "654321fedcba",
+                    "SG_ENGINE_USER": _SAMPLE_API_KEY,
+                    "SG_ENGINE_PWD": _SAMPLE_API_SECRET,
                     "SG_NAMESPACE": "someuser",
                     "SG_CLOUD_REFRESH_TOKEN": _SAMPLE_REFRESH,
                     "SG_CLOUD_ACCESS_TOKEN": _SAMPLE_ACCESS,
@@ -271,6 +285,48 @@ def test_commandline_login_normal():
             },
         },
     )
+
+
+@httpretty.activate(allow_net_connect=False)
+def test_commandline_login_api():
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST, _ENDPOINT + "/access_token", body=_access_token_callback
+    )
+
+    source_config = _make_dummy_config_dict()
+
+    runner = CliRunner()
+    with _patch_login_funcs(source_config) as (pc, ic):
+        result = runner.invoke(
+            login_api_c,
+            args=[
+                "--api-key",
+                _SAMPLE_API_KEY,
+                "--api-secret",
+                _SAMPLE_API_SECRET,
+                "--remote",
+                _REMOTE,
+            ],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0
+        print(result.output)
+
+    pc.assert_called_once_with(
+        source_config,
+        {
+            "SG_REPO_LOOKUP": _REMOTE,
+            "remotes": {
+                "remote_engine": {
+                    "SG_NAMESPACE": "someuser",
+                    "SG_CLOUD_ACCESS_TOKEN": _SAMPLE_ACCESS,
+                    "SG_ENGINE_USER": _SAMPLE_API_KEY,
+                    "SG_ENGINE_PWD": _SAMPLE_API_SECRET,
+                }
+            },
+        },
+    )
+    ic.assert_called_once_with("splitgraph_test_engine_", source_config["SG_CONFIG_FILE"])
 
 
 def _make_dummy_config_dict():
