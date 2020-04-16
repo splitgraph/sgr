@@ -85,15 +85,20 @@ def _update_repo_lookup(config, remote):
     "--overwrite", is_flag=True, help="Overwrite old API keys in the config if they exist"
 )
 def login_c(username, password, remote, overwrite):
-    """Log into a Splitgraph registry.
+    """Log into a Splitgraph registry with username/password.
 
     This will generate a new refresh token (to use the Splitgraph query API)
     and API keys to let sgr access the registry (if they don't already exist
     in the configuration file or if the actual username has changed).
+
+    Note that if you already have generated an API key pair but it's not
+    in the configuration file, this will generate a new pair instead of
+    restoring the existing one, as the API secret is only stored in the configuration file.
+
+    If you want to log in using an existing API key pair, use `sgr cloud login-api` instead.
     """
     from splitgraph.config import CONFIG
-    from splitgraph.cloud import AuthAPIClient
-    from splitgraph.cloud import get_token_claim
+    from splitgraph.cloud import AuthAPIClient, get_token_claim
 
     client = AuthAPIClient(remote)
 
@@ -131,6 +136,42 @@ def login_c(username, password, remote, overwrite):
         config_patch["remotes"][remote]["SG_ENGINE_PWD"] = secret
         click.echo("Acquired new API keys")
 
+    config_path = patch_and_save_config(CONFIG, config_patch)
+    inject_config_into_engines(CONFIG["SG_ENGINE_PREFIX"], config_path)
+
+
+@click.command("login-api")
+@click.option("--api-key", prompt="API key")
+@click.option("--api-secret", prompt="API secret", confirmation_prompt=False, hide_input=True)
+@click.option(
+    "--remote", default="data.splitgraph.com", help="Name of the remote registry to log into.",
+)
+def login_api_c(api_key, api_secret, remote):
+    """Log into a Splitgraph registry using existing API keys.
+
+    This will inject the API keys for the registry into the configuration file
+    and generate a new access token.
+    """
+    from splitgraph.cloud import AuthAPIClient, get_token_claim
+    from splitgraph.config import CONFIG
+
+    client = AuthAPIClient(remote)
+    access = client.get_access_token_from_api(api_key, api_secret)
+
+    namespace = get_token_claim(access, "username")
+
+    click.echo("Logged into %s as %s" % (remote, namespace))
+    config_patch = {
+        "SG_REPO_LOOKUP": _update_repo_lookup(CONFIG, remote),
+        "remotes": {
+            remote: {
+                "SG_NAMESPACE": namespace,
+                "SG_CLOUD_ACCESS_TOKEN": access,
+                "SG_ENGINE_USER": api_key,
+                "SG_ENGINE_PWD": api_secret,
+            }
+        },
+    }
     config_path = patch_and_save_config(CONFIG, config_patch)
     inject_config_into_engines(CONFIG["SG_ENGINE_PREFIX"], config_path)
 
@@ -216,5 +257,6 @@ def cloud_c():
 
 
 cloud_c.add_command(login_c)
+cloud_c.add_command(login_api_c)
 cloud_c.add_command(register_c)
 cloud_c.add_command(curl_c)

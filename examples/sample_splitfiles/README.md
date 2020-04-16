@@ -7,15 +7,9 @@ This directory contains loose sample Splitfiles that can be run against various 
 
 ## Running
 
-You need to be logged into Splitgraph Cloud. Do:
+You need to be logged into Splitgraph Cloud. You can register for Splitgraph Cloud with `sgr cloud register`.
 
-    sgr cloud register
-    
-or
-
-    sgr cloud login
-    
-if you've already registered. To run a Splitfile, do
+To run a Splitfile, do
 
     sgr build [filename] -o [output repository name]
 

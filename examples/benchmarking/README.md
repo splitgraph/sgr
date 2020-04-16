@@ -25,7 +25,7 @@ docker-compose up -d
 sgr init
 ```
 
-You need to have been logged into the registry (`sgr cloud login`).
+You need to have been logged into the registry (`sgr cloud login` or `sgr cloud login-api`).
 
 You can also use your own engine that's managed by `sgr engine`.
 
