@@ -437,7 +437,7 @@ def log_engine_c(name, follow):
 
     if follow:
         for line in container.logs(stream=True):
-            click.echo(line)
+            click.echo(line, nl=False)
     else:
         click.echo(container.logs())
 
