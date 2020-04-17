@@ -45,6 +45,32 @@ if TYPE_CHECKING:
 _PROGRESS_EVERY = 5 * 1024 * 1024
 
 
+def _generate_select_queries(
+    engine: "PostgresEngine",
+    schema: str,
+    tables: List[str],
+    columns: Sequence[str],
+    qual_sql: Optional[Composable] = None,
+    qual_args: Optional[Tuple] = None,
+) -> List[bytes]:
+    cur = engine.connection.cursor()
+
+    queries = []
+    for table in tables:
+        query = (
+            SQL("SELECT ")
+            + SQL(",").join(Identifier(c) for c in columns)
+            + SQL(" FROM {}.{}").format(Identifier(schema), Identifier(table))
+            + (SQL(" WHERE ") + qual_sql if qual_args else SQL(""))
+        )
+        query = cur.mogrify(query, qual_args)
+        queries.append(query)
+
+    cur.close()
+    logging.debug("Returning queries %r", queries)
+    return queries
+
+
 def _delete_temporary_table(engine: "PostgresEngine", schema: str, table: str) -> None:
     """
     Workaround for Multicorn deadlocks at end_scan time, supposed to be run in a separate thread.
@@ -97,6 +123,67 @@ class QueryPlan:
             ]
         )
         self.tracer.log("filter_objects")
+
+        # Prepare a list of objects to query
+
+        # Special fast case: single-chunk groups can all be batched together
+        # and queried directly without having to copy them to a staging table.
+        # We also grab all fragments from multiple-fragment groups and batch them together
+        # for future application.
+        #
+        # Technically, we could do multiple batches of application for these groups
+        # (apply first batch to the staging table, extract the result, clean the table,
+        # apply next batch etc): in the middle of it we could also talk back to the object
+        # manager and release the objects that we don't need so that they can be garbage
+        # collected. The tradeoff is that we perform more calls to apply_fragments (hence
+        # more roundtrips).
+        self.non_singletons, self.singletons = self._extract_singleton_fragments()
+
+        logging.info(
+            "Fragment grouping: %d singletons, %d non-singletons",
+            len(self.singletons),
+            len(self.non_singletons),
+        )
+        self.tracer.log("group_fragments")
+
+        self.sql_quals, self.sql_qual_vals = quals_to_sql(
+            quals, column_types={c.name: c.pg_type for c in self.table.table_schema}
+        )
+
+        if self.singletons:
+            self.singleton_queries = _generate_select_queries(
+                self.object_manager.object_engine,
+                SPLITGRAPH_META_SCHEMA,
+                self.singletons,
+                columns,
+                qual_sql=self.sql_quals,
+                qual_args=self.sql_qual_vals,
+            )
+        else:
+            self.singleton_queries = []
+        self.tracer.log("generate_singleton_queries")
+
+    def _extract_singleton_fragments(self) -> Tuple[List[str], List[str]]:
+        # Get fragment boundaries (min-max PKs of every fragment).
+        table_pk = [(t[1], t[2]) for t in self.table.table_schema if t[3]]
+        if not table_pk:
+            table_pk = [(t[1], t[2]) for t in self.table.table_schema]
+        object_pks = self.object_manager.get_min_max_pks(self.filtered_objects, table_pk)
+        # Group fragments into non-overlapping groups: those can be applied independently of each other.
+        object_groups = get_chunk_groups(
+            [
+                (object_id, min_max[0], min_max[1])
+                for object_id, min_max in zip(self.filtered_objects, object_pks)
+            ]
+        )
+        singletons: List[str] = []
+        non_singletons: List[str] = []
+        for group in object_groups:
+            if len(group) == 1:
+                singletons.append(group[0][0])
+            else:
+                non_singletons.extend(object_id for object_id, _, _ in group)
+        return non_singletons, singletons
 
 
 QueryPlanCacheKey = Tuple[Optional[Tuple[Tuple[Tuple[str, str, Any]]]], Tuple[str]]
@@ -173,6 +260,8 @@ class Table:
             plan.tracer = Tracer()
             plan.tracer.log("resolve_objects")
             plan.tracer.log("filter_objects")
+            plan.tracer.log("group_fragments")
+            plan.tracer.log("generate_singleton_queries")
             return plan
 
         plan = QueryPlan(self, quals, columns)
@@ -271,15 +360,8 @@ class Table:
         :return: Generator of queries (bytes), a callback and a query plan object (containing stats
             that are fully populated after the callback has been called to end the query).
         """
-
-        sql_quals, sql_qual_vals = quals_to_sql(
-            quals, column_types={c.name: c.pg_type for c in self.table_schema}
-        )
-
         plan = self.get_query_plan(quals, columns)
         required_objects = plan.filtered_objects
-
-        object_manager = self.repository.objects
         logging.info(
             "Using %d fragments (%s) to satisfy the query",
             len(required_objects),
@@ -288,46 +370,13 @@ class Table:
         if not required_objects:
             return cast(Iterator[bytes], []), cast(Callable, _empty_callback), plan
 
-        # Special fast case: single-chunk groups can all be batched together
-        # and queried directly without having to copy them to a staging table.
-        # We also grab all fragments from multiple-fragment groups and batch them together
-        # for future application.
-        #
-        # Technically, we could do multiple batches of application for these groups
-        # (apply first batch to the staging table, extract the result, clean the table,
-        # apply next batch etc): in the middle of it we could also talk back to the object
-        # manager and release the objects that we don't need so that they can be garbage
-        # collected. The tradeoff is that we perform more calls to apply_fragments (hence
-        # more roundtrips).
-        non_singletons, singletons = self._extract_singleton_fragments(
-            object_manager, required_objects
-        )
-
-        logging.info(
-            "Fragment grouping: %d singletons, %d non-singletons",
-            len(singletons),
-            len(non_singletons),
-        )
-        plan.tracer.log("group_fragments")
-
-        if singletons:
-            queries = self._generate_select_queries(
-                SPLITGRAPH_META_SCHEMA,
-                singletons,
-                columns,
-                qual_sql=sql_quals,
-                qual_args=sql_qual_vals,
-            )
-        else:
-            queries = []
-        plan.tracer.log("generate_singleton_queries")
-
-        if not non_singletons:
+        object_manager = self.repository.objects
+        if not plan.non_singletons:
             with object_manager.ensure_objects(
                 self, objects=required_objects, defer_release=True, tracer=plan.tracer
             ) as eo_result:
                 _, release_callback = cast(Tuple, eo_result)
-                return iter(queries), cast(Callable, release_callback), plan
+                return iter(plan.singleton_queries), cast(Callable, release_callback), plan
 
         def _generate_nonsingleton_query():
             # If we have fragments that need applying to a staging area, we don't want to
@@ -375,24 +424,24 @@ class Table:
             # Apply the fragments (just the parts that match the qualifiers) to the staging area
             if quals:
                 engine.apply_fragments(
-                    [(SPLITGRAPH_META_SCHEMA, o) for o in non_singletons],
+                    [(SPLITGRAPH_META_SCHEMA, o) for o in plan.non_singletons],
                     SPLITGRAPH_META_SCHEMA,
                     staging_table,
-                    extra_quals=sql_quals,
-                    extra_qual_args=sql_qual_vals,
+                    extra_quals=plan.sql_quals,
+                    extra_qual_args=plan.sql_qual_vals,
                     schema_spec=self.table_schema,
                 )
             else:
                 engine.apply_fragments(
-                    [(SPLITGRAPH_META_SCHEMA, o) for o in non_singletons],
+                    [(SPLITGRAPH_META_SCHEMA, o) for o in plan.non_singletons],
                     SPLITGRAPH_META_SCHEMA,
                     staging_table,
                     schema_spec=self.table_schema,
                 )
             engine.commit()
-            query = self._generate_select_queries(SPLITGRAPH_META_SCHEMA, [staging_table], columns)[
-                0
-            ]
+            query = _generate_select_queries(
+                engine, SPLITGRAPH_META_SCHEMA, [staging_table], columns
+            )[0]
             yield query
 
         with object_manager.ensure_objects(
@@ -400,7 +449,7 @@ class Table:
         ) as eo_result:
             _, release_callback = cast(Tuple, eo_result)
             return (
-                itertools.chain(queries, _generate_nonsingleton_query()),
+                itertools.chain(plan.singleton_queries, _generate_nonsingleton_query()),
                 cast(Callable, release_callback),
                 plan,
             )
@@ -541,30 +590,6 @@ class Table:
         object_manager.register_objects(list(valid_objects.values()))
         return list(valid_objects)
 
-    def _extract_singleton_fragments(
-        self, object_manager: "ObjectManager", required_objects: List[str]
-    ) -> Tuple[List[str], List[str]]:
-        # Get fragment boundaries (min-max PKs of every fragment).
-        table_pk = [(t[1], t[2]) for t in self.table_schema if t[3]]
-        if not table_pk:
-            table_pk = [(t[1], t[2]) for t in self.table_schema]
-        object_pks = object_manager.get_min_max_pks(required_objects, table_pk)
-        # Group fragments into non-overlapping groups: those can be applied independently of each other.
-        object_groups = get_chunk_groups(
-            [
-                (object_id, min_max[0], min_max[1])
-                for object_id, min_max in zip(required_objects, object_pks)
-            ]
-        )
-        singletons: List[str] = []
-        non_singletons: List[str] = []
-        for group in object_groups:
-            if len(group) == 1:
-                singletons.append(group[0][0])
-            else:
-                non_singletons.extend(object_id for object_id, _, _ in group)
-        return non_singletons, singletons
-
     def _create_staging_table(self) -> str:
         staging_table = get_temporary_table_id()
 
@@ -576,29 +601,3 @@ class Table:
             unlogged=True,
         )
         return staging_table
-
-    def _generate_select_queries(
-        self,
-        schema: str,
-        tables: List[str],
-        columns: List[str],
-        qual_sql: Optional[Composable] = None,
-        qual_args: Optional[Tuple] = None,
-    ) -> List[bytes]:
-        engine = self.repository.object_engine
-        cur = engine.connection.cursor()
-
-        queries = []
-        for table in tables:
-            query = (
-                SQL("SELECT ")
-                + SQL(",").join(Identifier(c) for c in columns)
-                + SQL(" FROM {}.{}").format(Identifier(schema), Identifier(table))
-                + (SQL(" WHERE ") + qual_sql if qual_args else SQL(""))
-            )
-            query = cur.mogrify(query, qual_args)
-            queries.append(query)
-
-        cur.close()
-        logging.debug("Returning queries %r", queries)
-        return queries
