@@ -35,7 +35,6 @@ from splitgraph.exceptions import ObjectIndexingError
 
 if TYPE_CHECKING:
     from splitgraph.core.image import Image
-    from splitgraph.core.object_manager import ObjectManager
     from splitgraph.core.repository import Repository
     from splitgraph.engine.postgres.engine import PostgresEngine
 
@@ -45,30 +44,35 @@ if TYPE_CHECKING:
 _PROGRESS_EVERY = 5 * 1024 * 1024
 
 
-def _generate_select_queries(
+def _generate_select_query(
     engine: "PostgresEngine",
-    schema: str,
-    tables: List[str],
+    table: bytes,
     columns: Sequence[str],
     qual_sql: Optional[Composable] = None,
     qual_args: Optional[Tuple] = None,
-) -> List[bytes]:
+) -> bytes:
     cur = engine.connection.cursor()
 
-    queries = []
-    for table in tables:
-        query = (
-            SQL("SELECT ")
-            + SQL(",").join(Identifier(c) for c in columns)
-            + SQL(" FROM {}.{}").format(Identifier(schema), Identifier(table))
-            + (SQL(" WHERE ") + qual_sql if qual_args else SQL(""))
-        )
-        query = cur.mogrify(query, qual_args)
-        queries.append(query)
+    query = (
+        SQL("SELECT ")
+        + SQL(",").join(Identifier(c) for c in columns)
+        + SQL(" FROM " + table.decode("utf-8"))
+        + (SQL(" WHERE ") + qual_sql if qual_args else SQL(""))
+    )
+    query = cur.mogrify(query, qual_args)
 
     cur.close()
-    logging.debug("Returning queries %r", queries)
-    return queries
+    return query
+
+
+def _generate_table_names(engine: "PostgresEngine", schema: str, tables: List[str]) -> List[bytes]:
+    result = []
+    cur = engine.connection.cursor()
+    for table in tables:
+        result.append(cur.mogrify(SQL("{}.{}").format(Identifier(schema), Identifier(table))))
+    cur.close()
+    logging.debug("Returning tables %r", tables)
+    return result
 
 
 def _delete_temporary_table(engine: "PostgresEngine", schema: str, table: str) -> None:
@@ -151,13 +155,8 @@ class QueryPlan:
         )
 
         if self.singletons:
-            self.singleton_queries = _generate_select_queries(
-                self.object_manager.object_engine,
-                SPLITGRAPH_META_SCHEMA,
-                self.singletons,
-                columns,
-                qual_sql=self.sql_quals,
-                qual_args=self.sql_qual_vals,
+            self.singleton_queries = _generate_table_names(
+                self.object_manager.object_engine, SPLITGRAPH_META_SCHEMA, self.singletons
             )
         else:
             self.singleton_queries = []
@@ -439,10 +438,8 @@ class Table:
                     schema_spec=self.table_schema,
                 )
             engine.commit()
-            query = _generate_select_queries(
-                engine, SPLITGRAPH_META_SCHEMA, [staging_table], columns
-            )[0]
-            yield query
+            table_name = _generate_table_names(engine, SPLITGRAPH_META_SCHEMA, [staging_table])[0]
+            yield table_name
 
         with object_manager.ensure_objects(
             self, objects=required_objects, defer_release=True, tracer=plan.tracer
@@ -465,12 +462,16 @@ class Table:
         :return: Generator of dictionaries of results.
         """
 
-        query_gen, release_callback, _ = self.query_indirect(columns, quals)
+        table_gen, release_callback, plan = self.query_indirect(columns, quals)
         engine = self.repository.object_engine
 
         def _generate_results():
-            for query in query_gen:
-                result = engine.run_sql(query)
+            for table in table_gen:
+                result = engine.run_sql(
+                    _generate_select_query(
+                        engine, table, plan.columns, plan.sql_quals, plan.sql_qual_vals
+                    )
+                )
                 for row in result:
                     yield {c: v for c, v in zip(columns, row)}
 

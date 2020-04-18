@@ -67,24 +67,18 @@ RUN ldconfig
 RUN mkdir -p /output/root
 
 #####
-##### cstore_fdw
+##### cstore_fdw and multicorn
 #####
 
-FROM toolchain AS builder_cstore
+FROM toolchain AS builder_cstore_multicorn
 COPY ./engine/src/cstore_fdw /src/cstore_fdw
-COPY ./engine/build_scripts/fdws/cstore_fdw /build
-RUN /build/build_cstore_fdw.sh
-
-
-#####
-##### multicorn
-#####
-
-FROM toolchain AS builder_multicorn
 COPY ./engine/src/Multicorn /src/Multicorn
-COPY ./engine/build_scripts/fdws/multicorn /build
-RUN /build/build_multicorn.sh
 
+COPY ./engine/build_scripts/fdws/multicorn /build
+COPY ./engine/build_scripts/fdws/cstore_fdw /build
+
+RUN /build/build_cstore_fdw.sh
+RUN /build/build_multicorn.sh
 
 #####
 ##### mongo_fdw
@@ -141,24 +135,40 @@ RUN apt-get update -qq && \
 ENV LANG C.UTF-8
 ENV LC_ALL C.UTF-8
 
+# Install Splitgraph itself (required for layered querying)
+
+RUN mkdir -p /var/lib/splitgraph/objects && chmod 777 /var/lib/splitgraph/objects
+
+# Do the installation in two phases to use Docker caching: first,
+# install all the dependencies and then copy the Splitgraph code over (way later in the build).
+# That way, if we just change the code, we only need to rebuild one last layer rather than
+# reinstall all dependencies from scratch. We also do dependency installation before
+# copying over various FDW SOs, since those are cheaper to copy and can get rebuilt more often.
+
+# However, we need to make Poetry think that we actually have a genuine package
+# that we want to install in editable mode in here, so we create and copy some files to fool it.
+RUN mkdir -p /splitgraph/splitgraph && touch /splitgraph/splitgraph/__init__.py
+COPY poetry.lock pyproject.toml README.md /splitgraph/
+RUN mkdir /build
+COPY ./engine/build_scripts/build_splitgraph.sh /build/
+RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip /build/build_splitgraph.sh
+
+
 RUN mkdir ~/.gnupg && echo "disable-ipv6" >> ~/.gnupg/dirmngr.conf && \
     apt-key adv --homedir ~/.gnupg --keyserver hkp://keyserver.ubuntu.com --recv-keys 5072E1F5 && \
     echo "deb http://repo.mysql.com/apt/debian/ buster mysql-8.0" > /etc/apt/sources.list.d/mysql.list && \
     apt-get update -qq && apt-get install -y libmysqlclient-dev && rm -rf /var/lib/apt/lists/*
 
-# Extract and copy over all binaries from the builder containers
-
-COPY --from=builder_cstore /output/root /
-
+# Extract and copy over all binaries from the builder stages
 # This is slightly sad: whilst multicorn's make install respects DESTDIR,
 # python setup.py doesn't and installs it to /usr/local.
 # Since nothing else in here uses easy_install, we grab the .pth file and the unpacked egg.
 
-COPY --from=builder_multicorn /output/root /
-COPY --from=builder_multicorn \
+COPY --from=builder_cstore_multicorn /output/root /
+COPY --from=builder_cstore_multicorn \
     /usr/local/lib/python3.8/dist-packages/easy-install.pth \
     /usr/local/lib/python3.8/dist-packages/easy-install.pth
-COPY --from=builder_multicorn \
+COPY --from=builder_cstore_multicorn \
     /usr/local/lib/python3.8/dist-packages/multicorn-1.3.4.dev0-py3.8-linux-x86_64.egg \
     /usr/local/lib/python3.8/dist-packages/multicorn-1.3.4.dev0-py3.8-linux-x86_64.egg
 
@@ -175,23 +185,6 @@ ENV POSTGRES_USER sgr
 
 COPY ./engine/etc /etc/
 COPY ./engine/init_scripts /docker-entrypoint-initdb.d/
-
-# Install Splitgraph itself (required for layered querying)
-
-RUN mkdir -p /var/lib/splitgraph/objects && chmod 777 /var/lib/splitgraph/objects
-
-# Do the installation in two phases to use Docker caching: first,
-# install all the dependencies and then copy the Splitgraph code over. That way,
-# if we just change the code, we only need to rebuild one layer rather than
-# reinstall all dependencies from scratch.
-
-# However, we need to make Poetry think that we actually have a genuine package
-# that we want to install in editable mode in here, so we create and copy some files to fool it.
-RUN mkdir -p /splitgraph/splitgraph && touch /splitgraph/splitgraph/__init__.py
-COPY poetry.lock pyproject.toml README.md /splitgraph/
-RUN mkdir /build
-COPY ./engine/build_scripts/build_splitgraph.sh /build/
-RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip /build/build_splitgraph.sh
 
 # Delete bullseye from the apt sources list -- it can break things that inherit from
 # this image (and definitely breaks postgis install).
