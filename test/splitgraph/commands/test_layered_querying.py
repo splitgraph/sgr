@@ -3,6 +3,7 @@ import logging
 import time
 from datetime import datetime as dt
 from unittest import mock
+from unittest.mock import call
 
 import pytest
 from test.splitgraph.conftest import _assert_cache_occupancy, OUTPUT, prepare_lq_repo
@@ -13,7 +14,7 @@ from splitgraph.core.fragment_manager import get_chunk_groups
 from splitgraph.core.indexing.range import extract_min_max_pks
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.repository import clone, Repository
-from splitgraph.core.table import Table
+from splitgraph.core.table import _generate_select_query
 from splitgraph.engine import ResultShape, _prepare_engine_config
 from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import ObjectNotFoundError
@@ -463,7 +464,7 @@ def test_disjoint_table_lq_one_singleton(pg_repo_local):
 
 
 def test_disjoint_table_lq_indirect(pg_repo_local):
-    # Test querying tables indirectly (returning an SQL query)
+    # Test querying tables indirectly (returning some tables)
     prepare_lq_repo(pg_repo_local, commit_after_every=True, include_pk=True)
     fruits = pg_repo_local.images["latest"].get_table("fruits")
 
@@ -471,12 +472,9 @@ def test_disjoint_table_lq_indirect(pg_repo_local):
         columns=["fruit_id", "name"], quals=[[("fruit_id", "=", "3")]]
     )
 
-    # Check that we get an SQL query to the underlying chunks in the result as well as a callback
-    # to the ObjectManager to release the objects.
+    # Check that we get a list of chunks to query and a callback to release the results
     assert list(result) == [
-        b'SELECT "fruit_id","name" FROM "splitgraph_meta".'
-        b'"of0fb43e477311f82aa30055be303ff00599dfe155d737def0d00f06e07228b" '
-        b"WHERE ((\"fruit_id\"::integer = '3'))"
+        b'"splitgraph_meta"."of0fb43e477311f82aa30055be303ff00599dfe155d737def0d00f06e07228b"'
     ]
     assert len(callback) == 1
 
@@ -502,9 +500,10 @@ def test_disjoint_table_lq_two_singletons(pg_repo_local):
     with mock.patch.object(
         PostgresEngine, "apply_fragments", wraps=pg_repo_local.engine.apply_fragments
     ) as apply_fragments:
-        with mock.patch.object(
-            Table, "_generate_select_queries", wraps=fruits._generate_select_queries
-        ) as _generate_select_queries:
+
+        with mock.patch(
+            "splitgraph.core.table._generate_select_query", side_effect=_generate_select_query
+        ) as _gsc:
             assert list(
                 fruits.query(columns=["fruit_id", "name"], quals=[[("fruit_id", ">=", "3")]])
             ) == [
@@ -515,16 +514,22 @@ def test_disjoint_table_lq_two_singletons(pg_repo_local):
             assert apply_fragments.call_count == 0
 
             # Check that we generated two SELECT queries
-            _generate_select_queries.assert_called_once_with(
-                SPLITGRAPH_META_SCHEMA,
-                [
-                    "of0fb43e477311f82aa30055be303ff00599dfe155d737def0d00f06e07228b",
-                    "oaa6d009e485bfa91aec4ab6b0ed1ebcd67055f6a3420d29f26446b034f41cc",
-                ],
-                ["fruit_id", "name"],
-                qual_args=("3",),
-                qual_sql=mock.ANY,
-            )
+            assert _gsc.mock_calls == [
+                call(
+                    mock.ANY,
+                    b'"splitgraph_meta"."of0fb43e477311f82aa30055be303ff00599dfe155d737def0d00f06e07228b"',
+                    ["fruit_id", "name"],
+                    mock.ANY,
+                    ("3",),
+                ),
+                call(
+                    mock.ANY,
+                    b'"splitgraph_meta"."oaa6d009e485bfa91aec4ab6b0ed1ebcd67055f6a3420d29f26446b034f41cc"',
+                    ["fruit_id", "name"],
+                    mock.ANY,
+                    ("3",),
+                ),
+            ]
 
 
 def test_disjoint_table_lq_two_singletons_one_overwritten(pg_repo_local):
@@ -552,9 +557,9 @@ def test_disjoint_table_lq_two_singletons_one_overwritten(pg_repo_local):
     with mock.patch.object(
         PostgresEngine, "apply_fragments", wraps=pg_repo_local.engine.apply_fragments
     ) as apply_fragments:
-        with mock.patch.object(
-            Table, "_generate_select_queries", wraps=fruits._generate_select_queries
-        ) as _generate_select_queries:
+        with mock.patch(
+            "splitgraph.core.table._generate_select_query", side_effect=_generate_select_query
+        ) as _gsc:
             assert list(
                 fruits.query(columns=["fruit_id", "name"], quals=[[("fruit_id", ">=", "3")]])
             ) == [
@@ -583,16 +588,17 @@ def test_disjoint_table_lq_two_singletons_one_overwritten(pg_repo_local):
             )
 
             # Two calls to _generate_select_queries -- one to directly query the pk=3 chunk...
-            assert _generate_select_queries.call_args_list == [
+            assert _gsc.call_args_list == [
                 mock.call(
-                    SPLITGRAPH_META_SCHEMA,
-                    ["of0fb43e477311f82aa30055be303ff00599dfe155d737def0d00f06e07228b"],
+                    pg_repo_local.engine,
+                    b'"splitgraph_meta".'
+                    b'"of0fb43e477311f82aa30055be303ff00599dfe155d737def0d00f06e07228b"',
                     ["fruit_id", "name"],
-                    qual_args=("3",),
-                    qual_sql=mock.ANY,
+                    mock.ANY,
+                    ("3",),
                 ),
                 # ...and one to query the applied fragments in the second group.
-                mock.call(SPLITGRAPH_META_SCHEMA, mock.ANY, ["fruit_id", "name"]),
+                mock.call(pg_repo_local.engine, mock.ANY, ["fruit_id", "name"], mock.ANY, ("3",),),
             ]
 
             # Check the temporary table has been deleted since we've exhausted the query
@@ -606,9 +612,9 @@ def test_disjoint_table_lq_two_singletons_one_overwritten(pg_repo_local):
     with mock.patch.object(
         PostgresEngine, "apply_fragments", wraps=pg_repo_local.engine.apply_fragments
     ) as apply_fragments:
-        with mock.patch.object(
-            Table, "_generate_select_queries", wraps=fruits._generate_select_queries
-        ) as _generate_select_queries:
+        with mock.patch(
+            "splitgraph.core.table._generate_select_query", side_effect=_generate_select_query
+        ) as _gsc:
             assert list(
                 fruits.query(
                     columns=["fruit_id", "name"],
@@ -620,17 +626,23 @@ def test_disjoint_table_lq_two_singletons_one_overwritten(pg_repo_local):
             assert apply_fragments.call_count == 0
 
             # Single call to _generate_select_queries directly selecting rows from the two chunks
-            assert _generate_select_queries.call_args_list == [
-                mock.call(
-                    SPLITGRAPH_META_SCHEMA,
-                    [
-                        "of0fb43e477311f82aa30055be303ff00599dfe155d737def0d00f06e07228b",
-                        "oaa6d009e485bfa91aec4ab6b0ed1ebcd67055f6a3420d29f26446b034f41cc",
-                    ],
+            assert _gsc.mock_calls == [
+                call(
+                    mock.ANY,
+                    b'"splitgraph_meta".'
+                    b'"of0fb43e477311f82aa30055be303ff00599dfe155d737def0d00f06e07228b"',
                     ["fruit_id", "name"],
-                    qual_args=("3", "4"),
-                    qual_sql=mock.ANY,
-                )
+                    mock.ANY,
+                    ("3", "4"),
+                ),
+                call(
+                    mock.ANY,
+                    b'"splitgraph_meta".'
+                    b'"oaa6d009e485bfa91aec4ab6b0ed1ebcd67055f6a3420d29f26446b034f41cc"',
+                    ["fruit_id", "name"],
+                    mock.ANY,
+                    ("3", "4"),
+                ),
             ]
 
 
@@ -642,24 +654,23 @@ def test_disjoint_table_lq_two_singletons_one_overwritten_indirect(pg_repo_local
     pg_repo_local.run_sql("INSERT INTO fruits VALUES (4, 'fruit_4'), (5, 'fruit_5')")
     fruits = pg_repo_local.commit().get_table("fruits")
 
-    queries, callback, _ = fruits.query_indirect(columns=["fruit_id", "name"], quals=None)
+    tables, callback, _ = fruits.query_indirect(columns=["fruit_id", "name"], quals=None)
 
     # At this point, we've "claimed" all objects but haven't done anything with them.
     # We're not really testing object claiming here since the objects were created locally
     # (see test_object_cache_deferred in test_object_cache.py for a test for claims/releases)
     assert len(callback) == 1
 
-    # First, we emit queries that don't require materialization
-    # (NB: the ordering will change if we're asked to actually return sorted data).
+    # First, we emit cstore tables
     assert (
-        next(queries) == b'SELECT "fruit_id","name" FROM "splitgraph_meta".'
+        next(tables) == b'"splitgraph_meta".'
         b'"of0fb43e477311f82aa30055be303ff00599dfe155d737def0d00f06e07228b"'
     )
     assert len(callback) == 1
 
     # There's another singleton we can query directly.
     assert (
-        next(queries) == b'SELECT "fruit_id","name" FROM "splitgraph_meta".'
+        next(tables) == b'"splitgraph_meta".'
         b'"oaa6d009e485bfa91aec4ab6b0ed1ebcd67055f6a3420d29f26446b034f41cc"'
     )
     assert len(callback) == 1
@@ -668,7 +679,7 @@ def test_disjoint_table_lq_two_singletons_one_overwritten_indirect(pg_repo_local
     with mock.patch.object(
         PostgresEngine, "apply_fragments", wraps=pg_repo_local.engine.apply_fragments
     ) as apply_fragments:
-        next(queries)
+        next(tables)
         assert apply_fragments.call_count == 1
         args, _ = apply_fragments.call_args_list[0]
         tmp_table = args[2]
@@ -678,7 +689,7 @@ def test_disjoint_table_lq_two_singletons_one_overwritten_indirect(pg_repo_local
 
     # We've now exhausted the list of queries
     with pytest.raises(StopIteration):
-        next(queries)
+        next(tables)
 
     # ...but haven't called the callback yet
     assert pg_repo_local.engine.table_exists(SPLITGRAPH_META_SCHEMA, tmp_table)
@@ -699,16 +710,17 @@ def test_disjoint_table_lq_temp_table_deletion_doesnt_lock_up(pg_repo_local):
     pg_repo_local.run_sql("INSERT INTO fruits VALUES (4, 'fruit_4'), (5, 'fruit_5')")
     fruits = pg_repo_local.commit().get_table("fruits")
 
-    queries, callback, _ = fruits.query_indirect(columns=["fruit_id", "name"], quals=None)
+    tables, callback, plan = fruits.query_indirect(columns=["fruit_id", "name"], quals=None)
 
     # Force a materialization and get the query that makes us read from the temporary table.
-    last_table = list(queries)[-1]
+    last_table = list(tables)[-1]
     pg_repo_local.commit_engines()
 
     # Simulate Multicorn reading from the table by doing it from a different engine.
     conn_params = _prepare_engine_config(CONFIG)
     engine = PostgresEngine(conn_params=conn_params, name="test_engine")
-    engine.run_sql(last_table)
+    query = _generate_select_query(engine, last_table, ["fruit_id", "name"])
+    engine.run_sql(query)
     logging.info("Acquired read lock")
 
     # At this point, we're holding a lock on the table and callback will lock up, unless it's run
@@ -719,7 +731,7 @@ def test_disjoint_table_lq_temp_table_deletion_doesnt_lock_up(pg_repo_local):
     time.sleep(1)
 
     # We still can read from the table (callback spawned a thread which is locked trying to delete it).
-    engine.run_sql(last_table)
+    engine.run_sql(query)
 
     # Now drop the lock.
     logging.info("Dropping the lock")
@@ -728,7 +740,7 @@ def test_disjoint_table_lq_temp_table_deletion_doesnt_lock_up(pg_repo_local):
     # If this test assertion fails, make sure we're not left holding the lock.
     engine.autocommit = True
     with pytest.raises(ObjectNotFoundError):
-        engine.run_sql(last_table)
+        engine.run_sql(query)
 
 
 def test_get_chunk_groups():
