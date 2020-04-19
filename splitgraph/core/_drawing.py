@@ -89,7 +89,9 @@ def render_tree(repository: "Repository") -> None:
 
     # Join children to parents to prepare a tree structure for asciitree
     for image in all_images.values():
-        if image.parent_id is None:
+        if image.parent_id is None or image.parent_id not in tree_elements:
+            # If we only pulled a single image, it's possible that we won't have
+            # the metadata for the image's parent.
             continue
 
         tree_elements[image.parent_id][image.image_hash] = tree_elements[image.image_hash]
