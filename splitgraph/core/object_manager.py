@@ -235,10 +235,10 @@ class ObjectManager(FragmentManager):
                         partial_failure = e.reason
                     else:
                         partial_failure = self._generate_download_error(table, difference)
-            except Exception:
+            except Exception as e:
                 successful = self.get_downloaded_objects(to_fetch)
                 difference = list(set(to_fetch).difference(successful))
-                partial_failure = self._generate_download_error(table, difference)
+                partial_failure = self._generate_download_error(table, difference, cause=e)
 
             # No matter what, claim the space required by the newly downloaded objects.
             self._increase_cache_occupancy(successful)
@@ -272,7 +272,7 @@ class ObjectManager(FragmentManager):
             if not defer_release:
                 release_callback()
 
-    def _generate_download_error(self, table, difference):
+    def _generate_download_error(self, table, difference, cause=None):
         if table:
             error = "Not all objects required for %s:%s:%s have been fetched. Missing %s (%s)" % (
                 table.repository.to_schema(),
@@ -288,6 +288,8 @@ class ObjectManager(FragmentManager):
             )
         logging.error(error)
         partial_failure = ObjectCacheError(error)
+        if cause:
+            partial_failure.__cause__ = cause
         return partial_failure
 
     def _make_release_callback(
