@@ -6,23 +6,29 @@ to avoid a redundant connection to the engine.
 """
 
 import os.path
+from typing import List, Tuple
 from urllib.parse import urlparse
 
 from splitgraph.config import CONFIG
 
-SG_ENGINE_OBJECT_PATH = CONFIG["SG_ENGINE_OBJECT_PATH"]
+SG_ENGINE_OBJECT_PATH = str(CONFIG["SG_ENGINE_OBJECT_PATH"])
+
+# An object consists of three files: CStore file, CStore footer and the JSON schema spec.
+# We have to download them separately.
+ObjectUrls = Tuple[str, str, str]
 
 
-def verify(url):
+def verify(url: str):
     # If there's a file called /rootCA.pem in the engine, use it as the CA for
     # HTTPS S3 operations with .test domains (for testing with self-signed certs)
-    if urlparse(url).hostname.split(".")[-1] == "test":
+    hostname = urlparse(url).hostname
+    if hostname and hostname.split(".")[-1] == "test":
         return "/rootCA.pem" if os.path.exists("/rootCA.pem") else False
     else:
         return True
 
 
-def _remove(path):
+def _remove(path: str):
     # Wrapper around remove that doesn't throw if the file doesn't exist.
     try:
         os.remove(path)
@@ -30,7 +36,7 @@ def _remove(path):
         pass
 
 
-def upload_object(object_id, urls):
+def upload_object(object_id: str, urls: ObjectUrls):
     import requests
 
     object_path = os.path.join(SG_ENGINE_OBJECT_PATH, object_id)
@@ -41,7 +47,7 @@ def upload_object(object_id, urls):
             response.raise_for_status()
 
 
-def download_object(object_id, urls):
+def download_object(object_id: str, urls: ObjectUrls):
     import shutil
     import requests
 
@@ -53,24 +59,24 @@ def download_object(object_id, urls):
                 shutil.copyfileobj(response.raw, f)
 
 
-def set_object_schema(object_id, schema):
+def set_object_schema(object_id: str, schema: str):
     with open(os.path.join(SG_ENGINE_OBJECT_PATH, object_id + ".schema"), "w") as f:
         f.write(schema)
 
 
-def get_object_schema(object_id):
+def get_object_schema(object_id: str) -> str:
     with open(os.path.join(SG_ENGINE_OBJECT_PATH, object_id + ".schema")) as f:
         return f.read()
 
 
-def delete_object_files(object_id):
+def delete_object_files(object_id: str):
     object_path = os.path.join(SG_ENGINE_OBJECT_PATH, object_id)
     _remove(object_path)
     _remove(object_path + ".footer")
     _remove(object_path + ".schema")
 
 
-def get_object_size(object_id):
+def get_object_size(object_id: str) -> int:
     object_path = os.path.join(SG_ENGINE_OBJECT_PATH, object_id)
     return (
         os.path.getsize(object_path)
@@ -79,7 +85,7 @@ def get_object_size(object_id):
     )
 
 
-def list_objects():
+def list_objects() -> List[str]:
     from collections import defaultdict
 
     # Crude but faster than listing foreign tables (and hopefully consistent).
@@ -93,7 +99,7 @@ def list_objects():
     return [f for f, fs in objects.items() if len(fs) == 3]
 
 
-def object_exists(object_id):
+def object_exists(object_id: str) -> bool:
     # Check if the physical object file exists in storage.
     # Make sure to check for all 3 files to guard against partially failed writes.
     return all(

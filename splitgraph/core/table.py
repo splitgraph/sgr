@@ -62,7 +62,7 @@ def _generate_select_query(
     query = cur.mogrify(query, qual_args)
 
     cur.close()
-    return query
+    return cast(bytes, query)
 
 
 def _generate_table_names(engine: "PostgresEngine", schema: str, tables: List[str]) -> List[bytes]:
