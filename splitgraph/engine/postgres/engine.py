@@ -40,6 +40,7 @@ from splitgraph.__version__ import __version__
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCHEMA, SG_CMD_ASCII
 from splitgraph.core.common import ensure_metadata_schema, META_TABLES, get_data_safe
 from splitgraph.core.sql import select
+from splitgraph.core import server
 from splitgraph.core.types import TableColumn, TableSchema
 from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
 from splitgraph.exceptions import (
@@ -159,6 +160,7 @@ class PsycopgEngine(SQLEngine):
         pool: Optional[AbstractConnectionPool] = None,
         autocommit: bool = False,
         registry: bool = False,
+        in_fdw: bool = False,
         check_version: bool = True,
     ) -> None:
         """
@@ -178,6 +180,7 @@ class PsycopgEngine(SQLEngine):
         self.connected = False
         self.check_version = check_version
         self.registry = registry
+        self.in_fdw = in_fdw
 
         if conn_params:
             self.conn_params = conn_params
@@ -460,7 +463,7 @@ class PsycopgEngine(SQLEngine):
                     if "splitgraph_meta" in str(e):
                         raise ObjectNotFoundError(e)
                 elif isinstance(e, InvalidSchemaName):
-                    if "splitgraph_api." in str(e):
+                    if "splitgraph_api" in str(e):
                         raise EngineInitializationError(
                             "splitgraph_api not found on the engine. Has the engine been initialized?"
                         ) from e
@@ -520,6 +523,37 @@ class PsycopgEngine(SQLEngine):
             except DatabaseError:
                 self.rollback()
                 raise
+
+    def run_api_call(self, call: str, *args, schema: str = SPLITGRAPH_API_SCHEMA) -> Any:
+        # When we're inside of a foreign data wrapper on the engine itself,
+        # we get to avoid having to go through PostgreSQL to manage objects in
+        # the engine's filesystem and call various Python procedures directly.
+        # This also avoids the overhead of importing Python modules _again_
+        # inside of API plpython funcs.
+        if self.in_fdw:
+            func = getattr(server, call)
+            return func(*args)
+
+        return self.run_sql(
+            SQL("SELECT {}.{}" + "(" + ",".join(["%s"] * len(args)) + ")").format(
+                Identifier(schema), Identifier(call)
+            ),
+            args,
+            return_shape=ResultShape.ONE_ONE,
+        )
+
+    def run_api_call_batch(self, call: str, argslist, schema: str = SPLITGRAPH_API_SCHEMA):
+        if self.in_fdw:
+            func = getattr(server, call)
+            for args in argslist:
+                func(*args)
+        else:
+            self.run_sql_batch(
+                SQL("SELECT {}.{}" + "(" + ",".join(["%s"] * len(argslist[0])) + ")").format(
+                    Identifier(schema), Identifier(call)
+                ),
+                argslist,
+            )
 
     def dump_table_sql(
         self,
@@ -792,13 +826,11 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
     def get_object_schema(self, object_id: str) -> "TableSchema":
         result: "TableSchema" = []
 
-        for ordinal, column_name, column_type, is_pk in json.loads(
-            self.run_sql(
-                "SELECT splitgraph_api.get_object_schema(%s)",
-                (object_id,),
-                return_shape=ResultShape.ONE_ONE,
-            )
-        ):
+        call_result = self.run_api_call("get_object_schema", object_id)
+        if isinstance(call_result, str):
+            call_result = json.loads(call_result)
+
+        for ordinal, column_name, column_type, is_pk in call_result:
             assert isinstance(ordinal, int)
             assert isinstance(column_name, str)
             assert isinstance(column_type, str)
@@ -810,9 +842,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
     def _set_object_schema(self, object_id: str, schema_spec: "TableSchema") -> None:
         # Drop the comments from the schema spec (not stored in the object schema file).
         schema_spec = [s[:4] for s in schema_spec]
-        self.run_sql(
-            "SELECT splitgraph_api.set_object_schema(%s, %s)", (object_id, json.dumps(schema_spec))
-        )
+        self.run_api_call("set_object_schema", object_id, json.dumps(schema_spec))
 
     def dump_object_creation(
         self,
@@ -892,20 +922,11 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             stream.write("DROP TABLE pg_temp.cstore_tmp_ingestion;\n")
 
     def get_object_size(self, object_id: str) -> int:
-        return cast(
-            int,
-            self.run_sql(
-                "SELECT splitgraph_api.get_object_size(%s)",
-                (object_id,),
-                return_shape=ResultShape.ONE_ONE,
-            ),
-        )
+        return int(self.run_api_call("get_object_size", object_id))
 
     def delete_objects(self, object_ids: List[str]) -> None:
         self.unmount_objects(object_ids)
-        self.run_sql_batch(
-            "SELECT splitgraph_api.delete_object_files(%s)", [(o,) for o in object_ids]
-        )
+        self.run_api_call_batch("delete_object_files", [(o,) for o in object_ids])
 
     def unmount_objects(self, object_ids: List[str]) -> None:
         """Unmount objects from splitgraph_meta (this doesn't delete the physical files."""
@@ -920,12 +941,11 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
     def sync_object_mounts(self) -> None:
         """Scan through local object storage and synchronize it with the foreign tables in
         splitgraph_meta (unmounting non-existing objects and mounting existing ones)."""
-        object_ids = self.run_sql(
-            "SELECT splitgraph_api.list_objects()", return_shape=ResultShape.ONE_ONE
-        )
+        object_ids = self.run_api_call("list_objects")
 
         mounted_objects = self.run_sql(
-            "SELECT table_name FROM information_schema.tables WHERE table_schema = %s AND table_type = 'FOREIGN'",
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = %s AND table_type = 'FOREIGN'",
             (SPLITGRAPH_META_SCHEMA,),
             return_shape=ResultShape.MANY_ONE,
         )
@@ -1076,12 +1096,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         # foreign tables in spligraph_meta might be desynced for a variety of reasons,
         # so we have to handle all four cases of (physical object exists/doesn't exist,
         # foreign table exists/doesn't exist).
-
-        object_exists = self.run_sql(
-            select("object_exists", schema=SPLITGRAPH_API_SCHEMA, table_args="(%s)"),
-            (object_id,),
-            return_shape=ResultShape.ONE_ONE,
-        )
+        object_exists = bool(self.run_api_call("object_exists", object_id))
 
         # Try mounting the object
         if self.table_exists(SPLITGRAPH_META_SCHEMA, object_id):
