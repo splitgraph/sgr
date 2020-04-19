@@ -670,7 +670,7 @@ def get_engine(
             autocommit=autocommit,
             registry=is_registry,
             check_version=check_version,
-            in_fdw=use_fdw_params,
+            in_fdw=use_fdw_params and name == "LOCAL",
         )
     return _ENGINES[name]
 
