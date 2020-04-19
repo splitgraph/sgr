@@ -147,6 +147,9 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
                 to do with them.
 
         """
+        # Flip the global flag for engine constructors to use (see comment in splitgraph.config).
+        splitgraph.config.IN_FDW = True
+
         # Initialize the logger that will log to the engine's stderr: log timestamp and PID.
         logging.basicConfig(
             format="%(asctime)s [%(process)d] %(levelname)s %(message)s",
@@ -179,6 +182,3 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
 
         # A QueryPlan object for the last query with stats
         self.plan = None
-
-        # Flip the global flag for engine constructors to use (see comment in splitgraph.config).
-        splitgraph.config.IN_FDW = True

@@ -81,9 +81,8 @@ class ObjectManager(FragmentManager):
         :param limit_to: If specified, only the objects in this list will be returned.
         :return: Set of object IDs.
         """
-        objects: List[str] = self.object_engine.run_sql(
-            "SELECT splitgraph_api.list_objects()", return_shape=ResultShape.ONE_ONE
-        )
+        objects: List[str]
+        objects = self.object_engine.run_api_call("list_objects")
         if not limit_to:
             return objects
         return [o for o in objects if o in limit_to]

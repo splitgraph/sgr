@@ -78,11 +78,9 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
             # just the first one for logging)
             logging.debug("%s -> %s", object_id, url[0])
             try:
-                local_engine.run_sql(
-                    "SELECT splitgraph_api.upload_object(%s, %s)", (object_id, url)
-                )
+                local_engine.run_api_call("upload_object", object_id, url)
                 return object_id
-            except DatabaseError:
+            except Exception:
                 logging.exception("Error uploading object %s", object_id)
                 return None
 
@@ -141,10 +139,8 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
             logging.debug("%s -> %s", url[0], object_id)
 
             try:
-                local_engine.run_sql(
-                    "SELECT splitgraph_api.download_object(%s, %s)", (object_id, url)
-                )
-            except DatabaseError:
+                local_engine.run_api_call("download_object", object_id, url)
+            except Exception:
                 logging.exception("Error downloading object %s", object_id)
                 return None
 

@@ -5,17 +5,14 @@ tracking tables for changes and uploading/downloading tables to other remote eng
 By default, Splitgraph is backed by Postgres: see :mod:`splitgraph.engine.postgres` for an example of how to
 implement a different engine.
 """
-import itertools
 from abc import ABC
 from contextlib import contextmanager
-from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING, cast, Sequence
 
 from psycopg2.sql import Composed
 from psycopg2.sql import SQL, Identifier
 
-import splitgraph.config  # to access the IN_FDW global
 from splitgraph.config import CONFIG
 from splitgraph.config.config import get_singleton, ConfigDict, get_all_in_section
 from splitgraph.core.types import TableColumn, TableSchema
@@ -625,7 +622,7 @@ _ENGINES: Dict[str, "PostgresEngine"] = {}
 def get_engine(
     name: Optional[str] = None,
     use_socket: bool = False,
-    use_fdw_params: Optional[bool] = None,
+    use_fdw_params: bool = False,
     autocommit: bool = False,
 ) -> "PostgresEngine":
     """
@@ -638,9 +635,6 @@ def get_engine(
         will infer from the global splitgraph.config.IN_FDW flag.
     :param autocommit: If True, the engine will not open SQL transactions implicitly.
     """
-    if use_fdw_params is None:
-        use_fdw_params = splitgraph.config.IN_FDW
-
     from .postgres.engine import PostgresEngine
 
     if not name:
@@ -676,6 +670,7 @@ def get_engine(
             autocommit=autocommit,
             registry=is_registry,
             check_version=check_version,
+            in_fdw=use_fdw_params,
         )
     return _ENGINES[name]
 
