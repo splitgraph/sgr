@@ -597,6 +597,7 @@ class ObjectEngine:
         source_query: Union[bytes, Composed, str, SQL],
         schema_spec: TableSchema,
         source_query_args: Optional[Sequence[Any]],
+        overwrite: bool,
     ):
         """
         Stores a Splitgraph object using a source query in the actual format
@@ -606,6 +607,7 @@ class ObjectEngine:
         :param source_query: SELECT query that produces data required by the object
         :param schema_spec: Schema of the source table
         :param source_query_args: Arguments to mogrify into the source query.
+        :param overwrite: If True, will overwrite the object if it already exists.
         """
 
 

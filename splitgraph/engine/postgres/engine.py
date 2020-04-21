@@ -1090,6 +1090,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         source_query: Union[bytes, Composed, str, SQL],
         schema_spec: TableSchema,
         source_query_args=None,
+        overwrite=False,
     ) -> None:
 
         # The physical object storage (/var/lib/splitgraph/objects) and the actual
@@ -1116,10 +1117,16 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             self.mount_object(object_id, schema_spec=schema_spec)
 
         if object_exists:
-            logging.info(
-                "Object storage, %s, already exists", object_id,
-            )
-            return
+            if overwrite:
+                logging.info("Object %s already exists, will overwrite", object_id)
+                self.run_sql(
+                    SQL("TRUNCATE TABLE {}.{}").format(
+                        Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)
+                    )
+                )
+            else:
+                logging.info("Object %s already exists, skipping", object_id)
+                return
 
         # At this point, the foreign table mounting the object exists and we've established
         # that it's a brand new table, so insert data into it.
@@ -1251,6 +1258,13 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             pbar.set_postfix(object=object_id[:10] + "...")
             schema_spec = self.get_object_schema(object_id)
             remote_engine.mount_object(object_id, schema_spec=schema_spec)
+
+            # Truncate the remote object in case it already exists (we'll overwrite it).
+            remote_engine.run_sql(
+                SQL("TRUNCATE TABLE {}.{}").format(
+                    Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)
+                )
+            )
 
             stream = BytesIO()
             with self.connection.cursor() as cur:
