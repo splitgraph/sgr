@@ -371,6 +371,7 @@ class FragmentManager(MetadataManager):
         schema: str,
         extra_indexes: Optional[ExtraIndexInfo] = None,
         in_fragment_order: Optional[List[str]] = None,
+        overwrite: bool = False,
     ) -> List[str]:
         """
         Store and register multiple changesets as fragments.
@@ -379,6 +380,7 @@ class FragmentManager(MetadataManager):
         :param changesets: List of changeset dictionaries. Empty changesets will be ignored.
         :param schema: Schema the table is checked out into.
         :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
+        :param overwrite: Overwrite object if already exists.
         :return: List of created object IDs.
         """
         object_ids = []
@@ -417,6 +419,7 @@ class FragmentManager(MetadataManager):
                     object_id=object_id,
                     source_query=source_query,
                     schema_spec=add_ud_flag_column(table.table_schema),
+                    overwrite=overwrite,
                 )
                 self.object_engine.delete_table("pg_temp", tmp_object_id)
                 # There are some cases where an object can already exist in the object engine (in the cache)
@@ -510,6 +513,7 @@ class FragmentManager(MetadataManager):
         split_changeset: bool = False,
         extra_indexes: Optional[ExtraIndexInfo] = None,
         in_fragment_order: Optional[List[str]] = None,
+        overwrite: bool = False,
     ) -> None:
         """
         Flushes the pending changes from the audit table for a given table and records them,
@@ -565,7 +569,12 @@ class FragmentManager(MetadataManager):
 
             # Store the changesets and find out their object IDs.
             object_ids = self._store_changesets(
-                old_table, changesets, schema, extra_indexes, in_fragment_order=in_fragment_order
+                old_table,
+                changesets,
+                schema,
+                extra_indexes,
+                in_fragment_order=in_fragment_order,
+                overwrite=overwrite,
             )
             # Finally, link the table to the new set of objects.
             self.register_tables(
@@ -695,6 +704,7 @@ class FragmentManager(MetadataManager):
         chunk_id: Optional[int] = None,
         extra_indexes: Optional[ExtraIndexInfo] = None,
         in_fragment_order: Optional[List[str]] = None,
+        overwrite: bool = False,
         table_schema: Optional[TableSchema] = None,
     ) -> str:
         if source_schema == "pg_temp" and not table_schema:
@@ -749,6 +759,7 @@ class FragmentManager(MetadataManager):
                 source_query=source_query,
                 schema_spec=add_ud_flag_column(table_schema),
                 source_query_args=source_query_args,
+                overwrite=overwrite,
             )
         with self.metadata_engine.savepoint("object_register"):
             try:
@@ -799,6 +810,7 @@ class FragmentManager(MetadataManager):
         source_table: Optional[str] = None,
         extra_indexes: Optional[ExtraIndexInfo] = None,
         in_fragment_order: Optional[List[str]] = None,
+        overwrite: bool = False,
     ) -> List[str]:
         """
         Copies the full table verbatim into one or more new base fragments and registers them.
@@ -811,6 +823,7 @@ class FragmentManager(MetadataManager):
         :param source_table: Override the name of the table the source is stored in
         :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
         :param in_fragment_order: Key to sort data inside each chunk by.
+        :param overwrite: Overwrite physical objects that already exist.
         """
         source_schema = source_schema or repository.to_schema()
         source_table = source_table or table_name
@@ -832,6 +845,7 @@ class FragmentManager(MetadataManager):
                 chunk_size,
                 extra_indexes,
                 in_fragment_order=in_fragment_order,
+                overwrite=overwrite,
             )
 
         elif table_size:
@@ -843,6 +857,7 @@ class FragmentManager(MetadataManager):
                     extra_indexes=extra_indexes,
                     table_schema=table_schema,
                     in_fragment_order=in_fragment_order,
+                    overwrite=overwrite,
                 )
             ]
         else:
@@ -861,6 +876,7 @@ class FragmentManager(MetadataManager):
         extra_indexes: Optional[ExtraIndexInfo] = None,
         table_schema: Optional[TableSchema] = None,
         in_fragment_order: Optional[List[str]] = None,
+        overwrite: bool = False,
     ) -> List[str]:
         table_pk = [p[0] for p in self.object_engine.get_change_key(source_schema, source_table)]
         table_schema = table_schema or self.object_engine.get_full_table_schema(
@@ -936,6 +952,7 @@ class FragmentManager(MetadataManager):
                 extra_indexes=extra_indexes,
                 table_schema=table_schema,
                 in_fragment_order=in_fragment_order,
+                overwrite=overwrite,
             )
             object_ids.append(new_fragment)
 

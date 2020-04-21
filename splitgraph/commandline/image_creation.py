@@ -97,8 +97,18 @@ def checkout_c(image_spec, force, uncheckout, layered):
     help="JSON dictionary of extra indexes to calculate on the new objects.",
 )
 @click.option("-m", "--message", help="Optional commit message")
+@click.option(
+    "-o", "--overwrite", is_flag=True, help="Overwrite physical objects that already exist"
+)
 def commit_c(
-    repository, snap, chunk_size, chunk_sort_keys, split_changesets, index_options, message
+    repository,
+    snap,
+    chunk_size,
+    chunk_sort_keys,
+    split_changesets,
+    index_options,
+    message,
+    overwrite,
 ):
     """
     Commit changes to a checked-out Splitgraph repository.
@@ -154,6 +164,7 @@ def commit_c(
         split_changeset=split_changesets,
         extra_indexes=index_options,
         in_fragment_order=chunk_sort_keys,
+        overwrite=overwrite,
     ).image_hash
     click.echo("Committed %s as %s." % (str(repository), new_hash[:12]))
 

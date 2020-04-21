@@ -400,6 +400,7 @@ class Repository:
         split_changeset: bool = False,
         extra_indexes: Optional[Dict[str, ExtraIndexInfo]] = None,
         in_fragment_order: Optional[Dict[str, List[str]]] = None,
+        overwrite: bool = False,
     ) -> Image:
         """
         Commits all pending changes to a given repository, creating a new image.
@@ -421,6 +422,7 @@ class Repository:
         :param extra_indexes: Dictionary of {table: index_type: column: index_specific_kwargs}.
         :param in_fragment_order: Dictionary of {table: list of columns}. If specified, will
         sort the data inside each chunk by this/these key(s) for each table.
+        :param overwrite: If an object already exists, will force recreate it.
 
         :return: The newly created Image object.
         """
@@ -445,6 +447,7 @@ class Repository:
             split_changeset=split_changeset,
             extra_indexes=extra_indexes,
             in_fragment_order=in_fragment_order,
+            overwrite=overwrite,
         )
 
         set_head(self, image_hash)
@@ -463,6 +466,7 @@ class Repository:
         schema: str = None,
         extra_indexes: Optional[Dict[str, ExtraIndexInfo]] = None,
         in_fragment_order: Optional[Dict[str, List[str]]] = None,
+        overwrite: bool = False,
     ) -> None:
         """
         Reads the recorded pending changes to all tables in a given checked-out image,
@@ -499,6 +503,7 @@ class Repository:
                     source_schema=schema,
                     extra_indexes=extra_indexes.get(table),
                     in_fragment_order=in_fragment_order.get(table),
+                    overwrite=overwrite,
                 )
                 continue
 
@@ -512,6 +517,7 @@ class Repository:
                     split_changeset=split_changeset,
                     extra_indexes=extra_indexes.get(table),
                     in_fragment_order=in_fragment_order.get(table),
+                    overwrite=overwrite,
                 )
                 continue
 

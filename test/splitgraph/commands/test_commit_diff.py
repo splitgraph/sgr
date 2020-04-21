@@ -191,7 +191,24 @@ def test_commit_chunking_order(local_engine_empty):
     OUTPUT.run_sql("CREATE TABLE test (key INTEGER PRIMARY KEY, value_1 VARCHAR, value_2 INTEGER)")
     for i in range(10, -1, -1):
         OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (i + 1, chr(ord("z") - i), i * 2))
-    head = OUTPUT.commit(chunk_size=5, in_fragment_order={"test": ["value_1"]})
+
+    # First, commit normally and then commit again overwriting old objects (the hash doesn't change
+    # since it doesn't take into account row ordering) to check that overwriting works.
+    head = OUTPUT.commit(chunk_size=5)
+    objects = head.get_table("test").objects
+    # When queried without an order, we should get the natural order
+    # of values in the chunk (they were inserted in the same order as the key in this case)
+    assert local_engine_empty.run_sql(
+        SQL("SELECT key FROM {}.{}").format(
+            Identifier(SPLITGRAPH_META_SCHEMA), Identifier(objects[0])
+        ),
+        return_shape=ResultShape.MANY_ONE,
+    ) == list(range(1, 6))
+
+    # Commit again overwriting objects and changing the sort order
+    head = OUTPUT.commit(
+        snap_only=True, chunk_size=5, in_fragment_order={"test": ["value_1"]}, overwrite=True
+    )
 
     objects = head.get_table("test").objects
     assert len(objects) == 3
@@ -205,9 +222,7 @@ def test_commit_chunking_order(local_engine_empty):
             return_shape=ResultShape.MANY_ONE,
         ) == list(range(min_key, max_key + 1))
 
-        # When queried without an order, we should get the natural order
-        # of values in the chunk which is backwards (since we're sorting
-        # by value_1)
+        # This time, the natural order is by value_1 and so rows go backwards.
         assert local_engine_empty.run_sql(
             SQL("SELECT key FROM {}.{}").format(
                 Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj)
