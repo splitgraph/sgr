@@ -178,7 +178,7 @@ def test_reindex_and_force_push(pg_repo_local, pg_repo_remote):
     assert result.exit_code == 0
     assert "Reindexed 1 object" in result.output
 
-    result = runner.invoke(push_c, [str(pg_repo_local), "-f"], catch_exceptions=False)
+    result = runner.invoke(push_c, [str(pg_repo_local) + ":latest", "-f"], catch_exceptions=False)
     assert result.exit_code == 0
 
     obj = pg_repo_remote.images["latest"].get_table("fruits").objects[0]

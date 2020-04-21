@@ -212,8 +212,8 @@ def gather_sync_metadata(
 
     :param target: Target Repository object
     :param source: Source repository object
-    :param overwrite_objects: If True, will return metadata for _all_ objects
-        (not images or tables) in the source repository to overwrite target.
+    :param overwrite_objects: If True, will return metadata for all objects
+        belonging to new images (or existing image if single_image=True)
     :param single_image: If set, only grab a single image with this hash/tag from the source.
     :param overwrite_tags: If True and single_image is set, will return all tags for that image.
         If single_image is not set, will return all tags in the source repository.
@@ -264,8 +264,12 @@ def gather_sync_metadata(
         (source.namespace, source.repository),
     ):
         if t[0] in new_image_hashes:
+            all_objects = all_objects.union(t[-1])
             table_meta.append(t)
-        all_objects = all_objects.union(t[-1])
+        elif t[0] == single_image_hash:
+            # Overwrite objects from existing image if it was
+            # passed as single_image (similar behaviour to tags).
+            all_objects = all_objects.union(t[-1])
 
     # Get the tags
     existing_tags = [t for s, t in target.get_all_hashes_tags()]

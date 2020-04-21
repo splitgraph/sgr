@@ -100,6 +100,12 @@ def clone_c(
     is_flag=True,
 )
 @click.option("-t", "--tags", help="Overwrite tags for pushed image/repo", is_flag=True)
+@click.option(
+    "-r",
+    "--reupload-objects",
+    help="Reupload objects that metadata is pushed out for",
+    is_flag=True,
+)
 def push_c(
     repository_or_image,
     remote_repository,
@@ -107,6 +113,7 @@ def push_c(
     upload_handler,
     upload_handler_options,
     overwrite_object_meta,
+    reupload_objects,
     tags,
 ):
     """
@@ -142,6 +149,7 @@ def push_c(
         handler=upload_handler,
         handler_options=json.loads(upload_handler_options),
         overwrite_objects=overwrite_object_meta,
+        reupload_objects=reupload_objects,
         overwrite_tags=tags,
         single_image=image,
     )
