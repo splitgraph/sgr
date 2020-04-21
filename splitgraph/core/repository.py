@@ -912,6 +912,7 @@ class Repository:
         self,
         remote_repository: Optional["Repository"] = None,
         overwrite_objects: bool = False,
+        reupload_objects: bool = False,
         overwrite_tags: bool = False,
         handler: str = "DB",
         handler_options: Optional[Dict[str, Any]] = None,
@@ -925,6 +926,7 @@ class Repository:
         :param handler: Name of the handler to use to upload objects. Use `DB` to push them to the remote or `S3`
             to store them in an S3 bucket.
         :param overwrite_objects: If True, will overwrite object metadata on the remote repository for existing objects.
+        :param reupload_objects: If True, will reupload objects for which metadata is uploaded.
         :param overwrite_tags: If True, will overwrite existing tags on the remote repository.
         :param handler_options: Extra options to pass to the handler. For example, see
             :class:`splitgraph.hooks.s3.S3ExternalObjectHandler`.
@@ -942,6 +944,7 @@ class Repository:
                 source=self,
                 download=False,
                 overwrite_objects=overwrite_objects,
+                reupload_objects=reupload_objects,
                 overwrite_tags=overwrite_tags,
                 handler=handler,
                 handler_options=handler_options,
@@ -1105,6 +1108,7 @@ def _sync(
     source: "Repository",
     download: bool = True,
     overwrite_objects: bool = False,
+    reupload_objects: bool = False,
     overwrite_tags: bool = False,
     handler: str = "DB",
     handler_options: Optional[Dict[str, Any]] = None,
@@ -1122,6 +1126,7 @@ def _sync(
     :param download: If True, uses the download routines to download physical objects to self.
         If False, uses the upload routines to get `source` to upload physical objects to self / external.
     :param overwrite_objects: If True, overwrites remote object metadata for the target repository.
+    :param reupload_objects: If True, will reupload objects for which metadata is uploaded.
     :param overwrite_tags: If True, overwrites tags for all (if syncing the whole repository)
         or the single image.
     :param handler: Upload handler
@@ -1155,7 +1160,15 @@ def _sync(
             # Don't check anything out, keep the repo bare.
             set_head(target, None)
         else:
-            objects_to_push = target.objects.get_new_objects(list(object_meta.keys()))
+            # If we're overwriting, upload all objects that we're pushing metadata for
+            # (apart from objects with a different namespace -- won't be able to overwrite those).
+            new_objects = target.objects.get_new_objects(list(object_meta.keys()))
+
+            objects_to_push = (
+                new_objects
+                if not reupload_objects
+                else [o for o, om in object_meta.items() if om.namespace == target.namespace]
+            )
 
             try:
                 new_uploads = source.objects.upload_objects(
@@ -1184,6 +1197,10 @@ def _sync(
                 [v for k, v in object_meta.items() if k not in objects_to_push or k in successful],
                 namespace=target.namespace,
             )
+
+            # Don't register locations for objects that we overwrote (actual URLs are supposed
+            # to stay the same).
+            new_locations = [o for o in new_locations if o[0] in new_objects]
             target.objects.register_object_locations(
                 [o for o in set(object_locations + new_locations) if o[0] in successful]
             )

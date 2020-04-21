@@ -335,7 +335,7 @@ def test_bloom_reindex_push(local_engine_empty, unprivileged_pg_repo, clean_mini
     pg_repo_local.commit_engines()
 
     # Push back out overwriting object metadata
-    pg_repo_local.push(overwrite_objects=True)
+    pg_repo_local.push(overwrite_objects=True, single_image="latest")
 
     # Check the index was written to the registry.
     assert (

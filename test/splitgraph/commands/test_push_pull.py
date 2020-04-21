@@ -1,7 +1,10 @@
 import pytest
+from psycopg2.sql import SQL, Identifier
 from test.splitgraph.conftest import PG_MNT
 
+from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.repository import clone, Repository
+from splitgraph.engine import ResultShape
 from splitgraph.exceptions import ImageNotFoundError
 
 
@@ -252,6 +255,38 @@ def test_push(local_engine_empty, pg_repo_remote):
         (2, "orange"),
         (3, "mayonnaise"),
     ]
+
+    # Recommit the local image as a full snap and push it out.
+    head_2 = PG_MNT.commit(snap_only=True)
+    PG_MNT.push(remote_repository=pg_repo_remote)
+    assert head_2.get_table("fruits").objects[0] in pg_repo_remote.objects.get_all_objects()
+
+    # Recommit it again, changing the sort order
+    head_3 = PG_MNT.commit(snap_only=True, in_fragment_order={"fruits": ["name"]}, overwrite=True)
+    assert head_3.get_table("fruits").objects == head_2.get_table("fruits").objects
+
+    assert PG_MNT.run_sql(
+        SQL("SELECT fruit_id FROM {}.{}").format(
+            Identifier(SPLITGRAPH_META_SCHEMA), Identifier(head_2.get_table("fruits").objects[0])
+        ),
+        return_shape=ResultShape.MANY_ONE,
+    ) == [1, 3, 2]
+
+    # Force push overwriting object meta and the actual object
+    PG_MNT.push(
+        remote_repository=pg_repo_remote,
+        single_image=head_3.image_hash,
+        overwrite_objects=True,
+        reupload_objects=True,
+    )
+
+    assert pg_repo_remote.run_sql(
+        SQL("SELECT fruit_id FROM {}.{}").format(
+            Identifier(SPLITGRAPH_META_SCHEMA), Identifier(head_2.get_table("fruits").objects[0])
+        ),
+        return_shape=ResultShape.MANY_ONE,
+    ) == [1, 3, 2]
+    # apple, mayonnaise, orange (alphabetical order since we sorted on fruit name)
 
 
 def test_push_single_image(pg_repo_local, remote_engine):
