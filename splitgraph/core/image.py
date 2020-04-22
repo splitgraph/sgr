@@ -270,7 +270,12 @@ class Image(NamedTuple):
         all_images = {i.image_hash: i for i in self.repository.images()}
         result = [self]
         while result[-1].parent_id is not None:
-            result.append(all_images[result[-1].parent_id])
+            try:
+                result.append(all_images[result[-1].parent_id])
+            except KeyError:
+                # If we don't have the parent's metadata, it's possible
+                # that the parent hasn't been pulled -- ignore it and stop here.
+                return result
         return result
 
     def get_size(self) -> int:
