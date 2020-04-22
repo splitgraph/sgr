@@ -13,5 +13,5 @@ export PYTHON_CONFIG=x86_64-linux-gnu-python3.8-config
 # Include and dynamically link to cstore_fdw
 make \
   CPPFLAGS="-I ../cstore_fdw" \
-  SHLIB_LINK="-L/output/root/usr/local/lib -lcstore_fdw" \
+  SHLIB_LINK="-L/output/root/usr/local/lib -lcstore_fdw -lpython3.8" \
   install
