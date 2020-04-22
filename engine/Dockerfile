@@ -169,8 +169,8 @@ COPY --from=builder_cstore_multicorn \
     /usr/local/lib/python3.8/dist-packages/easy-install.pth \
     /usr/local/lib/python3.8/dist-packages/easy-install.pth
 COPY --from=builder_cstore_multicorn \
-    /usr/local/lib/python3.8/dist-packages/multicorn-1.3.4.dev0-py3.8-linux-x86_64.egg \
-    /usr/local/lib/python3.8/dist-packages/multicorn-1.3.4.dev0-py3.8-linux-x86_64.egg
+    /usr/local/lib/python3.8/dist-packages/multicorn-1.4.0.dev0-py3.8-linux-x86_64.egg \
+    /usr/local/lib/python3.8/dist-packages/multicorn-1.4.0.dev0-py3.8-linux-x86_64.egg
 
 COPY --from=builder_mongo_fdw /output/root /
 COPY --from=builder_mysql_fdw /output/root /

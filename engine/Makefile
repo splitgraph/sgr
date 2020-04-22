@@ -6,6 +6,7 @@ export DOCKER_CACHE_REPO ?= ${DOCKER_REPO}
 export DOCKER_CACHE_TAG ?= ${DOCKER_TAG}
 export DOCKER_ENGINE_IMAGE ?= engine
 export DOCKER_BUILDKIT=1
+export BUILDKIT_PROGRESS=plain
 
 SHELL=/bin/bash
 

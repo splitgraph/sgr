@@ -16,6 +16,11 @@ services:
       - SG_LOGLEVEL=DEBUG
     expose:
       - 5432
+    # Uncomment this to mount the current Splitgraph code into the engine without
+    # having to rebuild it. This shouldn't be done in CI, as we want to test the engine
+    # that we've built.
+    # volumes:
+    #  - ../../splitgraph:/splitgraph/splitgraph
   remote_engine:
     build:
       context: ./src/
@@ -38,6 +43,8 @@ services:
       - SG_S3_PWD=supersecure
     volumes:
       - ./data/remote_engine/setup.sql:/docker-entrypoint-initdb.d/setup.sql
+      # See comment on local engine volumes
+      # - ../../splitgraph:/splitgraph/splitgraph
     expose:
       - 5431
   # Name without an underscore because Minio client really wants to be compliant with the RFC
