@@ -32,6 +32,13 @@
   - "# Import the data into a new Splitgraph repository"
   - sgr import staging "SELECT name, duration, happy FROM stuff" my/repository stuff
 - commands:
+  - "# Alternatively, data can be imported from other databases with Splitfiles"
+  - cat mongo_import.splitfile
+  - sgr build mongo_import.splitfile
+- commands:
+  - sgr show mongo_import:latest
+  - sgr sql -s mongo_import "SELECT * FROM stuff"
+- commands:
   - "# Delete the docker-compose project and cleanup"
   - docker-compose --project-name splitgraph_example down -v --remove-orphans
   record: False
