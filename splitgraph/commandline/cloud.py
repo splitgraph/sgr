@@ -210,7 +210,7 @@ def curl_c(remote, request_type, image, request_params, curl_args):
     The actual request parameters depend on the request type:
 
       * For PostgREST: `/table?[postgrest request]` or empty to get the OpenAPI spec for this image.
-        For a reference on how to perform Postgrest requests, see http://postgrest.org/en/v6.0/api.html.
+        For a reference on how to perform Postgrest requests, see http://postgrest.org/en/latest/api.html.
       * For the Splitfile executor: a JSON array to be POSTed to the executor, e.g.
         `'{"command": "FROM some/repo IMPORT some_table AS alias", "tag": "new_tag"}'`.
 
