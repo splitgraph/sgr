@@ -356,7 +356,8 @@ def _to_str(results: List[Tuple[Any]], use_json: bool = False) -> str:
 )
 @click.option("-a", "--show-all", is_flag=True, help="Return all results of the query.")
 @click.option("-j", "--json", is_flag=True, help="Return results as JSON")
-def sql_c(sql, schema, image, show_all, json):
+@click.option("-n", "--no-transaction", is_flag=True, help="Don't wrap the SQL in a transaction.")
+def sql_c(sql, schema, image, show_all, json, no_transaction):
     """
     Run an SQL statement against the Splitgraph engine.
 
@@ -384,6 +385,8 @@ def sql_c(sql, schema, image, show_all, json):
         raise click.UsageError("Only one of --schema and --image can be specified!")
 
     engine = get_engine()
+    if no_transaction:
+        engine.autocommit = True
 
     if not image:
         if schema:

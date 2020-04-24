@@ -1,0 +1,70 @@
+- commands:
+  - "# Build and start the containers"
+  - docker-compose --project-name splitgraph_example down -v --remove-orphans
+  - docker-compose --project-name splitgraph_example build
+  - docker-compose --project-name splitgraph_example up -d
+  record: False
+- commands:
+  - "# Initialize the engine"
+  - sgr init
+  record: False
+- commands:
+  - "# The configuration file for sgr contains credentials for the"
+  - "# origin database: this is just so that we can use sgr to query it"
+  - "# (replication can be set up through any PostgreSQL client)"
+  - cat .sgconfig
+- commands:
+  - "# The origin database has been set up with a couple of tables."
+  - sgr sql -r origin "SELECT * FROM production_data.customers"
+  - sgr sql -r origin "SELECT * FROM production_data.orders"
+- commands:
+  - "# Create a publication on the origin database"
+  - |
+    sgr sql -r origin "CREATE PUBLICATION pub_orders \
+      FOR TABLE production_data.customers, production_data.orders"
+- commands:
+  - "# Create a schema with the same name and same tables"
+  - "# on the engine and initialize the repository."
+  - sgr init production_data
+  - cat engine/schema.sql
+  - sgr sql -s production_data "$(cat engine/schema.sql)"
+- commands:
+  - "# Set up replication from the origin database."
+  - "# This will copy existing data into the tables too."
+  - |
+    sgr sql --no-transaction "CREATE SUBSCRIPTION sub_orders \
+      CONNECTION 'postgresql://originuser:originpass@origin:5432/originuser' \
+      PUBLICATION pub_orders \
+      WITH (copy_data = true);"
+- commands:
+  - "# Check the data on the engine"
+  - sgr diff production_data
+  - sgr sql -s production_data "SELECT * FROM customers"
+- commands:
+  - "# Commit the data as an initial image"
+  - sgr commit production_data
+  - sgr tag production_data initial_snapshot
+  - sgr show production_data:initial_snapshot
+- commands:
+  - "# Make a change on the origin database"
+  - |
+    sgr sql -r origin -s production_data "UPDATE orders \
+        SET quantity = quantity + 5 WHERE id = 2; \
+      DELETE FROM orders WHERE id = 5; \
+      INSERT INTO customers (name, registration_time) VALUES \
+        ('Jack Sample', '2020-04-20 14:03:48'); \
+      INSERT INTO orders (customer_id, quantity, item_name, placed_time) VALUES \
+        (4, 5, 'Toilet Roll', '2020-04-20 14:05:17');"
+- commands:
+  - "# The change propagates to the subscriber and gets"
+  - "# captured by Splitgraph's change tracking"
+  - sgr diff -v production_data
+- commands:
+  - "# Committing creates a new image, snapshotting the state."
+  - sgr commit production_data
+  - sgr tag production_data current_snapshot
+  - sgr show production_data:current_snapshot
+- commands:
+  - "# Delete the docker-compose project and cleanup"
+  - docker-compose --project-name splitgraph_example down -v --remove-orphans
+  record: False

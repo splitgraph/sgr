@@ -137,6 +137,10 @@ def remote_switch_option(*names, **kwargs):
             finally:
                 from splitgraph.engine import get_engine, set_engine
 
+                engine = get_engine()
+                engine.commit()
+                engine.close()
+
                 # In the context of a test run, we need to switch the global engine
                 # back to LOCAL (since the engine-switching decorator doesn't
                 # get control, so we can't do it there).

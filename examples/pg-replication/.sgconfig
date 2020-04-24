@@ -1,0 +1,15 @@
+[defaults]
+SG_LOGLEVEL=INFO
+SG_ENGINE_HOST=localhost
+SG_ENGINE_PORT=5432
+SG_ENGINE_USER=sgr
+SG_ENGINE_PWD=supersecure
+
+; Add the origin database here so that we can
+; use sgr to talk to it (can use any pg client)
+[remote:origin]
+SG_ENGINE_HOST=localhost
+SG_ENGINE_PORT=5431
+SG_ENGINE_USER=originuser
+SG_ENGINE_PWD=originpass
+SG_ENGINE_DB=originuser

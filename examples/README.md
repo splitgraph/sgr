@@ -9,9 +9,9 @@ Each example has a README file. Some of these examples get or push data from/to 
 
 ## Contents
 
-  * [get-started](./get-started): Register on Splitgraph Cloud and start up a Splitgraph engine.
   * [import-from-csv](./import-from-csv): Import data from a CSV file into a Splitgraph image.
   * [import-from-mongo](./import-from-mongo): Import data from MongoDB into Splitgraph.
+  * [pg-replication](./pg-replication): Use Splitgraph as a PostgreSQL logical replication client.
   * [push-to-other-engine](./push-to-other-engine): Share data with other Splitgraph engines.
   * [iris](./iris): Manipulate and query Splitgraph data from a Jupyter notebook.
   * [bloom-filter](./bloom-filter): Showcase using bloom filters to query large datasets with a limited amount of cache.
