@@ -2,15 +2,26 @@ import os
 import tempfile
 from pathlib import Path
 from unittest import mock
-from unittest.mock import sentinel, call
+from unittest.mock import sentinel, call, patch
 
 import httpretty
 import pytest
 from click import ClickException
 from click.testing import CliRunner
-from test.splitgraph.conftest import API_RESOURCES
+from test.splitgraph.conftest import API_RESOURCES, OUTPUT
 
-from splitgraph.commandline import upstream_c, import_c, rm_c, prune_c, config_c, dump_c, eval_c
+from splitgraph.commandline import (
+    upstream_c,
+    import_c,
+    rm_c,
+    prune_c,
+    config_c,
+    dump_c,
+    eval_c,
+    show_c,
+    commit_c,
+    cli,
+)
 from splitgraph.commandline.common import ImageType, RepositoryType
 from splitgraph.commandline.example import generate_c, alter_c, splitfile_c
 from splitgraph.commandline.misc import (
@@ -21,9 +32,11 @@ from splitgraph.commandline.misc import (
 )
 from splitgraph.config import PG_PWD, PG_USER
 from splitgraph.core.engine import repository_exists
+from splitgraph.core.fragment_manager import FragmentManager
 from splitgraph.core.repository import Repository
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import TableNotFoundError, ImageNotFoundError, RepositoryNotFoundError
+from test.splitgraph.commands.test_commit_diff import _alter_diff_splitting_dataset
 
 
 def test_image_spec_parsing():
@@ -517,3 +530,50 @@ def test_upgrade_end_to_end():
             assert f.read() == "new sgr client"
         with open(os.path.join(dir, "sgr.old")) as f:
             assert f.read() == "old sgr client"
+
+
+def test_rollback_on_error(local_engine_empty):
+    # For e.g. commit/checkout/other commands, we don't do commits/rollbacks
+    # in the library itself and expect the caller to manage transactions. In CLI,
+    # we need to make sure that erroneous transactions (e.g. interrupted SG commits)
+    # are rolled back correctly instead of being committed.
+    runner = CliRunner()
+
+    OUTPUT.init()
+    OUTPUT.run_sql("CREATE TABLE test (key INTEGER PRIMARY KEY, value_1 VARCHAR, value_2 INTEGER)")
+    for i in range(11):
+        OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (i + 1, chr(ord("a") + i), i * 2))
+    head = OUTPUT.commit(chunk_size=5, in_fragment_order={"test": ["key", "value_1"]})
+    assert len(OUTPUT.images()) == 2
+    assert len(OUTPUT.objects.get_all_objects()) == 3
+
+    _alter_diff_splitting_dataset()
+    OUTPUT.commit_engines()
+
+    # Simulate the commit getting interrupted by the first object going through and being
+    # recorded, then a KeyboardInterrupt being raised.
+    called_once = False
+
+    def interrupted_register(*args, **kwargs):
+        nonlocal called_once
+        if called_once:
+            raise BaseException("something went wrong")
+        else:
+            called_once = True
+            return FragmentManager._register_object(*args, **kwargs)
+
+    with patch(
+        "splitgraph.core.fragment_manager.FragmentManager._register_object",
+        side_effect=interrupted_register,
+    ) as ro:
+        with pytest.raises(BaseException):
+            runner.invoke(cli, ["commit", OUTPUT.to_schema()])
+
+    # Check that no image/object metadata was written
+    assert len(OUTPUT.images()) == 2
+    assert len(OUTPUT.objects.get_all_objects()) == 3
+
+    assert ro.call_count == 2
+
+    # Check that the data in the audit trigger wasn't deleted
+    assert len(OUTPUT.engine.get_pending_changes(OUTPUT.to_schema(), table="test")) == 6
