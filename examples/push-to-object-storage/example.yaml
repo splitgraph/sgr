@@ -1,0 +1,56 @@
+- commands:
+  - "# Build and start the containers -- use the same project name so that"
+  - "# containers from other examples are removed"
+  - docker-compose --project-name splitgraph_example down -v --remove-orphans
+  - docker-compose --project-name splitgraph_example build
+  - docker-compose --project-name splitgraph_example up -d
+  record: False
+- commands:
+  - "# The .sgconfig file is written from the point of view of the first engine."
+  - "# Here, the first engine is local and default and the second one is remote."
+  - cat .sgconfig
+- commands:
+  - "# The second engine has object storage credentials available to it through"
+  - "# environment variables (flags in .sgconfig can also be used)"
+  - cat docker-compose.yml
+- commands:
+  - "# Initialize the two engines and create the bucket"
+  - "# We skip installing audit triggers/object management routines on the second"
+  - "# engine, since we don't intend to use it to store objects (just metadata)."
+  - sgr init
+  - SG_ENGINE=engine_2 sgr init --skip-object-handling
+  - docker-compose --project-name splitgraph_example exec objectstorage mkdir /tmp/splitgraph
+- commands:
+  - "# Ingest the weather dataset at Raleigh-Durham Airport from the CSV example"
+  - sgr init demo/weather
+  - |
+    sgr csv import -f ../import-from-csv/rdu-weather-history.csv \
+                   -k date \
+                   -t date timestamp \
+                   --separator ";" \
+                   demo/weather rdu
+  - sgr commit demo/weather
+  - sgr tag demo/weather initial_data
+- commands:
+  - "# Push the dataset out to the other engine"
+  - sgr push demo/weather --remote engine_2 demo/weather
+- commands:
+  - "# Check that the dataset exists on the remote engine"
+  - SG_ENGINE=engine_2 sgr show demo/weather:latest
+- commands:
+  - "# Each object in storage is represented by three files: the data file itself,"
+  - "# the CStore footer file and a JSON file with object schema."
+  - docker-compose --project-name splitgraph_example exec objectstorage ls /tmp/splitgraph
+- commands:
+  - "# Delete the dataset locally and garbage collect unused objects"
+  - sgr rm -y demo/weather
+  - sgr cleanup
+- commands:
+  - "# Clone the dataset again and check it out, forcing an object download"
+  - sgr clone -r engine_2 demo/weather:initial_data
+  - sgr checkout demo/weather:initial_data
+  - sgr sql -s demo/weather "SELECT date, temperaturemin, temperaturemax FROM rdu LIMIT 5"
+- commands:
+  - "# Delete the docker-compose project and cleanup"
+  - docker-compose --project-name splitgraph_example down -v --remove-orphans
+  record: False
