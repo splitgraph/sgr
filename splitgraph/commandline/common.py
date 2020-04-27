@@ -132,13 +132,16 @@ def remote_switch_option(*names, **kwargs):
     def switch_engine_back(f):
         @wraps(f)
         def wrapped(*args, **kwargs):
+            from splitgraph.engine import get_engine, set_engine
+
+            engine = get_engine()
             try:
                 f(*args, **kwargs)
-            finally:
-                from splitgraph.engine import get_engine, set_engine
-
-                engine = get_engine()
                 engine.commit()
+            except Exception:
+                engine.rollback()
+                raise
+            finally:
                 engine.close()
 
                 # In the context of a test run, we need to switch the global engine

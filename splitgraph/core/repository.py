@@ -452,8 +452,7 @@ class Repository:
 
         set_head(self, image_hash)
         manage_audit_triggers(self.engine, self.object_engine)
-        self.object_engine.commit()
-        self.engine.commit()
+        self.commit_engines()
         return self.images.by_hash(image_hash)
 
     def _commit(

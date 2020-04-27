@@ -53,9 +53,15 @@ def _fullname(o):
 
 class WithExceptionHandler(click.Group):
     def invoke(self, ctx):
+        from splitgraph.engine import get_engine
+
+        engine = get_engine()
         try:
-            return super(click.Group, self).invoke(ctx)
+            result = super(click.Group, self).invoke(ctx)
+            engine.commit()
+            return result
         except Exception as exc:
+            engine.rollback()
             if isinstance(
                 exc,
                 (click.exceptions.ClickException, click.exceptions.Abort, click.exceptions.Exit),
@@ -70,10 +76,7 @@ class WithExceptionHandler(click.Group):
                 logger.error("%s: %s" % (_fullname(exc), exc))
             ctx.exit(code=2)
         finally:
-            from splitgraph.engine import get_engine
-
-            get_engine().commit()
-            get_engine().close()
+            engine.close()
 
 
 @click.group(cls=WithExceptionHandler)
