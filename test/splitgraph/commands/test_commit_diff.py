@@ -250,20 +250,7 @@ def test_commit_diff_splitting(local_engine_empty):
         "oe1841cba2d9d9598f2cd3226bb60bb77dc77b98a05808e7976ed112bade86f",
     ]
 
-    # Create a change that affects multiple base fragments:
-    # INSERT PK 0 (goes before all fragments)
-    OUTPUT.run_sql("INSERT INTO test VALUES (0, 'zero', -1)")
-
-    # UPDATE the first fragment and delete a value from it
-    OUTPUT.run_sql("DELETE FROM test WHERE key = 4")
-    OUTPUT.run_sql("UPDATE test SET value_1 = 'UPDATED' WHERE key = 5")
-
-    # Second fragment -- UPDATE then DELETE (test that gets conflated into a single change)
-    OUTPUT.run_sql("UPDATE test SET value_1 = 'UPDATED' WHERE key = 6")
-    OUTPUT.run_sql("DELETE FROM test WHERE key = 6")
-
-    # INSERT a value after the last fragment (PK 12) -- should become a new fragment
-    OUTPUT.run_sql("INSERT INTO test VALUES (12, 'l', 22)")
+    _alter_diff_splitting_dataset()
 
     # Now check the objects that were created.
     with patch("splitgraph.core.fragment_manager.datetime") as dtp:
@@ -384,6 +371,20 @@ def test_commit_diff_splitting(local_engine_empty):
         == table_hash
         == "08598e27c62b61d308ed073c46b4473878aeae00d043a849365fbfe7cbc5a579"
     )
+
+
+def _alter_diff_splitting_dataset():
+    # Create a change that affects multiple base fragments:
+    # INSERT PK 0 (goes before all fragments)
+    OUTPUT.run_sql("INSERT INTO test VALUES (0, 'zero', -1)")
+    # UPDATE the first fragment and delete a value from it
+    OUTPUT.run_sql("DELETE FROM test WHERE key = 4")
+    OUTPUT.run_sql("UPDATE test SET value_1 = 'UPDATED' WHERE key = 5")
+    # Second fragment -- UPDATE then DELETE (test that gets conflated into a single change)
+    OUTPUT.run_sql("UPDATE test SET value_1 = 'UPDATED' WHERE key = 6")
+    OUTPUT.run_sql("DELETE FROM test WHERE key = 6")
+    # INSERT a value after the last fragment (PK 12) -- should become a new fragment
+    OUTPUT.run_sql("INSERT INTO test VALUES (12, 'l', 22)")
 
 
 def test_commit_diff_splitting_composite(local_engine_empty):
