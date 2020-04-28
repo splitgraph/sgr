@@ -954,7 +954,7 @@ description = "A utility library for working with Table Schema in Python"
 name = "tableschema"
 optional = false
 python-versions = "*"
-version = "1.15.3"
+version = "1.16.4"
 
 [package.dependencies]
 click = ">=3.3"
@@ -1135,7 +1135,7 @@ testing = ["jaraco.itertools", "func-timeout"]
 pandas = ["pandas", "sqlalchemy"]
 
 [metadata]
-content-hash = "6bfcbb879b987cd25390cddbd324e006e0eb8e6a0eecfb4820ba3c7c0f9ee856"
+content-hash = "f6e121b5c5a91a58a2aa69644c7ab7ddf2b534282944651e3db4f0663c15bbac"
 python-versions = "~=3.6"
 
 [metadata.files]
@@ -1682,8 +1682,8 @@ sqlalchemy = [
     {file = "SQLAlchemy-1.3.16.tar.gz", hash = "sha256:7224e126c00b8178dfd227bc337ba5e754b197a3867d33b9f30dc0208f773d70"},
 ]
 tableschema = [
-    {file = "tableschema-1.15.3-py2.py3-none-any.whl", hash = "sha256:5ac743b29b079fc270cf33fcaf92ad3ce2b77739c82059a6bf6a9fbd6c4478f1"},
-    {file = "tableschema-1.15.3.tar.gz", hash = "sha256:5426ac04ca9dddb47cae24c407857d70f94a7835ed693fbdbb1cc739a0c0f769"},
+    {file = "tableschema-1.16.4-py2.py3-none-any.whl", hash = "sha256:99bb7dd11ce28279893b5dc9a3c7715c38d7ca2e3bd7d8bef5f29984bc93f3bb"},
+    {file = "tableschema-1.16.4.tar.gz", hash = "sha256:97c1649a6e07c8d2da961fdeae670b2b49cdfe0a20a806fbba96b0a16203bfdd"},
 ]
 tabulate = [
     {file = "tabulate-0.8.7-py3-none-any.whl", hash = "sha256:ac64cb76d53b1231d364babcd72abbb16855adac7de6665122f97b593f1eb2ba"},
