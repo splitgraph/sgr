@@ -1,0 +1,19 @@
+version: '3'
+services:
+  engine:
+    image: splitgraph/engine:${DOCKER_TAG-stable}
+    ports:
+      - '0.0.0.0:5432:5432'
+    environment:
+      - POSTGRES_USER=sgr
+      - POSTGRES_PASSWORD=supersecure
+      - POSTGRES_DB=splitgraph
+      - SG_LOGLEVEL=INFO
+    expose:
+      - 5432
+  postgrest:
+    image: postgrest/postgrest:latest
+    ports:
+      - '0.0.0.0:8080:8080'
+    volumes:
+      - ./postgrest.conf:/etc/postgrest.conf

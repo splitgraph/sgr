@@ -1,0 +1,48 @@
+- commands:
+  - "# Build and start the containers"
+  - docker-compose --project-name splitgraph_example down -v --remove-orphans
+  - docker-compose --project-name splitgraph_example build
+  - docker-compose --project-name splitgraph_example up -d
+  record: False
+- commands:
+  - "# Initialize the engine"
+  - sgr init
+  record: False
+- commands:
+  - "# Ingest the weather dataset at Raleigh-Durham Airport from the CSV example"
+  - sgr init demo/weather
+  - |
+    sgr csv import -f ../import-from-csv/rdu-weather-history.csv \
+                   -k date \
+                   -t date timestamp \
+                   --separator ";" \
+                   demo/weather rdu
+  - sgr commit demo/weather
+  - sgr tag demo/weather initial_data
+- commands:
+  - "# Also create another image so we can switch between them."
+  - sgr sql -s demo/weather "UPDATE rdu SET precipitation = precipitation * 1.2 WHERE EXTRACT (year FROM date) = 2012"
+  - sgr commit -m "Revision to the 2012 rainfall data" demo/weather
+  - sgr tag demo/weather revised_data
+- commands:
+  - "# Check out the original version of the dataset and look at the API spec for it."
+  - "# For this, we need to restart PostgREST so that it picks up the new schema."
+  - docker-compose --project-name splitgraph_example restart postgrest
+  - sgr checkout demo/weather:initial_data
+  - curl http://localhost:8080/ | cut -c -793
+- commands:
+  - "# Get all rows in the table"
+  - curl http://localhost:8080/rdu | wc -l
+- commands:
+  - "# Run a query selecting one row"
+  - curl "http://localhost:8080/rdu?date=eq.2012-12-26&select=date,temperaturemin,temperaturemax,precipitation"
+- commands:
+  - "# Run the query against the new version of the dataset."
+  - "# This time, use layered querying that queries fragments directly without checkout,"
+  - "# downloading them if they're not local. This is seamless to PostgREST or any other application."
+  - sgr checkout --layered demo/weather:revised_data
+  - curl "http://localhost:8080/rdu?date=eq.2012-12-26&select=date,temperaturemin,temperaturemax,precipitation"
+- commands:
+  - "# Delete the docker-compose project and cleanup"
+  - docker-compose --project-name splitgraph_example down -v --remove-orphans
+  record: False
