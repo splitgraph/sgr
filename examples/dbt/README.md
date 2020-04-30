@@ -3,12 +3,9 @@
 The recommended way of building Splitgraph data images is [Splitfiles](../splitfiles) that offer
 Dockerfile-like caching, provenance tracking and efficient rebuilds.
 
-However, there are plenty of other great tools for transforming data inside data warehouses and,
-as long as they work with PostgreSQL, they too can benefit from Splitgraph's data versioning, packaging and sharing capabilities.
+However, there are plenty of other great tools for building datasets and, as long as they work with PostgreSQL, they too can benefit from Splitgraph's data versioning, packaging and sharing capabilities.
 
-One such tool is [dbt](https://getdbt.com) that essentially works as a really advanced SQL templating
-engine, allowing to create data transformations from small building blocks and decreasing the amount
-of boilerplate.
+One such tool is [dbt](https://getdbt.com) that assembles data transformations from small building blocks, decreasing the amount of boilerplate. In a sense, dbt can be used as an advanced SQL templating engine.
 
 Turning the source and the target schemas that dbt uses into Splitgraph repositories opens up a lot
 of opportunities:
@@ -30,5 +27,8 @@ This example will:
 * Compare the two versions of the built model against each other.
 
 ## Running the example
+
+You need to have `dbt` installed. Follow the instructions on dbt's [GitHub page](https://docs.getdbt.com/docs/running-a-dbt-project/using-the-command-line-interface/installation/) to install it or
+run `pip install dbt`.
 
 `../run_example.py example.yaml` and press ENTER when prompted to go through the steps.

@@ -28,13 +28,14 @@ def test_commandline_basics(pg_repo_local):
     # sgr status
     result = runner.invoke(status_c, [])
     assert """test/pg_mount         2       0  """ in result.output
-    assert pg_repo_local.head.image_hash[:10] in result.output
+    assert pg_repo_local.head.image_hash[:8] in result.output
 
     # sgr status with LQ etc
     old_head.checkout(layered=True)
     pg_repo_local.upstream = Repository("some", "upstream", engine=pg_repo_local.engine)
     result = runner.invoke(status_c, [])
-    assert old_head.image_hash[:10] + " (LQ)" in result.output
+    assert old_head.image_hash[:8] in result.output
+    assert "(LQ)" in result.output
     assert "some/upstream (LOCAL)" in result.output
 
     # sgr sql
@@ -103,7 +104,7 @@ def test_commandline_basics(pg_repo_local):
     new_head = pg_repo_local.head
     assert new_head != old_head
     assert new_head.parent_id == old_head.image_hash
-    assert new_head.image_hash[:10] in result.output
+    assert new_head.image_hash[:8] in result.output
 
     # sgr diff, old head -> new head (2-param), truncated hashes
     # technically these two hashes have a 2^(-20*4) = a 8e-25 chance of clashing but let's not dwell on that
@@ -151,8 +152,8 @@ def test_commandline_basics(pg_repo_local):
 
     # sgr log
     result = runner.invoke(log_c, [str(pg_repo_local)])
-    assert old_head.image_hash[:10] in result.output
-    assert new_head.image_hash[:10] in result.output
+    assert old_head.image_hash[:8] in result.output
+    assert new_head.image_hash[:8] in result.output
     assert "Test commit" in result.output
 
     # sgr log (tree)
