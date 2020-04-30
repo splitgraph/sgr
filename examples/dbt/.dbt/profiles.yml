@@ -1,0 +1,14 @@
+jaffle_shop:
+  target: splitgraph
+  outputs:
+    splitgraph:
+      type: postgres
+      host: localhost
+      user: sgr
+      pass: supersecure
+      port: 5432
+      dbname: splitgraph
+      # The final schema that dbt writes to is a combination of this profile schema
+      # and the schema specified in the model.
+      schema: "dbt_jaffle"
+      threads: 4

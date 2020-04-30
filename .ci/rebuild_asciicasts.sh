@@ -2,7 +2,7 @@
 
 CI_DIR=$(cd -P -- "$(dirname -- "$0")" && pwd -P)
 REPO_ROOT_DIR="${CI_DIR}/.."
-ASCIINEMA_CASTS=${ASCIINEMA_CASTS-"bloom-filter import-from-csv import-from-mongo pg-replication postgrest push-to-other-engine query_api splitfiles us-election"}
+ASCIINEMA_CASTS=${ASCIINEMA_CASTS-"bloom-filter import-from-csv import-from-mongo dbt pg-replication postgrest push-to-other-engine query_api splitfiles us-election"}
 
 # Asciicasts for which we need to log into the splitgraph registry to pull datasets
 LOGIN_REQUIRED_CASTS="bloom-filter query_api us-election"
@@ -21,7 +21,8 @@ cp "$REPO_ROOT_DIR"/examples/import-from-mongo/.sgconfig "$ASCIINEMA_CONFIG"
 SG_CONFIG_FILE=$ASCIINEMA_CONFIG sgr cloud login-api --api-key "$SG_DEMO_KEY" --api-secret "$SG_DEMO_SECRET"
 
 # TODO the us-election asciicast requires scipy for the last part, consider replacing
-pip install scipy
+# dbt required by the dbt example
+pip install scipy dbt
 
 cd "$REPO_ROOT_DIR"/examples
 for dir in $ASCIINEMA_CASTS; do

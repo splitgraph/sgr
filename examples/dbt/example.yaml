@@ -1,0 +1,86 @@
+- commands:
+  - "# Build and start the containers, cleanup loose files"
+  - docker-compose --project-name splitgraph_example down -v --remove-orphans
+  - docker-compose --project-name splitgraph_example build
+  - docker-compose --project-name splitgraph_example up -d
+  - rm jaffle_shop -rf
+  record: False
+- commands:
+  - "# Initialize the engine"
+  - sgr init
+  record: False
+- commands:
+  - "# dbt must be installed for this to work (pip install dbt)"
+  - "# Clone the Jaffle Shop dbt example project"
+  - dbt --version
+  - git clone https://github.com/fishtown-analytics/jaffle_shop.git
+- commands:
+  - "# Ingest the initial data (in CSV) from this branch of the project."
+  - sgr init raw_jaffle_shop
+  - sgr csv import -f jaffle_shop/data/raw_customers.csv -k id raw_jaffle_shop customers
+  - sgr csv import -f jaffle_shop/data/raw_orders.csv -k id -t order_date timestamp raw_jaffle_shop orders
+  - sgr csv import -f jaffle_shop/data/raw_payments.csv -k id raw_jaffle_shop payments
+- commands:
+  - "# Snapshot the initial data with Splitgraph."
+  - sgr diff raw_jaffle_shop
+  - sgr commit raw_jaffle_shop
+  - sgr tag raw_jaffle_shop asof_20180409
+- commands:
+  - "# Inspect the original data"
+  - sgr show raw_jaffle_shop:asof_20180409
+  - sgr table raw_jaffle_shop:asof_20180409 orders
+- commands:
+  - "# The status column in the raw_orders table in the initial dataset can"
+  - "# change through time. Pretend that some jaffles were actually returned."
+  - |
+    sgr sql -s raw_jaffle_shop "UPDATE orders SET status = 'returned' \
+                                WHERE status = 'return_pending' OR order_date = '2018-03-26'"
+  - sgr diff -v raw_jaffle_shop
+- commands:
+  - "# Commit this dataset and check out the original data"
+  - sgr commit raw_jaffle_shop
+  - sgr tag raw_jaffle_shop asof_20180410
+  - sgr checkout raw_jaffle_shop:asof_20180409
+- commands:
+  - "# Check out the 'serious' version of the dbt project that uses data from"
+  - "# the actual warehouse rather than seed data."
+  - cd jaffle_shop && git checkout demo/master --force
+- commands:
+  - "# Check that dbt is set up to connect to the Splitgraph engine."
+  - "# We will be outputting data into the dbt_jaffle repository, so set that up."
+  - cat .dbt/profiles.yml
+  - dbt debug --profiles-dir .dbt --project-dir jaffle_shop
+  - sgr init dbt_jaffle
+- commands:
+  - "# Now run the dbt models."
+  - dbt run --profiles-dir ../.dbt --project-dir jaffle_shop
+- commands:
+  - "# Take a look at the built dataset and commit it."
+  - "# Note Splitgraph doesn't currently support storing views"
+  - "# that dbt uses as a staging point for the initial data."
+  - sgr diff dbt_jaffle
+  - sgr commit dbt_jaffle
+  - sgr tag dbt_jaffle asof_20180409
+- commands:
+  - "# Check out the new version of the raw dataset and run dbt against it as well."
+  - sgr checkout raw_jaffle_shop:asof_20180410
+  - dbt run --profiles-dir ../.dbt --project-dir jaffle_shop
+- commands:
+  - "# Create an image from the new data."
+  - sgr commit dbt_jaffle
+  - sgr tag dbt_jaffle asof_20180410
+- commands:
+  - "# We now have two versions of the source and the target dataset."
+  - sgr log -t raw_jaffle_shop
+  - sgr log -t dbt_jaffle
+- commands:
+  - "# Inspect the difference between the two datasets that dbt built."
+  - sgr diff dbt_jaffle asof_20180409 asof_20180410 --verbose
+- commands:
+  - "# Run a sample query: how much in bank transfer refunds did we process?"
+  - sgr sql -i dbt_jaffle:asof_20180409 "SELECT sum(bank_transfer_amount) FROM fct_orders WHERE status = 'returned'"
+  - sgr sql -i dbt_jaffle:asof_20180410 "SELECT sum(bank_transfer_amount) FROM fct_orders WHERE status = 'returned'"
+- commands:
+  - "# Delete the docker-compose project and cleanup"
+  - docker-compose --project-name splitgraph_example down -v --remove-orphans
+  record: False
