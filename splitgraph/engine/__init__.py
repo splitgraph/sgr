@@ -220,9 +220,19 @@ class SQLEngine(ABC):
 
     def delete_table(self, schema: str, table: str) -> None:
         """Drop a table from a schema if it exists"""
-        if self.get_table_type(schema, table) not in ("FOREIGN TABLE", "FOREIGN"):
+        table_type = self.get_table_type(schema, table)
+        # Add CASCADE to drop dependent tables like views etc.
+        if table_type == "VIEW":
             self.run_sql(
-                SQL("DROP TABLE IF EXISTS {}.{}").format(Identifier(schema), Identifier(table))
+                SQL("DROP VIEW IF EXISTS {}.{} CASCADE").format(
+                    Identifier(schema), Identifier(table)
+                )
+            )
+        elif table_type not in ("FOREIGN TABLE", "FOREIGN"):
+            self.run_sql(
+                SQL("DROP TABLE IF EXISTS {}.{} CASCADE").format(
+                    Identifier(schema), Identifier(table)
+                )
             )
         else:
             self.run_sql(
