@@ -178,7 +178,12 @@ def example(skip, no_pause, dump_asciinema, asciinema_width, asciinema_height, f
         stderr = bool(block.get("stderr", "True") == "True")
         echo = bool(block.get("echo", "True") == "True")
         wait = bool(block.get("wait", "True") == "True")
+        workdir_rel = block.get("workdir", ".")
+        workdir = os.path.join(os.path.dirname(os.path.realpath(file)), workdir_rel)
         output.record = bool(block.get("record", "True") == "True")
+
+        if workdir_rel != ".":
+            prompt = workdir_rel + " " + prompt
 
         output.cls()
         if echo:
@@ -207,6 +212,7 @@ def example(skip, no_pause, dump_asciinema, asciinema_width, asciinema_height, f
                 stdout=subprocess.PIPE,
                 stderr=(subprocess.STDOUT if stderr else None),
                 env=env,
+                cwd=workdir,
             )
             if output.print_from_pipe(proc) != 0:
                 exit(1)
