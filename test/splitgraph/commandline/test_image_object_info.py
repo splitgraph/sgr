@@ -123,6 +123,11 @@ def test_commandline_basics(pg_repo_local):
     assert "removed 1 row" in result.output
     assert "vegetables: table removed"
     assert "mushrooms: table added"
+
+    # Check out the 00000 version of the dataset to make sure the diff works for images that
+    # haven't been checked out.
+    pg_repo_local.images["0" * 32].checkout()
+
     result = runner.invoke(
         diff_c, [str(pg_repo_local), new_head.image_hash[:20], old_head.image_hash[:20], "-v"]
     )
@@ -130,6 +135,13 @@ def test_commandline_basics(pg_repo_local):
     # didn't exist in the first image, diff() thinks it was _removed_ and vice versa for the other row.
     assert "- (3, 'mayonnaise')" in result.output
     assert "+ (1, 'apple')" in result.output
+
+    # Add a view and check that it shows up in the diff correctly as unsupported
+    pg_repo_local.images["latest"].checkout()
+    pg_repo_local.run_sql("CREATE VIEW test_view AS SELECT * FROM fruits")
+    result = runner.invoke(diff_c, [str(pg_repo_local)])
+    assert result.exit_code == 0
+    assert "test_view: untracked" in result.output
 
     # sgr status with the new commit
     result = runner.invoke(status_c, [str(pg_repo_local)])
