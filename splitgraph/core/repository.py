@@ -482,6 +482,14 @@ class Repository:
 
         changed_tables = self.object_engine.get_changed_tables(schema)
         for table in self.object_engine.get_all_tables(schema):
+            if self.object_engine.get_table_type(schema, table) == "VIEW":
+                logging.warning(
+                    "Table %s.%s is a view. Splitgraph currently doesn't "
+                    "support views and this table will not be in the image.",
+                    schema,
+                    table,
+                )
+                continue
             try:
                 table_info: Optional[Table] = head.get_table(table) if head else None
             except TableNotFoundError:
@@ -1015,6 +1023,12 @@ class Repository:
         if isinstance(image_2, str):
             image_2 = self.images.by_hash(image_2)
 
+        # If the table is of an unsupported type (e.g. a view), ignore it
+        if (
+            self.object_engine.table_exists(self.to_schema(), table_name)
+            and self.object_engine.get_table_type(self.to_schema(), table_name) == "VIEW"
+        ):
+            return None
         # If the table doesn't exist in the first or the second image, short-circuit and
         # return the bool.
         if not table_exists_at(self, table_name, image_1):
