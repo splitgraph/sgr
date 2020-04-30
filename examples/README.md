@@ -21,6 +21,7 @@ Each example has a README file. Some of these examples get or push data from/to 
   * [postgrest](./postgrest): Run [PostgREST](http://postgrest.org/en/latest/) locally against the Splitgraph engine.
   * [us-election](./us-election): A real-world Splitfile example that joins multiple datasets.
   * [benchmarking](./benchmarking): A collection of Jupyter notebooks benchmarking various aspects of Splitgraph against synthetic and real-world datasets.
+  * [dbt](./dbt): Use the [dbt](https://getdbt.com) CLI against the Splitgraph engine, enriching your dbt-built datasets with versioning, sharing and packaging capabilities.
   * [postgis](./postgis): Use Splitgraph, [PostGIS](https://postgis.net/) and [GeoPandas](https://geopandas.org/) to plot geospatial data.
   * [sample_splitfiles](./sample_splitfiles): A collection of loose Splitfiles that run against interesting datasets on Splitgraph Cloud.
 
