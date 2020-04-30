@@ -542,9 +542,18 @@ def test_commit_mode_change(pg_repo_local):
 
 
 def test_drop_recreate(pg_repo_local):
-    # Drops the fruits table and recreates it with the same schema -- check the same objects are recreated.
+    # Drops the fruits table and recreate it with the same schema.
+    # Check the same objects are recreated (sg detects that the audit
+    # trigger went away with the drop and commits the table as a snap)
     old_objects = pg_repo_local.head.get_table("fruits").objects
+    pg_repo_local.engine.delete_table(pg_repo_local.to_schema(), "fruits")
+    pg_repo_local.commit_engines()
+    assert not pg_repo_local.engine.table_exists(pg_repo_local.to_schema(), "fruits")
+    assert (pg_repo_local.to_schema(), "fruits") not in pg_repo_local.engine.get_tracked_tables()
+
     pg_repo_local.run_sql(PG_DATA)
+
+    pg_repo_local.commit()
 
     assert pg_repo_local.head.get_table("fruits").objects == old_objects
 
@@ -1080,3 +1089,23 @@ def test_unicode_columns(local_engine_empty):
 
     image.checkout(layered=True)
     assert OUTPUT.run_sql("SELECT * FROM таблица WHERE столбец = 'one'") == [(1, "one")]
+
+
+def test_commit_diff_views(pg_repo_local):
+    # Test that having views in the tracked schema doesn't crash sgr on commit (they're not
+    # stored and have to get deleted on checkout because they explicitly depend on tables
+    # in the tracked schema).
+
+    pg_repo_local.run_sql("CREATE VIEW test_view AS SELECT * FROM fruits")
+
+    # Check diff returns None for the view
+    assert pg_repo_local.diff("test_view", image_1=pg_repo_local.head, image_2=None) is None
+
+    # Check we can commit the image
+    head = pg_repo_local.commit()
+    assert "test_view" not in head.get_tables()
+
+    # Checkout the original image
+    pg_repo_local.images[head.parent_id].checkout()
+
+    assert not pg_repo_local.engine.table_exists(pg_repo_local.to_schema(), "test_view")
