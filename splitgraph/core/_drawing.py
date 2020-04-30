@@ -1,4 +1,3 @@
-# coding=utf-8
 """
 Routines for rendering a Splitgraph repository as a tree of images
 """
@@ -9,6 +8,7 @@ from typing import TYPE_CHECKING, List
 import click
 
 from splitgraph.commandline.common import Color
+from splitgraph.config import SG_CMD_ASCII
 
 if TYPE_CHECKING:
     from splitgraph.core.repository import Repository
@@ -100,7 +100,11 @@ def render_tree(repository: "Repository") -> None:
     # tree = _pull_up_children(tree)
 
     renderer = asciitree.LeftAligned(
-        draw=asciitree.BoxStyle(gfx=asciitree.drawing.BOX_LIGHT, label_space=1, horiz_len=0),
+        draw=asciitree.BoxStyle(
+            gfx=asciitree.drawing.BOX_ASCII if SG_CMD_ASCII else asciitree.drawing.BOX_LIGHT,
+            label_space=1,
+            horiz_len=0,
+        ),
         traverse=ImageTraversal(),
     )
     for root, root_tree in tree.items():
