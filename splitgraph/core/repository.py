@@ -430,7 +430,6 @@ class Repository:
         logging.info("Committing %s...", self.to_schema())
 
         self.object_engine.commit()
-        manage_audit_triggers(self.engine, self.object_engine)
 
         # HEAD can be None (if this is the first commit in this repository)
         head = self.head
@@ -481,6 +480,8 @@ class Repository:
         in_fragment_order: Dict[str, List[str]] = in_fragment_order or {}
 
         changed_tables = self.object_engine.get_changed_tables(schema)
+        tracked_tables = self.object_engine.get_tracked_tables()
+
         for table in self.object_engine.get_all_tables(schema):
             if self.object_engine.get_table_type(schema, table) == "VIEW":
                 logging.warning(
@@ -490,17 +491,21 @@ class Repository:
                     table,
                 )
                 continue
+
             try:
                 table_info: Optional[Table] = head.get_table(table) if head else None
             except TableNotFoundError:
                 table_info = None
 
             # Store as a full copy if this is a new table, there's been a schema change or we were told to.
+            # Also store the full copy if the audit trigger on the table is missing: this indicates
+            # that the table was dropped and recreated.
             new_schema = self.object_engine.get_full_table_schema(schema, table)
             if (
                 not table_info
                 or snap_only
                 or not _schema_compatible(table_info.table_schema, new_schema)
+                or (schema, table) not in tracked_tables
             ):
                 self.objects.record_table_as_base(
                     self,
@@ -547,7 +552,8 @@ class Repository:
             # If the repo isn't checked out, no point checking for changes.
             return False
         for table in self.object_engine.get_all_tables(self.to_schema()):
-            if self.diff(table, head.image_hash, None, aggregate=True) != (0, 0, 0):
+            diff = self.diff(table, head.image_hash, None, aggregate=True)
+            if diff != (0, 0, 0) and diff is not None:
                 return True
         return False
 
@@ -1002,7 +1008,7 @@ class Repository:
         image_1: Union[Image, str],
         image_2: Optional[Union[Image, str]],
         aggregate: bool = False,
-    ) -> Union[bool, Tuple[int, int, int], List[Tuple[bool, Tuple]]]:
+    ) -> Union[bool, Tuple[int, int, int], List[Tuple[bool, Tuple]], None]:
         """
         Compares the state of a table in different images by materializing both tables into a temporary space
         and comparing them row-to-row.
@@ -1029,6 +1035,7 @@ class Repository:
             and self.object_engine.get_table_type(self.to_schema(), table_name) == "VIEW"
         ):
             return None
+
         # If the table doesn't exist in the first or the second image, short-circuit and
         # return the bool.
         if not table_exists_at(self, table_name, image_1):
@@ -1037,7 +1044,12 @@ class Repository:
             return False
 
         # Special case: if diffing HEAD and staging (with aggregation), we can return that directly.
-        if image_1 == self.head and image_2 is None and aggregate:
+        if (
+            image_1 == self.head
+            and image_2 is None
+            and aggregate
+            and (self.to_schema(), table_name) in self.object_engine.get_tracked_tables()
+        ):
             return aggregate_changes(
                 cast(
                     List[Tuple[int, int]],
