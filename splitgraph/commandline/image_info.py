@@ -61,6 +61,12 @@ def log_c(image_spec, tree):
         click.echo(tabulate(table, tablefmt="plain"))
 
 
+def _get_all_tables(repository: "Repository", image_hash: Optional[str]):
+    if image_hash is None:
+        return repository.engine.get_all_tables(repository.to_schema())
+    return repository.images[image_hash].get_tables()
+
+
 @click.command(name="diff")
 @click.option(
     "-v",
@@ -94,13 +100,18 @@ def diff_c(verbose, table_name, repository, tag_or_hash_1, tag_or_hash_2):
     """
     tag_or_hash_1, tag_or_hash_2 = _get_actual_hashes(repository, tag_or_hash_1, tag_or_hash_2)
 
+    if table_name:
+        all_tables = [table_name]
+    else:
+        all_tables = sorted(
+            set(_get_all_tables(repository, tag_or_hash_1)).union(
+                set(_get_all_tables(repository, tag_or_hash_2))
+            )
+        )
+
     diffs: Dict[str, Union[bool, Tuple[int, int, int], List[Tuple[bool, Tuple]]]] = {
         table_name: repository.diff(table_name, tag_or_hash_1, tag_or_hash_2, aggregate=not verbose)
-        for table_name in (
-            [table_name]
-            if table_name
-            else sorted(repository.engine.get_all_tables(repository.to_schema()))
-        )
+        for table_name in all_tables
     }
 
     if tag_or_hash_2 is None:
@@ -114,7 +125,7 @@ def diff_c(verbose, table_name, repository, tag_or_hash_1, tag_or_hash_2):
 
 def _emit_table_diff(
     table_name: str,
-    diff_result: Union[bool, Tuple[int, int, int], List[Tuple[bool, Tuple]]],
+    diff_result: Union[bool, Tuple[int, int, int], List[Tuple[bool, Tuple]], None],
     verbose: bool,
 ) -> None:
     from splitgraph.core.common import pluralise
@@ -145,6 +156,8 @@ def _emit_table_diff(
         if verbose:
             for added, row in cast(List[Tuple[bool, Tuple]], diff_result):
                 click.echo(("+" if added else "-") + " %r" % (row,))
+    elif diff_result is None:
+        click.echo(to_print + "untracked")
     else:
         # Whole table was either added or removed
         click.echo(to_print + ("table added" if diff_result else "table removed"))
