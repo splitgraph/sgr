@@ -60,6 +60,11 @@ def _split_changeset(
     return changesets_by_segment, before_changesets, after_changesets
 
 
+def _log_commit_progress(table_size, no_chunks):
+    """Shim to avoid sgr spamming output with commit progress for small images"""
+    return table_size > 500000 or no_chunks > 100
+
+
 def get_chunk_groups(chunks: List[Tuple[str, Any, Any]],) -> List[List[Tuple[str, Any, Any]]]:
     """
     Takes a list of chunks and their boundaries and combines them
@@ -385,7 +390,9 @@ class FragmentManager(MetadataManager):
         """
         object_ids = []
         logging.info("Storing and indexing table %s", table.table_name)
-        for sub_changeset in tqdm(changesets, unit="objs", ascii=SG_CMD_ASCII):
+        for sub_changeset in tqdm(
+            changesets, unit="objs", ascii=SG_CMD_ASCII, disable=len(changesets) < 3
+        ):
             if not sub_changeset:
                 continue
             # Store the fragment in a temporary location and then find out its hash and rename to the actual target.
@@ -548,7 +555,7 @@ class FragmentManager(MetadataManager):
         new_schema_spec = new_schema_spec or old_table.table_schema
         if changeset:
             if split_changeset:
-                logging.info("Splitting changesets")
+                logging.debug("Splitting changesets")
                 # Reorganize the current table's fragments into non-overlapping groups
                 # and split the changeset to make sure it doesn't span (and hence merge) them.
                 table_pks = self.object_engine.get_change_key(schema, old_table.table_name)
@@ -919,7 +926,12 @@ class FragmentManager(MetadataManager):
         # Example query: CREATE TEMPORARY TABLE sg_tmp_partition_table AS SELECT *,
         # RANK () OVER (ORDER BY pk) / chunk_size sg_tmp_partition_id FROM source_schema.table
         logging.info("Processing table %s", source_table)
-        logging.info("Computing table partitions")
+        no_chunks = int(math.ceil(table_size / chunk_size))
+
+        log_progress = _log_commit_progress(table_size, no_chunks)
+        log_func = logging.info if log_progress else logging.debug
+
+        log_func("Computing table partitions")
         tmp_table_query = (
             SQL("CREATE TEMPORARY TABLE {} AS SELECT *, (ROW_NUMBER() OVER (ORDER BY ").format(
                 Identifier(temp_table)
@@ -931,16 +943,21 @@ class FragmentManager(MetadataManager):
         )
         self.object_engine.run_sql(tmp_table_query, (chunk_size,))
 
-        logging.info("Indexing the partition key")
+        log_func("Indexing the partition key")
         self.object_engine.run_sql(
             SQL("CREATE INDEX {} ON {}({})").format(
                 Identifier("idx_" + temp_table), Identifier(temp_table), Identifier(chunk_id_col)
             )
         )
 
-        logging.info("Storing and indexing the table")
-        no_chunks = int(math.ceil(table_size / chunk_size))
-        pbar = tqdm(range(0, no_chunks), unit="objs", total=no_chunks, ascii=SG_CMD_ASCII)
+        log_func("Storing and indexing the table")
+        pbar = tqdm(
+            range(0, no_chunks),
+            unit="objs",
+            total=no_chunks,
+            ascii=SG_CMD_ASCII,
+            disable=not log_progress,
+        )
 
         for chunk_id in pbar:
             new_fragment = self.create_base_fragment(

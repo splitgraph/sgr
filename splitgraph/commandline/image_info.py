@@ -349,8 +349,9 @@ def objects_c(local):
 def _to_str(results: List[Tuple[Any]], use_json: bool = False) -> str:
     if use_json:
         import json
+        from splitgraph.core.common import coerce_val_to_json
 
-        return json.dumps(results)
+        return json.dumps(coerce_val_to_json(results))
 
     from tabulate import tabulate
 
@@ -380,6 +381,7 @@ def sql_c(sql, schema, image, show_all, json, no_transaction):
     If ``--schema`` is specified, the statement is run with the ``search_path`` set to that schema. This means
     that these statements are equivalent:
 
+    \b
     ```
     sgr sql "SELECT * FROM \"noaa/climate\".table"
     sgr sql -s noaa/climate "SELECT * FROM table"
@@ -388,6 +390,7 @@ def sql_c(sql, schema, image, show_all, json, no_transaction):
     If `--image` is specified, this will run the statement against that image using layered querying.
     Only read-only statements are supported. For example:
 
+    \b
     ```
     sgr sql -i noaa/climate:latest "SELECT * FROM table"
     ```

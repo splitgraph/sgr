@@ -45,7 +45,7 @@ def _checkout_or_calculate_layer(output: Repository, image_hash: str, calc_func:
     # Have we already calculated this hash?
     try:
         output.images.by_hash(image_hash).checkout()
-        print(" ---> Using cache")
+        logging.info(" ---> Using cache")
     except ImageNotFoundError:
         try:
             calc_func()
@@ -56,7 +56,7 @@ def _checkout_or_calculate_layer(output: Repository, image_hash: str, calc_func:
             # that we might have created.
             output.images.delete([image_hash])
             raise
-    print(" ---> %s" % image_hash[:12])
+    logging.info(" ---> %s" % image_hash[:12])
 
 
 def _get_local_image_for_import(hash_or_tag: str, repository: Repository) -> Tuple[Image, bool]:
@@ -193,7 +193,7 @@ def execute_commands(
 
     try:
         for i, node in enumerate(node_list):
-            print(
+            logging.info(
                 Color.BOLD
                 + "\nStep %d/%d : %s" % (i + 1, len(node_list), truncate_line(node.text, length=60))
                 + Color.END
@@ -221,7 +221,7 @@ def execute_commands(
         final_image = output.head_strict
         final_image.set_provenance(provenance)
         get_engine().commit()
-        print("Successfully built %s:%s." % (str(output), final_image.image_hash[:12]))
+        logging.info("Successfully built %s:%s." % (str(output), final_image.image_hash[:12]))
 
     except Exception:
         if repo_created and len(output.images()) == 1:
@@ -240,7 +240,7 @@ def _execute_sql(node: Node, output: Repository) -> ProvenanceLine:
     # definitely go there as sources.
     if node.expr_name == "sql_file":
         node_contents = extract_nodes(node, ["non_newline"])[0].text
-        print("Loading the SQL commands from %s" % node_contents)
+        logging.info("Loading the SQL commands from %s" % node_contents)
         with open(node_contents, "r") as file:
             # Possibly use a different method to calculate the image hash for commands originating from
             # SQL files instead?
@@ -287,12 +287,12 @@ def _execute_from(node: Node, output: Repository) -> Tuple[Repository, Optional[
     if output_node:
         # AS (output) detected, change the current output repository to it.
         output = Repository.from_schema(output_node.match.group(0))
-        print("Changed output repository to %s" % str(output))
+        logging.info("Changed output repository to %s" % str(output))
 
         # NB this destroys all data in the case where we ran some commands in the Splitfile and then
         # did FROM (...) without AS repository
         if repository_exists(output):
-            print("Clearing all output from %s" % str(output))
+            logging.info("Clearing all output from %s" % str(output))
             output.delete()
     if not repository_exists(output):
         output.init()
@@ -486,17 +486,17 @@ def _execute_custom(node: Node, output: Repository) -> ProvenanceLine:
         image_hash = _combine_hashes([output_head, command_hash])
         try:
             output.images.by_hash(image_hash).checkout()
-            print(" ---> Using cache")
+            logging.info(" ---> Using cache")
             return {"type": "CUSTOM"}
         except ImageNotFoundError:
             pass
 
-    print(" Executing custom command...")
+    logging.info(" Executing custom command...")
     exec_hash = command.execute(repository=output, args=args)
     command_hash = command_hash or exec_hash or "{:064x}".format(getrandbits(256))
 
     image_hash = _combine_hashes([output_head, command_hash])
-    print(" ---> %s" % image_hash[:12])
+    logging.info(" ---> %s" % image_hash[:12])
 
     # Check just in case if the new hash produced by the command already exists.
     try:
