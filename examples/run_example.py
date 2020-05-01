@@ -1,11 +1,15 @@
 #!/usr/bin/env python
 """A showcase/example runner for Splitgraph"""
+import codecs
+import errno
 import json
 import os
+import pty
 import re
 import subprocess
 import sys
 import time
+import shlex
 
 import click
 import yaml
@@ -23,7 +27,7 @@ class RecorderOutput:
     def __init__(
         self,
         input_rate=0.03,
-        delay=1.0 / 70,
+        delay=0.5,
         min_delay=5.0,
         max_gap=1.0,
         title=None,
@@ -33,9 +37,8 @@ class RecorderOutput:
     ):
         self.input_rate = input_rate
 
-        # Delay as a function of #characters that were emitted;
-        # average human reading speed is 25 and there's
-        # stuff like image hashes they will glance over).
+        # Delay as a function of #lines that were emitted; default
+        # is 0.5s per line (some log output can be skimmed + we have 5s min)
         self.delay = delay
         self.max_gap = max_gap
 
@@ -73,9 +76,11 @@ class RecorderOutput:
         self._curr_height = 0
         self._max_height = 0
 
+        self.decoder = codecs.getincrementaldecoder("UTF-8")("replace")
+
     def add_event(self, text, time_since_last):
         if isinstance(text, bytes):
-            text = text.decode("unicode_escape")
+            text = self.decoder.decode(text)
 
         self._curr_height += text.count("\n")
         self._max_height = max(self._max_height, self._curr_height)
@@ -115,18 +120,24 @@ class RecorderOutput:
                     self.add_event(char, time_since_last=self.input_rate)
                     self._chars_since_cls += 1
 
-    def print_from_pipe(self, proc):
+    def print_from_pipe(self, proc, fd):
         """Records output from a subprocess, including the delays and printing the output."""
         now = time.time()
         while True:
-            line = proc.stdout.readline()
-            if line:
-                sys.stdout.buffer.write(line)
+            try:
+                data = os.read(fd, 512)
+            except OSError as e:
+                if e.errno != errno.EIO:
+                    raise
+                else:
+                    data = b""
+                # EIO means EOF on some systems
+            if data:
+                sys.stdout.buffer.write(data)
                 sys.stdout.flush()
-                line = line.replace(b"\n", b"\r\n")
                 if self.record:
-                    self.add_event(line, time_since_last=time.time() - now)
-                    self._chars_since_cls += len(line)
+                    self.add_event(data, time_since_last=time.time() - now)
+                    self._chars_since_cls += len(data)
                 now = time.time()
             else:
                 result = proc.poll()
@@ -139,7 +150,7 @@ class RecorderOutput:
                 # Add a delay assuming that the person has spent the whole time
                 # since the text started showing up reading it.
                 self.current_time += max(
-                    self.delay * self._chars_since_cls - (self.current_time - self._cls_start_time),
+                    self.delay * self._curr_height - (self.current_time - self._cls_start_time),
                     self.min_delay,
                 )
             self._chars_since_cls = 0
@@ -203,15 +214,26 @@ def example(skip, no_pause, dump_asciinema, asciinema_width, asciinema_height, f
 
         env = os.environ.copy()
         for l in block["commands"]:
+            mo, so = pty.openpty()  # provide tty to enable line-buffering
+            mi, si = pty.openpty()
+
             proc = subprocess.Popen(
                 l,
                 shell=True,
-                stdout=subprocess.PIPE,
-                stderr=(subprocess.STDOUT if stderr else None),
+                stdout=so,
+                stderr=so if stderr else None,
+                stdin=si,
+                bufsize=1,
+                close_fds=True,
                 env=env,
                 cwd=workdir,
             )
-            if output.print_from_pipe(proc) != 0:
+            for fd in [so, si]:
+                os.close(fd)
+
+            result = output.print_from_pipe(proc, mo)
+
+            if result != 0:
                 exit(1)
 
         output.print(
