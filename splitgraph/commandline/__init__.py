@@ -41,7 +41,21 @@ from splitgraph.commandline.push_pull import pull_c, clone_c, push_c, upstream_c
 from splitgraph.commandline.splitfile import build_c, provenance_c, rebuild_c, dependents_c
 
 logger = logging.getLogger()
+
+# Patch click_log's handler to restore its behaviour where INFO level goes to stdout.
+
+
+class ClickHandler(logging.Handler):
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            click.echo(msg, err=record.levelno != logging.INFO)
+        except Exception:
+            self.handleError(record)
+
+
 click_log.basic_config(logger)
+logger.handlers = [ClickHandler()]
 
 
 def _fullname(o):

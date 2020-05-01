@@ -3,6 +3,7 @@ import os
 import time
 from io import BytesIO
 from pathlib import Path, PureWindowsPath
+import platform
 from tarfile import TarFile, TarInfo
 from typing import Dict, TYPE_CHECKING
 from urllib.parse import urlparse
@@ -11,7 +12,7 @@ import click
 from tqdm import tqdm
 
 from splitgraph.__version__ import __version__
-from splitgraph.config import CONFIG
+from splitgraph.config import CONFIG, SG_CMD_ASCII
 from splitgraph.exceptions import DockerUnavailableError
 
 if TYPE_CHECKING:
@@ -191,11 +192,26 @@ def list_engines_c(include_all):
 
 def _pretty_pull(client, image):
     # Use the details from the low-level docker API to give us a pull progressbar
+
+    use_ascii = True if platform.system() == "Windows" else SG_CMD_ASCII
+
     with tqdm(
-        total=1, desc="Downloading", unit="B", unit_scale=True, unit_divisor=1024, position=0
+        total=1,
+        desc="Downloading",
+        unit="B",
+        unit_scale=True,
+        unit_divisor=1024,
+        position=0,
+        ascii=use_ascii,
     ) as download_bar:
         with tqdm(
-            total=1, desc="Extracting", unit="B", unit_scale=True, unit_divisor=1024, position=1
+            total=1,
+            desc="Extracting",
+            unit="B",
+            unit_scale=True,
+            unit_divisor=1024,
+            position=1,
+            ascii=use_ascii,
         ) as extract_bar:
             download_progress = {}
             extract_progress = {}
