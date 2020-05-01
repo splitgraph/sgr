@@ -51,7 +51,26 @@ def _fullname(o):
     return module + "." + o.__class__.__name__
 
 
+def _patch_wrap_text():
+    # Patch click's formatter to strip ```
+    # etc which are used to format help text on the website.
+    wrap_text = click.formatting.wrap_text
+
+    def patched_wrap_text(*args, **kwargs):
+        text = args[0]
+        text = text.replace("```\n", "").replace("`", "")
+
+        return wrap_text(text, *args[1:], **kwargs)
+
+    click.formatting.wrap_text = patched_wrap_text
+
+
 class WithExceptionHandler(click.Group):
+    def get_command(self, ctx, cmd_name):
+        # Patch only if we're invoked somehow, not if we're imported.
+        _patch_wrap_text()
+        return super().get_command(ctx, cmd_name)
+
     def invoke(self, ctx):
         from splitgraph.engine import get_engine
 
