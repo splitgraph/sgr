@@ -101,7 +101,7 @@ def clone_c(
 )
 @click.option("-t", "--tags", help="Overwrite tags for pushed image/repo", is_flag=True)
 @click.option(
-    "-r",
+    "-u",
     "--reupload-objects",
     help="Reupload objects that metadata is pushed out for",
     is_flag=True,
