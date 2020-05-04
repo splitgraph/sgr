@@ -71,13 +71,13 @@ class Repository:
     ) -> None:
         if len(namespace) > self._MAX_NAMESPACE_LEN or not self._NAMESPACE_RE.match(namespace):
             raise ValueError(
-                "Invalid namespace. Namespace must contain at most 64 "
+                f"Invalid namespace '{namespace}'. Namespace must contain at most 64 "
                 "alphanumerics, dashes or underscores."
             )
 
         if len(repository) > self._MAX_REPOSITORY_LEN or not self._REPOSITORY_RE.match(repository):
             raise ValueError(
-                "Invalid namespace. Namespace must contain at most 64 "
+                f"Invalid repository '{repository}'. Repository must contain at most 64 "
                 "alphanumerics, dashes or underscores."
             )
 
