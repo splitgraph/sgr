@@ -6,13 +6,13 @@ installed, but you can use a PostGIS-enabled engine Docker image or build your o
 
 This example will:
 
-  * Use a Splitfile to build a dataset containing precinct boundaries and Trump/Clinton
+  * Use a Splitfile to build a dataset containing [precinct boundaries](https://www.splitgraph.com/splitgraph/election-geodata/) and Trump/Clinton
     vote fractions in each precinct in New York City
   * Use [geopandas](https://geopandas.org) to plot this data on a map.
   
 **Data sources**:
-  * Precinct-level maps from [election-geodata](https://github.com/nvkelso/election-geodata) compiled by Nathaniel Kelso and Michal Migurski.
-  * 2016 US Presidential Election precinct-level returns ([source](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/LYWX3D))
+  * [Precinct-level maps](https://www.splitgraph.com/splitgraph/election-geodata/) from [election-geodata](https://github.com/nvkelso/election-geodata) compiled by Nathaniel Kelso and Michal Migurski.
+  * [2016 US Presidential Election precinct-level returns](https://www.splitgraph.com/splitgraph/2016_election/) ([source](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/LYWX3D))
   
 You can view the [notebook](./vote_map.ipynb) directly or run it yourself.
 

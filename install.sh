@@ -154,7 +154,7 @@ _welcome() {
   echo "    ${bblue}https://github.com/splitgraph/splitgraph/tree/v$SGR_VERSION/examples${end}"
   echo
   echo "  Try out the quickstart guide"
-  echo "    ${bblue}https://www.splitgraph.com/docs/introduction.html${end}"
+  echo "    ${bblue}https://www.splitgraph.com/docs/getting-started/five_minute_demo${end}"
   echo
   echo "  Clone a dataset"
   echo "    ${bblue}sgr clone splitgraph/domestic_us_flights${end}"
