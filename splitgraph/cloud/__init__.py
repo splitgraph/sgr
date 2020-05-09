@@ -42,10 +42,7 @@ DEFAULT_REMOTES = {
 
 
 def get_remote_param(remote: str, key: str) -> str:
-    return str(
-        DEFAULT_REMOTES.get(remote, {}).get(key)
-        or get_from_subsection(CONFIG, "remotes", remote, key)
-    )
+    return str(CONFIG.get("remotes", {}).get(remote, {}).get(key) or DEFAULT_REMOTES[remote][key])
 
 
 def expect_result(

@@ -45,6 +45,7 @@ def register_c(username, password, email, remote, accept_tos):
     repo_lookup = _update_repo_lookup(CONFIG, remote)
 
     remote_params = copy(DEFAULT_REMOTES.get(remote, {}))
+    remote_params.update(CONFIG.get("remotes", {}).get(remote, {}))
     remote_params.update(
         {
             "SG_ENGINE_USER": key,
