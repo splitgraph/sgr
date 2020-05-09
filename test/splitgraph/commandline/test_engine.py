@@ -34,15 +34,6 @@ from splitgraph.exceptions import DockerUnavailableError
 
 TEST_ENGINE_NAME = "test"
 
-# Default parameters for data.splitgraph.com that show up in every config
-_CONFIG_DEFAULTS = (
-    "\n[remote: data.splitgraph.com]\nSG_IS_REGISTRY=true\n"
-    "SG_ENGINE_HOST=data.splitgraph.com\n"
-    "SG_ENGINE_PORT=5432\nSG_ENGINE_DB_NAME=sgregistry\n"
-    "SG_AUTH_API=https://api.splitgraph.com/auth\n"
-    "SG_QUERY_API=https://data.splitgraph.com\n"
-)
-
 
 def _nuke_engines_and_volumes():
     # Make sure we don't have the test engine (managed by `sgr engine`) running before/after tests.
@@ -229,7 +220,6 @@ _PULL_PROGRESS = [
             "[defaults]\nSG_ENGINE_USER=not_sgr\n"
             "SG_ENGINE_PWD=pwd\nSG_ENGINE_ADMIN_USER=not_sgr\n"
             "SG_ENGINE_ADMIN_PWD=pwd\n"
-            + _CONFIG_DEFAULTS
             + "[external_handlers]\nS3=splitgraph.hooks.s3.S3ExternalObjectHandler\n",
         ),
         # Case 2: no source config, a different engine: gets inserted as a new remote
@@ -237,7 +227,7 @@ _PULL_PROGRESS = [
             {},
             "secondary",
             "/home/user/.splitgraph/.sgconfig",
-            "[defaults]\n" + _CONFIG_DEFAULTS + "\n[remote: secondary]\n"
+            "[defaults]\n\n[remote: secondary]\n"
             "SG_ENGINE_HOST=localhost\nSG_ENGINE_PORT=5432\n"
             "SG_ENGINE_FDW_HOST=localhost\nSG_ENGINE_FDW_PORT=5432\n"
             "SG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
@@ -254,7 +244,6 @@ _PULL_PROGRESS = [
             "/home/user/.sgconfig",
             "[defaults]\nSG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
             "SG_ENGINE_ADMIN_USER=not_sgr\nSG_ENGINE_ADMIN_PWD=pwd\n"
-            + _CONFIG_DEFAULTS
             + "[external_handlers]\nS3=splitgraph.hooks.s3.S3ExternalObjectHandler\n",
         ),
         # Case 4: have source config, non-default engine gets overwritten
@@ -273,7 +262,7 @@ _PULL_PROGRESS = [
             },
             "secondary",
             "/home/user/.sgconfig",
-            "[defaults]\nSG_ENGINE_PORT=5000\n" + _CONFIG_DEFAULTS + "\n[remote: secondary]\n"
+            "[defaults]\nSG_ENGINE_PORT=5000\n\n[remote: secondary]\n"
             "SG_ENGINE_HOST=localhost\nSG_ENGINE_PORT=5432\n"
             "SG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
             "SG_ENGINE_FDW_HOST=localhost\nSG_ENGINE_FDW_PORT=5432\n"

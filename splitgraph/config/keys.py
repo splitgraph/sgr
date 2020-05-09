@@ -49,19 +49,6 @@ DEFAULTS: ConfigDict = {
     "SG_FDW_CLASS": "splitgraph.core.fdw_checkout.QueryingForeignDataWrapper",
     "SG_CMD_ASCII": "false",
     # Some default sections: these can't be overridden via envvars.
-    # Default remote engine (data.splitgraph.com).
-    # No credentials here: they are fetched from data.splitgraph.com/auth
-    # at registration time.
-    "remotes": {
-        "data.splitgraph.com": {
-            "SG_IS_REGISTRY": "true",
-            "SG_ENGINE_HOST": "data.splitgraph.com",
-            "SG_ENGINE_PORT": "5432",
-            "SG_ENGINE_DB_NAME": "sgregistry",
-            "SG_AUTH_API": "https://api.splitgraph.com/auth",
-            "SG_QUERY_API": "https://data.splitgraph.com",
-        }
-    },
     "external_handlers": {"S3": "splitgraph.hooks.s3.S3ExternalObjectHandler"},
 }
 
