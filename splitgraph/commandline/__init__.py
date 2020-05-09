@@ -9,6 +9,7 @@ import traceback
 
 import click
 import click_log
+from click_log import ColorFormatter
 
 from splitgraph.__version__ import __version__
 from splitgraph.commandline.cloud import cloud_c
@@ -56,6 +57,7 @@ class ClickHandler(logging.Handler):
 
 click_log.basic_config(logger)
 logger.handlers = [ClickHandler()]
+logger.handlers[0].formatter = ColorFormatter()
 
 
 def _fullname(o):
