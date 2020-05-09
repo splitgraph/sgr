@@ -99,3 +99,19 @@ class IncompleteObjectDownloadError(SplitGraphError):
     ):
         self.reason = reason
         self.successful_objects = successful_objects
+
+
+class GQLAPIError(SplitGraphError):
+    """GQL API errors"""
+
+
+class GQLUnauthorizedError(GQLAPIError):
+    """Unauthorized (e.g. repository isn't writeable by the user)"""
+
+
+class GQLUnauthenticatedError(GQLAPIError):
+    """Unauthenticated (user not logged in)"""
+
+
+class GQLRepoDoesntExistError(GQLAPIError):
+    """Repository doesn't exist"""

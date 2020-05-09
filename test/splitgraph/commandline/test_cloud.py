@@ -7,12 +7,19 @@ import pytest
 from click.testing import CliRunner
 
 from splitgraph.__version__ import __version__
-from splitgraph.commandline.cloud import register_c, login_c, curl_c, login_api_c
+from splitgraph.commandline.cloud import register_c, login_c, curl_c, login_api_c, readme_c
 from splitgraph.config import create_config_dict
-from splitgraph.exceptions import AuthAPIError
+from splitgraph.exceptions import (
+    AuthAPIError,
+    GQLUnauthorizedError,
+    GQLUnauthenticatedError,
+    GQLRepoDoesntExistError,
+    GQLAPIError,
+)
 
 _REMOTE = "remote_engine"
 _ENDPOINT = "http://some-auth-service"
+_GQL_ENDPOINT = "http://some-gql-service"
 _SAMPLE_ACCESS = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYmYiOjE1ODA1OTQyMzQsImVtYWlsX3ZlcmlmaWVkIjpmYWxzZSwiZW1haWwiOiJzb21ldXNlckBleGFtcGxlLmNvbSIsImV4cCI6MTU4MDU5NzgzNCwidXNlcl9pZCI6IjEyM2U0NTY3LWU4OWItMTJkMy1hNDU2LTQyNjY1NTQ0MDAwMCIsImdyYW50IjoiYWNjZXNzIiwidXNlcm5hbWUiOiJzb21ldXNlciIsImlhdCI6MTU4MDU5NDIzNH0.YEuNhqKfFoxHloohfxInSEV9rnivXcF9SvFP72Vv1mDDsaqlRqCjKYM4S7tdSMap5__e3_UTwE_CpH8eI7DdePjMu8AOFXwFHPl34AAxZgavP4Mly0a0vrMsxNJ4KbtmL5-7ih3uneTEuZLt9zQLUh-Bi_UYlEYwGl8xgz5dDZ1YlwTEMsqSrDnXdjl69CTk3vVHIQdxtki4Ng7dZhbOnEdJIRsZi9_VdMlsg2TIU-0FsU2bYYBWktms5hyAAH0RkHYfvjGwIRirSEjxTpO9vci-eAsF8C4ohTUg6tajOcyWz8d7JSaJv_NjLFMZI9mC09hchbQZkw-37CdbS_8Yvw"
 _SAMPLE_REFRESH = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYmYiOjE1NzYzMTk5MTYsImlhdCI6MTU3NjMxOTkxNiwiZW1haWwiOiJzb21ldXNlckBleGFtcGxlLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjpmYWxzZSwicmVmcmVzaF90b2tlbl9zZWNyZXQiOiJzb21lc2VjcmV0IiwiZXhwIjoxNTc4OTExOTE2LCJ1c2VyX2lkIjoiMTIzZTQ1NjctZTg5Yi0xMmQzLWE0NTYtNDI2NjU1NDQwMDAwIiwidXNlcm5hbWUiOiJzb21ldXNlciIsInJlZnJlc2hfdG9rZW5fa2V5Ijoic29tZWtleSIsImdyYW50IjoicmVmcmVzaCJ9.lO3nN3Tmu3twwUjrWsVpBq7nHHEvLnOGXeMkXXv4PRBADUAHyhmmaIPzgccq9XlwpLIexBAxTKJ4GaxSQufKUVLbzAKIMHqxiGTzELY6JMyUvMDHKeKNsq6FdhHxXoKa96fHaDDa65eGcSRSKS3Yr-9sBiANMBJGRbwypYw41gf61pewMA8TXqBmA-mvsBzMUaQNz1DfjkkpHs4SCERPK0GhYSJwDAwK8U3wG47S9k-CQqpq2B99yRRrdSVRzA_lcKe7GlF-Pw6hbRR7xBPBtX61pPME5hFUCPcwYWYXa_KhqEx9IF9edt9UahZuBudaVLmTdKKWgE9M53jQofxNzg"
 _SAMPLE_API_KEY = "abcdef123456"
@@ -401,3 +408,101 @@ def test_commandline_curl(test_case):
                 + extra_curl_args
                 + ["--some-curl-arg", "-Ssl",]
             )
+
+
+def _gql_callback(request, uri, response_headers):
+    body = json.loads(request.body)
+
+    assert body["operationName"] == "UpsertRepoReadme"
+    assert body["query"] == (
+        "mutation UpsertRepoReadme($namespace: String!, $repository: String!, "
+        "$readme: String!) {\n  __typename\n  "
+        "upsertRepoProfileByNamespaceAndRepository(input: {repoProfile: "
+        "{namespace: $namespace, repository: $repository, readme: $readme}, "
+        "patch: {readme: $readme}}) {\n    "
+        "clientMutationId\n    __typename\n  }\n}\n"
+    )
+
+    namespace = body["variables"]["namespace"]
+    repository = body["variables"]["repository"]
+
+    error_response = {
+        "errors": [
+            {
+                "message": "An error has occurred",
+                "locations": [{"line": 3, "column": 3}],
+                "path": ["upsertRepoProfileByNamespaceAndRepository"],
+            }
+        ],
+        "data": {"__typename": "Mutation", "upsertRepoProfileByNamespaceAndRepository": None},
+    }
+
+    success_response = {
+        "data": {
+            "__typename": "Mutation",
+            "upsertRepoProfileByNamespaceAndRepository": {
+                "clientMutationId": None,
+                "__typename": "UpsertRepoProfilePayload",
+            },
+        }
+    }
+
+    if not body["variables"].get("readme"):
+        response = error_response
+    elif request.headers.get("Authorization") != "Bearer " + _SAMPLE_ACCESS:
+        response = error_response
+        response["errors"][0]["message"] = "Invalid token"
+    elif namespace != "someuser":
+        response = error_response
+        response["errors"][0][
+            "message"
+        ] = 'new row violates row-level security policy for table "repo_profiles"'
+    elif repository != "somerepo":
+        response = error_response
+        response["errors"][0][
+            "message"
+        ] = 'insert or update on table "repo_profiles" violates foreign key constraint "repo_fk"'
+    else:
+        response = success_response
+
+    return [
+        200,
+        response_headers,
+        json.dumps(response),
+    ]
+
+
+@httpretty.activate(allow_net_connect=False)
+@pytest.mark.parametrize(
+    "namespace,repository,readme,token,expected",
+    [
+        ("someuser", "somerepo", "somereadme", _SAMPLE_ACCESS, True),
+        ("someuser", "somerepo", "somereadme", "not_a_token", GQLUnauthenticatedError),
+        ("otheruser", "somerepo", "somereadme", _SAMPLE_ACCESS, GQLUnauthorizedError),
+        ("someuser", "otherrepo", "somereadme", _SAMPLE_ACCESS, GQLRepoDoesntExistError),
+        # Use empty readme (is normally allowed) to test API returning an error we can't
+        # decode, raising a generic error instead.
+        ("someuser", "otherrepo", "", _SAMPLE_ACCESS, GQLAPIError),
+    ],
+)
+def test_commandline_readme(namespace, repository, readme, token, expected):
+    runner = CliRunner()
+    httpretty.register_uri(httpretty.HTTPretty.POST, _GQL_ENDPOINT + "/", body=_gql_callback)
+
+    with patch(
+        "splitgraph.cloud.AuthAPIClient.access_token",
+        new_callable=PropertyMock,
+        return_value=token,
+    ):
+        with patch("splitgraph.cloud.get_remote_param", return_value=_GQL_ENDPOINT):
+            result = runner.invoke(readme_c, [namespace + "/" + repository, "-"], input=readme)
+
+            if expected is True:
+                assert result.exit_code == 0
+                assert (
+                    "README updated for repository %s/%s." % (namespace, repository)
+                    in result.output
+                )
+            else:
+                assert result.exit_code != 0
+                assert isinstance(result.exception, expected)
