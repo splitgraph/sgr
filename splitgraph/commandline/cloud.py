@@ -13,9 +13,7 @@ from splitgraph.commandline.engine import patch_and_save_config, inject_config_i
 @click.password_option()
 @click.option("--email", prompt=True)
 @click.option(
-    "--remote",
-    default="data.splitgraph.com",
-    help="Name of the remote cloud engine to register on.",
+    "--remote", default="data.splitgraph.com", help="Name of the remote registry to register on.",
 )
 @click.option("--accept-tos", is_flag=True, help="Accept the registry's Terms of Service")
 def register_c(username, password, email, remote, accept_tos):
@@ -26,7 +24,7 @@ def register_c(username, password, email, remote, accept_tos):
     obtains a set of machine (API) credentials for the client to communicate
     with the registry and configures the data.splitgraph.com engine.
     """
-    from splitgraph.cloud import AuthAPIClient
+    from splitgraph.cloud import AuthAPIClient, DEFAULT_REMOTES
     from splitgraph.config import CONFIG
 
     client = AuthAPIClient(remote)
@@ -45,18 +43,21 @@ def register_c(username, password, email, remote, accept_tos):
 
     repo_lookup = _update_repo_lookup(CONFIG, remote)
 
+    remote_params = copy(DEFAULT_REMOTES.get(remote, {}))
+    remote_params.update(
+        {
+            "SG_ENGINE_USER": key,
+            "SG_ENGINE_PWD": secret,
+            "SG_NAMESPACE": username,
+            "SG_CLOUD_REFRESH_TOKEN": refresh,
+            "SG_CLOUD_ACCESS_TOKEN": access,
+            "SG_IS_REGISTRY": "true",
+        }
+    )
+
     config_patch = {
         "SG_REPO_LOOKUP": repo_lookup,
-        "remotes": {
-            remote: {
-                "SG_ENGINE_USER": key,
-                "SG_ENGINE_PWD": secret,
-                "SG_NAMESPACE": username,
-                "SG_CLOUD_REFRESH_TOKEN": refresh,
-                "SG_CLOUD_ACCESS_TOKEN": access,
-                "SG_IS_REGISTRY": "true",
-            }
-        },
+        "remotes": {remote: remote_params},
     }
     config_path = patch_and_save_config(CONFIG, config_patch)
     inject_config_into_engines(CONFIG["SG_ENGINE_PREFIX"], config_path)
@@ -177,9 +178,7 @@ def login_api_c(api_key, api_secret, remote):
 
 
 @click.command("curl", context_settings=dict(ignore_unknown_options=True))
-@click.option(
-    "--remote", default="data.splitgraph.com", help="Name of the remote cloud engine to use."
-)
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
 @click.option(
     "-t", "--request-type", default="postgrest", type=click.Choice(["postgrest", "splitfile"])
 )

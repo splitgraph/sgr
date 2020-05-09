@@ -1,10 +1,11 @@
 """Public API for interacting with the Splitgraph registry"""
 import base64
 import json
+import logging
 import time
 from functools import wraps
 from json import JSONDecodeError
-from typing import Callable, List, Union, Tuple, cast, Optional
+from typing import Callable, List, Union, Tuple, cast, Optional, Dict
 
 import requests
 from requests import HTTPError
@@ -14,11 +15,37 @@ from splitgraph.__version__ import __version__
 from splitgraph.config import create_config_dict, get_singleton, CONFIG
 from splitgraph.config.config import get_from_subsection, set_in_subsection
 from splitgraph.config.export import overwrite_config
-from splitgraph.exceptions import AuthAPIError
+from splitgraph.exceptions import (
+    AuthAPIError,
+    GQLAPIError,
+    GQLUnauthorizedError,
+    GQLUnauthenticatedError,
+    GQLRepoDoesntExistError,
+)
 
 
 def get_headers():
     return {"User-Agent": "sgr %s" % __version__}
+
+
+DEFAULT_REMOTES = {
+    "data.splitgraph.com": {
+        "SG_IS_REGISTRY": "true",
+        "SG_ENGINE_HOST": "data.splitgraph.com",
+        "SG_ENGINE_PORT": "5432",
+        "SG_ENGINE_DB_NAME": "sgregistry",
+        "SG_AUTH_API": "https://api.splitgraph.com/auth",
+        "SG_QUERY_API": "https://data.splitgraph.com",
+        "SG_GQL_API": "https://api.splitgraph.com/gql/cloud/graphql",
+    }
+}
+
+
+def get_remote_param(remote: str, key: str) -> str:
+    return str(
+        DEFAULT_REMOTES.get(remote, {}).get(key)
+        or get_from_subsection(CONFIG, "remotes", remote, key)
+    )
 
 
 def expect_result(
@@ -97,13 +124,13 @@ class AuthAPIClient:
             as specified in the config.
         """
         self.remote = remote
-        self.endpoint = get_from_subsection(CONFIG, "remotes", remote, "SG_AUTH_API")
+        self.endpoint = get_remote_param(remote, "SG_AUTH_API")
 
         # Allow overriding the CA bundle for test purposes (requests doesn't use the system
         # cert store)
         self.verify: Union[bool, str] = True
         try:
-            self.verify = get_from_subsection(CONFIG, "remotes", remote, "SG_AUTH_API_CA_PATH")
+            self.verify = get_remote_param(remote, "SG_AUTH_API_CA_PATH")
         except KeyError:
             pass
 
