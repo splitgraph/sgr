@@ -97,6 +97,38 @@ def expect_result(
     return decorator
 
 
+def handle_gql_errors(func: Callable[..., Response]) -> Callable[..., Response]:
+    """
+    A decorator that handles responses from the GQL API, transforming errors into exceptions.
+    """
+
+    @wraps(func)
+    def wrapped(*args, **kwargs):
+        response = func(*args, **kwargs)
+
+        logging.debug("GQL API status: %d, response: %s", response.status_code, response.text)
+
+        # GQL itself doesn't seem to return non-200 codes, so this catches HTTP-level errors.
+        response.raise_for_status()
+
+        response_j = response.json()
+
+        if "errors" in response_j:
+            message = response_j["errors"][0]["message"]
+            if "new row violates row-level security policy for table" in message:
+                raise GQLUnauthorizedError("You do not have write access to this repository!")
+            elif "Invalid token" in message:
+                raise GQLUnauthenticatedError("Your access token doesn't exist or has expired!")
+            elif "violates foreign key constraint" in message:
+                raise GQLRepoDoesntExistError("Unknown repository!")
+            else:
+                raise GQLAPIError(message)
+
+        return response
+
+    return wrapped
+
+
 def get_token_claim(jwt, claim):
     """Extract a claim from a JWT token without validating it."""
     # Directly decode the base64 claims part without pulling in any JWT libraries
@@ -268,3 +300,36 @@ class AuthAPIClient:
         set_in_subsection(config, "remotes", self.remote, "SG_CLOUD_ACCESS_TOKEN", new_access_token)
         overwrite_config(config, get_singleton(config, "SG_CONFIG_FILE"))
         return new_access_token
+
+
+class GQLAPIClient:
+    """Wrapper class for select Splitgraph Registry GQL operations that can be
+    called from the CLI"""
+
+    def __init__(self, remote: str):
+        self.remote = remote
+
+        self.auth_client = AuthAPIClient(remote)
+
+    def _gql(self, query: Dict) -> requests.Response:
+        access_token = self.auth_client.access_token
+        headers = get_headers()
+        headers.update({"Authorization": "Bearer " + access_token})
+        endpoint = self.verify = get_remote_param(self.remote, "SG_GQL_API")
+
+        return requests.post(endpoint, headers=headers, json=query)
+
+    @handle_gql_errors
+    def upsert_readme(self, namespace: str, repository: str, readme: str):
+        return self._gql(
+            {
+                "operationName": "UpsertRepoReadme",
+                "variables": {"namespace": namespace, "repository": repository, "readme": readme},
+                "query": "mutation UpsertRepoReadme($namespace: String!, $repository: String!, "
+                "$readme: String!) {\n  __typename\n  "
+                "upsertRepoProfileByNamespaceAndRepository(input: {repoProfile: "
+                "{namespace: $namespace, repository: $repository, readme: $readme}, "
+                "patch: {readme: $readme}}) {\n    "
+                "clientMutationId\n    __typename\n  }\n}\n",
+            },
+        )

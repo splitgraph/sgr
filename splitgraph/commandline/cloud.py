@@ -1,10 +1,11 @@
 """Command line routines related to registering/setting up connections to the Splitgraph registry."""
 import logging
 import subprocess
+from copy import copy
 
 import click
 
-from splitgraph.commandline.common import ImageType
+from splitgraph.commandline.common import ImageType, RepositoryType
 from splitgraph.commandline.engine import patch_and_save_config, inject_config_into_engines
 
 
@@ -250,6 +251,24 @@ def curl_c(remote, request_type, image, request_params, curl_args):
     subprocess.call(subprocess_args)
 
 
+@click.command("readme")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.argument("repository", type=RepositoryType(exists=False))
+@click.argument("readme", type=click.File("r"))
+def readme_c(remote, repository, readme):
+    """Upload or overwrite a README to a previously-pushed Splitgraph repository.
+
+    The README should be a file in Markdown format.
+    """
+    from splitgraph.cloud import GQLAPIClient
+
+    client = GQLAPIClient(remote)
+    client.upsert_readme(
+        namespace=repository.namespace, repository=repository.repository, readme=readme.read()
+    )
+    click.echo("README updated for repository %s." % str(repository))
+
+
 @click.group("cloud")
 def cloud_c():
     """Manage connections to Splitgraph Cloud."""
@@ -259,3 +278,4 @@ cloud_c.add_command(login_c)
 cloud_c.add_command(login_api_c)
 cloud_c.add_command(register_c)
 cloud_c.add_command(curl_c)
+cloud_c.add_command(readme_c)
