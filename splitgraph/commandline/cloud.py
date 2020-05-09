@@ -45,8 +45,13 @@ def register_c(username, password, email, remote, accept_tos):
 
     repo_lookup = _update_repo_lookup(CONFIG, remote)
 
-    remote_params = copy(DEFAULT_REMOTES.get(remote, {}))
-    remote_params.update(get_all_in_subsection(CONFIG, "remotes", remote))
+    # If remote isn't in the config (is one of the default ones), add the default parameters
+    # to the new config -- otherwise only overwrite the new fields in the existing config.
+    remote_params = (
+        copy(DEFAULT_REMOTES.get(remote, {}))
+        if not get_all_in_subsection(CONFIG, "remotes", remote)
+        else {}
+    )
     remote_params.update(
         {
             "SG_ENGINE_USER": key,

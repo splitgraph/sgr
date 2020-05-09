@@ -1,6 +1,6 @@
 import json
 from contextlib import contextmanager
-from unittest.mock import patch, PropertyMock
+from unittest.mock import patch, PropertyMock, call
 
 import httpretty
 import pytest
@@ -129,25 +129,26 @@ def test_commandline_registration_normal():
                     )
                     assert result.exit_code == 0
                     assert "Sample ToS message" in result.output
-
-    pc.assert_called_once_with(
-        source_config,
-        {
-            "SG_REPO_LOOKUP": "remote_engine",
-            "remotes": {
-                "remote_engine": {
-                    "SG_ENGINE_USER": _SAMPLE_API_KEY,
-                    "SG_ENGINE_PWD": _SAMPLE_API_SECRET,
-                    "SG_NAMESPACE": "someuser",
-                    "SG_CLOUD_REFRESH_TOKEN": _SAMPLE_REFRESH,
-                    "SG_CLOUD_ACCESS_TOKEN": _SAMPLE_ACCESS,
-                    "SG_IS_REGISTRY": "true",
-                }
+    assert pc.mock_calls == [
+        call(
+            source_config,
+            {
+                "SG_REPO_LOOKUP": "remote_engine",
+                "remotes": {
+                    "remote_engine": {
+                        "SG_ENGINE_USER": _SAMPLE_API_KEY,
+                        "SG_ENGINE_PWD": _SAMPLE_API_SECRET,
+                        "SG_NAMESPACE": "someuser",
+                        "SG_CLOUD_REFRESH_TOKEN": _SAMPLE_REFRESH,
+                        "SG_CLOUD_ACCESS_TOKEN": _SAMPLE_ACCESS,
+                        "SG_IS_REGISTRY": "true",
+                    }
+                },
             },
-        },
-    )
+        )
+    ]
 
-    ic.assert_called_once_with("splitgraph_test_engine_", source_config["SG_CONFIG_FILE"])
+    assert ic.mock_calls == [call("splitgraph_test_engine_", source_config["SG_CONFIG_FILE"])]
 
 
 @httpretty.activate(allow_net_connect=False)
@@ -218,20 +219,23 @@ def test_commandline_login_normal():
         assert result.exit_code == 0
         print(result.output)
 
-    pc.assert_called_once_with(
-        source_config,
-        {
-            "SG_REPO_LOOKUP": _REMOTE,
-            "remotes": {
-                "remote_engine": {
-                    "SG_NAMESPACE": "someuser",
-                    "SG_CLOUD_REFRESH_TOKEN": _SAMPLE_REFRESH,
-                    "SG_CLOUD_ACCESS_TOKEN": _SAMPLE_ACCESS,
-                }
+    assert pc.mock_calls == [
+        call(
+            source_config,
+            {
+                "SG_REPO_LOOKUP": _REMOTE,
+                "remotes": {
+                    "remote_engine": {
+                        "SG_NAMESPACE": "someuser",
+                        "SG_CLOUD_REFRESH_TOKEN": _SAMPLE_REFRESH,
+                        "SG_CLOUD_ACCESS_TOKEN": _SAMPLE_ACCESS,
+                    }
+                },
             },
-        },
-    )
-    ic.assert_called_once_with("splitgraph_test_engine_", source_config["SG_CONFIG_FILE"])
+        )
+    ]
+
+    assert ic.mock_calls == [call("splitgraph_test_engine_", source_config["SG_CONFIG_FILE"])]
 
     # Do the same overwriting the current API keys
     with _patch_login_funcs(source_config) as (pc, ic):
@@ -250,22 +254,25 @@ def test_commandline_login_normal():
         )
         assert result.exit_code == 0
 
-    pc.assert_called_once_with(
-        source_config,
-        {
-            "SG_REPO_LOOKUP": _REMOTE,
-            "remotes": {
-                "remote_engine": {
-                    "SG_ENGINE_USER": _SAMPLE_API_KEY,
-                    "SG_ENGINE_PWD": _SAMPLE_API_SECRET,
-                    "SG_NAMESPACE": "someuser",
-                    "SG_CLOUD_REFRESH_TOKEN": _SAMPLE_REFRESH,
-                    "SG_CLOUD_ACCESS_TOKEN": _SAMPLE_ACCESS,
-                }
+    assert pc.mock_calls == [
+        call(
+            source_config,
+            {
+                "SG_REPO_LOOKUP": _REMOTE,
+                "remotes": {
+                    "remote_engine": {
+                        "SG_ENGINE_USER": _SAMPLE_API_KEY,
+                        "SG_ENGINE_PWD": _SAMPLE_API_SECRET,
+                        "SG_NAMESPACE": "someuser",
+                        "SG_CLOUD_REFRESH_TOKEN": _SAMPLE_REFRESH,
+                        "SG_CLOUD_ACCESS_TOKEN": _SAMPLE_ACCESS,
+                    }
+                },
             },
-        },
-    )
-    ic.assert_called_once_with("splitgraph_test_engine_", source_config["SG_CONFIG_FILE"])
+        )
+    ]
+
+    assert ic.mock_calls == [call("splitgraph_test_engine_", source_config["SG_CONFIG_FILE"])]
 
     # Do the same changing the user -- check new API keys are still acquired
     source_config["remotes"][_REMOTE]["SG_NAMESPACE"] = "someotheruser"
@@ -277,21 +284,23 @@ def test_commandline_login_normal():
         )
         assert result.exit_code == 0
 
-    pc.assert_called_once_with(
-        source_config,
-        {
-            "SG_REPO_LOOKUP": _REMOTE,
-            "remotes": {
-                "remote_engine": {
-                    "SG_ENGINE_USER": _SAMPLE_API_KEY,
-                    "SG_ENGINE_PWD": _SAMPLE_API_SECRET,
-                    "SG_NAMESPACE": "someuser",
-                    "SG_CLOUD_REFRESH_TOKEN": _SAMPLE_REFRESH,
-                    "SG_CLOUD_ACCESS_TOKEN": _SAMPLE_ACCESS,
-                }
+    assert pc.mock_calls == [
+        call(
+            source_config,
+            {
+                "SG_REPO_LOOKUP": _REMOTE,
+                "remotes": {
+                    "remote_engine": {
+                        "SG_ENGINE_USER": _SAMPLE_API_KEY,
+                        "SG_ENGINE_PWD": _SAMPLE_API_SECRET,
+                        "SG_NAMESPACE": "someuser",
+                        "SG_CLOUD_REFRESH_TOKEN": _SAMPLE_REFRESH,
+                        "SG_CLOUD_ACCESS_TOKEN": _SAMPLE_ACCESS,
+                    }
+                },
             },
-        },
-    )
+        )
+    ]
 
 
 @httpretty.activate(allow_net_connect=False)
