@@ -11,7 +11,7 @@ If a query filters on the same dimension as what the table is chunked by
 by not considering some chunks (including not downloading them at all).
 
 However, in some cases fragments might have unique values but still have their ranges overlap.
-The 2016 US Presidential Election dataset ([source](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/LYWX3D))
+The [2016 US Presidential Election dataset](https://www.splitgraph.com/splitgraph/2016_election/) ([source](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/LYWX3D))
 is fragmented by precinct ID which has the state FIPS code as its first part. So a query filtering
 on the state FIPS code will hit a few fragments, but a query filtering on the name of the county
 will need to download and inspect all fragments in the dataset (since almost every fragment will
