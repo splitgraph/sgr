@@ -27,6 +27,7 @@ def register_c(username, password, email, remote, accept_tos):
     """
     from splitgraph.cloud import AuthAPIClient, DEFAULT_REMOTES
     from splitgraph.config import CONFIG
+    from splitgraph.config.config import get_all_in_subsection
 
     client = AuthAPIClient(remote)
     tos = client.tos()
@@ -45,7 +46,7 @@ def register_c(username, password, email, remote, accept_tos):
     repo_lookup = _update_repo_lookup(CONFIG, remote)
 
     remote_params = copy(DEFAULT_REMOTES.get(remote, {}))
-    remote_params.update(CONFIG.get("remotes", {}).get(remote, {}))
+    remote_params.update(get_all_in_subsection(CONFIG, "remotes", remote))
     remote_params.update(
         {
             "SG_ENGINE_USER": key,

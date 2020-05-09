@@ -6,7 +6,7 @@ with Splitgraph tables without any changes.
 One such tool is [PostgREST](http://postgrest.org/en/latest/) that generates a REST API for a
 PostgreSQL schema. Splitgraph runs PostgREST in Splitgraph Cloud, allowing any Splitgraph dataset
 to be accessed via HTTP. For example, [this](https://data.splitgraph.com/splitgraph/domestic_us_flights/latest/-/rest/flights?and=(origin_airport.eq.JFK,destination_airport.eq.LAX)) link runs the following PostgREST query against
-the `splitgraph/domestic_us_flights:latest` image:
+the [`splitgraph/domestic_us_flights:latest`](https://www.splitgraph.com/splitgraph/domestic_us_flights/latest/-/overview) image:
 
 ```
 flights?and=(origin_airport.eq.JFK,destination_airport.eq.LAX)
