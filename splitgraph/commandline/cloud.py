@@ -107,7 +107,8 @@ def login_c(username, password, remote, overwrite):
     If you want to log in using an existing API key pair, use `sgr cloud login-api` instead.
     """
     from splitgraph.config import CONFIG
-    from splitgraph.cloud import AuthAPIClient, get_token_claim
+    from splitgraph.config.config import get_all_in_subsection
+    from splitgraph.cloud import AuthAPIClient, get_token_claim, DEFAULT_REMOTES
 
     client = AuthAPIClient(remote)
 
@@ -117,15 +118,23 @@ def login_c(username, password, remote, overwrite):
     namespace = get_token_claim(access, "username")
 
     click.echo("Logged into %s as %s" % (remote, namespace))
+
+    remote_params = (
+        copy(DEFAULT_REMOTES.get(remote, {}))
+        if not get_all_in_subsection(CONFIG, "remotes", remote)
+        else {}
+    )
+    remote_params.update(
+        {
+            "SG_NAMESPACE": namespace,
+            "SG_CLOUD_REFRESH_TOKEN": refresh,
+            "SG_CLOUD_ACCESS_TOKEN": access,
+        }
+    )
+
     config_patch = {
         "SG_REPO_LOOKUP": _update_repo_lookup(CONFIG, remote),
-        "remotes": {
-            remote: {
-                "SG_NAMESPACE": namespace,
-                "SG_CLOUD_REFRESH_TOKEN": refresh,
-                "SG_CLOUD_ACCESS_TOKEN": access,
-            }
-        },
+        "remotes": {remote: remote_params},
     }
 
     # Get new tokens in any case if we're logging in under a different username.
@@ -161,8 +170,9 @@ def login_api_c(api_key, api_secret, remote):
     This will inject the API keys for the registry into the configuration file
     and generate a new access token.
     """
-    from splitgraph.cloud import AuthAPIClient, get_token_claim
+    from splitgraph.cloud import AuthAPIClient, get_token_claim, DEFAULT_REMOTES
     from splitgraph.config import CONFIG
+    from splitgraph.config.config import get_all_in_subsection
 
     client = AuthAPIClient(remote)
     access = client.get_access_token_from_api(api_key, api_secret)
@@ -170,16 +180,22 @@ def login_api_c(api_key, api_secret, remote):
     namespace = get_token_claim(access, "username")
 
     click.echo("Logged into %s as %s" % (remote, namespace))
+    remote_params = (
+        copy(DEFAULT_REMOTES.get(remote, {}))
+        if not get_all_in_subsection(CONFIG, "remotes", remote)
+        else {}
+    )
+    remote_params.update(
+        {
+            "SG_NAMESPACE": namespace,
+            "SG_CLOUD_ACCESS_TOKEN": access,
+            "SG_ENGINE_USER": api_key,
+            "SG_ENGINE_PWD": api_secret,
+        }
+    )
     config_patch = {
         "SG_REPO_LOOKUP": _update_repo_lookup(CONFIG, remote),
-        "remotes": {
-            remote: {
-                "SG_NAMESPACE": namespace,
-                "SG_CLOUD_ACCESS_TOKEN": access,
-                "SG_ENGINE_USER": api_key,
-                "SG_ENGINE_PWD": api_secret,
-            }
-        },
+        "remotes": {remote: remote_params},
     }
     config_path = patch_and_save_config(CONFIG, config_patch)
     inject_config_into_engines(CONFIG["SG_ENGINE_PREFIX"], config_path)
