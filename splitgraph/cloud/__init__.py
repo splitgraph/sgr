@@ -13,7 +13,7 @@ from requests.models import Response
 
 from splitgraph.__version__ import __version__
 from splitgraph.config import create_config_dict, get_singleton, CONFIG
-from splitgraph.config.config import get_from_subsection, set_in_subsection
+from splitgraph.config.config import get_from_subsection, set_in_subsection, get_all_in_subsection
 from splitgraph.config.export import overwrite_config
 from splitgraph.exceptions import (
     AuthAPIError,
@@ -42,7 +42,9 @@ DEFAULT_REMOTES = {
 
 
 def get_remote_param(remote: str, key: str) -> str:
-    return str(CONFIG.get("remotes", {}).get(remote, {}).get(key) or DEFAULT_REMOTES[remote][key])
+    return str(
+        get_all_in_subsection(CONFIG, "remotes", remote).get(key) or DEFAULT_REMOTES[remote][key]
+    )
 
 
 def expect_result(
