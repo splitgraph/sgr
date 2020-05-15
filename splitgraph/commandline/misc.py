@@ -222,7 +222,14 @@ def cleanup_c():
     default=False,
     help="Output configuration in the Splitgraph config file format",
 )
-def config_c(no_shielding, config_format):
+@click.option(
+    "-n",
+    "--conn-string",
+    is_flag=True,
+    default=False,
+    help="Print a libpq connection string to the engine",
+)
+def config_c(no_shielding, config_format, conn_string):
     """
     Print the current Splitgraph configuration.
 
@@ -240,10 +247,30 @@ def config_c(no_shielding, config_format):
     ```
     SG_REPO_LOOKUP=engine1,engine2 sgr config -sc > .sgconfig
     ```
+
+    If `--conn-string` is passed, this prints out a libpq connection string
+    that can be used to connect to the default Splitgraph engine with other tools:
+
+    ```
+    pgcli $(sgr config -n)
+    ```
     """
 
     from splitgraph.config.export import serialize_config
     from splitgraph.config import CONFIG
+    from splitgraph.engine import get_engine
+
+    if conn_string:
+        conn_params = get_engine().conn_params
+        server, port, username, password, dbname = (
+            conn_params["SG_ENGINE_HOST"],
+            conn_params["SG_ENGINE_PORT"],
+            conn_params["SG_ENGINE_USER"],
+            conn_params["SG_ENGINE_PWD"],
+            conn_params["SG_ENGINE_DB_NAME"],
+        )
+        click.echo(f"postgresql://{username}:{password}@{server}:{port}/{dbname}")
+        return
 
     click.echo(serialize_config(CONFIG, config_format, no_shielding))
 

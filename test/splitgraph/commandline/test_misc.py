@@ -314,6 +314,10 @@ def test_config_dumping():
     assert "[mount_handlers]" in result.output
     assert "S3=splitgraph.hooks.s3" in result.output
 
+    # sgr config -n (print connection string to engine)
+    result = runner.invoke(config_c, ["-n"])
+    assert result.output == "postgresql://sgr:supersecure@localhost:5432/splitgraph\n"
+
 
 def test_examples(local_engine_empty):
     # Test the example-generating commands used in the quickstart
