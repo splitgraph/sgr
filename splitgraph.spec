@@ -8,7 +8,7 @@ block_cipher = None
 
 a = Analysis(['bin/sgr'],
              pathex=['.'],
-             hiddenimports=[],
+             hiddenimports=["splitgraph.hooks.s3", "splitgraph.hooks.splitfile_commands"],
              hookspath=[],
              # Linux build on Travis pulls in numpy for no obvious reason
              excludes=['numpy'],

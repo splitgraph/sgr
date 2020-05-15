@@ -188,6 +188,9 @@ jobs:
               dist/"$BINARY_OUTPUT" --verbosity DEBUG engine add \
                 --password password --image splitgraph/engine:latest
               dist/"$BINARY_OUTPUT" status
+              dist/"$BINARY_OUTPUT" cloud login-api --api-key "$SG_DEMO_KEY" --api-secret "$SG_DEMO_SECRET"
+              dist/"$BINARY_OUTPUT" clone --download-all splitgraph/census
+              dist/"$BINARY_OUTPUT" checkout splitgraph/census
             fi
       before_deploy: &before_deploy
         - echo "before_deploy"
