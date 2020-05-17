@@ -8,12 +8,9 @@ ARCHITECTURE_DIR="${TEST_DIR}/architecture"
 CORE_ARCHITECTURE="docker-compose.core.yml"
 MOUNTING_ARCHITECTURE="docker-compose.mounting.yml"
 
-# Stop the PG/MySQL that ship with Travis and run our own integration test
-# SG engine/remote architecture instead.
-pushd "$REPO_ROOT_DIR" \
-    && ( sudo /etc/init.d/postgresql stop || true ; ) \
-    && ( sudo /etc/init.d/mysql stop || true ; ) \
-    && pushd "${ARCHITECTURE_DIR}" \
+source "$HOME"/.poetry/env
+
+pushd "$ARCHITECTURE_DIR" \
     && docker-compose -f $CORE_ARCHITECTURE build \
     && docker-compose -f $CORE_ARCHITECTURE up -d \
     && { {

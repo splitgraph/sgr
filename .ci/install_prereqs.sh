@@ -20,8 +20,7 @@ source "$HOME"/.poetry/env
 poetry config virtualenvs.create false
 
 # Load the engine image from cache, if it exists.
-ls docker_images -lah
-docker load -i docker_images/engine.tar || true
+docker load -i ~/docker_images/engine.tar || true
 docker images
 
 popd

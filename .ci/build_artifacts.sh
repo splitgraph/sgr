@@ -10,6 +10,8 @@ test -z "$PYPI_URL" && { echo "No PYPI_URL set. Defaulting to ${DEFAULT_PYPI_URL
 
 PYPI_URL=${PYPI_URL-"${DEFAULT_PYPI_URL}"}
 
+source "$HOME"/.poetry/env
+
 # Configure pypi for deployment
 pushd "$REPO_ROOT_DIR" \
     && poetry config repositories.testpypi "$PYPI_URL" \
