@@ -201,10 +201,7 @@ def example(skip, no_pause, dump_asciinema, asciinema_width, asciinema_height, f
             else:
                 output.print()
 
-        # When recording Asciinemas, use Ascii progressbars
-        # (unicode causes issues)
         env = os.environ.copy()
-        env["SG_CMD_ASCII"] = "true"
         for l in block["commands"]:
             proc = subprocess.Popen(
                 l,

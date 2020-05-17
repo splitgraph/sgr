@@ -28,9 +28,9 @@ cd ..
 # release tags, e.g. a build of 3.4.5 would push out splitgraph/engine:3.4.5,
 # splitgraph/engine:3.4 and splitgraph/engine:latest.
 
-if [ -n "$TRAVIS_TAG" ]; then
-  # Strip the first letter (v0.0.1 etc) from the Git tag to get the Docker tag (actual version)
-  TAGS="latest ${TRAVIS_TAG:1} stable"
+if [ -n "$GITHUB_REF" ]; then
+  # Strip refs/tags/v .. -- 11 chars from the Git ref to get the Docker tag (actual version)
+  TAGS="latest ${GITHUB_REF:11} stable"
 else
   TAGS="latest"
 fi

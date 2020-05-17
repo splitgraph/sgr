@@ -19,7 +19,7 @@
   - "# engine, since we don't intend to use it to store objects (just metadata)."
   - sgr init
   - SG_ENGINE=engine_2 sgr init --skip-object-handling
-  - docker-compose --project-name splitgraph_example exec objectstorage mkdir /tmp/splitgraph
+  - docker-compose --project-name splitgraph_example exec -T objectstorage mkdir /tmp/splitgraph
 - commands:
   - "# Ingest the weather dataset at Raleigh-Durham Airport from the CSV example"
   - sgr init demo/weather
@@ -40,7 +40,7 @@
 - commands:
   - "# Each object in storage is represented by three files: the data file itself,"
   - "# the CStore footer file and a JSON file with object schema."
-  - docker-compose --project-name splitgraph_example exec objectstorage ls /tmp/splitgraph
+  - docker-compose --project-name splitgraph_example exec -T objectstorage ls /tmp/splitgraph
 - commands:
   - "# Delete the dataset locally and garbage collect unused objects"
   - sgr rm -y demo/weather
