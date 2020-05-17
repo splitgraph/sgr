@@ -3,7 +3,7 @@
 ![](https://www.mildbyte.xyz/asciicast/splitfiles.gif)]
 
 # Splitgraph
-[![Build Status](https://travis-ci.com/splitgraph/splitgraph.svg?branch=master)](https://travis-ci.com/splitgraph/splitgraph) [![Coverage Status](https://coveralls.io/repos/github/splitgraph/splitgraph/badge.svg?branch=master)](https://coveralls.io/github/splitgraph/splitgraph?branch=master)
+![Build status](https://github.com/splitgraph/splitgraph/workflows/Build,%20test%20and%20release%20Splitgraph%20and%20engine./badge.svg?branch=master) [![Coverage Status](https://coveralls.io/repos/github/splitgraph/splitgraph/badge.svg?branch=master)](https://coveralls.io/github/splitgraph/splitgraph?branch=master)
 
 Splitgraph is a tool for creating, maintaining and extending database images.
 

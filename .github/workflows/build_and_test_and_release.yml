@@ -42,6 +42,8 @@ jobs:
         run: ./.ci/up_architecture.sh
       - name: "Run the tests"
         if: "!contains(github.event.head_commit.message, '[skip test]')"
+        env:
+          COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
         run: |
           source "$HOME"/.poetry/env
           poetry run mypy splitgraph
