@@ -1,4 +1,5 @@
-name: Build, test and release Splitgraph and engine.
+name: build_all
+# Build, test and release Splitgraph/sgr binary/engine
 
 on: push
 
