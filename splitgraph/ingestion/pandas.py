@@ -62,7 +62,7 @@ class PandasIngestionAdapter(IngestionAdapter):
         # (from the datatypes in the query that postgres gives back).
         if schema:
             query = (
-                SQL("SET search_path TO {};")
+                SQL("SET search_path TO {},public;")
                 .format(Identifier(schema))
                 .as_string(engine.connection)
                 + query

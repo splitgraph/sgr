@@ -43,6 +43,6 @@ SQL {
         ON g.precinct = v.precinct
     WHERE g.state = '36'
         AND g.county = '061'
-        AND public.ST_IsValid(geom);
+        AND ST_IsValid(geom);
     ALTER TABLE vote_fraction_geo ADD PRIMARY KEY(precinct);
 }

@@ -55,7 +55,7 @@ def copy_csv_buffer(
 def query_to_csv(engine: "PsycopgEngine", query, buffer, schema: Optional[str] = None):
     copy_query = SQL("COPY (") + SQL(query) + SQL(") TO STDOUT WITH (FORMAT CSV, HEADER TRUE);")
     if schema:
-        copy_query = SQL("SET search_path TO {};").format(Identifier(schema)) + copy_query
+        copy_query = SQL("SET search_path TO {},public;").format(Identifier(schema)) + copy_query
 
     with engine.connection.cursor() as cur:
         cur.copy_expert(copy_query, buffer)
