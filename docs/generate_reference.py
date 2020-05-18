@@ -115,11 +115,16 @@ def _emit_command_options(command):
         return ""
 
 
-def _emit_mdx_metadata(doc_id, title, sidebar_title=None):
+def _emit_mdx_metadata(doc_id, title, sidebar_title=None, description=None):
     sidebar_title = sidebar_title or title
     return (
-        "export const meta = {id: %s, title: %s, sidebarTitle: %s};"
-        % (json.dumps(doc_id), json.dumps(title), json.dumps(sidebar_title))
+        "export const meta = {id: %s, title: %s, sidebarTitle: %s, description: %s};"
+        % (
+            json.dumps(doc_id),
+            json.dumps(title),
+            json.dumps(sidebar_title),
+            json.dumps(description),
+        )
         + "\n"
     )
 
@@ -132,11 +137,12 @@ def _emit_command(command_name):
     command = STRUCTURE_CMD_OVERRIDE.get(command_name)
     if not command:
         command = getattr(cmd, command_name + "_c")
+    short_help_str = command.get_short_help_str(limit=150)
     result = _emit_command_invocation(command, command_name)
     # Future: move examples under options?
     result += "\n" + command.help.replace("Examples:", "### Examples")
     result += _emit_command_options(command)
-    return result
+    return result, short_help_str
 
 
 def _slug_section(section):
@@ -169,11 +175,18 @@ def sgr(output, force):
             command_path = os.path.join(section_path, doc_filename)
             print("Making %s: %s..." % (command_path, command))
             with open(command_path, "w") as f:
+                full_help, short_help = _emit_command(command)
+
                 f.write(
-                    _emit_mdx_metadata(doc_id=doc_id, title="sgr " + command, sidebar_title=command)
+                    _emit_mdx_metadata(
+                        doc_id=doc_id,
+                        title="sgr " + command,
+                        sidebar_title=command,
+                        description=short_help or None,
+                    )
                 )
                 f.write("\n")
-                f.write(_emit_command(command) + "\n")
+                f.write(full_help + "\n")
 
     print("Done.")
 
