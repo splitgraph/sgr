@@ -3,7 +3,7 @@
 ![](https://www.mildbyte.xyz/asciicast/splitfiles.gif)
 
 # Splitgraph
-![Build status](https://github.com/splitgraph/splitgraph/workflows/build_all/badge.svg?branch=master) [![Coverage Status](https://coveralls.io/repos/github/splitgraph/splitgraph/badge.svg?branch=master)](https://coveralls.io/github/splitgraph/splitgraph?branch=master)
+![Build status](https://github.com/splitgraph/splitgraph/workflows/build_all/badge.svg) [![Coverage Status](https://coveralls.io/repos/github/splitgraph/splitgraph/badge.svg?branch=master)](https://coveralls.io/github/splitgraph/splitgraph?branch=master)
 
 Splitgraph is a tool for building, versioning, querying and sharing datasets that works on top of [PostgreSQL](https://postgresql.org) and integrates seamlessly with anything that uses PostgreSQL.
 
