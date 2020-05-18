@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 @remote_switch_option()
 def log_c(image_spec, tree):
     """
-    Show the history of a Splitgraph repository/image
+    Show the history of a Splitgraph repository/image.
 
     By default, this shows the history of the current branch, starting from the HEAD pointer and following its
     parent chain.
