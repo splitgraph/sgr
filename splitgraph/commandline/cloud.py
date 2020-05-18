@@ -119,11 +119,9 @@ def login_c(username, password, remote, overwrite):
 
     click.echo("Logged into %s as %s" % (remote, namespace))
 
-    remote_params = (
-        copy(DEFAULT_REMOTES.get(remote, {}))
-        if not get_all_in_subsection(CONFIG, "remotes", remote)
-        else {}
-    )
+    config_remote_params = get_all_in_subsection(CONFIG, "remotes", remote)
+
+    remote_params = copy(DEFAULT_REMOTES.get(remote, {})) if not config_remote_params else {}
     remote_params.update(
         {
             "SG_NAMESPACE": namespace,
@@ -144,8 +142,8 @@ def login_c(username, password, remote, overwrite):
         username_changed = False
 
     if (
-        "SG_ENGINE_USER" not in CONFIG["remotes"][remote]
-        or "SG_ENGINE_PWD" not in CONFIG["remotes"][remote]
+        "SG_ENGINE_USER" not in config_remote_params
+        or "SG_ENGINE_PWD" not in config_remote_params
         or overwrite
         or username_changed
     ):
