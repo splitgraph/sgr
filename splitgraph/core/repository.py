@@ -598,10 +598,7 @@ class Repository:
         return_shape: ResultShape = ResultShape.MANY_MANY,
     ) -> Any:
         """Execute an arbitrary SQL statement inside of this repository's checked out schema."""
-        self.object_engine.run_sql("SET search_path TO %s", (self.to_schema(),))
-        result = self.object_engine.run_sql(sql, arguments=arguments, return_shape=return_shape)
-        self.object_engine.run_sql("SET search_path TO public")
-        return result
+        return self.object_engine.run_sql_in(self.to_schema(), sql, arguments, return_shape)
 
     def dump(self, stream: TextIOWrapper, exclude_object_contents: bool = False) -> None:
         """

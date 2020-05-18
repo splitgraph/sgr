@@ -140,7 +140,7 @@ class SQLEngine(ABC):
         :param arguments: Query arguments
         :param return_shape: ReturnShape to coerce the result into.
         """
-        self.run_sql("SET search_path TO %s", (schema,), return_shape=ResultShape.NONE)
+        self.run_sql("SET search_path TO %s,public", (schema,), return_shape=ResultShape.NONE)
         result = self.run_sql(sql, arguments, return_shape=return_shape)
         self.run_sql("SET search_path TO public", (schema,), return_shape=ResultShape.NONE)
         return result
