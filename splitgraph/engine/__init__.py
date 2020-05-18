@@ -409,12 +409,13 @@ class SQLEngine(ABC):
 
         results = self.run_sql(
             SQL(
-                "SELECT ordinal_position, column_name, "
-                "CASE WHEN data_type = 'USER-DEFINED' THEN udt_name ELSE data_type END, "
-                "col_description('{}.{}'::regclass, ordinal_position) "
-                "FROM information_schema.columns "
-                "WHERE table_schema = %s AND table_name = %s "
-                "ORDER BY ordinal_position"
+                "SELECT c.attnum, c.attname, "
+                "pg_catalog.format_type(c.atttypid, c.atttypmod), "
+                "col_description('{}.{}'::regclass, c.attnum) "
+                "FROM pg_attribute c JOIN pg_class t ON c.attrelid = t.oid "
+                "JOIN pg_namespace n ON t.relnamespace = n.oid "
+                "WHERE n.nspname = %s AND t.relname = %s AND NOT c.attisdropped "
+                "AND c.attnum >= 0 ORDER BY c.attnum "
             ).format(Identifier(schema), Identifier(table_name)),
             (schema, table_name),
         )

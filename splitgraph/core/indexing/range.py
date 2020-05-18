@@ -61,6 +61,17 @@ def _inject_collation(qual: str, ctype: str):
     return qual
 
 
+def _strip_type_mod(ctype: str) -> str:
+    """Convert e.g. numeric(5,3) into numeric for the purpose of
+    checking if we can run comparisons on this type and add it to the range index.
+    """
+    if "(" in ctype:
+        ctype = ctype[: ctype.index("(")]
+    if "[" in ctype:
+        ctype = ctype[: ctype.index("[")]
+    return ctype
+
+
 def _qual_to_index_clause(qual: Tuple[str, str, Any], ctype: str) -> Tuple[SQL, Tuple]:
     """Convert our internal qual format into a WHERE clause that runs against an object's index entry.
     Returns a Postgres clause (as a Composable) and a tuple of arguments to be mogrified into it."""
@@ -135,7 +146,9 @@ def _quals_to_clause(
         return SQL(""), ()
 
     def _internal_quals_to_clause(or_quals):
-        clauses, args = zip(*[qual_to_clause(q, column_types[q[0]]) for q in or_quals])
+        clauses, args = zip(
+            *[qual_to_clause(q, _strip_type_mod(column_types[q[0]])) for q in or_quals]
+        )
         return (
             SQL(" OR ").join(SQL("(") + c + SQL(")") for c in clauses),
             tuple([a for arg in args for a in arg]),
@@ -235,11 +248,11 @@ def generate_range_index(
     object_pk = [c.name for c in table_schema if c.is_pk]
     if not object_pk:
         object_pk = [c.name for c in table_schema]
-    column_types = {c.name: c.pg_type for c in table_schema}
+    column_types = {c.name: _strip_type_mod(c.pg_type) for c in table_schema}
     columns_to_index = [
         c.name
         for c in table_schema
-        if c.pg_type in _PG_INDEXABLE_TYPES and (c.is_pk or c.name in columns)
+        if _strip_type_mod(c.pg_type) in _PG_INDEXABLE_TYPES and (c.is_pk or c.name in columns)
     ]
 
     logging.debug("Running range index on columns %s", columns_to_index)
