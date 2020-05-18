@@ -1,8 +1,8 @@
 # Splitgraph Engine
 
-A normal Splitgraph installation consists of two components: the Splitgraph
-engine and the [Splitgraph client](https://www.github.com/splitgraph/splitgraph),
-which talks to the engine. The engine is a docker image which is built from
+A Splitgraph installation consists of two components: the [Splitgraph
+engine](https://www.splitgraph.com/docs/architecture/splitgraph_engine) and the [Splitgraph client](https://www.github.com/splitgraph/splitgraph),
+which talks to the engine. The engine is a Docker image which is built from
 the Dockerfile in this repository.
 
 The basic idea is to run the engine with specific credentials and db name
@@ -40,7 +40,7 @@ Run `make`. You can use environment variables `DOCKER_REPO` and `DOCKER_TAG` to 
 
 ## Running the engine
 
-For basic cases, we recommend you to use `sgr engine` to manage the engine Docker container.
+For basic cases, we recommend you to use [`sgr engine`](https://www.splitgraph.com/docs/sgr/engine_management/engine_add) to manage the engine Docker container.
 
 You can also use `docker run`, or alternatively `docker-compose`.
 
