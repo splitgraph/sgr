@@ -206,7 +206,6 @@ class Image(NamedTuple):
                 target_schema,
             )
             self.get_table(table_name).materialize(table_name, target_schema, lq_server=server_id)
-        object_engine.commit()
 
     @contextmanager
     def query_schema(self, wrapper: Optional[str] = FDW_CLASS) -> Iterator[str]:
