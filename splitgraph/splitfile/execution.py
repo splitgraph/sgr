@@ -123,6 +123,7 @@ class ImageMapper:
             self.object_engine.delete_schema(temporary_schema)
             self.object_engine.create_schema(temporary_schema)
             source_image._lq_checkout(target_schema=temporary_schema)
+        self.object_engine.commit()
 
     def teardown_lq_mounts(self) -> None:
         for temporary_schema, _, _ in self.image_map.values():
