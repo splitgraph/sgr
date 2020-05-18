@@ -570,6 +570,9 @@ class PsycopgEngine(SQLEngine):
         target_table = target_table or table_name
 
         with self.connection.cursor() as cur:
+            # Don't deserialize JSON into Python dicts (store it as a string)
+            psycopg2.extras.register_default_json(cur, globally=False, loads=lambda x: x)
+            psycopg2.extras.register_default_jsonb(cur, globally=False, loads=lambda x: x)
             cur.execute(select(table_name, columns, where, schema), where_args)
             if cur.rowcount == 0:
                 return
@@ -581,9 +584,9 @@ class PsycopgEngine(SQLEngine):
             )
             stream.write(
                 ",\n".join(
-                    cur.mogrify(
-                        "(" + ",".join(itertools.repeat("%s", len(row))) + ")", _convert_vals(row)
-                    ).decode("utf-8")
+                    cur.mogrify("(" + ",".join(itertools.repeat("%s", len(row))) + ")", row).decode(
+                        "utf-8"
+                    )
                     for row in cur
                 )
             )
@@ -1468,12 +1471,7 @@ def _convert_vals(vals: Any) -> Any:
     """Psycopg returns jsonb objects as dicts/lists but doesn't actually accept them directly
     as a query param (or in the case of lists coerces them into an array.
     Hence, we have to wrap them in the Json datatype when doing a dump + load."""
-    return [
-        Json(v)
-        if isinstance(v, dict) or (isinstance(v, list) and v and isinstance(v[0], (list, tuple)))
-        else v
-        for v in vals
-    ]
+    return [Json(v) if isinstance(v, dict) else v for v in vals]
 
 
 def _generate_where_clause(table: str, cols: List[str], table_2: str) -> Composed:

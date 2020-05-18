@@ -189,21 +189,32 @@ def test_layered_querying_type_conversion(pg_repo_local):
     ) == [(3, "mayonnaise", 1, _DT), (4, "kumquat", 42, dt(2018, 1, 2, 3, 4, 5))]
 
 
-def test_layered_querying_json(local_engine_empty):
+def test_layered_querying_json_arrays(local_engine_empty):
     OUTPUT.init()
-    OUTPUT.run_sql("CREATE TABLE test (key INTEGER PRIMARY KEY, value JSONB)")
-    OUTPUT.run_sql("INSERT INTO test VALUES (1, %s)", (json.dumps({"a": 1, "b": 2.5}),))
+    OUTPUT.run_sql(
+        "CREATE TABLE test (key INTEGER PRIMARY KEY, "
+        "value JSONB, arr_value INTEGER[], arr_2d_value TEXT[][])"
+    )
+    OUTPUT.run_sql(
+        "INSERT INTO test VALUES (1, %s, %s, %s)",
+        (json.dumps({"a": 1, "b": 2.5}), [1, 2, 3], [["one", "two"], ["three", "four"]]),
+    )
     OUTPUT.commit()
     OUTPUT.run_sql(
-        "INSERT INTO test VALUES (2, %s)", (json.dumps({"a": "one", "b": "two point five"}),)
+        "INSERT INTO test VALUES (2, %s, %s, %s)",
+        (
+            json.dumps({"a": "one", "b": "two point five"}),
+            [4, 5, 6],
+            [["five", "six"], ["seven", "eight"]],
+        ),
     )
     head = OUTPUT.commit()
     OUTPUT.uncheckout()
     head.checkout(layered=True)
 
     assert OUTPUT.run_sql("SELECT * FROM test ORDER BY key") == [
-        (1, {"a": 1, "b": 2.5}),
-        (2, {"a": "one", "b": "two point five"}),
+        (1, {"a": 1, "b": 2.5}, [1, 2, 3], [["one", "two"], ["three", "four"]]),
+        (2, {"a": "one", "b": "two point five"}, [4, 5, 6], [["five", "six"], ["seven", "eight"]]),
     ]
 
 

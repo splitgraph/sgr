@@ -727,22 +727,27 @@ def _write_multitype_dataset():
          n boolean not null,
          o json,
          p tsvector, 
-         q text, PRIMARY KEY(b, c, d));"""
+         q text,
+         r integer[],
+         s text[][], 
+         PRIMARY KEY(b, c, d));"""
     )
 
     OUTPUT.run_sql(
-        """INSERT INTO test (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q)
+        """INSERT INTO test (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s)
         VALUES(1, 2, 3, 3.54, 876.563, 1.23, 'test', 'testtesttesttest', 'testtesttesttesttesttesttest',
         B'001110010101010', '2013-11-02 17:30:52', '2013-02-04', true, '{ "a": 123 }',
-        'Old Old Parr'::tsvector, 'a_test_range');"""
+        'Old Old Parr'::tsvector, 'a_test_range', '{1,2,3}', 
+        '{{"breakfast", "consulting"}, {"meeting", "lunch"}}');"""
     )
 
     # Write another row to test min/max indexing on the resulting object
     OUTPUT.run_sql(
-        """INSERT INTO test (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q)
+        """INSERT INTO test (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s)
         VALUES(15, 22, 1, -1.23, 9.8811, 0.23, 'abcd', '0testtesttesttes', '0testtesttesttesttesttesttes',
         B'111110011111111', '2016-01-01 01:01:05', '2011-11-11', false, '{ "b": 456 }',
-        'AAA AAA Bb '::tsvector, 'z_test_range');"""
+        'AAA AAA Bb '::tsvector, 'z_test_range', '{4,5,6}', 
+        '{{"dinner", "drinks"}, {"evening", "snacks"}}');"""
     )
 
     # Get range index to omit column q (skip specifying the pk since it's there by default).
@@ -769,7 +774,7 @@ def test_various_types(local_engine_empty):
             Decimal("3.540"),
             876.563,
             1.23,
-            "test",
+            "test      ",
             "testtesttesttest",
             "testtesttesttesttesttesttest",
             "001110010101010",
@@ -779,6 +784,8 @@ def test_various_types(local_engine_empty):
             {"a": 123},
             "'Old' 'Parr'",
             "a_test_range",
+            [1, 2, 3],
+            [["breakfast", "consulting"], ["meeting", "lunch"]],
         ),
         (
             2,
@@ -788,7 +795,7 @@ def test_various_types(local_engine_empty):
             Decimal("-1.230"),
             9.8811,
             0.23,
-            "abcd",
+            "abcd      ",
             "0testtesttesttes",
             "0testtesttesttesttesttesttes",
             "111110011111111",
@@ -798,6 +805,8 @@ def test_various_types(local_engine_empty):
             {"b": 456},
             "'AAA' 'Bb'",
             "z_test_range",
+            [4, 5, 6],
+            [["dinner", "drinks"], ["evening", "snacks"]],
         ),
     ]
 
@@ -816,7 +825,7 @@ def test_various_types(local_engine_empty):
             "e": ["-1.230", "3.540"],
             "f": [9.8811, 876.563],
             "g": [0.23, 1.23],
-            "h": ["abcd", "test"],
+            "h": ["abcd      ", "test      "],
             "i": ["0testtesttesttes", "testtesttesttest"],
             "j": ["0testtesttesttesttesttesttes", "testtesttesttesttesttesttest"],
             "l": ["2013-11-02 17:30:52", "2016-01-01 01:01:05"],
@@ -831,10 +840,11 @@ def test_various_types_with_deletion_index(local_engine_empty):
     _write_multitype_dataset()
     # Insert a row, update a row and delete a row -- check the old rows are included in the index correctly.
     OUTPUT.run_sql(
-        """INSERT INTO test (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q)
+        """INSERT INTO test (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s)
         VALUES(16, 23, 2, 7.89, 10.01, 9.45, 'defg', '00esttesttesttes', '00esttesttesttesttesttesttes',
         B'111110011111111', '2016-02-01 01:01:05.123456', '2012-12-12', false, '{ "b": 789 }',
-        'BBB BBB Cc '::tsvector, 'r_test_range');"""
+        'BBB BBB Cc '::tsvector, 'r_test_range', '{7,8,9}', 
+        '{{"more", "data"}}');"""
     )
     OUTPUT.run_sql("DELETE FROM test WHERE b = 15")
     OUTPUT.run_sql("UPDATE test SET m = '2019-01-01' WHERE m = '2013-02-04'")
@@ -866,10 +876,10 @@ def test_various_types_with_deletion_index(local_engine_empty):
             "b": [1, 16],  # original values 1 (updated row), 15 (deleted row), 16 (inserted)
             "c": [2, 23],  # 2 (U), 22 (D), 23 (I)
             "d": [1, 3],  # 3 (U), 1 (D), 2 (I)
-            "e": [-1.23, "7.89"],  # 3.54 (U), -1.23 (D), 7.89 (I) -- also wtf is up with types?
+            "e": [-1.23, "7.890"],  # 3.54 (U), -1.23 (D), 7.89 (I) -- also wtf is up with types?
             "f": [9.8811, 876.563],  # 876.563 (U, numeric(5,3) so truncated), 9.8811 (D), 10.01 (I)
             "g": [0.23, 9.45],  # 1.23 (U), 0.23 (D), 9.45 (I)
-            "h": ["abcd", "test"],  # test (U), abcd (D), defg (I)
+            "h": ["abcd      ", "test      "],  # test (U), abcd (D), defg (I)
             "i": ["00esttesttesttes", "testtesttesttest"],  # test... (U), 0tes... (D), 00te... (I)
             # same as previous here
             "j": ["00esttesttesttesttesttesttes", "testtesttesttesttesttesttest"],
