@@ -19,7 +19,7 @@ requests = ">=2.22"
 docker = ">=4.0"
 click_log = "^0.3.2"
 tqdm = "^4.46.0"
-packaging = "^20.1"
+packaging = "^20.4"
 # Required for CSV ingestion and type inference
 tableschema = "^1.15.0"
 # Pin tabulator (depended on by tableschema) to our fork that doesn't
