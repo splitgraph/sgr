@@ -17,7 +17,7 @@ Each example has a README file. Some of these examples get or push data from/to 
   * [iris](./iris): Manipulate and query Splitgraph data from a Jupyter notebook.
   * [bloom-filter](./bloom-filter): Showcase using bloom filters to query large datasets with a limited amount of cache.
   * [splitfiles](./splitfiles): Use Splitfiles to build Splitgraph data images, track their provenance and keep them up to date.
-  * [query_api](./query_api): Try out the REST API provided by [PostgREST](http://postgrest.org/en/latest/) that gets generated for every dataset on Splitgraph Cloud.
+  * [splitgraph-cloud](./splitgraph-cloud): Publish data on Splitgraph Cloud and try out the REST API provided by [PostgREST](http://postgrest.org/en/latest/) that gets generated for every dataset on there.
   * [postgrest](./postgrest): Run [PostgREST](http://postgrest.org/en/latest/) locally against the Splitgraph engine.
   * [us-election](./us-election): A real-world Splitfile example that joins multiple datasets.
   * [benchmarking](./benchmarking): A collection of Jupyter notebooks benchmarking various aspects of Splitgraph against synthetic and real-world datasets.
