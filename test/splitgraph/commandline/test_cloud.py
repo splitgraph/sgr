@@ -600,7 +600,7 @@ extra_keys: are ok for now
 
 
 @httpretty.activate(allow_net_connect=False)
-def test_commandline_metadata(fs_fast):
+def test_commandline_metadata(fs):
     runner = CliRunner()
     httpretty.register_uri(httpretty.HTTPretty.POST, _GQL_ENDPOINT + "/", body=_gql_callback)
 

@@ -1,9 +1,7 @@
 import os.path
 
-# List of examples to ignore: get-started is difficult to test as it requires access
-# to the actual Splitgraph cloud and the command line registration is tested otherwise.
-# Same with the US election example: needs registration and the data set is bulky.
-_DO_NOT_TEST = ["get-started", "us-election", "query_api", "bloom-filter"]
+# List of examples to ignore: these require registration or are difficult to test. These are all run on release when we record Asciinemas.
+_DO_NOT_TEST = ["us-election", "splitgraph-cloud", "bloom-filter"]
 
 
 def pytest_generate_tests(metafunc):
