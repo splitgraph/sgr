@@ -2,6 +2,7 @@
 import logging
 import subprocess
 from copy import copy
+from urllib.parse import urlparse
 
 import click
 
@@ -84,12 +85,16 @@ def _update_repo_lookup(config, remote):
     return ",".join(repo_lookup)
 
 
-# /settings/security
+def _construct_user_profile_url(auth_endpoint: str):
+    parsed = urlparse(auth_endpoint)
+    netloc_components = parsed.netloc.split(".")
+    netloc_components[0] = "www"
+    return "%s://%s/settings/security" % (parsed.scheme, ".".join(netloc_components))
 
 
 @click.command("login")
 @click.option("--username", prompt="Username or e-mail")
-@click.password_option(confirmation_prompt=False)
+@click.option("--password", default=None)
 @click.option(
     "--remote", default="data.splitgraph.com", help="Name of the remote registry to log into.",
 )
@@ -114,6 +119,14 @@ def login_c(username, password, remote, overwrite):
     from splitgraph.cloud import AuthAPIClient, get_token_claim, DEFAULT_REMOTES
 
     client = AuthAPIClient(remote)
+
+    if not password:
+        profile_url = _construct_user_profile_url(client.endpoint)
+        password = click.prompt(
+            text="Password (visit %s if you don't have it)" % profile_url,
+            confirmation_prompt=False,
+            hide_input=True,
+        )
 
     access, refresh = client.get_refresh_token(username, password)
 
