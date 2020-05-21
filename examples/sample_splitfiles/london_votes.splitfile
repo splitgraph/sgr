@@ -1,0 +1,41 @@
+# This Splitfile joins the results of the 2017 UK General Election with
+# the geographical data for London's wards through an ONS lookup table
+# mapping ward codes to constituency codes.
+#
+# You need a PostGIS-enabled engine to run this Splitfile:
+#
+# sgr engine upgrade --image splitgraph/engine:stable-postgis
+# sgr sql "CREATE EXTENSION IF NOT EXISTS postgis"
+
+FROM splitgraph/uk_2017_ge:latest IMPORT {
+    SELECT
+        ons_code,
+        SUM(CASE WHEN party_id = 'Conservative'
+            THEN valid_votes ELSE 0 END)
+            AS conservative_votes,
+        SUM(CASE WHEN party_id = 'Labour'
+            THEN valid_votes ELSE 0 END)
+            AS labour_votes,
+        SUM(valid_votes) AS total_votes
+    FROM ward_results
+    GROUP BY ons_code
+} AS votes_by_party
+
+SQL {
+CREATE TABLE london_votes AS
+    SELECT
+        lookup."PCON18NM" AS constituency,
+        v.conservative_votes,
+        v.labour_votes,
+        v.total_votes,
+        ST_Union(london.geom) AS geom
+    FROM "splitgraph/london_wards:latest".city_merged_2018 london
+    JOIN "splitgraph/uk_wards".lookup_table lookup
+        ON london.gss_code = lookup."WD18CD"
+    JOIN votes_by_party v
+        ON v.ons_code = lookup."PCON18CD"
+    GROUP BY constituency,
+        conservative_votes,
+        labour_votes,
+        total_votes
+}
