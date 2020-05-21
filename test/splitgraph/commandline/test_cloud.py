@@ -7,7 +7,15 @@ import pytest
 from click.testing import CliRunner
 
 from splitgraph.__version__ import __version__
-from splitgraph.commandline.cloud import register_c, login_c, curl_c, login_api_c, readme_c
+from splitgraph.commandline.cloud import (
+    register_c,
+    login_c,
+    curl_c,
+    login_api_c,
+    readme_c,
+    metadata_c,
+    description_c,
+)
 from splitgraph.config import create_config_dict
 from splitgraph.exceptions import (
     AuthAPIError,
@@ -422,15 +430,27 @@ def test_commandline_curl(test_case):
 def _gql_callback(request, uri, response_headers):
     body = json.loads(request.body)
 
-    assert body["operationName"] == "UpsertRepoReadme"
-    assert body["query"] == (
-        "mutation UpsertRepoReadme($namespace: String!, $repository: String!, "
-        "$readme: String!) {\n  __typename\n  "
-        "upsertRepoProfileByNamespaceAndRepository(input: {repoProfile: "
-        "{namespace: $namespace, repository: $repository, readme: $readme}, "
-        "patch: {readme: $readme}}) {\n    "
-        "clientMutationId\n    __typename\n  }\n}\n"
-    )
+    if body["operationName"] == "UpsertRepoReadme":
+        assert body["query"] == (
+            "mutation UpsertRepoReadme($namespace: String!, $repository: String!, "
+            "$readme: String!) {\n  __typename\n  "
+            "upsertRepoProfileByNamespaceAndRepository(input: {repoProfile: "
+            "{namespace: $namespace, repository: $repository, readme: $readme}, "
+            "patch: {readme: $readme}}) {\n    "
+            "clientMutationId\n    __typename\n  }\n}\n"
+        )
+    elif body["operationName"] == "UpsertRepoDescription":
+        assert body["query"] == (
+            "mutation UpsertRepoDescription( "
+            "$namespace: String!, $repository: String!, $description: String!) {\n "
+            " __typename\n  "
+            "upsertRepoProfileByNamespaceAndRepository(input: {repoProfile: "
+            "{namespace: $namespace, repository: $repository, "
+            "description: $description}, patch: {description: $description}}) {\n    "
+            "clientMutationId\n    __typename\n  }\n}\n"
+        )
+    else:
+        raise AssertionError()
 
     namespace = body["variables"]["namespace"]
     repository = body["variables"]["repository"]
@@ -456,7 +476,11 @@ def _gql_callback(request, uri, response_headers):
         }
     }
 
-    if not body["variables"].get("readme"):
+    if body["operationName"] == "UpsertRepoReadme" and not body["variables"].get("readme"):
+        response = error_response
+    elif body["operationName"] == "UpsertRepoDescription" and not body["variables"].get(
+        "description"
+    ):
         response = error_response
     elif request.headers.get("Authorization") != "Bearer " + _SAMPLE_ACCESS:
         response = error_response
@@ -515,3 +539,67 @@ def test_commandline_readme(namespace, repository, readme, token, expected):
             else:
                 assert result.exit_code != 0
                 assert isinstance(result.exception, expected)
+
+
+@httpretty.activate(allow_net_connect=False)
+def test_commandline_description():
+    runner = CliRunner()
+    httpretty.register_uri(httpretty.HTTPretty.POST, _GQL_ENDPOINT + "/", body=_gql_callback)
+
+    with patch(
+        "splitgraph.cloud.AuthAPIClient.access_token",
+        new_callable=PropertyMock,
+        return_value=_SAMPLE_ACCESS,
+    ):
+        with patch("splitgraph.cloud.get_remote_param", return_value=_GQL_ENDPOINT):
+            result = runner.invoke(
+                description_c, ["someuser/somerepo", "some description"], catch_exceptions=False,
+            )
+
+            assert result.exit_code == 0
+            assert "Description updated for repository someuser/somerepo." in result.output
+
+            result = runner.invoke(description_c, ["someuser/somerepo", "way too long" * 16])
+            assert result.exit_code == 1
+            assert "The description should be 160 characters or shorter!" in str(result.exc_info[1])
+
+
+_BROKEN_META = """
+what_is_this_key: no_value
+"""
+
+_EXPECTED_META = """
+readme: test-readme.md
+description: Description for a sample repo
+extra_keys: are ok for now
+"""
+
+
+@httpretty.activate(allow_net_connect=False)
+def test_commandline_metadata(fs_fast):
+    runner = CliRunner()
+    httpretty.register_uri(httpretty.HTTPretty.POST, _GQL_ENDPOINT + "/", body=_gql_callback)
+
+    with open("test-readme.md", "w") as f:
+        f.write("# Sample dataset readme\n\nHello there\n")
+
+    with patch(
+        "splitgraph.cloud.AuthAPIClient.access_token",
+        new_callable=PropertyMock,
+        return_value=_SAMPLE_ACCESS,
+    ):
+        with patch("splitgraph.cloud.get_remote_param", return_value=_GQL_ENDPOINT):
+            result = runner.invoke(metadata_c, ["someuser/somerepo", "-"], input=_BROKEN_META)
+            assert result.exit_code == 2
+            assert "Invalid metadata file" in result.output
+
+            result = runner.invoke(
+                metadata_c,
+                ["someuser/somerepo", "-"],
+                input=_EXPECTED_META,
+                catch_exceptions=False,
+            )
+
+            assert result.exit_code == 0
+            assert "README updated for repository someuser/somerepo." in result.output
+            assert "Description updated for repository someuser/somerepo." in result.output

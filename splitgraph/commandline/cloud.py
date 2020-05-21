@@ -84,6 +84,9 @@ def _update_repo_lookup(config, remote):
     return ",".join(repo_lookup)
 
 
+# /settings/security
+
+
 @click.command("login")
 @click.option("--username", prompt="Username or e-mail")
 @click.password_option(confirmation_prompt=False)
@@ -277,9 +280,9 @@ def curl_c(remote, request_type, image, request_params, curl_args):
 @click.argument("repository", type=RepositoryType(exists=False))
 @click.argument("readme", type=click.File("r"))
 def readme_c(remote, repository, readme):
-    """Upload or overwrite a README to a previously-pushed Splitgraph repository.
+    """Upload or a README to a Splitgraph repository.
 
-    The README should be a file in Markdown format.
+    The repository must have already been pushed. The README must be a file in Markdown format.
     """
     from splitgraph.cloud import GQLAPIClient
 
@@ -288,6 +291,61 @@ def readme_c(remote, repository, readme):
         namespace=repository.namespace, repository=repository.repository, readme=readme.read()
     )
     click.echo("README updated for repository %s." % str(repository))
+
+
+@click.command("description")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.argument("repository", type=RepositoryType(exists=False))
+@click.argument("description", type=str)
+def description_c(remote, repository, description):
+    """Upload a description to a Splitgraph repository.
+
+    The repository must have already been pushed. The description should be plain text, 160 characters or shorter.
+    """
+    from splitgraph.cloud import GQLAPIClient
+
+    client = GQLAPIClient(remote)
+    client.upsert_description(
+        namespace=repository.namespace, repository=repository.repository, description=description
+    )
+    click.echo("Description updated for repository %s." % str(repository))
+
+
+@click.command("metadata")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.argument("repository", type=RepositoryType(exists=False))
+@click.argument("metadata_file", type=click.File("r"))
+@click.pass_context
+def metadata_c(ctx, remote, repository, metadata_file):
+    """Upload a metadata file to a Splitgraph repository.
+
+    The metadata file should be in YAML format and have two keys: `readme` and `description`.
+
+    For example:
+
+```
+readme: dataset-readme.md
+description: Dataset description (160 characters max).
+```
+    """
+    import yaml
+
+    metadata = yaml.safe_load(metadata_file)
+
+    if "readme" not in metadata and "description" not in metadata:
+        raise click.UsageError(
+            "Invalid metadata file. File must contain at least one of "
+            "readme or description keys."
+        )
+
+    if "readme" in metadata:
+        with open(metadata["readme"], "r") as f:
+            ctx.invoke(readme_c, remote=remote, repository=repository, readme=f)
+
+    if "description" in metadata:
+        ctx.invoke(
+            description_c, remote=remote, repository=repository, description=metadata["description"]
+        )
 
 
 @click.group("cloud")
@@ -300,3 +358,5 @@ cloud_c.add_command(login_api_c)
 cloud_c.add_command(register_c)
 cloud_c.add_command(curl_c)
 cloud_c.add_command(readme_c)
+cloud_c.add_command(description_c)
+cloud_c.add_command(metadata_c)
