@@ -14,7 +14,7 @@ This example will:
 
 Copy your .sgconfig file into this directory (it must contain API credentials to access
 data.splitgraph.com). If you don't have them yet, take a look at the
-[getting started example](../get-started/README.md) or register using `sgr cloud register`.
+[Splitgraph Cloud reference](https://www.splitgraph.com/docs/splitgraph_cloud/introduction) or register using `sgr cloud register`.
 
 Change the `splitgraph-demo` username in the example file to yours.
 

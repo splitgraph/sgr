@@ -12,7 +12,7 @@
 - commands:
   - "# Make sure you are registered and logged into Splitgraph Cloud."
   - "# Test the connection."
-  - sgr sql -r data.splitgraph.com "SELECT 1"
+  - sgr sql -r data.splitgraph.com "SELECT splitgraph_api.get_current_username()"
 - commands:
   - "# Ingest the weather dataset at Raleigh-Durham Airport"
   - sgr init weather
