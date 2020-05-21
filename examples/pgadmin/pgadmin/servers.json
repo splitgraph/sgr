@@ -1,0 +1,14 @@
+{
+    "Servers": {
+        "1": {
+            "Name": "splitgraph",
+            "Group": "Servers",
+            "Host": "engine",
+            "Port": 5432,
+            "MaintenanceDB": "splitgraph",
+            "Username": "sgr",
+            "SSLMode": "prefer",
+            "PassFile": "/pgpassfile"
+        }
+    }
+}
