@@ -1,5 +1,7 @@
 import json
+import os
 from contextlib import contextmanager
+from tempfile import tempdir, TemporaryDirectory
 from unittest.mock import patch, PropertyMock, call
 
 import httpretty
@@ -593,19 +595,16 @@ what_is_this_key: no_value
 """
 
 _EXPECTED_META = """
-readme: test-readme.md
+readme: {}
 description: Description for a sample repo
 extra_keys: are ok for now
 """
 
 
 @httpretty.activate(allow_net_connect=False)
-def test_commandline_metadata(fs):
+def test_commandline_metadata():
     runner = CliRunner()
     httpretty.register_uri(httpretty.HTTPretty.POST, _GQL_ENDPOINT + "/", body=_gql_callback)
-
-    with open("test-readme.md", "w") as f:
-        f.write("# Sample dataset readme\n\nHello there\n")
 
     with patch(
         "splitgraph.cloud.AuthAPIClient.access_token",
@@ -617,13 +616,18 @@ def test_commandline_metadata(fs):
             assert result.exit_code == 2
             assert "Invalid metadata file" in result.output
 
-            result = runner.invoke(
-                metadata_c,
-                ["someuser/somerepo", "-"],
-                input=_EXPECTED_META,
-                catch_exceptions=False,
-            )
+            with TemporaryDirectory() as tmpdir:
+                test_readme_path = os.path.join(tmpdir, "test-readme.md")
+                with open(test_readme_path, "w") as f:
+                    f.write("# Sample dataset readme\n\nHello there\n")
 
-            assert result.exit_code == 0
-            assert "README updated for repository someuser/somerepo." in result.output
-            assert "Description updated for repository someuser/somerepo." in result.output
+                result = runner.invoke(
+                    metadata_c,
+                    ["someuser/somerepo", "-"],
+                    input=_EXPECTED_META.format(test_readme_path),
+                    catch_exceptions=False,
+                )
+
+                assert result.exit_code == 0
+                assert "README updated for repository someuser/somerepo." in result.output
+                assert "Description updated for repository someuser/somerepo." in result.output

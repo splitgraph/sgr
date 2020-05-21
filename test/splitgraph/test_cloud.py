@@ -15,7 +15,7 @@ from splitgraph.exceptions import AuthAPIError
 # so this is mostly testing various failure states.
 
 _REMOTE = "remote_engine"
-_ENDPOINT = "http://some-auth-service"
+_ENDPOINT = "http://some-auth-service.example.com"
 
 
 @httpretty.activate(allow_net_connect=False)
