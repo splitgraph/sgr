@@ -42,8 +42,8 @@ SG_ENGINE_POSTGRES_DB_NAME=postgres
 SG_IS_REGISTRY=true
 SG_META_SCHEMA=splitgraph_meta
 SG_ENGINE_OBJECT_PATH=/var/lib/splitgraph/objects
-SG_AUTH_API=http://some-auth-service
-SG_QUERY_API=http://some-query-service
+SG_AUTH_API=http://some-auth-service.example.com
+SG_QUERY_API=http://some-query-service.example.com
 
 ; Used in security tests. We currently rely on remote_engine being accessed as a superuser for the rest of the
 ; test suite: only in test/splitgraph/test_security.py do we use this engine to test accessing a remote engine
