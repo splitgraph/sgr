@@ -1,0 +1,5 @@
+# This is a sample dataset metadata file that's used
+# to update the dataset's README and description.
+
+readme: dataset-readme.md
+description: Weather history in Raleigh-Durham International airport joined with US domestic flights data (uploaded from Splitgraph release CI)

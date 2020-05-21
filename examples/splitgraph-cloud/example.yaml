@@ -10,6 +10,10 @@
   - sgr rm -y --remote data.splitgraph.com splitgraph-demo/weather
   record: False
 - commands:
+  - "# Make sure you are registered and logged into Splitgraph Cloud."
+  - "# Test the connection."
+  - sgr sql -r data.splitgraph.com "SELECT 1"
+- commands:
   - "# Ingest the weather dataset at Raleigh-Durham Airport"
   - sgr init weather
   - |
@@ -23,6 +27,11 @@
 - commands:
   - "# Push the dataset to Splitgraph"
   - sgr push weather
+- commands:
+  - "# Upload some dataset metadata as well."
+  - cat dataset-metadata.yml
+  - cat dataset-readme.md
+  - sgr cloud metadata splitgraph-demo/weather dataset-metadata.yml
 - commands:
   - "# Perform a request against an automatically-generated"
   - "# Postgrest (https://postgrest.org) endpoint."
