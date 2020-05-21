@@ -5,7 +5,6 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Tuple, TYPE_CHECKING
 
-from psycopg2 import DatabaseError
 from tqdm import tqdm
 
 from splitgraph.config import CONFIG, get_singleton, SG_CMD_ASCII

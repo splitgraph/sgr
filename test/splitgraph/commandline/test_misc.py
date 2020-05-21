@@ -8,6 +8,7 @@ import httpretty
 import pytest
 from click import ClickException
 from click.testing import CliRunner
+from test.splitgraph.commands.test_commit_diff import _alter_diff_splitting_dataset
 from test.splitgraph.conftest import API_RESOURCES, OUTPUT
 
 from splitgraph.commandline import (
@@ -18,8 +19,6 @@ from splitgraph.commandline import (
     config_c,
     dump_c,
     eval_c,
-    show_c,
-    commit_c,
     cli,
 )
 from splitgraph.commandline.common import ImageType, RepositoryType
@@ -36,7 +35,6 @@ from splitgraph.core.fragment_manager import FragmentManager
 from splitgraph.core.repository import Repository
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import TableNotFoundError, ImageNotFoundError, RepositoryNotFoundError
-from test.splitgraph.commands.test_commit_diff import _alter_diff_splitting_dataset
 
 
 def test_image_spec_parsing():

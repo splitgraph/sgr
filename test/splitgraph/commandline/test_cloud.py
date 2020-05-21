@@ -1,7 +1,7 @@
 import json
 import os
 from contextlib import contextmanager
-from tempfile import tempdir, TemporaryDirectory
+from tempfile import TemporaryDirectory
 from unittest.mock import patch, PropertyMock, call
 
 import httpretty

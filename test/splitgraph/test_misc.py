@@ -5,11 +5,11 @@ import pytest
 from psycopg2.errors import CheckViolation
 
 from splitgraph.core.common import Tracer, adapt, coerce_val_to_json, _parse_dt
-from splitgraph.core.engine import lookup_repository, repository_exists
+from splitgraph.core.engine import lookup_repository
 from splitgraph.core.metadata_manager import Object
 from splitgraph.core.repository import Repository
 from splitgraph.engine.postgres.engine import API_MAX_QUERY_LENGTH
-from splitgraph.exceptions import RepositoryNotFoundError, EngineInitializationError
+from splitgraph.exceptions import RepositoryNotFoundError
 from splitgraph.hooks.s3 import get_object_upload_urls
 
 

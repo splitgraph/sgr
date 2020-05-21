@@ -38,9 +38,9 @@ from tqdm import tqdm
 
 from splitgraph.__version__ import __version__
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCHEMA, SG_CMD_ASCII
+from splitgraph.core import server
 from splitgraph.core.common import ensure_metadata_schema, META_TABLES, get_data_safe
 from splitgraph.core.sql import select
-from splitgraph.core import server
 from splitgraph.core.types import TableColumn, TableSchema
 from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
 from splitgraph.exceptions import (

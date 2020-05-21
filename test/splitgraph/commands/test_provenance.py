@@ -3,7 +3,6 @@ import datetime
 import pytest
 from test.splitgraph.conftest import OUTPUT, load_splitfile, prepare_lq_repo
 
-from splitgraph.core.repository import Repository
 from splitgraph.splitfile import execute_commands
 from splitgraph.splitfile.execution import rebuild_image
 

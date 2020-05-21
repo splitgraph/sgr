@@ -1,9 +1,9 @@
 import logging
 import os
+import platform
 import time
 from io import BytesIO
 from pathlib import Path, PureWindowsPath
-import platform
 from tarfile import TarFile, TarInfo
 from typing import Dict, TYPE_CHECKING
 from urllib.parse import urlparse

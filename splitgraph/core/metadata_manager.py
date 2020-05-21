@@ -3,7 +3,7 @@ Classes related to managing table/image/object metadata tables.
 """
 import itertools
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set, Tuple, TYPE_CHECKING, NamedTuple, cast, Sequence
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING, NamedTuple, cast, Sequence
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
