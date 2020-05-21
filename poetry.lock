@@ -111,6 +111,14 @@ version = "1.0.0"
 
 [[package]]
 category = "main"
+description = "A decorator for caching properties in classes."
+name = "cached-property"
+optional = false
+python-versions = "*"
+version = "1.5.1"
+
+[[package]]
+category = "main"
 description = "Python package for providing Mozilla's CA Bundle."
 name = "certifi"
 optional = false
@@ -955,9 +963,10 @@ description = "A utility library for working with Table Schema in Python"
 name = "tableschema"
 optional = false
 python-versions = "*"
-version = "1.17.0"
+version = "1.18.0"
 
 [package.dependencies]
+cached-property = ">=1.5"
 click = ">=3.3"
 isodate = ">=0.5.4"
 jsonschema = ">=2.5"
@@ -1009,6 +1018,7 @@ ods = ["ezodf (>=0.3)", "lxml (>=3.0)"]
 reference = "b3b831a99fdfc4ab418aca9d4231382e1e694baa"
 type = "git"
 url = "https://github.com/splitgraph/tabulator-py.git"
+
 [[package]]
 category = "dev"
 description = "Python Library for Tom's Obvious, Minimal Language"
@@ -1135,7 +1145,7 @@ testing = ["jaraco.itertools", "func-timeout"]
 pandas = ["pandas", "sqlalchemy"]
 
 [metadata]
-content-hash = "8b28c1ae2157093511a81f96155cde78326eb6719f12f7514a3a14c720096c0a"
+content-hash = "d607e7f47a6c4b1e8b141ab45fa091deba77e08aa37eed8f70a6d5c88102cf15"
 python-versions = "~=3.6"
 
 [metadata.files]
@@ -1177,6 +1187,10 @@ black = [
 bump2version = [
     {file = "bump2version-1.0.0-py2.py3-none-any.whl", hash = "sha256:477f0e18a0d58e50bb3dbc9af7fcda464fd0ebfc7a6151d8888602d7153171a0"},
     {file = "bump2version-1.0.0.tar.gz", hash = "sha256:cd4f3a231305e405ed8944d8ff35bd742d9bc740ad62f483bd0ca21ce7131984"},
+]
+cached-property = [
+    {file = "cached-property-1.5.1.tar.gz", hash = "sha256:9217a59f14a5682da7c4b8829deadbfc194ac22e9908ccf7c8820234e80a1504"},
+    {file = "cached_property-1.5.1-py2.py3-none-any.whl", hash = "sha256:3a026f1a54135677e7da5ce819b0c690f156f37976f3e30c5430740725203d7f"},
 ]
 certifi = [
     {file = "certifi-2020.4.5.1-py2.py3-none-any.whl", hash = "sha256:1d987a998c75633c40847cc966fcf5904906c920a7f17ef374f5aa4282abd304"},
@@ -1691,8 +1705,8 @@ sqlalchemy = [
     {file = "SQLAlchemy-1.3.17.tar.gz", hash = "sha256:156a27548ba4e1fed944ff9fcdc150633e61d350d673ae7baaf6c25c04ac1f71"},
 ]
 tableschema = [
-    {file = "tableschema-1.17.0-py2.py3-none-any.whl", hash = "sha256:55ace13cb8a93640c5e65d627cd092bc56b66b8accb97f8ae1ccb5602de51929"},
-    {file = "tableschema-1.17.0.tar.gz", hash = "sha256:d162fcad8682cf79dc8a7bc47378df9b8d5228486242c33c8fd03d3a5c711a69"},
+    {file = "tableschema-1.18.0-py2.py3-none-any.whl", hash = "sha256:81da12169e2a342d30a58b59a003195a8859dd720f882221f3d1b0895083c87e"},
+    {file = "tableschema-1.18.0.tar.gz", hash = "sha256:cdbb7dddec4ee39ad46fbaa3117ec2e75374b2b8c154c99d37e7d6f533669045"},
 ]
 tabulate = [
     {file = "tabulate-0.8.7-py3-none-any.whl", hash = "sha256:ac64cb76d53b1231d364babcd72abbb16855adac7de6665122f97b593f1eb2ba"},
