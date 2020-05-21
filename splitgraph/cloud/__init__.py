@@ -332,3 +332,25 @@ class GQLAPIClient:
                 "clientMutationId\n    __typename\n  }\n}\n",
             },
         )
+
+    @handle_gql_errors
+    def upsert_description(self, namespace: str, repository: str, description: str):
+        if len(description) > 160:
+            raise ValueError("The description should be 160 characters or shorter!")
+        return self._gql(
+            {
+                "operationName": "UpsertRepoDescription",
+                "variables": {
+                    "namespace": namespace,
+                    "repository": repository,
+                    "description": description,
+                },
+                "query": "mutation UpsertRepoDescription( "
+                "$namespace: String!, $repository: String!, $description: String!) {\n "
+                " __typename\n  "
+                "upsertRepoProfileByNamespaceAndRepository(input: {repoProfile: "
+                "{namespace: $namespace, repository: $repository, "
+                "description: $description}, patch: {description: $description}}) {\n    "
+                "clientMutationId\n    __typename\n  }\n}\n",
+            },
+        )

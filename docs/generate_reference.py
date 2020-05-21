@@ -8,7 +8,15 @@ import shutil
 import click
 
 import splitgraph.commandline as cmd
-from splitgraph.commandline.cloud import register_c, login_c, curl_c, login_api_c, readme_c
+from splitgraph.commandline.cloud import (
+    register_c,
+    login_c,
+    curl_c,
+    login_api_c,
+    readme_c,
+    description_c,
+    metadata_c,
+)
 from splitgraph.commandline.engine import (
     add_engine_c,
     delete_engine_c,
@@ -48,7 +56,15 @@ STRUCTURE = [
     ("Splitfile execution", ["build", "rebuild", "provenance", "dependents"]),
     (
         "Splitgraph Cloud",
-        ["cloud register", "cloud login", "cloud login-api", "cloud curl", "cloud readme"],
+        [
+            "cloud register",
+            "cloud login",
+            "cloud login-api",
+            "cloud curl",
+            "cloud readme",
+            "cloud description",
+            "cloud metadata",
+        ],
     ),
 ]
 
@@ -70,6 +86,8 @@ STRUCTURE_CMD_OVERRIDE = {
     "cloud login-api": login_api_c,
     "cloud curl": curl_c,
     "cloud readme": readme_c,
+    "cloud description": description_c,
+    "cloud metadata": metadata_c,
 }
 
 
