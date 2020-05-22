@@ -32,7 +32,7 @@ def _terminal_buffer_to_str(buffer: List[str]) -> str:
     return "\n".join(reversed(result))
 
 
-def emit_command_output(chars, screen_width=110, screen_height=120):
+def emit_command_output(chars, screen_width=120, screen_height=120):
     screen = pyte.Screen(columns=screen_width, lines=screen_height)
     stream = pyte.Stream(screen)
     stream.feed(chars)
@@ -59,12 +59,14 @@ def emit_screen(screen: Dict[str, Any], output_markdown_language="shell-session"
                 # Hack since prisma shell-session / bash breaks on backslashes
                 # (I tried escaping them and it breaks on 2, 4 and 8 backslashes).
                 output_markdown_language = "python"
+                actual_output = actual_output.replace("\\", "\\\\")
             code_block += actual_output + "\n"
 
         if output:
             actual_output = emit_command_output(output).strip()
             if "\\" in actual_output:
                 output_markdown_language = "python"
+                actual_output = actual_output.replace("\\", "\\\\")
             code_block += actual_output + "\n"
         code_block += "\n\n"
 
