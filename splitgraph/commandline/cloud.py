@@ -327,7 +327,7 @@ def description_c(remote, repository, description):
 @click.command("metadata")
 @click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
 @click.argument("repository", type=RepositoryType(exists=False))
-@click.argument("metadata_file", type=click.File("r"))
+@click.argument("metadata_file", type=click.File("r"), default="splitgraph.yml")
 @click.pass_context
 def metadata_c(ctx, remote, repository, metadata_file):
     """Upload a metadata file to a Splitgraph repository.
