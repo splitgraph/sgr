@@ -78,6 +78,37 @@ class RecorderOutput:
 
         self.decoder = codecs.getincrementaldecoder("UTF-8")("replace")
 
+        # Record the final state of every screen separately as well
+        self.screens = [{}]
+
+    def _add_to_current_screen(self, field, text):
+        if not self.record:
+            return
+
+        if isinstance(text, bytes):
+            text = self.decoder.decode(text)
+
+        current_screen = self.screens[-1]
+
+        current_command = current_screen.get("command", [])
+        current_output = current_screen.get("output", [])
+        current_comment = current_screen.get("comment", [])
+
+        if field == "command":
+
+            current_command.append(text)
+            current_screen[field] = current_command
+
+            # Open new output too
+            current_output.append("")
+            current_screen["output"] = current_output
+        elif field == "comment":
+            current_comment.append(text)
+            current_screen[field] = current_comment
+        elif field == "output":
+            current_output[-1] += text
+            current_screen[field] = current_output
+
     def add_event(self, text, time_since_last):
         if isinstance(text, bytes):
             text = self.decoder.decode(text)
@@ -101,18 +132,23 @@ class RecorderOutput:
         text = text + end
         print(text, end="")
         text = text.replace("\n", "\r\n")
+
+        # Strip comment symbols + ANSI control chars
+        stripped_text = text.replace("$ # ", "")
+        stripped_text = _ANSI_CONTROL.sub("", stripped_text)
+        stripped_text = stripped_text.rstrip()
+
         if self.record:
-            if "$ # " in text:
+            if "$ #" in text:
                 if self.dump_key_timestamps and self._curr_height == 0:
                     # Dump the first comment emitted after a clearscreen as a keypoint.
                     timestamps = self._extra_metadata.get("tss", [])
 
-                    # Strip comment symbols + ANSI control chars
-                    header = text.replace("$ # ", "")
-                    header = _ANSI_CONTROL.sub("", header)
-                    timestamps.append({"h": header, "ts": self.current_time})
+                    timestamps.append({"h": stripped_text, "ts": self.current_time})
                     self._extra_metadata["tss"] = timestamps
                 self.add_event(text, time_since_last=self.input_rate)
+
+                self._add_to_current_screen("comment", stripped_text + "\n")
             else:
                 # Make sure the ANSI control sequences + whitespace are coalesced
                 # (nobody wants to watch someone pressing space 50 times)
@@ -123,6 +159,7 @@ class RecorderOutput:
     def print_from_pipe(self, proc, fd):
         """Records output from a subprocess, including the delays and printing the output."""
         now = time.time()
+        full_data = b""
         while True:
             try:
                 data = os.read(fd, 512)
@@ -133,6 +170,7 @@ class RecorderOutput:
                     data = b""
                 # EIO means EOF on some systems
             if data:
+                full_data += data
                 sys.stdout.buffer.write(data)
                 sys.stdout.flush()
                 if self.record:
@@ -142,6 +180,9 @@ class RecorderOutput:
             else:
                 result = proc.poll()
                 if result is not None:
+                    if full_data:
+                        self._add_to_current_screen("output", full_data + b"\r\n")
+
                     return result
 
     def cls(self):
@@ -154,6 +195,8 @@ class RecorderOutput:
                     self.min_delay,
                 )
             self._chars_since_cls = 0
+        if self.screens[-1]:
+            self.screens.append({})
         self._cls_start_time = self.current_time
         self._curr_height = 0
         self.print("\033[H\033[J", end="")
@@ -165,10 +208,11 @@ class RecorderOutput:
     "--no-pause", is_flag=True, default=False, help="Don't wait for user input after every block"
 )
 @click.option("--dump-asciinema", type=click.File("w"), default=None)
+@click.option("--dump-screens", type=click.File("w"), default=None)
 @click.option("--asciinema-width", type=int, default=None)
 @click.option("--asciinema-height", type=int, default=None)
 @click.argument("file")
-def example(skip, no_pause, dump_asciinema, asciinema_width, asciinema_height, file):
+def example(skip, no_pause, dump_asciinema, dump_screens, asciinema_width, asciinema_height, file):
     """Run commands in an example YAML file."""
     with open(file, "r") as f:
         commands = yaml.load(f)
@@ -214,6 +258,7 @@ def example(skip, no_pause, dump_asciinema, asciinema_width, asciinema_height, f
 
         env = os.environ.copy()
         for l in block["commands"]:
+            output._add_to_current_screen("command", "$ " + l.rstrip("\n").replace("\n", "\r\n"))
             mo, so = pty.openpty()  # provide tty to enable line-buffering
             mi, si = pty.openpty()
 
@@ -252,6 +297,9 @@ def example(skip, no_pause, dump_asciinema, asciinema_width, asciinema_height, f
     if dump_asciinema:
         recording = output.to_asciinema()
         dump_asciinema.write(recording)
+
+    if dump_screens:
+        dump_screens.write(json.dumps(output.screens))
 
 
 if __name__ == "__main__":
