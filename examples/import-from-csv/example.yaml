@@ -5,8 +5,7 @@
   - docker-compose --project-name splitgraph_example up -d
   record: False
 - commands:
-  - "# Initialize the engine (wait for the container to start up)"
-  - sleep 5
+  - "# Initialize the engine"
   - sgr init
   record: False
 - commands:
