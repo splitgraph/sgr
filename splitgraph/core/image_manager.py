@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, List, Optional, Set, TYPE_CHECKING, Sequence
+from typing import Any, List, Optional, Set, TYPE_CHECKING, Sequence, cast
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
@@ -152,7 +152,9 @@ class ImageManager:
         result_size = len(result)
         while True:
             # Keep expanding the set of parents until it stops growing
-            result.update({parent[image] for image in result if parent[image] is not None})
+            result.update(
+                {cast(str, parent[image]) for image in result if parent[image] is not None}
+            )
             if len(result) == result_size:
                 return result
             result_size = len(result)

@@ -175,7 +175,7 @@ def _get_actual_hashes(
         # One parameter: diff from that and its parent.
         image_2 = image_1_obj.parent_id
         if image_2 is None:
-            click.echo("%s has no parent to compare to!" % image_1)
+            raise ValueError("%s has no parent to compare to!" % image_1)
         image_1, image_2 = image_2, image_1  # snap_1 has to come first
     else:
         assert image_1 is not None

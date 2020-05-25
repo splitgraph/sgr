@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PsycopgEngine
 
 
-def _hash_value(value: Union[datetime, int, str]) -> Tuple[bytes, bytes]:
+def _hash_value(value: Union[datetime, int, str, None]) -> Tuple[bytes, bytes]:
     if value is None:
         # See explanation in generate_bloom_index for why this isn't
         # a completely terrible idea.

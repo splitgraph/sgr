@@ -47,7 +47,7 @@ class Image(NamedTuple):
     """
 
     image_hash: str
-    parent_id: str
+    parent_id: Optional[str]
     created: datetime
     comment: str
     provenance_data: List[ProvenanceLine]
@@ -66,7 +66,7 @@ class Image(NamedTuple):
             return NotImplemented
         return self.image_hash == other.image_hash and self.repository == other.repository
 
-    def get_parent_children(self) -> Tuple[str, List[Any]]:
+    def get_parent_children(self) -> Tuple[Optional[str], List[str]]:
         """Gets the parent and a list of children of a given image."""
         parent = self.parent_id
 
