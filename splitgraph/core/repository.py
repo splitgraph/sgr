@@ -102,7 +102,7 @@ class Repository:
         cls,
         template: "Repository",
         namespace: Optional[str] = None,
-        repository: None = None,
+        repository: Optional[str] = None,
         engine: Optional[PostgresEngine] = None,
         object_engine: Optional[PostgresEngine] = None,
     ) -> "Repository":

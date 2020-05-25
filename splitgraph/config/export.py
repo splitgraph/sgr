@@ -62,14 +62,10 @@ def serialize_config(
     for remote, remote_config in get_all_in_section(config, "remotes").items():
         assert isinstance(remote_config, dict)
         if config_format:
-            result += (
-                "\n"
-                + serialize_engine_config(remote, cast(Dict[str, str], remote_config), no_shielding)
-                + "\n"
-            )
+            result += "\n" + serialize_engine_config(remote, remote_config, no_shielding) + "\n"
         else:
             result += "\n%s:\n" % remote
-            for key, value in cast(Dict[str, str], remote_config).items():
+            for key, value in remote_config.items():
                 result += _kv_to_str(key, value, no_shielding) + "\n"
 
     # Print Splitfile commands

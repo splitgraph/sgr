@@ -278,9 +278,8 @@ def mount(
 
 def _register_default_handlers() -> None:
     # Register the mount handlers from the config.
-    for handler_name, handler_func_name_unk in get_all_in_section(CONFIG, "mount_handlers").items():
-        assert isinstance(handler_func_name_unk, str)
-        handler_func_name: str = cast(str, handler_func_name_unk)
+    for handler_name, handler_func_name in get_all_in_section(CONFIG, "mount_handlers").items():
+        assert isinstance(handler_func_name, str)
 
         ix = handler_func_name.rindex(".")
         try:
