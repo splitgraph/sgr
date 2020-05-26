@@ -63,7 +63,7 @@ def test_init_skip_object_handling_version_():
         assert schema_version == schema_version_new
         assert date_installed == date_installed_new
 
-        assert engine.schema_exists("audit")
+        assert engine.schema_exists("splitgraph_audit")
         assert (
             engine.run_sql(
                 "SELECT COUNT(*) FROM information_schema.routines "
