@@ -12,10 +12,7 @@
 ##### toolchain
 #####
 
-FROM postgres:12.2 AS toolchain
-
-# Add Debian bullseye (testing) repo since it has Python 3.8 and postgresql-plpython3-12
-RUN echo "deb http://deb.debian.org/debian bullseye main" >> /etc/apt/sources.list.d/debian-bullseye.list
+FROM postgres:12.3 AS toolchain
 
 RUN apt-get update -qq && \
     apt-get install -y --allow-downgrades \
@@ -36,8 +33,8 @@ RUN apt-get update -qq && \
         libmongoc-dev \
         protobuf-c-compiler \
         libprotobuf-c-dev \
-        libpython3.8-dev \
-        python3.8 \
+        libpython3.7-dev \
+        python3.7 \
         python3-setuptools \
         cmake \
         clang-7 && \
@@ -102,32 +99,24 @@ RUN /build/build_mysql_fdw.sh
 ##### splitgraph/engine
 #####
 
-FROM postgres:12.2
+FROM postgres:12.3
 
 # We still have to install some runtime libraries here, but no dev.
 
-RUN echo "deb http://deb.debian.org/debian bullseye main" >> /etc/apt/sources.list.d/debian-bullseye.list
 RUN apt-get update -qq && \
     apt-get install -y \
         curl \
         libprotobuf-c1 \
         libmongoc-1.0-0 \
-        libpython3.8 \
-        python3.8 \
+        libpython3.7 \
+        python3.7 \
+        python3-setuptools \
+        postgresql-plpython3-12 \
         wget && \
-    # Featuring a hack to install distutils + pip in a way that doesn't pull in all of py3.7 and apparmor
-    # (even though we get python3-distutils_3.8.2-2_all.deb, an actual install grabs all of that)
-    apt-get download python3-distutils && \
-    dpkg-deb -x python3-distutils*.deb / && \
-    curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
-    python3.8 get-pip.py && \
-    rm python3-distutils*.deb get-pip.py && \
 
-    # Same hack for plpython3 for pg12 that uses 3.8 rather than 3.7:
-    # normal apt install causes compat issues.
-    apt-get download -t bullseye postgresql-plpython3-12 && \
-    dpkg-deb -x postgresql-plpython3-12*.deb / && \
-    rm postgresql-plpython3-12*.deb && \
+        curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
+        python3.7 get-pip.py && \
+        rm get-pip.py && \
     rm -rf /var/lib/apt/lists/*
 
 # Set locale to C instead of en-US, Postgres initdb breaks with default
@@ -166,11 +155,11 @@ RUN mkdir ~/.gnupg && echo "disable-ipv6" >> ~/.gnupg/dirmngr.conf && \
 
 COPY --from=builder_cstore_multicorn /output/root /
 COPY --from=builder_cstore_multicorn \
-    /usr/local/lib/python3.8/dist-packages/easy-install.pth \
-    /usr/local/lib/python3.8/dist-packages/easy-install.pth
+    /usr/local/lib/python3.7/dist-packages/easy-install.pth \
+    /usr/local/lib/python3.7/dist-packages/easy-install.pth
 COPY --from=builder_cstore_multicorn \
-    /usr/local/lib/python3.8/dist-packages/multicorn-1.4.0.dev0-py3.8-linux-x86_64.egg \
-    /usr/local/lib/python3.8/dist-packages/multicorn-1.4.0.dev0-py3.8-linux-x86_64.egg
+    /usr/local/lib/python3.7/dist-packages/multicorn-1.4.0.dev0-py3.7-linux-x86_64.egg \
+    /usr/local/lib/python3.7/dist-packages/multicorn-1.4.0.dev0-py3.7-linux-x86_64.egg
 
 COPY --from=builder_mongo_fdw /output/root /
 COPY --from=builder_mysql_fdw /output/root /
@@ -185,10 +174,6 @@ ENV POSTGRES_USER sgr
 
 COPY ./engine/etc /etc/
 COPY ./engine/init_scripts /docker-entrypoint-initdb.d/
-
-# Delete bullseye from the apt sources list -- it can break things that inherit from
-# this image (and definitely breaks postgis install).
-RUN rm /etc/apt/sources.list.d/debian-bullseye.list
 
 ENV PYTHONPATH "${PYTHONPATH}:/splitgraph"
 
