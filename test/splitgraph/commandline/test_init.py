@@ -38,7 +38,7 @@ def test_init_skip_object_handling_version_():
     schema_version, date_installed = get_installed_version(engine, SPLITGRAPH_META_SCHEMA)
 
     try:
-        engine.run_sql("DROP SCHEMA IF EXISTS audit CASCADE")
+        engine.run_sql("DROP SCHEMA IF EXISTS splitgraph_audit CASCADE")
         engine.run_sql("DROP FUNCTION IF EXISTS splitgraph_api.upload_object")
         assert not engine.schema_exists("audit")
         result = runner.invoke(init_c, ["--skip-object-handling"])

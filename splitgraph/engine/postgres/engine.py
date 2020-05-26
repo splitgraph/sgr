@@ -58,7 +58,7 @@ if TYPE_CHECKING:
     # the connection property otherwise
     from psycopg2._psycopg import connection as Connection
 
-_AUDIT_SCHEMA = "audit"
+_AUDIT_SCHEMA = "splitgraph_audit"
 _AUDIT_TRIGGER = "resources/static/audit_trigger.sql"
 _PUSH_PULL = "resources/static/splitgraph_api.sql"
 _CSTORE = "resources/static/cstore.sql"
@@ -451,7 +451,7 @@ class PsycopgEngine(SQLEngine):
                 if isinstance(e, UndefinedTable):
                     # This is not a neat way to do this but other methods involve placing wrappers around
                     # anything that sends queries to splitgraph_meta or audit schemas.
-                    if "audit." in str(e):
+                    if _AUDIT_SCHEMA + "." in str(e):
                         raise EngineInitializationError(
                             "Audit triggers not found on the engine. Has the engine been initialized?"
                         ) from e
@@ -721,7 +721,9 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
         """Install the audit trigger on the required tables"""
         self.run_sql(
             SQL(";").join(
-                SQL("SELECT audit.audit_table('{}.{}')").format(Identifier(s), Identifier(t))
+                SQL("SELECT {}.audit_table('{}.{}')").format(
+                    Identifier(_AUDIT_SCHEMA), Identifier(s), Identifier(t)
+                )
                 for s, t in tables
             )
         )
@@ -739,7 +741,10 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
             )
         # Delete the actual logged actions for untracked tables
         self.run_sql_batch(
-            "DELETE FROM audit.logged_actions WHERE schema_name = %s AND table_name = %s", tables
+            SQL("DELETE FROM {}.logged_actions WHERE schema_name = %s AND table_name = %s").format(
+                Identifier(_AUDIT_SCHEMA)
+            ),
+            tables,
         )
 
     def has_pending_changes(self, schema: str) -> bool:
@@ -749,7 +754,7 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
         return (
             self.run_sql(
                 SQL("SELECT 1 FROM {}.{} WHERE schema_name = %s").format(
-                    Identifier("audit"), Identifier("logged_actions")
+                    Identifier(_AUDIT_SCHEMA), Identifier("logged_actions")
                 ),
                 (schema,),
                 return_shape=ResultShape.ONE_ONE,
@@ -762,7 +767,7 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
         Discard recorded pending changes for a tracked schema / table
         """
         query = SQL("DELETE FROM {}.{} WHERE schema_name = %s").format(
-            Identifier("audit"), Identifier("logged_actions")
+            Identifier(_AUDIT_SCHEMA), Identifier("logged_actions")
         )
 
         if table:
@@ -791,7 +796,7 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
                     SQL(
                         "SELECT action, count(action) FROM {}.{} "
                         "WHERE schema_name = %s AND table_name = %s GROUP BY action"
-                    ).format(Identifier("audit"), Identifier("logged_actions")),
+                    ).format(Identifier(_AUDIT_SCHEMA), Identifier("logged_actions")),
                     (schema, table),
                 )
             ]
@@ -802,7 +807,7 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
             SQL(
                 "SELECT action, row_data, changed_fields FROM {}.{} "
                 "WHERE schema_name = %s AND table_name = %s"
-            ).format(Identifier("audit"), Identifier("logged_actions")),
+            ).format(Identifier(_AUDIT_SCHEMA), Identifier("logged_actions")),
             (schema, table),
         ):
             result.extend(_convert_audit_change(action, row_data, changed_fields, ri_cols))
@@ -816,7 +821,7 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
                 SQL(
                     """SELECT DISTINCT(table_name) FROM {}.{}
                                WHERE schema_name = %s"""
-                ).format(Identifier("audit"), Identifier("logged_actions")),
+                ).format(Identifier(_AUDIT_SCHEMA), Identifier("logged_actions")),
                 (schema,),
                 return_shape=ResultShape.MANY_ONE,
             ),
