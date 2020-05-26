@@ -21,11 +21,11 @@
 -- but has been completely rewritten.
 --
 -- Should really be converted into a relocatable EXTENSION, with control and upgrade files.
-CREATE SCHEMA audit;
+CREATE SCHEMA splitgraph_audit;
 
-REVOKE ALL ON SCHEMA audit FROM public;
+REVOKE ALL ON SCHEMA splitgraph_audit FROM public;
 
-COMMENT ON SCHEMA audit IS 'Out-of-table audit/history logging tables and trigger functions';
+COMMENT ON SCHEMA splitgraph_audit IS 'Out-of-table audit/history logging tables and trigger functions';
 
 --
 -- Audited data. Lots of information is available, it's just a matter of how much
@@ -44,7 +44,7 @@ COMMENT ON SCHEMA audit IS 'Out-of-table audit/history logging tables and trigge
 -- you're interested in, into a temporary table where you CREATE any useful
 -- indexes and do your analysis.
 --
-CREATE TABLE audit.logged_actions (
+CREATE TABLE splitgraph_audit.logged_actions (
     event_id bigserial PRIMARY KEY,
     schema_name text NOT NULL,
     table_name text NOT NULL,
@@ -53,36 +53,36 @@ CREATE TABLE audit.logged_actions (
     changed_fields jsonb
 );
 
-REVOKE ALL ON audit.logged_actions FROM public;
+REVOKE ALL ON splitgraph_audit.logged_actions FROM public;
 
-COMMENT ON TABLE audit.logged_actions IS 'History of auditable actions on audited tables, from audit.if_modified_func()';
+COMMENT ON TABLE splitgraph_audit.logged_actions IS 'History of auditable actions on audited tables, from audit.if_modified_func()';
 
-COMMENT ON COLUMN audit.logged_actions.event_id IS 'Unique identifier for each auditable event';
+COMMENT ON COLUMN splitgraph_audit.logged_actions.event_id IS 'Unique identifier for each auditable event';
 
-COMMENT ON COLUMN audit.logged_actions.schema_name IS 'Database schema audited table for this event is in';
+COMMENT ON COLUMN splitgraph_audit.logged_actions.schema_name IS 'Database schema audited table for this event is in';
 
-COMMENT ON COLUMN audit.logged_actions.table_name IS 'Non-schema-qualified table name of table event occured in';
+COMMENT ON COLUMN splitgraph_audit.logged_actions.table_name IS 'Non-schema-qualified table name of table event occured in';
 
-COMMENT ON COLUMN audit.logged_actions.action IS 'Action type; I = insert, D = delete, U = update, T = truncate';
+COMMENT ON COLUMN splitgraph_audit.logged_actions.action IS 'Action type; I = insert, D = delete, U = update, T = truncate';
 
-COMMENT ON COLUMN audit.logged_actions.row_data IS 'Record value. Null for statement-level trigger. For INSERT this is the new tuple. For DELETE and UPDATE it is the old tuple.';
+COMMENT ON COLUMN splitgraph_audit.logged_actions.row_data IS 'Record value. Null for statement-level trigger. For INSERT this is the new tuple. For DELETE and UPDATE it is the old tuple.';
 
-COMMENT ON COLUMN audit.logged_actions.changed_fields IS 'New values of fields changed by UPDATE. Null except for row-level UPDATE events.';
+COMMENT ON COLUMN splitgraph_audit.logged_actions.changed_fields IS 'New values of fields changed by UPDATE. Null except for row-level UPDATE events.';
 
-CREATE INDEX logged_actions_action_idx ON audit.logged_actions (action);
+CREATE INDEX logged_actions_action_idx ON splitgraph_audit.logged_actions (action);
 
-CREATE OR REPLACE FUNCTION audit.if_modified_func ()
+CREATE OR REPLACE FUNCTION splitgraph_audit.if_modified_func ()
     RETURNS TRIGGER
     AS $body$
 DECLARE
-    audit_row audit.logged_actions;
+    audit_row splitgraph_audit.logged_actions;
     h_old jsonb;
     h_new jsonb;
 BEGIN
     IF TG_WHEN <> 'AFTER' THEN
-        RAISE EXCEPTION 'audit.if_modified_func() may only run as an AFTER trigger';
+        RAISE EXCEPTION 'splitgraph_audit.if_modified_func() may only run as an AFTER trigger';
     END IF;
-    audit_row = ROW (nextval('audit.logged_actions_event_id_seq'), -- event_id
+    audit_row = ROW (nextval('splitgraph_audit.logged_actions_event_id_seq'), -- event_id
         TG_TABLE_SCHEMA::text, -- schema_name
         TG_TABLE_NAME::text, -- table_name
         substring(TG_OP, 1, 1), -- action
@@ -109,11 +109,11 @@ BEGIN
             AND TG_LEVEL = 'ROW') THEN
         audit_row.row_data = row_to_json(NEW)::jsonb;
     ELSE
-        RAISE EXCEPTION '[audit.if_modified_func] - Trigger func added as
+        RAISE EXCEPTION '[splitgraph_audit.if_modified_func] - Trigger func added as
      	    trigger for unhandled case: %, %', TG_OP, TG_LEVEL;
         RETURN NULL;
     END IF;
-    INSERT INTO audit.logged_actions
+    INSERT INTO splitgraph_audit.logged_actions
         VALUES (audit_row.*);
     RETURN NULL;
 END;
@@ -121,7 +121,7 @@ $body$
 LANGUAGE plpgsql
 SECURITY DEFINER SET search_path = pg_catalog, public;
 
-COMMENT ON FUNCTION audit.if_modified_func () IS $body$
+COMMENT ON FUNCTION splitgraph_audit.if_modified_func () IS $body$
 Track changes to a table at the statement and/or row level.
 
 There is no parameter to disable logging of values. Add this trigger as
@@ -133,7 +133,7 @@ cannot obtain the active role because it is reset by the SECURITY DEFINER invoca
 of the audit trigger its self.
 $body$;
 
-CREATE OR REPLACE FUNCTION audit.audit_table (
+CREATE OR REPLACE FUNCTION splitgraph_audit.audit_table (
     target_table regclass
 )
     RETURNS void
@@ -145,14 +145,14 @@ BEGIN
     EXECUTE 'DROP TRIGGER IF EXISTS audit_trigger_row ON ' || target_table;
     _q_txt = 'CREATE TRIGGER audit_trigger_row AFTER INSERT OR UPDATE OR DELETE
      	ON ' || target_table || ' FOR EACH ROW EXECUTE PROCEDURE
-     	audit.if_modified_func();';
+     	splitgraph_audit.if_modified_func();';
     RAISE NOTICE '%', _q_txt;
     EXECUTE _q_txt;
 END;
 $body$
 LANGUAGE 'plpgsql';
 
-COMMENT ON FUNCTION audit.audit_table (regclass) IS $body$
+COMMENT ON FUNCTION splitgraph_audit.audit_table (regclass) IS $body$
 Add auditing support to a table.
 
 Arguments:

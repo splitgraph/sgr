@@ -140,7 +140,7 @@ def test_uninitialized_engine_error(local_engine_empty):
         local_engine_empty.initialize()
         local_engine_empty.commit()
 
-        local_engine_empty.run_sql("DROP SCHEMA audit CASCADE")
+        local_engine_empty.run_sql("DROP SCHEMA splitgraph_audit CASCADE")
         with pytest.raises(EngineInitializationError) as e:
             local_engine_empty.discard_pending_changes("some/repo")
         assert "Audit triggers" in str(e.value)
