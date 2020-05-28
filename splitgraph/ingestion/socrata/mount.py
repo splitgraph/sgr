@@ -11,7 +11,7 @@ def mount_socrata(
     port,
     username,
     password,
-    endpoint,
+    domain: str,
     tables: Optional[Dict[str, Any]] = None,
     app_token: Optional[str] = None,
 ) -> None:
@@ -21,7 +21,7 @@ def mount_socrata(
     Mounts a remote Socrata dataset and forwards queries to it
     \b
 
-    :param endpoint: Socrata endpoint, for example, https://data.albanyny.gov. Required.
+    :param domain: Socrata domain, for example, data.albanyny.gov. Required.
     :param tables: A dictionary mapping PostgreSQL table names to Socrata table IDs. For example,
         {"salaries": "xzkq-xp2w"}. If skipped, ALL tables in the Socrata endpoint will be mounted.
     :param app_token: Socrata app token. Optional.
@@ -31,15 +31,15 @@ def mount_socrata(
     from psycopg2.sql import Identifier, SQL
 
     engine = get_engine()
-    logging.info("Mounting Socrata endpoint...")
+    logging.info("Mounting Socrata domain...")
     server_id = mountpoint + "_server"
 
     options = {
         "wrapper": "splitgraph.ingestion.socrata.fdw.SocrataForeignDataWrapper",
     }
 
-    if endpoint:
-        options["endpoint"] = endpoint
+    if domain:
+        options["domain"] = domain
     if app_token:
         options["app_token"] = app_token
 
@@ -50,7 +50,7 @@ def mount_socrata(
     engine.run_sql(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(mountpoint)))
 
     logging.info("Getting Socrata metadata")
-    client = Socrata(domain=endpoint, app_token=app_token)
+    client = Socrata(domain=domain, app_token=app_token)
     sought_ids = tables.values() if tables else []
     datasets = client.datasets(ids=sought_ids, only=["dataset"])
 
