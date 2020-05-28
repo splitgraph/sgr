@@ -69,10 +69,5 @@ BOBBYTABLES=test.splitgraph.splitfile.test_custom_commands.CalcHashTestCommand
 BROKEN1=some.module.that.definitely.doesnt.Exist
 BROKEN2=test.splitgraph.splitfile.test_custom_commands.NonexistentCommand
 
-[mount_handlers]
-postgres_fdw=splitgraph.hooks.mount_handlers.mount_postgres
-mongo_fdw=splitgraph.hooks.mount_handlers.mount_mongo
-mysql_fdw=splitgraph.hooks.mount_handlers.mount_mysql
-
 [external_handlers]
 S3=splitgraph.hooks.s3.S3ExternalObjectHandler
