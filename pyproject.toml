@@ -20,15 +20,19 @@ docker = ">=4.0"
 click_log = "^0.3.2"
 tqdm = "^4.46.0"
 packaging = "^20.1"
+tabulate = "^0.8.7"
+asciitree = "^0.3.3"
+
+# Socrata dataset mounting.
+# This could be optional but it's very lightweight (only requires requests).
+sodapy = ">=2.1"
+
 # Required for CSV ingestion and type inference
 tableschema = "^1.15.0"
 # Pin tabulator (depended on by tableschema) to our fork that doesn't
 # include S3/SQLAlchemy deps (we only use schema inference for CSVs and
 # these libraries add ~40MB to the total install size).
 tabulator = { git = "https://github.com/splitgraph/tabulator-py.git" }
-
-tabulate = "^0.8.7"
-asciitree = "^0.3.3"
 
 # Extra requirements for Pandas ingestion
 pandas = {version = ">=0.24", extras = ["ingestion"], optional = true }

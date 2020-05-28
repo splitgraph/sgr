@@ -50,6 +50,12 @@ DEFAULTS: ConfigDict = {
     "SG_CMD_ASCII": "false",
     # Some default sections: these can't be overridden via envvars.
     "external_handlers": {"S3": "splitgraph.hooks.s3.S3ExternalObjectHandler"},
+    "mount_handlers": {
+        "postgres_fdw": "splitgraph.hooks.mount_handlers.mount_postgres",
+        "mongo_fdw": "splitgraph.hooks.mount_handlers.mount_mongo",
+        "mysql_fdw": "splitgraph.hooks.mount_handlers.mount_mysql",
+        "socrata": "splitgraph.ingestion.socrata.mount.mount_socrata",
+    },
 }
 
 ALL_KEYS = list(DEFAULTS.keys())

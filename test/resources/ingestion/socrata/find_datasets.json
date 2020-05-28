@@ -1,0 +1,154 @@
+[
+  {
+    "resource": {
+      "name": "Current Employee Names, Salaries, and Position Titles",
+      "id": "xzkq-xp2w",
+      "parent_fxf": [],
+      "description": "This dataset is a listing of all current City of Chicago employees, complete with full names, departments, positions, employment status (part-time or full-time), frequency of hourly employee \u2013where applicable\u2014and annual salaries or hourly rate. For hourly employees, the City is providing the hourly rate and frequency of hourly employees (40, 35, 20 and 10) to allow dataset users to estimate annual wages for hourly employees. Please note that annual wages will vary by employee, depending on number of hours worked and seasonal status. For information on the positions and related salaries detailed in the annual budgets, see https://www.cityofchicago.org/city/en/depts/obm.html",
+      "attribution": "City of Chicago",
+      "attribution_link": "http://www.chicago.gov",
+      "contact_email": "dataportal@cityofchicago.org",
+      "type": "dataset",
+      "updatedAt": "2020-01-31T23:21:48.000Z",
+      "createdAt": "2011-09-27T20:18:55.000Z",
+      "metadata_updated_at": "2020-01-31T23:21:35.000Z",
+      "data_updated_at": "2020-01-31T23:21:48.000Z",
+      "page_views": {
+        "page_views_last_week": 3530,
+        "page_views_last_month": 15427,
+        "page_views_total": 1549238,
+        "page_views_last_week_log": 11.7858611057596,
+        "page_views_last_month_log": 13.913263430628763,
+        "page_views_total_log": 20.563128294159895
+      },
+      "columns_name": [
+        "Full or Part-Time",
+        "Hourly Rate",
+        "Salary or Hourly",
+        "Job Titles",
+        "Typical Hours",
+        "Annual Salary",
+        "Name",
+        "Department"
+      ],
+      "columns_field_name": [
+        "full_or_part_time",
+        "hourly_rate",
+        "salary_or_hourly",
+        "job_titles",
+        "typical_hours",
+        "annual_salary",
+        "name",
+        "department"
+      ],
+      "columns_datatype": [
+        "Text",
+        "Number",
+        "Text",
+        "Text",
+        "Number",
+        "Number",
+        "Text",
+        "Text"
+      ],
+      "columns_description": [
+        "Whether the employee was employed full- (F) or part-time (P).",
+        "The hourly salary rates for individuals whose pay frequency is \"hourly\". Hourly employees have varying hours worked throughout the week, which is described in the \"Frequency Description\" column.",
+        "Defines whether an employee is paid on an hourly basis or salary basis. Hourly employees are further defined by the number of hours they work in a week. See the \"Frequency Description\" column.",
+        "Title of employee at the time when the data was updated.",
+        "Describes the typical amount of work for hourly employees. This data does not apply to salary employees.\n\n40 - Employee paid on an hourly basis; works an 8 hour day; can be either full-time permanent (FT/P) or full-time temporary (FT-T) which is a seasonal employee; 35 - Employee paid on an hourly basis; works a 7 hour day; can be either full-time permanent (FT/P) or full-time temporary (FT-T) which is a seasonal employee; 20 - Employee paid on a part-time, hourly basis; typically works a 4 hour day, 5 days a week; 10 - Employee paid on a part-time, hourly basis; works 10 hours or less in a week.",
+        "Annual salary rates. Only applies for employees whose pay frequency is \"Salary\". Hourly employees rates are only shown in \"Hourly Rates\" column.",
+        "Name of employee",
+        "Department where employee worked."
+      ],
+      "columns_format": [
+        {
+          "displayStyle": "plain",
+          "align": "left"
+        },
+        {
+          "precision": "2",
+          "align": "right",
+          "currencyStyle": "USD",
+          "humane": "false",
+          "precisionStyle": "currency"
+        },
+        {
+          "displayStyle": "plain",
+          "align": "left"
+        },
+        {
+          "displayStyle": "plain",
+          "rdf": "http://xmlns.com/foaf/0.1/title",
+          "align": "left"
+        },
+        {
+          "precisionStyle": "standard",
+          "noCommas": "true",
+          "align": "left"
+        },
+        {
+          "precision": "2",
+          "align": "right",
+          "aggregate": "sum",
+          "currencyStyle": "USD",
+          "humane": "false",
+          "precisionStyle": "currency"
+        },
+        {
+          "displayStyle": "plain",
+          "rdf": "http://xmlns.com/foaf/0.1/name",
+          "align": "left",
+          "aggregate": "count"
+        },
+        {
+          "displayStyle": "plain",
+          "rdf": "http://xmlns.com/foaf/0.1/workplaceHomepage",
+          "align": "left"
+        }
+      ],
+      "download_count": 14062267,
+      "provenance": "official",
+      "lens_view_type": "tabular",
+      "blob_mime_type": null,
+      "hide_from_data_json": false,
+      "publication_date": "2018-01-30T17:45:21.000Z"
+    },
+    "classification": {
+      "categories": [
+        "finance",
+        "demographics",
+        "economy"
+      ],
+      "tags": [],
+      "domain_category": "Administration & Finance",
+      "domain_tags": [
+        "personnel"
+      ],
+      "domain_metadata": [
+        {
+          "key": "Metadata_Time-Period",
+          "value": "Last Updated January 2020"
+        },
+        {
+          "key": "Metadata_Frequency",
+          "value": "Data are updated semi-annually"
+        },
+        {
+          "key": "Metadata_Data-Owner",
+          "value": "Human Resources"
+        }
+      ]
+    },
+    "metadata": {
+      "domain": "data.cityofchicago.org",
+      "license": "See Terms of Use"
+    },
+    "permalink": "https://data.cityofchicago.org/d/xzkq-xp2w",
+    "link": "https://data.cityofchicago.org/Administration-Finance/Current-Employee-Names-Salaries-and-Position-Title/xzkq-xp2w",
+    "owner": {
+      "id": "vi9p-p863",
+      "display_name": "Eric Phillips"
+    }
+  }
+]

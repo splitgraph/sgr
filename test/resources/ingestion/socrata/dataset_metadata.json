@@ -1,0 +1,807 @@
+{
+  "id": "xzkq-xp2w",
+  "name": "Current Employee Names, Salaries, and Position Titles",
+  "attribution": "City of Chicago",
+  "attributionLink": "http://www.chicago.gov",
+  "averageRating": 0,
+  "category": "Administration & Finance",
+  "createdAt": 1317154735,
+  "description": "This dataset is a listing of all current City of Chicago employees, complete with full names, departments, positions, employment status (part-time or full-time), frequency of hourly employee \u2013where applicable\u2014and annual salaries or hourly rate. For hourly employees, the City is providing the hourly rate and frequency of hourly employees (40, 35, 20 and 10) to allow dataset users to estimate annual wages for hourly employees. Please note that annual wages will vary by employee, depending on number of hours worked and seasonal status. For information on the positions and related salaries detailed in the annual budgets, see https://www.cityofchicago.org/city/en/depts/obm.html",
+  "displayType": "table",
+  "downloadCount": 14062287,
+  "hideFromCatalog": false,
+  "hideFromDataJson": false,
+  "indexUpdatedAt": 1517348530,
+  "licenseId": "SEE_TERMS_OF_USE",
+  "newBackend": true,
+  "numberOfComments": 0,
+  "oid": 27885816,
+  "provenance": "official",
+  "publicationAppendEnabled": false,
+  "publicationDate": 1517334321,
+  "publicationGroup": 241512,
+  "publicationStage": "published",
+  "rowsUpdatedAt": 1580512908,
+  "rowsUpdatedBy": "vewm-vupz",
+  "tableId": 14844751,
+  "totalTimesRated": 0,
+  "viewCount": 1549397,
+  "viewLastModified": 1580512895,
+  "viewType": "tabular",
+  "approvals": [
+    {
+      "reviewedAt": 1517334321,
+      "reviewedAutomatically": true,
+      "state": "approved",
+      "submissionId": 949531,
+      "submissionObject": "public_audience_request",
+      "submissionOutcome": "change_audience",
+      "submittedAt": 1517334321,
+      "workflowId": 2226,
+      "submissionDetails": {
+        "permissionType": "READ"
+      },
+      "submissionOutcomeApplication": {
+        "failureCount": 0,
+        "status": "success"
+      },
+      "submitter": {
+        "id": "vi9p-p863",
+        "displayName": "Eric Phillips"
+      }
+    }
+  ],
+  "columns": [
+    {
+      "id": 343058131,
+      "name": "Name",
+      "dataTypeName": "text",
+      "description": "Name of employee",
+      "fieldName": "name",
+      "position": 1,
+      "rdfProperties": "http://xmlns.com/foaf/0.1/name",
+      "renderTypeName": "text",
+      "tableColumnId": 1532233,
+      "width": 218,
+      "cachedContents": {
+        "largest": "ZYSKOWSKI,  DARIUSZ",
+        "non_null": "33702",
+        "null": "0",
+        "top": [
+          {
+            "item": "HERNANDEZ,  JUAN C",
+            "count": "5"
+          },
+          {
+            "item": "PEREZ,  JOSE A",
+            "count": "4"
+          },
+          {
+            "item": "DELGADO,  JUAN",
+            "count": "4"
+          },
+          {
+            "item": "LOPEZ,  ROBERT",
+            "count": "4"
+          },
+          {
+            "item": "ROMERO,  MIGUEL A",
+            "count": "4"
+          },
+          {
+            "item": "RIVERA,  RICARDO",
+            "count": "4"
+          },
+          {
+            "item": "GARCIA,  LUIS A",
+            "count": "3"
+          },
+          {
+            "item": "HERNANDEZ,  RUBEN",
+            "count": "3"
+          },
+          {
+            "item": "GARCIA,  GABRIEL",
+            "count": "3"
+          },
+          {
+            "item": "RIOS,  ALFREDO",
+            "count": "3"
+          },
+          {
+            "item": "WALSH,  MICHAEL J",
+            "count": "3"
+          },
+          {
+            "item": "RODRIGUEZ,  JOSE L",
+            "count": "3"
+          },
+          {
+            "item": "MARTINEZ,  JOSE A",
+            "count": "3"
+          },
+          {
+            "item": "HERNANDEZ,  DANIEL",
+            "count": "3"
+          },
+          {
+            "item": "VEGA,  GERARDO",
+            "count": "3"
+          },
+          {
+            "item": "TORRES,  JACQUELINE",
+            "count": "3"
+          },
+          {
+            "item": "FLORES,  MICHAEL A",
+            "count": "3"
+          },
+          {
+            "item": "JOHNSON,  NICHOLAS",
+            "count": "3"
+          },
+          {
+            "item": "GARCIA,  JULIO",
+            "count": "3"
+          },
+          {
+            "item": "RODRIGUEZ,  JOSE",
+            "count": "3"
+          }
+        ],
+        "smallest": "AARON,  JEFFERY M",
+        "not_null": "33586",
+        "cardinality": "33380"
+      },
+      "format": {
+        "displayStyle": "plain",
+        "rdf": "http://xmlns.com/foaf/0.1/name",
+        "align": "left",
+        "aggregate": "count"
+      }
+    },
+    {
+      "id": 343058132,
+      "name": "Job Titles",
+      "dataTypeName": "text",
+      "description": "Title of employee at the time when the data was updated.",
+      "fieldName": "job_titles",
+      "position": 2,
+      "rdfProperties": "http://xmlns.com/foaf/0.1/title",
+      "renderTypeName": "text",
+      "tableColumnId": 1532235,
+      "width": 220,
+      "cachedContents": {
+        "largest": "ZONING PLAN EXAMINER",
+        "non_null": "33702",
+        "null": "0",
+        "top": [
+          {
+            "item": "POLICE OFFICER",
+            "count": "9761"
+          },
+          {
+            "item": "FIREFIGHTER-EMT",
+            "count": "1381"
+          },
+          {
+            "item": "SERGEANT",
+            "count": "1315"
+          },
+          {
+            "item": "POLICE OFFICER (ASSIGNED AS DETECTIVE)",
+            "count": "1115"
+          },
+          {
+            "item": "MOTOR TRUCK DRIVER",
+            "count": "1046"
+          },
+          {
+            "item": "POOL MOTOR TRUCK DRIVER",
+            "count": "811"
+          },
+          {
+            "item": "SANITATION LABORER",
+            "count": "545"
+          },
+          {
+            "item": "FIREFIGHTER-EMT (RECRUIT)",
+            "count": "504"
+          },
+          {
+            "item": "CONSTRUCTION LABORER",
+            "count": "461"
+          },
+          {
+            "item": "CROSSING GUARD",
+            "count": "396"
+          },
+          {
+            "item": "PARAMEDIC",
+            "count": "379"
+          },
+          {
+            "item": "LIEUTENANT-EMT",
+            "count": "355"
+          },
+          {
+            "item": "LIEUTENANT",
+            "count": "354"
+          },
+          {
+            "item": "TRAFFIC CONTROL AIDE-HOURLY",
+            "count": "345"
+          },
+          {
+            "item": "FIRE ENGINEER-EMT",
+            "count": "344"
+          },
+          {
+            "item": "CROSSING GUARD - PER CBA",
+            "count": "335"
+          },
+          {
+            "item": "FIREFIGHTER",
+            "count": "300"
+          },
+          {
+            "item": "POLICE OFFICER / FLD TRNG OFFICER",
+            "count": "280"
+          },
+          {
+            "item": "GENERAL LABORER - DSS",
+            "count": "257"
+          },
+          {
+            "item": "PARAMEDIC I/C",
+            "count": "246"
+          }
+        ],
+        "smallest": "1ST DEPUTY INSPECTOR GENERAL",
+        "not_null": "33586",
+        "cardinality": "1119"
+      },
+      "format": {
+        "displayStyle": "plain",
+        "rdf": "http://xmlns.com/foaf/0.1/title",
+        "align": "left"
+      }
+    },
+    {
+      "id": 343058133,
+      "name": "Department",
+      "dataTypeName": "text",
+      "description": "Department where employee worked.",
+      "fieldName": "department",
+      "position": 3,
+      "rdfProperties": "http://xmlns.com/foaf/0.1/workplaceHomepage",
+      "renderTypeName": "text",
+      "tableColumnId": 1532236,
+      "width": 183,
+      "cachedContents": {
+        "largest": "WATER MGMNT",
+        "non_null": "33702",
+        "null": "0",
+        "top": [
+          {
+            "item": "POLICE",
+            "count": "13848"
+          },
+          {
+            "item": "FIRE",
+            "count": "4627"
+          },
+          {
+            "item": "STREETS & SAN",
+            "count": "2175"
+          },
+          {
+            "item": "WATER MGMNT",
+            "count": "1914"
+          },
+          {
+            "item": "AVIATION",
+            "count": "1856"
+          },
+          {
+            "item": "OEMC",
+            "count": "1737"
+          },
+          {
+            "item": "TRANSPORTN",
+            "count": "1113"
+          },
+          {
+            "item": "PUBLIC LIBRARY",
+            "count": "1088"
+          },
+          {
+            "item": "DAIS",
+            "count": "1033"
+          },
+          {
+            "item": "FAMILY & SUPPORT",
+            "count": "656"
+          },
+          {
+            "item": "FINANCE",
+            "count": "544"
+          },
+          {
+            "item": "HEALTH",
+            "count": "467"
+          },
+          {
+            "item": "LAW",
+            "count": "398"
+          },
+          {
+            "item": "CITY COUNCIL",
+            "count": "362"
+          },
+          {
+            "item": "BUILDINGS",
+            "count": "258"
+          },
+          {
+            "item": "PUBLIC SAFETY ADMIN",
+            "count": "244"
+          },
+          {
+            "item": "BUSINESS AFFAIRS",
+            "count": "167"
+          },
+          {
+            "item": "HOUSING & ECON DEV",
+            "count": "154"
+          },
+          {
+            "item": "COPA",
+            "count": "123"
+          },
+          {
+            "item": "BOARD OF ELECTION",
+            "count": "111"
+          }
+        ],
+        "smallest": "ADMIN HEARNG",
+        "not_null": "33586",
+        "cardinality": "36"
+      },
+      "format": {
+        "displayStyle": "plain",
+        "rdf": "http://xmlns.com/foaf/0.1/workplaceHomepage",
+        "align": "left"
+      }
+    },
+    {
+      "id": 343058134,
+      "name": "Full or Part-Time",
+      "dataTypeName": "text",
+      "description": "Whether the employee was employed full- (F) or part-time (P).",
+      "fieldName": "full_or_part_time",
+      "position": 4,
+      "renderTypeName": "text",
+      "tableColumnId": 46949521,
+      "width": 170,
+      "cachedContents": {
+        "largest": "P",
+        "non_null": "33702",
+        "null": "0",
+        "top": [
+          {
+            "item": "F",
+            "count": "31534"
+          },
+          {
+            "item": "P",
+            "count": "2168"
+          }
+        ],
+        "smallest": "F",
+        "not_null": "33586",
+        "cardinality": "2"
+      },
+      "format": {
+        "displayStyle": "plain",
+        "align": "left"
+      }
+    },
+    {
+      "id": 343058135,
+      "name": "Salary or Hourly",
+      "dataTypeName": "text",
+      "description": "Defines whether an employee is paid on an hourly basis or salary basis. Hourly employees are further defined by the number of hours they work in a week. See the \"Frequency Description\" column.",
+      "fieldName": "salary_or_hourly",
+      "position": 5,
+      "renderTypeName": "text",
+      "tableColumnId": 46949646,
+      "width": 143,
+      "cachedContents": {
+        "largest": "Salary",
+        "non_null": "33702",
+        "null": "0",
+        "top": [
+          {
+            "item": "Salary",
+            "count": "25528"
+          },
+          {
+            "item": "Hourly",
+            "count": "8174"
+          }
+        ],
+        "smallest": "Hourly",
+        "not_null": "33586",
+        "cardinality": "2"
+      },
+      "format": {
+        "displayStyle": "plain",
+        "align": "left"
+      }
+    },
+    {
+      "id": 343058136,
+      "name": "Typical Hours",
+      "dataTypeName": "number",
+      "description": "Describes the typical amount of work for hourly employees. This data does not apply to salary employees.\n\n40 - Employee paid on an hourly basis; works an 8 hour day; can be either full-time permanent (FT/P) or full-time temporary (FT-T) which is a seasonal employee; 35 - Employee paid on an hourly basis; works a 7 hour day; can be either full-time permanent (FT/P) or full-time temporary (FT-T) which is a seasonal employee; 20 - Employee paid on a part-time, hourly basis; typically works a 4 hour day, 5 days a week; 10 - Employee paid on a part-time, hourly basis; works 10 hours or less in a week.",
+      "fieldName": "typical_hours",
+      "position": 6,
+      "renderTypeName": "number",
+      "tableColumnId": 46949794,
+      "width": 150,
+      "cachedContents": {
+        "largest": "40",
+        "non_null": "8174",
+        "average": "34.50760408875592",
+        "null": "25528",
+        "top": [
+          {
+            "item": "40",
+            "count": "5920"
+          },
+          {
+            "item": "20",
+            "count": "1928"
+          },
+          {
+            "item": "10",
+            "count": "235"
+          },
+          {
+            "item": "35",
+            "count": "91"
+          }
+        ],
+        "smallest": "10",
+        "not_null": "7948",
+        "sum": "276820",
+        "cardinality": "4"
+      },
+      "format": {
+        "precisionStyle": "standard",
+        "noCommas": "true",
+        "align": "left"
+      }
+    },
+    {
+      "id": 343058137,
+      "name": "Annual Salary",
+      "dataTypeName": "number",
+      "description": "Annual salary rates. Only applies for employees whose pay frequency is \"Salary\". Hourly employees rates are only shown in \"Hourly Rates\" column.",
+      "fieldName": "annual_salary",
+      "position": 7,
+      "renderTypeName": "number",
+      "tableColumnId": 46949824,
+      "width": 162,
+      "cachedContents": {
+        "largest": "275004",
+        "non_null": "25528",
+        "average": "86786.99979015142",
+        "null": "8174",
+        "top": [
+          {
+            "item": "90024",
+            "count": "1743"
+          },
+          {
+            "item": "84054",
+            "count": "1500"
+          },
+          {
+            "item": "93354",
+            "count": "1469"
+          },
+          {
+            "item": "72510",
+            "count": "1307"
+          },
+          {
+            "item": "87006",
+            "count": "1143"
+          },
+          {
+            "item": "76266",
+            "count": "860"
+          },
+          {
+            "item": "96060",
+            "count": "786"
+          },
+          {
+            "item": "68616",
+            "count": "663"
+          },
+          {
+            "item": "92274",
+            "count": "566"
+          },
+          {
+            "item": "80016",
+            "count": "457"
+          },
+          {
+            "item": "100980",
+            "count": "453"
+          },
+          {
+            "item": "48078",
+            "count": "449"
+          },
+          {
+            "item": "118644",
+            "count": "445"
+          },
+          {
+            "item": "56304",
+            "count": "381"
+          },
+          {
+            "item": "114948",
+            "count": "379"
+          },
+          {
+            "item": "103932",
+            "count": "328"
+          },
+          {
+            "item": "122472",
+            "count": "298"
+          },
+          {
+            "item": "97440",
+            "count": "283"
+          },
+          {
+            "item": "89148",
+            "count": "281"
+          },
+          {
+            "item": "74568",
+            "count": "254"
+          }
+        ],
+        "smallest": "14160",
+        "not_null": "25638",
+        "sum": "2183647701.72",
+        "cardinality": "924"
+      },
+      "format": {
+        "precisionStyle": "currency",
+        "humane": "false",
+        "currencyStyle": "USD",
+        "precision": "2",
+        "align": "right",
+        "aggregate": "sum"
+      }
+    },
+    {
+      "id": 343058138,
+      "name": "Hourly Rate",
+      "dataTypeName": "number",
+      "description": "The hourly salary rates for individuals whose pay frequency is \"hourly\". Hourly employees have varying hours worked throughout the week, which is described in the \"Frequency Description\" column.",
+      "fieldName": "hourly_rate",
+      "position": 8,
+      "renderTypeName": "number",
+      "tableColumnId": 46949904,
+      "width": 150,
+      "cachedContents": {
+        "largest": "128",
+        "non_null": "8174",
+        "average": "32.78855771628023",
+        "null": "25528",
+        "top": [
+          {
+            "item": "37.45",
+            "count": "1495"
+          },
+          {
+            "item": "43.72",
+            "count": "779"
+          },
+          {
+            "item": "38.52",
+            "count": "528"
+          },
+          {
+            "item": "19.86",
+            "count": "345"
+          },
+          {
+            "item": "49.35",
+            "count": "298"
+          },
+          {
+            "item": "2.65",
+            "count": "260"
+          },
+          {
+            "item": "51.1",
+            "count": "213"
+          },
+          {
+            "item": "48.93",
+            "count": "195"
+          },
+          {
+            "item": "51.85",
+            "count": "194"
+          },
+          {
+            "item": "29.96",
+            "count": "193"
+          },
+          {
+            "item": "49.26",
+            "count": "166"
+          },
+          {
+            "item": "51",
+            "count": "117"
+          },
+          {
+            "item": "22.36",
+            "count": "108"
+          },
+          {
+            "item": "13.4",
+            "count": "107"
+          },
+          {
+            "item": "33.71",
+            "count": "106"
+          },
+          {
+            "item": "15.94",
+            "count": "96"
+          },
+          {
+            "item": "25.47",
+            "count": "93"
+          },
+          {
+            "item": "18.52",
+            "count": "88"
+          },
+          {
+            "item": "14.1",
+            "count": "87"
+          },
+          {
+            "item": "20.31",
+            "count": "83"
+          }
+        ],
+        "smallest": "2.65",
+        "not_null": "7948",
+        "sum": "263029.81",
+        "cardinality": "178"
+      },
+      "format": {
+        "precisionStyle": "currency",
+        "humane": "false",
+        "currencyStyle": "USD",
+        "precision": "2",
+        "align": "right"
+      }
+    }
+  ],
+  "grants": [
+    {
+      "inherited": false,
+      "type": "viewer",
+      "flags": [
+        "public"
+      ]
+    }
+  ],
+  "license": {
+    "name": "See Terms of Use"
+  },
+  "metadata": {
+    "rdfSubject": "0",
+    "jsonQuery": {
+      "order": [
+        {
+          "columnFieldName": "name",
+          "ascending": true
+        }
+      ]
+    },
+    "custom_fields": {
+      "Metadata": {
+        "Time Period": "Last Updated January 2020",
+        "Frequency": "Data are updated semi-annually",
+        "Data Owner": "Human Resources"
+      }
+    },
+    "filterCondition": {
+      "metadata": {
+        "advanced": true,
+        "unifiedVersion": 2
+      },
+      "children": [
+        {
+          "metadata": {
+            "tableColumnId": {
+              "241512": 1532236
+            },
+            "includeAuto": 15,
+            "operator": "EQUALS"
+          },
+          "type": "operator",
+          "value": "OR"
+        }
+      ],
+      "type": "operator",
+      "value": "AND"
+    },
+    "rowLabel": "Employee",
+    "availableDisplayTypes": [
+      "table",
+      "fatrow",
+      "page"
+    ],
+    "renderTypeConfig": {
+      "visible": {
+        "table": true
+      }
+    }
+  },
+  "owner": {
+    "id": "vi9p-p863",
+    "displayName": "Eric Phillips",
+    "screenName": "Eric Phillips",
+    "type": "interactive",
+    "userSegment": "community_user"
+  },
+  "query": {
+    "orderBys": [
+      {
+        "ascending": true,
+        "expression": {
+          "columnId": 343058131,
+          "type": "column"
+        }
+      }
+    ]
+  },
+  "rights": [
+    "read"
+  ],
+  "tableAuthor": {
+    "id": "vi9p-p863",
+    "displayName": "Eric Phillips",
+    "screenName": "Eric Phillips",
+    "type": "interactive",
+    "userSegment": "community_user"
+  },
+  "tags": [
+    "personnel"
+  ],
+  "flags": [
+    "default",
+    "restorable",
+    "restorePossibleForType"
+  ]
+}
