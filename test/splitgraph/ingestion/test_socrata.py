@@ -86,34 +86,37 @@ def test_socrata_mounting(local_engine_empty):
 
     assert local_engine_empty.get_full_table_schema("test/pg_mount", "some_table") == [
         TableColumn(
-            ordinal=1,
+            ordinal=1, name=":id", pg_type="text", is_pk=False, comment="Socrata column ID"
+        ),
+        TableColumn(
+            ordinal=2,
             name="full_or_part_time",
             pg_type="text",
             is_pk=False,
             comment="Whether the employee was employed full- (F) or part-time (P).",
         ),
         TableColumn(
-            ordinal=2, name="hourly_rate", pg_type="numeric", is_pk=False, comment=mock.ANY
+            ordinal=3, name="hourly_rate", pg_type="numeric", is_pk=False, comment=mock.ANY
         ),
         TableColumn(
-            ordinal=3, name="salary_or_hourly", pg_type="text", is_pk=False, comment=mock.ANY
+            ordinal=4, name="salary_or_hourly", pg_type="text", is_pk=False, comment=mock.ANY
         ),
         TableColumn(
-            ordinal=4,
+            ordinal=5,
             name="job_titles",
             pg_type="text",
             is_pk=False,
             comment="Title of employee at the time when the data was updated.",
         ),
         TableColumn(
-            ordinal=5, name="typical_hours", pg_type="numeric", is_pk=False, comment=mock.ANY
+            ordinal=6, name="typical_hours", pg_type="numeric", is_pk=False, comment=mock.ANY
         ),
         TableColumn(
-            ordinal=6, name="annual_salary", pg_type="numeric", is_pk=False, comment=mock.ANY
+            ordinal=7, name="annual_salary", pg_type="numeric", is_pk=False, comment=mock.ANY
         ),
-        TableColumn(ordinal=7, name="name", pg_type="text", is_pk=False, comment=mock.ANY),
+        TableColumn(ordinal=8, name="name", pg_type="text", is_pk=False, comment=mock.ANY),
         TableColumn(
-            ordinal=8,
+            ordinal=9,
             name="department",
             pg_type="text",
             is_pk=False,

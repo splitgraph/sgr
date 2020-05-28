@@ -1030,15 +1030,15 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         temporary = schema == "pg_temp"
 
         schema_spec = self.get_full_table_schema(source_schema, source_table)
+
         # Assuming the schema_spec has the whole tuple as PK if the table has no PK.
-        if all(not c.is_pk for c in schema_spec):
-            schema_spec = [
-                TableColumn(c.ordinal, c.name, c.pg_type, True, c.comment) for c in schema_spec
-            ]
-        ri_cols = [c.name for c in schema_spec if c.is_pk]
-        ri_types = [c.pg_type for c in schema_spec if c.is_pk]
-        non_ri_cols = [c.name for c in schema_spec if not c.is_pk]
+        change_key = self.get_change_key(source_schema, source_table)
+        ri_cols, ri_types = zip(*change_key)
+        ri_cols = list(ri_cols)
+        ri_types = list(ri_types)
+        non_ri_cols = [c.name for c in schema_spec if c.name not in ri_cols]
         all_cols = ri_cols + non_ri_cols
+
         self.create_table(
             schema, table, schema_spec=add_ud_flag_column(schema_spec), temporary=temporary,
         )
@@ -1398,17 +1398,17 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         return downloaded_objects
 
     def get_change_key(self, schema: str, table: str) -> List[Tuple[str, str]]:
-        pk = self.get_primary_keys(schema, table)
-        if pk:
-            return pk
+        return get_change_key(self.get_full_table_schema(schema, table))
 
-        # Only return columns that can be compared (since we'll be using them
-        # for chunking)
-        return [
-            (cn, ct)
-            for cn, ct in self.get_column_names_types(schema, table)
-            if ct in PG_INDEXABLE_TYPES
-        ]
+
+def get_change_key(schema_spec: TableSchema) -> List[Tuple[str, str]]:
+    pk = [(c.name, c.pg_type) for c in schema_spec if c.is_pk]
+    if pk:
+        return pk
+
+    # Only return columns that can be compared (since we'll be using them
+    # for chunking)
+    return [(c.name, c.pg_type) for c in schema_spec if c.pg_type in PG_INDEXABLE_TYPES]
 
 
 def _split_ri_cols(

@@ -27,6 +27,7 @@ IMPORT_SQL_PERMITTED_NODES = [
     "CaseExpr",
     "CaseWhen",
     "Alias",
+    "SQLValueFunction",
 ]
 SPLITFILE_SQL_PERMITTED_NODES = IMPORT_SQL_PERMITTED_NODES + [
     "RangeVar",
