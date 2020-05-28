@@ -56,7 +56,7 @@ SPLITFILE_GRAMMAR = Grammar(
     # Yeah, six slashes should be about enough to capture \'
     non_single_quote = ~"(\\\\\\'|[^'])*"
 
-    no_db_conn_string = ~"(\S+):(\S+)@(.+):(\d+)"
+    no_db_conn_string = ~"((\S+):(\S+)@(.+):(\d+))?"
     identifier = ~"[_a-zA-Z0-9-]+"
     space = ~"\s*"
     space_nn = ~"[ \t]*"
