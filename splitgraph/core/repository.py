@@ -396,7 +396,7 @@ class Repository:
         image_hash: Optional[str] = None,
         comment: Optional[str] = None,
         snap_only: bool = False,
-        chunk_size: Optional[int] = 10000,
+        chunk_size: Optional[int] = None,
         split_changeset: bool = False,
         extra_indexes: Optional[Dict[str, ExtraIndexInfo]] = None,
         in_fragment_order: Optional[Dict[str, List[str]]] = None,
@@ -436,6 +436,8 @@ class Repository:
         if image_hash is None:
             # Generate a random hexadecimal hash for new images
             image_hash = "{:064x}".format(getrandbits(256))
+
+        chunk_size = chunk_size or int(get_singleton(CONFIG, "SG_COMMIT_CHUNK_SIZE"))
 
         self.images.add(head.image_hash if head else None, image_hash, comment=comment)
         self._commit(
