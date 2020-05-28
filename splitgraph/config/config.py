@@ -110,9 +110,11 @@ def create_config_dict() -> ConfigDict:
 
     # Fix certain sections to have lower case by convention
     if "mount_handlers" in config_dict:
-        config_dict["mount_handlers"] = {
-            k.lower(): v for k, v in config_dict["mount_handlers"].items()
-        }
+        handlers = config_dict["mount_handlers"]
+        assert isinstance(handlers, dict)
+        config_dict["mount_handlers"] = cast(
+            Dict[str, str], {k.lower(): v for k, v in handlers.items()}
+        )
 
     return config_dict
 
