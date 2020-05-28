@@ -30,7 +30,7 @@ from ._parsing import (
     extract_all_table_aliases,
     parse_custom_command,
 )
-from ..core.common import pluralise, truncate_line
+from ..core.common import pluralise, truncate_line, conn_string_to_dict
 from ..core.types import ProvenanceLine
 
 
@@ -359,14 +359,7 @@ def _execute_db_import(
     tmp_mountpoint.delete()
     try:
         handler_kwargs = json.loads(fdw_params)
-        handler_kwargs.update(
-            dict(
-                server=conn_string.group(3),
-                port=int(conn_string.group(4)),
-                username=conn_string.group(1),
-                password=conn_string.group(2),
-            )
-        )
+        handler_kwargs.update(conn_string_to_dict(conn_string.group() if conn_string else None))
         mount_handler(tmp_mountpoint.to_schema(), **handler_kwargs)
         # The foreign database is a moving target, so the new image hash is random.
         # Maybe in the future, when the object hash is a function of its contents, we can be smarter here...
