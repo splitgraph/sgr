@@ -8,6 +8,7 @@ from collections import defaultdict
 import click
 
 from splitgraph.commandline.common import ImageType, RepositoryType, JsonType, remote_switch_option
+from splitgraph.config import get_singleton, CONFIG
 from splitgraph.exceptions import TableNotFoundError
 
 
@@ -72,9 +73,10 @@ def checkout_c(image_spec, force, uncheckout, layered):
 @click.option(
     "-c",
     "--chunk-size",
-    default=10000,
+    default=int(get_singleton(CONFIG, "SG_COMMIT_CHUNK_SIZE")),
     type=int,
-    help="Split new tables into chunks of this many rows (by primary key).",
+    help="Split new tables into chunks of this many rows (by primary key). The default "
+    "value is governed by the SG_COMMIT_CHUNK_SIZE configuration parameter.",
 )
 @click.option(
     "-k",
