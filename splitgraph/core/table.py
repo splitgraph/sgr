@@ -100,6 +100,28 @@ def _empty_callback(**kwargs) -> None:
     pass
 
 
+def create_foreign_table(
+    schema: str,
+    server: str,
+    table_name: str,
+    schema_spec: TableSchema,
+    internal_table_name: Optional[str] = None,
+):
+    query = SQL("CREATE FOREIGN TABLE {}.{} (").format(Identifier(schema), Identifier(table_name))
+    query += SQL(",".join("{} %s " % col.pg_type for col in schema_spec)).format(
+        *(Identifier(col.name) for col in schema_spec)
+    )
+    query += SQL(") SERVER {} OPTIONS (table %s);").format(Identifier(server))
+    args = [internal_table_name or table_name]
+    for col in schema_spec:
+        if col.comment:
+            query += SQL("COMMENT ON COLUMN {}.{}.{} IS %s;").format(
+                Identifier(schema), Identifier(table_name), Identifier(col.name),
+            )
+            args.append(col.comment)
+    return query, args
+
+
 class QueryPlan:
     """
     Represents the initial query plan (fragments to query) for given columns and
@@ -318,23 +340,9 @@ class Table:
                         progress_every=progress_every,
                     )
         else:
-            query = SQL("CREATE FOREIGN TABLE {}.{} (").format(
-                Identifier(destination_schema), Identifier(self.table_name)
+            query, args = create_foreign_table(
+                destination_schema, lq_server, self.table_name, self.table_schema
             )
-            query += SQL(",".join("{} %s " % col.pg_type for col in self.table_schema)).format(
-                *(Identifier(col.name) for col in self.table_schema)
-            )
-            query += SQL(") SERVER {} OPTIONS (table %s);").format(Identifier(lq_server))
-
-            args = [self.table_name]
-            for col in self.table_schema:
-                if col.comment:
-                    query += SQL("COMMENT ON COLUMN {}.{}.{} IS %s;").format(
-                        Identifier(destination_schema),
-                        Identifier(self.table_name),
-                        Identifier(col.name),
-                    )
-                    args.append(col.comment)
 
             engine.run_sql(query, args)
 

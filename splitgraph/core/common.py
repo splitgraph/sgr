@@ -3,6 +3,7 @@ Common internal functions used by Splitgraph commands.
 """
 import logging
 import os
+import re
 import sys
 from datetime import date, datetime, time
 from decimal import Decimal
@@ -468,6 +469,21 @@ def truncate_list(items: List[Any], max_entries: int = 10) -> str:
     return ",".join(str(i) for i in items[:max_entries]) + (
         ", ..." if len(items) > max_entries else ""
     )
+
+
+_slugify = re.compile(r"[^\sa-zA-Z0-9]")
+
+
+def slugify(text: str, max_length: int = 50) -> str:
+    text = _slugify.sub("", text.lower()).strip()
+    parts = re.split(r"\s+", text)
+    result = parts[0]
+    for p in parts[1:]:
+        new = result + "_" + p
+        if len(new) > max_length:
+            break
+        result = new
+    return result[:max_length]
 
 
 def parse_repo_tag_or_hash(value, default="latest"):

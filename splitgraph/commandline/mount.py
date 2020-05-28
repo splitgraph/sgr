@@ -90,19 +90,22 @@ def _make_mount_handler_command(handler_name: str) -> Command:
     ]
 
     def _callback(schema, connection, handler_options):
-        match = re.match(r"(\S+):(\S+)@(.+):(\d+)", connection)
-        # In the future, we could turn all of these options into actual Click options,
-        # but then we'd also have to parse the docstring deeper to find out the types the function
-        # requires, how to serialize them etc etc. Idea for a click-contrib addon perhaps?
         handler_options = json.loads(handler_options)
-        handler_options.update(
-            dict(
-                server=match.group(3),
-                port=int(match.group(4)),
-                username=match.group(1),
-                password=match.group(2),
+        if connection:
+            match = re.match(r"(\S+):(\S+)@(.+):(\d+)", connection)
+            # In the future, we could turn all of these options into actual Click options,
+            # but then we'd also have to parse the docstring deeper to find out the types the function
+            # requires, how to serialize them etc etc. Idea for a click-contrib addon perhaps?
+            handler_options.update(
+                dict(
+                    server=match.group(3),
+                    port=int(match.group(4)),
+                    username=match.group(1),
+                    password=match.group(2),
+                )
             )
-        )
+        else:
+            handler_options.update(dict(server=None, port=None, username=None, password=None,))
         mount(schema, mount_handler=handler_name, handler_kwargs=handler_options)
 
     cmd = click.Command(handler_name, params=params, callback=_callback, help=help_text)
