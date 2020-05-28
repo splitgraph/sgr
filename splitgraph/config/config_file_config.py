@@ -143,6 +143,14 @@ def get_config_dict_from_file(sg_file: str, **kwargs) -> Dict[str, Dict[str, str
 
     config_dict = {s: dict(config.items(s, False)) for s in config.sections()}
 
+    # Fix certain sections to have lower case by convention
+    if "mount_handlers" in config_dict:
+        handlers = config_dict["mount_handlers"]
+        assert isinstance(handlers, dict)
+        config_dict["mount_handlers"] = cast(
+            Dict[str, str], {k.lower(): v for k, v in handlers.items()}
+        )
+
     return config_dict
 
 
