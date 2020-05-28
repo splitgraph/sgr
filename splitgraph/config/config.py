@@ -108,6 +108,12 @@ def create_config_dict() -> ConfigDict:
     config_dict = update_config_dict_from_env_vars(config_dict)
     config_dict = update_config_dict_from_arguments(config_dict)
 
+    # Fix certain sections to have lower case by convention
+    if "mount_handlers" in config_dict:
+        config_dict["mount_handlers"] = {
+            k.lower(): v for k, v in config_dict["mount_handlers"].items()
+        }
+
     return config_dict
 
 
