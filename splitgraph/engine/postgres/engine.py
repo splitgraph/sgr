@@ -91,6 +91,35 @@ API_MAX_QUERY_LENGTH = 261000
 API_MAX_VARIADIC_ARGS = 1000
 
 
+# PG types we can run max/min/comparisons on
+
+PG_INDEXABLE_TYPES = [
+    "bigint",
+    "bigserial",
+    "bit",
+    "character",
+    "character varying",
+    "cidr",
+    "date",
+    "double precision",
+    "inet",
+    "integer",
+    "money",
+    "numeric",
+    "real",
+    "smallint",
+    "smallserial",
+    "serial",
+    "text",
+    "time",
+    "time without time zone",
+    "time with time zone",
+    "timestamp",
+    "timestamp without time zone",
+    "timestamp with time zone",
+]
+
+
 def _quiet():
     # Don't spam connection error messages if we're in interactive mode and
     # loglevel is default (INFO/WARNING).
@@ -119,12 +148,13 @@ def _paginate_by_size(cur, query, argslist, max_size=API_MAX_QUERY_LENGTH):
     buf = b""
     for args in argslist:
         statement = cur.mogrify(query, args)
-        if len(statement) > max_size:
+        # If max_size is <= 0, don't split the argslist up
+        if 0 < max_size < len(statement):
             raise ValueError(
                 ("Statement %s... exceeds maximum query size %d. " % (statement[:100], max_size))
                 + "Are you trying to upload an object with a large amount of metadata?"
             )
-        if len(statement) + len(buf) + 1 > max_size:
+        if 0 < max_size < len(statement) + len(buf) + 1:
             yield buf
             buf = b""
         buf += statement + b";"
@@ -1155,7 +1185,8 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         non_pk_cols = [p.name for p in schema_spec if not p.is_pk]
 
         if not pk_cols:
-            return pk_cols + non_pk_cols, []
+            pk_cols = [p.name for p in schema_spec if p.pg_type in PG_INDEXABLE_TYPES]
+            non_pk_cols = [p.name for p in schema_spec if p.pg_type not in PG_INDEXABLE_TYPES]
         return pk_cols, non_pk_cols
 
     @staticmethod
@@ -1365,6 +1396,19 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         if len(downloaded_objects) < len(objects):
             raise IncompleteObjectDownloadError(reason=None, successful_objects=downloaded_objects)
         return downloaded_objects
+
+    def get_change_key(self, schema: str, table: str) -> List[Tuple[str, str]]:
+        pk = self.get_primary_keys(schema, table)
+        if pk:
+            return pk
+
+        # Only return columns that can be compared (since we'll be using them
+        # for chunking)
+        return [
+            (cn, ct)
+            for cn, ct in self.get_column_names_types(schema, table)
+            if ct in PG_INDEXABLE_TYPES
+        ]
 
 
 def _split_ri_cols(
