@@ -21,8 +21,14 @@ except ImportError:
 _PG_LOGLEVEL = logging.INFO
 
 
-def to_json(row):
-    return {k: json.dumps(v) if isinstance(v, (dict, list)) else v for k, v in row.items()}
+def to_json(row, columns):
+    result = {}
+    for col in columns:
+        val = row.get(col)
+        if isinstance(val, (dict, list)):
+            val = json.dumps(val)
+        result[col] = val
+    return result
 
 
 class SocrataForeignDataWrapper(ForeignDataWrapper):
@@ -33,10 +39,12 @@ class SocrataForeignDataWrapper(ForeignDataWrapper):
         """
 
         # Mostly, we can push all sort clauses down to Socrata.
+        logging.debug("can_sort %r", sortkeys)
+
         supported = []
         for key in sortkeys:
             # Socrata sorts nulls first by default (TODO both asc and desc?)
-            if not key.nulls_first:
+            if key.nulls_first != key.is_reversed:
                 continue
             supported.append(key)
         return supported
@@ -69,13 +77,15 @@ class SocrataForeignDataWrapper(ForeignDataWrapper):
         select = cols_to_socrata(columns)
         order = sortkeys_to_socrata(sortkeys)
 
+        logging.debug("Socrata query: %r, select: %r, order: %r", query, select, order)
+
         # TODO offsets stop working after some point?
         result = self.client.get_all(
             dataset_identifier=self.table, where=query, select=select, limit=10000, order=order
         )
 
         for r in result:
-            r = to_json(r)
+            r = to_json(r, columns)
             yield r
 
     @property
