@@ -24,7 +24,7 @@ echo "Generating Markdown sgr reference"
 python generate_reference.py sgr "$TARGET_DIR"/sgr
 
 echo "Generating configuration reference"
-python generate_reference.py config "$TARGET_DIR"/0100_config_flag_reference.mdx
+python generate_reference.py config "$TARGET_DIR"/0100_config-flag-reference.mdx
 
 echo "Building Asciinema casts"
 TARGET_DIR=$TARGET_DIR "$CI_DIR"/rebuild_asciicasts.sh
