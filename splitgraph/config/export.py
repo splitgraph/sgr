@@ -101,9 +101,8 @@ def overwrite_config(
     :param include_defaults: Whether to include values that are the same
         as their defaults.
     """
+    new_config_data = serialize_config(
+        new_config, config_format=True, no_shielding=True, include_defaults=include_defaults
+    )
     with open(config_path, "w") as f:
-        f.write(
-            serialize_config(
-                new_config, config_format=True, no_shielding=True, include_defaults=include_defaults
-            )
-        )
+        f.write(new_config_data)
