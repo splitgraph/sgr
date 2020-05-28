@@ -34,8 +34,6 @@ def get_mount_handlers() -> List[str]:
 def register_mount_handler(name: str, mount_function: Callable) -> None:
     """Returns a mount function under a given name. See `get_mount_handler` for the mount handler spec."""
     global _MOUNT_HANDLERS
-    if name in _MOUNT_HANDLERS:
-        raise MountHandlerError("Cannot register a mount handler %s as it already exists!" % name)
     _MOUNT_HANDLERS[name] = mount_function
 
 

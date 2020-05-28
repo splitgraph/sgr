@@ -142,9 +142,7 @@ def patch_config(config: ConfigDict, patch: ConfigDict) -> ConfigDict:
 
 def get_singleton(config: ConfigDict, item: str) -> str:
     """Return a singleton (not a section) variable from the config."""
-    result = config[item]
-    assert isinstance(result, str)
-    return result
+    return str(config[item])
 
 
 def get_all_in_section(config: ConfigDict, section: str) -> Dict[str, Union[str, Dict[str, str]]]:

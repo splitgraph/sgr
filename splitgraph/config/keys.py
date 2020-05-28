@@ -59,7 +59,7 @@ DEFAULTS: ConfigDict = {
 }
 
 ALL_KEYS = list(DEFAULTS.keys())
-KEYS = [k for k in ALL_KEYS if k not in ["remotes", "external_handlers"]]
+KEYS = [k for k in ALL_KEYS if k not in ["remotes", "external_handlers", "mount_handlers"]]
 # Keys whose contents we don't print fully
 SENSITIVE_KEY_SUFFIXES = ["_PWD", "_TOKEN"]
 
