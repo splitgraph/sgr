@@ -386,18 +386,6 @@ class SQLEngine(ABC):
         """
         raise NotImplementedError()
 
-    def get_column_names_types(self, schema: str, table_name: str) -> List[Tuple[str, str]]:
-        """Returns a list of (column, type) in a given table."""
-        return cast(
-            List[Tuple[str, str]],
-            self.run_sql(
-                """SELECT column_name, data_type FROM information_schema.columns
-                           WHERE table_schema = %s
-                           AND table_name = %s""",
-                (schema, table_name),
-            ),
-        )
-
     def get_full_table_schema(self, schema: str, table_name: str) -> "TableSchema":
         """
         Generates a list of (column ordinal, name, data type, is_pk, column comment),
@@ -504,7 +492,7 @@ class ChangeEngine(SQLEngine, ABC):
         Returns the key used to identify a row in a change (list of column name, column type).
         If the tracked table has a PK, we use that; if it doesn't, the whole row is used.
         """
-        return self.get_primary_keys(schema, table) or self.get_column_names_types(schema, table)
+        raise NotImplementedError()
 
 
 class ObjectEngine:
