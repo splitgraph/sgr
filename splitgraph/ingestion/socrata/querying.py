@@ -82,8 +82,8 @@ def _emit_col(col):
 def _emit_val(val):
     if val is None:
         return "NULL"
-    if isinstance(val, str):
-        val = val.replace("'", "''")
+    if not isinstance(val, (int, float)):
+        val = str(val).replace("'", "''")
         return f"'{val}'"
     return str(val)
 
@@ -140,7 +140,7 @@ def sortkeys_to_socrata(sortkeys):
 
     clauses = []
     for key in sortkeys:
-        if not key.nulls_first:
+        if key.nulls_first != key.is_reversed:
             raise ValueError("Unsupported SortKey %s" % str(key))
         order = "DESC" if key.is_reversed else "ASC"
         clauses.append(f"{_emit_col(key.attname)} {order}")
