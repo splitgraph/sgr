@@ -78,7 +78,7 @@ def serialize_config(
     if "mount_handlers" in config:
         result += "\nFDW Mount handlers:\n" if not config_format else "[mount_handlers]\n"
         for handler_name, handler_func in get_all_in_section(config, "mount_handlers").items():
-            result += _kv_to_str(handler_name, cast(str, handler_func).lower(), no_shielding) + "\n"
+            result += _kv_to_str(handler_name, cast(str, handler_func), no_shielding) + "\n"
 
     # Print external object handlers
     if "external_handlers" in config:
