@@ -44,7 +44,7 @@ class SocrataForeignDataWrapper(ForeignDataWrapper):
             return 1000000, len(columns) * 10
 
     def explain(self, quals, columns, sortkeys=None, verbose=False):
-        return ["Socrata query to %s" % self.endpoint, "Socrata dataset ID: %s" % self.table]
+        return ["Socrata query to %s" % self.domain, "Socrata dataset ID: %s" % self.table]
 
     def execute(self, quals, columns, sortkeys=None):
         """Main Multicorn entry point."""
@@ -92,8 +92,8 @@ class SocrataForeignDataWrapper(ForeignDataWrapper):
 
         self.table = self.fdw_options["table"]
         self.app_token = self.fdw_options.get("app_token")
-        self.endpoint = self.fdw_options["endpoint"]
-        self.client = Socrata(domain=self.endpoint, app_token=self.app_token)
+        self.domain = self.fdw_options["domain"]
+        self.client = Socrata(domain=self.domain, app_token=self.app_token)
 
         # Cached table metadata
         self._metadata = None
