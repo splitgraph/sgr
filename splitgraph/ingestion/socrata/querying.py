@@ -47,6 +47,11 @@ def socrata_to_sg_schema(metadata: Dict[str, Any]) -> TableSchema:
 
     col_desc = metadata["resource"].get("columns_description") or [None] * len(col_names)
 
+    # Prepend the Socrata :id column that we can order on and use as PK.
+    col_names = [":id"] + col_names
+    col_types = ["text"] + col_types
+    col_desc = ["Socrata column ID"] + col_desc
+
     return [
         TableColumn(i, n, _socrata_to_pg_type(t), False, d)
         for i, (n, t, d) in enumerate(zip(col_names, col_types, col_desc))
@@ -126,3 +131,17 @@ def quals_to_socrata(quals):
 
 def cols_to_socrata(cols):
     return ",".join(f"{_emit_col(c)}" for c in cols)
+
+
+def sortkeys_to_socrata(sortkeys):
+    if not sortkeys:
+        # Always sort on ID for stable paging
+        return ":id"
+
+    clauses = []
+    for key in sortkeys:
+        if not key.nulls_first:
+            raise ValueError("Unsupported SortKey %s" % str(key))
+        order = "DESC" if key.is_reversed else "ASC"
+        clauses.append(f"{_emit_col(key.attname)} {order}")
+    return ",".join(clauses)

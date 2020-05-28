@@ -8,6 +8,7 @@ from splitgraph.ingestion.socrata.querying import (
     estimate_socrata_rows_width,
     quals_to_socrata,
     cols_to_socrata,
+    sortkeys_to_socrata,
 )
 
 try:
@@ -25,6 +26,21 @@ def to_json(row):
 
 
 class SocrataForeignDataWrapper(ForeignDataWrapper):
+    def can_sort(self, sortkeys):
+        """
+        :param sortkeys: List of SortKey
+        :return: List of SortKey the FDW can sort on
+        """
+
+        # Mostly, we can push all sort clauses down to Socrata.
+        supported = []
+        for key in sortkeys:
+            # Socrata sorts nulls first by default (TODO both asc and desc?)
+            if not key.nulls_first:
+                continue
+            supported.append(key)
+        return supported
+
     def get_rel_size(self, quals, columns):
         """
         Method called from the planner to estimate the resulting relation
@@ -41,6 +57,7 @@ class SocrataForeignDataWrapper(ForeignDataWrapper):
         try:
             return estimate_socrata_rows_width(columns, self.table_meta)
         except Exception:
+            logging.exception("Failed planning Socrata query, returning dummy values")
             return 1000000, len(columns) * 10
 
     def explain(self, quals, columns, sortkeys=None, verbose=False):
@@ -50,15 +67,16 @@ class SocrataForeignDataWrapper(ForeignDataWrapper):
         """Main Multicorn entry point."""
         query = quals_to_socrata(quals)
         select = cols_to_socrata(columns)
+        order = sortkeys_to_socrata(sortkeys)
 
-        result = self.client.get(dataset_identifier=self.table, where=query, select=select)
+        # TODO offsets stop working after some point?
+        result = self.client.get_all(
+            dataset_identifier=self.table, where=query, select=select, limit=10000, order=order
+        )
 
         for r in result:
             r = to_json(r)
-            logging.info("returning %s", r)
             yield r
-
-        # yield from result
 
     @property
     def table_meta(self):
