@@ -37,7 +37,10 @@ jobs:
       - name: "Save Docker cache"
         run: |
           mkdir -p ~/docker_images
+          docker images
           docker save -o ~/docker_images/engine.tar $DOCKER_REPO/$DOCKER_ENGINE_IMAGE:$DOCKER_TAG
+          echo "Saved engine $DOCKER_REPO/$DOCKER_ENGINE_IMAGE:$DOCKER_TAG to cache"
+          ls -lah ~/docker_images
       - name: "Start the test Compose stack"
         if: "!contains(github.event.head_commit.message, '[skip test]')"
         run: ./.ci/up_architecture.sh
