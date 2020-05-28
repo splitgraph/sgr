@@ -1,7 +1,8 @@
 import json
 import os
+from typing import NamedTuple
 from unittest import mock
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import pytest
 from sodapy import Socrata
@@ -9,7 +10,14 @@ from test.splitgraph.conftest import INGESTION_RESOURCES
 
 from splitgraph.core.types import TableColumn
 from splitgraph.ingestion.socrata.mount import mount_socrata
-from splitgraph.ingestion.socrata.querying import estimate_socrata_rows_width, quals_to_socrata, ANY
+from splitgraph.ingestion.socrata.querying import (
+    estimate_socrata_rows_width,
+    quals_to_socrata,
+    ANY,
+    cols_to_socrata,
+    sortkeys_to_socrata,
+    _socrata_to_pg_type,
+)
 
 
 class Q:
@@ -21,6 +29,12 @@ class Q:
         self.is_list_operator = is_list
         # Code doesn't check for the actual "ALL" value so we can put whatever here
         self.list_any_or_all = ANY if is_list_any else "ALL"
+
+
+class S(NamedTuple):
+    attname: str
+    nulls_first: bool = False
+    is_reversed: bool = False
 
 
 @pytest.mark.parametrize(
@@ -37,16 +51,38 @@ class Q:
         ),
         (
             [
-                Q("some_col", "=", [1, 2, 3, 4, 5], is_list=True),
-                Q("some_other_col", "<>", [1, 2, 3, 4, 5], is_list=True, is_list_any=False),
+                Q("some_col", "=", [1, 2], is_list=True),
+                Q("some_other_col", "<>", [1, 2], is_list=True, is_list_any=False),
             ],
-            "(some_col IN (1,2,3,4,5) AND ((some_other_col <> 1) AND (some_other_col <> 2) "
-            "AND (some_other_col <> 3) AND (some_other_col <> 4) AND (some_other_col <> 5))",
+            "((some_col = 1) OR (some_col = 2)) "
+            "AND ((some_other_col <> 1) AND (some_other_col <> 2))",
         ),
+        ([Q("some_col", "=", None)], "(some_col = NULL)"),
     ],
 )
 def test_socrata_quals(quals, expected):
     assert quals_to_socrata(quals) == expected
+
+
+def test_socrata_cols():
+    assert cols_to_socrata(["a", "b", "c"]) == "a,b,c"
+
+
+def test_socrata_sortkeys():
+    assert sortkeys_to_socrata([]) == ":id"
+    assert sortkeys_to_socrata([S("col")]) == "col ASC"
+    assert (
+        sortkeys_to_socrata([S("col", nulls_first=True, is_reversed=True), S("col2")])
+        == "col DESC,col2 ASC"
+    )
+
+    with pytest.raises(ValueError):
+        sortkeys_to_socrata([S("col"), S("col2", nulls_first=False, is_reversed=True)])
+
+
+def test_socrata_types():
+    assert _socrata_to_pg_type("multipoint") == "json"
+    assert _socrata_to_pg_type("unknown type") == "text"
 
 
 def test_socrata_get_rel_size():
@@ -162,3 +198,57 @@ def test_socrata_mounting_missing_tables():
             )
 
     assert "Some Socrata tables couldn't be found! Missing tables: xzkq-xp2w" in str(e.value)
+
+
+def test_socrata_fdw():
+    with open(os.path.join(INGESTION_RESOURCES, "socrata/dataset_metadata.json"), "r") as f:
+        socrata_meta = json.load(f)
+
+    socrata = MagicMock(spec=Socrata)
+    socrata.get_metadata.return_value = socrata_meta
+    socrata.get_all.return_value = [
+        {"name": "Test", "job_titles": "Test Title", "annual_salary": 123456.0},
+        {"name": "Test2", "job_titles": "Test Title 2", "annual_salary": 789101.0},
+    ]
+
+    with mock.patch("sodapy.Socrata", return_value=socrata):
+        from splitgraph.ingestion.socrata.fdw import SocrataForeignDataWrapper
+
+        fdw = SocrataForeignDataWrapper(
+            fdw_options={
+                "table": "xzkq-xp2w",
+                "domain": "data.cityofchicago.gov",
+                "app_token": "SOME_TOKEN",
+            },
+            fdw_columns=["name", "job_titles", "annual_salary"],
+        )
+
+        assert fdw.get_rel_size([], ["annual_salary", "name"]) == (33702, 380)
+        assert fdw.can_sort([S("name"), S("salary", nulls_first=False, is_reversed=True)]) == [
+            S("name")
+        ]
+        assert fdw.explain([], []) == [
+            "Socrata query to data.cityofchicago.gov",
+            "Socrata dataset ID: xzkq-xp2w",
+        ]
+
+        assert list(
+            fdw.execute(
+                quals=[Q("salary", ">", 42)],
+                columns=["name", "job_titles", "annual_salary"],
+                sortkeys=[S("name")],
+            )
+        ) == [
+            {"name": "Test", "job_titles": "Test Title", "annual_salary": 123456.0},
+            {"name": "Test2", "job_titles": "Test Title 2", "annual_salary": 789101.0},
+        ]
+
+        assert socrata.get_all.mock_calls == [
+            call(
+                dataset_identifier="xzkq-xp2w",
+                where="(salary > 42)",
+                select="name,job_titles,annual_salary",
+                limit=10000,
+                order="name ASC",
+            )
+        ]

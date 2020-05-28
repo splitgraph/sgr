@@ -13,10 +13,10 @@ from splitgraph.ingestion.socrata.querying import (
 
 try:
     from multicorn import ForeignDataWrapper, ANY
-    from multicorn.utils import log_to_postgres
 except ImportError:
-    # Multicorn not installed (OK if we're not on the engine machine).
-    pass
+    # Multicorn not installed (OK if we're not on the engine -- tests).
+    ForeignDataWrapper = object
+    ANY = object()
 
 _PG_LOGLEVEL = logging.INFO
 
