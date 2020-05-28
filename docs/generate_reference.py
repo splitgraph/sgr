@@ -164,7 +164,7 @@ def _emit_command(command_name):
 
 
 def _slug_section(section):
-    return section.lower().replace(" ", "_").replace("/", "_")
+    return section.lower().replace(" ", "-").replace("/", "-")
 
 
 @click.command(name="sgr")
