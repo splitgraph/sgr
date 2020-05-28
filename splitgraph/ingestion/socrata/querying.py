@@ -107,19 +107,15 @@ def _base_qual_to_socrata(col, op, value):
 def _qual_to_socrata(qual):
     if qual.is_list_operator:
         if qual.list_any_or_all == ANY:
-            # Convert col op ANY([a,b,c])
-            if qual.operator[0] == "=":
-                return f"{_emit_col(qual.field_name)} IN (" + ",".join(
-                    f"{_emit_val(v)}" for v in qual.value
-                )
-            else:
-                return "TRUE"
-        else:
-            # Convert col op ALL(ARRAY[a,b,c...]) into (cop op a) AND (col op b)...
-            return " AND ".join(
+            # Convert col op ANY([a,b,c]) into (cop op a) OR (col op b)...
+            return " OR ".join(
                 f"({_base_qual_to_socrata(qual.field_name, qual.operator[0], v)})"
                 for v in qual.value
             )
+        # Convert col op ALL(ARRAY[a,b,c...]) into (cop op a) AND (col op b)...
+        return " AND ".join(
+            f"({_base_qual_to_socrata(qual.field_name, qual.operator[0], v)})" for v in qual.value
+        )
     else:
         return f"{_base_qual_to_socrata(qual.field_name, qual.operator[0], qual.value)}"
 
