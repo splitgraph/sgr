@@ -2,6 +2,8 @@
 import logging
 from typing import Optional, Dict, Any
 
+from psycopg2.sql import SQL, Identifier
+
 from splitgraph.hooks.mount_handlers import init_fdw
 
 
@@ -34,7 +36,7 @@ def mount_socrata(
     logging.info("Mounting Socrata domain...")
     server_id = mountpoint + "_server"
 
-    options = {
+    options: Dict[str, Optional[str]] = {
         "wrapper": "splitgraph.ingestion.socrata.fdw.SocrataForeignDataWrapper",
     }
 
@@ -98,6 +100,14 @@ def generate_socrata_mount_queries(sought_ids, datasets, mountpoint, server_id, 
             schema_spec=schema_spec,
             internal_table_name=socrata_id,
         )
+
+        description = dataset["resource"].get("description")
+        if description:
+            sql += SQL("COMMENT ON FOREIGN TABLE {}.{} IS %s").format(
+                Identifier(mountpoint), Identifier(table_name)
+            )
+            args.append(description)
+
         mount_statements.append(sql)
         mount_args.extend(args)
 

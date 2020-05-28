@@ -68,7 +68,7 @@ def estimate_socrata_rows_width(columns, metadata):
 
     contents = metadata["columns"][0]["cachedContents"]
     cardinality = int(contents["non_null"]) + int(contents["null"])
-    column_widths = {c["fieldName"]: c["width"] for c in metadata["columns"]}
+    column_widths = {c["fieldName"]: c.get("width", 100) for c in metadata["columns"]}
 
     row_width = sum(column_widths[c] for c in columns)
 

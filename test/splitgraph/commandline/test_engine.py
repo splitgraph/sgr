@@ -206,6 +206,16 @@ _PULL_PROGRESS = [
 ]
 
 
+_HANDLER_CONFIG = """[mount_handlers]
+postgres_fdw=splitgraph.hooks.mount_handlers.mount_postgres
+mongo_fdw=splitgraph.hooks.mount_handlers.mount_mongo
+mysql_fdw=splitgraph.hooks.mount_handlers.mount_mysql
+socrata=splitgraph.ingestion.socrata.mount.mount_socrata
+[external_handlers]
+S3=splitgraph.hooks.s3.S3ExternalObjectHandler
+"""
+
+
 @pytest.mark.parametrize(
     "test_case",
     [
@@ -219,8 +229,7 @@ _PULL_PROGRESS = [
             "/home/user/.splitgraph/.sgconfig",
             "[defaults]\nSG_ENGINE_USER=not_sgr\n"
             "SG_ENGINE_PWD=pwd\nSG_ENGINE_ADMIN_USER=not_sgr\n"
-            "SG_ENGINE_ADMIN_PWD=pwd\n"
-            + "[external_handlers]\nS3=splitgraph.hooks.s3.S3ExternalObjectHandler\n",
+            "SG_ENGINE_ADMIN_PWD=pwd\n" + _HANDLER_CONFIG,
         ),
         # Case 2: no source config, a different engine: gets inserted as a new remote
         (
@@ -234,8 +243,7 @@ _PULL_PROGRESS = [
             "SG_ENGINE_DB_NAME=splitgraph\n"
             "SG_ENGINE_POSTGRES_DB_NAME=postgres\n"
             "SG_ENGINE_ADMIN_USER=not_sgr\n"
-            "SG_ENGINE_ADMIN_PWD=pwd\n"
-            "[external_handlers]\nS3=splitgraph.hooks.s3.S3ExternalObjectHandler\n",
+            "SG_ENGINE_ADMIN_PWD=pwd\n" + _HANDLER_CONFIG,
         ),
         # Case 3: have source config, default engine gets overwritten
         (
@@ -243,8 +251,7 @@ _PULL_PROGRESS = [
             "default",
             "/home/user/.sgconfig",
             "[defaults]\nSG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
-            "SG_ENGINE_ADMIN_USER=not_sgr\nSG_ENGINE_ADMIN_PWD=pwd\n"
-            + "[external_handlers]\nS3=splitgraph.hooks.s3.S3ExternalObjectHandler\n",
+            "SG_ENGINE_ADMIN_USER=not_sgr\nSG_ENGINE_ADMIN_PWD=pwd\n" + _HANDLER_CONFIG,
         ),
         # Case 4: have source config, non-default engine gets overwritten
         (
@@ -267,8 +274,7 @@ _PULL_PROGRESS = [
             "SG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
             "SG_ENGINE_FDW_HOST=localhost\nSG_ENGINE_FDW_PORT=5432\n"
             "SG_ENGINE_DB_NAME=splitgraph\nSG_ENGINE_POSTGRES_DB_NAME=postgres\n"
-            "SG_ENGINE_ADMIN_USER=not_sgr\nSG_ENGINE_ADMIN_PWD=pwd\n"
-            "[external_handlers]\nS3=splitgraph.hooks.s3.S3ExternalObjectHandler\n",
+            "SG_ENGINE_ADMIN_USER=not_sgr\nSG_ENGINE_ADMIN_PWD=pwd\n" + _HANDLER_CONFIG,
         ),
     ],
 )
@@ -356,7 +362,7 @@ def test_commandline_engine_creation_config_patching_integration(teardown_test_e
 
     # Do some spot checks to make sure we didn't overwrite anything.
     assert "SG_S3_HOST=//objectstorage" in config
-    assert "POSTGRES_FDW=splitgraph.hooks.mount_handlers.mount_postgres" in config
+    assert "postgres_fdw=splitgraph.hooks.mount_handlers.mount_postgres" in config
     assert "[remote: %s]" % TEST_ENGINE_NAME in config
     assert "[remote: remote_engine]" in config
 

@@ -28,7 +28,7 @@ from splitgraph.core.indexing.range import (
 from splitgraph.core.metadata_manager import MetadataManager, Object
 from splitgraph.core.types import Changeset, TableSchema
 from splitgraph.engine import ResultShape
-from splitgraph.engine.postgres.engine import SG_UD_FLAG, add_ud_flag_column
+from splitgraph.engine.postgres.engine import SG_UD_FLAG, add_ud_flag_column, get_change_key
 from splitgraph.exceptions import SplitGraphError
 from .common import adapt, SPLITGRAPH_META_SCHEMA
 from .sql import select
@@ -312,24 +312,22 @@ class FragmentManager(MetadataManager):
 
     @staticmethod
     def _extract_deleted_rows(changeset: Any, table_schema: TableSchema) -> Any:
-        has_pk = any(c.is_pk for c in table_schema)
+        change_key = get_change_key(table_schema)
+        pk_cols, _ = zip(*change_key)
         rows = []
         for pk, data in changeset.items():
             if not data[1]:
                 # No old row: new value has been inserted.
                 continue
-            if not has_pk:
-                row = pk
-            else:
-                # Turn the changeset into an actual row in the correct order
-                pk_index = 0
-                row = []
-                for col in sorted(table_schema):
-                    if not col.is_pk:
-                        row.append(data[1][col.name])
-                    else:
-                        row.append(pk[pk_index])
-                        pk_index += 1
+            # Turn the changeset into an actual row in the correct order
+            pk_index = 0
+            row = []
+            for col in sorted(table_schema):
+                if col not in pk_cols:
+                    row.append(data[1][col.name])
+                else:
+                    row.append(pk[pk_index])
+                    pk_index += 1
             rows.append(row)
         return rows
 
