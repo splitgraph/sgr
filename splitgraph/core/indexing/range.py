@@ -274,7 +274,7 @@ def generate_range_index(
         # We don't need to do this for the PK since the PK is always specified in deletes.
 
         # For DELETEs, we put NULLs in the non-PK columns; make sure we ignore them here.
-        for _, old_row in changeset.values():
+        for _, old_row, _ in changeset.values():
             for col, val in old_row.items():
                 # Ignore columns that we aren't indexing because they have unsupported types.
                 # Also ignore NULL values.

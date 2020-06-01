@@ -1,6 +1,6 @@
 from typing import Dict, Tuple, Any, NamedTuple, Optional, List, Sequence, Union
 
-Changeset = Dict[Tuple[str, ...], Tuple[bool, Dict[str, Any]]]
+Changeset = Dict[Tuple[str, ...], Tuple[bool, Dict[str, Any], Dict[str, Any]]]
 
 
 class TableColumn(NamedTuple):
