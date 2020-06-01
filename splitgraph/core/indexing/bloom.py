@@ -87,7 +87,7 @@ def generate_bloom_index(
 
     # Add digests of the old values in the changeset for this column.
     if changeset:
-        for _, old_row in changeset.values():
+        for _, old_row, _ in changeset.values():
             if column in old_row:
                 # Note that this will add this value to the digest
                 # even if it didn't get changed (say the row got overwritten

@@ -809,7 +809,9 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
 
     def get_pending_changes(
         self, schema: str, table: str, aggregate: bool = False
-    ) -> Union[List[Tuple[int, int]], List[Tuple[Tuple[str, ...], bool, Dict[str, Any]]]]:
+    ) -> Union[
+        List[Tuple[int, int]], List[Tuple[Tuple[str, ...], bool, Dict[str, Any], Dict[str, Any]]]
+    ]:
         """
         Return pending changes for a given tracked table
 
@@ -832,7 +834,7 @@ class AuditTriggerChangeEngine(PsycopgEngine, ChangeEngine):
             ]
 
         ri_cols, _ = zip(*self.get_change_key(schema, table))
-        result: List[Tuple[Tuple, bool, Dict]] = []
+        result: List[Tuple[Tuple, bool, Dict, Dict]] = []
         for action, row_data, changed_fields in self.run_sql(
             SQL(
                 "SELECT action, row_data, changed_fields FROM {}.{} "
@@ -1477,15 +1479,24 @@ def _convert_audit_change(
     row_data: Dict[str, Any],
     changed_fields: Optional[Dict[str, str]],
     ri_cols: Tuple[str, ...],
-) -> List[Tuple[Tuple, bool, Dict[str, str]]]:
+) -> List[Tuple[Tuple, bool, Dict[str, str], Dict[str, str]]]:
     """
     Converts the audit log entry into Splitgraph's internal format.
 
-    :returns: [(pk, (True for upserted, False for deleted), (old row value if updated/deleted))].
+    :returns: [(pk, (True for upserted, False for deleted), (old row value if updated/deleted),
+        (new row value if inserted/updated))].
         More than 1 change might be emitted from a single audit entry.
     """
     ri_data, non_ri_data = _split_ri_cols(action, row_data, changed_fields, ri_cols)
     pk_changed = any(c in ri_cols for c in non_ri_data)
+
+    if changed_fields:
+        new_row = row_data.copy()
+        for key, value in changed_fields.items():
+            if key not in ri_cols:
+                new_row[key] = value
+    else:
+        new_row = row_data
     if pk_changed:
         assert action == "U"
         # If it's an update that changed the PK (e.g. the table has no replica identity so we treat the whole
@@ -1494,12 +1505,12 @@ def _convert_audit_change(
         # Recalculate the new PK to be inserted + the new (full) tuple, otherwise if the whole
         # tuple hasn't been updated, we'll lose parts of the old row (see test_diff_conflation_on_commit[test_case2]).
 
-        result = [(tuple(ri_data[c] for c in ri_cols), False, row_data)]
+        result = [(tuple(ri_data[c] for c in ri_cols), False, row_data, new_row)]
 
         ri_data, non_ri_data = _recalculate_disjoint_ri_cols(
             ri_cols, ri_data, non_ri_data, row_data
         )
-        result.append((tuple(ri_data[c] for c in ri_cols), True, {}))
+        result.append((tuple(ri_data[c] for c in ri_cols), True, {}, new_row))
         return result
     if action == "U" and not non_ri_data:
         # Nothing was actually updated -- don't emit an action
@@ -1509,6 +1520,7 @@ def _convert_audit_change(
             tuple(ri_data[c] for c in ri_cols),
             action in ("I", "U"),
             row_data if action in ("U", "D") else {},
+            new_row if action in ("I", "U") else {},
         )
     ]
 

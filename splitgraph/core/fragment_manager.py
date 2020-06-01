@@ -543,7 +543,7 @@ class FragmentManager(MetadataManager):
         _conflate_changes(
             changeset,
             cast(
-                List[Tuple[Tuple[str, ...], bool, Dict[str, Any]]],
+                List[Tuple[Tuple[str, ...], bool, Dict[str, Any], Dict[str, Any]]],
                 self.object_engine.get_pending_changes(schema, old_table.table_name),
             ),
         )
@@ -1065,34 +1065,23 @@ class FragmentManager(MetadataManager):
 
 
 def _conflate_changes(
-    changeset: Changeset, new_changes: List[Tuple[Tuple[str, ...], bool, Dict[str, Any]]]
+    changeset: Changeset, new_changes: List[Tuple[Tuple, bool, Dict[str, Any], Dict[str, Any]]]
 ) -> Changeset:
     """
     Updates a changeset to incorporate the new changes. Assumes that the new changes are non-pk changing
     (i.e. PK-changing updates have been converted into a del + ins).
     """
-    for change_pk, upserted, old_row in new_changes:
+    for change_pk, upserted, old_row, new_row in new_changes:
         old_change = changeset.get(change_pk)
         if not old_change:
-            changeset[change_pk] = (upserted, old_row)
+            changeset[change_pk] = (upserted, old_row, new_row)
         else:
-            if upserted and not old_row:
-                # INSERT -- can only happen over a DELETE. Mark the row as upserted; no need to keep track
-                # of the old row (since we have it).
-                changeset[change_pk] = (upserted, old_row)
-            if upserted and old_row:
-                # UPDATE -- can only happen over another UPDATE or over an INSERT.
-                # If it's over an UPDATE, we keep track of the old row; if it's over an INSERT,
-                # we can access the inserted row anyway so no point keeping track of it.
-                changeset[change_pk] = (upserted, old_change[1])
-            if not upserted:
-                # DELETE.
-                if old_change[1]:
-                    # If happened over an UPDATE, we need to remember the value that was there before the UPDATE.
-                    changeset[change_pk] = (upserted, old_change[1])
-                else:
-                    # If happened over an INSERT, it's a no-op (changes cancel out).
-                    del changeset[change_pk]
+            # If we reinserted the same row that we deleted or deleted a row that
+            # was inserted, drop the change completely.
+            if old_change[1] == new_row:
+                del changeset[change_pk]
+            else:
+                changeset[change_pk] = (upserted, old_change[1], new_row)
 
     return changeset
 

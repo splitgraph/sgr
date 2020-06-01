@@ -2,6 +2,7 @@ import pytest
 
 # Test cases: ops are a list of operations (with commit after each set);
 #             diffs are expected diffs produced by each operation.
+from splitgraph.core.fragment_manager import _conflate_changes
 
 CASES = [
     [  # Insert + update changed into a single insert
@@ -113,5 +114,27 @@ def test_diff_conflation_on_commit(pg_repo_local, test_case):
         # Dump the operation we're running to stdout for easier debugging
         print("%r -> %r" % (operation, expected_diff))
         pg_repo_local.run_sql(operation)
+        pg_repo_local.commit_engines()
+        assert pg_repo_local.diff("fruits", pg_repo_local.head, None) == expected_diff
         head = pg_repo_local.commit()
         assert pg_repo_local.diff("fruits", pg_repo_local.head.parent_id, head) == expected_diff
+
+
+def test_diff_conflation_insert_same(pg_repo_local):
+    pg_repo_local.run_sql("ALTER TABLE fruits ADD PRIMARY KEY (fruit_id)")
+    pg_repo_local.commit()
+
+    pg_repo_local.run_sql("DELETE FROM fruits WHERE fruit_id = 1")
+    pg_repo_local.run_sql("INSERT INTO fruits VALUES (1, 'apple')")
+    pg_repo_local.commit_engines()
+
+    # check get_pending_changes returns old and new row values
+    expected_changes = [
+        ((1,), False, {"name": "apple", "fruit_id": 1}, {}),
+        ((1,), True, {}, {"name": "apple", "fruit_id": 1}),
+    ]
+    assert pg_repo_local.engine.get_pending_changes("test/pg_mount", "fruits") == expected_changes
+
+    # Check delete + insert same cancel each other out.
+    assert _conflate_changes({}, expected_changes) == {}
+    assert pg_repo_local.diff("fruits", pg_repo_local.head, None) == []
