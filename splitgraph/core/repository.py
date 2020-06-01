@@ -220,8 +220,8 @@ class Repository:
             )
 
             # On local repos, also forget about the repository's upstream.
-            if not self.engine.registry:
-                self.engine.run_sql(
+            if not self.object_engine.registry:
+                self.object_engine.run_sql(
                     SQL("DELETE FROM {}.{} WHERE namespace = %s AND repository = %s").format(
                         Identifier(SPLITGRAPH_META_SCHEMA), Identifier("upstream")
                     ),
