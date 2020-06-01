@@ -59,7 +59,7 @@ def clone_c(
     Clone a remote Splitgraph repository/image into a local one.
 
     The lookup path for the repository is governed by the ``SG_REPO_LOOKUP`` and ``SG_REPO_LOOKUP_OVERRIDE``
-    config parameters and can be overriden by the command line ``--remote`` option.
+    config parameters and can be overridden by the command line ``--remote`` option.
     """
     from splitgraph.core.repository import Repository
     from splitgraph.engine import get_engine
