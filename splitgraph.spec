@@ -8,8 +8,9 @@ block_cipher = None
 
 a = Analysis(['bin/sgr'],
              pathex=['.'],
+             # Imports that aren't toplevel or explicit (e.g. pyyaml is imported inline in sgr to speed sgr invocations up)
              hiddenimports=["splitgraph.hooks.s3", "splitgraph.hooks.splitfile_commands",
-             "splitgraph.ingestion.socrata.mount", "splitgraph.ingestion.socrata.querying"],
+             "splitgraph.ingestion.socrata.mount", "splitgraph.ingestion.socrata.querying", "pyyaml"],
              hookspath=[],
              # Linux build on Travis pulls in numpy for no obvious reason
              excludes=['numpy'],
