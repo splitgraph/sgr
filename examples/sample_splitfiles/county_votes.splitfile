@@ -17,7 +17,7 @@ SQL {
         FROM "splitgraph/2016_election:latest".precinct_results
         GROUP BY state_postal, county_fips_short
     ), us_counties AS (
-        # List of all US counties, their names and population
+        -- List of all US counties, their names and population
         SELECT
             c.admin1_code AS state,
             c.admin2_code AS county_fips,
