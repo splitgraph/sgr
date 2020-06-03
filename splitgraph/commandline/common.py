@@ -42,7 +42,7 @@ class ImageType(click.ParamType):
 
         The parser returns a tuple of (repository object, tag or hash).
         """
-        from splitgraph.core.common import parse_repo_tag_or_hash
+        from splitgraph.core.output import parse_repo_tag_or_hash
 
         repo, tag_or_hash = parse_repo_tag_or_hash(value, default=self.default)
 

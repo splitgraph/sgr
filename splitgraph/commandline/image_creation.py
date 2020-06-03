@@ -357,7 +357,7 @@ def reindex_c(image_spec, table_name, index_options, ignore_patch_objects):
 
     Image spec must be of the format ``[NAMESPACE/]REPOSITORY[:HASH_OR_TAG]``. If no tag is specified, ``HEAD`` is used.
     """
-    from splitgraph.core.common import pluralise
+    from splitgraph.core.output import pluralise
 
     repository, image = image_spec
     table = image.get_table(table_name)

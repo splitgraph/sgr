@@ -42,8 +42,8 @@ from .common import (
     slow_diff,
     gather_sync_metadata,
     set_tags_batch,
-    pluralise,
 )
+from .output import pluralise
 from .engine import lookup_repository, get_engine
 from .object_manager import ObjectManager
 from ..engine import ResultShape

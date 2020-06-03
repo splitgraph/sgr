@@ -88,7 +88,7 @@ def _make_mount_handler_command(handler_name: str) -> Command:
         ),
         click.Option(["--handler-options", "-o"], help=handler_options_help, default="{}"),
     ]
-    from splitgraph.core.common import conn_string_to_dict
+    from splitgraph.core.output import conn_string_to_dict
 
     def _callback(schema, connection, handler_options):
         handler_options = json.loads(handler_options)
