@@ -763,7 +763,7 @@ python-versions = "*"
 version = "227"
 
 [[package]]
-category = "dev"
+category = "main"
 description = "YAML parser and emitter for Python"
 name = "pyyaml"
 optional = false
@@ -1155,7 +1155,7 @@ testing = ["jaraco.itertools", "func-timeout"]
 pandas = ["pandas", "sqlalchemy"]
 
 [metadata]
-content-hash = "77873dc70168cd00cb7bf802915a5fb5be68ee0b91c8e3263140fecac0e5c3f5"
+content-hash = "c4043a0ff134f41282d4caf9a16b7fd2b5af74d7971d27ff4208db59ddcbef2d"
 python-versions = "~=3.6"
 
 [metadata.files]
