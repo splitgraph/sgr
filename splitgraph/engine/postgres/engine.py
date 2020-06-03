@@ -1016,8 +1016,8 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             self.run_sql(query)
         except psycopg2.errors.UndefinedObject as e:
             raise ObjectMountingError(
-                "Error loading object %s. It's possible that it was created "
-                "using an extension that's not installed on this engine."
+                "Error mounting. It's possible that the object was created "
+                "using an extension (e.g. PostGIS) that's not installed on this engine."
             ) from e
 
     def store_fragment(

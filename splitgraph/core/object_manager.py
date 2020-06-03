@@ -241,7 +241,8 @@ class ObjectManager(FragmentManager):
                 partial_failure = self._generate_download_error(table, difference, cause=e)
 
             # No matter what, claim the space required by the newly downloaded objects.
-            self._increase_cache_occupancy(successful)
+            if successful:
+                self._increase_cache_occupancy(successful)
 
             if partial_failure:
                 # Instead of deleting all objects in this batch, discard the cache data
@@ -673,6 +674,8 @@ class ObjectManager(FragmentManager):
         return to_delete, freed_space
 
     def _delete_cache_entries(self, to_delete: List[str]) -> None:
+        if not to_delete:
+            return
         self.object_engine.run_sql(
             SQL(
                 "DELETE FROM {}.{} WHERE object_id IN ("

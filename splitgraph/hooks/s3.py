@@ -143,11 +143,17 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
 
             try:
                 local_engine.run_api_call("download_object", object_id, url)
-            except Exception:
-                logging.exception("Error downloading object %s", object_id)
+                local_engine.mount_object(object_id)
+            except Exception as e:
+                logging.error("Error downloading object %s: %s", object_id, str(e))
+
+                # Delete the object that we just tried to download to make sure we don't have
+                # a situation where the file was downloaded but mounting failed (currently
+                # we inspect the filesystem to see the list of downloaded objects).
+                # TODO figure out a flow for just remounting objects whose files we already have.
+                local_engine.delete_objects([object_id])
                 return None
 
-            local_engine.mount_object(object_id)
             return object_id
 
         successful: List[str] = []
