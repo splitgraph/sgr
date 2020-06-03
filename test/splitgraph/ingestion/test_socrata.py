@@ -220,6 +220,7 @@ def test_socrata_fdw():
                 "table": "xzkq-xp2w",
                 "domain": "data.cityofchicago.gov",
                 "app_token": "SOME_TOKEN",
+                "batch_size": "4200",
             },
             fdw_columns=["name", "job_titles", "annual_salary"],
         )
@@ -249,7 +250,7 @@ def test_socrata_fdw():
                 dataset_identifier="xzkq-xp2w",
                 where="(salary > 42)",
                 select="name,job_titles,annual_salary",
-                limit=10000,
+                limit=4200,
                 order="name ASC",
             )
         ]
