@@ -1165,18 +1165,19 @@ def _sync(
 
     partial_upload_failure: Optional[IncompleteObjectUploadError] = None
 
-    try:
-        new_images, table_meta, object_locations, object_meta, tags = gather_sync_metadata(
-            target,
-            source,
-            overwrite_objects=overwrite_objects,
-            single_image=single_image,
-            overwrite_tags=overwrite_tags,
-        )
-        if not new_images and not object_meta and not object_locations and not tags:
-            logging.info("No image/object metadata to pull.")
-            return
+    # Run a read-only transaction that gets images/objects we need to download
+    new_images, table_meta, object_locations, object_meta, tags = gather_sync_metadata(
+        target,
+        source,
+        overwrite_objects=overwrite_objects,
+        single_image=single_image,
+        overwrite_tags=overwrite_tags,
+    )
+    if not new_images and not object_meta and not object_locations and not tags:
+        logging.info("No image/object metadata to pull.")
+        return
 
+    try:
         if download:
             target.objects.register_objects(list(object_meta.values()))
             target.objects.register_object_locations(object_locations)
@@ -1193,6 +1194,11 @@ def _sync(
                 if not reupload_objects
                 else [o for o, om in object_meta.items() if om.namespace == target.namespace]
             )
+
+            # Transaction handling here is finicky as we don't want to hold an open transaction
+            # to the registry, blocking other clients. gather_sync_metadata was a self-contained
+            # read-only transaction. The S3 uploader runs a self-contained RO transaction as well
+            # to find out the URLs it's uploading objects to.
 
             try:
                 new_uploads = source.objects.upload_objects(
@@ -1212,11 +1218,16 @@ def _sync(
                 ]
                 successful = e.successful_objects
 
-            # Here we have to register the new objects after the upload but before we store their external
-            # location (as the RLS for object_locations relies on the object metadata being in place)
+            # Here we have to register the new objects after the upload but before we store
+            # their external location (as access control for object_locations relies on the
+            # object metadata being in place).
             # In addition, register all objects we had in object_meta apart from those that
             # we tried to upload and failed (if we're pushing overwriting object metadata,
             # object_meta might have more objects than what we actually intended to upload).
+
+            # Note that this implicitly opens a short-lived write transaction to the target
+            # (we register objects, their locations and then the actual tables and images
+            # when we leave this if).
             target.objects.register_objects(
                 [v for k, v in object_meta.items() if k not in objects_to_push or k in successful],
                 namespace=target.namespace,

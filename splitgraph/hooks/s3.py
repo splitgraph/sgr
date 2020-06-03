@@ -22,22 +22,26 @@ if TYPE_CHECKING:
 
 
 def get_object_upload_urls(remote_engine, objects):
+    remote_engine.run_sql("SET TRANSACTION READ ONLY")
     urls = remote_engine.run_chunked_sql(
         "SELECT splitgraph_api.get_object_upload_urls(%s, %s)",
         ("default", objects),
         return_shape=ResultShape.ONE_ONE,
         chunk_position=1,
     )
+    remote_engine.commit()
     return urls
 
 
 def get_object_download_urls(remote_engine, remote_object_ids):
+    remote_engine.run_sql("SET TRANSACTION READ ONLY")
     urls = remote_engine.run_chunked_sql(
         "SELECT splitgraph_api.get_object_download_urls(%s, %s)",
         ("default", remote_object_ids),
         return_shape=ResultShape.ONE_ONE,
         chunk_position=1,
     )
+    remote_engine.commit()
     return urls
 
 

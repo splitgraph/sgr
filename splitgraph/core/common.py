@@ -222,6 +222,29 @@ def gather_sync_metadata(
     :returns: Tuple of metadata for  new_images, new_tables, object_locations, object_meta, tags
     """
 
+    # Transaction handling: this is run as a single read-only transaction to the source and the
+    # target engine. This is so that:
+    #   1) we can in the future route these to read-only replicas
+    #   2) we don't hold an open transaction to the registry while we're
+    #       downloading/uploading objects.
+    target.engine.run_sql("SET TRANSACTION READ ONLY")
+    if target.engine != source.engine:
+        source.engine.run_sql("SET TRANSACTION READ ONLY")
+
+    try:
+        result = _gather_sync_metadata(
+            target, source, overwrite_objects, overwrite_tags, single_image
+        )
+        target.commit_engines()
+        source.commit_engines()
+        return result
+    except Exception:
+        target.rollback_engines()
+        source.rollback_engines()
+        raise
+
+
+def _gather_sync_metadata(target, source, overwrite_objects, overwrite_tags, single_image) -> Any:
     # Currently, images can't be altered once pushed out. We intend to relax this:
     # same image hash means same contents and same tables but the composition of an image
     # can change (if we refragment a table so that querying it is faster). But it's frowned
