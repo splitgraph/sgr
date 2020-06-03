@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, List, Tuple
 
 from splitgraph.core.types import TableSchema, TableColumn
 
@@ -38,7 +38,7 @@ def _socrata_to_pg_type(socrata_type):
         return "text"
 
 
-def dedupe_sg_schema(schema_spec: TableSchema) -> TableSchema:
+def dedupe_sg_schema(schema_spec: TableSchema, prefix_len: int = 59) -> TableSchema:
     """
     Some Socrata schemas have columns that are longer than 63 characters
     where the first 63 characters are the same between several columns
@@ -46,19 +46,20 @@ def dedupe_sg_schema(schema_spec: TableSchema) -> TableSchema:
     to make sure this can't happen (by giving duplicates a number suffix).
     """
 
-    prefix_counts = {}
-    columns_nums = []
+    # We truncate the column name to 59 to leave space for the underscore
+    # and 3 digits (max PG identifier is 63 chars)
+    prefix_counts: Dict[str, int] = {}
+    columns_nums: List[Tuple[str, int]] = []
+
     for column in schema_spec:
-        # We truncate the column name to 59 to leave space for the underscore
-        # and 3 digits (max PG identifier is 63 chars)
-        column_short = column.name[:59]
+        column_short = column.name[:prefix_len]
         count = prefix_counts.get(column_short, 0)
         columns_nums.append((column_short, count))
         prefix_counts[column_short] = count + 1
 
     result = []
     for (_, position), column in zip(columns_nums, schema_spec):
-        column_short = column.name[:59]
+        column_short = column.name[:prefix_len]
         count = prefix_counts[column_short]
         if count > 1:
             result.append(
