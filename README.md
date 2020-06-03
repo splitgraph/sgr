@@ -33,7 +33,7 @@ See the [installation guide](https://www.splitgraph.com/docs/getting-started/ins
 
 You can follow the [quick start guide](https://www.splitgraph.com/docs/getting-started/five_minute_demo) to try cloning, checking out and manipulating a data repository.
 
-Alternatively, Splitgraph comes with plenty of [examples](https://github.com/splitgraph/splitgraph/tree/master/examples)
+Alternatively, Splitgraph comes with plenty of [examples](examples)
 to get you started. 
 
 ## Setting up a development environment
