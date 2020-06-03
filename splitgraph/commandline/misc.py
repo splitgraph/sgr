@@ -201,7 +201,7 @@ def cleanup_c():
     """
     from splitgraph.core.object_manager import ObjectManager
     from splitgraph.engine import get_engine
-    from splitgraph.core.common import pluralise
+    from ..core.output import pluralise
 
     deleted = ObjectManager(get_engine()).cleanup()
     click.echo("Deleted %s." % pluralise("object", len(deleted)))

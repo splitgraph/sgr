@@ -154,7 +154,7 @@ def prepare_splitfile_sql(sql: str, image_mapper: Callable) -> Tuple[str, str]:
         return _rewrite_sql_fallback(sql, image_mapper)
 
     # Avoid circular import
-    from splitgraph.core.common import parse_repo_tag_or_hash
+    from splitgraph.core.output import parse_repo_tag_or_hash
 
     try:
         tree = Node(parse_sql(sql))

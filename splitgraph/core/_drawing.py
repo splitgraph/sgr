@@ -57,7 +57,7 @@ def render_tree(repository: "Repository") -> None:
     """Draws the repository's commit graph as a Git-like tree."""
 
     import asciitree
-    from splitgraph.core.common import truncate_line
+    from splitgraph.core.output import truncate_line
 
     # Get all commits in ascending time order
     all_images = {i.image_hash: i for i in repository.images()}

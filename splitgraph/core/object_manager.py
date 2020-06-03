@@ -32,7 +32,8 @@ from splitgraph.exceptions import (
     IncompleteObjectDownloadError,
 )
 from splitgraph.hooks.external_objects import get_external_object_handler
-from .common import META_TABLES, pretty_size, Tracer, CallbackList, pluralise, truncate_list
+from .common import META_TABLES, Tracer, CallbackList
+from .output import pretty_size, pluralise, truncate_list
 from .sql import select, insert
 
 if TYPE_CHECKING:

@@ -21,7 +21,8 @@ from psycopg2.sql import SQL, Identifier, Composable
 from tqdm import tqdm
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA, SG_CMD_ASCII
-from splitgraph.core.common import Tracer, pluralise, truncate_list
+from splitgraph.core.common import Tracer
+from splitgraph.core.output import pluralise, truncate_list
 from splitgraph.core.fragment_manager import (
     get_temporary_table_id,
     get_chunk_groups,

@@ -31,7 +31,7 @@ def log_c(image_spec, tree):
     been checked out in this case.
     """
     from splitgraph.core._drawing import render_tree
-    from splitgraph.core.common import truncate_line
+    from ..core.output import truncate_line
     from tabulate import tabulate
 
     repository, hash_or_tag = image_spec
@@ -128,7 +128,7 @@ def _emit_table_diff(
     diff_result: Union[bool, Tuple[int, int, int], List[Tuple[bool, Tuple]], None],
     verbose: bool,
 ) -> None:
-    from splitgraph.core.common import pluralise
+    from ..core.output import pluralise
 
     to_print = "%s: " % table_name
     if isinstance(diff_result, (list, tuple)):
@@ -197,7 +197,7 @@ def show_c(image_spec):
 
     Image spec must be of the format ``[NAMESPACE/]REPOSITORY[:HASH_OR_TAG]``. If no tag is specified, ``HEAD`` is used.
     """
-    from splitgraph.core.common import pretty_size
+    from ..core.output import pretty_size
 
     repository, image = image_spec
 
@@ -228,7 +228,7 @@ def table_c(image_spec, table_name, verbose):
 
     Image spec must be of the format ``[NAMESPACE/]REPOSITORY[:HASH_OR_TAG]``. If no tag is specified, ``HEAD`` is used.
     """
-    from splitgraph.core.common import pretty_size
+    from ..core.output import pretty_size
 
     repository, image = image_spec
     table = image.get_table(table_name)
@@ -268,7 +268,7 @@ def object_c(object_id):
     """
     from splitgraph.core.object_manager import ObjectManager
     from splitgraph.engine import get_engine, ResultShape
-    from splitgraph.core.common import pretty_size
+    from ..core.output import pretty_size
     from ..core.sql import select
     from splitgraph.core.indexing.bloom import describe
 
@@ -427,7 +427,7 @@ def sql_c(sql, schema, image, show_all, json, no_transaction):
 def _emit_repository_data(repositories, engine):
     from splitgraph.engine import ResultShape
     from tabulate import tabulate
-    from splitgraph.core.common import pretty_size
+    from ..core.output import pretty_size
 
     click.echo("Local repositories: \n")
 

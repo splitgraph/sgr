@@ -30,7 +30,7 @@ from ._parsing import (
     extract_all_table_aliases,
     parse_custom_command,
 )
-from ..core.common import pluralise, truncate_line, conn_string_to_dict
+from ..core.output import pluralise, truncate_line, conn_string_to_dict
 from ..core.types import ProvenanceLine
 
 

@@ -66,7 +66,9 @@ def mount_socrata(
 def generate_socrata_mount_queries(sought_ids, datasets, mountpoint, server_id, tables):
     # Local imports since this module gets run from commandline entrypoint on startup.
 
-    from splitgraph.core.common import pluralise, truncate_list, slugify
+    from splitgraph.core.output import slugify
+    from splitgraph.core.output import truncate_list
+    from splitgraph.core.output import pluralise
     from splitgraph.core.table import create_foreign_table
     from splitgraph.ingestion.socrata.querying import socrata_to_sg_schema
 

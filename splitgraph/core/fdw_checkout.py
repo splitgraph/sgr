@@ -3,7 +3,7 @@ layered querying (read-only queries to Splitgraph tables without materialization
 import logging
 
 import splitgraph.config
-from splitgraph.core.common import pretty_size
+from splitgraph.core.output import pretty_size
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.repository import Repository, get_engine
 
