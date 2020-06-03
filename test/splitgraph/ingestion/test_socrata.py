@@ -17,6 +17,7 @@ from splitgraph.ingestion.socrata.querying import (
     cols_to_socrata,
     sortkeys_to_socrata,
     _socrata_to_pg_type,
+    dedupe_sg_schema,
 )
 
 
@@ -252,3 +253,60 @@ def test_socrata_fdw():
                 order="name ASC",
             )
         ]
+
+
+def test_socrata_column_deduplication():
+    assert dedupe_sg_schema(
+        [
+            TableColumn(1, "normal_col", "some_type", True),
+            TableColumn(
+                2,
+                "long_col_but_not_unique_until_the_59th_char_somewhere_there_yep_this_is_different",
+                "some_type",
+                False,
+            ),
+            TableColumn(3, "long_col_but_still_unique" * 3, "some_type", False),
+            TableColumn(
+                4,
+                "long_col_but_not_unique_until_the_59th_char_somewhere_there_and_this_is_even_more_so",
+                "some_type",
+                False,
+            ),
+            TableColumn(
+                5,
+                "long_col_but_not_unique_until_the_59th_char_somewhere_there_and_wow_yep_were_done",
+                "some_type",
+                False,
+            ),
+        ]
+    ) == [
+        TableColumn(ordinal=1, name="normal_col", pg_type="some_type", is_pk=True, comment=None),
+        TableColumn(
+            ordinal=2,
+            name="long_col_but_not_unique_until_the_59th_char_somewhere_there_000",
+            pg_type="some_type",
+            is_pk=False,
+            comment=None,
+        ),
+        TableColumn(
+            ordinal=3,
+            name="long_col_but_still_uniquelong_col_but_still_uniquelong_col_but_still_unique",
+            pg_type="some_type",
+            is_pk=False,
+            comment=None,
+        ),
+        TableColumn(
+            ordinal=4,
+            name="long_col_but_not_unique_until_the_59th_char_somewhere_there_001",
+            pg_type="some_type",
+            is_pk=False,
+            comment=None,
+        ),
+        TableColumn(
+            ordinal=5,
+            name="long_col_but_not_unique_until_the_59th_char_somewhere_there_002",
+            pg_type="some_type",
+            is_pk=False,
+            comment=None,
+        ),
+    ]

@@ -38,6 +38,43 @@ def _socrata_to_pg_type(socrata_type):
         return "text"
 
 
+def dedupe_sg_schema(schema_spec: TableSchema) -> TableSchema:
+    """
+    Some Socrata schemas have columns that are longer than 63 characters
+    where the first 63 characters are the same between several columns
+    (e.g. odn.data.socrata.com). This routine renames columns in a schema
+    to make sure this can't happen (by giving duplicates a number suffix).
+    """
+
+    prefix_counts = {}
+    columns_nums = []
+    for column in schema_spec:
+        # We truncate the column name to 59 to leave space for the underscore
+        # and 3 digits (max PG identifier is 63 chars)
+        column_short = column.name[:59]
+        count = prefix_counts.get(column_short, 0)
+        columns_nums.append((column_short, count))
+        prefix_counts[column_short] = count + 1
+
+    result = []
+    for (_, position), column in zip(columns_nums, schema_spec):
+        column_short = column.name[:59]
+        count = prefix_counts[column_short]
+        if count > 1:
+            result.append(
+                TableColumn(
+                    column.ordinal,
+                    f"{column_short}_{position:03d}",
+                    column.pg_type,
+                    column.is_pk,
+                    column.comment,
+                )
+            )
+        else:
+            result.append(column)
+    return result
+
+
 def socrata_to_sg_schema(metadata: Dict[str, Any]) -> TableSchema:
     try:
         col_names = metadata["resource"]["columns_field_name"]
@@ -52,10 +89,12 @@ def socrata_to_sg_schema(metadata: Dict[str, Any]) -> TableSchema:
     col_types = ["text"] + col_types
     col_desc = ["Socrata column ID"] + col_desc
 
-    return [
+    result = [
         TableColumn(i, n, _socrata_to_pg_type(t), False, d)
         for i, (n, t, d) in enumerate(zip(col_names, col_types, col_desc))
     ]
+
+    return dedupe_sg_schema(result)
 
 
 def estimate_socrata_rows_width(columns, metadata):
