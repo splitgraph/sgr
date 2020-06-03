@@ -16,6 +16,7 @@ def mount_socrata(
     domain: str,
     tables: Optional[Dict[str, Any]] = None,
     app_token: Optional[str] = None,
+    batch_size: Optional[int] = 10000,
 ) -> None:
     """
     Mount a Socrata dataset.
@@ -27,6 +28,7 @@ def mount_socrata(
     :param tables: A dictionary mapping PostgreSQL table names to Socrata table IDs. For example,
         {"salaries": "xzkq-xp2w"}. If skipped, ALL tables in the Socrata endpoint will be mounted.
     :param app_token: Socrata app token. Optional.
+    :param batch_size: Amount of rows to fetch from Socrata per request (limit parameter). Maximum 50000.
     """
     from splitgraph.engine import get_engine
     from sodapy import Socrata
@@ -44,6 +46,8 @@ def mount_socrata(
         options["domain"] = domain
     if app_token:
         options["app_token"] = app_token
+    if batch_size:
+        options["batch_size"] = str(batch_size)
 
     init_fdw(
         engine, server_id=server_id, wrapper="multicorn", server_options=options,

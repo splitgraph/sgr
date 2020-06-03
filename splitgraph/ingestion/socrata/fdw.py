@@ -81,7 +81,11 @@ class SocrataForeignDataWrapper(ForeignDataWrapper):
 
         # TODO offsets stop working after some point?
         result = self.client.get_all(
-            dataset_identifier=self.table, where=query, select=select, limit=10000, order=order
+            dataset_identifier=self.table,
+            where=query,
+            select=select,
+            limit=self.batch_size,
+            order=order,
         )
 
         for r in result:
@@ -121,6 +125,7 @@ class SocrataForeignDataWrapper(ForeignDataWrapper):
         self.table = self.fdw_options["table"]
         self.app_token = self.fdw_options.get("app_token")
         self.domain = self.fdw_options["domain"]
+        self.batch_size = int(self.fdw_options.get("batch_size", 1000))
         self.client = Socrata(domain=self.domain, app_token=self.app_token)
 
         # Cached table metadata
