@@ -1,5 +1,5 @@
 import json
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List, Tuple, Sequence, Callable
 
 from splitgraph.core.output import parse_dt, parse_date, parse_time
 from splitgraph.core.types import TableSchema, TableColumn
@@ -13,7 +13,7 @@ def parse_boolean(boolean: str):
     raise ValueError("Invalid boolean!")
 
 
-_CONVERTERS = [
+_CONVERTERS: List[Tuple[str, Callable]] = [
     ("timestamp", parse_dt),
     ("date", parse_date),
     ("time", parse_time),
@@ -24,12 +24,12 @@ _CONVERTERS = [
 ]
 
 
-def _infer_column_schema(column_sample: List[str]) -> str:
+def _infer_column_schema(column_sample: Sequence[str]) -> str:
     for candidate, converter in _CONVERTERS:
         try:
             seen_value = False
             for c in column_sample:
-                if c is None or c == "":
+                if c == "":
                     continue
 
                 seen_value = True

@@ -1,6 +1,6 @@
 import re
-from datetime import datetime, date
 import time
+from datetime import datetime, date
 from typing import Union, List, Any, Optional, Dict
 
 
@@ -102,7 +102,7 @@ def parse_date(string: str) -> date:
     return datetime.strptime(string, "%Y-%m-%d").date()
 
 
-def parse_time(string: str) -> time:
+def parse_time(string: str) -> time.struct_time:
     _formats = [
         "%H:%M:%S",
         "%H:%M:%S.%f",
