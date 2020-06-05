@@ -120,8 +120,7 @@ def csv_import(
     If `-r` is passed, the table will instead be deleted and recreated from the CSV file if it exists.
     """
     import csv
-    import tableschema
-    from splitgraph.ingestion.tableschema import tableschema_to_sg
+    from splitgraph.ingestion.inference import infer_sg_schema
     from splitgraph.ingestion.csv import csv_adapter
 
     if not primary_key:
@@ -139,12 +138,8 @@ def csv_import(
         # Patch in a dummy header
         sample = [[str(i) for i in range(len(sample))]] + sample
 
-    ts_schema = tableschema.infer(sample)
-
     type_overrides = dict(override_type or [])
-    sg_schema = tableschema_to_sg(
-        ts_schema, override_types=type_overrides, primary_keys=primary_key
-    )
+    sg_schema = infer_sg_schema(sample, override_types=type_overrides, primary_keys=primary_key)
     logging.debug("Using Splitgraph schema: %r", sg_schema)
 
     # Seek the file back to beginning and pass it to the csv writer
