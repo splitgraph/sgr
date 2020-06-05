@@ -1,7 +1,7 @@
 # Splitgraph Engine
 
 A Splitgraph installation consists of two components: the [Splitgraph
-engine](https://www.splitgraph.com/docs/architecture/splitgraph_engine) and the [Splitgraph client](https://www.github.com/splitgraph/splitgraph),
+engine](https://www.splitgraph.com/docs/architecture/splitgraph-engine) and the [Splitgraph client](https://www.github.com/splitgraph/splitgraph),
 which talks to the engine. The engine is a Docker image which is built from
 the Dockerfile in this repository.
 
@@ -15,13 +15,13 @@ The published docker image can be found on Docker hub at
 
 Currently, the engine is based on the
 [official Docker postgres image](https://hub.docker.com/_/postgres/), and
-performs a few additional tasks necessary for running splitgraph and mounting
-external databases (only mongo and postgres at the moment):
+performs a few additional tasks necessary for running Splitgraph and [mounting
+external databases](https://www.splitgraph.com/docs/ingesting-data/foreign-data-wrappers/introduction) (MongoDB/PostgreSQL/MySQL):
 
 * Installs foreign data wrapper (FDW) extensions:
     * [EnterpriseDB/mongo_fdw](https://github.com/EnterpriseDB/mongo_fdw.git)
        to allow mounting of mongo databases
-    * [postgres_fdw](https://www.postgresql.org/docs/10/static/postgres-fdw.html)
+    * [postgres_fdw](https://www.postgresql.org/docs/12/static/postgres-fdw.html)
       to allow mounting of external postgres databases
     * [EnterpriseDB/mysql_fdw](https://github.com/EnterpriseDB/mysql_fdw.git)
        to allow mounting of MySQL (version 8) databases
@@ -40,7 +40,7 @@ Run `make`. You can use environment variables `DOCKER_REPO` and `DOCKER_TAG` to 
 
 ## Running the engine
 
-For basic cases, we recommend you to use [`sgr engine`](https://www.splitgraph.com/docs/sgr/engine_management/engine_add) to manage the engine Docker container.
+For basic cases, we recommend you to use [`sgr engine`](https://www.splitgraph.com/docs/sgr/engine-management/engine-add) to manage the engine Docker container.
 
 You can also use `docker run`, or alternatively `docker-compose`.
 
@@ -164,6 +164,7 @@ And then `docker-compose up -d engine`
 
 ### More help
 
-- Read the [Splitgraph documentation](https://www.splitgraph.com/docs/introduction)
+- Read the [Splitgraph documentation](https://www.splitgraph.com/docs/)
 - Read the [docker postgres documentation](https://hub.docker.com/_/postgres/)
 - Submit an issue
+- Ask for help on our [Discord channel](https://discord.gg/4Qe2fYA)
