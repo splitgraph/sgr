@@ -1,4 +1,6 @@
 import re
+from datetime import datetime, date
+import time
 from typing import Union, List, Any, Optional, Dict
 
 
@@ -78,3 +80,37 @@ def conn_string_to_dict(connection: Optional[str]) -> Dict[str, Any]:
         )
     else:
         return dict(server=None, port=None, username=None, password=None)
+
+
+def parse_dt(string: str) -> datetime:
+    _formats = [
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S.%f",
+        "%Y-%m-%d %H:%M:%S.%f",
+    ]
+    for fmt in _formats:
+        try:
+            return datetime.strptime(string, fmt)
+        except ValueError:
+            continue
+
+    raise ValueError("Unknown datetime format for string %s!" % string)
+
+
+def parse_date(string: str) -> date:
+    return datetime.strptime(string, "%Y-%m-%d").date()
+
+
+def parse_time(string: str) -> time:
+    _formats = [
+        "%H:%M:%S",
+        "%H:%M:%S.%f",
+    ]
+    for fmt in _formats:
+        try:
+            return time.strptime(string, fmt)
+        except ValueError:
+            continue
+
+    raise ValueError("Unknown time format for string %s!" % string)

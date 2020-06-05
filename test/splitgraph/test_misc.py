@@ -4,7 +4,8 @@ from unittest.mock import patch
 import pytest
 from psycopg2.errors import CheckViolation
 
-from splitgraph.core.common import Tracer, adapt, coerce_val_to_json, _parse_dt
+from splitgraph.core.common import Tracer, adapt, coerce_val_to_json
+from splitgraph.core.output import parse_dt
 from splitgraph.core.engine import lookup_repository
 from splitgraph.core.metadata_manager import Object
 from splitgraph.core.repository import Repository
@@ -301,8 +302,8 @@ def test_val_to_json():
 
 
 def test_parse_dt():
-    assert _parse_dt("2020-01-01 12:00:01.123456") == datetime(2020, 1, 1, 12, 0, 1, 123456)
-    assert _parse_dt("2020-01-01T12:34:56") == datetime(2020, 1, 1, 12, 34, 56)
+    assert parse_dt("2020-01-01 12:00:01.123456") == datetime(2020, 1, 1, 12, 0, 1, 123456)
+    assert parse_dt("2020-01-01T12:34:56") == datetime(2020, 1, 1, 12, 34, 56)
 
     with pytest.raises(ValueError):
-        _parse_dt("not a dt")
+        parse_dt("not a dt")

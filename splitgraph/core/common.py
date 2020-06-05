@@ -14,6 +14,7 @@ from psycopg2.sql import Identifier, SQL
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.core.migration import source_files_to_apply, set_installed_version
+from splitgraph.core.output import parse_dt, parse_date
 from splitgraph.core.sql import select
 from splitgraph.exceptions import (
     EngineInitializationError,
@@ -332,33 +333,13 @@ def _gather_sync_metadata(target, source, overwrite_objects, overwrite_tags, sin
     return new_images, table_meta, object_locations, object_meta, tags
 
 
-def _parse_dt(string: str) -> datetime:
-    _formats = [
-        "%Y-%m-%dT%H:%M:%S",
-        "%Y-%m-%d %H:%M:%S",
-        "%Y-%m-%dT%H:%M:%S.%f",
-        "%Y-%m-%d %H:%M:%S.%f",
-    ]
-    for fmt in _formats:
-        try:
-            return datetime.strptime(string, fmt)
-        except ValueError:
-            continue
-
-    raise ValueError("Unknown datetime format for string %s!" % string)
-
-
-def _parse_date(string: str) -> date:
-    return datetime.strptime(string, "%Y-%m-%d").date()
-
-
 _TYPE_MAP: Dict[str, Callable] = {
     k: cast(Callable, v)
     for ks, v in [
         (["integer", "bigint", "smallint"], int),
         (["numeric", "real", "double precision"], float),
-        (["timestamp", "timestamp without time zone"], _parse_dt),
-        (["date"], _parse_date),
+        (["timestamp", "timestamp without time zone"], parse_dt),
+        (["date"], parse_date),
     ]
     for k in ks
 }

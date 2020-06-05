@@ -26,7 +26,7 @@ def test_import_empty(ingestion_test_repo, custom_separator):
 
     # Check a line in the table
     assert ingestion_test_repo.run_sql("SELECT * FROM test_table WHERE fruit_id = 4") == [
-        (4, "2018-01-04 00:44:44", "mustard")
+        (4, dt(2018, 1, 4, 0, 44, 44), "mustard")
     ]
 
 
