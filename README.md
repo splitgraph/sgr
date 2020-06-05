@@ -1,5 +1,3 @@
-[![Splitgraph](https://splitgraph.com/img/logo-colour-full.svg)](https://splitgraph.com)
-
 ![](https://www.mildbyte.xyz/asciicast/splitfiles.gif)
 
 # Splitgraph
@@ -7,7 +5,7 @@
 [![Discord chat room](https://img.shields.io/discord/718534846472912936.svg)](https://discord.gg/4Qe2fYA)
 [![Follow](https://img.shields.io/badge/twitter-@Splitgraph-blue.svg)](https://twitter.com/Splitgraph)
 
-Splitgraph is a tool for building, versioning, querying and sharing datasets that works on top of [PostgreSQL](https://postgresql.org) and integrates seamlessly with anything that uses PostgreSQL.
+[Splitgraph](https://www.splitgraph.com) is a tool for building, versioning, querying and sharing datasets that works on top of [PostgreSQL](https://postgresql.org) and [integrates](https://www.splitgraph.com/product/splitgraph/integrations) seamlessly with anything that uses PostgreSQL.
 
 This repository contains most of the core code for the Splitgraph library, 
 the [`sgr` command line client](https://www.splitgraph.com/docs/architecture/sgr-client) and the [Splitgraph Engine](engine/README.md). 
