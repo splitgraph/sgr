@@ -1,7 +1,9 @@
 ![](https://www.mildbyte.xyz/asciicast/splitfiles.gif)
 
 # Splitgraph
-![Build status](https://github.com/splitgraph/splitgraph/workflows/build_all/badge.svg) [![Coverage Status](https://coveralls.io/repos/github/splitgraph/splitgraph/badge.svg?branch=master)](https://coveralls.io/github/splitgraph/splitgraph?branch=master)
+![Build status](https://github.com/splitgraph/splitgraph/workflows/build_all/badge.svg)
+[![Coverage Status](https://coveralls.io/repos/github/splitgraph/splitgraph/badge.svg?branch=master)](https://coveralls.io/github/splitgraph/splitgraph?branch=master)
+[![PyPI version](https://badge.fury.io/py/splitgraph.svg)](https://badge.fury.io/py/splitgraph)
 [![Discord chat room](https://img.shields.io/discord/718534846472912936.svg)](https://discord.gg/4Qe2fYA)
 [![Follow](https://img.shields.io/badge/twitter-@Splitgraph-blue.svg)](https://twitter.com/Splitgraph)
 
