@@ -53,7 +53,7 @@
   - sgr init dbt_jaffle
 - commands:
   - "# Now run the dbt models."
-  - dbt run --profiles-dir ../.dbt --project-dir jaffle_shop
+  - cd jaffle_shop && dbt run --profiles-dir ../.dbt
 - commands:
   - "# Take a look at the built dataset and commit it."
   - "# Note Splitgraph doesn't currently support storing views"
@@ -64,7 +64,7 @@
 - commands:
   - "# Check out the new version of the raw dataset and run dbt against it as well."
   - sgr checkout raw_jaffle_shop:asof_20180410
-  - dbt run --profiles-dir ../.dbt --project-dir jaffle_shop
+  - cd jaffle_shop && dbt run --profiles-dir ../.dbt
 - commands:
   - "# Create an image from the new data."
   - sgr commit dbt_jaffle
