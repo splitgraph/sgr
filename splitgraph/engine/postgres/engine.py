@@ -543,7 +543,7 @@ class PsycopgEngine(SQLEngine):
                 batches = _paginate_by_size(
                     cur,
                     statement,
-                    [_convert_vals(a) for a in arguments],
+                    (_convert_vals(a) for a in arguments),
                     max_size=API_MAX_QUERY_LENGTH,
                 )
                 for batch in batches:
