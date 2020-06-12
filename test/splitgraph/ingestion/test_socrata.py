@@ -41,24 +41,24 @@ class S(NamedTuple):
 @pytest.mark.parametrize(
     "quals,expected",
     [
-        ([Q("some_col", ">", 42)], "(some_col > 42)"),
+        ([Q("some_col", ">", 42)], "(`some_col` > 42)"),
         (
             [
                 Q("some_col", ">", 42),
                 Q("some_other_col", "~~", "%te'st%"),
                 Q("some_other_col", "^", 1.23),
             ],
-            "(some_col > 42) AND (some_other_col LIKE '%te''st%') AND (TRUE)",
+            "(`some_col` > 42) AND (`some_other_col` LIKE '%te''st%') AND (TRUE)",
         ),
         (
             [
                 Q("some_col", "=", [1, 2], is_list=True),
                 Q("some_other_col", "<>", [1, 2], is_list=True, is_list_any=False),
             ],
-            "((some_col = 1) OR (some_col = 2)) "
-            "AND ((some_other_col <> 1) AND (some_other_col <> 2))",
+            "((`some_col` = 1) OR (`some_col` = 2)) "
+            "AND ((`some_other_col` <> 1) AND (`some_other_col` <> 2))",
         ),
-        ([Q("some_col", "=", None)], "(some_col = NULL)"),
+        ([Q("some_col", "=", None)], "(`some_col` = NULL)"),
     ],
 )
 def test_socrata_quals(quals, expected):
@@ -66,15 +66,15 @@ def test_socrata_quals(quals, expected):
 
 
 def test_socrata_cols():
-    assert cols_to_socrata(["a", "b", "c"]) == "a,b,c"
+    assert cols_to_socrata(["a", "b", "c"]) == "`a`,`b`,`c`"
 
 
 def test_socrata_sortkeys():
     assert sortkeys_to_socrata([]) == ":id"
-    assert sortkeys_to_socrata([S("col")]) == "col ASC"
+    assert sortkeys_to_socrata([S("col")]) == "`col` ASC"
     assert (
         sortkeys_to_socrata([S("col", nulls_first=True, is_reversed=True), S("col2")])
-        == "col DESC,col2 ASC"
+        == "`col` DESC,`col2` ASC"
     )
 
     with pytest.raises(ValueError):
@@ -248,10 +248,10 @@ def test_socrata_fdw():
         assert socrata.get_all.mock_calls == [
             call(
                 dataset_identifier="xzkq-xp2w",
-                where="(salary > 42)",
-                select="name,job_titles,annual_salary",
+                where="(`salary` > 42)",
+                select="`name`,`job_titles`,`annual_salary`",
                 limit=4200,
-                order="name ASC",
+                order="`name` ASC",
             )
         ]
 

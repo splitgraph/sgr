@@ -110,13 +110,15 @@ def estimate_socrata_rows_width(columns, metadata):
     cardinality = int(contents["non_null"]) + int(contents["null"])
     column_widths = {c["fieldName"]: c.get("width", 100) for c in metadata["columns"]}
 
-    row_width = sum(column_widths[c] for c in columns)
+    # Socrata doesn't return the Socrata Row ID width in its metadata but we know
+    # how big it usually is (row-XXXX.XXXX_XXXX).
+    row_width = sum(column_widths[c] if c != ":id" else 18 for c in columns)
 
     return cardinality, row_width
 
 
 def _emit_col(col):
-    return col
+    return f"`{col}`"
 
 
 def _emit_val(val):
