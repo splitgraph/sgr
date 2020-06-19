@@ -264,7 +264,6 @@ def mount(
 
     engine = get_engine()
     mh_func = get_mount_handler(mount_handler)
-    logging.info("Connecting to remote server...")
 
     engine.run_sql(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(mountpoint)))
     engine.run_sql(
