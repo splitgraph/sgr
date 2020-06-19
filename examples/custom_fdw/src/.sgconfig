@@ -1,0 +1,10 @@
+[defaults]
+; Credentials to log into the engine
+SG_ENGINE_HOST=engine
+SG_ENGINE_PORT=5432
+SG_ENGINE_USER=sgr
+SG_ENGINE_PWD=supersecure
+
+[mount_handlers]
+; Register the "mount_hn" function as the hackernews mount handler
+hackernews=hn_fdw.mount.mount_hn
