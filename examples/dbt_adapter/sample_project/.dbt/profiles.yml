@@ -1,0 +1,16 @@
+# This is a sample dbt profile. Note that it's supposed to be in your home directory,
+# configured with your own credentials. It's only here as an example.
+# See https://docs.getdbt.com/docs/running-a-dbt-project/using-the-command-line-interface/configure-your-profile/
+# for more information.
+default:
+  target: splitgraph
+  outputs:
+    splitgraph:
+      type: splitgraph
+      host: localhost
+      user: sgr
+      pass: password
+      port: 5432
+      dbname: splitgraph
+      schema: adapter_showcase
+      threads: 4
