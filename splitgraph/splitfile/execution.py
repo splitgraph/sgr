@@ -123,7 +123,6 @@ class ImageMapper:
             self.object_engine.delete_schema(temporary_schema)
             self.object_engine.create_schema(temporary_schema)
             source_image._lq_checkout(target_schema=temporary_schema)
-        self.object_engine.commit()
 
     def teardown_lq_mounts(self) -> None:
         for temporary_schema, _, _ in self.image_map.values():
@@ -266,6 +265,7 @@ def _execute_sql(node: Node, output: Repository) -> ProvenanceLine:
         logging.info("Executing SQL...")
         try:
             image_mapper.setup_lq_mounts()
+            output.object_engine.commit()
             sql_to_run = get_singleton(CONFIG, "SG_LQ_TUNING") + sql_rewritten
             logging.debug("Running rewritten SQL %s against %s", sql_to_run, output)
             output.run_sql(sql_to_run)

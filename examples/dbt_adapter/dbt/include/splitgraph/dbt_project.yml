@@ -1,0 +1,7 @@
+config-version: 2
+name: dbt_splitgraph
+version: 1.0
+
+# Note that these macros are copypasted from the official dbt Redshift Jinja macros
+# that mostly call their Postgres counterparts and edited so that all macros just call Postgres.
+macro-paths: ["macros"]
