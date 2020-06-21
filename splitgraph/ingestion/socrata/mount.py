@@ -4,6 +4,7 @@ from typing import Optional, Dict, Any
 
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph.exceptions import RepositoryNotFoundError
 from splitgraph.hooks.mount_handlers import init_fdw
 
 
@@ -58,7 +59,15 @@ def mount_socrata(
     logging.info("Getting Socrata metadata")
     client = Socrata(domain=domain, app_token=app_token)
     sought_ids = tables.values() if tables else []
-    datasets = client.datasets(ids=sought_ids, only=["dataset"])
+
+    try:
+        datasets = client.datasets(ids=sought_ids, only=["dataset"])
+    except Exception as e:
+        if "Unknown response format: text/html" in str(e):
+            # If the Socrata dataset/domain isn't found, sodapy doesn't catch it directly
+            # and instead stumbles on an unexpected content-type of the 404 page it's served.
+            # We catch that and reraise a more friendly message.
+            raise RepositoryNotFoundError("Socrata domain or dataset not found!") from e
 
     mount_statements, mount_args = generate_socrata_mount_queries(
         sought_ids, datasets, mountpoint, server_id, tables

@@ -9,6 +9,7 @@ from sodapy import Socrata
 from test.splitgraph.conftest import INGESTION_RESOURCES
 
 from splitgraph.core.types import TableColumn
+from splitgraph.exceptions import RepositoryNotFoundError
 from splitgraph.ingestion.socrata.mount import mount_socrata
 from splitgraph.ingestion.socrata.querying import (
     estimate_socrata_rows_width,
@@ -160,6 +161,23 @@ def test_socrata_mounting(local_engine_empty):
             comment="Department where employee worked.",
         ),
     ]
+
+
+def test_socrata_mounting_error():
+    socrata = MagicMock(spec=Socrata)
+    socrata.datasets.side_effect = Exception("Unknown response format: text/html; charset=utf-8")
+    with mock.patch("sodapy.Socrata", return_value=socrata):
+        with pytest.raises(RepositoryNotFoundError):
+            mount_socrata(
+                "test/pg_mount",
+                None,
+                None,
+                None,
+                None,
+                "example.com",
+                {"some_table": "xzkq-xp2w"},
+                "some_token",
+            )
 
 
 def test_socrata_mounting_slug(local_engine_empty):
