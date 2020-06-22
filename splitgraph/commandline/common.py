@@ -80,14 +80,28 @@ class RepositoryType(click.ParamType):
         return result
 
 
+def load_json_param(value: str, param: Optional[Parameter], ctx: Optional[Context]):
+    if value.startswith("@"):
+        fopt = click.File(mode="r")
+        f = fopt.convert(value[1:], param, ctx)
+        try:
+            return json.load(f)
+        finally:
+            f.close()
+    return json.loads(value)
+
+
 class JsonType(click.ParamType):
     """Parser for Json -- a wrapper around json.loads because without specifying
-    the name Click shows the type for the option/arg as LOADS."""
+    the name Click shows the type for the option/arg as LOADS.
+
+    Also supports passing JSON files (pass in @filename.json).
+    """
 
     name = "Json"
 
     def convert(self, value: str, param: Optional[Parameter], ctx: Optional[Context]):
-        return json.loads(value)
+        return load_json_param(value, param, ctx)
 
 
 class Color:
