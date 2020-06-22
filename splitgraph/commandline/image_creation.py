@@ -1,7 +1,6 @@
 """
 sgr commands related to creating and checking out images
 """
-import json
 import sys
 from collections import defaultdict
 
@@ -331,7 +330,7 @@ def import_c(image_spec, table_or_query, target_repository, target_table):
 @click.option(
     "-i",
     "--index-options",
-    type=json.loads,
+    type=JsonType(),
     required=True,
     help="JSON dictionary of extra indexes to calculate, e.g. "
     '\'{"bloom": {"column_1": {"probability": 0.01}}}\'',

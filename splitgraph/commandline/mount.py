@@ -2,13 +2,13 @@
 sgr commands related to mounting databases via Postgres FDW
 """
 
-import json
 import re
 from typing import Tuple, Optional
 
 import click
 from click.core import Command
 
+from splitgraph.commandline.common import JsonType
 from splitgraph.hooks.mount_handlers import get_mount_handler, get_mount_handlers, mount
 
 _PARAM_REGEX = re.compile(
@@ -44,7 +44,7 @@ def _generate_handler_help(docstring: str) -> Tuple[str, str]:
     try:
         help_text, handler_params = docstring.split("\b")
 
-        handler_help_text = "JSON-encoded dictionary of handler options:\n\n"
+        handler_help_text = "JSON-encoded dictionary or @filename.json with handler options:\n\n"
 
         formatted_params = []
         for line in handler_params.split(":param"):
@@ -86,12 +86,13 @@ def _make_mount_handler_command(handler_name: str) -> Command:
             ["--connection", "-c"],
             help="Connection string in the form username:password@server:port",
         ),
-        click.Option(["--handler-options", "-o"], help=handler_options_help, default="{}"),
+        click.Option(
+            ["--handler-options", "-o"], help=handler_options_help, default="{}", type=JsonType()
+        ),
     ]
     from splitgraph.core.output import conn_string_to_dict
 
     def _callback(schema, connection, handler_options):
-        handler_options = json.loads(handler_options)
         handler_options.update(conn_string_to_dict(connection))
         mount(schema, mount_handler=handler_name, handler_kwargs=handler_options)
 

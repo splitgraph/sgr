@@ -2,12 +2,11 @@
 sgr commands related to sharing and downloading images.
 """
 
-import json
 import sys
 
 import click
 
-from splitgraph.commandline.common import RepositoryType, ImageType
+from splitgraph.commandline.common import RepositoryType, ImageType, JsonType
 from splitgraph.config import CONFIG, REMOTES
 from splitgraph.config.config import get_from_subsection
 
@@ -92,7 +91,13 @@ def clone_c(
     "-r", "--remote", help="Name of the remote engine", type=click.Choice(REMOTES), default=None,
 )
 @click.option("-h", "--upload-handler", help="Upload handler", default="S3")
-@click.option("-o", "--upload-handler-options", help="Upload handler parameters", default="{}")
+@click.option(
+    "-o",
+    "--upload-handler-options",
+    help="Upload handler parameters",
+    default="{}",
+    type=JsonType(),
+)
 @click.option(
     "-f",
     "--overwrite-object-meta",
@@ -147,7 +152,7 @@ def push_c(
     repository.push(
         remote_repository,
         handler=upload_handler,
-        handler_options=json.loads(upload_handler_options),
+        handler_options=upload_handler_options,
         overwrite_objects=overwrite_object_meta,
         reupload_objects=reupload_objects,
         overwrite_tags=tags,

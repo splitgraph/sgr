@@ -1,4 +1,5 @@
 import json
+import tempfile
 from decimal import Decimal
 
 import pytest
@@ -33,26 +34,31 @@ def test_misc_mountpoint_management(pg_repo_local, mg_repo_local):
     assert "Initialized empty repository output" in result.output
     assert repository_exists(OUTPUT)
 
-    # sgr mount
-    result = runner.invoke(
-        mount_c,
-        [
-            "mongo_fdw",
-            str(mg_repo_local),
-            "-c",
-            "originro:originpass@mongoorigin:27017",
-            "-o",
-            json.dumps(
-                {
-                    "stuff": {
-                        "db": "origindb",
-                        "coll": "stuff",
-                        "schema": {"name": "text", "duration": "numeric", "happy": "boolean"},
-                    }
+    # sgr mount with a file
+    with tempfile.NamedTemporaryFile("w") as f:
+        json.dump(
+            {
+                "stuff": {
+                    "db": "origindb",
+                    "coll": "stuff",
+                    "schema": {"name": "text", "duration": "numeric", "happy": "boolean"},
                 }
-            ),
-        ],
-    )
+            },
+            f,
+        )
+        f.flush()
+
+        result = runner.invoke(
+            mount_c,
+            [
+                "mongo_fdw",
+                str(mg_repo_local),
+                "-c",
+                "originro:originpass@mongoorigin:27017",
+                "-o",
+                "@" + f.name,
+            ],
+        )
     assert result.exit_code == 0
     assert mg_repo_local.run_sql("SELECT duration from stuff WHERE name = 'James'") == [
         (Decimal(2),)
