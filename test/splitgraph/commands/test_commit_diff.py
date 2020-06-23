@@ -987,59 +987,44 @@ def test_multiengine_object_gets_recreated(local_engine_empty, pg_repo_remote, c
 
     # Checkout to force objects to download
     pg_repo_local.images["latest"].checkout()
-    pg_repo_local.uncheckout()
-    parent = pg_repo_local.images[pg_repo_local.images["latest"].parent_id]
 
-    old_objects = [
-        "of22f20503d3bf17c7449b545d68ebcee887ed70089f0342c4bff38862c0dc5",
-        "of0fb43e477311f82aa30055be303ff00599dfe155d737def0d00f06e07228b",
-        "o23fe42d48d7545596d0fea1c48bcf7d64bde574d437c77cc5bb611e5f8849d",
-        "o3f81f6c40ecc3366d691a2ce45f41f6f180053020607cbd0873baf0c4447dc",
-    ]
-    assert parent.get_table("fruits").objects == old_objects
+    # Commit as a snap so that just one object exists in this image
+    image = pg_repo_local.commit(snap_only=True)
+    single_object = "oe23b8e93f312329e15c511cb09586c3bff6dc7dac8e9f2b93359604ac66b96"
 
-    # Delete an image from the metadata engine and delete the corresponding object
-    # from meta and Minio
-    objects = pg_repo_local.images["latest"].get_table("fruits").objects
-    assert objects == old_objects + [
-        "oc27ee277aff108525a2df043d9efdaa1c3e26a4949a6cf6b53ee0c889c8559"
-    ]
-    object_to_delete = objects[-1]
-    object_to_delete_meta = pg_repo_local.objects.get_object_meta([object_to_delete])[
-        object_to_delete
-    ]
+    assert image.get_table("fruits").objects == [single_object]
 
-    pg_repo_local.images.delete([pg_repo_local.images["latest"].image_hash])
+    # Delete the image from the metadata engine, as well as the object.
+
+    object_to_delete_meta = pg_repo_local.objects.get_object_meta([single_object])[single_object]
+
+    pg_repo_local.images.delete([image.image_hash])
     pg_repo_local.engine.run_sql(
-        "DELETE FROM splitgraph_meta.object_locations WHERE object_id = %s", (object_to_delete,)
+        "DELETE FROM splitgraph_meta.object_locations WHERE object_id = %s", (single_object,)
     )
     pg_repo_local.engine.run_sql(
-        "DELETE FROM splitgraph_meta.objects WHERE object_id = %s", (object_to_delete,)
+        "DELETE FROM splitgraph_meta.objects WHERE object_id = %s", (single_object,)
     )
-    delete_objects(clean_minio, [object_to_delete])
+    delete_objects(clean_minio, [single_object])
 
-    # Check the parent image out and unknowingly recreate the image we deleted, with the same object.
-    # _prepare_fully_remote_repo has default values for columns 'number' and 'timestamp' that
-    # don't get set after a checkout
-    parent.checkout()
-    pg_repo_local.run_sql("INSERT INTO fruits VALUES (4, 'kumquat', 1, '2019-01-01T12:00:00')")
-    assert pg_repo_local.head.get_table("fruits").objects == old_objects
-    new_image = pg_repo_local.commit()
-
+    # Commit the image again, recreating the same object
+    pg_repo_local.images["latest"].checkout()
+    image = pg_repo_local.commit(snap_only=True)
     # Make sure the object was reregistered
-    assert new_image.get_table("fruits").objects == old_objects + [object_to_delete]
-    assert object_to_delete in pg_repo_local.objects.get_all_objects()
-    assert object_to_delete in pg_repo_local.objects.get_downloaded_objects()
+    assert image.get_table("fruits").objects == [single_object]
+
+    assert single_object in pg_repo_local.objects.get_all_objects()
+    assert single_object in pg_repo_local.objects.get_downloaded_objects()
 
     # New object has same metadata apart from creation timestamp (slightly in the future)
-    actual_meta = pg_repo_local.objects.get_object_meta([object_to_delete])[object_to_delete]
+    actual_meta = pg_repo_local.objects.get_object_meta([single_object])[single_object]
     expected_meta = object_to_delete_meta._replace(created=actual_meta.created)
     assert expected_meta == actual_meta
 
     # Force a reupload and make sure the object exists in Minio.
-    assert object_to_delete not in list_objects(clean_minio)
-    pg_repo_local.objects.make_objects_external([object_to_delete], handler="S3", handler_params={})
-    assert object_to_delete in list_objects(clean_minio)
+    assert single_object not in list_objects(clean_minio)
+    pg_repo_local.objects.make_objects_external([single_object], handler="S3", handler_params={})
+    assert single_object in list_objects(clean_minio)
 
 
 def test_create_object_out_of_band(local_engine_empty):

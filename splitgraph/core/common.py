@@ -87,11 +87,16 @@ def manage_audit_triggers(
         * Drop audit triggers for those and delete all audit info for them
         * Set up audit triggers for new tables
 
+    If the metadata engine isn't the same as the object engine, this does nothing.
+
     :param engine: Metadata engine with information about images and their checkout state
     :param object_engine: Object engine where the checked-out table and the audit triggers are located.
     """
 
     object_engine = object_engine or engine
+
+    if object_engine != engine:
+        return
 
     from splitgraph.core.engine import get_current_repositories
 
