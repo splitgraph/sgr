@@ -1,5 +1,6 @@
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
 
+from splitgraph.core.sql import POSTGRES_MAX_IDENTIFIER
 from splitgraph.core.types import TableSchema, TableColumn
 
 try:
@@ -72,11 +73,19 @@ def dedupe_sg_schema(schema_spec: TableSchema, prefix_len: int = 59) -> TableSch
                 )
             )
         else:
-            result.append(column)
+            result.append(
+                TableColumn(
+                    column.ordinal,
+                    column.name[:POSTGRES_MAX_IDENTIFIER],
+                    column.pg_type,
+                    column.is_pk,
+                    column.comment,
+                )
+            )
     return result
 
 
-def socrata_to_sg_schema(metadata: Dict[str, Any]) -> TableSchema:
+def socrata_to_sg_schema(metadata: Dict[str, Any]) -> Tuple[TableSchema, Dict[str, str]]:
     try:
         col_names = metadata["resource"]["columns_field_name"]
         col_types = metadata["resource"]["columns_datatype"]
@@ -95,12 +104,21 @@ def socrata_to_sg_schema(metadata: Dict[str, Any]) -> TableSchema:
         for i, (n, t, d) in enumerate(zip(col_names, col_types, col_desc))
     ]
 
-    return dedupe_sg_schema(result)
+    # Truncate Socrata column names to 63 characters and calculate
+    # a map of Splitgraph columns to Socrata columns.
+    result_deduped = dedupe_sg_schema(result)
+
+    sg_to_socrata_cols = {
+        d.name: r.name for r, d in zip(result, result_deduped) if d.name != r.name
+    }
+
+    return result_deduped, sg_to_socrata_cols
 
 
-def estimate_socrata_rows_width(columns, metadata):
+def estimate_socrata_rows_width(columns, metadata, column_map=None):
     """Estimate number of rows required for a query and each row's width
     from the table metadata."""
+    column_map = column_map or {}
 
     # We currently don't use qualifiers for this, they get passed to Socrata
     # directly. Socrata's metadata does contain some statistics for each column
@@ -112,13 +130,14 @@ def estimate_socrata_rows_width(columns, metadata):
 
     # Socrata doesn't return the Socrata Row ID width in its metadata but we know
     # how big it usually is (row-XXXX.XXXX_XXXX).
-    row_width = sum(column_widths[c] if c != ":id" else 18 for c in columns)
+    row_width = sum(column_widths[column_map.get(c, c)] if c != ":id" else 18 for c in columns)
 
     return cardinality, row_width
 
 
-def _emit_col(col):
-    return f"`{col}`"
+def _emit_col(col, column_map: Optional[Dict[str, str]] = None):
+    column_map = column_map or {}
+    return f"`{column_map.get(col, col)}`"
 
 
 def _emit_val(val):
@@ -138,40 +157,41 @@ def _convert_op(op):
     return None
 
 
-def _base_qual_to_socrata(col, op, value):
+def _base_qual_to_socrata(col, op, value, column_map=None):
     soql_op = _convert_op(op)
     if not soql_op:
         return "TRUE"
     else:
-        return f"{_emit_col(col)} {soql_op} {_emit_val(value)}"
+        return f"{_emit_col(col, column_map)} {soql_op} {_emit_val(value)}"
 
 
-def _qual_to_socrata(qual):
+def _qual_to_socrata(qual, column_map=None):
     if qual.is_list_operator:
         if qual.list_any_or_all == ANY:
             # Convert col op ANY([a,b,c]) into (cop op a) OR (col op b)...
             return " OR ".join(
-                f"({_base_qual_to_socrata(qual.field_name, qual.operator[0], v)})"
+                f"({_base_qual_to_socrata(qual.field_name, qual.operator[0], v, column_map)})"
                 for v in qual.value
             )
         # Convert col op ALL(ARRAY[a,b,c...]) into (cop op a) AND (col op b)...
         return " AND ".join(
-            f"({_base_qual_to_socrata(qual.field_name, qual.operator[0], v)})" for v in qual.value
+            f"({_base_qual_to_socrata(qual.field_name, qual.operator[0], v, column_map)})"
+            for v in qual.value
         )
     else:
-        return f"{_base_qual_to_socrata(qual.field_name, qual.operator[0], qual.value)}"
+        return f"{_base_qual_to_socrata(qual.field_name, qual.operator[0], qual.value, column_map)}"
 
 
-def quals_to_socrata(quals):
+def quals_to_socrata(quals, column_map: Optional[Dict[str, str]] = None):
     """Convert a list of Multicorn quals to a SoQL query"""
-    return " AND ".join(f"({_qual_to_socrata(q)})" for q in quals)
+    return " AND ".join(f"({_qual_to_socrata(q, column_map)})" for q in quals)
 
 
-def cols_to_socrata(cols):
-    return ",".join(f"{_emit_col(c)}" for c in cols)
+def cols_to_socrata(cols, column_map: Optional[Dict[str, str]] = None):
+    return ",".join(f"{_emit_col(c, column_map)}" for c in cols)
 
 
-def sortkeys_to_socrata(sortkeys):
+def sortkeys_to_socrata(sortkeys, column_map: Optional[Dict[str, str]] = None):
     if not sortkeys:
         # Always sort on ID for stable paging
         return ":id"
@@ -181,5 +201,5 @@ def sortkeys_to_socrata(sortkeys):
         if key.nulls_first != key.is_reversed:
             raise ValueError("Unsupported SortKey %s" % str(key))
         order = "DESC" if key.is_reversed else "ASC"
-        clauses.append(f"{_emit_col(key.attname)} {order}")
+        clauses.append(f"{_emit_col(key.attname, column_map)} {order}")
     return ",".join(clauses)

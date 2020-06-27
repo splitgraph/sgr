@@ -39,6 +39,11 @@ class S(NamedTuple):
     is_reversed: bool = False
 
 
+_long_name_col = "name_long_column_to_test_that_we_map_to_socrata_column_names_correctly"
+_long_name_col_sg = "name_long_column_to_test_that_we_map_to_socrata_column_names_co"
+_col_map = {_long_name_col_sg: _long_name_col}
+
+
 @pytest.mark.parametrize(
     "quals,expected",
     [
@@ -96,10 +101,10 @@ def test_socrata_get_rel_size():
         162,
     )
     assert estimate_socrata_rows_width(
-        columns=["annual_salary", "name"], metadata=socrata_meta
+        columns=["annual_salary", _long_name_col_sg], metadata=socrata_meta, column_map=_col_map
     ) == (33702, 380)
     assert estimate_socrata_rows_width(
-        columns=["name", "annual_salary"], metadata=socrata_meta
+        columns=[_long_name_col_sg, "annual_salary"], metadata=socrata_meta, column_map=_col_map
     ) == (33702, 380)
 
 
@@ -152,7 +157,9 @@ def test_socrata_mounting(local_engine_empty):
         TableColumn(
             ordinal=7, name="annual_salary", pg_type="numeric", is_pk=False, comment=mock.ANY
         ),
-        TableColumn(ordinal=8, name="name", pg_type="text", is_pk=False, comment=mock.ANY),
+        TableColumn(
+            ordinal=8, name=_long_name_col_sg, pg_type="text", is_pk=False, comment=mock.ANY
+        ),
         TableColumn(
             ordinal=9,
             name="department",
@@ -161,6 +168,13 @@ def test_socrata_mounting(local_engine_empty):
             comment="Department where employee worked.",
         ),
     ]
+
+    assert local_engine_empty.run_sql(
+        "SELECT option_value FROM information_schema.foreign_table_options "
+        "WHERE foreign_table_name = 'some_table' "
+        "AND foreign_table_schema = 'test/pg_mount' "
+        "AND option_name = 'column_map'"
+    ) == [(f'{{"{_long_name_col_sg}": "{_long_name_col}"}}',)]
 
 
 def test_socrata_mounting_error():
@@ -226,8 +240,8 @@ def test_socrata_fdw():
     socrata = MagicMock(spec=Socrata)
     socrata.get_metadata.return_value = socrata_meta
     socrata.get_all.return_value = [
-        {"name": "Test", "job_titles": "Test Title", "annual_salary": 123456.0},
-        {"name": "Test2", "job_titles": "Test Title 2", "annual_salary": 789101.0},
+        {_long_name_col: "Test", "job_titles": "Test Title", "annual_salary": 123456.0},
+        {_long_name_col: "Test2", "job_titles": "Test Title 2", "annual_salary": 789101.0},
     ]
 
     with mock.patch("sodapy.Socrata", return_value=socrata):
@@ -239,14 +253,15 @@ def test_socrata_fdw():
                 "domain": "data.cityofchicago.gov",
                 "app_token": "SOME_TOKEN",
                 "batch_size": "4200",
+                "column_map": json.dumps(_col_map),
             },
-            fdw_columns=["name", "job_titles", "annual_salary"],
+            fdw_columns=[_long_name_col_sg, "job_titles", "annual_salary"],
         )
 
-        assert fdw.get_rel_size([], ["annual_salary", "name"]) == (33702, 380)
-        assert fdw.can_sort([S("name"), S("salary", nulls_first=False, is_reversed=True)]) == [
-            S("name")
-        ]
+        assert fdw.get_rel_size([], ["annual_salary", _long_name_col_sg]) == (33702, 380)
+        assert fdw.can_sort(
+            [S(_long_name_col_sg), S("salary", nulls_first=False, is_reversed=True)]
+        ) == [S(_long_name_col_sg)]
         assert fdw.explain([], []) == [
             "Socrata query to data.cityofchicago.gov",
             "Socrata dataset ID: xzkq-xp2w",
@@ -255,21 +270,21 @@ def test_socrata_fdw():
         assert list(
             fdw.execute(
                 quals=[Q("salary", ">", 42)],
-                columns=["name", "job_titles", "annual_salary"],
-                sortkeys=[S("name")],
+                columns=[_long_name_col_sg, "job_titles", "annual_salary"],
+                sortkeys=[S(_long_name_col_sg)],
             )
         ) == [
-            {"name": "Test", "job_titles": "Test Title", "annual_salary": 123456.0},
-            {"name": "Test2", "job_titles": "Test Title 2", "annual_salary": 789101.0},
+            {_long_name_col_sg: "Test", "job_titles": "Test Title", "annual_salary": 123456.0},
+            {_long_name_col_sg: "Test2", "job_titles": "Test Title 2", "annual_salary": 789101.0},
         ]
 
         assert socrata.get_all.mock_calls == [
             call(
                 dataset_identifier="xzkq-xp2w",
                 where="(`salary` > 42)",
-                select="`name`,`job_titles`,`annual_salary`",
+                select=f"`{_long_name_col}`,`job_titles`,`annual_salary`",
                 limit=4200,
-                order="`name` ASC",
+                order=f"`{_long_name_col}` ASC",
             )
         ]
 
@@ -309,7 +324,7 @@ def test_socrata_column_deduplication():
         ),
         TableColumn(
             ordinal=3,
-            name="long_col_but_still_uniquelong_col_but_still_uniquelong_col_but_still_unique",
+            name="long_col_but_still_uniquelong_col_but_still_uniquelong_col_but_",
             pg_type="some_type",
             is_pk=False,
             comment=None,
