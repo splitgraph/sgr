@@ -77,28 +77,29 @@ Mounting jobstories...
 You can now run ordinary SQL queries against these tables:
 
 ```
-$ sgr sql -s hackernews "SELECT id, title, url, score FROM showstories LIMIT 10"
+$ sgr sql -s hackernews "SELECT id, title, url, score FROM topstories LIMIT 10"
 
-23573474  Show HN: OBS-web, control OBS from the browser                                    https://github.com/Niek/obs-web                                                                      49
-23574723  Launch HN: Mighty Health (YC S19) – Health coaching for people over 50                                                                                                                 17
-23575326  Show HN: Jargon-free financial advice via text                                                                                                                                          3
-23574926  Show HN: Cedreo easy Floor Plan Software. Instant 3D floor plans from 2D drawing  https://cedreo.com/floor-plan-software/                                                               2
-23574842  Show HN: A QEMU port for iOS that you can sideload                                https://getutm.app/                                                                                   2
-23569912  Show HN: Noodel.js – User interface for beautiful, dynamic content trees          https://github.com/zlu883/Noodel                                                                     17
-23562165  Show HN: Poica – Algebraic data types and type introspection for pure C           https://github.com/Hirrolot/poica                                                                   101
-23560046  Show HN: My Book on Evolutionary Algorithms, Written in Python Notebooks          https://shahinrostami.com/posts/search-and-optimisation/practical-evolutionary-algorithms/preface/   59
-23572342  Show HN: Portable Serverless without the complexity of Kubernetes                 https://www.openfaas.com/blog/introducing-faasd/                                                      6
-23561904  Show HN: Flatend – Quickly build microservices using P2P networking in Node/Go    https://github.com/lithdew/flatend                                                                  134
+23648942  Amazon to pay $1B+ for Zoox                                             https://www.axios.com/report-amazon-to-pay-1-billion-for-self-driving-tech-firm-zoox-719d293b-3799-4315-a573-a226a58bb004.html                              55
+23646158  When you type realty.com into Safari it takes you to realtor.com        https://www.facebook.com/story.php?story_fbid=10157161487396994&id=501751993                                                                               653
+23648864  Turn recipe websites into plain text                                    https://plainoldrecipe.com/                                                                                                                                 30
+23644253  Olympus quits camera business after 84 years                            https://www.bbc.com/news/technology-53165293                                                                                                               548
+23648217  Boston bans use of facial recognition technology                        https://www.wbur.org/news/2020/06/23/boston-facial-recognition-ban                                                                                          51
+23646953  Curl Wttr.in                                                            https://github.com/chubin/wttr.in                                                                                                                          190
+23646164  Quora goes permanently remote-first                                     https://twitter.com/adamdangelo/status/1276210618786168833                                                                                                 267
+23646395  Dwarf Fortress Creator Explains Its Complexity and Origins [video]      https://www.youtube.com/watch?v=VAhHkJQ3KgY                                                                                                                152
+23645305  Blackballed by PayPal, Sci-Hub switches to Bitcoin                      https://www.coindesk.com/blackballed-by-paypal-scientific-paper-pirate-takes-bitcoin-donations                                                             479
+23646028  The Acorn Archimedes was the first desktop to use the ARM architecture  https://spectrum.ieee.org/tech-talk/consumer-electronics/gadgets/why-wait-for-apple-try-out-the-original-arm-desktop-experience-today-with-a-raspberry-pi  111
+
 ```
 
 Since actual query planning and filtering is done by PostgreSQL and the foreign data wrapper only
 fetches tuples from the API, all PostgreSQL constructs are supported:
 
 ```
-$ sgr sql -s hackernews "SELECT id, title, url, score FROM topstories \
-    WHERE title LIKE '%Python%' ORDER BY score DESC LIMIT 5"
-
-23549273  Practical Python Programming                                              https://github.com/dabeaz-course/practical-python                                                   341
-23559680  PyPy: A Faster Python Implementation                                      https://www.pypy.org/index.html                                                                      71
-23560046  Show HN: My Book on Evolutionary Algorithms, Written in Python Notebooks  https://shahinrostami.com/posts/search-and-optimisation/practical-evolutionary-algorithms/preface/   59
+$ sgr sql -s hackernews "SELECT id, title, url, score FROM showstories ORDER BY score DESC LIMIT 5"
+23643096  Show HN: Aviary.sh – A tiny Bash alternative to Ansible                           https://github.com/team-video/aviary.sh  235
+23626167  Show HN: HN Deck – An alternative way to browse Hacker News                       https://hndeck.sagunshrestha.com/        110
+23640069  Show HN: Sourceful – Crowdsourcing the best public Google docs                    https://sourceful.co.uk                  102
+23627066  Show HN: Splitgraph - Build and share data with Postgres, inspired by Docker/Git  http://www.splitgraph.com                 79
+23629125  Show HN: Deta – A cloud platform for building and deploying apps                  https://www.deta.sh/                      78
 ```
