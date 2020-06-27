@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.3 (2020-06-27)
+
+* Fix Socrata querying for datasets with long column names (https://github.com/splitgraph/splitgraph/pull/268)
+
+Full set of changes: [`v0.1.2...v0.1.3`](https://github.com/splitgraph/splitgraph/compare/v0.1.2...v0.1.3)
+
 ## v0.1.2 (2020-06-23)
 
 * Example for writing a custom FDW and integrating it with Splitgraph

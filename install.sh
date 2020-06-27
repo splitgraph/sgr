@@ -12,7 +12,7 @@
 
 set -eo pipefail
 
-SGR_VERSION=${SGR_VERSION-0.1.2}
+SGR_VERSION=${SGR_VERSION-0.1.3}
 INSTALL_DIR=${INSTALL_DIR-$HOME/.splitgraph}
 # Set IGNORE_SGR_EXISTS to keep going if sgr already exists.
 # Set SKIP_BINARY=1 to skip downloading sgr
