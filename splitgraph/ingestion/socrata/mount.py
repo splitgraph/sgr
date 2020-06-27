@@ -1,4 +1,5 @@
 """Splitgraph mount handler for Socrata datasets"""
+import json
 import logging
 from typing import Optional, Dict, Any
 
@@ -107,13 +108,14 @@ def generate_socrata_mount_queries(sought_ids, datasets, mountpoint, server_id, 
         table_name = tables_inv.get(socrata_id) or slugify(
             dataset["resource"]["name"]
         ) + "_" + socrata_id.replace("-", "_")
-        schema_spec = socrata_to_sg_schema(dataset)
+        schema_spec, column_map = socrata_to_sg_schema(dataset)
         sql, args = create_foreign_table(
             schema=mountpoint,
             server=server_id,
             table_name=table_name,
             schema_spec=schema_spec,
             internal_table_name=socrata_id,
+            extra_options={"column_map": json.dumps(column_map)},
         )
 
         description = dataset["resource"].get("description")

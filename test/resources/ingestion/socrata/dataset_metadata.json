@@ -57,7 +57,7 @@
       "name": "Name",
       "dataTypeName": "text",
       "description": "Name of employee",
-      "fieldName": "name",
+      "fieldName": "name_long_column_to_test_that_we_map_to_socrata_column_names_correctly",
       "position": 1,
       "rdfProperties": "http://xmlns.com/foaf/0.1/name",
       "renderTypeName": "text",
