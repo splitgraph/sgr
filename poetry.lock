@@ -190,7 +190,7 @@ description = "Show coverage stats online via coveralls.io"
 name = "coveralls"
 optional = false
 python-versions = ">= 3.5"
-version = "2.0.0"
+version = "2.1.0"
 
 [package.dependencies]
 coverage = ">=4.1,<6.0"
@@ -1037,7 +1037,7 @@ testing = ["jaraco.itertools", "func-timeout"]
 pandas = ["pandas", "sqlalchemy"]
 
 [metadata]
-content-hash = "0b1f0ce558aa405277688355db1e4511ff5ab2c0797a300b5f827e42b96c39fa"
+content-hash = "be6eb91fe89e19076bc3d4b5bd63411f97725ec940b74552e2ee1ed806f3cd6d"
 python-versions = "~=3.6"
 
 [metadata.files]
@@ -1142,8 +1142,8 @@ coverage = [
     {file = "coverage-5.1.tar.gz", hash = "sha256:f90bfc4ad18450c80b024036eaf91e4a246ae287701aaa88eaebebf150868052"},
 ]
 coveralls = [
-    {file = "coveralls-2.0.0-py2.py3-none-any.whl", hash = "sha256:41bd57b60321dfd5b56e990ab3f7ed876090691c21a9e3b005e1f6e42e6ba4b9"},
-    {file = "coveralls-2.0.0.tar.gz", hash = "sha256:d213f5edd49053d03f0db316ccabfe17725f2758147afc9a37eaca9d8e8602b5"},
+    {file = "coveralls-2.1.0-py2.py3-none-any.whl", hash = "sha256:ea2172efa91ae38096e94076f4ff19d63c1ba94ca4fcf8e54b775c359088fe52"},
+    {file = "coveralls-2.1.0.tar.gz", hash = "sha256:ccdaf0b875ee9b30d8775f08aec78543898c6a10ae7b3c312348c6f96dc66bc5"},
 ]
 dis3 = [
     {file = "dis3-0.1.3-py2-none-any.whl", hash = "sha256:61f7720dd0d8749d23fda3d7227ce74d73da11c2fade993a67ab2f9852451b14"},
