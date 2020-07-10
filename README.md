@@ -1,5 +1,3 @@
-![](https://www.mildbyte.xyz/asciicast/splitfiles.gif)
-
 # Splitgraph
 ![Build status](https://github.com/splitgraph/splitgraph/workflows/build_all/badge.svg)
 [![Coverage Status](https://coveralls.io/repos/github/splitgraph/splitgraph/badge.svg?branch=master)](https://coveralls.io/github/splitgraph/splitgraph?branch=master)
@@ -13,6 +11,8 @@ This repository contains most of the core code for the Splitgraph library,
 the [`sgr` command line client](https://www.splitgraph.com/docs/architecture/sgr-client) and the [Splitgraph Engine](engine/README.md). 
 
 See https://www.splitgraph.com/docs/getting-started/introduction for the full docs.
+
+![](https://www.mildbyte.xyz/asciicast/splitfiles.gif)
 
 ## Installation
 
