@@ -36,7 +36,15 @@ external databases](https://www.splitgraph.com/docs/ingesting-data/foreign-data-
   
 ## Building the engine
 
-Run `make`. You can use environment variables `DOCKER_REPO` and `DOCKER_TAG` to override the tag that's given to the engine.
+Make sure you've cloned the engine with `--recurse-submodules` so that the Git submodules
+in `./src/cstore_fdw` and `./src/Multicorn` are initialized. You can also initialize and check
+out them after cloning by doing:
+
+```
+git submodule update --init
+```
+
+Then, run `make`. You can use environment variables `DOCKER_REPO` and `DOCKER_TAG` to override the tag that's given to the engine.
 
 ## Running the engine
 
