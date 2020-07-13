@@ -5,7 +5,9 @@ running dbt on the Splitgraph engine.
 
 ## Installation
 
-Run `python setup.py install` from this directory. This package is currently not uploaded to PyPI.
+Run `pip install dbt-splitgraph`.
+
+If you wish to develop this package, you can run `python setup.py develop` from this directory.
 
 ## Usage
 

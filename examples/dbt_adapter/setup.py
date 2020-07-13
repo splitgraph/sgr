@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from setuptools import find_packages
+from setuptools import find_namespace_packages
 from setuptools import setup
 
 package_name = "dbt-splitgraph"
@@ -13,10 +13,10 @@ setup(
     long_description=description,
     author="Splitgraph",
     author_email="support@splitgraph.com",
-    url="www.splitgraph.com",
-    packages=find_packages(),
+    url="https://www.splitgraph.com",
+    packages=find_namespace_packages(),
     package_data={
         "dbt": ["include/splitgraph/macros/*.sql", "include/splitgraph/dbt_project.yml",]
     },
-    install_requires=["dbt-core", "splitgraph",],
+    install_requires=["dbt-core", "splitgraph"],
 )
