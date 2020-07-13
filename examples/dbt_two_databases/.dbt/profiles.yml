@@ -1,0 +1,12 @@
+default:
+  target: splitgraph
+  outputs:
+    splitgraph:
+      type: postgres
+      host: localhost
+      user: sgr
+      pass: supersecure
+      port: 5432
+      dbname: splitgraph
+      schema: "dbt_two_databases"
+      threads: 4
