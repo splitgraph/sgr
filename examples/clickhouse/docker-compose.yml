@@ -1,0 +1,35 @@
+version: '3'
+services:
+  splitgraph:
+    image: splitgraph/engine:${DOCKER_TAG-stable}
+    ports:
+      - '0.0.0.0:5432:5432'
+    environment:
+      - POSTGRES_USER=sgr
+      - POSTGRES_PASSWORD=supersecure
+      - POSTGRES_DB=splitgraph
+      - SG_LOGLEVEL=INFO
+      - SG_CONFIG_FILE=/.sgconfig
+    expose:
+      - 5432
+    volumes:
+      - ./.sgconfig:/.sgconfig
+  clickhouse-server:
+    build:
+      context: ./clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./clickhouse/odbc.ini:/etc/odbc.ini
+      - ./clickhouse/odbcinst.ini:/etc/odbcinst.ini
+
+  clickhouse-client:
+    image: yandex/clickhouse-client:latest
+    command: ["--host", "clickhouse-server"]
+
+
+volumes:
+  clickhouse_data:
