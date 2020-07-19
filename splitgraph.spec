@@ -10,7 +10,9 @@ a = Analysis(['bin/sgr'],
              pathex=['.'],
              # Imports that aren't toplevel or explicit (e.g. pyyaml is imported inline in sgr to speed sgr invocations up)
              hiddenimports=["splitgraph.hooks.s3", "splitgraph.hooks.splitfile_commands",
-             "splitgraph.ingestion.socrata.mount", "splitgraph.ingestion.socrata.querying"],
+             "splitgraph.ingestion.socrata.mount", "splitgraph.ingestion.socrata.querying",
+             # https://github.com/pypa/setuptools/issues/1963#issuecomment-574265532
+             "pkg_resources.py2_warn"],
              hookspath=[],
              # Linux build on Travis pulls in numpy for no obvious reason
              excludes=['numpy'],
