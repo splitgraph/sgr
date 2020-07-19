@@ -437,8 +437,6 @@ class Repository:
             # Generate a random hexadecimal hash for new images
             image_hash = "{:064x}".format(getrandbits(256))
 
-        chunk_size = chunk_size or int(get_singleton(CONFIG, "SG_COMMIT_CHUNK_SIZE"))
-
         self.images.add(head.image_hash if head else None, image_hash, comment=comment)
         self._commit(
             head,
@@ -461,7 +459,7 @@ class Repository:
         head: Optional[Image],
         image_hash: str,
         snap_only: bool = False,
-        chunk_size: Optional[int] = 10000,
+        chunk_size: Optional[int] = None,
         split_changeset: bool = False,
         schema: str = None,
         extra_indexes: Optional[Dict[str, ExtraIndexInfo]] = None,
@@ -480,6 +478,7 @@ class Repository:
         schema = schema or self.to_schema()
         extra_indexes: Dict[str, ExtraIndexInfo] = extra_indexes or {}
         in_fragment_order: Dict[str, List[str]] = in_fragment_order or {}
+        chunk_size = chunk_size or int(get_singleton(CONFIG, "SG_COMMIT_CHUNK_SIZE"))
 
         changed_tables = self.object_engine.get_changed_tables(schema)
         tracked_tables = self.object_engine.get_tracked_tables()
