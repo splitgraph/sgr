@@ -136,7 +136,8 @@ def prepare_splitfile_sql(sql: str, image_mapper: Callable) -> Tuple[str, str]:
       * Only basic DDL (CREATE/ALTER/DROP table) and DML (SELECT/INSERT/UPDATE/DELETE) are permitted.
       * All tables must be either non-schema qualified (the statement is run with `search_path`
       set to the single schema that a Splitgraph image is checked out into) or have schemata of
-      format namespace/repository:hash_or_tag. In the second case, the
+      format namespace/repository:hash_or_tag. In the second case, the schema is rewritten to point
+      at a temporary mount of the Splitgraph image.
       * Function invocations are forbidden.
 
     :param sql: SQL query
