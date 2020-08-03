@@ -395,7 +395,7 @@ description = "MinIO Python Library for Amazon S3 Compatible Cloud Storage for P
 name = "minio"
 optional = false
 python-versions = "*"
-version = "5.0.10"
+version = "6.0.0"
 
 [package.dependencies]
 certifi = "*"
@@ -1266,9 +1266,9 @@ mccabe = [
     {file = "mccabe-0.6.1.tar.gz", hash = "sha256:dd8d182285a0fe56bace7f45b5e7d1a6ebcbf524e8f3bd87eb0f125271b8831f"},
 ]
 minio = [
-    {file = "minio-5.0.10-py2.py3-none-any.whl", hash = "sha256:ba5978a97e3366983c8b4ea11f2ae8e1add995ab4789e0098dd2403199999ac4"},
-    {file = "minio-5.0.10-py3.6.egg", hash = "sha256:71984a47fc8268afdfd1d0ed5e45e72f45f6495591878b0eaa7f77b2503e96ab"},
-    {file = "minio-5.0.10.tar.gz", hash = "sha256:6ecb7637a35f806733e9d112eacfa599a58d7c3d4698fda2b5c86fff5d34b417"},
+    {file = "minio-6.0.0-py2.py3-none-any.whl", hash = "sha256:b74bf0466fb1038f41410ac9225d472446b7de246104c840c74bbe8a2e39eec3"},
+    {file = "minio-6.0.0-py3.6.egg", hash = "sha256:63918e4d20143268e4316a079bb7da405b0b6aeeb3ca357444b3385eca16b53a"},
+    {file = "minio-6.0.0.tar.gz", hash = "sha256:97d275ff01ddae45101eced0d9d5258f2869308c949b17d86a77b77a2a50b7b3"},
 ]
 more-itertools = [
     {file = "more-itertools-8.4.0.tar.gz", hash = "sha256:68c70cc7167bdf5c7c9d8f6954a7837089c6a36bf565383919bb595efb8a17e5"},
