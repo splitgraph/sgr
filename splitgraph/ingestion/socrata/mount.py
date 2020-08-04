@@ -69,6 +69,10 @@ def mount_socrata(
             # and instead stumbles on an unexpected content-type of the 404 page it's served.
             # We catch that and reraise a more friendly message.
             raise RepositoryNotFoundError("Socrata domain or dataset not found!") from e
+        raise
+
+    if not datasets:
+        raise RepositoryNotFoundError("Socrata domain or dataset not found!")
 
     mount_statements, mount_args = generate_socrata_mount_queries(
         sought_ids, datasets, mountpoint, server_id, tables
