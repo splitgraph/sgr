@@ -13,9 +13,11 @@ from splitgraph.commandline.cloud import (
     login_c,
     curl_c,
     login_api_c,
+    sql_c as cloud_sql_c,
     readme_c,
     description_c,
     metadata_c,
+    search_c,
 )
 from splitgraph.commandline.engine import (
     add_engine_c,
@@ -60,10 +62,12 @@ STRUCTURE = [
             "cloud register",
             "cloud login",
             "cloud login-api",
+            "cloud sql",
             "cloud curl",
             "cloud readme",
             "cloud description",
             "cloud metadata",
+            "cloud search",
         ],
     ),
 ]
@@ -84,10 +88,12 @@ STRUCTURE_CMD_OVERRIDE = {
     "cloud register": register_c,
     "cloud login": login_c,
     "cloud login-api": login_api_c,
+    "cloud sql": cloud_sql_c,
     "cloud curl": curl_c,
     "cloud readme": readme_c,
     "cloud description": description_c,
     "cloud metadata": metadata_c,
+    "cloud search": search_c,
 }
 
 
