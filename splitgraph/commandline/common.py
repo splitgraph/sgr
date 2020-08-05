@@ -3,7 +3,7 @@ Various common functions used by the command line interface.
 """
 import json
 from functools import wraps
-from typing import Optional, Tuple, TYPE_CHECKING, Union
+from typing import Optional, Tuple, TYPE_CHECKING, Union, List, Any
 
 import click
 from click.core import Context, Parameter
@@ -181,3 +181,27 @@ def remote_switch_option(*names, **kwargs):
         return click.option(*names, callback=_set_engine, **kwargs)(switch_engine_back(f))
 
     return decorator
+
+
+def sql_results_to_str(results: List[Tuple[Any]], use_json: bool = False) -> str:
+    if use_json:
+        import json
+        from splitgraph.core.common import coerce_val_to_json
+
+        return json.dumps(coerce_val_to_json(results))
+
+    from tabulate import tabulate
+
+    return tabulate(results, tablefmt="plain")
+
+
+def emit_sql_results(results, use_json=False, show_all=False):
+    if results is None:
+        return
+
+    if len(results) > 10 and not show_all:
+        click.echo(sql_results_to_str(results[:10], use_json))
+        if not json:
+            click.echo("...")
+    else:
+        click.echo(sql_results_to_str(results, use_json))

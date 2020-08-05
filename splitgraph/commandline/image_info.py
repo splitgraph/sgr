@@ -3,11 +3,11 @@ sgr commands related to getting information out of / about images
 """
 
 from collections import Counter, defaultdict
-from typing import List, Optional, Tuple, Union, Dict, cast, TYPE_CHECKING, Any
+from typing import List, Optional, Tuple, Union, Dict, cast, TYPE_CHECKING
 
 import click
 
-from .common import ImageType, RepositoryType, remote_switch_option
+from .common import ImageType, RepositoryType, remote_switch_option, emit_sql_results
 from ..core._drawing import format_image_hash, format_tags, format_time
 
 if TYPE_CHECKING:
@@ -346,18 +346,6 @@ def objects_c(local):
     click.echo("\n".join(sorted(objects)))
 
 
-def _to_str(results: List[Tuple[Any]], use_json: bool = False) -> str:
-    if use_json:
-        import json
-        from splitgraph.core.common import coerce_val_to_json
-
-        return json.dumps(coerce_val_to_json(results))
-
-    from tabulate import tabulate
-
-    return tabulate(results, tablefmt="plain")
-
-
 @click.command(name="sql")
 @click.argument("sql")
 @remote_switch_option()
@@ -413,15 +401,7 @@ def sql_c(sql, schema, image, show_all, json, no_transaction):
         with image.query_schema() as s:
             results = engine.run_sql_in(s, sql)
 
-    if results is None:
-        return
-
-    if len(results) > 10 and not show_all:
-        click.echo(_to_str(results[:10], json))
-        if not json:
-            click.echo("...")
-    else:
-        click.echo(_to_str(results, json))
+    emit_sql_results(results, use_json=json, show_all=show_all)
 
 
 def _emit_repository_data(repositories, engine):

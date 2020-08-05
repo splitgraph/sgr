@@ -2,7 +2,7 @@ import json
 import os
 from contextlib import contextmanager
 from tempfile import TemporaryDirectory
-from unittest.mock import patch, PropertyMock, call
+from unittest.mock import patch, PropertyMock, call, Mock
 
 import httpretty
 import pytest
@@ -17,6 +17,7 @@ from splitgraph.commandline.cloud import (
     readme_c,
     metadata_c,
     description_c,
+    sql_c,
 )
 from splitgraph.config import create_config_dict
 from splitgraph.exceptions import (
@@ -34,6 +35,17 @@ _SAMPLE_ACCESS = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYmYiOjE1ODA1OTQyMzQsI
 _SAMPLE_REFRESH = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYmYiOjE1NzYzMTk5MTYsImlhdCI6MTU3NjMxOTkxNiwiZW1haWwiOiJzb21ldXNlckBleGFtcGxlLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjpmYWxzZSwicmVmcmVzaF90b2tlbl9zZWNyZXQiOiJzb21lc2VjcmV0IiwiZXhwIjoxNTc4OTExOTE2LCJ1c2VyX2lkIjoiMTIzZTQ1NjctZTg5Yi0xMmQzLWE0NTYtNDI2NjU1NDQwMDAwIiwidXNlcm5hbWUiOiJzb21ldXNlciIsInJlZnJlc2hfdG9rZW5fa2V5Ijoic29tZWtleSIsImdyYW50IjoicmVmcmVzaCJ9.lO3nN3Tmu3twwUjrWsVpBq7nHHEvLnOGXeMkXXv4PRBADUAHyhmmaIPzgccq9XlwpLIexBAxTKJ4GaxSQufKUVLbzAKIMHqxiGTzELY6JMyUvMDHKeKNsq6FdhHxXoKa96fHaDDa65eGcSRSKS3Yr-9sBiANMBJGRbwypYw41gf61pewMA8TXqBmA-mvsBzMUaQNz1DfjkkpHs4SCERPK0GhYSJwDAwK8U3wG47S9k-CQqpq2B99yRRrdSVRzA_lcKe7GlF-Pw6hbRR7xBPBtX61pPME5hFUCPcwYWYXa_KhqEx9IF9edt9UahZuBudaVLmTdKKWgE9M53jQofxNzg"
 _SAMPLE_API_KEY = "abcdef123456"
 _SAMPLE_API_SECRET = "654321fedcba"
+_SAMPLE_REMOTE_CONFIG = {
+    "SG_ENGINE_USER": _SAMPLE_API_KEY,
+    "SG_ENGINE_PWD": _SAMPLE_API_SECRET,
+    "SG_ENGINE_HOST": "data.example.com",
+    "SG_ENGINE_PORT": "5432",
+    "SG_ENGINE_DB_NAME": "sgregistry",
+    "SG_NAMESPACE": "someuser",
+    "SG_CLOUD_REFRESH_TOKEN": _SAMPLE_REFRESH,
+    "SG_CLOUD_ACCESS_TOKEN": _SAMPLE_ACCESS,
+    "SG_IS_REGISTRY": "true",
+}
 
 
 def _register_callback(request, uri, response_headers):
@@ -144,16 +156,7 @@ def test_commandline_registration_normal():
             source_config,
             {
                 "SG_REPO_LOOKUP": "remote_engine",
-                "remotes": {
-                    "remote_engine": {
-                        "SG_ENGINE_USER": _SAMPLE_API_KEY,
-                        "SG_ENGINE_PWD": _SAMPLE_API_SECRET,
-                        "SG_NAMESPACE": "someuser",
-                        "SG_CLOUD_REFRESH_TOKEN": _SAMPLE_REFRESH,
-                        "SG_CLOUD_ACCESS_TOKEN": _SAMPLE_ACCESS,
-                        "SG_IS_REGISTRY": "true",
-                    }
-                },
+                "remotes": {"remote_engine": _SAMPLE_REMOTE_CONFIG,},
             },
         )
     ]
@@ -631,3 +634,29 @@ def test_commandline_metadata():
                 assert result.exit_code == 0
                 assert "README updated for repository someuser/somerepo." in result.output
                 assert "Description updated for repository someuser/somerepo." in result.output
+
+
+def test_commandline_cloud_sql():
+    runner = CliRunner()
+
+    fake_engine = Mock()
+    fake_engine.conn_params = _SAMPLE_REMOTE_CONFIG
+
+    fake_ddn_engine = Mock()
+    fake_ddn_engine.run_sql.return_value = [("one", "two"), ("three", "four")]
+
+    with patch("splitgraph.engine.get_engine", return_value=fake_engine):
+        with patch(
+            "splitgraph.engine.postgres.engine.PostgresEngine", return_value=fake_ddn_engine
+        ):
+            result = runner.invoke(sql_c)
+            assert result.exit_code == 0
+            assert (
+                result.output
+                == f"postgresql://{_SAMPLE_API_KEY}:{_SAMPLE_API_SECRET}@data.example.com:5432/ddn\n"
+            )
+
+            result = runner.invoke(sql_c, ["SELECT 1"], catch_exceptions=False)
+            assert result.exit_code == 0
+            assert fake_ddn_engine.run_sql.mock_calls == [call("SELECT 1")]
+            assert "three" in result.output
