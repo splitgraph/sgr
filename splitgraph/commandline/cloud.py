@@ -1,16 +1,20 @@
 """Command line routines related to registering/setting up connections to the Splitgraph registry."""
 import logging
+import shutil
 import subprocess
+import urllib
 from copy import copy
 from typing import Dict, Optional
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 
 import click
+from click import wrap_text
 
 from splitgraph.commandline.common import (
     ImageType,
     RepositoryType,
     emit_sql_results,
+    Color,
 )
 from splitgraph.commandline.engine import patch_and_save_config, inject_config_into_engines
 
@@ -98,6 +102,20 @@ def _construct_user_profile_url(auth_endpoint: str):
     netloc_components = parsed.netloc.split(".")
     netloc_components[0] = "www"
     return "%s://%s/settings/security" % (parsed.scheme, ".".join(netloc_components))
+
+
+def _construct_repo_url(gql_endpoint: str, full_repo: str):
+    parsed = urlparse(gql_endpoint)
+    netloc_components = parsed.netloc.split(".")
+    netloc_components[0] = "www"
+    return "%s://%s/%s" % (parsed.scheme, ".".join(netloc_components), full_repo)
+
+
+def _construct_search_url(gql_endpoint: str, query: str):
+    parsed = urlparse(gql_endpoint)
+    netloc_components = parsed.netloc.split(".")
+    netloc_components[0] = "www"
+    return "%s://%s/search?q=%s" % (parsed.scheme, ".".join(netloc_components), quote(query))
 
 
 @click.command("login")
@@ -421,6 +439,49 @@ description: Dataset description (160 characters max).
         )
 
 
+@click.command("search")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.option(
+    "--limit", default=10, type=click.IntRange(10, 30), help="Number of results to return"
+)
+@click.argument("query", type=str)
+def search_c(remote, query, limit=10):
+    """
+    Search for a repository on the Splitgraph registry.
+
+    For more advanced search, including filtering by topics, go to the registry's website itself.
+    """
+
+    from splitgraph.cloud import GQLAPIClient
+
+    client = GQLAPIClient(remote)
+    total_count, repos_previews = client.find_repository(query=query, limit=limit)
+
+    terminal_width, _ = shutil.get_terminal_size((80, 25))
+
+    for ns, repo, preview in repos_previews:
+        full_repo = ns + "/" + repo
+        click.echo(Color.BOLD + full_repo + Color.END)
+        click.echo(Color.BLUE + _construct_repo_url(client.endpoint, full_repo) + Color.END)
+        click.echo(
+            wrap_text(
+                preview.replace("<<", Color.BOLD).replace(">>", Color.END),
+                width=min(terminal_width, 100),
+                initial_indent="  ",
+                subsequent_indent="  ",
+                preserve_paragraphs=True,
+            )
+        )
+        click.echo("\n")
+
+    click.echo("\nTotal results: %d" % total_count)
+    if len(repos_previews) < total_count:
+        click.echo(
+            "Visit %s for more search options and full results."
+            % (Color.BLUE + _construct_search_url(client.endpoint, query) + Color.END)
+        )
+
+
 @click.group("cloud")
 def cloud_c():
     """Manage connections to Splitgraph Cloud."""
@@ -434,3 +495,4 @@ cloud_c.add_command(sql_c)
 cloud_c.add_command(readme_c)
 cloud_c.add_command(description_c)
 cloud_c.add_command(metadata_c)
+cloud_c.add_command(search_c)

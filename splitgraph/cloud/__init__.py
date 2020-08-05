@@ -96,6 +96,23 @@ def expect_result(
     return decorator
 
 
+def _handle_gql_errors(response):
+    logging.debug("GQL API status: %d, response: %s", response.status_code, response.text)
+    # GQL itself doesn't seem to return non-200 codes, so this catches HTTP-level errors.
+    response.raise_for_status()
+    response_j = response.json()
+    if "errors" in response_j:
+        message = response_j["errors"][0]["message"]
+        if "new row violates row-level security policy for table" in message:
+            raise GQLUnauthorizedError("You do not have write access to this repository!")
+        elif "Invalid token" in message:
+            raise GQLUnauthenticatedError("Your access token doesn't exist or has expired!")
+        elif "violates foreign key constraint" in message:
+            raise GQLRepoDoesntExistError("Unknown repository!")
+        else:
+            raise GQLAPIError(message)
+
+
 def handle_gql_errors(func: Callable[..., Response]) -> Callable[..., Response]:
     """
     A decorator that handles responses from the GQL API, transforming errors into exceptions.
@@ -105,23 +122,7 @@ def handle_gql_errors(func: Callable[..., Response]) -> Callable[..., Response]:
     def wrapped(*args, **kwargs):
         response = func(*args, **kwargs)
 
-        logging.debug("GQL API status: %d, response: %s", response.status_code, response.text)
-
-        # GQL itself doesn't seem to return non-200 codes, so this catches HTTP-level errors.
-        response.raise_for_status()
-
-        response_j = response.json()
-
-        if "errors" in response_j:
-            message = response_j["errors"][0]["message"]
-            if "new row violates row-level security policy for table" in message:
-                raise GQLUnauthorizedError("You do not have write access to this repository!")
-            elif "Invalid token" in message:
-                raise GQLUnauthenticatedError("Your access token doesn't exist or has expired!")
-            elif "violates foreign key constraint" in message:
-                raise GQLRepoDoesntExistError("Unknown repository!")
-            else:
-                raise GQLAPIError(message)
+        _handle_gql_errors(response)
 
         return response
 
@@ -307,16 +308,15 @@ class GQLAPIClient:
 
     def __init__(self, remote: str):
         self.remote = remote
-
+        self.endpoint = get_remote_param(self.remote, "SG_GQL_API")
         self.auth_client = AuthAPIClient(remote)
 
     def _gql(self, query: Dict) -> requests.Response:
         access_token = self.auth_client.access_token
         headers = get_headers()
         headers.update({"Authorization": "Bearer " + access_token})
-        endpoint = self.verify = get_remote_param(self.remote, "SG_GQL_API")
 
-        return requests.post(endpoint, headers=headers, json=query)
+        return requests.post(self.endpoint, headers=headers, json=query)
 
     @handle_gql_errors
     def upsert_readme(self, namespace: str, repository: str, readme: str):
@@ -354,3 +354,38 @@ class GQLAPIClient:
                 "clientMutationId\n    __typename\n  }\n}\n",
             },
         )
+
+    def find_repository(
+        self, query: str, limit: int = 10
+    ) -> Tuple[int, List[Tuple[str, str, str]]]:
+        response = self._gql(
+            {
+                "operationName": "FindRepositories",
+                "variables": {"query": query, "limit": limit},
+                "query": """query FindRepositories($query: String!, $limit: Int!) {
+  findRepository(query: $query, first: $limit) {
+    edges {
+      node {
+        namespace
+        repository
+        highlight
+      }
+    }
+    totalCount
+  }
+}""",
+            }
+        )
+
+        _handle_gql_errors(response)
+        result = response.json()
+
+        # Extract data from the response
+        find_repository = result["data"]["findRepository"]
+        total_count = find_repository["totalCount"]
+        repos_previews = [
+            (r["node"]["namespace"], r["node"]["repository"], r["node"]["highlight"])
+            for r in find_repository["edges"]
+        ]
+
+        return total_count, repos_previews

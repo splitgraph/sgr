@@ -18,6 +18,7 @@ from splitgraph.commandline.cloud import (
     metadata_c,
     description_c,
     sql_c,
+    search_c,
 )
 from splitgraph.config import create_config_dict
 from splitgraph.exceptions import (
@@ -153,7 +154,7 @@ def test_commandline_registration_normal():
             source_config,
             {
                 "SG_REPO_LOOKUP": "remote_engine",
-                "remotes": {"remote_engine": _SAMPLE_REMOTE_CONFIG,},
+                "remotes": {"remote_engine": _SAMPLE_REMOTE_CONFIG},
             },
         )
     ]
@@ -475,6 +476,36 @@ def _gql_callback(request, uri, response_headers):
             "description: $description}, patch: {description: $description}}) {\n    "
             "clientMutationId\n    __typename\n  }\n}\n"
         )
+    elif body["operationName"] == "FindRepositories":
+        assert body["variables"] == {"query": "some_query", "limit": 20}
+        response = {
+            "data": {
+                "findRepository": {
+                    "edges": [
+                        {
+                            "node": {
+                                "namespace": "namespace1",
+                                "repository": "repo1",
+                                "highlight": "<<some_query>> is here",
+                            }
+                        },
+                        {
+                            "node": {
+                                "namespace": "namespace2",
+                                "repository": "repo2",
+                                "highlight": "this is another result for <<ome_query>>",
+                            }
+                        },
+                    ],
+                    "totalCount": 42,
+                }
+            }
+        }
+        return [
+            200,
+            response_headers,
+            json.dumps(response),
+        ]
     else:
         raise AssertionError()
 
@@ -631,6 +662,25 @@ def test_commandline_metadata():
                 assert result.exit_code == 0
                 assert "README updated for repository someuser/somerepo." in result.output
                 assert "Description updated for repository someuser/somerepo." in result.output
+
+
+@httpretty.activate(allow_net_connect=False)
+def test_commandline_search():
+    runner = CliRunner()
+    httpretty.register_uri(httpretty.HTTPretty.POST, _GQL_ENDPOINT + "/", body=_gql_callback)
+
+    with patch(
+        "splitgraph.cloud.AuthAPIClient.access_token",
+        new_callable=PropertyMock,
+        return_value=_SAMPLE_ACCESS,
+    ):
+        with patch("splitgraph.cloud.get_remote_param", return_value=_GQL_ENDPOINT):
+            result = runner.invoke(search_c, ["some_query", "--limit", "20"])
+            assert result.exit_code == 0
+            assert "namespace1/repo1" in result.output
+            assert "http://www.example.com/namespace2/repo2" in result.output
+            assert "Total results: 42" in result.output
+            assert "Visit http://www.example.com/search?q=some_query" in result.output
 
 
 def test_commandline_cloud_sql():
