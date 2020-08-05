@@ -1,11 +1,13 @@
 """Module imported by Multicorn on the Splitgraph engine server: a foreign data wrapper that implements
 layered querying (read-only queries to Splitgraph tables without materialization)."""
 import logging
+from typing import Optional
 
 import splitgraph.config
 from splitgraph.core.output import pretty_size
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.repository import Repository, get_engine
+from splitgraph.core.table import QueryPlan
 
 try:
     from multicorn import ForeignDataWrapper, ANY
@@ -181,4 +183,4 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         self.end_scan_callback = None
 
         # A QueryPlan object for the last query with stats
-        self.plan = None
+        self.plan: Optional[QueryPlan] = None
