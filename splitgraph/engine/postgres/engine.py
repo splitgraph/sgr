@@ -180,6 +180,17 @@ def chunk(sequence: Sequence[T], chunk_size: int = API_MAX_VARIADIC_ARGS) -> Ite
         yield curr_chunk
 
 
+def get_conn_str(conn_params: Dict[str, str]) -> str:
+    server, port, username, password, dbname = (
+        conn_params["SG_ENGINE_HOST"],
+        conn_params["SG_ENGINE_PORT"],
+        conn_params["SG_ENGINE_USER"],
+        conn_params["SG_ENGINE_PWD"],
+        conn_params["SG_ENGINE_DB_NAME"],
+    )
+    return f"postgresql://{username}:{password}@{server}:{port}/{dbname}"
+
+
 class PsycopgEngine(SQLEngine):
     """Postgres SQL engine backed by a Psycopg connection."""
 

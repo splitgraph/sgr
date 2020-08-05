@@ -259,17 +259,10 @@ def config_c(no_shielding, config_format, conn_string):
     from splitgraph.config.export import serialize_config
     from splitgraph.config import CONFIG
     from splitgraph.engine import get_engine
+    from splitgraph.engine.postgres.engine import get_conn_str
 
     if conn_string:
-        conn_params = get_engine().conn_params
-        server, port, username, password, dbname = (
-            conn_params["SG_ENGINE_HOST"],
-            conn_params["SG_ENGINE_PORT"],
-            conn_params["SG_ENGINE_USER"],
-            conn_params["SG_ENGINE_PWD"],
-            conn_params["SG_ENGINE_DB_NAME"],
-        )
-        click.echo(f"postgresql://{username}:{password}@{server}:{port}/{dbname}")
+        click.echo(get_conn_str(get_engine().conn_params))
         return
 
     click.echo(serialize_config(CONFIG, config_format, no_shielding))

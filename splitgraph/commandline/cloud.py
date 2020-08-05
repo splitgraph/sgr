@@ -2,12 +2,20 @@
 import logging
 import subprocess
 from copy import copy
+from typing import Dict, Optional
 from urllib.parse import urlparse
 
 import click
 
-from splitgraph.commandline.common import ImageType, RepositoryType
+from splitgraph.commandline.common import (
+    ImageType,
+    RepositoryType,
+    emit_sql_results,
+)
 from splitgraph.commandline.engine import patch_and_save_config, inject_config_into_engines
+
+# Hardcoded database name for the Splitgraph DDN (ddn instead of sgregistry)
+_DDN_DBNAME = "ddn"
 
 
 @click.command("register")
@@ -288,6 +296,58 @@ def curl_c(remote, request_type, image, request_params, curl_args):
     subprocess.call(subprocess_args)
 
 
+def _get_ddn_conn_params(remote: str) -> Dict[str, Optional[str]]:
+    from splitgraph.engine import get_engine
+
+    try:
+        engine = get_engine(remote)
+    except KeyError as e:
+        raise click.UsageError(
+            "Remote %s or API key/secret not found in the config. "
+            "Try registering with sgr cloud register or logging in "
+            "with sgr cloud login / sgr cloud login-api."
+        ) from e
+
+    ddn_params = engine.conn_params.copy()
+    ddn_params["SG_ENGINE_DB_NAME"] = _DDN_DBNAME
+    return ddn_params
+
+
+@click.command("sql")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.option("-a", "--show-all", is_flag=True, help="Return all results of the query.")
+@click.option("-j", "--json", is_flag=True, help="Return results as JSON")
+@click.argument("query", type=str, default="")
+def sql_c(remote, show_all, json, query):
+    """
+    If a query isn't passed, this will return a libpq-compatible connection string to
+    the registry's SQL endpoint. It can be used to connect to the endpoint with other SQL clients:
+
+    ```
+    pgcli $(sgr cloud sql)
+    ```
+
+    If a query is passed, this will run an SQL query against the SQL endpoint.
+    """
+    ddn_params = _get_ddn_conn_params(remote)
+    from splitgraph.engine.postgres.engine import get_conn_str, PostgresEngine
+
+    if not query:
+        click.echo(get_conn_str(ddn_params))
+        return
+
+    # Build an engine to connect to the DDN, disable pre-flight API checks etc
+    engine = PostgresEngine(
+        name=remote, conn_params=ddn_params, registry=False, check_version=False
+    )
+
+    try:
+        results = engine.run_sql(query)
+        emit_sql_results(results, use_json=json, show_all=show_all)
+    finally:
+        engine.close()
+
+
 @click.command("readme")
 @click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
 @click.argument("repository", type=RepositoryType(exists=False))
@@ -370,6 +430,7 @@ cloud_c.add_command(login_c)
 cloud_c.add_command(login_api_c)
 cloud_c.add_command(register_c)
 cloud_c.add_command(curl_c)
+cloud_c.add_command(sql_c)
 cloud_c.add_command(readme_c)
 cloud_c.add_command(description_c)
 cloud_c.add_command(metadata_c)
