@@ -38,9 +38,6 @@ _SAMPLE_API_SECRET = "654321fedcba"
 _SAMPLE_REMOTE_CONFIG = {
     "SG_ENGINE_USER": _SAMPLE_API_KEY,
     "SG_ENGINE_PWD": _SAMPLE_API_SECRET,
-    "SG_ENGINE_HOST": "data.example.com",
-    "SG_ENGINE_PORT": "5432",
-    "SG_ENGINE_DB_NAME": "sgregistry",
     "SG_NAMESPACE": "someuser",
     "SG_CLOUD_REFRESH_TOKEN": _SAMPLE_REFRESH,
     "SG_CLOUD_ACCESS_TOKEN": _SAMPLE_ACCESS,
@@ -640,7 +637,16 @@ def test_commandline_cloud_sql():
     runner = CliRunner()
 
     fake_engine = Mock()
-    fake_engine.conn_params = _SAMPLE_REMOTE_CONFIG
+
+    remote_config = _SAMPLE_REMOTE_CONFIG.copy()
+    remote_config.update(
+        {
+            "SG_ENGINE_HOST": "data.example.com",
+            "SG_ENGINE_PORT": "5432",
+            "SG_ENGINE_DB_NAME": "sgregistry",
+        }
+    )
+    fake_engine.conn_params = remote_config
 
     fake_ddn_engine = Mock()
     fake_ddn_engine.run_sql.return_value = [("one", "two"), ("three", "four")]
