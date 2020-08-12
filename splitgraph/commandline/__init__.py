@@ -81,6 +81,26 @@ def _patch_wrap_text():
     click.formatting.wrap_text = patched_wrap_text
 
 
+def _do_version_check():
+    """Do a pre-flight version check -- by default we only do it once a day"""
+    from splitgraph.cloud import AuthAPIClient
+    from packaging.version import Version
+    from splitgraph.config import CONFIG
+
+    api_client = AuthAPIClient(CONFIG["SG_UPDATE_REMOTE"])
+    latest = api_client.get_latest_version()
+
+    if not latest:
+        return
+
+    if Version(latest) > Version(__version__):
+        click.echo(
+            "You are using sgr version %s, however version %s is available." % (__version__, latest)
+        )
+        click.echo("Consider upgrading by running sgr upgrade or pip install -U splitgraph.")
+        click.echo("Disable this message by setting SG_UPDATE_FREQUENCY=0 in your .sgconfig.")
+
+
 class WithExceptionHandler(click.Group):
     def get_command(self, ctx, cmd_name):
         # Patch only if we're invoked somehow, not if we're imported.
@@ -111,6 +131,7 @@ class WithExceptionHandler(click.Group):
                 logger.error("%s: %s" % (_fullname(exc), exc))
             ctx.exit(code=2)
         finally:
+            _do_version_check()
             engine.close()
 
 

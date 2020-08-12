@@ -49,6 +49,11 @@ DEFAULTS: ConfigDict = {
     "SG_EVICTION_MIN_FRACTION": "0.05",
     "SG_FDW_CLASS": "splitgraph.core.fdw_checkout.QueryingForeignDataWrapper",
     "SG_CMD_ASCII": "false",
+    # Update checks and metrics
+    "SG_UPDATE_REMOTE": "data.splitgraph.com",
+    "SG_UPDATE_FREQUENCY": "86400",
+    "SG_UPDATE_LAST": "0",
+    "SG_UPDATE_ANONYMOUS": "false",
     # Some default sections: these can't be overridden via envvars.
     "external_handlers": {"S3": "splitgraph.hooks.s3.S3ExternalObjectHandler"},
     "mount_handlers": {
@@ -154,4 +159,8 @@ This can also be changed by passing `--verbosity` to `sgr`, e.g. `sgr --verbosit
     "SG_EVICTION_MIN_FRACTION": "Minimum fraction of the total cache size that has to get freed when an eviction is run. This is to avoid frequent evictions.",
     "SG_FDW_CLASS": "Name of the class used by the layered querying foreign data wrapper on the engine. Internal.",
     "SG_CMD_ASCII": "Set to `true` to disable Unicode output in sgr. Note that `sgr sql` will still output Unicode data.",
+    "SG_UPDATE_REMOTE": "Name of the Splitgraph registry to check for sgr updates.",
+    "SG_UPDATE_FREQUENCY": "How often to check for updates when sgr is run, in seconds. Set to 0 to disable.",
+    "SG_UPDATE_LAST": "Last timestamp an update check was performed. Internal.",
+    "SG_UPDATE_ANONYMOUS": "Set to `true` to disable sending the user's ID to the update checker.",
 }
