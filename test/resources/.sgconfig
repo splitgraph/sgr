@@ -30,6 +30,9 @@ SG_REPO_LOOKUP=remote_engine
 ; Test the lookup override works
 SG_REPO_LOOKUP_OVERRIDE=overridden/repo:LOCAL
 
+; Disable update checks when running tests
+SG_UPDATE_FREQUENCY=0
+
 [remote: remote_engine]
 SG_ENGINE_HOST=remote_engine
 SG_ENGINE_PORT=5431

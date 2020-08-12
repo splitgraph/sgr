@@ -301,6 +301,50 @@ class AuthAPIClient:
         overwrite_config(config, get_singleton(config, "SG_CONFIG_FILE"))
         return new_access_token
 
+    def get_latest_version(self) -> Optional[str]:
+        # Do a version check to see if updates are available. If the user is logged
+        # into the registry, also send the user ID for metrics.
+        # The user can opt out by setting "SG_UPDATE_FREQUENCY" to 0 or opt out of
+        # sending user ID by setting SG_UPDATE_ANONYMOUS to true.
+
+        config = create_config_dict()
+        frequency = int(get_singleton(config, "SG_UPDATE_FREQUENCY"))
+
+        if frequency == 0:
+            return None
+
+        last_check = int(get_singleton(config, "SG_UPDATE_LAST"))
+        now = int(time.time())
+
+        if last_check + frequency > now:
+            return None
+
+        headers = get_headers()
+        if get_singleton(config, "SG_UPDATE_ANONYMOUS").lower() == "false":
+            try:
+                headers.update({"Authorization": "Bearer " + self.access_token})
+            except AuthAPIError:
+                pass
+
+        try:
+            logging.debug("Running update check")
+            response = requests.post(
+                self.endpoint + "/update_check", verify=self.verify, headers=headers,
+            )
+            response.raise_for_status()
+            latest_version = str(response.json()["latest_version"])
+        except requests.RequestException as e:
+            logging.debug("Error running the update check", exc_info=e)
+            return None
+        except KeyError:
+            logging.debug("Malformed response from the update service")
+            return None
+
+        config["SG_UPDATE_LAST"] = str(now)
+        overwrite_config(config, get_singleton(config, "SG_CONFIG_FILE"))
+
+        return latest_version
+
 
 class GQLAPIClient:
     """Wrapper class for select Splitgraph Registry GQL operations that can be

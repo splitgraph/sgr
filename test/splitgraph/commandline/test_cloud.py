@@ -1,14 +1,18 @@
 import json
 import os
+import time
 from contextlib import contextmanager
 from tempfile import TemporaryDirectory
+from typing import Optional
 from unittest.mock import patch, PropertyMock, call, Mock
 
 import httpretty
 import pytest
 from click.testing import CliRunner
+from httpretty.core import HTTPrettyRequest
 
 from splitgraph.__version__ import __version__
+from splitgraph.commandline import config_c, cli
 from splitgraph.commandline.cloud import (
     register_c,
     login_c,
@@ -204,6 +208,14 @@ def _patch_login_funcs(source_config):
             with patch("splitgraph.commandline.cloud.inject_config_into_engines") as ic:
                 with patch("splitgraph.config.CONFIG", source_config):
                     yield pc, ic
+
+
+@contextmanager
+def _patch_config_funcs(config):
+    with patch("splitgraph.cloud.create_config_dict", return_value=config):
+        with patch("splitgraph.cloud.overwrite_config") as oc:
+            with patch("splitgraph.config.CONFIG", config):
+                yield oc
 
 
 @httpretty.activate(allow_net_connect=False)
@@ -716,3 +728,74 @@ def test_commandline_cloud_sql():
             assert result.exit_code == 0
             assert fake_ddn_engine.run_sql.mock_calls == [call("SELECT 1")]
             assert "three" in result.output
+
+
+@httpretty.activate(allow_net_connect=False)
+def test_commandline_update_check():
+    runner = CliRunner()
+
+    last_request: Optional[HTTPrettyRequest] = None
+
+    def _version_callback(request, uri, response_headers):
+        nonlocal last_request
+        last_request = request
+        return [200, response_headers, json.dumps({"latest_version": "99999.42.15"})]
+
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST, _ENDPOINT + "/update_check", body=_version_callback,
+    )
+
+    config = _make_dummy_config_dict()
+    config["SG_UPDATE_FREQUENCY"] = "15"
+    config["SG_UPDATE_REMOTE"] = _REMOTE
+
+    with _patch_config_funcs(config) as oc:
+        # Invoke cli here to call the wrapper around the actual entrypoint.
+        result = runner.invoke(cli, ["config"], catch_exceptions=False)
+        assert result.exit_code == 0
+        assert "version 99999.42.15 is available" in result.output
+        assert oc.call_count == 1
+        new_config = oc.mock_calls[0][1][0]
+        assert new_config["SG_UPDATE_LAST"] != "0"
+        assert last_request is not None
+
+    # Check not running the version check every time
+    with _patch_config_funcs(new_config) as oc:
+        last_request = None
+        result = runner.invoke(cli, ["config"], catch_exceptions=False)
+        assert result.exit_code == 0
+        assert "version 99999.42.15 is available" not in result.output
+        assert oc.mock_calls == []
+        assert last_request is None
+
+    # Check passing access token to the version check
+    new_config["remotes"][_REMOTE] = _SAMPLE_REMOTE_CONFIG
+    new_config["SG_UPDATE_LAST"] = "0"
+
+    with patch(
+        "splitgraph.cloud.AuthAPIClient.access_token",
+        new_callable=PropertyMock,
+        return_value=_SAMPLE_ACCESS,
+    ):
+        with _patch_config_funcs(new_config) as oc:
+            last_request = None
+            result = runner.invoke(cli, ["config"], catch_exceptions=False)
+            assert result.exit_code == 0
+            assert "version 99999.42.15 is available" in result.output
+            assert oc.call_count == 1
+            assert last_request is not None
+            assert last_request.headers["Authorization"] == "Bearer " + _SAMPLE_ACCESS
+
+        # Check not passing API key if SG_UPDATE_ANONYMOUS is set
+        # Set SG_UPDATE_LAST back to 0 since the code mutates it
+        new_config["SG_UPDATE_ANONYMOUS"] = "true"
+        new_config["SG_UPDATE_LAST"] = "0"
+
+        with _patch_config_funcs(new_config) as oc:
+            last_request = None
+            result = runner.invoke(cli, ["config"], catch_exceptions=False)
+            assert result.exit_code == 0
+            assert "version 99999.42.15 is available" in result.output
+            assert oc.call_count == 1
+            assert last_request is not None
+            assert "Authorization" not in last_request.headers
