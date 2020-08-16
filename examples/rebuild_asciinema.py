@@ -53,7 +53,6 @@ def rebuild(
 
     if not skip_record:
         # Make sure the output of whatever run_example is running doesn't get buffered
-        # (so that the output Asciinema cast has
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
 
@@ -61,6 +60,8 @@ def rebuild(
             # Use absolute path for SG_CONFIG_FILE since we're
             # running run_example from a different directory.
             env["SG_CONFIG_FILE"] = os.path.abspath(config)
+        # Disable the update check
+        env["SG_UPDATE_FREQUENCY"] = "0"
         args = [
             "../run_example.py",
             "example.yaml",
