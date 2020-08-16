@@ -26,6 +26,8 @@ When you build data with Splitfiles, you get provenance tracking of the resultin
 
 Splitgraph images are also version-controlled, and you can manipulate them with Git-like operations through a CLI. You can check out any image into a PostgreSQL schema and interact with it using any PostgreSQL client. Splitgraph will capture your changes to the data, and then you can commit them as delta-compressed changesets that you can package into new images.
 
+Splitgraph supports PostgreSQL [foreign data wrappers](https://wiki.postgresql.org/wiki/Foreign_data_wrappers). We call this feature [mounting](https://www.splitgraph.com/docs/concepts/mounting). With mounting, you can query other databases (like PostgreSQL/MongoDB/MySQL) or open data providers (like [Socrata](https://www.splitgraph.com/docs/ingesting-data/socrata)) from your Splitgraph instance with plain SQL. You can even snapshot the results or use them in Splitfiles.
+
 ### Why Splitgraph?
 
 Splitgraph isn't opinionated and doesn't break existing abstractions. To any existing PostgreSQL application, Splitgraph images are just another database. We have carefully designed Splitgraph to not break the abstraction of a PostgreSQL table and wire protocol, because doing otherwise would mean throwing away a vast existing ecosystem of applications, users, libraries and extensions. This means that a lot of tools that work with PostgreSQL work with Splitgraph out of the box.
