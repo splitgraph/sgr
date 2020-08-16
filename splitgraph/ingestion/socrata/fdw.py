@@ -86,6 +86,7 @@ class SocrataForeignDataWrapper(ForeignDataWrapper):
             select=select,
             limit=self.batch_size,
             order=order,
+            exclude_system_fields="false",
         )
 
         for r in result:

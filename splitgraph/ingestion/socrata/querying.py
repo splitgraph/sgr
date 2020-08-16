@@ -188,7 +188,9 @@ def quals_to_socrata(quals, column_map: Optional[Dict[str, str]] = None):
 
 
 def cols_to_socrata(cols, column_map: Optional[Dict[str, str]] = None):
-    return ",".join(f"{_emit_col(c, column_map)}" for c in cols)
+    # Don't add ":id" to the request since we're getting it anyway
+    # through exclude_system_fields=false
+    return ",".join(f"{_emit_col(c, column_map)}" for c in cols if c != ":id")
 
 
 def sortkeys_to_socrata(sortkeys, column_map: Optional[Dict[str, str]] = None):
