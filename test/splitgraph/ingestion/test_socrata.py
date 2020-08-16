@@ -285,6 +285,7 @@ def test_socrata_fdw():
                 select=f"`{_long_name_col}`,`job_titles`,`annual_salary`",
                 limit=4200,
                 order=f"`{_long_name_col}` ASC",
+                exclude_system_fields="false",
             )
         ]
 
@@ -344,3 +345,25 @@ def test_socrata_column_deduplication():
             comment=None,
         ),
     ]
+
+
+@pytest.mark.parametrize(
+    "domain,dataset_id",
+    [
+        # Had issues with 403s if the :id column was requested explicitly
+        ("data.healthcare.gov", "7h6f-vws8"),
+        # Popular for hire vehicles dataset
+        ("data.cityofnewyork.us", "8wbx-tsch"),
+    ],
+)
+def test_socrata_smoke(domain, dataset_id, local_engine_empty):
+    # This relies on the Socrata API being available, but good to smoke test some popular datasets
+    # to make sure the mounting works end-to-end.
+    try:
+        mount_socrata(
+            "socrata_mount", None, None, None, None, domain=domain, tables={"data": dataset_id}
+        )
+        result = local_engine_empty.run_sql("SELECT * FROM socrata_mount.data LIMIT 10")
+        assert len(result) == 10
+    finally:
+        local_engine_empty.delete_schema("socrata_mount")
