@@ -15,6 +15,8 @@ def test_example(example_path):
     # Remove SG-specific envvars that were set in tests (to simulate run_example.py being
     # actually run in a clean environment, e.g. without SG_CONFIG_FILE set.)
     env = {k: v for k, v in os.environ.items() if not k.startswith("SG_")}
+    # Disable the update check
+    env["SG_UPDATE_FREQUENCY"] = "0"
 
     result = subprocess.run(
         args=["../run_example.py", "example.yaml", "--no-pause"],
