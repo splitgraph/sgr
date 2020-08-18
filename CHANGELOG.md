@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.2.0 (2020-08-18)
+
+* Introducing the [Splitgraph Data Delivery Network](https://www.splitgraph.com/docs/splitgraph-cloud/data-delivery-network): a single SQL endpoint to query all datasets hosted on or proxied by Splitgraph Cloud with any PostgreSQL client.
+* Extra `sgr cloud` commands:
+  * `sgr cloud sql` to query the Splitgraph DDN
+  * `sgr cloud search`, a CLI wrapper around https://www.splitgraph.com/search
+* Add daily update check to `sgr`.
+ 
+Full set of changes: [`v0.1.4...v0.2.0`](https://github.com/splitgraph/splitgraph/compare/v0.1.4...v0.2.0)
+
 ## v0.1.4 (2020-07-19)
 
 * Various dependency bumps (including PostGIS)
