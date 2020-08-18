@@ -338,6 +338,8 @@ def _get_ddn_conn_params(remote: str) -> Dict[str, Optional[str]]:
 @click.argument("query", type=str, default="")
 def sql_c(remote, show_all, json, query):
     """
+    Run SQL on or connect to the Splitgraph Data Delivery Network.
+
     If a query isn't passed, this will return a libpq-compatible connection string to
     the registry's SQL endpoint. It can be used to connect to the endpoint with other SQL clients:
 

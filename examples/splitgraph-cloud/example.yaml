@@ -40,6 +40,14 @@
   - "# sgr also has a shorthand to access the query API"
   - sgr cloud curl splitgraph-demo/weather:initial_data "rdu?date=eq.2009-08-25T00:00:00"
 - commands:
+  - "# You can also run a query against the Splitgraph Data Delivery Network."
+  - "# It supports most PostgresSQL clients and lets you query Splitgraph images and other"
+  - "# datasets proxied by Splitgraph."
+  - |
+    sgr cloud sql "SELECT date, temperaturemin, temperaturemax
+      FROM \"splitgraph-demo/weather:initial_data\".rdu
+      WHERE date_trunc('month', date) = '2009-08-01'"
+- commands:
   - "# The query API also supports running one-off Splitfile commands against a repository,"
   - "# creating new images that can be pulled. sgr handles authentication for this automatically."
   - cat request_1.json

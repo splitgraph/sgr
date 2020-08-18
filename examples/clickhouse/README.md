@@ -197,7 +197,7 @@ CREATE TABLE chicago_cases (
 	lab_report_date String,
 	cases_total Int32	
 )
-ENGINE = ODBC('DSN=splitgraph', 'chicago', 'covid19_daily_cases_and_deaths_naz8_j4nc');
+ENGINE = ODBC('DSN=splitgraph', 'chicago', 'covid19_daily_cases_deaths_and_hospitalizations_naz8_j4nc');
 
 CREATE TABLE cambridge_cases (
 	date String,
