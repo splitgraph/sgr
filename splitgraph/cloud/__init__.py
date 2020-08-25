@@ -12,6 +12,7 @@ from requests import HTTPError
 from requests.models import Response
 
 from splitgraph.__version__ import __version__
+from splitgraph.commandline.engine import patch_and_save_config
 from splitgraph.config import create_config_dict, get_singleton, CONFIG
 from splitgraph.config.config import get_from_subsection, set_in_subsection, get_all_in_subsection
 from splitgraph.config.export import overwrite_config
@@ -340,8 +341,11 @@ class AuthAPIClient:
             logging.debug("Malformed response from the update service")
             return None
 
-        config["SG_UPDATE_LAST"] = str(now)
-        overwrite_config(config, get_singleton(config, "SG_CONFIG_FILE"))
+        try:
+            patch_and_save_config(CONFIG, {"SG_UPDATE_LAST": str(now)})
+        except Exception:
+            logging.debug("Error patching the config")
+            return None
 
         return latest_version
 

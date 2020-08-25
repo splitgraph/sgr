@@ -75,10 +75,10 @@ def patch_and_save_config(config, patch):
         # Default to creating a config in the user's homedir rather than local.
         config_dir = Path(os.environ["HOME"]) / Path(HOME_SUB_DIR)
         config_path = config_dir / Path(".sgconfig")
-        click.echo("No config file detected, creating one at %s" % config_path)
+        logging.debug("No config file detected, creating one at %s" % config_path)
         config_dir.mkdir(exist_ok=True, parents=True)
     else:
-        click.echo("Updating the existing config file at %s" % config_path)
+        logging.debug("Updating the existing config file at %s" % config_path)
     new_config = patch_config(config, patch)
     overwrite_config(new_config, config_path)
     return str(config_path)

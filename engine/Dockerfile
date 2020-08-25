@@ -179,6 +179,8 @@ ENV PYTHONPATH "${PYTHONPATH}:/splitgraph"
 
 # Copy the actual Splitgraph code over at this point.
 COPY ./splitgraph /splitgraph/splitgraph
+COPY ./bin /splitgraph/bin
+ENV PATH "${PATH}:/splitgraph/bin"
 
 # https://github.com/postgis/docker-postgis/blob/master/12-3.0/Dockerfile
 ARG with_postgis
