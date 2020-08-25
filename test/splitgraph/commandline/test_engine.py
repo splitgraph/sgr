@@ -349,7 +349,6 @@ def test_commandline_engine_creation_config_patching_integration(teardown_test_e
     print(result.stderr.decode())
     print(result.stdout.decode())
     assert result.returncode == 0
-    assert "Updating the existing config file" in result.stdout.decode()
     # Check the engine container has the test prefix (splitgraph_test_engine) and actual
     # "test" name
     assert "splitgraph_test_engine_test" in result.stdout.decode()

@@ -342,10 +342,10 @@ class AuthAPIClient:
             return None
 
         try:
-            patch_and_save_config(CONFIG, {"SG_UPDATE_LAST": str(now)})
-        except Exception:
-            logging.debug("Error patching the config")
-            return None
+            patch_and_save_config(config, {"SG_UPDATE_LAST": str(now)})
+        except Exception as e:
+            logging.debug("Error patching the config", exc_info=e)
+            return latest_version
 
         return latest_version
 

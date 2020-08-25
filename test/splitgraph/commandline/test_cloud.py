@@ -25,6 +25,7 @@ from splitgraph.commandline.cloud import (
     search_c,
 )
 from splitgraph.config import create_config_dict
+from splitgraph.config.config import patch_config
 from splitgraph.exceptions import (
     AuthAPIError,
     GQLUnauthorizedError,
@@ -213,7 +214,7 @@ def _patch_login_funcs(source_config):
 @contextmanager
 def _patch_config_funcs(config):
     with patch("splitgraph.cloud.create_config_dict", return_value=config):
-        with patch("splitgraph.cloud.overwrite_config") as oc:
+        with patch("splitgraph.cloud.patch_and_save_config") as oc:
             with patch("splitgraph.config.CONFIG", config):
                 yield oc
 
@@ -755,10 +756,11 @@ def test_commandline_update_check():
         assert result.exit_code == 0
         assert "version 99999.42.15 is available" in result.output
         assert oc.call_count == 1
-        new_config = oc.mock_calls[0][1][0]
+        new_config = oc.mock_calls[0][1][1]
         assert new_config["SG_UPDATE_LAST"] != "0"
         assert last_request is not None
 
+    new_config = patch_config(config, new_config)
     # Check not running the version check every time
     with _patch_config_funcs(new_config) as oc:
         last_request = None
