@@ -54,7 +54,7 @@ You can also use `docker run`, or alternatively `docker-compose`.
 
 For example, to run with forwarding from the host
 port `5432` to the `splitgraph/engine` image using password `supersecure`,
-default user `clientuser`, and database `cachedb` (see "environment variables"):
+default user `sgr`, and database `splitgraph` (see "environment variables"):
 
 **Via `docker run`:**
 
