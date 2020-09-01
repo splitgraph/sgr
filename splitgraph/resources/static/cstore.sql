@@ -74,6 +74,18 @@ $BODY$
 LANGUAGE plpython3u
 VOLATILE;
 
+CREATE OR REPLACE FUNCTION splitgraph_api.rename_object_files (
+    old_object_id varchar,
+    new_object_id varchar
+)
+    RETURNS void
+    AS $BODY$
+    from splitgraph.core.server import rename_object_files
+    rename_object_files(old_object_id, new_object_id)
+$BODY$
+LANGUAGE plpython3u
+VOLATILE;
+
 CREATE OR REPLACE FUNCTION splitgraph_api.get_object_size (
     object_id varchar
 )

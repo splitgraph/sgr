@@ -979,6 +979,16 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         self.unmount_objects(object_ids)
         self.run_api_call_batch("delete_object_files", [(o,) for o in object_ids])
 
+    def rename_object(self, old_object_id: str, new_object_id: str):
+        self.run_sql(
+            SQL("ALTER TABLE {}}.{} RENAME TO {}").format(
+                Identifier(SPLITGRAPH_META_SCHEMA),
+                Identifier(old_object_id),
+                Identifier(new_object_id),
+            )
+        )
+        self.run_api_call("rename_object", old_object_id, new_object_id)
+
     def unmount_objects(self, object_ids: List[str]) -> None:
         """Unmount objects from splitgraph_meta (this doesn't delete the physical files."""
         unmount_query = SQL(";").join(

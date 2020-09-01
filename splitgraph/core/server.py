@@ -76,6 +76,16 @@ def delete_object_files(object_id: str):
     _remove(object_path + ".schema")
 
 
+def rename_object_file(old_object_id: str, new_object_id: str):
+    import shutil
+
+    for suffix in ("", ".footer", ".schema"):
+        shutil.move(
+            os.path.join(SG_ENGINE_OBJECT_PATH, old_object_id + suffix),
+            os.path.join(SG_ENGINE_OBJECT_PATH, new_object_id + suffix),
+        )
+
+
 def get_object_size(object_id: str) -> int:
     object_path = os.path.join(SG_ENGINE_OBJECT_PATH, object_id)
     return (
