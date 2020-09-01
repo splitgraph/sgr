@@ -24,7 +24,7 @@ The Docker Compose stack contains:
 
 ### Setup
 
-The ODBC configuration lives in the [clickhouse/odbcinst.ini](clickhouse/odbcinst.ini) file. If you
+The ODBC configuration lives in the [clickhouse/odbc.ini](clickhouse/odbc.ini) file. If you
 want to use the Splitgraph DDN, [register](https://www.splitgraph.com/connect) on Splitgraph and 
 paste your API key/secret into the `UserName` and `Password` fields in the `splitgraph-ddn` section.
 
@@ -244,7 +244,7 @@ Loaded metadata for 137 Socrata tables
 
 #### Querying datasets from the DDN example
 
-The local Splitgraph instance is already set up in the [clickhouse/odbcinst.ini](clickhouse/odbcinst.ini) file as the `splitgraph` DSN:
+The local Splitgraph instance is already set up in the [clickhouse/odbc.ini](clickhouse/odbc.ini) file as the `splitgraph` DSN:
 
 ```sql
 SELECT 
