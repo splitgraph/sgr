@@ -2,8 +2,6 @@ version: '3'
 services:
   splitgraph:
     image: splitgraph/engine:${DOCKER_TAG-stable}
-    ports:
-      - '0.0.0.0:5432:5432'
     environment:
       - POSTGRES_USER=sgr
       - POSTGRES_PASSWORD=supersecure
