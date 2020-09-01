@@ -217,7 +217,7 @@ def generate_range_index(
     :param columns: Columns to run the index on (default all)
     :return: Dictionary of {column: [min, max]}
     """
-    columns = columns or [c.name for c in table_schema]
+    columns = columns if columns is not None else [c.name for c in table_schema]
 
     object_pk = [c.name for c in table_schema if c.is_pk]
     if not object_pk:
