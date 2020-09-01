@@ -5,7 +5,7 @@ in the command line tool (via `sgr mount`) and in the Splitfile interpreter (via
 
 import logging
 from importlib import import_module
-from typing import Callable, Dict, List, Optional, Union, TYPE_CHECKING, cast
+from typing import Callable, Dict, List, Optional, Union, TYPE_CHECKING
 
 from splitgraph.config import PG_USER, CONFIG
 from splitgraph.config.config import get_all_in_section
@@ -96,6 +96,7 @@ def mount_postgres(
     password: str,
     dbname: str,
     remote_schema: str,
+    extra_server_args: Optional[Dict] = None,
     tables: Optional[List[str]] = None,
 ) -> None:
     """
@@ -111,6 +112,7 @@ def mount_postgres(
     :param password: Password for the read-only user.
     :param dbname: Remote database name.
     :param remote_schema: Remote schema name.
+    :param extra_server_args: Dictionary of extra arguments to pass to the foreign server
     :param tables: Tables to mount (default all).
     """
     from splitgraph.engine import get_engine
@@ -121,13 +123,15 @@ def mount_postgres(
     engine = get_engine()
     logging.info("Importing foreign Postgres schema...")
 
+    extra_server_args = extra_server_args or {}
+
     # Name foreign servers based on their targets so that we can reuse them.
     server_id = "%s_%s_%s_server" % (server, str(port), dbname)
     init_fdw(
         engine,
         server_id,
         "postgres_fdw",
-        {"host": server, "port": str(port), "dbname": dbname},
+        {"host": server, "port": str(port), "dbname": dbname, **extra_server_args},
         {"user": username, "password": password},
         overwrite=False,
     )
