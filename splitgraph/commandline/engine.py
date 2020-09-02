@@ -26,15 +26,13 @@ def get_docker_client():
     """Wrapper around client.from_env() that also pings the daemon
     to make sure it can connect and if not, raises an error."""
     import docker
-    from requests.exceptions import ConnectionError
 
-    client = docker.from_env()
     try:
+        client = docker.from_env()
         client.ping()
-    except ConnectionError as e:
+        return client
+    except Exception as e:
         raise DockerUnavailableError("Could not connect to the Docker daemon") from e
-
-    return client
 
 
 def copy_to_container(container: "Container", source_path: str, target_path: str) -> None:

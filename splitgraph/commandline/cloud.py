@@ -2,7 +2,6 @@
 import logging
 import shutil
 import subprocess
-import urllib
 from copy import copy
 from typing import Dict, Optional
 from urllib.parse import urlparse, quote
@@ -30,7 +29,10 @@ _DDN_DBNAME = "ddn"
     "--remote", default="data.splitgraph.com", help="Name of the remote registry to register on.",
 )
 @click.option("--accept-tos", is_flag=True, help="Accept the registry's Terms of Service")
-def register_c(username, password, email, remote, accept_tos):
+@click.option(
+    "-s", "--skip-inject", is_flag=True, help="Don't try to copy the config into all engines"
+)
+def register_c(username, password, email, remote, accept_tos, skip_inject):
     """
     Register the user on a Splitgraph registry.
 
@@ -81,7 +83,9 @@ def register_c(username, password, email, remote, accept_tos):
         "remotes": {remote: remote_params},
     }
     config_path = patch_and_save_config(CONFIG, config_patch)
-    inject_config_into_engines(CONFIG["SG_ENGINE_PREFIX"], config_path)
+
+    if not skip_inject:
+        inject_config_into_engines(CONFIG["SG_ENGINE_PREFIX"], config_path)
 
     click.echo("Done.")
 
@@ -127,7 +131,10 @@ def _construct_search_url(gql_endpoint: str, query: str):
 @click.option(
     "--overwrite", is_flag=True, help="Overwrite old API keys in the config if they exist"
 )
-def login_c(username, password, remote, overwrite):
+@click.option(
+    "-s", "--skip-inject", is_flag=True, help="Don't try to copy the config into all engines"
+)
+def login_c(username, password, remote, overwrite, skip_inject):
     """Log into a Splitgraph registry with username/password.
 
     This will generate a new refresh token (to use the Splitgraph query API)
@@ -195,7 +202,9 @@ def login_c(username, password, remote, overwrite):
         click.echo("Acquired new API keys")
 
     config_path = patch_and_save_config(CONFIG, config_patch)
-    inject_config_into_engines(CONFIG["SG_ENGINE_PREFIX"], config_path)
+
+    if not skip_inject:
+        inject_config_into_engines(CONFIG["SG_ENGINE_PREFIX"], config_path)
 
 
 @click.command("login-api")
@@ -204,7 +213,10 @@ def login_c(username, password, remote, overwrite):
 @click.option(
     "--remote", default="data.splitgraph.com", help="Name of the remote registry to log into.",
 )
-def login_api_c(api_key, api_secret, remote):
+@click.option(
+    "-s", "--skip-inject", is_flag=True, help="Don't try to copy the config into all engines"
+)
+def login_api_c(api_key, api_secret, remote, skip_inject):
     """Log into a Splitgraph registry using existing API keys.
 
     This will inject the API keys for the registry into the configuration file
@@ -238,7 +250,9 @@ def login_api_c(api_key, api_secret, remote):
         "remotes": {remote: remote_params},
     }
     config_path = patch_and_save_config(CONFIG, config_patch)
-    inject_config_into_engines(CONFIG["SG_ENGINE_PREFIX"], config_path)
+
+    if not skip_inject:
+        inject_config_into_engines(CONFIG["SG_ENGINE_PREFIX"], config_path)
 
 
 @click.command("curl", context_settings=dict(ignore_unknown_options=True))
