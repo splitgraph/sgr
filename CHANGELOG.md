@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.1 (2020-09-02)
+
+* Add ability to skip config injection at the end of config-manipulating functions (pass `-s`) and don't fail if the Docker socket isn't reachable
+
+Full set of changes: [`v0.2.0...v0.2.1`](https://github.com/splitgraph/splitgraph/compare/v0.2.0...v0.2.1)
+
 ## v0.2.0 (2020-08-18)
 
 * Introducing the [Splitgraph Data Delivery Network](https://www.splitgraph.com/docs/splitgraph-cloud/data-delivery-network): a single SQL endpoint to query all datasets hosted on or proxied by Splitgraph Cloud with any PostgreSQL client.
