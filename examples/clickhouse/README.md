@@ -202,7 +202,7 @@ We will run the same queries that we ran in the DDN example, as well as:
 
 #### Setup
 
-Initialize the engine and set up some datasets. This will set up local "mounts" of the same
+Initialize the engine and set up some datasets (the setup script lives in [setup_datasets.sh](./setup_datasets.sh)). This will set up local "mounts" of the same
 datasets that we referenced in the previous part:
 
   * Chicago Fire Stations Socrata dataset in `chicago_data.fire_stations`
@@ -211,7 +211,7 @@ datasets that we referenced in the previous part:
   
 In this case, your local engine will have a few instances of the [Socrata Foreign Data Wrapper](https://www.splitgraph.com/docs/ingesting-data/socrata) pointing to the upstream data portals.
 
-You will also be prompted to log into Splitgraph with your API keys to clone the metadata for the 2016 
+You will also be prompted to log into Splitgraph with your API keys to clone the metadata for the sample dataset ([2016 US Election precinct-level returns](https://www.splitgraph.com/splitgraph/2016_election/))
 
 ```bash
 $ ./setup_datasets.sh
