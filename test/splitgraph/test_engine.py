@@ -399,3 +399,20 @@ def test_object_storage_remounting(pg_repo_local):
             "no physical file, recreating" in c[1][0] and c[1][1] == missing_object
             for c in log.info.mock_calls
         )
+
+
+def test_rename_object(pg_repo_local):
+    tested_object = pg_repo_local.images["latest"].get_table("fruits").objects[0]
+    # Check we can rename the object (foreign table) and the CStore file backing it
+    pg_repo_local.engine.rename_object(tested_object, new_object_id="renamed_object")
+    pg_repo_local.engine.commit()
+
+    assert tested_object not in pg_repo_local.objects.get_downloaded_objects()
+    assert "renamed_object" in pg_repo_local.objects.get_downloaded_objects()
+
+    pg_repo_local.engine.sync_object_mounts()
+
+    with pytest.raises(ObjectNotFoundError):
+        pg_repo_local.engine.run_sql("SELECT * FROM splitgraph_meta." + tested_object)
+
+    pg_repo_local.engine.run_sql("SELECT * FROM splitgraph_meta.renamed_object")

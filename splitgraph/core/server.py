@@ -76,7 +76,7 @@ def delete_object_files(object_id: str):
     _remove(object_path + ".schema")
 
 
-def rename_object_file(old_object_id: str, new_object_id: str):
+def rename_object_files(old_object_id: str, new_object_id: str):
     import shutil
 
     for suffix in ("", ".footer", ".schema"):
