@@ -5,7 +5,7 @@ in the command line tool (via `sgr mount`) and in the Splitfile interpreter (via
 
 import logging
 from importlib import import_module
-from typing import Callable, Dict, List, Optional, Union, TYPE_CHECKING
+from typing import Callable, Dict, List, Optional, Union, TYPE_CHECKING, cast, Tuple
 
 from splitgraph.config import PG_USER, CONFIG
 from splitgraph.config.config import get_all_in_section
@@ -97,7 +97,7 @@ def mount_postgres(
     dbname: str,
     remote_schema: str,
     extra_server_args: Optional[Dict] = None,
-    tables: Optional[List[str]] = None,
+    tables: Optional[Union[List[str], Dict[str, Dict[str, str]]]] = None,
 ) -> None:
     """
     Mount a Postgres database.
@@ -113,7 +113,8 @@ def mount_postgres(
     :param dbname: Remote database name.
     :param remote_schema: Remote schema name.
     :param extra_server_args: Dictionary of extra arguments to pass to the foreign server
-    :param tables: Tables to mount (default all).
+    :param tables: Tables to mount (default all). If a list, then will use IMPORT FOREIGN SCHEMA.
+    If a dictionary, must have the format {"table_name": {"col_1": "type_1", ...}}.
     """
     from splitgraph.engine import get_engine
     from psycopg2.sql import Identifier, SQL
@@ -138,7 +139,22 @@ def mount_postgres(
 
     # Allow mounting tables into existing schemas
     engine.run_sql(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(mountpoint)))
-    _import_foreign_schema(engine, mountpoint, remote_schema, server_id, tables)
+
+    if isinstance(tables, list):
+        _import_foreign_schema(engine, mountpoint, remote_schema, server_id, tables)
+    else:
+        for table_name, table_schema in tables.items():
+            logging.info("Mounting table %s", table_name)
+
+            query = SQL("CREATE FOREIGN TABLE {}.{} (").format(
+                Identifier(mountpoint), Identifier(table_name)
+            )
+            query += SQL(",").join(
+                SQL("{} %s" % ctype).format(Identifier(cname))
+                for cname, ctype in table_schema.items()
+            )
+            query += SQL(") SERVER {} OPTIONS (schema_name %s)").format(Identifier(server_id))
+            engine.run_sql(query, (remote_schema,))
 
 
 def _import_foreign_schema(
