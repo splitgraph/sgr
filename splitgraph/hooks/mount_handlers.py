@@ -5,9 +5,9 @@ in the command line tool (via `sgr mount`) and in the Splitfile interpreter (via
 
 import logging
 from importlib import import_module
-from typing import Callable, Dict, List, Optional, Union, TYPE_CHECKING, cast, Tuple
+from typing import Callable, Dict, List, Optional, Union, TYPE_CHECKING
 
-from splitgraph.config import PG_USER, CONFIG
+from splitgraph.config import CONFIG
 from splitgraph.config.config import get_all_in_section
 from splitgraph.exceptions import MountHandlerError
 
@@ -76,8 +76,8 @@ def init_fdw(
         engine.run_sql(create_server)
 
     if user_options:
-        create_mapping = SQL("CREATE USER MAPPING IF NOT EXISTS FOR {} SERVER {}").format(
-            Identifier(PG_USER), Identifier(server_id)
+        create_mapping = SQL("CREATE USER MAPPING IF NOT EXISTS FOR PUBLIC SERVER {}").format(
+            Identifier(server_id)
         )
         user_keys, user_vals = zip(*user_options.items())
         create_mapping += (
