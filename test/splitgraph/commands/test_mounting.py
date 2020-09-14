@@ -4,6 +4,7 @@ import pytest
 from test.splitgraph.conftest import _mount_postgres, _mount_mysql, _mount_mongo
 
 from splitgraph.core.repository import Repository
+from splitgraph.core.types import TableColumn
 from splitgraph.engine import get_engine
 
 PG_MNT = Repository.from_schema("test/pg_mount")
@@ -24,6 +25,15 @@ def test_mount_partial(local_engine_empty):
     _mount_postgres(PG_MNT, tables=["fruits"])
     assert get_engine().table_exists(PG_MNT.to_schema(), "fruits")
     assert not get_engine().table_exists(PG_MNT.to_schema(), "vegetables")
+
+
+@pytest.mark.mounting
+def test_mount_force_schema(local_engine_empty):
+    _mount_postgres(PG_MNT, tables={"fruits": {"fruit_id": "character varying"}})
+    assert get_engine().table_exists(PG_MNT.to_schema(), "fruits")
+    assert get_engine().get_full_table_schema(PG_MNT.to_schema(), "fruits") == [
+        TableColumn(1, "fruit_id", "character varying", False, None)
+    ]
 
 
 @pytest.mark.mounting
