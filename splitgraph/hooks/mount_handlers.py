@@ -268,7 +268,7 @@ def mount_mysql(
     :param password: Password for the read-only user.
     :param remote_schema: Remote schema name.
     :param tables: Tables to mount (default all). If a list, then will use IMPORT FOREIGN SCHEMA.
-    If a dictionary, must have the format {"table_name": {"col_1": "type_1", ...}}.
+    If a dictionary, must have the format `{"table_name": {"col_1": "type_1", ...}}`.
     """
     from splitgraph.engine import get_engine
     from psycopg2.sql import Identifier, SQL
@@ -340,8 +340,7 @@ def mount_elasticsearch(
     :param username: A read-only user that the database will be accessed as.
     :param password: Password for the read-only user.
     :param table_spec: A dictionary of form
-        ```
-        {"table_name":
+        `{"table_name":
             {"schema": {"col1": "type1"...},
              "index": <es index>,
              "type": <es doc_type, optional in ES7 and later>,
@@ -349,8 +348,7 @@ def mount_elasticsearch(
              "score_column": <column to return document score>,
              "scroll_size": <fetch size, default 1000>,
              "scroll_duration": <how long to hold the scroll context open for, default 10m>},
-             ...}
-        ```
+             ...}`
     """
     from splitgraph.engine import get_engine
     from psycopg2.sql import Identifier, SQL
