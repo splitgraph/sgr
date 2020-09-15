@@ -41,7 +41,7 @@ def init_fdw(
     engine: "PostgresEngine",
     server_id: str,
     wrapper: str,
-    server_options: Optional[Dict[str, Union[str, int, None]]] = None,
+    server_options: Optional[Dict[str, Union[str, None]]] = None,
     user_options: Optional[Dict[str, str]] = None,
     overwrite: bool = True,
 ) -> None:
@@ -366,7 +366,7 @@ def mount_elasticsearch(
         {
             "wrapper": "pg_es_fdw.ElasticsearchFDW",
             "host": server,
-            "port": port,
+            "port": str(port),
             "username": username,
             "password": password,
         },
