@@ -157,24 +157,30 @@ def _create_foreign_tables(
     tables: Dict[str, Dict[str, str]],
     server_options: Optional[Dict[str, Any]] = None,
 ):
-    from psycopg2.sql import Identifier, SQL
-
     for table_name, table_schema in tables.items():
         logging.info("Mounting table %s", table_name)
 
-        query = SQL("CREATE FOREIGN TABLE {}.{} (").format(
-            Identifier(local_schema), Identifier(table_name)
+        _create_foreign_table(
+            engine, local_schema, table_name, table_schema, server_id, server_options
         )
-        query += SQL(",").join(
-            SQL("{} %s" % ctype).format(Identifier(cname)) for cname, ctype in table_schema.items()
-        )
-        query += SQL(") SERVER {}").format(Identifier(server_id))
-        if server_options:
-            server_keys, server_vals = zip(*server_options.items())
-            query += _format_options(server_keys)
-            engine.run_sql(query, server_vals)
-        else:
-            engine.run_sql(query)
+
+
+def _create_foreign_table(engine, local_schema, table_name, schema_spec, server_id, server_options):
+    from psycopg2.sql import Identifier, SQL
+
+    query = SQL("CREATE FOREIGN TABLE {}.{} (").format(
+        Identifier(local_schema), Identifier(table_name)
+    )
+    query += SQL(",").join(
+        SQL("{} %s" % ctype).format(Identifier(cname)) for cname, ctype in schema_spec.items()
+    )
+    query += SQL(") SERVER {}").format(Identifier(server_id))
+    if server_options:
+        server_keys, server_vals = zip(*server_options.items())
+        query += _format_options(server_keys)
+        engine.run_sql(query, server_vals)
+    else:
+        engine.run_sql(query)
 
 
 def _import_foreign_schema(
@@ -226,19 +232,18 @@ def mount_mongo(
     # {table_name: {db: remote_db_name, coll: remote_collection_name, schema: {col1: type1, col2: type2...}}}
     for table_name, table_options in table_spec.items():
         logging.info("Mounting table %s", table_name)
-        db = table_options["db"]
-        coll = table_options["coll"]
 
-        query = SQL("CREATE FOREIGN TABLE {}.{} (_id NAME ").format(
-            Identifier(mountpoint), Identifier(table_name)
+        table_schema = table_options.get("schema", {})
+        table_schema["_id"] = "NAME"
+
+        _create_foreign_table(
+            engine,
+            local_schema=mountpoint,
+            table_name=table_name,
+            schema_spec=table_schema,
+            server_id=server_id,
+            server_options={"database": table_options["db"], "collection": table_options["coll"]},
         )
-        if table_options["schema"]:
-            for cname, ctype in table_options["schema"].items():
-                query += SQL(", {} %s" % ctype).format(Identifier(cname))
-        query += SQL(") SERVER {}").format(Identifier(server_id)) + _format_options(
-            ["database", "collection"]
-        )
-        engine.run_sql(query, (db, coll))
 
 
 def mount_mysql(
