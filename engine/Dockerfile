@@ -183,8 +183,8 @@ COPY ./bin /splitgraph/bin
 # "Install" elasticsearch_fdw
 RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip \
     mkdir /pg_es_fdw && \
-    pip install elasticsearch>=7.7.0
-COPY ./engine/src/postgres-elasticsearch-fdw/pg_es_fdw /pg_es_fdw/
+    pip install "elasticsearch>=7.7.0"
+COPY ./engine/src/postgres-elasticsearch-fdw/pg_es_fdw /pg_es_fdw/pg_es_fdw
 
 ENV PATH "${PATH}:/splitgraph/bin"
 ENV PYTHONPATH "${PYTHONPATH}:/splitgraph:/pg_es_fdw"
