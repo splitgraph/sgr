@@ -324,13 +324,14 @@ def mount_elasticsearch(
                 "query": "text",
                 "col_1": "text",
                 "col_2": "boolean",
-              }
+              },
               "index": "index-pattern*",
               "rowid_column": "id",
               "query_column": "query",
             }
           }
         }
+    EOF
     ```
     \b
 
