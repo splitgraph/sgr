@@ -5,7 +5,7 @@ in the command line tool (via `sgr mount`) and in the Splitfile interpreter (via
 
 import logging
 from importlib import import_module
-from typing import Callable, Dict, List, Optional, Union, TYPE_CHECKING
+from typing import Callable, Dict, List, Optional, Union, TYPE_CHECKING, Any
 
 from splitgraph.config import CONFIG
 from splitgraph.config.config import get_all_in_section
@@ -66,11 +66,7 @@ def init_fdw(
 
     if server_options:
         server_keys, server_vals = zip(*server_options.items())
-        create_server += (
-            SQL(" OPTIONS (")
-            + SQL(",").join(Identifier(o) + SQL(" %s") for o in server_keys)
-            + SQL(")")
-        )
+        create_server += _format_options(server_keys)
         engine.run_sql(create_server, server_vals)
     else:
         engine.run_sql(create_server)
@@ -80,12 +76,18 @@ def init_fdw(
             Identifier(server_id)
         )
         user_keys, user_vals = zip(*user_options.items())
-        create_mapping += (
-            SQL(" OPTIONS (")
-            + SQL(",").join(Identifier(o) + SQL(" %s") for o in user_keys)
-            + SQL(")")
-        )
+        create_mapping += _format_options(user_keys)
         engine.run_sql(create_mapping, user_vals)
+
+
+def _format_options(option_names):
+    from psycopg2.sql import Identifier, SQL
+
+    return (
+        SQL(" OPTIONS (")
+        + SQL(",").join(Identifier(o) + SQL(" %s") for o in option_names)
+        + SQL(")")
+    )
 
 
 def mount_postgres(
@@ -143,18 +145,36 @@ def mount_postgres(
     if isinstance(tables, list):
         _import_foreign_schema(engine, mountpoint, remote_schema, server_id, tables)
     else:
-        for table_name, table_schema in tables.items():
-            logging.info("Mounting table %s", table_name)
+        _create_foreign_tables(
+            engine, server_id, mountpoint, tables, server_options={"schema_name": remote_schema}
+        )
 
-            query = SQL("CREATE FOREIGN TABLE {}.{} (").format(
-                Identifier(mountpoint), Identifier(table_name)
-            )
-            query += SQL(",").join(
-                SQL("{} %s" % ctype).format(Identifier(cname))
-                for cname, ctype in table_schema.items()
-            )
-            query += SQL(") SERVER {} OPTIONS (schema_name %s)").format(Identifier(server_id))
-            engine.run_sql(query, (remote_schema,))
+
+def _create_foreign_tables(
+    engine: "PostgresEngine",
+    server_id: str,
+    local_schema: str,
+    tables: Dict[str, Dict[str, str]],
+    server_options: Optional[Dict[str, Any]] = None,
+):
+    from psycopg2.sql import Identifier, SQL
+
+    for table_name, table_schema in tables.items():
+        logging.info("Mounting table %s", table_name)
+
+        query = SQL("CREATE FOREIGN TABLE {}.{} (").format(
+            Identifier(local_schema), Identifier(table_name)
+        )
+        query += SQL(",").join(
+            SQL("{} %s" % ctype).format(Identifier(cname)) for cname, ctype in table_schema.items()
+        )
+        query += SQL(") SERVER {}").format(Identifier(server_id))
+        if server_options:
+            server_keys, server_vals = zip(*server_options.items())
+            query += _format_options(server_keys)
+            engine.run_sql(query, server_vals)
+        else:
+            engine.run_sql(query)
 
 
 def _import_foreign_schema(
@@ -215,8 +235,8 @@ def mount_mongo(
         if table_options["schema"]:
             for cname, ctype in table_options["schema"].items():
                 query += SQL(", {} %s" % ctype).format(Identifier(cname))
-        query += SQL(") SERVER {} OPTIONS (database %s, collection %s)").format(
-            Identifier(server_id)
+        query += SQL(") SERVER {}").format(Identifier(server_id)) + _format_options(
+            ["database", "collection"]
         )
         engine.run_sql(query, (db, coll))
 
@@ -228,7 +248,7 @@ def mount_mysql(
     username: str,
     password: str,
     remote_schema: str,
-    tables: List[str] = None,
+    tables: Optional[Union[List[str], Dict[str, Dict[str, str]]]] = None,
 ) -> None:
     """
     Mount a MySQL database.
@@ -242,7 +262,8 @@ def mount_mysql(
     :param username: A read-only user that the database will be accessed as.
     :param password: Password for the read-only user.
     :param remote_schema: Remote schema name.
-    :param tables: Tables to mount (default all).
+    :param tables: Tables to mount (default all). If a list, then will use IMPORT FOREIGN SCHEMA.
+    If a dictionary, must have the format {"table_name": {"col_1": "type_1", ...}}.
     """
     from splitgraph.engine import get_engine
     from psycopg2.sql import Identifier, SQL
@@ -262,7 +283,12 @@ def mount_mysql(
     )
 
     engine.run_sql(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(mountpoint)))
-    _import_foreign_schema(engine, mountpoint, remote_schema, server_id, tables)
+    if isinstance(tables, list):
+        _import_foreign_schema(engine, mountpoint, remote_schema, server_id, tables)
+    else:
+        _create_foreign_tables(
+            engine, server_id, mountpoint, tables, server_options={"dbname": remote_schema}
+        )
 
 
 def mount(
