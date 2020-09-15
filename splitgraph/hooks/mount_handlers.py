@@ -41,7 +41,7 @@ def init_fdw(
     engine: "PostgresEngine",
     server_id: str,
     wrapper: str,
-    server_options: Optional[Dict[str, Union[str, None]]] = None,
+    server_options: Optional[Dict[str, Union[str, int, None]]] = None,
     user_options: Optional[Dict[str, str]] = None,
     overwrite: bool = True,
 ) -> None:
@@ -67,7 +67,7 @@ def init_fdw(
     if server_options:
         server_keys, server_vals = zip(*server_options.items())
         create_server += _format_options(server_keys)
-        engine.run_sql(create_server, server_vals)
+        engine.run_sql(create_server, [str(v) for v in server_vals])
     else:
         engine.run_sql(create_server)
 
@@ -77,7 +77,7 @@ def init_fdw(
         )
         user_keys, user_vals = zip(*user_options.items())
         create_mapping += _format_options(user_keys)
-        engine.run_sql(create_mapping, user_vals)
+        engine.run_sql(create_mapping, [str(v) for v in user_vals])
 
 
 def _format_options(option_names):
@@ -178,7 +178,7 @@ def _create_foreign_table(engine, local_schema, table_name, schema_spec, server_
     if server_options:
         server_keys, server_vals = zip(*server_options.items())
         query += _format_options(server_keys)
-        engine.run_sql(query, server_vals)
+        engine.run_sql(query, [str(v) for v in server_vals])
     else:
         engine.run_sql(query)
 
@@ -293,6 +293,98 @@ def mount_mysql(
     else:
         _create_foreign_tables(
             engine, server_id, mountpoint, tables, server_options={"dbname": remote_schema}
+        )
+
+
+def mount_elasticsearch(
+    mountpoint: str,
+    server: str,
+    port: int,
+    username: str,
+    password: str,
+    table_spec: Dict[str, Dict[str, Any]],
+):
+    """
+    Mount an ElasticSearch instance.
+
+    Mount a set of tables proxying to a remote ElasticSearch index.
+
+    This uses a fork of postgres-elasticsearch-fdw behind the scenes. You can add a column
+    `query` to your table and set it as `query_column` to pass advanced ES queries and aggregations.
+    For example:
+
+    ```
+    sgr mount elasticsearch -c elasticsearch:9200 -o@- <<EOF
+        {
+          "table_spec": {
+            "table_1": {
+              "schema": {
+                "id": "text",
+                "@timestamp": "timestamp",
+                "query": "text",
+                "col_1": "text",
+                "col_2": "boolean",
+              }
+              "index": "index-pattern*",
+              "rowid_column": "id",
+              "query_column": "query",
+            }
+          }
+        }
+    ```
+    \b
+
+    :param mountpoint: Schema to mount the remote into.
+    :param server: Database hostname.
+    :param port: Database port
+    :param username: A read-only user that the database will be accessed as.
+    :param password: Password for the read-only user.
+    :param table_spec: A dictionary of form
+        ```
+        {"table_name":
+            {"schema": {"col1": "type1"...},
+             "index": <es index>,
+             "type": <es doc_type, optional in ES7 and later>,
+             "query_column": <column to pass ES query in>,
+             "score_column": <column to return document score>,
+             "scroll_size": <fetch size, default 1000>,
+             "scroll_duration": <how long to hold the scroll context open for, default 10m>},
+             ...}
+        ```
+    """
+    from splitgraph.engine import get_engine
+    from psycopg2.sql import Identifier, SQL
+
+    engine = get_engine()
+    logging.info("Mounting ElasticSearch instance...")
+    server_id = mountpoint + "_server"
+
+    init_fdw(
+        engine,
+        server_id,
+        "multicorn",
+        {
+            "wrapper": "pg_es_fdw.ElasticsearchFDW",
+            "host": server,
+            "port": port,
+            "username": username,
+            "password": password,
+        },
+        None,
+    )
+
+    engine.run_sql(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(mountpoint)))
+
+    for table_name, table_options in table_spec.items():
+        logging.info("Mounting table %s", table_name)
+        schema = table_options.pop("schema")
+        _create_foreign_table(
+            engine,
+            local_schema=mountpoint,
+            table_name=table_name,
+            schema_spec=schema,
+            server_id=server_id,
+            server_options=table_options,
         )
 
 
