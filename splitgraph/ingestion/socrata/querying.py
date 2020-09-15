@@ -170,16 +170,16 @@ def _qual_to_socrata(qual, column_map=None):
         if qual.list_any_or_all == ANY:
             # Convert col op ANY([a,b,c]) into (cop op a) OR (col op b)...
             return " OR ".join(
-                f"({_base_qual_to_socrata(qual.field_name, qual.operator[0], v, column_map)})"
+                f"({_base_qual_to_socrata(qual.field_name, qual.operator, v, column_map)})"
                 for v in qual.value
             )
         # Convert col op ALL(ARRAY[a,b,c...]) into (cop op a) AND (col op b)...
         return " AND ".join(
-            f"({_base_qual_to_socrata(qual.field_name, qual.operator[0], v, column_map)})"
+            f"({_base_qual_to_socrata(qual.field_name, qual.operator, v, column_map)})"
             for v in qual.value
         )
     else:
-        return f"{_base_qual_to_socrata(qual.field_name, qual.operator[0], qual.value, column_map)}"
+        return f"{_base_qual_to_socrata(qual.field_name, qual.operator, qual.value, column_map)}"
 
 
 def quals_to_socrata(quals, column_map: Optional[Dict[str, str]] = None):
