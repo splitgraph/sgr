@@ -61,6 +61,7 @@ DEFAULTS: ConfigDict = {
         "mongo_fdw": "splitgraph.hooks.mount_handlers.mount_mongo",
         "mysql_fdw": "splitgraph.hooks.mount_handlers.mount_mysql",
         "socrata": "splitgraph.ingestion.socrata.mount.mount_socrata",
+        "elasticsearch": "splitgraph.hooks.mount_handlers.mount_elasticsearch",
     },
 }
 

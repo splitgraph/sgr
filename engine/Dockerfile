@@ -175,12 +175,19 @@ ENV POSTGRES_USER sgr
 COPY ./engine/etc /etc/
 COPY ./engine/init_scripts /docker-entrypoint-initdb.d/
 
-ENV PYTHONPATH "${PYTHONPATH}:/splitgraph"
 
 # Copy the actual Splitgraph code over at this point.
 COPY ./splitgraph /splitgraph/splitgraph
 COPY ./bin /splitgraph/bin
+
+# "Install" elasticsearch_fdw
+RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip \
+    mkdir /pg_es_fdw && \
+    pip install elasticsearch>=7.7.0
+COPY ./engine/src/postgres-elasticsearch-fdw/pg_es_fdw /pg_es_fdw/
+
 ENV PATH "${PATH}:/splitgraph/bin"
+ENV PYTHONPATH "${PYTHONPATH}:/splitgraph:/pg_es_fdw"
 
 # https://github.com/postgis/docker-postgis/blob/master/12-3.0/Dockerfile
 ARG with_postgis

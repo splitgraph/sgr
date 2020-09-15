@@ -4,3 +4,6 @@
 [submodule "engine/src/cstore_fdw"]
 	path = engine/src/cstore_fdw
 	url = https://github.com/splitgraph/cstore_fdw.git
+[submodule "engine/src/postgres-elasticsearch-fdw"]
+	path = engine/src/postgres-elasticsearch-fdw
+	url = https://github.com/splitgraph/postgres-elasticsearch-fdw.git
