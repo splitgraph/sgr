@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.3 (2020-09-16)
+
+  * Socrata FDW now correctly emits `IS NULL / IS NOT NULL`, same with ES (using ES query syntax).
+  * Fix array handling (`a IN (1,2,3)` queries get rewritten and pushed down correctly).
+  * Output more query information in `EXPLAIN` for Socrata/LQ.
+
+Full set of changes: [`v0.2.2...v0.2.3`](https://github.com/splitgraph/splitgraph/compare/v0.2.2...v0.2.3)
+
 ## v0.2.2 (2020-09-16)
 
 * Add ability to pass extra server args to postgres_fdw (`extra_server_args`)
