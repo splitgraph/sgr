@@ -83,6 +83,8 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         )
 
         return [
+            "Original Multicorn quals: %r" % quals,
+            "CNF quals: %r" % cnf_quals,
             "Objects removed by filter: %d" % (len(all_objects) - len(filtered_objects)),
             "Scan through %d object(s) (%s)" % (len(filtered_objects), pretty_size(total_size)),
         ]
@@ -107,8 +109,6 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         if self.end_scan_callback:
             self.end_scan_callback(from_fdw=True)
             self.end_scan_callback = None
-
-        log_to_postgres("CNF quals: %r" % (cnf_quals,), _PG_LOGLEVEL)
 
         queries, self.end_scan_callback, self.plan = self.table.query_indirect(columns, cnf_quals)
         yield from queries
