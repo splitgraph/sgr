@@ -25,7 +25,10 @@ from splitgraph.ingestion.socrata.querying import (
 class Q:
     def __init__(self, col, op, val, is_list=False, is_list_any=True):
         self.field_name = col
-        self.operator = op
+        if is_list:
+            self.operator = (op, is_list_any)
+        else:
+            self.operator = op
         self.value = val
 
         self.is_list_operator = is_list
