@@ -67,7 +67,7 @@ _col_map = {_long_name_col_sg: _long_name_col}
             "((`some_col` = 1) OR (`some_col` = 2)) "
             "AND ((`some_other_col` <> 1) AND (`some_other_col` <> 2))",
         ),
-        ([Q("some_col", "=", None)], "(`some_col` = NULL)"),
+        ([Q("some_col", "=", None)], "(`some_col` IS NULL)"),
     ],
 )
 def test_socrata_quals(quals, expected):
