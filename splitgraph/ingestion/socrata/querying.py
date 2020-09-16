@@ -161,8 +161,15 @@ def _base_qual_to_socrata(col, op, value, column_map=None):
     soql_op = _convert_op(op)
     if not soql_op:
         return "TRUE"
-    else:
-        return f"{_emit_col(col, column_map)} {soql_op} {_emit_val(value)}"
+    if value is None:
+        if soql_op == "=":
+            soql_op = "IS"
+        elif soql_op in ("<>", "!="):
+            soql_op = "IS NOT"
+        else:
+            return "TRUE"
+
+    return f"{_emit_col(col, column_map)} {soql_op} {_emit_val(value)}"
 
 
 def _qual_to_socrata(qual, column_map=None):
