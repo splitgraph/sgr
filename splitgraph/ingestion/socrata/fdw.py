@@ -69,7 +69,17 @@ class SocrataForeignDataWrapper(ForeignDataWrapper):
             return 1000000, len(columns) * 10
 
     def explain(self, quals, columns, sortkeys=None, verbose=False):
-        return ["Socrata query to %s" % self.domain, "Socrata dataset ID: %s" % self.table]
+        query = quals_to_socrata(quals, self.column_map)
+        select = cols_to_socrata(columns, self.column_map)
+        order = sortkeys_to_socrata(sortkeys, self.column_map)
+
+        return [
+            "Socrata query to %s" % self.domain,
+            "Socrata dataset ID: %s" % self.table,
+            "Query: %s" % query,
+            "Columns: %s" % select,
+            "Order: %s" % order,
+        ]
 
     def execute(self, quals, columns, sortkeys=None):
         """Main Multicorn entry point."""

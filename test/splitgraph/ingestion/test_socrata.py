@@ -268,6 +268,9 @@ def test_socrata_fdw():
         assert fdw.explain([], []) == [
             "Socrata query to data.cityofchicago.gov",
             "Socrata dataset ID: xzkq-xp2w",
+            "Query: ",
+            "Columns: ",
+            "Order: :id",
         ]
 
         assert list(
