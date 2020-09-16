@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.2.2 (2020-09-16)
+
+* Add ability to pass extra server args to postgres_fdw (`extra_server_args`)
+* Add ability to rename object files in-engine (utility function for some ingestion).
+* Allow disabling `IMPORT FOREIGN SCHEMA` and passing a table schema in Postgres/MySQL FDWs.
+* Add a fork (https://github.com/splitgraph/postgres-elasticsearch-fdw) of https://github.com/matthewfranglen/postgres-elasticsearch-fdw to `sgr mount`, letting others mount ES indexes. Fork changes:
+  * Pass qualifiers as ElasticSearch queries using the query DSL (was using the `query=...` qual as a Lucene query string, which is useless in JOINs. Now we combine both the query implied from the quals and the Lucene query string, if passed)
+  * Close the search context on `end_scan` (otherwise many ES queries to the FDW in a 10 minute span would cause it to error with a "too many scroll contexts" exception)
+  * Add EXPLAIN support (outputs the used ES query)
+
+Full set of changes: [`v0.2.1...v0.2.2`](https://github.com/splitgraph/splitgraph/compare/v0.2.1...v0.2.2)
+
 ## v0.2.1 (2020-09-02)
 
 * Add ability to skip config injection at the end of config-manipulating functions (pass `-s`) and don't fail if the Docker socket isn't reachable
