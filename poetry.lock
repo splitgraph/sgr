@@ -985,7 +985,7 @@ description = "Fast, Extensible Progress Meter"
 name = "tqdm"
 optional = false
 python-versions = ">=2.6, !=3.0.*, !=3.1.*"
-version = "4.49.0"
+version = "4.50.0"
 
 [package.extras]
 dev = ["py-make (>=0.1.0)", "twine", "argopt", "pydoc-markdown"]
@@ -1118,7 +1118,6 @@ babel = [
     {file = "Babel-2.8.0.tar.gz", hash = "sha256:1aac2ae2d0d8ea368fa90906567f5c08463d98ade155c0c4bfedd6a0f7160e38"},
 ]
 black = [
-    {file = "black-20.8b1-py3-none-any.whl", hash = "sha256:70b62ef1527c950db59062cda342ea224d772abdf6adc58b86a45421bab20a6b"},
     {file = "black-20.8b1.tar.gz", hash = "sha256:1c02557aa099101b9d21496f8a914e9ed2222ef70336404eeeac8edba836fbea"},
 ]
 bump2version = [
@@ -1668,8 +1667,8 @@ toml = [
     {file = "toml-0.10.1.tar.gz", hash = "sha256:926b612be1e5ce0634a2ca03470f95169cf16f939018233a670519cb4ac58b0f"},
 ]
 tqdm = [
-    {file = "tqdm-4.49.0-py2.py3-none-any.whl", hash = "sha256:8f3c5815e3b5e20bc40463fa6b42a352178859692a68ffaa469706e6d38342a5"},
-    {file = "tqdm-4.49.0.tar.gz", hash = "sha256:faf9c671bd3fad5ebaeee366949d969dca2b2be32c872a7092a1e1a9048d105b"},
+    {file = "tqdm-4.50.0-py2.py3-none-any.whl", hash = "sha256:2dd75fdb764f673b8187643496fcfbeac38348015b665878e582b152f3391cdb"},
+    {file = "tqdm-4.50.0.tar.gz", hash = "sha256:93b7a6a9129fce904f6df4cf3ae7ff431d779be681a95c3344c26f3e6c09abfa"},
 ]
 typed-ast = [
     {file = "typed_ast-1.4.1-cp35-cp35m-manylinux1_i686.whl", hash = "sha256:73d785a950fc82dd2a25897d525d003f6378d1cb23ab305578394694202a58c3"},
