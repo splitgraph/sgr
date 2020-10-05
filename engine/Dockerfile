@@ -26,8 +26,6 @@ RUN apt-get update -qq && \
         autoconf \
         libtool \
         # https://github.com/docker-library/postgres/issues/678#issuecomment-586888013
-        libpq5=${PG_MAJOR}.* \
-        libpq-dev=${PG_MAJOR}.* \
         postgresql-server-dev-$PG_MAJOR \
         libmongoc-1.0.0 \
         libmongoc-dev \
