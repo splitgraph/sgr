@@ -3,21 +3,25 @@ Hooks for additional handlers used to mount other databases via FDW. These handl
 in the command line tool (via `sgr mount`) and in the Splitfile interpreter (via `FROM MOUNT`).
 """
 
-import logging
 from importlib import import_module
-from typing import Callable, Dict, List, Optional, Union, TYPE_CHECKING, Any
+from typing import Dict, List, Optional, Union, TYPE_CHECKING, Any, Type
 
 from splitgraph.config import CONFIG
 from splitgraph.config.config import get_all_in_section
+from splitgraph.core.types import TableColumn
 from splitgraph.exceptions import MountHandlerError
+from splitgraph.hooks.data_source import (
+    PostgreSQLDataSource,
+    ForeignDataWrapperDataSource,
+)
 
 if TYPE_CHECKING:
-    from splitgraph.engine.postgres.engine import PostgresEngine
+    pass
 
-_MOUNT_HANDLERS: Dict[str, Callable] = {}
+_MOUNT_HANDLERS: Dict[str, Type[ForeignDataWrapperDataSource]] = {}
 
 
-def get_mount_handler(mount_handler: str) -> Callable:
+def get_mount_handler(mount_handler: str) -> Type[ForeignDataWrapperDataSource]:
     """Returns a mount function for a given handler.
     The mount function must have a signature `(mountpoint, server, port, username, password, handler_kwargs)`."""
     try:
@@ -31,63 +35,10 @@ def get_mount_handlers() -> List[str]:
     return list(_MOUNT_HANDLERS.keys())
 
 
-def register_mount_handler(name: str, mount_function: Callable) -> None:
-    """Returns a mount function under a given name. See `get_mount_handler` for the mount handler spec."""
+def register_mount_handler(name: str, mount_class: Type[ForeignDataWrapperDataSource]) -> None:
+    """Returns a data source under a given name. See `get_mount_handler` for the mount handler spec."""
     global _MOUNT_HANDLERS
-    _MOUNT_HANDLERS[name] = mount_function
-
-
-def init_fdw(
-    engine: "PostgresEngine",
-    server_id: str,
-    wrapper: str,
-    server_options: Optional[Dict[str, Union[str, None]]] = None,
-    user_options: Optional[Dict[str, str]] = None,
-    overwrite: bool = True,
-) -> None:
-    """
-    Sets up a foreign data server on the engine.
-
-    :param engine: PostgresEngine
-    :param server_id: Name to call the foreign server, must be unique. Will be deleted if exists.
-    :param wrapper: Name of the foreign data wrapper (must be installed as an extension on the engine)
-    :param server_options: Dictionary of FDW options
-    :param user_options: Dictionary of user options
-    :param overwrite: If the server already exists, delete and recreate it.
-    """
-    from psycopg2.sql import Identifier, SQL
-
-    if overwrite:
-        engine.run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(server_id)))
-
-    create_server = SQL("CREATE SERVER IF NOT EXISTS {} FOREIGN DATA WRAPPER {}").format(
-        Identifier(server_id), Identifier(wrapper)
-    )
-
-    if server_options:
-        server_keys, server_vals = zip(*server_options.items())
-        create_server += _format_options(server_keys)
-        engine.run_sql(create_server, [str(v) for v in server_vals])
-    else:
-        engine.run_sql(create_server)
-
-    if user_options:
-        create_mapping = SQL("CREATE USER MAPPING IF NOT EXISTS FOR PUBLIC SERVER {}").format(
-            Identifier(server_id)
-        )
-        user_keys, user_vals = zip(*user_options.items())
-        create_mapping += _format_options(user_keys)
-        engine.run_sql(create_mapping, [str(v) for v in user_vals])
-
-
-def _format_options(option_names):
-    from psycopg2.sql import Identifier, SQL
-
-    return (
-        SQL(" OPTIONS (")
-        + SQL(",").join(Identifier(o) + SQL(" %s") for o in option_names)
-        + SQL(")")
-    )
+    _MOUNT_HANDLERS[name] = mount_class
 
 
 def mount_postgres(
@@ -118,82 +69,17 @@ def mount_postgres(
     :param tables: Tables to mount (default all). If a list, then will use IMPORT FOREIGN SCHEMA.
     If a dictionary, must have the format {"table_name": {"col_1": "type_1", ...}}.
     """
-    from splitgraph.engine import get_engine
-    from psycopg2.sql import Identifier, SQL
-
-    if tables is None:
-        tables = []
-    engine = get_engine()
-    logging.info("Importing foreign Postgres schema...")
-
-    extra_server_args = extra_server_args or {}
-
-    # Name foreign servers based on their targets so that we can reuse them.
-    server_id = "%s_%s_%s_server" % (server, str(port), dbname)
-    init_fdw(
-        engine,
-        server_id,
-        "postgres_fdw",
-        {"host": server, "port": str(port), "dbname": dbname, **extra_server_args},
-        {"user": username, "password": password},
-        overwrite=False,
+    source = PostgreSQLDataSource(
+        params={
+            "host": server,
+            "port": port,
+            "dbname": dbname,
+            "remote_schema": remote_schema,
+            "extra_server_args": extra_server_args,
+        },
+        creds={"username": username, "password": password},
     )
-
-    # Allow mounting tables into existing schemas
-    engine.run_sql(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(mountpoint)))
-
-    if isinstance(tables, list):
-        _import_foreign_schema(engine, mountpoint, remote_schema, server_id, tables)
-    else:
-        _create_foreign_tables(
-            engine, server_id, mountpoint, tables, server_options={"schema_name": remote_schema}
-        )
-
-
-def _create_foreign_tables(
-    engine: "PostgresEngine",
-    server_id: str,
-    local_schema: str,
-    tables: Dict[str, Dict[str, str]],
-    server_options: Optional[Dict[str, Any]] = None,
-):
-    for table_name, table_schema in tables.items():
-        logging.info("Mounting table %s", table_name)
-
-        _create_foreign_table(
-            engine, local_schema, table_name, table_schema, server_id, server_options
-        )
-
-
-def _create_foreign_table(engine, local_schema, table_name, schema_spec, server_id, server_options):
-    from psycopg2.sql import Identifier, SQL
-
-    query = SQL("CREATE FOREIGN TABLE {}.{} (").format(
-        Identifier(local_schema), Identifier(table_name)
-    )
-    query += SQL(",").join(
-        SQL("{} %s" % ctype).format(Identifier(cname)) for cname, ctype in schema_spec.items()
-    )
-    query += SQL(") SERVER {}").format(Identifier(server_id))
-    if server_options:
-        server_keys, server_vals = zip(*server_options.items())
-        query += _format_options(server_keys)
-        engine.run_sql(query, [str(v) for v in server_vals])
-    else:
-        engine.run_sql(query)
-
-
-def _import_foreign_schema(
-    engine: "PostgresEngine", mountpoint: str, remote_schema: str, server_id: str, tables: List[str]
-) -> None:
-    from psycopg2.sql import Identifier, SQL
-
-    # Construct a query: import schema limit to (%s, %s, ...) from server mountpoint_server into mountpoint
-    query = SQL("IMPORT FOREIGN SCHEMA {} ").format(Identifier(remote_schema))
-    if tables:
-        query += SQL("LIMIT TO (") + SQL(",").join(Identifier(t) for t in tables) + SQL(")")
-    query += SQL("FROM SERVER {} INTO {}").format(Identifier(server_id), Identifier(mountpoint))
-    engine.run_sql(query)
+    source.mount(schema=mountpoint, tables=tables)
 
 
 def mount_mongo(
@@ -213,87 +99,7 @@ def mount_mongo(
     :param table_spec: A dictionary of form `{"table_name": {"db": <dbname>, "coll": <collection>,
         "schema": {"col1": "type1"...}}}`.
     """
-    from splitgraph.engine import get_engine
-    from psycopg2.sql import Identifier, SQL
-
-    engine = get_engine()
-    server_id = mountpoint + "_server"
-    init_fdw(
-        engine,
-        server_id,
-        "mongo_fdw",
-        {"address": server, "port": str(port)},
-        {"username": username, "password": password},
-    )
-
-    engine.run_sql(SQL("""CREATE SCHEMA IF NOT EXISTS {}""").format(Identifier(mountpoint)))
-
-    # Parse the table spec
-    # {table_name: {db: remote_db_name, coll: remote_collection_name, schema: {col1: type1, col2: type2...}}}
-    for table_name, table_options in table_spec.items():
-        logging.info("Mounting table %s", table_name)
-
-        table_schema = table_options.get("schema", {})
-        table_schema["_id"] = "NAME"
-
-        _create_foreign_table(
-            engine,
-            local_schema=mountpoint,
-            table_name=table_name,
-            schema_spec=table_schema,
-            server_id=server_id,
-            server_options={"database": table_options["db"], "collection": table_options["coll"]},
-        )
-
-
-def mount_mysql(
-    mountpoint: str,
-    server: str,
-    port: int,
-    username: str,
-    password: str,
-    remote_schema: str,
-    tables: Optional[Union[List[str], Dict[str, Dict[str, str]]]] = None,
-) -> None:
-    """
-    Mount a MySQL database.
-
-    Mounts a schema on a remote MySQL database as a set of foreign tables locally.
-    \b
-
-    :param mountpoint: Schema to mount the remote into.
-    :param server: Database hostname.
-    :param port: Database port
-    :param username: A read-only user that the database will be accessed as.
-    :param password: Password for the read-only user.
-    :param remote_schema: Remote schema name.
-    :param tables: Tables to mount (default all). If a list, then will use IMPORT FOREIGN SCHEMA.
-    If a dictionary, must have the format `{"table_name": {"col_1": "type_1", ...}}`.
-    """
-    from splitgraph.engine import get_engine
-    from psycopg2.sql import Identifier, SQL
-
-    if tables is None:
-        tables = []
-    engine = get_engine()
-    logging.info("Mounting foreign MySQL database...")
-    server_id = mountpoint + "_server"
-
-    init_fdw(
-        engine,
-        server_id,
-        "mysql_fdw",
-        {"host": server, "port": str(port)},
-        {"username": username, "password": password},
-    )
-
-    engine.run_sql(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(mountpoint)))
-    if isinstance(tables, list):
-        _import_foreign_schema(engine, mountpoint, remote_schema, server_id, tables)
-    else:
-        _create_foreign_tables(
-            engine, server_id, mountpoint, tables, server_options={"dbname": remote_schema}
-        )
+    pass
 
 
 def mount_elasticsearch(
@@ -351,51 +157,12 @@ def mount_elasticsearch(
              "scroll_duration": <how long to hold the scroll context open for, default 10m>},
              ...}`
     """
-    from splitgraph.engine import get_engine
-    from psycopg2.sql import Identifier, SQL
-
-    engine = get_engine()
-    logging.info("Mounting ElasticSearch instance...")
-    server_id = mountpoint + "_server"
-
-    init_fdw(
-        engine,
-        server_id,
-        "multicorn",
-        {
-            "wrapper": "pg_es_fdw.ElasticsearchFDW",
-            "host": server,
-            "port": str(port),
-            "username": username,
-            "password": password,
-        },
-        None,
-    )
-
-    engine.run_sql(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(mountpoint)))
-
-    for table_name, table_options in table_spec.items():
-        logging.info("Mounting table %s", table_name)
-        schema = table_options.pop("schema")
-        _create_foreign_table(
-            engine,
-            local_schema=mountpoint,
-            table_name=table_name,
-            schema_spec=schema,
-            server_id=server_id,
-            server_options=table_options,
-        )
+    pass
 
 
-def mount(
-    mountpoint: str,
-    mount_handler: str,
-    handler_kwargs: Dict[
-        str, Union[str, int, None, List[str], Dict[str, Union[str, Dict[str, str]]]]
-    ],
-) -> None:
+def mount(mountpoint: str, mount_handler: str, handler_kwargs: Dict[str, Any],) -> None:
     """
-    Mounts a foreign database via Postgres FDW (without creating new Splitgraph objects)
+    Mounts a foreign database via an FDW (without creating new Splitgraph objects)
 
     :param mountpoint: Mountpoint to import the new tables into.
     :param mount_handler: The type of the mounted database. Must be one of `postgres_fdw` or `mongo_fdw`.
@@ -405,27 +172,52 @@ def mount(
     from psycopg2.sql import Identifier, SQL
 
     engine = get_engine()
-    mh_func = get_mount_handler(mount_handler)
+    data_source = get_mount_handler(mount_handler)
 
     engine.run_sql(SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(Identifier(mountpoint)))
     engine.run_sql(
         SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(mountpoint + "_server"))
     )
-    mh_func(mountpoint, **handler_kwargs)
+
+    # Prepare the arguments
+    credentials = {
+        "username": handler_kwargs.pop("username"),
+        "password": handler_kwargs.pop("password"),
+    }
+    source = data_source(engine, params=handler_kwargs, credentials=credentials)
+
+    # Convert the "tables" param to a dict of table -> TableSchema
+    table_kwargs = handler_kwargs.get("tables")
+
+    if isinstance(table_kwargs, dict):
+        tables = {
+            t: [
+                TableColumn(i, cname, ctype, False, None)
+                for (i, (cname, ctype)) in enumerate(ts.items())
+            ]
+            for t, ts in handler_kwargs["tables"].items()
+        }
+    elif isinstance(table_kwargs, list):
+        tables = table_kwargs
+    else:
+        tables = None
+
+    source.mount(schema=mountpoint, tables=tables)
     engine.commit()
 
 
 def _register_default_handlers() -> None:
     # Register the mount handlers from the config.
-    for handler_name, handler_func_name in get_all_in_section(CONFIG, "mount_handlers").items():
-        assert isinstance(handler_func_name, str)
+    for handler_name, handler_class_name in get_all_in_section(CONFIG, "mount_handlers").items():
+        assert isinstance(handler_class_name, str)
 
-        ix = handler_func_name.rindex(".")
+        ix = handler_class_name.rindex(".")
         try:
-            handler_func = getattr(
-                import_module(handler_func_name[:ix]), handler_func_name[ix + 1 :]
+            handler_class = getattr(
+                import_module(handler_class_name[:ix]), handler_class_name[ix + 1 :]
             )
-            register_mount_handler(handler_name.lower(), handler_func)
+            assert issubclass(handler_class, ForeignDataWrapperDataSource)
+            register_mount_handler(handler_name.lower(), handler_class)
         except AttributeError as e:
             raise MountHandlerError(
                 "Error loading custom mount handler {0}".format(handler_name)

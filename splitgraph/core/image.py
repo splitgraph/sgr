@@ -28,7 +28,7 @@ from splitgraph.config import (
 )
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphError, TableNotFoundError
-from splitgraph.hooks.mount_handlers import init_fdw
+from ..hooks.data_source import init_fdw
 from .common import set_tag, manage_audit, set_head
 from .sql import select, prepare_splitfile_sql, POSTGRES_MAX_IDENTIFIER
 from .table import Table

@@ -12,7 +12,6 @@ import struct
 from datetime import datetime
 from functools import reduce
 from hashlib import sha256
-from random import getrandbits
 from typing import Any, Dict, List, Optional, Set, Tuple, Union, TYPE_CHECKING, cast
 
 from psycopg2.errors import UniqueViolation
@@ -30,7 +29,7 @@ from splitgraph.core.types import Changeset, TableSchema
 from splitgraph.engine import ResultShape
 from splitgraph.engine.postgres.engine import SG_UD_FLAG, add_ud_flag_column, get_change_key
 from splitgraph.exceptions import SplitGraphError
-from .common import adapt, SPLITGRAPH_META_SCHEMA
+from .common import adapt, SPLITGRAPH_META_SCHEMA, get_temporary_table_id
 from .sql import select
 
 if TYPE_CHECKING:
@@ -1084,8 +1083,3 @@ def _conflate_changes(
                 changeset[change_pk] = (upserted, old_change[1], new_row)
 
     return changeset
-
-
-def get_temporary_table_id() -> str:
-    """Generate a random ID for temporary/staging objects that haven't had their ID calculated yet."""
-    return str.format("sg_tmp_{:032x}", getrandbits(128))

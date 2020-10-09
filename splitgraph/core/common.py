@@ -8,6 +8,7 @@ from datetime import date, datetime, time
 from decimal import Decimal
 from functools import wraps
 from pkgutil import get_data
+from random import getrandbits
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING, cast, Set
 
 from psycopg2.sql import Identifier, SQL
@@ -445,3 +446,8 @@ def get_data_safe(package: str, resource: str) -> bytes:
             "Resource %s not found in package %s!" % (resource, package)
         )
     return result
+
+
+def get_temporary_table_id() -> str:
+    """Generate a random ID for temporary/staging objects that haven't had their ID calculated yet."""
+    return str.format("sg_tmp_{:032x}", getrandbits(128))

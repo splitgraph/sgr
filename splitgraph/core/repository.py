@@ -21,7 +21,7 @@ from splitgraph.config import (
     get_singleton,
     CONFIG,
 )
-from splitgraph.core.fragment_manager import get_temporary_table_id, ExtraIndexInfo
+from splitgraph.core.fragment_manager import ExtraIndexInfo
 from splitgraph.core.image import Image
 from splitgraph.core.image_manager import ImageManager
 from splitgraph.core.sql import validate_import_sql, select, insert
@@ -42,6 +42,7 @@ from .common import (
     slow_diff,
     gather_sync_metadata,
     set_tags_batch,
+    get_temporary_table_id,
 )
 from .output import pluralise
 from .engine import lookup_repository, get_engine

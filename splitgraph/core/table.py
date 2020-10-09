@@ -21,9 +21,8 @@ from psycopg2.sql import SQL, Identifier, Composable
 from tqdm import tqdm
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA, SG_CMD_ASCII
-from splitgraph.core.common import Tracer
+from splitgraph.core.common import Tracer, get_temporary_table_id
 from splitgraph.core.fragment_manager import (
-    get_temporary_table_id,
     get_chunk_groups,
     ExtraIndexInfo,
 )
@@ -33,6 +32,7 @@ from splitgraph.core.sql import select
 from splitgraph.core.types import TableSchema, Quals
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import ObjectIndexingError
+from splitgraph.hooks.data_source import create_foreign_table
 
 if TYPE_CHECKING:
     from splitgraph.core.image import Image
@@ -99,35 +99,6 @@ def _delete_temporary_table(engine: "PostgresEngine", schema: str, table: str) -
 
 def _empty_callback(**kwargs) -> None:
     pass
-
-
-def create_foreign_table(
-    schema: str,
-    server: str,
-    table_name: str,
-    schema_spec: TableSchema,
-    internal_table_name: Optional[str] = None,
-    extra_options: Optional[Dict[str, str]] = None,
-):
-    table_options = extra_options or {}
-    table_options.update({"table": internal_table_name or table_name})
-
-    table_opts, table_optvals = zip(*table_options.items())
-
-    query = SQL("CREATE FOREIGN TABLE {}.{} (").format(Identifier(schema), Identifier(table_name))
-    query += SQL(",".join("{} %s " % col.pg_type for col in schema_spec)).format(
-        *(Identifier(col.name) for col in schema_spec)
-    )
-    query += SQL(") SERVER {} OPTIONS (").format(Identifier(server))
-    query += SQL(",").join(Identifier(o) + SQL(" %s") for o in table_opts) + SQL(");")
-    args = list(table_optvals)
-    for col in schema_spec:
-        if col.comment:
-            query += SQL("COMMENT ON COLUMN {}.{}.{} IS %s;").format(
-                Identifier(schema), Identifier(table_name), Identifier(col.name),
-            )
-            args.append(col.comment)
-    return query, args
 
 
 class QueryPlan:

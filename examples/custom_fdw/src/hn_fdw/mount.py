@@ -2,7 +2,7 @@ import logging
 from typing import Dict, Optional, List
 
 from splitgraph.core.types import TableColumn
-from splitgraph.hooks.mount_handlers import init_fdw
+from splitgraph.hooks.data_source import init_fdw, create_foreign_table
 
 # Define the schema of the foreign table we wish to create
 # We're only going to be fetching stories, so limit the columns to the ones that
@@ -34,7 +34,6 @@ def mount_hn(
     # of optional ones. The mountpoint is always necessary and shows which foreign schema
     # to mount the dataset into. The connection parameters can be None.
 
-    from splitgraph.core.table import create_foreign_table
     from splitgraph.engine import get_engine
     from psycopg2.sql import Identifier, SQL
 
@@ -65,16 +64,14 @@ def mount_hn(
     for endpoint in endpoints:
         # Generate SQL required to create a foreign table in the target schema.
         # create_foreign_table handles the boilerplate around running CREATE FOREIGN TABLE
-        # on the engine and passing necessary arguments. The `internal_table_name`
-        # argument becomes available as `fdw_options["table"]` argument on the FDW side,
-        # but we can also write a custom CREATE FOREIGN TABLE statement to pass more arguments.
+        # on the engine and passing necessary arguments.
         logging.info("Mounting %s...", endpoint)
         sql, args = create_foreign_table(
             schema=mountpoint,
             server=server_id,
             table_name=endpoint,
-            internal_table_name=endpoint,
             schema_spec=_story_schema_spec,
+            extra_options=None,
         )
 
         engine.run_sql(sql, args)

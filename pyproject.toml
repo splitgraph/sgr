@@ -31,6 +31,7 @@ sodapy = ">=2.1"
 # Extra requirements for Pandas ingestion
 pandas = {version = ">=0.24", extras = ["ingestion"], optional = true }
 sqlalchemy = { version = "^1.3", extras = ["ingestion"], optional = true }
+jsonschema = "^3.2.0"
 
 
 [tool.poetry.dev-dependencies]
