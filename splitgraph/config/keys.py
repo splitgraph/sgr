@@ -57,11 +57,11 @@ DEFAULTS: ConfigDict = {
     # Some default sections: these can't be overridden via envvars.
     "external_handlers": {"S3": "splitgraph.hooks.s3.S3ExternalObjectHandler"},
     "mount_handlers": {
-        "postgres_fdw": "splitgraph.hooks.mount_handlers.mount_postgres",
-        "mongo_fdw": "splitgraph.hooks.mount_handlers.mount_mongo",
-        "mysql_fdw": "splitgraph.hooks.mount_handlers.mount_mysql",
-        "socrata": "splitgraph.ingestion.socrata.mount.mount_socrata",
-        "elasticsearch": "splitgraph.hooks.mount_handlers.mount_elasticsearch",
+        "postgres_fdw": "splitgraph.hooks.data_source.PostgreSQLDataSource",
+        "mongo_fdw": "splitgraph.hooks.data_source.MongoDataSource",
+        "mysql_fdw": "splitgraph.hooks.data_source.MySQLDataSource",
+        "socrata": "splitgraph.ingestion.socrata.mount.SocrataDataSource",
+        "elasticsearch": "splitgraph.hooks.data_source.ElasticSearchDataSource",
     },
 }
 

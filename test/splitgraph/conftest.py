@@ -70,7 +70,7 @@ def _mount_postgres(repository, tables=None):
         "tmp",
         "postgres_fdw",
         dict(
-            server="pgorigin",
+            host="pgorigin",
             port=5432,
             username="originro",
             password="originpass",
@@ -88,7 +88,7 @@ def _mount_mongo(repository):
         "tmp",
         "mongo_fdw",
         dict(
-            server="mongoorigin",
+            host="mongoorigin",
             port=27017,
             username="originro",
             password="originpass",
@@ -109,13 +109,11 @@ def _mount_mysql(repository):
         repository.to_schema(),
         "mysql_fdw",
         dict(
-            dict(
-                server="mysqlorigin",
-                port=3306,
-                username="originuser",
-                password="originpass",
-                remote_schema="mysqlschema",
-            )
+            host="mysqlorigin",
+            port=3306,
+            username="originuser",
+            password="originpass",
+            remote_schema="mysqlschema",
         ),
     )
 
