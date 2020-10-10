@@ -320,7 +320,11 @@ class Table:
                     )
         else:
             query, args = create_foreign_table(
-                destination_schema, lq_server, self.table_name, self.table_schema
+                destination_schema,
+                lq_server,
+                self.table_name,
+                self.table_schema,
+                extra_options={"table": self.table_name},
             )
 
             engine.run_sql(query, args)

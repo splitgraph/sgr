@@ -10,7 +10,7 @@ from test.splitgraph.conftest import INGESTION_RESOURCES
 
 from splitgraph.core.types import TableColumn
 from splitgraph.exceptions import RepositoryNotFoundError
-from splitgraph.ingestion.socrata.mount import mount_socrata
+from splitgraph.hooks.mount_handlers import mount
 from splitgraph.ingestion.socrata.querying import (
     estimate_socrata_rows_width,
     quals_to_socrata,
@@ -118,16 +118,14 @@ def test_socrata_mounting(local_engine_empty):
     socrata = MagicMock(spec=Socrata)
     socrata.datasets.return_value = socrata_meta
     with mock.patch("sodapy.Socrata", return_value=socrata):
-
-        mount_socrata(
+        mount(
             "test/pg_mount",
-            None,
-            None,
-            None,
-            None,
-            "example.com",
-            {"some_table": "xzkq-xp2w"},
-            "some_token",
+            "socrata",
+            {
+                "domain": "example.com",
+                "tables": {"some_table": "xzkq-xp2w"},
+                "app_token": "some_token",
+            },
         )
 
     assert local_engine_empty.get_full_table_schema("test/pg_mount", "some_table") == [
@@ -185,15 +183,14 @@ def test_socrata_mounting_error():
     socrata.datasets.side_effect = Exception("Unknown response format: text/html; charset=utf-8")
     with mock.patch("sodapy.Socrata", return_value=socrata):
         with pytest.raises(RepositoryNotFoundError):
-            mount_socrata(
+            mount(
                 "test/pg_mount",
-                None,
-                None,
-                None,
-                None,
-                "example.com",
-                {"some_table": "xzkq-xp2w"},
-                "some_token",
+                "socrata",
+                {
+                    "domain": "example.com",
+                    "tables": {"some_table": "xzkq-xp2w"},
+                    "app_token": "some_token",
+                },
             )
 
 
@@ -204,9 +201,8 @@ def test_socrata_mounting_slug(local_engine_empty):
     socrata = MagicMock(spec=Socrata)
     socrata.datasets.return_value = socrata_meta
     with mock.patch("sodapy.Socrata", return_value=socrata):
-
-        mount_socrata(
-            "test/pg_mount", None, None, None, None, "example.com", None, "some_token",
+        mount(
+            "test/pg_mount", "socrata", {"domain": "example.com", "app_token": "some_token",},
         )
 
     assert local_engine_empty.get_all_tables("test/pg_mount") == [
@@ -222,15 +218,14 @@ def test_socrata_mounting_missing_tables():
     socrata.datasets.return_value = socrata_meta
     with mock.patch("sodapy.Socrata", return_value=socrata):
         with pytest.raises(ValueError) as e:
-            mount_socrata(
+            mount(
                 "test/pg_mount",
-                None,
-                None,
-                None,
-                None,
-                "example.com",
-                {"some_table": "wrong_id"},
-                "some_token",
+                "socrata",
+                {
+                    "domain": "example.com",
+                    "tables": {"some_table": "wrong_id"},
+                    "app_token": "some_token",
+                },
             )
 
     assert "Some Socrata tables couldn't be found! Missing tables: xzkq-xp2w" in str(e.value)
@@ -366,8 +361,8 @@ def test_socrata_smoke(domain, dataset_id, local_engine_empty):
     # This relies on the Socrata API being available, but good to smoke test some popular datasets
     # to make sure the mounting works end-to-end.
     try:
-        mount_socrata(
-            "socrata_mount", None, None, None, None, domain=domain, tables={"data": dataset_id}
+        mount(
+            "test/pg_mount", "socrata", {"domain": domain, "tables": {"data": dataset_id},},
         )
         result = local_engine_empty.run_sql("SELECT * FROM socrata_mount.data LIMIT 10")
         assert len(result) == 10

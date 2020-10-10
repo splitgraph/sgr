@@ -73,7 +73,7 @@ def conn_string_to_dict(connection: Optional[str]) -> Dict[str, Any]:
         # but then we'd also have to parse the docstring deeper to find out the types the function
         # requires, how to serialize them etc etc. Idea for a click-contrib addon perhaps?
         return dict(
-            server=match.group(4),
+            host=match.group(4),
             port=int(match.group(5)),
             username=match.group(2),
             password=match.group(3),

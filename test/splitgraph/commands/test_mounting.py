@@ -30,7 +30,7 @@ def test_mount_partial(local_engine_empty):
 
 @pytest.mark.mounting
 def test_mount_force_schema(local_engine_empty):
-    _mount_postgres(PG_MNT, tables={"fruits": {"fruit_id": "character varying"}})
+    _mount_postgres(PG_MNT, tables={"fruits": {"schema": {"fruit_id": "character varying"}}})
     assert get_engine().table_exists(PG_MNT.to_schema(), "fruits")
     assert get_engine().get_full_table_schema(PG_MNT.to_schema(), "fruits") == [
         TableColumn(1, "fruit_id", "character varying", False, None)
@@ -79,9 +79,9 @@ def test_mount_elasticsearch(local_engine_empty):
             dict(
                 username=None,
                 password=None,
-                server="elasticsearch",
+                host="elasticsearch",
                 port=9200,
-                table_spec={
+                tables={
                     "table_1": {
                         "schema": {
                             "id": "text",
@@ -90,9 +90,11 @@ def test_mount_elasticsearch(local_engine_empty):
                             "col_1": "text",
                             "col_2": "boolean",
                         },
-                        "index": "index-pattern*",
-                        "rowid_column": "id",
-                        "query_column": "query",
+                        "options": {
+                            "index": "index-pattern*",
+                            "rowid_column": "id",
+                            "query_column": "query",
+                        },
                     }
                 },
             ),
