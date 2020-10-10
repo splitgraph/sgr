@@ -11,6 +11,15 @@ from splitgraph.core.engine import repository_exists
 from splitgraph.core.repository import Repository
 from splitgraph.hooks.mount_handlers import get_mount_handlers
 
+_MONGO_PARAMS = {
+    "tables": {
+        "stuff": {
+            "options": {"db": "origindb", "coll": "stuff",},
+            "schema": {"name": "text", "duration": "numeric", "happy": "boolean",},
+        }
+    }
+}
+
 
 @pytest.mark.mounting
 def test_misc_mountpoint_management(pg_repo_local, mg_repo_local):
@@ -37,14 +46,7 @@ def test_misc_mountpoint_management(pg_repo_local, mg_repo_local):
     # sgr mount with a file
     with tempfile.NamedTemporaryFile("w") as f:
         json.dump(
-            {
-                "stuff": {
-                    "db": "origindb",
-                    "coll": "stuff",
-                    "schema": {"name": "text", "duration": "numeric", "happy": "boolean"},
-                }
-            },
-            f,
+            _MONGO_PARAMS, f,
         )
         f.flush()
 
@@ -78,15 +80,8 @@ def test_mount_and_import(local_engine_empty):
                 "-c",
                 "originro:originpass@mongoorigin:27017",
                 "-o",
-                json.dumps(
-                    {
-                        "stuff": {
-                            "db": "origindb",
-                            "coll": "stuff",
-                            "schema": {"name": "text", "duration": "numeric", "happy": "boolean"},
-                        }
-                    }
-                ),
+                # TODO figure out a way to keep the more lightweight UX for mongo/pg?
+                json.dumps(_MONGO_PARAMS),
             ],
         )
         assert result.exit_code == 0

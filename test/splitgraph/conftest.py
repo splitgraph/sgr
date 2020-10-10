@@ -92,11 +92,12 @@ def _mount_mongo(repository):
             port=27017,
             username="originro",
             password="originpass",
-            stuff={
-                "db": "origindb",
-                "coll": "stuff",
-                "schema": {"name": "text", "duration": "numeric", "happy": "boolean"},
-            },
+            tables=dict(
+                stuff={
+                    "options": {"db": "origindb", "coll": "stuff",},
+                    "schema": {"name": "text", "duration": "numeric", "happy": "boolean"},
+                },
+            ),
         ),
     )
     repository.import_tables([], R("tmp"), [], foreign_tables=True, do_checkout=True)

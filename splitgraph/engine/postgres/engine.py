@@ -1374,8 +1374,8 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         with switch_engine(self):
             mount_postgres(
                 mountpoint=REMOTE_TMP_SCHEMA,
-                server=host,
-                port=port,
+                host=host,
+                port=int(port),
                 username=user,
                 password=pwd,
                 dbname=dbname,

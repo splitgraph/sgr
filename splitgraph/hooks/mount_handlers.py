@@ -4,14 +4,12 @@ in the command line tool (via `sgr mount`) and in the Splitfile interpreter (via
 """
 
 from importlib import import_module
-from typing import Dict, List, Optional, Union, TYPE_CHECKING, Any, Type
+from typing import Dict, List, TYPE_CHECKING, Any, Type
 
 from splitgraph.config import CONFIG
 from splitgraph.config.config import get_all_in_section
-from splitgraph.core.types import TableColumn
 from splitgraph.exceptions import MountHandlerError
 from splitgraph.hooks.data_source import (
-    PostgreSQLDataSource,
     ForeignDataWrapperDataSource,
 )
 
@@ -41,17 +39,7 @@ def register_mount_handler(name: str, mount_class: Type[ForeignDataWrapperDataSo
     _MOUNT_HANDLERS[name] = mount_class
 
 
-def mount_postgres(
-    mountpoint: str,
-    server: str,
-    port: Union[int, str],
-    username: str,
-    password: str,
-    dbname: str,
-    remote_schema: str,
-    extra_server_args: Optional[Dict] = None,
-    tables: Optional[Union[List[str], Dict[str, Dict[str, str]]]] = None,
-) -> None:
+def mount_postgres(mountpoint, **kwargs) -> None:
     """
     Mount a Postgres database.
 
@@ -69,17 +57,7 @@ def mount_postgres(
     :param tables: Tables to mount (default all). If a list, then will use IMPORT FOREIGN SCHEMA.
     If a dictionary, must have the format {"table_name": {"col_1": "type_1", ...}}.
     """
-    source = PostgreSQLDataSource(
-        params={
-            "host": server,
-            "port": port,
-            "dbname": dbname,
-            "remote_schema": remote_schema,
-            "extra_server_args": extra_server_args,
-        },
-        creds={"username": username, "password": password},
-    )
-    source.mount(schema=mountpoint, tables=tables)
+    mount(mountpoint, mount_handler="postgres_fdw", handler_kwargs=kwargs)
 
 
 def mount_mongo(
@@ -140,27 +118,15 @@ def mount_elasticsearch(
     EOF
     ```
     \b
-
-    :param mountpoint: Schema to mount the remote into.
-    :param server: Database hostname.
-    :param port: Database port
-    :param username: A read-only user that the database will be accessed as.
-    :param password: Password for the read-only user.
-    :param table_spec: A dictionary of form
-        `{"table_name":
-            {"schema": {"col1": "type1"...},
-             "index": <es index>,
-             "type": <es doc_type, optional in ES7 and later>,
-             "query_column": <column to pass ES query in>,
-             "score_column": <column to return document score>,
-             "scroll_size": <fetch size, default 1000>,
-             "scroll_duration": <how long to hold the scroll context open for, default 10m>},
-             ...}`
     """
     pass
 
 
-def mount(mountpoint: str, mount_handler: str, handler_kwargs: Dict[str, Any],) -> None:
+def mount(
+    mountpoint: str,
+    mount_handler: str,
+    handler_kwargs: Dict[str, Any],
+) -> None:
     """
     Mounts a foreign database via an FDW (without creating new Splitgraph objects)
 
@@ -179,30 +145,8 @@ def mount(mountpoint: str, mount_handler: str, handler_kwargs: Dict[str, Any],) 
         SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(mountpoint + "_server"))
     )
 
-    # Prepare the arguments
-    credentials = {
-        "username": handler_kwargs.pop("username"),
-        "password": handler_kwargs.pop("password"),
-    }
-    source = data_source(engine, params=handler_kwargs, credentials=credentials)
-
-    # Convert the "tables" param to a dict of table -> TableSchema
-    table_kwargs = handler_kwargs.get("tables")
-
-    if isinstance(table_kwargs, dict):
-        tables = {
-            t: [
-                TableColumn(i, cname, ctype, False, None)
-                for (i, (cname, ctype)) in enumerate(ts.items())
-            ]
-            for t, ts in handler_kwargs["tables"].items()
-        }
-    elif isinstance(table_kwargs, list):
-        tables = table_kwargs
-    else:
-        tables = None
-
-    source.mount(schema=mountpoint, tables=tables)
+    source = data_source.from_commandline(engine, handler_kwargs)
+    source.mount(schema=mountpoint)
     engine.commit()
 
 

@@ -21,7 +21,7 @@ from splitgraph.core.sql import prepare_splitfile_sql, validate_import_sql
 from splitgraph.engine import get_engine
 from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import ImageNotFoundError, SplitfileError
-from splitgraph.hooks.mount_handlers import get_mount_handler
+from splitgraph.hooks.mount_handlers import get_mount_handler, mount
 from ._parsing import (
     parse_commands,
     extract_nodes,
@@ -354,13 +354,11 @@ def _execute_import(node: Node, output: Repository) -> ProvenanceLine:
 def _execute_db_import(
     conn_string, fdw_name, fdw_params, table_names, target_mountpoint, table_aliases, table_queries
 ) -> ProvenanceLine:
-    mount_handler = get_mount_handler(fdw_name)
     tmp_mountpoint = Repository.from_schema(fdw_name + "_tmp_staging")
-    tmp_mountpoint.delete()
     try:
         handler_kwargs = json.loads(fdw_params)
         handler_kwargs.update(conn_string_to_dict(conn_string.group() if conn_string else None))
-        mount_handler(tmp_mountpoint.to_schema(), **handler_kwargs)
+        mount(tmp_mountpoint.to_schema(), fdw_name, handler_kwargs)
         # The foreign database is a moving target, so the new image hash is random.
         # Maybe in the future, when the object hash is a function of its contents, we can be smarter here...
         target_hash = "{:064x}".format(getrandbits(256))
