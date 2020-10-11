@@ -1,12 +1,15 @@
 import logging
 from abc import ABC, abstractmethod
+from copy import deepcopy
 from typing import Dict, Any, Optional, Union, List, TYPE_CHECKING
 
 from jsonschema import validate
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.core.common import get_temporary_table_id
-from splitgraph.core.types import TableSchema
+from splitgraph.core.sql import select
+from splitgraph.core.types import TableSchema, TableColumn, dict_to_tableschema
+from splitgraph.engine import ResultShape
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PostgresEngine
@@ -33,20 +36,9 @@ class DataSource(ABC):
         pass
 
 
-# TODO
-#
-# These are basically FDW-specific options for each table that go into the CREATE FOREIGN TABLE
-# statement -- in some cases we want the user to be able to define them (e.g. Mongo -- define
-# the collection and the db where each table lives / ES -- index for each table) so they have
-# to be in the JSONSchema. Sometimes we sometimes want to be able to  override the schema
-# from the web UI, sometimes the "table options" are just a list of tables to import (e.g.
-# postgres_fdw), sometimes the schema is injected from the in-db external repo schema and
-# options are deserialized etc etc. Need to reconcile this with current mount handlers
-# (e.g. Mongo/ES which don't work) and Socrata.
 _table_options_schema = {
     "type": "object",
     "additionalProperties": {
-        "schema": {"type": "object", "additionalProperties": {"type": "string"}},
         "options": {"type": "object", "additionalProperties": {"type": "string"}},
     },
 }
@@ -55,28 +47,82 @@ _table_options_schema = {
 class ForeignDataWrapperDataSource(DataSource, ABC):
     credentials_schema = {
         "type": "object",
-        "properties": {"username": {"type": "string"}, "password": {"type": "string"},},
+        "properties": {"username": {"type": "string"}, "password": {"type": "string"}},
     }
 
     params_schema = {
         "type": "object",
-        "properties": {"tables": _table_options_schema,},
+        "properties": {"tables": _table_options_schema},
     }
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        engine: "PostgresEngine",
+        credentials: Optional[Credentials] = None,
+        params: Optional[Params] = None,
+    ):
+        super().__init__(engine, credentials or {}, params or {})
 
-    def get_user_options(self):
+    @classmethod
+    def from_commandline(cls, engine, commandline_kwargs) -> "ForeignDataWrapperDataSource":
+        """Instantiate an FDW data source from commandline arguments."""
+        # Normally these are supposed to be more user-friendly and FDW-specific (e.g.
+        # not forcing the user to pass in a JSON with five levels of nesting etc).
+
+        # TODO override this for some FDWs like PG/mongo to bring back old behaviour, e.g
+        #
+        #     "tables": {
+        #         "stuff": {
+        #             "db": "origindb",
+        #             "coll": "stuff",
+        #             "schema": {
+        #                 "name": "text",
+        #                 "duration": "numeric",
+        #                 "happy": "boolean"
+        #             },
+        #         }
+        #     }
+        #
+        #  (not forcing the options to go into a separate "options" dict)
+        params = deepcopy(commandline_kwargs)
+
+        # By convention, the "tables" object can be:
+        #   * A list of tables to import
+        #   * A dictionary table_name -> {"schema": schema, **mount_options}
+        table_kwargs = params.pop("tables", None)
+        if isinstance(table_kwargs, dict):
+            tables = dict_to_tableschema(table_kwargs)
+            params["tables"] = {
+                t: {"options": to["options"]} for t, to in table_kwargs.items() if "options" in to
+            }
+        elif isinstance(table_kwargs, list):
+            tables = table_kwargs
+        else:
+            tables = None
+
+        credentials = {
+            "username": params.pop("username"),
+            "password": params.pop("password"),
+        }
+        result = cls(engine, credentials, params)
+        result.tables = tables
+        return result
+
+    def get_user_options(self) -> Dict[str, str]:
         return {}
 
-    def get_server_options(self):
+    def get_server_options(self) -> Dict[str, str]:
         return {}
 
-    def get_table_options(self, table_name: str):
-        return self.params.get("tables", {}).get("options", {}).get(table_name)
+    def get_table_options(self, table_name: str) -> Dict[str, str]:
+        return {
+            k: str(v)
+            for k, v in self.params.get("tables", {}).get(table_name, {}).get("options", {}).items()
+        }
 
-    def get_table_schema(self, table_name: str):
-        return self.params.get("tables", {}).get("options", {}).get(table_name)
+    def get_table_schema(self, table_name: str, table_schema: TableSchema) -> TableSchema:
+        # Hook to override the table schema that's passed in
+        return table_schema
 
     def get_remote_schema_name(self) -> str:
         """Override this if the FDW supports IMPORT FOREIGN SCHEMA"""
@@ -89,6 +135,8 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
     def mount(
         self, schema: str, tables: Optional[Union[List[str], Dict[str, TableSchema]]] = None,
     ):
+        if hasattr(self, "tables"):
+            tables = self.tables
 
         if tables is None:
             tables = []
@@ -121,12 +169,11 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
         else:
             for table_name, table_schema in tables.items():
                 logging.info("Mounting table %s", table_name)
-
                 query, args = create_foreign_table(
                     schema,
                     server_id,
                     table_name,
-                    table_schema,
+                    schema_spec=self.get_table_schema(table_name, table_schema),
                     extra_options=self.get_table_options(table_name),
                 )
                 self.engine.run_sql(query, args)
@@ -135,16 +182,38 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
         # Ability to override introspection by e.g. contacting the remote database without having
         # to mount the actual table. By default, just call out into mount()
 
-        schema = get_temporary_table_id()
+        tmp_schema = get_temporary_table_id()
         try:
-            self.mount(schema)
+            self.mount(tmp_schema)
             result = {
-                t: self.engine.get_full_table_schema(schema, t)
-                for t in self.engine.get_all_tables(schema)
+                t: self.engine.get_full_table_schema(tmp_schema, t)
+                for t in self.engine.get_all_tables(tmp_schema)
             }
             return result
         finally:
-            self.engine.delete_schema(schema)
+            self.engine.delete_schema(tmp_schema)
+
+    def _preview_table(self, schema: str, table: str, limit: int = 10) -> List[Dict[str, Any]]:
+        result_json = self.engine.run_sql(
+            select(table, "row_to_json(*)", schema=schema) + SQL(" LIMIT %s"),
+            (limit,),
+            return_shape=ResultShape.MANY_ONE,
+        )
+        return result_json
+
+    def preview(self, schema: Dict[str, TableSchema]) -> Dict[str, List[Dict[str, Any]]]:
+        # Preview data in tables mounted by this FDW / data source
+
+        tmp_schema = get_temporary_table_id()
+        try:
+            self.mount(tmp_schema, tables=schema)
+            result = {
+                t: self._preview_table(tmp_schema, t)
+                for t in self.engine.get_all_tables(tmp_schema)
+            }
+            return result
+        finally:
+            self.engine.delete_schema(tmp_schema)
 
 
 class PostgreSQLDataSource(ForeignDataWrapperDataSource):
@@ -155,6 +224,7 @@ class PostgreSQLDataSource(ForeignDataWrapperDataSource):
             "port": {"type": "integer"},
             "dbname": {"type": "string"},
             "remote_schema": {"type": "string"},
+            "tables": _table_options_schema,
         },
         "required": ["host", "port", "dbname", "remote_schema"],
     }
@@ -181,6 +251,29 @@ class PostgreSQLDataSource(ForeignDataWrapperDataSource):
 
 
 class MongoDataSource(ForeignDataWrapperDataSource):
+    params_schema = {
+        "type": "object",
+        "properties": {
+            "host": {"type": "string"},
+            "port": {"type": "integer"},
+            "tables": {
+                "type": "object",
+                "additionalProperties": {
+                    "options": {
+                        "type": "object",
+                        "properties": {
+                            "db": {"type": "string"},
+                            "coll": {"type": "string"},
+                            "required": ["db", "coll"],
+                        },
+                    },
+                    "required": ["options"],
+                },
+            },
+        },
+        "required": ["host", "port", "tables"],
+    }
+
     def get_server_options(self):
         return {
             "address": self.params["host"],
@@ -191,15 +284,22 @@ class MongoDataSource(ForeignDataWrapperDataSource):
         return {"username": self.credentials["username"], "password": self.credentials["password"]}
 
     def get_table_options(self, table_name: str):
-        return {"database": None, "collection": None}
+        try:
+            table_params = self.params["tables"][table_name]["options"]
+        except KeyError:
+            raise ValueError("No options specified for table %s!" % table_name)
+
+        return {"database": table_params["db"], "collection": table_params["coll"]}
 
     def get_fdw_name(self):
         return "mongo_fdw"
 
-    def get_table_schema(self):
-        # TODO patch out the table schema (passed in)
-        table_schema = table_options.get("schema", {})
-        table_schema["_id"] = "NAME"
+    def get_table_schema(self, table_name, table_schema):
+        # Add the "_id" column to the schema if it's not already there.
+        if any(c.name == "_id" for c in table_schema):
+            return table_schema
+
+        return table_schema + [TableColumn(table_schema[-1].ordinal + 1, "_id", "NAME", False)]
 
 
 class MySQLDataSource(ForeignDataWrapperDataSource):
@@ -209,6 +309,7 @@ class MySQLDataSource(ForeignDataWrapperDataSource):
             "host": {"type": "string"},
             "port": {"type": "integer"},
             "remote_schema": {"type": "string"},
+            "tables": _table_options_schema,
         },
         "required": ["host", "port", "remote_schema"],
     }
@@ -234,18 +335,56 @@ class MySQLDataSource(ForeignDataWrapperDataSource):
 
 
 class ElasticSearchDataSource(ForeignDataWrapperDataSource):
-    """
-    A dictionary of form
-        `{"table_name":
-            {"schema": {"col1": "type1"...},
-             "index": <es index>,
-             "type": <es doc_type, optional in ES7 and later>,
-             "query_column": <column to pass ES query in>,
-             "score_column": <column to return document score>,
-             "scroll_size": <fetch size, default 1000>,
-             "scroll_duration": <how long to hold the scroll context open for, default 10m>},
-             ...}`
-    """
+    credentials_schema = {
+        "type": "object",
+        "properties": {
+            "username": {"type": ["string", "null"]},
+            "password": {"type": ["string", "null"]},
+        },
+    }
+
+    params_schema = {
+        "type": "object",
+        "properties": {
+            "host": {"type": "string"},
+            "port": {"type": "integer"},
+            "tables": {
+                "type": "object",
+                "additionalProperties": {
+                    "options": {
+                        "type": "object",
+                        "properties": {
+                            "index": {
+                                "type": "string",
+                                "description": 'ES index name or pattern to use, for example, "events-*"',
+                            },
+                            "type": {
+                                "type": "string",
+                                "description": "Pre-ES7 doc_type, not required in ES7 or later",
+                            },
+                            "query_column": {
+                                "type": "string",
+                                "description": "Name of the column to use to pass queries in",
+                            },
+                            "score_column": {
+                                "type": "string",
+                                "description": "Name of the column with the document score",
+                            },
+                            "scroll_size": {
+                                "type": "integer",
+                                "description": "Fetch size, default 1000",
+                            },
+                            "scroll_duration": {
+                                "type": "string",
+                                "description": "How long to hold the scroll context open for, default 10m",
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        "required": ["host", "port", "tables"],
+    }
 
     def get_server_options(self):
         return {
@@ -256,7 +395,6 @@ class ElasticSearchDataSource(ForeignDataWrapperDataSource):
             "password": self.credentials["password"],
         }
 
-    # TODO support for table options (e.g. tables -> schema, options)
     def get_fdw_name(self):
         return "multicorn"
 
@@ -336,15 +474,19 @@ def create_foreign_table(
 ):
     table_options = extra_options or {}
 
-    table_opts, table_optvals = zip(*table_options.items())
-
     query = SQL("CREATE FOREIGN TABLE {}.{} (").format(Identifier(schema), Identifier(table_name))
     query += SQL(",".join("{} %s " % col.pg_type for col in schema_spec)).format(
         *(Identifier(col.name) for col in schema_spec)
     )
-    query += SQL(") SERVER {} OPTIONS (").format(Identifier(server))
-    query += SQL(",").join(Identifier(o) + SQL(" %s") for o in table_opts) + SQL(");")
-    args = list(table_optvals)
+    query += SQL(") SERVER {}").format(Identifier(server))
+
+    args = None
+    if table_options:
+        table_opts, table_optvals = zip(*table_options.items())
+        query += SQL(" OPTIONS(")
+        query += SQL(",").join(Identifier(o) + SQL(" %s") for o in table_opts) + SQL(");")
+        args = list(table_optvals)
+
     for col in schema_spec:
         if col.comment:
             query += SQL("COMMENT ON COLUMN {}.{}.{} IS %s;").format(

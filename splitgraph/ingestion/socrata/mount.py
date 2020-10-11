@@ -1,6 +1,7 @@
 """Splitgraph mount handler for Socrata datasets"""
 import json
 import logging
+from copy import deepcopy
 from typing import Optional, Dict
 
 from psycopg2.sql import SQL, Identifier
@@ -10,31 +11,60 @@ from splitgraph.hooks.data_source import ForeignDataWrapperDataSource, create_fo
 
 
 class SocrataDataSource(ForeignDataWrapperDataSource):
+    credentials_schema = {
+        "type": "object",
+        "properties": {
+            "app_token": {"type": ["string", "null"], "description": "Socrata app token, optional"}
+        },
+    }
+
+    params_schema = {
+        "type": "object",
+        "properties": {
+            "domain": {
+                "type": "string",
+                "description": "Socrata domain, for example, data.albanyny.gov",
+            },
+            "batch_size": {
+                "type": "integer",
+                "description": "Amount of rows to fetch from Socrata per request (limit parameter). Maximum 50000.",
+            },
+            "tables": {"type": "object",},
+        },
+        "required": ["domain"],
+    }
+
     """
-    domain: Socrata domain, for example, data.albanyny.gov. Required.
     tables: A dictionary mapping PostgreSQL table names to Socrata table IDs. For example,
         {"salaries": "xzkq-xp2w"}. If skipped, ALL tables in the Socrata endpoint will be mounted.
-    app_token: Socrata app token. Optional.
-    batch_size: Amount of rows to fetch from Socrata per request (limit parameter). Maximum 50000.
     """
 
     def get_fdw_name(self):
         return "multicorn"
 
+    @classmethod
+    def from_commandline(cls, engine, commandline_kwargs) -> "SocrataDataSource":
+        params = deepcopy(commandline_kwargs)
+        credentials = {"app_token": params.pop("app_token", None)}
+        return cls(engine, credentials, params)
+
     def get_server_options(self):
         options: Dict[str, Optional[str]] = {
             "wrapper": "splitgraph.ingestion.socrata.fdw.SocrataForeignDataWrapper"
         }
-        for k in ["domain", "app_token", "batch_size"]:
+        for k in ["domain", "batch_size"]:
             if self.params.get(k):
                 options[k] = str(self.params[k])
+        if self.credentials.get("app_token"):
+            options["app_token"] = str(self.credentials["app_token"])
+        return options
 
     def _create_foreign_tables(self, schema, server_id, tables):
         from sodapy import Socrata
         from psycopg2.sql import SQL
 
         logging.info("Getting Socrata metadata")
-        client = Socrata(domain=self.params["domain"], app_token=self.params["app_token"])
+        client = Socrata(domain=self.params["domain"], app_token=self.credentials["app_token"])
         tables = self.params.get("tables")
         sought_ids = tables.values() if tables else []
 
