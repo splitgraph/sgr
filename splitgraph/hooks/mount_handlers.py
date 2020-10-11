@@ -9,9 +9,7 @@ from typing import Dict, List, TYPE_CHECKING, Any, Type
 from splitgraph.config import CONFIG
 from splitgraph.config.config import get_all_in_section
 from splitgraph.exceptions import MountHandlerError
-from splitgraph.hooks.data_source import (
-    ForeignDataWrapperDataSource,
-)
+from splitgraph.hooks.data_source import ForeignDataWrapperDataSource
 
 if TYPE_CHECKING:
     pass
@@ -122,11 +120,7 @@ def mount_elasticsearch(
     pass
 
 
-def mount(
-    mountpoint: str,
-    mount_handler: str,
-    handler_kwargs: Dict[str, Any],
-) -> None:
+def mount(mountpoint: str, mount_handler: str, handler_kwargs: Dict[str, Any],) -> None:
     """
     Mounts a foreign database via an FDW (without creating new Splitgraph objects)
 
