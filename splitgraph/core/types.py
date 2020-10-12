@@ -22,7 +22,7 @@ def dict_to_tableschema(tables: Dict[str, Dict[str, Any]]) -> Dict[str, TableSch
     return {
         t: [
             TableColumn(i, cname, ctype, False, None)
-            for (i, (cname, ctype)) in enumerate(ts["schema"].items())
+            for (i, (cname, ctype)) in enumerate(ts.items())
         ]
         for t, ts in tables.items()
     }

@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from copy import deepcopy
 from typing import Dict, Any, Optional, Union, List, TYPE_CHECKING
 
+import psycopg2
 from jsonschema import validate
 from psycopg2.sql import SQL, Identifier
 
@@ -48,6 +49,7 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
     credentials_schema = {
         "type": "object",
         "properties": {"username": {"type": "string"}, "password": {"type": "string"}},
+        "required": ["username", "password"],
     }
 
     params_schema = {
@@ -91,7 +93,7 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
         #   * A dictionary table_name -> {"schema": schema, **mount_options}
         table_kwargs = params.pop("tables", None)
         if isinstance(table_kwargs, dict):
-            tables = dict_to_tableschema(table_kwargs)
+            tables = dict_to_tableschema(table_kwargs["schema"])
             params["tables"] = {
                 t: {"options": to["options"]} for t, to in table_kwargs.items() if "options" in to
             }
@@ -191,29 +193,42 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
             }
             return result
         finally:
+            self.engine.rollback()
             self.engine.delete_schema(tmp_schema)
+            self.engine.commit()
 
     def _preview_table(self, schema: str, table: str, limit: int = 10) -> List[Dict[str, Any]]:
         result_json = self.engine.run_sql(
-            select(table, "row_to_json(*)", schema=schema) + SQL(" LIMIT %s"),
+            SQL("SELECT row_to_json(t.*) FROM {}.{} t LIMIT %s").format(
+                Identifier(schema), Identifier(table)
+            ),
             (limit,),
             return_shape=ResultShape.MANY_ONE,
         )
         return result_json
 
-    def preview(self, schema: Dict[str, TableSchema]) -> Dict[str, List[Dict[str, Any]]]:
+    def preview(
+        self, schema: Dict[str, TableSchema]
+    ) -> Dict[str, Union[str, List[Dict[str, Any]]]]:
         # Preview data in tables mounted by this FDW / data source
 
         tmp_schema = get_temporary_table_id()
         try:
             self.mount(tmp_schema, tables=schema)
-            result = {
-                t: self._preview_table(tmp_schema, t)
-                for t in self.engine.get_all_tables(tmp_schema)
-            }
+            # Commit so that errors don't cancel the mount
+            self.engine.commit()
+            result = {}
+            for t in self.engine.get_all_tables(tmp_schema):
+                try:
+                    result[t] = self._preview_table(tmp_schema, t)
+                except psycopg2.DatabaseError as e:
+                    logging.warning("Could not preview data for table %s", t, exc_info=e)
+                    result[t] = str(e)
             return result
         finally:
+            self.engine.rollback()
             self.engine.delete_schema(tmp_schema)
+            self.engine.commit()
 
 
 class PostgreSQLDataSource(ForeignDataWrapperDataSource):

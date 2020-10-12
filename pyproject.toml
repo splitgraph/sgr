@@ -23,6 +23,7 @@ packaging = ">=20.1"
 tabulate = ">=0.8.7"
 asciitree = ">=0.3.3"
 pyyaml = ">=5.1"
+jsonschema = "^3.2.0"
 
 # Socrata dataset mounting.
 # This could be optional but it's very lightweight (only requires requests).
@@ -31,7 +32,6 @@ sodapy = ">=2.1"
 # Extra requirements for Pandas ingestion
 pandas = {version = ">=0.24", extras = ["ingestion"], optional = true }
 sqlalchemy = { version = "^1.3", extras = ["ingestion"], optional = true }
-jsonschema = "^3.2.0"
 
 
 [tool.poetry.dev-dependencies]
