@@ -1,14 +1,13 @@
 import logging
 from abc import ABC, abstractmethod
 from copy import deepcopy
-from typing import Dict, Any, Optional, Union, List, TYPE_CHECKING
+from typing import Dict, Any, Optional, Union, List, TYPE_CHECKING, Mapping, cast
 
 import psycopg2
 from jsonschema import validate
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.core.common import get_temporary_table_id
-from splitgraph.core.sql import select
 from splitgraph.core.types import TableSchema, TableColumn, dict_to_tableschema
 from splitgraph.engine import ResultShape
 
@@ -17,6 +16,7 @@ if TYPE_CHECKING:
 
 Credentials = Dict[str, Any]
 Params = Dict[str, Any]
+TableInfo = Union[List[str], Dict[str, TableSchema]]
 
 
 class DataSource(ABC):
@@ -63,6 +63,7 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
         credentials: Optional[Credentials] = None,
         params: Optional[Params] = None,
     ):
+        self.tables: Optional[TableInfo] = None
         super().__init__(engine, credentials or {}, params or {})
 
     @classmethod
@@ -92,6 +93,8 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
         #   * A list of tables to import
         #   * A dictionary table_name -> {"schema": schema, **mount_options}
         table_kwargs = params.pop("tables", None)
+        tables: Optional[TableInfo]
+
         if isinstance(table_kwargs, dict):
             tables = dict_to_tableschema(table_kwargs["schema"])
             params["tables"] = {
@@ -110,13 +113,13 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
         result.tables = tables
         return result
 
-    def get_user_options(self) -> Dict[str, str]:
+    def get_user_options(self) -> Mapping[str, str]:
         return {}
 
-    def get_server_options(self) -> Dict[str, str]:
+    def get_server_options(self) -> Mapping[str, str]:
         return {}
 
-    def get_table_options(self, table_name: str) -> Dict[str, str]:
+    def get_table_options(self, table_name: str) -> Mapping[str, str]:
         return {
             k: str(v)
             for k, v in self.params.get("tables", {}).get(table_name, {}).get("options", {}).items()
@@ -135,13 +138,9 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
         pass
 
     def mount(
-        self, schema: str, tables: Optional[Union[List[str], Dict[str, TableSchema]]] = None,
+        self, schema: str, tables: Optional[TableInfo] = None,
     ):
-        if hasattr(self, "tables"):
-            tables = self.tables
-
-        if tables is None:
-            tables = []
+        tables = tables or self.tables or []
 
         fdw = self.get_fdw_name()
         server_id = "%s_%s_server" % (schema, fdw)
@@ -198,12 +197,15 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
             self.engine.commit()
 
     def _preview_table(self, schema: str, table: str, limit: int = 10) -> List[Dict[str, Any]]:
-        result_json = self.engine.run_sql(
-            SQL("SELECT row_to_json(t.*) FROM {}.{} t LIMIT %s").format(
-                Identifier(schema), Identifier(table)
+        result_json = cast(
+            List[Dict[str, Any]],
+            self.engine.run_sql(
+                SQL("SELECT row_to_json(t.*) FROM {}.{} t LIMIT %s").format(
+                    Identifier(schema), Identifier(table)
+                ),
+                (limit,),
+                return_shape=ResultShape.MANY_ONE,
             ),
-            (limit,),
-            return_shape=ResultShape.MANY_ONE,
         )
         return result_json
 
@@ -217,7 +219,7 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
             self.mount(tmp_schema, tables=schema)
             # Commit so that errors don't cancel the mount
             self.engine.commit()
-            result = {}
+            result: Dict[str, Union[str, List[Dict[str, Any]]]] = {}
             for t in self.engine.get_all_tables(tmp_schema):
                 try:
                     result[t] = self._preview_table(tmp_schema, t)
@@ -262,7 +264,7 @@ class PostgreSQLDataSource(ForeignDataWrapperDataSource):
         return "postgres_fdw"
 
     def get_remote_schema_name(self) -> str:
-        return self.params["remote_schema"]
+        return str(self.params["remote_schema"])
 
 
 class MongoDataSource(ForeignDataWrapperDataSource):
@@ -346,7 +348,7 @@ class MySQLDataSource(ForeignDataWrapperDataSource):
         return "mysql_fdw"
 
     def get_remote_schema_name(self) -> str:
-        return self.params["remote_schema"]
+        return str(self.params["remote_schema"])
 
 
 class ElasticSearchDataSource(ForeignDataWrapperDataSource):
@@ -418,8 +420,8 @@ def init_fdw(
     engine: "PostgresEngine",
     server_id: str,
     wrapper: str,
-    server_options: Optional[Dict[str, Union[str, None]]] = None,
-    user_options: Optional[Dict[str, str]] = None,
+    server_options: Optional[Mapping[str, Optional[str]]] = None,
+    user_options: Optional[Mapping[str, str]] = None,
     overwrite: bool = True,
 ) -> None:
     """
@@ -495,12 +497,12 @@ def create_foreign_table(
     )
     query += SQL(") SERVER {}").format(Identifier(server))
 
-    args = None
+    args: List[str] = []
     if table_options:
         table_opts, table_optvals = zip(*table_options.items())
         query += SQL(" OPTIONS(")
         query += SQL(",").join(Identifier(o) + SQL(" %s") for o in table_opts) + SQL(");")
-        args = list(table_optvals)
+        args.extend(table_optvals)
 
     for col in schema_spec:
         if col.comment:
