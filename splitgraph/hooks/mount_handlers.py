@@ -2,12 +2,14 @@
 Hooks for additional handlers used to mount other databases via FDW. These handlers become available
 in the command line tool (via `sgr mount`) and in the Splitfile interpreter (via `FROM MOUNT`).
 """
-
+import logging
+import types
 from importlib import import_module
 from typing import Dict, List, TYPE_CHECKING, Any, Type
 
 from splitgraph.config import CONFIG
-from splitgraph.config.config import get_all_in_section
+from splitgraph.config.config import get_all_in_section, get_singleton
+from splitgraph.config.keys import DEFAULTS
 from splitgraph.exceptions import MountHandlerError
 from splitgraph.hooks.data_source import ForeignDataWrapperDataSource
 
@@ -18,8 +20,7 @@ _MOUNT_HANDLERS: Dict[str, Type[ForeignDataWrapperDataSource]] = {}
 
 
 def get_mount_handler(mount_handler: str) -> Type[ForeignDataWrapperDataSource]:
-    """Returns a mount function for a given handler.
-    The mount function must have a signature `(mountpoint, server, port, username, password, handler_kwargs)`."""
+    """Returns a mount class for a given handler."""
     try:
         return _MOUNT_HANDLERS[mount_handler]
     except KeyError:
@@ -55,78 +56,19 @@ def mount_postgres(mountpoint, **kwargs) -> None:
     :param tables: Tables to mount (default all). If a list, then will use IMPORT FOREIGN SCHEMA.
     If a dictionary, must have the format {"table_name": {"col_1": "type_1", ...}}.
     """
-    mount(mountpoint, mount_handler="postgres_fdw", handler_kwargs=kwargs)
+    mount(mountpoint, mount_handler="postgres_fdw", handler_kwargs=kwargs, overwrite=True)
 
 
-def mount_mongo(
-    mountpoint: str, server: str, port: int, username: str, password: str, **table_spec
+def mount(
+    mountpoint: str, mount_handler: str, handler_kwargs: Dict[str, Any], overwrite: bool = True
 ) -> None:
-    """
-    Mount a Mongo database.
-
-    Mounts one or more collections on a remote Mongo database as a set of foreign tables locally.
-    \b
-
-    :param mountpoint: Schema to mount the remote into.
-    :param server: Database hostname.
-    :param port: Port the Mongo server is running on.
-    :param username: A read-only user that the database will be accessed as.
-    :param password: Password for the read-only user.
-    :param table_spec: A dictionary of form `{"table_name": {"db": <dbname>, "coll": <collection>,
-        "schema": {"col1": "type1"...}}}`.
-    """
-    pass
-
-
-def mount_elasticsearch(
-    mountpoint: str,
-    server: str,
-    port: int,
-    username: str,
-    password: str,
-    table_spec: Dict[str, Dict[str, Any]],
-):
-    """
-    Mount an ElasticSearch instance.
-
-    Mount a set of tables proxying to a remote ElasticSearch index.
-
-    This uses a fork of postgres-elasticsearch-fdw behind the scenes. You can add a column
-    `query` to your table and set it as `query_column` to pass advanced ES queries and aggregations.
-    For example:
-
-    ```
-    sgr mount elasticsearch -c elasticsearch:9200 -o@- <<EOF
-        {
-          "table_spec": {
-            "table_1": {
-              "schema": {
-                "id": "text",
-                "@timestamp": "timestamp",
-                "query": "text",
-                "col_1": "text",
-                "col_2": "boolean",
-              },
-              "index": "index-pattern*",
-              "rowid_column": "id",
-              "query_column": "query",
-            }
-          }
-        }
-    EOF
-    ```
-    \b
-    """
-    pass
-
-
-def mount(mountpoint: str, mount_handler: str, handler_kwargs: Dict[str, Any],) -> None:
     """
     Mounts a foreign database via an FDW (without creating new Splitgraph objects)
 
     :param mountpoint: Mountpoint to import the new tables into.
-    :param mount_handler: The type of the mounted database. Must be one of `postgres_fdw` or `mongo_fdw`.
+    :param mount_handler: The type of the mounted database.
     :param handler_kwargs: Dictionary of options to pass to the mount handler.
+    :param overwrite: Delete the foreign server if it already exists. Used by mount_postgres for data pulls.
     """
     from splitgraph.engine import get_engine
     from psycopg2.sql import Identifier, SQL
@@ -140,7 +82,7 @@ def mount(mountpoint: str, mount_handler: str, handler_kwargs: Dict[str, Any],) 
     )
 
     source = data_source.from_commandline(engine, handler_kwargs)
-    source.mount(schema=mountpoint)
+    source.mount(schema=mountpoint, overwrite=overwrite)
     engine.commit()
 
 
@@ -149,21 +91,65 @@ def _register_default_handlers() -> None:
     for handler_name, handler_class_name in get_all_in_section(CONFIG, "mount_handlers").items():
         assert isinstance(handler_class_name, str)
 
-        ix = handler_class_name.rindex(".")
         try:
-            handler_class = getattr(
-                import_module(handler_class_name[:ix]), handler_class_name[ix + 1 :]
-            )
+            handler_class = _load_handler(handler_name, handler_class_name)
+
             assert issubclass(handler_class, ForeignDataWrapperDataSource)
             register_mount_handler(handler_name.lower(), handler_class)
-        except AttributeError as e:
+        except (ImportError, AttributeError) as e:
             raise MountHandlerError(
                 "Error loading custom mount handler {0}".format(handler_name)
             ) from e
-        except ImportError as e:
+
+
+def _load_handler(handler_name, handler_class_name):
+    # Hack for old-style mount handlers that have now been moved -- don't crash and instead
+    # replace them in the config on the fly
+    handler_defaults = get_all_in_section(DEFAULTS, "mount_handlers")
+
+    fallback_used = False
+
+    try:
+        ix = handler_class_name.rindex(".")
+        handler_class = getattr(
+            import_module(handler_class_name[:ix]), handler_class_name[ix + 1 :]
+        )
+    except (ImportError, AttributeError):
+        if handler_name not in handler_defaults:
+            raise
+        handler_class_name = handler_defaults[handler_name]
+        ix = handler_class_name.rindex(".")
+        handler_class = getattr(
+            import_module(handler_class_name[:ix]), handler_class_name[ix + 1 :]
+        )
+        fallback_used = True
+
+    if isinstance(handler_class, types.FunctionType):
+        if handler_name not in handler_defaults:
             raise MountHandlerError(
-                "Error loading custom mount handler {0}".format(handler_name)
-            ) from e
+                "Handler %s uses the old-style function interface which is not"
+                " compatible with this version of Splitgraph. "
+                "Delete it from your .sgconfig's [mount_handlers] section (%s)"
+                % (handler_name, get_singleton(CONFIG, "SG_CONFIG_FILE"))
+            )
+        handler_class_name = handler_defaults[handler_name]
+        ix = handler_class_name.rindex(".")
+        handler_class = getattr(
+            import_module(handler_class_name[:ix]), handler_class_name[ix + 1 :]
+        )
+        fallback_used = True
+    if fallback_used:
+        logging.warning(
+            "Handler %s uses the old-style function interface and was " "automatically replaced.",
+            handler_name,
+        )
+        logging.warning(
+            "Replace it with %s=%s in your .sgconfig's [mount_handlers] section (%s)",
+            handler_name,
+            handler_class_name,
+            get_singleton(CONFIG, "SG_CONFIG_FILE"),
+        )
+    return handler_class
 
 
 _register_default_handlers()

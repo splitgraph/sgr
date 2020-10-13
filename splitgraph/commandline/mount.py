@@ -3,20 +3,14 @@ sgr commands related to mounting databases via Postgres FDW
 """
 
 import re
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Type
 
 import click
 from click.core import Command
 
 from splitgraph.commandline.common import JsonType
+from splitgraph.hooks.data_source import ForeignDataWrapperDataSource
 from splitgraph.hooks.mount_handlers import get_mount_handler, get_mount_handlers, mount
-
-_PARAM_REGEX = re.compile(
-    r"^:param\s+(?P<type>\w+\s+)?(?P<param>\w+):\s+(?P<doc>.*)$", re.MULTILINE
-)
-# Mount handler function arguments that get parsed by other means (connection string) and aren't
-# included in the generated help text.
-_RESERVED_PARAMS = ["mountpoint", "server", "port", "username", "password"]
 
 
 @click.group(name="mount")
@@ -31,41 +25,23 @@ def mount_c():
     """
 
 
-def _generate_handler_help(docstring: str) -> Tuple[str, str]:
+def _generate_handler_help(handler: Type[ForeignDataWrapperDataSource]) -> Tuple[str, str]:
     """
-    Extract the long description and the parameters from a docstring
-
-    :param docstring: Docstring
+    Extract the long description and the parameters from a handler's class
     """
-    # The handler's docstring can have \b as per Click convention to separate
-    # docstring params from the rest of the help -- we do our own parsing here and
-    # use it to construct a custom help string with the extra JSON-formatted (for now)
-    # parameters that the mount handler takes.
-    try:
-        help_text, handler_params = docstring.split("\b")
+    handler_help = (
+        handler.commandline_help or handler.get_name() + "\n\n" + handler.get_description()
+    )
 
-        handler_help_text = "JSON-encoded dictionary or @filename.json with handler options:\n\n"
+    if handler.commandline_kwargs_help:
+        handler_kwargs_help = (
+            "JSON-encoded dictionary or @filename.json with handler options:\n\n"
+            + handler.commandline_kwargs_help
+        )
+    else:
+        handler_kwargs_help = "JSON-encoded dictionary or @filename.json with handler options"
 
-        formatted_params = []
-        for line in handler_params.split(":param"):
-            # drop empty strings...
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                # and params that are accounted for (e.g. connection string parsed separately)
-                param_name = line[: line.index(":")]
-                if param_name in _RESERVED_PARAMS:
-                    continue
-            except ValueError:
-                continue
-            formatted_params.append(line)
-
-        handler_help_text += "\n".join(formatted_params)
-        return help_text, handler_help_text
-    except ValueError:
-        # Ignore wrongly formatted docstrings for now
-        return "", ""
+    return handler_help, handler_kwargs_help
 
 
 def _make_mount_handler_command(handler_name: str) -> Command:
@@ -73,12 +49,7 @@ def _make_mount_handler_command(handler_name: str) -> Command:
     with help text and kwarg/connection string passing"""
 
     handler = get_mount_handler(handler_name)
-    help_text: Optional[str]
-    handler_options_help: Optional[str]
-    if handler.__doc__:
-        help_text, handler_options_help = _generate_handler_help(handler.__doc__)
-    else:
-        help_text, handler_options_help = None, None
+    help_text, handler_options_help = _generate_handler_help(handler)
 
     params = [
         click.Argument(["schema"]),
