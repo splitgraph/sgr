@@ -57,6 +57,9 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
         "properties": {"tables": _table_options_schema},
     }
 
+    commandline_help: str = ""
+    commandline_kwargs_help: str = ""
+
     def __init__(
         self,
         engine: "PostgresEngine",
@@ -67,26 +70,20 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
         super().__init__(engine, credentials or {}, params or {})
 
     @classmethod
+    @abstractmethod
+    def get_name(cls) -> str:
+        pass
+
+    @classmethod
+    @abstractmethod
+    def get_description(cls) -> str:
+        pass
+
+    @classmethod
     def from_commandline(cls, engine, commandline_kwargs) -> "ForeignDataWrapperDataSource":
         """Instantiate an FDW data source from commandline arguments."""
         # Normally these are supposed to be more user-friendly and FDW-specific (e.g.
         # not forcing the user to pass in a JSON with five levels of nesting etc).
-
-        # TODO override this for some FDWs like PG/mongo to bring back old behaviour, e.g
-        #
-        #     "tables": {
-        #         "stuff": {
-        #             "db": "origindb",
-        #             "coll": "stuff",
-        #             "schema": {
-        #                 "name": "text",
-        #                 "duration": "numeric",
-        #                 "happy": "boolean"
-        #             },
-        #         }
-        #     }
-        #
-        #  (not forcing the options to go into a separate "options" dict)
         params = deepcopy(commandline_kwargs)
 
         # By convention, the "tables" object can be:
@@ -96,7 +93,9 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
         tables: Optional[TableInfo]
 
         if isinstance(table_kwargs, dict):
-            tables = dict_to_tableschema(table_kwargs["schema"])
+            tables = dict_to_tableschema(
+                {t: to["schema"] for t, to in table_kwargs.items() if "schema" in to}
+            )
             params["tables"] = {
                 t: {"options": to["options"]} for t, to in table_kwargs.items() if "options" in to
             }
@@ -138,7 +137,7 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
         pass
 
     def mount(
-        self, schema: str, tables: Optional[TableInfo] = None,
+        self, schema: str, tables: Optional[TableInfo] = None, overwrite: bool = True,
     ):
         tables = tables or self.tables or []
 
@@ -150,7 +149,7 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
             self.get_fdw_name(),
             self.get_server_options(),
             self.get_user_options(),
-            overwrite=False,
+            overwrite=overwrite,
         )
 
         # Allow mounting tables into existing schemas
@@ -234,6 +233,17 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
 
 
 class PostgreSQLDataSource(ForeignDataWrapperDataSource):
+    @classmethod
+    def get_name(cls) -> str:
+        return "PostgreSQL"
+
+    @classmethod
+    def get_description(cls) -> str:
+        return (
+            "Data source for PostgreSQL databases that supports live querying, "
+            "based on postgres_fdw"
+        )
+
     params_schema = {
         "type": "object",
         "properties": {
@@ -245,6 +255,19 @@ class PostgreSQLDataSource(ForeignDataWrapperDataSource):
         },
         "required": ["host", "port", "dbname", "remote_schema"],
     }
+
+    commandline_help: str = """Mount a Postgres database.
+
+Mounts a schema on a remote Postgres database as a set of foreign tables locally."""
+
+    commandline_kwargs_help: str = """dbname: Database name (required)
+remote_schema: Remote schema name (required)
+extra_server_args: Dictionary of extra arguments to pass to the foreign server
+tables: Tables to mount (default all). If a list, then will use IMPORT FOREIGN SCHEMA.
+If a dictionary, must have the format
+    {"table_name": {"schema": {"col_1": "type_1", ...},
+                    "options": {[get passed to CREATE FOREIGN TABLE]}}}.
+    """
 
     def get_server_options(self):
         return {
@@ -291,6 +314,29 @@ class MongoDataSource(ForeignDataWrapperDataSource):
         "required": ["host", "port", "tables"],
     }
 
+    commandline_help = """Mount a Mongo database.
+
+Mounts one or more collections on a remote Mongo database as a set of foreign tables locally."""
+
+    commandline_kwargs_help = """tables: A dictionary of form
+```
+{
+    "table_name": {
+        "schema": {"col1": "type1"...},
+        "options": {"db": <dbname>, "coll": <collection>} 
+    } 
+}
+```
+"""
+
+    @classmethod
+    def get_name(cls) -> str:
+        return "MongoDB"
+
+    @classmethod
+    def get_description(cls) -> str:
+        return "Data source for MongoDB databases that supports live querying, based on mongo_fdw"
+
     def get_server_options(self):
         return {
             "address": self.params["host"],
@@ -330,6 +376,25 @@ class MySQLDataSource(ForeignDataWrapperDataSource):
         },
         "required": ["host", "port", "remote_schema"],
     }
+
+    commandline_help: str = """Mount a MySQL database.
+
+Mounts a schema on a remote MySQL database as a set of foreign tables locally."""
+
+    commandline_kwargs_help: str = """remote_schema: Remote schema name (required)
+tables: Tables to mount (default all). If a list, then will use IMPORT FOREIGN SCHEMA.
+If a dictionary, must have the format
+    {"table_name": {"schema": {"col_1": "type_1", ...},
+                    "options": {[get passed to CREATE FOREIGN TABLE]}}}.
+        """
+
+    @classmethod
+    def get_name(cls) -> str:
+        return "MySQL"
+
+    @classmethod
+    def get_description(cls) -> str:
+        return "Data source for MySQL databases that supports live querying, " "based on mysql_fdw"
 
     def get_server_options(self):
         return {
@@ -402,6 +467,49 @@ class ElasticSearchDataSource(ForeignDataWrapperDataSource):
         },
         "required": ["host", "port", "tables"],
     }
+
+    commandline_help = """Mount an ElasticSearch instance.
+
+Mount a set of tables proxying to a remote ElasticSearch index.
+
+This uses a fork of postgres-elasticsearch-fdw behind the scenes. You can add a column
+`query` to your table and set it as `query_column` to pass advanced ES queries and aggregations.
+For example:
+
+```
+sgr mount elasticsearch -c elasticsearch:9200 -o@- <<EOF
+    {
+      "tables": {
+        "table_1": {
+          "schema": {
+            "id": "text",
+            "@timestamp": "timestamp",
+            "query": "text",
+            "col_1": "text",
+            "col_2": "boolean"
+          },
+          "options": {
+              "index": "index-pattern*",
+              "rowid_column": "id",
+              "query_column": "query"
+          }
+        }
+      }
+    }
+EOF
+```
+"""
+
+    @classmethod
+    def get_name(cls) -> str:
+        return "Elasticsearch"
+
+    @classmethod
+    def get_description(cls) -> str:
+        return (
+            "Data source for Elasticsearch indexes that supports live querying, "
+            "based on pg_es_fdw"
+        )
 
     def get_server_options(self):
         return {
