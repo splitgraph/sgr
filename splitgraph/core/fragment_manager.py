@@ -64,10 +64,7 @@ def _log_commit_progress(table_size, no_chunks):
     return table_size > 500000 or no_chunks > 100
 
 
-T = TypeVar("T", bound=Comparable)
-
-
-def get_chunk_groups(chunks: List[Tuple[str, T, T]],) -> List[List[Tuple[str, T, T]]]:
+def get_chunk_groups(chunks: List[Tuple[str, Any, Any]],) -> List[List[Tuple[str, Any, Any]]]:
     """
     Takes a list of chunks and their boundaries and combines them
     into independent groups such that chunks from no two groups
@@ -94,15 +91,15 @@ def get_chunk_groups(chunks: List[Tuple[str, T, T]],) -> List[List[Tuple[str, T,
     # within overlap groups.
 
     # no tuple concatenation (typechecker complains)
-    chunks: List[Tuple[int, str, T, T]] = [
+
+    chunks: List[Tuple[int, str, Any, Any]] = [
         (i, chunk[0], chunk[1], chunk[2]) for i, chunk in enumerate(chunks)
     ]
-
-    groups: List[List[Tuple[int, str, T, T]]] = []
-    current_group: List[Tuple[int, str, T, T]] = []
-    current_group_start: Optional[T] = None
-    current_group_end: Optional[T] = None
-    for original_id, chunk_id, start, end in sorted(chunks, key=lambda c: c[2]):
+    groups: List[List[Tuple[int, str, Any, Any]]] = []
+    current_group: List[Tuple[int, str, Any, Any]] = []
+    current_group_start = None
+    current_group_end = None
+    for original_id, chunk_id, start, end in sorted(chunks, key=lambda c: c[2]):  # type:ignore
         if not current_group:
             current_group = [(original_id, chunk_id, start, end)]
             current_group_start = start
@@ -112,7 +109,7 @@ def get_chunk_groups(chunks: List[Tuple[str, T, T]],) -> List[List[Tuple[str, T,
         assert current_group_start
         assert current_group_end
         # See if the chunk overlaps with the current chunk group
-        if start <= current_group_end and end >= current_group_start:  # type: ignore
+        if start <= current_group_end and end >= current_group_start:
             current_group.append((original_id, chunk_id, start, end))
             current_group_start = min(current_group_start, start)
             current_group_end = max(current_group_end, end)
@@ -564,7 +561,7 @@ class FragmentManager(MetadataManager):
                 min_max = self.get_min_max_pks(current_objects, table_pks)
 
                 groups = get_chunk_groups(
-                    [(o, mm[0], mm[1]) for o, mm in zip(current_objects, min_max)]  # type: ignore
+                    [(o, mm[0], mm[1]) for o, mm in zip(current_objects, min_max)]
                 )
                 group_boundaries = [
                     (min(min_pk for _, min_pk, _ in group), max(max_pk for _, _, max_pk in group))
