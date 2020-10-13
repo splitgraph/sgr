@@ -39,6 +39,14 @@ class SocrataDataSource(ForeignDataWrapperDataSource):
         {"salaries": "xzkq-xp2w"}. If skipped, ALL tables in the Socrata endpoint will be mounted.
     """
 
+    @classmethod
+    def get_name(cls) -> str:
+        return "Socrata"
+
+    @classmethod
+    def get_description(cls) -> str:
+        return "Data source for remote Socrata datasets that uses SoQL for live queries"
+
     def get_fdw_name(self):
         return "multicorn"
 
