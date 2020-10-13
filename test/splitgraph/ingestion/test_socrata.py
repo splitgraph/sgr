@@ -362,7 +362,7 @@ def test_socrata_smoke(domain, dataset_id, local_engine_empty):
     # to make sure the mounting works end-to-end.
     try:
         mount(
-            "test/pg_mount", "socrata", {"domain": domain, "tables": {"data": dataset_id},},
+            "socrata_mount", "socrata", {"domain": domain, "tables": {"data": dataset_id}},
         )
         result = local_engine_empty.run_sql("SELECT * FROM socrata_mount.data LIMIT 10")
         assert len(result) == 10

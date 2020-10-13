@@ -90,11 +90,9 @@ def test_mount_elasticsearch(local_engine_empty):
                             "col_1": "text",
                             "col_2": "boolean",
                         },
-                        "options": {
-                            "index": "index-pattern*",
-                            "rowid_column": "id",
-                            "query_column": "query",
-                        },
+                        "index": "index-pattern*",
+                        "rowid_column": "id",
+                        "query_column": "query",
                     }
                 },
             ),
