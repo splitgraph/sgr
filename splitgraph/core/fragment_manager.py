@@ -25,7 +25,7 @@ from splitgraph.core.indexing.range import (
     filter_range_index,
 )
 from splitgraph.core.metadata_manager import MetadataManager, Object
-from splitgraph.core.types import Changeset, TableSchema
+from splitgraph.core.types import Changeset, TableSchema, Comparable
 from splitgraph.engine import ResultShape
 from splitgraph.engine.postgres.engine import SG_UD_FLAG, add_ud_flag_column, get_change_key
 from splitgraph.exceptions import SplitGraphError
@@ -36,7 +36,6 @@ if TYPE_CHECKING:
     from splitgraph.core.repository import Repository
     from splitgraph.core.table import Table
     from splitgraph.engine.postgres.engine import PostgresEngine
-    from builtins import _SupportsLessThan
 
 
 def _split_changeset(
@@ -65,7 +64,7 @@ def _log_commit_progress(table_size, no_chunks):
     return table_size > 500000 or no_chunks > 100
 
 
-T = TypeVar("T", bound=_SupportsLessThan)
+T = TypeVar("T", bound=Comparable)
 
 
 def get_chunk_groups(chunks: List[Tuple[str, T, T]],) -> List[List[Tuple[str, T, T]]]:
@@ -565,7 +564,7 @@ class FragmentManager(MetadataManager):
                 min_max = self.get_min_max_pks(current_objects, table_pks)
 
                 groups = get_chunk_groups(
-                    [(o, mm[0], mm[1]) for o, mm in zip(current_objects, min_max)]
+                    [(o, mm[0], mm[1]) for o, mm in zip(current_objects, min_max)]  # type: ignore
                 )
                 group_boundaries = [
                     (min(min_pk for _, min_pk, _ in group), max(max_pk for _, _, max_pk in group))
