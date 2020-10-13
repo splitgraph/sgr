@@ -6,5 +6,5 @@ SG_ENGINE_USER=sgr
 SG_ENGINE_PWD=supersecure
 
 [mount_handlers]
-; Register the "mount_hn" function as the hackernews mount handler
-hackernews=hn_fdw.mount.mount_hn
+; Register the "HackerNewsDataSource" function as the hackernews mount handler
+hackernews=hn_fdw.mount.HackerNewsDataSource
