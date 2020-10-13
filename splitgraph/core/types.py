@@ -1,3 +1,4 @@
+from abc import ABCMeta, abstractmethod
 from typing import Dict, Tuple, Any, NamedTuple, Optional, List, Sequence, Union
 
 Changeset = Dict[Tuple[str, ...], Tuple[bool, Dict[str, Any], Dict[str, Any]]]
@@ -16,6 +17,12 @@ Quals = Sequence[Sequence[Tuple[str, str, Any]]]
 
 SourcesList = List[Dict[str, str]]
 ProvenanceLine = Dict[str, Union[str, List[str], List[bool], SourcesList]]
+
+
+class Comparable(metaclass=ABCMeta):
+    @abstractmethod
+    def __lt__(self, other: Any) -> bool:
+        ...
 
 
 def dict_to_tableschema(tables: Dict[str, Dict[str, Any]]) -> Dict[str, TableSchema]:

@@ -7,15 +7,14 @@ from psycopg2.sql import Identifier
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
 from splitgraph.core.common import adapt, coerce_val_to_json
 from splitgraph.core.sql import select
-from splitgraph.core.types import Quals, Changeset, TableSchema
+from splitgraph.core.types import Quals, Changeset, TableSchema, Comparable
 from splitgraph.engine import ResultShape
 from splitgraph.engine.postgres.engine import PG_INDEXABLE_TYPES
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PsycopgEngine
-    from builtins import _SupportsLessThan
 
-T = TypeVar("T", bound=_SupportsLessThan)
+T = TypeVar("T", bound=Comparable)
 
 
 # Custom min/max functions that ignore Nones
