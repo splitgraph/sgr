@@ -13,8 +13,9 @@ from splitgraph.engine.postgres.engine import PG_INDEXABLE_TYPES
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PsycopgEngine
+    from builtins import _SupportsLessThan
 
-T = TypeVar("T")
+T = TypeVar("T", bound=_SupportsLessThan)
 
 
 # Custom min/max functions that ignore Nones
