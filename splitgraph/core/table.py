@@ -175,7 +175,7 @@ class QueryPlan:
                 (object_id, min_max[0], min_max[1])
                 for object_id, min_max in zip(self.filtered_objects, object_pks)
             ]
-        )  # type: ignore
+        )
         singletons: List[str] = []
         non_singletons: List[str] = []
         for group in object_groups:
