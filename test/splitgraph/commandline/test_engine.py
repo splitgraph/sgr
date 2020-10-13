@@ -207,11 +207,11 @@ _PULL_PROGRESS = [
 
 
 _HANDLER_CONFIG = """[mount_handlers]
-postgres_fdw=splitgraph.hooks.mount_handlers.mount_postgres
-mongo_fdw=splitgraph.hooks.mount_handlers.mount_mongo
-mysql_fdw=splitgraph.hooks.mount_handlers.mount_mysql
-socrata=splitgraph.ingestion.socrata.mount.mount_socrata
-elasticsearch=splitgraph.hooks.mount_handlers.mount_elasticsearch
+postgres_fdw=splitgraph.hooks.data_source.PostgreSQLDataSource
+mongo_fdw=splitgraph.hooks.data_source.MongoDataSource
+mysql_fdw=splitgraph.hooks.data_source.MySQLDataSource
+socrata=splitgraph.ingestion.socrata.mount.SocrataDataSource
+elasticsearch=splitgraph.hooks.data_source.ElasticSearchDataSource
 [external_handlers]
 S3=splitgraph.hooks.s3.S3ExternalObjectHandler
 """
@@ -362,7 +362,7 @@ def test_commandline_engine_creation_config_patching_integration(teardown_test_e
 
     # Do some spot checks to make sure we didn't overwrite anything.
     assert "SG_S3_HOST=//objectstorage" in config
-    assert "postgres_fdw=splitgraph.hooks.mount_handlers.mount_postgres" in config
+    assert "postgres_fdw" in config
     assert "[remote: %s]" % TEST_ENGINE_NAME in config
     assert "[remote: remote_engine]" in config
 
