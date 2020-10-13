@@ -18,13 +18,16 @@
   - "# Mount the Mongo database"
   - sgr mount mongo_fdw --help
   - |
-    sgr mount mongo_fdw staging -c originro:originpass@mongo:27017 -o '{"stuff": {
-                "db": "origindb",
-                "coll": "stuff",
+    sgr mount mongo_fdw staging -c originro:originpass@mongo:27017 -o '{"tables": {"stuff": {
+                "options":
+                {
+                  "db": "origindb",
+                  "coll": "stuff"
+                },
                 "schema": {
-                    "name": "text",
-                    "duration": "numeric",
-                    "happy": "boolean"}}}'
+                  "name": "text",
+                  "duration": "numeric",
+                  "happy": "boolean"}}}}'
 - commands:
   - "# Check the contents of the new table"
   - sgr sql -s staging "SELECT * FROM stuff"

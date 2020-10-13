@@ -1,8 +1,7 @@
-import logging
-from typing import Dict, Optional, List
+from typing import Dict
 
-from splitgraph.core.types import TableColumn
-from splitgraph.hooks.data_source import init_fdw, create_foreign_table
+from splitgraph.core.types import TableColumn, TableSchema
+from splitgraph.hooks.data_source import ForeignDataWrapperDataSource
 
 # Define the schema of the foreign table we wish to create
 # We're only going to be fetching stories, so limit the columns to the ones that
@@ -19,63 +18,46 @@ _story_schema_spec = [
     TableColumn(9, "descendants", "integer", False),
 ]
 
+_all_endpoints = [
+    "topstories",
+    "newstories",
+    "beststories",
+    "askstories",
+    "showstories",
+    "jobstories",
+]
 
-def mount_hn(
-    mountpoint: str, server, port, username, password, endpoints: Optional[List[str]] = None
-) -> None:
-    """
-    Mount a Hacker News story dataset using the Firebase API.
-    \b
-    :param endpoints: List of Firebase endpoints to mount, mounted into the same tables as
-    the endpoint name. Supported endpoints: {top,new,best,ask,show,job}stories.
-    """
 
-    # A mount handler is a function that takes five arguments and any number
-    # of optional ones. The mountpoint is always necessary and shows which foreign schema
-    # to mount the dataset into. The connection parameters can be None.
+class HackerNewsDataSource(ForeignDataWrapperDataSource):
+    credentials_schema = {"type": "object"}
 
-    from splitgraph.engine import get_engine
-    from psycopg2.sql import Identifier, SQL
-
-    engine = get_engine()
-    server_id = mountpoint + "_server"
-
-    # Define server options that are common for all tables managed by this wrapper
-    options: Dict[str, Optional[str]] = {
-        # Module path to our foreign data wrapper class on the engine side
-        "wrapper": "hn_fdw.fdw.HNForeignDataWrapper",
+    params_schema = {
+        "type": "object",
+        "properties": {
+            "endpoints": {"type": "array", "items": {"type": "string", "enum": _all_endpoints}}
+        },
     }
 
-    # Initialize the FDW: this will create the foreign server and user mappings behind the scenes.
-    init_fdw(engine, server_id=server_id, wrapper="multicorn", server_options=options)
+    @classmethod
+    def get_name(cls) -> str:
+        return "Hacker News"
 
-    # Create the schema that we'll be putting foreign tables into.
-    engine.run_sql(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(mountpoint)))
+    @classmethod
+    def get_description(cls) -> str:
+        return "Hacker News stories through the Firebase API"
 
-    endpoints = endpoints or [
-        "topstories",
-        "newstories",
-        "beststories",
-        "askstories",
-        "showstories",
-        "jobstories",
-    ]
+    def get_fdw_name(self):
+        # Define the FDW that this plugin uses on the backend
+        return "multicorn"
 
-    for endpoint in endpoints:
-        # Generate SQL required to create a foreign table in the target schema.
-        # create_foreign_table handles the boilerplate around running CREATE FOREIGN TABLE
-        # on the engine and passing necessary arguments.
-        logging.info("Mounting %s...", endpoint)
-        sql, args = create_foreign_table(
-            schema=mountpoint,
-            server=server_id,
-            table_name=endpoint,
-            schema_spec=_story_schema_spec,
-            extra_options=None,
-        )
+    def get_server_options(self):
+        # Define server options that are common for all tables managed by this wrapper
+        return {
+            # Module path to our foreign data wrapper class on the engine side
+            "wrapper": "hn_fdw.fdw.HNForeignDataWrapper",
+        }
 
-        engine.run_sql(sql, args)
-
-    # This was all run in a single SQL transaction so that everything gets rolled back
-    # and we don't have to clean up in case of an error. We can commit it now.
-    engine.commit()
+    def introspect(self) -> Dict[str, TableSchema]:
+        # Return a list of this FDW's tables and their schema.
+        endpoints = self.params["endpoints"] or _all_endpoints
+        return {e: _story_schema_spec for e in endpoints}

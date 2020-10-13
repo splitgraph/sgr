@@ -1,5 +1,5 @@
 {
-  "table_spec": {
+  "tables": {
     "table_1": {
       "schema": {
         "id": "text",
@@ -8,9 +8,11 @@
         "col_1": "text",
         "col_2": "boolean"
       },
-      "index": "some-index*",
-      "rowid_column": "id",
-      "query_column": "query"
+      "options": {
+        "index": "some-index*",
+        "rowid_column": "id",
+        "query_column": "query"
+      }
     },
     "table_2": {
       "schema": {
@@ -20,9 +22,11 @@
         "col_1": "text",
         "col_2": "integer"
       },
-      "index": "some-other-index*",
-      "rowid_column": "id",
-      "query_column": "query"
+      "options": {
+        "index": "some-other-index*",
+        "rowid_column": "id",
+        "query_column": "query"
+      }
     }
   }
 }

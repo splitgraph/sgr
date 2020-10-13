@@ -1,8 +1,10 @@
-FROM MOUNT mongo_fdw originro:originpass@mongo:27017 '{"stuff": {
-                "db": "origindb",
-                "coll": "stuff",
+FROM MOUNT mongo_fdw originro:originpass@mongo:27017 '{"tables": {"stuff": {
+                "options": {
+                  "db": "origindb",
+                  "coll": "stuff"
+                },
                 "schema": {
-                    "name": "text",
-                    "duration": "numeric",
-                    "happy": "boolean"}}}'
+                  "name": "text",
+                  "duration": "numeric",
+                  "happy": "boolean"}}}}'
     IMPORT {SELECT * FROM stuff} AS stuff
