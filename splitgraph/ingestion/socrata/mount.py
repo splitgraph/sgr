@@ -72,7 +72,7 @@ class SocrataDataSource(ForeignDataWrapperDataSource):
         from psycopg2.sql import SQL
 
         logging.info("Getting Socrata metadata")
-        client = Socrata(domain=self.params["domain"], app_token=self.credentials["app_token"])
+        client = Socrata(domain=self.params["domain"], app_token=self.credentials.get("app_token"))
         tables = self.params.get("tables")
         sought_ids = tables.values() if tables else []
 
