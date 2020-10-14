@@ -4,12 +4,9 @@ from copy import deepcopy
 from typing import Dict, Any, Optional, Union, List, TYPE_CHECKING, Mapping, cast
 
 import psycopg2
-from jsonschema import validate
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.core.common import get_temporary_table_id
 from splitgraph.core.types import TableSchema, TableColumn, dict_to_tableschema
-from splitgraph.engine import ResultShape
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PostgresEngine
@@ -24,10 +21,12 @@ class DataSource(ABC):
     credentials_schema: Dict[str, Any]
 
     def __init__(self, engine: "PostgresEngine", credentials: Credentials, params: Params):
+        import jsonschema
+
         self.engine = engine
 
-        validate(instance=credentials, schema=self.credentials_schema)
-        validate(instance=params, schema=self.params_schema)
+        jsonschema.validate(instance=credentials, schema=self.credentials_schema)
+        jsonschema.validate(instance=params, schema=self.params_schema)
 
         self.credentials = credentials
         self.params = params
@@ -182,6 +181,9 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
         # Ability to override introspection by e.g. contacting the remote database without having
         # to mount the actual table. By default, just call out into mount()
 
+        # Local import here since this data source gets imported by the commandline entry point
+        from splitgraph.core.common import get_temporary_table_id
+
         tmp_schema = get_temporary_table_id()
         try:
             self.mount(tmp_schema)
@@ -196,6 +198,8 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
             self.engine.commit()
 
     def _preview_table(self, schema: str, table: str, limit: int = 10) -> List[Dict[str, Any]]:
+        from splitgraph.engine import ResultShape
+
         result_json = cast(
             List[Dict[str, Any]],
             self.engine.run_sql(
@@ -212,6 +216,9 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
         self, schema: Dict[str, TableSchema]
     ) -> Dict[str, Union[str, List[Dict[str, Any]]]]:
         # Preview data in tables mounted by this FDW / data source
+
+        # Local import here since this data source gets imported by the commandline entry point
+        from splitgraph.core.common import get_temporary_table_id
 
         tmp_schema = get_temporary_table_id()
         try:
