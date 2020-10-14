@@ -37,8 +37,7 @@ from splitgraph.hooks.data_source import create_foreign_table
 if TYPE_CHECKING:
     from splitgraph.core.image import Image
     from splitgraph.core.repository import Repository
-    from splitgraph.engine.postgres.engine import PostgresEngine
-
+    from splitgraph.engine.postgres.engine import PostgresEngine, get_change_key
 
 # Output checkout progress every 5MB to trade off between the latency
 # of initializing a batch of object applications and not reporting anything at all
@@ -165,9 +164,7 @@ class QueryPlan:
 
     def _extract_singleton_fragments(self) -> Tuple[List[str], List[str]]:
         # Get fragment boundaries (min-max PKs of every fragment).
-        table_pk = [(t[1], t[2]) for t in self.table.table_schema if t[3]]
-        if not table_pk:
-            table_pk = [(t[1], t[2]) for t in self.table.table_schema]
+        table_pk = get_change_key(self.table.table_schema)
         object_pks = self.object_manager.get_min_max_pks(self.filtered_objects, table_pk)
         # Group fragments into non-overlapping groups: those can be applied independently of each other.
         object_groups = get_chunk_groups(
