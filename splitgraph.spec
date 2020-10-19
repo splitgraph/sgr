@@ -1,10 +1,18 @@
 # -*- mode: python -*-
 # Running:
-# * pyinstaller -F splitgraph.spec produces a single sgr binary in the dist/ folder
+# * LD_LIBRARY_PATH=`echo $(python3-config --prefix)/lib` pyinstaller -F splitgraph.spec produces a single sgr binary in the dist/ folder
 #   with libc being the only dynamic dependency (python interpreter included)
 # * can also do poetry install && poetry run pyinstaller -F splitgraph.spec to build the binary inside of the poetry's venv.
 
+import os
+import importlib
+
 block_cipher = None
+
+datas = []
+for package, files in [("singer", ["logging.conf"])]:
+    proot = os.path.dirname(importlib.import_module(package).__file__)
+    datas.extend((os.path.join(proot, f), package) for f in files)
 
 a = Analysis(['bin/sgr'],
              pathex=['.'],
@@ -12,12 +20,14 @@ a = Analysis(['bin/sgr'],
              hiddenimports=["splitgraph.hooks.s3", "splitgraph.hooks.splitfile_commands",
              "splitgraph.ingestion.socrata.mount", "splitgraph.ingestion.socrata.querying",
              # https://github.com/pypa/setuptools/issues/1963#issuecomment-574265532
-             "pkg_resources.py2_warn"],
+             "pkg_resources.py2_warn",
+             "target_postgres"],
              hookspath=[],
              # Linux build on Travis pulls in numpy for no obvious reason
              excludes=['numpy'],
              runtime_hooks=[],
-             cipher=block_cipher)
+             cipher=block_cipher,
+             datas=datas)
 
 a.datas += Tree('./splitgraph/resources', 'splitgraph/resources')
 
