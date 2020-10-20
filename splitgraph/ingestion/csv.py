@@ -42,7 +42,7 @@ def copy_csv_buffer(
             Identifier(schema), Identifier(table)
         )
         for k, v in kwargs.items():
-            if k in ("encoding", "delimiter") and v:
+            if k in ("encoding", "delimiter", "escape") and v:
                 copy_command += SQL(", " + k + " %s")
                 extra_args.append(v)
         copy_command += SQL(")")

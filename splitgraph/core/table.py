@@ -270,6 +270,7 @@ class Table:
         destination: str,
         destination_schema: Optional[str] = None,
         lq_server: Optional[str] = None,
+        temporary: bool = False,
     ) -> None:
         """
         Materializes a Splitgraph table in the target schema as a normal Postgres table, potentially downloading all
@@ -295,6 +296,7 @@ class Table:
                     schema_spec=self.table_schema,
                     include_comments=True,
                     unlogged=True,
+                    temporary=temporary,
                 )
                 if required_objects:
                     logging.debug("Applying %s...", pluralise("fragment", len(required_objects)))
