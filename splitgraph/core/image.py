@@ -207,7 +207,9 @@ class Image(NamedTuple):
             self.get_table(table_name).materialize(table_name, target_schema, lq_server=server_id)
 
     @contextmanager
-    def query_schema(self, wrapper: Optional[str] = FDW_CLASS) -> Iterator[str]:
+    def query_schema(
+        self, wrapper: Optional[str] = FDW_CLASS, commit: bool = True
+    ) -> Iterator[str]:
         """
         Creates a temporary schema with tables in this image mounted as foreign tables that can be accessed via
         read-only layered querying. On exit from the context manager, the schema is discarded.
@@ -218,7 +220,8 @@ class Image(NamedTuple):
         try:
             self.object_engine.create_schema(tmp_schema)
             self._lq_checkout(target_schema=tmp_schema, wrapper=wrapper)
-            self.object_engine.commit()  # Make sure the new tables are seen by other connections
+            if commit:
+                self.object_engine.commit()  # Make sure the new tables are seen by other connections
 
             # Inject extra query planner hints as session variables if specified.
             lq_tuning = get_singleton(CONFIG, "SG_LQ_TUNING")
