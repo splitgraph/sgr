@@ -117,6 +117,29 @@ class MetadataManager:
             rechunked_meta,
         )
 
+    def overwrite_table(
+        self,
+        repository: "Repository",
+        image_hash: str,
+        table_name: str,
+        table_schema: str,
+        objects: List[str],
+    ):
+        self.metadata_engine.run_sql(
+            "UPDATE splitgraph_meta.tables "
+            "SET table_schema = %s, object_ids = %s "
+            "WHERE namespace = %s AND repository = %s AND image_hash = %s "
+            "AND table_name = %s",
+            (
+                Json(table_schema),
+                objects,
+                repository.namespace,
+                repository.repository,
+                image_hash,
+                table_name,
+            ),
+        )
+
     def register_object_locations(self, object_locations: List[Tuple[str, str, str]]) -> None:
         """
         Registers external locations (e.g. HTTP or S3) for Splitgraph objects.
