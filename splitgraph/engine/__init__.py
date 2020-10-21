@@ -5,6 +5,7 @@ tracking tables for changes and uploading/downloading tables to other remote eng
 By default, Splitgraph is backed by Postgres: see :mod:`splitgraph.engine.postgres` for an example of how to
 implement a different engine.
 """
+import re
 from abc import ABC
 from contextlib import contextmanager
 from enum import Enum
@@ -74,6 +75,12 @@ class ResultShape(Enum):
     ONE_MANY = 2  # e.g. ("row1_val1", "row1_val_2")
     MANY_ONE = 3  # e.g. ["row1_val1", "row2_val_1", ...]
     MANY_MANY = 4  # e.g. [("row1_val1", "row1_val_2"), ("row2_val1", "row2_val_2"), ...]
+
+
+def validate_type(t: str) -> str:
+    if not re.match(r"[\w ()\[\]]", t):
+        raise ValueError("Invalid type %s!" % t)
+    return t
 
 
 class SQLEngine(ABC):
@@ -308,9 +315,9 @@ class SQLEngine(ABC):
         query = (
             SQL("CREATE " + flavour + " TABLE ")
             + target
-            + SQL(" (" + ",".join("{} %s " % col.pg_type for col in schema_spec)).format(
-                *(Identifier(col.name) for col in schema_spec)
-            )
+            + SQL(
+                " (" + ",".join("{} %s " % validate_type(col.pg_type) for col in schema_spec)
+            ).format(*(Identifier(col.name) for col in schema_spec))
         )
 
         pk_cols = [col.name for col in schema_spec if col.is_pk]
