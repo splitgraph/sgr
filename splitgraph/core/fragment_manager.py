@@ -14,6 +14,7 @@ from functools import reduce
 from hashlib import sha256
 from typing import Any, Dict, List, Optional, Set, Tuple, Union, TYPE_CHECKING, cast, TypeVar
 
+from psycopg2._json import Json
 from psycopg2.errors import UniqueViolation
 from psycopg2.sql import SQL, Identifier
 from tqdm import tqdm
@@ -324,7 +325,7 @@ class FragmentManager(MetadataManager):
             pk_index = 0
             row = []
             for col in sorted(table_schema):
-                if col not in pk_cols:
+                if col.name not in pk_cols:
                     row.append(data[1][col.name])
                 else:
                     row.append(pk[pk_index])
@@ -361,7 +362,9 @@ class FragmentManager(MetadataManager):
         # By default (e.g. for changesets where nothing was deleted) we use a 0 hash (since adding it to any other
         # hash has no effect).
         digests = self.object_engine.run_sql(
-            query, [o for row in rows for o in row], return_shape=ResultShape.MANY_ONE
+            query,
+            [o if not isinstance(o, dict) else Json(o) for row in rows for o in row],
+            return_shape=ResultShape.MANY_ONE,
         )
         return (
             reduce(operator.add, map(Digest.from_memoryview, digests), Digest.empty()),
@@ -376,6 +379,7 @@ class FragmentManager(MetadataManager):
         extra_indexes: Optional[ExtraIndexInfo] = None,
         in_fragment_order: Optional[List[str]] = None,
         overwrite: bool = False,
+        table_name: Optional[str] = None,
     ) -> List[str]:
         """
         Store and register multiple changesets as fragments.
@@ -389,6 +393,7 @@ class FragmentManager(MetadataManager):
         """
         object_ids = []
         logging.info("Storing and indexing table %s", table.table_name)
+        table_name = table_name or table.table_name
         for sub_changeset in tqdm(
             changesets, unit="objs", ascii=SG_CMD_ASCII, disable=len(changesets) < 3
         ):
@@ -397,7 +402,9 @@ class FragmentManager(MetadataManager):
             # Store the fragment in a temporary location and then find out its hash and rename to the actual target.
             # Optimisation: in the future, we can hash the upserted rows that we need preemptively and possibly
             # avoid storing the object altogether if it's a duplicate.
-            tmp_object_id = self._store_changeset(sub_changeset, table.table_name, schema)
+            tmp_object_id = self._store_changeset(
+                sub_changeset, table_name, schema, table.table_schema
+            )
 
             (
                 deletion_hash,
@@ -474,12 +481,14 @@ class FragmentManager(MetadataManager):
         object_id = "o" + sha256((content_hash + schema_hash).encode("ascii")).hexdigest()[:-2]
         return deletion_hash, insertion_hash, object_id, rows_inserted, rows_deleted
 
-    def _store_changeset(self, sub_changeset: Any, table: str, schema: str) -> str:
+    def _store_changeset(
+        self, sub_changeset: Any, table: str, schema: str, table_schema: TableSchema
+    ) -> str:
         tmp_object_id = get_temporary_table_id()
         upserted = [pk for pk, data in sub_changeset.items() if data[0]]
         deleted = [pk for pk, data in sub_changeset.items() if not data[0]]
         self.object_engine.store_fragment(
-            upserted, deleted, "pg_temp", tmp_object_id, schema, table
+            upserted, deleted, "pg_temp", tmp_object_id, schema, table, table_schema,
         )
         return tmp_object_id
 

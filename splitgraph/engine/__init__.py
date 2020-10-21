@@ -260,8 +260,7 @@ class SQLEngine(ABC):
         )
 
     def get_table_type(self, schema: str, table: str) -> Optional[str]:
-        """Get the type of the table (BASE or FOREIGN)
-        """
+        """Get the type of the table (BASE or FOREIGN)"""
         result = self.run_sql(
             "SELECT table_type FROM information_schema.tables WHERE table_schema = %s"
             " AND table_name = %s",
@@ -521,7 +520,9 @@ class ObjectEngine:
         :param object_ids: IDs of objects to delete
         """
 
-    def store_fragment(self, inserted, deleted, schema, table, source_schema, source_table):
+    def store_fragment(
+        self, inserted, deleted, schema, table, source_schema, source_table, source_schema_spec
+    ):
         """
         Store a fragment of a changed table in another table
 
@@ -531,6 +532,7 @@ class ObjectEngine:
         :param table: Table to store the change in
         :param source_schema: Schema the source table is located in
         :param source_table: Name of the source table
+        :param source_schema_spec: Schema of the source table (optional)
         """
         raise NotImplementedError()
 
