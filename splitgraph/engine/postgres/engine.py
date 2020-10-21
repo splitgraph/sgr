@@ -1044,13 +1044,14 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         table: str,
         source_schema: str,
         source_table: str,
+        source_schema_spec: Optional[TableSchema] = None,
     ) -> None:
         temporary = schema == "pg_temp"
 
-        schema_spec = self.get_full_table_schema(source_schema, source_table)
+        schema_spec = source_schema_spec or self.get_full_table_schema(source_schema, source_table)
 
         # Assuming the schema_spec has the whole tuple as PK if the table has no PK.
-        change_key = self.get_change_key(source_schema, source_table)
+        change_key = get_change_key(schema_spec)
         ri_cols, ri_types = zip(*change_key)
         ri_cols = list(ri_cols)
         ri_types = list(ri_types)
