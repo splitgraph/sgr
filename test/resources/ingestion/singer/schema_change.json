@@ -1,0 +1,5 @@
+{"type": "STATE", "value": {}}
+{"type": "SCHEMA", "stream": "stargazers", "schema": {"selected": true, "type": ["null", "object"], "additionalProperties": false, "properties": {"_sdc_repository": {"type": ["string"]}, "user": {"type": ["null", "object"], "additionalProperties": false, "properties": {"id": {"type": ["null", "string"]}}}, "starred_at": {"type": ["null", "string"], "format": "date-time"}, "user_id": {"type": ["null", "string"]}}}, "key_properties": ["user_id"]}
+{"type": "RECORD", "stream": "stargazers", "record": {"starred_at": "2020-10-11T21:09:30.000000Z", "user": {"id": 100004}, "_sdc_repository": "splitgraph/splitgraph", "user_id": "100004"}, "time_extracted": "2020-10-14T11:06:42.565793Z"}
+{"type": "RECORD", "stream": "stargazers", "record": {"starred_at": "2019-04-18T02:40:47.000000Z", "user": {"id": "string_user_id"}, "_sdc_repository": "splitgraph/splitgraph", "user_id": "string_user_id"}, "time_extracted": "2020-10-14T11:06:40.852311Z"}
+{"type": "STATE", "value": {"bookmarks": {"splitgraph/splitgraph": {"stargazers": {"since": "2020-10-14T11:06:42.565793Z"}}}}}
