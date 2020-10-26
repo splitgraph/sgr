@@ -428,12 +428,21 @@ class FragmentManager(MetadataManager):
                         in_fragment_order, table.table_schema
                     )
 
-                self.object_engine.store_object(
-                    object_id=object_id,
-                    source_query=source_query,
-                    schema_spec=add_ud_flag_column(table.table_schema),
-                    overwrite=overwrite,
-                )
+                try:
+                    self.object_engine.store_object(
+                        object_id=object_id,
+                        source_query=source_query,
+                        schema_spec=add_ud_flag_column(table.table_schema),
+                        overwrite=overwrite,
+                    )
+                except UniqueViolation:
+                    # Someone registered this object (perhaps a concurrent pull) already.
+                    logging.info(
+                        "Object %s for table %s/%s already exists, continuing...",
+                        object_id,
+                        table.repository,
+                        table.table_name,
+                    )
                 self.object_engine.delete_table("pg_temp", tmp_object_id)
                 # There are some cases where an object can already exist in the object engine (in the cache)
                 # but has been deleted from the metadata engine, so when it's recreated, we'll skip
@@ -769,13 +778,22 @@ class FragmentManager(MetadataManager):
                 source_query += SQL(" ") + self._get_order_by_clause(
                     in_fragment_order, table_schema
                 )
-            self.object_engine.store_object(
-                object_id=object_id,
-                source_query=source_query,
-                schema_spec=add_ud_flag_column(table_schema),
-                source_query_args=source_query_args,
-                overwrite=overwrite,
-            )
+            try:
+                self.object_engine.store_object(
+                    object_id=object_id,
+                    source_query=source_query,
+                    schema_spec=add_ud_flag_column(table_schema),
+                    source_query_args=source_query_args,
+                    overwrite=overwrite,
+                )
+            except UniqueViolation:
+                # Someone registered this object (perhaps a concurrent pull) already.
+                logging.info(
+                    "Object %s for table %s/%s already exists, continuing...",
+                    object_id,
+                    source_schema,
+                    source_table,
+                )
         with self.metadata_engine.savepoint("object_register"):
             try:
                 self._register_object(
