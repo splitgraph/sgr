@@ -294,8 +294,8 @@ class PsycopgEngine(SQLEngine):
 
     def rollback(self) -> None:
         if self.connected:
-            if self._savepoint_stack:
-                self.run_sql(SQL("ROLLBACK TO ") + Identifier(self._savepoint_stack.pop()))
+            if self._savepoint_stack.stack:
+                self.run_sql(SQL("ROLLBACK TO ") + Identifier(self._savepoint_stack.stack.pop()))
             else:
                 conn = self.connection
                 conn.rollback()

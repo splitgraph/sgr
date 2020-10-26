@@ -6,6 +6,7 @@ By default, Splitgraph is backed by Postgres: see :mod:`splitgraph.engine.postgr
 implement a different engine.
 """
 import re
+import threading
 from abc import ABC
 from contextlib import contextmanager
 from enum import Enum
@@ -83,6 +84,11 @@ def validate_type(t: str) -> str:
     return t
 
 
+class SavepointStack(threading.local):
+    def __init__(self):
+        self.stack: List[str] = []
+
+
 class SQLEngine(ABC):
     """Abstraction for a Splitgraph SQL backend. Requires any overriding classes to implement `run_sql` as well as
     a few other functions. Together with the `information_schema` (part of the SQL standard), this class uses those
@@ -90,7 +96,7 @@ class SQLEngine(ABC):
     and loading tables."""
 
     def __init__(self) -> None:
-        self._savepoint_stack: List[str] = []
+        self._savepoint_stack = SavepointStack()
 
     @contextmanager
     def savepoint(self, name: str) -> Iterator[None]:
@@ -98,15 +104,15 @@ class SQLEngine(ABC):
         error that occurs in run_sql results in a rollback to this savepoint rather than the
         rollback of the whole transaction. At exit, the savepoint is released."""
         self.run_sql(SQL("SAVEPOINT ") + Identifier(name))
-        self._savepoint_stack.append(name)
+        self._savepoint_stack.stack.append(name)
         try:
             yield
             # Don't catch any exceptions here: the implementer's run_sql method is supposed
             # to do that and roll back to the savepoint.
         finally:
             # If the savepoint wasn't rolled back to, release it.
-            if self._savepoint_stack and self._savepoint_stack[-1] == name:
-                self._savepoint_stack.pop()
+            if self._savepoint_stack.stack and self._savepoint_stack.stack[-1] == name:
+                self._savepoint_stack.stack.pop()
                 self.run_sql(SQL("RELEASE SAVEPOINT ") + Identifier(name))
 
     def run_sql(self, statement, arguments=None, return_shape=ResultShape.MANY_MANY, named=False):
