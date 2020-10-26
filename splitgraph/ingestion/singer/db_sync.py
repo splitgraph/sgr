@@ -2,7 +2,7 @@ import io
 import logging
 import sys
 import traceback
-from typing import Optional, Tuple, TYPE_CHECKING
+from typing import Optional, Tuple
 
 import target_postgres
 from target_postgres import DbSync
@@ -12,8 +12,8 @@ from splitgraph.core.types import TableSchema, TableColumn
 from splitgraph.exceptions import TableNotFoundError
 from splitgraph.ingestion.common import merge_tables
 from ._utils import _migrate_schema, log_exception, _make_changeset
-from ...core.repository import Repository
 from ...core.image import Image
+from ...core.repository import Repository
 
 
 class DbSyncProxy(DbSync):

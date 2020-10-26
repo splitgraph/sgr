@@ -31,13 +31,14 @@ from splitgraph.core.output import pluralise, truncate_list
 from splitgraph.core.sql import select
 from splitgraph.core.types import TableSchema, Quals
 from splitgraph.engine import ResultShape
+from splitgraph.engine.postgres.engine import get_change_key
 from splitgraph.exceptions import ObjectIndexingError
 from splitgraph.hooks.data_source import create_foreign_table
 
 if TYPE_CHECKING:
     from splitgraph.core.image import Image
     from splitgraph.core.repository import Repository
-    from splitgraph.engine.postgres.engine import PostgresEngine, get_change_key
+    from splitgraph.engine.postgres.engine import PostgresEngine
 
 # Output checkout progress every 5MB to trade off between the latency
 # of initializing a batch of object applications and not reporting anything at all
