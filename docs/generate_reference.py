@@ -34,6 +34,7 @@ from splitgraph.commandline.ingestion import csv_export, csv_import
 
 # Map category to Click commands -- maybe eventually we'll read this dynamically...
 from splitgraph.config.keys import KEYS, KEY_DOCS, DEFAULTS
+from splitgraph.ingestion.singer import singer_target
 
 STRUCTURE = [
     ("Image management/creation", ["checkout", "commit", "tag", "import", "reindex"]),
@@ -52,7 +53,7 @@ STRUCTURE = [
             "engine version",
         ],
     ),
-    ("Data import/export", ["csv export", "csv import", "mount"]),
+    ("Data import/export", ["csv export", "csv import", "mount", "singer target"]),
     ("Miscellaneous", ["rm", "init", "cleanup", "prune", "config", "dump", "eval", "upgrade"]),
     ("Sharing images", ["clone", "push", "pull", "upstream"]),
     ("Splitfile execution", ["build", "rebuild", "provenance", "dependents"]),
@@ -76,6 +77,7 @@ STRUCTURE = [
 STRUCTURE_CMD_OVERRIDE = {
     "csv export": csv_export,
     "csv import": csv_import,
+    "singer target": singer_target,
     "engine add": add_engine_c,
     "engine delete": delete_engine_c,
     "engine list": list_engines_c,
