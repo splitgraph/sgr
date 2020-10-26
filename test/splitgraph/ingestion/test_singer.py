@@ -4,6 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from click.testing import CliRunner
+from sqlalchemy_utils.types.pg_composite import psycopg2
 
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableColumn
@@ -84,7 +85,7 @@ def test_singer_ingestion_initial(local_engine_empty):
     }
     repo = Repository.from_schema(TEST_REPO)
 
-    assert len(repo.images()) == 2
+    assert len(repo.images()) == 1
     image = repo.images["latest"]
     assert sorted(image.get_tables()) == ["releases", "stargazers"]
     image.checkout()
@@ -141,7 +142,7 @@ def test_singer_ingestion_update(local_engine_empty):
     }
     repo = Repository.from_schema(TEST_REPO)
 
-    assert len(repo.images()) == 3
+    assert len(repo.images()) == 2
     image = repo.images["latest"]
     assert sorted(image.get_tables()) == ["releases", "stargazers"]
     image.checkout()
@@ -208,7 +209,7 @@ def test_singer_ingestion_schema_change(local_engine_empty):
     }
     repo = Repository.from_schema(TEST_REPO)
 
-    assert len(repo.images()) == 3
+    assert len(repo.images()) == 2
     image = repo.images["latest"]
     assert sorted(image.get_tables()) == ["releases", "stargazers"]
     image.checkout()
@@ -256,3 +257,67 @@ def test_singer_ingestion_schema_change(local_engine_empty):
     assert image.get_table("stargazers").objects == [
         "o9e54958076c86d854ad21da17239daecaec839e84daee8ff9ca5dcecd84cdd"
     ]
+
+
+def test_singer_ingestion_delete_old_image(local_engine_empty):
+    runner = CliRunner(mix_stderr=False)
+
+    with open(os.path.join(INGESTION_RESOURCES, "singer/initial.json"), "r") as f:
+        result = runner.invoke(
+            singer_target, [TEST_REPO + ":latest"], input=f, catch_exceptions=False
+        )
+
+    assert result.exit_code == 0
+
+    with open(os.path.join(INGESTION_RESOURCES, "singer/update.json"), "r") as f:
+        result = runner.invoke(
+            singer_target, [TEST_REPO + ":latest", "--delete-old"], input=f, catch_exceptions=False
+        )
+
+    assert result.exit_code == 0
+    repo = Repository.from_schema(TEST_REPO)
+    assert len(repo.images()) == 1
+
+
+def test_singer_ingestion_errors(local_engine_empty):
+    runner = CliRunner(mix_stderr=False)
+
+    with open(os.path.join(INGESTION_RESOURCES, "singer/initial.json"), "r") as f:
+        result = runner.invoke(
+            singer_target, [TEST_REPO + ":latest"], input=f, catch_exceptions=False
+        )
+
+    assert result.exit_code == 0
+
+    # Default strategy: delete image on failure
+    with open(os.path.join(INGESTION_RESOURCES, "singer/wrong_schema.json"), "r") as f:
+        result = runner.invoke(
+            singer_target, [TEST_REPO + ":latest"], input=f, catch_exceptions=True
+        )
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, psycopg2.errors.InvalidDatetimeFormat)
+    repo = Repository.from_schema(TEST_REPO)
+    assert len(repo.images()) == 1
+
+    # Keep new image
+    with open(os.path.join(INGESTION_RESOURCES, "singer/wrong_schema.json"), "r") as f:
+        result = runner.invoke(
+            singer_target,
+            [TEST_REPO + ":latest", "--failure=keep-both"],
+            input=f,
+            catch_exceptions=True,
+        )
+
+    assert result.exit_code == 1
+    assert isinstance(result.exception, psycopg2.errors.InvalidDatetimeFormat)
+    repo = Repository.from_schema(TEST_REPO)
+    assert len(repo.images()) == 2
+
+    # The "stargazers" table is still the same but the "releases" table managed to get updated.
+    image = repo.images["latest"]
+    assert sorted(image.get_tables()) == ["releases", "stargazers"]
+    image.checkout()
+
+    assert repo.run_sql("SELECT COUNT(1) FROM releases", return_shape=ResultShape.ONE_ONE) == 7
+    assert repo.run_sql("SELECT COUNT(1) FROM stargazers", return_shape=ResultShape.ONE_ONE) == 5

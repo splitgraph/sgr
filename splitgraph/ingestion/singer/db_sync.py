@@ -1,17 +1,19 @@
+import io
+import logging
+import sys
+import traceback
 from typing import Optional, Tuple, TYPE_CHECKING
 
-from psycopg2.sql import SQL, Identifier
+import target_postgres
 from target_postgres import DbSync
 from target_postgres.db_sync import column_type
 
-from splitgraph.core.types import TableSchema, TableColumn, Changeset
-from splitgraph.engine.postgres.engine import get_change_key
+from splitgraph.core.types import TableSchema, TableColumn
 from splitgraph.exceptions import TableNotFoundError
 from splitgraph.ingestion.common import merge_tables
-from ._utils import _migrate_schema, log_exception
-
-if TYPE_CHECKING:
-    from ...core.image import Image
+from ._utils import _migrate_schema, log_exception, _make_changeset
+from ...core.repository import Repository
+from ...core.image import Image
 
 
 class DbSyncProxy(DbSync):
@@ -86,59 +88,6 @@ class DbSyncProxy(DbSync):
             )
             self.image.repository.commit_engines()
 
-    def _build_fake_changeset(
-        self, old_schema: str, old_table: str, schema: str, table: str
-    ) -> Changeset:
-        """Build a fake changeset from the temporary table and the existing table to pass
-        to the object manager (store as a Splitgraph diff)."""
-        schema_spec = self._sg_schema()
-
-        # PK -> (upserted / deleted, old row, new row)
-        # As a memory-saving hack, we only record the values of the old row (read from the
-        # current table) -- this is because object creation routines read the inserted rows
-        # from the staging table anyway.
-
-        change_key = [c for c, _ in get_change_key(schema_spec)]
-
-        # If hard_delete is set, check the sdc_removed_at flag in the table: if it's
-        # not NULL, we mark rows as deleted instead.
-        hard_delete = bool(self.connection_config.get("hard_delete"))
-
-        # Query:
-        # SELECT (new, pk, columns) AS pk,
-        #        (if sdc_removed_at timestamp exists, then the row has been deleted),
-        #        (row_to_json(old non-pk cols)) AS old_row
-        # FROM new_table n LEFT OUTER JOIN old_table o ON [o.pk = n.pk]
-        # WHERE old row != new row
-        query = (
-            SQL("SELECT ")
-            + SQL(",").join(SQL("n.") + Identifier(c) for c in change_key)
-            + SQL(",")
-            + SQL(
-                ("_sdc_removed_at IS NOT DISTINCT FROM NULL" if hard_delete else "TRUE ")
-                + "AS upserted, "
-            )
-            # If PK doesn't exist in the new table, old_row is null, else output it
-            + SQL("CASE WHEN ")
-            + SQL(" AND ").join(SQL("o.{0} IS NULL").format(Identifier(c)) for c in change_key)
-            + SQL(" THEN '{}'::json ELSE json_build_object(")
-            + SQL(",").join(
-                SQL("%s, o.") + Identifier(c.name) for c in schema_spec if c.name not in change_key
-            )
-            + SQL(") END AS old_row FROM {}.{} n LEFT OUTER JOIN {}.{} o ON ").format(
-                Identifier(schema),
-                Identifier(table),
-                Identifier(old_schema),
-                Identifier(old_table),
-            )
-            + SQL(" AND ").join(SQL("o.{0} = n.{0}").format(Identifier(c)) for c in change_key)
-            + SQL("WHERE o.* IS DISTINCT FROM n.*")
-        ).as_string(self.image.repository.object_engine.connection)
-        args = [c.name for c in schema_spec if c.name not in change_key]
-
-        result = self.image.repository.object_engine.run_sql(query, args)
-        return {tuple(row[:-2]): (row[-2], row[-1], {}) for row in result}
-
     @log_exception
     def load_csv(self, file, count, size_bytes):
         from splitgraph.ingestion.csv import copy_csv_buffer
@@ -199,10 +148,31 @@ class DbSyncProxy(DbSync):
         self.staging_table = None
 
     def _merge_existing_table(self, old_table, temp_table):
+        # Load the data directly as a Splitgraph object. Note that this can still be
+        # improved: currently the Singer loader loads the stream as a CSV, gives it
+        # to us, we ingest it into a temporary table, generate a changeset from that
+        # (which goes back into Python), give it to the fragment manager, the fragment
+        # manager builds an object by loading it into a temporary table _again_ and then
+        # into a cstore_fdw file.
+
         assert self._sg_schema() == old_table.table_schema
-        # Find PKs that have been upserted and deleted (make fake changeset)
         with old_table.image.query_schema(commit=False) as s:
-            changeset = self._build_fake_changeset(s, old_table.table_name, "pg_temp", temp_table)
+            # If hard_delete is set, check the sdc_removed_at flag in the table: if it's
+            # not NULL, we mark rows as deleted instead.
+            hard_delete = bool(self.connection_config.get("hard_delete"))
+
+            # Find PKs that have been upserted and deleted (make fake changeset)
+            changeset = _make_changeset(
+                self.image.object_engine,
+                s,
+                old_table.table_name,
+                "pg_temp",
+                temp_table,
+                old_table.table_schema,
+                upsert_condition="_sdc_removed_at IS NOT DISTINCT FROM NULL"
+                if hard_delete
+                else "TRUE",
+            )
 
             inserted = sum(1 for v in changeset.values() if v[0] and not v[1])
             updated = sum(1 for v in changeset.values() if v[0] and v[1])
@@ -242,3 +212,54 @@ def db_sync_wrapper(image: "Image", staging_schema: str):
         return DbSyncProxy(image=image, staging_schema=staging_schema, *args, **kwargs)
 
     return wrapped
+
+
+def run_patched_sync(
+    repository: Repository,
+    base_image: Optional[Image],
+    new_image_hash: str,
+    delete_old: bool,
+    failure: str,
+):
+    # Build a staging schema
+    staging_schema = "sg_tmp_" + repository.to_schema()
+    repository.object_engine.delete_schema(staging_schema)
+    repository.object_engine.create_schema(staging_schema)
+    repository.commit_engines()
+
+    config = _prepare_config_params(repository)
+    old_sync = target_postgres.DbSync
+
+    try:
+        target_postgres.DbSync = db_sync_wrapper(repository.images[new_image_hash], staging_schema)
+        singer_messages = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8")
+        target_postgres.persist_lines(config, singer_messages)
+        if delete_old and base_image:
+            repository.images.delete([base_image.image_hash])
+    except Exception:
+        repository.rollback_engines()
+        if failure == "delete-new":
+            repository.images.delete([new_image_hash])
+        elif failure == "delete-old" and base_image:
+            repository.images.delete([base_image.image_hash])
+        repository.commit_engines()
+        logging.error(traceback.format_exc())
+        raise
+    finally:
+        target_postgres.DbSync = old_sync
+        repository.object_engine.delete_schema(staging_schema)
+        repository.commit_engines()
+
+
+def _prepare_config_params(repository):
+    conn_params = repository.engine.conn_params
+    # Prepare target_postgres config
+    config = {
+        "host": conn_params["SG_ENGINE_HOST"],
+        "port": int(conn_params["SG_ENGINE_PORT"]),
+        "user": conn_params["SG_ENGINE_USER"],
+        "password": conn_params["SG_ENGINE_PWD"],
+        "dbname": conn_params["SG_ENGINE_DB_NAME"],
+        "default_target_schema": repository.to_schema(),
+    }
+    return config
