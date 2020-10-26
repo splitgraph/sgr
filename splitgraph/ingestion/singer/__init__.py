@@ -1,6 +1,4 @@
 """Command line tools for building Splitgraph images from Singer taps, including using Splitgraph as a Singer target."""
-import io
-import sys
 
 import click
 
@@ -14,7 +12,17 @@ def singer_group():
 
 @click.command(name="target")
 @click.argument("image", type=ImageType(default="latest", repository_exists=False))
-def singer_target(image,):
+@click.option(
+    "-d", "--delete-old", is_flag=True, help="Delete the old image at the end of ingestion"
+)
+@click.option(
+    "-f",
+    "--failure",
+    type=click.Choice(["keep-both", "delete-old", "delete-new"]),
+    help="What to do in case of a failure.",
+    default="delete-new",
+)
+def singer_target(image, delete_old, failure):
     """
     Singer target that loads data into Splitgraph images.
 
@@ -24,76 +32,43 @@ def singer_target(image,):
     Image must be of the format `[NAMESPACE/]REPOSITORY[:HASH_OR_TAG]` where `HASH_OR_TAG`
     is a tag of an existing image to base the image on. If the repository doesn't exist,
     it will be created.
+
+    As this target consumes data from stdin, it will flush the records into a Splitgraph image. By
+    default, it will only keep the image if the whole stream has been successfully consumed. To
+    make this target completely follow the Singer spec (if it emits state, the records have been
+    flushed), pass --failure=keep-both or --failure=delete-old. To delete the old image on success,
+    pass --delete-old.
     """
-    from splitgraph.core.engine import repository_exists
-    import target_postgres
-
-    from splitgraph.ingestion.singer.db_sync import db_sync_wrapper
-
-    from random import getrandbits
-    import traceback
-    import logging
+    from splitgraph.ingestion.singer.db_sync import run_patched_sync
 
     repository, hash_or_tag = image
+    base_image, new_image_hash = _prepare_new_image(repository, hash_or_tag)
+    run_patched_sync(repository, base_image, new_image_hash, delete_old, failure)
 
-    if not repository_exists(repository):
-        repository.init()
 
-    base_image = repository.images[hash_or_tag]
+def _prepare_new_image(repository, hash_or_tag):
+    from splitgraph.core.engine import repository_exists
 
-    # Clone the image
+    from random import getrandbits
+    from typing import Optional
+    from splitgraph.core.image import Image
+
     new_image_hash = "{:064x}".format(getrandbits(256))
-    repository.images.add(parent_id=None, image=new_image_hash, comment="Singer tap ingestion")
-
-    repository.engine.run_sql(
-        "INSERT INTO splitgraph_meta.tables "
-        "(SELECT namespace, repository, %s, table_name, table_schema, object_ids "
-        "FROM splitgraph_meta.tables "
-        "WHERE namespace = %s AND repository = %s AND image_hash = %s)",
-        (new_image_hash, repository.namespace, repository.repository, base_image.image_hash,),
-    )
-
-    # Build a staging schema
-    staging_schema = "sg_tmp_" + repository.to_schema()
-    repository.object_engine.delete_schema(staging_schema)
-    repository.object_engine.create_schema(staging_schema)
-    repository.commit_engines()
-
-    target_postgres.DbSync = db_sync_wrapper(repository.images[new_image_hash], staging_schema)
-
-    conn_params = repository.engine.conn_params
-
-    # Prepare target_postgres config
-    config = {
-        "host": conn_params["SG_ENGINE_HOST"],
-        "port": int(conn_params["SG_ENGINE_PORT"]),
-        "user": conn_params["SG_ENGINE_USER"],
-        "password": conn_params["SG_ENGINE_PWD"],
-        "dbname": conn_params["SG_ENGINE_DB_NAME"],
-        "default_target_schema": repository.to_schema(),
-    }
-
-    try:
-        singer_messages = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8")
-        target_postgres.persist_lines(config, singer_messages)
-    except Exception:
-        # TODO:
-        #   * the handler in persist_lines actually seems to swallow exceptions, so e.g.
-        #     a keyboard interrupt still makes us leave garbage behind.
-        #   * delete image if no changes?
-        #   * option to delete the previous image / cleanup?
-        #   * factor this out from the cmdline
-        #   * build out a harness to manage state in the sg image as well
-        #   * move some of the more generic code into fragment_manager?
-        #   * transient rollback errors in test
-        repository.rollback_engines()
-        repository.images.delete([new_image_hash])
-        repository.commit_engines()
-        logging.error(traceback.format_exc())
-        raise
-    finally:
-        repository.object_engine.delete_schema(staging_schema)
-        repository.commit_engines()
+    if repository_exists(repository):
+        # Clone the base image and delta compress against it
+        base_image: Optional[Image] = repository.images[hash_or_tag]
+        repository.images.add(parent_id=None, image=new_image_hash, comment="Singer tap ingestion")
+        repository.engine.run_sql(
+            "INSERT INTO splitgraph_meta.tables "
+            "(SELECT namespace, repository, %s, table_name, table_schema, object_ids "
+            "FROM splitgraph_meta.tables "
+            "WHERE namespace = %s AND repository = %s AND image_hash = %s)",
+            (new_image_hash, repository.namespace, repository.repository, base_image.image_hash,),
+        )
+    else:
+        base_image = None
+        repository.images.add(parent_id=None, image=new_image_hash, comment="Singer tap ingestion")
+    return base_image, new_image_hash
 
 
 singer_group.add_command(singer_target)
