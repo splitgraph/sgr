@@ -9,7 +9,9 @@ from test.splitgraph.conftest import OUTPUT, MG_MNT
 from splitgraph.commandline import status_c, rm_c, cleanup_c, init_c, mount_c, import_c
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.repository import Repository
-from splitgraph.hooks.mount_handlers import get_mount_handlers
+from splitgraph.hooks.data_source import PostgreSQLDataSource
+from splitgraph.hooks.mount_handlers import get_mount_handlers, _load_handler
+from splitgraph.ingestion.socrata.mount import SocrataDataSource
 
 _MONGO_PARAMS = {
     "tables": {
@@ -80,7 +82,6 @@ def test_mount_and_import(local_engine_empty):
                 "-c",
                 "originro:originpass@mongoorigin:27017",
                 "-o",
-                # TODO figure out a way to keep the more lightweight UX for mongo/pg?
                 json.dumps(_MONGO_PARAMS),
             ],
         )
@@ -114,3 +115,18 @@ def test_mount_docstring_generation():
     assert result.exit_code == 0
     assert "mountpoint" not in result.output
     assert "remote_schema" in result.output
+
+
+def test_mount_fallback(local_engine_empty):
+    # Test that the handlers in old config files (that referred to functions) still load
+    # as classes (the default overrides them in this case and emits a warning).
+
+    assert (
+        _load_handler("postgres_fdw", "splitgraph.hooks.mount_handlers.mount_postgres")
+        == PostgreSQLDataSource
+    )
+
+    assert (
+        _load_handler("socrata", "splitgraph.ingestion.socrata.mount.mount_socrata")
+        == SocrataDataSource
+    )
