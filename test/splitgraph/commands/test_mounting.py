@@ -6,6 +6,7 @@ from test.splitgraph.conftest import _mount_postgres, _mount_mysql, _mount_mongo
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableColumn
 from splitgraph.engine import get_engine
+from splitgraph.hooks.data_source import PostgreSQLDataSource
 from splitgraph.hooks.mount_handlers import mount
 
 PG_MNT = Repository.from_schema("test/pg_mount")
@@ -49,6 +50,43 @@ def test_mount_mysql(local_engine_empty):
         )
     finally:
         MYSQL_MNT.delete()
+
+
+@pytest.mark.mounting
+def test_mount_introspection_preview(local_engine_empty):
+    handler = PostgreSQLDataSource(
+        engine=local_engine_empty,
+        credentials={"username": "originro", "password": "originpass"},
+        params={"host": "pgorigin", "port": 5432, "dbname": "origindb", "remote_schema": "public"},
+    )
+
+    schema = handler.introspect()
+
+    assert schema == {
+        "fruits": [
+            TableColumn(ordinal=1, name="fruit_id", pg_type="integer", is_pk=False, comment=None),
+            TableColumn(
+                ordinal=2, name="name", pg_type="character varying", is_pk=False, comment=None
+            ),
+        ],
+        "vegetables": [
+            TableColumn(
+                ordinal=1, name="vegetable_id", pg_type="integer", is_pk=False, comment=None
+            ),
+            TableColumn(
+                ordinal=2, name="name", pg_type="character varying", is_pk=False, comment=None
+            ),
+        ],
+    }
+
+    preview = handler.preview(schema=schema)
+    assert preview == {
+        "fruits": [{"fruit_id": 1, "name": "apple"}, {"fruit_id": 2, "name": "orange"}],
+        "vegetables": [
+            {"name": "potato", "vegetable_id": 1},
+            {"name": "carrot", "vegetable_id": 2},
+        ],
+    }
 
 
 @pytest.mark.mounting

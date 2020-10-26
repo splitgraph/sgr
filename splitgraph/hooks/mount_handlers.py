@@ -140,7 +140,7 @@ def _load_handler(handler_name, handler_class_name):
         fallback_used = True
     if fallback_used:
         logging.warning(
-            "Handler %s uses the old-style function interface and was " "automatically replaced.",
+            "Handler %s uses the old-style function interface and was automatically replaced.",
             handler_name,
         )
         logging.warning(

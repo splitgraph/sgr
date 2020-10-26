@@ -9,6 +9,7 @@ from splitgraph.core.output import parse_dt
 from splitgraph.core.engine import lookup_repository
 from splitgraph.core.metadata_manager import Object
 from splitgraph.core.repository import Repository
+from splitgraph.core.types import TableColumn, tableschema_to_dict
 from splitgraph.engine.postgres.engine import API_MAX_QUERY_LENGTH
 from splitgraph.exceptions import RepositoryNotFoundError
 from splitgraph.hooks.s3 import get_object_upload_urls
@@ -307,3 +308,29 @@ def test_parse_dt():
 
     with pytest.raises(ValueError):
         parse_dt("not a dt")
+
+
+def test_tableschema_to_dict():
+    assert tableschema_to_dict(
+        {
+            "fruits": [
+                TableColumn(
+                    ordinal=1, name="fruit_id", pg_type="integer", is_pk=False, comment=None
+                ),
+                TableColumn(
+                    ordinal=2, name="name", pg_type="character varying", is_pk=False, comment=None,
+                ),
+            ],
+            "vegetables": [
+                TableColumn(
+                    ordinal=1, name="vegetable_id", pg_type="integer", is_pk=False, comment=None
+                ),
+                TableColumn(
+                    ordinal=2, name="name", pg_type="character varying", is_pk=False, comment=None,
+                ),
+            ],
+        }
+    ) == {
+        "fruits": {"fruit_id": "integer", "name": "character varying"},
+        "vegetables": {"name": "character varying", "vegetable_id": "integer"},
+    }
