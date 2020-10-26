@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from click.testing import CliRunner
-from sqlalchemy_utils.types.pg_composite import psycopg2
+import psycopg2
 
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableColumn
