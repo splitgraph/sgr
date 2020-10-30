@@ -1,0 +1,336 @@
+{
+  "streams": [
+    {
+      "stream": "stargazers",
+      "tap_stream_id": "stargazers",
+      "schema": {
+        "type": [
+          "null",
+          "object"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "_sdc_repository": {
+            "type": [
+              "string"
+            ]
+          },
+          "user": {
+            "type": [
+              "null",
+              "object"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": [
+                  "null",
+                  "integer"
+                ]
+              }
+            }
+          },
+          "starred_at": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "user_id": {
+            "type": [
+              "null",
+              "integer"
+            ]
+          }
+        }
+      },
+      "metadata": [
+        {
+          "breadcrumb": [],
+          "metadata": {
+            "table-key-properties": [
+              "user_id"
+            ]
+          }
+        },
+        {
+          "breadcrumb": [
+            "properties",
+            "_sdc_repository"
+          ],
+          "metadata": {
+            "inclusion": "available"
+          }
+        },
+        {
+          "breadcrumb": [
+            "properties",
+            "user"
+          ],
+          "metadata": {
+            "inclusion": "available"
+          }
+        },
+        {
+          "breadcrumb": [
+            "properties",
+            "starred_at"
+          ],
+          "metadata": {
+            "inclusion": "available"
+          }
+        },
+        {
+          "breadcrumb": [
+            "properties",
+            "user_id"
+          ],
+          "metadata": {
+            "inclusion": "automatic"
+          }
+        }
+      ],
+      "key_properties": [
+        "user_id"
+      ]
+    },
+    {
+      "stream": "releases",
+      "tap_stream_id": "releases",
+      "schema": {
+        "type": [
+          "null",
+          "object"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "_sdc_repository": {
+            "type": [
+              "string"
+            ]
+          },
+          "id": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "url": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "html_url": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "target_commitish": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "tag_name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "body": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "draft": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "prerelease": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "author": {
+            "type": [
+              "null",
+              "object"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "login": {
+                "type": [
+                  "null",
+                  "string"
+                ]
+              },
+              "id": {
+                "type": [
+                  "null",
+                  "integer"
+                ]
+              }
+            }
+          },
+          "created_at": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "published_at": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "metadata": [
+        {
+          "breadcrumb": [],
+          "metadata": {
+            "table-key-properties": [
+              "id"
+            ]
+          }
+        },
+        {
+          "breadcrumb": [
+            "properties",
+            "_sdc_repository"
+          ],
+          "metadata": {
+            "inclusion": "available"
+          }
+        },
+        {
+          "breadcrumb": [
+            "properties",
+            "id"
+          ],
+          "metadata": {
+            "inclusion": "automatic"
+          }
+        },
+        {
+          "breadcrumb": [
+            "properties",
+            "url"
+          ],
+          "metadata": {
+            "inclusion": "available"
+          }
+        },
+        {
+          "breadcrumb": [
+            "properties",
+            "html_url"
+          ],
+          "metadata": {
+            "inclusion": "available"
+          }
+        },
+        {
+          "breadcrumb": [
+            "properties",
+            "target_commitish"
+          ],
+          "metadata": {
+            "inclusion": "available"
+          }
+        },
+        {
+          "breadcrumb": [
+            "properties",
+            "tag_name"
+          ],
+          "metadata": {
+            "inclusion": "available"
+          }
+        },
+        {
+          "breadcrumb": [
+            "properties",
+            "name"
+          ],
+          "metadata": {
+            "inclusion": "available"
+          }
+        },
+        {
+          "breadcrumb": [
+            "properties",
+            "body"
+          ],
+          "metadata": {
+            "inclusion": "available"
+          }
+        },
+        {
+          "breadcrumb": [
+            "properties",
+            "draft"
+          ],
+          "metadata": {
+            "inclusion": "available"
+          }
+        },
+        {
+          "breadcrumb": [
+            "properties",
+            "prerelease"
+          ],
+          "metadata": {
+            "inclusion": "available"
+          }
+        },
+        {
+          "breadcrumb": [
+            "properties",
+            "author"
+          ],
+          "metadata": {
+            "inclusion": "available"
+          }
+        },
+        {
+          "breadcrumb": [
+            "properties",
+            "created_at"
+          ],
+          "metadata": {
+            "inclusion": "available"
+          }
+        },
+        {
+          "breadcrumb": [
+            "properties",
+            "published_at"
+          ],
+          "metadata": {
+            "inclusion": "available"
+          }
+        }
+      ],
+      "key_properties": [
+        "id"
+      ]
+    }
+  ]
+}

@@ -12,7 +12,10 @@ from splitgraph.engine import ResultShape
 from splitgraph.ingestion.singer import singer_target
 from test.splitgraph.conftest import INGESTION_RESOURCES
 
+from splitgraph.ingestion.singer.data_source import GenericSingerDataSource
+
 TEST_REPO = "test/singer"
+TEST_TAP = os.path.join(INGESTION_RESOURCES, "singer/fake_tap.py")
 
 _STARGAZERS_SCHEMA = [
     TableColumn(
@@ -321,3 +324,57 @@ def test_singer_ingestion_errors(local_engine_empty):
 
     assert repo.run_sql("SELECT COUNT(1) FROM releases", return_shape=ResultShape.ONE_ONE) == 7
     assert repo.run_sql("SELECT COUNT(1) FROM stargazers", return_shape=ResultShape.ONE_ONE) == 5
+
+
+def test_singer_data_source_introspect(local_engine_empty):
+    source = GenericSingerDataSource(
+        local_engine_empty, credentials={}, params={"tap_path": TEST_TAP}
+    )
+
+    schema = source.introspect()
+    assert schema == {"releases": _RELEASES_SCHEMA, "stargazers": _STARGAZERS_SCHEMA}
+
+
+def test_singer_data_source_sync(local_engine_empty):
+    source = GenericSingerDataSource(
+        local_engine_empty, credentials={}, params={"tap_path": TEST_TAP}
+    )
+
+    repo = Repository.from_schema(TEST_REPO)
+    source.sync(repo, "latest")
+
+    assert len(repo.images()) == 1
+    image = repo.images["latest"]
+    assert sorted(image.get_tables()) == ["_sg_ingestion_state", "releases", "stargazers"]
+    image.checkout()
+
+    assert repo.run_sql("SELECT COUNT(1) FROM releases", return_shape=ResultShape.ONE_ONE) == 6
+    assert repo.run_sql("SELECT COUNT(1) FROM stargazers", return_shape=ResultShape.ONE_ONE) == 5
+
+    assert json.loads(repo.run_sql("SELECT state FROM _sg_ingestion_state")[0][0]) == {
+        "bookmarks": {
+            "splitgraph/splitgraph": {
+                "stargazers": {"since": "2020-10-14T11:06:40.852311Z"},
+                "releases": {"since": "2020-10-14T11:06:40.852311Z"},
+            }
+        }
+    }
+
+    # Second sync
+    source.sync(repo, "latest")
+    assert len(repo.images()) == 1
+    image = repo.images["latest"]
+    assert sorted(image.get_tables()) == ["_sg_ingestion_state", "releases", "stargazers"]
+    image.checkout()
+
+    assert repo.run_sql("SELECT COUNT(1) FROM releases", return_shape=ResultShape.ONE_ONE) == 9
+    assert repo.run_sql("SELECT COUNT(1) FROM stargazers", return_shape=ResultShape.ONE_ONE) == 6
+
+    assert json.loads(repo.run_sql("SELECT state FROM _sg_ingestion_state")[0][0]) == {
+        "bookmarks": {
+            "splitgraph/splitgraph": {
+                "releases": {"since": "2020-10-14T11:06:42.786589Z"},
+                "stargazers": {"since": "2020-10-14T11:06:42.565793Z"},
+            }
+        }
+    }
