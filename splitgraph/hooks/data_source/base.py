@@ -1,14 +1,14 @@
 from abc import ABC, abstractmethod
+from random import getrandbits
 from typing import Dict, Any, Union, List, Optional, TYPE_CHECKING, cast
 
 from psycopg2._json import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.core.engine import repository_exists
-from splitgraph.core.sql import insert
+from splitgraph.core.image import Image
 from splitgraph.core.types import TableSchema, TableColumn
 from splitgraph.engine import ResultShape
-from splitgraph.ingestion.singer import prepare_new_image
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PostgresEngine
@@ -120,3 +120,22 @@ def get_ingestion_state(repository, image_hash) -> Optional[SyncState]:
                     return_shape=ResultShape.ONE_ONE,
                 )
     return cast(SyncState, state)
+
+
+def prepare_new_image(repository, hash_or_tag):
+    new_image_hash = "{:064x}".format(getrandbits(256))
+    if repository_exists(repository):
+        # Clone the base image and delta compress against it
+        base_image: Optional[Image] = repository.images[hash_or_tag]
+        repository.images.add(parent_id=None, image=new_image_hash, comment="Singer tap ingestion")
+        repository.engine.run_sql(
+            "INSERT INTO splitgraph_meta.tables "
+            "(SELECT namespace, repository, %s, table_name, table_schema, object_ids "
+            "FROM splitgraph_meta.tables "
+            "WHERE namespace = %s AND repository = %s AND image_hash = %s)",
+            (new_image_hash, repository.namespace, repository.repository, base_image.image_hash,),
+        )
+    else:
+        base_image = None
+        repository.images.add(parent_id=None, image=new_image_hash, comment="Singer tap ingestion")
+    return base_image, new_image_hash
