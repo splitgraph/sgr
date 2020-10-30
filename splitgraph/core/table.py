@@ -33,7 +33,7 @@ from splitgraph.core.types import TableSchema, Quals
 from splitgraph.engine import ResultShape
 from splitgraph.engine.postgres.engine import get_change_key
 from splitgraph.exceptions import ObjectIndexingError
-from splitgraph.hooks.data_source import create_foreign_table
+from splitgraph.hooks.data_source.fdw import create_foreign_table
 
 if TYPE_CHECKING:
     from splitgraph.core.image import Image

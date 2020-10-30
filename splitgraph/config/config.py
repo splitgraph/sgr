@@ -147,7 +147,7 @@ def get_singleton(config: ConfigDict, item: str) -> str:
 
 def get_all_in_section(config: ConfigDict, section: str) -> Dict[str, Union[str, Dict[str, str]]]:
     """
-    Get all subsections from a config (e.g. config["mount_handlers"])
+    Get all subsections from a config (e.g. config["data_sources"])
     """
     result: Dict[str, Union[str, Dict[str, str]]] = cast(
         Dict[str, Union[str, Dict[str, str]]], config.get(section, {})

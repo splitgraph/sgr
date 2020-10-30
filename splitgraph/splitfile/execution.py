@@ -21,7 +21,7 @@ from splitgraph.core.sql import prepare_splitfile_sql, validate_import_sql
 from splitgraph.engine import get_engine
 from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import ImageNotFoundError, SplitfileError
-from splitgraph.hooks.mount_handlers import get_mount_handler, mount
+from splitgraph.hooks.mount_handlers import mount
 from ._parsing import (
     parse_commands,
     extract_nodes,

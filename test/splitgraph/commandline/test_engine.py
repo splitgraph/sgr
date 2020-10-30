@@ -206,7 +206,7 @@ _PULL_PROGRESS = [
 ]
 
 
-_HANDLER_CONFIG = """[mount_handlers]
+_HANDLER_CONFIG = """[data_sources]
 postgres_fdw=splitgraph.hooks.data_source.PostgreSQLDataSource
 mongo_fdw=splitgraph.hooks.data_source.MongoDataSource
 mysql_fdw=splitgraph.hooks.data_source.MySQLDataSource

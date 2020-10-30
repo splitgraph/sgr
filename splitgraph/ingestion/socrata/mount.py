@@ -7,7 +7,7 @@ from typing import Optional, Dict
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.exceptions import RepositoryNotFoundError
-from splitgraph.hooks.data_source import ForeignDataWrapperDataSource, create_foreign_table
+from splitgraph.hooks.data_source.fdw import create_foreign_table, ForeignDataWrapperDataSource
 
 
 class SocrataDataSource(ForeignDataWrapperDataSource):
@@ -29,7 +29,9 @@ class SocrataDataSource(ForeignDataWrapperDataSource):
                 "type": "integer",
                 "description": "Amount of rows to fetch from Socrata per request (limit parameter). Maximum 50000.",
             },
-            "tables": {"type": "object",},
+            "tables": {
+                "type": "object",
+            },
         },
         "required": ["domain"],
     }

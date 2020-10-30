@@ -5,6 +5,6 @@ SG_ENGINE_PORT=5432
 SG_ENGINE_USER=sgr
 SG_ENGINE_PWD=supersecure
 
-[mount_handlers]
+[data_sources]
 ; Register the "HackerNewsDataSource" function as the hackernews mount handler
 hackernews=hn_fdw.mount.HackerNewsDataSource

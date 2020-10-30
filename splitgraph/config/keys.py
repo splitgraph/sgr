@@ -56,7 +56,7 @@ DEFAULTS: ConfigDict = {
     "SG_UPDATE_ANONYMOUS": "false",
     # Some default sections: these can't be overridden via envvars.
     "external_handlers": {"S3": "splitgraph.hooks.s3.S3ExternalObjectHandler"},
-    "mount_handlers": {
+    "data_sources": {
         "postgres_fdw": "splitgraph.hooks.data_source.PostgreSQLDataSource",
         "mongo_fdw": "splitgraph.hooks.data_source.MongoDataSource",
         "mysql_fdw": "splitgraph.hooks.data_source.MySQLDataSource",
@@ -66,7 +66,7 @@ DEFAULTS: ConfigDict = {
 }
 
 ALL_KEYS = list(DEFAULTS.keys())
-KEYS = [k for k in ALL_KEYS if k not in ["remotes", "external_handlers", "mount_handlers"]]
+KEYS = [k for k in ALL_KEYS if k not in ["remotes", "external_handlers", "data_sources"]]
 # Keys whose contents we don't print fully
 SENSITIVE_KEY_SUFFIXES = ["_PWD", "_TOKEN"]
 

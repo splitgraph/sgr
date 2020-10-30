@@ -5,7 +5,6 @@ from contextlib import contextmanager
 from datetime import datetime
 from random import getrandbits
 from typing import (
-    Any,
     Dict,
     Iterator,
     List,
@@ -28,11 +27,11 @@ from splitgraph.config import (
 )
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphError, TableNotFoundError
-from ..hooks.data_source import init_fdw
 from .common import set_tag, manage_audit, set_head
 from .sql import select, prepare_splitfile_sql, POSTGRES_MAX_IDENTIFIER
 from .table import Table
 from .types import TableColumn, ProvenanceLine
+from ..hooks.data_source.fdw import init_fdw
 
 if TYPE_CHECKING:
     from .repository import Repository
