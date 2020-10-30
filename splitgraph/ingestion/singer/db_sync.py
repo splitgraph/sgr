@@ -2,11 +2,11 @@ import io
 import logging
 import sys
 import traceback
-from typing import Optional, Tuple
+from typing import Optional, Tuple, BinaryIO, TextIO
 
 import target_postgres
 from target_postgres import DbSync
-from target_postgres.db_sync import column_type
+from target_postgres.db_sync import column_type, flatten_schema
 
 from splitgraph.core.types import TableSchema, TableColumn
 from splitgraph.exceptions import TableNotFoundError
@@ -29,18 +29,10 @@ class DbSyncProxy(DbSync):
 
     def _sg_schema(self) -> TableSchema:
         stream_schema_message = self.stream_schema_message
-        primary_key = stream_schema_message["key_properties"]
-
-        return [
-            TableColumn(i, name, column_type(schema_property), name in primary_key, None)
-            for i, (name, schema_property) in enumerate(self.flatten_schema.items())
-        ]
+        return _get_sg_schema(self.flatten_schema, stream_schema_message["key_properties"])
 
     def create_indices(self, stream):
         pass
-
-    def _table_name(self):
-        return self.stream_schema_message["stream"].replace(".", "_").replace("-", "_").lower()
 
     def sync_table(self):
         # NB the overridden method never calls self.update_columns() to bring the
@@ -51,9 +43,12 @@ class DbSyncProxy(DbSync):
 
         # See if the table exists
         try:
-            table = self.image.get_table(self._table_name())
+            table = self.image.get_table(get_table_name(self.stream_schema_message))
         except TableNotFoundError:
-            self.staging_table = (self.staging_schema, "staging_" + self._table_name())
+            self.staging_table = (
+                self.staging_schema,
+                "staging_" + get_table_name(self.stream_schema_message),
+            )
             self.logger.info("Creating a staging table at %s.%s", *self.staging_table)
             self.image.repository.object_engine.create_table(
                 schema=self.staging_table[0],
@@ -64,7 +59,14 @@ class DbSyncProxy(DbSync):
             # Make an empty table (will replace later on when flushing the data)
             self.image.repository.objects.register_tables(
                 self.image.repository,
-                [(self.image.image_hash, self._table_name(), schema_spec, [])],
+                [
+                    (
+                        self.image.image_hash,
+                        get_table_name(self.stream_schema_message),
+                        schema_spec,
+                        [],
+                    )
+                ],
             )
             self.image.repository.commit_engines()
 
@@ -72,7 +74,10 @@ class DbSyncProxy(DbSync):
 
         if table.table_schema != schema_spec:
             # Materialize the table into a temporary location and update its schema
-            self.staging_table = (self.staging_schema, "staging_" + self._table_name())
+            self.staging_table = (
+                self.staging_schema,
+                "staging_" + get_table_name(self.stream_schema_message),
+            )
             self.logger.info(
                 "Schema mismatch, materializing the table into %s.%s and migrating",
                 *self.staging_table,
@@ -92,7 +97,7 @@ class DbSyncProxy(DbSync):
     def load_csv(self, file, count, size_bytes):
         from splitgraph.ingestion.csv import copy_csv_buffer
 
-        table_name = self._table_name()
+        table_name = get_table_name(self.stream_schema_message)
         schema_spec = self._sg_schema()
         temp_table = "tmp_" + table_name
         self.logger.info("Loading %d rows into '%s'", count, table_name)
@@ -179,7 +184,7 @@ class DbSyncProxy(DbSync):
             deleted = sum(1 for v in changeset.values() if not v[0])
             self.logger.info(
                 "Table %s: inserted %d, updated %d, deleted %d",
-                self._table_name(),
+                get_table_name(self.stream_schema_message),
                 inserted,
                 updated,
                 deleted,
@@ -207,6 +212,24 @@ class DbSyncProxy(DbSync):
         pass
 
 
+def _get_sg_schema(flattened_schema, primary_key) -> TableSchema:
+    return [
+        TableColumn(i, name, column_type(schema_property), name in primary_key, None)
+        for i, (name, schema_property) in enumerate(flattened_schema.items())
+    ]
+
+
+def get_sg_schema(stream_schema_message, flattening_max_level=0):
+    return _get_sg_schema(
+        flatten_schema(stream_schema_message["schema"], max_level=flattening_max_level),
+        stream_schema_message["key_properties"],
+    )
+
+
+def get_table_name(stream_schema_message):
+    return stream_schema_message["stream"].replace(".", "_").replace("-", "_").lower()
+
+
 def db_sync_wrapper(image: "Image", staging_schema: str):
     def wrapped(*args, **kwargs):
         return DbSyncProxy(image=image, staging_schema=staging_schema, *args, **kwargs)
@@ -220,7 +243,11 @@ def run_patched_sync(
     new_image_hash: str,
     delete_old: bool,
     failure: str,
+    input_stream: Optional[BinaryIO] = None,
+    output_stream: Optional[TextIO] = None,
 ):
+    input_stream = input_stream or sys.stdin.buffer
+
     # Build a staging schema
     staging_schema = "sg_tmp_" + repository.to_schema()
     repository.object_engine.delete_schema(staging_schema)
@@ -230,9 +257,12 @@ def run_patched_sync(
     config = _prepare_config_params(repository)
     old_sync = target_postgres.DbSync
 
+    stdout = sys.stdout
+    target_postgres.DbSync = db_sync_wrapper(repository.images[new_image_hash], staging_schema)
+    if output_stream:
+        sys.stdout = output_stream
     try:
-        target_postgres.DbSync = db_sync_wrapper(repository.images[new_image_hash], staging_schema)
-        singer_messages = io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8")
+        singer_messages = io.TextIOWrapper(input_stream, encoding="utf-8")
         target_postgres.persist_lines(config, singer_messages)
         if delete_old and base_image:
             repository.images.delete([base_image.image_hash])
@@ -246,6 +276,7 @@ def run_patched_sync(
         logging.error(traceback.format_exc())
         raise
     finally:
+        sys.stdout = stdout
         target_postgres.DbSync = old_sync
         repository.object_engine.delete_schema(staging_schema)
         repository.commit_engines()

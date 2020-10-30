@@ -1,8 +1,15 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Union, List, Optional, TYPE_CHECKING, cast
 
-from splitgraph.core.repository import Repository
-from splitgraph.core.types import TableSchema
+from psycopg2._json import Json
+from psycopg2.sql import SQL, Identifier
+
+from splitgraph.core.engine import repository_exists
+from splitgraph.core.sql import insert
+from splitgraph.core.types import TableSchema, TableColumn
+from splitgraph.engine import ResultShape
+from splitgraph.ingestion.singer import prepare_new_image
+
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PostgresEngine
     from splitgraph.core.repository import Repository
@@ -11,6 +18,10 @@ Credentials = Dict[str, Any]
 Params = Dict[str, Any]
 TableInfo = Union[List[str], Dict[str, TableSchema]]
 SyncState = Dict[str, Any]
+
+
+INGESTION_STATE_TABLE = "_sg_ingestion_state"
+INGESTION_STATE_SCHEMA = [TableColumn(1, "state", "json", False, None)]
 
 
 class DataSource(ABC):
@@ -37,10 +48,7 @@ class DataSource(ABC):
         pass
 
     def mount(
-        self,
-        schema: str,
-        tables: Optional[TableInfo] = None,
-        overwrite: bool = True,
+        self, schema: str, tables: Optional[TableInfo] = None, overwrite: bool = True,
     ):
         """Instantiate the data source as foreign tables in a schema"""
         raise NotImplemented
@@ -51,16 +59,51 @@ class DataSource(ABC):
         """Incremental load"""
         raise NotImplemented
 
-    def sync(self, repository: Repository, image_hash: Optional[str]):
-        # load "state" from the image
-        # checkout the repo
-        # pass state to sync
-        # commit the repo
-        # override with singer
-        pass
+    def sync(self, repository: "Repository", image_hash: Optional[str]):
+        state = get_ingestion_state(repository, image_hash)
+
+        if not repository_exists(repository):
+            repository.init()
+            image_hash = repository.images["latest"].image_hash
+
+        base_image, new_image_hash = prepare_new_image(repository, image_hash)
+        repository.images[new_image_hash].checkout()
+
+        try:
+            new_state = self._sync(schema=repository.to_schema(), state=state, tables=None)
+
+            # Write the new state to the table
+            if not repository.object_engine.table_exists(
+                repository.to_schema(), INGESTION_STATE_TABLE
+            ):
+                repository.object_engine.create_table(
+                    repository.to_schema(), INGESTION_STATE_TABLE, INGESTION_STATE_SCHEMA
+                )
+
+            repository.object_engine.run_sql(
+                insert(INGESTION_STATE_TABLE, ["state"], "pg_temp"), (Json(new_state),)
+            )
+
+            repository.commit()
+        finally:
+            repository.uncheckout()
+            repository.commit_engines()
 
     def load(self, schema: str, tables: Optional[TableInfo] = None):
         if self.supports_sync:
             self._sync(schema, tables=tables)
 
         raise NotImplemented
+
+
+def get_ingestion_state(repository, image_hash) -> Optional[SyncState]:
+    state = None
+
+    if image_hash:
+        with repository.images["image_hash"].query_schema() as s:
+            if repository.object_engine.table_exists(schema=s, table_name=INGESTION_STATE_TABLE):
+                state = repository.object_engine.run_sql(
+                    SQL("SELECT state FROM {} LIMIT 1").format(Identifier(INGESTION_STATE_TABLE)),
+                    return_shape=ResultShape.ONE_ONE,
+                )
+    return cast(SyncState, state)
