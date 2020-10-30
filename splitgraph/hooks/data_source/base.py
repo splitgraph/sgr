@@ -21,7 +21,10 @@ SyncState = Dict[str, Any]
 
 
 INGESTION_STATE_TABLE = "_sg_ingestion_state"
-INGESTION_STATE_SCHEMA = [TableColumn(1, "state", "json", False, None)]
+INGESTION_STATE_SCHEMA = [
+    TableColumn(1, "timestamp", "timestamp", True, None),
+    TableColumn(2, "state", "json", False, None),
+]
 
 
 class DataSource(ABC):
@@ -59,18 +62,22 @@ class DataSource(ABC):
         """Incremental load"""
         raise NotImplemented
 
-    def sync(self, repository: "Repository", image_hash: Optional[str]):
-        state = get_ingestion_state(repository, image_hash)
-
+    def sync(
+        self,
+        repository: "Repository",
+        image_hash: Optional[str],
+        tables: Optional[TableInfo] = None,
+    ):
         if not repository_exists(repository):
             repository.init()
             image_hash = repository.images["latest"].image_hash
 
+        state = get_ingestion_state(repository, image_hash)
         base_image, new_image_hash = prepare_new_image(repository, image_hash)
         repository.images[new_image_hash].checkout()
 
         try:
-            new_state = self._sync(schema=repository.to_schema(), state=state, tables=None)
+            new_state = self._sync(schema=repository.to_schema(), state=state, tables=tables)
 
             # Write the new state to the table
             if not repository.object_engine.table_exists(
@@ -81,7 +88,10 @@ class DataSource(ABC):
                 )
 
             repository.object_engine.run_sql(
-                insert(INGESTION_STATE_TABLE, ["state"], "pg_temp"), (Json(new_state),)
+                SQL("INSERT INTO pg_temp.{} (timestamp, state) VALUES(now(), %s)").format(
+                    Identifier(INGESTION_STATE_TABLE)
+                ),
+                (Json(new_state),),
             )
 
             repository.commit()
@@ -100,10 +110,13 @@ def get_ingestion_state(repository, image_hash) -> Optional[SyncState]:
     state = None
 
     if image_hash:
-        with repository.images["image_hash"].query_schema() as s:
-            if repository.object_engine.table_exists(schema=s, table_name=INGESTION_STATE_TABLE):
+        image = repository.images[image_hash]
+        if INGESTION_STATE_TABLE in image.get_tables():
+            with image.query_schema() as s:
                 state = repository.object_engine.run_sql(
-                    SQL("SELECT state FROM {} LIMIT 1").format(Identifier(INGESTION_STATE_TABLE)),
+                    SQL("SELECT state FROM {}.{} LIMIT 1").format(
+                        Identifier(s), Identifier(INGESTION_STATE_TABLE)
+                    ),
                     return_shape=ResultShape.ONE_ONE,
                 )
     return cast(SyncState, state)

@@ -1,22 +1,26 @@
 import json
+import logging
 import os
 import subprocess
 import tempfile
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from io import StringIO
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, cast
 
 from psycopg2._json import Json
+from psycopg2.sql import Identifier, SQL
 
 from splitgraph.core.repository import Repository
 from splitgraph.core.sql import insert
 from splitgraph.core.types import TableSchema
+from splitgraph.exceptions import DataSourceError
 from splitgraph.hooks.data_source import DataSource
 from splitgraph.hooks.data_source.base import (
     get_ingestion_state,
     INGESTION_STATE_TABLE,
     INGESTION_STATE_SCHEMA,
+    TableInfo,
 )
 from splitgraph.ingestion.singer import prepare_new_image
 from splitgraph.ingestion.singer.db_sync import get_table_name, get_sg_schema, run_patched_sync
@@ -38,19 +42,24 @@ class SingerDataSource(DataSource, ABC):
     def get_singer_config(self):
         return {**self.params, **self.credentials}
 
-    def _run_singer_discovery(self, config: Optional[SingerConfig] = None):
+    def _run_singer_discovery(self, config: Optional[SingerConfig] = None) -> SingerProperties:
         executable = self.get_singer_executable()
-        args = []
+        args = [executable]
 
         with tempfile.TemporaryDirectory() as d:
-            if config:
-                with open(os.path.join(d, "config.json")) as f:
-                    json.dump(config, f)
-                args.extend(["--config", "config.json"])
+            self._add_file_arg(config, "config", d, args)
 
-            catalog = subprocess.check_output([executable] + args)
+            catalog = subprocess.check_output(args + ["--discover"])
 
-        return json.loads(catalog)
+        return cast(SingerProperties, json.loads(catalog))
+
+    @staticmethod
+    def _add_file_arg(var, var_name, dir, args):
+        if var:
+            path = os.path.join(dir, "%s.json" % var_name)
+            with open(path, "w") as f:
+                json.dump(var, f)
+            args.extend(["--%s" % var_name, path])
 
     @contextmanager
     def _run_singer(
@@ -58,42 +67,61 @@ class SingerDataSource(DataSource, ABC):
         config: Optional[SingerConfig] = None,
         state: Optional[SingerState] = None,
         properties: Optional[SingerProperties] = None,
+        catalog: Optional[SingerProperties] = None,
     ):
         executable = self.get_singer_executable()
 
         args = [executable]
 
         with tempfile.TemporaryDirectory() as d:
-            if config:
-                with open(os.path.join(d, "config.json")) as f:
-                    json.dump(config, f)
-                args.extend(["--config", "config.json"])
+            self._add_file_arg(config, "config", d, args)
+            self._add_file_arg(state, "state", d, args)
+            self._add_file_arg(properties, "properties", d, args)
+            self._add_file_arg(catalog, "catalog", d, args)
 
-            if state:
-                with open(os.path.join(d, "state.json")) as f:
-                    json.dump(state, f)
-                args.extend(["--state", "state.json"])
+            proc = subprocess.Popen(
+                args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
+            try:
+                yield proc
+            finally:
+                proc.wait()
+                if proc.returncode:
+                    if proc.stderr:
+                        logging.error(proc.stderr.read().decode("utf-8"))
+                    raise DataSourceError(
+                        "Failed running Singer data source. Exit code: %d." % proc.returncode
+                    )
 
-            if properties:
-                with open(os.path.join(d, "properties.json")) as f:
-                    json.dump(properties, f)
-                args.extend(["--properties", "properties.json"])
-
-            proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-            yield proc
-
-    def sync(self, repository: Repository, image_hash: Optional[str]):
+    def get_singer_properties(self, tables: Optional[TableInfo] = None) -> SingerProperties:
         config = self.get_singer_config()
-        state = None
-        properties = None
+        catalog = self._run_singer_discovery(config)
 
-        state = get_ingestion_state(repository, image_hash)
+        tables = list(tables) if tables else None
+
+        for stream in catalog["streams"]:
+            stream_name = get_table_name(stream)
+            if not tables or stream_name in tables:
+                # TODO should be selecting the empty breadcrumb here instead?
+                stream["metadata"][0]["metadata"]["selected"] = True
+
+        return catalog
+
+    def sync(
+        self,
+        repository: Repository,
+        image_hash: Optional[str] = None,
+        tables: Optional[TableInfo] = None,
+    ):
+        config = self.get_singer_config()
+        properties = self.get_singer_properties(tables=tables)
 
         base_image, new_image_hash = prepare_new_image(repository, image_hash)
+        state = get_ingestion_state(repository, image_hash)
 
         # Run the sink + target and capture the stdout (new state)
         output_stream = StringIO()
-        with self._run_singer(config, state, properties) as proc:
+        with self._run_singer(config, state, catalog=properties) as proc:
             run_patched_sync(
                 repository,
                 base_image,
@@ -104,7 +132,7 @@ class SingerDataSource(DataSource, ABC):
                 output_stream=output_stream,
             )
 
-        new_state = output_stream.read()
+        new_state = output_stream.getvalue()
 
         # Add a table to the new image with the new state
         repository.object_engine.create_table(
@@ -114,7 +142,10 @@ class SingerDataSource(DataSource, ABC):
             temporary=True,
         )
         repository.object_engine.run_sql(
-            insert(INGESTION_STATE_TABLE, ["state"], "pg_temp"), (Json(new_state),)
+            SQL("INSERT INTO pg_temp.{} (timestamp, state) VALUES(now(), %s)").format(
+                Identifier(INGESTION_STATE_TABLE)
+            ),
+            (Json(new_state),),
         )
 
         object_id = repository.objects.create_base_fragment(
@@ -123,10 +154,21 @@ class SingerDataSource(DataSource, ABC):
             repository.namespace,
             table_schema=INGESTION_STATE_SCHEMA,
         )
-        # Overwrite the existing table
-        repository.objects.overwrite_table(
-            repository, new_image_hash, INGESTION_STATE_TABLE, INGESTION_STATE_SCHEMA, [object_id]
-        )
+
+        # If the state exists already, overwrite it; otherwise, add new state table.
+        if state:
+            repository.objects.overwrite_table(
+                repository,
+                new_image_hash,
+                INGESTION_STATE_TABLE,
+                INGESTION_STATE_SCHEMA,
+                [object_id],
+            )
+        else:
+            repository.objects.register_tables(
+                repository,
+                [(new_image_hash, INGESTION_STATE_TABLE, INGESTION_STATE_SCHEMA, [object_id])],
+            )
 
         repository.commit_engines()
 
@@ -150,5 +192,5 @@ class GenericSingerDataSource(SingerDataSource):
     params_schema = {
         "type": "object",
         "properties": {"tap_path": {"type": "string"}},
-        "required": "tap_path",
+        "required": ["tap_path"],
     }
