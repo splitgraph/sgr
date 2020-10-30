@@ -21,8 +21,8 @@ from splitgraph.hooks.data_source.base import (
     INGESTION_STATE_TABLE,
     INGESTION_STATE_SCHEMA,
     TableInfo,
+    prepare_new_image,
 )
-from splitgraph.ingestion.singer import prepare_new_image
 from splitgraph.ingestion.singer.db_sync import get_table_name, get_sg_schema, run_patched_sync
 
 SingerConfig = Dict[str, Any]

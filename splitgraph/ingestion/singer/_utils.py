@@ -96,28 +96,3 @@ def _make_changeset(
     args = [c.name for c in schema_spec if c.name not in change_key]
     result = engine.run_sql(query, args)
     return {tuple(row[:-2]): (row[-2], row[-1], {}) for row in result}
-
-
-def prepare_new_image(repository, hash_or_tag):
-    from splitgraph.core.engine import repository_exists
-
-    from random import getrandbits
-    from typing import Optional
-    from splitgraph.core.image import Image
-
-    new_image_hash = "{:064x}".format(getrandbits(256))
-    if repository_exists(repository):
-        # Clone the base image and delta compress against it
-        base_image: Optional[Image] = repository.images[hash_or_tag]
-        repository.images.add(parent_id=None, image=new_image_hash, comment="Singer tap ingestion")
-        repository.engine.run_sql(
-            "INSERT INTO splitgraph_meta.tables "
-            "(SELECT namespace, repository, %s, table_name, table_schema, object_ids "
-            "FROM splitgraph_meta.tables "
-            "WHERE namespace = %s AND repository = %s AND image_hash = %s)",
-            (new_image_hash, repository.namespace, repository.repository, base_image.image_hash,),
-        )
-    else:
-        base_image = None
-        repository.images.add(parent_id=None, image=new_image_hash, comment="Singer tap ingestion")
-    return base_image, new_image_hash

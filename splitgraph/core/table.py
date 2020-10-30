@@ -33,7 +33,6 @@ from splitgraph.core.types import TableSchema, Quals
 from splitgraph.engine import ResultShape
 from splitgraph.engine.postgres.engine import get_change_key
 from splitgraph.exceptions import ObjectIndexingError
-from splitgraph.hooks.data_source.fdw import create_foreign_table
 
 if TYPE_CHECKING:
     from splitgraph.core.image import Image
@@ -281,6 +280,9 @@ class Table:
         :param destination_schema: Name of the destination schema.
         :param lq_server: If set, sets up a layered querying FDW for the table instead using this foreign server.
         """
+        # Circular import
+        from splitgraph.hooks.data_source.fdw import create_foreign_table
+
         destination_schema = destination_schema or self.repository.to_schema()
         engine = self.repository.object_engine
         object_manager = self.repository.objects

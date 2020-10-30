@@ -31,7 +31,6 @@ from .common import set_tag, manage_audit, set_head
 from .sql import select, prepare_splitfile_sql, POSTGRES_MAX_IDENTIFIER
 from .table import Table
 from .types import TableColumn, ProvenanceLine
-from ..hooks.data_source.fdw import init_fdw
 
 if TYPE_CHECKING:
     from .repository import Repository
@@ -175,6 +174,10 @@ class Image(NamedTuple):
         # assumes that we got to the point in the normal checkout where we're about to materialize the tables
         # (e.g. the schemata are cleared)
         # Use a per-schema "foreign server" for layered queries for now
+
+        # Circular import
+        from splitgraph.hooks.data_source.fdw import init_fdw
+
         target_schema = target_schema or self.repository.to_schema()
         server_id = "%s_lq_checkout_server" % target_schema
         engine = self.repository.engine
