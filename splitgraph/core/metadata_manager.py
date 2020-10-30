@@ -122,7 +122,7 @@ class MetadataManager:
         repository: "Repository",
         image_hash: str,
         table_name: str,
-        table_schema: str,
+        table_schema: TableSchema,
         objects: List[str],
     ):
         self.metadata_engine.run_sql(

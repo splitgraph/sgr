@@ -398,7 +398,7 @@ def _make_dummy_config_dict():
     source_config = create_config_dict()
     source_config["SG_CONFIG_FILE"] = ".sgconfig"
     source_config["remotes"] = {_REMOTE: source_config["remotes"][_REMOTE]}
-    del source_config["mount_handlers"]
+    del source_config["data_sources"]
     del source_config["commands"]
     del source_config["external_handlers"]
     return source_config

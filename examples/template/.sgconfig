@@ -5,7 +5,7 @@ SG_ENGINE_PORT=5432
 SG_ENGINE_USER=sgr
 SG_ENGINE_PWD=supersecure
 
-[mount_handlers]
+[data_sources]
 mongo_fdw=splitgraph.hooks.mount_handlers.mount_mongo
 
 ; Add needed configuration here

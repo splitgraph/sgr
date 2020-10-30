@@ -6,7 +6,7 @@ from test.splitgraph.conftest import _mount_postgres, _mount_mysql, _mount_mongo
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableColumn
 from splitgraph.engine import get_engine
-from splitgraph.hooks.data_source import PostgreSQLDataSource
+from splitgraph.hooks.data_source.fdw import PostgreSQLDataSource
 from splitgraph.hooks.mount_handlers import mount
 
 PG_MNT = Repository.from_schema("test/pg_mount")

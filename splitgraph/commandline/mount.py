@@ -2,15 +2,15 @@
 sgr commands related to mounting databases via Postgres FDW
 """
 
-import re
-from typing import Tuple, Optional, Type
+from typing import Tuple, Type
 
 import click
 from click.core import Command
 
 from splitgraph.commandline.common import JsonType
-from splitgraph.hooks.data_source import ForeignDataWrapperDataSource
-from splitgraph.hooks.mount_handlers import get_mount_handler, get_mount_handlers, mount
+from splitgraph.hooks.data_source import get_data_source, get_data_sources
+from splitgraph.hooks.data_source.fdw import ForeignDataWrapperDataSource
+from splitgraph.hooks.mount_handlers import mount
 
 
 @click.group(name="mount")
@@ -44,11 +44,12 @@ def _generate_handler_help(handler: Type[ForeignDataWrapperDataSource]) -> Tuple
     return handler_help, handler_kwargs_help
 
 
-def _make_mount_handler_command(handler_name: str) -> Command:
+def _make_mount_handler_command(
+    handler_name: str, handler: Type[ForeignDataWrapperDataSource]
+) -> Command:
     """Turn the mount handler function into a Click subcommand
     with help text and kwarg/connection string passing"""
 
-    handler = get_mount_handler(handler_name)
     help_text, handler_options_help = _generate_handler_help(handler)
 
     params = [
@@ -72,5 +73,9 @@ def _make_mount_handler_command(handler_name: str) -> Command:
 
 
 # Register all current mount handlers and turn them into Click subcommands.
-for _handler_name in get_mount_handlers():
-    mount_c.add_command(_make_mount_handler_command(_handler_name))
+for _handler_name in get_data_sources():
+    _handler = get_data_source(_handler_name)
+    if not _handler.supports_mount:
+        continue
+    assert issubclass(_handler, ForeignDataWrapperDataSource)
+    mount_c.add_command(_make_mount_handler_command(_handler_name, _handler))

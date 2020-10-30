@@ -309,7 +309,7 @@ def test_config_dumping():
     assert "[defaults]" in result.output
     assert "[commands]" in result.output
     assert "[external_handlers]" in result.output
-    assert "[mount_handlers]" in result.output
+    assert "[data_sources]" in result.output
     assert "S3=splitgraph.hooks.s3" in result.output
 
     # sgr config -n (print connection string to engine)

@@ -9,8 +9,8 @@ from test.splitgraph.conftest import OUTPUT, MG_MNT
 from splitgraph.commandline import status_c, rm_c, cleanup_c, init_c, mount_c, import_c
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.repository import Repository
-from splitgraph.hooks.data_source import PostgreSQLDataSource
-from splitgraph.hooks.mount_handlers import get_mount_handlers, _load_handler
+from splitgraph.hooks.data_source.fdw import PostgreSQLDataSource
+from splitgraph.hooks.data_source import get_data_sources, _load_source
 from splitgraph.ingestion.socrata.mount import SocrataDataSource
 
 _MONGO_PARAMS = {
@@ -106,7 +106,7 @@ def test_mount_docstring_generation():
     # General mount help: should have all the handlers autoregistered and listed
     result = runner.invoke(mount_c, ["--help"])
     assert result.exit_code == 0
-    for handler_name in get_mount_handlers():
+    for handler_name in get_data_sources():
         assert handler_name in result.output
 
     # Test the reserved params (that we parse separately) don't make it into the help text
@@ -122,11 +122,11 @@ def test_mount_fallback(local_engine_empty):
     # as classes (the default overrides them in this case and emits a warning).
 
     assert (
-        _load_handler("postgres_fdw", "splitgraph.hooks.mount_handlers.mount_postgres")
-        == PostgreSQLDataSource
+            _load_source("postgres_fdw", "splitgraph.hooks.mount_handlers.mount_postgres")
+            == PostgreSQLDataSource
     )
 
     assert (
-        _load_handler("socrata", "splitgraph.ingestion.socrata.mount.mount_socrata")
-        == SocrataDataSource
+            _load_source("socrata", "splitgraph.ingestion.socrata.mount.mount_socrata")
+            == SocrataDataSource
     )

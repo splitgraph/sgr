@@ -57,7 +57,7 @@ class ExternalHandlerError(SplitGraphError):
     """Exceptions raised by external object handlers."""
 
 
-class MountHandlerError(SplitGraphError):
+class DataSourceError(SplitGraphError):
     """Exceptions raised by mount handlers."""
 
 

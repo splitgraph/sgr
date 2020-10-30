@@ -1,39 +1,16 @@
 import logging
 from abc import ABC, abstractmethod
 from copy import deepcopy
-from typing import Dict, Any, Optional, Union, List, TYPE_CHECKING, Mapping, cast
+from typing import Optional, Mapping, Dict, List, Any, cast, Union, TYPE_CHECKING
 
 import psycopg2
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.core.types import TableSchema, TableColumn, dict_to_tableschema
+from splitgraph.core.types import dict_to_tableschema, TableSchema, TableColumn
+from splitgraph.hooks.data_source.base import DataSource, Credentials, Params, TableInfo
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PostgresEngine
-
-Credentials = Dict[str, Any]
-Params = Dict[str, Any]
-TableInfo = Union[List[str], Dict[str, TableSchema]]
-
-
-class DataSource(ABC):
-    params_schema: Dict[str, Any]
-    credentials_schema: Dict[str, Any]
-
-    def __init__(self, engine: "PostgresEngine", credentials: Credentials, params: Params):
-        import jsonschema
-
-        self.engine = engine
-
-        jsonschema.validate(instance=credentials, schema=self.credentials_schema)
-        jsonschema.validate(instance=params, schema=self.params_schema)
-
-        self.credentials = credentials
-        self.params = params
-
-    @abstractmethod
-    def introspect(self) -> Dict[str, TableSchema]:
-        pass
 
 
 _table_options_schema = {
@@ -58,6 +35,8 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
 
     commandline_help: str = ""
     commandline_kwargs_help: str = ""
+
+    supports_mount = True
 
     def __init__(
         self,
@@ -136,7 +115,10 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
         pass
 
     def mount(
-        self, schema: str, tables: Optional[TableInfo] = None, overwrite: bool = True,
+        self,
+        schema: str,
+        tables: Optional[TableInfo] = None,
+        overwrite: bool = True,
     ):
         tables = tables or self.tables or []
 
@@ -237,6 +219,105 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
             self.engine.rollback()
             self.engine.delete_schema(tmp_schema)
             self.engine.commit()
+
+
+def init_fdw(
+    engine: "PostgresEngine",
+    server_id: str,
+    wrapper: str,
+    server_options: Optional[Mapping[str, Optional[str]]] = None,
+    user_options: Optional[Mapping[str, str]] = None,
+    overwrite: bool = True,
+) -> None:
+    """
+    Sets up a foreign data server on the engine.
+
+    :param engine: PostgresEngine
+    :param server_id: Name to call the foreign server, must be unique. Will be deleted if exists.
+    :param wrapper: Name of the foreign data wrapper (must be installed as an extension on the engine)
+    :param server_options: Dictionary of FDW options
+    :param user_options: Dictionary of user options
+    :param overwrite: If the server already exists, delete and recreate it.
+    """
+    from psycopg2.sql import Identifier, SQL
+
+    if overwrite:
+        engine.run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(server_id)))
+
+    create_server = SQL("CREATE SERVER IF NOT EXISTS {} FOREIGN DATA WRAPPER {}").format(
+        Identifier(server_id), Identifier(wrapper)
+    )
+
+    if server_options:
+        server_keys, server_vals = zip(*server_options.items())
+        create_server += _format_options(server_keys)
+        engine.run_sql(create_server, [str(v) for v in server_vals])
+    else:
+        engine.run_sql(create_server)
+
+    if user_options:
+        create_mapping = SQL("CREATE USER MAPPING IF NOT EXISTS FOR PUBLIC SERVER {}").format(
+            Identifier(server_id)
+        )
+        user_keys, user_vals = zip(*user_options.items())
+        create_mapping += _format_options(user_keys)
+        engine.run_sql(create_mapping, [str(v) for v in user_vals])
+
+
+def _format_options(option_names):
+    from psycopg2.sql import Identifier, SQL
+
+    return (
+        SQL(" OPTIONS (")
+        + SQL(",").join(Identifier(o) + SQL(" %s") for o in option_names)
+        + SQL(")")
+    )
+
+
+def _import_foreign_schema(
+    engine: "PostgresEngine", mountpoint: str, remote_schema: str, server_id: str, tables: List[str]
+) -> None:
+    from psycopg2.sql import Identifier, SQL
+
+    # Construct a query: import schema limit to (%s, %s, ...) from server mountpoint_server into mountpoint
+    query = SQL("IMPORT FOREIGN SCHEMA {} ").format(Identifier(remote_schema))
+    if tables:
+        query += SQL("LIMIT TO (") + SQL(",").join(Identifier(t) for t in tables) + SQL(")")
+    query += SQL("FROM SERVER {} INTO {}").format(Identifier(server_id), Identifier(mountpoint))
+    engine.run_sql(query)
+
+
+def create_foreign_table(
+    schema: str,
+    server: str,
+    table_name: str,
+    schema_spec: TableSchema,
+    extra_options: Optional[Dict[str, str]] = None,
+):
+    table_options = extra_options or {}
+
+    query = SQL("CREATE FOREIGN TABLE {}.{} (").format(Identifier(schema), Identifier(table_name))
+    query += SQL(",".join("{} %s " % col.pg_type for col in schema_spec)).format(
+        *(Identifier(col.name) for col in schema_spec)
+    )
+    query += SQL(") SERVER {}").format(Identifier(server))
+
+    args: List[str] = []
+    if table_options:
+        table_opts, table_optvals = zip(*table_options.items())
+        query += SQL(" OPTIONS(")
+        query += SQL(",").join(Identifier(o) + SQL(" %s") for o in table_opts) + SQL(");")
+        args.extend(table_optvals)
+
+    for col in schema_spec:
+        if col.comment:
+            query += SQL("COMMENT ON COLUMN {}.{}.{} IS %s;").format(
+                Identifier(schema),
+                Identifier(table_name),
+                Identifier(col.name),
+            )
+            args.append(col.comment)
+    return query, args
 
 
 class PostgreSQLDataSource(ForeignDataWrapperDataSource):
@@ -529,100 +610,3 @@ EOF
 
     def get_fdw_name(self):
         return "multicorn"
-
-
-def init_fdw(
-    engine: "PostgresEngine",
-    server_id: str,
-    wrapper: str,
-    server_options: Optional[Mapping[str, Optional[str]]] = None,
-    user_options: Optional[Mapping[str, str]] = None,
-    overwrite: bool = True,
-) -> None:
-    """
-    Sets up a foreign data server on the engine.
-
-    :param engine: PostgresEngine
-    :param server_id: Name to call the foreign server, must be unique. Will be deleted if exists.
-    :param wrapper: Name of the foreign data wrapper (must be installed as an extension on the engine)
-    :param server_options: Dictionary of FDW options
-    :param user_options: Dictionary of user options
-    :param overwrite: If the server already exists, delete and recreate it.
-    """
-    from psycopg2.sql import Identifier, SQL
-
-    if overwrite:
-        engine.run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(server_id)))
-
-    create_server = SQL("CREATE SERVER IF NOT EXISTS {} FOREIGN DATA WRAPPER {}").format(
-        Identifier(server_id), Identifier(wrapper)
-    )
-
-    if server_options:
-        server_keys, server_vals = zip(*server_options.items())
-        create_server += _format_options(server_keys)
-        engine.run_sql(create_server, [str(v) for v in server_vals])
-    else:
-        engine.run_sql(create_server)
-
-    if user_options:
-        create_mapping = SQL("CREATE USER MAPPING IF NOT EXISTS FOR PUBLIC SERVER {}").format(
-            Identifier(server_id)
-        )
-        user_keys, user_vals = zip(*user_options.items())
-        create_mapping += _format_options(user_keys)
-        engine.run_sql(create_mapping, [str(v) for v in user_vals])
-
-
-def _format_options(option_names):
-    from psycopg2.sql import Identifier, SQL
-
-    return (
-        SQL(" OPTIONS (")
-        + SQL(",").join(Identifier(o) + SQL(" %s") for o in option_names)
-        + SQL(")")
-    )
-
-
-def _import_foreign_schema(
-    engine: "PostgresEngine", mountpoint: str, remote_schema: str, server_id: str, tables: List[str]
-) -> None:
-    from psycopg2.sql import Identifier, SQL
-
-    # Construct a query: import schema limit to (%s, %s, ...) from server mountpoint_server into mountpoint
-    query = SQL("IMPORT FOREIGN SCHEMA {} ").format(Identifier(remote_schema))
-    if tables:
-        query += SQL("LIMIT TO (") + SQL(",").join(Identifier(t) for t in tables) + SQL(")")
-    query += SQL("FROM SERVER {} INTO {}").format(Identifier(server_id), Identifier(mountpoint))
-    engine.run_sql(query)
-
-
-def create_foreign_table(
-    schema: str,
-    server: str,
-    table_name: str,
-    schema_spec: TableSchema,
-    extra_options: Optional[Dict[str, str]] = None,
-):
-    table_options = extra_options or {}
-
-    query = SQL("CREATE FOREIGN TABLE {}.{} (").format(Identifier(schema), Identifier(table_name))
-    query += SQL(",".join("{} %s " % col.pg_type for col in schema_spec)).format(
-        *(Identifier(col.name) for col in schema_spec)
-    )
-    query += SQL(") SERVER {}").format(Identifier(server))
-
-    args: List[str] = []
-    if table_options:
-        table_opts, table_optvals = zip(*table_options.items())
-        query += SQL(" OPTIONS(")
-        query += SQL(",").join(Identifier(o) + SQL(" %s") for o in table_opts) + SQL(");")
-        args.extend(table_optvals)
-
-    for col in schema_spec:
-        if col.comment:
-            query += SQL("COMMENT ON COLUMN {}.{}.{} IS %s;").format(
-                Identifier(schema), Identifier(table_name), Identifier(col.name),
-            )
-            args.append(col.comment)
-    return query, args

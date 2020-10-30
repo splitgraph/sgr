@@ -74,10 +74,10 @@ def serialize_config(
         for command_name, command_class in get_all_in_section(config, "commands").items():
             result += _kv_to_str(command_name, cast(str, command_class), no_shielding) + "\n"
 
-    # Print mount handlers
-    if "mount_handlers" in config:
-        result += "\nFDW Mount handlers:\n" if not config_format else "[mount_handlers]\n"
-        for handler_name, handler_func in get_all_in_section(config, "mount_handlers").items():
+    # Print data sources
+    if "data_sources" in config:
+        result += "\nData sources:\n" if not config_format else "[data_sources]\n"
+        for handler_name, handler_func in get_all_in_section(config, "data_sources").items():
             result += _kv_to_str(handler_name, cast(str, handler_func), no_shielding) + "\n"
 
     # Print external object handlers
