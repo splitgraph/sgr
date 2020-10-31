@@ -9,8 +9,9 @@ import click
 @click.option("-c", "--config", type=click.File("r"))
 @click.option("-s", "--state", type=click.File("r"))
 @click.option("--catalog", type=click.File("r"))
+@click.option("-p", "--properties", type=click.File("r"))
 @click.option("-d", "--discover", is_flag=True)
-def tap(state, config, catalog, discover):
+def tap(state, config, catalog, properties, discover):
     basepath = os.path.dirname(__file__)
     json.load(config)
 
@@ -19,8 +20,8 @@ def tap(state, config, catalog, discover):
             click.echo(f.read(), nl=False)
         return
 
-    assert catalog
-    catalog_j = json.load(catalog)
+    assert catalog or properties
+    catalog_j = json.load(catalog or properties)
     assert len(catalog_j["streams"]) == 2
 
     if state:
