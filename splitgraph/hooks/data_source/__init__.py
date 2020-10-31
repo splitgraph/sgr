@@ -64,12 +64,15 @@ def _register_default_data_sources() -> None:
     for plugin in os.listdir(plugin_dir):
         plugin_file = os.path.join(plugin_dir, plugin, "plugin.py")
         if os.path.exists(plugin_file):
-            with open(plugin_file, "r") as f:
-                plugin_globals: Dict[str, Any] = {}
-                exec(f.read(), plugin_globals, {})
-            if "__plugin__" in plugin_globals:
+            import importlib.util
+
+            # Import the module and get the __plugin__ attr from it
+            spec = importlib.util.spec_from_file_location("plugin_dir", plugin_file)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)  # type:ignore
+            if hasattr(module, "__plugin__"):
                 logging.debug("Loading %s", plugin_file)
-                register_data_source(plugin, plugin_globals["__plugin__"])
+                register_data_source(plugin, module.__plugin__)  # type:ignore
 
 
 def _load_source(source_name, source_class_name):
