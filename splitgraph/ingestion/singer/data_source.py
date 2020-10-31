@@ -6,6 +6,7 @@ import tempfile
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from io import StringIO
+from threading import Thread
 from typing import Dict, Any, Optional, cast
 
 from psycopg2._json import Json
@@ -82,13 +83,20 @@ class SingerDataSource(DataSource, ABC):
             proc = subprocess.Popen(
                 args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
             )
+
+            def _emit_output(pipe):
+                for line in iter(pipe.readline, b""):
+                    logging.info(line.decode("utf-8"))
+
+            # Emit stderr as a separate thread.
+            t = Thread(target=_emit_output, args=(proc.stderr,))
+            t.daemon = True
+            t.start()
+
             try:
                 yield proc
             finally:
-                # TODO emit stderr as a separate thread
                 proc.wait()
-                if proc.stderr:
-                    logging.info(proc.stderr.read().decode("utf-8"))
                 if proc.returncode:
                     raise DataSourceError(
                         "Failed running Singer data source. Exit code: %d." % proc.returncode
@@ -120,6 +128,7 @@ class SingerDataSource(DataSource, ABC):
 
         base_image, new_image_hash = prepare_new_image(repository, image_hash)
         state = get_ingestion_state(repository, image_hash)
+        logging.info("State: %s", state)
 
         # Run the sink + target and capture the stdout (new state)
         output_stream = StringIO()
