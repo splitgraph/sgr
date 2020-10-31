@@ -135,7 +135,7 @@ def get_ingestion_state(repository, image_hash) -> Optional[SyncState]:
 
 
 def prepare_new_image(
-    repository: Repository, hash_or_tag: Optional[str]
+    repository: "Repository", hash_or_tag: Optional[str]
 ) -> Tuple[Optional[Image], str]:
     new_image_hash = "{:064x}".format(getrandbits(256))
     if repository_exists(repository):
