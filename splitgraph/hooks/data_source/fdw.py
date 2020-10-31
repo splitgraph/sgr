@@ -7,7 +7,13 @@ import psycopg2
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.core.types import dict_to_tableschema, TableSchema, TableColumn
-from splitgraph.hooks.data_source.base import DataSource, Credentials, Params, TableInfo
+from splitgraph.hooks.data_source.base import (
+    DataSource,
+    Credentials,
+    Params,
+    TableInfo,
+    PreviewResult,
+)
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PostgresEngine
@@ -115,10 +121,7 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
         pass
 
     def mount(
-        self,
-        schema: str,
-        tables: Optional[TableInfo] = None,
-        overwrite: bool = True,
+        self, schema: str, tables: Optional[TableInfo] = None, overwrite: bool = True,
     ):
         tables = tables or self.tables or []
 
@@ -194,9 +197,7 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
         )
         return result_json
 
-    def preview(
-        self, schema: Dict[str, TableSchema]
-    ) -> Dict[str, Union[str, List[Dict[str, Any]]]]:
+    def preview(self, schema: Dict[str, TableSchema]) -> PreviewResult:
         # Preview data in tables mounted by this FDW / data source
 
         # Local import here since this data source gets imported by the commandline entry point
@@ -312,9 +313,7 @@ def create_foreign_table(
     for col in schema_spec:
         if col.comment:
             query += SQL("COMMENT ON COLUMN {}.{}.{} IS %s;").format(
-                Identifier(schema),
-                Identifier(table_name),
-                Identifier(col.name),
+                Identifier(schema), Identifier(table_name), Identifier(col.name),
             )
             args.append(col.comment)
     return query, args
