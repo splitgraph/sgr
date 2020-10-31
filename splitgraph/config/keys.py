@@ -54,6 +54,7 @@ DEFAULTS: ConfigDict = {
     "SG_UPDATE_FREQUENCY": "86400",
     "SG_UPDATE_LAST": "0",
     "SG_UPDATE_ANONYMOUS": "false",
+    "SG_PLUGIN_DIR": "",
     # Some default sections: these can't be overridden via envvars.
     "external_handlers": {"S3": "splitgraph.hooks.s3.S3ExternalObjectHandler"},
     "data_sources": {
