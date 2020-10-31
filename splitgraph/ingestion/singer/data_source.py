@@ -78,16 +78,18 @@ class SingerDataSource(DataSource, ABC):
             self._add_file_arg(properties, "properties", d, args)
             self._add_file_arg(catalog, "catalog", d, args)
 
+            logging.info("Running Singer tap. Arguments: %s", args)
             proc = subprocess.Popen(
                 args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
             )
             try:
                 yield proc
             finally:
+                # TODO emit stderr as a separate thread
                 proc.wait()
+                if proc.stderr:
+                    logging.info(proc.stderr.read().decode("utf-8"))
                 if proc.returncode:
-                    if proc.stderr:
-                        logging.error(proc.stderr.read().decode("utf-8"))
                     raise DataSourceError(
                         "Failed running Singer data source. Exit code: %d." % proc.returncode
                     )
@@ -103,6 +105,7 @@ class SingerDataSource(DataSource, ABC):
             if not tables or stream_name in tables:
                 # TODO should be selecting the empty breadcrumb here instead?
                 stream["metadata"][0]["metadata"]["selected"] = True
+                stream["schema"]["selected"] = True
 
         return catalog
 
@@ -120,7 +123,8 @@ class SingerDataSource(DataSource, ABC):
 
         # Run the sink + target and capture the stdout (new state)
         output_stream = StringIO()
-        with self._run_singer(config, state, catalog=properties) as proc:
+        # TODO some taps use catalog, some use properties
+        with self._run_singer(config, state, properties=properties) as proc:
             run_patched_sync(
                 repository,
                 base_image,
@@ -132,6 +136,7 @@ class SingerDataSource(DataSource, ABC):
             )
 
         new_state = output_stream.getvalue()
+        logging.info("New state: %s", new_state)
 
         # Add a table to the new image with the new state
         repository.object_engine.create_table(
