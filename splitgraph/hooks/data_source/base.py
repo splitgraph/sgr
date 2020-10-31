@@ -1,3 +1,4 @@
+import json
 from abc import ABC, abstractmethod
 from random import getrandbits
 from typing import Dict, Any, Union, List, Optional, TYPE_CHECKING, cast, Tuple
@@ -131,6 +132,10 @@ def get_ingestion_state(repository, image_hash) -> Optional[SyncState]:
                     ),
                     return_shape=ResultShape.ONE_ONE,
                 )
+                # TODO sometimes (some weird psycopg2 adapter interaction?)
+                #   this is not loaded as JSON immediately?
+                if state:
+                    state = json.loads(state)
     return cast(SyncState, state)
 
 

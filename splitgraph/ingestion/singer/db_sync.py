@@ -8,12 +8,12 @@ import target_postgres
 from target_postgres import DbSync
 from target_postgres.db_sync import column_type, flatten_schema
 
+from splitgraph.core.image import Image
+from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableSchema, TableColumn
 from splitgraph.exceptions import TableNotFoundError
 from splitgraph.ingestion.common import merge_tables
 from ._utils import _migrate_schema, log_exception, _make_changeset
-from ...core.image import Image
-from ...core.repository import Repository
 
 
 class DbSyncProxy(DbSync):
@@ -91,7 +91,7 @@ class DbSyncProxy(DbSync):
                 table.table_schema,
                 schema_spec,
             )
-            self.image.repository.commit_engines()
+        self.image.repository.commit_engines()
 
     @log_exception
     def load_csv(self, file, count, size_bytes):
@@ -104,7 +104,7 @@ class DbSyncProxy(DbSync):
 
         old_table = self.image.get_table(table_name)
 
-        self.image.repository.engine.create_table(
+        self.image.repository.object_engine.create_table(
             schema="pg_temp", table=temp_table, schema_spec=schema_spec, temporary=True
         )
 
