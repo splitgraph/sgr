@@ -1,7 +1,8 @@
 import logging
+import os
 import types
 from importlib import import_module
-from typing import Dict, Type, List
+from typing import Dict, Type, List, Any
 
 from .base import DataSource
 from .fdw import PostgreSQLDataSource, MongoDataSource, ElasticSearchDataSource, MySQLDataSource
@@ -11,10 +12,12 @@ from ...config.keys import DEFAULTS
 from ...exceptions import DataSourceError
 
 _DATA_SOURCES: Dict[str, Type[DataSource]] = {}
+_data_sources_registered = False
 
 
 def get_data_source(data_source: str) -> Type[DataSource]:
     """Returns a class for a given data source"""
+    _register_default_data_sources()
     try:
         return _DATA_SOURCES[data_source]
     except KeyError:
@@ -23,6 +26,7 @@ def get_data_source(data_source: str) -> Type[DataSource]:
 
 def get_data_sources() -> List[str]:
     """Returns the names of all registered data sources."""
+    _register_default_data_sources()
     return list(_DATA_SOURCES.keys())
 
 
@@ -34,6 +38,11 @@ def register_data_source(name: str, data_source_class: Type[DataSource]) -> None
 
 def _register_default_data_sources() -> None:
     # Register the data sources from the config.
+    global _data_sources_registered
+    if _data_sources_registered:
+        return
+    _data_sources_registered = True
+
     for source_name, source_class_name in get_all_in_section(CONFIG, "data_sources").items():
         assert isinstance(source_class_name, str)
 
@@ -44,6 +53,23 @@ def _register_default_data_sources() -> None:
             register_data_source(source_name.lower(), data_source)
         except (ImportError, AttributeError) as e:
             raise DataSourceError("Error loading custom data source {0}".format(source_name)) from e
+
+    # Load data sources from the additional path
+    plugin_dir = get_singleton(CONFIG, "SG_PLUGIN_DIR")
+    if not plugin_dir:
+        return
+
+    logging.debug("Looking up plugins in %s", plugin_dir)
+
+    for plugin in os.listdir(plugin_dir):
+        plugin_file = os.path.join(plugin_dir, plugin, "plugin.py")
+        if os.path.exists(plugin_file):
+            with open(plugin_file, "r") as f:
+                plugin_globals: Dict[str, Any] = {}
+                exec(f.read(), plugin_globals, {})
+            if "__plugin__" in plugin_globals:
+                logging.debug("Loading %s", plugin_file)
+                register_data_source(plugin, plugin_globals["__plugin__"])
 
 
 def _load_source(source_name, source_class_name):
@@ -88,6 +114,3 @@ def _load_source(source_name, source_class_name):
             get_singleton(CONFIG, "SG_CONFIG_FILE"),
         )
     return data_source
-
-
-_register_default_data_sources()
