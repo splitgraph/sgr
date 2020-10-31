@@ -40,7 +40,7 @@ from splitgraph.commandline.misc import (
 from splitgraph.commandline.mount import mount_c
 from splitgraph.commandline.push_pull import pull_c, clone_c, push_c, upstream_c
 from splitgraph.commandline.splitfile import build_c, provenance_c, rebuild_c, dependents_c
-from splitgraph.ingestion.singer import singer_group
+from splitgraph.ingestion.singer.commandline import singer_group
 
 logger = logging.getLogger()
 
