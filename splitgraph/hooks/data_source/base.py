@@ -18,6 +18,7 @@ Credentials = Dict[str, Any]
 Params = Dict[str, Any]
 TableInfo = Union[List[str], Dict[str, TableSchema]]
 SyncState = Dict[str, Any]
+PreviewResult = Dict[str, Union[str, List[Dict[str, Any]]]]
 
 
 INGESTION_STATE_TABLE = "_sg_ingestion_state"
