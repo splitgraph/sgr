@@ -111,7 +111,7 @@ class SingerDataSource(DataSource, ABC):
         repository: Repository,
         image_hash: Optional[str] = None,
         tables: Optional[TableInfo] = None,
-    ):
+    ) -> str:
         config = self.get_singer_config()
         properties = self.get_singer_properties(tables=tables)
 
@@ -170,6 +170,7 @@ class SingerDataSource(DataSource, ABC):
             )
 
         repository.commit_engines()
+        return new_image_hash
 
     def introspect(self) -> Dict[str, TableSchema]:
         config = self.get_singer_config()

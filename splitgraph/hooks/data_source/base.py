@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from random import getrandbits
-from typing import Dict, Any, Union, List, Optional, TYPE_CHECKING, cast
+from typing import Dict, Any, Union, List, Optional, TYPE_CHECKING, cast, Tuple
 
 from psycopg2._json import Json
 from psycopg2.sql import SQL, Identifier
@@ -78,10 +78,9 @@ class DataSource(ABC):
         repository: "Repository",
         image_hash: Optional[str],
         tables: Optional[TableInfo] = None,
-    ):
+    ) -> str:
         if not repository_exists(repository):
             repository.init()
-            image_hash = repository.images["latest"].image_hash
 
         state = get_ingestion_state(repository, image_hash)
         base_image, new_image_hash = prepare_new_image(repository, image_hash)
@@ -110,6 +109,8 @@ class DataSource(ABC):
             repository.uncheckout()
             repository.commit_engines()
 
+        return new_image_hash
+
     def load(self, schema: str, tables: Optional[TableInfo] = None):
         if self.supports_sync:
             self._sync(schema, tables=tables)
@@ -133,19 +134,27 @@ def get_ingestion_state(repository, image_hash) -> Optional[SyncState]:
     return cast(SyncState, state)
 
 
-def prepare_new_image(repository, hash_or_tag):
+def prepare_new_image(
+    repository: Repository, hash_or_tag: Optional[str]
+) -> Tuple[Optional[Image], str]:
     new_image_hash = "{:064x}".format(getrandbits(256))
     if repository_exists(repository):
         # Clone the base image and delta compress against it
-        base_image: Optional[Image] = repository.images[hash_or_tag]
+        base_image: Optional[Image] = repository.images[hash_or_tag] if hash_or_tag else None
         repository.images.add(parent_id=None, image=new_image_hash, comment="Singer tap ingestion")
-        repository.engine.run_sql(
-            "INSERT INTO splitgraph_meta.tables "
-            "(SELECT namespace, repository, %s, table_name, table_schema, object_ids "
-            "FROM splitgraph_meta.tables "
-            "WHERE namespace = %s AND repository = %s AND image_hash = %s)",
-            (new_image_hash, repository.namespace, repository.repository, base_image.image_hash,),
-        )
+        if base_image:
+            repository.engine.run_sql(
+                "INSERT INTO splitgraph_meta.tables "
+                "(SELECT namespace, repository, %s, table_name, table_schema, object_ids "
+                "FROM splitgraph_meta.tables "
+                "WHERE namespace = %s AND repository = %s AND image_hash = %s)",
+                (
+                    new_image_hash,
+                    repository.namespace,
+                    repository.repository,
+                    base_image.image_hash,
+                ),
+            )
     else:
         base_image = None
         repository.images.add(parent_id=None, image=new_image_hash, comment="Singer tap ingestion")
