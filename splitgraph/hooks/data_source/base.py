@@ -36,6 +36,16 @@ class DataSource(ABC):
     supports_sync = False
     supports_load = False
 
+    @classmethod
+    @abstractmethod
+    def get_name(cls) -> str:
+        pass
+
+    @classmethod
+    @abstractmethod
+    def get_description(cls) -> str:
+        pass
+
     def __init__(self, engine: "PostgresEngine", credentials: Credentials, params: Params):
         import jsonschema
 
