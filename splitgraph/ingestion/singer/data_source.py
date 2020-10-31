@@ -12,7 +12,6 @@ from psycopg2._json import Json
 from psycopg2.sql import Identifier, SQL
 
 from splitgraph.core.repository import Repository
-from splitgraph.core.sql import insert
 from splitgraph.core.types import TableSchema
 from splitgraph.exceptions import DataSourceError
 from splitgraph.hooks.data_source import DataSource
@@ -185,6 +184,14 @@ class SingerDataSource(DataSource, ABC):
 
 
 class GenericSingerDataSource(SingerDataSource):
+    @classmethod
+    def get_name(cls) -> str:
+        return "Generic Singer tap"
+
+    @classmethod
+    def get_description(cls) -> str:
+        return "Generic Singer tap"
+
     def get_singer_executable(self):
         return self.params["tap_path"]
 

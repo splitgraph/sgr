@@ -54,16 +54,6 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
         super().__init__(engine, credentials or {}, params or {})
 
     @classmethod
-    @abstractmethod
-    def get_name(cls) -> str:
-        pass
-
-    @classmethod
-    @abstractmethod
-    def get_description(cls) -> str:
-        pass
-
-    @classmethod
     def from_commandline(cls, engine, commandline_kwargs) -> "ForeignDataWrapperDataSource":
         """Instantiate an FDW data source from commandline arguments."""
         # Normally these are supposed to be more user-friendly and FDW-specific (e.g.
