@@ -1,5 +1,6 @@
 import logging
 import traceback
+from collections import Callable
 from functools import wraps
 
 from psycopg2.sql import SQL, Identifier
@@ -19,6 +20,18 @@ def log_exception(f):
         except Exception:
             logging.error(traceback.format_exc())
             raise
+
+    return wrapped
+
+
+def rollback_at_end(func: Callable) -> Callable:
+    @wraps(func)
+    def wrapped(self, *args, **kwargs):
+        repository = self.image.repository
+        try:
+            return func(self, *args, **kwargs)
+        finally:
+            repository.rollback_engines()
 
     return wrapped
 

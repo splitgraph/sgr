@@ -8,12 +8,13 @@ import target_postgres
 from target_postgres import DbSync
 from target_postgres.db_sync import column_type, flatten_schema
 
+from splitgraph.config import CONFIG
 from splitgraph.core.image import Image
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableSchema, TableColumn
 from splitgraph.exceptions import TableNotFoundError
 from splitgraph.ingestion.common import merge_tables
-from ._utils import _migrate_schema, log_exception, _make_changeset
+from ._utils import _migrate_schema, log_exception, _make_changeset, rollback_at_end
 
 
 class DbSyncProxy(DbSync):
@@ -34,6 +35,7 @@ class DbSyncProxy(DbSync):
     def create_indices(self, stream):
         pass
 
+    @rollback_at_end
     def sync_table(self):
         # NB the overridden method never calls self.update_columns() to bring the
         # schema up to date: this is because it compares a quoted name of the
@@ -94,6 +96,7 @@ class DbSyncProxy(DbSync):
         self.image.repository.commit_engines()
 
     @log_exception
+    @rollback_at_end
     def load_csv(self, file, count, size_bytes):
         from splitgraph.ingestion.csv import copy_csv_buffer
 
@@ -292,5 +295,6 @@ def _prepare_config_params(repository):
         "password": conn_params["SG_ENGINE_PWD"],
         "dbname": conn_params["SG_ENGINE_DB_NAME"],
         "default_target_schema": repository.to_schema(),
+        "max_parallelism": int(conn_params.get("SG_ENGINE_POOL", CONFIG["SG_ENGINE_POOL"])) - 1,
     }
     return config
