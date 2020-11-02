@@ -1,4 +1,5 @@
 import json
+import logging
 from abc import ABC, abstractmethod
 from random import getrandbits
 from typing import Dict, Any, Union, List, Optional, TYPE_CHECKING, cast, Tuple
@@ -127,7 +128,7 @@ def get_ingestion_state(repository, image_hash) -> Optional[SyncState]:
         if INGESTION_STATE_TABLE in image.get_tables():
             with image.query_schema() as s:
                 state = repository.object_engine.run_sql(
-                    SQL("SELECT state FROM {}.{} LIMIT 1").format(
+                    SQL("SELECT state FROM {}.{} ORDER BY timestamp DESC LIMIT 1").format(
                         Identifier(s), Identifier(INGESTION_STATE_TABLE)
                     ),
                     return_shape=ResultShape.ONE_ONE,

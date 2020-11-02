@@ -86,7 +86,7 @@ class SingerDataSource(DataSource, ABC):
 
             def _emit_output(pipe):
                 for line in iter(pipe.readline, b""):
-                    logging.info(line.decode("utf-8"))
+                    logging.info(line.decode("utf-8").rstrip("\n"))
 
             # Emit stderr as a separate thread.
             t = Thread(target=_emit_output, args=(proc.stderr,))
