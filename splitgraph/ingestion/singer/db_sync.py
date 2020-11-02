@@ -295,6 +295,14 @@ def _prepare_config_params(repository):
         "password": conn_params["SG_ENGINE_PWD"],
         "dbname": conn_params["SG_ENGINE_DB_NAME"],
         "default_target_schema": repository.to_schema(),
-        "max_parallelism": int(conn_params.get("SG_ENGINE_POOL", CONFIG["SG_ENGINE_POOL"])) - 1,
+        "max_parallelism": _calc_max_threads(conn_params),
     }
     return config
+
+
+def _calc_max_threads(conn_params):
+    """Each loader thread really uses 2 connections (one directly when communicating with
+    the engine, one from the in-engine Splitgraph during querying) and this can lead to
+    weird deadlocks when we exhaust the connection limit enforced by pgbouncer) -- to avoid
+    that, we decrease the number of concurrent loader threads."""
+    return max(int(conn_params.get("SG_ENGINE_POOL", CONFIG["SG_ENGINE_POOL"])) // 2 - 1, 1)
