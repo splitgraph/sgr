@@ -165,4 +165,5 @@ This can also be changed by passing `--verbosity` to `sgr`, e.g. `sgr --verbosit
     "SG_UPDATE_FREQUENCY": "How often to check for updates when sgr is run, in seconds. Set to 0 to disable.",
     "SG_UPDATE_LAST": "Last timestamp an update check was performed. Internal.",
     "SG_UPDATE_ANONYMOUS": "Set to `true` to disable sending the user's ID to the update checker.",
+    "SG_PLUGIN_DIR": "Extra directory to look for plugins in. Each subdirectory must have a plugin.py file with a top-level __plugin__ variable pointing at the plugin class",
 }
