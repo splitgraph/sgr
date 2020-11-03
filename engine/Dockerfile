@@ -110,6 +110,7 @@ RUN apt-get update -qq && \
         python3.7 \
         python3-setuptools \
         postgresql-plpython3-12 \
+        git \
         wget && \
 
         curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
