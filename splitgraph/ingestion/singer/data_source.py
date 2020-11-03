@@ -144,11 +144,12 @@ class SingerDataSource(SyncableDataSource, ABC):
             schema_spec=INGESTION_STATE_SCHEMA,
             temporary=True,
         )
+        # NB: new_state here is a JSON-serialized string, so we don't wrap it into psycopg2.Json()
         repository.object_engine.run_sql(
             SQL("INSERT INTO pg_temp.{} (timestamp, state) VALUES(now(), %s)").format(
                 Identifier(INGESTION_STATE_TABLE)
             ),
-            (Json(new_state),),
+            (new_state,),
         )
 
         object_id = repository.objects.create_base_fragment(
