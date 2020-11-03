@@ -15,13 +15,14 @@ from psycopg2.sql import Identifier, SQL
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableSchema
 from splitgraph.exceptions import DataSourceError
-from splitgraph.hooks.data_source import DataSource
 from splitgraph.hooks.data_source.base import (
     get_ingestion_state,
     INGESTION_STATE_TABLE,
     INGESTION_STATE_SCHEMA,
     TableInfo,
     prepare_new_image,
+    SyncableDataSource,
+    SyncState,
 )
 from splitgraph.ingestion.singer.db_sync import get_table_name, get_sg_schema, run_patched_sync
 
@@ -30,14 +31,10 @@ SingerProperties = Dict[str, Any]
 SingerState = Dict[str, Any]
 
 
-class SingerDataSource(DataSource, ABC):
-
-    supports_load = True
-    supports_sync = True
-
+class SingerDataSource(SyncableDataSource, ABC):
     @abstractmethod
     def get_singer_executable(self):
-        pass
+        raise NotImplementedError
 
     def get_singer_config(self):
         return {**self.params, **self.credentials}
@@ -102,20 +99,11 @@ class SingerDataSource(DataSource, ABC):
                         "Failed running Singer data source. Exit code: %d." % proc.returncode
                     )
 
-    def get_singer_properties(self, tables: Optional[TableInfo] = None) -> SingerProperties:
-        config = self.get_singer_config()
-        catalog = self._run_singer_discovery(config)
-
-        tables = list(tables) if tables else None
-
-        for stream in catalog["streams"]:
-            stream_name = get_table_name(stream)
-            if not tables or stream_name in tables:
-                # TODO should be selecting the empty breadcrumb here instead?
-                stream["metadata"][0]["metadata"]["selected"] = True
-                stream["schema"]["selected"] = True
-
-        return catalog
+    def _sync(
+        self, schema: str, state: Optional[SyncState] = None, tables: Optional[TableInfo] = None
+    ) -> SyncState:
+        # We override the main sync() instead
+        pass
 
     def sync(
         self,
@@ -124,7 +112,8 @@ class SingerDataSource(DataSource, ABC):
         tables: Optional[TableInfo] = None,
     ) -> str:
         config = self.get_singer_config()
-        properties = self.get_singer_properties(tables=tables)
+        catalog = self._run_singer_discovery(config)
+        properties = select_streams(catalog, tables=tables)
 
         base_image, new_image_hash = prepare_new_image(repository, image_hash)
         state = get_ingestion_state(repository, image_hash)
@@ -132,6 +121,7 @@ class SingerDataSource(DataSource, ABC):
 
         # Run the sink + target and capture the stdout (new state)
         output_stream = StringIO()
+
         # TODO some taps use catalog, some use properties
         with self._run_singer(config, state, properties=properties) as proc:
             run_patched_sync(
@@ -196,6 +186,35 @@ class SingerDataSource(DataSource, ABC):
             stream_schema = get_sg_schema(stream)
             result[stream_name] = stream_schema
         return result
+
+
+def select_streams(
+    catalog: SingerProperties, tables: Optional[TableInfo] = None
+) -> SingerProperties:
+    tables = list(tables) if tables else None
+
+    for stream in catalog["streams"]:
+        stream_name = get_table_name(stream)
+        # TODO tmp hack
+        # if stream_name == "issue_events": # not in [
+        # #     "stargazers",
+        # #     "assignees",
+        # #     "team_memberships",
+        # #     "teams",
+        # #     "team_members",
+        # #     "review_comments",
+        # #     "reviews",
+        # #     "collaborators",
+        # #     "commit_comments",
+        # #     "pull_requests",
+        # # ]:
+        #     continue
+        if not tables or stream_name in tables:
+            # TODO should be selecting the empty breadcrumb here instead?
+            stream["metadata"][0]["metadata"]["selected"] = True
+            stream["schema"]["selected"] = True
+
+    return catalog
 
 
 class GenericSingerDataSource(SingerDataSource):

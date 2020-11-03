@@ -8,11 +8,11 @@ from psycopg2.sql import SQL, Identifier
 
 from splitgraph.core.types import dict_to_tableschema, TableSchema, TableColumn
 from splitgraph.hooks.data_source.base import (
-    DataSource,
     Credentials,
     Params,
     TableInfo,
     PreviewResult,
+    MountableDataSource,
 )
 
 if TYPE_CHECKING:
@@ -27,7 +27,7 @@ _table_options_schema = {
 }
 
 
-class ForeignDataWrapperDataSource(DataSource, ABC):
+class ForeignDataWrapperDataSource(MountableDataSource, ABC):
     credentials_schema = {
         "type": "object",
         "properties": {"username": {"type": "string"}, "password": {"type": "string"}},
@@ -104,7 +104,7 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
 
     def get_remote_schema_name(self) -> str:
         """Override this if the FDW supports IMPORT FOREIGN SCHEMA"""
-        raise NotImplemented
+        raise NotImplementedError
 
     @abstractmethod
     def get_fdw_name(self):
@@ -135,8 +135,8 @@ class ForeignDataWrapperDataSource(DataSource, ABC):
         if isinstance(tables, list):
             try:
                 remote_schema = self.get_remote_schema_name()
-            except NotImplemented:
-                raise NotImplemented(
+            except NotImplementedError:
+                raise NotImplementedError(
                     "The FDW does not support IMPORT FOREIGN SCHEMA! Pass a tables dictionary."
                 )
             _import_foreign_schema(self.engine, schema, remote_schema, server_id, tables)

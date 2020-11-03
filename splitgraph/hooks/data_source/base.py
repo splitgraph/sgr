@@ -1,5 +1,4 @@
 import json
-import logging
 from abc import ABC, abstractmethod
 from random import getrandbits
 from typing import Dict, Any, Union, List, Optional, TYPE_CHECKING, cast, Tuple
@@ -41,12 +40,12 @@ class DataSource(ABC):
     @classmethod
     @abstractmethod
     def get_name(cls) -> str:
-        pass
+        raise NotImplementedError
 
     @classmethod
     @abstractmethod
     def get_description(cls) -> str:
-        pass
+        raise NotImplementedError
 
     def __init__(self, engine: "PostgresEngine", credentials: Credentials, params: Params):
         import jsonschema
@@ -61,19 +60,38 @@ class DataSource(ABC):
 
     @abstractmethod
     def introspect(self) -> Dict[str, TableSchema]:
-        pass
+        raise NotImplementedError
 
+
+class MountableDataSource(DataSource, ABC):
+    supports_mount = True
+
+    @abstractmethod
     def mount(
         self, schema: str, tables: Optional[TableInfo] = None, overwrite: bool = True,
     ):
         """Instantiate the data source as foreign tables in a schema"""
-        raise NotImplemented
+        raise NotImplementedError
 
+
+class LoadableDataSource(DataSource, ABC):
+    supports_load = True
+
+    @abstractmethod
+    def load(self, schema: str, tables: Optional[TableInfo] = None):
+        raise NotImplementedError
+
+
+class SyncableDataSource(LoadableDataSource, DataSource, ABC):
+    supports_load = True
+    supports_sync = True
+
+    @abstractmethod
     def _sync(
         self, schema: str, state: Optional[SyncState] = None, tables: Optional[TableInfo] = None
-    ) -> SyncState:
+    ) -> Optional[SyncState]:
         """Incremental load"""
-        raise NotImplemented
+        raise NotImplementedError
 
     def sync(
         self,
@@ -85,42 +103,40 @@ class DataSource(ABC):
             repository.init()
 
         state = get_ingestion_state(repository, image_hash)
-        base_image, new_image_hash = prepare_new_image(repository, image_hash)
-        repository.images[new_image_hash].checkout()
+        image_hash = image_hash or "0" * 64
+        repository.images[image_hash].checkout()
 
         try:
             new_state = self._sync(schema=repository.to_schema(), state=state, tables=tables)
 
-            # Write the new state to the table
-            if not repository.object_engine.table_exists(
-                repository.to_schema(), INGESTION_STATE_TABLE
-            ):
-                repository.object_engine.create_table(
-                    repository.to_schema(), INGESTION_STATE_TABLE, INGESTION_STATE_SCHEMA
+            if new_state:
+                # Write the new state to the table
+                if not repository.object_engine.table_exists(
+                    repository.to_schema(), INGESTION_STATE_TABLE
+                ):
+                    repository.object_engine.create_table(
+                        repository.to_schema(), INGESTION_STATE_TABLE, INGESTION_STATE_SCHEMA
+                    )
+
+                repository.run_sql(
+                    SQL("INSERT INTO {} (timestamp, state) VALUES(now(), %s)").format(
+                        Identifier(INGESTION_STATE_TABLE)
+                    ),
+                    (Json(new_state),),
                 )
 
-            repository.object_engine.run_sql(
-                SQL("INSERT INTO pg_temp.{} (timestamp, state) VALUES(now(), %s)").format(
-                    Identifier(INGESTION_STATE_TABLE)
-                ),
-                (Json(new_state),),
-            )
-
-            repository.commit()
+            new_image = repository.commit()
         finally:
             repository.uncheckout()
             repository.commit_engines()
 
-        return new_image_hash
+        return new_image.image_hash
 
     def load(self, schema: str, tables: Optional[TableInfo] = None):
-        if self.supports_sync:
-            self._sync(schema, tables=tables)
-
-        raise NotImplemented
+        self._sync(schema, tables=tables, state=None)
 
 
-def get_ingestion_state(repository, image_hash) -> Optional[SyncState]:
+def get_ingestion_state(repository: "Repository", image_hash: Optional[str]) -> Optional[SyncState]:
     state = None
 
     if image_hash:
@@ -133,11 +149,7 @@ def get_ingestion_state(repository, image_hash) -> Optional[SyncState]:
                     ),
                     return_shape=ResultShape.ONE_ONE,
                 )
-                # TODO sometimes (some weird psycopg2 adapter interaction?)
-                #   this is not loaded as JSON immediately?
-                if state:
-                    state = json.loads(state)
-    return cast(SyncState, state)
+    return cast(Optional[SyncState], state)
 
 
 def prepare_new_image(
