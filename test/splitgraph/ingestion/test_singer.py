@@ -9,9 +9,9 @@ import psycopg2
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableColumn
 from splitgraph.engine import ResultShape
-from splitgraph.ingestion.singer import singer_target
 from test.splitgraph.conftest import INGESTION_RESOURCES
 
+from splitgraph.ingestion.singer.commandline import singer_target
 from splitgraph.ingestion.singer.data_source import GenericSingerDataSource
 
 TEST_REPO = "test/singer"
@@ -351,7 +351,7 @@ def test_singer_data_source_sync(local_engine_empty):
     assert repo.run_sql("SELECT COUNT(1) FROM releases", return_shape=ResultShape.ONE_ONE) == 6
     assert repo.run_sql("SELECT COUNT(1) FROM stargazers", return_shape=ResultShape.ONE_ONE) == 5
 
-    assert json.loads(repo.run_sql("SELECT state FROM _sg_ingestion_state")[0][0]) == {
+    assert repo.run_sql("SELECT state FROM _sg_ingestion_state")[0][0] == {
         "bookmarks": {
             "splitgraph/splitgraph": {
                 "stargazers": {"since": "2020-10-14T11:06:40.852311Z"},
@@ -370,7 +370,7 @@ def test_singer_data_source_sync(local_engine_empty):
     assert repo.run_sql("SELECT COUNT(1) FROM releases", return_shape=ResultShape.ONE_ONE) == 9
     assert repo.run_sql("SELECT COUNT(1) FROM stargazers", return_shape=ResultShape.ONE_ONE) == 6
 
-    assert json.loads(repo.run_sql("SELECT state FROM _sg_ingestion_state")[0][0]) == {
+    assert repo.run_sql("SELECT state FROM _sg_ingestion_state")[0][0] == {
         "bookmarks": {
             "splitgraph/splitgraph": {
                 "releases": {"since": "2020-10-14T11:06:42.786589Z"},
