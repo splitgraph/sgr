@@ -24,14 +24,26 @@ from splitgraph.hooks.data_source.base import (
     SyncableDataSource,
     SyncState,
 )
-from splitgraph.ingestion.singer.db_sync import get_table_name, get_sg_schema, run_patched_sync
+from splitgraph.ingestion.singer.db_sync import (
+    get_table_name,
+    get_sg_schema,
+    run_patched_sync,
+    get_key_properties,
+)
 
 SingerConfig = Dict[str, Any]
-SingerProperties = Dict[str, Any]
+SingerCatalog = Dict[str, Any]
 SingerState = Dict[str, Any]
 
 
 class SingerDataSource(SyncableDataSource, ABC):
+    # Some taps (e.g. tap-github) use legacy --properties instead of --catalog
+    use_properties = False
+
+    # When True, the tap uses stream["schema"]["selected"] instead of
+    #  stream["metadata"][breadcrumb == []]["selected"
+    use_legacy_stream_selection = False
+
     @abstractmethod
     def get_singer_executable(self):
         raise NotImplementedError
@@ -39,7 +51,7 @@ class SingerDataSource(SyncableDataSource, ABC):
     def get_singer_config(self):
         return {**self.params, **self.credentials}
 
-    def _run_singer_discovery(self, config: Optional[SingerConfig] = None) -> SingerProperties:
+    def _run_singer_discovery(self, config: Optional[SingerConfig] = None) -> SingerCatalog:
         executable = self.get_singer_executable()
         args = [executable]
 
@@ -48,7 +60,7 @@ class SingerDataSource(SyncableDataSource, ABC):
 
             catalog = subprocess.check_output(args + ["--discover"])
 
-        return cast(SingerProperties, json.loads(catalog))
+        return cast(SingerCatalog, json.loads(catalog))
 
     @staticmethod
     def _add_file_arg(var, var_name, dir, args):
@@ -63,8 +75,7 @@ class SingerDataSource(SyncableDataSource, ABC):
         self,
         config: Optional[SingerConfig] = None,
         state: Optional[SingerState] = None,
-        properties: Optional[SingerProperties] = None,
-        catalog: Optional[SingerProperties] = None,
+        catalog: Optional[SingerCatalog] = None,
     ):
         executable = self.get_singer_executable()
 
@@ -73,8 +84,7 @@ class SingerDataSource(SyncableDataSource, ABC):
         with tempfile.TemporaryDirectory() as d:
             self._add_file_arg(config, "config", d, args)
             self._add_file_arg(state, "state", d, args)
-            self._add_file_arg(properties, "properties", d, args)
-            self._add_file_arg(catalog, "catalog", d, args)
+            self._add_file_arg(catalog, "properties" if self.use_properties else "catalog", d, args)
 
             logging.info("Running Singer tap. Arguments: %s", args)
             proc = subprocess.Popen(
@@ -113,7 +123,7 @@ class SingerDataSource(SyncableDataSource, ABC):
     ) -> str:
         config = self.get_singer_config()
         catalog = self._run_singer_discovery(config)
-        properties = select_streams(catalog, tables=tables)
+        catalog = self.build_singer_catalog(catalog, tables)
 
         base_image, new_image_hash = prepare_new_image(repository, image_hash)
         state = get_ingestion_state(repository, image_hash)
@@ -122,8 +132,7 @@ class SingerDataSource(SyncableDataSource, ABC):
         # Run the sink + target and capture the stdout (new state)
         output_stream = StringIO()
 
-        # TODO some taps use catalog, some use properties
-        with self._run_singer(config, state, properties=properties) as proc:
+        with self._run_singer(config, state, catalog=catalog) as proc:
             run_patched_sync(
                 repository,
                 base_image,
@@ -177,6 +186,13 @@ class SingerDataSource(SyncableDataSource, ABC):
         repository.commit_engines()
         return new_image_hash
 
+    def build_singer_catalog(
+        self, catalog: SingerCatalog, tables: Optional[TableInfo] = None
+    ) -> SingerCatalog:
+        return select_streams(
+            catalog, tables=tables, use_legacy_stream_selection=self.use_legacy_stream_selection
+        )
+
     def introspect(self) -> Dict[str, TableSchema]:
         config = self.get_singer_config()
         singer_schema = self._run_singer_discovery(config)
@@ -190,35 +206,27 @@ class SingerDataSource(SyncableDataSource, ABC):
 
 
 def select_streams(
-    catalog: SingerProperties, tables: Optional[TableInfo] = None
-) -> SingerProperties:
+    catalog: SingerCatalog, tables: Optional[TableInfo] = None, use_legacy_stream_selection=False
+) -> SingerCatalog:
     tables = list(tables) if tables else None
 
     for stream in catalog["streams"]:
         stream_name = get_table_name(stream)
-        # TODO tmp hack
-        # if stream_name == "issue_events": # not in [
-        # #     "stargazers",
-        # #     "assignees",
-        # #     "team_memberships",
-        # #     "teams",
-        # #     "team_members",
-        # #     "review_comments",
-        # #     "reviews",
-        # #     "collaborators",
-        # #     "commit_comments",
-        # #     "pull_requests",
-        # # ]:
-        #     continue
         if not tables or stream_name in tables:
-            # TODO should be selecting the empty breadcrumb here instead?
-            stream["metadata"][0]["metadata"]["selected"] = True
-            stream["schema"]["selected"] = True
+            if use_legacy_stream_selection:
+                # See https://github.com/singer-io/getting-started/blob/5182006a2bbe542d4e94e53ddc18b59c86fcd8a2/docs/SYNC_MODE.md#legacy-streamfield-selection
+                stream["schema"]["selected"] = True
+            else:
+                stream["metadata"][0]["metadata"]["selected"] = True
 
     return catalog
 
 
 class GenericSingerDataSource(SingerDataSource):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.tap_path = self.params.pop("tap_path")
+
     @classmethod
     def get_name(cls) -> str:
         return "Generic Singer tap"
@@ -228,7 +236,7 @@ class GenericSingerDataSource(SingerDataSource):
         return "Generic Singer tap"
 
     def get_singer_executable(self):
-        return self.params["tap_path"]
+        return self.tap_path
 
     credentials_schema = {"type": "object"}
     params_schema = {
