@@ -330,7 +330,9 @@ def test_singer_ingestion_errors(local_engine_empty):
 
 def test_singer_data_source_introspect(local_engine_empty):
     source = GenericSingerDataSource(
-        local_engine_empty, credentials={}, params={"tap_path": TEST_TAP}
+        local_engine_empty,
+        credentials={"some": "credential"},
+        params={"tap_path": TEST_TAP, "other": "param"},
     )
 
     schema = source.introspect()
@@ -339,7 +341,9 @@ def test_singer_data_source_introspect(local_engine_empty):
 
 def test_singer_data_source_sync(local_engine_empty):
     source = GenericSingerDataSource(
-        local_engine_empty, credentials={}, params={"tap_path": TEST_TAP}
+        local_engine_empty,
+        credentials={"some": "credential"},
+        params={"tap_path": TEST_TAP, "other": "param"},
     )
 
     repo = Repository.from_schema(TEST_REPO)
