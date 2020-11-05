@@ -13,6 +13,8 @@ jobs:
       DOCKER_REPO: splitgraph
       DOCKER_ENGINE_IMAGE: engine
       DOCKER_TAG: development
+      DBT_VENV: dbt_venv
+      TAP_MYSQL_VENV: tap_mysql_venv
 
     steps:
       - uses: actions/checkout@v2
@@ -49,9 +51,10 @@ jobs:
         run: |
           source "$HOME"/.poetry/env
           poetry run mypy splitgraph
-          poetry run pytest -v -m "not mounting and not example"
+          poetry run pytest test/ -v -m "not mounting and not example"
           ./wait-for-test-architecture.sh --mounting
-          poetry run pytest -v -m "mounting and not example" --cov-append
+          export PATH=$PATH:$TAP_MYSQL_VENV/bin
+          poetry run pytest test/ -v -m "mounting and not example" --cov-append
           ./.ci/down_architecture.sh
       - name: "Run example tests"
         # Don't run example tests if we're doing a release -- we'll be
@@ -59,7 +62,8 @@ jobs:
         if: "!startsWith(github.ref, 'refs/tags/') && !contains(github.event.head_commit.message, '[skip test]')"
         run: |
           source "$HOME"/.poetry/env
-          poetry run pytest -sv -m "example" --cov-append
+          export PATH=$PATH:$DBT_VENV/bin
+          poetry run pytest test/ -sv -m "example" --cov-append
       - name: "Submit coverage to Coveralls"
         if: "!contains(github.event.head_commit.message, '[skip test]')"
         env:
