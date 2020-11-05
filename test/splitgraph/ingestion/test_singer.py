@@ -1,18 +1,20 @@
 import json
 import os
+import shutil
 from datetime import datetime
 from decimal import Decimal
+from unittest import mock
 
-from click.testing import CliRunner
 import psycopg2
+import pytest
+from click.testing import CliRunner
+from test.splitgraph.conftest import INGESTION_RESOURCES
 
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableColumn
 from splitgraph.engine import ResultShape
-from test.splitgraph.conftest import INGESTION_RESOURCES
-
 from splitgraph.ingestion.singer.commandline import singer_target
-from splitgraph.ingestion.singer.data_source import GenericSingerDataSource
+from splitgraph.ingestion.singer.data_source import GenericSingerDataSource, MySQLSingerDataSource
 
 TEST_REPO = "test/singer"
 TEST_TAP = os.path.join(INGESTION_RESOURCES, "singer/fake_tap.py")
@@ -378,3 +380,156 @@ def test_singer_data_source_sync(local_engine_empty):
             }
         }
     }
+
+
+def _source(local_engine_empty):
+    return MySQLSingerDataSource(
+        engine=local_engine_empty,
+        params={"replication_method": "INCREMENTAL", "host": "localhost", "port": 3306,},
+        credentials={"user": "originuser", "password": "originpass",},
+    )
+
+
+@pytest.mark.skipif(shutil.which("tap-mysql") is None, reason="tap-mysql is missing in PATH")
+def test_singer_tap_mysql_introspection(local_engine_empty):
+    source = _source(local_engine_empty)
+    assert source.introspect() == {
+        "mushrooms": [
+            TableColumn(
+                ordinal=0,
+                name="discovery",
+                pg_type="timestamp without time zone",
+                is_pk=False,
+                comment=None,
+            ),
+            TableColumn(ordinal=1, name="friendly", pg_type="boolean", is_pk=False, comment=None),
+            TableColumn(ordinal=2, name="mushroom_id", pg_type="integer", is_pk=True, comment=None),
+            TableColumn(
+                ordinal=3, name="name", pg_type="character varying", is_pk=False, comment=None
+            ),
+        ],
+    }
+
+    singer_config = source.get_singer_config()
+    assert singer_config == {
+        "host": "localhost",
+        "password": "originpass",
+        "port": 3306,
+        "replication_method": "INCREMENTAL",
+        "user": "originuser",
+    }
+
+    singer_catalog = source._run_singer_discovery(singer_config)
+    assert singer_catalog == {
+        "streams": [
+            {
+                "metadata": [
+                    {
+                        "breadcrumb": [],
+                        "metadata": {
+                            "database-name": "mysqlschema",
+                            "is-view": False,
+                            "row-count": 2,
+                            "selected-by-default": False,
+                            "table-key-properties": ["mushroom_id"],
+                        },
+                    },
+                    {
+                        "breadcrumb": ["properties", "discovery"],
+                        "metadata": {"selected-by-default": True, "sql-datatype": "datetime"},
+                    },
+                    {
+                        "breadcrumb": ["properties", "friendly"],
+                        "metadata": {"selected-by-default": True, "sql-datatype": "tinyint(1)"},
+                    },
+                    {
+                        "breadcrumb": ["properties", "mushroom_id"],
+                        "metadata": {"selected-by-default": True, "sql-datatype": "int(11)"},
+                    },
+                    {
+                        "breadcrumb": ["properties", "name"],
+                        "metadata": {"selected-by-default": True, "sql-datatype": "varchar(20)",},
+                    },
+                ],
+                "schema": {
+                    "properties": {
+                        "discovery": {
+                            "format": "date-time",
+                            "inclusion": "available",
+                            "type": ["null", "string"],
+                        },
+                        "friendly": {"inclusion": "available", "type": ["null", "boolean"]},
+                        "mushroom_id": {
+                            "inclusion": "automatic",
+                            "maximum": 2147483647,
+                            "minimum": -2147483648,
+                            "type": ["null", "integer"],
+                        },
+                        "name": {
+                            "inclusion": "available",
+                            "maxLength": 20,
+                            "type": ["null", "string"],
+                        },
+                    },
+                    "type": "object",
+                },
+                "stream": "mushrooms",
+                "table_name": "mushrooms",
+                "tap_stream_id": "mysqlschema-mushrooms",
+            }
+        ]
+    }
+
+    selected_catalog = source.build_singer_catalog(singer_catalog, tables=None)
+    assert selected_catalog["streams"][0]["metadata"][0] == {
+        "breadcrumb": [],
+        "metadata": {
+            "database-name": "mysqlschema",
+            "is-view": False,
+            "replication-key": "mushroom_id",
+            "replication-method": "INCREMENTAL",
+            "row-count": 2,
+            "selected": True,
+            "selected-by-default": False,
+            "table-key-properties": ["mushroom_id"],
+        },
+    }
+
+
+@pytest.mark.skipif(shutil.which("tap-mysql") is None, reason="tap-mysql is missing in PATH")
+def test_singer_tap_mysql_sync(local_engine_empty):
+    source = _source(local_engine_empty)
+    repo = Repository.from_schema(TEST_REPO)
+
+    source.sync(repo, "latest")
+
+    assert len(repo.images()) == 1
+    image = repo.images["latest"]
+    assert sorted(image.get_tables()) == ["_sg_ingestion_state", "mushrooms"]
+    image.checkout()
+
+    assert repo.run_sql("SELECT * FROM mushrooms ORDER BY mushroom_id ASC") == [
+        (datetime(2012, 11, 11, 8, 6, 26), True, 1, "portobello"),
+        (datetime(2018, 3, 17, 8, 6, 26), False, 2, "deathcap"),
+    ]
+    assert repo.run_sql("SELECT state FROM _sg_ingestion_state")[0][0] == {
+        "bookmarks": {
+            "mysqlschema-mushrooms": {
+                "replication_key": "mushroom_id",
+                "replication_key_value": 2,
+                "version": mock.ANY,
+            }
+        },
+        "currently_syncing": None,
+    }
+    assert image.get_table("mushrooms").objects == [
+        "o69e4529709af65f37f2e2f3a8290340ae7ad9ada6bca9c393a09572f12cbb3"
+    ]
+
+    # Run replication one more time -- check that we didn't add any more rows
+    source.sync(repo, "latest")
+    assert len(repo.images()) == 1
+    image = repo.images["latest"]
+    assert image.get_table("mushrooms").objects == [
+        "o69e4529709af65f37f2e2f3a8290340ae7ad9ada6bca9c393a09572f12cbb3"
+    ]

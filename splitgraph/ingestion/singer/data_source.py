@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from io import StringIO
 from threading import Thread
-from typing import Dict, Any, Optional, cast
+from typing import Dict, Any, Optional, cast, List
 
 from psycopg2._json import Json
 from psycopg2.sql import Identifier, SQL
@@ -244,3 +244,74 @@ class GenericSingerDataSource(SingerDataSource):
         "properties": {"tap_path": {"type": "string"}},
         "required": ["tap_path"],
     }
+
+
+class MySQLSingerDataSource(SingerDataSource):
+    params_schema = {
+        "type": "object",
+        "properties": {
+            "replication_method": {
+                "type": "string",
+                "enum": ["INCREMENTAL", "LOG_BASED", "FULL TABLE"],
+            },
+            "host": {"type": "string"},
+            "port": {"type": "integer"},
+        },
+        "required": ["host", "port", "replication_method"],
+    }
+
+    credentials_schema = {
+        "type": "object",
+        "properties": {"user": {"type": "string"}, "password": {"type": "string"}},
+        "required": ["user", "password"],
+    }
+
+    use_properties = True
+    use_legacy_stream_selection = False
+
+    def get_singer_executable(self):
+        return "tap-mysql"
+
+    @classmethod
+    def get_name(cls) -> str:
+        return "Singer MySQL tap"
+
+    @classmethod
+    def get_description(cls) -> str:
+        return "Singer MySQL tap"
+
+    def build_singer_catalog(self, catalog: SingerCatalog, tables: Optional[TableInfo] = None):
+        for stream in catalog["streams"]:
+            stream_name = get_table_name(stream)
+
+            # tap-mysql requires the table metadata to contain the replication type
+            if not tables or stream_name in tables:
+                stream["metadata"][0]["metadata"]["selected"] = True
+
+                replication_method = self.params["replication_method"]
+                replication_key: Optional[str] = None
+
+                if replication_method == "INCREMENTAL":
+                    key_properties = get_key_properties(stream)
+                    if not key_properties:
+                        logging.warning(
+                            "Table %s has replication_method INCREMENTAL but no primary key. "
+                            "Falling back to FULL TABLE",
+                            stream_name,
+                        )
+                        replication_method = "FULL TABLE"
+                        replication_key = None
+                    elif len(key_properties) > 1:
+                        logging.warning(
+                            "Table %s has a composite primary key. Falling back to FULL TABLE",
+                            stream_name,
+                        )
+                        replication_method = "FULL TABLE"
+                        replication_key = None
+                    else:
+                        replication_key = key_properties[0]
+
+                stream["metadata"][0]["metadata"]["replication-method"] = replication_method
+                if replication_key:
+                    stream["metadata"][0]["metadata"]["replication-key"] = replication_key
+        return catalog
