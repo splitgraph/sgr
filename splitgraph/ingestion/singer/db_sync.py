@@ -17,6 +17,15 @@ from splitgraph.ingestion.common import merge_tables
 from ._utils import _migrate_schema, log_exception, _make_changeset, rollback_at_end
 
 
+def get_key_properties(stream_message):
+    if "key_properties" in stream_message:
+        return stream_message["key_properties"]
+
+    # New-style?
+    # TODO select breadcrumb
+    return stream_message["metadata"][0]["metadata"].get("table-key-properties", [])
+
+
 class DbSyncProxy(DbSync):
     def __init__(self, *args, **kwargs):
         # The structure here is that we edit an image and write / modify tables in it. This
@@ -30,7 +39,7 @@ class DbSyncProxy(DbSync):
 
     def _sg_schema(self) -> TableSchema:
         stream_schema_message = self.stream_schema_message
-        return _get_sg_schema(self.flatten_schema, stream_schema_message["key_properties"])
+        return _get_sg_schema(self.flatten_schema, get_key_properties(stream_schema_message))
 
     def create_indices(self, stream):
         pass
@@ -203,7 +212,14 @@ class DbSyncProxy(DbSync):
         # the object to the table if it already exists)
         self.image.repository.objects.register_tables(
             self.image.repository,
-            [(self.image.image_hash, old_table.table_name, old_table.table_schema, object_ids,)],
+            [
+                (
+                    self.image.image_hash,
+                    old_table.table_name,
+                    old_table.table_schema,
+                    object_ids,
+                )
+            ],
         )
 
     def delete_rows(self, stream):
@@ -225,7 +241,7 @@ def _get_sg_schema(flattened_schema, primary_key) -> TableSchema:
 def get_sg_schema(stream_schema_message, flattening_max_level=0):
     return _get_sg_schema(
         flatten_schema(stream_schema_message["schema"], max_level=flattening_max_level),
-        stream_schema_message["key_properties"],
+        get_key_properties(stream_schema_message),
     )
 
 
