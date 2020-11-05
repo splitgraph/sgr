@@ -17,13 +17,21 @@ from splitgraph.ingestion.common import merge_tables
 from ._utils import _migrate_schema, log_exception, _make_changeset, rollback_at_end
 
 
+def select_breadcrumb(stream_message, breadcrumb):
+    for sub_meta in stream_message["metadata"]:
+        if sub_meta["breadcrumb"] == breadcrumb:
+            return sub_meta["metadata"]
+
+    raise ValueError("Breadcrumb %s not found!" % breadcrumb)
+
+
 def get_key_properties(stream_message):
+    """Extract the PK from a stream message. Supports both legacy ("key_properties") and
+    new ("metadata") Singer taps."""
     if "key_properties" in stream_message:
         return stream_message["key_properties"]
 
-    # New-style?
-    # TODO select breadcrumb
-    return stream_message["metadata"][0]["metadata"].get("table-key-properties", [])
+    return select_breadcrumb(stream_message, []).get("table-key-properties", [])
 
 
 class DbSyncProxy(DbSync):
@@ -212,14 +220,7 @@ class DbSyncProxy(DbSync):
         # the object to the table if it already exists)
         self.image.repository.objects.register_tables(
             self.image.repository,
-            [
-                (
-                    self.image.image_hash,
-                    old_table.table_name,
-                    old_table.table_schema,
-                    object_ids,
-                )
-            ],
+            [(self.image.image_hash, old_table.table_name, old_table.table_schema, object_ids,)],
         )
 
     def delete_rows(self, stream):
