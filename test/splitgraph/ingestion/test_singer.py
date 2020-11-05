@@ -395,6 +395,7 @@ def _source(local_engine_empty):
 
 
 @pytest.mark.skipif(shutil.which("tap-mysql") is None, reason="tap-mysql is missing in PATH")
+@pytest.mark.mounting
 def test_singer_tap_mysql_introspection(local_engine_empty):
     source = _source(local_engine_empty)
     assert source.introspect() == {
@@ -501,6 +502,7 @@ def test_singer_tap_mysql_introspection(local_engine_empty):
 
 
 @pytest.mark.skipif(shutil.which("tap-mysql") is None, reason="tap-mysql is missing in PATH")
+@pytest.mark.mounting
 def test_singer_tap_mysql_sync(local_engine_empty):
     source = _source(local_engine_empty)
     repo = Repository.from_schema(TEST_REPO)
