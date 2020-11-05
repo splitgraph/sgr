@@ -7,9 +7,8 @@ from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from io import StringIO
 from threading import Thread
-from typing import Dict, Any, Optional, cast, List
+from typing import Dict, Any, Optional, cast
 
-from psycopg2._json import Json
 from psycopg2.sql import Identifier, SQL
 
 from splitgraph.core.repository import Repository
@@ -29,6 +28,7 @@ from splitgraph.ingestion.singer.db_sync import (
     get_sg_schema,
     run_patched_sync,
     get_key_properties,
+    select_breadcrumb,
 )
 
 SingerConfig = Dict[str, Any]
@@ -286,7 +286,7 @@ class MySQLSingerDataSource(SingerDataSource):
 
             # tap-mysql requires the table metadata to contain the replication type
             if not tables or stream_name in tables:
-                stream["metadata"][0]["metadata"]["selected"] = True
+                select_breadcrumb(stream, [])["selected"] = True
 
                 replication_method = self.params["replication_method"]
                 replication_key: Optional[str] = None
@@ -311,7 +311,7 @@ class MySQLSingerDataSource(SingerDataSource):
                     else:
                         replication_key = key_properties[0]
 
-                stream["metadata"][0]["metadata"]["replication-method"] = replication_method
+                select_breadcrumb(stream, [])["replication-method"] = replication_method
                 if replication_key:
-                    stream["metadata"][0]["metadata"]["replication-key"] = replication_key
+                    select_breadcrumb(stream, [])["replication-key"] = replication_key
         return catalog
