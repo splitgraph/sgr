@@ -63,7 +63,7 @@ jobs:
         run: |
           source "$HOME"/.poetry/env
           export PATH=$PATH:$DBT_VENV/bin
-          poetry run pytest test/ -sv -m "example" --cov-append
+          poetry run pytest examples/ -sv -m "example" --cov-append
       - name: "Submit coverage to Coveralls"
         if: "!contains(github.event.head_commit.message, '[skip test]')"
         env:
