@@ -15,6 +15,7 @@ from splitgraph.core.types import TableColumn
 from splitgraph.engine import ResultShape
 from splitgraph.ingestion.singer.commandline import singer_target
 from splitgraph.ingestion.singer.data_source import GenericSingerDataSource, MySQLSingerDataSource
+from splitgraph.ingestion.singer.db_sync import select_breadcrumb
 
 TEST_REPO = "test/singer"
 TEST_TAP = os.path.join(INGESTION_RESOURCES, "singer/fake_tap.py")
@@ -428,34 +429,7 @@ def test_singer_tap_mysql_introspection(local_engine_empty):
     assert singer_catalog == {
         "streams": [
             {
-                "metadata": [
-                    {
-                        "breadcrumb": [],
-                        "metadata": {
-                            "database-name": "mysqlschema",
-                            "is-view": False,
-                            "row-count": 2,
-                            "selected-by-default": False,
-                            "table-key-properties": ["mushroom_id"],
-                        },
-                    },
-                    {
-                        "breadcrumb": ["properties", "discovery"],
-                        "metadata": {"selected-by-default": True, "sql-datatype": "datetime"},
-                    },
-                    {
-                        "breadcrumb": ["properties", "friendly"],
-                        "metadata": {"selected-by-default": True, "sql-datatype": "tinyint(1)"},
-                    },
-                    {
-                        "breadcrumb": ["properties", "mushroom_id"],
-                        "metadata": {"selected-by-default": True, "sql-datatype": "int(11)"},
-                    },
-                    {
-                        "breadcrumb": ["properties", "name"],
-                        "metadata": {"selected-by-default": True, "sql-datatype": "varchar(20)",},
-                    },
-                ],
+                "metadata": mock.ANY,
                 "schema": {
                     "properties": {
                         "discovery": {
@@ -485,19 +459,45 @@ def test_singer_tap_mysql_introspection(local_engine_empty):
         ]
     }
 
-    selected_catalog = source.build_singer_catalog(singer_catalog, tables=None)
-    assert selected_catalog["streams"][0]["metadata"][0] == {
-        "breadcrumb": [],
-        "metadata": {
-            "database-name": "mysqlschema",
-            "is-view": False,
-            "replication-key": "mushroom_id",
-            "replication-method": "INCREMENTAL",
-            "row-count": 2,
-            "selected": True,
-            "selected-by-default": False,
-            "table-key-properties": ["mushroom_id"],
+    assert sorted(singer_catalog["streams"][0]["metadata"], key=lambda m: m["breadcrumb"]) == [
+        {
+            "breadcrumb": [],
+            "metadata": {
+                "database-name": "mysqlschema",
+                "is-view": False,
+                "row-count": 2,
+                "selected-by-default": False,
+                "table-key-properties": ["mushroom_id"],
+            },
         },
+        {
+            "breadcrumb": ["properties", "discovery"],
+            "metadata": {"selected-by-default": True, "sql-datatype": "datetime"},
+        },
+        {
+            "breadcrumb": ["properties", "friendly"],
+            "metadata": {"selected-by-default": True, "sql-datatype": "tinyint(1)"},
+        },
+        {
+            "breadcrumb": ["properties", "mushroom_id"],
+            "metadata": {"selected-by-default": True, "sql-datatype": "int(11)"},
+        },
+        {
+            "breadcrumb": ["properties", "name"],
+            "metadata": {"selected-by-default": True, "sql-datatype": "varchar(20)",},
+        },
+    ]
+
+    selected_catalog = source.build_singer_catalog(singer_catalog, tables=None)
+    assert select_breadcrumb(selected_catalog["streams"][0], []) == {
+        "database-name": "mysqlschema",
+        "is-view": False,
+        "replication-key": "mushroom_id",
+        "replication-method": "INCREMENTAL",
+        "row-count": 2,
+        "selected": True,
+        "selected-by-default": False,
+        "table-key-properties": ["mushroom_id"],
     }
 
 
