@@ -1,16 +1,23 @@
 import json
+import os
 import tempfile
 from decimal import Decimal
+from unittest import mock
 
 import pytest
 from click.testing import CliRunner
-from test.splitgraph.conftest import OUTPUT, MG_MNT
+from test.splitgraph.conftest import OUTPUT, MG_MNT, INGESTION_RESOURCES
 
 from splitgraph.commandline import status_c, rm_c, cleanup_c, init_c, mount_c, import_c
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.repository import Repository
 from splitgraph.hooks.data_source.fdw import PostgreSQLDataSource
-from splitgraph.hooks.data_source import get_data_sources, _load_source
+from splitgraph.hooks.data_source import (
+    get_data_sources,
+    _load_source,
+    get_data_source,
+    _register_plugin_dir_data_sources,
+)
 from splitgraph.ingestion.socrata.mount import SocrataDataSource
 
 _MONGO_PARAMS = {
@@ -122,11 +129,26 @@ def test_mount_fallback(local_engine_empty):
     # as classes (the default overrides them in this case and emits a warning).
 
     assert (
-            _load_source("postgres_fdw", "splitgraph.hooks.mount_handlers.mount_postgres")
-            == PostgreSQLDataSource
+        _load_source("postgres_fdw", "splitgraph.hooks.mount_handlers.mount_postgres")
+        == PostgreSQLDataSource
     )
 
     assert (
-            _load_source("socrata", "splitgraph.ingestion.socrata.mount.mount_socrata")
-            == SocrataDataSource
+        _load_source("socrata", "splitgraph.ingestion.socrata.mount.mount_socrata")
+        == SocrataDataSource
     )
+
+
+def test_mount_plugin_dir():
+    with mock.patch(
+        "splitgraph.hooks.data_source.get_singleton",
+        return_value=os.path.join(INGESTION_RESOURCES, "../custom_plugin_dir"),
+    ):
+        _register_plugin_dir_data_sources()
+
+    plugin_class = get_data_source("some_plugin")
+    plugin = plugin_class(
+        engine=None, credentials={"access_token": "abc"}, params={"some_field": "some_value"}
+    )
+    assert plugin.introspect() == {"some_table": []}
+    assert plugin.get_name() == "Test Data Source"
