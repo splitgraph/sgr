@@ -2,7 +2,7 @@ import logging
 import os
 import types
 from importlib import import_module
-from typing import Dict, Type, List, Any
+from typing import Dict, Type, List
 
 from .base import DataSource
 from .fdw import PostgreSQLDataSource, MongoDataSource, ElasticSearchDataSource, MySQLDataSource
@@ -55,12 +55,14 @@ def _register_default_data_sources() -> None:
             raise DataSourceError("Error loading custom data source {0}".format(source_name)) from e
 
     # Load data sources from the additional path
+    _register_plugin_dir_data_sources()
+
+
+def _register_plugin_dir_data_sources():
     plugin_dir = get_singleton(CONFIG, "SG_PLUGIN_DIR")
     if not plugin_dir:
         return
-
     logging.debug("Looking up plugins in %s", plugin_dir)
-
     for plugin in os.listdir(plugin_dir):
         plugin_file = os.path.join(plugin_dir, plugin, "plugin.py")
         if os.path.exists(plugin_file):
