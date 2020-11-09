@@ -6,4 +6,4 @@ SG_ENGINE_USER=sgr
 SG_ENGINE_PWD=supersecure
 
 [data_sources]
-mongo_fdw=splitgraph.hooks.mount_handlers.mount_mongo
+mongo_fdw=splitgraph.hooks.data_source.MongoDataSource
