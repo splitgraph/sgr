@@ -92,7 +92,7 @@ necessary. Specifically, the necessary environment variables:
 
 - `POSTGRES_USER`: Defaults to `sgr`
 - `POSTGRES_DB`: Defaults to `splitgraph`
-- `POSTGRES_PASSWORD`: Defaults to `supersecure`
+- `POSTGRES_PASSWORD`: Must be set by you
 
 ## Extending the engine
 
