@@ -16,7 +16,7 @@ The published docker image can be found on Docker hub at
 Currently, the engine is based on the
 [official Docker postgres image](https://hub.docker.com/_/postgres/), and
 performs a few additional tasks necessary for running Splitgraph and [mounting
-external databases](https://www.splitgraph.com/docs/ingesting-data/foreign-data-wrappers/introduction) (MongoDB/PostgreSQL/MySQL):
+external databases](https://www.splitgraph.com/docs/ingesting-data/foreign-data-wrappers/introduction) (MongoDB/PostgreSQL/MySQL/Elasticsearch):
 
 * Installs foreign data wrapper (FDW) extensions:
     * [EnterpriseDB/mongo_fdw](https://github.com/EnterpriseDB/mongo_fdw.git)
@@ -29,6 +29,7 @@ external databases](https://www.splitgraph.com/docs/ingesting-data/foreign-data-
       for a custom query handler that allows to query images without checking them
       out (layered querying), as well as allow others to write custom
       foreign data wrappers.
+    * [Fork](https://github.com/splitgraph/postgres-elasticsearch-fdw) of [matthewfranglen/postgres-elasticsearch-fdw](https://github.com/matthewfranglen/postgres-elasticsearch-fdw) to mount Elasticsearch indexes
 * Installs the [Splitgraph command line client and library](https://github.com/splitgraph/splitgraph.git)
     that is required for layered querying.
 * Optionally installs the [PostGIS](https://postgis.net/) extension to handle geospatial
@@ -89,9 +90,9 @@ All of the environment variables documented in the
 the engine. At the moment, there are no additional environment variables
 necessary. Specifically, the necessary environment variables:
 
-- `POSTGRES_USER`: Defaults to `clientuser`
-- `POSTGRES_DB`: Defaults to `cachedb`
-- `POSTGRES_PASSWORD`: Must be set by you
+- `POSTGRES_USER`: Defaults to `sgr`
+- `POSTGRES_DB`: Defaults to `splitgraph`
+- `POSTGRES_PASSWORD`: Defaults to `supersecure`
 
 ## Extending the engine
 
