@@ -63,6 +63,8 @@ default user `sgr`, and database `splitgraph` (see "environment variables"):
 docker run -d \
     -e POSTGRES_PASSWORD=supersecure \
     -p 5432:5432 \
+    -e SG_CONFIG_FILE=/.sgconfig \
+    -v $HOME/.splitgraph/.sgconfig:/.sgconfig  \
     splitgraph/engine
 ```
 
@@ -75,9 +77,14 @@ engine:
     - 5432:5432
   environment:
     - POSTGRES_PASSWORD=supersecure
+    - SG_CONFIG_FILE=/.sgconfig
+  volumes:
+    - $HOME/.splitgraph/.sgconfig:/.sgconfig
 ```
 
 And then simply run `docker-compose up -d engine`
+
+Note that if you're logged into Splitgraph Cloud, you will need to manually **bind mount your `.sgconfig` file** into the engine so that it knows how to authenticate with data.splitgraph.com. This is done automatically with the [`sgr engine`](https://www.splitgraph.com/docs/sgr/engine-management/engine-add) wrapper. More information [in the documentation](https://www.splitgraph.com/docs/configuration/introduction#in-engine-configuration).
 
 **Important**:  Make sure that your
 [splitgraph client](https://www.github.com/splitgraph/splitgraph) is configured
