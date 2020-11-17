@@ -8,11 +8,11 @@
 ## Overview
 
 **Splitgraph** is a tool for building, versioning and querying reproducible datasets. It's inspired
-by Docker and Git, so it feels familiar. And it's powered by [PostgreSQL](https://postgresql.org), so it [works seamlessly with existing tools](https://www.splitgraph.com/product/splitgraph/integrations) in the Postgres ecosystem. Use Splitgraph to package your data into self-contained **data images** that you can [share with other Splitgraph instances](https://www.splitgraph.com/docs/getting-started/decentralized-demo).
+by Docker and Git, so it feels familiar. And it's powered by [PostgreSQL](https://postgresql.org), so it [works seamlessly with existing tools](https://www.splitgraph.com/connect) in the Postgres ecosystem. Use Splitgraph to package your data into self-contained **data images** that you can [share with other Splitgraph instances](https://www.splitgraph.com/docs/getting-started/decentralized-demo).
 
 [**Splitgraph.com**](https://www.splitgraph.com), or **Splitgraph Cloud**, is a public Splitgraph instance where you can share and discover data. It's a Splitgraph peer powered by the **Splitgraph Core** code in this repository, adding proprietary features like a data catalog, multitenancy, and a distributed SQL proxy.
 
-You can explore [40k+ open datasets](https://www.splitgraph.com/explore) in the catalog. You can also connect directly to the [Data Delivery Network](https://www.splitgraph.com/docs/splitgraph-cloud/data-delivery-network) and query any of the datasets, without installing anything.
+You can explore [40k+ open datasets](https://www.splitgraph.com/explore) in the catalog. You can also connect directly to the [Data Delivery Network](https://www.splitgraph.com/connect) and query any of the datasets, without installing anything.
 
 To install `sgr` (the command line client) or a local Splitgraph Engine, see the [Installation](#installation) section of this readme.
 
