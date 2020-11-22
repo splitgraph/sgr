@@ -484,7 +484,7 @@ If a dictionary, must have the format
         return {"username": self.credentials["username"], "password": self.credentials["password"]}
 
     def get_table_options(self, table_name: str):
-        return {"schema_name": self.params["remote_schema"]}
+        return {"dbname": self.params["remote_schema"]}
 
     def get_fdw_name(self):
         return "mysql_fdw"
