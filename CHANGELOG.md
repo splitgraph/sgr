@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.2.4 (2020-12-08)
+
+  * Mount handlers are now called "data sources", a generalization that will make them more pluggable
+    and support sources beyond FDWs. See https://github.com/splitgraph/splitgraph/pull/324 for more documentation and necessary steps to migrate.
+  * Added `sgr singer target`, a Singer-compatible target that can read [Singer tap](https://github.com/singer-io/getting-started/blob/master/docs/SPEC.md#singer-specification) output from stdin and build Splitgraph images. It's based on a fork of https://github.com/transferwise/pipelinewise-singer-python with additions that let us produce deltas and ingest them directly as Splitgraph objects.
+  * Support for dynamically loading plugins without specifying them in `.sgconfig`, by looking up plugins in a certain directory (see https://github.com/splitgraph/splitgraph/pull/329)
+
+Full set of changes: [`v0.2.3...v0.2.4`](https://github.com/splitgraph/splitgraph/compare/v0.2.3...v0.2.4)    
+
 ## v0.2.3 (2020-09-16)
 
   * Socrata FDW now correctly emits `IS NULL / IS NOT NULL`, same with ES (using ES query syntax).
