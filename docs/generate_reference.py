@@ -34,7 +34,7 @@ from splitgraph.commandline.ingestion import csv_export, csv_import
 
 # Map category to Click commands -- maybe eventually we'll read this dynamically...
 from splitgraph.config.keys import KEYS, KEY_DOCS, DEFAULTS
-from splitgraph.ingestion.singer import singer_target
+from splitgraph.ingestion.singer.commandline import singer_target
 
 STRUCTURE = [
     ("Image management/creation", ["checkout", "commit", "tag", "import", "reindex"]),
