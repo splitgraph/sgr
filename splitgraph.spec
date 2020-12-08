@@ -10,9 +10,10 @@ import importlib
 block_cipher = None
 
 datas = []
-for package, files in [("singer", ["logging.conf"])]:
-    proot = os.path.dirname(importlib.import_module(package).__file__)
-    datas.extend((os.path.join(proot, f), package) for f in files)
+# Commented out, here for reference (adding extra package files to PyInstaller)
+# for package, files in [("singer", ["logging.conf"])]:
+#     proot = os.path.dirname(importlib.import_module(package).__file__)
+#     datas.extend((os.path.join(proot, f), package) for f in files)
 
 a = Analysis(['bin/sgr'],
              pathex=['.'],
