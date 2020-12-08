@@ -1,11 +1,12 @@
-from typing import Dict
+from typing import Dict, Mapping
 
 from splitgraph.core.types import TableColumn, TableSchema
-from splitgraph.hooks.data_source import ForeignDataWrapperDataSource
 
 # Define the schema of the foreign table we wish to create
 # We're only going to be fetching stories, so limit the columns to the ones that
 # show up for stories. See https://github.com/HackerNews/API for reference.
+from splitgraph.hooks.data_source.fdw import ForeignDataWrapperDataSource
+
 _story_schema_spec = [
     TableColumn(1, "id", "integer", True),
     TableColumn(2, "by", "text", False),
@@ -31,6 +32,13 @@ _all_endpoints = [
 class HackerNewsDataSource(ForeignDataWrapperDataSource):
     credentials_schema = {"type": "object"}
 
+    @classmethod
+    def from_commandline(cls, *args, **kwargs):
+        # Default to loading all endpoints
+        self = super().from_commandline(*args, **kwargs)
+        self.tables = self.tables or self.introspect()
+        return self
+
     params_schema = {
         "type": "object",
         "properties": {
@@ -44,7 +52,11 @@ class HackerNewsDataSource(ForeignDataWrapperDataSource):
 
     @classmethod
     def get_description(cls) -> str:
-        return "Hacker News stories through the Firebase API"
+        return "Query Hacker News stories through the Firebase API"
+
+    def get_table_options(self, table_name: str) -> Mapping[str, str]:
+        # Pass the endpoint name into the FDW
+        return {"table": table_name}
 
     def get_fdw_name(self):
         # Define the FDW that this plugin uses on the backend
@@ -59,5 +71,5 @@ class HackerNewsDataSource(ForeignDataWrapperDataSource):
 
     def introspect(self) -> Dict[str, TableSchema]:
         # Return a list of this FDW's tables and their schema.
-        endpoints = self.params["endpoints"] or _all_endpoints
+        endpoints = self.params.get("endpoints") or _all_endpoints
         return {e: _story_schema_spec for e in endpoints}
