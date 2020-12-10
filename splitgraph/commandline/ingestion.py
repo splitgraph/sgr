@@ -1,10 +1,11 @@
 """Command line tools for ingesting/exporting Splitgraph images into other formats."""
+import io
 import logging
 from itertools import islice
 
 import click
 
-from splitgraph.commandline.common import ImageType, RepositoryType
+from splitgraph.commandline.common import ImageType, RepositoryType, ResettableStream
 
 
 @click.group(name="csv")
@@ -60,7 +61,7 @@ def csv_export(image_spec, query, file, layered):
 @click.option(
     "-f",
     "--file",
-    type=click.File("r"),
+    type=click.File("rb"),
     default="-",
     help="File name to import data from, default stdin.",
 )
@@ -128,8 +129,8 @@ def csv_import(
             "Warning: primary key is not specified, using the whole row as primary key."
             "This is probably not something that you want."
         )
-
-    reader = csv.reader(file, delimiter=separator or ",")
+    stream = ResettableStream(file)
+    reader = csv.reader(io.TextIOWrapper(io.BufferedReader(stream)), delimiter=separator or ",")
 
     # Grab the first few rows from the CSV and give them to TableSchema.
     sample = list(islice(reader, 100))
@@ -142,10 +143,10 @@ def csv_import(
     sg_schema = infer_sg_schema(sample, override_types=type_overrides, primary_keys=primary_key)
     logging.debug("Using Splitgraph schema: %r", sg_schema)
 
-    # Seek the file back to beginning and pass it to the csv writer
-    file.seek(0)
+    # Reset the stream and pass it to COPY FROM STDIN
+    stream.reset()
     csv_adapter.to_table(
-        file,
+        io.TextIOWrapper(io.BufferedReader(stream)),
         repository,
         table,
         if_exists="replace" if replace else "patch",
