@@ -76,6 +76,6 @@ exclude = '''
 )/
 '''
 [build-system]
-requires = ["poetry==1.0.5"]
+requires = ["poetry==1.1.4"]
 build-backend = "poetry.masonry.api"
 
