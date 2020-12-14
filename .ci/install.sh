@@ -4,6 +4,8 @@ source "$HOME"/.poetry/env
 
 poetry export --dev -f requirements.txt --without-hashes -o /tmp/requirements.txt -E pandas
 sed -i "/ @ \//d" /tmp/requirements.txt
+python -m pip install -U pip
+cat /tmp/requirements.txt
 pip install --no-deps -r /tmp/requirements.txt
 poetry install -E pandas
 
