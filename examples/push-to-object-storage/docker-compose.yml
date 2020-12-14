@@ -26,7 +26,7 @@ services:
       - POSTGRES_PASSWORD=supersecure
       - POSTGRES_DB=splitgraph
       - SG_LOGLEVEL=INFO
-      - SG_S3_HOST=//objectstorage
+      - SG_S3_HOST=objectstorage
       - SG_S3_PORT=9000
       - SG_S3_KEY=minio_access_key
       - SG_S3_PWD=minio_secret_key
