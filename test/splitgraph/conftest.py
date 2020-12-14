@@ -4,7 +4,6 @@ import os
 import docker
 import docker.errors
 import pytest
-from minio.error import BucketAlreadyExists, BucketAlreadyOwnedByYou
 from psycopg2.sql import Identifier, SQL
 
 from splitgraph.commandline.engine import copy_to_container
@@ -481,12 +480,8 @@ def _cleanup_minio():
 
 @pytest.fixture
 def clean_minio():
-    try:
+    if not MINIO.bucket_exists(S3_BUCKET):
         MINIO.make_bucket(S3_BUCKET)
-    except BucketAlreadyExists:
-        pass
-    except BucketAlreadyOwnedByYou:
-        pass
 
     # Make sure to delete extra objects in the remote Minio bucket
     _cleanup_minio()
