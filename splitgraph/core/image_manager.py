@@ -7,6 +7,7 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.config import SPLITGRAPH_API_SCHEMA
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.image import IMAGE_COLS, Image
+from splitgraph.core.output import truncate_line
 from splitgraph.core.sql import select
 from splitgraph.core.types import ProvenanceLine
 from splitgraph.engine import ResultShape
@@ -14,6 +15,8 @@ from splitgraph.exceptions import ImageNotFoundError, RepositoryNotFoundError
 
 if TYPE_CHECKING:
     from splitgraph.core.repository import Repository
+
+_MAX_COMMENT_LEN = 4096
 
 
 class ImageManager:
@@ -178,6 +181,9 @@ class ImageManager:
         :param comment: Comment (defaults to empty)
         :param provenance_data: Provenance data that can be used to reconstruct the image.
         """
+
+        if comment:
+            comment = truncate_line(comment, _MAX_COMMENT_LEN)
 
         self.engine.run_sql(
             SQL("SELECT {}.add_image(%s, %s, %s, %s, %s, %s, %s)").format(
