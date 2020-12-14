@@ -37,7 +37,7 @@ DEFAULTS: ConfigDict = {
     "SG_CONFIG_DIR": "",
     "SG_REPO_LOOKUP": "",
     "SG_REPO_LOOKUP_OVERRIDE": "",
-    "SG_S3_HOST": "//localhost",
+    "SG_S3_HOST": "localhost",
     "SG_S3_PORT": "9000",
     "SG_S3_SECURE": "false",
     "SG_S3_BUCKET": "splitgraph",
