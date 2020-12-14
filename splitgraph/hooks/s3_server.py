@@ -5,6 +5,7 @@ from datetime import timedelta
 from typing import List
 
 from minio.api import Minio
+from minio.deleteobjects import DeleteObject
 
 from splitgraph.config import CONFIG
 
@@ -76,7 +77,7 @@ def delete_objects(client: Minio, object_ids: List[str]) -> None:
 
     # Expand the list of objects into actual files we store in Minio
     all_object_ids = [o + suffix for o in object_ids for suffix in ("", ".schema", ".footer")]
-    list(client.remove_objects(S3_BUCKET, all_object_ids))
+    list(client.remove_objects(S3_BUCKET, map(DeleteObject, all_object_ids)))
 
 
 def list_objects(client: Minio) -> List[str]:

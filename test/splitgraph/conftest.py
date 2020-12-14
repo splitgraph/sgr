@@ -4,6 +4,7 @@ import os
 import docker
 import docker.errors
 import pytest
+from minio.deleteobjects import DeleteObject
 from psycopg2.sql import Identifier, SQL
 
 from splitgraph.commandline.engine import copy_to_container
@@ -475,7 +476,7 @@ def _cleanup_minio():
     if MINIO.bucket_exists(S3_BUCKET):
         objects = [o.object_name for o in MINIO.list_objects(bucket_name=S3_BUCKET)]
         # remove_objects is an iterator, so we force evaluate it
-        list(MINIO.remove_objects(bucket_name=S3_BUCKET, objects_iter=objects))
+        list(MINIO.remove_objects(S3_BUCKET, map(DeleteObject, objects)))
 
 
 @pytest.fixture
