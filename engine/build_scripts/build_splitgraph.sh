@@ -14,7 +14,7 @@ source "$HOME"/.poetry/env
 poetry config virtualenvs.create false
 
 # Export the requirements into pip and install them separately (faster than Poetry)
-poetry export -f requirements.txt --without-hashes -o requirements.txt && sed -i "/^-e \.\./d" requirements.txt
+poetry export -f requirements.txt --without-hashes -o requirements.txt && sed -i "/ @ \//d" requirements.txt
 pip install --no-deps -r requirements.txt
 
 # We don't use pip/poetry here to install the package in "editable" mode as we
