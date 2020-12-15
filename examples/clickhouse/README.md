@@ -135,8 +135,8 @@ CREATE TABLE cambridge_cases (
 )
 ENGINE = ODBC(
 	'DSN=splitgraph_ddn',
-	'cambridgema-gov/covid19-cumulative-cases-by-date-tdt9-vq5y',
-	'covid19_cumulative_cases_by_date'
+	'cambridgema-gov/covid19-case-count-by-date-axxk-jvk8',
+	'covid19_case_count_by_date'
 );
 ```
 
