@@ -403,6 +403,21 @@ class GQLAPIClient:
             },
         )
 
+    @handle_gql_errors
+    def upsert_topics(self, namespace: str, repository: str, topics: List[str]):
+        return self._gql(
+            {
+                "operationName": "UpsertRepoTopics",
+                "variables": {"namespace": namespace, "repository": repository, "topics": topics,},
+                "query": "mutation UpsertRepoTopics( "
+                "$namespace: String!, $repository: String!, $topics: [String]!) {\n "
+                " __typename\n  "
+                "createRepoTopic(input: {repoTopic: "
+                "{namespace: $namespace, repository: $repository, topics: $topics}}) {\n    "
+                "clientMutationId\n    __typename\n  }\n}\n",
+            },
+        )
+
     def find_repository(
         self, query: str, limit: int = 10
     ) -> Tuple[int, List[Tuple[str, str, str]]]:

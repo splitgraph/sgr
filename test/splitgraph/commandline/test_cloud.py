@@ -489,6 +489,20 @@ def _gql_callback(request, uri, response_headers):
             "description: $description}, patch: {description: $description}}) {\n    "
             "clientMutationId\n    __typename\n  }\n}\n"
         )
+    elif body["operationName"] == "UpsertRepoTopics":
+        assert body["query"] == (
+            "mutation UpsertRepoTopics( "
+            "$namespace: String!, $repository: String!, $topics: [String]!) {\n "
+            " __typename\n  "
+            "createRepoTopic(input: {repoTopic: "
+            "{namespace: $namespace, repository: $repository, topics: $topics}}) {\n    "
+            "clientMutationId\n    __typename\n  }\n}\n"
+        )
+        assert body["variables"] == {
+            "namespace": "someuser",
+            "repository": "somerepo",
+            "topics": ["topic_1", "topic_2"],
+        }
     elif body["operationName"] == "FindRepositories":
         assert body["variables"] == {"query": "some_query", "limit": 20}
         response = {
@@ -551,6 +565,8 @@ def _gql_callback(request, uri, response_headers):
     elif body["operationName"] == "UpsertRepoDescription" and not body["variables"].get(
         "description"
     ):
+        response = error_response
+    elif body["operationName"] == "UpsertRepoTopics" and not body["variables"].get("topics"):
         response = error_response
     elif request.headers.get("Authorization") != "Bearer " + _SAMPLE_ACCESS:
         response = error_response
@@ -642,6 +658,9 @@ _EXPECTED_META = """
 readme: {}
 description: Description for a sample repo
 extra_keys: are ok for now
+topics:
+  - topic_1
+  - topic_2
 """
 
 
@@ -675,6 +694,7 @@ def test_commandline_metadata():
                 assert result.exit_code == 0
                 assert "README updated for repository someuser/somerepo." in result.output
                 assert "Description updated for repository someuser/somerepo." in result.output
+                assert "Topics updated for repository someuser/somerepo." in result.output
 
 
 @httpretty.activate(allow_net_connect=False)
