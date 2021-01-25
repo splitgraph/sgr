@@ -426,23 +426,30 @@ def description_c(remote, repository, description):
 def metadata_c(ctx, remote, repository, metadata_file):
     """Upload a metadata file to a Splitgraph repository.
 
-    The metadata file should be in YAML format and have two keys: `readme` and `description`.
+This can manipulate the repository's short description, README and topics.
 
-    For example:
+The metadata file must be a YAML file with the keys `readme`, `description` and `topics`. Omitting a key doesn't delete the value.
 
+For example:
+
+\b
 ```
 readme: dataset-readme.md
 description: Dataset description (160 characters max).
+topics:
+  - topic_1
+  - topic_2
 ```
     """
     import yaml
+    from splitgraph.cloud import GQLAPIClient
 
     metadata = yaml.safe_load(metadata_file)
 
-    if "readme" not in metadata and "description" not in metadata:
+    if "readme" not in metadata and "description" not in metadata and "topics" not in metadata:
         raise click.UsageError(
             "Invalid metadata file. File must contain at least one of "
-            "readme or description keys."
+            "readme/description/topics keys."
         )
 
     if "readme" in metadata:
@@ -453,6 +460,15 @@ description: Dataset description (160 characters max).
         ctx.invoke(
             description_c, remote=remote, repository=repository, description=metadata["description"]
         )
+
+    if "topics" in metadata:
+        # To clear out the topics, pass in an empty list instead of None.
+        topics = metadata["topics"] or []
+        client = GQLAPIClient(remote)
+        client.upsert_topics(
+            namespace=repository.namespace, repository=repository.repository, topics=topics,
+        )
+        click.echo("Topics updated for repository %s." % str(repository))
 
 
 @click.command("search")
