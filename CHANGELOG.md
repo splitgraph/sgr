@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.5 (2021-01-25)
+
+  * Fix piping CSV files from stdin (https://github.com/splitgraph/splitgraph/pull/350)
+  * Truncate commit comments if they're above the max field size (currently 4096) (https://github.com/splitgraph/splitgraph/pull/353)
+  * Add support for updating repository topics from the CLI (`sgr cloud metadata`) (https://github.com/splitgraph/splitgraph/pull/371)
+
+Full set of changes: [`v0.2.4...v0.2.5`](https://github.com/splitgraph/splitgraph/compare/v0.2.4...v0.2.5)
+
 ## v0.2.4 (2020-12-08)
 
   * Mount handlers are now called "data sources", a generalization that will make them more pluggable
