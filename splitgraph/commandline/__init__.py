@@ -61,7 +61,7 @@ logger.handlers = [ClickHandler()]
 logger.handlers[0].formatter = ColorFormatter()
 
 
-def _fullname(o):
+def get_exception_name(o):
     module = o.__class__.__module__
     if module is None or module == str.__class__.__module__:
         return o.__class__.__name__
@@ -129,7 +129,7 @@ class WithExceptionHandler(click.Group):
             if logger.getEffectiveLevel() == logging.DEBUG:
                 logger.error(traceback.format_exc())
             else:
-                logger.error("%s: %s" % (_fullname(exc), exc))
+                logger.error("%s: %s" % (get_exception_name(exc), exc))
             ctx.exit(code=2)
         finally:
             _do_version_check()

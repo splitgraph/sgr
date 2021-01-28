@@ -55,5 +55,10 @@ services:
     environment:
       MINIO_ACCESS_KEY: minioclient
       MINIO_SECRET_KEY: supersecure
-    # Run against a temporary throwaway space
-    command: server /tmp
+    volumes:
+      # Mount a "bucket" with some CSV files into our object storage
+      # https://github.com/minio/minio/issues/8949
+      # As always, Minio is very opinionated and doesn't allow "cross-device mounts" even in dev
+      # so we copy this in on startup.
+      - ./data/objectstorage:/objectstorage
+    entrypoint: /objectstorage/entrypoint.sh
