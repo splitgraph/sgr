@@ -1,9 +1,10 @@
 from splitgraph.core.types import TableColumn
+from splitgraph.hooks.s3_server import MINIO
 from splitgraph.ingestion.csv import CSVDataSource
 from splitgraph.ingestion.csv.fdw import CSVForeignDataWrapper
 
 
-def test_csv_introspection():
+def test_csv_introspection_s3():
     fdw_options = {
         "s3_endpoint": "objectstorage:9000",
         "s3_secure": "false",
@@ -38,7 +39,30 @@ def test_csv_introspection():
     #   delimiter/quotechar
 
 
-def test_csv_data_source(local_engine_empty):
+def test_csv_introspection_http():
+    # Pre-sign the S3 URL for an easy HTTP URL to test this
+    schema = CSVForeignDataWrapper.import_schema(
+        schema=None,
+        srv_options={"url": MINIO.presigned_get_object("test_csv", "some_prefix/fruits.csv")},
+        options={},
+        restriction_type=None,
+        restricts=[],
+    )
+    assert len(schema) == 1
+
+    assert schema[0] == {
+        "table_name": "data",
+        "schema": None,
+        "columns": [
+            {"column_name": "fruit_id", "type_name": "integer"},
+            {"column_name": "timestamp", "type_name": "timestamp"},
+            {"column_name": "name", "type_name": "character varying"},
+        ],
+        "options": None,
+    }
+
+
+def test_csv_data_source_s3(local_engine_empty):
     source = CSVDataSource(
         local_engine_empty,
         credentials={"s3_access_key": "minioclient", "s3_secret_key": "supersecure",},
@@ -72,4 +96,19 @@ def test_csv_data_source(local_engine_empty):
     assert len(preview["some_prefix/rdu-weather-history.csv"]) == 10
 
 
-# TODO test for HTTP
+def test_csv_data_source_http(local_engine_empty):
+    source = CSVDataSource(
+        local_engine_empty,
+        credentials={},
+        params={
+            "url": MINIO.presigned_get_object("test_csv", "some_prefix/rdu-weather-history.csv"),
+        },
+    )
+
+    schema = source.introspect()
+    assert len(schema.keys()) == 1
+    assert len(schema["data"]) == 28
+
+    preview = source.preview(schema)
+    assert len(preview.keys()) == 1
+    assert len(preview["data"]) == 10
