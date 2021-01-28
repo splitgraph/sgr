@@ -85,6 +85,23 @@ class CSVDataSource(ForeignDataWrapperDataSource):
             "s3_secure": {"type": "boolean", "description": "Whether to use HTTPS for S3 access"},
             "s3_bucket": {"type": "string", "description": "Bucket the object is in"},
             "s3_object_prefix": {"type": "string", "description": "Prefix for object in S3 bucket"},
+            "autodetect_header": {
+                "type": "boolean",
+                "description": "Detect whether the CSV file has a header automatically",
+            },
+            "autodetect_dialect": {
+                "type": "boolean",
+                "description": "Detect the CSV file's dialect (separator, quoting characters etc) automatically",
+            },
+            "header": {
+                "type": "boolean",
+                "description": "First line of the CSV file is its header",
+            },
+            "separator": {
+                "type": "string",
+                "description": "Character used to separate fields in the file",
+            },
+            "quotechar": {"type": "string", "description": "Character used to quote fields"},
         },
     }
 
@@ -108,7 +125,19 @@ class CSVDataSource(ForeignDataWrapperDataSource):
         options: Dict[str, Optional[str]] = {
             "wrapper": "splitgraph.ingestion.csv.fdw.CSVForeignDataWrapper"
         }
-        for k in ["s3_endpoint", "s3_secure", "s3_bucket", "s3_object_prefix", "s3_object"]:
+        for k in [
+            "s3_endpoint",
+            "s3_secure",
+            "s3_bucket",
+            "s3_object_prefix",
+            "s3_object",
+            "url",
+            "autodetect_dialect",
+            "autodetect_header",
+            "header",
+            "separator",
+            "quotechar",
+        ]:
             if k in self.params:
                 options[k] = str(self.params[k])
         for k in ["s3_access_key", "s3_secret_key"]:

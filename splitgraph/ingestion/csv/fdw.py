@@ -1,16 +1,17 @@
 import codecs
+import csv
 import io
 import logging
 from copy import deepcopy
+from csv import Dialect
 from itertools import islice
-from typing import Tuple
+from typing import Tuple, Dict, Any
 
 import requests
 from minio import Minio
+from urllib3 import HTTPResponse
 
 import splitgraph.config
-import csv
-
 from splitgraph.commandline import get_exception_name
 from splitgraph.commandline.common import ResettableStream
 from splitgraph.ingestion.inference import infer_sg_schema
@@ -35,6 +36,68 @@ except ImportError:
     log_to_postgres = print
 
 _PG_LOGLEVEL = logging.INFO
+
+
+def get_bool(params: Dict[str, str], key: str, default: bool = True) -> bool:
+    if key not in params:
+        return default
+    return params[key].lower() == "true"
+
+
+def make_csv_reader(
+    response: io.IOBase,
+    autodetect_header: bool = False,
+    autodetect_dialect: bool = False,
+    delimiter: str = ",",
+    quotechar: str = '"',
+    header: bool = True,
+):
+    stream = ResettableStream(response)
+    if autodetect_header or autodetect_dialect:
+        data = stream.read(2048)
+        assert data
+        sniffer_sample = data.decode("utf-8")
+        dialect = csv.Sniffer().sniff(sniffer_sample)
+        has_header = csv.Sniffer().has_header(sniffer_sample)
+        stream.reset()
+
+    csv_kwargs: Dict[str, Any] = (
+        {"dialect": dialect}
+        if autodetect_dialect
+        else {"delimiter": delimiter, "quotechar": quotechar}
+    )
+
+    if not autodetect_header:
+        has_header = header
+
+    reader = csv.reader(codecs.iterdecode(stream, "utf-8"), **csv_kwargs,)
+    return has_header, reader
+
+
+def _get_table_definition(response, fdw_options, table_name, table_options):
+    has_header, reader = make_csv_reader(
+        response,
+        autodetect_header=get_bool(fdw_options, "autodetect_header"),
+        autodetect_dialect=get_bool(fdw_options, "autodetect_dialect"),
+        header=get_bool(fdw_options, "header"),
+        delimiter=fdw_options.get("delimiter", ","),
+        quotechar=fdw_options.get("quotechar", '"'),
+    )
+    sample = list(islice(reader, 100))
+
+    if not has_header:
+        sample = [[str(i) for i in range(len(sample))]] + sample
+
+    sg_schema = infer_sg_schema(sample, None, None)
+    # Build Multicorn TableDefinition. ColumnDefinition takes in type OIDs,
+    # typmods and other internal PG stuff but other FDWs seem to get by with just
+    # the textual type name.
+    return TableDefinition(
+        table_name=table_name,
+        schema=None,
+        columns=[ColumnDefinition(column_name=c.name, type_name=c.pg_type) for c in sg_schema],
+        options=table_options,
+    )
 
 
 class CSVForeignDataWrapper(ForeignDataWrapper):
@@ -72,31 +135,31 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
         """Main Multicorn entry point."""
 
         if self.mode == "http":
-            with requests.get(self.url, stream=True) as r:
-                return self._read_csv(
-                    csv.reader(
-                        (line.decode("utf-8") for line in r.iter_lines()), delimiter=self.delimiter
-                    )
+            with requests.get(self.url, stream=True) as response:
+                has_header, reader = make_csv_reader(
+                    response.raw,
+                    self.autodetect_header,
+                    self.autodetect_dialect,
+                    self.delimiter,
+                    self.quotechar,
+                    self.header,
                 )
+                return self._read_csv(reader, header=has_header)
         else:
             response = None
             try:
                 response = self.s3_client.get_object(
                     bucket_name=self.s3_bucket, object_name=self.s3_object
                 )
-                stream = ResettableStream(response)
-
-                # TODO copypasted from introspection, decide if we want to let people use this
-                #  at query time (perf overhead?), factor out so that HTTP can use it too
-                sniffer_sample = stream.read(2048).decode("utf-8")
-                dialect = csv.Sniffer().sniff(sniffer_sample)
-                has_header = csv.Sniffer().has_header(sniffer_sample)
-                stream.reset()
-
-                reader = csv.reader(codecs.iterdecode(stream, "utf-8"), dialect=dialect,)
-                return self._read_csv(
-                    reader, header=has_header
-                )  # TODO incorporate override for header
+                has_header, reader = make_csv_reader(
+                    response,
+                    self.autodetect_header,
+                    self.autodetect_dialect,
+                    self.delimiter,
+                    self.quotechar,
+                    self.header,
+                )
+                return self._read_csv(reader, header=has_header)
             finally:
                 if response:
                     response.close()
@@ -111,6 +174,11 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
         fdw_options = deepcopy(srv_options)
         for k, v in options.items():
             fdw_options[k] = v
+
+        if fdw_options.get("url"):
+            # Infer from HTTP -- singular table with name "data"
+            with requests.get(fdw_options["url"], stream=True) as response:
+                return [_get_table_definition(response.raw, fdw_options, "data", None)]
 
         # Get S3 options
         client, bucket, prefix = cls._get_s3_params(fdw_options)
@@ -128,53 +196,25 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
             if restriction_type == "except" and o.object_name in restricts:
                 continue
 
+            response = None
             try:
-                result.append(cls._scan_object(client, o, fdw_options))
+                response = client.get_object(o.bucket_name, o.object_name)
+                result.append(
+                    _get_table_definition(
+                        response, fdw_options, o.object_name, {"s3_object": o.object_name},
+                    )
+                )
             except Exception as e:
                 log_to_postgres(
                     "Error scanning object %s, ignoring: %s: %s"
                     % (o.object_name, get_exception_name(e), e)
                 )
+            finally:
+                if response:
+                    response.close()
+                    response.release_conn()
 
         return result
-
-    @classmethod
-    def _scan_object(cls, client, minio_object, fdw_options):
-        response = None
-        try:
-            response = client.get_object(minio_object.bucket_name, minio_object.object_name)
-            stream = ResettableStream(response)
-
-            sniffer_sample = stream.read(2048).decode("utf-8")
-            dialect = csv.Sniffer().sniff(sniffer_sample)
-            has_header = csv.Sniffer().has_header(sniffer_sample)
-            stream.reset()
-
-            reader = csv.reader(codecs.iterdecode(stream, "utf-8"), dialect=dialect,)
-            sample = list(islice(reader, 100))
-
-            if not has_header:  # (fdw_options.get("header", "true").lower() == "true"):
-                # Patch in a dummy header
-                sample = [[str(i) for i in range(len(sample))]] + sample
-
-            sg_schema = infer_sg_schema(sample, None, None)
-
-            # Build Multicorn TableDefinition. ColumnDefinition takes in type OIDs,
-            # typmods and other internal PG stuff but other FDWs seem to get by with just
-            # the textual type name.
-            td = TableDefinition(
-                table_name=minio_object.object_name,
-                schema=None,
-                columns=[
-                    ColumnDefinition(column_name=c.name, type_name=c.pg_type) for c in sg_schema
-                ],
-                options={"s3_object": minio_object.object_name},
-            )
-            return td
-        finally:
-            if response:
-                response.close()
-                response.release_conn()
 
     @classmethod
     def _get_s3_params(cls, fdw_options) -> Tuple[Minio, str, str]:
@@ -182,7 +222,7 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
             endpoint=fdw_options["s3_endpoint"],
             access_key=fdw_options.get("s3_access_key"),
             secret_key=fdw_options.get("s3_secret_key"),
-            secure=fdw_options.get("s3_secure", "true").lower() == "true",
+            secure=get_bool(fdw_options, "s3_secure"),
         )
 
         s3_bucket = fdw_options["s3_bucket"]
@@ -194,15 +234,6 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
         return s3_client, s3_bucket, s3_object_prefix
 
     def __init__(self, fdw_options, fdw_columns):
-        """The foreign data wrapper is initialized on the first query.
-        Args:
-            fdw_options (dict): The foreign data wrapper options. It is a dictionary
-                mapping keys from the sql "CREATE FOREIGN TABLE"
-                statement options. It is left to the implementor
-                to decide what should be put in those options, and what
-                to do with them.
-
-        """
         # Initialize the logger that will log to the engine's stderr: log timestamp and PID.
 
         logging.basicConfig(
@@ -219,15 +250,10 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
         self.delimiter = fdw_options.get("delimiter", ",")
         self.quotechar = fdw_options.get("quotechar", '"')
 
-        self.header = fdw_options.get("header", "true").lower() == "true"
+        self.header = get_bool(fdw_options, "header")
 
-        # TODO automatic inference
-        #   * how to specify?
-        #   * OK at query time?
-        #
-
-        self.autodetect_header = fdw_options.get("autodetect_header", "true").lower() == "true"
-        self.autodetect_dialect = fdw_options.get("autodetect_dialect", "true").lower() == "true"
+        self.autodetect_header = get_bool(fdw_options, "autodetect_header")
+        self.autodetect_dialect = get_bool(fdw_options, "autodetect_dialect")
 
         # For HTTP: use full URL
         if fdw_options.get("url"):
