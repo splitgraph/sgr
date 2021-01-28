@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import Optional, TYPE_CHECKING, Dict, Mapping, cast
 
 from psycopg2.sql import SQL, Identifier
@@ -105,16 +106,70 @@ class CSVDataSource(ForeignDataWrapperDataSource):
         },
     }
 
+    supports_mount = True
+    supports_load = True
+    supports_sync = False
+
+    commandline_help = """Mount CSV files in S3/HTTP.
+
+If passed an URL, this will live query a CSV file on an HTTP server. If passed
+S3 access credentials, this will scan a bucket for CSV files, infer their schema
+and make them available to query over SQL.  
+
+For example:  
+
+```
+sgr mount csv target_schema -o@- <<EOF
+  {
+    "s3_endpoint": "cdn.mycompany.com:9000",
+    "s3_access_key": "ABCDEF",
+    "s3_secret_key": "GHIJKL",
+    "s3_bucket": "data",
+    "s3_object_prefix": "csv_files/current/",
+    "autodetect_header": true,
+    "autodetect_dialect": true
+  }
+EOF
+```
+"""
+
+    commandline_kwargs_help: str = """url: HTTP URL (either the URL or S3 parameters are required)
+s3_endpoint: S3 host and port (required)
+s3_secure: Use SSL (default true)
+s3_access_key: S3 access key (optional)
+s3_secret_key: S3 secret key (optional)
+s3_bucket: S3 bucket name (required)
+s3_object_prefix: Prefix for object IDs to mount (optional)
+autodetect_header: Detect whether the CSV file has a header automatically
+autodetect_dialect: Detect the file's separator, quoting characters etc. automatically
+header: Treats the first line as a header
+separator: Override the character used as a CSV separator
+quotechar: Override the character used as a CSV quoting character
+tables: Objects to mount (default all). If a list, will import only these objects. 
+If a dictionary, must have the format
+    {"table_name": {"schema": {"col_1": "type_1", ...},
+                    "options": {[get passed to CREATE FOREIGN TABLE]}}}.
+    """
+
     def get_fdw_name(self):
         return "multicorn"
 
     @classmethod
     def get_name(cls) -> str:
-        return "CSV files in S3"
+        return "CSV files in S3/HTTP"
 
     @classmethod
     def get_description(cls) -> str:
-        return "CSV files in S3"
+        return "CSV files in S3/HTTP"
+
+    @classmethod
+    def from_commandline(cls, engine, commandline_kwargs) -> "CSVDataSource":
+        params = deepcopy(commandline_kwargs)
+        credentials = {
+            "s3_access_key": params.pop("s3_access_key", None),
+            "s3_secret_key": params.pop("s3_secret_key", None),
+        }
+        return cls(engine, credentials, params)
 
     def get_table_options(self, table_name: str) -> Mapping[str, str]:
         result = cast(Dict[str, str], super().get_table_options(table_name))

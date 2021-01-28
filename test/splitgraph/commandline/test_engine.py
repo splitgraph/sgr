@@ -206,22 +206,11 @@ _PULL_PROGRESS = [
 ]
 
 
-_HANDLER_CONFIG = """[data_sources]
-postgres_fdw=splitgraph.hooks.data_source.PostgreSQLDataSource
-mongo_fdw=splitgraph.hooks.data_source.MongoDataSource
-mysql_fdw=splitgraph.hooks.data_source.MySQLDataSource
-socrata=splitgraph.ingestion.socrata.mount.SocrataDataSource
-elasticsearch=splitgraph.hooks.data_source.ElasticSearchDataSource
-[external_handlers]
-S3=splitgraph.hooks.s3.S3ExternalObjectHandler
-"""
-
-
 @pytest.mark.parametrize(
     "test_case",
     [
         # Test case is a 4-tuple: CONFIG dict (values overriding DEFAULTS),
-        #   engine name, output config file name, output config file contents
+        #   engine name, output config file name, output config file contents (prefix)
         # Also note that values in the output config file that are the same as as defaults are omitted.
         # Case 1: no source config, default engine: gets inserted as default.
         (
@@ -230,7 +219,7 @@ S3=splitgraph.hooks.s3.S3ExternalObjectHandler
             "/home/user/.splitgraph/.sgconfig",
             "[defaults]\nSG_ENGINE_USER=not_sgr\n"
             "SG_ENGINE_PWD=pwd\nSG_ENGINE_ADMIN_USER=not_sgr\n"
-            "SG_ENGINE_ADMIN_PWD=pwd\n" + _HANDLER_CONFIG,
+            "SG_ENGINE_ADMIN_PWD=pwd\n",
         ),
         # Case 2: no source config, a different engine: gets inserted as a new remote
         (
@@ -244,7 +233,7 @@ S3=splitgraph.hooks.s3.S3ExternalObjectHandler
             "SG_ENGINE_DB_NAME=splitgraph\n"
             "SG_ENGINE_POSTGRES_DB_NAME=postgres\n"
             "SG_ENGINE_ADMIN_USER=not_sgr\n"
-            "SG_ENGINE_ADMIN_PWD=pwd\n" + _HANDLER_CONFIG,
+            "SG_ENGINE_ADMIN_PWD=pwd\n",
         ),
         # Case 3: have source config, default engine gets overwritten
         (
@@ -252,7 +241,7 @@ S3=splitgraph.hooks.s3.S3ExternalObjectHandler
             "default",
             "/home/user/.sgconfig",
             "[defaults]\nSG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
-            "SG_ENGINE_ADMIN_USER=not_sgr\nSG_ENGINE_ADMIN_PWD=pwd\n" + _HANDLER_CONFIG,
+            "SG_ENGINE_ADMIN_USER=not_sgr\nSG_ENGINE_ADMIN_PWD=pwd\n",
         ),
         # Case 4: have source config, non-default engine gets overwritten
         (
@@ -275,7 +264,7 @@ S3=splitgraph.hooks.s3.S3ExternalObjectHandler
             "SG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
             "SG_ENGINE_FDW_HOST=localhost\nSG_ENGINE_FDW_PORT=5432\n"
             "SG_ENGINE_DB_NAME=splitgraph\nSG_ENGINE_POSTGRES_DB_NAME=postgres\n"
-            "SG_ENGINE_ADMIN_USER=not_sgr\nSG_ENGINE_ADMIN_PWD=pwd\n" + _HANDLER_CONFIG,
+            "SG_ENGINE_ADMIN_USER=not_sgr\nSG_ENGINE_ADMIN_PWD=pwd\n",
         ),
     ],
 )
@@ -313,9 +302,9 @@ def test_commandline_engine_creation_config_patching(test_case, fs_fast):
 
     assert os.path.exists(target_path)
     with open(target_path, "r") as f:
-        actual_lines = f.read().split("\n")
-    expected_lines = target_config.split("\n")
-    assert expected_lines == actual_lines
+        actual_lines = f.read().strip().split("\n")
+    expected_lines = target_config.strip().split("\n")
+    assert actual_lines[: len(expected_lines)] == expected_lines
 
 
 def test_inject_config_into_engines_unit():

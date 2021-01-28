@@ -554,7 +554,7 @@ This uses a fork of postgres-elasticsearch-fdw behind the scenes. You can add a 
 For example:
 
 ```
-sgr mount elasticsearch -c elasticsearch:9200 -o@- <<EOF
+sgr mount elasticsearch target_schema -c elasticsearch:9200 -o@- <<EOF
     {
       "tables": {
         "table_1": {

@@ -3,13 +3,11 @@ import csv
 import io
 import logging
 from copy import deepcopy
-from csv import Dialect
 from itertools import islice
 from typing import Tuple, Dict, Any
 
 import requests
 from minio import Minio
-from urllib3 import HTTPResponse
 
 import splitgraph.config
 from splitgraph.commandline import get_exception_name
