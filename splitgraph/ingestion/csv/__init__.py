@@ -1,0 +1,121 @@
+from typing import Optional, TYPE_CHECKING, Dict, Mapping, cast
+
+from psycopg2.sql import SQL, Identifier
+
+from splitgraph.hooks.data_source.fdw import ForeignDataWrapperDataSource
+from splitgraph.ingestion.common import IngestionAdapter
+
+if TYPE_CHECKING:
+    from splitgraph.engine.postgres.engine import PsycopgEngine
+
+
+class CSVIngestionAdapter(IngestionAdapter):
+    @staticmethod
+    def create_ingestion_table(data, engine, schema: str, table: str, **kwargs):
+        schema_spec = kwargs.pop("schema_spec")
+        engine.delete_table(schema, table)
+        engine.create_table(schema, table, schema_spec=schema_spec, include_comments=True)
+
+    @staticmethod
+    def data_to_new_table(
+        data, engine: "PsycopgEngine", schema: str, table: str, no_header: bool = True, **kwargs
+    ):
+        copy_csv_buffer(data, engine, schema, table, no_header, **kwargs)
+
+    @staticmethod
+    def query_to_data(engine, query: str, schema: Optional[str] = None, **kwargs):
+        buffer = kwargs.pop("buffer")
+        query_to_csv(engine, query, buffer, schema)
+        return buffer
+
+
+csv_adapter = CSVIngestionAdapter()
+
+
+def copy_csv_buffer(
+    data, engine: "PsycopgEngine", schema: str, table: str, no_header: bool = False, **kwargs
+):
+    """Copy CSV data from a buffer into a given schema/table"""
+    with engine.connection.cursor() as cur:
+        extra_args = [not no_header]
+
+        copy_command = SQL("COPY {}.{} FROM STDIN WITH (FORMAT CSV, HEADER %s").format(
+            Identifier(schema), Identifier(table)
+        )
+        for k, v in kwargs.items():
+            if k in ("encoding", "delimiter", "escape") and v:
+                copy_command += SQL(", " + k + " %s")
+                extra_args.append(v)
+        copy_command += SQL(")")
+
+        cur.copy_expert(
+            cur.mogrify(copy_command, extra_args), data,
+        )
+
+
+def query_to_csv(engine: "PsycopgEngine", query, buffer, schema: Optional[str] = None):
+    copy_query = SQL("COPY (") + SQL(query) + SQL(") TO STDOUT WITH (FORMAT CSV, HEADER TRUE);")
+    if schema:
+        copy_query = SQL("SET search_path TO {},public;").format(Identifier(schema)) + copy_query
+
+    with engine.connection.cursor() as cur:
+        cur.copy_expert(copy_query, buffer)
+
+
+class CSVDataSource(ForeignDataWrapperDataSource):
+    credentials_schema = {
+        "type": "object",
+        "properties": {"s3_access_key": {"type": "string"}, "s3_secret_key": {"type": "string"}},
+    }
+
+    params_schema = {
+        "type": "object",
+        "properties": {
+            "tables": {
+                "type": "object",
+                "additionalProperties": {
+                    "options": {"type": "object", "additionalProperties": {"type": "string"}},
+                },
+            },
+            "url": {"type": "string", "description": "HTTP URL to the CSV file"},
+            "s3_endpoint": {
+                "type": "string",
+                "description": "S3 endpoint (including port if required)",
+            },
+            "s3_secure": {"type": "boolean", "description": "Whether to use HTTPS for S3 access"},
+            "s3_bucket": {"type": "string", "description": "Bucket the object is in"},
+            "s3_object_prefix": {"type": "string", "description": "Prefix for object in S3 bucket"},
+        },
+    }
+
+    def get_fdw_name(self):
+        return "multicorn"
+
+    @classmethod
+    def get_name(cls) -> str:
+        return "CSV files in S3"
+
+    @classmethod
+    def get_description(cls) -> str:
+        return "CSV files in S3"
+
+    def get_table_options(self, table_name: str) -> Mapping[str, str]:
+        result = cast(Dict[str, str], super().get_table_options(table_name))
+        result["s3_object"] = table_name
+        return result
+
+    def get_server_options(self):
+        options: Dict[str, Optional[str]] = {
+            "wrapper": "splitgraph.ingestion.csv.fdw.CSVForeignDataWrapper"
+        }
+        for k in ["s3_endpoint", "s3_secure", "s3_bucket", "s3_object_prefix", "s3_object"]:
+            if k in self.params:
+                options[k] = str(self.params[k])
+        for k in ["s3_access_key", "s3_secret_key"]:
+            if k in self.credentials:
+                options[k] = str(self.credentials[k])
+        return options
+
+    def get_remote_schema_name(self) -> str:
+        # We ignore the schema name and use the bucket/prefix passed in the params instead.
+        return "data"
