@@ -112,3 +112,23 @@ def test_csv_data_source_http(local_engine_empty):
     preview = source.preview(schema)
     assert len(preview.keys()) == 1
     assert len(preview["data"]) == 10
+
+
+## TODO this breaks
+"""sgr mount csv target_schema -o@- <<EOF
+  {
+    "s3_endpoint": "objectstorage:9000",
+    "s3_access_key": "minioclient",
+    "s3_secret_key": "supersecure",
+    "s3_bucket": "test_csv",
+    "s3_object_prefix": "some_prefix/",
+    "s3_secure": false,
+    "autodetect_header": true,
+    "autodetect_dialect": true
+  }
+EOF
+
+>> SELECT * FROM target_schema."some_prefix/rdu-weather-history.csv"
+Error in python: IndexError
+DETAIL:  list index out of range                                                            
+"""

@@ -63,6 +63,7 @@ DEFAULTS: ConfigDict = {
         "mysql_fdw": "splitgraph.hooks.data_source.MySQLDataSource",
         "socrata": "splitgraph.ingestion.socrata.mount.SocrataDataSource",
         "elasticsearch": "splitgraph.hooks.data_source.ElasticSearchDataSource",
+        "csv": "splitgraph.ingestion.csv.CSVDataSource",
     },
 }
 
