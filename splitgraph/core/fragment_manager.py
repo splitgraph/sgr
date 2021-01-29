@@ -100,7 +100,16 @@ def get_chunk_groups(chunks: List[Tuple[str, Any, Any]],) -> List[List[Tuple[str
     current_group: List[Tuple[int, str, Any, Any]] = []
     current_group_start = None
     current_group_end = None
-    for original_id, chunk_id, start, end in sorted(chunks, key=lambda c: c[2]):  # type:ignore
+
+    def _key(c):
+        # Hack to work around Nones sometimes being there in comparables. We make a fake
+        # key, prepending a boolean (is the item None?) to every item to get a consistent
+        # ordering that includes Nones.
+        if isinstance(c, tuple):
+            return tuple((ci is None, ci) for ci in c)
+        return c is None, c
+
+    for original_id, chunk_id, start, end in sorted(chunks, key=_key):  # type:ignore
         if not current_group:
             current_group = [(original_id, chunk_id, start, end)]
             current_group_start = start
@@ -110,10 +119,10 @@ def get_chunk_groups(chunks: List[Tuple[str, Any, Any]],) -> List[List[Tuple[str
         assert current_group_start
         assert current_group_end
         # See if the chunk overlaps with the current chunk group
-        if start <= current_group_end and end >= current_group_start:
+        if _key(start) <= _key(current_group_end) and _key(end) >= _key(current_group_start):
             current_group.append((original_id, chunk_id, start, end))
-            current_group_start = min(current_group_start, start)
-            current_group_end = max(current_group_end, end)
+            current_group_start = min(current_group_start, start, key=_key)
+            current_group_end = max(current_group_end, end, key=_key)
             continue
 
         # If the chunk doesn't overlap, we start a new group
