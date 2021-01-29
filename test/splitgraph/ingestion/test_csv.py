@@ -95,6 +95,18 @@ def test_csv_data_source_s3(local_engine_empty):
     assert len(preview["some_prefix/fruits.csv"]) == 4
     assert len(preview["some_prefix/rdu-weather-history.csv"]) == 10
 
+    try:
+        source.mount("temp_data")
+
+        assert local_engine_empty.run_sql(
+            'SELECT COUNT(1) FROM temp_data."some_prefix/fruits.csv"'
+        ) == [(4,)]
+        assert local_engine_empty.run_sql(
+            'SELECT COUNT(1) FROM temp_data."some_prefix/rdu-weather-history.csv"'
+        ) == [(4633,)]
+    finally:
+        local_engine_empty.delete_schema("temp_data")
+
 
 def test_csv_data_source_http(local_engine_empty):
     source = CSVDataSource(
@@ -112,23 +124,3 @@ def test_csv_data_source_http(local_engine_empty):
     preview = source.preview(schema)
     assert len(preview.keys()) == 1
     assert len(preview["data"]) == 10
-
-
-## TODO this breaks
-"""sgr mount csv target_schema -o@- <<EOF
-  {
-    "s3_endpoint": "objectstorage:9000",
-    "s3_access_key": "minioclient",
-    "s3_secret_key": "supersecure",
-    "s3_bucket": "test_csv",
-    "s3_object_prefix": "some_prefix/",
-    "s3_secure": false,
-    "autodetect_header": true,
-    "autodetect_dialect": true
-  }
-EOF
-
->> SELECT * FROM target_schema."some_prefix/rdu-weather-history.csv"
-Error in python: IndexError
-DETAIL:  list index out of range                                                            
-"""
