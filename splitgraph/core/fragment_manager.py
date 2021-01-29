@@ -110,7 +110,7 @@ def get_chunk_groups(chunks: List[Tuple[str, Any, Any]],) -> List[List[Tuple[str
         return c is None, c
 
     for original_id, chunk_id, start, end in sorted(
-        chunks, key=lambda c: _key([c[2]])  # type:ignore
+        chunks, key=lambda c: _key(c[2])  # type:ignore
     ):
         if not current_group:
             current_group = [(original_id, chunk_id, start, end)]
