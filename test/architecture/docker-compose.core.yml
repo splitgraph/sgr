@@ -19,8 +19,8 @@ services:
     # Uncomment this to mount the current Splitgraph code into the engine without
     # having to rebuild it. This shouldn't be done in CI, as we want to test the engine
     # that we've built.
-    # volumes:
-    #  - ../../splitgraph:/splitgraph/splitgraph
+    volumes:
+      - ../../splitgraph:/splitgraph/splitgraph
   remote_engine:
     build:
       context: ./src/
