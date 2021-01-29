@@ -22,7 +22,7 @@ SG_CONFIG_FILE=$ASCIINEMA_CONFIG sgr --verbosity DEBUG cloud login-api --api-key
 
 # TODO the us-election asciicast requires scipy for the last part, consider replacing
 # dbt required by the dbt example
-pip install scipy dbt
+pip install scipy dbt==0.18.0
 
 cd "$REPO_ROOT_DIR"/examples
 for dir in $ASCIINEMA_CASTS; do
