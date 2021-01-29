@@ -1,4 +1,5 @@
 from splitgraph.core.types import TableColumn
+from splitgraph.engine import ResultShape
 from splitgraph.hooks.s3_server import MINIO
 from splitgraph.ingestion.csv import CSVDataSource
 from splitgraph.ingestion.csv.fdw import CSVForeignDataWrapper
@@ -28,6 +29,7 @@ def test_csv_introspection_s3():
             {"column_name": "fruit_id", "type_name": "integer"},
             {"column_name": "timestamp", "type_name": "timestamp"},
             {"column_name": "name", "type_name": "character varying"},
+            {"column_name": "number", "type_name": "integer"},
         ],
         "options": {"s3_object": "some_prefix/fruits.csv"},
     }
@@ -57,6 +59,7 @@ def test_csv_introspection_http():
             {"column_name": "fruit_id", "type_name": "integer"},
             {"column_name": "timestamp", "type_name": "timestamp"},
             {"column_name": "name", "type_name": "character varying"},
+            {"column_name": "number", "type_name": "integer"},
         ],
         "options": None,
     }
@@ -87,6 +90,7 @@ def test_csv_data_source_s3(local_engine_empty):
             comment=None,
         ),
         TableColumn(ordinal=3, name="name", pg_type="character varying", is_pk=False, comment=None),
+        TableColumn(ordinal=4, name="number", pg_type="integer", is_pk=False, comment=None),
     ]
     assert len(schema["some_prefix/rdu-weather-history.csv"]) == 28
 
@@ -101,6 +105,13 @@ def test_csv_data_source_s3(local_engine_empty):
         assert local_engine_empty.run_sql(
             'SELECT COUNT(1) FROM temp_data."some_prefix/fruits.csv"'
         ) == [(4,)]
+
+        # Test NULL "inference" for numbers
+        assert local_engine_empty.run_sql(
+            'SELECT number FROM temp_data."some_prefix/fruits.csv"',
+            return_shape=ResultShape.MANY_ONE,
+        ) == [1, 2, None, 4]
+
         assert local_engine_empty.run_sql(
             'SELECT COUNT(1) FROM temp_data."some_prefix/rdu-weather-history.csv"'
         ) == [(4633,)]

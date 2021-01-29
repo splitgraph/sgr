@@ -129,6 +129,12 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
                 header_skipped = True
                 continue
             # TODO munge into self.fdw_columns / columns if need be
+
+            # CSVs don't really distinguish NULLs and empty strings well. We know
+            # that empty strings should be NULLs when coerced into non-strings but we
+            # can't easily access type information here. Do a minor hack and treat
+            # all empty strings as NULLs.
+            row = [r if r != "" else None for r in row]
             yield row
 
     def execute(self, quals, columns, sortkeys=None):
