@@ -55,10 +55,12 @@ def make_csv_reader(
         data = stream.read(2048)
         assert data
         sniffer_sample = data.decode("utf-8")
+
         dialect = csv.Sniffer().sniff(sniffer_sample)
         has_header = csv.Sniffer().has_header(sniffer_sample)
-        stream.reset()
 
+    stream.reset()
+    io_stream = io.TextIOWrapper(io.BufferedReader(stream))  # type: ignore
     csv_kwargs: Dict[str, Any] = (
         {"dialect": dialect}
         if autodetect_dialect
@@ -68,7 +70,7 @@ def make_csv_reader(
     if not autodetect_header:
         has_header = header
 
-    reader = csv.reader(codecs.iterdecode(stream, "utf-8"), **csv_kwargs,)
+    reader = csv.reader(io_stream, **csv_kwargs,)
     return has_header, reader
 
 
@@ -142,7 +144,7 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
                     self.quotechar,
                     self.header,
                 )
-                return self._read_csv(reader, header=has_header)
+                yield from self._read_csv(reader, header=has_header)
         else:
             response = None
             try:
@@ -157,7 +159,7 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
                     self.quotechar,
                     self.header,
                 )
-                return self._read_csv(reader, header=has_header)
+                yield from self._read_csv(reader, header=has_header)
             finally:
                 if response:
                     response.close()
