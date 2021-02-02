@@ -75,7 +75,7 @@ def test_syncable_data_source(local_engine_empty):
 
     # Load the data anew into a different image
     repo.images["0" * 64].checkout()
-    source.load(repo.to_schema())
+    source._load(repo.to_schema())
     repo.commit_engines()
 
     assert repo.run_sql("SELECT * FROM test_table") == [(1, "one")]

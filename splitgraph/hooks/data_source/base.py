@@ -60,6 +60,16 @@ class DataSource(ABC):
 
     @abstractmethod
     def introspect(self) -> Dict[str, TableSchema]:
+        # TODO here: dict str -> [tableschema, dict of suggested options]
+        #   params -- add table options as a separate field?
+        #   separate table schema
+
+        # When going through the repo addition loop:
+        #  * add separate options field mapping table names to options
+        #  * return separate schema for table options
+        #  * table options are optional for introspection
+        #    * how to introspect: do import foreign schema; check fdw params
+        #    *
         raise NotImplementedError
 
 
@@ -78,8 +88,35 @@ class LoadableDataSource(DataSource, ABC):
     supports_load = True
 
     @abstractmethod
-    def load(self, schema: str, tables: Optional[TableInfo] = None):
+    def _load(self, schema: str, tables: Optional[TableInfo] = None):
         raise NotImplementedError
+
+    def load(self, repository: "Repository", tables: Optional[TableInfo] = None,) -> str:
+        if not repository_exists(repository):
+            repository.init()
+
+        image_hash = "{:064x}".format(getrandbits(256))
+        tmp_schema = "{:064x}".format(getrandbits(256))
+        repository.images.add(
+            parent_id=None, image=image_hash,
+        )
+        repository.engine.create_schema(tmp_schema)
+
+        try:
+            self._load(schema=tmp_schema, tables=tables)
+
+            repository._commit(
+                head=None,
+                image_hash=image_hash,
+                snap_only=True,
+                chunk_size=100000,
+                schema=tmp_schema,
+            )
+        finally:
+            repository.engine.delete_schema(tmp_schema)
+            repository.commit_engines()
+
+        return image_hash
 
 
 class SyncableDataSource(LoadableDataSource, DataSource, ABC):
@@ -132,7 +169,7 @@ class SyncableDataSource(LoadableDataSource, DataSource, ABC):
 
         return new_image.image_hash
 
-    def load(self, schema: str, tables: Optional[TableInfo] = None):
+    def _load(self, schema: str, tables: Optional[TableInfo] = None):
         self._sync(schema, tables=tables, state=None)
 
 
