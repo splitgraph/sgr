@@ -2,6 +2,7 @@ import codecs
 import csv
 import io
 import logging
+import os
 from copy import deepcopy
 from itertools import islice
 from typing import Tuple, Dict, Any
@@ -139,7 +140,9 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
         """Main Multicorn entry point."""
 
         if self.mode == "http":
-            with requests.get(self.url, stream=True) as response:
+            with requests.get(
+                self.url, stream=True, verify=os.environ.get("SSL_CERT_FILE", True)
+            ) as response:
                 has_header, reader = make_csv_reader(
                     response.raw,
                     self.autodetect_header,
@@ -181,7 +184,9 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
 
         if fdw_options.get("url"):
             # Infer from HTTP -- singular table with name "data"
-            with requests.get(fdw_options["url"], stream=True) as response:
+            with requests.get(
+                fdw_options["url"], stream=True, verify=os.environ.get("SSL_CERT_FILE", True)
+            ) as response:
                 return [_get_table_definition(response.raw, fdw_options, "data", None)]
 
         # Get S3 options
