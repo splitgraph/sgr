@@ -100,7 +100,7 @@ class LoadableDataSource(DataSource, ABC):
         repository.images.add(
             parent_id=None, image=image_hash,
         )
-        repository.engine.create_schema(tmp_schema)
+        repository.object_engine.create_schema(tmp_schema)
 
         try:
             self._load(schema=tmp_schema, tables=tables)
@@ -113,7 +113,7 @@ class LoadableDataSource(DataSource, ABC):
                 schema=tmp_schema,
             )
         finally:
-            repository.engine.delete_schema(tmp_schema)
+            repository.object_engine.delete_schema(tmp_schema)
             repository.commit_engines()
 
         return image_hash
