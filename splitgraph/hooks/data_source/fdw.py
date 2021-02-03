@@ -13,6 +13,7 @@ from splitgraph.hooks.data_source.base import (
     TableInfo,
     PreviewResult,
     MountableDataSource,
+    LoadableDataSource,
 )
 
 if TYPE_CHECKING:
@@ -27,7 +28,7 @@ _table_options_schema = {
 }
 
 
-class ForeignDataWrapperDataSource(MountableDataSource, ABC):
+class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC):
     credentials_schema = {
         "type": "object",
         "properties": {"username": {"type": "string"}, "password": {"type": "string"}},
@@ -43,6 +44,7 @@ class ForeignDataWrapperDataSource(MountableDataSource, ABC):
     commandline_kwargs_help: str = ""
 
     supports_mount = True
+    supports_load = True
 
     def __init__(
         self,
@@ -206,6 +208,25 @@ class ForeignDataWrapperDataSource(MountableDataSource, ABC):
                     logging.warning("Could not preview data for table %s", t, exc_info=e)
                     result[t] = str(e)
             return result
+        finally:
+            self.engine.rollback()
+            self.engine.delete_schema(tmp_schema)
+            self.engine.commit()
+
+    def _load(self, schema: str, tables: Optional[TableInfo] = None):
+        from splitgraph.core.common import get_temporary_table_id
+
+        tmp_schema = get_temporary_table_id()
+        try:
+            self.mount(tmp_schema, tables=tables)
+            self.engine.commit()
+
+            for t in self.engine.get_all_tables(tmp_schema):
+                try:
+                    self.engine.copy_table(tmp_schema, t, schema, t)
+                    self.engine.commit()
+                except psycopg2.DatabaseError as e:
+                    logging.warning("Error ingesting table %s", t, exc_info=e)
         finally:
             self.engine.rollback()
             self.engine.delete_schema(tmp_schema)
