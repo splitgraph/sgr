@@ -143,6 +143,7 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
             with requests.get(
                 self.url, stream=True, verify=os.environ.get("SSL_CERT_FILE", True)
             ) as response:
+                response.raise_for_status()
                 has_header, reader = make_csv_reader(
                     response.raw,
                     self.autodetect_header,
@@ -187,6 +188,7 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
             with requests.get(
                 fdw_options["url"], stream=True, verify=os.environ.get("SSL_CERT_FILE", True)
             ) as response:
+                response.raise_for_status()
                 return [_get_table_definition(response.raw, fdw_options, "data", None)]
 
         # Get S3 options
