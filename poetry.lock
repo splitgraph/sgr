@@ -204,7 +204,7 @@ python-versions = "*"
 
 [[package]]
 name = "docker"
-version = "4.4.2"
+version = "4.4.3"
 description = "A Python library for the Docker Engine API."
 category = "main"
 optional = false
@@ -1207,8 +1207,8 @@ distlib = [
     {file = "distlib-0.3.1.zip", hash = "sha256:edf6116872c863e1aa9d5bb7cb5e05a022c519a4594dc703843343a9ddd9bff1"},
 ]
 docker = [
-    {file = "docker-4.4.2-py2.py3-none-any.whl", hash = "sha256:20d71afc593486f2297bb7fb7406b03876f31894337e914a5062050c65085cab"},
-    {file = "docker-4.4.2.tar.gz", hash = "sha256:67f33d4cf95182db631a17eef7d666d2c91f624c1d3fbc4df6009cb2f2a4c604"},
+    {file = "docker-4.4.3-py2.py3-none-any.whl", hash = "sha256:d4625e70e3d5a12d7cbf1fd68cef2e081ac86b83889e00e5466d975f90e50dad"},
+    {file = "docker-4.4.3.tar.gz", hash = "sha256:de5753b7f6486dd541a98393e423e387579b8974a5068748b83f852cc76a89d6"},
 ]
 docopt = [
     {file = "docopt-0.6.2.tar.gz", hash = "sha256:49b3a825280bd66b3aa83585ef59c4a8c82f2c8a522dbe754a8bc8d08c85c491"},
