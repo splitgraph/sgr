@@ -592,7 +592,7 @@ python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 
 [[package]]
 name = "pyfakefs"
-version = "4.3.3"
+version = "4.4.0"
 description = "pyfakefs implements a fake file system that mocks the Python file system modules."
 category = "dev"
 optional = false
@@ -1532,8 +1532,8 @@ py = [
     {file = "py-1.10.0.tar.gz", hash = "sha256:21b81bda15b66ef5e1a777a21c4dcd9c20ad3efd0b3f817e7a809035269e1bd3"},
 ]
 pyfakefs = [
-    {file = "pyfakefs-4.3.3-py3-none-any.whl", hash = "sha256:b2bc190ea65b5b6274c6d1a90c4d71ede9b3178e1ff9bb74c86daf69ffccd185"},
-    {file = "pyfakefs-4.3.3.tar.gz", hash = "sha256:ffb2ab264a0b83af548a2db0c509798e208361df39601ba898ae65cecfb59cbb"},
+    {file = "pyfakefs-4.4.0-py3-none-any.whl", hash = "sha256:1ac3b2845dabe69af56c20691b9347914581195ccdde352535fb7d4ff0055c19"},
+    {file = "pyfakefs-4.4.0.tar.gz", hash = "sha256:082d863e0e2a74351f697da404e329a91e18e5055942e59d1b836e8459b2c94c"},
 ]
 pygments = [
     {file = "Pygments-2.8.0-py3-none-any.whl", hash = "sha256:b21b072d0ccdf29297a82a2363359d99623597b8a265b8081760e4d0f7153c88"},
