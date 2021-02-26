@@ -85,7 +85,7 @@ class SingerDataSource(SyncableDataSource, ABC):
             self._add_file_arg(config, "config", d, args)
             self._add_file_arg(state, "state", d, args)
             self._add_file_arg(catalog, "properties" if self.use_properties else "catalog", d, args)
-
+            logging.debug("Singer catalog: %s", catalog)
             logging.info("Running Singer tap. Arguments: %s", args)
             proc = subprocess.Popen(
                 args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
@@ -115,19 +115,23 @@ class SingerDataSource(SyncableDataSource, ABC):
         # We override the main sync() instead
         pass
 
+    def load(self, repository: "Repository", tables: Optional[TableInfo] = None) -> str:
+        return self.sync(repository, image_hash=None, tables=tables, use_state=False)
+
     def sync(
         self,
         repository: Repository,
         image_hash: Optional[str] = None,
         tables: Optional[TableInfo] = None,
+        use_state: bool = True,
     ) -> str:
         config = self.get_singer_config()
         catalog = self._run_singer_discovery(config)
         catalog = self.build_singer_catalog(catalog, tables)
 
         base_image, new_image_hash = prepare_new_image(repository, image_hash)
-        state = get_ingestion_state(repository, image_hash)
-        logging.info("State: %s", state)
+        state = get_ingestion_state(repository, image_hash) if use_state else None
+        logging.info("Current ingestion state: %s", state)
 
         # Run the sink + target and capture the stdout (new state)
         output_stream = StringIO()
