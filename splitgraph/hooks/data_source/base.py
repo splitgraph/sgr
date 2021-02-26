@@ -91,7 +91,7 @@ class LoadableDataSource(DataSource, ABC):
     def _load(self, schema: str, tables: Optional[TableInfo] = None):
         raise NotImplementedError
 
-    def load(self, repository: "Repository", tables: Optional[TableInfo] = None,) -> str:
+    def load(self, repository: "Repository", tables: Optional[TableInfo] = None) -> str:
         if not repository_exists(repository):
             repository.init()
 
