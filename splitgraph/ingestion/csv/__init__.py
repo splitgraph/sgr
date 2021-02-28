@@ -83,6 +83,7 @@ class CSVDataSource(ForeignDataWrapperDataSource):
                 "type": "string",
                 "description": "S3 endpoint (including port if required)",
             },
+            "s3_region": {"type": "string", "description": "Region of the S3 bucket"},
             "s3_secure": {"type": "boolean", "description": "Whether to use HTTPS for S3 access"},
             "s3_bucket": {"type": "string", "description": "Bucket the object is in"},
             "s3_object_prefix": {"type": "string", "description": "Prefix for object in S3 bucket"},
@@ -173,7 +174,9 @@ If a dictionary, must have the format
 
     def get_table_options(self, table_name: str) -> Mapping[str, str]:
         result = cast(Dict[str, str], super().get_table_options(table_name))
-        result["s3_object"] = table_name
+        result["s3_object"] = result.get(
+            "s3_object", self.params.get("s3_object_prefix", "") + table_name
+        )
         return result
 
     def get_server_options(self):
@@ -182,6 +185,7 @@ If a dictionary, must have the format
         }
         for k in [
             "s3_endpoint",
+            "s3_region",
             "s3_secure",
             "s3_bucket",
             "s3_object_prefix",

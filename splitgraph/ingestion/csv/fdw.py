@@ -94,7 +94,7 @@ def _get_table_definition(response, fdw_options, table_name, table_options):
     # typmods and other internal PG stuff but other FDWs seem to get by with just
     # the textual type name.
     return TableDefinition(
-        table_name=table_name,
+        table_name=table_name[len(fdw_options.get("s3_object_prefix", "")) :],
         schema=None,
         columns=[ColumnDefinition(column_name=c.name, type_name=c.pg_type) for c in sg_schema],
         options=table_options,
@@ -234,6 +234,7 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
             access_key=fdw_options.get("s3_access_key"),
             secret_key=fdw_options.get("s3_secret_key"),
             secure=get_bool(fdw_options, "s3_secure"),
+            region=fdw_options.get("s3_region"),
         )
 
         s3_bucket = fdw_options["s3_bucket"]
