@@ -196,29 +196,37 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
 
         # Note that we ignore the "schema" here (e.g. IMPORT FOREIGN SCHEMA some_schema)
         # and take all interesting parameters through FDW options.
-        objects = client.list_objects(bucket_name=bucket, prefix=prefix or None, recursive=True)
+
+        # Allow just introspecting one object
+        if "s3_object" in fdw_options:
+            objects = [fdw_options["s3_object"]]
+        else:
+            objects = [
+                o.object_name
+                for o in client.list_objects(
+                    bucket_name=bucket, prefix=prefix or None, recursive=True
+                )
+            ]
 
         result = []
 
         for o in objects:
-            if restriction_type == "limit" and o.object_name not in restricts:
+            if restriction_type == "limit" and o not in restricts:
                 continue
 
-            if restriction_type == "except" and o.object_name in restricts:
+            if restriction_type == "except" and o in restricts:
                 continue
 
             response = None
             try:
-                response = client.get_object(o.bucket_name, o.object_name)
-                result.append(
-                    _get_table_definition(
-                        response, fdw_options, o.object_name, {"s3_object": o.object_name},
-                    )
-                )
+                response = client.get_object(bucket, o)
+                result.append(_get_table_definition(response, fdw_options, o, {"s3_object": o},))
             except Exception as e:
+                logging.error(
+                    "Error scanning object %s, ignoring: %s: %s", o, get_exception_name(e), e
+                )
                 log_to_postgres(
-                    "Error scanning object %s, ignoring: %s: %s"
-                    % (o.object_name, get_exception_name(e), e)
+                    "Error scanning object %s, ignoring: %s: %s" % (o, get_exception_name(e), e)
                 )
             finally:
                 if response:
