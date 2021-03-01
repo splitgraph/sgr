@@ -84,7 +84,7 @@ def _get_table_definition(response, fdw_options, table_name, table_options):
         delimiter=fdw_options.get("delimiter", ","),
         quotechar=fdw_options.get("quotechar", '"'),
     )
-    sample = list(islice(reader, 100))
+    sample = list(islice(reader, 1000))
 
     if not has_header:
         sample = [[str(i) for i in range(len(sample))]] + sample
