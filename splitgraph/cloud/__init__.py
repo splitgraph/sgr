@@ -2,6 +2,7 @@
 import base64
 import json
 import logging
+import os
 import time
 from functools import wraps
 from json import JSONDecodeError
@@ -364,7 +365,9 @@ class GQLAPIClient:
         headers = get_headers()
         headers.update({"Authorization": "Bearer " + access_token})
 
-        return requests.post(self.endpoint, headers=headers, json=query)
+        return requests.post(
+            self.endpoint, headers=headers, json=query, verify=os.environ.get("SSL_CERT_FILE", True)
+        )
 
     @handle_gql_errors
     def upsert_readme(self, namespace: str, repository: str, readme: str):
