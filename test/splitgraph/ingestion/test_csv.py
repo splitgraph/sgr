@@ -23,7 +23,7 @@ def test_csv_introspection_s3():
     schema = sorted(schema, key=lambda s: s["table_name"])
 
     assert schema[0] == {
-        "table_name": "some_prefix/fruits.csv",
+        "table_name": "fruits.csv",
         "schema": None,
         "columns": [
             {"column_name": "fruit_id", "type_name": "integer"},
@@ -33,7 +33,7 @@ def test_csv_introspection_s3():
         ],
         "options": {"s3_object": "some_prefix/fruits.csv"},
     }
-    assert schema[1]["table_name"] == "some_prefix/rdu-weather-history.csv"
+    assert schema[1]["table_name"] == "rdu-weather-history.csv"
     assert schema[1]["columns"][0] == {"column_name": "date", "type_name": "date"}
 
     # TODO we need a way to pass suggested table options in the inference / preview response,
@@ -80,7 +80,7 @@ def test_csv_data_source_s3(local_engine_empty):
     schema = source.introspect()
 
     assert len(schema.keys()) == 2
-    assert schema["some_prefix/fruits.csv"] == [
+    assert schema["fruits.csv"] == [
         TableColumn(ordinal=1, name="fruit_id", pg_type="integer", is_pk=False, comment=None),
         TableColumn(
             ordinal=2,
@@ -92,28 +92,25 @@ def test_csv_data_source_s3(local_engine_empty):
         TableColumn(ordinal=3, name="name", pg_type="character varying", is_pk=False, comment=None),
         TableColumn(ordinal=4, name="number", pg_type="integer", is_pk=False, comment=None),
     ]
-    assert len(schema["some_prefix/rdu-weather-history.csv"]) == 28
+    assert len(schema["rdu-weather-history.csv"]) == 28
 
     preview = source.preview(schema)
     assert len(preview.keys()) == 2
-    assert len(preview["some_prefix/fruits.csv"]) == 4
-    assert len(preview["some_prefix/rdu-weather-history.csv"]) == 10
+    assert len(preview["fruits.csv"]) == 4
+    assert len(preview["rdu-weather-history.csv"]) == 10
 
     try:
         source.mount("temp_data")
 
-        assert local_engine_empty.run_sql(
-            'SELECT COUNT(1) FROM temp_data."some_prefix/fruits.csv"'
-        ) == [(4,)]
+        assert local_engine_empty.run_sql('SELECT COUNT(1) FROM temp_data."fruits.csv"') == [(4,)]
 
         # Test NULL "inference" for numbers
         assert local_engine_empty.run_sql(
-            'SELECT number FROM temp_data."some_prefix/fruits.csv"',
-            return_shape=ResultShape.MANY_ONE,
+            'SELECT number FROM temp_data."fruits.csv"', return_shape=ResultShape.MANY_ONE,
         ) == [1, 2, None, 4]
 
         assert local_engine_empty.run_sql(
-            'SELECT COUNT(1) FROM temp_data."some_prefix/rdu-weather-history.csv"'
+            'SELECT COUNT(1) FROM temp_data."rdu-weather-history.csv"'
         ) == [(4633,)]
     finally:
         local_engine_empty.delete_schema("temp_data")
