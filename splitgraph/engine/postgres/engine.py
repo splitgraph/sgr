@@ -27,6 +27,7 @@ from typing import (
 )
 
 import psycopg2
+import psycopg2.extensions
 from packaging.version import Version
 from psycopg2 import DatabaseError
 from psycopg2.errors import InvalidSchemaName, UndefinedTable
@@ -212,6 +213,10 @@ class PsycopgEngine(SQLEngine):
         :param autocommit: If True, the engine will not use transactions for its operation.
         """
         super().__init__()
+
+        # Allow users to send SIGINT to quickly terminate sgr (instead of waiting for a PG
+        # statement to finish)
+        psycopg2.extensions.set_wait_callback(psycopg2.extras.wait_select)
 
         if not conn_params and not pool:
             raise ValueError("One of conn_params/pool must be specified!")
