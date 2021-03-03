@@ -312,6 +312,22 @@ class PsycopgEngine(SQLEngine):
             SQL("LOCK TABLE {}.{} IN EXCLUSIVE MODE").format(Identifier(schema), Identifier(table))
         )
 
+    @contextmanager
+    def copy_cursor(self):
+        """
+        Return a cursor that can be used for copy_expert operations
+        """
+
+        # Suspend the callback that terminates the connection on Ctrl+C since it doesn't work
+        # with copy_expert: https://stackoverflow.com/a/37606536
+        thread = psycopg2.extensions.get_wait_callback()
+        try:
+            psycopg2.extensions.set_wait_callback(None)
+            with self.connection.cursor() as cur:
+                yield cur
+        finally:
+            psycopg2.extensions.set_wait_callback(thread)
+
     @property
     def splitgraph_version(self) -> Optional[str]:
         """Returns the version of the Splitgraph library installed on the engine
@@ -1330,7 +1346,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             )
 
             stream = BytesIO()
-            with self.connection.cursor() as cur:
+            with self.copy_cursor() as cur:
                 cur.copy_expert(
                     SQL("COPY {}.{} TO STDOUT WITH (FORMAT 'binary')").format(
                         Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)
@@ -1338,7 +1354,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
                     stream,
                 )
             stream.seek(0)
-            with remote_engine.connection.cursor() as cur:
+            with remote_engine.copy_cursor() as cur:
                 cur.copy_expert(
                     SQL("COPY {}.{} FROM STDIN WITH (FORMAT 'binary')").format(
                         Identifier(SPLITGRAPH_META_SCHEMA), Identifier(object_id)
