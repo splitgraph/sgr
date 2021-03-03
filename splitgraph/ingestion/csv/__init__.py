@@ -37,7 +37,7 @@ def copy_csv_buffer(
     data, engine: "PsycopgEngine", schema: str, table: str, no_header: bool = False, **kwargs
 ):
     """Copy CSV data from a buffer into a given schema/table"""
-    with engine.connection.cursor() as cur:
+    with engine.copy_cursor() as cur:
         extra_args = [not no_header]
 
         copy_command = SQL("COPY {}.{} FROM STDIN WITH (FORMAT CSV, HEADER %s").format(
@@ -59,7 +59,7 @@ def query_to_csv(engine: "PsycopgEngine", query, buffer, schema: Optional[str] =
     if schema:
         copy_query = SQL("SET search_path TO {},public;").format(Identifier(schema)) + copy_query
 
-    with engine.connection.cursor() as cur:
+    with engine.copy_cursor() as cur:
         cur.copy_expert(copy_query, buffer)
 
 
