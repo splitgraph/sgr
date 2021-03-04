@@ -6,7 +6,7 @@ import os
 import time
 from functools import wraps
 from json import JSONDecodeError
-from typing import Callable, List, Union, Tuple, cast, Optional, Dict
+from typing import Callable, List, Union, Tuple, cast, Optional, Dict, Any
 
 import requests
 from requests import HTTPError
@@ -41,6 +41,71 @@ DEFAULT_REMOTES = {
         "SG_GQL_API": "https://api.splitgraph.com/gql/cloud/graphql",
     }
 }
+
+_PROFILE_UPSERT_QUERY = """mutation UpsertRepoProfile(
+  $namespace: String!
+  $repository: String!
+  $description: String
+  $readme: String
+  $topics: [String]
+  $sources: [DatasetSourceInput]
+  $license: String
+  $metadata: JSON
+) {
+  __typename
+  upsertRepoProfileByNamespaceAndRepository(
+    input: {
+      repoProfile: {
+        namespace: $namespace
+        repository: $repository
+        description: $description
+        readme: $readme
+        sources: $sources
+        license: $license
+        metadata: $metadata
+      }
+      patch: {
+        namespace: $namespace
+        repository: $repository
+        description: $description
+        readme: $readme
+        sources: $sources
+        license: $license
+        metadata: $metadata
+      }
+    }
+  ) {
+    clientMutationId
+    __typename
+  }
+  __typename
+  createRepoTopic(
+  input: {
+    repoTopic: {
+      namespace: $namespace
+      repository: $repository
+      topics: $topics
+    }
+  }
+  ) {
+    clientMutationId
+    __typename
+  }
+}
+"""
+
+_FIND_REPO_QUERY = """query FindRepositories($query: String!, $limit: Int!) {
+  findRepository(query: $query, first: $limit) {
+    edges {
+      node {
+        namespace
+        repository
+        highlight
+      }
+    }
+    totalCount
+  }
+}"""
 
 
 def get_remote_param(remote: str, key: str) -> str:
@@ -369,57 +434,78 @@ class GQLAPIClient:
             self.endpoint, headers=headers, json=query, verify=os.environ.get("SSL_CERT_FILE", True)
         )
 
+    @staticmethod
+    def _prepare_upsert_metadata_gql(
+        namespace: str,
+        repository: str,
+        description: Optional[str] = None,
+        readme: Optional[str] = None,
+        topics: Optional[List[str]] = None,
+        sources: Optional[List[Dict[str, Any]]] = None,
+        license: Optional[str] = None,
+        extra_metadata: Optional[Dict[str, Any]] = None,
+    ):
+        # Pre-flight validation
+        if description and len(description) > 160:
+            raise ValueError("The description should be 160 characters or shorter!")
+
+        variables: Dict[str, Any] = {"namespace": namespace, "repository": repository}
+
+        if description is not None:
+            variables["description"] = description
+        if readme is not None:
+            variables["readme"] = readme
+        if topics is not None:
+            variables["topics"] = topics
+        if sources is not None:
+            variables["sources"] = sources
+        if license is not None:
+            variables["license"] = license
+        if extra_metadata is not None:
+            # This is a bit of a hack. The actual metadata field in the repository is a JSON with
+            # three toplevel fields:
+            #   * created_at
+            #   * updated_at
+            #   * upstream_metadata
+            #
+            # The former two are used to populate schema.org specifications and override the
+            # Updated At field on the repository page. The latter is used to render the
+            # semi-structured box at the bottom with double nesting and arbitrary metadata.
+            # We don't necessarily want to keep it that way (it was designed to support cataloguing
+            # upstream open datasets), but want to let users set these anyway. Here, we
+            # pluck out the two special "created_at"/"updated_at" fields into the toplevel
+            # and put the rest of the metadata dict into "upstream_metadata" to get it rendering.
+            metadata_doc: Dict[str, Any] = {}
+            for toplevel_key in ["created_at", "updated_at"]:
+                if toplevel_key in extra_metadata:
+                    metadata_doc[toplevel_key] = str(extra_metadata.pop(toplevel_key))
+            metadata_doc["upstream_metadata"] = extra_metadata
+            variables["metadata"] = metadata_doc
+
+        query = {
+            "operationName": "UpsertRepoProfile",
+            "variables": variables,
+            "query": _PROFILE_UPSERT_QUERY,
+        }
+
+        logging.debug("Prepared GraphQL query: %s", json.dumps(query))
+
+        return query
+
     @handle_gql_errors
+    def upsert_metadata(self, *args, **kwargs):
+        return self._gql(self._prepare_upsert_metadata_gql(*args, **kwargs))
+
     def upsert_readme(self, namespace: str, repository: str, readme: str):
-        return self._gql(
-            {
-                "operationName": "UpsertRepoReadme",
-                "variables": {"namespace": namespace, "repository": repository, "readme": readme},
-                "query": "mutation UpsertRepoReadme($namespace: String!, $repository: String!, "
-                "$readme: String!) {\n  __typename\n  "
-                "upsertRepoProfileByNamespaceAndRepository(input: {repoProfile: "
-                "{namespace: $namespace, repository: $repository, readme: $readme}, "
-                "patch: {readme: $readme}}) {\n    "
-                "clientMutationId\n    __typename\n  }\n}\n",
-            },
-        )
+        return self.upsert_metadata(namespace, repository, readme=readme)
 
     @handle_gql_errors
     def upsert_description(self, namespace: str, repository: str, description: str):
-        if len(description) > 160:
-            raise ValueError("The description should be 160 characters or shorter!")
-        return self._gql(
-            {
-                "operationName": "UpsertRepoDescription",
-                "variables": {
-                    "namespace": namespace,
-                    "repository": repository,
-                    "description": description,
-                },
-                "query": "mutation UpsertRepoDescription( "
-                "$namespace: String!, $repository: String!, $description: String!) {\n "
-                " __typename\n  "
-                "upsertRepoProfileByNamespaceAndRepository(input: {repoProfile: "
-                "{namespace: $namespace, repository: $repository, "
-                "description: $description}, patch: {description: $description}}) {\n    "
-                "clientMutationId\n    __typename\n  }\n}\n",
-            },
-        )
+        return self.upsert_metadata(namespace, repository, description=description)
 
     @handle_gql_errors
     def upsert_topics(self, namespace: str, repository: str, topics: List[str]):
-        return self._gql(
-            {
-                "operationName": "UpsertRepoTopics",
-                "variables": {"namespace": namespace, "repository": repository, "topics": topics,},
-                "query": "mutation UpsertRepoTopics( "
-                "$namespace: String!, $repository: String!, $topics: [String]!) {\n "
-                " __typename\n  "
-                "createRepoTopic(input: {repoTopic: "
-                "{namespace: $namespace, repository: $repository, topics: $topics}}) {\n    "
-                "clientMutationId\n    __typename\n  }\n}\n",
-            },
-        )
+        return self.upsert_metadata(namespace, repository, topics=topics)
 
     def find_repository(
         self, query: str, limit: int = 10
@@ -428,18 +514,7 @@ class GQLAPIClient:
             {
                 "operationName": "FindRepositories",
                 "variables": {"query": query, "limit": limit},
-                "query": """query FindRepositories($query: String!, $limit: Int!) {
-  findRepository(query: $query, first: $limit) {
-    edges {
-      node {
-        namespace
-        repository
-        highlight
-      }
-    }
-    totalCount
-  }
-}""",
+                "query": _FIND_REPO_QUERY,
             }
         )
 

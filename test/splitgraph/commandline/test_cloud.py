@@ -1,6 +1,5 @@
 import json
 import os
-import time
 from contextlib import contextmanager
 from tempfile import TemporaryDirectory
 from typing import Optional
@@ -12,7 +11,8 @@ from click.testing import CliRunner
 from httpretty.core import HTTPrettyRequest
 
 from splitgraph.__version__ import __version__
-from splitgraph.commandline import config_c, cli
+from splitgraph.cloud import _PROFILE_UPSERT_QUERY
+from splitgraph.commandline import cli
 from splitgraph.commandline.cloud import (
     register_c,
     login_c,
@@ -467,128 +467,91 @@ def test_commandline_curl(test_case):
             )
 
 
-def _gql_callback(request, uri, response_headers):
-    body = json.loads(request.body)
-
-    if body["operationName"] == "UpsertRepoReadme":
-        assert body["query"] == (
-            "mutation UpsertRepoReadme($namespace: String!, $repository: String!, "
-            "$readme: String!) {\n  __typename\n  "
-            "upsertRepoProfileByNamespaceAndRepository(input: {repoProfile: "
-            "{namespace: $namespace, repository: $repository, readme: $readme}, "
-            "patch: {readme: $readme}}) {\n    "
-            "clientMutationId\n    __typename\n  }\n}\n"
-        )
-    elif body["operationName"] == "UpsertRepoDescription":
-        assert body["query"] == (
-            "mutation UpsertRepoDescription( "
-            "$namespace: String!, $repository: String!, $description: String!) {\n "
-            " __typename\n  "
-            "upsertRepoProfileByNamespaceAndRepository(input: {repoProfile: "
-            "{namespace: $namespace, repository: $repository, "
-            "description: $description}, patch: {description: $description}}) {\n    "
-            "clientMutationId\n    __typename\n  }\n}\n"
-        )
-    elif body["operationName"] == "UpsertRepoTopics":
-        assert body["query"] == (
-            "mutation UpsertRepoTopics( "
-            "$namespace: String!, $repository: String!, $topics: [String]!) {\n "
-            " __typename\n  "
-            "createRepoTopic(input: {repoTopic: "
-            "{namespace: $namespace, repository: $repository, topics: $topics}}) {\n    "
-            "clientMutationId\n    __typename\n  }\n}\n"
-        )
-        assert body["variables"] == {
-            "namespace": "someuser",
-            "repository": "somerepo",
-            "topics": ["topic_1", "topic_2"],
-        }
-    elif body["operationName"] == "FindRepositories":
-        assert body["variables"] == {"query": "some_query", "limit": 20}
-        response = {
-            "data": {
-                "findRepository": {
-                    "edges": [
-                        {
-                            "node": {
-                                "namespace": "namespace1",
-                                "repository": "repo1",
-                                "highlight": "<<some_query>> is here",
-                            }
-                        },
-                        {
-                            "node": {
-                                "namespace": "namespace2",
-                                "repository": "repo2",
-                                "highlight": "this is another result for <<ome_query>>",
-                            }
-                        },
-                    ],
-                    "totalCount": 42,
+def _make_gql_callback(expect_variables):
+    def _gql_callback(request, uri, response_headers):
+        body = json.loads(request.body)
+        assert body["variables"] == expect_variables
+        if body["operationName"] == "UpsertRepoProfile":
+            assert body["query"] == _PROFILE_UPSERT_QUERY
+        elif body["operationName"] == "FindRepositories":
+            response = {
+                "data": {
+                    "findRepository": {
+                        "edges": [
+                            {
+                                "node": {
+                                    "namespace": "namespace1",
+                                    "repository": "repo1",
+                                    "highlight": "<<some_query>> is here",
+                                }
+                            },
+                            {
+                                "node": {
+                                    "namespace": "namespace2",
+                                    "repository": "repo2",
+                                    "highlight": "this is another result for <<ome_query>>",
+                                }
+                            },
+                        ],
+                        "totalCount": 42,
+                    }
                 }
             }
+            return [
+                200,
+                response_headers,
+                json.dumps(response),
+            ]
+        else:
+            raise AssertionError()
+
+        namespace = body["variables"]["namespace"]
+        repository = body["variables"]["repository"]
+
+        error_response = {
+            "errors": [
+                {
+                    "message": "An error has occurred",
+                    "locations": [{"line": 3, "column": 3}],
+                    "path": ["upsertRepoProfileByNamespaceAndRepository"],
+                }
+            ],
+            "data": {"__typename": "Mutation", "upsertRepoProfileByNamespaceAndRepository": None},
         }
+
+        success_response = {
+            "data": {
+                "__typename": "Mutation",
+                "upsertRepoProfileByNamespaceAndRepository": {
+                    "clientMutationId": None,
+                    "__typename": "UpsertRepoProfilePayload",
+                },
+            }
+        }
+
+        if request.headers.get("Authorization") != "Bearer " + _SAMPLE_ACCESS:
+            response = error_response
+            response["errors"][0]["message"] = "Invalid token"
+        elif namespace != "someuser":
+            response = error_response
+            response["errors"][0][
+                "message"
+            ] = 'new row violates row-level security policy for table "repo_profiles"'
+        elif repository != "somerepo":
+            response = error_response
+            response["errors"][0][
+                "message"
+            ] = 'insert or update on table "repo_profiles" violates foreign key constraint "repo_fk"'
+        else:
+            response = success_response
+
         return [
             200,
             response_headers,
             json.dumps(response),
         ]
-    else:
-        raise AssertionError()
 
-    namespace = body["variables"]["namespace"]
-    repository = body["variables"]["repository"]
-
-    error_response = {
-        "errors": [
-            {
-                "message": "An error has occurred",
-                "locations": [{"line": 3, "column": 3}],
-                "path": ["upsertRepoProfileByNamespaceAndRepository"],
-            }
-        ],
-        "data": {"__typename": "Mutation", "upsertRepoProfileByNamespaceAndRepository": None},
-    }
-
-    success_response = {
-        "data": {
-            "__typename": "Mutation",
-            "upsertRepoProfileByNamespaceAndRepository": {
-                "clientMutationId": None,
-                "__typename": "UpsertRepoProfilePayload",
-            },
-        }
-    }
-
-    if body["operationName"] == "UpsertRepoReadme" and not body["variables"].get("readme"):
-        response = error_response
-    elif body["operationName"] == "UpsertRepoDescription" and not body["variables"].get(
-        "description"
-    ):
-        response = error_response
-    elif body["operationName"] == "UpsertRepoTopics" and not body["variables"].get("topics"):
-        response = error_response
-    elif request.headers.get("Authorization") != "Bearer " + _SAMPLE_ACCESS:
-        response = error_response
-        response["errors"][0]["message"] = "Invalid token"
-    elif namespace != "someuser":
-        response = error_response
-        response["errors"][0][
-            "message"
-        ] = 'new row violates row-level security policy for table "repo_profiles"'
-    elif repository != "somerepo":
-        response = error_response
-        response["errors"][0][
-            "message"
-        ] = 'insert or update on table "repo_profiles" violates foreign key constraint "repo_fk"'
-    else:
-        response = success_response
-
-    return [
-        200,
-        response_headers,
-        json.dumps(response),
-    ]
+    return _gql_callback
 
 
 @httpretty.activate(allow_net_connect=False)
@@ -606,7 +569,13 @@ def _gql_callback(request, uri, response_headers):
 )
 def test_commandline_readme(namespace, repository, readme, token, expected):
     runner = CliRunner()
-    httpretty.register_uri(httpretty.HTTPretty.POST, _GQL_ENDPOINT + "/", body=_gql_callback)
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST,
+        _GQL_ENDPOINT + "/",
+        body=_make_gql_callback(
+            expect_variables={"namespace": namespace, "readme": readme, "repository": repository,}
+        ),
+    )
 
     with patch(
         "splitgraph.cloud.AuthAPIClient.access_token",
@@ -630,7 +599,17 @@ def test_commandline_readme(namespace, repository, readme, token, expected):
 @httpretty.activate(allow_net_connect=False)
 def test_commandline_description():
     runner = CliRunner()
-    httpretty.register_uri(httpretty.HTTPretty.POST, _GQL_ENDPOINT + "/", body=_gql_callback)
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST,
+        _GQL_ENDPOINT + "/",
+        body=_make_gql_callback(
+            expect_variables={
+                "namespace": "someuser",
+                "description": "some description",
+                "repository": "somerepo",
+            }
+        ),
+    )
 
     with patch(
         "splitgraph.cloud.AuthAPIClient.access_token",
@@ -654,20 +633,72 @@ _BROKEN_META = """
 what_is_this_key: no_value
 """
 
-_EXPECTED_META = """
+_VALID_META = """
 readme: {}
 description: Description for a sample repo
 extra_keys: are ok for now
 topics:
   - topic_1
   - topic_2
+sources:
+  - anchor: Creator of the dataset
+    href: https://www.splitgraph.com
+    isCreator: true
+    isSameAs: false
+  - anchor: Source 2
+    href: https://www.splitgraph.com
+    isCreator: false
+    isSameAs: true
+license: Public Domain
+extra_metadata:
+  created_at: 2020-01-01 12:00:00
+  Some Metadata Key 1:
+    key_1_1: value_1_1
+    key_1_2: value_1_2
+  key_2:
+    key_2_1: value_2_1
+    key_2_2: value_2_2
 """
 
 
 @httpretty.activate(allow_net_connect=False)
 def test_commandline_metadata():
     runner = CliRunner()
-    httpretty.register_uri(httpretty.HTTPretty.POST, _GQL_ENDPOINT + "/", body=_gql_callback)
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST,
+        _GQL_ENDPOINT + "/",
+        body=_make_gql_callback(
+            expect_variables={
+                "description": "Description for a sample repo",
+                "license": "Public Domain",
+                "metadata": {
+                    "created_at": "2020-01-01 12:00:00",
+                    "upstream_metadata": {
+                        "Some Metadata Key 1": {"key_1_1": "value_1_1", "key_1_2": "value_1_2"},
+                        "key_2": {"key_2_1": "value_2_1", "key_2_2": "value_2_2"},
+                    },
+                },
+                "namespace": "someuser",
+                "readme": "# Sample dataset readme\n\nHello there\n",
+                "repository": "somerepo",
+                "sources": [
+                    {
+                        "anchor": "Creator of the dataset",
+                        "href": "https://www.splitgraph.com",
+                        "isCreator": True,
+                        "isSameAs": False,
+                    },
+                    {
+                        "anchor": "Source 2",
+                        "href": "https://www.splitgraph.com",
+                        "isCreator": False,
+                        "isSameAs": True,
+                    },
+                ],
+                "topics": ["topic_1", "topic_2"],
+            }
+        ),
+    )
 
     with patch(
         "splitgraph.cloud.AuthAPIClient.access_token",
@@ -687,20 +718,22 @@ def test_commandline_metadata():
                 result = runner.invoke(
                     metadata_c,
                     ["someuser/somerepo", "-"],
-                    input=_EXPECTED_META.format(test_readme_path),
+                    input=_VALID_META.format(test_readme_path),
                     catch_exceptions=False,
                 )
 
                 assert result.exit_code == 0
-                assert "README updated for repository someuser/somerepo." in result.output
-                assert "Description updated for repository someuser/somerepo." in result.output
-                assert "Topics updated for repository someuser/somerepo." in result.output
+                assert "Metadata updated for repository someuser/somerepo." in result.output
 
 
 @httpretty.activate(allow_net_connect=False)
 def test_commandline_search():
     runner = CliRunner()
-    httpretty.register_uri(httpretty.HTTPretty.POST, _GQL_ENDPOINT + "/", body=_gql_callback)
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST,
+        _GQL_ENDPOINT + "/",
+        body=_make_gql_callback(expect_variables={"query": "some_query", "limit": 20}),
+    )
 
     with patch(
         "splitgraph.cloud.AuthAPIClient.access_token",

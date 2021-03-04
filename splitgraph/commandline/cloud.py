@@ -426,49 +426,64 @@ def description_c(remote, repository, description):
 def metadata_c(ctx, remote, repository, metadata_file):
     """Upload a metadata file to a Splitgraph repository.
 
-This can manipulate the repository's short description, README and topics.
+    This can manipulate the repository's short description, README, topics, license, sources and extra metadata.
 
-The metadata file must be a YAML file with the keys `readme`, `description` and `topics`. Omitting a key doesn't delete the value.
+    The metadata file must be a YAML file. Omitting a key doesn't delete the value.
 
-For example:
+    For example:
 
-\b
-```
-readme: dataset-readme.md
-description: Dataset description (160 characters max).
-topics:
-  - topic_1
-  - topic_2
-```
+    \b
+    ```
+    readme: dataset-readme.md
+    description: Dataset description (160 characters max).
+    topics:
+      - topic_1
+      - topic_2
+    sources:
+      - anchor: Source
+        href: https://www.splitgraph.com
+        isCreator: true
+        isSameAs: false
+      - anchor: Source 2
+        href: https://www.splitgraph.com
+        isCreator: false
+        isSameAs: true
+    license: Public Domain
+    extra_metadata:
+      key_1:
+        key_1_1: value_1_1
+        key_1_2: value_1_2
+      key_2:
+        key_2_1: value_2_1
+        key_2_2: value_2_2
+    ```
     """
     import yaml
     from splitgraph.cloud import GQLAPIClient
 
     metadata = yaml.safe_load(metadata_file)
 
-    if "readme" not in metadata and "description" not in metadata and "topics" not in metadata:
+    keys = ["readme", "description", "topics", "sources", "license", "extra_metadata"]
+    if all(k not in metadata for k in keys):
         raise click.UsageError(
-            "Invalid metadata file. File must contain at least one of "
-            "readme/description/topics keys."
+            "Invalid metadata file. File must contain at least one of " f"{'/'.join(keys)} keys."
         )
 
+    kwargs = {}
     if "readme" in metadata:
         with open(metadata["readme"], "r") as f:
-            ctx.invoke(readme_c, remote=remote, repository=repository, readme=f)
+            kwargs["readme"] = f.read()
 
-    if "description" in metadata:
-        ctx.invoke(
-            description_c, remote=remote, repository=repository, description=metadata["description"]
-        )
+    if "extra_metadata" in metadata:
+        kwargs["extra_metadata"] = metadata["extra_metadata"]
 
-    if "topics" in metadata:
-        # To clear out the topics, pass in an empty list instead of None.
-        topics = metadata["topics"] or []
-        client = GQLAPIClient(remote)
-        client.upsert_topics(
-            namespace=repository.namespace, repository=repository.repository, topics=topics,
-        )
-        click.echo("Topics updated for repository %s." % str(repository))
+    for k in keys:
+        if k not in ("readme", "extra_metadata") and k in metadata:
+            kwargs[k] = metadata[k]
+
+    client = GQLAPIClient(remote)
+    client.upsert_metadata(repository.namespace, repository.repository, **kwargs)
+    click.echo("Metadata updated for repository %s." % str(repository))
 
 
 @click.command("search")
