@@ -474,11 +474,8 @@ def metadata_c(ctx, remote, repository, metadata_file):
         with open(metadata["readme"], "r") as f:
             kwargs["readme"] = f.read()
 
-    if "extra_metadata" in metadata:
-        kwargs["extra_metadata"] = metadata["extra_metadata"]
-
     for k in keys:
-        if k not in ("readme", "extra_metadata") and k in metadata:
+        if k != "readme" and k in metadata:
             kwargs[k] = metadata[k]
 
     client = GQLAPIClient(remote)
