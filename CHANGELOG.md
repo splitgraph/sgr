@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.2.6 (2021-03-04)
+
+  * Fix querying when there are NULLs in primary keys (https://github.com/splitgraph/splitgraph/pull/373)
+  * Data source and foreign data wrapper for querying CSV files in S3 buckets and HTTP (https://github.com/splitgraph/splitgraph/pull/397)
+  * Ctrl+C can now interrupt long-running PostgreSQL queries and stop sgr (https://github.com/splitgraph/splitgraph/pull/398)
+  * Support for updating miscellaneous repository metadata from the `sgr cloud metadata` CLI (https://github.com/splitgraph/splitgraph/pull/399)
+
+Full set of changes: [`v0.2.5...v0.2.6`](https://github.com/splitgraph/splitgraph/compare/v0.2.5...v0.2.6)
+
 ## v0.2.5 (2021-01-25)
 
   * Fix piping CSV files from stdin (https://github.com/splitgraph/splitgraph/pull/350)
