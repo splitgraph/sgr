@@ -90,6 +90,9 @@ class Repository:
         # PostgreSQL connection or even a different database engine altogether).
         self.object_engine = object_engine or self.engine
         self.images = ImageManager(self)
+        """A :class:`splitgraph.core.image.ImageManager` instance that performs operations 
+        (checkout, delete etc) on this repository's images.
+        """
 
         # consider making this an injected/a singleton for a given engine
         # since it's global for the whole engine but calls (e.g. repo.objects.cleanup()) make it
@@ -97,6 +100,9 @@ class Repository:
         self.objects = object_manager or ObjectManager(
             object_engine=self.object_engine, metadata_engine=self.engine
         )
+        """A :class:`splitgraph.core.object_manager.ObjectManager` instance that performs operations on
+        the objects on this repository's engine (not just objects belonging to this repository).
+        """
 
     @classmethod
     def from_template(
