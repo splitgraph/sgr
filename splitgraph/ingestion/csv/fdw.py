@@ -1,5 +1,5 @@
-import codecs
 import csv
+import gzip
 import io
 import logging
 import os
@@ -50,12 +50,13 @@ def make_csv_reader(
     delimiter: str = ",",
     quotechar: str = '"',
     header: bool = True,
+    encoding: str = "utf-8",
 ):
     stream = ResettableStream(response)
     if autodetect_header or autodetect_dialect:
         data = stream.read(2048)
         assert data
-        sniffer_sample = data.decode("utf-8")
+        sniffer_sample = data.decode(encoding)
 
         dialect = csv.Sniffer().sniff(sniffer_sample)
         has_header = csv.Sniffer().has_header(sniffer_sample)
@@ -75,7 +76,7 @@ def make_csv_reader(
     return has_header, reader
 
 
-def _get_table_definition(response, fdw_options, table_name, table_options):
+def _get_table_definition(response, fdw_options, table_name, table_options, encoding="utf-8"):
     has_header, reader = make_csv_reader(
         response,
         autodetect_header=get_bool(fdw_options, "autodetect_header"),
@@ -83,6 +84,7 @@ def _get_table_definition(response, fdw_options, table_name, table_options):
         header=get_bool(fdw_options, "header"),
         delimiter=fdw_options.get("delimiter", ","),
         quotechar=fdw_options.get("quotechar", '"'),
+        encoding=encoding,
     )
     sample = list(islice(reader, 1000))
 
@@ -144,13 +146,17 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
                 self.url, stream=True, verify=os.environ.get("SSL_CERT_FILE", True)
             ) as response:
                 response.raise_for_status()
+                stream = response.raw
+                if response.headers.get("Content-Encoding") == "gzip":
+                    stream = gzip.GzipFile(fileobj=stream)
                 has_header, reader = make_csv_reader(
-                    response.raw,
+                    stream,
                     self.autodetect_header,
                     self.autodetect_dialect,
                     self.delimiter,
                     self.quotechar,
                     self.header,
+                    encoding=response.encoding,
                 )
                 yield from self._read_csv(reader, header=has_header)
         else:
@@ -189,7 +195,14 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
                 fdw_options["url"], stream=True, verify=os.environ.get("SSL_CERT_FILE", True)
             ) as response:
                 response.raise_for_status()
-                return [_get_table_definition(response.raw, fdw_options, "data", None)]
+                stream = response.raw
+                if response.headers.get("Content-Encoding") == "gzip":
+                    stream = gzip.GzipFile(fileobj=stream)
+                return [
+                    _get_table_definition(
+                        stream, fdw_options, "data", None, encoding=response.encoding
+                    )
+                ]
 
         # Get S3 options
         client, bucket, prefix = cls._get_s3_params(fdw_options)
