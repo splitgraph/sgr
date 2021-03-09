@@ -69,10 +69,9 @@ class Image(NamedTuple):
         parent = self.parent_id
 
         children = self.engine.run_sql(
-            SQL(
-                """SELECT image_hash FROM {}.images
-                WHERE namespace = %s AND repository = %s AND parent_id = %s"""
-            ).format(Identifier(SPLITGRAPH_META_SCHEMA)),
+            SQL("SELECT image_hash FROM {}.get_images(%s,%s) WHERE parent_id = %s").format(
+                Identifier(SPLITGRAPH_API_SCHEMA)
+            ),
             (self.repository.namespace, self.repository.repository, self.image_hash),
             return_shape=ResultShape.MANY_ONE,
         )
@@ -261,9 +260,7 @@ class Image(NamedTuple):
         self.repository.images.by_tag(tag)
 
         self.engine.run_sql(
-            SQL("DELETE FROM {}.tags WHERE namespace = %s AND repository = %s AND tag = %s").format(
-                Identifier(SPLITGRAPH_META_SCHEMA)
-            ),
+            select("delete_tag", table_args="(%s,%s,%s)", schema=SPLITGRAPH_API_SCHEMA),
             (self.repository.namespace, self.repository.repository, tag),
             return_shape=None,
         )
