@@ -357,6 +357,24 @@ $$
 LANGUAGE plpgsql
 SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
 
+CREATE OR REPLACE FUNCTION splitgraph_api.delete_tag (
+    _namespace varchar,
+    _repository varchar,
+    _tag varchar
+)
+    RETURNS void
+    AS $$
+BEGIN
+    PERFORM splitgraph_api.check_privilege (_namespace);
+    DELETE FROM splitgraph_meta.tags
+        WHERE namespace = _namespace
+        AND repository = _repository
+        AND tag = _tag;
+END
+$$
+LANGUAGE plpgsql
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+
 -- delete_repository(namespace, repository)
 CREATE OR REPLACE FUNCTION splitgraph_api.delete_repository (
     _namespace varchar,
