@@ -1,4 +1,5 @@
 import io
+import itertools
 import logging
 import sys
 import traceback
@@ -6,7 +7,7 @@ from typing import Optional, Tuple, BinaryIO, TextIO
 
 import target_postgres
 from target_postgres import DbSync
-from target_postgres.db_sync import column_type, flatten_schema
+from target_postgres.db_sync import column_type, flatten_key
 
 from splitgraph.config import CONFIG
 from splitgraph.core.image import Image
@@ -239,9 +240,51 @@ def _get_sg_schema(flattened_schema, primary_key) -> TableSchema:
     ]
 
 
+# Taken from target-postgres and adapted to not crash on unsupported columns
+def _flatten_schema(d, parent_key=[], sep="__", level=0, max_level=0):
+    items = []
+
+    if "properties" not in d:
+        return {}
+
+    for k, v in d["properties"].items():
+        new_key = flatten_key(k, parent_key, sep)
+        if "type" in v.keys():
+            if "object" in v["type"] and "properties" in v and level < max_level:
+                items.extend(
+                    _flatten_schema(
+                        v, parent_key + [k], sep=sep, level=level + 1, max_level=max_level
+                    ).items()
+                )
+            else:
+                items.append((new_key, v))
+        else:
+            if len(v.values()) > 0:
+                if v.get("inclusion") == "unsupported":
+                    logging.warning("Unsupported field %s: %s", new_key, v.get("description", ""))
+                    continue
+                if list(v.values())[0][0]["type"] == "string":
+                    list(v.values())[0][0]["type"] = ["null", "string"]
+                    items.append((new_key, list(v.values())[0][0]))
+                elif list(v.values())[0][0]["type"] == "array":
+                    list(v.values())[0][0]["type"] = ["null", "array"]
+                    items.append((new_key, list(v.values())[0][0]))
+                elif list(v.values())[0][0]["type"] == "object":
+                    list(v.values())[0][0]["type"] = ["null", "object"]
+                    items.append((new_key, list(v.values())[0][0]))
+
+    key_func = lambda item: item[0]
+    sorted_items = sorted(items, key=key_func)
+    for k, g in itertools.groupby(sorted_items, key=key_func):
+        if len(list(g)) > 1:
+            raise ValueError("Duplicate column name produced in schema: {}".format(k))
+
+    return dict(sorted_items)
+
+
 def get_sg_schema(stream_schema_message, flattening_max_level=0):
     return _get_sg_schema(
-        flatten_schema(stream_schema_message["schema"], max_level=flattening_max_level),
+        _flatten_schema(stream_schema_message["schema"], max_level=flattening_max_level),
         get_key_properties(stream_schema_message),
     )
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.7 (2021-03-09)
+
+  * Fix MySQL plugin crashes on binary data types.
+
+Full set of changes: [`v0.2.6...v0.2.7`](https://github.com/splitgraph/splitgraph/compare/v0.2.6...v0.2.7)
+
 ## v0.2.6 (2021-03-04)
 
   * Fix querying when there are NULLs in primary keys (https://github.com/splitgraph/splitgraph/pull/373)

@@ -425,6 +425,8 @@ def test_singer_tap_mysql_introspection(local_engine_empty):
         "user": "originuser",
     }
 
+    # Binary datatypes aren't supported by tap-singer but we make sure it's aware of them
+    # (shows that they're not supported).
     singer_catalog = source._run_singer_discovery(singer_config)
     assert singer_catalog == {
         "streams": [
@@ -449,6 +451,14 @@ def test_singer_tap_mysql_introspection(local_engine_empty):
                             "maxLength": 20,
                             "type": ["null", "string"],
                         },
+                        "binary_data": {
+                            "description": "Unsupported column type binary(7)",
+                            "inclusion": "unsupported",
+                        },
+                        "varbinary_data": {
+                            "description": "Unsupported column type varbinary(16)",
+                            "inclusion": "unsupported",
+                        },
                     },
                     "type": "object",
                 },
@@ -471,6 +481,10 @@ def test_singer_tap_mysql_introspection(local_engine_empty):
             },
         },
         {
+            "breadcrumb": ["properties", "binary_data"],
+            "metadata": {"selected-by-default": False, "sql-datatype": "binary(7)"},
+        },
+        {
             "breadcrumb": ["properties", "discovery"],
             "metadata": {"selected-by-default": True, "sql-datatype": "datetime"},
         },
@@ -485,6 +499,10 @@ def test_singer_tap_mysql_introspection(local_engine_empty):
         {
             "breadcrumb": ["properties", "name"],
             "metadata": {"selected-by-default": True, "sql-datatype": "varchar(20)",},
+        },
+        {
+            "breadcrumb": ["properties", "varbinary_data"],
+            "metadata": {"selected-by-default": False, "sql-datatype": "varbinary(16)"},
         },
     ]
 
