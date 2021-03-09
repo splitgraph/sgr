@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.8 (2021-03-09)
+
+  * Allow deleting tags on remote registries (https://github.com/splitgraph/splitgraph/pull/403/files)
+
+Full set of changes: [`v0.2.7...v0.2.8`](https://github.com/splitgraph/splitgraph/compare/v0.2.7...v0.2.8)
+
 ## v0.2.7 (2021-03-09)
 
   * Fix MySQL plugin crashes on binary data types.
