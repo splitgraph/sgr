@@ -1,9 +1,12 @@
 """
 Extra wrapper code for mount handlers
 """
-from typing import Dict, Any
+from typing import Dict, Any, Optional, TYPE_CHECKING
 
 from splitgraph.exceptions import DataSourceError
+
+if TYPE_CHECKING:
+    from splitgraph.hooks.data_source.base import TableInfo
 
 
 def mount_postgres(mountpoint, **kwargs) -> None:
@@ -28,7 +31,11 @@ def mount_postgres(mountpoint, **kwargs) -> None:
 
 
 def mount(
-    mountpoint: str, mount_handler: str, handler_kwargs: Dict[str, Any], overwrite: bool = True
+    mountpoint: str,
+    mount_handler: str,
+    handler_kwargs: Dict[str, Any],
+    overwrite: bool = True,
+    tables: Optional["TableInfo"] = None,
 ) -> None:
     """
     Mounts a foreign database via an FDW (without creating new Splitgraph objects)
@@ -37,6 +44,7 @@ def mount(
     :param mount_handler: The type of the mounted database.
     :param handler_kwargs: Dictionary of options to pass to the mount handler.
     :param overwrite: Delete the foreign server if it already exists. Used by mount_postgres for data pulls.
+    :param tables: List of tables to mount or their schemas
     """
     # Workaround for circular imports
     from splitgraph.engine import get_engine
@@ -58,5 +66,5 @@ def mount(
     )
 
     source = data_source.from_commandline(engine, handler_kwargs)
-    source.mount(schema=mountpoint, overwrite=overwrite)
+    source.mount(schema=mountpoint, overwrite=overwrite, tables=tables)
     engine.commit()

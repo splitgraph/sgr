@@ -17,6 +17,7 @@ from splitgraph.core.registry import (
     set_info_key,
 )
 from splitgraph.core.repository import Repository, clone
+from splitgraph.core.types import TableColumn
 from splitgraph.engine import get_engine, ResultShape, switch_engine
 from splitgraph.hooks.mount_handlers import mount
 from splitgraph.hooks.s3_server import MINIO, S3_BUCKET
@@ -116,6 +117,16 @@ def _mount_mysql(repository):
             password="originpass",
             remote_schema="mysqlschema",
         ),
+        tables={
+            "mushrooms": [
+                TableColumn(1, "mushroom_id", "integer", False),
+                TableColumn(2, "name", "character varying (20)", False),
+                TableColumn(3, "discovery", "timestamp", False),
+                TableColumn(4, "friendly", "boolean", False),
+                TableColumn(5, "binary_data", "bytea", False),
+                TableColumn(6, "varbinary_data", "bytea", False),
+            ]
+        },
     )
 
 

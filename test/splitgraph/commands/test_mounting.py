@@ -41,13 +41,16 @@ def test_mount_force_schema(local_engine_empty):
 @pytest.mark.mounting
 def test_mount_mysql(local_engine_empty):
     try:
+        # Mount MySQL with a set schema instead of letting the FDW detect it
         _mount_mysql(MYSQL_MNT)
-        # Gotchas: bool coerced to int
-        assert (2, "deathcap", dt(2018, 3, 17, 8, 6, 26), 0) in get_engine().run_sql(
-            """SELECT mushroom_id, name, discovery, friendly
-                           FROM "test/mysql_mount".mushrooms
-                           WHERE friendly = 0"""
+        result = get_engine().run_sql(
+            """SELECT mushroom_id, name, discovery, friendly, binary_data, varbinary_data 
+            FROM "test/mysql_mount".mushrooms"""
         )
+        assert len(result) == 2
+        assert any(r[1] == "deathcap" and r[2] == dt(2018, 3, 17, 8, 6, 26) for r in result)
+        # Check binary -> bytea conversion works (the data is binary-encoded 127.0.0.1 IP)
+        assert sorted(result, key=lambda r: r[0])[0][5].hex() == "7f000001"
     finally:
         MYSQL_MNT.delete()
 
