@@ -166,10 +166,10 @@ If a dictionary, must have the format
     @classmethod
     def from_commandline(cls, engine, commandline_kwargs) -> "CSVDataSource":
         params = deepcopy(commandline_kwargs)
-        credentials = {
-            "s3_access_key": params.pop("s3_access_key", None),
-            "s3_secret_key": params.pop("s3_secret_key", None),
-        }
+        credentials = {}
+        for k in ["s3_access_key", "s3_secret_key"]:
+            if k in params:
+                credentials[k] = params[k]
         return cls(engine, credentials, params)
 
     def get_table_options(self, table_name: str) -> Mapping[str, str]:
