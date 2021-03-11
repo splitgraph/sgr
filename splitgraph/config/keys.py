@@ -64,6 +64,7 @@ DEFAULTS: ConfigDict = {
         "socrata": "splitgraph.ingestion.socrata.mount.SocrataDataSource",
         "elasticsearch": "splitgraph.hooks.data_source.ElasticSearchDataSource",
         "csv": "splitgraph.ingestion.csv.CSVDataSource",
+        "snowflake": "splitgraph.ingestion.snowflake.SnowflakeDataSource",
     },
 }
 
