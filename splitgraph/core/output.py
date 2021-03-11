@@ -79,7 +79,7 @@ def conn_string_to_dict(connection: Optional[str]) -> Dict[str, Any]:
             password=match.group(3),
         )
     else:
-        return dict(server=None, port=None, username=None, password=None)
+        return {}
 
 
 def parse_dt(string: str) -> datetime:
