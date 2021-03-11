@@ -345,10 +345,10 @@ class PostgreSQLDataSource(ForeignDataWrapperDataSource):
     params_schema = {
         "type": "object",
         "properties": {
-            "host": {"type": "string"},
-            "port": {"type": "integer"},
-            "dbname": {"type": "string"},
-            "remote_schema": {"type": "string"},
+            "host": {"type": "string", "description": "Remote hostname"},
+            "port": {"type": "integer", "description": "Port"},
+            "dbname": {"type": "string", "description": "Database name"},
+            "remote_schema": {"type": "string", "description": "Remote schema name"},
             "tables": _table_options_schema,
         },
         "required": ["host", "port", "dbname", "remote_schema"],
