@@ -4,7 +4,7 @@ from typing import Optional, TYPE_CHECKING, Dict, Mapping, cast
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.hooks.data_source.fdw import ForeignDataWrapperDataSource
-from splitgraph.ingestion.common import IngestionAdapter
+from splitgraph.ingestion.common import IngestionAdapter, build_commandline_help
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PsycopgEngine
@@ -119,6 +119,7 @@ and make them available to query over SQL.
 
 For example:  
 
+\b
 ```
 sgr mount csv target_schema -o@- <<EOF
   {
@@ -134,23 +135,9 @@ EOF
 ```
 """
 
-    commandline_kwargs_help: str = """url: HTTP URL (either the URL or S3 parameters are required)
-s3_endpoint: S3 host and port (required)
-s3_secure: Use SSL (default true)
-s3_access_key: S3 access key (optional)
-s3_secret_key: S3 secret key (optional)
-s3_bucket: S3 bucket name (required)
-s3_object_prefix: Prefix for object IDs to mount (optional)
-autodetect_header: Detect whether the CSV file has a header automatically
-autodetect_dialect: Detect the file's separator, quoting characters etc. automatically
-header: Treats the first line as a header
-separator: Override the character used as a CSV separator
-quotechar: Override the character used as a CSV quoting character
-tables: Objects to mount (default all). If a list, will import only these objects. 
-If a dictionary, must have the format
-    {"table_name": {"schema": {"col_1": "type_1", ...},
-                    "options": {[get passed to CREATE FOREIGN TABLE]}}}.
-    """
+    commandline_kwargs_help: str = (
+        build_commandline_help(credentials_schema) + "\n" + build_commandline_help(params_schema)
+    )
 
     def get_fdw_name(self):
         return "multicorn"
