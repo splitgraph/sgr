@@ -1,11 +1,12 @@
 from abc import abstractmethod
-from typing import Optional, Union
+from typing import Optional, Union, Dict, List, Tuple
 
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.core.image import Image
 from splitgraph.core.repository import Repository
-from splitgraph.core.types import TableSchema
+from splitgraph.core.sql import POSTGRES_MAX_IDENTIFIER
+from splitgraph.core.types import TableSchema, TableColumn
 from splitgraph.engine.postgres.engine import PsycopgEngine
 from splitgraph.exceptions import CheckoutError
 
@@ -99,7 +100,7 @@ class IngestionAdapter:
         if_exists: str = "patch",
         schema_check: bool = True,
         no_header: bool = False,
-        **kwargs
+        **kwargs,
     ):
         tmp_schema = repository.to_schema()
 
@@ -170,7 +171,7 @@ class IngestionAdapter:
         image: Optional[Union[Image, str]] = None,
         repository: Optional[Repository] = None,
         use_lq: bool = False,
-        **kwargs
+        **kwargs,
     ):
         if image is None:
             if repository is None:
@@ -195,3 +196,49 @@ class IngestionAdapter:
         # (won't download objects unless needed).
         with image.query_schema() as tmp_schema:
             return self.query_to_data(image.engine, query, tmp_schema, **kwargs)
+
+
+def dedupe_sg_schema(schema_spec: TableSchema, prefix_len: int = 59) -> TableSchema:
+    """
+    Some foreign schemas have columns that are longer than 63 characters
+    where the first 63 characters are the same between several columns
+    (e.g. odn.data.socrata.com). This routine renames columns in a schema
+    to make sure this can't happen (by giving duplicates a number suffix).
+    """
+
+    # We truncate the column name to 59 to leave space for the underscore
+    # and 3 digits (max PG identifier is 63 chars)
+    prefix_counts: Dict[str, int] = {}
+    columns_nums: List[Tuple[str, int]] = []
+
+    for column in schema_spec:
+        column_short = column.name[:prefix_len]
+        count = prefix_counts.get(column_short, 0)
+        columns_nums.append((column_short, count))
+        prefix_counts[column_short] = count + 1
+
+    result = []
+    for (_, position), column in zip(columns_nums, schema_spec):
+        column_short = column.name[:prefix_len]
+        count = prefix_counts[column_short]
+        if count > 1:
+            result.append(
+                TableColumn(
+                    column.ordinal,
+                    f"{column_short}_{position:03d}",
+                    column.pg_type,
+                    column.is_pk,
+                    column.comment,
+                )
+            )
+        else:
+            result.append(
+                TableColumn(
+                    column.ordinal,
+                    column.name[:POSTGRES_MAX_IDENTIFIER],
+                    column.pg_type,
+                    column.is_pk,
+                    column.comment,
+                )
+            )
+    return result

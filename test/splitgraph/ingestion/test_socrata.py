@@ -18,8 +18,8 @@ from splitgraph.ingestion.socrata.querying import (
     cols_to_socrata,
     sortkeys_to_socrata,
     _socrata_to_pg_type,
-    dedupe_sg_schema,
 )
+from splitgraph.ingestion.common import dedupe_sg_schema
 
 
 class Q:
