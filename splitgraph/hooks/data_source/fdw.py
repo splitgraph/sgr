@@ -80,10 +80,10 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
         else:
             tables = None
 
-        credentials = {
-            "username": params.pop("username"),
-            "password": params.pop("password"),
-        }
+        credentials: Dict[str, Any] = {}
+        for k in cast(Dict[str, Any], cls.credentials_schema["properties"]).keys():
+            if k in params:
+                credentials[k] = params[k]
         result = cls(engine, credentials, params)
         result.tables = tables
         return result
