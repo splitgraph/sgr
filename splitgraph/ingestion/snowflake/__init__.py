@@ -33,7 +33,7 @@ class SnowflakeDataSource(ForeignDataWrapperDataSource):
             "warehouse": {"type": "string", "description": "Warehouse name"},
             "role": {"type": "string", "description": "Role"},
         },
-        "required": ["database", "schema"],
+        "required": ["database"],
     }
 
     supports_mount = True
@@ -68,7 +68,7 @@ $ sgr mount snowflake test_snowflake_subquery -o@- <<EOF
                 "n_nation": "varchar",
                 "segment": "varchar",
                 "avg_balance": "numeric"
-            }
+            },
             "options": {
                 "subquery": "SELECT n_nation AS nation, c_mktsegment AS segment, AVG(c_acctbal) AS avg_balance FROM TPCH_SF100.customer c JOIN TPCH_SF100.nation n ON c_nationkey = n_nationkey"
             }
@@ -80,7 +80,11 @@ EOF
     """
 
     commandline_kwargs_help: str = (
-        build_commandline_help(credentials_schema) + "\n" + build_commandline_help(params_schema)
+        build_commandline_help(credentials_schema)
+        + "\n"
+        + build_commandline_help(params_schema)
+        + "\n"
+        + "The schema parameter is required when subquery isn't used."
     )
 
     def get_fdw_name(self):
