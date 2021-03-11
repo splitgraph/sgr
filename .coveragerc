@@ -1,6 +1,6 @@
 [report]
 # Tested inside of the actual engine
-omit = splitgraph/core/fdw_checkout.py,splitgraph/core/server.py
+omit = splitgraph/core/fdw_checkout.py,splitgraph/core/server.py,splitgraph/ingestion/csv/fdw.py
 
 # Regexes for lines to exclude from consideration
 exclude_lines =
