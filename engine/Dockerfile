@@ -185,6 +185,10 @@ RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip \
     pip install "elasticsearch>=7.7.0"
 COPY ./engine/src/postgres-elasticsearch-fdw/pg_es_fdw /pg_es_fdw/pg_es_fdw
 
+# Install the Snowflake SQLAlchemy connector
+RUN --mount=type=cache,id=pip-cache,target=/root/.cache/pip \
+    pip install "snowflake-sqlalchemy>=1.2.4"
+
 ENV PATH "${PATH}:/splitgraph/bin"
 ENV PYTHONPATH "${PYTHONPATH}:/splitgraph:/pg_es_fdw"
 
