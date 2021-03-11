@@ -242,3 +242,27 @@ def dedupe_sg_schema(schema_spec: TableSchema, prefix_len: int = 59) -> TableSch
                 )
             )
     return result
+
+
+def _format_jsonschema(prop, schema, required):
+    if prop == "tables":
+        return """tables: Tables to mount (default all). If a list, will import only these tables. 
+If a dictionary, must have the format
+    {"table_name": {"schema": {"col_1": "type_1", ...},
+                    "options": {[get passed to CREATE FOREIGN TABLE]}}}."""
+    parts = [f"{prop}:"]
+    if "description" in schema:
+        parts.append(schema["description"])
+        if parts[-1][-1] != ".":
+            parts[-1] += "."
+
+    if prop in required:
+        parts.append("Required.")
+    return " ".join(parts)
+
+
+def build_commandline_help(json_schema):
+    required = json_schema.get("required", [])
+    return "\n".join(
+        _format_jsonschema(p, pd, required) for p, pd in json_schema["properties"].items()
+    )
