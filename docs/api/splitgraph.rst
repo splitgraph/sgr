@@ -5,12 +5,16 @@ Subpackages
 -----------
 
 .. toctree::
+   :maxdepth: 4
 
-    splitgraph.config
-    splitgraph.core
-    splitgraph.engine
-    splitgraph.hooks
-    splitgraph.splitfile
+   splitgraph.cloud
+   splitgraph.commandline
+   splitgraph.config
+   splitgraph.core
+   splitgraph.engine
+   splitgraph.hooks
+   splitgraph.ingestion
+   splitgraph.splitfile
 
 Submodules
 ----------
@@ -19,22 +23,14 @@ splitgraph.exceptions module
 ----------------------------
 
 .. automodule:: splitgraph.exceptions
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 Module contents
 ---------------
 
 .. automodule:: splitgraph
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+   :members:
+   :undoc-members:
+   :show-inheritance:

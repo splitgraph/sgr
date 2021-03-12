@@ -5,13 +5,14 @@ Subpackages
 -----------
 
 .. toctree::
+   :maxdepth: 4
 
-    splitgraph.engine.postgres
+   splitgraph.engine.postgres
 
 Module contents
 ---------------
 
 .. automodule:: splitgraph.engine
-    :members:
-    :undoc-members:
-    :show-inheritance:
+   :members:
+   :undoc-members:
+   :show-inheritance:
