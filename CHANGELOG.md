@@ -1,8 +1,15 @@
 # Changelog
 
+## v0.2.9 (2021-03-12)
+
+  * Add a Snowflake data source, backed by a SQLAlchemy connector (https://github.com/splitgraph/splitgraph/pull/404)
+
+Full set of changes: [`v0.2.8...v0.2.9`](https://github.com/splitgraph/splitgraph/compare/v0.2.8...v0.2.9)
+
+
 ## v0.2.8 (2021-03-09)
 
-  * Allow deleting tags on remote registries (https://github.com/splitgraph/splitgraph/pull/403/files)
+  * Allow deleting tags on remote registries (https://github.com/splitgraph/splitgraph/pull/403)
 
 Full set of changes: [`v0.2.7...v0.2.8`](https://github.com/splitgraph/splitgraph/compare/v0.2.7...v0.2.8)
 
