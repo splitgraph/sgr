@@ -255,8 +255,17 @@ class AuthAPIClient:
         :param accept_tos: Accept the Terms of Service if they exist
         """
         body = dict(username=username, password=password, email=email, accept_tos=accept_tos)
+
+        headers = get_headers()
+        try:
+            headers["Authorization"] = "Bearer " + self.access_token
+        except AuthAPIError:
+            # We can optionally pass an access token for logged-in admin users to make new users
+            # on the registry if new signups are disabled, but it will be missing in most cases
+            # (since the user is registering anew)
+            pass
         return requests.post(
-            self.endpoint + "/register_user", json=body, verify=self.verify, headers=get_headers()
+            self.endpoint + "/register_user", json=body, verify=self.verify, headers=headers
         )
 
     @expect_result(["access_token", "refresh_token"])
