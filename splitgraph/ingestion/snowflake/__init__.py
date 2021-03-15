@@ -117,6 +117,13 @@ EOF
             if "schema" in self.params:
                 db_url += f"/{self.params['schema']}"
 
+        # For some reason, in SQLAlchemy, if this is not passed
+        # to the FDW params (even if it is in the DB URL), it doesn't
+        # schema-qualify tables and server-side cursors don't work for scanning
+        # (loads the whole table instead of scrolling through it).
+        if "schema" in self.params:
+            options["schema"] = self.params["schema"]
+
         extra_params = {}
         if "warehouse" in self.params:
             extra_params["warehouse"] = self.params["warehouse"]
