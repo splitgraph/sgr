@@ -128,32 +128,31 @@ def test_commandline_registration_normal():
 
     runner = CliRunner()
 
-    with patch("splitgraph.config.export.overwrite_config"):
-        with patch("splitgraph.config.config.patch_config") as pc:
-            with patch("splitgraph.config.CONFIG", source_config):
-                with patch("splitgraph.commandline.cloud.inject_config_into_engines") as ic:
-                    # First don't agree to ToS, then agree
-                    args = [
-                        "--username",
-                        "someuser",
-                        "--password",
-                        "somepassword",
-                        "--email",
-                        "someuser@example.com",
-                        "--remote",
-                        _REMOTE,
-                    ]
-                    result = runner.invoke(
-                        register_c, args=args, catch_exceptions=False, input="n",
-                    )
-                    assert result.exit_code == 1
-                    assert "Sample ToS message" in result.output
+    with patch("splitgraph.config.export.overwrite_config"), patch(
+        "splitgraph.config.config.patch_config"
+    ) as pc, patch("splitgraph.config.CONFIG", source_config), patch(
+        "splitgraph.cloud.create_config_dict", return_value=source_config
+    ), patch(
+        "splitgraph.commandline.cloud.inject_config_into_engines"
+    ) as ic:
+        # First don't agree to ToS, then agree
+        args = [
+            "--username",
+            "someuser",
+            "--password",
+            "somepassword",
+            "--email",
+            "someuser@example.com",
+            "--remote",
+            _REMOTE,
+        ]
+        result = runner.invoke(register_c, args=args, catch_exceptions=False, input="n",)
+        assert result.exit_code == 1
+        assert "Sample ToS message" in result.output
 
-                    result = runner.invoke(
-                        register_c, args=args, catch_exceptions=False, input="y",
-                    )
-                    assert result.exit_code == 0
-                    assert "Sample ToS message" in result.output
+        result = runner.invoke(register_c, args=args, catch_exceptions=False, input="y",)
+        assert result.exit_code == 0
+        assert "Sample ToS message" in result.output
     assert pc.mock_calls == [
         call(
             source_config,
