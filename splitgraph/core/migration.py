@@ -90,7 +90,7 @@ def set_installed_version(
     )
 
 
-def _get_version_tuples(filenames: List[str]) -> List[Tuple[Optional[str], str]]:
+def get_version_tuples(filenames: List[str]) -> List[Tuple[Optional[str], str]]:
     version_re = re.compile(r"\w+--([\w.]+)(--[\w.]+)?\.sql")
 
     result: List[Tuple[Optional[str], str]] = []
@@ -115,7 +115,7 @@ def source_files_to_apply(
     target_version: Optional[str] = None,
 ) -> Tuple[List[str], str]:
     """ Get the ordered list of .sql files to apply to the database"""
-    version_tuples = _get_version_tuples(schema_files)
+    version_tuples = get_version_tuples(schema_files)
     target_version = target_version or max([v[1] for v in version_tuples])
     if static:
         # For schemata like splitgraph_api which we want to apply in any
