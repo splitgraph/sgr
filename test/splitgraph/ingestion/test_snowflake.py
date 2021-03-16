@@ -21,6 +21,7 @@ def test_snowflake_data_source_dburl_conversion():
 
     assert source.get_server_options() == {
         "db_url": "snowflake://username:password@abcdef.eu-west-1.aws/SOME_DB/TPCH_SF100warehouse=my_warehouse&role=role",
+        "schema": "TPCH_SF100",
         "wrapper": "multicorn.sqlalchemyfdw.SqlAlchemyFdw",
     }
 
