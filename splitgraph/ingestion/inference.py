@@ -13,11 +13,26 @@ def parse_boolean(boolean: str):
     raise ValueError("Invalid boolean!")
 
 
+def parse_int(integer: str):
+    result = int(integer)
+    if result > 2147483647 or result < -2147483648:
+        raise ValueError("Integer value %s out of range!" % integer)
+    return result
+
+
+def parse_bigint(integer: str):
+    result = int(integer)
+    if result > 9223372036854775807 or result < -9223372036854775808:
+        raise ValueError("Bigint value %s out of range!" % integer)
+    return result
+
+
 _CONVERTERS: List[Tuple[str, Callable]] = [
     ("timestamp", parse_dt),
     ("date", parse_date),
     ("time", parse_time),
-    ("integer", int),
+    ("integer", parse_int),
+    ("bigint", parse_bigint),
     ("numeric", float),
     ("boolean", parse_boolean),
     ("json", json.loads),

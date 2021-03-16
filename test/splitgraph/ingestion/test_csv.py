@@ -30,6 +30,8 @@ def test_csv_introspection_s3():
             {"column_name": "timestamp", "type_name": "timestamp"},
             {"column_name": "name", "type_name": "character varying"},
             {"column_name": "number", "type_name": "integer"},
+            {"column_name": "bignumber", "type_name": "bigint"},
+            {"column_name": "vbignumber", "type_name": "numeric"},
         ],
         "options": {"s3_object": "some_prefix/fruits.csv"},
     }
@@ -60,6 +62,8 @@ def test_csv_introspection_http():
             {"column_name": "timestamp", "type_name": "timestamp"},
             {"column_name": "name", "type_name": "character varying"},
             {"column_name": "number", "type_name": "integer"},
+            {"column_name": "bignumber", "type_name": "bigint"},
+            {"column_name": "vbignumber", "type_name": "numeric"},
         ],
         "options": None,
     }
@@ -91,6 +95,8 @@ def test_csv_data_source_s3(local_engine_empty):
         ),
         TableColumn(ordinal=3, name="name", pg_type="character varying", is_pk=False, comment=None),
         TableColumn(ordinal=4, name="number", pg_type="integer", is_pk=False, comment=None),
+        TableColumn(ordinal=5, name="bignumber", pg_type="bigint", is_pk=False, comment=None),
+        TableColumn(ordinal=6, name="vbignumber", pg_type="numeric", is_pk=False, comment=None),
     ]
     assert len(schema["rdu-weather-history.csv"]) == 28
 
