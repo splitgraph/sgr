@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 SPLITFILE_GRAMMAR = Grammar(
     r"""
-    commands = space_nn command space_nn (newline space_nn command space_nn)* newline?
+    commands = space? command space_nn? (newline space? command space_nn?)* space?
     command = comment / import / from / sql_file / sql / custom
     comment = space "#" non_newline?
     from = "FROM" space ("EMPTY" / repo_source) (space "AS" space repository)?
@@ -43,7 +43,7 @@ SPLITFILE_GRAMMAR = Grammar(
     repository = ~"[_a-zA-Z0-9-/]+"
     table_name = identifier
     table_alias = identifier
-    tag_or_hash = identifier
+    tag_or_hash = ~"\S+"
     handler_options = "'" non_single_quote "'"
 
     newline = ~"\n+"
@@ -151,7 +151,7 @@ def parse_image_spec(remote_repo_node: Node) -> Tuple["Repository", str]:
     :param remote_repo_node: Parse node with the specification
     :return: Tuple of (repository object, tag or hash)
     """
-    repo_nodes = extract_nodes(remote_repo_node, ["repository", "identifier", "image_hash"])
+    repo_nodes = extract_nodes(remote_repo_node, ["repository", "tag_or_hash"])
     # Avoid cyclic imports
     from splitgraph.core.repository import Repository
 
