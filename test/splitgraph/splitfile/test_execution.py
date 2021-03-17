@@ -7,7 +7,14 @@ from test.splitgraph.conftest import OUTPUT, SPLITFILE_ROOT, load_splitfile, pre
 from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.repository import clone, Repository
 from splitgraph.exceptions import SplitfileError
-from splitgraph.splitfile._parsing import preprocess, parse_commands
+from splitgraph.splitfile._parsing import (
+    preprocess,
+    parse_commands,
+    extract_nodes,
+    get_first_or_none,
+    parse_image_spec,
+    extract_all_table_aliases,
+)
 from splitgraph.splitfile.execution import execute_commands
 
 PARSING_TEST_SPLITFILE = load_splitfile("import_remote_multiple.splitfile")
@@ -38,6 +45,28 @@ def test_splitfile_preprocessor_escaping():
     assert "\\${ESCAPED}" not in commands
     assert "${ESCAPED}" in commands
     assert "tag-v1-whatever" in commands
+
+
+def test_parse_splitfile_tags_with_dots():
+    node_list = parse_commands(
+        """
+    FROM foo/sales-snapshot:1.0 IMPORT 
+        {SELECT * FROM this_table WHERE a = 42} AS my_table
+    """
+    )
+
+    assert len(node_list) == 1
+    assert node_list[0].expr_name == "import"
+
+    interesting_nodes = extract_nodes(node_list[0], ["repo_source", "mount_source", "tables"])
+    table_names, table_aliases, table_queries = extract_all_table_aliases(interesting_nodes[-1])
+    assert interesting_nodes[0].expr_name == "repo_source"
+    repository, tag_or_hash = parse_image_spec(interesting_nodes[0])
+    assert repository.to_schema() == "foo/sales-snapshot"
+    assert tag_or_hash == "1.0"
+    assert table_names == ["SELECT * FROM this_table WHERE a = 42"]
+    assert table_aliases == ["my_table"]
+    assert table_queries == [True]
 
 
 def test_basic_splitfile(pg_repo_local):
