@@ -1239,12 +1239,7 @@ def _sync(
                 namespace=target.namespace,
             )
 
-            # Don't register locations for objects that we overwrote (actual URLs are supposed
-            # to stay the same).
-            new_locations = [o for o in new_locations if o[0] in new_objects]
-            target.objects.register_object_locations(
-                [o for o in set(object_locations + new_locations) if o[0] in successful]
-            )
+            target.objects.register_object_locations(list(set(object_locations + new_locations)))
             source.objects.register_object_locations(new_locations)
 
             if partial_upload_failure:
