@@ -6,7 +6,7 @@
   * Fix Splitfiles only expecting tags to contain alphanumeric characters (https://github.com/splitgraph/splitgraph/pull/407)
   * Speedups for the Snowflake / SQLAlchemy data soure (https://github.com/splitgraph/splitgraph/pull/405)
 
-Full set of changes: [`v0.2.10...v0.2.10`](https://github.com/splitgraph/splitgraph/compare/v0.2.9...v0.2.10)
+Full set of changes: [`v0.2.9...v0.2.10`](https://github.com/splitgraph/splitgraph/compare/v0.2.9...v0.2.10)
 
 ## v0.2.9 (2021-03-12)
 
