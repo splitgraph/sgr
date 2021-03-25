@@ -1,3 +1,4 @@
+import json
 import urllib.parse
 from typing import Dict, Optional, cast, Mapping
 
@@ -32,6 +33,10 @@ class SnowflakeDataSource(ForeignDataWrapperDataSource):
             "schema": {"type": "string", "description": "Snowflake schema"},
             "warehouse": {"type": "string", "description": "Warehouse name"},
             "role": {"type": "string", "description": "Role"},
+            "envvars": {
+                "type": "object",
+                "description": "Environment variables to set on the engine side",
+            },
         },
         "required": ["database"],
     }
@@ -53,6 +58,7 @@ $ sgr mount snowflake test_snowflake -o@- <<EOF
     "account": "acc-id.west-europe.azure",
     "database": "SNOWFLAKE_SAMPLE_DATA",
     "schema": "TPCH_SF100"
+    "envvars": {"HTTP_PROXY": "http://proxy.company.com"}
 }
 EOF
 
@@ -133,6 +139,9 @@ EOF
         db_url += urllib.parse.urlencode(extra_params)
 
         options["db_url"] = db_url
+
+        if "envvars" in self.params:
+            options["envvars"] = json.dumps(self.params["envvars"])
 
         return options
 
