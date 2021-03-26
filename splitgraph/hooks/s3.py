@@ -30,6 +30,7 @@ def get_object_upload_urls(remote_engine, objects):
         chunk_position=1,
     )
     remote_engine.commit()
+    remote_engine.close()
     return urls
 
 
@@ -42,6 +43,7 @@ def get_object_download_urls(remote_engine, remote_object_ids):
         chunk_position=1,
     )
     remote_engine.commit()
+    remote_engine.close()
     return urls
 
 
