@@ -496,52 +496,67 @@ class PsycopgEngine(SQLEngine):
         cursor_kwargs = {"cursor_factory": psycopg2.extras.NamedTupleCursor} if named else {}
         connection = self.connection
 
-        with connection.cursor(**cursor_kwargs) as cur:
-            try:
-                cur.execute(statement, _convert_vals(arguments) if arguments else None)
-                if connection.notices and self.registry:
-                    # Forward NOTICE messages from the registry back to the user
-                    # (e.g. to nag them to upgrade etc).
-                    for notice in connection.notices:
-                        logging.info("%s says: %s", self.name, notice)
-                    del connection.notices[:]
-            except Exception as e:
-                # Rollback the transaction (to a savepoint if we're inside the savepoint() context manager)
-                self.rollback()
-                # Go through some more common errors (like the engine not being initialized) and raise
-                # more specific Splitgraph exceptions.
-                if isinstance(e, UndefinedTable):
-                    # This is not a neat way to do this but other methods involve placing wrappers around
-                    # anything that sends queries to splitgraph_meta or audit schemas.
-                    if _AUDIT_SCHEMA + "." in str(e):
-                        raise EngineInitializationError(
-                            "Audit triggers not found on the engine. Has the engine been initialized?"
-                        ) from e
-                    for meta_table in META_TABLES:
-                        if "splitgraph_meta.%s" % meta_table in str(e):
+        attempt = 0
+
+        while True:
+            with connection.cursor(**cursor_kwargs) as cur:
+                try:
+                    cur.execute(statement, _convert_vals(arguments) if arguments else None)
+                    if connection.notices and self.registry:
+                        # Forward NOTICE messages from the registry back to the user
+                        # (e.g. to nag them to upgrade etc).
+                        for notice in connection.notices:
+                            logging.info("%s says: %s", self.name, notice)
+                        del connection.notices[:]
+                except Exception as e:
+                    # Rollback the transaction (to a savepoint if we're inside the savepoint() context manager)
+                    self.rollback()
+                    # Go through some more common errors (like the engine not being initialized) and raise
+                    # more specific Splitgraph exceptions.
+                    if isinstance(e, UndefinedTable):
+                        # This is not a neat way to do this but other methods involve placing wrappers around
+                        # anything that sends queries to splitgraph_meta or audit schemas.
+                        if _AUDIT_SCHEMA + "." in str(e):
                             raise EngineInitializationError(
-                                "splitgraph_meta not found on the engine. Has the engine been initialized?"
+                                "Audit triggers not found on the engine. Has the engine been initialized?"
                             ) from e
-                    if "splitgraph_meta" in str(e):
-                        raise ObjectNotFoundError(e)
-                elif isinstance(e, InvalidSchemaName):
-                    if "splitgraph_api" in str(e):
-                        raise EngineInitializationError(
-                            "splitgraph_api not found on the engine. Has the engine been initialized?"
-                        ) from e
-                raise
+                        for meta_table in META_TABLES:
+                            if "splitgraph_meta.%s" % meta_table in str(e):
+                                raise EngineInitializationError(
+                                    "splitgraph_meta not found on the engine. Has the engine been initialized?"
+                                ) from e
+                        if "splitgraph_meta" in str(e):
+                            raise ObjectNotFoundError(e)
+                    elif isinstance(e, InvalidSchemaName):
+                        if "splitgraph_api" in str(e):
+                            raise EngineInitializationError(
+                                "splitgraph_api not found on the engine. Has the engine been initialized?"
+                            ) from e
+                    elif (
+                        isinstance(e, psycopg2.OperationalError)
+                        and "connection has been closed unexpectedly" in str(e)
+                        and attempt == 0
+                    ):
+                        # Handle the registry closing the connection by retrying once.
+                        attempt += 1
+                        logging.info(f"Connection to {self.name} lost. Reconnecting...")
+                        self.close()
+                        connection = self.connection
+                        continue
 
-            if cur.description is None:
-                return None
+                    raise
 
-            if return_shape == ResultShape.ONE_ONE:
-                result = cur.fetchone()
-                return result[0] if result else None
-            if return_shape == ResultShape.ONE_MANY:
-                return cur.fetchone()
-            if return_shape == ResultShape.MANY_ONE:
-                return [c[0] for c in cur.fetchall()]
-            return cur.fetchall()
+                if cur.description is None:
+                    return None
+
+                if return_shape == ResultShape.ONE_ONE:
+                    result = cur.fetchone()
+                    return result[0] if result else None
+                if return_shape == ResultShape.ONE_MANY:
+                    return cur.fetchone()
+                if return_shape == ResultShape.MANY_ONE:
+                    return [c[0] for c in cur.fetchall()]
+                return cur.fetchall()
 
     def get_primary_keys(self, schema: str, table: str) -> List[Tuple[str, str]]:
         """Inspects the Postgres information_schema to get the primary keys for a given table."""
