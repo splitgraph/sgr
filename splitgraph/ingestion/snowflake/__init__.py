@@ -136,7 +136,8 @@ EOF
         if "role" in self.params:
             extra_params["role"] = self.params["role"]
 
-        db_url += urllib.parse.urlencode(extra_params)
+        if extra_params:
+            db_url += "?" + urllib.parse.urlencode(extra_params)
 
         options["db_url"] = db_url
 
