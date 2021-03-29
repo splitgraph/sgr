@@ -364,6 +364,37 @@ def test_commandline_engine_creation_config_patching_integration(teardown_test_e
     assert result.returncode == 0
 
 
+def test_commandline_engine_creation_port_conflict(teardown_test_engine, tmp_path):
+    # Test creating the engine when there's a port conflict exits gracefully and
+    # deletes the half-initialized container.
+
+    config_path = os.path.join(tmp_path, ".sgconfig")
+    shutil.copy(os.path.join(os.path.dirname(__file__), "../../resources/.sgconfig"), config_path)
+
+    # Run the engine on 5432: we assume our Compose stack is running, so this will trigger
+    # a port conflict.
+    result = subprocess.run(
+        "SG_CONFIG_FILE=%s sgr engine add %s "
+        "--port 5432 --image %s --no-pull "
+        "--username not_sgr --password password"
+        % (config_path, TEST_ENGINE_NAME, _get_test_engine_image()),
+        shell=True,
+        stderr=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+    )
+    print(result.stderr.decode())
+    print(result.stdout.decode())
+    assert result.returncode != 0
+
+    assert "Port 5432 is already allocated" in result.stderr.decode()
+
+    # List Docker containers and make sure the new engine was deleted
+    client = docker.from_env()
+    assert SG_ENGINE_PREFIX + TEST_ENGINE_NAME not in [
+        c.name for c in client.containers.list(all=True)
+    ]
+
+
 def test_commandline_engine_config_reinject():
     client = Mock()
     client.api.base_url = "tcp://localhost:3333"

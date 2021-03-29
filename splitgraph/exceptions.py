@@ -21,6 +21,10 @@ class EngineInitializationError(SplitGraphError):
     """Raised when the engine isn't initialized (no splitgraph_meta schema or audit triggers)"""
 
 
+class EngineSetupError(SplitGraphError):
+    """Raised on various setup issues with the Splitgraph engine"""
+
+
 class ObjectCacheError(SplitGraphError):
     """Issues with the object cache (not enough space)"""
 
