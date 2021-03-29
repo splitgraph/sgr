@@ -434,6 +434,9 @@ class PsycopgEngine(SQLEngine):
             )
 
     def _check_api_compat(self, conn):
+        # TODO here: store the version
+        #   in imagemanager: check the api version, call different get_tag (more args)
+        #
         remote_version = self._call_version_func(conn, "get_version")
         if not remote_version:
             return
