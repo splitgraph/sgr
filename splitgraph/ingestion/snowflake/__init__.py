@@ -1,13 +1,35 @@
+import base64
 import json
 import urllib.parse
-from typing import Dict, Optional, cast, Mapping
+from typing import Dict, Optional, cast, Mapping, Any
 
 from splitgraph.hooks.data_source.fdw import ForeignDataWrapperDataSource
 from splitgraph.ingestion.common import build_commandline_help
 
 
+def _encode_private_key(privkey: str):
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.backends import default_backend
+
+    if "PRIVATE KEY" in privkey:
+        # Strip various markers and newlines from the private key, leaving
+        # just the b64-encoded body.
+        p_key = serialization.load_pem_private_key(
+            privkey.strip().encode("ascii"), password=None, backend=default_backend()
+        )
+        return base64.b64encode(
+            p_key.private_bytes(
+                encoding=serialization.Encoding.DER,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption(),
+            )
+        ).decode()
+
+    return privkey
+
+
 class SnowflakeDataSource(ForeignDataWrapperDataSource):
-    credentials_schema = {
+    credentials_schema: Dict[str, Any] = {
         "type": "object",
         "properties": {
             "username": {"type": "string", "description": "Username"},
@@ -16,8 +38,10 @@ class SnowflakeDataSource(ForeignDataWrapperDataSource):
                 "type": "string",
                 "description": "Account Locator, e.g. xy12345.us-east-2.aws. For more information, see https://docs.snowflake.com/en/user-guide/connecting.html",
             },
+            "private_key": {"type": "string", "description": "Private key in PEM format",},
         },
-        "required": ["username", "password", "account"],
+        "required": ["username", "account"],
+        "oneOf": [{"required": ["password"]}, {"required": ["private_key"]}],
     }
 
     params_schema = {
@@ -46,7 +70,7 @@ class SnowflakeDataSource(ForeignDataWrapperDataSource):
     supports_sync = False
 
     commandline_help = """Mount a Snowflake database.
-    
+
 This will mount a remote Snowflake schema or a table. You can also get a mounted table to point to the result of a subquery that will be executed on the Snowflake instance. For example:
 
 \b
@@ -58,14 +82,14 @@ $ sgr mount snowflake test_snowflake -o@- <<EOF
     "account": "acc-id.west-europe.azure",
     "database": "SNOWFLAKE_SAMPLE_DATA",
     "schema": "TPCH_SF100"
-    "envvars": {"HTTP_PROXY": "http://proxy.company.com"}
+    "envvars": {"HTTPS_PROXY": "http://proxy.company.com"}
 }
 EOF
-
+\b
 $ sgr mount snowflake test_snowflake_subquery -o@- <<EOF
 {
     "username": "username",
-    "password": "password",
+    "private_key": "MIIEvQIBAD...",
     "account": "acc-id.west-europe.azure",
     "database": "SNOWFLAKE_SAMPLE_DATA",
     "tables": {
@@ -112,16 +136,8 @@ EOF
     def get_server_options(self):
         options: Dict[str, Optional[str]] = {
             "wrapper": "multicorn.sqlalchemyfdw.SqlAlchemyFdw",
+            "db_url": self._build_db_url(),
         }
-
-        # Construct the SQLAlchemy db_url
-
-        db_url = f"snowflake://{self.credentials['username']}:{self.credentials['password']}@{self.credentials['account']}"
-
-        if "database" in self.params:
-            db_url += f"/{self.params['database']}"
-            if "schema" in self.params:
-                db_url += f"/{self.params['schema']}"
 
         # For some reason, in SQLAlchemy, if this is not passed
         # to the FDW params (even if it is in the DB URL), it doesn't
@@ -130,21 +146,41 @@ EOF
         if "schema" in self.params:
             options["schema"] = self.params["schema"]
 
+        if "envvars" in self.params:
+            options["envvars"] = json.dumps(self.params["envvars"])
+
+        if "private_key" in self.credentials:
+            options["connect_args"] = json.dumps(
+                {"private_key": _encode_private_key(self.credentials["private_key"])}
+            )
+
+        return options
+
+    def _build_db_url(self) -> str:
+        """Construct the SQLAlchemy Snowflake db_url"""
+
+        uname = self.credentials["username"]
+        if "password" in self.credentials:
+            uname += f":{self.credentials['password']}"
+
+        db_url = f"snowflake://{uname}@{self.credentials['account']}"
+        if "database" in self.params:
+            db_url += f"/{self.params['database']}"
+            if "schema" in self.params:
+                db_url += f"/{self.params['schema']}"
+
         extra_params = {}
+
         if "warehouse" in self.params:
             extra_params["warehouse"] = self.params["warehouse"]
+
         if "role" in self.params:
             extra_params["role"] = self.params["role"]
 
         if extra_params:
             db_url += "?" + urllib.parse.urlencode(extra_params)
 
-        options["db_url"] = db_url
-
-        if "envvars" in self.params:
-            options["envvars"] = json.dumps(self.params["envvars"])
-
-        return options
+        return db_url
 
     def get_remote_schema_name(self) -> str:
         if "schema" not in self.params:
