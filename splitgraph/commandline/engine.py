@@ -13,7 +13,7 @@ from tqdm import tqdm
 
 from splitgraph.__version__ import __version__
 from splitgraph.config import CONFIG, SG_CMD_ASCII
-from splitgraph.exceptions import DockerUnavailableError
+from splitgraph.exceptions import DockerUnavailableError, EngineSetupError
 
 if TYPE_CHECKING:
     from docker.models.containers import Container
@@ -276,6 +276,7 @@ def add_engine_c(
     from splitgraph.engine.postgres.engine import PostgresEngine
     from splitgraph.config import CONFIG
     from docker.types import Mount
+    import docker
 
     client = get_docker_client()
 
@@ -306,20 +307,36 @@ def add_engine_c(
         mounts.append(source_volume)
         click.echo("Source path: %s" % source_path)
 
-    container = client.containers.run(
-        image=image,
-        detach=True,
-        name=container_name,
-        ports={"5432/tcp": port},
-        mounts=mounts,
-        environment={
-            "POSTGRES_USER": username,
-            "POSTGRES_PASSWORD": password,
-            "POSTGRES_DB": "splitgraph",
-            # Actual config to be injected later
-            "SG_CONFIG_FILE": "/.sgconfig",
-        },
-    )
+    try:
+        container = client.containers.run(
+            image=image,
+            detach=True,
+            name=container_name,
+            ports={"5432/tcp": port},
+            mounts=mounts,
+            environment={
+                "POSTGRES_USER": username,
+                "POSTGRES_PASSWORD": password,
+                "POSTGRES_DB": "splitgraph",
+                # Actual config to be injected later
+                "SG_CONFIG_FILE": "/.sgconfig",
+            },
+        )
+    except docker.errors.APIError as e:
+        if "port is already allocated" in str(e):
+            # Delete the container so that this operation is idempotent.
+            container = client.containers.get(container_name)
+            container.remove(force=True)
+
+            raise EngineSetupError(
+                f"Port {port} is already allocated. "
+                "Note that Splitgraph does not currently support installation on "
+                "existing PostgreSQL instances."
+            ) from e
+        if "Conflict. The container name" in str(e) and "is already in use by container" in str(e):
+            raise EngineSetupError(
+                f"Docker container with Splitgraph engine {container_name} already exists. Delete it with docker rm -f {container_name}.",
+            ) from e
 
     click.echo("Container created, ID %s" % container.short_id)
 

@@ -18,7 +18,7 @@ INSTALL_DIR=${INSTALL_DIR-$HOME/.splitgraph}
 # Set SKIP_BINARY=1 to skip downloading sgr
 # Set SKIP_ENGINE=1 to skip setting up the engine.
 BINARY=
-ENGINE_PORT=${ENGINE_PORT-5432}
+ENGINE_PORT=${ENGINE_PORT-6432}
 
 CLOUD_SKIPPED=
 
