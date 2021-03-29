@@ -6,10 +6,10 @@ from typing import Callable, Dict, List, Union, Optional, Sequence, Tuple
 from psycopg2.sql import Composed, SQL, Identifier
 
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.core.sql._blacklist import (
-    IMPORT_SQL_PERMITTED_NODES,
-    SPLITFILE_SQL_PERMITTED_NODES,
-    TABLE_NAME_BLACKLIST,
+from splitgraph.core.sql._validation import (
+    IMPORT_SQL_PERMITTED_STATEMENTS,
+    SPLITFILE_SQL_PERMITTED_STATEMENTS,
+    PG_CATALOG_TABLES,
 )
 
 try:
@@ -31,7 +31,7 @@ POSTGRES_MAX_IDENTIFIER = 63
 def _validate_range_var(node: "Node") -> None:
     if "schemaname" in node.attribute_names:
         raise UnsupportedSQLError("Table names must not be schema-qualified!")
-    if node["relname"].value in TABLE_NAME_BLACKLIST:
+    if node["relname"].value in PG_CATALOG_TABLES:
         raise UnsupportedSQLError("Invalid table name %s!" % node["relname"].value)
 
 
@@ -59,14 +59,16 @@ _SCHEMA_RE = re.compile(r'"([\w-]+/)?([\w-]+):([\w-]+)"')
 
 
 def _validate_node(
-    node: Union["Scalar", "Node"], permitted_nodes: List[str], node_validators: Dict[str, Callable]
+    node: Union["Scalar", "Node"],
+    permitted_statements: List[str],
+    node_validators: Dict[str, Callable],
 ) -> None:
     if isinstance(node, Scalar):
         return
     node_class = node.node_tag
     if node_class in node_validators:
         node_validators[node_class](node)
-    elif node_class not in permitted_nodes:
+    elif node_class.endswith("Stmt") and node_class not in permitted_statements:
         message = "Unsupported statement type %s" % node_class
         if isinstance(node["location"], Scalar):
             message += " near character %d" % node["location"].value
@@ -138,12 +140,10 @@ def prepare_splitfile_sql(sql: str, image_mapper: Callable) -> Tuple[str, str]:
       set to the single schema that a Splitgraph image is checked out into) or have schemata of
       format namespace/repository:hash_or_tag. In the second case, the schema is rewritten to point
       at a temporary mount of the Splitgraph image.
-      * Function invocations are forbidden.
 
     :param sql: SQL query
     :param image_mapper: Takes in an image and gives back the schema it should be rewritten to
         (for the purposes of execution) and the canonical form of the image.
-    :param schema: Schema to add to all non-qualified tables
     :return: Transformed form of the SQL with substituted schema shims for Splitfile execution
         and the canonical form (with e.g. tags resolved into at-the-time full image hashes)
     :raises: UnsupportedSQLException if validation failed
@@ -173,13 +173,15 @@ def prepare_splitfile_sql(sql: str, image_mapper: Callable) -> Tuple[str, str]:
 
     for node in tree.traverse():
         _validate_node(
-            node, permitted_nodes=SPLITFILE_SQL_PERMITTED_NODES, node_validators=_SQL_VALIDATORS
+            node,
+            permitted_statements=SPLITFILE_SQL_PERMITTED_STATEMENTS,
+            node_validators=_SQL_VALIDATORS,
         )
 
         if not isinstance(node, Node) or node.node_tag != "RangeVar":
             continue
 
-        if node["relname"].value in TABLE_NAME_BLACKLIST:
+        if node["relname"].value in PG_CATALOG_TABLES:
             raise UnsupportedSQLError("Invalid table name %s!" % node["relname"].value)
         if "schemaname" not in node.attribute_names:
             continue
@@ -227,7 +229,7 @@ def validate_import_sql(sql: str) -> str:
     for node in tree.traverse():
         _validate_node(
             node,
-            permitted_nodes=IMPORT_SQL_PERMITTED_NODES,
+            permitted_statements=IMPORT_SQL_PERMITTED_STATEMENTS,
             node_validators=_IMPORT_SQL_VALIDATORS,
         )
     return _emit_ast(tree)
