@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.2.11 (2021-03-29)
+
+  * Snowflake data source improvements:
+    * Allow passing envvars to set HTTP proxy parameters, fix incorrect query string generation when passing a warehouse (https://github.com/splitgraph/splitgraph/pull/414, https://github.com/splitgraph/splitgraph/issues/413)
+    * Support for authentication using a private key (https://github.com/splitgraph/splitgraph/pull/418)
+  * Splitfiles: relax AST restrictions to support all SELECT/INSERT/UPDATE/DELETE statements (https://github.com/splitgraph/splitgraph/issues/411)
+  * Change the default installation port to 6432 and handle port conflicts during install (https://github.com/splitgraph/splitgraph/issues/375)
+  * Add retry logic to fix registry closing the SSL connection after 30 seconds, close remote connections in some places (https://github.com/splitgraph/splitgraph/pull/417)
+
+Full set of changes: [`v0.2.10...v0.2.11`](https://github.com/splitgraph/splitgraph/compare/v0.2.10...v0.2.11)
+
 ## v0.2.10 (2021-03-17)
 
   * Fix CSV schema inference not supporting BIGINT data types (https://github.com/splitgraph/splitgraph/pull/407)
