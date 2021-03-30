@@ -28,7 +28,7 @@ class Comparable(metaclass=ABCMeta):
 def dict_to_tableschema(tables: Dict[str, Dict[str, Any]]) -> Dict[str, TableSchema]:
     return {
         t: [
-            TableColumn(i, cname, ctype, False, None)
+            TableColumn(i + 1, cname, ctype, False, None)
             for (i, (cname, ctype)) in enumerate(ts.items())
         ]
         for t, ts in tables.items()
