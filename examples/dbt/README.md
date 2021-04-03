@@ -1,7 +1,5 @@
 # Building Splitgraph datasets with dbt
 
-**Note that the Jaffle Shop repository that this example uses has been cleared out (https://github.com/fishtown-analytics/jaffle_shop). This example won't work completely.**
-
 The recommended way of building Splitgraph data images is [Splitfiles](../splitfiles) that offer
 Dockerfile-like caching, provenance tracking and efficient rebuilds.
 
