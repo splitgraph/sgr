@@ -13,7 +13,8 @@
   - "# dbt must be installed for this to work (pip install dbt)"
   - "# Clone the Jaffle Shop dbt example project"
   - dbt --version
-  - git clone https://github.com/fishtown-analytics/jaffle_shop.git
+  - git clone https://github.com/splitgraph/jaffle_shop_archive.git
+  - mv jaffle_shop_archive jaffle_shop
 - commands:
   - "# Ingest the initial data (in CSV) from this branch of the project."
   - sgr init raw_jaffle_shop
