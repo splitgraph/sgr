@@ -1,7 +1,7 @@
 FROM MOUNT mongo_fdw originro:originpass@mongo:27017 '{"tables": {"stuff": {
                 "options": {
-                  "db": "origindb",
-                  "coll": "stuff"
+                  "database": "origindb",
+                  "collection": "stuff"
                 },
                 "schema": {
                   "name": "text",

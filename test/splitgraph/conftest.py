@@ -120,7 +120,7 @@ def _mount_mysql(repository):
             port=3306,
             username="originuser",
             password="originpass",
-            remote_schema="mysqlschema",
+            dbname="mysqlschema",
         ),
         tables={
             "mushrooms": [

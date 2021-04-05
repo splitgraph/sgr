@@ -21,8 +21,8 @@
     sgr mount mongo_fdw staging -c originro:originpass@mongo:27017 -o '{"tables": {"stuff": {
                 "options":
                 {
-                  "db": "origindb",
-                  "coll": "stuff"
+                  "database": "origindb",
+                  "collection": "stuff"
                 },
                 "schema": {
                   "name": "text",

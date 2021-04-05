@@ -421,7 +421,7 @@ Mounts one or more collections on a remote Mongo database as a set of foreign ta
 {
     "table_name": {
         "schema": {"col1": "type1"...},
-        "options": {"db": <dbname>, "coll": <collection>} 
+        "options": {"database": <dbname>, "collection": <collection>} 
     } 
 }
 ```
@@ -469,17 +469,16 @@ class MySQLDataSource(ForeignDataWrapperDataSource):
         "properties": {
             "host": {"type": "string"},
             "port": {"type": "integer"},
-            "remote_schema": {"type": "string"},
-            "tables": _table_options_schema,
+            "dbname": {"type": "string"},
         },
-        "required": ["host", "port", "remote_schema"],
+        "required": ["host", "port", "dbname"],
     }
 
     commandline_help: str = """Mount a MySQL database.
 
 Mounts a schema on a remote MySQL database as a set of foreign tables locally."""
 
-    commandline_kwargs_help: str = """remote_schema: Remote schema name (required)
+    commandline_kwargs_help: str = """dbname: Remote MySQL database name (required)
 tables: Tables to mount (default all). If a list, then will use IMPORT FOREIGN SCHEMA.
 If a dictionary, must have the format
     {"table_name": {"schema": {"col_1": "type_1", ...},
@@ -505,13 +504,13 @@ If a dictionary, must have the format
         return {"username": self.credentials["username"], "password": self.credentials["password"]}
 
     def get_table_options(self, table_name: str):
-        return {"dbname": self.params["remote_schema"]}
+        return {"dbname": self.params["dbname"]}
 
     def get_fdw_name(self):
         return "mysql_fdw"
 
     def get_remote_schema_name(self) -> str:
-        return str(self.params["remote_schema"])
+        return str(self.params["dbname"])
 
 
 class ElasticSearchDataSource(ForeignDataWrapperDataSource):
