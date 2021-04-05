@@ -6,6 +6,7 @@ from typing import Optional, Dict
 
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph.core.types import TableInfo
 from splitgraph.exceptions import RepositoryNotFoundError
 from splitgraph.hooks.data_source.fdw import create_foreign_table, ForeignDataWrapperDataSource
 
@@ -29,17 +30,17 @@ class SocrataDataSource(ForeignDataWrapperDataSource):
                 "type": "integer",
                 "description": "Amount of rows to fetch from Socrata per request (limit parameter). Maximum 50000.",
             },
-            "tables": {
-                "type": "object",
-            },
         },
         "required": ["domain"],
     }
 
-    """
-    tables: A dictionary mapping PostgreSQL table names to Socrata table IDs. For example,
-        {"salaries": "xzkq-xp2w"}. If skipped, ALL tables in the Socrata endpoint will be mounted.
-    """
+    table_params_schema = {
+        "type": "object",
+        "properties": {
+            "socrata_id": {"type": "string", "description": "Socrata dataset ID, e.g. xzkq-xp2w"}
+        },
+        "required": ["socrata_id"],
+    }
 
     @classmethod
     def get_name(cls) -> str:
@@ -55,8 +56,19 @@ class SocrataDataSource(ForeignDataWrapperDataSource):
     @classmethod
     def from_commandline(cls, engine, commandline_kwargs) -> "SocrataDataSource":
         params = deepcopy(commandline_kwargs)
+
+        # Convert the old-style "tables" param ({"table_name": "some_id"})
+        # to the schema this data source expects
+        #   {"table_name": [table schema], {"socrata_id": "some_id"}}
+        # Note that we don't actually care about the table schema in this data source,
+        # since it reintrospects on every mount.
+
+        tables = params.pop("tables", [])
+        if isinstance(tables, dict) and isinstance(next(iter(tables.values())), str):
+            tables = {k: ([], {"socrata_id": v}) for k, v in tables.items()}
+
         credentials = {"app_token": params.pop("app_token", None)}
-        return cls(engine, credentials, params)
+        return cls(engine, credentials, params, tables)
 
     def get_server_options(self):
         options: Dict[str, Optional[str]] = {
@@ -75,8 +87,12 @@ class SocrataDataSource(ForeignDataWrapperDataSource):
 
         logging.info("Getting Socrata metadata")
         client = Socrata(domain=self.params["domain"], app_token=self.credentials.get("app_token"))
-        tables = self.params.get("tables")
-        sought_ids = tables.values() if tables else []
+
+        tables = tables or self.tables
+        if isinstance(tables, list):
+            sought_ids = tables
+        else:
+            sought_ids = [t[1]["socrata_id"] for t in tables.values()]
 
         try:
             datasets = client.datasets(ids=sought_ids, only=["dataset"])
@@ -98,7 +114,7 @@ class SocrataDataSource(ForeignDataWrapperDataSource):
         self.engine.run_sql(SQL(";").join(mount_statements), mount_args)
 
 
-def generate_socrata_mount_queries(sought_ids, datasets, mountpoint, server_id, tables):
+def generate_socrata_mount_queries(sought_ids, datasets, mountpoint, server_id, tables: TableInfo):
     # Local imports since this module gets run from commandline entrypoint on startup.
 
     from splitgraph.core.output import slugify
@@ -109,7 +125,7 @@ def generate_socrata_mount_queries(sought_ids, datasets, mountpoint, server_id, 
     found_ids = set(d["resource"]["id"] for d in datasets)
     logging.info("Loaded metadata for %s", pluralise("Socrata table", len(found_ids)))
 
-    if tables:
+    if isinstance(tables, (dict, list)):
         missing_ids = [d for d in found_ids if d not in sought_ids]
         if missing_ids:
             raise ValueError(
@@ -117,7 +133,8 @@ def generate_socrata_mount_queries(sought_ids, datasets, mountpoint, server_id, 
                 % truncate_list(missing_ids)
             )
 
-        tables_inv = {s: p for p, s in tables.items()}
+        if isinstance(tables, dict):
+            tables_inv = {to["socrata_id"]: p for p, (ts, to) in tables.items()}
     else:
         tables_inv = {}
 
