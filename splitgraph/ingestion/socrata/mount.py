@@ -118,25 +118,13 @@ def generate_socrata_mount_queries(sought_ids, datasets, mountpoint, server_id, 
     # Local imports since this module gets run from commandline entrypoint on startup.
 
     from splitgraph.core.output import slugify
-    from splitgraph.core.output import truncate_list
     from splitgraph.core.output import pluralise
     from splitgraph.ingestion.socrata.querying import socrata_to_sg_schema
 
     found_ids = set(d["resource"]["id"] for d in datasets)
     logging.info("Loaded metadata for %s", pluralise("Socrata table", len(found_ids)))
 
-    if isinstance(tables, (dict, list)):
-        missing_ids = [d for d in found_ids if d not in sought_ids]
-        if missing_ids:
-            raise ValueError(
-                "Some Socrata tables couldn't be found! Missing tables: %s"
-                % truncate_list(missing_ids)
-            )
-
-        if isinstance(tables, dict):
-            tables_inv = {to["socrata_id"]: p for p, (ts, to) in tables.items()}
-    else:
-        tables_inv = {}
+    tables_inv = _get_table_map(found_ids, sought_ids, tables)
 
     mount_statements = []
     mount_args = []
@@ -165,3 +153,20 @@ def generate_socrata_mount_queries(sought_ids, datasets, mountpoint, server_id, 
         mount_args.extend(args)
 
     return mount_statements, mount_args
+
+
+def _get_table_map(found_ids, sought_ids, tables: TableInfo) -> Dict[str, str]:
+    """Get a map of Socrata ID -> local table name"""
+    from splitgraph.core.output import truncate_list
+
+    if isinstance(tables, (dict, list)):
+        missing_ids = [d for d in found_ids if d not in sought_ids]
+        if missing_ids:
+            raise ValueError(
+                "Some Socrata tables couldn't be found! Missing tables: %s"
+                % truncate_list(missing_ids)
+            )
+
+        if isinstance(tables, dict):
+            return {to["socrata_id"]: p for p, (ts, to) in tables.items()}
+    return {}
