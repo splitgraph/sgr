@@ -50,12 +50,6 @@ class SnowflakeDataSource(ForeignDataWrapperDataSource):
     params_schema = {
         "type": "object",
         "properties": {
-            "tables": {
-                "type": "object",
-                "additionalProperties": {
-                    "options": {"type": "object", "additionalProperties": {"type": "string"}},
-                },
-            },
             "database": {"type": "string", "description": "Snowflake database name"},
             "schema": {"type": "string", "description": "Snowflake schema"},
             "warehouse": {"type": "string", "description": "Warehouse name"},
@@ -72,6 +66,15 @@ class SnowflakeDataSource(ForeignDataWrapperDataSource):
         "required": ["database"],
     }
 
+    table_params_schema = {
+        "type": "object",
+        "properties": {
+            "subquery": {
+                "type": "string",
+                "description": "Subquery for this table to run on the server side",
+            }
+        },
+    }
     supports_mount = True
     supports_load = True
     supports_sync = False

@@ -4,6 +4,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from splitgraph.core.types import dict_to_table_schema_params
 from splitgraph.ingestion.snowflake import SnowflakeDataSource
 
 _sample_privkey = """-----BEGIN PRIVATE KEY-----
@@ -70,7 +71,10 @@ def test_snowflake_data_source_dburl_conversion_no_warehouse():
             "password": "password",
             "account": "abcdef.eu-west-1.aws",
         },
-        params={"database": "SOME_DB", "schema": "TPCH_SF100",},
+        params={
+            "database": "SOME_DB",
+            "schema": "TPCH_SF100",
+        },
     )
 
     assert source.get_server_options() == {
@@ -89,7 +93,10 @@ def test_snowflake_data_source_private_key(private_key):
             "private_key": private_key,
             "account": "abcdef.eu-west-1.aws",
         },
-        params={"database": "SOME_DB", "schema": "TPCH_SF100",},
+        params={
+            "database": "SOME_DB",
+            "schema": "TPCH_SF100",
+        },
     )
 
     opts = source.get_server_options()
@@ -114,13 +121,15 @@ def test_snowflake_data_source_table_options():
         },
         params={
             "database": "SOME_DB",
-            "tables": {
+        },
+        tables=dict_to_table_schema_params(
+            {
                 "test_table": {
                     "schema": {"col_1": "int", "col_2": "varchar"},
                     "options": {"subquery": "SELECT col_1, col_2 FROM other_table"},
                 }
-            },
-        },
+            }
+        ),
     )
 
     assert source.get_table_options("test_table") == {
