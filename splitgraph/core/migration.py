@@ -4,6 +4,7 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Optional, Tuple, cast, TYPE_CHECKING, List, TypeVar, Dict, DefaultDict
 
+from packaging.version import Version
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.core.sql import select, insert
@@ -116,7 +117,7 @@ def source_files_to_apply(
 ) -> Tuple[List[str], str]:
     """ Get the ordered list of .sql files to apply to the database"""
     version_tuples = get_version_tuples(schema_files)
-    target_version = target_version or max([v[1] for v in version_tuples])
+    target_version = target_version or max([v[1] for v in version_tuples], key=Version)
     if static:
         # For schemata like splitgraph_api which we want to apply in any
         # case, bypassing the upgrade mechanism, we just run the latest
