@@ -72,8 +72,8 @@ $ sgr mount mongo_fdw order_data -c originro:originpass@mongo:27017 -o @- <<EOF
 {
     "orders":
     {
-        "db": "origindb",
-        "coll": "orders",
+        "database": "origindb",
+        "collection": "orders",
         "schema":
         {
             "name": "text",

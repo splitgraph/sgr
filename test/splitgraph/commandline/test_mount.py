@@ -23,7 +23,7 @@ from splitgraph.ingestion.socrata.mount import SocrataDataSource
 _MONGO_PARAMS = {
     "tables": {
         "stuff": {
-            "options": {"db": "origindb", "coll": "stuff",},
+            "options": {"database": "origindb", "collection": "stuff",},
             "schema": {"name": "text", "duration": "numeric", "happy": "boolean",},
         }
     }

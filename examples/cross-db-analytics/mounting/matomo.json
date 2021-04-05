@@ -1,5 +1,5 @@
 {
-  "remote_schema": "matomo",
+  "dbname": "matomo",
   "tables": {
     "matomo_access": {
       "schema": {
