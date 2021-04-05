@@ -173,8 +173,8 @@ EOF
                 credentials[k] = params[k]
         return cls(engine, credentials, params)
 
-    def get_table_options(self, table_name: str) -> Mapping[str, str]:
-        result = cast(Dict[str, str], super().get_table_options(table_name))
+    def get_table_options(self, table_name: str) -> Dict[str, str]:
+        result = super().get_table_options(table_name)
         result["s3_object"] = result.get(
             "s3_object", self.params.get("s3_object_prefix", "") + table_name
         )

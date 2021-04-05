@@ -1,15 +1,18 @@
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 
 from splitgraph.core.repository import Repository
-from splitgraph.core.types import TableSchema, TableColumn
+from splitgraph.core.types import TableSchema, TableColumn, TableInfo, SyncState, TableParams
 from splitgraph.engine import ResultShape
-from splitgraph.hooks.data_source.base import SyncState, TableInfo, SyncableDataSource
+from splitgraph.hooks.data_source.base import SyncableDataSource
 
-SCHEMA = {
-    "test_table": [
-        TableColumn(1, "key", "integer", True),
-        TableColumn(2, "value", "character varying", False),
-    ]
+SCHEMA: Dict[str, Tuple[TableSchema, TableParams]] = {
+    "test_table": (
+        [
+            TableColumn(1, "key", "integer", True),
+            TableColumn(2, "value", "character varying", False),
+        ],
+        {},
+    )
 }
 TEST_REPO = "test/generic_sync"
 
@@ -26,26 +29,22 @@ class IngestionTestSource(SyncableDataSource):
     def get_description(cls) -> str:
         return "Test ingestion"
 
-    def introspect(self) -> Dict[str, TableSchema]:
+    def introspect(self) -> Dict[str, Tuple[TableSchema, TableParams]]:
         return SCHEMA
 
     def _sync(
         self, schema: str, state: Optional[SyncState] = None, tables: Optional[TableInfo] = None
     ) -> SyncState:
         if not self.engine.table_exists(schema, "test_table"):
-            self.engine.create_table(schema, "test_table", SCHEMA["test_table"])
+            self.engine.create_table(schema, "test_table", SCHEMA["test_table"][0])
 
         if not state:
-            self.engine.run_sql_in(
-                schema, "INSERT INTO test_table (key, value) " "VALUES (1, 'one')"
-            )
+            self.engine.run_sql_in(schema, "INSERT INTO test_table (key, value) VALUES (1, 'one')")
             return {"last_value": 1}
         else:
             last_value = state["last_value"]
             assert last_value == 1
-            self.engine.run_sql_in(
-                schema, "INSERT INTO test_table (key, value) " "VALUES (2, 'two')"
-            )
+            self.engine.run_sql_in(schema, "INSERT INTO test_table (key, value) VALUES (2, 'two')")
             return {"last_value": 2}
 
 

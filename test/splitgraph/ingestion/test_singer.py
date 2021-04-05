@@ -22,7 +22,11 @@ TEST_TAP = os.path.join(INGESTION_RESOURCES, "singer/fake_tap.py")
 
 _STARGAZERS_SCHEMA = [
     TableColumn(
-        ordinal=0, name="_sdc_repository", pg_type="character varying", is_pk=False, comment=None,
+        ordinal=0,
+        name="_sdc_repository",
+        pg_type="character varying",
+        is_pk=False,
+        comment=None,
     ),
     TableColumn(
         ordinal=1,
@@ -38,7 +42,11 @@ _STARGAZERS_SCHEMA = [
 
 _RELEASES_SCHEMA = [
     TableColumn(
-        ordinal=0, name="_sdc_repository", pg_type="character varying", is_pk=False, comment=None,
+        ordinal=0,
+        name="_sdc_repository",
+        pg_type="character varying",
+        is_pk=False,
+        comment=None,
     ),
     TableColumn(ordinal=1, name="author", pg_type="jsonb", is_pk=False, comment=None),
     TableColumn(ordinal=2, name="body", pg_type="character varying", is_pk=False, comment=None),
@@ -65,7 +73,11 @@ _RELEASES_SCHEMA = [
         ordinal=10, name="tag_name", pg_type="character varying", is_pk=False, comment=None
     ),
     TableColumn(
-        ordinal=11, name="target_commitish", pg_type="character varying", is_pk=False, comment=None,
+        ordinal=11,
+        name="target_commitish",
+        pg_type="character varying",
+        is_pk=False,
+        comment=None,
     ),
     TableColumn(ordinal=12, name="url", pg_type="character varying", is_pk=False, comment=None),
 ]
@@ -210,7 +222,9 @@ def test_singer_ingestion_schema_change(local_engine_empty):
 
     assert json.loads(result.stdout) == {
         "bookmarks": {
-            "splitgraph/splitgraph": {"stargazers": {"since": "2020-10-14T11:06:42.565793Z"},}
+            "splitgraph/splitgraph": {
+                "stargazers": {"since": "2020-10-14T11:06:42.565793Z"},
+            }
         }
     }
     repo = Repository.from_schema(TEST_REPO)
@@ -390,8 +404,15 @@ def test_singer_data_source_sync(local_engine_empty):
 def _source(local_engine_empty):
     return MySQLSingerDataSource(
         engine=local_engine_empty,
-        params={"replication_method": "INCREMENTAL", "host": "localhost", "port": 3306,},
-        credentials={"user": "originuser", "password": "originpass",},
+        params={
+            "replication_method": "INCREMENTAL",
+            "host": "localhost",
+            "port": 3306,
+        },
+        credentials={
+            "user": "originuser",
+            "password": "originpass",
+        },
     )
 
 
@@ -400,20 +421,27 @@ def _source(local_engine_empty):
 def test_singer_tap_mysql_introspection(local_engine_empty):
     source = _source(local_engine_empty)
     assert source.introspect() == {
-        "mushrooms": [
-            TableColumn(
-                ordinal=0,
-                name="discovery",
-                pg_type="timestamp without time zone",
-                is_pk=False,
-                comment=None,
-            ),
-            TableColumn(ordinal=1, name="friendly", pg_type="boolean", is_pk=False, comment=None),
-            TableColumn(ordinal=2, name="mushroom_id", pg_type="integer", is_pk=True, comment=None),
-            TableColumn(
-                ordinal=3, name="name", pg_type="character varying", is_pk=False, comment=None
-            ),
-        ],
+        "mushrooms": (
+            [
+                TableColumn(
+                    ordinal=0,
+                    name="discovery",
+                    pg_type="timestamp without time zone",
+                    is_pk=False,
+                    comment=None,
+                ),
+                TableColumn(
+                    ordinal=1, name="friendly", pg_type="boolean", is_pk=False, comment=None
+                ),
+                TableColumn(
+                    ordinal=2, name="mushroom_id", pg_type="integer", is_pk=True, comment=None
+                ),
+                TableColumn(
+                    ordinal=3, name="name", pg_type="character varying", is_pk=False, comment=None
+                ),
+            ],
+            {},
+        )
     }
 
     singer_config = source.get_singer_config()
@@ -498,7 +526,10 @@ def test_singer_tap_mysql_introspection(local_engine_empty):
         },
         {
             "breadcrumb": ["properties", "name"],
-            "metadata": {"selected-by-default": True, "sql-datatype": "varchar(20)",},
+            "metadata": {
+                "selected-by-default": True,
+                "sql-datatype": "varchar(20)",
+            },
         },
         {
             "breadcrumb": ["properties", "varbinary_data"],

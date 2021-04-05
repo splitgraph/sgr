@@ -6,7 +6,7 @@ from typing import Dict, Any, Optional, TYPE_CHECKING
 from splitgraph.exceptions import DataSourceError
 
 if TYPE_CHECKING:
-    from splitgraph.hooks.data_source.base import TableInfo
+    from splitgraph.core.types import TableInfo
 
 
 def mount_postgres(mountpoint, **kwargs) -> None:
