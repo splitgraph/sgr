@@ -101,6 +101,38 @@ def test_mount_introspection_preview(local_engine_empty):
 
 
 @pytest.mark.mounting
+def test_mount_rename_table(local_engine_empty):
+    tables = {
+        "fruits_renamed": (
+            [
+                TableColumn(
+                    ordinal=1, name="fruit_id", pg_type="integer", is_pk=False, comment=None
+                ),
+                TableColumn(
+                    ordinal=2,
+                    name="name",
+                    pg_type="character varying",
+                    is_pk=False,
+                    comment=None,
+                ),
+            ],
+            {"table_name": "fruits"},
+        )
+    }
+    handler = PostgreSQLDataSource(
+        engine=local_engine_empty,
+        credentials={"username": "originro", "password": "originpass"},
+        params={"host": "pgorigin", "port": 5432, "dbname": "origindb", "remote_schema": "public"},
+        tables=tables,
+    )
+
+    preview = handler.preview(tables)
+    assert preview == {
+        "fruits_renamed": [{"fruit_id": 1, "name": "apple"}, {"fruit_id": 2, "name": "orange"}],
+    }
+
+
+@pytest.mark.mounting
 def test_cross_joins(local_engine_empty):
     _mount_postgres(PG_MNT)
     _mount_mongo(MG_MNT)
