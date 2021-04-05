@@ -159,7 +159,7 @@ def _get_table_map(found_ids, sought_ids, tables: TableInfo) -> Dict[str, str]:
     """Get a map of Socrata ID -> local table name"""
     from splitgraph.core.output import truncate_list
 
-    if isinstance(tables, (dict, list)):
+    if isinstance(tables, (dict, list)) and tables:
         missing_ids = [d for d in found_ids if d not in sought_ids]
         if missing_ids:
             raise ValueError(

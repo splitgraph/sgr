@@ -48,5 +48,13 @@ def dict_to_table_schema_params(
     }
 
 
-def tableschema_to_dict(tables: Dict[str, TableSchema]) -> Dict[str, Dict[str, str]]:
-    return {t: {c.name: c.pg_type for c in ts} for t, ts in tables.items()}
+def table_schema_params_to_dict(
+    tables: Dict[str, Tuple[TableSchema, TableParams]]
+) -> Dict[str, Dict[str, Dict[str, str]]]:
+    return {
+        t: {
+            "schema": {c.name: c.pg_type for c in ts},
+            "options": {tpk: str(tpv) for tpk, tpv in tp.items()},
+        }
+        for t, (ts, tp) in tables.items()
+    }
