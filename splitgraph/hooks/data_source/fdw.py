@@ -375,7 +375,9 @@ If a dictionary, must have the format
         return {"user": self.credentials["username"], "password": self.credentials["password"]}
 
     def get_table_options(self, table_name: str):
-        return {"schema_name": self.params["remote_schema"]}
+        options = super().get_table_options(table_name)
+        options["schema_name"] = self.params["remote_schema"]
+        return options
 
     def get_fdw_name(self):
         return "postgres_fdw"
