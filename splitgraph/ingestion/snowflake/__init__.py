@@ -135,8 +135,8 @@ EOF
     def get_description(cls) -> str:
         return "Schema, table or a subquery from a Snowflake database"
 
-    def get_table_options(self, table_name: str) -> Mapping[str, str]:
-        result = cast(Dict[str, str], super().get_table_options(table_name))
+    def get_table_options(self, table_name: str) -> Dict[str, str]:
+        result = super().get_table_options(table_name)
         result["tablename"] = result.get("tablename", table_name)
         return result
 

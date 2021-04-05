@@ -1,26 +1,26 @@
-import json
 from abc import ABC, abstractmethod
 from random import getrandbits
-from typing import Dict, Any, Union, List, Optional, TYPE_CHECKING, cast, Tuple
+from typing import Dict, Any, Optional, TYPE_CHECKING, cast, Tuple
 
 from psycopg2._json import Json
 from psycopg2.sql import SQL, Identifier
 
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.image import Image
-from splitgraph.core.types import TableSchema, TableColumn
+from splitgraph.core.types import (
+    TableSchema,
+    TableColumn,
+    Credentials,
+    Params,
+    TableParams,
+    TableInfo,
+    SyncState,
+)
 from splitgraph.engine import ResultShape
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PostgresEngine
     from splitgraph.core.repository import Repository
-
-Credentials = Dict[str, Any]
-Params = Dict[str, Any]
-TableInfo = Union[List[str], Dict[str, TableSchema]]
-SyncState = Dict[str, Any]
-PreviewResult = Dict[str, Union[str, List[Dict[str, Any]]]]
-
 
 INGESTION_STATE_TABLE = "_sg_ingestion_state"
 INGESTION_STATE_SCHEMA = [
@@ -32,6 +32,7 @@ INGESTION_STATE_SCHEMA = [
 class DataSource(ABC):
     params_schema: Dict[str, Any]
     credentials_schema: Dict[str, Any]
+    table_params_schema: Dict[str, Any]
 
     supports_mount = False
     supports_sync = False
@@ -47,10 +48,19 @@ class DataSource(ABC):
     def get_description(cls) -> str:
         raise NotImplementedError
 
-    def __init__(self, engine: "PostgresEngine", credentials: Credentials, params: Params):
+    def __init__(
+        self,
+        engine: "PostgresEngine",
+        credentials: Credentials,
+        params: Params,
+        tables: Optional[TableInfo] = None,
+    ):
         import jsonschema
 
         self.engine = engine
+
+        if "tables" in params:
+            tables = params.pop("tables")
 
         jsonschema.validate(instance=credentials, schema=self.credentials_schema)
         jsonschema.validate(instance=params, schema=self.params_schema)
@@ -58,8 +68,14 @@ class DataSource(ABC):
         self.credentials = credentials
         self.params = params
 
+        if isinstance(tables, dict):
+            for _, table_params in tables.values():
+                jsonschema.validate(instance=table_params, schema=self.table_params_schema)
+
+        self.tables = tables
+
     @abstractmethod
-    def introspect(self) -> Dict[str, TableSchema]:
+    def introspect(self) -> Dict[str, Tuple[TableSchema, TableParams]]:
         # TODO here: dict str -> [tableschema, dict of suggested options]
         #   params -- add table options as a separate field?
         #   separate table schema
@@ -78,7 +94,10 @@ class MountableDataSource(DataSource, ABC):
 
     @abstractmethod
     def mount(
-        self, schema: str, tables: Optional[TableInfo] = None, overwrite: bool = True,
+        self,
+        schema: str,
+        tables: Optional[TableInfo] = None,
+        overwrite: bool = True,
     ):
         """Instantiate the data source as foreign tables in a schema"""
         raise NotImplementedError
@@ -98,7 +117,8 @@ class LoadableDataSource(DataSource, ABC):
         image_hash = "{:064x}".format(getrandbits(256))
         tmp_schema = "{:064x}".format(getrandbits(256))
         repository.images.add(
-            parent_id=None, image=image_hash,
+            parent_id=None,
+            image=image_hash,
         )
         repository.object_engine.create_schema(tmp_schema)
 

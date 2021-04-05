@@ -63,26 +63,34 @@ def test_mount_introspection_preview(local_engine_empty):
         params={"host": "pgorigin", "port": 5432, "dbname": "origindb", "remote_schema": "public"},
     )
 
-    schema = handler.introspect()
+    tables = handler.introspect()
 
-    assert schema == {
-        "fruits": [
-            TableColumn(ordinal=1, name="fruit_id", pg_type="integer", is_pk=False, comment=None),
-            TableColumn(
-                ordinal=2, name="name", pg_type="character varying", is_pk=False, comment=None
-            ),
-        ],
-        "vegetables": [
-            TableColumn(
-                ordinal=1, name="vegetable_id", pg_type="integer", is_pk=False, comment=None
-            ),
-            TableColumn(
-                ordinal=2, name="name", pg_type="character varying", is_pk=False, comment=None
-            ),
-        ],
+    assert tables == {
+        "fruits": (
+            [
+                TableColumn(
+                    ordinal=1, name="fruit_id", pg_type="integer", is_pk=False, comment=None
+                ),
+                TableColumn(
+                    ordinal=2, name="name", pg_type="character varying", is_pk=False, comment=None
+                ),
+            ],
+            {},
+        ),
+        "vegetables": (
+            [
+                TableColumn(
+                    ordinal=1, name="vegetable_id", pg_type="integer", is_pk=False, comment=None
+                ),
+                TableColumn(
+                    ordinal=2, name="name", pg_type="character varying", is_pk=False, comment=None
+                ),
+            ],
+            {},
+        ),
     }
 
-    preview = handler.preview(schema=schema)
+    preview = handler.preview(tables=tables)
     assert preview == {
         "fruits": [{"fruit_id": 1, "name": "apple"}, {"fruit_id": 2, "name": "orange"}],
         "vegetables": [
@@ -131,9 +139,11 @@ def test_mount_elasticsearch(local_engine_empty):
                             "col_1": "text",
                             "col_2": "boolean",
                         },
-                        "index": "index-pattern*",
-                        "rowid_column": "id",
-                        "query_column": "query",
+                        "options": {
+                            "index": "index-pattern*",
+                            "rowid_column": "id",
+                            "query_column": "query",
+                        },
                     }
                 },
             ),

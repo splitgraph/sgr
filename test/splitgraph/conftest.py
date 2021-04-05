@@ -98,8 +98,8 @@ def _mount_mongo(repository):
             tables=dict(
                 stuff={
                     "options": {
-                        "db": "origindb",
-                        "coll": "stuff",
+                        "database": "origindb",
+                        "collection": "stuff",
                     },
                     "schema": {"name": "text", "duration": "numeric", "happy": "boolean"},
                 },
@@ -123,14 +123,17 @@ def _mount_mysql(repository):
             dbname="mysqlschema",
         ),
         tables={
-            "mushrooms": [
-                TableColumn(1, "mushroom_id", "integer", False),
-                TableColumn(2, "name", "character varying (20)", False),
-                TableColumn(3, "discovery", "timestamp", False),
-                TableColumn(4, "friendly", "boolean", False),
-                TableColumn(5, "binary_data", "bytea", False),
-                TableColumn(6, "varbinary_data", "bytea", False),
-            ]
+            "mushrooms": (
+                [
+                    TableColumn(1, "mushroom_id", "integer", False),
+                    TableColumn(2, "name", "character varying (20)", False),
+                    TableColumn(3, "discovery", "timestamp", False),
+                    TableColumn(4, "friendly", "boolean", False),
+                    TableColumn(5, "binary_data", "bytea", False),
+                    TableColumn(6, "varbinary_data", "bytea", False),
+                ],
+                {},
+            )
         },
     )
 

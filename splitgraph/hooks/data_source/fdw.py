@@ -1,17 +1,20 @@
 import logging
 from abc import ABC, abstractmethod
 from copy import deepcopy
-from typing import Optional, Mapping, Dict, List, Any, cast, Union, TYPE_CHECKING
+from typing import Optional, Mapping, Dict, List, Any, cast, Union, TYPE_CHECKING, Tuple
 
 import psycopg2
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.core.types import dict_to_tableschema, TableSchema, TableColumn
-from splitgraph.hooks.data_source.base import (
-    Credentials,
-    Params,
+from splitgraph.core.types import (
+    TableSchema,
+    TableColumn,
+    dict_to_table_schema_params,
+    TableParams,
     TableInfo,
     PreviewResult,
+)
+from splitgraph.hooks.data_source.base import (
     MountableDataSource,
     LoadableDataSource,
 )
@@ -20,24 +23,17 @@ if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PostgresEngine
 
 
-_table_options_schema = {
-    "type": "object",
-    "additionalProperties": {
-        "options": {"type": "object", "additionalProperties": {"type": "string"}},
-    },
-}
-
-
 class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC):
-    credentials_schema = {
+    credentials_schema: Dict[str, Any] = {
         "type": "object",
-        "properties": {"username": {"type": "string"}, "password": {"type": "string"}},
-        "required": ["username", "password"],
     }
 
-    params_schema = {
+    params_schema: Dict[str, Any] = {
         "type": "object",
-        "properties": {"tables": _table_options_schema},
+    }
+
+    table_params_schema: Dict[str, Any] = {
+        "type": "object",
     }
 
     commandline_help: str = ""
@@ -45,15 +41,6 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
 
     supports_mount = True
     supports_load = True
-
-    def __init__(
-        self,
-        engine: "PostgresEngine",
-        credentials: Optional[Credentials] = None,
-        params: Optional[Params] = None,
-    ):
-        self.tables: Optional[TableInfo] = None
-        super().__init__(engine, credentials or {}, params or {})
 
     @classmethod
     def from_commandline(cls, engine, commandline_kwargs) -> "ForeignDataWrapperDataSource":
@@ -64,28 +51,19 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
 
         # By convention, the "tables" object can be:
         #   * A list of tables to import
-        #   * A dictionary table_name -> {"schema": schema, **mount_options}
-        table_kwargs = params.pop("tables", None)
-        tables: Optional[TableInfo]
+        #   * A dictionary table_name -> {"schema": schema, "options": table options}
+        tables = params.pop("tables", None)
+        if isinstance(tables, dict):
+            tables = dict_to_table_schema_params(tables)
 
-        if isinstance(table_kwargs, dict):
-            tables = dict_to_tableschema(
-                {t: to["schema"] for t, to in table_kwargs.items() if "schema" in to}
-            )
-            params["tables"] = {
-                t: {"options": to["options"]} for t, to in table_kwargs.items() if "options" in to
-            }
-        elif isinstance(table_kwargs, list):
-            tables = table_kwargs
-        else:
-            tables = None
-
+        # Extract credentials from the cmdline params
         credentials: Dict[str, Any] = {}
         for k in cast(Dict[str, Any], cls.credentials_schema["properties"]).keys():
             if k in params:
                 credentials[k] = params[k]
-        result = cls(engine, credentials, params)
-        result.tables = tables
+
+        result = cls(engine, credentials, params, tables)
+
         return result
 
     def get_user_options(self) -> Mapping[str, str]:
@@ -94,10 +72,15 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
     def get_server_options(self) -> Mapping[str, str]:
         return {}
 
-    def get_table_options(self, table_name: str) -> Mapping[str, str]:
+    def get_table_options(self, table_name: str) -> Dict[str, str]:
+        if not isinstance(self.tables, dict):
+            return {}
+
         return {
             k: str(v)
-            for k, v in self.params.get("tables", {}).get(table_name, {}).get("options", {}).items()
+            for k, v in self.tables.get(
+                table_name, cast(Tuple[TableSchema, TableParams], ({}, {}))
+            )[1].items()
         }
 
     def get_table_schema(self, table_name: str, table_schema: TableSchema) -> TableSchema:
@@ -113,7 +96,10 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
         pass
 
     def mount(
-        self, schema: str, tables: Optional[TableInfo] = None, overwrite: bool = True,
+        self,
+        schema: str,
+        tables: Optional[TableInfo] = None,
+        overwrite: bool = True,
     ):
         tables = tables or self.tables or []
 
@@ -133,7 +119,7 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
 
         self._create_foreign_tables(schema, server_id, tables)
 
-    def _create_foreign_tables(self, schema, server_id, tables):
+    def _create_foreign_tables(self, schema: str, server_id: str, tables: TableInfo):
         if isinstance(tables, list):
             try:
                 remote_schema = self.get_remote_schema_name()
@@ -143,7 +129,7 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
                 )
             _import_foreign_schema(self.engine, schema, remote_schema, server_id, tables)
         else:
-            for table_name, table_schema in tables.items():
+            for table_name, (table_schema, _) in tables.items():
                 logging.info("Mounting table %s", table_name)
                 query, args = create_foreign_table(
                     schema,
@@ -154,7 +140,7 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
                 )
                 self.engine.run_sql(query, args)
 
-    def introspect(self) -> Dict[str, TableSchema]:
+    def introspect(self) -> Dict[str, Tuple[TableSchema, TableParams]]:
         # Ability to override introspection by e.g. contacting the remote database without having
         # to mount the actual table. By default, just call out into mount()
 
@@ -165,7 +151,8 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
         try:
             self.mount(tmp_schema)
             result = {
-                t: self.engine.get_full_table_schema(tmp_schema, t)
+                # TODO extract table_params from the mount
+                t: (self.engine.get_full_table_schema(tmp_schema, t), cast(TableParams, {}))
                 for t in self.engine.get_all_tables(tmp_schema)
             }
             return result
@@ -189,7 +176,7 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
         )
         return result_json
 
-    def preview(self, schema: Dict[str, TableSchema]) -> PreviewResult:
+    def preview(self, tables: Optional[TableInfo]) -> PreviewResult:
         # Preview data in tables mounted by this FDW / data source
 
         # Local import here since this data source gets imported by the commandline entry point
@@ -197,7 +184,7 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
 
         tmp_schema = get_temporary_table_id()
         try:
-            self.mount(tmp_schema, tables=schema)
+            self.mount(tmp_schema, tables=tables)
             # Commit so that errors don't cancel the mount
             self.engine.commit()
             result: Dict[str, Union[str, List[Dict[str, Any]]]] = {}
@@ -324,7 +311,9 @@ def create_foreign_table(
     for col in schema_spec:
         if col.comment:
             query += SQL("COMMENT ON COLUMN {}.{}.{} IS %s;").format(
-                Identifier(schema), Identifier(table_name), Identifier(col.name),
+                Identifier(schema),
+                Identifier(table_name),
+                Identifier(col.name),
             )
             args.append(col.comment)
     return query, args
@@ -342,6 +331,12 @@ class PostgreSQLDataSource(ForeignDataWrapperDataSource):
             "based on postgres_fdw"
         )
 
+    credentials_schema = {
+        "type": "object",
+        "properties": {"username": {"type": "string"}, "password": {"type": "string"}},
+        "required": ["username", "password"],
+    }
+
     params_schema = {
         "type": "object",
         "properties": {
@@ -349,10 +344,11 @@ class PostgreSQLDataSource(ForeignDataWrapperDataSource):
             "port": {"type": "integer", "description": "Port"},
             "dbname": {"type": "string", "description": "Database name"},
             "remote_schema": {"type": "string", "description": "Remote schema name"},
-            "tables": _table_options_schema,
         },
         "required": ["host", "port", "dbname", "remote_schema"],
     }
+
+    table_params_schema = {"type": "object"}
 
     commandline_help: str = """Mount a Postgres database.
 
@@ -389,27 +385,28 @@ If a dictionary, must have the format
 
 
 class MongoDataSource(ForeignDataWrapperDataSource):
+    credentials_schema = {
+        "type": "object",
+        "properties": {"username": {"type": "string"}, "password": {"type": "string"}},
+        "required": ["username", "password"],
+    }
+
     params_schema = {
         "type": "object",
         "properties": {
             "host": {"type": "string"},
             "port": {"type": "integer"},
-            "tables": {
-                "type": "object",
-                "additionalProperties": {
-                    "options": {
-                        "type": "object",
-                        "properties": {
-                            "db": {"type": "string"},
-                            "coll": {"type": "string"},
-                            "required": ["db", "coll"],
-                        },
-                    },
-                    "required": ["options"],
-                },
-            },
         },
-        "required": ["host", "port", "tables"],
+        "required": ["host", "port"],
+    }
+
+    table_params_schema = {
+        "type": "object",
+        "properties": {
+            "database": {"type": "string"},
+            "collection": {"type": "string"},
+        },
+        "required": ["database", "collection"],
     }
 
     commandline_help = """Mount a Mongo database.
@@ -444,14 +441,6 @@ Mounts one or more collections on a remote Mongo database as a set of foreign ta
     def get_user_options(self):
         return {"username": self.credentials["username"], "password": self.credentials["password"]}
 
-    def get_table_options(self, table_name: str):
-        try:
-            table_params = self.params["tables"][table_name]["options"]
-        except KeyError:
-            raise ValueError("No options specified for table %s!" % table_name)
-
-        return {"database": table_params["db"], "collection": table_params["coll"]}
-
     def get_fdw_name(self):
         return "mongo_fdw"
 
@@ -464,6 +453,12 @@ Mounts one or more collections on a remote Mongo database as a set of foreign ta
 
 
 class MySQLDataSource(ForeignDataWrapperDataSource):
+    credentials_schema = {
+        "type": "object",
+        "properties": {"username": {"type": "string"}, "password": {"type": "string"}},
+        "required": ["username", "password"],
+    }
+
     params_schema = {
         "type": "object",
         "properties": {
@@ -491,7 +486,7 @@ If a dictionary, must have the format
 
     @classmethod
     def get_description(cls) -> str:
-        return "Data source for MySQL databases that supports live querying, " "based on mysql_fdw"
+        return "Data source for MySQL databases that supports live querying, based on mysql_fdw"
 
     def get_server_options(self):
         return {
@@ -527,42 +522,39 @@ class ElasticSearchDataSource(ForeignDataWrapperDataSource):
         "properties": {
             "host": {"type": "string"},
             "port": {"type": "integer"},
-            "tables": {
-                "type": "object",
-                "additionalProperties": {
-                    "options": {
-                        "type": "object",
-                        "properties": {
-                            "index": {
-                                "type": "string",
-                                "description": 'ES index name or pattern to use, for example, "events-*"',
-                            },
-                            "type": {
-                                "type": "string",
-                                "description": "Pre-ES7 doc_type, not required in ES7 or later",
-                            },
-                            "query_column": {
-                                "type": "string",
-                                "description": "Name of the column to use to pass queries in",
-                            },
-                            "score_column": {
-                                "type": "string",
-                                "description": "Name of the column with the document score",
-                            },
-                            "scroll_size": {
-                                "type": "integer",
-                                "description": "Fetch size, default 1000",
-                            },
-                            "scroll_duration": {
-                                "type": "string",
-                                "description": "How long to hold the scroll context open for, default 10m",
-                            },
-                        },
-                    },
-                },
+        },
+        "required": ["host", "port"],
+    }
+
+    table_params_schema = {
+        "type": "object",
+        "properties": {
+            "index": {
+                "type": "string",
+                "description": 'ES index name or pattern to use, for example, "events-*"',
+            },
+            "type": {
+                "type": "string",
+                "description": "Pre-ES7 doc_type, not required in ES7 or later",
+            },
+            "query_column": {
+                "type": "string",
+                "description": "Name of the column to use to pass queries in",
+            },
+            "score_column": {
+                "type": "string",
+                "description": "Name of the column with the document score",
+            },
+            "scroll_size": {
+                "type": "integer",
+                "description": "Fetch size, default 1000",
+            },
+            "scroll_duration": {
+                "type": "string",
+                "description": "How long to hold the scroll context open for, default 10m",
             },
         },
-        "required": ["host", "port", "tables"],
+        "required": ["index"],
     }
 
     commandline_help = """Mount an ElasticSearch instance.

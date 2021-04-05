@@ -18,6 +18,14 @@ Quals = Sequence[Sequence[Tuple[str, str, Any]]]
 SourcesList = List[Dict[str, str]]
 ProvenanceLine = Dict[str, Union[str, List[str], List[bool], SourcesList]]
 
+# Ingestion-related params
+Credentials = Dict[str, Any]
+Params = Dict[str, Any]
+TableParams = Dict[str, Any]
+TableInfo = Union[List[str], Dict[str, Tuple[TableSchema, TableParams]]]
+SyncState = Dict[str, Any]
+PreviewResult = Dict[str, Union[str, List[Dict[str, Any]]]]
+
 
 class Comparable(metaclass=ABCMeta):
     @abstractmethod
@@ -25,13 +33,18 @@ class Comparable(metaclass=ABCMeta):
         ...
 
 
-def dict_to_tableschema(tables: Dict[str, Dict[str, Any]]) -> Dict[str, TableSchema]:
+def dict_to_table_schema_params(
+    tables: Dict[str, Dict[str, Any]]
+) -> Dict[str, Tuple[TableSchema, TableParams]]:
     return {
-        t: [
-            TableColumn(i + 1, cname, ctype, False, None)
-            for (i, (cname, ctype)) in enumerate(ts.items())
-        ]
-        for t, ts in tables.items()
+        t: (
+            [
+                TableColumn(i + 1, cname, ctype, False, None)
+                for (i, (cname, ctype)) in enumerate(tsp["schema"].items())
+            ],
+            tsp.get("options", {}),
+        )
+        for t, tsp in tables.items()
     }
 
 
