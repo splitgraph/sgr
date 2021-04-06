@@ -75,7 +75,7 @@ def test_mount_introspection_preview(local_engine_empty):
                     ordinal=2, name="name", pg_type="character varying", is_pk=False, comment=None
                 ),
             ],
-            {},
+            {"schema_name": "public", "table_name": "fruits"},
         ),
         "vegetables": (
             [
@@ -86,7 +86,7 @@ def test_mount_introspection_preview(local_engine_empty):
                     ordinal=2, name="name", pg_type="character varying", is_pk=False, comment=None
                 ),
             ],
-            {},
+            {"schema_name": "public", "table_name": "vegetables"},
         ),
     }
 
