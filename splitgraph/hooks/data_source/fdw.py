@@ -146,13 +146,24 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
 
         # Local import here since this data source gets imported by the commandline entry point
         from splitgraph.core.common import get_temporary_table_id
+        import jsonschema
 
         tmp_schema = get_temporary_table_id()
         try:
             self.mount(tmp_schema)
+
+            table_options = dict(self._get_foreign_table_options(tmp_schema))
+
+            # Sanity check for adapters: validate the foreign table options that we get back
+            # to make sure they're still appropriate.
+            for v in table_options.values():
+                jsonschema.validate(v, self.table_params_schema)
+
             result = {
-                # TODO extract table_params from the mount
-                t: (self.engine.get_full_table_schema(tmp_schema, t), cast(TableParams, {}))
+                t: (
+                    self.engine.get_full_table_schema(tmp_schema, t),
+                    cast(TableParams, table_options.get(t, {})),
+                )
                 for t in self.engine.get_all_tables(tmp_schema)
             }
             return result
@@ -175,6 +186,30 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
             ),
         )
         return result_json
+
+    def _get_foreign_table_options(self, schema: str) -> List[Tuple[str, Dict[str, str]]]:
+        """
+        Get a list of options the foreign tables in this schema were instantiated with
+        :return: List of tables and their options
+        """
+        # We use this to suggest table options during introspection. With FDWs, we do this by
+        # mounting the data source first (using IMPORT FOREIGN SCHEMA) and then scraping the
+        # foreign table options it inferred.
+
+        # Downstream FDWs can override this: if they remap some table options into different
+        # FDW options (e.g. "remote_schema" on the data source side turns into "schema" on the
+        # FDW side), they have to map them back in this routine (otherwise the introspection will
+        # suggest "schema", which is wrong.
+
+        return cast(
+            List[Tuple[str, Dict[str, str]]],
+            self.engine.run_sql(
+                "SELECT foreign_table_name, json_object_agg(option_name, option_value) "
+                "FROM information_schema.foreign_table_options "
+                "WHERE foreign_table_schema = %s GROUP BY foreign_table_name",
+                (schema,),
+            ),
+        )
 
     def preview(self, tables: Optional[TableInfo]) -> PreviewResult:
         # Preview data in tables mounted by this FDW / data source
@@ -501,7 +536,9 @@ If a dictionary, must have the format
         return {"username": self.credentials["username"], "password": self.credentials["password"]}
 
     def get_table_options(self, table_name: str):
-        return {"dbname": self.params["dbname"]}
+        options = super().get_table_options(table_name)
+        options["dbname"] = options.get("dbname", self.params["dbname"])
+        return options
 
     def get_fdw_name(self):
         return "mysql_fdw"

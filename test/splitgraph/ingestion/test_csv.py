@@ -101,7 +101,7 @@ def test_csv_data_source_s3(local_engine_empty):
 
     schema = source.introspect()
 
-    assert len(schema.keys()) == 4
+    assert len(schema.keys()) == 3
     assert schema["fruits.csv"] == (
         [
             TableColumn(ordinal=1, name="fruit_id", pg_type="integer", is_pk=False, comment=None),
@@ -119,7 +119,7 @@ def test_csv_data_source_s3(local_engine_empty):
             TableColumn(ordinal=5, name="bignumber", pg_type="bigint", is_pk=False, comment=None),
             TableColumn(ordinal=6, name="vbignumber", pg_type="numeric", is_pk=False, comment=None),
         ],
-        {},
+        {"s3_object": "some_prefix/fruits.csv"},
     )
     assert schema["encoding-win-1252.csv"] == (
         [
@@ -131,7 +131,7 @@ def test_csv_data_source_s3(local_engine_empty):
                 ordinal=3, name="TEXT", pg_type="character varying", is_pk=False, comment=None
             ),
         ],
-        {},
+        {"s3_object": "some_prefix/encoding-win-1252.csv"},
     )
     assert len(schema["rdu-weather-history.csv"][0]) == 28
 
