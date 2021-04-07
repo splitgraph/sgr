@@ -58,6 +58,8 @@ SPLITFILE_ROOT = os.path.join(os.path.dirname(__file__), "../resources/")
 
 INGESTION_RESOURCES = os.path.join(os.path.dirname(__file__), "../resources/ingestion")
 
+INGESTION_RESOURCES_CSV = os.path.join(os.path.dirname(__file__), "../resources/ingestion/csv")
+
 API_RESOURCES = os.path.join(os.path.dirname(__file__), "../resources/api")
 
 # Rough on-disk size taken up by a small (<10 rows) object that we
@@ -506,7 +508,7 @@ def clean_minio():
 
 
 def load_csv(fname):
-    with open(os.path.join(INGESTION_RESOURCES, "csv", fname), "r") as f:
+    with open(os.path.join(INGESTION_RESOURCES_CSV, fname), "r") as f:
         return f.read()
 
 

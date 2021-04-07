@@ -5,10 +5,10 @@ from splitgraph.engine import ResultShape
 from splitgraph.hooks.s3_server import MINIO
 from splitgraph.ingestion.common import generate_column_names
 from splitgraph.ingestion.csv import CSVDataSource
-from splitgraph.ingestion.csv.common import CSVOptions, autodetect_csv, make_csv_reader
+from splitgraph.ingestion.csv.common import CSVOptions, make_csv_reader
 from splitgraph.ingestion.csv.fdw import CSVForeignDataWrapper
 from splitgraph.ingestion.inference import infer_sg_schema
-from test.splitgraph.conftest import INGESTION_RESOURCES
+from test.splitgraph.conftest import INGESTION_RESOURCES_CSV
 
 
 def test_csv_introspection_s3():
@@ -180,7 +180,7 @@ def test_csv_dialect_encoding_inference():
     #  - different separator
     #  - first column name missing
 
-    with open(os.path.join(INGESTION_RESOURCES, "csv", "encoding-win-1252.csv"), "rb") as f:
+    with open(os.path.join(INGESTION_RESOURCES_CSV, "encoding-win-1252.csv"), "rb") as f:
         options = CSVOptions()
         options, reader = make_csv_reader(f, options)
 
