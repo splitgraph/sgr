@@ -81,6 +81,7 @@ class CSVDataSource(ForeignDataWrapperDataSource):
             "s3_region": {"type": "string", "description": "Region of the S3 bucket"},
             "s3_secure": {"type": "boolean", "description": "Whether to use HTTPS for S3 access"},
             "s3_bucket": {"type": "string", "description": "Bucket the object is in"},
+            "s3_object": {"type": "string", "description": "Limit the import to a single object"},
             "s3_object_prefix": {"type": "string", "description": "Prefix for object in S3 bucket"},
             "autodetect_header": {
                 "type": "boolean",
