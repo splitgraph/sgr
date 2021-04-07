@@ -1,8 +1,12 @@
+import os
+
 from splitgraph.core.types import TableColumn
 from splitgraph.engine import ResultShape
 from splitgraph.hooks.s3_server import MINIO
 from splitgraph.ingestion.csv import CSVDataSource
+from splitgraph.ingestion.csv.common import CSVOptions, autodetect_csv, make_csv_reader
 from splitgraph.ingestion.csv.fdw import CSVForeignDataWrapper
+from test.splitgraph.conftest import INGESTION_RESOURCES
 
 
 def test_csv_introspection_s3():
@@ -72,7 +76,10 @@ def test_csv_introspection_http():
 def test_csv_data_source_s3(local_engine_empty):
     source = CSVDataSource(
         local_engine_empty,
-        credentials={"s3_access_key": "minioclient", "s3_secret_key": "supersecure",},
+        credentials={
+            "s3_access_key": "minioclient",
+            "s3_secret_key": "supersecure",
+        },
         params={
             "s3_endpoint": "objectstorage:9000",
             "s3_secure": False,
@@ -111,9 +118,13 @@ def test_csv_data_source_s3(local_engine_empty):
         assert local_engine_empty.run_sql('SELECT COUNT(1) FROM temp_data."fruits.csv"') == [(4,)]
 
         # Test NULL "inference" for numbers
-        assert local_engine_empty.run_sql(
-            'SELECT number FROM temp_data."fruits.csv"', return_shape=ResultShape.MANY_ONE,
-        ) == [1, 2, None, 4]
+        assert (
+            local_engine_empty.run_sql(
+                'SELECT number FROM temp_data."fruits.csv"',
+                return_shape=ResultShape.MANY_ONE,
+            )
+            == [1, 2, None, 4]
+        )
 
         assert local_engine_empty.run_sql(
             'SELECT COUNT(1) FROM temp_data."rdu-weather-history.csv"'
@@ -138,3 +149,30 @@ def test_csv_data_source_http(local_engine_empty):
     preview = source.preview(schema)
     assert len(preview.keys()) == 1
     assert len(preview["data"]) == 10
+
+
+def test_csv_dialect_encoding_inference():
+    # Test CSV dialect inference with:
+    #  - win-1252 encoding (will autodetect with chardet)
+    #  - Windows line endings
+    #  - different separator
+
+    with open(os.path.join(INGESTION_RESOURCES, "csv", "encoding-win-1252.csv"), "rb") as f:
+        options = CSVOptions()
+        options, reader = make_csv_reader(f, options)
+
+        assert options.encoding == "Windows-1252"
+        assert options.header is True
+
+        # TODO: we keep these in the dialect struct rather than extract back out into the
+        #  CSVOptions. Might need to do the latter if we want to return the proposed FDW table
+        #  params to the user.
+        assert options.dialect.lineterminator == "\r\n"
+        assert options.dialect.delimiter == ";"
+
+        assert list(reader) == [
+            ["DATE", "TEXT"],
+            ["01/07/2021", "Pañamao"],
+            ["06/11/2018", "–"],
+            ["28/05/2018", "División"],
+        ]
