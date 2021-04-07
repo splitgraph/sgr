@@ -190,6 +190,9 @@ def test_csv_dialect_encoding_inference():
         # TODO: we keep these in the dialect struct rather than extract back out into the
         #  CSVOptions. Might need to do the latter if we want to return the proposed FDW table
         #  params to the user.
+
+        # Note this line terminator is always "\r\n" since CSV assumes we use the
+        # universal newlines mode.
         assert options.dialect.lineterminator == "\r\n"
         assert options.dialect.delimiter == ";"
 
@@ -210,5 +213,31 @@ def test_csv_dialect_encoding_inference():
             ),
             TableColumn(
                 ordinal=3, name="TEXT", pg_type="character varying", is_pk=False, comment=None
+            ),
+        ]
+
+
+def test_csv_mac_newlines():
+    # Test a CSV file with old Mac-style newlines (\r)
+
+    with open(os.path.join(INGESTION_RESOURCES_CSV, "mac_newlines.csv"), "rb") as f:
+        options = CSVOptions()
+        options, reader = make_csv_reader(f, options)
+
+        assert options.encoding == "utf-8"
+        assert options.header is True
+
+        data = list(reader)
+        assert len(data) == 5
+        assert data[0] == ["fruit_id", "timestamp", "name"]
+
+        schema = generate_column_names(infer_sg_schema(data))
+        assert schema == [
+            TableColumn(ordinal=1, name="fruit_id", pg_type="integer", is_pk=False, comment=None),
+            TableColumn(
+                ordinal=2, name="timestamp", pg_type="timestamp", is_pk=False, comment=None
+            ),
+            TableColumn(
+                ordinal=3, name="name", pg_type="character varying", is_pk=False, comment=None
             ),
         ]
