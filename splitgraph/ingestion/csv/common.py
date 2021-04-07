@@ -54,9 +54,17 @@ def autodetect_csv(stream: io.RawIOBase, csv_options: CSVOptions) -> CSVOptions:
     assert data
 
     if csv_options.autodetect_encoding:
-        csv_options = csv_options._replace(encoding=chardet.detect(data)["encoding"])
+        encoding = chardet.detect(data)["encoding"]
+        if encoding == "ascii":
+            # ASCII is a subset of UTF-8. For safety, if chardet detected
+            # the encoding as ASCII, use UTF-8 (a valid ASCII file is a valid UTF-8 file,
+            # but not vice versa)
+            encoding = "utf-8"
+        csv_options = csv_options._replace(encoding=encoding)
 
     sample = data.decode(csv_options.encoding)
+    # Emulate universal newlines mode (convert \r, \r\n, \n into \n)
+    sample = "\n".join(sample.splitlines())
 
     if csv_options.autodetect_dialect:
         dialect = csv.Sniffer().sniff(sample)
