@@ -50,7 +50,8 @@ def copy_csv_buffer(
         copy_command += SQL(")")
 
         cur.copy_expert(
-            cur.mogrify(copy_command, extra_args), data,
+            cur.mogrify(copy_command, extra_args),
+            data,
         )
 
 
@@ -72,12 +73,6 @@ class CSVDataSource(ForeignDataWrapperDataSource):
     params_schema = {
         "type": "object",
         "properties": {
-            "tables": {
-                "type": "object",
-                "additionalProperties": {
-                    "options": {"type": "object", "additionalProperties": {"type": "string"}},
-                },
-            },
             "url": {"type": "string", "description": "HTTP URL to the CSV file"},
             "s3_endpoint": {
                 "type": "string",
@@ -95,6 +90,15 @@ class CSVDataSource(ForeignDataWrapperDataSource):
                 "type": "boolean",
                 "description": "Detect the CSV file's dialect (separator, quoting characters etc) automatically",
             },
+            "autodetect_encoding": {
+                "type": "boolean",
+                "description": "Detect the CSV file's encoding automatically",
+            },
+            "autodetect_sample_size": {
+                "type": "integer",
+                "description": "Sample size, in bytes, for encoding/dialect/header detection",
+            },
+            "encoding": {"type": "string", "description": "Encoding of the CSV file"},
             "header": {
                 "type": "boolean",
                 "description": "First line of the CSV file is its header",
@@ -129,7 +133,8 @@ sgr mount csv target_schema -o@- <<EOF
     "s3_bucket": "data",
     "s3_object_prefix": "csv_files/current/",
     "autodetect_header": true,
-    "autodetect_dialect": true
+    "autodetect_dialect": true,
+    "autodetect_encoding": true
   }
 EOF
 ```
@@ -180,9 +185,13 @@ EOF
             "url",
             "autodetect_dialect",
             "autodetect_header",
+            "autodetect_encoding",
+            "autodetect_sample_size",
+            "encoding",
             "header",
             "separator",
             "quotechar",
+            "dialect",
         ]:
             if k in self.params:
                 options[k] = str(self.params[k])

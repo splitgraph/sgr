@@ -1,18 +1,16 @@
-import csv
 import gzip
-import io
 import logging
 import os
 from copy import deepcopy
 from itertools import islice
-from typing import Tuple, Dict, Any
+from typing import Tuple
 
 import requests
 from minio import Minio
 
 import splitgraph.config
 from splitgraph.commandline import get_exception_name
-from splitgraph.commandline.common import ResettableStream
+from splitgraph.ingestion.csv.common import CSVOptions, get_bool, make_csv_reader
 from splitgraph.ingestion.inference import infer_sg_schema
 
 try:
@@ -37,58 +35,11 @@ except ImportError:
 _PG_LOGLEVEL = logging.INFO
 
 
-def get_bool(params: Dict[str, str], key: str, default: bool = True) -> bool:
-    if key not in params:
-        return default
-    return params[key].lower() == "true"
-
-
-def make_csv_reader(
-    response: io.IOBase,
-    autodetect_header: bool = False,
-    autodetect_dialect: bool = False,
-    delimiter: str = ",",
-    quotechar: str = '"',
-    header: bool = True,
-    encoding: str = "utf-8",
-):
-    stream = ResettableStream(response)
-    if autodetect_header or autodetect_dialect:
-        data = stream.read(2048)
-        assert data
-        sniffer_sample = data.decode(encoding)
-
-        dialect = csv.Sniffer().sniff(sniffer_sample)
-        has_header = csv.Sniffer().has_header(sniffer_sample)
-
-    stream.reset()
-    io_stream = io.TextIOWrapper(io.BufferedReader(stream))  # type: ignore
-    csv_kwargs: Dict[str, Any] = (
-        {"dialect": dialect}
-        if autodetect_dialect
-        else {"delimiter": delimiter, "quotechar": quotechar}
-    )
-
-    if not autodetect_header:
-        has_header = header
-
-    reader = csv.reader(io_stream, **csv_kwargs,)
-    return has_header, reader
-
-
-def _get_table_definition(response, fdw_options, table_name, table_options, encoding="utf-8"):
-    has_header, reader = make_csv_reader(
-        response,
-        autodetect_header=get_bool(fdw_options, "autodetect_header"),
-        autodetect_dialect=get_bool(fdw_options, "autodetect_dialect"),
-        header=get_bool(fdw_options, "header"),
-        delimiter=fdw_options.get("delimiter", ","),
-        quotechar=fdw_options.get("quotechar", '"'),
-        encoding=encoding,
-    )
+def _get_table_definition(response, fdw_options, table_name, table_options):
+    csv_options, reader = make_csv_reader(response, CSVOptions.from_fdw_options(fdw_options))
     sample = list(islice(reader, 1000))
 
-    if not has_header:
+    if not csv_options.header:
         sample = [[str(i) for i in range(len(sample))]] + sample
 
     sg_schema = infer_sg_schema(sample, None, None)
@@ -125,10 +76,10 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
                 f"Object ID: {self.s3_object}",
             ]
 
-    def _read_csv(self, csv_reader, header=True):
+    def _read_csv(self, csv_reader, csv_options):
         header_skipped = False
         for row in csv_reader:
-            if not header_skipped and header:
+            if not header_skipped and csv_options.header:
                 header_skipped = True
                 continue
             # CSVs don't really distinguish NULLs and empty strings well. We know
@@ -149,31 +100,24 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
                 stream = response.raw
                 if response.headers.get("Content-Encoding") == "gzip":
                     stream = gzip.GzipFile(fileobj=stream)
-                has_header, reader = make_csv_reader(
-                    stream,
-                    self.autodetect_header,
-                    self.autodetect_dialect,
-                    self.delimiter,
-                    self.quotechar,
-                    self.header,
-                    encoding=response.encoding,
-                )
-                yield from self._read_csv(reader, header=has_header)
+
+                csv_options = self.csv_options
+                if csv_options.encoding is None and not csv_options.autodetect_encoding:
+                    csv_options = csv_options._replace(encoding=response.encoding)
+
+                csv_options, reader = make_csv_reader(stream, csv_options)
+                yield from self._read_csv(reader, csv_options)
         else:
             response = None
             try:
                 response = self.s3_client.get_object(
                     bucket_name=self.s3_bucket, object_name=self.s3_object
                 )
-                has_header, reader = make_csv_reader(
-                    response,
-                    self.autodetect_header,
-                    self.autodetect_dialect,
-                    self.delimiter,
-                    self.quotechar,
-                    self.header,
-                )
-                yield from self._read_csv(reader, header=has_header)
+                csv_options = self.csv_options
+                if csv_options.encoding is None and not csv_options.autodetect_encoding:
+                    csv_options = csv_options._replace(autodetect_encoding=True)
+                csv_options, reader = make_csv_reader(response, csv_options)
+                yield from self._read_csv(reader, csv_options)
             finally:
                 if response:
                     response.close()
@@ -198,11 +142,7 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
                 stream = response.raw
                 if response.headers.get("Content-Encoding") == "gzip":
                     stream = gzip.GzipFile(fileobj=stream)
-                return [
-                    _get_table_definition(
-                        stream, fdw_options, "data", None, encoding=response.encoding
-                    )
-                ]
+                return [_get_table_definition(stream, fdw_options, "data", None)]
 
         # Get S3 options
         client, bucket, prefix = cls._get_s3_params(fdw_options)
@@ -233,7 +173,14 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
             response = None
             try:
                 response = client.get_object(bucket, o)
-                result.append(_get_table_definition(response, fdw_options, o, {"s3_object": o},))
+                result.append(
+                    _get_table_definition(
+                        response,
+                        fdw_options,
+                        o,
+                        {"s3_object": o},
+                    )
+                )
             except Exception as e:
                 logging.error(
                     "Error scanning object %s, ignoring: %s: %s", o, get_exception_name(e), e
@@ -280,13 +227,7 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
         # The foreign datawrapper columns (name -> ColumnDefinition).
         self.fdw_columns = fdw_columns
 
-        self.delimiter = fdw_options.get("delimiter", ",")
-        self.quotechar = fdw_options.get("quotechar", '"')
-
-        self.header = get_bool(fdw_options, "header")
-
-        self.autodetect_header = get_bool(fdw_options, "autodetect_header")
-        self.autodetect_dialect = get_bool(fdw_options, "autodetect_dialect")
+        self.csv_options = CSVOptions.from_fdw_options(fdw_options)
 
         # For HTTP: use full URL
         if fdw_options.get("url"):

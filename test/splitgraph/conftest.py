@@ -95,7 +95,10 @@ def _mount_mongo(repository):
             password="originpass",
             tables=dict(
                 stuff={
-                    "options": {"db": "origindb", "coll": "stuff",},
+                    "options": {
+                        "db": "origindb",
+                        "coll": "stuff",
+                    },
                     "schema": {"name": "text", "duration": "numeric", "happy": "boolean"},
                 },
             ),
@@ -503,7 +506,7 @@ def clean_minio():
 
 
 def load_csv(fname):
-    with open(os.path.join(INGESTION_RESOURCES, fname), "r") as f:
+    with open(os.path.join(INGESTION_RESOURCES, "csv", fname), "r") as f:
         return f.read()
 
 
