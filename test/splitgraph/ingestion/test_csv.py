@@ -1,4 +1,7 @@
 import os
+from io import BytesIO
+
+import pytest
 
 from splitgraph.core.types import TableColumn
 from splitgraph.engine import ResultShape
@@ -241,3 +244,26 @@ def test_csv_mac_newlines():
                 ordinal=3, name="name", pg_type="character varying", is_pk=False, comment=None
             ),
         ]
+
+
+def test_csv_ignore_decoding_errors():
+    # Test doomed CSVs with malformed Unicode characters. Can't repro this with a small example,
+    # but in some situations chardet can return None, so we fall back to UTF-8. For the purposes
+    # of this test, we force UTF-8 instead.
+
+    malformed = b"name;number\nTA\xef\xbf\xbd\xef\xbf\xbd\xef\xc3\x87\xc3\x83O\xc2\xba;17"
+
+    options = CSVOptions(ignore_decode_errors=False, encoding="utf-8", autodetect_encoding=False)
+
+    with pytest.raises(UnicodeDecodeError):
+        make_csv_reader(BytesIO(malformed), options)
+
+    options = CSVOptions(ignore_decode_errors=True, encoding="utf-8", autodetect_encoding=False)
+    options, reader = make_csv_reader(BytesIO(malformed), options)
+    assert options.encoding == "utf-8"
+    assert options.header is True
+
+    data = list(reader)
+    assert len(data) == 2
+    assert data[0] == ["name", "number"]
+    assert data[1] == ["TA��ÇÃOº", "17"]

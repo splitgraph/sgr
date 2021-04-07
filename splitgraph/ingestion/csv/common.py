@@ -17,9 +17,10 @@ class CSVOptions(NamedTuple):
     autodetect_sample_size: int = 65536
     delimiter: str = ","
     quotechar: str = '"'
-    dialect: Optional[Union[str, Type[csv.Dialect]]] = "excel"
+    dialect: Optional[Union[str, Type[csv.Dialect]]] = None
     header: bool = True
     encoding: str = "utf-8"
+    ignore_decode_errors: bool = False
 
     @classmethod
     def from_fdw_options(cls, fdw_options):
@@ -33,6 +34,7 @@ class CSVOptions(NamedTuple):
             quotechar=fdw_options.get("quotechar", '"'),
             dialect=fdw_options.get("dialect"),
             encoding=fdw_options.get("encoding", "utf-8"),
+            ignore_decode_errors=get_bool(fdw_options, "ignore_decode_errors", default=False),
         )
 
     def to_csv_kwargs(self):
@@ -55,14 +57,19 @@ def autodetect_csv(stream: io.RawIOBase, csv_options: CSVOptions) -> CSVOptions:
 
     if csv_options.autodetect_encoding:
         encoding = chardet.detect(data)["encoding"]
-        if encoding == "ascii":
+        if encoding == "ascii" or encoding is None:
             # ASCII is a subset of UTF-8. For safety, if chardet detected
             # the encoding as ASCII, use UTF-8 (a valid ASCII file is a valid UTF-8 file,
             # but not vice versa)
+
+            # If we can't detect the encoding, fall back to utf-8 too (hopefully the user
+            # passed ignore_decode_errors=True
             encoding = "utf-8"
         csv_options = csv_options._replace(encoding=encoding)
 
-    sample = data.decode(csv_options.encoding)
+    sample = data.decode(
+        csv_options.encoding, errors="ignore" if csv_options.ignore_decode_errors else "strict"
+    )
     # Emulate universal newlines mode (convert \r, \r\n, \n into \n)
     sample = "\n".join(sample.splitlines())
 
@@ -92,7 +99,7 @@ def make_csv_reader(
     stream.reset()
     # https://docs.python.org/3/library/csv.html#id3
     # Open with newline="" for universal newlines
-    io_stream = io.TextIOWrapper(io.BufferedReader(stream), encoding=csv_options.encoding, newline="")  # type: ignore
+    io_stream = io.TextIOWrapper(io.BufferedReader(stream), encoding=csv_options.encoding, newline="", errors="ignore" if csv_options.ignore_decode_errors else "strict")  # type: ignore
 
     reader = csv.reader(io_stream, **csv_options.to_csv_kwargs())
     return csv_options, reader
