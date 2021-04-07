@@ -5,10 +5,10 @@ from datetime import datetime as dt
 
 import pytest
 from click.testing import CliRunner
-from test.splitgraph.conftest import INGESTION_RESOURCES
 
 from splitgraph.commandline.ingestion import csv_import, csv_export
 from splitgraph.core.types import TableColumn
+from test.splitgraph.conftest import INGESTION_RESOURCES, INGESTION_RESOURCES_CSV
 
 
 @pytest.mark.parametrize("custom_separator", [False, True])
@@ -18,7 +18,12 @@ def test_import_empty(ingestion_test_repo, custom_separator):
     # Import without PKs/type conversion.
     result = runner.invoke(
         csv_import,
-        [str(ingestion_test_repo), "test_table", "-f", os.path.join(INGESTION_RESOURCES, filename),]
+        [
+            str(ingestion_test_repo),
+            "test_table",
+            "-f",
+            os.path.join(INGESTION_RESOURCES_CSV, filename),
+        ]
         + (["--separator", ";"] if custom_separator else []),
         catch_exceptions=False,
     )
@@ -99,7 +104,7 @@ def test_import_empty_pk_datetimes(ingestion_test_repo):
             str(ingestion_test_repo),
             "test_table",
             "-f",
-            os.path.join(INGESTION_RESOURCES, "base_df.csv"),
+            os.path.join(INGESTION_RESOURCES_CSV, "base_df.csv"),
             "-k",
             "fruit_id",
             # Set type of the "timestamp" col to timestamp
@@ -127,7 +132,7 @@ def test_import_patch(ingestion_test_repo):
             str(ingestion_test_repo),
             "test_table",
             "-f",
-            os.path.join(INGESTION_RESOURCES, "base_df.csv"),
+            os.path.join(INGESTION_RESOURCES_CSV, "base_df.csv"),
             "-k",
             "fruit_id",
             "-t",
@@ -144,7 +149,7 @@ def test_import_patch(ingestion_test_repo):
             str(ingestion_test_repo),
             "test_table",
             "-f",
-            os.path.join(INGESTION_RESOURCES, "patch_df.csv"),
+            os.path.join(INGESTION_RESOURCES_CSV, "patch_df.csv"),
             "-k",
             "fruit_id",
             "-t",
@@ -167,7 +172,7 @@ def test_export_basic(ingestion_test_repo):
             str(ingestion_test_repo),
             "test_table",
             "-f",
-            os.path.join(INGESTION_RESOURCES, "base_df.csv"),
+            os.path.join(INGESTION_RESOURCES_CSV, "base_df.csv"),
             "-k",
             "fruit_id",
             "-t",
@@ -198,7 +203,7 @@ def test_export_lq(ingestion_test_repo):
             str(ingestion_test_repo),
             "test_table",
             "-f",
-            os.path.join(INGESTION_RESOURCES, "base_df.csv"),
+            os.path.join(INGESTION_RESOURCES_CSV, "base_df.csv"),
             "-k",
             "fruit_id",
             "-t",
@@ -214,7 +219,7 @@ def test_export_lq(ingestion_test_repo):
             str(ingestion_test_repo),
             "test_table",
             "-f",
-            os.path.join(INGESTION_RESOURCES, "patch_df.csv"),
+            os.path.join(INGESTION_RESOURCES_CSV, "patch_df.csv"),
             "-k",
             "fruit_id",
             "-t",

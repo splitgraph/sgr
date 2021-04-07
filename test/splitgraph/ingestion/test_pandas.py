@@ -12,7 +12,7 @@ except ImportError:
     # If Pandas isn't installed, pytest will skip these tests
     # (see pytest.importorskip).
     pass
-from test.splitgraph.conftest import load_csv, INGESTION_RESOURCES
+from test.splitgraph.conftest import load_csv, INGESTION_RESOURCES_CSV
 
 pd = pytest.importorskip("pandas")
 assert_frame_equal = pytest.importorskip("pandas.util.testing").assert_frame_equal
@@ -61,7 +61,7 @@ def test_pandas_basic_insert(ingestion_test_repo):
 
 def test_pandas_no_processing_insert(ingestion_test_repo):
     # Make sure everything still works when we don't have a PK.
-    df = pd.read_csv(os.path.join(INGESTION_RESOURCES, "csv", "base_df.csv"))
+    df = pd.read_csv(os.path.join(INGESTION_RESOURCES_CSV, "base_df.csv"))
     df_to_table(df, ingestion_test_repo, "test_table")
     ingestion_test_repo.commit()
 
@@ -277,11 +277,11 @@ def test_pandas_read_roundtripping(ingestion_test_repo):
 
 def test_pandas_kv(ingestion_test_repo):
     # Test reads and writes with a key-value type dataframe.
-    df = pd.read_csv(os.path.join(INGESTION_RESOURCES, "csv", "base_df_kv.csv"), index_col=0)
+    df = pd.read_csv(os.path.join(INGESTION_RESOURCES_CSV, "base_df_kv.csv"), index_col=0)
     df_to_table(df, ingestion_test_repo, "test_table")
 
     # Test patching works without specifying an index col
-    df = pd.read_csv(os.path.join(INGESTION_RESOURCES, "csv", "patch_df_kv.csv"))
+    df = pd.read_csv(os.path.join(INGESTION_RESOURCES_CSV, "patch_df_kv.csv"))
     df_to_table(df, ingestion_test_repo, "test_table", if_exists="patch")
 
     assert_frame_equal(
