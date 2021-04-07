@@ -179,28 +179,10 @@ EOF
         options: Dict[str, Optional[str]] = {
             "wrapper": "splitgraph.ingestion.csv.fdw.CSVForeignDataWrapper"
         }
-        for k in [
-            "s3_endpoint",
-            "s3_region",
-            "s3_secure",
-            "s3_bucket",
-            "s3_object_prefix",
-            "s3_object",
-            "url",
-            "autodetect_dialect",
-            "autodetect_header",
-            "autodetect_encoding",
-            "autodetect_sample_size",
-            "encoding",
-            "header",
-            "separator",
-            "quotechar",
-            "ignore_decode_errors",
-            "dialect",
-        ]:
+        for k in self.params_schema["properties"].keys():
             if k in self.params:
                 options[k] = str(self.params[k])
-        for k in ["s3_access_key", "s3_secret_key"]:
+        for k in self.credentials_schema["properties"].keys():
             if k in self.credentials:
                 options[k] = str(self.credentials[k])
         return options
