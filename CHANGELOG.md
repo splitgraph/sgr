@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.12 (2021-04-07)
+
+  * Fixes to the Snowflake data source (https://github.com/splitgraph/splitgraph/pull/421)
+  * Add automatic encoding, newline and dialect inference to the CSV data source (https://github.com/splitgraph/splitgraph/pull/432)
+
+Full set of changes: [`v0.2.11...v0.2.12`](https://github.com/splitgraph/splitgraph/compare/v0.2.11...v0.2.12)
+
 ## v0.2.11 (2021-03-29)
 
   * Snowflake data source improvements:

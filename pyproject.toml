@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "splitgraph"
-version = "0.2.11"
+version = "0.2.12"
 description = "Command line library and Python client for Splitgraph, a version control system for data"
 license = "Apache 2.0 modified with Commons Clause"
 authors = ["Splitgraph Limited"]
