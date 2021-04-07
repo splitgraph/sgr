@@ -99,6 +99,10 @@ class CSVDataSource(ForeignDataWrapperDataSource):
                 "description": "Sample size, in bytes, for encoding/dialect/header detection",
             },
             "encoding": {"type": "string", "description": "Encoding of the CSV file"},
+            "ignore_decode_errors": {
+                "type": "bool",
+                "description": "Ignore errors when decoding the file",
+            },
             "header": {
                 "type": "boolean",
                 "description": "First line of the CSV file is its header",
@@ -191,6 +195,7 @@ EOF
             "header",
             "separator",
             "quotechar",
+            "ignore_decode_errors",
             "dialect",
         ]:
             if k in self.params:
