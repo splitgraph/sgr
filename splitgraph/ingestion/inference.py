@@ -1,5 +1,5 @@
 import json
-from typing import Dict, Any, Optional, List, Tuple, Sequence, Callable
+from typing import Dict, Optional, List, Tuple, Sequence, Callable
 
 from splitgraph.core.output import parse_dt, parse_date, parse_time
 from splitgraph.core.types import TableSchema, TableColumn
@@ -62,7 +62,7 @@ def _infer_column_schema(column_sample: Sequence[str]) -> str:
 
 def infer_sg_schema(
     sample: List[Tuple[str, ...]],
-    override_types: Optional[Dict[str, Any]],
+    override_types: Optional[Dict[str, str]] = None,
     primary_keys: Optional[List[str]] = None,
 ):
     override_types = override_types or {}
@@ -72,14 +72,20 @@ def infer_sg_schema(
     header = sample[0]
     columns = list(zip(*sample[1:]))
     if len(columns) != len(header):
-        raise ValueError("Malformed CSV!")
+        raise ValueError(
+            "Malformed CSV: header has %d columns, rows have %d columns"
+            % (len(header), len(columns))
+        )
 
     for i, (c_name, c_sample) in enumerate(zip(header, columns)):
         pg_type = override_types.get(c_name, _infer_column_schema(c_sample))
 
         result.append(
             TableColumn(
-                ordinal=i + 1, name=c_name, pg_type=pg_type, is_pk=(c_name in primary_keys),
+                ordinal=i + 1,
+                name=c_name,
+                pg_type=pg_type,
+                is_pk=(c_name in primary_keys),
             )
         )
 

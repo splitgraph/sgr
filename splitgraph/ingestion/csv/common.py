@@ -1,7 +1,9 @@
-import _csv
 import csv
 import io
-from typing import Optional, Dict, Tuple, NamedTuple, Union, Type
+from typing import Optional, Dict, Tuple, NamedTuple, Union, Type, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import _csv
 
 import chardet
 
@@ -75,7 +77,7 @@ def get_bool(params: Dict[str, str], key: str, default: bool = True) -> bool:
 
 def make_csv_reader(
     response: io.IOBase, csv_options: CSVOptions
-) -> Tuple[CSVOptions, _csv._reader]:
+) -> Tuple[CSVOptions, "_csv._reader"]:
     stream = ResettableStream(response)
     csv_options = autodetect_csv(stream, csv_options)
 
