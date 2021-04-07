@@ -100,7 +100,7 @@ class CSVDataSource(ForeignDataWrapperDataSource):
             },
             "encoding": {"type": "string", "description": "Encoding of the CSV file"},
             "ignore_decode_errors": {
-                "type": "bool",
+                "type": "boolean",
                 "description": "Ignore errors when decoding the file",
             },
             "header": {
