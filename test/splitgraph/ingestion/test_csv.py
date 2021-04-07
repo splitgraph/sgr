@@ -3,9 +3,11 @@ import os
 from splitgraph.core.types import TableColumn
 from splitgraph.engine import ResultShape
 from splitgraph.hooks.s3_server import MINIO
+from splitgraph.ingestion.common import generate_column_names
 from splitgraph.ingestion.csv import CSVDataSource
 from splitgraph.ingestion.csv.common import CSVOptions, autodetect_csv, make_csv_reader
 from splitgraph.ingestion.csv.fdw import CSVForeignDataWrapper
+from splitgraph.ingestion.inference import infer_sg_schema
 from test.splitgraph.conftest import INGESTION_RESOURCES
 
 
@@ -23,10 +25,20 @@ def test_csv_introspection_s3():
         schema=None, srv_options=fdw_options, options={}, restriction_type=None, restricts=[]
     )
 
-    assert len(schema) == 2
+    assert len(schema) == 3
     schema = sorted(schema, key=lambda s: s["table_name"])
 
     assert schema[0] == {
+        "columns": [
+            {"column_name": "col_1", "type_name": "integer"},
+            {"column_name": "DATE", "type_name": "character varying"},
+            {"column_name": "TEXT", "type_name": "character varying"},
+        ],
+        "options": {"s3_object": "some_prefix/encoding-win-1252.csv"},
+        "schema": None,
+        "table_name": "encoding-win-1252.csv",
+    }
+    assert schema[1] == {
         "table_name": "fruits.csv",
         "schema": None,
         "columns": [
@@ -39,8 +51,8 @@ def test_csv_introspection_s3():
         ],
         "options": {"s3_object": "some_prefix/fruits.csv"},
     }
-    assert schema[1]["table_name"] == "rdu-weather-history.csv"
-    assert schema[1]["columns"][0] == {"column_name": "date", "type_name": "date"}
+    assert schema[2]["table_name"] == "rdu-weather-history.csv"
+    assert schema[2]["columns"][0] == {"column_name": "date", "type_name": "date"}
 
     # TODO we need a way to pass suggested table options in the inference / preview response,
     #   since we need to somehow decouple the table name from the S3 object name and/or customize
@@ -90,7 +102,7 @@ def test_csv_data_source_s3(local_engine_empty):
 
     schema = source.introspect()
 
-    assert len(schema.keys()) == 2
+    assert len(schema.keys()) == 3
     assert schema["fruits.csv"] == [
         TableColumn(ordinal=1, name="fruit_id", pg_type="integer", is_pk=False, comment=None),
         TableColumn(
@@ -105,11 +117,17 @@ def test_csv_data_source_s3(local_engine_empty):
         TableColumn(ordinal=5, name="bignumber", pg_type="bigint", is_pk=False, comment=None),
         TableColumn(ordinal=6, name="vbignumber", pg_type="numeric", is_pk=False, comment=None),
     ]
+    assert schema["encoding-win-1252.csv"] == [
+        TableColumn(ordinal=1, name="col_1", pg_type="integer", is_pk=False, comment=None),
+        TableColumn(ordinal=2, name="DATE", pg_type="character varying", is_pk=False, comment=None),
+        TableColumn(ordinal=3, name="TEXT", pg_type="character varying", is_pk=False, comment=None),
+    ]
     assert len(schema["rdu-weather-history.csv"]) == 28
 
     preview = source.preview(schema)
-    assert len(preview.keys()) == 2
+    assert len(preview.keys()) == 3
     assert len(preview["fruits.csv"]) == 4
+    assert len(preview["encoding-win-1252.csv"]) == 3
     assert len(preview["rdu-weather-history.csv"]) == 10
 
     try:
@@ -129,6 +147,10 @@ def test_csv_data_source_s3(local_engine_empty):
         assert local_engine_empty.run_sql(
             'SELECT COUNT(1) FROM temp_data."rdu-weather-history.csv"'
         ) == [(4633,)]
+
+        assert local_engine_empty.run_sql(
+            'SELECT "TEXT" FROM temp_data."encoding-win-1252.csv"'
+        ) == [("Pañamao",), ("–",), ("División",)]
     finally:
         local_engine_empty.delete_schema("temp_data")
 
@@ -156,6 +178,7 @@ def test_csv_dialect_encoding_inference():
     #  - win-1252 encoding (will autodetect with chardet)
     #  - Windows line endings
     #  - different separator
+    #  - first column name missing
 
     with open(os.path.join(INGESTION_RESOURCES, "csv", "encoding-win-1252.csv"), "rb") as f:
         options = CSVOptions()
@@ -170,9 +193,22 @@ def test_csv_dialect_encoding_inference():
         assert options.dialect.lineterminator == "\r\n"
         assert options.dialect.delimiter == ";"
 
-        assert list(reader) == [
-            ["DATE", "TEXT"],
-            ["01/07/2021", "Pañamao"],
-            ["06/11/2018", "–"],
-            ["28/05/2018", "División"],
+        data = list(reader)
+
+        assert data == [
+            ["", "DATE", "TEXT"],
+            ["1", "01/07/2021", "Pañamao"],
+            ["2", "06/11/2018", "–"],
+            ["3", "28/05/2018", "División"],
+        ]
+
+        schema = generate_column_names(infer_sg_schema(data))
+        assert schema == [
+            TableColumn(ordinal=1, name="col_1", pg_type="integer", is_pk=False, comment=None),
+            TableColumn(
+                ordinal=2, name="DATE", pg_type="character varying", is_pk=False, comment=None
+            ),
+            TableColumn(
+                ordinal=3, name="TEXT", pg_type="character varying", is_pk=False, comment=None
+            ),
         ]
