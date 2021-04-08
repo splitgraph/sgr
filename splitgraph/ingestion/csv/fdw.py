@@ -41,7 +41,7 @@ def _get_table_definition(response, fdw_options, table_name, table_options):
     sample = list(islice(reader, csv_options.schema_inference_rows))
 
     if not csv_options.header:
-        sample = [[""] * len(sample)] + sample
+        sample = [[""] * len(sample[0])] + sample
 
     sg_schema = infer_sg_schema(sample, None, None)
 
