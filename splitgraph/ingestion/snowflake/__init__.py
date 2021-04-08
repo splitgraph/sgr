@@ -38,7 +38,10 @@ class SnowflakeDataSource(ForeignDataWrapperDataSource):
                 "type": "string",
                 "description": "Account Locator, e.g. xy12345.us-east-2.aws. For more information, see https://docs.snowflake.com/en/user-guide/connecting.html",
             },
-            "private_key": {"type": "string", "description": "Private key in PEM format",},
+            "private_key": {
+                "type": "string",
+                "description": "Private key in PEM format",
+            },
         },
         "required": ["username", "account"],
         "oneOf": [{"required": ["password"]}, {"required": ["private_key"]}],
@@ -57,6 +60,10 @@ class SnowflakeDataSource(ForeignDataWrapperDataSource):
             "schema": {"type": "string", "description": "Snowflake schema"},
             "warehouse": {"type": "string", "description": "Warehouse name"},
             "role": {"type": "string", "description": "Role"},
+            "batch_size": {
+                "type": "integer",
+                "description": "Default fetch size for remote queries",
+            },
             "envvars": {
                 "type": "object",
                 "description": "Environment variables to set on the engine side",
@@ -148,6 +155,9 @@ EOF
 
         if "envvars" in self.params:
             options["envvars"] = json.dumps(self.params["envvars"])
+
+        if "batch_size" in self.params:
+            options["batch_size"] = str(self.params["batch_size"])
 
         if "private_key" in self.credentials:
             options["connect_args"] = json.dumps(
