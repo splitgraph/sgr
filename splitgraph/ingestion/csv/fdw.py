@@ -38,7 +38,7 @@ _PG_LOGLEVEL = logging.INFO
 
 def _get_table_definition(response, fdw_options, table_name, table_options):
     csv_options, reader = make_csv_reader(response, CSVOptions.from_fdw_options(fdw_options))
-    sample = list(islice(reader, 1000))
+    sample = list(islice(reader, csv_options.schema_inference_rows))
 
     if not csv_options.header:
         sample = [[""] * len(sample)] + sample

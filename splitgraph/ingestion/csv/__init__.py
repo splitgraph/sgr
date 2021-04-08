@@ -99,6 +99,10 @@ class CSVDataSource(ForeignDataWrapperDataSource):
                 "type": "integer",
                 "description": "Sample size, in bytes, for encoding/dialect/header detection",
             },
+            "schema_inference_rows": {
+                "type": "integer",
+                "description": "Number of rows to use for schema inference",
+            },
             "encoding": {"type": "string", "description": "Encoding of the CSV file"},
             "ignore_decode_errors": {
                 "type": "boolean",
