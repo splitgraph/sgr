@@ -108,7 +108,7 @@ class CSVDataSource(ForeignDataWrapperDataSource):
                 "type": "boolean",
                 "description": "First line of the CSV file is its header",
             },
-            "separator": {
+            "delimiter": {
                 "type": "string",
                 "description": "Character used to separate fields in the file",
             },
