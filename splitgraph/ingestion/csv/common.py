@@ -18,7 +18,6 @@ class CSVOptions(NamedTuple):
     schema_inference_rows: int = 10000
     delimiter: str = ","
     quotechar: str = '"'
-    dialect: Optional[Union[str, Type[csv.Dialect]]] = None
     header: bool = True
     encoding: str = "utf-8"
     ignore_decode_errors: bool = False
@@ -34,14 +33,11 @@ class CSVOptions(NamedTuple):
             header=get_bool(fdw_options, "header"),
             delimiter=fdw_options.get("delimiter", ","),
             quotechar=fdw_options.get("quotechar", '"'),
-            dialect=fdw_options.get("dialect"),
             encoding=fdw_options.get("encoding", "utf-8"),
             ignore_decode_errors=get_bool(fdw_options, "ignore_decode_errors", default=False),
         )
 
     def to_csv_kwargs(self):
-        if self.dialect:
-            return {"dialect": self.dialect}
         return {"delimiter": self.delimiter, "quotechar": self.quotechar}
 
 
@@ -77,7 +73,10 @@ def autodetect_csv(stream: io.RawIOBase, csv_options: CSVOptions) -> CSVOptions:
 
     if csv_options.autodetect_dialect:
         dialect = csv.Sniffer().sniff(sample)
-        csv_options = csv_options._replace(dialect=dialect)
+        # These are meant to be set, but mypy claims they might not be.
+        csv_options = csv_options._replace(
+            delimiter=dialect.delimiter or ",", quotechar=dialect.quotechar or '"'
+        )
 
     if csv_options.autodetect_header:
         has_header = csv.Sniffer().has_header(sample)
