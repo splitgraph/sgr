@@ -187,7 +187,7 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
         )
         return result_json
 
-    def _get_foreign_table_options(self, schema: str) -> List[Tuple[str, Dict[str, str]]]:
+    def _get_foreign_table_options(self, schema: str) -> List[Tuple[str, Dict[str, Any]]]:
         """
         Get a list of options the foreign tables in this schema were instantiated with
         :return: List of tables and their options
@@ -200,6 +200,11 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
         # FDW options (e.g. "remote_schema" on the data source side turns into "schema" on the
         # FDW side), they have to map them back in this routine (otherwise the introspection will
         # suggest "schema", which is wrong.
+
+        # This is also used for type remapping, since table params can only be strings on PG.
+        # TODO: this will lead to a bunch of serialization/deserialization code duplication
+        #   in data sources. One potential solution is, at least in Multicorn-backed wrappers
+        #   that we control, passing a JSON as a single table param instead.
 
         return cast(
             List[Tuple[str, Dict[str, str]]],

@@ -1,9 +1,11 @@
+import json
 from copy import deepcopy
-from typing import Optional, TYPE_CHECKING, Dict, Mapping, cast
+from typing import Optional, TYPE_CHECKING, Dict, List, Tuple, Any
 
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.hooks.data_source.fdw import ForeignDataWrapperDataSource
+from splitgraph.core.types import TableInfo
+from splitgraph.hooks.data_source.fdw import ForeignDataWrapperDataSource, import_foreign_schema
 from splitgraph.ingestion.common import IngestionAdapter, build_commandline_help
 
 if TYPE_CHECKING:
@@ -118,6 +120,15 @@ class CSVDataSource(ForeignDataWrapperDataSource):
             },
             "quotechar": {"type": "string", "description": "Character used to quote fields"},
         },
+        "oneOf": [{"required": ["url"]}, {"required": ["s3_endpoint", "s3_bucket"]}],
+    }
+
+    table_params_schema = {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string", "description": "HTTP URL to the CSV file"},
+            "s3_object": {"type": "string", "description": "S3 object of the CSV file"},
+        },
     }
 
     supports_mount = True
@@ -175,10 +186,60 @@ EOF
 
     def get_table_options(self, table_name: str) -> Dict[str, str]:
         result = super().get_table_options(table_name)
-        result["s3_object"] = result.get(
-            "s3_object", self.params.get("s3_object_prefix", "") + table_name
-        )
+
+        # Set a default s3_object if we're using S3 and not HTTP
+        if "url" not in result:
+            result["s3_object"] = result.get(
+                "s3_object", self.params.get("s3_object_prefix", "") + table_name
+            )
         return result
+
+    def _create_foreign_tables(self, schema: str, server_id: str, tables: TableInfo):
+        # Override _create_foreign_tables (actual mounting code) to support TableInfo structs
+        # where the schema is empty. This is so that we can call this data source with a limited
+        # list of CSV files and their delimiters / other params and have it introspect just
+        # those tables (instead of e.g. scanning the whole bucket).
+        if isinstance(tables, dict):
+            to_introspect = {
+                table_name: table_options
+                for table_name, (table_schema, table_options) in tables.items()
+                if not table_schema
+            }
+            if to_introspect:
+                # This FDW's implementation of IMPORT FOREIGN SCHEMA supports passing a JSON of table
+                # options in options
+                import_foreign_schema(
+                    self.engine,
+                    schema,
+                    self.get_remote_schema_name(),
+                    server_id,
+                    tables=list(to_introspect.keys()),
+                    options={"table_options": json.dumps(to_introspect)},
+                )
+
+            # Create the remaining tables (that have a schema) as usual.
+            tables = {
+                table_name: (table_schema, table_options)
+                for table_name, (table_schema, table_options) in tables.items()
+                if table_schema
+            }
+            if not tables:
+                return
+
+        super()._create_foreign_tables(schema, server_id, tables)
+
+    def _get_foreign_table_options(self, schema: str) -> List[Tuple[str, Dict[str, Any]]]:
+        options = super()._get_foreign_table_options(schema)
+
+        # Deserialize things like booleans from the foreign table options that the FDW inferred
+        # for us.
+        def _destring_table_options(table_options):
+            for k in ["autodetect_header", "autodetect_encoding", "autodetect_dialect", "header"]:
+                if k in table_options:
+                    table_options[k] = table_options[k].lower() == "true"
+            return table_options
+
+        return [(t, _destring_table_options(d)) for t, d in options]
 
     def get_server_options(self):
         options: Dict[str, Optional[str]] = {
