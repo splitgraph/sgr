@@ -407,7 +407,8 @@ class PsycopgEngine(SQLEngine):
             with conn.cursor() as cur:
                 cur.execute(
                     SQL("SELECT {}.{}()").format(
-                        Identifier(SPLITGRAPH_API_SCHEMA), Identifier(func),
+                        Identifier(SPLITGRAPH_API_SCHEMA),
+                        Identifier(func),
                     )
                 )
                 result = cur.fetchone()
@@ -686,8 +687,10 @@ class PsycopgEngine(SQLEngine):
             try:
                 return psycopg2.connect(
                     dbname=self.conn_params["SG_ENGINE_POSTGRES_DB_NAME"],
-                    user=self.conn_params["SG_ENGINE_ADMIN_USER"],
-                    password=self.conn_params["SG_ENGINE_ADMIN_PWD"],
+                    user=self.conn_params.get("SG_ENGINE_ADMIN_USER")
+                    or self.conn_params["SG_ENGINE_USER"],
+                    password=self.conn_params.get("SG_ENGINE_ADMIN_PWD")
+                    or self.conn_params["SG_ENGINE_PWD"],
                     host=self.conn_params["SG_ENGINE_HOST"],
                     port=self.conn_params["SG_ENGINE_PORT"],
                     application_name="sgr " + __version__,
@@ -1098,7 +1101,10 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         all_cols = ri_cols + non_ri_cols
 
         self.create_table(
-            schema, table, schema_spec=add_ud_flag_column(schema_spec), temporary=temporary,
+            schema,
+            table,
+            schema_spec=add_ud_flag_column(schema_spec),
+            temporary=temporary,
         )
 
         # Store upserts
@@ -1201,7 +1207,8 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
             # physical object file, we'll have to write into the table anyway.
             if not object_exists:
                 logging.info(
-                    "Object storage, %s, mounted but no physical file, recreating", object_id,
+                    "Object storage, %s, mounted but no physical file, recreating",
+                    object_id,
                 )
 
             # In addition, there's a corner case where the object was mounted with different FDW
