@@ -127,7 +127,7 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
                 raise NotImplementedError(
                     "The FDW does not support IMPORT FOREIGN SCHEMA! Pass a tables dictionary."
                 )
-            _import_foreign_schema(self.engine, schema, remote_schema, server_id, tables)
+            import_foreign_schema(self.engine, schema, remote_schema, server_id, tables)
         else:
             for table_name, (table_schema, _) in tables.items():
                 logging.info("Mounting table %s", table_name)
@@ -308,8 +308,13 @@ def _format_options(option_names):
     )
 
 
-def _import_foreign_schema(
-    engine: "PostgresEngine", mountpoint: str, remote_schema: str, server_id: str, tables: List[str]
+def import_foreign_schema(
+    engine: "PostgresEngine",
+    mountpoint: str,
+    remote_schema: str,
+    server_id: str,
+    tables: List[str],
+    options: Optional[Dict[str, str]] = None,
 ) -> None:
     from psycopg2.sql import Identifier, SQL
 
@@ -318,7 +323,13 @@ def _import_foreign_schema(
     if tables:
         query += SQL("LIMIT TO (") + SQL(",").join(Identifier(t) for t in tables) + SQL(")")
     query += SQL("FROM SERVER {} INTO {}").format(Identifier(server_id), Identifier(mountpoint))
-    engine.run_sql(query)
+    args: List[str] = []
+
+    if options:
+        query += _format_options(options.keys())
+        args.extend(options.values())
+
+    engine.run_sql(query, args)
 
 
 def create_foreign_table(
