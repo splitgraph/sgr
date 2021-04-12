@@ -1,6 +1,6 @@
 import csv
 import io
-from typing import Optional, Dict, Tuple, NamedTuple, Union, Type, TYPE_CHECKING
+from typing import Dict, Tuple, NamedTuple, TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import _csv
@@ -39,6 +39,27 @@ class CSVOptions(NamedTuple):
 
     def to_csv_kwargs(self):
         return {"delimiter": self.delimiter, "quotechar": self.quotechar}
+
+    def to_table_options(self):
+        """
+        Turn this into a dict of table options that can be plugged back into CSVDataSource.
+        """
+
+        # The purpose is to return to the user the CSV dialect options that we inferred
+        # so that they can freeze them in the table options (instead of rescanning the CSV
+        # on every mount) + iterate on them.
+
+        # We flip the autodetect flags to False here so that if we merge the new params with
+        # the old params again, it won't rerun CSV dialect detection.
+        return {
+            "autodetect_header": "false",
+            "autodetect_dialect": "false",
+            "autodetect_encoding": "false",
+            "header": bool_to_str(self.header),
+            "delimiter": self.delimiter,
+            "quotechar": self.quotechar,
+            "encoding": self.encoding,
+        }
 
 
 def autodetect_csv(stream: io.RawIOBase, csv_options: CSVOptions) -> CSVOptions:
@@ -85,10 +106,16 @@ def autodetect_csv(stream: io.RawIOBase, csv_options: CSVOptions) -> CSVOptions:
     return csv_options
 
 
-def get_bool(params: Dict[str, str], key: str, default: bool = True) -> bool:
+def get_bool(params: Dict[str, Any], key: str, default: bool = True) -> bool:
     if key not in params:
         return default
-    return params[key].lower() == "true"
+    if isinstance(params[key], bool):
+        return bool(params[key])
+    return bool(params[key].lower() == "true")
+
+
+def bool_to_str(boolean: bool) -> str:
+    return "true" if boolean else "false"
 
 
 def make_csv_reader(
