@@ -57,10 +57,6 @@ def test_csv_introspection_s3():
     assert schema[2]["table_name"] == "rdu-weather-history.csv"
     assert schema[2]["columns"][0] == {"column_name": "date", "type_name": "date"}
 
-    # TODO we need a way to pass suggested table options in the inference / preview response,
-    #   since we need to somehow decouple the table name from the S3 object name and/or customize
-    #   delimiter/quotechar
-
 
 def test_csv_introspection_http():
     # Pre-sign the S3 URL for an easy HTTP URL to test this
@@ -105,27 +101,39 @@ def test_csv_data_source_s3(local_engine_empty):
 
     schema = source.introspect()
 
-    assert len(schema.keys()) == 3
-    assert schema["fruits.csv"] == [
-        TableColumn(ordinal=1, name="fruit_id", pg_type="integer", is_pk=False, comment=None),
-        TableColumn(
-            ordinal=2,
-            name="timestamp",
-            pg_type="timestamp without time zone",
-            is_pk=False,
-            comment=None,
-        ),
-        TableColumn(ordinal=3, name="name", pg_type="character varying", is_pk=False, comment=None),
-        TableColumn(ordinal=4, name="number", pg_type="integer", is_pk=False, comment=None),
-        TableColumn(ordinal=5, name="bignumber", pg_type="bigint", is_pk=False, comment=None),
-        TableColumn(ordinal=6, name="vbignumber", pg_type="numeric", is_pk=False, comment=None),
-    ]
-    assert schema["encoding-win-1252.csv"] == [
-        TableColumn(ordinal=1, name="col_1", pg_type="integer", is_pk=False, comment=None),
-        TableColumn(ordinal=2, name="DATE", pg_type="character varying", is_pk=False, comment=None),
-        TableColumn(ordinal=3, name="TEXT", pg_type="character varying", is_pk=False, comment=None),
-    ]
-    assert len(schema["rdu-weather-history.csv"]) == 28
+    assert len(schema.keys()) == 4
+    assert schema["fruits.csv"] == (
+        [
+            TableColumn(ordinal=1, name="fruit_id", pg_type="integer", is_pk=False, comment=None),
+            TableColumn(
+                ordinal=2,
+                name="timestamp",
+                pg_type="timestamp without time zone",
+                is_pk=False,
+                comment=None,
+            ),
+            TableColumn(
+                ordinal=3, name="name", pg_type="character varying", is_pk=False, comment=None
+            ),
+            TableColumn(ordinal=4, name="number", pg_type="integer", is_pk=False, comment=None),
+            TableColumn(ordinal=5, name="bignumber", pg_type="bigint", is_pk=False, comment=None),
+            TableColumn(ordinal=6, name="vbignumber", pg_type="numeric", is_pk=False, comment=None),
+        ],
+        {},
+    )
+    assert schema["encoding-win-1252.csv"] == (
+        [
+            TableColumn(ordinal=1, name="col_1", pg_type="integer", is_pk=False, comment=None),
+            TableColumn(
+                ordinal=2, name="DATE", pg_type="character varying", is_pk=False, comment=None
+            ),
+            TableColumn(
+                ordinal=3, name="TEXT", pg_type="character varying", is_pk=False, comment=None
+            ),
+        ],
+        {},
+    )
+    assert len(schema["rdu-weather-history.csv"][0]) == 28
 
     preview = source.preview(schema)
     assert len(preview.keys()) == 3
@@ -169,7 +177,7 @@ def test_csv_data_source_http(local_engine_empty):
 
     schema = source.introspect()
     assert len(schema.keys()) == 1
-    assert len(schema["data"]) == 28
+    assert len(schema["data"][0]) == 28
 
     preview = source.preview(schema)
     assert len(preview.keys()) == 1

@@ -351,7 +351,7 @@ def test_singer_data_source_introspect(local_engine_empty):
     )
 
     schema = source.introspect()
-    assert schema == {"releases": _RELEASES_SCHEMA, "stargazers": _STARGAZERS_SCHEMA}
+    assert schema == {"releases": (_RELEASES_SCHEMA, {}), "stargazers": (_STARGAZERS_SCHEMA, {})}
 
 
 def test_singer_data_source_sync(local_engine_empty):
