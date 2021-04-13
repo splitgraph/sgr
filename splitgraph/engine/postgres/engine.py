@@ -228,6 +228,9 @@ class PsycopgEngine(SQLEngine):
         self.registry = registry
         self.in_fdw = in_fdw
 
+        """List of notices issued by the server during the previous execution of run_sql."""
+        self.notices: List[str] = []
+
         if conn_params:
             self.conn_params = conn_params
 
@@ -505,13 +508,17 @@ class PsycopgEngine(SQLEngine):
         while True:
             with connection.cursor(**cursor_kwargs) as cur:
                 try:
+                    self.notices = []
                     cur.execute(statement, _convert_vals(arguments) if arguments else None)
-                    if connection.notices and self.registry:
-                        # Forward NOTICE messages from the registry back to the user
-                        # (e.g. to nag them to upgrade etc).
-                        for notice in connection.notices:
-                            logging.info("%s says: %s", self.name, notice)
+                    if connection.notices:
+                        self.notices = connection.notices[:]
                         del connection.notices[:]
+
+                        if self.registry:
+                            # Forward NOTICE messages from the registry back to the user
+                            # (e.g. to nag them to upgrade etc).
+                            for notice in self.notices:
+                                logging.info("%s says: %s", self.name, notice)
                 except Exception as e:
                     # Rollback the transaction (to a savepoint if we're inside the savepoint() context manager)
                     self.rollback()
