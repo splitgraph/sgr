@@ -1,7 +1,9 @@
+import json
 import logging
+import re
 from abc import ABC, abstractmethod
 from copy import deepcopy
-from typing import Optional, Mapping, Dict, List, Any, cast, Union, TYPE_CHECKING, Tuple
+from typing import Optional, Mapping, Dict, List, Any, cast, TYPE_CHECKING, Tuple
 
 import psycopg2
 from psycopg2.sql import SQL, Identifier
@@ -13,7 +15,10 @@ from splitgraph.core.types import (
     TableParams,
     TableInfo,
     PreviewResult,
+    MountError,
+    IntrospectionResult,
 )
+from splitgraph.exceptions import get_exception_name
 from splitgraph.hooks.data_source.base import (
     MountableDataSource,
     LoadableDataSource,
@@ -72,15 +77,19 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
     def get_server_options(self) -> Mapping[str, str]:
         return {}
 
-    def get_table_options(self, table_name: str) -> Dict[str, str]:
-        if not isinstance(self.tables, dict):
+    def get_table_options(
+        self, table_name: str, tables: Optional[TableInfo] = None
+    ) -> Dict[str, str]:
+        tables = tables or self.tables
+
+        if not isinstance(tables, dict):
             return {}
 
         return {
             k: str(v)
-            for k, v in self.tables.get(
-                table_name, cast(Tuple[TableSchema, TableParams], ({}, {}))
-            )[1].items()
+            for k, v in tables.get(table_name, cast(Tuple[TableSchema, TableParams], ({}, {})))[
+                1
+            ].items()
         }
 
     def get_table_schema(self, table_name: str, table_schema: TableSchema) -> TableSchema:
@@ -100,7 +109,7 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
         schema: str,
         tables: Optional[TableInfo] = None,
         overwrite: bool = True,
-    ):
+    ) -> Optional[List[MountError]]:
         tables = tables or self.tables or []
 
         fdw = self.get_fdw_name()
@@ -117,9 +126,15 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
         # Allow mounting tables into existing schemas
         self.engine.run_sql(SQL("CREATE SCHEMA IF NOT EXISTS {}").format(Identifier(schema)))
 
-        self._create_foreign_tables(schema, server_id, tables)
+        errors = self._create_foreign_tables(schema, server_id, tables)
+        if errors:
+            for e in errors:
+                logging.warning("Error mounting %s: %s: %s", e.table_name, e.error, e.error_text)
+        return errors
 
-    def _create_foreign_tables(self, schema: str, server_id: str, tables: TableInfo):
+    def _create_foreign_tables(
+        self, schema: str, server_id: str, tables: TableInfo
+    ) -> List[MountError]:
         if isinstance(tables, list):
             try:
                 remote_schema = self.get_remote_schema_name()
@@ -127,7 +142,7 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
                 raise NotImplementedError(
                     "The FDW does not support IMPORT FOREIGN SCHEMA! Pass a tables dictionary."
                 )
-            import_foreign_schema(self.engine, schema, remote_schema, server_id, tables)
+            return import_foreign_schema(self.engine, schema, remote_schema, server_id, tables)
         else:
             for table_name, (table_schema, _) in tables.items():
                 logging.info("Mounting table %s", table_name)
@@ -136,11 +151,12 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
                     server_id,
                     table_name,
                     schema_spec=self.get_table_schema(table_name, table_schema),
-                    extra_options=self.get_table_options(table_name),
+                    extra_options=self.get_table_options(table_name, tables),
                 )
                 self.engine.run_sql(query, args)
+            return []
 
-    def introspect(self) -> Dict[str, Tuple[TableSchema, TableParams]]:
+    def introspect(self) -> IntrospectionResult:
         # Ability to override introspection by e.g. contacting the remote database without having
         # to mount the actual table. By default, just call out into mount()
 
@@ -150,7 +166,7 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
 
         tmp_schema = get_temporary_table_id()
         try:
-            self.mount(tmp_schema)
+            mount_errors = self.mount(tmp_schema) or []
 
             table_options = dict(self._get_foreign_table_options(tmp_schema))
 
@@ -159,13 +175,17 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
             for v in table_options.values():
                 jsonschema.validate(v, self.table_params_schema)
 
-            result = {
+            result: IntrospectionResult = {
                 t: (
                     self.engine.get_full_table_schema(tmp_schema, t),
                     cast(TableParams, table_options.get(t, {})),
                 )
                 for t in self.engine.get_all_tables(tmp_schema)
             }
+
+            # Add errors to the result as well
+            for error in mount_errors:
+                result[error.table_name] = error
             return result
         finally:
             self.engine.rollback()
@@ -224,16 +244,23 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
 
         tmp_schema = get_temporary_table_id()
         try:
-            self.mount(tmp_schema, tables=tables)
+            # Seed the result with the tables that failed to mount
+            result: PreviewResult = {
+                e.table_name: e for e in self.mount(tmp_schema, tables=tables) or []
+            }
+
             # Commit so that errors don't cancel the mount
             self.engine.commit()
-            result: Dict[str, Union[str, List[Dict[str, Any]]]] = {}
             for t in self.engine.get_all_tables(tmp_schema):
+                if t in result:
+                    continue
                 try:
                     result[t] = self._preview_table(tmp_schema, t)
                 except psycopg2.DatabaseError as e:
                     logging.warning("Could not preview data for table %s", t, exc_info=e)
-                    result[t] = str(e)
+                    result[t] = MountError(
+                        table_name=t, error=get_exception_name(e), error_text=str(e).strip()
+                    )
             return result
         finally:
             self.engine.rollback()
@@ -320,7 +347,7 @@ def import_foreign_schema(
     server_id: str,
     tables: List[str],
     options: Optional[Dict[str, str]] = None,
-) -> None:
+) -> List[MountError]:
     from psycopg2.sql import Identifier, SQL
 
     # Construct a query: import schema limit to (%s, %s, ...) from server mountpoint_server into mountpoint
@@ -335,6 +362,26 @@ def import_foreign_schema(
         args.extend(options.values())
 
     engine.run_sql(query, args)
+
+    # Some of our FDWs use the PG notices as a side channel to pass errors and information back
+    # to the user, as IMPORT FOREIGN SCHEMA is all-or-nothing. If some of the tables failed to
+    # mount, we return those + the reasons.
+    import_errors: List[MountError] = []
+    if engine.notices:
+        for notice in engine.notices:
+            match = re.match(r".*SPLITGRAPH: (.*)\n", notice)
+            if not match:
+                continue
+            notice_j = json.loads(match.group(1))
+            import_errors.append(
+                MountError(
+                    table_name=notice_j["table_name"],
+                    error=notice_j["error"],
+                    error_text=notice_j["error_text"],
+                )
+            )
+
+    return import_errors
 
 
 def create_foreign_table(
@@ -425,8 +472,8 @@ If a dictionary, must have the format
     def get_user_options(self):
         return {"user": self.credentials["username"], "password": self.credentials["password"]}
 
-    def get_table_options(self, table_name: str):
-        options = super().get_table_options(table_name)
+    def get_table_options(self, table_name: str, tables: Optional[TableInfo] = None):
+        options = super().get_table_options(table_name, tables)
         options["schema_name"] = self.params["remote_schema"]
         return options
 
@@ -551,8 +598,8 @@ If a dictionary, must have the format
     def get_user_options(self):
         return {"username": self.credentials["username"], "password": self.credentials["password"]}
 
-    def get_table_options(self, table_name: str):
-        options = super().get_table_options(table_name)
+    def get_table_options(self, table_name: str, tables: Optional[TableInfo] = None):
+        options = super().get_table_options(table_name, tables)
         options["dbname"] = options.get("dbname", self.params["dbname"])
         return options
 

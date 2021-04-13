@@ -4,7 +4,7 @@ from typing import Optional, TYPE_CHECKING, Dict, List, Tuple, Any
 
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.core.types import TableInfo
+from splitgraph.core.types import TableInfo, MountError
 from splitgraph.hooks.data_source.fdw import ForeignDataWrapperDataSource, import_foreign_schema
 from splitgraph.ingestion.common import IngestionAdapter, build_commandline_help
 
@@ -184,8 +184,10 @@ EOF
                 credentials[k] = params[k]
         return cls(engine, credentials, params)
 
-    def get_table_options(self, table_name: str) -> Dict[str, str]:
-        result = super().get_table_options(table_name)
+    def get_table_options(
+        self, table_name: str, tables: Optional[TableInfo] = None
+    ) -> Dict[str, str]:
+        result = super().get_table_options(table_name, tables)
 
         # Set a default s3_object if we're using S3 and not HTTP
         if "url" not in result:
@@ -194,11 +196,15 @@ EOF
             )
         return result
 
-    def _create_foreign_tables(self, schema: str, server_id: str, tables: TableInfo):
+    def _create_foreign_tables(
+        self, schema: str, server_id: str, tables: TableInfo
+    ) -> List[MountError]:
         # Override _create_foreign_tables (actual mounting code) to support TableInfo structs
         # where the schema is empty. This is so that we can call this data source with a limited
         # list of CSV files and their delimiters / other params and have it introspect just
         # those tables (instead of e.g. scanning the whole bucket).
+        errors: List[MountError] = []
+
         if isinstance(tables, dict):
             to_introspect = {
                 table_name: table_options
@@ -208,13 +214,15 @@ EOF
             if to_introspect:
                 # This FDW's implementation of IMPORT FOREIGN SCHEMA supports passing a JSON of table
                 # options in options
-                import_foreign_schema(
-                    self.engine,
-                    schema,
-                    self.get_remote_schema_name(),
-                    server_id,
-                    tables=list(to_introspect.keys()),
-                    options={"table_options": json.dumps(to_introspect)},
+                errors.extend(
+                    import_foreign_schema(
+                        self.engine,
+                        schema,
+                        self.get_remote_schema_name(),
+                        server_id,
+                        tables=list(to_introspect.keys()),
+                        options={"table_options": json.dumps(to_introspect)},
+                    )
                 )
 
             # Create the remaining tables (that have a schema) as usual.
@@ -224,9 +232,10 @@ EOF
                 if table_schema
             }
             if not tables:
-                return
+                return errors
 
-        super()._create_foreign_tables(schema, server_id, tables)
+        errors.extend(super()._create_foreign_tables(schema, server_id, tables))
+        return errors
 
     def _get_foreign_table_options(self, schema: str) -> List[Tuple[str, Dict[str, Any]]]:
         options = super()._get_foreign_table_options(schema)

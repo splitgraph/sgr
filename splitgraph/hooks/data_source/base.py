@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from random import getrandbits
-from typing import Dict, Any, Optional, TYPE_CHECKING, cast, Tuple
+from typing import Dict, Any, Optional, TYPE_CHECKING, cast, Tuple, List
 
 from psycopg2._json import Json
 from psycopg2.sql import SQL, Identifier
@@ -8,13 +8,13 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.image import Image
 from splitgraph.core.types import (
-    TableSchema,
     TableColumn,
     Credentials,
     Params,
-    TableParams,
     TableInfo,
     SyncState,
+    MountError,
+    IntrospectionResult,
 )
 from splitgraph.engine import ResultShape
 
@@ -75,17 +75,7 @@ class DataSource(ABC):
         self.tables = tables
 
     @abstractmethod
-    def introspect(self) -> Dict[str, Tuple[TableSchema, TableParams]]:
-        # TODO here: dict str -> [tableschema, dict of suggested options]
-        #   params -- add table options as a separate field?
-        #   separate table schema
-
-        # When going through the repo addition loop:
-        #  * add separate options field mapping table names to options
-        #  * return separate schema for table options
-        #  * table options are optional for introspection
-        #    * how to introspect: do import foreign schema; check fdw params
-        #    *
+    def introspect(self) -> IntrospectionResult:
         raise NotImplementedError
 
 
@@ -98,7 +88,7 @@ class MountableDataSource(DataSource, ABC):
         schema: str,
         tables: Optional[TableInfo] = None,
         overwrite: bool = True,
-    ):
+    ) -> Optional[List[MountError]]:
         """Instantiate the data source as foreign tables in a schema"""
         raise NotImplementedError
 

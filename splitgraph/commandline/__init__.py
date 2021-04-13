@@ -40,6 +40,7 @@ from splitgraph.commandline.misc import (
 from splitgraph.commandline.mount import mount_c
 from splitgraph.commandline.push_pull import pull_c, clone_c, push_c, upstream_c
 from splitgraph.commandline.splitfile import build_c, provenance_c, rebuild_c, dependents_c
+from splitgraph.exceptions import get_exception_name
 from splitgraph.ingestion.singer.commandline import singer_group
 
 logger = logging.getLogger()
@@ -59,13 +60,6 @@ class ClickHandler(logging.Handler):
 click_log.basic_config(logger)
 logger.handlers = [ClickHandler()]
 logger.handlers[0].formatter = ColorFormatter()
-
-
-def get_exception_name(o):
-    module = o.__class__.__module__
-    if module is None or module == str.__class__.__module__:
-        return o.__class__.__name__
-    return module + "." + o.__class__.__name__
 
 
 def _patch_wrap_text():

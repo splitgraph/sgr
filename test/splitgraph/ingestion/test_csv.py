@@ -5,7 +5,7 @@ from unittest import mock
 
 import pytest
 
-from splitgraph.core.types import TableColumn
+from splitgraph.core.types import TableColumn, MountError, unwrap
 from splitgraph.engine import ResultShape
 from splitgraph.hooks.s3_server import MINIO
 from splitgraph.ingestion.common import generate_column_names
@@ -205,7 +205,7 @@ def test_csv_data_source_s3(local_engine_empty):
 
     schema = source.introspect()
 
-    assert len(schema.keys()) == 3
+    assert len(schema.keys()) == 4
     assert schema["fruits.csv"] == (
         [
             TableColumn(ordinal=1, name="fruit_id", pg_type="integer", is_pk=False, comment=None),
@@ -257,11 +257,38 @@ def test_csv_data_source_s3(local_engine_empty):
     )
     assert len(schema["rdu-weather-history.csv"][0]) == 28
 
+    assert schema["not_a_csv.txt"] == MountError(
+        table_name="not_a_csv.txt",
+        error="ValueError",
+        error_text="Malformed CSV: header has 7 columns, rows have 0 columns",
+    )
+
+    schema = unwrap(schema)[0]
+
+    # Add a nonexistent file to the schema with malformed params to check preview error reporting
+    schema["doesnt_exist"] = (
+        [],
+        {"s3_object": "doesnt_exist"},
+    )
+    schema["exists_but_broken"] = (
+        # Force a schema that doesn't work for this CSV
+        [TableColumn(1, "col_1", "date", False)],
+        {"s3_object": "some_prefix/fruits.csv"},
+    )
+
     preview = source.preview(schema)
-    assert len(preview.keys()) == 3
+    assert len(preview.keys()) == 5
     assert len(preview["fruits.csv"]) == 4
     assert len(preview["encoding-win-1252.csv"]) == 3
     assert len(preview["rdu-weather-history.csv"]) == 10
+    assert preview["doesnt_exist"] == MountError(
+        table_name="doesnt_exist", error="minio.error.S3Error", error_text=mock.ANY
+    )
+    assert preview["exists_but_broken"] == MountError(
+        table_name="exists_but_broken",
+        error="psycopg2.errors.InvalidDatetimeFormat",
+        error_text='invalid input syntax for type date: "1"',
+    )
 
     try:
         source.mount("temp_data")
@@ -312,6 +339,8 @@ def test_csv_data_source_multiple(local_engine_empty):
         "from_url": ([], {"url": url}),
         "from_s3_rdu": ([], {"s3_object": "some_prefix/rdu-weather-history.csv"}),
         "from_s3_encoding": ([], {"s3_object": "some_prefix/encoding-win-1252.csv"}),
+        "from_url_broken": ([], {"url": "invalid_url"}),
+        "from_s3_broken": ([], {"s3_object": "invalid_object"}),
     }
 
     source = CSVDataSource(
@@ -363,9 +392,20 @@ def test_csv_data_source_multiple(local_engine_empty):
                 "autodetect_encoding": False,
             },
         ),
+        "from_url_broken": MountError(
+            table_name="from_url_broken",
+            error="requests.exceptions.MissingSchema",
+            error_text="Invalid URL 'invalid_url': No schema supplied. Perhaps you meant http://invalid_url?",
+        ),
+        "from_s3_broken": MountError(
+            table_name="from_s3_broken",
+            error="minio.error.S3Error",
+            error_text=mock.ANY,
+        ),
     }
 
     # Mount the datasets with this introspected schema.
+    schema = unwrap(schema)[0]
     try:
         source.mount("temp_data", tables=schema)
         rows = local_engine_empty.run_sql("SELECT * FROM temp_data.from_s3_encoding")

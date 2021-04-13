@@ -1,12 +1,10 @@
-from typing import Dict
-
-from splitgraph.core.types import TableSchema
+from splitgraph.core.types import IntrospectionResult
 from splitgraph.hooks.data_source import DataSource
 
 
 class TestDataSource(DataSource):
-    def introspect(self) -> Dict[str, TableSchema]:
-        return {"some_table": []}
+    def introspect(self) -> IntrospectionResult:
+        return {"some_table": ([], {})}
 
     @classmethod
     def get_name(cls) -> str:

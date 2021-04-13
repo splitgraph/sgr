@@ -7,12 +7,12 @@ from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from io import StringIO
 from threading import Thread
-from typing import Dict, Any, Optional, cast, Tuple
+from typing import Dict, Any, Optional, cast
 
 from psycopg2.sql import Identifier, SQL
 
 from splitgraph.core.repository import Repository
-from splitgraph.core.types import TableSchema, TableParams, TableInfo, SyncState
+from splitgraph.core.types import TableParams, TableInfo, SyncState, IntrospectionResult
 from splitgraph.exceptions import DataSourceError
 from splitgraph.hooks.data_source.base import (
     get_ingestion_state,
@@ -195,11 +195,11 @@ class SingerDataSource(SyncableDataSource, ABC):
             catalog, tables=tables, use_legacy_stream_selection=self.use_legacy_stream_selection
         )
 
-    def introspect(self) -> Dict[str, Tuple[TableSchema, TableParams]]:
+    def introspect(self) -> IntrospectionResult:
         config = self.get_singer_config()
         singer_schema = self._run_singer_discovery(config)
 
-        result = {}
+        result: IntrospectionResult = {}
         for stream in singer_schema["streams"]:
             stream_name = get_table_name(stream)
             stream_schema = get_sg_schema(stream)
