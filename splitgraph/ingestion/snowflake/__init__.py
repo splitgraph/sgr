@@ -1,8 +1,9 @@
 import base64
 import json
 import urllib.parse
-from typing import Dict, Optional, cast, Mapping, Any
+from typing import Dict, Optional, Any
 
+from splitgraph.core.types import TableInfo
 from splitgraph.hooks.data_source.fdw import ForeignDataWrapperDataSource
 from splitgraph.ingestion.common import build_commandline_help
 
@@ -138,8 +139,10 @@ EOF
     def get_description(cls) -> str:
         return "Schema, table or a subquery from a Snowflake database"
 
-    def get_table_options(self, table_name: str) -> Dict[str, str]:
-        result = super().get_table_options(table_name)
+    def get_table_options(
+        self, table_name: str, tables: Optional[TableInfo] = None
+    ) -> Dict[str, str]:
+        result = super().get_table_options(table_name, tables)
         result["tablename"] = result.get("tablename", table_name)
         return result
 

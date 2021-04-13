@@ -2,11 +2,11 @@
 import json
 import logging
 from copy import deepcopy
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.core.types import TableInfo
+from splitgraph.core.types import TableInfo, MountError
 from splitgraph.exceptions import RepositoryNotFoundError
 from splitgraph.hooks.data_source.fdw import create_foreign_table, ForeignDataWrapperDataSource
 
@@ -81,14 +81,16 @@ class SocrataDataSource(ForeignDataWrapperDataSource):
             options["app_token"] = str(self.credentials["app_token"])
         return options
 
-    def _create_foreign_tables(self, schema, server_id, tables):
+    def _create_foreign_tables(
+        self, schema: str, server_id: str, tables: TableInfo
+    ) -> List[MountError]:
         from sodapy import Socrata
         from psycopg2.sql import SQL
 
         logging.info("Getting Socrata metadata")
         client = Socrata(domain=self.params["domain"], app_token=self.credentials.get("app_token"))
 
-        tables = tables or self.tables
+        tables = self.tables or tables
         if isinstance(tables, list):
             sought_ids = tables
         else:
@@ -112,6 +114,7 @@ class SocrataDataSource(ForeignDataWrapperDataSource):
         )
 
         self.engine.run_sql(SQL(";").join(mount_statements), mount_args)
+        return []
 
 
 def generate_socrata_mount_queries(sought_ids, datasets, mountpoint, server_id, tables: TableInfo):

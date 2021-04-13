@@ -99,7 +99,9 @@ class IncompleteObjectDownloadError(SplitGraphError):
     cleanup and reraise `reason` at the earliest opportunity."""
 
     def __init__(
-        self, reason: Optional[BaseException], successful_objects: List[str],
+        self,
+        reason: Optional[BaseException],
+        successful_objects: List[str],
     ):
         self.reason = reason
         self.successful_objects = successful_objects
@@ -119,3 +121,10 @@ class GQLUnauthenticatedError(GQLAPIError):
 
 class GQLRepoDoesntExistError(GQLAPIError):
     """Repository doesn't exist"""
+
+
+def get_exception_name(o):
+    module = o.__class__.__module__
+    if module is None or module == str.__class__.__module__:
+        return o.__class__.__name__
+    return module + "." + o.__class__.__name__

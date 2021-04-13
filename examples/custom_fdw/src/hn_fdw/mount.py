@@ -1,6 +1,10 @@
-from typing import Dict, Mapping
+from typing import Dict, Optional
 
-from splitgraph.core.types import TableColumn, TableSchema
+from splitgraph.core.types import (
+    TableColumn,
+    TableInfo,
+    IntrospectionResult,
+)
 
 # Define the schema of the foreign table we wish to create
 # We're only going to be fetching stories, so limit the columns to the ones that
@@ -54,7 +58,9 @@ class HackerNewsDataSource(ForeignDataWrapperDataSource):
     def get_description(cls) -> str:
         return "Query Hacker News stories through the Firebase API"
 
-    def get_table_options(self, table_name: str) -> Mapping[str, str]:
+    def get_table_options(
+        self, table_name: str, tables: Optional[TableInfo] = None
+    ) -> Dict[str, str]:
         # Pass the endpoint name into the FDW
         return {"table": table_name}
 
@@ -69,7 +75,7 @@ class HackerNewsDataSource(ForeignDataWrapperDataSource):
             "wrapper": "hn_fdw.fdw.HNForeignDataWrapper",
         }
 
-    def introspect(self) -> Dict[str, TableSchema]:
+    def introspect(self) -> IntrospectionResult:
         # Return a list of this FDW's tables and their schema.
         endpoints = self.params.get("endpoints") or _all_endpoints
-        return {e: _story_schema_spec for e in endpoints}
+        return {e: (_story_schema_spec, {}) for e in endpoints}

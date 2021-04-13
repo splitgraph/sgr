@@ -1,7 +1,14 @@
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple, cast
 
 from splitgraph.core.repository import Repository
-from splitgraph.core.types import TableSchema, TableColumn, TableInfo, SyncState, TableParams
+from splitgraph.core.types import (
+    TableSchema,
+    TableColumn,
+    TableInfo,
+    SyncState,
+    TableParams,
+    IntrospectionResult,
+)
 from splitgraph.engine import ResultShape
 from splitgraph.hooks.data_source.base import SyncableDataSource
 
@@ -29,8 +36,8 @@ class IngestionTestSource(SyncableDataSource):
     def get_description(cls) -> str:
         return "Test ingestion"
 
-    def introspect(self) -> Dict[str, Tuple[TableSchema, TableParams]]:
-        return SCHEMA
+    def introspect(self) -> IntrospectionResult:
+        return cast(IntrospectionResult, SCHEMA)
 
     def _sync(
         self, schema: str, state: Optional[SyncState] = None, tables: Optional[TableInfo] = None

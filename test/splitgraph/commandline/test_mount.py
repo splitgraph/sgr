@@ -23,8 +23,15 @@ from splitgraph.ingestion.socrata.mount import SocrataDataSource
 _MONGO_PARAMS = {
     "tables": {
         "stuff": {
-            "options": {"database": "origindb", "collection": "stuff",},
-            "schema": {"name": "text", "duration": "numeric", "happy": "boolean",},
+            "options": {
+                "database": "origindb",
+                "collection": "stuff",
+            },
+            "schema": {
+                "name": "text",
+                "duration": "numeric",
+                "happy": "boolean",
+            },
         }
     }
 }
@@ -55,7 +62,8 @@ def test_misc_mountpoint_management(pg_repo_local, mg_repo_local):
     # sgr mount with a file
     with tempfile.NamedTemporaryFile("w") as f:
         json.dump(
-            _MONGO_PARAMS, f,
+            _MONGO_PARAMS,
+            f,
         )
         f.flush()
 
@@ -150,5 +158,5 @@ def test_mount_plugin_dir():
     plugin = plugin_class(
         engine=None, credentials={"access_token": "abc"}, params={"some_field": "some_value"}
     )
-    assert plugin.introspect() == {"some_table": []}
+    assert plugin.introspect() == {"some_table": ([], {})}
     assert plugin.get_name() == "Test Data Source"

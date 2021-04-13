@@ -1,5 +1,5 @@
 from abc import ABCMeta, abstractmethod
-from typing import Dict, Tuple, Any, NamedTuple, Optional, List, Sequence, Union
+from typing import Dict, Tuple, Any, NamedTuple, Optional, List, Sequence, Union, TypeVar
 
 Changeset = Dict[Tuple[str, ...], Tuple[bool, Dict[str, Any], Dict[str, Any]]]
 
@@ -24,7 +24,31 @@ Params = Dict[str, Any]
 TableParams = Dict[str, Any]
 TableInfo = Union[List[str], Dict[str, Tuple[TableSchema, TableParams]]]
 SyncState = Dict[str, Any]
-PreviewResult = Dict[str, Union[str, List[Dict[str, Any]]]]
+
+
+class MountError(NamedTuple):
+    table_name: str
+    error: str
+    error_text: str
+
+
+PreviewResult = Dict[str, Union[MountError, List[Dict[str, Any]]]]
+IntrospectionResult = Dict[str, Union[Tuple[TableSchema, TableParams], MountError]]
+
+T = TypeVar("T")
+
+
+def unwrap(
+    result: Dict[str, Union[MountError, T]],
+) -> Tuple[Dict[str, T], Dict[str, MountError]]:
+    good = {}
+    bad = {}
+    for k, v in result.items():
+        if isinstance(v, MountError):
+            bad[k] = v
+        else:
+            good[k] = v
+    return good, bad
 
 
 class Comparable(metaclass=ABCMeta):

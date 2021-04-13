@@ -2,15 +2,16 @@ import gzip
 import json
 import logging
 import os
+from contextlib import contextmanager
 from copy import copy
 from itertools import islice
-from typing import Tuple
+from typing import Tuple, Optional
 
 import requests
 from minio import Minio
 
 import splitgraph.config
-from splitgraph.commandline import get_exception_name
+from splitgraph.exceptions import get_exception_name
 from splitgraph.ingestion.common import generate_column_names
 from splitgraph.ingestion.csv.common import CSVOptions, get_bool, make_csv_reader
 from splitgraph.ingestion.inference import infer_sg_schema
@@ -67,6 +68,33 @@ def _get_table_definition(response, fdw_options, table_name, table_options):
         columns=[ColumnDefinition(column_name=c.name, type_name=c.pg_type) for c in sg_schema],
         options=new_table_options,
     )
+
+
+@contextmanager
+def report_errors(table_name: str):
+    """Context manager that ignores exceptions and serializes them to JSON using PG's notice
+    mechanism instead. The data source is meant to load these to report on partial failures
+    (e.g. failed to load one table, but not others)."""
+    try:
+        yield
+    except Exception as e:
+        logging.error(
+            "Error scanning %s, ignoring: %s: %s",
+            table_name,
+            get_exception_name(e),
+            e,
+            exc_info=e,
+        )
+        log_to_postgres(
+            "SPLITGRAPH: "
+            + json.dumps(
+                {
+                    "table_name": table_name,
+                    "error": get_exception_name(e),
+                    "error_text": str(e),
+                }
+            )
+        )
 
 
 class CSVForeignDataWrapper(ForeignDataWrapper):
@@ -216,49 +244,42 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
     @classmethod
     def _introspect_s3(
         cls, client, bucket, object_id, srv_options, table_name=None, table_options=None
-    ):
+    ) -> Optional[TableDefinition]:
         response = None
         # Default table name: truncate S3 object key up to the prefix
         table_name = table_name or object_id[len(srv_options.get("s3_object_prefix", "")) :]
         table_options = table_options or {}
         table_options.update({"s3_object": object_id})
-        try:
-            response = client.get_object(bucket, object_id)
-            return _get_table_definition(
-                response,
-                srv_options,
-                table_name,
-                table_options,
-            )
-        except Exception as e:
-            logging.error(
-                "Error scanning object %s, ignoring: %s: %s",
-                object_id,
-                get_exception_name(e),
-                e,
-                exc_info=e,
-            )
-            log_to_postgres(
-                "Error scanning object %s, ignoring: %s: %s" % (object_id, get_exception_name(e), e)
-            )
-        finally:
-            if response:
-                response.close()
-                response.release_conn()
+        with report_errors(table_name):
+            try:
+                response = client.get_object(bucket, object_id)
+                return _get_table_definition(
+                    response,
+                    srv_options,
+                    table_name,
+                    table_options,
+                )
+            finally:
+                if response:
+                    response.close()
+                    response.release_conn()
 
     @classmethod
-    def _introspect_url(cls, srv_options, url, table_name=None, table_options=None):
+    def _introspect_url(
+        cls, srv_options, url, table_name=None, table_options=None
+    ) -> Optional[TableDefinition]:
         table_name = table_name or "data"
         table_options = table_options or {}
 
-        with requests.get(
-            url, stream=True, verify=os.environ.get("SSL_CERT_FILE", True)
-        ) as response:
-            response.raise_for_status()
-            stream = response.raw
-            if response.headers.get("Content-Encoding") == "gzip":
-                stream = gzip.GzipFile(fileobj=stream)
-            return _get_table_definition(stream, srv_options, table_name, table_options)
+        with report_errors(table_name):
+            with requests.get(
+                url, stream=True, verify=os.environ.get("SSL_CERT_FILE", True)
+            ) as response:
+                response.raise_for_status()
+                stream = response.raw
+                if response.headers.get("Content-Encoding") == "gzip":
+                    stream = gzip.GzipFile(fileobj=stream)
+                return _get_table_definition(stream, srv_options, table_name, table_options)
 
     @classmethod
     def _get_s3_params(cls, fdw_options) -> Tuple[Minio, str, str]:
