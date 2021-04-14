@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.2.13 (2021-04-14)
+
+  * Various fixes to CSV inference and querying (https://github.com/splitgraph/splitgraph/pull/433)
+  * Add customizable fetch size to the Snowflake data source (https://github.com/splitgraph/splitgraph/pull/434)
+  * Fix issue with changing the engine password (https://github.com/splitgraph/splitgraph/pull/437)
+  * Data source refactor (https://github.com/splitgraph/splitgraph/pull/438):
+    * MySQL: parameter `remote_schema` has been renamed to `dbname`
+    * Mongo: parameter `coll` has been renamed to `collection`; `db` to `database`
+    * Table options are now a separate parameter that is passed to the 
+    * Introspection now returns a dictionary of tables and proposed table options OR error classes for tables that we weren't able to introspect (allowing for partial failures)
+    * Mounting can now return a list of mount errors (caller can choose to ignore).
+    * CSV data source: allow passing a partially initialized list of table options without a schema, making it introspect just those S3 keys and fill out the missing table options.
+  * Postgres-level notices are now available in the `PsycopgEngine.notices` list after a `run_sql` invocation.
+  * Multicorn: fix bug where server-level FDW options would override table-level FDW options.
+
+Full set of changes: [`v0.2.12...v0.2.13`](https://github.com/splitgraph/splitgraph/compare/v0.2.12...v0.2.13)
+
 ## v0.2.12 (2021-04-07)
 
   * Fixes to the Snowflake data source (https://github.com/splitgraph/splitgraph/pull/421)

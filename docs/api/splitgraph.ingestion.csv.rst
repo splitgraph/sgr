@@ -4,6 +4,14 @@ splitgraph.ingestion.csv package
 Submodules
 ----------
 
+splitgraph.ingestion.csv.common module
+--------------------------------------
+
+.. automodule:: splitgraph.ingestion.csv.common
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 splitgraph.ingestion.csv.fdw module
 -----------------------------------
 
