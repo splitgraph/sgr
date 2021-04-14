@@ -184,7 +184,10 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
             # Do a full scan of the file at URL / S3 bucket w. prefix
             if srv_options.get("url"):
                 # Infer from HTTP -- singular table with name "data"
-                return [cls._introspect_url(srv_options, srv_options["url"])]
+                result = cls._introspect_url(srv_options, srv_options["url"])
+                if result:
+                    return [result]
+                return []
             else:
                 # Get S3 options
                 client, bucket, prefix = cls._get_s3_params(srv_options)
