@@ -79,9 +79,9 @@ _PROFILE_UPSERT_QUERY = """mutation UpsertRepoProfile(
     __typename
   }
   __typename
-  createRepoTopic(
+  createRepoTopicsAgg(
   input: {
-    repoTopic: {
+    repoTopicsAgg: {
       namespace: $namespace
       repository: $repository
       topics: $topics
@@ -405,7 +405,9 @@ class AuthAPIClient:
         try:
             logging.debug("Running update check")
             response = requests.post(
-                self.endpoint + "/update_check", verify=self.verify, headers=headers,
+                self.endpoint + "/update_check",
+                verify=self.verify,
+                headers=headers,
             )
             response.raise_for_status()
             latest_version = str(response.json()["latest_version"])
