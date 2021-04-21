@@ -535,8 +535,9 @@ def search_c(remote, query, limit=10):
 
 @click.command("dump")
 @click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.argument("repositories_file", type=click.File("w"), default="repositories.yml")
 @click.pass_context
-def dump_c(ctx, remote):
+def dump_c(ctx, remote, repositories_file):
     """
     Dump a Splitgraph catalog to a YAML file.
 
@@ -547,10 +548,11 @@ def dump_c(ctx, remote):
     client = GQLAPIClient(remote)
     repositories = client.load_all_repositories()
 
-    with open("repositories.yml", "w") as f:
-        yaml.dump(
-            {"repositories": [r.dict(by_alias=True) for r in repositories]}, f, sort_keys=False
-        )
+    yaml.dump(
+        {"repositories": [r.dict(by_alias=True) for r in repositories]},
+        repositories_file,
+        sort_keys=False,
+    )
 
 
 @click.group("cloud")

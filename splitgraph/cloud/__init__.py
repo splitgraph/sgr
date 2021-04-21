@@ -141,8 +141,7 @@ _GET_REPO_METADATA_QUERY = """query GetRepositoryMetadata {
       }
     }
   }
-}
-"""
+}"""
 
 _GET_REPO_SOURCE_QUERY = """query GetRepositoryDataSource {
   repositoryDataSources(first: 1000%s) {
@@ -165,8 +164,7 @@ _GET_REPO_SOURCE_QUERY = """query GetRepositoryDataSource {
       }
     }
   }
-}
-"""
+}"""
 
 
 def get_remote_param(remote: str, key: str) -> str:
@@ -599,7 +597,11 @@ class GQLAPIClient:
 
     def get_metadata(self, namespace: str, repository: str) -> Metadata:
         response = self._gql(
-            {"query": _GET_REPO_METADATA_QUERY % (_REPO_CONDITIONS % (namespace, repository))}
+            {
+                "query": _GET_REPO_METADATA_QUERY % (_REPO_CONDITIONS % (namespace, repository)),
+                "operationName": "GetRepositoryMetadata",
+            },
+            handle_errors=True,
         )
 
         parsed_responses = MetadataResponse.from_response(response.json())
@@ -608,8 +610,12 @@ class GQLAPIClient:
 
     def get_external_metadata(self, namespace: str, repository: str) -> External:
         response = self._gql(
-            {"query": _GET_REPO_SOURCE_QUERY % (_REPO_CONDITIONS % (namespace, repository))},
+            {
+                "query": _GET_REPO_SOURCE_QUERY % (_REPO_CONDITIONS % (namespace, repository)),
+                "operationName": "GetRepositoryDataSource",
+            },
             endpoint=self.registry_endpoint,
+            handle_errors=True,
         )
 
         parsed_responses = ExternalResponse.from_response(response.json())
@@ -617,10 +623,14 @@ class GQLAPIClient:
         return parsed_responses[0].to_external()
 
     def load_all_repositories(self) -> List[Repository]:
-        metadata_r = self._gql({"query": _GET_REPO_METADATA_QUERY % ""})
+        metadata_r = self._gql(
+            {"query": _GET_REPO_METADATA_QUERY % "", "operationName": "GetRepositoryMetadata"}
+        )
 
         external_r = self._gql(
-            {"query": _GET_REPO_SOURCE_QUERY % ""}, endpoint=self.registry_endpoint
+            {"query": _GET_REPO_SOURCE_QUERY % "", "operationName": "GetRepositoryDataSource"},
+            endpoint=self.registry_endpoint,
+            handle_errors=True,
         )
 
         parsed_metadata = MetadataResponse.from_response(metadata_r.json())

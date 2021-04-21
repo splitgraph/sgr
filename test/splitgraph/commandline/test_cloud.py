@@ -1,5 +1,6 @@
 import json
 import os
+import tempfile
 from contextlib import contextmanager
 from tempfile import TemporaryDirectory
 from typing import Optional
@@ -7,6 +8,7 @@ from unittest.mock import patch, PropertyMock, call, Mock
 
 import httpretty
 import pytest
+import yaml
 from click.testing import CliRunner
 from httpretty.core import HTTPrettyRequest
 
@@ -23,6 +25,7 @@ from splitgraph.commandline.cloud import (
     description_c,
     sql_c,
     search_c,
+    dump_c,
 )
 from splitgraph.config import create_config_dict
 from splitgraph.config.config import patch_config
@@ -146,11 +149,21 @@ def test_commandline_registration_normal():
             "--remote",
             _REMOTE,
         ]
-        result = runner.invoke(register_c, args=args, catch_exceptions=False, input="n",)
+        result = runner.invoke(
+            register_c,
+            args=args,
+            catch_exceptions=False,
+            input="n",
+        )
         assert result.exit_code == 1
         assert "Sample ToS message" in result.output
 
-        result = runner.invoke(register_c, args=args, catch_exceptions=False, input="y",)
+        result = runner.invoke(
+            register_c,
+            args=args,
+            catch_exceptions=False,
+            input="y",
+        )
         assert result.exit_code == 0
         assert "Sample ToS message" in result.output
     assert pc.mock_calls == [
@@ -236,7 +249,14 @@ def test_commandline_login_normal():
     with _patch_login_funcs(source_config) as (pc, ic):
         result = runner.invoke(
             login_c,
-            args=["--username", "someuser", "--password", "somepassword", "--remote", _REMOTE,],
+            args=[
+                "--username",
+                "someuser",
+                "--password",
+                "somepassword",
+                "--remote",
+                _REMOTE,
+            ],
             catch_exceptions=False,
         )
         assert result.exit_code == 0
@@ -302,7 +322,14 @@ def test_commandline_login_normal():
     with _patch_login_funcs(source_config) as (pc, ic):
         result = runner.invoke(
             login_c,
-            args=["--username", "someuser", "--password", "somepassword", "--remote", _REMOTE,],
+            args=[
+                "--username",
+                "someuser",
+                "--password",
+                "somepassword",
+                "--remote",
+                _REMOTE,
+            ],
             catch_exceptions=False,
         )
         assert result.exit_code == 0
@@ -416,7 +443,11 @@ def _make_dummy_config_dict():
             "http://some-query-service.example.com/ns/repo/image/-/rest/table?id=eq.5",
             [],
         ),
-        (["ns/repo"], "http://some-query-service.example.com/ns/repo/latest/-/rest", [],),
+        (
+            ["ns/repo"],
+            "http://some-query-service.example.com/ns/repo/latest/-/rest",
+            [],
+        ),
         (
             [
                 "ns/repo",
@@ -462,7 +493,10 @@ def test_commandline_curl(test_case):
                     "Authorization: Bearer AAAABBBBCCCCDDDD",
                 ]
                 + extra_curl_args
-                + ["--some-curl-arg", "-Ssl",]
+                + [
+                    "--some-curl-arg",
+                    "-Ssl",
+                ]
             )
 
 
@@ -553,6 +587,141 @@ def _make_gql_callback(expect_variables):
     return _gql_callback
 
 
+def _make_gql_callback_metadata():
+    def _gql_callback(request, uri, response_headers):
+        body = json.loads(request.body)
+        if body["operationName"] == "GetRepositoryMetadata":
+            response = {
+                "data": {
+                    "repositories": {
+                        "nodes": [
+                            {
+                                "namespace": "someuser",
+                                "repository": "somerepo_1",
+                                "repoTopicsByNamespaceAndRepository": {"nodes": []},
+                                "repoProfileByNamespaceAndRepository": {
+                                    "description": "Repository Description 1",
+                                    "license": "Public Domain",
+                                    "metadata": {
+                                        "created_at": "2020-01-01 12:00:00",
+                                        "upstream_metadata": {"key_1": {"key_2": "value_1"}},
+                                    },
+                                    "readme": "Test Repo 1 Readme",
+                                    "sources": [
+                                        {
+                                            "anchor": "test data source",
+                                            "href": "https://example.com",
+                                            "isCreator": True,
+                                            "isSameAs": False,
+                                        }
+                                    ],
+                                },
+                            },
+                            {
+                                "namespace": "otheruser",
+                                "repository": "somerepo_2",
+                                "repoTopicsByNamespaceAndRepository": {
+                                    "nodes": [{"topics": ["topic_1", "topic_2"]}]
+                                },
+                                "repoProfileByNamespaceAndRepository": {
+                                    "description": "Repository Description 2",
+                                    "license": None,
+                                    "metadata": None,
+                                    "readme": "Test Repo 2 Readme",
+                                    "sources": [
+                                        {
+                                            "anchor": "test data source",
+                                            "href": "https://example.com",
+                                        }
+                                    ],
+                                },
+                            },
+                        ]
+                    }
+                }
+            }
+            return [
+                200,
+                response_headers,
+                json.dumps(response),
+            ]
+        elif body["operationName"] == "GetRepositoryDataSource":
+            response = {
+                "data": {
+                    "repositoryDataSources": {
+                        "nodes": [
+                            {
+                                "namespace": "otheruser",
+                                "repository": "somerepo_2",
+                                "credentialId": "abcdef-123456",
+                                "dataSource": "plugin",
+                                "params": {"plugin": "specific", "params": "here"},
+                                "tableParams": {
+                                    "table_1": {"param_1": "val_1"},
+                                    "table_2": {"param_1": "val_2"},
+                                },
+                                "externalImageByNamespaceAndRepository": {
+                                    "imageByNamespaceAndRepositoryAndImageHash": {
+                                        "tablesByNamespaceAndRepositoryAndImageHash": {
+                                            "nodes": [
+                                                {
+                                                    "tableName": "table_1",
+                                                    "tableSchema": [
+                                                        [
+                                                            0,
+                                                            "id",
+                                                            "text",
+                                                            False,
+                                                            "Column ID",
+                                                        ],
+                                                        [
+                                                            1,
+                                                            "val",
+                                                            "text",
+                                                            False,
+                                                            "Some value",
+                                                        ],
+                                                    ],
+                                                },
+                                                {
+                                                    "tableName": "table_3",
+                                                    "tableSchema": [
+                                                        [
+                                                            0,
+                                                            "id",
+                                                            "text",
+                                                            False,
+                                                            "Column ID",
+                                                        ],
+                                                        [
+                                                            1,
+                                                            "val",
+                                                            "text",
+                                                            False,
+                                                            "Some value",
+                                                        ],
+                                                    ],
+                                                },
+                                            ]
+                                        }
+                                    }
+                                },
+                            },
+                        ]
+                    }
+                }
+            }
+            return [
+                200,
+                response_headers,
+                json.dumps(response),
+            ]
+        else:
+            raise AssertionError()
+
+    return _gql_callback
+
+
 @httpretty.activate(allow_net_connect=False)
 @pytest.mark.parametrize(
     "namespace,repository,readme,token,expected",
@@ -572,7 +741,11 @@ def test_commandline_readme(namespace, repository, readme, token, expected):
         httpretty.HTTPretty.POST,
         _GQL_ENDPOINT + "/",
         body=_make_gql_callback(
-            expect_variables={"namespace": namespace, "readme": readme, "repository": repository,}
+            expect_variables={
+                "namespace": namespace,
+                "readme": readme,
+                "repository": repository,
+            }
         ),
     )
 
@@ -617,7 +790,9 @@ def test_commandline_description():
     ):
         with patch("splitgraph.cloud.get_remote_param", return_value=_GQL_ENDPOINT):
             result = runner.invoke(
-                description_c, ["someuser/somerepo", "some description"], catch_exceptions=False,
+                description_c,
+                ["someuser/somerepo", "some description"],
+                catch_exceptions=False,
             )
 
             assert result.exit_code == 0
@@ -748,6 +923,86 @@ def test_commandline_search():
             assert "Visit http://www.example.com/search?q=some_query" in result.output
 
 
+@httpretty.activate(allow_net_connect=False)
+def test_commandline_dump():
+    runner = CliRunner()
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST, _GQL_ENDPOINT + "/", body=_make_gql_callback_metadata()
+    )
+
+    with patch(
+        "splitgraph.cloud.AuthAPIClient.access_token",
+        new_callable=PropertyMock,
+        return_value=_SAMPLE_ACCESS,
+    ):
+        with patch("splitgraph.cloud.get_remote_param", return_value=_GQL_ENDPOINT):
+            with tempfile.NamedTemporaryFile() as temp:
+                result = runner.invoke(dump_c, temp.name, catch_exceptions=False)
+                assert result.exit_code == 0
+
+                output = temp.read()
+                assert yaml.load(output) == {
+                    "repositories": [
+                        {
+                            "namespace": "otheruser",
+                            "repository": "somerepo_2",
+                            "metadata": {
+                                "readme": "Test Repo 2 Readme",
+                                "description": "Repository Description 2",
+                                "topics": ["topic_1", "topic_2"],
+                                "sources": [
+                                    {
+                                        "anchor": "test data source",
+                                        "href": "https://example.com",
+                                        "isCreator": None,
+                                        "isSameAs": None,
+                                    }
+                                ],
+                                "license": None,
+                                "extra_metadata": None,
+                            },
+                            "external": {
+                                "credential_id": "abcdef-123456",
+                                "credential": None,
+                                "plugin": "plugin",
+                                "params": {"plugin": "specific", "params": "here"},
+                                "tables": {
+                                    "table_1": {
+                                        "options": {"param_1": "val_1"},
+                                        "schema": {"id": "text", "val": "text"},
+                                    },
+                                    "table_2": {"options": {"param_1": "val_2"}, "schema": {}},
+                                    "table_3": {
+                                        "options": {},
+                                        "schema": {"id": "text", "val": "text"},
+                                    },
+                                },
+                            },
+                        },
+                        {
+                            "namespace": "someuser",
+                            "repository": "somerepo_1",
+                            "metadata": {
+                                "readme": "Test Repo 1 Readme",
+                                "description": "Repository Description 1",
+                                "topics": [],
+                                "sources": [
+                                    {
+                                        "anchor": "test data source",
+                                        "href": "https://example.com",
+                                        "isCreator": True,
+                                        "isSameAs": False,
+                                    }
+                                ],
+                                "license": "Public Domain",
+                                "extra_metadata": None,
+                            },
+                            "external": None,
+                        },
+                    ]
+                }
+
+
 def test_commandline_cloud_sql():
     runner = CliRunner()
 
@@ -795,7 +1050,9 @@ def test_commandline_update_check():
         return [200, response_headers, json.dumps({"latest_version": "99999.42.15"})]
 
     httpretty.register_uri(
-        httpretty.HTTPretty.POST, _ENDPOINT + "/update_check", body=_version_callback,
+        httpretty.HTTPretty.POST,
+        _ENDPOINT + "/update_check",
+        body=_version_callback,
     )
 
     config = _make_dummy_config_dict()
