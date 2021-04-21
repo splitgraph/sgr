@@ -9,7 +9,7 @@ homepage = "https://www.splitgraph.com"
 repository = "https://github.com/splitgraph/splitgraph"
 
 [tool.poetry.dependencies]
-python = "~=3.6"
+python = ">=3.6.1,<4.0"
 click = "^7"
 psycopg2-binary = "^2"
 parsimonious = "^0.8"
@@ -36,6 +36,7 @@ sqlalchemy = { version = "^1.3", extras = ["ingestion"], optional = true }
 
 # Fork of pipelinewise-target-postgres without dep pinning so that we can use it as a library
 splitgraph-pipelinewise-target-postgres = ">=2.1.0"
+pydantic = "^1.8.1"
 
 
 [tool.poetry.dev-dependencies]

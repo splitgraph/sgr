@@ -9,6 +9,7 @@ from urllib.parse import urlparse, quote
 import click
 from click import wrap_text
 
+from splitgraph.cloud.models import Metadata
 from splitgraph.commandline.common import (
     ImageType,
     RepositoryType,
@@ -26,7 +27,9 @@ _DDN_DBNAME = "ddn"
 @click.password_option()
 @click.option("--email", prompt=True)
 @click.option(
-    "--remote", default="data.splitgraph.com", help="Name of the remote registry to register on.",
+    "--remote",
+    default="data.splitgraph.com",
+    help="Name of the remote registry to register on.",
 )
 @click.option("--accept-tos", is_flag=True, help="Accept the registry's Terms of Service")
 @click.option(
@@ -126,7 +129,9 @@ def _construct_search_url(gql_endpoint: str, query: str):
 @click.option("--username", prompt="Username or e-mail")
 @click.option("--password", default=None)
 @click.option(
-    "--remote", default="data.splitgraph.com", help="Name of the remote registry to log into.",
+    "--remote",
+    default="data.splitgraph.com",
+    help="Name of the remote registry to log into.",
 )
 @click.option(
     "--overwrite", is_flag=True, help="Overwrite old API keys in the config if they exist"
@@ -211,7 +216,9 @@ def login_c(username, password, remote, overwrite, skip_inject):
 @click.option("--api-key", prompt="API key")
 @click.option("--api-secret", prompt="API secret", confirmation_prompt=False, hide_input=True)
 @click.option(
-    "--remote", default="data.splitgraph.com", help="Name of the remote registry to log into.",
+    "--remote",
+    default="data.splitgraph.com",
+    help="Name of the remote registry to log into.",
 )
 @click.option(
     "-s", "--skip-inject", is_flag=True, help="Don't try to copy the config into all engines"
@@ -387,7 +394,7 @@ def sql_c(remote, show_all, json, query):
 @click.argument("repository", type=RepositoryType(exists=False))
 @click.argument("readme", type=click.File("r"))
 def readme_c(remote, repository, readme):
-    """Upload or a README to a Splitgraph repository.
+    """Upload a README to a Splitgraph repository.
 
     The repository must have already been pushed. The README must be a file in Markdown format.
     """
@@ -461,10 +468,10 @@ def metadata_c(ctx, remote, repository, metadata_file):
     import yaml
     from splitgraph.cloud import GQLAPIClient
 
-    metadata = yaml.safe_load(metadata_file)
+    metadata = Metadata.parse_obj(yaml.safe_load(metadata_file))
 
     keys = ["readme", "description", "topics", "sources", "license", "extra_metadata"]
-    if all(k not in metadata for k in keys):
+    if all(k.__getattribute__(k) is None for k in keys):
         raise click.UsageError(
             "Invalid metadata file. File must contain at least one of " f"{'/'.join(keys)} keys."
         )
@@ -479,7 +486,7 @@ def metadata_c(ctx, remote, repository, metadata_file):
             kwargs[k] = metadata[k]
 
     client = GQLAPIClient(remote)
-    client.upsert_metadata(repository.namespace, repository.repository, **kwargs)
+    client.upsert_metadata(repository.namespace, repository.repository, metadata)
     click.echo("Metadata updated for repository %s." % str(repository))
 
 
