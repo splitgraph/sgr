@@ -43,7 +43,7 @@ class Metadata(BaseModel):
     topics: Optional[List[str]]
     sources: Optional[List[Source]]
     license: Optional[str]
-    extra_metadata: Optional[Dict[str, Dict[str, Any]]]
+    extra_metadata: Optional[Dict[str, Any]]
 
 
 class Repository(BaseModel):
