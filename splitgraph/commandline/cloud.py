@@ -533,6 +533,26 @@ def search_c(remote, query, limit=10):
         )
 
 
+@click.command("dump")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.pass_context
+def dump_c(ctx, remote):
+    """
+    Dump a Splitgraph catalog to a YAML file.
+
+    """
+    import yaml
+    from splitgraph.cloud import GQLAPIClient
+
+    client = GQLAPIClient(remote)
+    repositories = client.load_all_repositories()
+
+    with open("repositories.yml", "w") as f:
+        yaml.dump(
+            {"repositories": [r.dict(by_alias=True) for r in repositories]}, f, sort_keys=False
+        )
+
+
 @click.group("cloud")
 def cloud_c():
     """Manage connections to Splitgraph Cloud."""
@@ -547,3 +567,4 @@ cloud_c.add_command(readme_c)
 cloud_c.add_command(description_c)
 cloud_c.add_command(metadata_c)
 cloud_c.add_command(search_c)
+cloud_c.add_command(dump_c)
