@@ -498,15 +498,18 @@ class GQLAPIClient:
         self.registry_endpoint = self.endpoint.replace("/cloud/", "/registry/")  # :eyes:
         self.auth_client = AuthAPIClient(remote)
 
-    def _gql(self, query: Dict, endpoint=None) -> requests.Response:
+    def _gql(self, query: Dict, endpoint=None, handle_errors=False) -> requests.Response:
         endpoint = endpoint or self.endpoint
         access_token = self.auth_client.access_token
         headers = get_headers()
         headers.update({"Authorization": "Bearer " + access_token})
 
-        return requests.post(
+        result = requests.post(
             endpoint, headers=headers, json=query, verify=os.environ.get("SSL_CERT_FILE", True)
         )
+        if handle_errors:
+            _handle_gql_errors(result)
+        return result
 
     @staticmethod
     def _prepare_upsert_metadata_gql(namespace: str, repository: str, metadata: Metadata):
@@ -516,17 +519,12 @@ class GQLAPIClient:
 
         variables: Dict[str, Any] = {"namespace": namespace, "repository": repository}
 
-        if metadata.description is not None:
-            variables["description"] = metadata.description
-        if metadata.readme is not None:
-            variables["readme"] = metadata.readme
-        if metadata.topics is not None:
-            variables["topics"] = metadata.topics
-        if metadata.sources is not None:
-            variables["sources"] = metadata.sources
-        if license is not None:
-            variables["license"] = license
-        if metadata.extra_metadata is not None:
+        variables.update(metadata.dict())
+
+        variables = {k: v for k, v in variables.items() if v is not None}
+        if "extra_metadata" in variables:
+            extra_metadata = variables.pop("extra_metadata")
+
             # This is a bit of a hack. The actual metadata field in the repository is a JSON with
             # three toplevel fields:
             #   * created_at
@@ -542,9 +540,9 @@ class GQLAPIClient:
             # and put the rest of the metadata dict into "upstream_metadata" to get it rendering.
             metadata_doc: Dict[str, Any] = {}
             for toplevel_key in ["created_at", "updated_at"]:
-                if toplevel_key in metadata.extra_metadata:
-                    metadata_doc[toplevel_key] = str(metadata.extra_metadata.pop(toplevel_key))
-            metadata_doc["upstream_metadata"] = metadata.extra_metadata
+                if toplevel_key in extra_metadata:
+                    metadata_doc[toplevel_key] = str(extra_metadata.pop(toplevel_key))
+            metadata_doc["upstream_metadata"] = extra_metadata
             variables["metadata"] = metadata_doc
 
         query = {
