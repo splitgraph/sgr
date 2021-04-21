@@ -115,6 +115,59 @@ _FIND_REPO_QUERY = """query FindRepositories($query: String!, $limit: Int!) {
   }
 }"""
 
+_REPO_CONDITIONS = ', condition: {"namespace": %s, "repository": %s}'
+
+_GET_REPO_METADATA_QUERY = """query GetRepositoryMetadata {
+  repositories(first: 1000%s) {
+    nodes {
+      namespace
+      repository
+      repoTopicsByNamespaceAndRepository {
+        nodes {
+          topics
+        }
+      }
+      repoProfileByNamespaceAndRepository {
+        description
+        license
+        metadata
+        readme
+        sources {
+          anchor
+          href
+          isCreator
+          isSameAs
+        }
+      }
+    }
+  }
+}
+"""
+
+_GET_REPO_SOURCE_QUERY = """query GetRepositoryDataSource {
+  repositoryDataSources(first: 1000%s) {
+    nodes {
+      namespace
+      repository
+      credentialId
+      dataSource
+      params
+      tableParams
+      externalImageByNamespaceAndRepository {
+        imageByNamespaceAndRepositoryAndImageHash {
+          tablesByNamespaceAndRepositoryAndImageHash {
+            nodes {
+              tableName
+              tableSchema
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
 
 def get_remote_param(remote: str, key: str) -> str:
     return str(
@@ -442,15 +495,17 @@ class GQLAPIClient:
     def __init__(self, remote: str):
         self.remote = remote
         self.endpoint = get_remote_param(self.remote, "SG_GQL_API")
+        self.registry_endpoint = self.endpoint.replace("/cloud/", "/registry/")  # :eyes:
         self.auth_client = AuthAPIClient(remote)
 
-    def _gql(self, query: Dict) -> requests.Response:
+    def _gql(self, query: Dict, endpoint=None) -> requests.Response:
+        endpoint = endpoint or self.endpoint
         access_token = self.auth_client.access_token
         headers = get_headers()
         headers.update({"Authorization": "Bearer " + access_token})
 
         return requests.post(
-            self.endpoint, headers=headers, json=query, verify=os.environ.get("SSL_CERT_FILE", True)
+            endpoint, headers=headers, json=query, verify=os.environ.get("SSL_CERT_FILE", True)
         )
 
     @staticmethod
@@ -543,3 +598,34 @@ class GQLAPIClient:
         ]
 
         return total_count, repos_previews
+
+    def get_metadata(self, namespace: str, repository: str) -> Metadata:
+        response = self._gql(
+            {"query": _GET_REPO_METADATA_QUERY % (_REPO_CONDITIONS % (namespace, repository))}
+        )
+
+        parsed_responses = MetadataResponse.from_response(response.json())
+        assert len(parsed_responses) == 1
+        return parsed_responses[0].to_metadata()
+
+    def get_external_metadata(self, namespace: str, repository: str) -> External:
+        response = self._gql(
+            {"query": _GET_REPO_SOURCE_QUERY % (_REPO_CONDITIONS % (namespace, repository))},
+            endpoint=self.registry_endpoint,
+        )
+
+        parsed_responses = ExternalResponse.from_response(response.json())
+        assert len(parsed_responses) == 1
+        return parsed_responses[0].to_external()
+
+    def load_all_repositories(self) -> List[Repository]:
+        metadata_r = self._gql({"query": _GET_REPO_METADATA_QUERY % ""})
+
+        external_r = self._gql(
+            {"query": _GET_REPO_SOURCE_QUERY % ""}, endpoint=self.registry_endpoint
+        )
+
+        parsed_metadata = MetadataResponse.from_response(metadata_r.json())
+        parsed_external = ExternalResponse.from_response(external_r.json())
+
+        return make_repositories(parsed_metadata, parsed_external)
