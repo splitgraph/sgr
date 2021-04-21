@@ -471,19 +471,14 @@ def metadata_c(ctx, remote, repository, metadata_file):
     metadata = Metadata.parse_obj(yaml.safe_load(metadata_file))
 
     keys = ["readme", "description", "topics", "sources", "license", "extra_metadata"]
-    if all(k.__getattribute__(k) is None for k in keys):
+    if all(metadata.__getattribute__(k) is None for k in keys):
         raise click.UsageError(
             "Invalid metadata file. File must contain at least one of " f"{'/'.join(keys)} keys."
         )
 
-    kwargs = {}
-    if "readme" in metadata:
-        with open(metadata["readme"], "r") as f:
-            kwargs["readme"] = f.read()
-
-    for k in keys:
-        if k != "readme" and k in metadata:
-            kwargs[k] = metadata[k]
+    if metadata.readme:
+        with open(metadata.readme, "r") as f:
+            metadata.readme = f.read()
 
     client = GQLAPIClient(remote)
     client.upsert_metadata(repository.namespace, repository.repository, metadata)
