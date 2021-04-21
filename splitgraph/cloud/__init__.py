@@ -13,6 +13,14 @@ from requests import HTTPError
 from requests.models import Response
 
 from splitgraph.__version__ import __version__
+from splitgraph.cloud.models import (
+    Metadata,
+    MetadataResponse,
+    External,
+    ExternalResponse,
+    make_repositories,
+    Repository,
+)
 from splitgraph.commandline.engine import patch_and_save_config
 from splitgraph.config import create_config_dict, get_singleton, CONFIG
 from splitgraph.config.config import get_from_subsection, set_in_subsection, get_all_in_subsection
@@ -446,33 +454,24 @@ class GQLAPIClient:
         )
 
     @staticmethod
-    def _prepare_upsert_metadata_gql(
-        namespace: str,
-        repository: str,
-        description: Optional[str] = None,
-        readme: Optional[str] = None,
-        topics: Optional[List[str]] = None,
-        sources: Optional[List[Dict[str, Any]]] = None,
-        license: Optional[str] = None,
-        extra_metadata: Optional[Dict[str, Any]] = None,
-    ):
+    def _prepare_upsert_metadata_gql(namespace: str, repository: str, metadata: Metadata):
         # Pre-flight validation
-        if description and len(description) > 160:
+        if metadata.description and len(metadata.description) > 160:
             raise ValueError("The description should be 160 characters or shorter!")
 
         variables: Dict[str, Any] = {"namespace": namespace, "repository": repository}
 
-        if description is not None:
-            variables["description"] = description
-        if readme is not None:
-            variables["readme"] = readme
-        if topics is not None:
-            variables["topics"] = topics
-        if sources is not None:
-            variables["sources"] = sources
+        if metadata.description is not None:
+            variables["description"] = metadata.description
+        if metadata.readme is not None:
+            variables["readme"] = metadata.readme
+        if metadata.topics is not None:
+            variables["topics"] = metadata.topics
+        if metadata.sources is not None:
+            variables["sources"] = metadata.sources
         if license is not None:
             variables["license"] = license
-        if extra_metadata is not None:
+        if metadata.extra_metadata is not None:
             # This is a bit of a hack. The actual metadata field in the repository is a JSON with
             # three toplevel fields:
             #   * created_at
@@ -488,9 +487,9 @@ class GQLAPIClient:
             # and put the rest of the metadata dict into "upstream_metadata" to get it rendering.
             metadata_doc: Dict[str, Any] = {}
             for toplevel_key in ["created_at", "updated_at"]:
-                if toplevel_key in extra_metadata:
-                    metadata_doc[toplevel_key] = str(extra_metadata.pop(toplevel_key))
-            metadata_doc["upstream_metadata"] = extra_metadata
+                if toplevel_key in metadata.extra_metadata:
+                    metadata_doc[toplevel_key] = str(metadata.extra_metadata.pop(toplevel_key))
+            metadata_doc["upstream_metadata"] = metadata.extra_metadata
             variables["metadata"] = metadata_doc
 
         query = {
@@ -504,19 +503,22 @@ class GQLAPIClient:
         return query
 
     @handle_gql_errors
-    def upsert_metadata(self, *args, **kwargs):
-        return self._gql(self._prepare_upsert_metadata_gql(*args, **kwargs))
+    def upsert_metadata(self, namespace: str, repository: str, metadata: Metadata):
+        """
+        Update metadata for a single repository.
+        """
+        return self._gql(self._prepare_upsert_metadata_gql(namespace, repository, metadata))
 
     def upsert_readme(self, namespace: str, repository: str, readme: str):
-        return self.upsert_metadata(namespace, repository, readme=readme)
+        return self.upsert_metadata(namespace, repository, Metadata(readme=readme))
 
     @handle_gql_errors
     def upsert_description(self, namespace: str, repository: str, description: str):
-        return self.upsert_metadata(namespace, repository, description=description)
+        return self.upsert_metadata(namespace, repository, Metadata(description=description))
 
     @handle_gql_errors
     def upsert_topics(self, namespace: str, repository: str, topics: List[str]):
-        return self.upsert_metadata(namespace, repository, topics=topics)
+        return self.upsert_metadata(namespace, repository, Metadata(topics=topics))
 
     def find_repository(
         self, query: str, limit: int = 10
