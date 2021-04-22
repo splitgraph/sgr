@@ -8,3 +8,5 @@ repos:
     rev: 'v0.812'
     hooks:
     -   id: mypy
+        additional_dependencies:
+        -   pydantic>=1.8.1
