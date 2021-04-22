@@ -10,8 +10,13 @@ from splitgraph.core.types import TableSchema
 
 
 class Table(BaseModel):
+    class Column(BaseModel):
+        name: str
+        pg_type: str = Field(alias="type")
+        comment: Optional[str]
+
     options: Dict[str, Any]
-    schema_: Dict[str, str] = Field(alias="schema")
+    schema_: List[Column] = Field(alias="schema")
 
 
 class Credential(BaseModel):
@@ -152,7 +157,7 @@ class ExternalResponse(BaseModel):
         tables = {
             t: Table(
                 options=self.tableParams.get(t, {}),
-                schema={c.name: c.pg_type for c in schemas.get(t, {})},
+                schema=[Table.Column(name=c.name, type=c.pg_type) for c in schemas.get(t, [])],
             )
             for t in all_tables
         }
