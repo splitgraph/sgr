@@ -2,7 +2,7 @@ import datetime
 import os
 
 import pytest
-from test.splitgraph.conftest import OUTPUT, SPLITFILE_ROOT, load_splitfile, prepare_lq_repo
+from test.splitgraph.conftest import OUTPUT, RESOURCES, load_splitfile, prepare_lq_repo
 
 from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.repository import clone, Repository
@@ -25,7 +25,7 @@ def test_splitfile_parsing_qoz_regression():
     # Test a big real-world Splitfile from the examples dir to make sure
     # that parsing changes don't break it.
     with open(
-        os.path.join(SPLITFILE_ROOT, "../../examples/us-election/qoz_vote_fraction.splitfile")
+        os.path.join(RESOURCES, "../../examples/us-election/qoz_vote_fraction.splitfile")
     ) as f:
         commands = f.read()
     assert len(parse_commands(commands)) == 3
@@ -428,7 +428,7 @@ def test_splitfile_with_external_sql(readonly_pg_repo):
     # Tests are running from root so we pass in the path to the SQL manually to the splitfile.
     execute_commands(
         load_splitfile("external_sql.splitfile"),
-        params={"EXTERNAL_SQL_FILE": SPLITFILE_ROOT + "external_sql.sql"},
+        params={"EXTERNAL_SQL_FILE": RESOURCES + "external_sql.sql"},
         output=OUTPUT,
     )
 
@@ -447,7 +447,8 @@ def test_splitfile_inline_sql(readonly_pg_repo, pg_repo_local):
     pg_repo_local.head.tag("v2")
 
     execute_commands(
-        load_splitfile("inline_sql.splitfile"), output=OUTPUT,
+        load_splitfile("inline_sql.splitfile"),
+        output=OUTPUT,
     )
 
     new_head = OUTPUT.head
