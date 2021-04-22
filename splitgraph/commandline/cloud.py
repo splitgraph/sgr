@@ -12,8 +12,9 @@ from urllib.parse import urlparse, quote
 
 import click
 from click import wrap_text
+from tqdm import tqdm
 
-from splitgraph.cloud.models import Metadata
+from splitgraph.cloud.models import Metadata, RepositoriesYAML
 from splitgraph.commandline.common import (
     ImageType,
     RepositoryType,
@@ -475,26 +476,29 @@ def metadata_c(ctx, remote, repository, metadata_file):
     from splitgraph.cloud import GQLAPIClient
 
     metadata = Metadata.parse_obj(yaml.safe_load(metadata_file))
+    metadata = _prepare_metadata(metadata)
 
+    client = GQLAPIClient(remote)
+    client.upsert_metadata(repository.namespace, repository.repository, metadata)
+    click.echo("Metadata updated for repository %s." % str(repository))
+
+
+def _prepare_metadata(metadata, readme_basedir="."):
     keys = ["readme", "description", "topics", "sources", "license", "extra_metadata"]
     if all(metadata.__getattribute__(k) is None for k in keys):
         raise click.UsageError(
             "Invalid metadata file. File must contain at least one of " f"{'/'.join(keys)} keys."
         )
-
     readme_file = None
     if isinstance(metadata.readme, str):
         readme_file = metadata.readme
     elif isinstance(metadata.readme, Metadata.Readme) and metadata.readme.file:
         readme_file = metadata.readme.file
-
     if readme_file:
-        with open(readme_file, "r") as f:
+        with open(os.path.join(readme_basedir, readme_file), "r") as f:
             metadata.readme = Metadata.Readme(text=f.read())
 
-    client = GQLAPIClient(remote)
-    client.upsert_metadata(repository.namespace, repository.repository, metadata)
-    click.echo("Metadata updated for repository %s." % str(repository))
+    return metadata
 
 
 @click.command("search")
@@ -555,11 +559,9 @@ def _normalise_filename(filename):
 @click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
 @click.option("--directory", default=".", help="Directory to dump the data into")
 @click.argument("repositories_file", default="repositories.yml")
-@click.pass_context
-def dump_c(ctx, remote, directory, repositories_file):
+def dump_c(remote, directory, repositories_file):
     """
     Dump a Splitgraph catalog to a YAML file.
-
     """
     import yaml
     from splitgraph.cloud import GQLAPIClient
@@ -575,6 +577,72 @@ def dump_c(ctx, remote, directory, repositories_file):
             f,
             sort_keys=False,
         )
+
+
+@click.command("load")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+@click.option("--directory", default=".", help="Directory to load the data from")
+@click.argument("repositories_file", default="repositories.yml")
+@click.argument("limit_repositories", type=str, nargs=-1)
+def load_c(remote, directory, repositories_file, limit_repositories):
+    """
+    Load a Splitgraph catalog from a YAML file.
+    """
+    import yaml
+    from splitgraph.cloud import GQLAPIClient
+    from splitgraph.cloud import RESTAPIClient
+
+    with open(os.path.join(directory, repositories_file), "r") as f:
+        repo_yaml = RepositoriesYAML.parse_obj(yaml.safe_load(f))
+
+    # Set up and load credential IDs from the remote to allow users to refer to them by ID
+    # or by a name.
+    rest_client = RESTAPIClient(remote)
+    gql_client = GQLAPIClient(remote)
+    credential_map = _build_credential_map(rest_client, credentials=repo_yaml.credentials or {})
+
+    repositories = repo_yaml.repositories
+
+    if limit_repositories:
+        repositories = [
+            r for r in repositories if f"{r.namespace}/{r.repository}" in limit_repositories
+        ]
+
+    with tqdm(repositories) as t:
+        for repository in t:
+            t.set_description(f"{repository.namespace}/{repository.repository}")
+            if repository.external:
+                rest_client.upsert_external(
+                    repository.namespace, repository.repository, repository.external, credential_map
+                )
+            if repository.metadata:
+                metadata = _prepare_metadata(
+                    repository.metadata, readme_basedir=os.path.join(directory, "readmes")
+                )
+                gql_client.upsert_metadata(repository.namespace, repository.repository, metadata)
+
+
+def _build_credential_map(auth_client, credentials=None):
+    credential_map = {}
+    if credentials:
+        logging.info("Setting up credentials on the remote...")
+        for credential_name, credential in credentials.items():
+            credential_id = auth_client.ensure_external_credential(
+                credential_data=credential.data,
+                credential_name=credential_name,
+                plugin_name=credential.plugin,
+            )
+            logging.info("%s: %s", credential_name, credential_id)
+            credential_map[credential_name] = credential_id
+
+    # Load any other credentials too (so that we can use existing credentials by
+    # name in YAML files without redefining them)
+    response = auth_client.list_external_credentials()
+    for credential in response.credentials:
+        if credential.credential_name not in credential_map:
+            credential_map[credential.credential_name] = credential.credential_id
+
+    return credential_map
 
 
 def _dump_readmes_to_dir(repositories, readme_dir):
