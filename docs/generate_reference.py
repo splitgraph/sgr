@@ -18,6 +18,8 @@ from splitgraph.commandline.cloud import (
     description_c,
     metadata_c,
     search_c,
+    load_c,
+    dump_c,
 )
 from splitgraph.commandline.engine import (
     add_engine_c,
@@ -69,6 +71,8 @@ STRUCTURE = [
             "cloud description",
             "cloud metadata",
             "cloud search",
+            "cloud dump",
+            "cloud load",
         ],
     ),
 ]
@@ -96,6 +100,8 @@ STRUCTURE_CMD_OVERRIDE = {
     "cloud description": description_c,
     "cloud metadata": metadata_c,
     "cloud search": search_c,
+    "cloud dump": dump_c,
+    "cloud load": load_c,
 }
 
 
