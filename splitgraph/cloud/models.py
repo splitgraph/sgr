@@ -1,12 +1,15 @@
 """
-Definitions for the repositories.yml format that's used to batch-populate
+Definitions for the repositories.yml format that's used to batch-populate a Splitgraph catalog
+with repositories and their metadata.
 """
 from typing import Dict, List, Optional, Any, Union
 
 from pydantic import BaseModel, Field
 
-# Models for the externals API data (tables, plugin params etc)
 from splitgraph.core.types import TableSchema
+
+
+# Models for the externals API data (tables, plugin params etc)
 
 
 class Table(BaseModel):
@@ -182,3 +185,77 @@ def make_repositories(
         )
         for (n, r) in sorted(set(metadata.keys()) | set(external.keys()))
     ]
+
+
+class ListExternalCredentialsResponse(BaseModel):
+    class ExternalCredential(BaseModel):
+        plugin_name: str
+        credential_name: str
+        credential_id: str
+
+    credentials: List[ExternalCredential]
+
+
+class UpdateExternalCredentialRequest(BaseModel):
+    credential_id: str
+    credential_name: str
+    credential_data: Dict[str, Any]
+    plugin_name: str
+
+
+class AddExternalCredentialRequest(BaseModel):
+    credential_name: str
+    credential_data: Dict[str, Any]
+    plugin_name: str
+
+
+class UpdateExternalCredentialResponse(BaseModel):
+    credential_id: str
+
+
+class AddExternalRepositoryRequest(BaseModel):
+    class Table(BaseModel):
+        options: Dict[str, Any]
+        schema_: Dict[str, str] = Field(alias="schema")
+
+    namespace: str
+    repository: str
+    plugin_name: str
+    params: Dict[str, Any]
+    is_live: bool
+    tables: Optional[Dict[str, Table]]
+    credential_id: Optional[str]
+
+    @classmethod
+    def from_external(
+        cls,
+        namespace: str,
+        repository: str,
+        external: External,
+        credential_map: Optional[Dict[str, str]] = None,
+    ):
+        credential_map = credential_map or {}
+
+        credential_id = external.credential_id
+        if external.credential and not credential_id:
+            if external.credential not in credential_map:
+                raise ValueError(
+                    "Credential %s not defined in the file and not set up on the remote!"
+                    % external.credential
+                )
+            credential_id = credential_map[external.credential]
+
+        return cls(
+            namespace=namespace,
+            repository=repository,
+            plugin_name=external.plugin,
+            params=external.params,
+            tables={
+                table_name: AddExternalRepositoryRequest.Table(
+                    options=table.options, schema={c.name: c.pg_type for c in table.schema_}
+                )
+                for table_name, table in external.tables.items()
+            },
+            credential_id=credential_id,
+            is_live=True,
+        )
