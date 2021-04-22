@@ -587,7 +587,7 @@ def _dump_readmes_to_dir(repositories, readme_dir):
     try:
         os.mkdir(readme_dir)
     except FileExistsError:
-        logging.info("Directory %s already exists, cleaning out")
+        logging.info("Directory %s already exists, cleaning out", readme_dir)
         for path in glob(os.path.join(readme_dir, "*.md")):
             os.unlink(path)
     for repo in repositories:

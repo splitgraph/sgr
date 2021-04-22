@@ -975,12 +975,18 @@ def test_commandline_dump():
                                 "tables": {
                                     "table_1": {
                                         "options": {"param_1": "val_1"},
-                                        "schema": {"id": "text", "val": "text"},
+                                        "schema": [
+                                            {"name": "id", "type": "text"},
+                                            {"name": "val", "type": "text"},
+                                        ],
                                     },
-                                    "table_2": {"options": {"param_1": "val_2"}, "schema": {}},
+                                    "table_2": {"options": {"param_1": "val_2"}, "schema": []},
                                     "table_3": {
                                         "options": {},
-                                        "schema": {"id": "text", "val": "text"},
+                                        "schema": [
+                                            {"name": "id", "type": "text"},
+                                            {"name": "val", "type": "text"},
+                                        ],
                                     },
                                 },
                             },
