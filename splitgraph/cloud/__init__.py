@@ -499,9 +499,11 @@ class RESTAPIClient:
         request: Optional[BaseModel] = None,
         response_class: Optional[Type[T]] = None,
         endpoint=None,
+        method: str = "post",
     ) -> Optional[T]:
         endpoint = endpoint or self.endpoint
-        response = requests.post(
+        response = requests.request(
+            method,
             endpoint + route,
             headers={**get_headers(), **{"Authorization": "Bearer " + access_token}},
             verify=self.verify,
@@ -515,7 +517,11 @@ class RESTAPIClient:
 
     def list_external_credentials(self) -> ListExternalCredentialsResponse:
         response = self._perform_request(
-            "/list_external_credentials", self.access_token, None, ListExternalCredentialsResponse
+            "/list_external_credentials",
+            self.access_token,
+            None,
+            ListExternalCredentialsResponse,
+            method="get",
         )
         assert response
         return response

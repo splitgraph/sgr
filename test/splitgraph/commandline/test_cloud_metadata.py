@@ -314,7 +314,7 @@ def test_commandline_load():
     runner = CliRunner()
 
     httpretty.register_uri(
-        httpretty.HTTPretty.POST,
+        httpretty.HTTPretty.GET,
         AUTH_ENDPOINT + "/list_external_credentials",
         body=list_external_credentials,
     )
