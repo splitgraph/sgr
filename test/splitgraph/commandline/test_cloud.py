@@ -472,7 +472,7 @@ def test_commandline_curl(test_case):
     args, result_url, extra_curl_args = test_case
 
     with patch(
-        "splitgraph.cloud.AuthAPIClient.access_token",
+        "splitgraph.cloud.RESTAPIClient.access_token",
         new_callable=PropertyMock,
         return_value="AAAABBBBCCCCDDDD",
     ):
@@ -750,7 +750,7 @@ def test_commandline_readme(namespace, repository, readme, token, expected):
     )
 
     with patch(
-        "splitgraph.cloud.AuthAPIClient.access_token",
+        "splitgraph.cloud.RESTAPIClient.access_token",
         new_callable=PropertyMock,
         return_value=token,
     ):
@@ -784,7 +784,7 @@ def test_commandline_description():
     )
 
     with patch(
-        "splitgraph.cloud.AuthAPIClient.access_token",
+        "splitgraph.cloud.RESTAPIClient.access_token",
         new_callable=PropertyMock,
         return_value=_SAMPLE_ACCESS,
     ):
@@ -875,7 +875,7 @@ def test_commandline_metadata():
     )
 
     with patch(
-        "splitgraph.cloud.AuthAPIClient.access_token",
+        "splitgraph.cloud.RESTAPIClient.access_token",
         new_callable=PropertyMock,
         return_value=_SAMPLE_ACCESS,
     ):
@@ -910,7 +910,7 @@ def test_commandline_search():
     )
 
     with patch(
-        "splitgraph.cloud.AuthAPIClient.access_token",
+        "splitgraph.cloud.RESTAPIClient.access_token",
         new_callable=PropertyMock,
         return_value=_SAMPLE_ACCESS,
     ):
@@ -931,7 +931,7 @@ def test_commandline_dump():
     )
 
     with patch(
-        "splitgraph.cloud.AuthAPIClient.access_token",
+        "splitgraph.cloud.RESTAPIClient.access_token",
         new_callable=PropertyMock,
         return_value=_SAMPLE_ACCESS,
     ):
@@ -1098,7 +1098,7 @@ def test_commandline_update_check():
     new_config["SG_UPDATE_LAST"] = "0"
 
     with patch(
-        "splitgraph.cloud.AuthAPIClient.access_token",
+        "splitgraph.cloud.RESTAPIClient.access_token",
         new_callable=PropertyMock,
         return_value=_SAMPLE_ACCESS,
     ):

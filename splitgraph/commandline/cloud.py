@@ -49,11 +49,11 @@ def register_c(username, password, email, remote, accept_tos, skip_inject):
     obtains a set of machine (API) credentials for the client to communicate
     with the registry and configures the data.splitgraph.com engine.
     """
-    from splitgraph.cloud import AuthAPIClient, DEFAULT_REMOTES
+    from splitgraph.cloud import RESTAPIClient, DEFAULT_REMOTES
     from splitgraph.config import CONFIG
     from splitgraph.config.config import get_all_in_subsection
 
-    client = AuthAPIClient(remote)
+    client = RESTAPIClient(remote)
     tos = client.tos()
 
     if tos and not accept_tos:
@@ -160,9 +160,9 @@ def login_c(username, password, remote, overwrite, skip_inject):
     """
     from splitgraph.config import CONFIG
     from splitgraph.config.config import get_all_in_subsection
-    from splitgraph.cloud import AuthAPIClient, get_token_claim, DEFAULT_REMOTES
+    from splitgraph.cloud import RESTAPIClient, get_token_claim, DEFAULT_REMOTES
 
-    client = AuthAPIClient(remote)
+    client = RESTAPIClient(remote)
 
     if not password:
         profile_url = _construct_user_profile_url(client.endpoint)
@@ -235,11 +235,11 @@ def login_api_c(api_key, api_secret, remote, skip_inject):
     This will inject the API keys for the registry into the configuration file
     and generate a new access token.
     """
-    from splitgraph.cloud import AuthAPIClient, get_token_claim, DEFAULT_REMOTES
+    from splitgraph.cloud import RESTAPIClient, get_token_claim, DEFAULT_REMOTES
     from splitgraph.config import CONFIG
     from splitgraph.config.config import get_all_in_subsection
 
-    client = AuthAPIClient(remote)
+    client = RESTAPIClient(remote)
     access = client.get_access_token_from_api(api_key, api_secret)
 
     namespace = get_token_claim(access, "username")
@@ -308,13 +308,13 @@ def curl_c(remote, request_type, image, request_params, curl_args):
     with `--curl-args`, e.g. `--curl-args --cacert --curl-args /path/to/ca.pem`.
     """
     from splitgraph.config import CONFIG
-    from splitgraph.cloud import AuthAPIClient, get_headers
+    from splitgraph.cloud import RESTAPIClient, get_headers
 
     repository, hash_or_tag = image
 
     # Craft a request
     config = CONFIG["remotes"][remote]
-    access_token = AuthAPIClient(remote).access_token
+    access_token = RESTAPIClient(remote).access_token
     headers = get_headers()
     headers.update({"Authorization": "Bearer " + access_token})
 

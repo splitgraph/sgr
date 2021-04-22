@@ -8,7 +8,7 @@ import httpretty
 import pytest
 from requests import HTTPError
 
-from splitgraph.cloud import AuthAPIClient
+from splitgraph.cloud import RESTAPIClient
 from splitgraph.exceptions import AuthAPIError
 
 # Methods currently are small enough and all exercised in test_commandline_registration_*,
@@ -20,7 +20,7 @@ _ENDPOINT = "http://some-auth-service.example.com"
 
 @httpretty.activate(allow_net_connect=False)
 def test_auth_api_user_error():
-    client = AuthAPIClient(_REMOTE)
+    client = RESTAPIClient(_REMOTE)
 
     def callback(request, uri, response_headers):
         assert json.loads(request.body) == {"username": "someuser", "password": "somepassword"}
@@ -37,7 +37,7 @@ def test_auth_api_user_error():
 
 @httpretty.activate(allow_net_connect=False)
 def test_auth_api_server_error_missing_entries():
-    client = AuthAPIClient(_REMOTE)
+    client = RESTAPIClient(_REMOTE)
 
     def callback(request, uri, response_headers):
         return [200, response_headers, json.dumps({})]
@@ -54,7 +54,7 @@ def test_auth_api_server_error_missing_entries():
 
 @httpretty.activate(allow_net_connect=False)
 def test_auth_api_server_error_no_json():
-    client = AuthAPIClient(_REMOTE)
+    client = RESTAPIClient(_REMOTE)
 
     def callback(request, uri, response_headers):
         return [500, response_headers, "Guru Meditation deadcafebeef-feed12345678"]
@@ -70,7 +70,7 @@ def test_auth_api_server_error_no_json():
 
 
 def test_auth_api_access_token_property_no_refresh():
-    client = AuthAPIClient(_REMOTE)
+    client = RESTAPIClient(_REMOTE)
 
     # Test that we raise an error if there's no refresh token in the config
     # (there won't be if we just use the default config).
@@ -89,7 +89,7 @@ def _make_dummy_access_token(exp):
 
 
 def test_auth_api_access_token_property_not_expired():
-    client = AuthAPIClient(_REMOTE)
+    client = RESTAPIClient(_REMOTE)
 
     now = time.time()
 
@@ -105,7 +105,7 @@ def test_auth_api_access_token_property_not_expired():
 
 @httpretty.activate(allow_net_connect=False)
 def test_auth_api_access_token_property_expired():
-    client = AuthAPIClient(_REMOTE)
+    client = RESTAPIClient(_REMOTE)
 
     # strictly speaking, we should use freezegun or patch time here,
     # but by default AuthClient is supposed to refresh the token 30s
