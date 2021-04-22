@@ -54,7 +54,7 @@ REMOTE_NAMESPACE = get_engine("unprivileged_remote_engine").conn_params["SG_NAME
 # Namespace that the user can read from but can't write to
 READONLY_NAMESPACE = "otheruser"
 
-SPLITFILE_ROOT = os.path.join(os.path.dirname(__file__), "../resources/")
+RESOURCES = os.path.join(os.path.dirname(__file__), "../resources/")
 
 INGESTION_RESOURCES = os.path.join(os.path.dirname(__file__), "../resources/ingestion")
 
@@ -487,7 +487,7 @@ def unprivileged_remote_engine(remote_engine_registry):
 
 
 def load_splitfile(name):
-    with open(SPLITFILE_ROOT + name, "r") as f:
+    with open(RESOURCES + name, "r") as f:
         return f.read()
 
 

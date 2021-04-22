@@ -2,7 +2,7 @@ from unittest import mock
 from unittest.mock import call
 
 from click.testing import CliRunner
-from test.splitgraph.conftest import SPLITFILE_ROOT, OUTPUT
+from test.splitgraph.conftest import RESOURCES, OUTPUT
 
 from splitgraph.commandline import build_c, provenance_c, rebuild_c, dependents_c
 from splitgraph.core.repository import Repository
@@ -13,7 +13,8 @@ def test_splitfile_default():
 
     with mock.patch("splitgraph.splitfile.execute_commands") as ec:
         runner.invoke(
-            build_c, [SPLITFILE_ROOT + "import_remote_multiple.splitfile", "-a", "TAG", "latest"],
+            build_c,
+            [RESOURCES + "import_remote_multiple.splitfile", "-a", "TAG", "latest"],
         )
     assert ec.mock_calls == [
         call(mock.ANY, {"TAG": "latest"}, output=Repository("", "import_remote_multiple"))
@@ -26,7 +27,7 @@ def test_splitfile(local_engine_empty, pg_repo_remote):
     result = runner.invoke(
         build_c,
         [
-            SPLITFILE_ROOT + "import_remote_multiple.splitfile",
+            RESOURCES + "import_remote_multiple.splitfile",
             "-a",
             "TAG",
             "latest",
@@ -54,7 +55,10 @@ def test_splitfile(local_engine_empty, pg_repo_remote):
     # Test reverse dependencies
     # We're looking at test/pg_mount on the local engine which doesn't exist -- this should fail.
     result = runner.invoke(
-        dependents_c, ["test/pg_mount:%s" % pg_repo_remote.images["latest"].image_hash,],
+        dependents_c,
+        [
+            "test/pg_mount:%s" % pg_repo_remote.images["latest"].image_hash,
+        ],
     )
     assert result.exit_code == 1
 
@@ -79,7 +83,7 @@ def test_splitfile_rebuild_update(local_engine_empty, pg_repo_remote_multitag):
 
     result = runner.invoke(
         build_c,
-        [SPLITFILE_ROOT + "import_remote_multiple.splitfile", "-a", "TAG", "v1", "-o", "output"],
+        [RESOURCES + "import_remote_multiple.splitfile", "-a", "TAG", "v1", "-o", "output"],
     )
     assert result.exit_code == 0
 
