@@ -1,8 +1,12 @@
 """Command line routines related to registering/setting up connections to the Splitgraph registry."""
+import hashlib
 import logging
+import os
 import shutil
+import string
 import subprocess
 from copy import copy
+from glob import glob
 from typing import Dict, Optional
 from urllib.parse import urlparse, quote
 
@@ -20,6 +24,8 @@ from splitgraph.commandline.engine import patch_and_save_config, inject_config_i
 
 # Hardcoded database name for the Splitgraph DDN (ddn instead of sgregistry)
 _DDN_DBNAME = "ddn"
+
+VALID_FILENAME_CHARACTERS = string.ascii_letters + string.digits + "-_."
 
 
 @click.command("register")
@@ -476,9 +482,15 @@ def metadata_c(ctx, remote, repository, metadata_file):
             "Invalid metadata file. File must contain at least one of " f"{'/'.join(keys)} keys."
         )
 
-    if metadata.readme:
-        with open(metadata.readme, "r") as f:
-            metadata.readme = f.read()
+    readme_file = None
+    if isinstance(metadata.readme, str):
+        readme_file = metadata.readme
+    elif isinstance(metadata.readme, Metadata.Readme) and metadata.readme.file:
+        readme_file = metadata.readme.file
+
+    if readme_file:
+        with open(readme_file, "r") as f:
+            metadata.readme = Metadata.Readme(text=f.read())
 
     client = GQLAPIClient(remote)
     client.upsert_metadata(repository.namespace, repository.repository, metadata)
@@ -528,11 +540,23 @@ def search_c(remote, query, limit=10):
         )
 
 
+def _normalise_filename(filename):
+    """
+    Strips out odd characters from a string so that it can be used as a valid filename.
+    In order for the result to be unique, we also makea short hash of the original
+    string and stick it on the end
+    """
+    base = "".join(c for c in filename if c in VALID_FILENAME_CHARACTERS)
+    short_hash = hashlib.sha1(filename.encode()).hexdigest()[:4]
+    return f"{base}.{short_hash}"
+
+
 @click.command("dump")
 @click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
-@click.argument("repositories_file", type=click.File("w"), default="repositories.yml")
+@click.option("--directory", default=".", help="Directory to dump the data into")
+@click.argument("repositories_file", default="repositories.yml")
 @click.pass_context
-def dump_c(ctx, remote, repositories_file):
+def dump_c(ctx, remote, directory, repositories_file):
     """
     Dump a Splitgraph catalog to a YAML file.
 
@@ -543,11 +567,52 @@ def dump_c(ctx, remote, repositories_file):
     client = GQLAPIClient(remote)
     repositories = client.load_all_repositories()
 
-    yaml.dump(
-        {"repositories": [r.dict(by_alias=True) for r in repositories]},
-        repositories_file,
-        sort_keys=False,
-    )
+    _dump_readmes_to_dir(repositories, os.path.join(directory, "readmes"))
+
+    with open(os.path.join(directory, repositories_file), "w") as f:
+        yaml.dump(
+            {"repositories": [r.dict(by_alias=True, exclude_unset=True) for r in repositories]},
+            f,
+            sort_keys=False,
+        )
+
+
+def _dump_readmes_to_dir(repositories, readme_dir):
+    """
+    READMEs aren't rendering very nicely in YAML so we instead write them out to
+    individual files and replace the README contents with their file paths.
+
+    :param repositories: will be modified by this function
+    """
+    try:
+        os.mkdir(readme_dir)
+    except FileExistsError:
+        logging.info("Directory %s already exists, cleaning out")
+        for path in glob(os.path.join(readme_dir, "*.md")):
+            os.unlink(path)
+    for repo in repositories:
+        if not repo.metadata:
+            continue
+
+        readme_text = None
+        if isinstance(repo.metadata.readme, str):
+            readme_text = repo.metadata.readme
+        if (
+            isinstance(repo.metadata.readme, Metadata.Readme)
+            and repo.metadata.readme.file is None
+            and repo.metadata.readme.text is not None
+        ):
+            readme_text = repo.metadata.readme.text
+
+        if readme_text:
+            filename = f"{repo.namespace}-{repo.repository}"
+            filename = _normalise_filename(filename)
+            filename = f"{filename}.md"
+            logging.info("Writing %s", filename)
+            path = os.path.join(readme_dir, filename)
+            with open(path, "w") as f:
+                f.write(readme_text)
+            repo.metadata.readme = Metadata.Readme(file=filename)
 
 
 @click.group("cloud")

@@ -517,7 +517,7 @@ class GQLAPIClient:
 
         variables: Dict[str, Any] = {"namespace": namespace, "repository": repository}
 
-        variables.update(metadata.dict())
+        variables.update(metadata.dict(by_alias=True, exclude_unset=True))
 
         variables = {k: v for k, v in variables.items() if v is not None}
         if "extra_metadata" in variables:
@@ -542,6 +542,9 @@ class GQLAPIClient:
                     metadata_doc[toplevel_key] = str(extra_metadata.pop(toplevel_key))
             metadata_doc["upstream_metadata"] = extra_metadata
             variables["metadata"] = metadata_doc
+
+        if "readme" in variables and isinstance(variables["readme"], dict):
+            variables["readme"] = variables["readme"]["text"]
 
         query = {
             "operationName": "UpsertRepoProfile",
