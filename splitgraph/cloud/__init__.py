@@ -608,7 +608,7 @@ class GQLAPIClient:
         return result
 
     @staticmethod
-    def _prepare_upsert_metadata_gql(namespace: str, repository: str, metadata: Metadata):
+    def _prepare_upsert_metadata_gql(namespace: str, repository: str, metadata: Metadata, v1=False):
         # Pre-flight validation
         if metadata.description and len(metadata.description) > 160:
             raise ValueError("The description should be 160 characters or shorter!")
@@ -644,10 +644,16 @@ class GQLAPIClient:
         if "readme" in variables and isinstance(variables["readme"], dict):
             variables["readme"] = variables["readme"]["text"]
 
+        gql_query = _PROFILE_UPSERT_QUERY
+        if v1:
+            gql_query = gql_query.replace("createRepoTopicsAgg", "createRepoTopic").replace(
+                "repoTopicsAgg", "repoTopic"
+            )
+
         query = {
             "operationName": "UpsertRepoProfile",
             "variables": variables,
-            "query": _PROFILE_UPSERT_QUERY,
+            "query": gql_query,
         }
 
         logging.debug("Prepared GraphQL query: %s", json.dumps(query))
@@ -659,7 +665,21 @@ class GQLAPIClient:
         """
         Update metadata for a single repository.
         """
-        return self._gql(self._prepare_upsert_metadata_gql(namespace, repository, metadata))
+        response = self._gql(self._prepare_upsert_metadata_gql(namespace, repository, metadata))
+        if (
+            response.status_code == 400
+            and 'Cannot query field \\"createRepoTopicsAgg\\" on type \\"Mutation\\"'
+            in response.text
+        ):
+            # TODO: hack, delete when all upgraded.
+            #  We don't yet have API versioning on the GQL side and there's a breaking change
+            #  coming that'll rename createRepoTopic to createRepoTopicsAgg. If there's
+            #  an error calling the latter, rewrite the query to call the former instead.
+            logging.debug("Using old metadata replacement query")
+            response = self._gql(
+                self._prepare_upsert_metadata_gql(namespace, repository, metadata, v1=True)
+            )
+        return response
 
     def upsert_readme(self, namespace: str, repository: str, readme: str):
         return self.upsert_metadata(namespace, repository, Metadata(readme=readme))
