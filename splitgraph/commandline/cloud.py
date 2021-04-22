@@ -557,11 +557,15 @@ def _normalise_filename(filename):
 
 @click.command("dump")
 @click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
-@click.option("--directory", default=".", help="Directory to dump the data into")
-@click.argument("repositories_file", default="repositories.yml")
-def dump_c(remote, directory, repositories_file):
+@click.option("--readme-dir", default="./readmes", help="Directory to dump the data into")
+@click.argument("repositories_file", default="repositories.yml", type=click.File("w"))
+def dump_c(remote, readme_dir, repositories_file):
     """
     Dump a Splitgraph catalog to a YAML file.
+
+    This creates a repositories.yml file in the target directory as well as a subdirectory `readmes`
+    with all the repository readmes. This file can be used to recreate all catalog metadata
+    and all external data source settings for a repository using `sgr cloud load`.
     """
     import yaml
     from splitgraph.cloud import GQLAPIClient
@@ -569,31 +573,87 @@ def dump_c(remote, directory, repositories_file):
     client = GQLAPIClient(remote)
     repositories = client.load_all_repositories()
 
-    _dump_readmes_to_dir(repositories, os.path.join(directory, "readmes"))
+    _dump_readmes_to_dir(repositories, readme_dir)
 
-    with open(os.path.join(directory, repositories_file), "w") as f:
-        yaml.dump(
-            {"repositories": [r.dict(by_alias=True, exclude_unset=True) for r in repositories]},
-            f,
-            sort_keys=False,
-        )
+    yaml.dump(
+        {"repositories": [r.dict(by_alias=True, exclude_unset=True) for r in repositories]},
+        repositories_file,
+        sort_keys=False,
+    )
 
 
 @click.command("load")
 @click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
-@click.option("--directory", default=".", help="Directory to load the data from")
-@click.argument("repositories_file", default="repositories.yml")
+@click.option(
+    "--readme-dir", default="./readmes", help="Path to the directory with the README files"
+)
+@click.argument("repositories_file", default="repositories.yml", type=click.File("r"))
 @click.argument("limit_repositories", type=str, nargs=-1)
-def load_c(remote, directory, repositories_file, limit_repositories):
+def load_c(remote, readme_dir, repositories_file, limit_repositories):
     """
     Load a Splitgraph catalog from a YAML file.
+
+    This will load a repositories.yml file and the `readmes` subdirectory produced by
+    `sgr cloud dump` back into a remote Splitgraph catalog.
+
+    The format is an extension of the format accepted by `sgr cloud metadata` to include multiple
+    repositories. README files are read from the `readmes` subdirectory.
+
+    \b
+    ```
+    credentials:      # Optional credentials to access remote data sources
+      my_bucket:
+        plugin: csv
+        data:
+          s3_access_key: ...
+          s3_secret_key: ...
+    repositories:
+    - namespace: my_username
+      repository: repository
+      metadata:
+        readme: dataset-readme.md
+        description: Dataset description (160 characters max).
+        topics:
+          - topic_1
+          - topic_2
+        sources:
+          - anchor: Source
+            href: https://www.splitgraph.com
+            isCreator: true
+            isSameAs: false
+          - anchor: Source 2
+            href: https://www.splitgraph.com
+            isCreator: false
+            isSameAs: true
+        license: Public Domain
+        extra_metadata:
+          key_1:
+            key_1_1: value_1_1
+            key_1_2: value_1_2
+          key_2:
+            key_2_1: value_2_1
+            key_2_2: value_2_2
+      external:
+        credential: my_bucket
+        plugin: csv
+        params:
+          s3_bucket: my_bucket
+        tables:
+          table_1:
+            schema:
+            - name: column_1
+              type: text
+            - name: column_2
+              type: integer
+            options:
+              s3_object: some/s3_key.csv
+    ```
     """
     import yaml
     from splitgraph.cloud import GQLAPIClient
     from splitgraph.cloud import RESTAPIClient
 
-    with open(os.path.join(directory, repositories_file), "r") as f:
-        repo_yaml = RepositoriesYAML.parse_obj(yaml.safe_load(f))
+    repo_yaml = RepositoriesYAML.parse_obj(yaml.safe_load(repositories_file))
 
     # Set up and load credential IDs from the remote to allow users to refer to them by ID
     # or by a name.
@@ -616,9 +676,7 @@ def load_c(remote, directory, repositories_file, limit_repositories):
                     repository.namespace, repository.repository, repository.external, credential_map
                 )
             if repository.metadata:
-                metadata = _prepare_metadata(
-                    repository.metadata, readme_basedir=os.path.join(directory, "readmes")
-                )
+                metadata = _prepare_metadata(repository.metadata, readme_basedir=readme_dir)
                 gql_client.upsert_metadata(repository.namespace, repository.repository, metadata)
 
 

@@ -45,14 +45,12 @@ from splitgraph.ingestion.singer.commandline import singer_group
 
 logger = logging.getLogger()
 
-# Patch click_log's handler to restore its behaviour where INFO level goes to stdout.
-
 
 class ClickHandler(logging.Handler):
     def emit(self, record):
         try:
             msg = self.format(record)
-            click.echo(msg, err=record.levelno != logging.INFO)
+            click.echo(msg, err=True)
         except Exception:
             self.handleError(record)
 
