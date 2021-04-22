@@ -221,7 +221,15 @@ def test_commandline_dump():
     ):
         with patch("splitgraph.cloud.get_remote_param", return_value=GQL_ENDPOINT):
             with tempfile.TemporaryDirectory() as tmpdir:
-                result = runner.invoke(dump_c, ["--directory", tmpdir], catch_exceptions=False)
+                result = runner.invoke(
+                    dump_c,
+                    [
+                        "--readme-dir",
+                        os.path.join(tmpdir, "readmes"),
+                        os.path.join(tmpdir, "repositories.yml"),
+                    ],
+                    catch_exceptions=False,
+                )
                 assert result.exit_code == 0
 
                 assert list(os.walk(tmpdir)) == [
@@ -351,6 +359,12 @@ def test_commandline_load():
         with patch("splitgraph.cloud.get_remote_param", get_remote_param):
             result = runner.invoke(
                 load_c,
-                ["--directory", os.path.join(RESOURCES, "repositories_yml")],
+                [
+                    "--readme-dir",
+                    os.path.join(RESOURCES, "repositories_yml", "readmes"),
+                    os.path.join(RESOURCES, "repositories_yml", "repositories.yml"),
+                ],
                 catch_exceptions=False,
             )
+            assert result.exit_code == 0
+            assert "someuser/somerepo_1" in result.output
