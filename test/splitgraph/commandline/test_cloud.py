@@ -936,34 +936,40 @@ def test_commandline_dump():
         return_value=_SAMPLE_ACCESS,
     ):
         with patch("splitgraph.cloud.get_remote_param", return_value=_GQL_ENDPOINT):
-            with tempfile.NamedTemporaryFile() as temp:
-                result = runner.invoke(dump_c, temp.name, catch_exceptions=False)
+            with tempfile.TemporaryDirectory() as tmpdir:
+                result = runner.invoke(dump_c, ["--directory", tmpdir], catch_exceptions=False)
                 assert result.exit_code == 0
 
-                output = temp.read()
+                assert list(os.walk(tmpdir)) == [
+                    (tmpdir, ["readmes"], ["repositories.yml"]),
+                    (
+                        os.path.join(tmpdir, "readmes"),
+                        [],
+                        ["otheruser-somerepo_2.fe37.md", "someuser-somerepo_1.b7f3.md"],
+                    ),
+                ]
+
+                with open(os.path.join(tmpdir, "repositories.yml")) as f:
+                    output = f.read()
                 assert yaml.load(output) == {
                     "repositories": [
                         {
                             "namespace": "otheruser",
                             "repository": "somerepo_2",
                             "metadata": {
-                                "readme": "Test Repo 2 Readme",
+                                "readme": {"file": "otheruser-somerepo_2.fe37.md"},
                                 "description": "Repository Description 2",
                                 "topics": ["topic_1", "topic_2"],
                                 "sources": [
                                     {
                                         "anchor": "test data source",
                                         "href": "https://example.com",
-                                        "isCreator": None,
-                                        "isSameAs": None,
                                     }
                                 ],
                                 "license": None,
-                                "extra_metadata": None,
                             },
                             "external": {
                                 "credential_id": "abcdef-123456",
-                                "credential": None,
                                 "plugin": "plugin",
                                 "params": {"plugin": "specific", "params": "here"},
                                 "tables": {
@@ -983,7 +989,7 @@ def test_commandline_dump():
                             "namespace": "someuser",
                             "repository": "somerepo_1",
                             "metadata": {
-                                "readme": "Test Repo 1 Readme",
+                                "readme": {"file": "someuser-somerepo_1.b7f3.md"},
                                 "description": "Repository Description 1",
                                 "topics": [],
                                 "sources": [
@@ -995,12 +1001,14 @@ def test_commandline_dump():
                                     }
                                 ],
                                 "license": "Public Domain",
-                                "extra_metadata": None,
                             },
                             "external": None,
                         },
                     ]
                 }
+
+                with open(os.path.join(tmpdir, "readmes", "someuser-somerepo_1.b7f3.md")) as f:
+                    assert f.read() == "Test Repo 1 Readme"
 
 
 def test_commandline_cloud_sql():

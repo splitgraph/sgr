@@ -1,7 +1,7 @@
 """
 Definitions for the repositories.yml format that's used to batch-populate
 """
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 
 from pydantic import BaseModel, Field
 
@@ -38,7 +38,11 @@ class Source(BaseModel):
 
 
 class Metadata(BaseModel):
-    readme: Optional[str]
+    class Readme(BaseModel):
+        file: Optional[str]
+        text: Optional[str]
+
+    readme: Optional[Union[str, Readme]]
     description: Optional[str]
     topics: Optional[List[str]]
     sources: Optional[List[Source]]
@@ -95,7 +99,7 @@ class MetadataResponse(BaseModel):
         profile = self.repoProfileByNamespaceAndRepository
 
         return Metadata(
-            readme=profile.readme,
+            readme=Metadata.Readme(text=profile.readme),
             description=profile.description,
             topics=[
                 t for node in self.repoTopicsByNamespaceAndRepository.nodes for t in node.topics
