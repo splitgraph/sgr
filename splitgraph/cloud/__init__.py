@@ -10,6 +10,7 @@ from json import JSONDecodeError
 from typing import Callable, List, Union, Tuple, cast, Optional, Dict, Any, Type, TypeVar
 
 import requests
+from pydantic import BaseModel
 from requests import HTTPError
 from requests.models import Response
 
@@ -21,6 +22,11 @@ from splitgraph.cloud.models import (
     ExternalResponse,
     make_repositories,
     Repository,
+    ListExternalCredentialsResponse,
+    UpdateExternalCredentialRequest,
+    AddExternalCredentialRequest,
+    UpdateExternalCredentialResponse,
+    AddExternalRepositoryRequest,
 )
 from splitgraph.commandline.engine import patch_and_save_config
 from splitgraph.config import create_config_dict, get_singleton, CONFIG
@@ -268,7 +274,7 @@ def get_token_claim(jwt, claim):
     return exp
 
 
-T = TypeVar("T", bound="BaseModel")
+T = TypeVar("T", bound=BaseModel)
 
 
 class RESTAPIClient:
@@ -283,6 +289,7 @@ class RESTAPIClient:
         """
         self.remote = remote
         self.endpoint = get_remote_param(remote, "SG_AUTH_API")
+        self.externals_endpoint = get_remote_param(remote, "SG_QUERY_API") + "/api/external"
 
         # Allow overriding the CA bundle for test purposes (requests doesn't use the system
         # cert store)
@@ -485,6 +492,85 @@ class RESTAPIClient:
 
         return latest_version
 
+    def _perform_request(
+        self,
+        route,
+        access_token,
+        request: Optional[BaseModel] = None,
+        response_class: Optional[Type[T]] = None,
+        endpoint=None,
+    ) -> Optional[T]:
+        endpoint = endpoint or self.endpoint
+        response = requests.post(
+            endpoint + route,
+            headers={**get_headers(), **{"Authorization": "Bearer " + access_token}},
+            verify=self.verify,
+            data=request.json(by_alias=True, exclude_unset=True) if request else None,
+        )
+        response.raise_for_status()
+
+        if response_class:
+            return response_class.parse_obj(response.json())
+        return None
+
+    def list_external_credentials(self) -> ListExternalCredentialsResponse:
+        response = self._perform_request(
+            "/list_external_credentials", self.access_token, None, ListExternalCredentialsResponse
+        )
+        assert response
+        return response
+
+    def ensure_external_credential(
+        self, credential_data: Dict[str, Any], credential_name: str, plugin_name: str
+    ) -> str:
+        """Store a credential for accessing an external data source
+        in Splitgraph Cloud and return its ID"""
+        access_token = self.access_token
+
+        credentials = self.list_external_credentials()
+
+        for credential in credentials.credentials:
+            if (
+                credential.plugin_name == plugin_name
+                and credential.credential_name == credential_name
+            ):
+                self._perform_request(
+                    "/update_external_credential",
+                    access_token,
+                    UpdateExternalCredentialRequest(
+                        credential_id=credential.credential_id,
+                        credential_name=credential_name,
+                        credential_data=credential_data,
+                        plugin_name=plugin_name,
+                    ),
+                )
+                return credential.credential_id
+
+        # Credential doesn't exist: create it.
+        credential = self._perform_request(
+            "/add_external_credential",
+            access_token,
+            AddExternalCredentialRequest(
+                credential_name=credential_name,
+                credential_data=credential_data,
+                plugin_name=plugin_name,
+            ),
+            UpdateExternalCredentialResponse,
+        )
+        assert credential
+        return credential.credential_id
+
+    def upsert_external(
+        self,
+        namespace: str,
+        repository: str,
+        external: External,
+        credentials_map: Optional[Dict[str, str]] = None,
+    ):
+        request = AddExternalRepositoryRequest.from_external(
+            namespace, repository, external, credentials_map
+        )
+        self._perform_request("/add", self.access_token, request, endpoint=self.externals_endpoint)
 
 
 def AuthAPIClient(*args, **kwargs):
