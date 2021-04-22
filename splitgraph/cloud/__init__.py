@@ -4,9 +4,10 @@ import json
 import logging
 import os
 import time
+import warnings
 from functools import wraps
 from json import JSONDecodeError
-from typing import Callable, List, Union, Tuple, cast, Optional, Dict, Any
+from typing import Callable, List, Union, Tuple, cast, Optional, Dict, Any, Type, TypeVar
 
 import requests
 from requests import HTTPError
@@ -267,13 +268,12 @@ def get_token_claim(jwt, claim):
     return exp
 
 
-class AuthAPIClient:
-    """
-    Client for the Splitgraph registry auth API that generates tokens to access
-    other Splitgraph services.
+T = TypeVar("T", bound="BaseModel")
 
-    Currently incomplete with just enough methods to allow to register and access
-    the Splitgraph registry via the command line.
+
+class RESTAPIClient:
+    """
+    Client for various Splitgraph Registry REST APIs: auth token generation, external repo setup...
     """
 
     def __init__(self, remote: str) -> None:
@@ -486,6 +486,12 @@ class AuthAPIClient:
         return latest_version
 
 
+
+def AuthAPIClient(*args, **kwargs):
+    warnings.warn("AuthAPIClient is deprecated; use RESTAPIClient", DeprecationWarning, 2)
+    return RESTAPIClient(*args, **kwargs)
+
+
 class GQLAPIClient:
     """Wrapper class for select Splitgraph Registry GQL operations that can be
     called from the CLI"""
@@ -494,7 +500,7 @@ class GQLAPIClient:
         self.remote = remote
         self.endpoint = get_remote_param(self.remote, "SG_GQL_API")
         self.registry_endpoint = self.endpoint.replace("/cloud/", "/registry/")  # :eyes:
-        self.auth_client = AuthAPIClient(remote)
+        self.auth_client = RESTAPIClient(remote)
 
     def _gql(self, query: Dict, endpoint=None, handle_errors=False) -> requests.Response:
         endpoint = endpoint or self.endpoint
