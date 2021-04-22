@@ -26,6 +26,7 @@ from splitgraph.commandline.cloud import (
     sql_c,
     search_c,
     dump_c,
+    load_c,
 )
 from splitgraph.config import create_config_dict
 from splitgraph.config.config import patch_config
@@ -36,10 +37,12 @@ from splitgraph.exceptions import (
     GQLRepoDoesntExistError,
     GQLAPIError,
 )
+from test.splitgraph.conftest import RESOURCES
 
 _REMOTE = "remote_engine"
 _ENDPOINT = "http://some-auth-service.example.com"
 _GQL_ENDPOINT = "http://some-gql-service.example.com"
+_QUERY_ENDPOINT = "http://some-query-service.example.com"
 _SAMPLE_ACCESS = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYmYiOjE1ODA1OTQyMzQsImVtYWlsX3ZlcmlmaWVkIjpmYWxzZSwiZW1haWwiOiJzb21ldXNlckBleGFtcGxlLmNvbSIsImV4cCI6MTU4MDU5NzgzNCwidXNlcl9pZCI6IjEyM2U0NTY3LWU4OWItMTJkMy1hNDU2LTQyNjY1NTQ0MDAwMCIsImdyYW50IjoiYWNjZXNzIiwidXNlcm5hbWUiOiJzb21ldXNlciIsImlhdCI6MTU4MDU5NDIzNH0.YEuNhqKfFoxHloohfxInSEV9rnivXcF9SvFP72Vv1mDDsaqlRqCjKYM4S7tdSMap5__e3_UTwE_CpH8eI7DdePjMu8AOFXwFHPl34AAxZgavP4Mly0a0vrMsxNJ4KbtmL5-7ih3uneTEuZLt9zQLUh-Bi_UYlEYwGl8xgz5dDZ1YlwTEMsqSrDnXdjl69CTk3vVHIQdxtki4Ng7dZhbOnEdJIRsZi9_VdMlsg2TIU-0FsU2bYYBWktms5hyAAH0RkHYfvjGwIRirSEjxTpO9vci-eAsF8C4ohTUg6tajOcyWz8d7JSaJv_NjLFMZI9mC09hchbQZkw-37CdbS_8Yvw"
 _SAMPLE_REFRESH = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYmYiOjE1NzYzMTk5MTYsImlhdCI6MTU3NjMxOTkxNiwiZW1haWwiOiJzb21ldXNlckBleGFtcGxlLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjpmYWxzZSwicmVmcmVzaF90b2tlbl9zZWNyZXQiOiJzb21lc2VjcmV0IiwiZXhwIjoxNTc4OTExOTE2LCJ1c2VyX2lkIjoiMTIzZTQ1NjctZTg5Yi0xMmQzLWE0NTYtNDI2NjU1NDQwMDAwIiwidXNlcm5hbWUiOiJzb21ldXNlciIsInJlZnJlc2hfdG9rZW5fa2V5Ijoic29tZWtleSIsImdyYW50IjoicmVmcmVzaCJ9.lO3nN3Tmu3twwUjrWsVpBq7nHHEvLnOGXeMkXXv4PRBADUAHyhmmaIPzgccq9XlwpLIexBAxTKJ4GaxSQufKUVLbzAKIMHqxiGTzELY6JMyUvMDHKeKNsq6FdhHxXoKa96fHaDDa65eGcSRSKS3Yr-9sBiANMBJGRbwypYw41gf61pewMA8TXqBmA-mvsBzMUaQNz1DfjkkpHs4SCERPK0GhYSJwDAwK8U3wG47S9k-CQqpq2B99yRRrdSVRzA_lcKe7GlF-Pw6hbRR7xBPBtX61pPME5hFUCPcwYWYXa_KhqEx9IF9edt9UahZuBudaVLmTdKKWgE9M53jQofxNzg"
 _SAMPLE_API_KEY = "abcdef123456"
@@ -1015,6 +1018,225 @@ def test_commandline_dump():
 
                 with open(os.path.join(tmpdir, "readmes", "someuser-somerepo_1.b7f3.md")) as f:
                     assert f.read() == "Test Repo 1 Readme"
+
+
+def _list_external_credentials(request, uri, response_headers):
+    return [
+        200,
+        response_headers,
+        json.dumps(
+            {
+                "credentials": [
+                    {
+                        "credential_id": "123e4567-e89b-12d3-a456-426655440000",
+                        "credential_name": "my_other_credential",
+                        "plugin_name": "plugin_2",
+                    },
+                    {
+                        "credential_id": "98765432-aaaa-bbbb-a456-000000000000",
+                        "credential_name": "my_credential",
+                        "plugin_name": "plugin",
+                    },
+                ]
+            }
+        ),
+    ]
+
+
+def _update_external_credential(request, uri, response_headers):
+    data = json.loads(request.body)
+
+    assert data == {
+        "credential_id": "98765432-aaaa-bbbb-a456-000000000000",
+        "credential_name": "my_credential",
+        "credential_data": {"username": "my_username", "password": "secret"},
+        "plugin_name": "plugin",
+    }
+
+    return [
+        200,
+        response_headers,
+        json.dumps({"credential_id": "98765432-aaaa-bbbb-a456-000000000000"}),
+    ]
+
+
+def _add_external_credential(request, uri, response_headers):
+    data = json.loads(request.body)
+    assert data == {
+        "credential_data": {"password": "secret", "username": "my_username"},
+        "credential_name": "my_unused_credential",
+        "plugin_name": "plugin_3",
+    }
+    return [
+        200,
+        response_headers,
+        json.dumps({"credential_id": "cccccccc-aaaa-bbbb-dddd-000000000000"}),
+    ]
+
+
+def _add_external_repo(request, uri, response_headers):
+    data = json.loads(request.body)
+
+    if data["namespace"] == "someuser" and data["repository"] == "somerepo_1":
+        assert data == {
+            "namespace": "someuser",
+            "repository": "somerepo_1",
+            "plugin_name": "plugin_2",
+            "params": {},
+            "is_live": True,
+            "tables": {},
+            "credential_id": "123e4567-e89b-12d3-a456-426655440000",
+        }
+    elif data["namespace"] == "someuser" and data["repository"] == "somerepo_2":
+        assert data == {
+            "namespace": "someuser",
+            "repository": "somerepo_2",
+            "plugin_name": "plugin_3",
+            "params": {},
+            "is_live": True,
+            "tables": {},
+            "credential_id": "00000000-0000-0000-0000-000000000000",
+        }
+    elif data["namespace"] == "otheruser" and data["repository"] == "somerepo_2":
+        assert data == {
+            "credential_id": "98765432-aaaa-bbbb-a456-000000000000",
+            "is_live": True,
+            "namespace": "otheruser",
+            "params": {"params": "here", "plugin": "specific"},
+            "plugin_name": "plugin",
+            "repository": "somerepo_2",
+            "tables": {
+                "table_1": {
+                    "options": {"param_1": "val_1"},
+                    "schema": {"id": "text", "val": "text"},
+                },
+                "table_2": {"options": {"param_1": "val_2"}, "schema": {}},
+                "table_3": {"options": {}, "schema": {"id": "text", "val": "text"}},
+            },
+        }
+    else:
+        raise AssertionError("Unknown repository %s/%s!" % (data["namespace"], data["repository"]))
+
+    return [
+        200,
+        response_headers,
+        json.dumps({"live_image_hash": "abcdef12" * 8}),
+    ]
+
+
+def _upsert_repository_metadata(request, uri, response_headers):
+    data = json.loads(request.body)
+    assert data["operationName"] == "UpsertRepoProfile"
+    assert data["query"] == _PROFILE_UPSERT_QUERY
+
+    variables = data["variables"]
+    if variables["namespace"] == "someuser" and variables["repository"] == "somerepo_1":
+        assert variables == {
+            "namespace": "someuser",
+            "repository": "somerepo_1",
+            "readme": "# Readme 1",
+            "description": "Repository Description 1",
+            "topics": [],
+            "sources": [
+                {
+                    "anchor": "test data source",
+                    "href": "https://example.com",
+                    "isCreator": True,
+                    "isSameAs": False,
+                }
+            ],
+            "license": "Public Domain",
+        }
+    elif variables["namespace"] == "someuser" and variables["repository"] == "somerepo_2":
+        assert variables == {
+            "description": "Another Repository",
+            "namespace": "someuser",
+            "repository": "somerepo_2",
+        }
+    elif variables["namespace"] == "otheruser" and variables["repository"] == "somerepo_2":
+        assert variables == {
+            "description": "Repository Description 2",
+            "namespace": "otheruser",
+            "readme": "# Readme 2",
+            "repository": "somerepo_2",
+            "sources": [{"anchor": "test data source", "href": "https://example.com"}],
+            "topics": ["topic_1", "topic_2"],
+        }
+    else:
+        raise AssertionError(
+            "Unknown repository %s/%s!" % (variables["namespace"], variables["repository"])
+        )
+
+    success_response = {
+        "data": {
+            "__typename": "Mutation",
+            "upsertRepoProfileByNamespaceAndRepository": {
+                "clientMutationId": None,
+                "__typename": "UpsertRepoProfilePayload",
+            },
+        }
+    }
+
+    return [
+        200,
+        response_headers,
+        json.dumps(success_response),
+    ]
+
+
+@httpretty.activate(allow_net_connect=False)
+def test_commandline_load():
+    runner = CliRunner()
+
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST,
+        _ENDPOINT + "/list_external_credentials",
+        body=_list_external_credentials,
+    )
+
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST,
+        _ENDPOINT + "/update_external_credential",
+        body=_update_external_credential,
+    )
+
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST,
+        _ENDPOINT + "/add_external_credential",
+        body=_add_external_credential,
+    )
+
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST,
+        _QUERY_ENDPOINT + "/api/external/add",
+        body=_add_external_repo,
+    )
+
+    httpretty.register_uri(
+        httpretty.HTTPretty.POST, _GQL_ENDPOINT + "/", body=_upsert_repository_metadata
+    )
+
+    def get_remote_param(remote, param):
+        if param == "SG_AUTH_API":
+            return _ENDPOINT
+        elif param == "SG_QUERY_API":
+            return _QUERY_ENDPOINT
+        elif param == "SG_GQL_API":
+            return _GQL_ENDPOINT
+        else:
+            raise KeyError()
+
+    with patch(
+        "splitgraph.cloud.RESTAPIClient.access_token",
+        new_callable=PropertyMock,
+        return_value=_SAMPLE_ACCESS,
+    ):
+        with patch("splitgraph.cloud.get_remote_param", get_remote_param):
+            result = runner.invoke(
+                load_c,
+                ["--directory", os.path.join(RESOURCES, "repositories_yml")],
+                catch_exceptions=False,
+            )
 
 
 def test_commandline_cloud_sql():

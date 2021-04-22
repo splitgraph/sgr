@@ -1,0 +1,78 @@
+credentials:
+  my_credential:
+    plugin: plugin
+    data:
+      username: my_username
+      password: secret
+  my_unused_credential:
+    plugin: plugin_3
+    data:
+      username: my_username
+      password: secret
+repositories:
+- external:
+    credential: my_credential
+    params:
+      plugin: specific
+      params: here
+    plugin: plugin
+    tables:
+      table_1:
+        options:
+          param_1: val_1
+        schema:
+        - name: id
+          type: text
+        - name: val
+          type: text
+      table_2:
+        options:
+          param_1: val_2
+        schema: []
+      table_3:
+        options: {}
+        schema:
+        - name: id
+          type: text
+        - name: val
+          type: text
+  metadata:
+    description: Repository Description 2
+    license: null
+    readme:
+      file: readme_2.md
+    sources:
+    - anchor: test data source
+      href: https://example.com
+    topics:
+    - topic_1
+    - topic_2
+  namespace: otheruser
+  repository: somerepo_2
+- namespace: someuser
+  repository: somerepo_1
+  metadata:
+    description: Repository Description 1
+    license: Public Domain
+    readme:
+      file: readme_1.md
+    sources:
+    - anchor: test data source
+      href: https://example.com
+      isCreator: true
+      isSameAs: false
+    topics: []
+  external:
+    credential: my_other_credential
+    plugin: plugin_2
+    params: {}
+    tables: {}
+- namespace: someuser
+  repository: somerepo_2
+  metadata:
+    description: Another Repository
+  external:
+    credential_id: 00000000-0000-0000-0000-000000000000
+    plugin: plugin_3
+    params: {}
+    tables: {}
