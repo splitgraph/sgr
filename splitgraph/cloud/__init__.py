@@ -753,7 +753,6 @@ class GQLAPIClient:
             endpoint=self.registry_endpoint,
             handle_errors=True,
         )
-
         parsed_metadata = MetadataResponse.from_response(metadata_r.json())
         parsed_external = ExternalResponse.from_response(external_r.json())
 
