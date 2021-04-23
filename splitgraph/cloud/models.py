@@ -114,7 +114,7 @@ class MetadataResponse(BaseModel):
             ],
             sources=profile.sources,
             license=profile.license,
-            metadata=profile.metadata.upstream_metadata if profile.metadata else None,
+            extra_metadata=profile.metadata.upstream_metadata if profile.metadata else None,
         )
 
 
