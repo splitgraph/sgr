@@ -140,54 +140,54 @@ def gql_metadata_operation(expect_variables):
 
 def gql_metadata_get():
     def _gql_callback(request, uri, response_headers):
+        _somerepo_1 = {
+            "namespace": "someuser",
+            "repository": "somerepo_1",
+            "repoTopicsByNamespaceAndRepository": {"nodes": []},
+            "repoProfileByNamespaceAndRepository": {
+                "description": "Repository Description 1",
+                "license": "Public Domain",
+                "metadata": {
+                    "created_at": "2020-01-01 12:00:00",
+                    "upstream_metadata": {"key_1": {"key_2": "value_1"}},
+                },
+                "readme": "Test Repo 1 Readme",
+                "sources": [
+                    {
+                        "anchor": "test data source",
+                        "href": "https://example.com",
+                        "isCreator": True,
+                        "isSameAs": False,
+                    }
+                ],
+            },
+        }
+        _somerepo_2 = {
+            "namespace": "otheruser",
+            "repository": "somerepo_2",
+            "repoTopicsByNamespaceAndRepository": {"nodes": [{"topics": ["topic_1", "topic_2"]}]},
+            "repoProfileByNamespaceAndRepository": {
+                "description": "Repository Description 2",
+                "license": None,
+                "metadata": None,
+                "readme": "Test Repo 2 Readme",
+                "sources": [
+                    {
+                        "anchor": "test data source",
+                        "href": "https://example.com",
+                    }
+                ],
+            },
+        }
+
         body = json.loads(request.body)
         if body["operationName"] == "GetRepositoryMetadata":
             response = {
                 "data": {
                     "repositories": {
-                        "nodes": [
-                            {
-                                "namespace": "someuser",
-                                "repository": "somerepo_1",
-                                "repoTopicsByNamespaceAndRepository": {"nodes": []},
-                                "repoProfileByNamespaceAndRepository": {
-                                    "description": "Repository Description 1",
-                                    "license": "Public Domain",
-                                    "metadata": {
-                                        "created_at": "2020-01-01 12:00:00",
-                                        "upstream_metadata": {"key_1": {"key_2": "value_1"}},
-                                    },
-                                    "readme": "Test Repo 1 Readme",
-                                    "sources": [
-                                        {
-                                            "anchor": "test data source",
-                                            "href": "https://example.com",
-                                            "isCreator": True,
-                                            "isSameAs": False,
-                                        }
-                                    ],
-                                },
-                            },
-                            {
-                                "namespace": "otheruser",
-                                "repository": "somerepo_2",
-                                "repoTopicsByNamespaceAndRepository": {
-                                    "nodes": [{"topics": ["topic_1", "topic_2"]}]
-                                },
-                                "repoProfileByNamespaceAndRepository": {
-                                    "description": "Repository Description 2",
-                                    "license": None,
-                                    "metadata": None,
-                                    "readme": "Test Repo 2 Readme",
-                                    "sources": [
-                                        {
-                                            "anchor": "test data source",
-                                            "href": "https://example.com",
-                                        }
-                                    ],
-                                },
-                            },
-                        ]
+                        "nodes": [_somerepo_1]
+                        if body.get("variables", {}).get("repository") == "somerepo_1"
+                        else [_somerepo_1, _somerepo_2]
                     }
                 }
             }
@@ -259,6 +259,8 @@ def gql_metadata_get():
                                 },
                             },
                         ]
+                        if body.get("variables", {}).get("repository") != "somerepo_1"
+                        else []
                     }
                 }
             }

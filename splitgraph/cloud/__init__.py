@@ -122,9 +122,10 @@ _FIND_REPO_QUERY = """query FindRepositories($query: String!, $limit: Int!) {
   }
 }"""
 
-_REPO_CONDITIONS = ', condition: {"namespace": %s, "repository": %s}'
+_REPO_PARAMS = "($namespace: String!, $repository: String!)"
+_REPO_CONDITIONS = ", condition: {namespace: $namespace, repository: $repository}"
 
-_GET_REPO_METADATA_QUERY = """query GetRepositoryMetadata {
+_GET_REPO_METADATA_QUERY = """query GetRepositoryMetadata%s {
   repositories(first: 1000%s) {
     nodes {
       namespace
@@ -150,7 +151,7 @@ _GET_REPO_METADATA_QUERY = """query GetRepositoryMetadata {
   }
 }"""
 
-_GET_REPO_SOURCE_QUERY = """query GetRepositoryDataSource {
+_GET_REPO_SOURCE_QUERY = """query GetRepositoryDataSource%s {
   repositoryDataSources(first: 1000%s) {
     nodes {
       namespace
@@ -716,44 +717,74 @@ class GQLAPIClient:
 
         return total_count, repos_previews
 
-    def get_metadata(self, namespace: str, repository: str) -> Metadata:
+    def get_metadata(self, namespace: str, repository: str) -> Optional[MetadataResponse]:
         response = self._gql(
             {
-                "query": _GET_REPO_METADATA_QUERY % (_REPO_CONDITIONS % (namespace, repository)),
+                "query": _GET_REPO_METADATA_QUERY % (_REPO_PARAMS, _REPO_CONDITIONS),
                 "operationName": "GetRepositoryMetadata",
+                "variables": {"namespace": namespace, "repository": repository},
             },
             handle_errors=True,
         )
 
         parsed_responses = MetadataResponse.from_response(response.json())
-        assert len(parsed_responses) == 1
-        return parsed_responses[0].to_metadata()
+        if parsed_responses:
+            assert len(parsed_responses) == 1
+            return parsed_responses[0]
+        return None
 
-    def get_external_metadata(self, namespace: str, repository: str) -> External:
+    def get_external_metadata(self, namespace: str, repository: str) -> Optional[ExternalResponse]:
         response = self._gql(
             {
-                "query": _GET_REPO_SOURCE_QUERY % (_REPO_CONDITIONS % (namespace, repository)),
+                "query": _GET_REPO_SOURCE_QUERY % (_REPO_PARAMS, _REPO_CONDITIONS),
                 "operationName": "GetRepositoryDataSource",
+                "variables": {"namespace": namespace, "repository": repository},
             },
             endpoint=self.registry_endpoint,
             handle_errors=True,
         )
 
         parsed_responses = ExternalResponse.from_response(response.json())
-        assert len(parsed_responses) == 1
-        return parsed_responses[0].to_external()
+        if parsed_responses:
+            assert len(parsed_responses) == 1
+            return parsed_responses[0]
+        return None
 
-    def load_all_repositories(self) -> List[Repository]:
-        metadata_r = self._gql(
-            {"query": _GET_REPO_METADATA_QUERY % "", "operationName": "GetRepositoryMetadata"}
-        )
+    def load_all_repositories(self, limit_to: List[str] = None) -> List[Repository]:
+        from splitgraph.core.repository import Repository as SGRepository
 
-        external_r = self._gql(
-            {"query": _GET_REPO_SOURCE_QUERY % "", "operationName": "GetRepositoryDataSource"},
-            endpoint=self.registry_endpoint,
-            handle_errors=True,
-        )
-        parsed_metadata = MetadataResponse.from_response(metadata_r.json())
-        parsed_external = ExternalResponse.from_response(external_r.json())
+        if limit_to:
+            parsed_metadata = []
+            parsed_external = []
+
+            for repository in limit_to:
+                # We currently can't filter on multiple fields in GQL, so we loop instead.
+                repo_obj = SGRepository.from_schema(repository)
+                metadata = self.get_metadata(repo_obj.namespace, repo_obj.repository)
+                external = self.get_external_metadata(repo_obj.namespace, repo_obj.repository)
+
+                if metadata:
+                    parsed_metadata.append(metadata)
+                if external:
+                    parsed_external.append(external)
+        else:
+            metadata_r = self._gql(
+                {
+                    "query": _GET_REPO_METADATA_QUERY % ("", ""),
+                    "operationName": "GetRepositoryMetadata",
+                },
+                handle_errors=True,
+            )
+
+            external_r = self._gql(
+                {
+                    "query": _GET_REPO_SOURCE_QUERY % ("", ""),
+                    "operationName": "GetRepositoryDataSource",
+                },
+                endpoint=self.registry_endpoint,
+                handle_errors=True,
+            )
+            parsed_metadata = MetadataResponse.from_response(metadata_r.json())
+            parsed_external = ExternalResponse.from_response(external_r.json())
 
         return make_repositories(parsed_metadata, parsed_external)

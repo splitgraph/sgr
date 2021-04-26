@@ -558,8 +558,9 @@ def _normalise_filename(filename):
 @click.command("dump")
 @click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
 @click.option("--readme-dir", default="./readmes", help="Directory to dump the data into")
-@click.argument("repositories_file", default="repositories.yml", type=click.File("w"))
-def dump_c(remote, readme_dir, repositories_file):
+@click.option("--repositories-file", "-f", default="repositories.yml", type=click.File("w"))
+@click.argument("limit_repositories", type=str, nargs=-1)
+def dump_c(remote, readme_dir, repositories_file, limit_repositories):
     """
     Dump a Splitgraph catalog to a YAML file.
 
@@ -571,7 +572,7 @@ def dump_c(remote, readme_dir, repositories_file):
     from splitgraph.cloud import GQLAPIClient
 
     client = GQLAPIClient(remote)
-    repositories = client.load_all_repositories()
+    repositories = client.load_all_repositories(limit_to=limit_repositories)
 
     _dump_readmes_to_dir(repositories, readme_dir)
 
@@ -587,7 +588,7 @@ def dump_c(remote, readme_dir, repositories_file):
 @click.option(
     "--readme-dir", default="./readmes", help="Path to the directory with the README files"
 )
-@click.argument("repositories_file", default="repositories.yml", type=click.File("r"))
+@click.option("--repositories-file", "-f", default="repositories.yml", type=click.File("r"))
 @click.argument("limit_repositories", type=str, nargs=-1)
 def load_c(remote, readme_dir, repositories_file, limit_repositories):
     """
