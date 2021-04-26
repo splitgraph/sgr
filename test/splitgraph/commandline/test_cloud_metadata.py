@@ -226,6 +226,7 @@ def test_commandline_dump():
                     [
                         "--readme-dir",
                         os.path.join(tmpdir, "readmes"),
+                        "-f",
                         os.path.join(tmpdir, "repositories.yml"),
                     ],
                     catch_exceptions=False,
@@ -241,6 +242,27 @@ def test_commandline_dump():
                     ),
                 ]
 
+                _somerepo_1_dump = {
+                    "namespace": "someuser",
+                    "repository": "somerepo_1",
+                    "metadata": {
+                        "readme": {"file": "someuser-somerepo_1.b7f3.md"},
+                        "description": "Repository Description 1",
+                        "extra_metadata": {"key_1": {"key_2": "value_1"}},
+                        "topics": [],
+                        "sources": [
+                            {
+                                "anchor": "test data source",
+                                "href": "https://example.com",
+                                "isCreator": True,
+                                "isSameAs": False,
+                            }
+                        ],
+                        "license": "Public Domain",
+                    },
+                    "external": None,
+                }
+
                 with open(os.path.join(tmpdir, "repositories.yml")) as f:
                     output = f.read()
                 assert yaml.load(output) == {
@@ -251,6 +273,7 @@ def test_commandline_dump():
                             "metadata": {
                                 "readme": {"file": "otheruser-somerepo_2.fe37.md"},
                                 "description": "Repository Description 2",
+                                "extra_metadata": None,
                                 "topics": ["topic_1", "topic_2"],
                                 "sources": [
                                     {
@@ -283,30 +306,30 @@ def test_commandline_dump():
                                 },
                             },
                         },
-                        {
-                            "namespace": "someuser",
-                            "repository": "somerepo_1",
-                            "metadata": {
-                                "readme": {"file": "someuser-somerepo_1.b7f3.md"},
-                                "description": "Repository Description 1",
-                                "topics": [],
-                                "sources": [
-                                    {
-                                        "anchor": "test data source",
-                                        "href": "https://example.com",
-                                        "isCreator": True,
-                                        "isSameAs": False,
-                                    }
-                                ],
-                                "license": "Public Domain",
-                            },
-                            "external": None,
-                        },
+                        _somerepo_1_dump,
                     ]
                 }
 
                 with open(os.path.join(tmpdir, "readmes", "someuser-somerepo_1.b7f3.md")) as f:
                     assert f.read() == "Test Repo 1 Readme"
+
+                # Dump a single repo
+                result = runner.invoke(
+                    dump_c,
+                    [
+                        "--readme-dir",
+                        os.path.join(tmpdir, "readmes"),
+                        "-f",
+                        os.path.join(tmpdir, "repositories.yml"),
+                        "someuser/somerepo_1",
+                    ],
+                    catch_exceptions=False,
+                )
+                assert result.exit_code == 0
+
+                with open(os.path.join(tmpdir, "repositories.yml")) as f:
+                    output = f.read()
+                assert yaml.load(output) == {"repositories": [_somerepo_1_dump]}
 
 
 @httpretty.activate(allow_net_connect=False)
@@ -362,6 +385,7 @@ def test_commandline_load():
                 [
                     "--readme-dir",
                     os.path.join(RESOURCES, "repositories_yml", "readmes"),
+                    "-f",
                     os.path.join(RESOURCES, "repositories_yml", "repositories.yml"),
                 ],
                 catch_exceptions=False,
