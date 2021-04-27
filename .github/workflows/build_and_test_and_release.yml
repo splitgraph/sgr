@@ -9,7 +9,7 @@ jobs:
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
     env:
       COMPOSE_VERSION: '1.25.4'
-      POETRY_VERSION: '1.1.4'
+      POETRY_VERSION: '1.1.6'
       DOCKER_REPO: splitgraph
       DOCKER_ENGINE_IMAGE: engine
       DOCKER_TAG: development
