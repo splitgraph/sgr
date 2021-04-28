@@ -102,6 +102,12 @@ class WithExceptionHandler(click.Group):
 
     def invoke(self, ctx):
         from splitgraph.engine import get_engine
+        import psycopg2.extensions
+        import psycopg2.extras
+
+        # Allow users to send SIGINT to quickly terminate sgr (instead of waiting for a PG
+        # statement to finish)
+        psycopg2.extensions.set_wait_callback(psycopg2.extras.wait_select)
 
         engine = get_engine()
         try:

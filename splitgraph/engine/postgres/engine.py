@@ -214,10 +214,6 @@ class PsycopgEngine(SQLEngine):
         """
         super().__init__()
 
-        # Allow users to send SIGINT to quickly terminate sgr (instead of waiting for a PG
-        # statement to finish)
-        psycopg2.extensions.set_wait_callback(psycopg2.extras.wait_select)
-
         if not conn_params and not pool:
             raise ValueError("One of conn_params/pool must be specified!")
 
