@@ -1,0 +1,92 @@
+version: 2
+updates:
+- package-ecosystem: pip
+  directory: "/"
+  schedule:
+    interval: daily
+  open-pull-requests-limit: 10
+  ignore:
+  - dependency-name: botocore
+    versions:
+    - "> 1.15.23"
+  - dependency-name: pylint
+    versions:
+    - 2.7.0
+    - 2.7.1
+    - 2.7.2
+    - 2.7.3
+    - 2.7.4
+    - 2.8.1
+  - dependency-name: sqlalchemy
+    versions:
+    - 1.3.22
+    - 1.3.23
+    - 1.4.0
+    - 1.4.1
+    - 1.4.11
+    - 1.4.2
+    - 1.4.3
+    - 1.4.4
+    - 1.4.5
+    - 1.4.6
+    - 1.4.7
+    - 1.4.8
+    - 1.4.9
+  - dependency-name: sphinx
+    versions:
+    - 3.4.3
+    - 3.5.0
+    - 3.5.1
+    - 3.5.2
+    - 3.5.3
+    - 3.5.4
+  - dependency-name: docker
+    versions:
+    - 4.4.1
+    - 4.4.2
+    - 4.4.3
+    - 4.4.4
+    - 5.0.0
+  - dependency-name: minio
+    versions:
+    - 7.0.1
+    - 7.0.2
+    - 7.0.3
+  - dependency-name: tqdm
+    versions:
+    - 4.56.0
+    - 4.56.1
+    - 4.56.2
+    - 4.57.0
+    - 4.58.0
+    - 4.60.0
+  - dependency-name: sphinx-rtd-theme
+    versions:
+    - 0.5.1
+    - 0.5.2
+  - dependency-name: pytest
+    versions:
+    - 6.2.2
+    - 6.2.3
+  - dependency-name: coveralls
+    versions:
+    - 3.0.1
+  - dependency-name: pyfakefs
+    versions:
+    - 4.3.3
+    - 4.4.0
+  - dependency-name: tabulate
+    versions:
+    - 0.8.9
+  - dependency-name: pglast
+    versions:
+    - "1.17"
+  - dependency-name: mypy
+    versions:
+    - "0.812"
+  - dependency-name: httpretty
+    versions:
+    - 1.0.5
+  - dependency-name: requests
+    versions:
+    - 2.25.1
