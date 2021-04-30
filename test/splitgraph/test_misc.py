@@ -4,6 +4,7 @@ from unittest.mock import patch
 import pytest
 from psycopg2.errors import CheckViolation
 
+from splitgraph.cloud.models import ExternalTableRequest
 from splitgraph.core.common import Tracer, adapt, coerce_val_to_json
 from splitgraph.core.output import parse_dt
 from splitgraph.core.engine import lookup_repository
@@ -368,14 +369,17 @@ def test_table_schema_params_to_dict():
 def test_dict_to_table_schema_params():
     assert dict_to_table_schema_params(
         {
-            "fruits": {
-                "schema": {"fruit_id": "integer", "name": "character varying"},
-                "options": {"key": "value"},
-            },
-            "vegetables": {
-                "schema": {"name": "character varying", "vegetable_id": "integer"},
-                "options": {"key": "value"},
-            },
+            k: ExternalTableRequest.parse_obj(v)
+            for k, v in {
+                "fruits": {
+                    "schema": {"fruit_id": "integer", "name": "character varying"},
+                    "options": {"key": "value"},
+                },
+                "vegetables": {
+                    "schema": {"name": "character varying", "vegetable_id": "integer"},
+                    "options": {"key": "value"},
+                },
+            }.items()
         }
     ) == {
         "fruits": (

@@ -1,6 +1,8 @@
 from abc import ABCMeta, abstractmethod
 from typing import Dict, Tuple, Any, NamedTuple, Optional, List, Sequence, Union, TypeVar
 
+from splitgraph.cloud.models import ExternalTableRequest
+
 Changeset = Dict[Tuple[str, ...], Tuple[bool, Dict[str, Any], Dict[str, Any]]]
 
 
@@ -58,15 +60,15 @@ class Comparable(metaclass=ABCMeta):
 
 
 def dict_to_table_schema_params(
-    tables: Dict[str, Dict[str, Any]]
+    tables: Dict[str, ExternalTableRequest]
 ) -> Dict[str, Tuple[TableSchema, TableParams]]:
     return {
         t: (
             [
                 TableColumn(i + 1, cname, ctype, False, None)
-                for (i, (cname, ctype)) in enumerate(tsp["schema"].items())
+                for (i, (cname, ctype)) in enumerate(tsp.schema_.items())
             ],
-            tsp.get("options", {}),
+            tsp.options,
         )
         for t, tsp in tables.items()
     }
