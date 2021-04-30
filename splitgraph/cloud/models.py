@@ -213,17 +213,18 @@ class UpdateExternalCredentialResponse(BaseModel):
     credential_id: str
 
 
-class AddExternalRepositoryRequest(BaseModel):
-    class Table(BaseModel):
-        options: Dict[str, Any]
-        schema_: Dict[str, str] = Field(alias="schema")
+class ExternalTableRequest(BaseModel):
+    options: Dict[str, Any]
+    schema_: Dict[str, str] = Field(alias="schema")
 
+
+class AddExternalRepositoryRequest(BaseModel):
     namespace: str
     repository: str
     plugin_name: str
     params: Dict[str, Any]
     is_live: bool
-    tables: Optional[Dict[str, Table]]
+    tables: Optional[Dict[str, ExternalTableRequest]]
     credential_id: Optional[str]
 
     @classmethod
@@ -251,7 +252,7 @@ class AddExternalRepositoryRequest(BaseModel):
             plugin_name=external.plugin,
             params=external.params,
             tables={
-                table_name: AddExternalRepositoryRequest.Table(
+                table_name: ExternalTableRequest(
                     options=table.options, schema={c.name: c.pg_type for c in table.schema_}
                 )
                 for table_name, table in external.tables.items()

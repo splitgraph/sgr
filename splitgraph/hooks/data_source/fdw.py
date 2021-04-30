@@ -8,6 +8,7 @@ from typing import Optional, Mapping, Dict, List, Any, cast, TYPE_CHECKING, Tupl
 import psycopg2
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph.cloud.models import ExternalTableRequest
 from splitgraph.core.types import (
     TableSchema,
     TableColumn,
@@ -59,7 +60,9 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
         #   * A dictionary table_name -> {"schema": schema, "options": table options}
         tables = params.pop("tables", None)
         if isinstance(tables, dict):
-            tables = dict_to_table_schema_params(tables)
+            tables = dict_to_table_schema_params(
+                {k: ExternalTableRequest.parse_obj(v) for k, v in tables.items()}
+            )
 
         # Extract credentials from the cmdline params
         credentials: Dict[str, Any] = {}
