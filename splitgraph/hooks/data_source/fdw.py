@@ -1,14 +1,13 @@
+from copy import deepcopy
+
 import json
 import logging
+import psycopg2
 import re
 from abc import ABC, abstractmethod
-from copy import deepcopy
+from psycopg2.sql import SQL, Identifier
 from typing import Optional, Mapping, Dict, List, Any, cast, TYPE_CHECKING, Tuple
 
-import psycopg2
-from psycopg2.sql import SQL, Identifier
-
-from splitgraph.cloud.models import ExternalTableRequest
 from splitgraph.core.types import (
     TableSchema,
     TableColumn,
@@ -51,6 +50,8 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
     @classmethod
     def from_commandline(cls, engine, commandline_kwargs) -> "ForeignDataWrapperDataSource":
         """Instantiate an FDW data source from commandline arguments."""
+        from splitgraph.cloud.models import ExternalTableRequest
+
         # Normally these are supposed to be more user-friendly and FDW-specific (e.g.
         # not forcing the user to pass in a JSON with five levels of nesting etc).
         params = deepcopy(commandline_kwargs)
