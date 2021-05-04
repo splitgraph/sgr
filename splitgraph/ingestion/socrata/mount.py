@@ -6,7 +6,7 @@ from typing import Optional, Dict, List
 
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.core.types import TableInfo, MountError
+from splitgraph.core.types import TableInfo, MountError, Credentials
 from splitgraph.exceptions import RepositoryNotFoundError
 from splitgraph.hooks.data_source.fdw import create_foreign_table, ForeignDataWrapperDataSource
 
@@ -67,7 +67,7 @@ class SocrataDataSource(ForeignDataWrapperDataSource):
         if isinstance(tables, dict) and isinstance(next(iter(tables.values())), str):
             tables = {k: ([], {"socrata_id": v}) for k, v in tables.items()}
 
-        credentials = {"app_token": params.pop("app_token", None)}
+        credentials = Credentials({"app_token": params.pop("app_token", None)})
         return cls(engine, credentials, params, tables)
 
     def get_server_options(self):
