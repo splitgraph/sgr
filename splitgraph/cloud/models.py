@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Any, Union
 
 from pydantic import BaseModel, Field
 
-from splitgraph.core.types import TableSchema
+from splitgraph.core.types import TableSchema, Params
 
 
 # Models for the externals API data (tables, plugin params etc)
@@ -222,7 +222,7 @@ class AddExternalRepositoryRequest(BaseModel):
     namespace: str
     repository: str
     plugin_name: str
-    params: Dict[str, Any]
+    params: Params
     is_live: bool
     tables: Optional[Dict[str, ExternalTableRequest]]
     credential_id: Optional[str]
