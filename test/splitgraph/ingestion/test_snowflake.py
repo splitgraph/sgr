@@ -4,7 +4,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from splitgraph.core.types import dict_to_table_schema_params
+from splitgraph.cloud.models import ExternalTableRequest
+from splitgraph.core.types import dict_to_table_schema_params, Params, Credentials
 from splitgraph.ingestion.snowflake import SnowflakeDataSource
 
 _sample_privkey = """-----BEGIN PRIVATE KEY-----
@@ -43,17 +44,21 @@ _sample_privkey_b64 = "".join(l for l in _sample_privkey.strip().split("\n")[1:-
 def test_snowflake_data_source_dburl_conversion_warehouse():
     source = SnowflakeDataSource(
         Mock(),
-        credentials={
-            "username": "username",
-            "password": "password",
-            "account": "abcdef.eu-west-1.aws",
-        },
-        params={
-            "database": "SOME_DB",
-            "schema": "TPCH_SF100",
-            "warehouse": "my_warehouse",
-            "role": "role",
-        },
+        credentials=Credentials(
+            {
+                "username": "username",
+                "password": "password",
+                "account": "abcdef.eu-west-1.aws",
+            }
+        ),
+        params=Params(
+            {
+                "database": "SOME_DB",
+                "schema": "TPCH_SF100",
+                "warehouse": "my_warehouse",
+                "role": "role",
+            }
+        ),
     )
 
     assert source.get_server_options() == {
@@ -66,15 +71,19 @@ def test_snowflake_data_source_dburl_conversion_warehouse():
 def test_snowflake_data_source_dburl_conversion_no_warehouse():
     source = SnowflakeDataSource(
         Mock(),
-        credentials={
-            "username": "username",
-            "password": "password",
-            "account": "abcdef.eu-west-1.aws",
-        },
-        params={
-            "database": "SOME_DB",
-            "schema": "TPCH_SF100",
-        },
+        credentials=Credentials(
+            {
+                "username": "username",
+                "password": "password",
+                "account": "abcdef.eu-west-1.aws",
+            }
+        ),
+        params=Params(
+            {
+                "database": "SOME_DB",
+                "schema": "TPCH_SF100",
+            }
+        ),
     )
 
     assert source.get_server_options() == {
@@ -88,15 +97,19 @@ def test_snowflake_data_source_dburl_conversion_no_warehouse():
 def test_snowflake_data_source_private_key(private_key):
     source = SnowflakeDataSource(
         Mock(),
-        credentials={
-            "username": "username",
-            "private_key": private_key,
-            "account": "abcdef.eu-west-1.aws",
-        },
-        params={
-            "database": "SOME_DB",
-            "schema": "TPCH_SF100",
-        },
+        credentials=Credentials(
+            {
+                "username": "username",
+                "private_key": private_key,
+                "account": "abcdef.eu-west-1.aws",
+            }
+        ),
+        params=Params(
+            {
+                "database": "SOME_DB",
+                "schema": "TPCH_SF100",
+            }
+        ),
     )
 
     opts = source.get_server_options()
@@ -114,20 +127,27 @@ def test_snowflake_data_source_private_key(private_key):
 def test_snowflake_data_source_table_options():
     source = SnowflakeDataSource(
         Mock(),
-        credentials={
-            "username": "username",
-            "password": "password",
-            "account": "abcdef.eu-west-1.aws",
-        },
-        params={
-            "database": "SOME_DB",
-        },
+        credentials=Credentials(
+            {
+                "username": "username",
+                "password": "password",
+                "account": "abcdef.eu-west-1.aws",
+            }
+        ),
+        params=Params(
+            {
+                "database": "SOME_DB",
+            }
+        ),
         tables=dict_to_table_schema_params(
             {
-                "test_table": {
-                    "schema": {"col_1": "int", "col_2": "varchar"},
-                    "options": {"subquery": "SELECT col_1, col_2 FROM other_table"},
-                }
+                k: ExternalTableRequest.parse_obj(v)
+                for k, v in {
+                    "test_table": {
+                        "schema": {"col_1": "int", "col_2": "varchar"},
+                        "options": {"subquery": "SELECT col_1, col_2 FROM other_table"},
+                    }
+                }.items()
             }
         ),
     )
