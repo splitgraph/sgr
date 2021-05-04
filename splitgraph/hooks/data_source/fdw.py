@@ -19,7 +19,7 @@ from splitgraph.core.types import (
     IntrospectionResult,
     Credentials,
 )
-from splitgraph.exceptions import get_exception_name
+from splitgraph.exceptions import get_exception_name, DataSourceError
 from splitgraph.hooks.data_source.base import (
     MountableDataSource,
     LoadableDataSource,
@@ -279,7 +279,10 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
 
         tmp_schema = get_temporary_table_id()
         try:
-            self.mount(tmp_schema, tables=tables)
+            errors = self.mount(tmp_schema, tables=tables)
+            if errors:
+                raise DataSourceError("Error mounting tables for load")
+
             self.engine.commit()
 
             for t in self.engine.get_all_tables(tmp_schema):
