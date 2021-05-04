@@ -199,7 +199,7 @@ class SingerDataSource(SyncableDataSource, ABC):
         config = self.get_singer_config()
         singer_schema = self._run_singer_discovery(config)
 
-        result: IntrospectionResult = {}
+        result = IntrospectionResult({})
         for stream in singer_schema["streams"]:
             stream_name = get_table_name(stream)
             stream_schema = get_sg_schema(stream)

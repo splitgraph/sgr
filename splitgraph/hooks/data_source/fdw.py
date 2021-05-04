@@ -17,6 +17,7 @@ from splitgraph.core.types import (
     PreviewResult,
     MountError,
     IntrospectionResult,
+    Credentials,
 )
 from splitgraph.exceptions import get_exception_name
 from splitgraph.hooks.data_source.base import (
@@ -66,7 +67,7 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
             )
 
         # Extract credentials from the cmdline params
-        credentials: Dict[str, Any] = {}
+        credentials = Credentials({})
         for k in cast(Dict[str, Any], cls.credentials_schema["properties"]).keys():
             if k in params:
                 credentials[k] = params[k]
@@ -179,13 +180,15 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
             for v in table_options.values():
                 jsonschema.validate(v, self.table_params_schema)
 
-            result: IntrospectionResult = {
-                t: (
-                    self.engine.get_full_table_schema(tmp_schema, t),
-                    cast(TableParams, table_options.get(t, {})),
-                )
-                for t in self.engine.get_all_tables(tmp_schema)
-            }
+            result = IntrospectionResult(
+                {
+                    t: (
+                        self.engine.get_full_table_schema(tmp_schema, t),
+                        cast(TableParams, table_options.get(t, {})),
+                    )
+                    for t in self.engine.get_all_tables(tmp_schema)
+                }
+            )
 
             # Add errors to the result as well
             for error in mount_errors:
@@ -249,9 +252,9 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
         tmp_schema = get_temporary_table_id()
         try:
             # Seed the result with the tables that failed to mount
-            result: PreviewResult = {
-                e.table_name: e for e in self.mount(tmp_schema, tables=tables) or []
-            }
+            result = PreviewResult(
+                {e.table_name: e for e in self.mount(tmp_schema, tables=tables) or []}
+            )
 
             # Commit so that errors don't cancel the mount
             self.engine.commit()

@@ -4,7 +4,7 @@ from typing import Optional, TYPE_CHECKING, Dict, List, Tuple, Any
 
 from psycopg2.sql import SQL, Identifier
 
-from splitgraph.core.types import TableInfo, MountError
+from splitgraph.core.types import TableInfo, MountError, Credentials
 from splitgraph.hooks.data_source.fdw import ForeignDataWrapperDataSource, import_foreign_schema
 from splitgraph.ingestion.common import IngestionAdapter, build_commandline_help
 
@@ -178,7 +178,7 @@ EOF
     @classmethod
     def from_commandline(cls, engine, commandline_kwargs) -> "CSVDataSource":
         params = deepcopy(commandline_kwargs)
-        credentials = {}
+        credentials = Credentials({})
         for k in ["s3_access_key", "s3_secret_key"]:
             if k in params:
                 credentials[k] = params[k]

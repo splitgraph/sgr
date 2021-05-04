@@ -10,6 +10,7 @@ from typing import (
     Union,
     TypeVar,
     TYPE_CHECKING,
+    NewType,
 )
 
 if TYPE_CHECKING:
@@ -33,11 +34,11 @@ SourcesList = List[Dict[str, str]]
 ProvenanceLine = Dict[str, Union[str, List[str], List[bool], SourcesList]]
 
 # Ingestion-related params
-Credentials = Dict[str, Any]
-Params = Dict[str, Any]
-TableParams = Dict[str, Any]
+Credentials = NewType("Credentials", Dict[str, Any])
+Params = NewType("Params", Dict[str, Any])
+TableParams = NewType("TableParams", Dict[str, Any])
 TableInfo = Union[List[str], Dict[str, Tuple[TableSchema, TableParams]]]
-SyncState = Dict[str, Any]
+SyncState = NewType("SyncState", Dict[str, Any])
 
 
 class MountError(NamedTuple):
@@ -46,8 +47,10 @@ class MountError(NamedTuple):
     error_text: str
 
 
-PreviewResult = Dict[str, Union[MountError, List[Dict[str, Any]]]]
-IntrospectionResult = Dict[str, Union[Tuple[TableSchema, TableParams], MountError]]
+PreviewResult = NewType("PreviewResult", Dict[str, Union[MountError, List[Dict[str, Any]]]])
+IntrospectionResult = NewType(
+    "IntrospectionResult", Dict[str, Union[Tuple[TableSchema, TableParams], MountError]]
+)
 
 T = TypeVar("T")
 
@@ -80,7 +83,7 @@ def dict_to_table_schema_params(
                 TableColumn(i + 1, cname, ctype, False, None)
                 for (i, (cname, ctype)) in enumerate((tsp.schema_ or {}).items())
             ],
-            tsp.options,
+            TableParams(tsp.options),
         )
         for t, tsp in tables.items()
     }
