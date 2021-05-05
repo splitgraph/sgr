@@ -134,16 +134,21 @@ class SingerDataSource(SyncableDataSource, ABC):
         # Run the sink + target and capture the stdout (new state)
         output_stream = StringIO()
 
-        with self._run_singer(config, state, catalog=catalog) as proc:
-            run_patched_sync(
-                repository,
-                base_image,
-                new_image_hash,
-                delete_old=True,
-                failure="keep_both",
-                input_stream=proc.stdout,
-                output_stream=output_stream,
-            )
+        failure: Optional[Exception] = None
+        try:
+            with self._run_singer(config, state, catalog=catalog) as proc:
+                run_patched_sync(
+                    repository,
+                    base_image,
+                    new_image_hash,
+                    delete_old=True,
+                    failure="keep_both",
+                    input_stream=proc.stdout,
+                    output_stream=output_stream,
+                )
+        except DataSourceError as e:
+            logging.warning("Data source partially failed. Keeping the image anyway", exc_info=e)
+            failure = e
 
         new_state = output_stream.getvalue()
         logging.info("New state: %s", new_state)
@@ -186,6 +191,10 @@ class SingerDataSource(SyncableDataSource, ABC):
             )
 
         repository.commit_engines()
+
+        if failure:
+            raise failure
+
         return new_image_hash
 
     def build_singer_catalog(
