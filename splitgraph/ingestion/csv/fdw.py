@@ -13,7 +13,7 @@ from minio import Minio
 import splitgraph.config
 from splitgraph.exceptions import get_exception_name
 from splitgraph.ingestion.common import generate_column_names
-from splitgraph.ingestion.csv.common import CSVOptions, get_bool, make_csv_reader
+from splitgraph.ingestion.csv.common import CSVOptions, get_bool, make_csv_reader, get_s3_params
 from splitgraph.ingestion.inference import infer_sg_schema
 
 try:
@@ -190,7 +190,7 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
                 return []
             else:
                 # Get S3 options
-                client, bucket, prefix = cls._get_s3_params(srv_options)
+                client, bucket, prefix = get_s3_params(srv_options)
 
                 # Note that we ignore the "schema" here (e.g. IMPORT FOREIGN SCHEMA some_schema)
                 # and take all interesting parameters through FDW options.
@@ -225,7 +225,7 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
                 if "s3_object" in this_table_options:
                     # TODO: we can support overriding S3 params per-table here, but currently
                     #   we don't do it.
-                    client, bucket, _ = cls._get_s3_params(srv_options)
+                    client, bucket, _ = get_s3_params(srv_options)
                     result.append(
                         cls._introspect_s3(
                             client,
@@ -284,24 +284,6 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
                     stream = gzip.GzipFile(fileobj=stream)
                 return _get_table_definition(stream, srv_options, table_name, table_options)
 
-    @classmethod
-    def _get_s3_params(cls, fdw_options) -> Tuple[Minio, str, str]:
-        s3_client = Minio(
-            endpoint=fdw_options["s3_endpoint"],
-            access_key=fdw_options.get("s3_access_key"),
-            secret_key=fdw_options.get("s3_secret_key"),
-            secure=get_bool(fdw_options, "s3_secure"),
-            region=fdw_options.get("s3_region"),
-        )
-
-        s3_bucket = fdw_options["s3_bucket"]
-
-        # We split the object into a prefix + object ID to let us mount a bunch of objects
-        # with the same prefix as CSV files.
-        s3_object_prefix = fdw_options.get("s3_object_prefix", "")
-
-        return s3_client, s3_bucket, s3_object_prefix
-
     def __init__(self, fdw_options, fdw_columns):
         # Initialize the logger that will log to the engine's stderr: log timestamp and PID.
 
@@ -324,6 +306,6 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
             self.url = fdw_options["url"]
         else:
             self.mode = "s3"
-            self.s3_client, self.s3_bucket, self.s3_object_prefix = self._get_s3_params(fdw_options)
+            self.s3_client, self.s3_bucket, self.s3_object_prefix = get_s3_params(fdw_options)
 
             self.s3_object = fdw_options["s3_object"]

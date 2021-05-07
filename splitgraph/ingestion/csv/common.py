@@ -1,5 +1,6 @@
 import csv
 import io
+from minio import Minio
 from typing import Dict, Tuple, NamedTuple, TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -131,3 +132,21 @@ def make_csv_reader(
 
     reader = csv.reader(io_stream, **csv_options.to_csv_kwargs())
     return csv_options, reader
+
+
+def get_s3_params(fdw_options: Dict[str, Any]) -> Tuple[Minio, str, str]:
+    s3_client = Minio(
+        endpoint=fdw_options["s3_endpoint"],
+        access_key=fdw_options.get("s3_access_key"),
+        secret_key=fdw_options.get("s3_secret_key"),
+        secure=get_bool(fdw_options, "s3_secure"),
+        region=fdw_options.get("s3_region"),
+    )
+
+    s3_bucket = fdw_options["s3_bucket"]
+
+    # We split the object into a prefix + object ID to let us mount a bunch of objects
+    # with the same prefix as CSV files.
+    s3_object_prefix = fdw_options.get("s3_object_prefix", "")
+
+    return s3_client, s3_bucket, s3_object_prefix
