@@ -2,7 +2,7 @@
 import json
 import logging
 from copy import deepcopy
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Tuple
 
 from psycopg2.sql import SQL, Identifier
 
@@ -115,6 +115,31 @@ class SocrataDataSource(ForeignDataWrapperDataSource):
 
         self.engine.run_sql(SQL(";").join(mount_statements), mount_args)
         return []
+
+    def get_raw_url(
+        self, tables: Optional[TableInfo] = None, expiry: int = 3600
+    ) -> Dict[str, List[Tuple[str, str]]]:
+        tables = self.tables or tables
+        if not tables:
+            return {}
+        result: Dict[str, List[Tuple[str, str]]] = {}
+
+        for table in tables:
+            table_options = super().get_table_options(table, tables)
+            full_options = {**self.params, **table_options}
+            domain = full_options.get("domain")
+            socrata_id = full_options.get("socrata_id")
+            if not domain or not socrata_id:
+                continue
+
+            result[table] = [
+                (
+                    "text/csv",
+                    f"https://{domain}/api/views/{socrata_id}/rows.csv?accessType=DOWNLOAD",
+                )
+            ]
+
+        return result
 
 
 def generate_socrata_mount_queries(sought_ids, datasets, mountpoint, server_id, tables: TableInfo):
