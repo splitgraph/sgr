@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.14 (2021-05-05)
+
+  * Functionality to dump and load a Splitgraph catalog to/from a special `repositories.yml` format (https://github.com/splitgraph/splitgraph/pull/445)
+
+Full set of changes: [`v0.2.13...v0.2.14`](https://github.com/splitgraph/splitgraph/compare/v0.2.13...v0.2.14)
+
 ## v0.2.13 (2021-04-14)
 
   * Various fixes to CSV inference and querying (https://github.com/splitgraph/splitgraph/pull/433)
