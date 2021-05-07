@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 import json
 from copy import deepcopy
 from typing import Optional, TYPE_CHECKING, Dict, List, Tuple, Any
@@ -265,3 +267,44 @@ EOF
     def get_remote_schema_name(self) -> str:
         # We ignore the schema name and use the bucket/prefix passed in the params instead.
         return "data"
+
+    @staticmethod
+    def _get_url(merged_options: Dict[str, Any], expiry: int = 3600) -> List[Tuple[str, str]]:
+        from splitgraph.ingestion.csv.common import get_s3_params
+
+        if merged_options.get("url"):
+            # Currently all URLs are public anyway, so return it directly
+            return [("text/csv", merged_options["url"])]
+        else:
+            # Instantiate the Minio client and pre-sign a URL
+            s3_client, s3_bucket, s3_object_prefix = get_s3_params(merged_options)
+            s3_object = merged_options.get("s3_object")
+            if not s3_object:
+                return []
+            return [
+                (
+                    "text/csv",
+                    s3_client.presigned_get_object(
+                        bucket_name=s3_bucket,
+                        object_name=s3_object,
+                        expires=timedelta(seconds=expiry),
+                    ),
+                )
+            ]
+
+    def get_raw_url(
+        self, tables: Optional[TableInfo] = None, expiry: int = 3600
+    ) -> Dict[str, List[Tuple[str, str]]]:
+        tables = tables or self.tables
+        if not tables:
+            return {}
+        result: Dict[str, List[Tuple[str, str]]] = {}
+
+        # Merge the table options to take care of overrides and use them to get URLs
+        # for each table.
+        for table in tables:
+            table_options = super().get_table_options(table, tables)
+            full_options = {**self.credentials, **self.params, **table_options}
+            result[table] = self._get_url(full_options)
+
+        return result
