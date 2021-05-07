@@ -457,6 +457,67 @@ def test_csv_data_source_multiple(local_engine_empty):
         local_engine_empty.delete_schema("temp_data")
 
 
+def test_csv_data_source_raw_url(local_engine_empty):
+    # Use the data from the previous test to test out the raw URL functionality
+    url = MINIO.presigned_get_object("test_csv", "some_prefix/rdu-weather-history.csv")
+
+    credentials = {
+        "s3_access_key": "minioclient",
+        "s3_secret_key": "supersecure",
+    }
+
+    params = {
+        "s3_endpoint": "objectstorage:9000",
+        "s3_secure": False,
+        "s3_bucket": "test_csv",
+        # Put this delimiter in as a canary to make sure table params override server params.
+        "delimiter": ",",
+    }
+
+    tables = {
+        "from_url": ([], {"url": url}),
+        "from_s3_rdu": ([], {"s3_object": "some_prefix/rdu-weather-history.csv"}),
+        "from_s3_encoding": ([], {"s3_object": "some_prefix/encoding-win-1252.csv"}),
+        "from_url_broken": ([], {"url": "invalid_url"}),
+        "from_s3_broken": ([], {"s3_object": "invalid_object"}),
+    }
+
+    source = CSVDataSource(
+        local_engine_empty,
+        credentials,
+        params,
+        tables,
+    )
+
+    schema = source.introspect()
+    schema = unwrap(schema)[0]
+
+    raw_urls = source.get_raw_url(tables=schema)
+    assert raw_urls == {
+        "from_s3_encoding": [
+            (
+                "text/csv",
+                mock.ANY,
+            )
+        ],
+        "from_s3_rdu": [
+            (
+                "text/csv",
+                mock.ANY,
+            )
+        ],
+        "from_url": [
+            (
+                "text/csv",
+                url,
+            )
+        ],
+    }
+
+    assert "objectstorage:9000" in raw_urls["from_s3_encoding"][0][1]
+    assert "objectstorage:9000" in raw_urls["from_s3_rdu"][0][1]
+
+
 def test_csv_data_source_http(local_engine_empty):
     source = CSVDataSource(
         local_engine_empty,
