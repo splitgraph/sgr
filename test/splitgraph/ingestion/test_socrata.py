@@ -2,10 +2,12 @@ import json
 import os
 from typing import NamedTuple
 from unittest import mock
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock, call, Mock
 
 import pytest
 from sodapy import Socrata
+
+from splitgraph.ingestion.socrata.mount import SocrataDataSource
 from test.splitgraph.conftest import INGESTION_RESOURCES
 
 from splitgraph.core.types import TableColumn
@@ -202,7 +204,12 @@ def test_socrata_mounting_slug(local_engine_empty):
     socrata.datasets.return_value = socrata_meta
     with mock.patch("sodapy.Socrata", return_value=socrata):
         mount(
-            "test/pg_mount", "socrata", {"domain": "example.com", "app_token": "some_token",},
+            "test/pg_mount",
+            "socrata",
+            {
+                "domain": "example.com",
+                "app_token": "some_token",
+            },
         )
 
     assert local_engine_empty.get_all_tables("test/pg_mount") == [
@@ -362,9 +369,30 @@ def test_socrata_smoke(domain, dataset_id, local_engine_empty):
     # to make sure the mounting works end-to-end.
     try:
         mount(
-            "socrata_mount", "socrata", {"domain": domain, "tables": {"data": dataset_id}},
+            "socrata_mount",
+            "socrata",
+            {"domain": domain, "tables": {"data": dataset_id}},
         )
         result = local_engine_empty.run_sql("SELECT * FROM socrata_mount.data LIMIT 10")
         assert len(result) == 10
     finally:
         local_engine_empty.delete_schema("socrata_mount")
+
+
+def test_socrata_data_source_raw_url():
+    engine = Mock()
+    data_source = SocrataDataSource(
+        engine=engine,
+        params={"domain": "data.healthcare.gov"},
+        tables={"dataset": ([], {"socrata_id": "7h6f-vws8"})},
+        credentials={},
+    )
+
+    assert data_source.get_raw_url() == {
+        "dataset": [
+            (
+                "text/csv",
+                "https://data.healthcare.gov/api/views/7h6f-vws8/rows.csv?accessType=DOWNLOAD",
+            )
+        ]
+    }
