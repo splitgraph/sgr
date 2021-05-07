@@ -78,6 +78,19 @@ class DataSource(ABC):
     def introspect(self) -> IntrospectionResult:
         raise NotImplementedError
 
+    def get_raw_url(
+        self, tables: Optional[TableInfo] = None, expiry: int = 3600
+    ) -> Dict[str, List[Tuple[str, str]]]:
+        """
+        Get a list of public URLs for each table in this data source, e.g. to export the data
+        as CSV. These may be temporary (e.g. pre-signed S3 URLs) but should be accessible without
+        authentication.
+        :param tables: A TableInfo object overriding the table params of the source
+        :param expiry: The URL should be valid for at least this many seconds
+        :return: Dict of table_name -> list of (mimetype, raw URL)
+        """
+        return {}
+
 
 class MountableDataSource(DataSource, ABC):
     supports_mount = True
