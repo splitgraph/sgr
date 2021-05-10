@@ -119,7 +119,7 @@ class SocrataDataSource(ForeignDataWrapperDataSource):
     def get_raw_url(
         self, tables: Optional[TableInfo] = None, expiry: int = 3600
     ) -> Dict[str, List[Tuple[str, str]]]:
-        tables = self.tables or tables
+        tables = tables or self.tables
         if not tables:
             return {}
         result: Dict[str, List[Tuple[str, str]]] = {}
