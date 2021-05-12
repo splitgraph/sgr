@@ -2,7 +2,7 @@ import logging
 import os
 import types
 from importlib import import_module
-from typing import Dict, Type, List
+from typing import Dict, Type, List, Optional, cast
 
 from .base import DataSource
 from .fdw import PostgreSQLDataSource, MongoDataSource, ElasticSearchDataSource, MySQLDataSource
@@ -17,16 +17,24 @@ _data_sources_registered = False
 
 def get_data_source(data_source: str) -> Type[DataSource]:
     """Returns a class for a given data source"""
-    _register_default_data_sources()
+    global _data_sources_registered
+    if not _data_sources_registered:
+        _reload_data_sources()
+        _data_sources_registered = True
+
     try:
         return _DATA_SOURCES[data_source]
     except KeyError:
-        raise DataSourceError("Data source %s not supported!" % data_source)
+        data_source_class = _load_plugin_from_dir(data_source)
+        if data_source_class:
+            register_data_source(data_source, data_source_class)
+            return data_source_class
+        raise DataSourceError("Data source %s not found!" % data_source)
 
 
 def get_data_sources() -> List[str]:
     """Returns the names of all registered data sources."""
-    _register_default_data_sources()
+    _reload_data_sources()
     return list(_DATA_SOURCES.keys())
 
 
@@ -36,13 +44,7 @@ def register_data_source(name: str, data_source_class: Type[DataSource]) -> None
     _DATA_SOURCES[name] = data_source_class
 
 
-def _register_default_data_sources() -> None:
-    # Register the data sources from the config.
-    global _data_sources_registered
-    if _data_sources_registered:
-        return
-    _data_sources_registered = True
-
+def _reload_data_sources() -> None:
     for source_name, source_class_name in get_all_in_section(CONFIG, "data_sources").items():
         assert isinstance(source_class_name, str)
 
@@ -64,17 +66,36 @@ def _register_plugin_dir_data_sources():
         return
     logging.debug("Looking up plugins in %s", plugin_dir)
     for plugin in os.listdir(plugin_dir):
-        plugin_file = os.path.join(plugin_dir, plugin, "plugin.py")
-        if os.path.exists(plugin_file):
-            import importlib.util
+        data_source = _load_plugin_from_dir(plugin, plugin_dir)
+        if data_source:
+            register_data_source(plugin, data_source)
 
-            # Import the module and get the __plugin__ attr from it
-            spec = importlib.util.spec_from_file_location("plugin_dir", plugin_file)
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)  # type:ignore
-            if hasattr(module, "__plugin__"):
-                logging.debug("Loading %s", plugin_file)
-                register_data_source(plugin, module.__plugin__)  # type:ignore
+
+def _load_plugin_from_dir(
+    plugin_name: str, plugin_dir: Optional[str] = None
+) -> Optional[Type[DataSource]]:
+    plugin_dir = plugin_dir or get_singleton(CONFIG, "SG_PLUGIN_DIR")
+
+    plugin_file = os.path.join(plugin_dir, plugin_name, "plugin.py")
+    if os.path.exists(plugin_file):
+        import importlib.util
+
+        # Import the module and get the __plugin__ attr from it
+        spec = importlib.util.spec_from_file_location("plugin_dir", plugin_file)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)  # type:ignore
+        if hasattr(module, "__plugin__"):
+            logging.debug("Loading %s", plugin_file)
+            data_source = module.__plugin__  # type: ignore
+            if not issubclass(data_source, DataSource):
+                logging.warning(
+                    "Data source %s in %s isn't an instance of DataSource. Ignoring.",
+                    data_source,
+                    plugin_file,
+                )
+                return None
+            return cast(Type[DataSource], data_source)
+    return None
 
 
 def _load_source(source_name, source_class_name):

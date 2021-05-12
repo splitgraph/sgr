@@ -152,9 +152,8 @@ def test_mount_plugin_dir():
         "splitgraph.hooks.data_source.get_singleton",
         return_value=os.path.join(INGESTION_RESOURCES, "../custom_plugin_dir"),
     ):
-        _register_plugin_dir_data_sources()
+        plugin_class = get_data_source("some_plugin")
 
-    plugin_class = get_data_source("some_plugin")
     plugin = plugin_class(
         engine=None, credentials={"access_token": "abc"}, params={"some_field": "some_value"}
     )
