@@ -10,7 +10,7 @@ repository = "https://github.com/splitgraph/splitgraph"
 
 [tool.poetry.dependencies]
 python = ">=3.6.1,<4.0"
-click = "^7"
+click = ">=7,<9"
 psycopg2-binary = "^2"
 parsimonious = "^0.8"
 minio = ">=4"
