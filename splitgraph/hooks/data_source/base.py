@@ -30,9 +30,9 @@ INGESTION_STATE_SCHEMA = [
 
 
 class DataSource(ABC):
-    params_schema: Dict[str, Any]
-    credentials_schema: Dict[str, Any]
-    table_params_schema: Dict[str, Any]
+    params_schema: Dict[str, Any] = {}
+    credentials_schema: Dict[str, Any] = {}
+    table_params_schema: Dict[str, Any] = {}
 
     supports_mount = False
     supports_sync = False
