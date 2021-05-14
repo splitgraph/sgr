@@ -293,7 +293,7 @@ docs = ["sphinx"]
 
 [[package]]
 name = "httpretty"
-version = "1.0.5"
+version = "1.1.1"
 description = "HTTP client mock for Python"
 category = "dev"
 optional = false
@@ -1410,7 +1410,7 @@ greenlet = [
     {file = "greenlet-1.1.0.tar.gz", hash = "sha256:c87df8ae3f01ffb4483c796fe1b15232ce2b219f0b18126948616224d3f658ee"},
 ]
 httpretty = [
-    {file = "httpretty-1.0.5.tar.gz", hash = "sha256:e53c927c4d3d781a0761727f1edfad64abef94e828718e12b672a678a8b3e0b5"},
+    {file = "httpretty-1.1.1.tar.gz", hash = "sha256:05223ede0a720564eeed95fbea00000c9569a9863e3661ad513a0c03e6e6eba1"},
 ]
 identify = [
     {file = "identify-2.2.4-py2.py3-none-any.whl", hash = "sha256:ad9f3fa0c2316618dc4d840f627d474ab6de106392a4f00221820200f490f5a8"},
