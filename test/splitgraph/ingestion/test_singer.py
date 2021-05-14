@@ -589,5 +589,8 @@ def test_singer_tap_mysql_sync(local_engine_empty):
     assert len(repo.images()) == 1
     image = repo.images["latest"]
     assert image.get_table("mushrooms").objects == [
-        "o69e4529709af65f37f2e2f3a8290340ae7ad9ada6bca9c393a09572f12cbb3"
+        "o69e4529709af65f37f2e2f3a8290340ae7ad9ada6bca9c393a09572f12cbb3",
+        # TODO: this object has the pk=2 row from the previous one repeated, a tap-mysql bug
+        #  but we don't conflate these with Singer now.
+        "od487f26d32a347ae4cc81a7442ef5a28615f70a9fff426991ab0d9d14bf7aa",
     ]
