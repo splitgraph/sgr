@@ -158,9 +158,9 @@ class TestLayeredQuerying:
             assert fo.call_count == 1
 
         query_plan = table.get_query_plan(quals=quals, columns=["name", "timestamp"])
-        assert query_plan.estimated_rows == 2
+        assert query_plan.estimated_rows == 1
         assert len(query_plan.required_objects) == 4
-        assert len(query_plan.filtered_objects) == 2
+        assert len(query_plan.filtered_objects) == 3
 
 
 def test_layered_querying_against_single_fragment(pg_repo_local):
@@ -288,7 +288,7 @@ def _prepare_fully_remote_repo(local_engine_empty, pg_repo_remote_registry):
     "test_case",
     [
         # Each test case is a: query, expected result, mask of which objects were downloaded
-        # Test single PK qual
+        # Test single PK qual -- hits the last object with that PK
         (
             "SELECT * FROM fruits WHERE fruit_id = 4",
             [(4, "kumquat", 1, _DT)],
@@ -300,25 +300,30 @@ def _prepare_fully_remote_repo(local_engine_empty, pg_repo_remote_registry):
             [(3, "mayonnaise", 1, _DT), (4, "kumquat", 1, _DT)],
             (False, True, False, False, True),
         ),
-        # Test the upsert fetches the original fragment as well as one that overwrites it
+        # Test the upsert fetches the original fragment as well as one that overwrites it.
+        # Because we load the original fragment, we also have to check the one that DELETEs
+        # a row from it (since its PK overlaps with it)
         (
             "SELECT * FROM fruits WHERE fruit_id = 2",
             [(2, "guitar", 1, _DT)],
-            (True, False, False, True, False),
+            (True, False, True, True, False),
         ),
         # Test NULLs don't break anything (even though we still look at all objects)
         ("SELECT * FROM fruits WHERE name IS NULL", [], (True, True, True, True, True)),
         # Same but also add a filter on the string column to exclude 'guitar'.
         # Make sure the chunk that updates 'orange' into 'guitar' is still fetched
         # since it overwrites the old value (even though the updated value doesn't match the qual any more)
+        # Also, the DELETE pk=1 fragment is also loaded (since it overlaps with the first fragment
+        # that we're also loading)
         (
             "SELECT * FROM fruits WHERE fruit_id = 2 AND name > 'guitar'",
             [],
-            (True, False, False, True, False),
+            (True, False, True, True, False),
         ),
         # Similar here: the chunk that deletes 'apple' is supposed to have 'apple' included in its index
         # and fetched as well.
-        ("SELECT * FROM fruits WHERE name = 'apple'", [], (True, False, True, False, False)),
+        # In this case, we also load the UPDATE pk=2 fragment (overlaps with the first).
+        ("SELECT * FROM fruits WHERE name = 'apple'", [], (True, False, True, True, False)),
     ],
 )
 @pytest.mark.registry
@@ -580,81 +585,50 @@ def test_disjoint_table_lq_two_singletons_one_overwritten(pg_repo_local):
             ]
 
             # This time we had to apply the fragments in the final group (since there were two of them)
-            apply_fragments.assert_called_once_with(
-                [
-                    (
-                        "splitgraph_meta",
-                        "oaa6d009e485bfa91aec4ab6b0ed1ebcd67055f6a3420d29f26446b034f41cc",
-                    ),
-                    (
-                        "splitgraph_meta",
-                        "o15a420721b04e9749761b5368628cb15593cb8cfdcc547107b98eddda5031d",
-                    ),
-                ],
-                SPLITGRAPH_META_SCHEMA,
-                mock.ANY,
-                extra_qual_args=("3",),
-                extra_quals=mock.ANY,
-                schema_spec=mock.ANY,
-            )
+            _assert_fragments_applied(_gsc, apply_fragments, pg_repo_local)
 
-            # Two calls to _generate_select_queries -- one to directly query the pk=3 chunk...
-            assert _gsc.call_args_list == [
-                mock.call(
-                    pg_repo_local.engine,
-                    b'"splitgraph_meta".'
-                    b'"of0fb43e477311f82aa30055be303ff00599dfe155d737def0d00f06e07228b"',
-                    ["fruit_id", "name"],
-                    mock.ANY,
-                    ("3",),
-                ),
-                # ...and one to query the applied fragments in the second group.
-                mock.call(pg_repo_local.engine, mock.ANY, ["fruit_id", "name"], mock.ANY, ("3",),),
-            ]
 
-            # Check the temporary table has been deleted since we've exhausted the query
-            args, _ = apply_fragments.call_args_list[0]
-            tmp_table = args[2]
-            assert not pg_repo_local.engine.table_exists(SPLITGRAPH_META_SCHEMA, tmp_table)
-
-    # Now query PKs 3 and 4. Even though the chunk containing PKs 4 and 5 was updated
-    # (by changing PK 5), the qual filter should drop the update, as it's not pertinent
-    # to the query. Hence, we should end up not needing fragment application.
-    with mock.patch.object(
-        PostgresEngine, "apply_fragments", wraps=pg_repo_local.engine.apply_fragments
-    ) as apply_fragments:
-        with mock.patch(
-            "splitgraph.core.table._generate_select_query", side_effect=_generate_select_query
-        ) as _gsc:
-            assert list(
-                fruits.query(
-                    columns=["fruit_id", "name"],
-                    quals=[[("fruit_id", "=", "3"), ("fruit_id", "=", "4")]],
-                )
-            ) == [{"fruit_id": 3, "name": "mayonnaise"}, {"fruit_id": 4, "name": "fruit_4"}]
-
-            # No fragment application
-            assert apply_fragments.call_count == 0
-
-            # Single call to _generate_select_queries directly selecting rows from the two chunks
-            assert _gsc.mock_calls == [
-                call(
-                    mock.ANY,
-                    b'"splitgraph_meta".'
-                    b'"of0fb43e477311f82aa30055be303ff00599dfe155d737def0d00f06e07228b"',
-                    ["fruit_id", "name"],
-                    mock.ANY,
-                    ("3", "4"),
-                ),
-                call(
-                    mock.ANY,
-                    b'"splitgraph_meta".'
-                    b'"oaa6d009e485bfa91aec4ab6b0ed1ebcd67055f6a3420d29f26446b034f41cc"',
-                    ["fruit_id", "name"],
-                    mock.ANY,
-                    ("3", "4"),
-                ),
-            ]
+def _assert_fragments_applied(_gsc, apply_fragments, pg_repo_local):
+    apply_fragments.assert_called_once_with(
+        [
+            (
+                "splitgraph_meta",
+                "oaa6d009e485bfa91aec4ab6b0ed1ebcd67055f6a3420d29f26446b034f41cc",
+            ),
+            (
+                "splitgraph_meta",
+                "o15a420721b04e9749761b5368628cb15593cb8cfdcc547107b98eddda5031d",
+            ),
+        ],
+        SPLITGRAPH_META_SCHEMA,
+        mock.ANY,
+        extra_qual_args=("3",),
+        extra_quals=mock.ANY,
+        schema_spec=mock.ANY,
+    )
+    # Two calls to _generate_select_queries -- one to directly query the pk=3 chunk...
+    assert _gsc.call_args_list == [
+        mock.call(
+            pg_repo_local.engine,
+            b'"splitgraph_meta".'
+            b'"of0fb43e477311f82aa30055be303ff00599dfe155d737def0d00f06e07228b"',
+            ["fruit_id", "name"],
+            mock.ANY,
+            ("3",),
+        ),
+        # ...and one to query the applied fragments in the second group.
+        mock.call(
+            pg_repo_local.engine,
+            mock.ANY,
+            ["fruit_id", "name"],
+            mock.ANY,
+            ("3",),
+        ),
+    ]
+    # Check the temporary table has been deleted since we've exhausted the query
+    args, _ = apply_fragments.call_args_list[0]
+    tmp_table = args[2]
+    assert not pg_repo_local.engine.table_exists(SPLITGRAPH_META_SCHEMA, tmp_table)
 
 
 def test_disjoint_table_lq_two_singletons_one_overwritten_indirect(pg_repo_local):
