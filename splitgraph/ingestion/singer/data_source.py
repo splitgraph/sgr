@@ -150,8 +150,9 @@ class SingerDataSource(SyncableDataSource, ABC):
             logging.warning("Data source partially failed. Keeping the image anyway", exc_info=e)
             failure = e
 
-        new_state = output_stream.getvalue()
-        logging.info("New state: %s", new_state)
+        states = output_stream.getvalue()
+        latest_state = states.splitlines()[-1]
+        logging.info("State stream: %s", states)
 
         # Add a table to the new image with the new state
         repository.object_engine.create_table(
@@ -161,11 +162,12 @@ class SingerDataSource(SyncableDataSource, ABC):
             temporary=True,
         )
         # NB: new_state here is a JSON-serialized string, so we don't wrap it into psycopg2.Json()
+        logging.info("Writing state: %s", latest_state)
         repository.object_engine.run_sql(
             SQL("INSERT INTO pg_temp.{} (timestamp, state) VALUES(now(), %s)").format(
                 Identifier(INGESTION_STATE_TABLE)
             ),
-            (new_state,),
+            (latest_state,),
         )
 
         object_id = repository.objects.create_base_fragment(
