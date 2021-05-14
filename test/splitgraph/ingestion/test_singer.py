@@ -187,15 +187,18 @@ def test_singer_ingestion_update(local_engine_empty):
     # Extra DIFF at the end
     assert image.get_table("stargazers").objects == [
         "od68e932ebc99c1a337363c1b92056dcf7fc7c6c45494bc42e1e1ec4e0c88ac",
-        "oc61804b31dcae8294a6b780efe41601eaeb7a1d0b7cd7bdfea4843db214df0",
+        "o7a04cc1f13d00eea692bede58b57b07c4272e07458ac8b405971b1f5f49679",
     ]
 
     assert repo.run_sql(
         "SELECT sg_ud_flag, user_id, starred_at "
-        "FROM splitgraph_meta.oc61804b31dcae8294a6b780efe41601eaeb7a1d0b7cd7bdfea4843db214df0 "
+        "FROM splitgraph_meta.o7a04cc1f13d00eea692bede58b57b07c4272e07458ac8b405971b1f5f49679 "
         "ORDER BY user_id"
     ) == [
         (True, Decimal("100004"), datetime(2020, 10, 11, 21, 9, 30)),
+        # Even though this row is the same as in the previous fragment, we keep it here
+        # as we don't compare its value with the previous fragment.
+        (True, Decimal("100005"), datetime(2019, 4, 18, 2, 40, 47)),
         (True, Decimal("100006"), datetime(2019, 6, 6, 20, 53)),
     ]
 
