@@ -233,13 +233,20 @@ def test_commandline_dump():
                 )
                 assert result.exit_code == 0
 
-                assert list(os.walk(tmpdir)) == [
-                    (tmpdir, ["readmes"], ["repositories.yml"]),
-                    (
-                        os.path.join(tmpdir, "readmes"),
-                        [],
-                        ["otheruser-somerepo_2.fe37.md", "someuser-somerepo_1.b7f3.md"],
-                    ),
+                contents = list(os.walk(tmpdir))
+                # Check the dump root
+                assert contents[0] == (tmpdir, ["readmes"], ["repositories.yml"])
+
+                # Check the readmes subdirectory: no directories
+                assert contents[1][:2] == (
+                    os.path.join(tmpdir, "readmes"),
+                    [],
+                )
+
+                # ... and two files
+                assert sorted(contents[1][2]) == [
+                    "otheruser-somerepo_2.fe37.md",
+                    "someuser-somerepo_1.b7f3.md",
                 ]
 
                 _somerepo_1_dump = {
