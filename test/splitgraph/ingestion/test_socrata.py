@@ -358,8 +358,7 @@ def test_socrata_column_deduplication():
 @pytest.mark.parametrize(
     "domain,dataset_id",
     [
-        # Had issues with 403s if the :id column was requested explicitly
-        ("data.healthcare.gov", "7h6f-vws8"),
+        ("data.cityofchicago.org", "x2n5-8w5q"),
         # Popular for hire vehicles dataset
         ("data.cityofnewyork.us", "8wbx-tsch"),
     ],
