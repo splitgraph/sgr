@@ -45,14 +45,18 @@ def _migrate_schema(engine, table_schema, table_name, table_schema_spec, new_sch
         if c not in new_cols:
             engine.run_sql(
                 SQL("ALTER TABLE {}.{} DROP COLUMN {}").format(
-                    Identifier(table_schema), Identifier(table_name), Identifier(c),
+                    Identifier(table_schema),
+                    Identifier(table_name),
+                    Identifier(c),
                 )
             )
     for c in new_cols:
         if c not in old_cols:
             engine.run_sql(
                 SQL("ALTER TABLE {}.{} ADD COLUMN {} %s" % validate_type(new_cols[c])).format(
-                    Identifier(table_schema), Identifier(table_name), Identifier(c),
+                    Identifier(table_schema),
+                    Identifier(table_name),
+                    Identifier(c),
                 )
             )
         elif new_cols[c] != old_cols[c]:
@@ -60,15 +64,15 @@ def _migrate_schema(engine, table_schema, table_name, table_schema_spec, new_sch
                 SQL(
                     "ALTER TABLE {}.{} ALTER COLUMN {} TYPE %s" % validate_type(new_cols[c])
                 ).format(
-                    Identifier(table_schema), Identifier(table_name), Identifier(c),
+                    Identifier(table_schema),
+                    Identifier(table_name),
+                    Identifier(c),
                 )
             )
 
 
 def _make_changeset(
     engine: PostgresEngine,
-    old_schema: str,
-    old_table: str,
     schema: str,
     table: str,
     schema_spec: TableSchema,
@@ -78,34 +82,34 @@ def _make_changeset(
     to the object manager (store as a Splitgraph diff)."""
 
     # PK -> (upserted / deleted, old row, new row)
-    # As a memory-saving hack, we only record the values of the old row (read from the
-    # current table) -- this is because object creation routines read the inserted rows
-    # from the staging table anyway.
+    # We don't find out the old row here. This is because it requires a JOIN on the current
+    # Splitgraph table, so if we're adding e.g. 100k rows to a 1M row table, it's going to cause big
+    # performance issues. Instead, we pretend that all rows
+    # have been inserted (apart from the ones that have been deleted by having the magic
+    # _sdc_deleted_at column).
+
+    # We also don't care about finding out the new row here, as the storage routine queries
+    # the table directly to get those values.
+
+    # The tradeoff is that now, when querying the table, we need to include not only fragments
+    # whose index matches the query, but also all fragments that might overwrite those fragments
+    # (through PK range overlap). Since we don't record old row values in this changeset's index,
+    # we can no longer find if a fragment deletes some row by inspecting the index -- we need to
+    # use PK ranges to find out overlapping fragments.
+
     change_key = [c for c, _ in get_change_key(schema_spec)]
     # Query:
-    # SELECT (new, pk, columns) AS pk,
+    # SELECT (col_1, col_2, ...) AS pk,
     #        (custom upsert condition),
-    #        (row_to_json(old non-pk cols)) AS old_row
-    # FROM new_table n LEFT OUTER JOIN old_table o ON [o.pk = n.pk]
-    # WHERE old row != new row
+    #        {} AS old_row
+    # FROM new_table n
     query = (
         SQL("SELECT ")
         + SQL(",").join(SQL("n.") + Identifier(c) for c in change_key)
         + SQL(",")
-        + SQL(upsert_condition + " AS upserted, ")
-        # If PK doesn't exist in the new table, old_row is null, else output it
-        + SQL("CASE WHEN ")
-        + SQL(" AND ").join(SQL("o.{0} IS NULL").format(Identifier(c)) for c in change_key)
-        + SQL(" THEN '{}'::json ELSE json_build_object(")
-        + SQL(",").join(
-            SQL("%s, o.") + Identifier(c.name) for c in schema_spec if c.name not in change_key
+        + SQL(upsert_condition + " AS upserted FROM {}.{} n").format(
+            Identifier(schema), Identifier(table)
         )
-        + SQL(") END AS old_row FROM {}.{} n LEFT OUTER JOIN {}.{} o ON ").format(
-            Identifier(schema), Identifier(table), Identifier(old_schema), Identifier(old_table),
-        )
-        + SQL(" AND ").join(SQL("o.{0} = n.{0}").format(Identifier(c)) for c in change_key)
-        + SQL("WHERE o.* IS DISTINCT FROM n.*")
     ).as_string(engine.connection)
-    args = [c.name for c in schema_spec if c.name not in change_key]
-    result = engine.run_sql(query, args)
-    return {tuple(row[:-2]): (row[-2], row[-1], {}) for row in result}
+    result = engine.run_sql(query)
+    return {tuple(row[:-1]): (row[-1], {}, {}) for row in result}

@@ -190,8 +190,6 @@ class DbSyncProxy(DbSync):
             # Find PKs that have been upserted and deleted (make fake changeset)
             changeset = _make_changeset(
                 self.image.object_engine,
-                s,
-                old_table.table_name,
                 "pg_temp",
                 temp_table,
                 old_table.table_schema,
@@ -221,7 +219,14 @@ class DbSyncProxy(DbSync):
         # the object to the table if it already exists)
         self.image.repository.objects.register_tables(
             self.image.repository,
-            [(self.image.image_hash, old_table.table_name, old_table.table_schema, object_ids,)],
+            [
+                (
+                    self.image.image_hash,
+                    old_table.table_name,
+                    old_table.table_schema,
+                    object_ids,
+                )
+            ],
         )
 
     def delete_rows(self, stream):
