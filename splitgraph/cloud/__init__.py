@@ -589,15 +589,35 @@ class GQLAPIClient:
     """Wrapper class for select Splitgraph Registry GQL operations that can be
     called from the CLI"""
 
-    def __init__(self, remote: str):
-        self.remote = remote
-        self.endpoint = get_remote_param(self.remote, "SG_GQL_API")
+    def __init__(self, remote: Optional[str], endpoint: Optional[str], access_token: Optional[str]):
+        if not remote and (not endpoint or not access_token):
+            raise ValueError(
+                "GQLAPIClient must be initialized with either a remote or an endpoint "
+                "and an access token!"
+            )
+
+        if remote:
+            self.endpoint = get_remote_param(remote, "SG_GQL_API")
+            self._auth_client: Optional[RESTAPIClient] = RESTAPIClient(remote)
+            self._access_token: Optional[str] = access_token
+        elif endpoint:
+            self.endpoint = endpoint
+            self._auth_client = None
+            self._access_token = access_token
+
         self.registry_endpoint = self.endpoint.replace("/cloud/", "/registry/")  # :eyes:
-        self.auth_client = RESTAPIClient(remote)
+
+    @property
+    def access_token(self) -> str:
+        if self._auth_client:
+            return self._auth_client.access_token
+        else:
+            assert self._access_token
+            return self._access_token
 
     def _gql(self, query: Dict, endpoint=None, handle_errors=False) -> requests.Response:
         endpoint = endpoint or self.endpoint
-        access_token = self.auth_client.access_token
+        access_token = self.access_token
         headers = get_headers()
         headers.update({"Authorization": "Bearer " + access_token})
 
