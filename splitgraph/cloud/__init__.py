@@ -613,18 +613,18 @@ class GQLAPIClient:
         self.registry_endpoint = self.endpoint.replace("/cloud/", "/registry/")  # :eyes:
 
     @property
-    def access_token(self) -> str:
+    def access_token(self) -> Optional[str]:
         if self._auth_client:
             return self._auth_client.access_token
         else:
-            assert self._access_token
             return self._access_token
 
     def _gql(self, query: Dict, endpoint=None, handle_errors=False) -> requests.Response:
         endpoint = endpoint or self.endpoint
         access_token = self.access_token
         headers = get_headers()
-        headers.update({"Authorization": "Bearer " + access_token})
+        if access_token:
+            headers.update({"Authorization": "Bearer " + access_token})
 
         result = requests.post(
             endpoint, headers=headers, json=query, verify=os.environ.get("SSL_CERT_FILE", True)
