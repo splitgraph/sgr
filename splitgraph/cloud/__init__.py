@@ -589,7 +589,12 @@ class GQLAPIClient:
     """Wrapper class for select Splitgraph Registry GQL operations that can be
     called from the CLI"""
 
-    def __init__(self, remote: Optional[str], endpoint: Optional[str], access_token: Optional[str]):
+    def __init__(
+        self,
+        remote: Optional[str],
+        endpoint: Optional[str] = None,
+        access_token: Optional[str] = None,
+    ):
         if not remote and (not endpoint or not access_token):
             raise ValueError(
                 "GQLAPIClient must be initialized with either a remote or an endpoint "
