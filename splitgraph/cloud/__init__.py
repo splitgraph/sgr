@@ -595,10 +595,9 @@ class GQLAPIClient:
         endpoint: Optional[str] = None,
         access_token: Optional[str] = None,
     ):
-        if not remote and (not endpoint or not access_token):
+        if not remote and not endpoint:
             raise ValueError(
-                "GQLAPIClient must be initialized with either a remote or an endpoint "
-                "and an access token!"
+                "GQLAPIClient must be initialized with either a remote or an endpoint!"
             )
 
         if remote:
