@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
+from datetime import datetime as dt
 from io import StringIO
 from threading import Thread
 from typing import Dict, Any, Optional, cast
@@ -191,6 +192,16 @@ class SingerDataSource(SyncableDataSource, ABC):
                 repository,
                 [(new_image_hash, INGESTION_STATE_TABLE, INGESTION_STATE_SCHEMA, [object_id])],
             )
+
+        ingestion_time = dt.utcnow()
+
+        short_tag = ingestion_time.strftime("%Y%m%d")
+        long_tag = short_tag + "-" + ingestion_time.strftime("%H%M%S")
+
+        new_image = repository.images.by_hash(new_image_hash)
+
+        new_image.tag(short_tag)
+        new_image.tag(long_tag)
 
         repository.commit_engines()
 
