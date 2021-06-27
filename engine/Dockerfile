@@ -85,6 +85,20 @@ RUN /build/build_mongo_fdw.sh
 
 
 #####
+##### orc_fdw
+#####
+
+FROM toolchain AS builder_orc_fdw
+
+RUN apt-get update -qq && \
+    apt-get install -y chrpath && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY ./engine/build_scripts/fdws/orc_fdw /build
+RUN /build/build_orc_fdw.sh
+
+
+#####
 ##### mysql_fdw
 #####
 
@@ -162,6 +176,8 @@ COPY --from=builder_cstore_multicorn \
 
 COPY --from=builder_mongo_fdw /output/root /
 COPY --from=builder_mysql_fdw /output/root /
+COPY --from=builder_orc_fdw /output/root /
+COPY --from=builder_orc_fdw /build/orc_fdw/lib/*.so /usr/lib
 
 RUN ldconfig
 
