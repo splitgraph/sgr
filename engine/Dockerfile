@@ -99,6 +99,23 @@ RUN /build/build_orc_fdw.sh
 
 
 #####
+##### parquet_fdw
+#####
+
+FROM toolchain AS builder_parquet_fdw
+
+RUN apt update && apt install -y lsb-release && \
+    wget https://apache.jfrog.io/artifactory/arrow/$(lsb_release --id --short | tr 'A-Z' 'a-z')/apache-arrow-apt-source-latest-$(lsb_release --codename --short).deb && \
+    apt install -y -V ./apache-arrow-apt-source-latest-$(lsb_release --codename --short).deb && \
+    apt update && \
+    apt install -y -V libarrow-dev libparquet-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY ./engine/build_scripts/fdws/parquet_fdw /build
+RUN /build/build_parquet_fdw.sh
+
+
+#####
 ##### mysql_fdw
 #####
 
@@ -121,6 +138,7 @@ RUN apt-get update -qq && \
         libprotobuf-c1 \
         libmongoc-1.0-0 \
         libpython3.7 \
+        lsb-release \
         python3.7 \
         python3-setuptools \
         postgresql-plpython3-12 \
@@ -130,6 +148,13 @@ RUN apt-get update -qq && \
         curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
         python3.7 get-pip.py && \
         rm get-pip.py && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN apt update && \
+    wget https://apache.jfrog.io/artifactory/arrow/$(lsb_release --id --short | tr 'A-Z' 'a-z')/apache-arrow-apt-source-latest-$(lsb_release --codename --short).deb && \
+    apt install -y -V ./apache-arrow-apt-source-latest-$(lsb_release --codename --short).deb && \
+    apt update && \
+    apt install -y -V libarrow400 libparquet400 && \
     rm -rf /var/lib/apt/lists/*
 
 # Set locale to C instead of en-US, Postgres initdb breaks with default
@@ -178,6 +203,7 @@ COPY --from=builder_mongo_fdw /output/root /
 COPY --from=builder_mysql_fdw /output/root /
 COPY --from=builder_orc_fdw /output/root /
 COPY --from=builder_orc_fdw /build/orc_fdw/lib/*.so /usr/lib
+COPY --from=builder_parquet_fdw /output/root /
 
 RUN ldconfig
 
