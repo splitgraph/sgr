@@ -200,6 +200,10 @@ def _update_bar(
 @click.option(
     "--cap-add", help="Add kernel capabilities to the engine container", multiple=True, default=[]
 )
+@click.option(
+    "--share-dir",
+    help="Mount this directory into /shared in the engine",
+)
 @click.argument("name", default=DEFAULT_ENGINE)
 @click.password_option()
 def add_engine_c(
@@ -214,6 +218,7 @@ def add_engine_c(
     password,
     set_default,
     cap_add,
+    share_dir,
 ):
     """
     Create and start a Splitgraph engine.
@@ -261,6 +266,9 @@ def add_engine_c(
         source_volume = Mount(target="/splitgraph/splitgraph", source=source_path, type="bind")
         mounts.append(source_volume)
         click.echo("Source path: %s" % source_path)
+
+    if share_dir:
+        mounts.append(Mount(target="/shared", source=share_dir, type="bind"))
 
     try:
         container = client.containers.run(
