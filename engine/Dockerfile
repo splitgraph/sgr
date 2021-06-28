@@ -114,6 +114,18 @@ RUN apt update && apt install -y lsb-release && \
 COPY ./engine/build_scripts/fdws/parquet_fdw /build
 RUN /build/build_parquet_fdw.sh
 
+#####
+##### duckdb_fdw
+#####
+
+FROM toolchain AS builder_duckdb_fdw
+#
+# RUN apt-get update -qq && \
+#     apt-get install -y chrpath && \
+#     rm -rf /var/lib/apt/lists/*
+
+COPY ./engine/build_scripts/fdws/duckdb_fdw /build
+RUN /build/build_duckdb_fdw.sh
 
 #####
 ##### mysql_fdw
@@ -204,6 +216,8 @@ COPY --from=builder_mysql_fdw /output/root /
 COPY --from=builder_orc_fdw /output/root /
 COPY --from=builder_orc_fdw /build/orc_fdw/lib/*.so /usr/lib
 COPY --from=builder_parquet_fdw /output/root /
+COPY --from=builder_duckdb_fdw /output/root /
+COPY --from=builder_duckdb_fdw /build/duckdb/build/release/tools/sqlite3_api_wrapper/libsqlite3_api_wrapper.so /usr/lib
 
 RUN ldconfig
 
