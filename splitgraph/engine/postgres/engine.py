@@ -745,6 +745,7 @@ class PsycopgEngine(SQLEngine):
                     cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (pg_db,))
                     if cur.fetchone() is None:
                         logging.info("Creating database %s", pg_db)
+                        cur.execute("ROLLBACK")
                         cur.execute(SQL("CREATE DATABASE {}").format(Identifier(pg_db)))
                     else:
                         logging.info("Database %s already exists, skipping", pg_db)
@@ -786,6 +787,8 @@ class PsycopgEngine(SQLEngine):
         with self._admin_conn() as admin_conn:
             admin_conn.autocommit = True
             with admin_conn.cursor() as cur:
+                # For some reason without it we get "DROP DATABASE cannot run inside a transaction block"
+                cur.execute("ROLLBACK")
                 cur.execute(SQL("DROP DATABASE IF EXISTS {}").format(Identifier(database)))
 
 
