@@ -82,6 +82,11 @@ def _load_plugin_from_dir(
 
         # Import the module and get the __plugin__ attr from it
         spec = importlib.util.spec_from_file_location("plugin_dir", plugin_file)
+        if not spec:
+            logging.warning(
+                "Couldn't load the importlib ModuleSpec from %s. Ignoring.", plugin_file
+            )
+            return None
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)  # type:ignore
         if hasattr(module, "__plugin__"):
