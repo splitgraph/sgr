@@ -1,13 +1,18 @@
 import logging
 import traceback
 from collections import Callable
+from datetime import datetime as dt
 from functools import wraps
+from typing import Optional
 
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableSchema, Changeset
 from splitgraph.engine import validate_type
 from splitgraph.engine.postgres.engine import get_change_key, PostgresEngine
+from splitgraph.hooks.data_source.base import INGESTION_STATE_TABLE, INGESTION_STATE_SCHEMA
+from splitgraph.ingestion.singer.data_source import SingerState
 
 
 def log_exception(f):
@@ -113,3 +118,55 @@ def _make_changeset(
     ).as_string(engine.connection)
     result = engine.run_sql(query)
     return {tuple(row[:-1]): (row[-1], {}, {}) for row in result}
+
+
+def store_ingestion_state(
+    repository: Repository,
+    image_hash: str,
+    current_state: Optional[SingerState],
+    new_state: Optional[SingerState],
+):
+    # Add a table to the new image with the new state
+    repository.object_engine.create_table(
+        schema=None,
+        table=INGESTION_STATE_TABLE,
+        schema_spec=INGESTION_STATE_SCHEMA,
+        temporary=True,
+    )
+    # NB: new_state here is a JSON-serialized string, so we don't wrap it into psycopg2.Json()
+    logging.info("Writing state: %s", new_state)
+    repository.object_engine.run_sql(
+        SQL("INSERT INTO pg_temp.{} (timestamp, state) VALUES(now(), %s)").format(
+            Identifier(INGESTION_STATE_TABLE)
+        ),
+        (new_state,),
+    )
+    object_id = repository.objects.create_base_fragment(
+        "pg_temp",
+        INGESTION_STATE_TABLE,
+        repository.namespace,
+        table_schema=INGESTION_STATE_SCHEMA,
+    )
+    # If the state exists already, overwrite it; otherwise, add new state table.
+    if current_state:
+        repository.objects.overwrite_table(
+            repository,
+            image_hash,
+            INGESTION_STATE_TABLE,
+            INGESTION_STATE_SCHEMA,
+            [object_id],
+        )
+    else:
+        repository.objects.register_tables(
+            repository,
+            [(image_hash, INGESTION_STATE_TABLE, INGESTION_STATE_SCHEMA, [object_id])],
+        )
+
+
+def add_timestamp_tags(repository: Repository, image_hash: str):
+    ingestion_time = dt.utcnow()
+    short_tag = ingestion_time.strftime("%Y%m%d")
+    long_tag = short_tag + "-" + ingestion_time.strftime("%H%M%S")
+    new_image = repository.images.by_hash(image_hash)
+    new_image.tag(short_tag)
+    new_image.tag(long_tag)
