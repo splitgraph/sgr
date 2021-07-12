@@ -5,7 +5,7 @@ import time
 from io import BytesIO
 from pathlib import Path, PureWindowsPath
 from tarfile import TarFile, TarInfo
-from typing import Dict, TYPE_CHECKING
+from typing import Dict, TYPE_CHECKING, Optional
 from urllib.parse import urlparse
 
 import click
@@ -35,7 +35,12 @@ def get_docker_client():
         raise DockerUnavailableError("Could not connect to the Docker daemon") from e
 
 
-def copy_to_container(container: "Container", source_path: str, target_path: str) -> None:
+def copy_to_container(
+    container: "Container",
+    source_path: Optional[str],
+    target_path: str,
+    data: Optional[bytes] = None,
+) -> None:
     """
     Copy a file into a Docker container
 
@@ -44,9 +49,13 @@ def copy_to_container(container: "Container", source_path: str, target_path: str
     :param target_path: Target file path (in the container)
     :return:
     """
-    # https://github.com/docker/docker-py/issues/1771
-    with open(source_path, "rb") as f:
-        data = f.read()
+
+    if not data:
+        if not source_path:
+            raise ValueError("One of source_path or data must be specified!")
+        # https://github.com/docker/docker-py/issues/1771
+        with open(source_path, "rb") as f:
+            data = f.read()
 
     tarinfo = TarInfo(name=os.path.basename(target_path))
     tarinfo.size = len(data)
