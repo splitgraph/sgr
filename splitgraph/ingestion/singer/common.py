@@ -3,7 +3,7 @@ import traceback
 from collections import Callable
 from datetime import datetime as dt
 from functools import wraps
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from psycopg2.sql import SQL, Identifier
 
@@ -12,7 +12,10 @@ from splitgraph.core.types import TableSchema, Changeset
 from splitgraph.engine import validate_type
 from splitgraph.engine.postgres.engine import get_change_key, PostgresEngine
 from splitgraph.hooks.data_source.base import INGESTION_STATE_TABLE, INGESTION_STATE_SCHEMA
-from splitgraph.ingestion.singer.data_source import SingerState
+
+SingerConfig = Dict[str, Any]
+SingerCatalog = Dict[str, Any]
+SingerState = Dict[str, Any]
 
 
 def log_exception(f):
@@ -124,7 +127,7 @@ def store_ingestion_state(
     repository: Repository,
     image_hash: str,
     current_state: Optional[SingerState],
-    new_state: Optional[SingerState],
+    new_state: str,
 ):
     # Add a table to the new image with the new state
     repository.object_engine.create_table(

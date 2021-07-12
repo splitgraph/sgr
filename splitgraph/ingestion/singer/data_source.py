@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from io import StringIO
 from threading import Thread
-from typing import Dict, Any, Optional, cast
+from typing import Optional, cast
 
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableParams, TableInfo, SyncState, IntrospectionResult
@@ -17,7 +17,13 @@ from splitgraph.hooks.data_source.base import (
     prepare_new_image,
     SyncableDataSource,
 )
-from splitgraph.ingestion.singer._utils import store_ingestion_state, add_timestamp_tags
+from splitgraph.ingestion.singer.common import (
+    SingerConfig,
+    SingerCatalog,
+    SingerState,
+    store_ingestion_state,
+    add_timestamp_tags,
+)
 from splitgraph.ingestion.singer.db_sync import (
     get_table_name,
     get_sg_schema,
@@ -25,10 +31,6 @@ from splitgraph.ingestion.singer.db_sync import (
     get_key_properties,
     select_breadcrumb,
 )
-
-SingerConfig = Dict[str, Any]
-SingerCatalog = Dict[str, Any]
-SingerState = Dict[str, Any]
 
 
 class SingerDataSource(SyncableDataSource, ABC):
