@@ -184,21 +184,33 @@ def test_singer_ingestion_update(local_engine_empty):
     ]
 
     assert image.get_table("stargazers").table_schema == _STARGAZERS_SCHEMA
-    # Extra DIFF at the end
+
+    # Extra DIFF gets split into two: one overwriting the old object, the other one
+    # with new rows.
     assert image.get_table("stargazers").objects == [
         "od68e932ebc99c1a337363c1b92056dcf7fc7c6c45494bc42e1e1ec4e0c88ac",
-        "o7a04cc1f13d00eea692bede58b57b07c4272e07458ac8b405971b1f5f49679",
+        "o5e93d48967488548e02f86b39f1e2f7a881fafbaa8cf0d1451fcc4971748f8",
+        "o28d65722b57d834e3284c8e2609b6bf5c4d61adf51681fc7523f00ac2e95aa",
     ]
 
+    # Check the fragment that we wrote the overwriting rows into
     assert repo.run_sql(
         "SELECT sg_ud_flag, user_id, starred_at "
-        "FROM splitgraph_meta.o7a04cc1f13d00eea692bede58b57b07c4272e07458ac8b405971b1f5f49679 "
+        "FROM splitgraph_meta.o5e93d48967488548e02f86b39f1e2f7a881fafbaa8cf0d1451fcc4971748f8 "
         "ORDER BY user_id"
     ) == [
         (True, Decimal("100004"), datetime(2020, 10, 11, 21, 9, 30)),
         # Even though this row is the same as in the previous fragment, we keep it here
         # as we don't compare its value with the previous fragment.
         (True, Decimal("100005"), datetime(2019, 4, 18, 2, 40, 47)),
+    ]
+
+    # Check the fragment that we wrote the new rows into
+    assert repo.run_sql(
+        "SELECT sg_ud_flag, user_id, starred_at "
+        "FROM splitgraph_meta.o28d65722b57d834e3284c8e2609b6bf5c4d61adf51681fc7523f00ac2e95aa "
+        "ORDER BY user_id"
+    ) == [
         (True, Decimal("100006"), datetime(2019, 6, 6, 20, 53)),
     ]
 
