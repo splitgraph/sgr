@@ -50,7 +50,7 @@ def copy_to_container(
     :return:
     """
 
-    if not data:
+    if data is None:
         if not source_path:
             raise ValueError("One of source_path or data must be specified!")
         # https://github.com/docker/docker-py/issues/1771
