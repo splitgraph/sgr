@@ -600,18 +600,7 @@ class FragmentManager(MetadataManager):
                 # Reorganize the current table's fragments into non-overlapping groups
                 # and split the changeset to make sure it doesn't span (and hence merge) them.
                 table_pks = self.object_engine.get_change_key(schema, old_table.table_name)
-                min_max = self.get_min_max_pks(current_objects, table_pks)
-
-                groups = get_chunk_groups(
-                    [(o, mm[0], mm[1]) for o, mm in zip(current_objects, min_max)]
-                )
-                group_boundaries = [
-                    (min(min_pk for _, min_pk, _ in group), max(max_pk for _, _, max_pk in group))
-                    for group in groups
-                ]
-
-                matched, before, after = _split_changeset(changeset, group_boundaries, table_pks)
-                changesets = [before] + matched + [after]
+                changesets = self.split_changeset_boundaries(changeset, table_pks, current_objects)
             else:
                 changesets = [changeset]
 
@@ -642,6 +631,17 @@ class FragmentManager(MetadataManager):
                 old_table.repository,
                 [(image_hash, old_table.table_name, new_schema_spec, old_table.objects)],
             )
+
+    def split_changeset_boundaries(self, changeset, change_key, objects):
+        min_max = self.get_min_max_pks(objects, change_key)
+        groups = get_chunk_groups([(o, mm[0], mm[1]) for o, mm in zip(objects, min_max)])
+        group_boundaries = [
+            (min(min_pk for _, min_pk, _ in group), max(max_pk for _, _, max_pk in group))
+            for group in groups
+        ]
+        matched, before, after = _split_changeset(changeset, group_boundaries, change_key)
+        changesets = [before] + matched + [after]
+        return changesets
 
     def get_min_max_pks(
         self, fragments: List[str], table_pks: List[Tuple[str, str]]
