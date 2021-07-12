@@ -209,9 +209,16 @@ class DbSyncProxy(DbSync):
                 deleted,
             )
 
+            # Split the changeset according to the original fragment boundaries so that a single
+            # change spanning multiple fragments doesn't force materialization.
+            split_changesets = self.image.repository.objects.split_changeset_boundaries(
+                changeset, old_table.table_schema, old_table.objects
+            )
+            self.logger.info("Table %s: split changeset into %d fragment(s)", len(split_changesets))
+
             # Store the changeset as a new SG object
             object_ids = self.image.repository.objects._store_changesets(
-                old_table, [changeset], "pg_temp", table_name=temp_table
+                old_table, split_changesets, "pg_temp", table_name=temp_table
             )
 
         # Add the new object to the table.
