@@ -13,6 +13,7 @@ from splitgraph.config import CONFIG
 from splitgraph.core.image import Image
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableSchema, TableColumn
+from splitgraph.engine.postgres.engine import get_change_key
 from splitgraph.exceptions import TableNotFoundError
 from splitgraph.ingestion.common import merge_tables
 from ._utils import _migrate_schema, log_exception, _make_changeset, rollback_at_end
@@ -212,9 +213,13 @@ class DbSyncProxy(DbSync):
             # Split the changeset according to the original fragment boundaries so that a single
             # change spanning multiple fragments doesn't force materialization.
             split_changesets = self.image.repository.objects.split_changeset_boundaries(
-                changeset, old_table.table_schema, old_table.objects
+                changeset, get_change_key(old_table.table_schema), old_table.objects
             )
-            self.logger.info("Table %s: split changeset into %d fragment(s)", len(split_changesets))
+            self.logger.info(
+                "Table %s: split changeset into %d fragment(s)",
+                get_table_name(self.stream_schema_message),
+                len(split_changesets),
+            )
 
             # Store the changeset as a new SG object
             object_ids = self.image.repository.objects._store_changesets(
