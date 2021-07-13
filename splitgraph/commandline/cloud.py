@@ -669,16 +669,26 @@ def load_c(remote, readme_dir, repositories_file, limit_repositories):
             r for r in repositories if f"{r.namespace}/{r.repository}" in limit_repositories
         ]
 
-    with tqdm(repositories) as t:
-        for repository in t:
-            t.set_description(f"{repository.namespace}/{repository.repository}")
-            if repository.external:
-                rest_client.upsert_external(
-                    repository.namespace, repository.repository, repository.external, credential_map
-                )
-            if repository.metadata:
-                metadata = _prepare_metadata(repository.metadata, readme_basedir=readme_dir)
-                gql_client.upsert_metadata(repository.namespace, repository.repository, metadata)
+    # with tqdm(repositories) as t:
+    #     for repository in t:
+    #         t.set_description(f"{repository.namespace}/{repository.repository}")
+    #         if repository.external:
+    #             rest_client.upsert_external(
+    #                 repository.namespace, repository.repository, repository.external, credential_map
+    #             )
+
+    logging.info("Uploading metadata...")
+    namespace_list = []
+    repository_list = []
+    metadata_list = []
+    for repository in repositories:
+        if repository.metadata:
+            namespace_list.append(repository.namespace)
+            repository_list.append(repository.repository)
+
+            metadata = _prepare_metadata(repository.metadata, readme_basedir=readme_dir)
+            metadata_list.append(metadata)
+    gql_client.bulk_upsert_metadata(namespace_list, repository_list, metadata_list)
 
 
 def _build_credential_map(auth_client, credentials=None):

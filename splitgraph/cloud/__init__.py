@@ -13,6 +13,7 @@ import requests
 from pydantic import BaseModel
 from requests import HTTPError
 from requests.models import Response
+import click
 
 from splitgraph.__version__ import __version__
 from splitgraph.cloud.models import (
@@ -56,6 +57,69 @@ DEFAULT_REMOTES = {
         "SG_GQL_API": "https://api.splitgraph.com/gql/cloud/graphql",
     }
 }
+
+_BULK_UPSERT_REPO_PROFILES_QUERY = """mutation BulkUpsertRepoProfilesMutation(
+  $namespaces: [String!]
+  $repositories: [String!]
+  $descriptions: [String]
+  $readmes: [String]
+  $licenses: [String]
+  $metadatas: [JSON]
+) {
+  __typename
+  bulkUpsertRepoProfiles(
+  input: {
+      namespaces: $namespaces
+      repositories: $repositories
+      descriptions: $descriptions
+      readmes: $readmes
+      licenses: $licenses
+      metadatas: $metadatas
+  }
+  ) {
+    clientMutationId
+    __typename
+  }
+}
+"""
+
+_BULK_UPDATE_REPO_SOURCES_QUERY = """mutation BulkUpdateRepoSourcesMutation(
+  $namespaces: [String!]
+  $repositories: [String!]
+  $sources: [DatasetSourceInput]
+) {
+  __typename
+  bulkUpdateRepoSources(
+  input: {
+      namespaces: $namespaces
+      repositories: $repositories
+      sources: $sources
+  }
+  ) {
+    clientMutationId
+    __typename
+  }
+}
+"""
+
+_BULK_UPSERT_REPO_TOPICS_QUERY = """mutation BulkUpsertRepoTopicsMutation(
+  $namespaces: [String!]
+  $repositories: [String!]
+  $topics: [String]
+) {
+  __typename
+  bulkUpsertRepoTopics(
+  input: {
+      namespaces: $namespaces
+      repositories: $repositories
+      topics: $topics
+  }
+  ) {
+    clientMutationId
+    __typename
+  }
+}
+"""
 
 _PROFILE_UPSERT_QUERY = """mutation UpsertRepoProfile(
   $namespace: String!
@@ -633,7 +697,7 @@ class GQLAPIClient:
         return result
 
     @staticmethod
-    def _prepare_upsert_metadata_gql(namespace: str, repository: str, metadata: Metadata, v1=False):
+    def _validate_metadata(namespace: str, repository: str, metadata: Metadata):
         # Pre-flight validation
         if metadata.description and len(metadata.description) > 160:
             raise ValueError("The description should be 160 characters or shorter!")
@@ -668,6 +732,12 @@ class GQLAPIClient:
 
         if "readme" in variables and isinstance(variables["readme"], dict):
             variables["readme"] = variables["readme"]["text"]
+
+        return variables
+
+    @staticmethod
+    def _prepare_upsert_metadata_gql(namespace: str, repository: str, metadata: Metadata, v1=False):
+        variables = GQLAPIClient._validate_metadata(namespace, repository, metadata)
 
         gql_query = _PROFILE_UPSERT_QUERY
         if v1:
@@ -705,6 +775,79 @@ class GQLAPIClient:
                 self._prepare_upsert_metadata_gql(namespace, repository, metadata, v1=True)
             )
         return response
+
+    def bulk_upsert_metadata(self, namespace_list: List[str], repository_list: List[str], metadata_list: List[Metadata]):
+        repo_profiles: Dict[str, List[Any]] = dict(
+            namespaces=namespace_list,
+            repositories=repository_list,
+            descriptions=[],
+            readmes=[],
+            licenses=[],
+            metadata=[]
+        )
+        repo_sources: Dict[str, List[Any]] = dict(
+            namespaces=[],
+            repositories=[],
+            sources=[]
+        )
+        repo_topics: Dict[str, List[Any]] = dict(
+            namespaces=[],
+            repositories=[],
+            topics=[]
+        )
+
+        # populate mutation payloads
+        for ind, metadata in enumerate(metadata_list):
+            validated_metadata = GQLAPIClient._validate_metadata(
+                namespace_list[ind],
+                repository_list[ind],
+                metadata
+            )
+
+            repo_profiles["namespaces"].append(namespace_list[ind])
+            repo_profiles["repositories"].append(repository_list[ind])
+            repo_profiles["descriptions"].append(validated_metadata.get("description"))
+            repo_profiles["readmes"].append(validated_metadata.get("readme"))
+            repo_profiles["licenses"].append(validated_metadata.get("license"))
+            repo_profiles["metadata"].append(validated_metadata.get("metadata"))
+
+            # flatten sources, which will be aggregated on the server side
+            if len(validated_metadata.get("sources", [])) > 0:
+                for source in validated_metadata["sources"]:
+                    repo_sources["namespaces"].append(namespace_list[ind])
+                    repo_sources["repositories"].append(repository_list[ind])
+                    repo_sources["sources"].append(source)
+
+            # flatten topics, which will be aggregated on the server side
+            if len(validated_metadata.get("topics", [])) > 0:
+                for topic in validated_metadata["topics"]:
+                    repo_topics["namespaces"].append(namespace_list[ind])
+                    repo_topics["repositories"].append(repository_list[ind])
+                    repo_topics["topics"].append(topic)
+
+        # bulk upsert repo profiles metadata
+        repo_profiles_query = {
+            "operationName": "BulkUpsertRepoProfilesMutation",
+            "variables": repo_profiles,
+            "query": _BULK_UPSERT_REPO_PROFILES_QUERY,
+        }
+        self._gql(repo_profiles_query)
+
+        # bulk update sources on repo profiles
+        repo_sources_query = {
+            "operationName": "BulkUpdateRepoSourcesMutation",
+            "variables": repo_sources,
+            "query": _BULK_UPDATE_REPO_SOURCES_QUERY,
+        }
+        self._gql(repo_sources_query)
+
+        # bulk upsert repo topics
+        repo_topics_query = {
+            "operationName": "BulkUpsertRepoTopicsMutation",
+            "variables": repo_topics,
+            "query": _BULK_UPSERT_REPO_TOPICS_QUERY,
+        }
+        self._gql(repo_topics_query)
 
     def upsert_readme(self, namespace: str, repository: str, readme: str):
         return self.upsert_metadata(namespace, repository, Metadata(readme=readme))
