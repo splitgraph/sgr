@@ -669,13 +669,13 @@ def load_c(remote, readme_dir, repositories_file, limit_repositories):
             r for r in repositories if f"{r.namespace}/{r.repository}" in limit_repositories
         ]
 
-    # with tqdm(repositories) as t:
-    #     for repository in t:
-    #         t.set_description(f"{repository.namespace}/{repository.repository}")
-    #         if repository.external:
-    #             rest_client.upsert_external(
-    #                 repository.namespace, repository.repository, repository.external, credential_map
-    #             )
+    with tqdm(repositories) as t:
+        for repository in t:
+            t.set_description(f"{repository.namespace}/{repository.repository}")
+            if repository.external:
+                rest_client.upsert_external(
+                    repository.namespace, repository.repository, repository.external, credential_map
+                )
 
     logging.info("Uploading metadata...")
     namespace_list = []

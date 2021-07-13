@@ -13,7 +13,6 @@ import requests
 from pydantic import BaseModel
 from requests import HTTPError
 from requests.models import Response
-import click
 
 from splitgraph.__version__ import __version__
 from splitgraph.cloud.models import (
