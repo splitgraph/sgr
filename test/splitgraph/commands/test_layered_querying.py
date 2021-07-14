@@ -391,7 +391,7 @@ def test_multiengine_flow(
     # (since it does manage_audit_triggers()) -- so we bypass all bookkeeping and call the
     # actual LQ routine directly.
     local_engine_empty.create_schema(pg_repo_local.to_schema())
-    pg_repo_local.images["latest"]._lq_checkout()
+    pg_repo_local.images["latest"].lq_checkout()
 
     # Take one of the test cases we ran in test_lq_qual_filtering that exercises index lookups,
     # LQs, object downloads and make sure that the correct engines are used
