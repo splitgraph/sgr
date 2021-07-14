@@ -789,7 +789,7 @@ class GQLAPIClient:
             repositories=[],
             sources=[]
         )
-        repo_topics: Dict[str, List[Any]] = dict(
+        repo_topics: Dict[str, List[str]] = dict(
             namespaces=[],
             repositories=[],
             topics=[]
@@ -803,8 +803,6 @@ class GQLAPIClient:
                 metadata
             )
 
-            repo_profiles["namespaces"].append(namespace_list[ind])
-            repo_profiles["repositories"].append(repository_list[ind])
             repo_profiles["descriptions"].append(validated_metadata.get("description"))
             repo_profiles["readmes"].append(validated_metadata.get("readme"))
             repo_profiles["licenses"].append(validated_metadata.get("license"))
@@ -824,29 +822,39 @@ class GQLAPIClient:
                     repo_topics["repositories"].append(repository_list[ind])
                     repo_topics["topics"].append(topic)
 
-        # bulk upsert repo profiles metadata
+        self._bulk_upsert_repo_profiles(repo_profiles)
+        self._bulk_upsert_repo_sources(repo_sources)
+        self._bulk_upsert_repo_topics(repo_topics)
+
+    @handle_gql_errors
+    def _bulk_upsert_repo_profiles(self, repo_profiles: Dict[str, List[Any]]):
         repo_profiles_query = {
             "operationName": "BulkUpsertRepoProfilesMutation",
             "variables": repo_profiles,
             "query": _BULK_UPSERT_REPO_PROFILES_QUERY,
         }
-        self._gql(repo_profiles_query)
+        response = self._gql(repo_profiles_query)
+        return response
 
-        # bulk update sources on repo profiles
+    @handle_gql_errors
+    def _bulk_upsert_repo_sources(self, repo_sources: Dict[str, List[Any]]):
         repo_sources_query = {
             "operationName": "BulkUpdateRepoSourcesMutation",
             "variables": repo_sources,
             "query": _BULK_UPDATE_REPO_SOURCES_QUERY,
         }
-        self._gql(repo_sources_query)
+        response = self._gql(repo_sources_query)
+        return response
 
-        # bulk upsert repo topics
+    @handle_gql_errors
+    def _bulk_upsert_repo_topics(self, repo_topics: Dict[str, List[str]]):
         repo_topics_query = {
             "operationName": "BulkUpsertRepoTopicsMutation",
             "variables": repo_topics,
             "query": _BULK_UPSERT_REPO_TOPICS_QUERY,
         }
-        self._gql(repo_topics_query)
+        response = self._gql(repo_topics_query)
+        return response
 
     def upsert_readme(self, namespace: str, repository: str, readme: str):
         return self.upsert_metadata(namespace, repository, Metadata(readme=readme))
