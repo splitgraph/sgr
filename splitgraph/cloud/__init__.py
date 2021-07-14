@@ -63,7 +63,7 @@ _BULK_UPSERT_REPO_PROFILES_QUERY = """mutation BulkUpsertRepoProfilesMutation(
   $descriptions: [String]
   $readmes: [String]
   $licenses: [String]
-  $metadatas: [JSON]
+  $metadata: [JSON]
 ) {
   __typename
   bulkUpsertRepoProfiles(
@@ -73,7 +73,7 @@ _BULK_UPSERT_REPO_PROFILES_QUERY = """mutation BulkUpsertRepoProfilesMutation(
       descriptions: $descriptions
       readmes: $readmes
       licenses: $licenses
-      metadatas: $metadatas
+      metadata: $metadata
   }
   ) {
     clientMutationId
