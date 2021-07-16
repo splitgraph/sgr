@@ -17,7 +17,6 @@ from requests.models import Response
 from splitgraph.__version__ import __version__
 from splitgraph.cloud.models import (
     Credential,
-    CredentialID,
     Metadata,
     MetadataResponse,
     External,
@@ -572,10 +571,9 @@ class RESTAPIClient:
 
     def bulk_upsert_external(
         self,
-        repositories: List[ExternalRepository],
-        credential_ids: Set[CredentialID]
+        repositories: List[ExternalRepository]
     ):
-        request = AddExternalRepositoriesRequest(repositories=repositories, credential_ids=credential_ids)
+        request = AddExternalRepositoriesRequest(repositories=repositories)
         self._perform_request("/add", self.access_token, request, endpoint=self.externals_endpoint)
 
 

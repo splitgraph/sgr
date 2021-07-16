@@ -27,14 +27,6 @@ class Credential(BaseModel):
     data: Dict[str, Any]
 
 
-class CredentialID(BaseModel):
-    credential_id: str
-    plugin: str
-
-    def __hash__(self):
-        return hash((self.credential_id, self.plugin))
-
-
 class IngestionSchedule(BaseModel):
     schedule: str
     enabled = True
@@ -280,4 +272,3 @@ class ExternalRepository(BaseModel):
 
 class AddExternalRepositoriesRequest(BaseModel):
     repositories: List[ExternalRepository]
-    credential_ids: Set[CredentialID]

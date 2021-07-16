@@ -14,7 +14,7 @@ import click
 from click import wrap_text
 from tqdm import tqdm
 
-from splitgraph.cloud.models import Metadata, RepositoriesYAML, ExternalRepository, CredentialID
+from splitgraph.cloud.models import Metadata, RepositoriesYAML, ExternalRepository
 from splitgraph.commandline.common import (
     ImageType,
     RepositoryType,
@@ -681,14 +681,7 @@ def load_c(remote, readme_dir, repositories_file, limit_repositories):
                     credential_map
             )
             external_repositories.append(external_repository)
-
-            if external_repository.credential_id is not None:
-                credential_id = CredentialID(
-                    credential_id=external_repository.credential_id,
-                    plugin=external_repository.plugin_name
-                )
-                credential_ids.add(credential_id)
-    rest_client.bulk_upsert_external(repositories=external_repositories, credential_ids=credential_ids)
+    rest_client.bulk_upsert_external(repositories=external_repositories)
 
     with tqdm(repositories) as t:
         for repository in t:
