@@ -14,7 +14,7 @@ import click
 from click import wrap_text
 from tqdm import tqdm
 
-from splitgraph.cloud.models import Metadata, RepositoriesYAML
+from splitgraph.cloud.models import Metadata, RepositoriesYAML, ExternalRepository, CredentialID
 from splitgraph.commandline.common import (
     ImageType,
     RepositoryType,
@@ -669,13 +669,30 @@ def load_c(remote, readme_dir, repositories_file, limit_repositories):
             r for r in repositories if f"{r.namespace}/{r.repository}" in limit_repositories
         ]
 
+    logging.info("Uploading images...")
+    external_repositories = []
+    credential_ids = set()
+    for repository in repositories:
+        if repository.external:
+            external_repository = ExternalRepository.from_external(
+                    repository.namespace,
+                    repository.repository,
+                    repository.external,
+                    credential_map
+            )
+            external_repositories.append(external_repository)
+
+            if external_repository.credential_id is not None:
+                credential_id = CredentialID(
+                    credential_id=external_repository.credential_id,
+                    plugin=external_repository.plugin_name
+                )
+                credential_ids.add(credential_id)
+    rest_client.bulk_upsert_external(repositories=external_repositories, credential_ids=credential_ids)
+
     with tqdm(repositories) as t:
         for repository in t:
             t.set_description(f"{repository.namespace}/{repository.repository}")
-            if repository.external:
-                rest_client.upsert_external(
-                    repository.namespace, repository.repository, repository.external, credential_map
-                )
             if repository.metadata:
                 metadata = _prepare_metadata(repository.metadata, readme_basedir=readme_dir)
                 gql_client.upsert_metadata(repository.namespace, repository.repository, metadata)

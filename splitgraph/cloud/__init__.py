@@ -7,7 +7,7 @@ import time
 import warnings
 from functools import wraps
 from json import JSONDecodeError
-from typing import Callable, List, Union, Tuple, cast, Optional, Dict, Any, Type, TypeVar
+from typing import Callable, List, Union, Tuple, cast, Optional, Dict, Any, Type, TypeVar, Set
 
 import requests
 from pydantic import BaseModel
@@ -16,6 +16,8 @@ from requests.models import Response
 
 from splitgraph.__version__ import __version__
 from splitgraph.cloud.models import (
+    Credential,
+    CredentialID,
     Metadata,
     MetadataResponse,
     External,
@@ -26,7 +28,8 @@ from splitgraph.cloud.models import (
     UpdateExternalCredentialRequest,
     AddExternalCredentialRequest,
     UpdateExternalCredentialResponse,
-    AddExternalRepositoryRequest,
+    ExternalRepository,
+    AddExternalRepositoriesRequest
 )
 from splitgraph.commandline.engine import patch_and_save_config
 from splitgraph.config import create_config_dict, get_singleton, CONFIG
@@ -567,16 +570,12 @@ class RESTAPIClient:
         assert credential
         return credential.credential_id
 
-    def upsert_external(
+    def bulk_upsert_external(
         self,
-        namespace: str,
-        repository: str,
-        external: External,
-        credentials_map: Optional[Dict[str, str]] = None,
+        repositories: List[ExternalRepository],
+        credential_ids: Set[CredentialID]
     ):
-        request = AddExternalRepositoryRequest.from_external(
-            namespace, repository, external, credentials_map
-        )
+        request = AddExternalRepositoriesRequest(repositories=repositories, credential_ids=credential_ids)
         self._perform_request("/add", self.access_token, request, endpoint=self.externals_endpoint)
 
 

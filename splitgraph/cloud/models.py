@@ -2,7 +2,7 @@
 Definitions for the repositories.yml format that's used to batch-populate a Splitgraph catalog
 with repositories and their metadata.
 """
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any, Union, Set
 
 from pydantic import BaseModel, Field
 
@@ -27,12 +27,26 @@ class Credential(BaseModel):
     data: Dict[str, Any]
 
 
+class CredentialID(BaseModel):
+    credential_id: str
+    plugin: str
+
+    def __hash__(self):
+        return hash((self.credential_id, self.plugin))
+
+
+class IngestionSchedule(BaseModel):
+    schedule: str
+    enabled = True
+
+
 class External(BaseModel):
     credential_id: Optional[str]
     credential: Optional[str]
     plugin: str
     params: Dict[str, Any]
     tables: Dict[str, Table]
+    schedule: Optional[IngestionSchedule]
 
 
 # Models for the catalog metadata (description, README, topics etc)
@@ -218,7 +232,7 @@ class ExternalTableRequest(BaseModel):
     schema_: Optional[Dict[str, str]] = Field(alias="schema")
 
 
-class AddExternalRepositoryRequest(BaseModel):
+class ExternalRepository(BaseModel):
     namespace: str
     repository: str
     plugin_name: str
@@ -226,6 +240,7 @@ class AddExternalRepositoryRequest(BaseModel):
     is_live: bool
     tables: Optional[Dict[str, ExternalTableRequest]]
     credential_id: Optional[str]
+    schedule: Optional[IngestionSchedule]
 
     @classmethod
     def from_external(
@@ -259,4 +274,10 @@ class AddExternalRepositoryRequest(BaseModel):
             },
             credential_id=credential_id,
             is_live=True,
+            schedule=external.schedule
         )
+
+
+class AddExternalRepositoriesRequest(BaseModel):
+    repositories: List[ExternalRepository]
+    credential_ids: Set[CredentialID]
