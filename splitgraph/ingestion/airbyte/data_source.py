@@ -32,7 +32,13 @@ from splitgraph.hooks.data_source.base import (
     get_ingestion_state,
     prepare_new_image,
 )
-from .docker_utils import add_files, remove_at_end, wait_not_failed, build_command
+from .docker_utils import (
+    add_files,
+    remove_at_end,
+    wait_not_failed,
+    build_command,
+    detect_network_mode,
+)
 from .utils import (
     AirbyteConfig,
     _airbyte_message_reader,
@@ -84,9 +90,15 @@ class AirbyteDataSource(SyncableDataSource, ABC):
     def _run_discovery(self, config: Optional[AirbyteConfig] = None) -> AirbyteCatalog:
         # Create Docker container
         client = get_docker_client()
+        network_mode = detect_network_mode(client)
 
         with self._source_container(
-            client, config, catalog=None, state=None, discover=True
+            client,
+            network_mode=network_mode,
+            config=config,
+            catalog=None,
+            state=None,
+            discover=True,
         ) as container:
             # Copy config into /
             copy_to_container(
@@ -143,16 +155,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
         dst_config = self._make_postgres_config(repository.object_engine, staging_schema)
 
         client = get_docker_client()
-
-        # We want the receiver to connect to the same engine that we're connected to. If we're
-        # running on the host, that means using our own connection parameters and running the
-        # receiver with net:host. Inside Docker we have to use the host's Docker socket and
-        # attach the container to our own network so that it can also use our own params.
-        if os.path.exists("/.dockerenv"):
-            our_container_id = client.containers.get(socket.gethostname()).id
-            network_mode = f"container:{our_container_id}"
-        else:
-            network_mode = "host"
+        network_mode = detect_network_mode(client)
 
         # Run the Airbyte source and receiver and pipe data between them, writing it
         # out into a temporary schema.
@@ -222,7 +225,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
         state: Optional[SyncState],
     ) -> Tuple[List[Tuple[str, str]], Optional[SyncState], Dict[str, str]]:
         with self._source_container(
-            client, src_config, catalog, state
+            client, network_mode, src_config, catalog, state
         ) as source, self._destination_container(
             client, network_mode, dst_config, catalog
         ) as destination:
@@ -331,6 +334,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
     def _source_container(
         self,
         client: DockerClient,
+        network_mode: str,
         config: Optional[AirbyteConfig],
         catalog: Optional[ConfiguredAirbyteCatalog],
         state: Optional[SyncState],
@@ -345,7 +349,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
                 [("config", config), ("state", state), ("catalog", catalog)]
             )
         container = client.containers.create(
-            image=self.docker_image, name=container_name, command=command
+            image=self.docker_image, name=container_name, command=command, network_mode=network_mode
         )
         with remove_at_end(container):
             yield container
