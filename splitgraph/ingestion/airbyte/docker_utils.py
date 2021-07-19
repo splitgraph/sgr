@@ -53,7 +53,8 @@ def wait_not_failed(container: Container, mirror_logs: bool = False) -> None:
     result = container.wait()
     if result["StatusCode"] != 0:
         logging.error("Container %s exited with %d", container.name, result["StatusCode"])
-        for line in container.logs(tail=20):
+        logs = container.logs(tail=1000) or b""
+        for line in logs.decode().splitlines():
             logging.info("%s: %s", container.name, line)
         raise SubprocessError()
 
