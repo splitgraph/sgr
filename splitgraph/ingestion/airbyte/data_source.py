@@ -142,6 +142,15 @@ class AirbyteDataSource(SyncableDataSource, ABC):
         )
         logging.info("Configured catalog: %s", configured_catalog)
 
+        # Create a destination catalog that overrides the namespace in the source to None.
+        # Some sources and the PG destination respect stream.namespace -- in the case of the
+        # MySQL source, it denotes the source database name and for PG, it's the target
+        # schema name. We need to let the source keep its old namespace and override the
+        # destination for PG (set it to None here and inject it into the config).
+        dst_catalog = configured_catalog.copy(deep=True)
+        for stream in dst_catalog.streams:
+            stream.stream.namespace = None
+
         # Load ingestion state
         base_image, new_image_hash = prepare_new_image(repository, image_hash)
         state = get_ingestion_state(repository, image_hash) if use_state else None
@@ -164,7 +173,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
 
         logging.info("Running Airbyte EL process")
         dest_files, new_state, sync_modes = self._run_airbyte_el(
-            client, network_mode, src_config, dst_config, configured_catalog, state
+            client, network_mode, src_config, dst_config, configured_catalog, dst_catalog, state
         )
 
         # At this stage, Airbyte wrote out the raw tables into the staging schema: they have
@@ -223,13 +232,14 @@ class AirbyteDataSource(SyncableDataSource, ABC):
         network_mode: str,
         src_config: AirbyteConfig,
         dst_config: AirbyteConfig,
-        catalog: ConfiguredAirbyteCatalog,
+        src_catalog: ConfiguredAirbyteCatalog,
+        dst_catalog: ConfiguredAirbyteCatalog,
         state: Optional[SyncState],
     ) -> Tuple[List[Tuple[str, str]], Optional[SyncState], Dict[str, str]]:
         with self._source_container(
-            client, network_mode, src_config, catalog, state
+            client, network_mode, src_config, src_catalog, state
         ) as source, self._destination_container(
-            client, network_mode, dst_config, catalog
+            client, network_mode, dst_config, src_catalog
         ) as destination:
 
             # Set up the files in src/dest containers
@@ -239,7 +249,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
                     ("config", json.dumps(src_config)),
                     (
                         "catalog",
-                        catalog.json(exclude_unset=True, exclude_defaults=True),
+                        src_catalog.json(exclude_unset=True, exclude_defaults=True),
                     ),
                     ("state", json.dumps(state)),
                 ],
@@ -249,7 +259,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
                 ("config", json.dumps(dst_config)),
                 (
                     "catalog",
-                    catalog.json(exclude_unset=True, exclude_defaults=True),
+                    dst_catalog.json(exclude_unset=True, exclude_defaults=True),
                 ),
             ]
 
