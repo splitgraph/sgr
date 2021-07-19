@@ -27,7 +27,7 @@ from splitgraph.cloud.models import (
     UpdateExternalCredentialRequest,
     AddExternalCredentialRequest,
     UpdateExternalCredentialResponse,
-    ExternalRepository,
+    AddExternalRepositoryRequest,
     AddExternalRepositoriesRequest
 )
 from splitgraph.commandline.engine import patch_and_save_config
@@ -571,10 +571,10 @@ class RESTAPIClient:
 
     def bulk_upsert_external(
         self,
-        repositories: List[ExternalRepository]
+        repositories: List[AddExternalRepositoryRequest]
     ):
         request = AddExternalRepositoriesRequest(repositories=repositories)
-        self._perform_request("/add", self.access_token, request, endpoint=self.externals_endpoint)
+        self._perform_request("/bulk-add", self.access_token, request, endpoint=self.externals_endpoint)
 
 
 def AuthAPIClient(*args, **kwargs):

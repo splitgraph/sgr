@@ -2,7 +2,7 @@
 Definitions for the repositories.yml format that's used to batch-populate a Splitgraph catalog
 with repositories and their metadata.
 """
-from typing import Dict, List, Optional, Any, Union, Set
+from typing import Dict, List, Optional, Any, Union
 
 from pydantic import BaseModel, Field
 
@@ -224,7 +224,7 @@ class ExternalTableRequest(BaseModel):
     schema_: Optional[Dict[str, str]] = Field(alias="schema")
 
 
-class ExternalRepository(BaseModel):
+class AddExternalRepositoryRequest(BaseModel):
     namespace: str
     repository: str
     plugin_name: str
@@ -271,4 +271,4 @@ class ExternalRepository(BaseModel):
 
 
 class AddExternalRepositoriesRequest(BaseModel):
-    repositories: List[ExternalRepository]
+    repositories: List[AddExternalRepositoryRequest]

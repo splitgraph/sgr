@@ -14,7 +14,7 @@ import click
 from click import wrap_text
 from tqdm import tqdm
 
-from splitgraph.cloud.models import Metadata, RepositoriesYAML, ExternalRepository
+from splitgraph.cloud.models import Metadata, RepositoriesYAML, AddExternalRepositoryRequest
 from splitgraph.commandline.common import (
     ImageType,
     RepositoryType,
@@ -671,10 +671,9 @@ def load_c(remote, readme_dir, repositories_file, limit_repositories):
 
     logging.info("Uploading images...")
     external_repositories = []
-    credential_ids = set()
     for repository in repositories:
         if repository.external:
-            external_repository = ExternalRepository.from_external(
+            external_repository = AddExternalRepositoryRequest.from_external(
                     repository.namespace,
                     repository.repository,
                     repository.external,
