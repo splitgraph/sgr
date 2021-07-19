@@ -213,7 +213,7 @@ def get_ingestion_state(repository: "Repository", image_hash: Optional[str]) -> 
 
 
 def prepare_new_image(
-    repository: "Repository", hash_or_tag: Optional[str]
+    repository: "Repository", hash_or_tag: Optional[str], comment: str = "Singer tap ingestion"
 ) -> Tuple[Optional[Image], str]:
     new_image_hash = "{:064x}".format(getrandbits(256))
     if repository_exists(repository):
@@ -235,5 +235,5 @@ def prepare_new_image(
             )
     else:
         base_image = None
-        repository.images.add(parent_id=None, image=new_image_hash, comment="Singer tap ingestion")
+        repository.images.add(parent_id=None, image=new_image_hash, comment=comment)
     return base_image, new_image_hash

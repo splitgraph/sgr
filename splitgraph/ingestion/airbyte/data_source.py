@@ -152,7 +152,9 @@ class AirbyteDataSource(SyncableDataSource, ABC):
             stream.stream.namespace = None
 
         # Load ingestion state
-        base_image, new_image_hash = prepare_new_image(repository, image_hash)
+        base_image, new_image_hash = prepare_new_image(
+            repository, image_hash, comment="Airbyte data load"
+        )
         state = get_ingestion_state(repository, image_hash) if use_state else None
         logging.info("Current ingestion state: %s", state)
 
