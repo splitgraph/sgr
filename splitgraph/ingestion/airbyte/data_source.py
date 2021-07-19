@@ -9,7 +9,7 @@ from typing import Optional, Dict, cast, List, Tuple
 
 import docker.errors
 import pydantic
-from airbyte_cdk.models import (
+from ._protocol import (
     AirbyteCatalog,
     ConfiguredAirbyteCatalog,
     AirbyteMessage,

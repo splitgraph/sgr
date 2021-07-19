@@ -35,9 +35,6 @@ sodapy = ">=2.1"
 pandas = {version = ">=0.24", extras = ["ingestion"], optional = true }
 sqlalchemy = { version = "^1.3", extras = ["ingestion"], optional = true }
 
-# Extra requirements for Airbyte ingestion
-airbyte = { version = ">=0.1.5", extras = ["airbyte"], optional = true }
-
 # Fork of pipelinewise-target-postgres without dep pinning so that we can use it as a library
 splitgraph-pipelinewise-target-postgres = ">=2.1.0"
 
@@ -64,7 +61,6 @@ types-PyYAML = "^5.4.3"
 
 [tool.poetry.extras]
 pandas = ["pandas", "sqlalchemy"]
-airbyte = ["airbyte-cdk"]
 
 [tool.poetry.scripts]
 sgr = "splitgraph.commandline:cli"

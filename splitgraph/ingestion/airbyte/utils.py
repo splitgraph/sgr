@@ -1,7 +1,13 @@
 import logging
-from typing import Dict, Any, Iterable, Generator, Tuple, Optional, List
+from typing import Dict, Any, Iterable, Generator, Optional, List
 
-from airbyte_cdk.models import (
+from target_postgres.db_sync import column_type
+
+from splitgraph.config import get_singleton, CONFIG
+from splitgraph.core.repository import Repository
+from splitgraph.core.types import TableSchema, TableColumn, TableInfo
+from splitgraph.exceptions import TableNotFoundError
+from ._protocol import (
     AirbyteMessage,
     AirbyteStream,
     AirbyteCatalog,
@@ -10,12 +16,6 @@ from airbyte_cdk.models import (
     SyncMode,
     DestinationSyncMode,
 )
-from target_postgres.db_sync import column_type
-
-from splitgraph.config import get_singleton, CONFIG
-from splitgraph.core.repository import Repository
-from splitgraph.core.types import TableSchema, TableColumn, TableInfo
-from splitgraph.exceptions import TableNotFoundError
 
 AirbyteConfig = Dict[str, Any]
 AIRBYTE_RAW = "_airbyte_raw"
@@ -158,7 +158,10 @@ def select_streams(
         sync_configured = False
 
         if sync:
-            if SyncMode.incremental not in stream.supported_sync_modes:
+            if (
+                not stream.supported_sync_modes
+                or SyncMode.incremental not in stream.supported_sync_modes
+            ):
                 logging.warning(
                     "Stream %s doesn't support incremental sync mode and sync=True. "
                     "Disabling append_dedup and falling back to refresh.",
