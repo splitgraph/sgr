@@ -56,7 +56,9 @@ def wait_not_failed(container: Container, mirror_logs: bool = False) -> None:
         logs = container.logs(tail=1000) or b""
         for line in logs.decode().splitlines():
             logging.info("%s: %s", container.name, line)
-        raise SubprocessError()
+        raise SubprocessError(
+            "Container %s exited with %d" % (container.name, result["StatusCode"])
+        )
 
 
 def build_command(files: List[Tuple[str, Any]]) -> List[str]:

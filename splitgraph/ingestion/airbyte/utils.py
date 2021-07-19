@@ -191,8 +191,8 @@ def select_streams(
                         sync_mode=SyncMode.incremental,
                         destination_sync_mode=DestinationSyncMode.append_dedup,
                         # TODO dates aren't parsed properly (stay as strings)
-                        cursor_field=stream.default_cursor_field,
-                        primary_key=stream.source_defined_primary_key,
+                        cursor_field=cursor_field,
+                        primary_key=primary_key,
                     )
                     sync_configured = True
 

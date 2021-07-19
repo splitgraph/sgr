@@ -2,7 +2,6 @@ import json
 import logging
 import os
 import re
-import socket
 from abc import ABC
 from contextlib import contextmanager
 from random import getrandbits
@@ -189,7 +188,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
             new_image_hash,
             staging_schema,
             sync_modes,
-            default_sync_mode="append" if use_state else "overwrite",
+            default_sync_mode="append_dedup" if use_state else "overwrite",
         )
 
         # Run normalization
