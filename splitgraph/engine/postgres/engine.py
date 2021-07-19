@@ -59,6 +59,8 @@ if TYPE_CHECKING:
     # the connection property otherwise
     from psycopg2._psycopg import connection as Connection
 
+psycopg2.extensions.register_adapter(dict, Json)
+
 _AUDIT_SCHEMA = "splitgraph_audit"
 _AUDIT_TRIGGER = "resources/static/audit_trigger.sql"
 _PUSH_PULL = "resources/static/splitgraph_api.sql"
@@ -505,7 +507,7 @@ class PsycopgEngine(SQLEngine):
             with connection.cursor(**cursor_kwargs) as cur:
                 try:
                     self.notices = []
-                    cur.execute(statement, _convert_vals(arguments) if arguments else None)
+                    cur.execute(statement, arguments)
                     if connection.notices:
                         self.notices = connection.notices[:]
                         del connection.notices[:]
@@ -597,7 +599,7 @@ class PsycopgEngine(SQLEngine):
                 batches = _paginate_by_size(
                     cur,
                     statement,
-                    (_convert_vals(a) for a in arguments),
+                    arguments,
                     max_size=API_MAX_QUERY_LENGTH,
                 )
                 for batch in batches:
@@ -1595,13 +1597,6 @@ def _convert_audit_change(
 
 
 _KIND = {"I": 0, "D": 1, "U": 2}
-
-
-def _convert_vals(vals: Any) -> Any:
-    """Psycopg returns jsonb objects as dicts/lists but doesn't actually accept them directly
-    as a query param (or in the case of lists coerces them into an array.
-    Hence, we have to wrap them in the Json datatype when doing a dump + load."""
-    return [Json(v) if isinstance(v, dict) else v for v in vals]
 
 
 def _generate_where_clause(table: str, cols: List[str], table_2: str) -> Composed:
