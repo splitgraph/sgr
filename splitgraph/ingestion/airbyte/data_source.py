@@ -273,9 +273,13 @@ class AirbyteDataSource(SyncableDataSource, ABC):
             destination.start()
 
             # Pipe messages from the source to the destination
-            for raw, message in _airbyte_message_reader(src_socket):
+            for message in _airbyte_message_reader(src_socket):
                 if message.state or message.record:
-                    out = (raw + "\n").encode()
+                    if message.record:
+                        # Empty out the namespace so that we use the destination schema in PG
+                        message.record.namespace = None
+
+                    out = (message.json(exclude_unset=True, exclude_defaults=True) + "\n").encode()
                     logging.debug("Writing message %s", out)
                     while out:
                         written = dest_socket.write(out)

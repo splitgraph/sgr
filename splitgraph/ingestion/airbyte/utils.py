@@ -23,7 +23,7 @@ AIRBYTE_RAW = "_airbyte_raw"
 
 def _airbyte_message_reader(
     stream: Iterable[bytes],
-) -> Generator[Tuple[str, AirbyteMessage], None, None]:
+) -> Generator[AirbyteMessage, None, None]:
     buffer = b""
     for data in stream:
         # Accumulate data in a buffer until we get a newline, at which point we can
@@ -39,10 +39,10 @@ def _airbyte_message_reader(
 
         for line in lines:
             line = line.strip()
-            if not line:
+            if not line or not line.startswith("{"):
                 continue
             message = AirbyteMessage.parse_raw(line)
-            yield line, message
+            yield message
 
 
 def _store_raw_airbyte_tables(
