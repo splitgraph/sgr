@@ -9,11 +9,6 @@ from typing import Optional, Dict, cast, List, Tuple
 
 import docker.errors
 import pydantic
-from ._protocol import (
-    AirbyteCatalog,
-    ConfiguredAirbyteCatalog,
-    AirbyteMessage,
-)
 from docker import DockerClient
 from docker.models.containers import Container
 
@@ -37,6 +32,11 @@ from .docker_utils import (
     wait_not_failed,
     build_command,
     detect_network_mode,
+)
+from .models import (
+    AirbyteCatalog,
+    ConfiguredAirbyteCatalog,
+    AirbyteMessage,
 )
 from .utils import (
     AirbyteConfig,

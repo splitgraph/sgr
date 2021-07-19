@@ -1,7 +1,7 @@
 import logging
 import os
-from contextlib import contextmanager
 import socket
+from contextlib import contextmanager
 from typing import List, Tuple, Any
 
 import docker.errors

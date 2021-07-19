@@ -7,7 +7,7 @@ from splitgraph.config import get_singleton, CONFIG
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableSchema, TableColumn, TableInfo
 from splitgraph.exceptions import TableNotFoundError
-from ._protocol import (
+from .models import (
     AirbyteMessage,
     AirbyteStream,
     AirbyteCatalog,
