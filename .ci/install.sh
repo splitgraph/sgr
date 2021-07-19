@@ -2,7 +2,7 @@
 
 source "$HOME"/.poetry/env
 
-poetry export --dev -f requirements.txt --without-hashes -o /tmp/requirements.txt -E pandas
+poetry export --dev -f requirements.txt --without-hashes -o /tmp/requirements.txt -E pandas -E airbyte
 sed -i "/ @ \//d" /tmp/requirements.txt
 python -m pip install -U pip
 cat /tmp/requirements.txt
