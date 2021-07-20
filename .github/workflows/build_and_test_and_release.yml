@@ -34,8 +34,15 @@ jobs:
           key: pip_cache
       - name: "Install prerequisites"
         run: "./.ci/install_prereqs.sh"
-      - name: "Install package and build the engine"
+      - name: "Install package"
         run: ./.ci/install.sh
+      - name: "Run pre-commit hooks (typechecks and the formatter)"
+        run: |
+          source "$HOME"/.poetry/env
+          # NB this uses mypy in .pre-commit-config.yaml
+          poetry run pre-commit run --all-files
+      - name: "Build the Splitgraph engine"
+        run: cd engine && make with_postgis=1
       - name: "Save Docker cache"
         run: |
           mkdir -p ~/docker_images
@@ -50,7 +57,6 @@ jobs:
         if: "!contains(github.event.head_commit.message, '[skip test]')"
         run: |
           source "$HOME"/.poetry/env
-          poetry run mypy splitgraph
           poetry run pytest test/ -v -m "not mounting and not example"
           ./wait-for-test-architecture.sh --mounting
           export PATH=$PATH:$TAP_MYSQL_VENV/bin
