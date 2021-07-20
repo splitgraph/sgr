@@ -111,10 +111,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
             wait_not_failed(container, mirror_logs=False)
 
             # Grab the catalog from the output (it's mixed with other logs)
-            for line in container.logs(stream=True):
-                if not line.startswith(b"{"):
-                    continue
-                message = AirbyteMessage.parse_raw(line)
+            for message in _airbyte_message_reader(container.logs(stream=True)):
                 if message.catalog:
                     logging.info("Catalog: %s", message.catalog)
                     return message.catalog
