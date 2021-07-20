@@ -16,7 +16,10 @@ setup(
     url="https://www.splitgraph.com",
     packages=find_namespace_packages(),
     package_data={
-        "dbt": ["include/splitgraph/macros/*.sql", "include/splitgraph/dbt_project.yml",]
+        "dbt": [
+            "include/splitgraph/macros/*.sql",
+            "include/splitgraph/dbt_project.yml",
+        ]
     },
     install_requires=["dbt-core", "splitgraph"],
 )

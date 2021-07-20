@@ -25,8 +25,8 @@ def lazy_get_config_value(
     key: str, default_return: Optional[str] = None
 ) -> Optional[Union[str, Dict[str, Dict[str, str]]]]:
     """
-        Get the config value for a key in the following precedence
-        Otherwise return default_return
+    Get the config value for a key in the following precedence
+    Otherwise return default_return
     """
 
     if key not in ALL_KEYS:
@@ -48,10 +48,10 @@ def lazy_get_config_value(
 
 def update_config_dict_from_arguments(config_dict: ConfigDict) -> ConfigDict:
     """
-        Given an existing config_dict, update after reading sys.argv
-        and overwriting any keys.
+    Given an existing config_dict, update after reading sys.argv
+    and overwriting any keys.
 
-        Return updated copy of config_dict.
+    Return updated copy of config_dict.
     """
     argument_config_dict = {
         k: get_argument_config_value(k, None)
@@ -64,10 +64,10 @@ def update_config_dict_from_arguments(config_dict: ConfigDict) -> ConfigDict:
 
 def update_config_dict_from_env_vars(config_dict: ConfigDict) -> ConfigDict:
     """
-        Given an existing config_dict, update after reading os.environ
-        and overwriting any keys.
+    Given an existing config_dict, update after reading os.environ
+    and overwriting any keys.
 
-        Return updated copy of config_dict.
+    Return updated copy of config_dict.
     """
 
     argument_config_dict = {
@@ -82,10 +82,10 @@ def update_config_dict_from_env_vars(config_dict: ConfigDict) -> ConfigDict:
 
 def update_config_dict_from_file(config_dict: ConfigDict, sg_config_file: str) -> ConfigDict:
     """
-        Given an existing config_dict, update after reading sg_config_file
-        and overwriting any keys according to the rules in config_file_config
+    Given an existing config_dict, update after reading sg_config_file
+    and overwriting any keys according to the rules in config_file_config
 
-        Return updated copy of config_dict.
+    Return updated copy of config_dict.
     """
 
     config_file_dict = get_config_dict_from_config_file(sg_config_file)
@@ -96,7 +96,7 @@ def update_config_dict_from_file(config_dict: ConfigDict, sg_config_file: str) -
 
 def create_config_dict() -> ConfigDict:
     """
-        Create and return a dict of all known config values
+    Create and return a dict of all known config values
     """
     initial_dict = {k: lazy_get_config_value(k) for k in ALL_KEYS}
     config_dict = cast(ConfigDict, {k: v for k, v in initial_dict.items() if v is not None})
