@@ -392,7 +392,8 @@ def reconstruct_splitfile(
 
 
 def _prov_command_to_splitfile(
-    prov_data: ProvenanceLine, source_replacement: Dict["Repository", str],
+    prov_data: ProvenanceLine,
+    source_replacement: Dict["Repository", str],
 ) -> str:
     """
     Converts the image's provenance data stored by the Splitfile executor back to a Splitfile used to

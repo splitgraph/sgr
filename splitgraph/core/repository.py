@@ -368,7 +368,7 @@ class Repository:
     @property
     def head_strict(self) -> Image:
         """Return the HEAD image for the repository. Raise an exception if the repository
-         isn't checked out."""
+        isn't checked out."""
         return cast(Image, self.images.by_tag("HEAD", raise_on_none=True))
 
     @property

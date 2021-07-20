@@ -20,7 +20,10 @@ from splitgraph.config.config import get_from_subsection
     help="Download all objects immediately instead of on checkout.",
 )
 @click.option(
-    "-f", "--overwrite-object-meta", help="Overwrite metadata for existing objects", is_flag=True,
+    "-f",
+    "--overwrite-object-meta",
+    help="Overwrite metadata for existing objects",
+    is_flag=True,
 )
 @click.option("-t", "--tags", help="Overwrite tags for pulled image/repo", is_flag=True)
 def pull_c(repository_or_image, download_all, overwrite_object_meta, tags):
@@ -48,7 +51,10 @@ def pull_c(repository_or_image, download_all, overwrite_object_meta, tags):
     is_flag=True,
 )
 @click.option(
-    "-f", "--overwrite-object-meta", help="Overwrite metadata for existing objects", is_flag=True,
+    "-f",
+    "--overwrite-object-meta",
+    help="Overwrite metadata for existing objects",
+    is_flag=True,
 )
 @click.option("-t", "--tags", help="Overwrite tags for pulled image/repo", is_flag=True)
 def clone_c(
@@ -88,7 +94,11 @@ def clone_c(
 @click.argument("repository_or_image", type=ImageType(default=None))
 @click.argument("remote_repository", required=False, type=RepositoryType())
 @click.option(
-    "-r", "--remote", help="Name of the remote engine", type=click.Choice(REMOTES), default=None,
+    "-r",
+    "--remote",
+    help="Name of the remote engine",
+    type=click.Choice(REMOTES),
+    default=None,
 )
 @click.option("-h", "--upload-handler", help="Upload handler", default="S3")
 @click.option(

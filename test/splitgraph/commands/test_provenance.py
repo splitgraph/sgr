@@ -174,7 +174,8 @@ def test_provenance_inline_sql(readonly_pg_repo, pg_repo_local):
     pg_repo_local.head.tag("v2")
 
     execute_commands(
-        load_splitfile("inline_sql.splitfile"), output=OUTPUT,
+        load_splitfile("inline_sql.splitfile"),
+        output=OUTPUT,
     )
 
     new_head = OUTPUT.head
@@ -183,7 +184,10 @@ def test_provenance_inline_sql(readonly_pg_repo, pg_repo_local):
     local_input = pg_repo_local.images["latest"]
 
     assert set(new_head.provenance()) == {
-        (readonly_pg_repo, remote_input.image_hash,),
+        (
+            readonly_pg_repo,
+            remote_input.image_hash,
+        ),
         (pg_repo_local, local_input.image_hash),
     }
 
@@ -227,7 +231,8 @@ def test_provenance_inline_sql(readonly_pg_repo, pg_repo_local):
 
     # Try rerunning the Splitfile against the same original data (check caching)
     rebuild_image(
-        OUTPUT.head, source_replacement={pg_repo_local: "latest", readonly_pg_repo: "latest"},
+        OUTPUT.head,
+        source_replacement={pg_repo_local: "latest", readonly_pg_repo: "latest"},
     )
 
     assert len(OUTPUT.images()) == 2
