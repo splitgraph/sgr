@@ -1,12 +1,22 @@
 repos:
--   repo: https://github.com/ambv/black
+  - repo: https://github.com/ambv/black
     rev: '21.5b1'
     hooks:
-    - id: black
-      language_version: python3.8
--   repo: https://github.com/pre-commit/mirrors-mypy
+      - id: black
+        language_version: python3.8
+  # Mypy config
+  # Note that we have to specify exclusions here. This is because mypy's exclude setting
+  # gets overridden by the actual path spec.
+  - repo: https://github.com/pre-commit/mirrors-mypy
     rev: 'v0.910'
     hooks:
-    -   id: mypy
+      - id: mypy
         additional_dependencies:
-        -   pydantic>=1.8.1
+          # These have to be installed here as well as in the venv if you want to be able
+          # to run `mypy splitgraph` from the commandline.
+          - pydantic>=1.8.1
+          - types-chardet
+          - types-requests
+          - types-tabulate
+          - types-PyYAML
+        exclude: "^(examples|test|docs)/"
