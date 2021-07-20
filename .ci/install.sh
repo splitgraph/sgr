@@ -20,8 +20,3 @@ python -m venv "$TAP_MYSQL_VENV"
 pip install tap-mysql
 
 # No deactivate here -- Poetry will use a separate venv for Splitgraph.
-
-# sudo cat /etc/docker/daemon.json
-
-echo "Building the engine..."
-cd engine && make with_postgis=1 && cd ..

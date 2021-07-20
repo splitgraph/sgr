@@ -6,11 +6,11 @@ from .keys import ARG_KEYS, ARGUMENT_KEY_MAP
 
 def get_arg_tuples() -> List[Tuple[str, str]]:
     """
-        Get the raw (argN, argN+1) tuples from sys.argv
+    Get the raw (argN, argN+1) tuples from sys.argv
 
-        We could also use click to parse the flags ahead of time, and then pass
-        the parsed flag object into SystemConfigGetters. But this way, we avoid
-        having to pass down variables from click just to get config values.
+    We could also use click to parse the flags ahead of time, and then pass
+    the parsed flag object into SystemConfigGetters. But this way, we avoid
+    having to pass down variables from click just to get config values.
     """
 
     # This one is for when we are on the engine -- then sys.argv doesn't exist in embedded Python
@@ -22,13 +22,13 @@ def get_arg_tuples() -> List[Tuple[str, str]]:
 
 def get_argument_config_value(key: str, default_return: Optional[str] = None) -> Optional[str]:
     """
-        Get get the value of an argument, where value is the argument
-        immediately following the argument matching a key in ARG_KEYS, e.g.:
+    Get get the value of an argument, where value is the argument
+    immediately following the argument matching a key in ARG_KEYS, e.g.:
 
-            SYS_ARGS = ["--namespace", "foo"]
-            --> return "foo"
+        SYS_ARGS = ["--namespace", "foo"]
+        --> return "foo"
 
-        Otherwise, return default_return
+    Otherwise, return default_return
     """
 
     arg_tuples = get_arg_tuples()

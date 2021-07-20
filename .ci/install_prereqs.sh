@@ -19,8 +19,4 @@ curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/get-poet
 source "$HOME"/.poetry/env
 poetry config virtualenvs.create false
 
-# Load the engine image from cache, if it exists.
-docker load -i ~/docker_images/engine.tar || true
-docker images
-
 popd

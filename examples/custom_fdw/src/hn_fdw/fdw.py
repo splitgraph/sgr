@@ -57,8 +57,8 @@ class HNForeignDataWrapper(ForeignDataWrapper):
 
     def execute(self, quals, columns, sortkeys=None):
         """Main FDW entry point. Since the Firebase API doesn't support filtering, we're going
-         to ignore all qualifiers here and return everything we got from it (200-500 rows,
-         depending on the endpoint)."""
+        to ignore all qualifiers here and return everything we got from it (200-500 rows,
+        depending on the endpoint)."""
 
         response = requests.get(self._full_endpoint())
         response.raise_for_status()
@@ -74,7 +74,8 @@ class HNForeignDataWrapper(ForeignDataWrapper):
     def __init__(self, fdw_options, fdw_columns):
 
         logging.basicConfig(
-            format="%(asctime)s [%(process)d] %(levelname)s %(message)s", level=logging.DEBUG,
+            format="%(asctime)s [%(process)d] %(levelname)s %(message)s",
+            level=logging.DEBUG,
         )
 
         # Dictionary of FDW parameters

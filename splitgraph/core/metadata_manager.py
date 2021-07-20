@@ -241,7 +241,11 @@ class MetadataManager:
 
         table_objects = {
             o
-            for os in self.metadata_engine.run_sql(query, args, return_shape=ResultShape.MANY_ONE,)
+            for os in self.metadata_engine.run_sql(
+                query,
+                args,
+                return_shape=ResultShape.MANY_ONE,
+            )
             for o in os
         }
 

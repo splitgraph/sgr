@@ -260,9 +260,16 @@ def test_client_query_batch_chunk_whole():
 
     # Return list of singletons
     engine.run_sql.side_effect = (["result_1", "result_2"], ["result_3"])
-    assert PsycopgEngine.run_chunked_sql(
-        engine, query, args, return_shape=ResultShape.MANY_ONE, chunk_size=2,
-    ) == ["result_1", "result_2", "result_3"]
+    assert (
+        PsycopgEngine.run_chunked_sql(
+            engine,
+            query,
+            args,
+            return_shape=ResultShape.MANY_ONE,
+            chunk_size=2,
+        )
+        == ["result_1", "result_2", "result_3"]
+    )
     assert engine.run_sql.mock_calls == [
         call(query, args[:2], ResultShape.MANY_ONE),
         call(query, args[2:], ResultShape.MANY_ONE),
@@ -275,8 +282,16 @@ def test_client_query_batch_chunk_whole():
         [("result_3_1", "result_3_2")],
     )
     assert PsycopgEngine.run_chunked_sql(
-        engine, query, args, return_shape=ResultShape.MANY_MANY, chunk_size=2,
-    ) == [("result_1_1", "result_1_2"), ("result_2_1", "result_2_2"), ("result_3_1", "result_3_2")]
+        engine,
+        query,
+        args,
+        return_shape=ResultShape.MANY_MANY,
+        chunk_size=2,
+    ) == [
+        ("result_1_1", "result_1_2"),
+        ("result_2_1", "result_2_2"),
+        ("result_3_1", "result_3_2"),
+    ]
     assert engine.run_sql.mock_calls == [
         call(query, args[:2], ResultShape.MANY_MANY),
         call(query, args[2:], ResultShape.MANY_MANY),
@@ -288,7 +303,11 @@ def test_client_query_batch_chunk_whole():
     engine.run_sql.side_effect = (None, None)
     assert (
         PsycopgEngine.run_chunked_sql(
-            engine, query, args, return_shape=ResultShape.MANY_ONE, chunk_size=2,
+            engine,
+            query,
+            args,
+            return_shape=ResultShape.MANY_ONE,
+            chunk_size=2,
         )
         == []
     )
@@ -389,7 +408,8 @@ def test_object_storage_remounting(pg_repo_local):
     )
 
     assert missing_object not in pg_repo_local.object_engine.run_sql(
-        "SELECT splitgraph_api.list_objects()", return_shape=ResultShape.ONE_ONE,
+        "SELECT splitgraph_api.list_objects()",
+        return_shape=ResultShape.ONE_ONE,
     )
 
     with mock.patch("splitgraph.engine.postgres.engine.logging") as log:

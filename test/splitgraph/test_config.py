@@ -102,23 +102,23 @@ def test_get_environment_config_value():
 
 
 def test_config_exports_dict():
-    """ The CONFIG object exported from config should be the same
-        as the result of calling create_config_dict()
+    """The CONFIG object exported from config should be the same
+    as the result of calling create_config_dict()
     """
     assert json.dumps(CONFIG) == json.dumps(create_config_dict())
 
 
 def test_sanity_pyfakefs_is_working(fs_fast):
-    """ Sanity check that fs is provided magically by pyfakefs
-        http://jmcgeheeiv.github.io/pyfakefs/release/usage.html#test-scenarios
+    """Sanity check that fs is provided magically by pyfakefs
+    http://jmcgeheeiv.github.io/pyfakefs/release/usage.html#test-scenarios
     """
     fs_fast.create_file("/var/bogus/directory/bogus_file.txt")
     assert os.path.exists("/var/bogus/directory/bogus_file.txt")
 
 
 def test_get_explicit_config_file_location_from_env_existing_file(fs_fast):
-    """ get_explicit_config_file_location()
-        from env var when file exists should return the location
+    """get_explicit_config_file_location()
+    from env var when file exists should return the location
     """
     existing_file = "/var/mock/foo_bar.cfg"
 
@@ -135,8 +135,8 @@ def test_get_explicit_config_file_location_from_env_existing_file(fs_fast):
 
 
 def test_get_explicit_config_file_location_from_env_nonexisting_file(fs_fast):
-    """ get_explicit_config_file_location()
-        from env var when file does NOT exist should return None
+    """get_explicit_config_file_location()
+    from env var when file does NOT exist should return None
     """
     dne_file = "/var/doesnotexist/foo_bar.cfg"
 
@@ -151,8 +151,8 @@ def test_get_explicit_config_file_location_from_env_nonexisting_file(fs_fast):
 
 
 def test_get_explicit_config_file_location_from_arg_existing_file(fs_fast):
-    """ get_explicit_config_file_location()
-        from arg flag when file exists should return the location
+    """get_explicit_config_file_location()
+    from arg flag when file exists should return the location
     """
     existing_file = "/var/mock/foo_bar.cfg"
 
@@ -169,8 +169,8 @@ def test_get_explicit_config_file_location_from_arg_existing_file(fs_fast):
 
 
 def test_get_explicit_config_file_location_from_arg_nonexisting_file(fs_fast):
-    """ get_explicit_config_file_location()
-        from arg flag when file does NOT exist should return None
+    """get_explicit_config_file_location()
+    from arg flag when file does NOT exist should return None
     """
     dne_file = "/var/doesnotexist/foo_bar.cfg"
 

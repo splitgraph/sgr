@@ -69,7 +69,8 @@ def set_tags_batch(repository: "Repository", hashes_tags: List[Tuple[str, str]])
     ]
 
     engine.run_sql_batch(
-        SQL("SELECT {}.tag_image(%s,%s,%s,%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)), args,
+        SQL("SELECT {}.tag_image(%s,%s,%s,%s)").format(Identifier(SPLITGRAPH_API_SCHEMA)),
+        args,
     )
 
 

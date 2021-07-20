@@ -64,7 +64,11 @@ from splitgraph.engine.postgres.engine import PsycopgEngine
             ],
             "1.0",
             "0.0.3",
-            ["test--1.0--0.0.1.sql", "test--0.0.1--0.0.2.sql", "test--0.0.2--0.0.3.sql",],
+            [
+                "test--1.0--0.0.1.sql",
+                "test--0.0.1--0.0.2.sql",
+                "test--0.0.2--0.0.3.sql",
+            ],
         ),
         # Check failure when can't find a path
         (
@@ -79,7 +83,12 @@ from splitgraph.engine.postgres.engine import PsycopgEngine
             ValueError,
         ),
         # Check failure with unparseable filenames
-        (["test--0.0.1.sql", "test--0.0.1--0.0.2.sql", "test.sql"], "0.0.1", "0.0.2", ValueError,),
+        (
+            ["test--0.0.1.sql", "test--0.0.1--0.0.2.sql", "test.sql"],
+            "0.0.1",
+            "0.0.2",
+            ValueError,
+        ),
         # Check schema that gets overwritten rather than upgraded even
         # if it's already installed with the same version
         (["test_static--0.0.1.sql"], "0.0.1", None, ["test_static--0.0.1.sql"]),

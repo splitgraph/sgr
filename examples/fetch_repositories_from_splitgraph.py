@@ -200,7 +200,7 @@ class Repositories(BaseModel):
 
 def construct_repositories(repositories_sources, repositories_metadata) -> Repositories:
     def combine_dictionaries(a: dict, b: dict) -> Dict[Any, Tuple]:
-        """ Note: assumes a and b have identical keys """
+        """Note: assumes a and b have identical keys"""
         keys = set(a.keys()).union(set(b.keys()))
         return {key: (a[key], b[key]) for key in keys}
 
@@ -238,8 +238,7 @@ def construct_repositories(repositories_sources, repositories_metadata) -> Repos
                         },
                         schemas={
                             node.tableName: {
-                                column.name: column.field_type
-                                for column in node.tableSchema
+                                column.name: column.field_type for column in node.tableSchema
                             }
                             for node in source.externalImageByNamespaceAndRepository.imageByNamespaceAndRepositoryAndImageHash.tablesByNamespaceAndRepositoryAndImageHash.nodes
                         },
@@ -285,9 +284,7 @@ def _write_readmes_to_disk(data: Repositories, directory):
 
 def output_repositories_yaml(data: Repositories, file):
     data = Repositories(
-        repositories=sorted(
-            data.repositories, key=lambda r: (r.namespace, r.repository)
-        )
+        repositories=sorted(data.repositories, key=lambda r: (r.namespace, r.repository))
     )
     yaml.dump(data.dict(), file)
 
@@ -328,9 +325,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--remote", default=REMOTE)
     parser.add_argument("--readme-directory", default=READMES_DIRECTORY)
-    parser.add_argument(
-        "output", nargs="?", type=argparse.FileType("w"), default=sys.stdout
-    )
+    parser.add_argument("output", nargs="?", type=argparse.FileType("w"), default=sys.stdout)
     parser.add_argument("--domain", default=DOMAIN)  # TODO read from .sgconfig
     args = parser.parse_args()
 
