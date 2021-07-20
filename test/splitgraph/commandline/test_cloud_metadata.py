@@ -369,9 +369,7 @@ def test_commandline_load():
         body=add_external_repo,
     )
 
-    httpretty.register_uri(
-        httpretty.HTTPretty.POST, GQL_ENDPOINT + "/"
-    )
+    httpretty.register_uri(httpretty.HTTPretty.POST, GQL_ENDPOINT + "/")
 
     def get_remote_param(remote, param):
         if param == "SG_AUTH_API":

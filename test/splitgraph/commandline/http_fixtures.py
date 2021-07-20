@@ -1,7 +1,11 @@
 import json
 
-from splitgraph.cloud import _PROFILE_UPSERT_QUERY, _BULK_UPSERT_REPO_PROFILES_QUERY, _BULK_UPDATE_REPO_SOURCES_QUERY, \
-    _BULK_UPSERT_REPO_TOPICS_QUERY
+from splitgraph.cloud import (
+    _PROFILE_UPSERT_QUERY,
+    _BULK_UPSERT_REPO_PROFILES_QUERY,
+    _BULK_UPDATE_REPO_SOURCES_QUERY,
+    _BULK_UPSERT_REPO_TOPICS_QUERY,
+)
 
 REMOTE = "remote_engine"
 AUTH_ENDPOINT = "http://some-auth-service.example.com"
@@ -389,7 +393,11 @@ def assert_repository_profiles(request):
     assert variables["namespaces"] == ["otheruser", "someuser", "someuser"]
     assert variables["repositories"] == ["somerepo_2", "somerepo_1", "somerepo_2"]
     assert variables["readmes"] == ["# Readme 2", "# Readme 1", None]
-    assert variables["descriptions"] == ["Repository Description 2", "Repository Description 1", "Another Repository"]
+    assert variables["descriptions"] == [
+        "Repository Description 2",
+        "Repository Description 1",
+        "Another Repository",
+    ]
     assert variables["licenses"] == [None, "Public Domain", None]
     assert variables["metadata"] == [None, None, None]
 
@@ -404,7 +412,12 @@ def assert_repository_sources(request):
     assert variables["repositories"] == ["somerepo_2", "somerepo_1"]
     assert variables["sources"] == [
         {"anchor": "test data source", "href": "https://example.com"},
-        {"anchor": "test data source", "href": "https://example.com", "isCreator": True, "isSameAs": False}
+        {
+            "anchor": "test data source",
+            "href": "https://example.com",
+            "isCreator": True,
+            "isSameAs": False,
+        },
     ]
 
 

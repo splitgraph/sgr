@@ -22,6 +22,7 @@ from splitgraph.commandline.common import (
     Color,
 )
 from splitgraph.commandline.engine import patch_and_save_config, inject_config_into_engines
+from splitgraph.core.output import pluralise
 
 # Hardcoded database name for the Splitgraph DDN (ddn instead of sgregistry)
 _DDN_DBNAME = "ddn"
@@ -677,7 +678,7 @@ def load_c(remote, readme_dir, repositories_file, limit_repositories):
                     repository.namespace, repository.repository, repository.external, credential_map
                 )
 
-    logging.info("Uploading metadata...")
+    logging.info("Updating metadata...")
     namespace_list = []
     repository_list = []
     metadata_list = []
@@ -689,6 +690,7 @@ def load_c(remote, readme_dir, repositories_file, limit_repositories):
             metadata = _prepare_metadata(repository.metadata, readme_basedir=readme_dir)
             metadata_list.append(metadata)
     gql_client.bulk_upsert_metadata(namespace_list, repository_list, metadata_list)
+    logging.info(f"Updated metadata for {pluralise('repository', len(repository_list))}")
 
 
 def _build_credential_map(auth_client, credentials=None):

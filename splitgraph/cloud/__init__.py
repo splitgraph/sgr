@@ -775,32 +775,24 @@ class GQLAPIClient:
             )
         return response
 
-    def bulk_upsert_metadata(self, namespace_list: List[str], repository_list: List[str], metadata_list: List[Metadata]):
+    def bulk_upsert_metadata(
+        self, namespace_list: List[str], repository_list: List[str], metadata_list: List[Metadata]
+    ):
         repo_profiles: Dict[str, List[Any]] = dict(
             namespaces=namespace_list,
             repositories=repository_list,
             descriptions=[],
             readmes=[],
             licenses=[],
-            metadata=[]
+            metadata=[],
         )
-        repo_sources: Dict[str, List[Any]] = dict(
-            namespaces=[],
-            repositories=[],
-            sources=[]
-        )
-        repo_topics: Dict[str, List[str]] = dict(
-            namespaces=[],
-            repositories=[],
-            topics=[]
-        )
+        repo_sources: Dict[str, List[Any]] = dict(namespaces=[], repositories=[], sources=[])
+        repo_topics: Dict[str, List[str]] = dict(namespaces=[], repositories=[], topics=[])
 
         # populate mutation payloads
         for ind, metadata in enumerate(metadata_list):
             validated_metadata = GQLAPIClient._validate_metadata(
-                namespace_list[ind],
-                repository_list[ind],
-                metadata
+                namespace_list[ind], repository_list[ind], metadata
             )
 
             repo_profiles["descriptions"].append(validated_metadata.get("description"))
