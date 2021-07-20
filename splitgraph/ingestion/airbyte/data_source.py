@@ -12,7 +12,7 @@ import pydantic
 from docker import DockerClient
 from docker.models.containers import Container
 
-from splitgraph.commandline.engine import get_docker_client, copy_to_container
+from splitgraph.utils.docker import get_docker_client, copy_to_container
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import (
     SyncState,
@@ -87,7 +87,6 @@ class AirbyteDataSource(SyncableDataSource, ABC):
         }
 
     def _run_discovery(self, config: Optional[AirbyteConfig] = None) -> AirbyteCatalog:
-        # Create Docker container
         client = get_docker_client()
         network_mode = detect_network_mode(client)
 

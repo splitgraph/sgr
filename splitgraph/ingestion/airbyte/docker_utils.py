@@ -8,8 +8,8 @@ import docker.errors
 from docker import DockerClient
 from docker.models.containers import Container
 
-from splitgraph.commandline.engine import copy_to_container
 from splitgraph.exceptions import SplitGraphError
+from splitgraph.utils.docker import copy_to_container
 
 
 class SubprocessError(SplitGraphError):
