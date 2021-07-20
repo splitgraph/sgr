@@ -1,6 +1,7 @@
 import json
 
-from splitgraph.cloud import _PROFILE_UPSERT_QUERY
+from splitgraph.cloud import _PROFILE_UPSERT_QUERY, _BULK_UPSERT_REPO_PROFILES_QUERY, _BULK_UPDATE_REPO_SOURCES_QUERY, \
+    _BULK_UPSERT_REPO_TOPICS_QUERY
 
 REMOTE = "remote_engine"
 AUTH_ENDPOINT = "http://some-auth-service.example.com"
@@ -379,64 +380,43 @@ def add_external_repo(request, uri, response_headers):
     ]
 
 
-def upsert_repository_metadata(request, uri, response_headers):
+def assert_repository_profiles(request):
     data = json.loads(request.body)
-    assert data["operationName"] == "UpsertRepoProfile"
-    assert data["query"] == _PROFILE_UPSERT_QUERY
+    assert data["operationName"] == "BulkUpsertRepoProfilesMutation"
+    assert data["query"] == _BULK_UPSERT_REPO_PROFILES_QUERY
 
     variables = data["variables"]
-    if variables["namespace"] == "someuser" and variables["repository"] == "somerepo_1":
-        assert variables == {
-            "namespace": "someuser",
-            "repository": "somerepo_1",
-            "readme": "# Readme 1",
-            "description": "Repository Description 1",
-            "topics": [],
-            "sources": [
-                {
-                    "anchor": "test data source",
-                    "href": "https://example.com",
-                    "isCreator": True,
-                    "isSameAs": False,
-                }
-            ],
-            "license": "Public Domain",
-        }
-    elif variables["namespace"] == "someuser" and variables["repository"] == "somerepo_2":
-        assert variables == {
-            "description": "Another Repository",
-            "namespace": "someuser",
-            "repository": "somerepo_2",
-        }
-    elif variables["namespace"] == "otheruser" and variables["repository"] == "somerepo_2":
-        assert variables == {
-            "description": "Repository Description 2",
-            "namespace": "otheruser",
-            "readme": "# Readme 2",
-            "repository": "somerepo_2",
-            "sources": [{"anchor": "test data source", "href": "https://example.com"}],
-            "topics": ["topic_1", "topic_2"],
-        }
-    else:
-        raise AssertionError(
-            "Unknown repository %s/%s!" % (variables["namespace"], variables["repository"])
-        )
+    assert variables["namespaces"] == ["otheruser", "someuser", "someuser"]
+    assert variables["repositories"] == ["somerepo_2", "somerepo_1", "somerepo_2"]
+    assert variables["readmes"] == ["# Readme 2", "# Readme 1", None]
+    assert variables["descriptions"] == ["Repository Description 2", "Repository Description 1", "Another Repository"]
+    assert variables["licenses"] == [None, "Public Domain", None]
+    assert variables["metadata"] == [None, None, None]
 
-    success_response = {
-        "data": {
-            "__typename": "Mutation",
-            "upsertRepoProfileByNamespaceAndRepository": {
-                "clientMutationId": None,
-                "__typename": "UpsertRepoProfilePayload",
-            },
-        }
-    }
 
-    return [
-        200,
-        response_headers,
-        json.dumps(success_response),
+def assert_repository_sources(request):
+    data = json.loads(request.body)
+    assert data["operationName"] == "BulkUpdateRepoSourcesMutation"
+    assert data["query"] == _BULK_UPDATE_REPO_SOURCES_QUERY
+
+    variables = data["variables"]
+    assert variables["namespaces"] == ["otheruser", "someuser"]
+    assert variables["repositories"] == ["somerepo_2", "somerepo_1"]
+    assert variables["sources"] == [
+        {"anchor": "test data source", "href": "https://example.com"},
+        {"anchor": "test data source", "href": "https://example.com", "isCreator": True, "isSameAs": False}
     ]
+
+
+def assert_repository_topics(request):
+    data = json.loads(request.body)
+    assert data["operationName"] == "BulkUpsertRepoTopicsMutation"
+    assert data["query"] == _BULK_UPSERT_REPO_TOPICS_QUERY
+
+    variables = data["variables"]
+    assert variables["namespaces"] == ["otheruser", "otheruser"]
+    assert variables["repositories"] == ["somerepo_2", "somerepo_2"]
+    assert variables["topics"] == ["topic_1", "topic_2"]
 
 
 def register_user(request, uri, response_headers):

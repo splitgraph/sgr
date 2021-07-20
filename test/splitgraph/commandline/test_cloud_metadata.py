@@ -34,7 +34,9 @@ from test.splitgraph.commandline.http_fixtures import (
     update_external_credential,
     add_external_credential,
     add_external_repo,
-    upsert_repository_metadata,
+    assert_repository_profiles,
+    assert_repository_sources,
+    assert_repository_topics,
     AUTH_ENDPOINT,
 )
 from test.splitgraph.conftest import RESOURCES
@@ -368,7 +370,7 @@ def test_commandline_load():
     )
 
     httpretty.register_uri(
-        httpretty.HTTPretty.POST, GQL_ENDPOINT + "/", body=upsert_repository_metadata
+        httpretty.HTTPretty.POST, GQL_ENDPOINT + "/"
     )
 
     def get_remote_param(remote, param):
@@ -398,4 +400,11 @@ def test_commandline_load():
                 catch_exceptions=False,
             )
             assert result.exit_code == 0
-            assert "someuser/somerepo_1" in result.output
+
+            reqs = httpretty.latest_requests()
+
+            assert_repository_topics(reqs.pop())
+            reqs.pop()  # discard duplicate request
+            assert_repository_sources(reqs.pop())
+            reqs.pop()  # discard duplicate request
+            assert_repository_profiles(reqs.pop())
