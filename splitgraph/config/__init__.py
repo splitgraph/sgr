@@ -29,6 +29,8 @@ FDW_CLASS = get_singleton(CONFIG, "SG_FDW_CLASS")
 
 SG_CMD_ASCII = get_singleton(CONFIG, "SG_CMD_ASCII") == "true"
 
+DEFAULT_CHUNK_SIZE = int(get_singleton(CONFIG, "SG_COMMIT_CHUNK_SIZE"))
+
 REMOTES = list(CONFIG.get("remotes", []))
 
 # This is a global variable that gets flipped to True by the Multicorn FDW class

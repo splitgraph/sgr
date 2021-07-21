@@ -3,7 +3,7 @@ from typing import Dict, Any, Iterable, Generator, Optional, List
 
 from target_postgres.db_sync import column_type
 
-from splitgraph.config import get_singleton, CONFIG
+from splitgraph.config import DEFAULT_CHUNK_SIZE
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableSchema, TableColumn, TableInfo
 from splitgraph.exceptions import TableNotFoundError
@@ -91,7 +91,7 @@ def _store_raw_airbyte_tables(
             repository,
             raw_table,
             image_hash,
-            chunk_size=int(get_singleton(CONFIG, "SG_COMMIT_CHUNK_SIZE")),
+            chunk_size=DEFAULT_CHUNK_SIZE,
             source_schema=staging_schema,
             source_table=raw_table,
         )
@@ -116,7 +116,7 @@ def _store_processed_airbyte_tables(
             repository,
             table,
             image_hash,
-            chunk_size=int(get_singleton(CONFIG, "SG_COMMIT_CHUNK_SIZE")),
+            chunk_size=DEFAULT_CHUNK_SIZE,
             source_schema=staging_schema,
             source_table=table,
         )

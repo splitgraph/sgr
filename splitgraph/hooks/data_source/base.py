@@ -5,6 +5,7 @@ from typing import Dict, Any, Optional, TYPE_CHECKING, cast, Tuple, List
 from psycopg2._json import Json
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph.config import DEFAULT_CHUNK_SIZE
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.image import Image
 from splitgraph.core.types import (
@@ -132,7 +133,7 @@ class LoadableDataSource(DataSource, ABC):
                 head=None,
                 image_hash=image_hash,
                 snap_only=True,
-                chunk_size=100000,
+                chunk_size=DEFAULT_CHUNK_SIZE,
                 schema=tmp_schema,
             )
         finally:
