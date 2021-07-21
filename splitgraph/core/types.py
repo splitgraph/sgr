@@ -68,6 +68,12 @@ def unwrap(
     return good, bad
 
 
+def get_table_params(table_info: TableInfo, table_name: str) -> TableParams:
+    if isinstance(table_info, dict) and table_name in table_info:
+        return table_info[table_name][1]
+    return TableParams({})
+
+
 class Comparable(metaclass=ABCMeta):
     @abstractmethod
     def __lt__(self, other: Any) -> bool:

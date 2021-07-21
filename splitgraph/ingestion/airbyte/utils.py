@@ -1,11 +1,11 @@
 import logging
-from typing import Dict, Any, Iterable, Generator, Optional, List
+from typing import Dict, Any, Iterable, Generator, Optional, List, Tuple
 
 from target_postgres.db_sync import column_type
 
 from splitgraph.config import DEFAULT_CHUNK_SIZE
 from splitgraph.core.repository import Repository
-from splitgraph.core.types import TableSchema, TableColumn, TableInfo
+from splitgraph.core.types import TableSchema, TableColumn, TableInfo, TableParams, get_table_params
 from splitgraph.exceptions import TableNotFoundError
 from .models import (
     AirbyteMessage,
@@ -140,6 +140,39 @@ def get_sg_schema(stream: AirbyteStream) -> TableSchema:
     ]
 
 
+def get_pk_cursor_fields(
+    stream: AirbyteStream,
+    table_params: TableParams,
+    cursor_overrides: Optional[Dict[str, List[str]]] = None,
+    primary_key_overrides: Optional[Dict[str, List[str]]] = None,
+) -> Tuple[Optional[List[str]], Optional[List[List[str]]]]:
+    cursor_overrides = cursor_overrides or {}
+    primary_key_overrides = primary_key_overrides or {}
+
+    # Precedence:
+    #  * Override in the table-specific parameters
+    #  * Override in the global plugin settings
+    #  * Default field in the stream itself (reported by the source)
+
+    cursor_field = stream.default_cursor_field
+    custom_cursor_field = table_params.get(
+        "airbyte_cursor_field", cursor_overrides.get(stream.name)
+    )
+
+    if custom_cursor_field:
+        cursor_field = custom_cursor_field
+
+    primary_key = stream.source_defined_primary_key
+    custom_primary_key = table_params.get(
+        "airbyte_primary_key", primary_key_overrides.get(stream.name)
+    )
+
+    if custom_primary_key:
+        primary_key = [[k] for k in custom_primary_key]
+
+    return cursor_field, primary_key
+
+
 def select_streams(
     catalog: AirbyteCatalog,
     tables: Optional[TableInfo],
@@ -148,8 +181,6 @@ def select_streams(
     primary_key_overrides: Optional[Dict[str, List[str]]] = None,
 ) -> ConfiguredAirbyteCatalog:
     streams: List[ConfiguredAirbyteStream] = []
-    cursor_overrides = cursor_overrides or {}
-    primary_key_overrides = primary_key_overrides or {}
 
     for stream in catalog.streams:
         if tables and stream.name not in tables:
@@ -173,11 +204,14 @@ def select_streams(
                 # Airbyte currently doesn't extract from Singer-backed sources.
                 # PR to fix: https://github.com/airbytehq/airbyte/pull/4789
                 # In the meantime, we allow the plugin to override the cursor and the PK field.
-                cursor_field = cursor_overrides.get(stream.name, stream.default_cursor_field)
-
-                primary_key = stream.source_defined_primary_key
-                if primary_key_overrides.get(stream.name):
-                    primary_key = [[k] for k in primary_key_overrides[stream.name]]
+                # This is also useful for plugins like Postgres where the user might want to
+                # specify their own cursor field.
+                cursor_field, primary_key = get_pk_cursor_fields(
+                    stream,
+                    get_table_params(tables, stream.name) if tables else TableParams({}),
+                    cursor_overrides,
+                    primary_key_overrides,
+                )
 
                 if not primary_key or not (cursor_field or stream.source_defined_cursor):
                     logging.warning(

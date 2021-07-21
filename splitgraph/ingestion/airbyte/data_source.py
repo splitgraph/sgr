@@ -19,6 +19,7 @@ from splitgraph.core.types import (
     TableInfo,
     IntrospectionResult,
     TableParams,
+    get_table_params,
 )
 from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.hooks.data_source.base import (
@@ -45,6 +46,7 @@ from .utils import (
     _store_processed_airbyte_tables,
     get_sg_schema,
     select_streams,
+    get_pk_cursor_fields,
 )
 from ..singer.common import store_ingestion_state, add_timestamp_tags
 
@@ -61,6 +63,24 @@ class AirbyteDataSource(SyncableDataSource, ABC):
     cursor_overrides: Optional[Dict[str, List[str]]] = None
     primary_key_overrides: Optional[Dict[str, List[str]]] = None
     docker_environment: Optional[Dict[str, str]] = None
+
+    table_params_schema = {
+        "type": "object",
+        "properties": {
+            "airbyte_cursor_fields": {
+                "type": "array",
+                "description": "Fields in this stream to be used as a cursor "
+                "for incremental replication (overrides Airbyte configuration's cursor_field)",
+                "items": {"type": "string"},
+            },
+            "airbyte_primary_key_fields": {
+                "type": "array",
+                "description": "Fields in this stream to be used as a primary key for deduplication "
+                "(overrides Airbyte configuration's primary_key)",
+                "items": {"type": "string"},
+            },
+        },
+    }
 
     def get_airbyte_config(self) -> AirbyteConfig:
         return {**self.params, **self.credentials}
@@ -124,6 +144,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
         tables: Optional[TableInfo] = None,
         use_state: bool = True,
     ) -> str:
+        tables = tables or self.tables
         # https://docs.airbyte.io/understanding-airbyte/airbyte-specification
 
         # Select columns and streams (full_refresh/incremental, cursors)
@@ -427,5 +448,19 @@ class AirbyteDataSource(SyncableDataSource, ABC):
         for stream in catalog.streams:
             stream_name = stream.name
             stream_schema = get_sg_schema(stream)
-            result[stream_name] = (stream_schema, cast(TableParams, {}))
+
+            cursor_field, primary_key = get_pk_cursor_fields(
+                stream,
+                get_table_params(self.tables, stream.name) if self.tables else TableParams({}),
+                self.cursor_overrides,
+                self.primary_key_overrides,
+            )
+
+            suggested_params = {}
+            if cursor_field is not None:
+                suggested_params["airbyte_cursor_field"] = cursor_field
+            if primary_key is not None:
+                suggested_params["airbyte_primary_key"] = [k[0] for k in primary_key]
+
+            result[stream_name] = (stream_schema, TableParams(suggested_params))
         return result

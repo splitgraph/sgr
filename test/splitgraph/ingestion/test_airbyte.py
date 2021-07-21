@@ -11,7 +11,7 @@ from splitgraph.ingestion.airbyte.models import (
 from psycopg2.sql import Identifier, SQL
 
 from splitgraph.core.repository import Repository
-from splitgraph.core.types import TableColumn
+from splitgraph.core.types import TableColumn, TableParams
 from splitgraph.engine import ResultShape
 from splitgraph.ingestion.airbyte.docker_utils import SubprocessError
 from splitgraph.ingestion.airbyte.utils import select_streams
@@ -44,7 +44,7 @@ class MySQLAirbyteDataSource(AirbyteDataSource):
         return "MySQL (Airbyte)"
 
 
-def _source(local_engine_empty):
+def _source(local_engine_empty, table_params=None):
     return MySQLAirbyteDataSource(
         engine=local_engine_empty,
         params={
@@ -57,6 +57,7 @@ def _source(local_engine_empty):
         credentials={
             "password": "originpass",
         },
+        tables=table_params,
     )
 
 
@@ -108,7 +109,9 @@ def test_airbyte_mysql_source_introspection_harness(local_engine_empty):
 def test_airbyte_mysql_source_introspection_end_to_end(local_engine_empty):
     source = _source(local_engine_empty)
 
-    assert source.introspect() == {
+    introspection_result = source.introspect()
+
+    assert introspection_result == {
         "mushrooms": (
             [
                 TableColumn(
@@ -146,8 +149,21 @@ def test_airbyte_mysql_source_introspection_end_to_end(local_engine_empty):
                     comment=None,
                 ),
             ],
-            {},
+            {"airbyte_cursor_field": [], "airbyte_primary_key": ["mushroom_id"]},
         )
+    }
+
+    # Introspect again but this time override the cursor field
+    source = _source(
+        local_engine_empty,
+        table_params={"mushrooms": ([], {"airbyte_cursor_field": ["discovery"]})},
+    )
+
+    introspection_result = source.introspect()
+
+    assert introspection_result["mushrooms"][1] == {
+        "airbyte_cursor_field": ["discovery"],
+        "airbyte_primary_key": ["mushroom_id"],
     }
 
 
@@ -181,6 +197,19 @@ def test_airbyte_mysql_source_catalog_selection_incremental_cursor_override():
     assert catalog.streams[0].cursor_field == ["mushroom_id"]
 
 
+def test_airbyte_mysql_source_catalog_selection_incremental_cursor_override_tables():
+    catalog = select_streams(
+        _EXPECTED_AIRBYTE_CATALOG,
+        tables={"mushrooms": ([], TableParams({"airbyte_cursor_field": ["mushroom_id"]}))},
+        sync=True,
+    )
+    assert len(catalog.streams) == 1
+    assert catalog.streams[0].sync_mode == SyncMode.incremental
+    assert catalog.streams[0].destination_sync_mode == DestinationSyncMode.append_dedup
+    assert catalog.streams[0].primary_key == [["mushroom_id"]]
+    assert catalog.streams[0].cursor_field == ["mushroom_id"]
+
+
 def test_airbyte_mysql_source_catalog_selection_incremental_pk_override():
     catalog = select_streams(
         _EXPECTED_AIRBYTE_CATALOG,
@@ -196,6 +225,26 @@ def test_airbyte_mysql_source_catalog_selection_incremental_pk_override():
     assert catalog.streams[0].cursor_field == ["discovery"]
 
 
+def test_airbyte_mysql_source_catalog_selection_incremental_pk_override_tables():
+    catalog = select_streams(
+        _EXPECTED_AIRBYTE_CATALOG,
+        tables={
+            "mushrooms": (
+                [],
+                TableParams(
+                    {"airbyte_cursor_field": ["discovery"], "airbyte_primary_key": ["discovery"]}
+                ),
+            )
+        },
+        sync=True,
+    )
+    assert len(catalog.streams) == 1
+    assert catalog.streams[0].sync_mode == SyncMode.incremental
+    assert catalog.streams[0].destination_sync_mode == DestinationSyncMode.append_dedup
+    assert catalog.streams[0].primary_key == [["discovery"]]
+    assert catalog.streams[0].cursor_field == ["discovery"]
+
+
 # Test in three modes:
 # * Sync: two syncs one after another, make sure state is preserved and reinjected
 # * Load: just a load into a fresh repo (not much difference since we still store emitted state)
@@ -203,12 +252,17 @@ def test_airbyte_mysql_source_catalog_selection_incremental_pk_override():
 @pytest.mark.mounting
 @pytest.mark.parametrize("mode", ["sync", "load", "load_after_sync"])
 def test_airbyte_mysql_source_end_to_end(local_engine_empty, mode):
-    source = _source(local_engine_empty)
+    # Use the mushroom_id as the cursor for incremental replication.
+    # Note we ignore the schema here (Airbyte does its own normalization so we can't predict it).
     repo = Repository.from_schema(TEST_REPO)
 
     if mode == "sync":
-        # Use the mushroom_id as the cursor for incremental replication.
-        source.cursor_overrides = {"mushrooms": ["mushroom_id"]}
+        source = _source(
+            local_engine_empty,
+            table_params={
+                "mushrooms": ([], TableParams({"airbyte_cursor_field": ["mushroom_id"]}))
+            },
+        )
         source.sync(repo, "latest")
         expected_tables = [
             "_airbyte_raw_mushrooms",
@@ -218,6 +272,7 @@ def test_airbyte_mysql_source_end_to_end(local_engine_empty, mode):
             "mushrooms_scd",
         ]
     else:
+        source = _source(local_engine_empty)
         source.load(repo)
         expected_tables = [
             "_airbyte_raw_mushrooms",
