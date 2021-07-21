@@ -165,12 +165,15 @@ def test_commit_chunking(local_engine_empty):
         )
 
         # Check object contents
-        assert local_engine_empty.run_sql(
-            SQL("SELECT key FROM {}.{} ORDER BY key").format(
-                Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj)
-            ),
-            return_shape=ResultShape.MANY_ONE,
-        ) == list(range(min_key, max_key + 1))
+        assert (
+            local_engine_empty.run_sql(
+                SQL("SELECT key FROM {}.{} ORDER BY key").format(
+                    Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj)
+                ),
+                return_shape=ResultShape.MANY_ONE,
+            )
+            == list(range(min_key, max_key + 1))
+        )
 
     # Test checkout progress reporting
     with mock.patch("splitgraph.core.table._PROGRESS_EVERY", 1):
@@ -198,12 +201,15 @@ def test_commit_chunking_order(local_engine_empty):
     objects = head.get_table("test").objects
     # When queried without an order, we should get the natural order
     # of values in the chunk (they were inserted in the same order as the key in this case)
-    assert local_engine_empty.run_sql(
-        SQL("SELECT key FROM {}.{}").format(
-            Identifier(SPLITGRAPH_META_SCHEMA), Identifier(objects[0])
-        ),
-        return_shape=ResultShape.MANY_ONE,
-    ) == list(range(1, 6))
+    assert (
+        local_engine_empty.run_sql(
+            SQL("SELECT key FROM {}.{}").format(
+                Identifier(SPLITGRAPH_META_SCHEMA), Identifier(objects[0])
+            ),
+            return_shape=ResultShape.MANY_ONE,
+        )
+        == list(range(1, 6))
+    )
 
     # Commit again overwriting objects and changing the sort order
     head = OUTPUT.commit(
@@ -215,20 +221,26 @@ def test_commit_chunking_order(local_engine_empty):
     for i, obj in enumerate(objects):
         min_key = i * 5 + 1
         max_key = min(i * 5 + 5, 11)
-        assert local_engine_empty.run_sql(
-            SQL("SELECT key FROM {}.{} ORDER BY key").format(
-                Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj)
-            ),
-            return_shape=ResultShape.MANY_ONE,
-        ) == list(range(min_key, max_key + 1))
+        assert (
+            local_engine_empty.run_sql(
+                SQL("SELECT key FROM {}.{} ORDER BY key").format(
+                    Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj)
+                ),
+                return_shape=ResultShape.MANY_ONE,
+            )
+            == list(range(min_key, max_key + 1))
+        )
 
         # This time, the natural order is by value_1 and so rows go backwards.
-        assert local_engine_empty.run_sql(
-            SQL("SELECT key FROM {}.{}").format(
-                Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj)
-            ),
-            return_shape=ResultShape.MANY_ONE,
-        ) == list(range(max_key, min_key - 1, -1))
+        assert (
+            local_engine_empty.run_sql(
+                SQL("SELECT key FROM {}.{}").format(
+                    Identifier(SPLITGRAPH_META_SCHEMA), Identifier(obj)
+                ),
+                return_shape=ResultShape.MANY_ONE,
+            )
+            == list(range(max_key, min_key - 1, -1))
+        )
 
 
 def test_commit_diff_splitting(local_engine_empty):
@@ -1042,7 +1054,9 @@ def test_create_object_out_of_band(local_engine_empty):
         # Test passing pg_temp without a schema fails (temporary tables aren't
         # in information_schema and so we can't infer their schema)
         object_manager.create_base_fragment(
-            source_schema="pg_temp", source_table="test", namespace="test",
+            source_schema="pg_temp",
+            source_table="test",
+            namespace="test",
         )
 
     object_id = object_manager.create_base_fragment(

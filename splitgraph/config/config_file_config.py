@@ -8,14 +8,14 @@ def hoist_section(
     config_dict: Dict[str, Dict[str, str]], section: str = "defaults"
 ) -> Dict[str, Union[Dict[str, str], str]]:
     """
-        If a section exists called <hoist_section>, hoist it to the top level
-        This is useful for overriding default configs from within a config file
+    If a section exists called <hoist_section>, hoist it to the top level
+    This is useful for overriding default configs from within a config file
 
-        Transform `config_dict` to "hoist" any config values from a section
-        into the top level (thus, overriding environment variables),
-        when the name of the section matches `hoist_section`.
+    Transform `config_dict` to "hoist" any config values from a section
+    into the top level (thus, overriding environment variables),
+    when the name of the section matches `hoist_section`.
 
-        Return a new, updated copy of `config_dict`.
+    Return a new, updated copy of `config_dict`.
     """
 
     if section not in config_dict.keys():
@@ -34,36 +34,36 @@ def hoist_section(
 
 def accumulate_lists(config_dict: Dict[str, Union[Dict[str, str], str]]) -> ConfigDict:
     """
-        Transform a `config_dict` to "accumulate" objects "nested" via key name
+    Transform a `config_dict` to "accumulate" objects "nested" via key name
 
-        Because  ConfigParser does not support nesting, we implement our own
-        syntax via the key names of sections. The ':' character can be used in
-        section names to specify the left and right key. Example::
+    Because  ConfigParser does not support nesting, we implement our own
+    syntax via the key names of sections. The ':' character can be used in
+    section names to specify the left and right key. Example::
 
-            .ini config             new config_dict
+        .ini config             new config_dict
 
-                              ----->
-                                |
-            [remote: remote1]   |   {
-            SG_ENV_VAR=foo      |       **rest_of_config_dict,
-                                |       "remotes": {
-            [origin: origin1]   |           "remote1": {
-            SG_ENV_VAR=bar      |               "SG_ENV_VAR": "foo"
-                                |           }
-            [origin: origin2]   |       },
-            SG_ENV_VAR=bax      |       "origins": {
-                                |           "origin1": {
-                                |               "SG_ENV_VAR": "bar"
-                                |           },
-                                |           "origin2": {
-                                |               "SG_ENV_VAR": "bax"
-                                |           }
-                                |       }
-                                |   }
-                                |
-                              ----->
+                          ----->
+                            |
+        [remote: remote1]   |   {
+        SG_ENV_VAR=foo      |       **rest_of_config_dict,
+                            |       "remotes": {
+        [origin: origin1]   |           "remote1": {
+        SG_ENV_VAR=bar      |               "SG_ENV_VAR": "foo"
+                            |           }
+        [origin: origin2]   |       },
+        SG_ENV_VAR=bax      |       "origins": {
+                            |           "origin1": {
+                            |               "SG_ENV_VAR": "bar"
+                            |           },
+                            |           "origin2": {
+                            |               "SG_ENV_VAR": "bax"
+                            |           }
+                            |       }
+                            |   }
+                            |
+                          ----->
 
-        :return a new, updated copy of `config_dict`
+    :return a new, updated copy of `config_dict`
     """
 
     new_dict = cast(ConfigDict, config_dict.copy())
@@ -108,12 +108,12 @@ def accumulate_lists(config_dict: Dict[str, Union[Dict[str, str], str]]) -> Conf
 
 def transform_config_dict(config_dict: Dict[str, Dict[str, str]], **kwargs) -> ConfigDict:
     """
-        Apply transformations to the raw ConfigParser.config object
+    Apply transformations to the raw ConfigParser.config object
 
-            1) hoist_section
-            2) accumulate_lists
+        1) hoist_section
+        2) accumulate_lists
 
-        Return the a new, updated copy of `config_dict`.
+    Return the a new, updated copy of `config_dict`.
     """
 
     config_dict = hoist_section(config_dict, **kwargs)
@@ -156,9 +156,9 @@ def get_config_dict_from_file(sg_file: str, **kwargs) -> Dict[str, Dict[str, str
 
 def get_config_dict_from_config_file(sg_file: str, **kwargs) -> ConfigDict:
     """
-        Create a dict from ConfigParser, apply transformations to it.
+    Create a dict from ConfigParser, apply transformations to it.
 
-        Return parsed and transformed `config_dict`.
+    Return parsed and transformed `config_dict`.
     """
 
     config_dict = get_config_dict_from_file(sg_file, **kwargs)

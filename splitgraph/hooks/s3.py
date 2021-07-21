@@ -50,11 +50,11 @@ def get_object_download_urls(remote_engine, remote_object_ids):
 class S3ExternalObjectHandler(ExternalObjectHandler):
     """Uploads/downloads the objects to/from S3/S3-compatible host using the Minio client.
 
-        The handler is "attached" to a given registry which manages issuing pre-signed
-        GET/PUT URLs.
+    The handler is "attached" to a given registry which manages issuing pre-signed
+    GET/PUT URLs.
 
-        The handler supports a parameter `threads` specifying the number of threads
-        used to upload the objects.
+    The handler supports a parameter `threads` specifying the number of threads
+    used to upload the objects.
     """
 
     def upload_objects(
@@ -105,14 +105,18 @@ class S3ExternalObjectHandler(ExternalObjectHandler):
                         pbar.set_postfix(object=object_id[:10] + "...")
             if len(successful) < len(objects):
                 raise IncompleteObjectUploadError(
-                    reason=None, successful_objects=successful, successful_object_urls=successful,
+                    reason=None,
+                    successful_objects=successful,
+                    successful_object_urls=successful,
                 )
             # The "URL" in this case is the same object ID: we ask the registry
             # for the actual URL by giving it the object ID.
             return [(s, s) for s in successful]
         except KeyboardInterrupt as e:
             raise IncompleteObjectUploadError(
-                reason=e, successful_objects=successful, successful_object_urls=successful,
+                reason=e,
+                successful_objects=successful,
+                successful_object_urls=successful,
             )
         finally:
             local_engine.autocommit = False

@@ -22,6 +22,7 @@ from splitgraph.commandline.common import (
     Color,
 )
 from splitgraph.commandline.engine import patch_and_save_config, inject_config_into_engines
+from splitgraph.core.output import pluralise
 
 # Hardcoded database name for the Splitgraph DDN (ddn instead of sgregistry)
 _DDN_DBNAME = "ddn"
@@ -674,20 +675,25 @@ def load_c(remote, readme_dir, repositories_file, limit_repositories):
     for repository in repositories:
         if repository.external:
             external_repository = AddExternalRepositoryRequest.from_external(
-                    repository.namespace,
-                    repository.repository,
-                    repository.external,
-                    credential_map
+                repository.namespace, repository.repository, repository.external, credential_map
             )
             external_repositories.append(external_repository)
     rest_client.bulk_upsert_external(repositories=external_repositories)
+    logging.info(f"Uploaded images for {pluralise('repository', len(external_repositories))}")
 
-    with tqdm(repositories) as t:
-        for repository in t:
-            t.set_description(f"{repository.namespace}/{repository.repository}")
-            if repository.metadata:
-                metadata = _prepare_metadata(repository.metadata, readme_basedir=readme_dir)
-                gql_client.upsert_metadata(repository.namespace, repository.repository, metadata)
+    logging.info("Updating metadata...")
+    namespace_list = []
+    repository_list = []
+    metadata_list = []
+    for repository in repositories:
+        if repository.metadata:
+            namespace_list.append(repository.namespace)
+            repository_list.append(repository.repository)
+
+            metadata = _prepare_metadata(repository.metadata, readme_basedir=readme_dir)
+            metadata_list.append(metadata)
+    gql_client.bulk_upsert_metadata(namespace_list, repository_list, metadata_list)
+    logging.info(f"Updated metadata for {pluralise('repository', len(repository_list))}")
 
 
 def _build_credential_map(auth_client, credentials=None):
