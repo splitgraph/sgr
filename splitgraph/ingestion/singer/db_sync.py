@@ -16,7 +16,7 @@ from splitgraph.core.types import TableSchema, TableColumn
 from splitgraph.engine.postgres.engine import get_change_key
 from splitgraph.exceptions import TableNotFoundError
 from splitgraph.ingestion.common import merge_tables
-from ._utils import _migrate_schema, log_exception, _make_changeset, rollback_at_end
+from .common import _migrate_schema, log_exception, _make_changeset, rollback_at_end
 
 
 def select_breadcrumb(stream_message, breadcrumb):

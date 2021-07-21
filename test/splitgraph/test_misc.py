@@ -351,7 +351,7 @@ def test_table_schema_params_to_dict():
                         comment=None,
                     ),
                 ],
-                {"key": "value"},
+                {"key": "value", "key_2": ["this", "is", "an", "array"]},
             ),
         }
     ) == {
@@ -361,7 +361,7 @@ def test_table_schema_params_to_dict():
         },
         "vegetables": {
             "schema": {"name": "character varying", "vegetable_id": "integer"},
-            "options": {"key": "value"},
+            "options": {"key": "value", "key_2": ["this", "is", "an", "array"]},
         },
     }
 

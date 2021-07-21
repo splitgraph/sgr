@@ -7,7 +7,7 @@ import pytest
 from minio.deleteobjects import DeleteObject
 from psycopg2.sql import Identifier, SQL
 
-from splitgraph.commandline.engine import copy_to_container
+from splitgraph.utils.docker import copy_to_container
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
 from splitgraph.core.common import META_TABLES
 from splitgraph.core.engine import get_current_repositories
