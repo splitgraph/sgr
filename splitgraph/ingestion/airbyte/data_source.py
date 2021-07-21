@@ -60,6 +60,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
     normalization_image = "airbyte/normalization:0.1.36"
     cursor_overrides: Optional[Dict[str, List[str]]] = None
     primary_key_overrides: Optional[Dict[str, List[str]]] = None
+    docker_environment: Optional[Dict[str, str]] = None
 
     def get_airbyte_config(self) -> AirbyteConfig:
         return {**self.params, **self.credentials}
@@ -362,7 +363,11 @@ class AirbyteDataSource(SyncableDataSource, ABC):
                 [("config", config), ("state", state), ("catalog", catalog)]
             )
         container = client.containers.create(
-            image=self.docker_image, name=container_name, command=command, network_mode=network_mode
+            image=self.docker_image,
+            name=container_name,
+            command=command,
+            network_mode=network_mode,
+            environment=self.docker_environment,
         )
         with remove_at_end(container):
             yield container
@@ -385,6 +390,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
             command=command,
             network_mode=network_mode,
             stdin_open=True,
+            environment=self.docker_environment,
         )
         with remove_at_end(container):
             yield container
@@ -407,6 +413,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
             name="sg-ab-norm-{:08x}".format(getrandbits(64)),
             command=command,
             network_mode=network_mode,
+            environment=self.docker_environment,
         )
 
         with remove_at_end(container):
