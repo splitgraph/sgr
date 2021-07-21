@@ -186,8 +186,14 @@ def select_streams(
         if tables and stream.name not in tables:
             continue
 
-        sync_configured = False
+        cursor_field, primary_key = get_pk_cursor_fields(
+            stream,
+            get_table_params(tables, stream.name) if tables else TableParams({}),
+            cursor_overrides,
+            primary_key_overrides,
+        )
 
+        sync_configured = False
         if sync:
             if (
                 not stream.supported_sync_modes
@@ -206,12 +212,6 @@ def select_streams(
                 # In the meantime, we allow the plugin to override the cursor and the PK field.
                 # This is also useful for plugins like Postgres where the user might want to
                 # specify their own cursor field.
-                cursor_field, primary_key = get_pk_cursor_fields(
-                    stream,
-                    get_table_params(tables, stream.name) if tables else TableParams({}),
-                    cursor_overrides,
-                    primary_key_overrides,
-                )
 
                 if not primary_key or not (cursor_field or stream.source_defined_cursor):
                     logging.warning(
@@ -227,7 +227,6 @@ def select_streams(
                         stream=stream,
                         sync_mode=SyncMode.incremental,
                         destination_sync_mode=DestinationSyncMode.append_dedup,
-                        # TODO dates aren't parsed properly (stay as strings)
                         cursor_field=cursor_field,
                         primary_key=primary_key,
                     )
@@ -239,6 +238,8 @@ def select_streams(
                 stream=stream,
                 sync_mode=SyncMode.full_refresh,
                 destination_sync_mode=DestinationSyncMode.overwrite,
+                cursor_field=cursor_field,
+                primary_key=primary_key,
             )
 
         streams.append(configured_stream)
