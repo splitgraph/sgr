@@ -2,7 +2,7 @@ import logging
 import os
 import platform
 from pathlib import Path, PureWindowsPath
-from typing import Dict, TYPE_CHECKING
+from typing import Dict
 from urllib.parse import urlparse
 
 import click
@@ -12,9 +12,6 @@ from splitgraph.__version__ import __version__
 from splitgraph.config import CONFIG, SG_CMD_ASCII
 from splitgraph.exceptions import DockerUnavailableError, EngineSetupError
 from splitgraph.utils.docker import get_docker_client, copy_to_container
-
-if TYPE_CHECKING:
-    pass
 
 
 DEFAULT_ENGINE = "default"
