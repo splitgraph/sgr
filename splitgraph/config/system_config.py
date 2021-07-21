@@ -26,21 +26,21 @@ def file_exists(_dir: str, filename: str) -> bool:
 
 
 def get_explicit_config_file_location() -> Optional[str]:
-    """ Get the explicitly defined location of config file, if defined.
+    """Get the explicitly defined location of config file, if defined.
 
-        The location will either be defined in:
+    The location will either be defined in:
 
-           * argument flag --config-file
-           * or environment key SG_CONFIG_FILE
+       * argument flag --config-file
+       * or environment key SG_CONFIG_FILE
 
-        In keeping with assumptions about priority, argument flag has
-        higher priority than environment value.
+    In keeping with assumptions about priority, argument flag has
+    higher priority than environment value.
 
-        If the location is set, and points to an existing file, return location.
+    If the location is set, and points to an existing file, return location.
 
-        Otherwise return None
+    Otherwise return None
 
-        Print a warning if location is set but points to non-existing file.
+    Print a warning if location is set but points to non-existing file.
     """
 
     key = "SG_CONFIG_FILE"
@@ -58,26 +58,26 @@ def get_explicit_config_file_location() -> Optional[str]:
 
 
 def get_explicit_config_file_dirs() -> List[str]:
-    """ Get any explicitly defined config file directories,
-        which are directories where we should search for files from
-        VALID_CONFIG_FILE_NAMES.
+    """Get any explicitly defined config file directories,
+    which are directories where we should search for files from
+    VALID_CONFIG_FILE_NAMES.
 
-        This list is defined similar to $PATH, as a colon (:) delimited
-        string, either in:
+    This list is defined similar to $PATH, as a colon (:) delimited
+    string, either in:
 
-            * argument flag --config-dirs
-            * or environment key SG_CONFIG_DIRS
+        * argument flag --config-dirs
+        * or environment key SG_CONFIG_DIRS
 
-        Or a single directory defined in either
+    Or a single directory defined in either
 
-            * argument flag --config-dir
-            * environment key SG_CONFIG_DIR
+        * argument flag --config-dir
+        * environment key SG_CONFIG_DIR
 
-        If both plural and single are defined, join them together.
+    If both plural and single are defined, join them together.
 
-        Return a list of valid paths that are set, or an empty list.
+    Return a list of valid paths that are set, or an empty list.
 
-        Print a warning if any paths to not exist.
+    Print a warning if any paths to not exist.
     """
 
     plural_key = "SG_CONFIG_DIRS"
@@ -115,11 +115,11 @@ def get_explicit_config_file_dirs() -> List[str]:
 
 def get_config_file(default_return: None = None) -> Optional[str]:
     """
-        Get the location of an existing SG_CONFIG_FILE on the system with
-        a valid name. Do not attempt to parse the config file, just return
-        its location.
+    Get the location of an existing SG_CONFIG_FILE on the system with
+    a valid name. Do not attempt to parse the config file, just return
+    its location.
 
-        Otherwise, return default_return
+    Otherwise, return default_return
     """
     explicit_location = get_explicit_config_file_location()
 

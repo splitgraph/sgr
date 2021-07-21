@@ -237,7 +237,7 @@ def _update_bar(progress, progress_text, bar, progress_data):
     default="splitgraph/engine:%s" % __version__,
     help="Docker image with the Splitgraph engine",
 )
-@click.option("-p", "--port", type=int, default=5432, help="Port to start the engine on")
+@click.option("-p", "--port", type=int, default=6432, help="Port to start the engine on")
 @click.option("-u", "--username", default="sgr")
 @click.option("--no-init", default=False, help="Don't run `sgr init` on the engine", is_flag=True)
 @click.option(

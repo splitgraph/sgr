@@ -115,7 +115,7 @@ def source_files_to_apply(
     static: bool = False,
     target_version: Optional[str] = None,
 ) -> Tuple[List[str], str]:
-    """ Get the ordered list of .sql files to apply to the database"""
+    """Get the ordered list of .sql files to apply to the database"""
     version_tuples = get_version_tuples(schema_files)
     target_version = target_version or max([v[1] for v in version_tuples], key=Version)
     if static:

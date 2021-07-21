@@ -217,7 +217,7 @@ _PULL_PROGRESS = [
             {},
             "default",
             "/home/user/.splitgraph/.sgconfig",
-            "[defaults]\nSG_ENGINE_USER=not_sgr\n"
+            "[defaults]\nSG_ENGINE_PORT=6432\nSG_ENGINE_USER=not_sgr\n"
             "SG_ENGINE_PWD=pwd\nSG_ENGINE_ADMIN_USER=not_sgr\n"
             "SG_ENGINE_ADMIN_PWD=pwd\n",
         ),
@@ -227,7 +227,7 @@ _PULL_PROGRESS = [
             "secondary",
             "/home/user/.splitgraph/.sgconfig",
             "[defaults]\n\n[remote: secondary]\n"
-            "SG_ENGINE_HOST=localhost\nSG_ENGINE_PORT=5432\n"
+            "SG_ENGINE_HOST=localhost\nSG_ENGINE_PORT=6432\n"
             "SG_ENGINE_FDW_HOST=localhost\nSG_ENGINE_FDW_PORT=5432\n"
             "SG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
             "SG_ENGINE_DB_NAME=splitgraph\n"
@@ -240,7 +240,7 @@ _PULL_PROGRESS = [
             {"SG_CONFIG_FILE": "/home/user/.sgconfig", "SG_ENGINE_PORT": "5000"},
             "default",
             "/home/user/.sgconfig",
-            "[defaults]\nSG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
+            "[defaults]\nSG_ENGINE_PORT=6432\nSG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
             "SG_ENGINE_ADMIN_USER=not_sgr\nSG_ENGINE_ADMIN_PWD=pwd\n",
         ),
         # Case 4: have source config, non-default engine gets overwritten
@@ -260,7 +260,7 @@ _PULL_PROGRESS = [
             "secondary",
             "/home/user/.sgconfig",
             "[defaults]\nSG_ENGINE_PORT=5000\n\n[remote: secondary]\n"
-            "SG_ENGINE_HOST=localhost\nSG_ENGINE_PORT=5432\n"
+            "SG_ENGINE_HOST=localhost\nSG_ENGINE_PORT=6432\n"
             "SG_ENGINE_USER=not_sgr\nSG_ENGINE_PWD=pwd\n"
             "SG_ENGINE_FDW_HOST=localhost\nSG_ENGINE_FDW_PORT=5432\n"
             "SG_ENGINE_DB_NAME=splitgraph\nSG_ENGINE_POSTGRES_DB_NAME=postgres\n"
@@ -403,7 +403,9 @@ def test_commandline_engine_config_reinject():
     runner = CliRunner()
 
     with patch("docker.from_env", return_value=client):
-        with patch("splitgraph.commandline.engine.copy_to_container",) as ctc:
+        with patch(
+            "splitgraph.commandline.engine.copy_to_container",
+        ) as ctc:
             result = runner.invoke(configure_engine_c)
             assert result.exit_code == 0
             assert ctc.called_once_with(container_1, CONFIG["SG_CONFIG_FILE"], "/.sgconfig")
@@ -424,7 +426,8 @@ def test_convert_source_path():
         with patch("splitgraph.commandline.engine.logging") as log:
             # Check user is warned if the directory might not get bind mounted on Docker VM.
             with patch(
-                "splitgraph.commandline.engine.Path", return_value=path,
+                "splitgraph.commandline.engine.Path",
+                return_value=path,
             ):
                 assert _convert_source_path("C:\\Projects\\Splitgraph") == "/c/Projects/Splitgraph"
                 assert log.warning.call_count == 1
