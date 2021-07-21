@@ -5,14 +5,13 @@ import re
 from abc import ABC
 from contextlib import contextmanager
 from random import getrandbits
-from typing import Optional, Dict, cast, List, Tuple
+from typing import Optional, Dict, List, Tuple
 
 import docker.errors
 import pydantic
 from docker import DockerClient
 from docker.models.containers import Container
 
-from splitgraph.utils.docker import get_docker_client, copy_to_container
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import (
     SyncState,
@@ -27,6 +26,7 @@ from splitgraph.hooks.data_source.base import (
     get_ingestion_state,
     prepare_new_image,
 )
+from splitgraph.utils.docker import get_docker_client, copy_to_container
 from .docker_utils import (
     add_files,
     remove_at_end,
@@ -144,8 +144,9 @@ class AirbyteDataSource(SyncableDataSource, ABC):
         tables: Optional[TableInfo] = None,
         use_state: bool = True,
     ) -> str:
-        tables = tables or self.tables
         # https://docs.airbyte.io/understanding-airbyte/airbyte-specification
+        self._validate_table_params(tables)
+        tables = tables or self.tables
 
         # Select columns and streams (full_refresh/incremental, cursors)
         src_config = self.get_airbyte_config()

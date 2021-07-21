@@ -122,6 +122,7 @@ class SingerDataSource(SyncableDataSource, ABC):
         tables: Optional[TableInfo] = None,
         use_state: bool = True,
     ) -> str:
+        self._validate_table_params(tables)
         tables = tables or self.tables
         config = self.get_singer_config()
         catalog = self._run_singer_discovery(config)

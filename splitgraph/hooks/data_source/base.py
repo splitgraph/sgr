@@ -69,11 +69,16 @@ class DataSource(ABC):
         self.credentials = credentials
         self.params = params
 
+        self._validate_table_params(tables)
+        self.tables = tables
+
+    @classmethod
+    def _validate_table_params(cls, tables: Optional[TableInfo]) -> None:
+        import jsonschema
+
         if isinstance(tables, dict):
             for _, table_params in tables.values():
-                jsonschema.validate(instance=table_params, schema=self.table_params_schema)
-
-        self.tables = tables
+                jsonschema.validate(instance=table_params, schema=cls.table_params_schema)
 
     @abstractmethod
     def introspect(self) -> IntrospectionResult:
@@ -115,6 +120,7 @@ class LoadableDataSource(DataSource, ABC):
         raise NotImplementedError
 
     def load(self, repository: "Repository", tables: Optional[TableInfo] = None) -> str:
+        self._validate_table_params(tables)
         if not repository_exists(repository):
             repository.init()
 
@@ -160,6 +166,7 @@ class SyncableDataSource(LoadableDataSource, DataSource, ABC):
         image_hash: Optional[str],
         tables: Optional[TableInfo] = None,
     ) -> str:
+        self._validate_table_params(tables)
         if not repository_exists(repository):
             repository.init()
 
