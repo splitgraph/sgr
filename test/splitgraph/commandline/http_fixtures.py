@@ -337,28 +337,9 @@ def add_external_credential(request, uri, response_headers):
 def add_external_repo(request, uri, response_headers):
     data = json.loads(request.body)
 
-    if data["namespace"] == "someuser" and data["repository"] == "somerepo_1":
-        assert data == {
-            "namespace": "someuser",
-            "repository": "somerepo_1",
-            "plugin_name": "plugin_2",
-            "params": {},
-            "is_live": True,
-            "tables": {},
-            "credential_id": "123e4567-e89b-12d3-a456-426655440000",
-        }
-    elif data["namespace"] == "someuser" and data["repository"] == "somerepo_2":
-        assert data == {
-            "namespace": "someuser",
-            "repository": "somerepo_2",
-            "plugin_name": "plugin_3",
-            "params": {},
-            "is_live": True,
-            "tables": {},
-            "credential_id": "00000000-0000-0000-0000-000000000000",
-        }
-    elif data["namespace"] == "otheruser" and data["repository"] == "somerepo_2":
-        assert data == {
+    assert data["repositories"] is not None
+    assert data["repositories"] == [
+        {
             "credential_id": "98765432-aaaa-bbbb-a456-000000000000",
             "is_live": True,
             "namespace": "otheruser",
@@ -373,14 +354,34 @@ def add_external_repo(request, uri, response_headers):
                 "table_2": {"options": {"param_1": "val_2"}, "schema": {}},
                 "table_3": {"options": {}, "schema": {"id": "text", "val": "text"}},
             },
-        }
-    else:
-        raise AssertionError("Unknown repository %s/%s!" % (data["namespace"], data["repository"]))
+            "schedule": None,
+        },
+        {
+            "namespace": "someuser",
+            "repository": "somerepo_1",
+            "plugin_name": "plugin_2",
+            "params": {},
+            "is_live": True,
+            "tables": {},
+            "credential_id": "123e4567-e89b-12d3-a456-426655440000",
+            "schedule": None,
+        },
+        {
+            "namespace": "someuser",
+            "repository": "somerepo_2",
+            "plugin_name": "plugin_3",
+            "params": {},
+            "is_live": True,
+            "tables": {},
+            "credential_id": "00000000-0000-0000-0000-000000000000",
+            "schedule": None,
+        },
+    ]
 
     return [
         200,
         response_headers,
-        json.dumps({"live_image_hash": "abcdef12" * 8}),
+        json.dumps({"live_image_hashes": ["abcdef12" * 8, "ghijkl34" * 8, "mnoprs56" * 8]}),
     ]
 
 

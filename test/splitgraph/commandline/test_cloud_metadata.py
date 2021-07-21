@@ -365,7 +365,7 @@ def test_commandline_load():
 
     httpretty.register_uri(
         httpretty.HTTPretty.POST,
-        QUERY_ENDPOINT + "/api/external/add",
+        QUERY_ENDPOINT + "/api/external/bulk-add",
         body=add_external_repo,
     )
 
