@@ -179,7 +179,7 @@ def test_airbyte_mysql_source_catalog_selection_incremental_no_cursor_fallback()
     assert len(catalog.streams) == 1
     assert catalog.streams[0].sync_mode == SyncMode.full_refresh
     assert catalog.streams[0].destination_sync_mode == DestinationSyncMode.overwrite
-    assert catalog.streams[0].cursor_field is None
+    assert catalog.streams[0].cursor_field == []  # Default cursor field
 
 
 def test_airbyte_mysql_source_catalog_selection_incremental_cursor_override():
