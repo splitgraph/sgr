@@ -266,7 +266,7 @@ class AddExternalRepositoryRequest(BaseModel):
             },
             credential_id=credential_id,
             is_live=True,
-            schedule=external.schedule
+            schedule=external.schedule,
         )
 
 
