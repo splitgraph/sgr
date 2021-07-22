@@ -742,6 +742,65 @@ def _dump_readmes_to_dir(repositories, readme_dir):
             repo.metadata.readme = Metadata.Readme(file=filename)
 
 
+@click.command("token")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+def token_c(remote):
+    """Output an up-to-date access token for a remote."""
+    from splitgraph.cloud import RESTAPIClient
+
+    client = RESTAPIClient(remote)
+    click.echo(client.access_token)
+
+
+@click.command("add")
+@click.option("--remote", help="Name for the remote (infer from the domain name by default)")
+@click.option(
+    "-s", "--skip-inject", is_flag=True, help="Don't try to copy the config into all engines"
+)
+@click.argument("domain_name")
+def add_c(remote, skip_inject, domain_name):
+    """Add a remote Splitgraph registry to .sgconfig with default parameters"""
+    from splitgraph.config.config import get_all_in_subsection
+    from splitgraph.config import CONFIG
+
+    if domain_name.startswith(("data", "www", "api")):
+        raise click.BadArgumentUsage(
+            "Use the base domain name, e.g. " "splitgraph.com instead of data.splitgraph.com"
+        )
+
+    if not remote:
+        remote = domain_name.split(".")[0]
+
+    remote_params_patch = {
+        "SG_IS_REGISTRY": "true",
+        "SG_ENGINE_HOST": f"data.{domain_name}",
+        "SG_ENGINE_PORT": 5432,
+        "SG_ENGINE_DB_NAME": "sgregistry",
+        "SG_AUTH_API": f"https://api.{domain_name}/auth",
+        "SG_QUERY_API": f"https://data.{domain_name}",
+        "SG_GQL_API": f"https://api.{domain_name}/gql/cloud/graphql",
+    }
+
+    click.echo("Adding remote %s to the config. Parameters: %s" % (remote, remote_params_patch))
+
+    remote_params = get_all_in_subsection(CONFIG, "remotes", remote) or {}
+    remote_params.update(remote_params_patch)
+
+    config_patch = {
+        "SG_REPO_LOOKUP": _update_repo_lookup(CONFIG, remote),
+        "remotes": {remote: remote_params},
+    }
+    config_path = patch_and_save_config(CONFIG, config_patch)
+
+    if not skip_inject:
+        inject_config_into_engines(CONFIG["SG_ENGINE_PREFIX"], config_path)
+
+    click.echo(
+        "Done. You can now register or "
+        "log in to the instance with sgr cloud register/login(-api)."
+    )
+
+
 @click.group("cloud")
 def cloud_c():
     """Manage connections to Splitgraph Cloud."""
@@ -758,3 +817,5 @@ cloud_c.add_command(metadata_c)
 cloud_c.add_command(search_c)
 cloud_c.add_command(dump_c)
 cloud_c.add_command(load_c)
+cloud_c.add_command(token_c)
+cloud_c.add_command(add_c)
