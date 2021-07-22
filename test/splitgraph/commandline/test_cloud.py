@@ -1,4 +1,5 @@
 import json
+import os
 from contextlib import contextmanager
 from typing import Optional
 from unittest.mock import patch, PropertyMock, call, Mock
@@ -7,21 +8,6 @@ import httpretty
 import pytest
 from click.testing import CliRunner
 from httpretty.core import HTTPrettyRequest
-
-from splitgraph.__version__ import __version__
-from splitgraph.commandline import cli
-from splitgraph.commandline.cloud import (
-    register_c,
-    login_c,
-    curl_c,
-    login_api_c,
-    sql_c,
-)
-from splitgraph.config import create_config_dict
-from splitgraph.config.config import patch_config
-from splitgraph.exceptions import (
-    AuthAPIError,
-)
 from test.splitgraph.commandline.http_fixtures import (
     ACCESS_TOKEN,
     REMOTE,
@@ -35,6 +21,26 @@ from test.splitgraph.commandline.http_fixtures import (
     access_token,
     create_credentials,
     tos,
+)
+
+from splitgraph.__version__ import __version__
+from splitgraph.commandline import cli
+from splitgraph.commandline.cloud import (
+    register_c,
+    login_c,
+    curl_c,
+    login_api_c,
+    sql_c,
+    add_c,
+)
+from splitgraph.config import create_config_dict
+from splitgraph.config.config import patch_config
+from splitgraph.config.config_file_config import (
+    get_config_dict_from_config_file,
+)
+from splitgraph.config.keys import DEFAULTS
+from splitgraph.exceptions import (
+    AuthAPIError,
 )
 
 
@@ -531,3 +537,33 @@ def test_commandline_update_check():
             assert oc.call_count == 1
             assert last_request is not None
             assert "Authorization" not in last_request.headers
+
+
+def test_commandline_cloud_add(fs_fast):
+    runner = CliRunner()
+
+    env = os.environ.copy()
+    env["HOME"] = "/home/user"
+    target_path = "/home/user/.splitgraph/.sgconfig"
+
+    with patch("splitgraph.config.CONFIG", DEFAULTS):
+        result = runner.invoke(
+            add_c,
+            args=["democompany.splitgraph.io", "--skip-inject"],
+            catch_exceptions=False,
+            env=env,
+        )
+    assert result.exit_code == 0
+    print(result.output)
+
+    assert os.path.exists(target_path)
+    actual_config = get_config_dict_from_config_file(target_path)
+    assert actual_config["remotes"]["democompany"] == {
+        "SG_AUTH_API": "https://api.democompany.splitgraph.io/auth",
+        "SG_ENGINE_DB_NAME": "sgregistry",
+        "SG_ENGINE_HOST": "data.democompany.splitgraph.io",
+        "SG_ENGINE_PORT": "5432",
+        "SG_GQL_API": "https://api.democompany.splitgraph.io/gql/cloud/graphql",
+        "SG_IS_REGISTRY": "true",
+        "SG_QUERY_API": "https://data.democompany.splitgraph.io",
+    }

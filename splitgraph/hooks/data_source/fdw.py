@@ -115,6 +115,7 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
         tables: Optional[TableInfo] = None,
         overwrite: bool = True,
     ) -> Optional[List[MountError]]:
+        self._validate_table_params(tables)
         tables = tables or self.tables or []
 
         fdw = self.get_fdw_name()

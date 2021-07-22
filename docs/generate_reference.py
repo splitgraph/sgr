@@ -20,6 +20,8 @@ from splitgraph.commandline.cloud import (
     search_c,
     load_c,
     dump_c,
+    add_c,
+    token_c,
 )
 from splitgraph.commandline.engine import (
     add_engine_c,
@@ -62,6 +64,7 @@ STRUCTURE = [
     (
         "Splitgraph Cloud",
         [
+            "cloud add",
             "cloud register",
             "cloud login",
             "cloud login-api",
@@ -73,6 +76,7 @@ STRUCTURE = [
             "cloud search",
             "cloud dump",
             "cloud load",
+            "cloud token",
         ],
     ),
 ]
@@ -91,6 +95,7 @@ STRUCTURE_CMD_OVERRIDE = {
     "engine log": log_engine_c,
     "engine configure": configure_engine_c,
     "engine version": version_engine_c,
+    "cloud add": add_c,
     "cloud register": register_c,
     "cloud login": login_c,
     "cloud login-api": login_api_c,
@@ -102,6 +107,7 @@ STRUCTURE_CMD_OVERRIDE = {
     "cloud search": search_c,
     "cloud dump": dump_c,
     "cloud load": load_c,
+    "cloud token": token_c,
 }
 
 

@@ -5,6 +5,7 @@ from typing import Dict, Any, Optional, TYPE_CHECKING, cast, Tuple, List
 from psycopg2._json import Json
 from psycopg2.sql import SQL, Identifier
 
+from splitgraph.config import DEFAULT_CHUNK_SIZE
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.image import Image
 from splitgraph.core.types import (
@@ -68,11 +69,16 @@ class DataSource(ABC):
         self.credentials = credentials
         self.params = params
 
+        self._validate_table_params(tables)
+        self.tables = tables
+
+    @classmethod
+    def _validate_table_params(cls, tables: Optional[TableInfo]) -> None:
+        import jsonschema
+
         if isinstance(tables, dict):
             for _, table_params in tables.values():
-                jsonschema.validate(instance=table_params, schema=self.table_params_schema)
-
-        self.tables = tables
+                jsonschema.validate(instance=table_params, schema=cls.table_params_schema)
 
     @abstractmethod
     def introspect(self) -> IntrospectionResult:
@@ -114,6 +120,7 @@ class LoadableDataSource(DataSource, ABC):
         raise NotImplementedError
 
     def load(self, repository: "Repository", tables: Optional[TableInfo] = None) -> str:
+        self._validate_table_params(tables)
         if not repository_exists(repository):
             repository.init()
 
@@ -132,7 +139,7 @@ class LoadableDataSource(DataSource, ABC):
                 head=None,
                 image_hash=image_hash,
                 snap_only=True,
-                chunk_size=100000,
+                chunk_size=DEFAULT_CHUNK_SIZE,
                 schema=tmp_schema,
             )
         finally:
@@ -159,6 +166,7 @@ class SyncableDataSource(LoadableDataSource, DataSource, ABC):
         image_hash: Optional[str],
         tables: Optional[TableInfo] = None,
     ) -> str:
+        self._validate_table_params(tables)
         if not repository_exists(repository):
             repository.init()
 
@@ -213,7 +221,7 @@ def get_ingestion_state(repository: "Repository", image_hash: Optional[str]) -> 
 
 
 def prepare_new_image(
-    repository: "Repository", hash_or_tag: Optional[str]
+    repository: "Repository", hash_or_tag: Optional[str], comment: str = "Singer tap ingestion"
 ) -> Tuple[Optional[Image], str]:
     new_image_hash = "{:064x}".format(getrandbits(256))
     if repository_exists(repository):
@@ -235,5 +243,5 @@ def prepare_new_image(
             )
     else:
         base_image = None
-        repository.images.add(parent_id=None, image=new_image_hash, comment="Singer tap ingestion")
+        repository.images.add(parent_id=None, image=new_image_hash, comment=comment)
     return base_image, new_image_hash

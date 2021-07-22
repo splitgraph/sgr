@@ -68,6 +68,12 @@ def unwrap(
     return good, bad
 
 
+def get_table_params(table_info: TableInfo, table_name: str) -> TableParams:
+    if isinstance(table_info, dict) and table_name in table_info:
+        return table_info[table_name][1]
+    return TableParams({})
+
+
 class Comparable(metaclass=ABCMeta):
     @abstractmethod
     def __lt__(self, other: Any) -> bool:
@@ -91,11 +97,11 @@ def dict_to_table_schema_params(
 
 def table_schema_params_to_dict(
     tables: Dict[str, Tuple[TableSchema, TableParams]]
-) -> Dict[str, Dict[str, Dict[str, str]]]:
+) -> Dict[str, Dict[str, Dict[str, Any]]]:
     return {
         t: {
             "schema": {c.name: c.pg_type for c in ts},
-            "options": {tpk: str(tpv) for tpk, tpv in tp.items()},
+            "options": tp,
         }
         for t, (ts, tp) in tables.items()
     }

@@ -5,22 +5,24 @@ import subprocess
 import tempfile
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
-from datetime import datetime as dt
 from io import StringIO
 from threading import Thread
-from typing import Dict, Any, Optional, cast
-
-from psycopg2.sql import Identifier, SQL
+from typing import Optional, cast
 
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableParams, TableInfo, SyncState, IntrospectionResult
 from splitgraph.exceptions import DataSourceError
 from splitgraph.hooks.data_source.base import (
     get_ingestion_state,
-    INGESTION_STATE_TABLE,
-    INGESTION_STATE_SCHEMA,
     prepare_new_image,
     SyncableDataSource,
+)
+from splitgraph.ingestion.singer.common import (
+    SingerConfig,
+    SingerCatalog,
+    SingerState,
+    store_ingestion_state,
+    add_timestamp_tags,
 )
 from splitgraph.ingestion.singer.db_sync import (
     get_table_name,
@@ -29,10 +31,6 @@ from splitgraph.ingestion.singer.db_sync import (
     get_key_properties,
     select_breadcrumb,
 )
-
-SingerConfig = Dict[str, Any]
-SingerCatalog = Dict[str, Any]
-SingerState = Dict[str, Any]
 
 
 class SingerDataSource(SyncableDataSource, ABC):
@@ -124,6 +122,8 @@ class SingerDataSource(SyncableDataSource, ABC):
         tables: Optional[TableInfo] = None,
         use_state: bool = True,
     ) -> str:
+        self._validate_table_params(tables)
+        tables = tables or self.tables
         config = self.get_singer_config()
         catalog = self._run_singer_discovery(config)
         catalog = self.build_singer_catalog(catalog, tables)
@@ -155,53 +155,9 @@ class SingerDataSource(SyncableDataSource, ABC):
         latest_state = states.splitlines()[-1]
         logging.info("State stream: %s", states)
 
-        # Add a table to the new image with the new state
-        repository.object_engine.create_table(
-            schema=None,
-            table=INGESTION_STATE_TABLE,
-            schema_spec=INGESTION_STATE_SCHEMA,
-            temporary=True,
-        )
-        # NB: new_state here is a JSON-serialized string, so we don't wrap it into psycopg2.Json()
-        logging.info("Writing state: %s", latest_state)
-        repository.object_engine.run_sql(
-            SQL("INSERT INTO pg_temp.{} (timestamp, state) VALUES(now(), %s)").format(
-                Identifier(INGESTION_STATE_TABLE)
-            ),
-            (latest_state,),
-        )
+        store_ingestion_state(repository, new_image_hash, state, latest_state)
 
-        object_id = repository.objects.create_base_fragment(
-            "pg_temp",
-            INGESTION_STATE_TABLE,
-            repository.namespace,
-            table_schema=INGESTION_STATE_SCHEMA,
-        )
-
-        # If the state exists already, overwrite it; otherwise, add new state table.
-        if state:
-            repository.objects.overwrite_table(
-                repository,
-                new_image_hash,
-                INGESTION_STATE_TABLE,
-                INGESTION_STATE_SCHEMA,
-                [object_id],
-            )
-        else:
-            repository.objects.register_tables(
-                repository,
-                [(new_image_hash, INGESTION_STATE_TABLE, INGESTION_STATE_SCHEMA, [object_id])],
-            )
-
-        ingestion_time = dt.utcnow()
-
-        short_tag = ingestion_time.strftime("%Y%m%d")
-        long_tag = short_tag + "-" + ingestion_time.strftime("%H%M%S")
-
-        new_image = repository.images.by_hash(new_image_hash)
-
-        new_image.tag(short_tag)
-        new_image.tag(long_tag)
+        add_timestamp_tags(repository, new_image_hash)
 
         repository.commit_engines()
 

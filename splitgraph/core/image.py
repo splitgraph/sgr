@@ -157,14 +157,17 @@ class Image(NamedTuple):
             self.object_engine.delete_table(target_schema, table)
 
         if layered:
-            self._lq_checkout()
+            self.lq_checkout()
         else:
             for table in self.get_tables():
                 self.get_table(table).materialize(table)
         set_head(self.repository, self.image_hash)
 
-    def _lq_checkout(
-        self, target_schema: Optional[str] = None, wrapper: Optional[str] = FDW_CLASS
+    def lq_checkout(
+        self,
+        target_schema: Optional[str] = None,
+        wrapper: Optional[str] = FDW_CLASS,
+        only_tables: Optional[List[str]] = None,
     ) -> None:
         """
         Intended to be run on the sgr side. Initializes the FDW for all tables in a given image,
@@ -198,6 +201,9 @@ class Image(NamedTuple):
 
         # It's easier to create the foreign tables from our side than to implement IMPORT FOREIGN SCHEMA by the FDW
         for table_name in self.get_tables():
+            if only_tables and table_name not in only_tables:
+                continue
+
             logging.debug(
                 "Mounting %s:%s/%s into %s",
                 self.repository.to_schema(),
@@ -220,7 +226,7 @@ class Image(NamedTuple):
         tmp_schema = str.format("o{:032x}", getrandbits(128))
         try:
             self.object_engine.create_schema(tmp_schema)
-            self._lq_checkout(target_schema=tmp_schema, wrapper=wrapper)
+            self.lq_checkout(target_schema=tmp_schema, wrapper=wrapper)
             if commit:
                 self.object_engine.commit()  # Make sure the new tables are seen by other connections
 
