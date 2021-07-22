@@ -742,6 +742,16 @@ def _dump_readmes_to_dir(repositories, readme_dir):
             repo.metadata.readme = Metadata.Readme(file=filename)
 
 
+@click.command("token")
+@click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
+def token_c(remote):
+    """Output an up-to-date access token for a remote."""
+    from splitgraph.cloud import RESTAPIClient
+
+    client = RESTAPIClient(remote)
+    click.echo(client.access_token)
+
+
 @click.group("cloud")
 def cloud_c():
     """Manage connections to Splitgraph Cloud."""
