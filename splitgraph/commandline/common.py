@@ -137,7 +137,7 @@ def remote_switch_option(*names, **kwargs):
     """
 
     if not names:
-        names = ["--remote", "-r"]
+        names = ("--remote", "-r")
 
     kwargs.setdefault("default", None)
     kwargs.setdefault("expose_value", False)
@@ -220,7 +220,7 @@ class ResettableStream(io.RawIOBase):
 
     def __init__(self, stream):
         self._stream = stream
-        self._buffer = io.BytesIO()
+        self._buffer: Optional[io.BytesIO] = io.BytesIO()
         self._is_reset = False
 
     def reset(self):
@@ -232,6 +232,7 @@ class ResettableStream(io.RawIOBase):
         return True
 
     def _append_to_buf(self, contents):
+        assert self._buffer
         oldpos = self._buffer.tell()
         self._buffer.seek(0, os.SEEK_END)
         self._buffer.write(contents)
@@ -241,6 +242,7 @@ class ResettableStream(io.RawIOBase):
         buffer_length = len(b)
         contents = b""
         if self._is_reset and self._buffer:
+            assert self._buffer
             # Try reading from the buffer, if it's not exhausted
             contents = self._buffer.read(buffer_length)
             if len(contents) == 0:

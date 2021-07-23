@@ -1,7 +1,6 @@
-from datetime import timedelta
-
 import json
 from copy import deepcopy
+from datetime import timedelta
 from typing import Optional, TYPE_CHECKING, Dict, List, Tuple, Any
 
 from psycopg2.sql import SQL, Identifier
@@ -69,12 +68,12 @@ def query_to_csv(engine: "PsycopgEngine", query, buffer, schema: Optional[str] =
 
 
 class CSVDataSource(ForeignDataWrapperDataSource):
-    credentials_schema = {
+    credentials_schema: Dict[str, Any] = {
         "type": "object",
         "properties": {"s3_access_key": {"type": "string"}, "s3_secret_key": {"type": "string"}},
     }
 
-    params_schema = {
+    params_schema: Dict[str, Any] = {
         "type": "object",
         "properties": {
             "url": {"type": "string", "description": "HTTP URL to the CSV file"},
@@ -125,7 +124,7 @@ class CSVDataSource(ForeignDataWrapperDataSource):
         "oneOf": [{"required": ["url"]}, {"required": ["s3_endpoint", "s3_bucket"]}],
     }
 
-    table_params_schema = {
+    table_params_schema: Dict[str, Any] = {
         "type": "object",
         "properties": {
             "url": {"type": "string", "description": "HTTP URL to the CSV file"},

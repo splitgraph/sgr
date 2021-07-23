@@ -15,6 +15,7 @@ from typing import (
     Dict,
     Sequence,
     cast,
+    Generator,
 )
 
 from psycopg2.sql import SQL, Identifier, Composable
@@ -370,7 +371,7 @@ class Table:
                 _, release_callback = cast(Tuple, eo_result)
                 return iter(plan.singleton_queries), cast(Callable, release_callback), plan
 
-        def _generate_nonsingleton_query():
+        def _generate_nonsingleton_query() -> Generator[bytes, None, None]:
             # If we have fragments that need applying to a staging area, we don't want to
             # do it immediately: the caller might be satisfied with the data they got from
             # the queries to singleton fragments. So here we have a callback that, when called,

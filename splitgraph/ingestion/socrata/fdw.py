@@ -2,8 +2,10 @@
 that communicates to Socrata datasets using sodapy."""
 import json
 import logging
+from typing import Optional, Dict, Any
 
 import splitgraph.config
+from splitgraph.config import get_singleton
 from splitgraph.ingestion.socrata.querying import (
     estimate_socrata_rows_width,
     quals_to_socrata,
@@ -32,6 +34,43 @@ def to_json(row, columns, column_map):
 
 
 class SocrataForeignDataWrapper(ForeignDataWrapper):
+    def __init__(self, fdw_options, fdw_columns):
+        """The foreign data wrapper is initialized on the first query.
+        Args:
+            fdw_options (dict): The foreign data wrapper options. It is a dictionary
+                mapping keys from the sql "CREATE FOREIGN TABLE"
+                statement options. It is left to the implementor
+                to decide what should be put in those options, and what
+                to do with them.
+
+        """
+        # Initialize the logger that will log to the engine's stderr: log timestamp and PID.
+        from sodapy import Socrata
+
+        logging.basicConfig(
+            format="%(asctime)s [%(process)d] %(levelname)s %(message)s",
+            level=get_singleton(splitgraph.config.CONFIG, "SG_LOGLEVEL"),
+        )
+
+        # Dict of connection parameters as well as the table, repository and image hash to query.
+        self.fdw_options = fdw_options
+
+        # The foreign datawrapper columns (name -> ColumnDefinition).
+        self.fdw_columns = fdw_columns
+
+        self.table = self.fdw_options["table"]
+
+        # Mappings from SG to Socrata columns (for query building)
+        self.column_map = json.loads(self.fdw_options.get("column_map") or "{}")
+
+        self.app_token = self.fdw_options.get("app_token")
+        self.domain = self.fdw_options["domain"]
+        self.batch_size = int(self.fdw_options.get("batch_size", 1000))
+        self.client = Socrata(domain=self.domain, app_token=self.app_token)
+
+        # Cached table metadata
+        self._metadata: Optional[Dict[str, Any]] = None
+
     def can_sort(self, sortkeys):
         """
         :param sortkeys: List of SortKey
@@ -108,40 +147,3 @@ class SocrataForeignDataWrapper(ForeignDataWrapper):
         if not self._metadata:
             self._metadata = self.client.get_metadata(dataset_identifier=self.table)
         return self._metadata
-
-    def __init__(self, fdw_options, fdw_columns):
-        """The foreign data wrapper is initialized on the first query.
-        Args:
-            fdw_options (dict): The foreign data wrapper options. It is a dictionary
-                mapping keys from the sql "CREATE FOREIGN TABLE"
-                statement options. It is left to the implementor
-                to decide what should be put in those options, and what
-                to do with them.
-
-        """
-        # Initialize the logger that will log to the engine's stderr: log timestamp and PID.
-        from sodapy import Socrata
-
-        logging.basicConfig(
-            format="%(asctime)s [%(process)d] %(levelname)s %(message)s",
-            level=splitgraph.config.CONFIG["SG_LOGLEVEL"],
-        )
-
-        # Dict of connection parameters as well as the table, repository and image hash to query.
-        self.fdw_options = fdw_options
-
-        # The foreign datawrapper columns (name -> ColumnDefinition).
-        self.fdw_columns = fdw_columns
-
-        self.table = self.fdw_options["table"]
-
-        # Mappings from SG to Socrata columns (for query building)
-        self.column_map = json.loads(self.fdw_options.get("column_map") or "{}")
-
-        self.app_token = self.fdw_options.get("app_token")
-        self.domain = self.fdw_options["domain"]
-        self.batch_size = int(self.fdw_options.get("batch_size", 1000))
-        self.client = Socrata(domain=self.domain, app_token=self.app_token)
-
-        # Cached table metadata
-        self._metadata = None
