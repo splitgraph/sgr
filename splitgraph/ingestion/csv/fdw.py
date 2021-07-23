@@ -5,15 +5,16 @@ import os
 from contextlib import contextmanager
 from copy import copy
 from itertools import islice
-from typing import Tuple, Optional
+from typing import Optional
 
 import requests
-from minio import Minio
+from urllib3 import HTTPResponse
 
 import splitgraph.config
+from splitgraph.config import get_singleton
 from splitgraph.exceptions import get_exception_name
 from splitgraph.ingestion.common import generate_column_names
-from splitgraph.ingestion.csv.common import CSVOptions, get_bool, make_csv_reader, get_s3_params
+from splitgraph.ingestion.csv.common import CSVOptions, make_csv_reader, get_s3_params
 from splitgraph.ingestion.inference import infer_sg_schema
 
 try:
@@ -100,6 +101,32 @@ def report_errors(table_name: str):
 class CSVForeignDataWrapper(ForeignDataWrapper):
     """Foreign data wrapper for CSV files stored in S3 buckets or HTTP"""
 
+    def __init__(self, fdw_options, fdw_columns):
+        # Initialize the logger that will log to the engine's stderr: log timestamp and PID.
+
+        logging.basicConfig(
+            format="%(asctime)s [%(process)d] %(levelname)s %(message)s",
+            level=get_singleton(splitgraph.config.CONFIG, "SG_LOGLEVEL"),
+        )
+
+        # Dict of connection parameters
+        self.fdw_options = fdw_options
+
+        # The foreign datawrapper columns (name -> ColumnDefinition).
+        self.fdw_columns = fdw_columns
+
+        self.csv_options = CSVOptions.from_fdw_options(fdw_options)
+
+        # For HTTP: use full URL
+        if fdw_options.get("url"):
+            self.mode = "http"
+            self.url = fdw_options["url"]
+        else:
+            self.mode = "s3"
+            self.s3_client, self.s3_bucket, self.s3_object_prefix = get_s3_params(fdw_options)
+
+            self.s3_object = fdw_options["s3_object"]
+
     def can_sort(self, sortkeys):
         # Currently, can't sort on anything. In the future, we can infer which
         # columns a CSV is sorted on and return something more useful here.
@@ -145,26 +172,26 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
                     stream = gzip.GzipFile(fileobj=stream)
 
                 csv_options = self.csv_options
-                if csv_options.encoding is None and not csv_options.autodetect_encoding:
+                if csv_options.encoding == "" and not csv_options.autodetect_encoding:
                     csv_options = csv_options._replace(encoding=response.encoding)
 
                 csv_options, reader = make_csv_reader(stream, csv_options)
                 yield from self._read_csv(reader, csv_options)
         else:
-            response = None
+            minio_response: Optional[HTTPResponse] = None
             try:
-                response = self.s3_client.get_object(
+                minio_response = self.s3_client.get_object(
                     bucket_name=self.s3_bucket, object_name=self.s3_object
                 )
                 csv_options = self.csv_options
-                if csv_options.encoding is None and not csv_options.autodetect_encoding:
+                if csv_options.encoding == "" and not csv_options.autodetect_encoding:
                     csv_options = csv_options._replace(autodetect_encoding=True)
-                csv_options, reader = make_csv_reader(response, csv_options)
+                csv_options, reader = make_csv_reader(minio_response, csv_options)
                 yield from self._read_csv(reader, csv_options)
             finally:
-                if response:
-                    response.close()
-                    response.release_conn()
+                if minio_response:
+                    minio_response.close()
+                    minio_response.release_conn()
 
     @classmethod
     def import_schema(cls, schema, srv_options, options, restriction_type, restricts):
@@ -283,29 +310,3 @@ class CSVForeignDataWrapper(ForeignDataWrapper):
                 if response.headers.get("Content-Encoding") == "gzip":
                     stream = gzip.GzipFile(fileobj=stream)
                 return _get_table_definition(stream, srv_options, table_name, table_options)
-
-    def __init__(self, fdw_options, fdw_columns):
-        # Initialize the logger that will log to the engine's stderr: log timestamp and PID.
-
-        logging.basicConfig(
-            format="%(asctime)s [%(process)d] %(levelname)s %(message)s",
-            level=splitgraph.config.CONFIG["SG_LOGLEVEL"],
-        )
-
-        # Dict of connection parameters
-        self.fdw_options = fdw_options
-
-        # The foreign datawrapper columns (name -> ColumnDefinition).
-        self.fdw_columns = fdw_columns
-
-        self.csv_options = CSVOptions.from_fdw_options(fdw_options)
-
-        # For HTTP: use full URL
-        if fdw_options.get("url"):
-            self.mode = "http"
-            self.url = fdw_options["url"]
-        else:
-            self.mode = "s3"
-            self.s3_client, self.s3_bucket, self.s3_object_prefix = get_s3_params(fdw_options)
-
-            self.s3_object = fdw_options["s3_object"]

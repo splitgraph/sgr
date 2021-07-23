@@ -149,6 +149,7 @@ class DbSyncProxy(DbSync):
         self.image.repository.commit_engines()
 
     def _overwrite_existing_table(self, temp_table, table_name, schema_spec):
+        assert self.staging_table
         staging_table_schema, staging_table = self.staging_table
 
         # Merge the CSV data into the "materialized" table

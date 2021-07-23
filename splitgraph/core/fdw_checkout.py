@@ -1,13 +1,18 @@
 """Module imported by Multicorn on the Splitgraph engine server: a foreign data wrapper that implements
 layered querying (read-only queries to Splitgraph tables without materialization)."""
 import logging
-from typing import Optional
+from typing import Optional, Callable, TYPE_CHECKING
 
 import splitgraph.config
-from splitgraph.core.output import pretty_size
+from splitgraph.config import get_singleton
 from splitgraph.core.object_manager import ObjectManager
+from splitgraph.core.output import pretty_size
 from splitgraph.core.repository import Repository, get_engine
-from splitgraph.core.table import QueryPlan
+from splitgraph.core.table import QueryPlan, Table
+
+if TYPE_CHECKING:
+    from splitgraph.engine.postgres.engine import PostgresEngine
+
 
 try:
     from multicorn import ForeignDataWrapper, ANY
@@ -24,6 +29,52 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
 
     # Allow injecting custom object manager classes
     object_manager_class = ObjectManager
+
+    def __init__(self, fdw_options, fdw_columns):
+        """The foreign data wrapper is initialized on the first query.
+        Args:
+            fdw_options (dict): The foreign data wrapper options. It is a dictionary
+                mapping keys from the sql "CREATE FOREIGN TABLE"
+                statement options. It is left to the implementor
+                to decide what should be put in those options, and what
+                to do with them.
+
+        """
+        # Flip the global flag for engine constructors to use (see comment in splitgraph.config).
+        splitgraph.config.IN_FDW = True
+
+        # Initialize the logger that will log to the engine's stderr: log timestamp and PID.
+        logging.basicConfig(
+            format="%(asctime)s [%(process)d] %(levelname)s %(message)s",
+            level=get_singleton(splitgraph.config.CONFIG, "SG_LOGLEVEL"),
+        )
+
+        # Dict of connection parameters as well as the table, repository and image hash to query.
+        self.fdw_options = fdw_options
+
+        # The foreign datawrapper columns (name -> ColumnDefinition).
+        self.fdw_columns = fdw_columns
+
+        self._initialize_engines()
+
+        repository = Repository(
+            fdw_options["namespace"],
+            self.fdw_options["repository"],
+            engine=self.engine,
+            object_engine=self.object_engine,
+            object_manager=self.object_manager_class(
+                object_engine=self.object_engine, metadata_engine=self.engine
+            ),
+        )
+        self.table: Table = repository.images[self.fdw_options["image_hash"]].get_table(
+            self.fdw_options["table"]
+        )
+
+        # Callback that we have to call when end_scan() is called (release objects and temporary tables).
+        self.end_scan_callback: Optional[Callable] = None
+
+        # A QueryPlan object for the last query with stats
+        self.plan: Optional[QueryPlan] = None
 
     @staticmethod
     def _quals_to_cnf(quals):
@@ -125,62 +176,16 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
 
     def _initialize_engines(self):
         # Try using a UNIX socket if the engine is local to us
-        self.engine = get_engine(
+        self.engine: "PostgresEngine" = get_engine(
             self.fdw_options["engine"],
             bool(self.fdw_options.get("use_socket", False)),
             use_fdw_params=True,
         )
         if "object_engine" in self.fdw_options:
-            self.object_engine = get_engine(
+            self.object_engine: "PostgresEngine" = get_engine(
                 self.fdw_options["object_engine"],
                 bool(self.fdw_options.get("use_socket", False)),
                 use_fdw_params=True,
             )
         else:
             self.object_engine = self.engine
-
-    def __init__(self, fdw_options, fdw_columns):
-        """The foreign data wrapper is initialized on the first query.
-        Args:
-            fdw_options (dict): The foreign data wrapper options. It is a dictionary
-                mapping keys from the sql "CREATE FOREIGN TABLE"
-                statement options. It is left to the implementor
-                to decide what should be put in those options, and what
-                to do with them.
-
-        """
-        # Flip the global flag for engine constructors to use (see comment in splitgraph.config).
-        splitgraph.config.IN_FDW = True
-
-        # Initialize the logger that will log to the engine's stderr: log timestamp and PID.
-        logging.basicConfig(
-            format="%(asctime)s [%(process)d] %(levelname)s %(message)s",
-            level=splitgraph.config.CONFIG["SG_LOGLEVEL"],
-        )
-
-        # Dict of connection parameters as well as the table, repository and image hash to query.
-        self.fdw_options = fdw_options
-
-        # The foreign datawrapper columns (name -> ColumnDefinition).
-        self.fdw_columns = fdw_columns
-
-        self._initialize_engines()
-
-        repository = Repository(
-            fdw_options["namespace"],
-            self.fdw_options["repository"],
-            engine=self.engine,
-            object_engine=self.object_engine,
-            object_manager=self.object_manager_class(
-                object_engine=self.object_engine, metadata_engine=self.engine
-            ),
-        )
-        self.table = repository.images[self.fdw_options["image_hash"]].get_table(
-            self.fdw_options["table"]
-        )
-
-        # Callback that we have to call when end_scan() is called (release objects and temporary tables).
-        self.end_scan_callback = None
-
-        # A QueryPlan object for the last query with stats
-        self.plan: Optional[QueryPlan] = None

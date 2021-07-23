@@ -2,17 +2,16 @@ import logging
 import os
 import platform
 from pathlib import Path, PureWindowsPath
-from typing import Dict
+from typing import Dict, Any, cast, Optional
 from urllib.parse import urlparse
 
 import click
 from tqdm import tqdm
 
 from splitgraph.__version__ import __version__
-from splitgraph.config import CONFIG, SG_CMD_ASCII
+from splitgraph.config import CONFIG, SG_CMD_ASCII, get_singleton
 from splitgraph.exceptions import DockerUnavailableError, EngineSetupError
 from splitgraph.utils.docker import get_docker_client, copy_to_container
-
 
 DEFAULT_ENGINE = "default"
 
@@ -167,8 +166,8 @@ def _pretty_pull(client, image):
             position=1,
             ascii=use_ascii,
         ) as extract_bar:
-            download_progress = {}
-            extract_progress = {}
+            download_progress: Dict[str, Dict[str, Any]] = {}
+            extract_progress: Dict[str, Dict[str, Any]] = {}
             for progress in client.api.pull(image, stream=True, decode=True):
                 progress_text = "%s: %s" % (progress.get("id", ""), progress.get("status", ""))
                 if progress["status"] == "Downloading":
@@ -177,7 +176,12 @@ def _pretty_pull(client, image):
                     _update_bar(progress, progress_text, extract_bar, extract_progress)
 
 
-def _update_bar(progress, progress_text, bar, progress_data):
+def _update_bar(
+    progress: Dict[str, Any],
+    progress_text: str,
+    bar: tqdm,
+    progress_data: Dict[str, Dict[str, Any]],
+):
     if progress.get("progressDetail"):
         progress_data[progress["id"]] = progress["progressDetail"]
 
@@ -316,6 +320,7 @@ def add_engine_c(
         "SG_ENGINE_ADMIN_PWD": password,
     }
 
+    config_patch: Dict[str, Any]
     if not no_sgconfig:
         if name != DEFAULT_ENGINE and not set_default:
             config_patch = {"remotes": {name: conn_params}}
@@ -327,7 +332,9 @@ def add_engine_c(
         config_path = CONFIG["SG_CONFIG_FILE"]
 
     if not no_init:
-        engine = PostgresEngine(name=name, conn_params=conn_params)
+        engine = PostgresEngine(
+            name=name, conn_params=cast(Optional[Dict[str, Optional[str]]], conn_params)
+        )
         engine.initialize()
         engine.commit()
         click.echo("Engine initialized successfully.")
@@ -443,7 +450,7 @@ def configure_engine_c(name):
     container_name = _get_container_name(name)
     container = client.containers.get(container_name)
 
-    copy_to_container(container, CONFIG["SG_CONFIG_FILE"], "/.sgconfig")
+    copy_to_container(container, get_singleton(CONFIG, "SG_CONFIG_FILE"), "/.sgconfig")
     logging.info("Config updated for container %s", container.name)
 
 

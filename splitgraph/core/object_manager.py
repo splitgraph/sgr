@@ -1,4 +1,5 @@
 """Functions related to creating, deleting and keeping track of physical Splitgraph objects."""
+import datetime
 import itertools
 import logging
 import math
@@ -14,7 +15,6 @@ from typing import (
     Tuple,
     Union,
     TYPE_CHECKING,
-    cast,
     DefaultDict,
     Sequence,
 )
@@ -623,7 +623,9 @@ class ObjectManager(FragmentManager):
                 "Eviction done. Cache occupancy: %s", pretty_size(self.get_cache_occupancy())
             )
 
-    def _eviction_score(self, now, object_size, last_used):
+    def _eviction_score(
+        self, now: datetime.datetime, object_size: int, last_used: datetime.datetime
+    ) -> float:
         # We want to evict objects in order to minimize
         # P(object is requested again) * (cost of redownloading the object).
         # To approximate the probability, we use an exponential decay function (1 if last_used = now, dropping down
