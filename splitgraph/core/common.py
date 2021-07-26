@@ -362,6 +362,8 @@ def adapt(value: Any, pg_type: str) -> Any:
     """
     if value is None:
         return None
+    if not isinstance(value, str):
+        return value
     if pg_type in _TYPE_MAP:
         return _TYPE_MAP[pg_type](value)
     return value
