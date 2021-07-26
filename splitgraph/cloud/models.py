@@ -27,12 +27,18 @@ class Credential(BaseModel):
     data: Dict[str, Any]
 
 
+class IngestionSchedule(BaseModel):
+    schedule: str
+    enabled = True
+
+
 class External(BaseModel):
     credential_id: Optional[str]
     credential: Optional[str]
     plugin: str
     params: Dict[str, Any]
     tables: Dict[str, Table]
+    schedule: Optional[IngestionSchedule]
 
 
 # Models for the catalog metadata (description, README, topics etc)
@@ -226,6 +232,7 @@ class AddExternalRepositoryRequest(BaseModel):
     is_live: bool
     tables: Optional[Dict[str, ExternalTableRequest]]
     credential_id: Optional[str]
+    schedule: Optional[IngestionSchedule]
 
     @classmethod
     def from_external(
@@ -259,4 +266,9 @@ class AddExternalRepositoryRequest(BaseModel):
             },
             credential_id=credential_id,
             is_live=True,
+            schedule=external.schedule,
         )
+
+
+class AddExternalRepositoriesRequest(BaseModel):
+    repositories: List[AddExternalRepositoryRequest]

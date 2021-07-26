@@ -21,6 +21,8 @@ def pretty_size(size: Union[int, float]) -> str:
 
 def pluralise(word: str, number: int) -> str:
     """1 banana, 2 bananas"""
+    if word.endswith("y"):
+        return "%d %s" % (number, word if number == 1 else word[:-1] + "ies")
     return "%d %s%s" % (number, word, "" if number == 1 else "s")
 
 

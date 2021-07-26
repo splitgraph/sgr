@@ -13,6 +13,9 @@ services:
       - 5432
   postgrest:
     image: postgrest/postgrest:latest
+    command:
+      - postgrest
+      - /etc/postgrest.conf
     ports:
       - '0.0.0.0:8080:8080'
     volumes:
