@@ -21,7 +21,7 @@ def _pull_up_children(tree):
 
     # TODO this creates ambiguous trees where a line of commits renders the same
     #   as a bunch of siblings of a single node.
-    new_tree = OrderedDict()
+    new_tree: OrderedDict[str, OrderedDict] = OrderedDict()
     one_child = len(tree) == 1
 
     for child_name, child in tree.items():

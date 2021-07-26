@@ -1,7 +1,8 @@
 import csv
 import io
-from minio import Minio
 from typing import Dict, Tuple, NamedTuple, TYPE_CHECKING, Any
+
+from minio import Minio
 
 if TYPE_CHECKING:
     import _csv

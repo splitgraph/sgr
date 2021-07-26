@@ -3,6 +3,7 @@ sgr commands related to sharing and downloading images.
 """
 
 import sys
+from typing import Optional
 
 import click
 
@@ -223,6 +224,7 @@ def _make_push_target(repository, remote):
     from splitgraph.core.repository import Repository
     from splitgraph.engine import get_engine
 
+    namespace: Optional[str]
     try:
         namespace = get_from_subsection(CONFIG, "remotes", remote, "SG_NAMESPACE")
     except KeyError:

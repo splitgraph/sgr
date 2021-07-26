@@ -78,9 +78,9 @@ def _do_version_check():
     """Do a pre-flight version check -- by default we only do it once a day"""
     from splitgraph.cloud import RESTAPIClient
     from packaging.version import Version
-    from splitgraph.config import CONFIG
+    from splitgraph.config import CONFIG, get_singleton
 
-    api_client = RESTAPIClient(CONFIG["SG_UPDATE_REMOTE"])
+    api_client = RESTAPIClient(get_singleton(CONFIG, "SG_UPDATE_REMOTE"))
     latest = api_client.get_latest_version()
 
     if not latest:

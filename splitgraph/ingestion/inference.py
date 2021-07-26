@@ -61,7 +61,7 @@ def _infer_column_schema(column_sample: Sequence[str]) -> str:
 
 
 def infer_sg_schema(
-    sample: List[Tuple[str, ...]],
+    sample: Sequence[Sequence[str]],
     override_types: Optional[Dict[str, str]] = None,
     primary_keys: Optional[List[str]] = None,
 ):

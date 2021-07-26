@@ -7,7 +7,7 @@ import string
 import subprocess
 from copy import copy
 from glob import glob
-from typing import Dict, Optional
+from typing import Dict, Optional, cast, Tuple
 from urllib.parse import urlparse, quote
 
 import click
@@ -25,6 +25,8 @@ from splitgraph.commandline.engine import patch_and_save_config, inject_config_i
 from splitgraph.core.output import pluralise
 
 # Hardcoded database name for the Splitgraph DDN (ddn instead of sgregistry)
+from splitgraph.config.config import get_from_subsection
+
 _DDN_DBNAME = "ddn"
 
 VALID_FILENAME_CHARACTERS = string.ascii_letters + string.digits + "-_."
@@ -63,10 +65,12 @@ def register_c(username, password, email, remote, accept_tos, skip_inject):
         click.confirm("Do you accept the Terms of Service?", default=False, abort=True)
     click.echo("Registering the user...")
 
-    uuid, access, refresh = client.register(username, password, email, accept_tos=True)
+    uuid, access, refresh = cast(
+        Tuple[str, str, str], client.register(username, password, email, accept_tos=True)
+    )
     click.echo("Registration successful. UUID %s" % uuid)
 
-    key, secret = client.create_machine_credentials(access, password)
+    key, secret = cast(Tuple[str, str], client.create_machine_credentials(access, password))
     click.echo("Acquired refresh token and API keys")
 
     repo_lookup = _update_repo_lookup(CONFIG, remote)
@@ -174,7 +178,7 @@ def login_c(username, password, remote, overwrite, skip_inject):
             hide_input=True,
         )
 
-    access, refresh = client.get_refresh_token(username, password)
+    access, refresh = cast(Tuple[str, str], client.get_refresh_token(username, password))
 
     # Extract namespace from the access token since we might have logged in with an e-mail.
     namespace = get_token_claim(access, "username")
@@ -199,7 +203,9 @@ def login_c(username, password, remote, overwrite, skip_inject):
 
     # Get new tokens in any case if we're logging in under a different username.
     try:
-        username_changed = namespace != CONFIG["remotes"][remote]["SG_NAMESPACE"]
+        username_changed = namespace != get_from_subsection(
+            CONFIG, "remotes", remote, "SG_NAMESPACE"
+        )
     except KeyError:
         username_changed = False
 
@@ -209,7 +215,7 @@ def login_c(username, password, remote, overwrite, skip_inject):
         or overwrite
         or username_changed
     ):
-        key, secret = client.create_machine_credentials(access, password)
+        key, secret = cast(Tuple[str, str], client.create_machine_credentials(access, password))
         config_patch["remotes"][remote]["SG_ENGINE_USER"] = key
         config_patch["remotes"][remote]["SG_ENGINE_PWD"] = secret
         click.echo("Acquired new API keys")
@@ -242,7 +248,7 @@ def login_api_c(api_key, api_secret, remote, skip_inject):
     from splitgraph.config.config import get_all_in_subsection
 
     client = RESTAPIClient(remote)
-    access = client.get_access_token_from_api(api_key, api_secret)
+    access = cast(str, client.get_access_token_from_api(api_key, api_secret))
 
     namespace = get_token_claim(access, "username")
 
@@ -315,7 +321,7 @@ def curl_c(remote, request_type, image, request_params, curl_args):
     repository, hash_or_tag = image
 
     # Craft a request
-    config = CONFIG["remotes"][remote]
+    config = cast(Dict[str, str], CONFIG["remotes"][remote])
     access_token = RESTAPIClient(remote).access_token
     headers = get_headers()
     headers.update({"Authorization": "Bearer " + access_token})
@@ -786,10 +792,10 @@ def add_c(remote, skip_inject, domain_name):
     if not remote:
         remote = domain_name.split(".")[0]
 
-    remote_params_patch = {
+    remote_params_patch: Dict[str, str] = {
         "SG_IS_REGISTRY": "true",
         "SG_ENGINE_HOST": f"data.{domain_name}",
-        "SG_ENGINE_PORT": 5432,
+        "SG_ENGINE_PORT": "5432",
         "SG_ENGINE_DB_NAME": "sgregistry",
         "SG_AUTH_API": f"https://api.{domain_name}/auth",
         "SG_QUERY_API": f"https://data.{domain_name}",

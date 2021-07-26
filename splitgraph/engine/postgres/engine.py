@@ -183,13 +183,19 @@ def chunk(sequence: Sequence[T], chunk_size: int = API_MAX_VARIADIC_ARGS) -> Ite
         yield curr_chunk
 
 
-def get_conn_str(conn_params: Dict[str, str]) -> str:
+def _get(d: Dict[str, Optional[str]], k: str) -> str:
+    result = d.get(k)
+    assert result
+    return result
+
+
+def get_conn_str(conn_params: Dict[str, Optional[str]]) -> str:
     server, port, username, password, dbname = (
-        conn_params["SG_ENGINE_HOST"],
-        conn_params["SG_ENGINE_PORT"],
-        conn_params["SG_ENGINE_USER"],
-        conn_params["SG_ENGINE_PWD"],
-        conn_params["SG_ENGINE_DB_NAME"],
+        _get(conn_params, "SG_ENGINE_HOST"),
+        _get(conn_params, "SG_ENGINE_PORT"),
+        _get(conn_params, "SG_ENGINE_USER"),
+        _get(conn_params, "SG_ENGINE_PWD"),
+        _get(conn_params, "SG_ENGINE_DB_NAME"),
     )
     return f"postgresql://{username}:{password}@{server}:{port}/{dbname}"
 
@@ -1317,7 +1323,7 @@ class PostgresEngine(AuditTriggerChangeEngine, ObjectEngine):
         target_schema: str,
         target_table: str,
         extra_quals: Optional[Composed] = None,
-        extra_qual_args: Optional[Tuple[str]] = None,
+        extra_qual_args: Optional[Tuple[Any, ...]] = None,
         schema_spec: Optional["TableSchema"] = None,
         progress_every: Optional[int] = None,
     ) -> None:
