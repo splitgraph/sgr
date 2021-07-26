@@ -7,7 +7,9 @@ Subpackages
 .. toctree::
    :maxdepth: 4
 
+   splitgraph.ingestion.airbyte
    splitgraph.ingestion.csv
+   splitgraph.ingestion.singer
    splitgraph.ingestion.snowflake
    splitgraph.ingestion.socrata
 

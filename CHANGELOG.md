@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.2.15 (2021-07-26)
+
+  * API functionality to get the raw URL for a data source (https://github.com/splitgraph/splitgraph/pull/457)
+  * LQ scan / filtering simplification to speed up writes / Singer loads (https://github.com/splitgraph/splitgraph/pull/464, https://github.com/splitgraph/splitgraph/pull/489)
+  * API functionality for Airbyte support (`AirbyteDataSource` class, https://github.com/splitgraph/splitgraph/pull/493)
+  * Speed up `sgr cloud load` by bulk API calls (https://github.com/splitgraph/splitgraph/pull/500)
+
+Full set of changes: [`v0.2.14...v0.2.15`](https://github.com/splitgraph/splitgraph/compare/v0.2.14...v0.2.15)
+
 ## v0.2.14 (2021-05-05)
 
   * Functionality to dump and load a Splitgraph catalog to/from a special `repositories.yml` format (https://github.com/splitgraph/splitgraph/pull/445)

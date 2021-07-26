@@ -1,13 +1,13 @@
-splitgraph.cloud package
+splitgraph.utils package
 ========================
 
 Submodules
 ----------
 
-splitgraph.cloud.models module
+splitgraph.utils.docker module
 ------------------------------
 
-.. automodule:: splitgraph.cloud.models
+.. automodule:: splitgraph.utils.docker
    :members:
    :undoc-members:
    :show-inheritance:
@@ -15,7 +15,7 @@ splitgraph.cloud.models module
 Module contents
 ---------------
 
-.. automodule:: splitgraph.cloud
+.. automodule:: splitgraph.utils
    :members:
    :undoc-members:
    :show-inheritance:

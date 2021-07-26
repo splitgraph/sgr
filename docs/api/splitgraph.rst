@@ -15,6 +15,7 @@ Subpackages
    splitgraph.hooks
    splitgraph.ingestion
    splitgraph.splitfile
+   splitgraph.utils
 
 Submodules
 ----------
