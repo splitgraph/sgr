@@ -7,7 +7,7 @@ import time
 import warnings
 from functools import wraps
 from json import JSONDecodeError
-from typing import Callable, List, Union, Tuple, cast, Optional, Dict, Any, Type, TypeVar, Set
+from typing import Callable, List, Union, Tuple, cast, Optional, Dict, Any, Type, TypeVar
 
 import requests
 from pydantic import BaseModel
