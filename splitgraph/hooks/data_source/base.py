@@ -227,7 +227,7 @@ def prepare_new_image(
     if repository_exists(repository):
         # Clone the base image and delta compress against it
         base_image: Optional[Image] = repository.images[hash_or_tag] if hash_or_tag else None
-        repository.images.add(parent_id=None, image=new_image_hash, comment="Singer tap ingestion")
+        repository.images.add(parent_id=None, image=new_image_hash, comment=comment)
         if base_image:
             repository.engine.run_sql(
                 "INSERT INTO splitgraph_meta.tables "
