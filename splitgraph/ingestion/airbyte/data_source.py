@@ -391,7 +391,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
             command=command,
             network_mode=network_mode,
             environment=self.docker_environment,
-            log_config=LogConfig(type="local"),
+            log_config=LogConfig(type="json-file", config={"max-size": "10m", "max-file": "3"}),
         )
         with remove_at_end(container):
             yield container
@@ -415,7 +415,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
             network_mode=network_mode,
             stdin_open=True,
             environment=self.docker_environment,
-            log_config=LogConfig(type="local"),
+            log_config=LogConfig(type="json-file", config={"max-size": "10m", "max-file": "3"}),
         )
         with remove_at_end(container):
             yield container
@@ -439,7 +439,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
             command=command,
             network_mode=network_mode,
             environment=self.docker_environment,
-            log_config=LogConfig(type="local"),
+            log_config=LogConfig(type="json-file", config={"max-size": "10m", "max-file": "3"}),
         )
 
         with remove_at_end(container):
