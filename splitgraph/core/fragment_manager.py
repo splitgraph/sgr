@@ -9,6 +9,7 @@ import logging
 import math
 import operator
 import struct
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import reduce
 from hashlib import sha256
@@ -19,7 +20,7 @@ from psycopg2.errors import UniqueViolation
 from psycopg2.sql import SQL, Identifier, Composable
 from tqdm import tqdm
 
-from splitgraph.config import SPLITGRAPH_API_SCHEMA, SG_CMD_ASCII
+from splitgraph.config import SPLITGRAPH_API_SCHEMA, SG_CMD_ASCII, get_singleton, CONFIG
 from splitgraph.core.indexing.bloom import generate_bloom_index, filter_bloom_index
 from splitgraph.core.indexing.range import (
     generate_range_index,
@@ -934,7 +935,6 @@ class FragmentManager(MetadataManager):
         table_schema = table_schema or self.object_engine.get_full_table_schema(
             source_schema, source_table
         )
-        object_ids = []
 
         # We need to do multiple things here in a specific way to not tank the performance:
         #  * Chunk the table up ordering by PK (or potentially another chunk key in the future)
@@ -966,14 +966,14 @@ class FragmentManager(MetadataManager):
         # Current incarnation: create a temporary table with partition boundaries and then
         # use that as the chunking condition (lower <= pk < upper)
         logging.info("Processing table %s", source_table)
-        temp_table = "sg_tmp_partition_" + source_table
+        temp_table = "_sg_tmp_partition_" + source_table
 
         pk_sql = SQL(",").join(Identifier(p) for p in table_pk)
 
         # Compute the partition boundaries
         tmp_table_query = (
-            SQL("CREATE TEMPORARY TABLE {} AS WITH _row_nums AS (SELECT").format(
-                Identifier(temp_table)
+            SQL("CREATE TABLE {}.{} AS WITH _row_nums AS (SELECT").format(
+                Identifier(source_schema), Identifier(temp_table)
             )
             + SQL("(ROW_NUMBER() OVER (ORDER BY ")
             + pk_sql
@@ -985,66 +985,76 @@ class FragmentManager(MetadataManager):
             + pk_sql
             + SQL("FROM _row_nums WHERE _sg_tmp_row_num %% %s = 0")
         )
-        self.object_engine.run_sql(tmp_table_query, (chunk_size, chunk_size))
+        object_ids = []
 
-        all_chunks = self.object_engine.run_sql(
-            SQL("SELECT * FROM {} ORDER BY _sg_tmp_partition_id").format(Identifier(temp_table))
-        )
+        try:
+            self.object_engine.run_sql(tmp_table_query, (chunk_size, chunk_size))
 
-        log_progress = len(all_chunks) > 10
-        log_func = logging.info if log_progress else logging.debug
-
-        log_func("Storing and indexing the table")
-        pbar = tqdm(
-            range(0, len(all_chunks)),
-            unit="objs",
-            total=len(all_chunks),
-            ascii=SG_CMD_ASCII,
-            disable=not log_progress,
-        )
-
-        for chunk_id in pbar:
-            # Build the condition for the chunk
-            #
-            # For some reason
-            #
-            # WHERE [pk] >= (SELECT [pk] FROM [partition_table] WHERE partition_id = chunk_id)
-            #
-            # is 10x slower than plugging the PK in directly
-            # https://stackoverflow.com/questions/14987321/postgresql-in-operator-with-subquery-poor-performance ?
-
-            chunk_condition = (
-                SQL("WHERE (")
-                + pk_sql
-                + SQL(") >= (" + ",".join(itertools.repeat("%s", len(table_pk))))
-                + SQL(")")
+            all_chunks = self.object_engine.run_sql(
+                SQL("SELECT * FROM {}.{} ORDER BY _sg_tmp_partition_id").format(
+                    Identifier(source_schema), Identifier(temp_table)
+                )
             )
-            chunk_args = all_chunks[chunk_id][1:]
-            if chunk_id + 1 < len(all_chunks):
-                chunk_condition += (
-                    SQL(" AND (")
+
+            log_progress = len(all_chunks) > 10
+            log_func = logging.info if log_progress else logging.debug
+
+            log_func("Storing and indexing the table")
+
+            worker_threads = int(get_singleton(CONFIG, "SG_ENGINE_POOL")) - 1
+
+            def _store_object(chunk_id: int):
+                # Build the condition for the chunk. For some reason, this:
+                #
+                #   WHERE [pk] >= (SELECT [pk] FROM [partition_table] WHERE partition_id = chunk_id)
+                #
+                # is 10x slower than plugging the PK in directly
+                # https://stackoverflow.com/questions/14987321/postgresql-in-operator-with-subquery-poor-performance ?
+
+                chunk_condition = (
+                    SQL("WHERE (")
                     + pk_sql
-                    + SQL(") < (" + ",".join(itertools.repeat("%s", len(table_pk))))
+                    + SQL(") >= (" + ",".join(itertools.repeat("%s", len(table_pk))))
                     + SQL(")")
                 )
-                chunk_args = chunk_args + all_chunks[chunk_id + 1][1:]
+                chunk_args = all_chunks[chunk_id][1:]
+                if chunk_id + 1 < len(all_chunks):
+                    chunk_condition += (
+                        SQL(" AND (")
+                        + pk_sql
+                        + SQL(") < (" + ",".join(itertools.repeat("%s", len(table_pk))))
+                        + SQL(")")
+                    )
+                    chunk_args = chunk_args + all_chunks[chunk_id + 1][1:]
 
-            new_fragment = self.create_base_fragment(
-                source_schema,
-                source_table,
-                repository.namespace,
-                chunk_condition_sql=chunk_condition,
-                chunk_condition_args=chunk_args,
-                extra_indexes=extra_indexes,
-                in_fragment_order=in_fragment_order,
-                overwrite=overwrite,
-                table_schema=table_schema,
-            )
-            object_ids.append(new_fragment)
+                new_fragment = self.create_base_fragment(
+                    source_schema,
+                    source_table,
+                    repository.namespace,
+                    chunk_condition_sql=chunk_condition,
+                    chunk_condition_args=chunk_args,
+                    extra_indexes=extra_indexes,
+                    in_fragment_order=in_fragment_order,
+                    overwrite=overwrite,
+                    table_schema=table_schema,
+                )
+                self.metadata_engine.commit()
+                return new_fragment
 
-        # Temporary tables get deleted at the end of tx but sometimes we might run
-        # multiple sg operations in the same transaction and clash.
-        self.object_engine.delete_table("pg_temp", temp_table)
+            with ThreadPoolExecutor(max_workers=worker_threads) as tpe:
+                pbar = tqdm(
+                    tpe.map(_store_object, range(0, len(all_chunks))),
+                    total=len(all_chunks),
+                    unit="objs",
+                    ascii=SG_CMD_ASCII,
+                    disable=not log_progress,
+                )
+                for object_id in pbar:
+                    object_ids.append(object_id)
+                    pbar.set_postfix(object=object_id[:10] + "...")
+        finally:
+            self.object_engine.close_others()
+            self.object_engine.delete_table(source_schema, temp_table)
         return object_ids
 
     def filter_fragments(self, object_ids: List[str], table: "Table", quals: Any) -> List[str]:
