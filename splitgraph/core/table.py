@@ -44,6 +44,9 @@ if TYPE_CHECKING:
 # of initializing a batch of object applications and not reporting anything at all
 _PROGRESS_EVERY = 5 * 1024 * 1024
 
+# Rough ratio between the size of a PG table and a CStore table (picked empirically)
+_CSTORE_COMPRESSION = 2.5
+
 
 def _generate_select_query(
     engine: "PostgresEngine",
@@ -121,12 +124,19 @@ class QueryPlan:
             self.required_objects, table, quals
         )
         # Estimate the number of rows in the filtered objects
-        self.estimated_rows = sum(
-            [
-                o.rows_inserted - o.rows_deleted
-                for o in self.object_manager.get_object_meta(self.filtered_objects).values()
-            ]
+        object_meta = self.object_manager.get_object_meta(self.filtered_objects)
+        self.estimated_rows = sum([o.rows_inserted - o.rows_deleted for o in object_meta.values()])
+
+        # Estimate the row size in bytes by looking at the total object size
+        # This can sometimes be important if we're querying wide tables with JSON data where
+        # a single cell can be a few KB -- in some cases, this can make PG think it's going to get
+        # less data than there actually be and pick suboptimal plans.
+        self.size_per_row = (
+            sum(o.size for o in object_meta.values())
+            / sum(o.rows_inserted for o in object_meta.values())
+            * _CSTORE_COMPRESSION
         )
+
         self.tracer.log("filter_objects")
 
         # Prepare a list of objects to query

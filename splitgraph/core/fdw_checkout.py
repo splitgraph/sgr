@@ -120,8 +120,9 @@ class QueryingForeignDataWrapper(ForeignDataWrapper):
         #   * calling EXPLAIN on all fragments in filtered_objects (might be pretty expensive
         #     and requires the actual fragments to be present)
         #   * reading binary cstore files?
-
-        return plan.estimated_rows, len(columns) * 10
+        return plan.estimated_rows, int(
+            plan.size_per_row / len(self.table.table_schema) * len(columns)
+        )
 
     def explain(self, quals, columns, sortkeys=None, verbose=False):
         cnf_quals = self._quals_to_cnf(quals)
