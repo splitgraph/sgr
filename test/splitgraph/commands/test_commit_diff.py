@@ -200,7 +200,7 @@ def test_commit_chunking_order(local_engine_empty):
     head = OUTPUT.commit(chunk_size=5)
     objects = head.get_table("test").objects
     # When queried without an order, we should get the natural order
-    # of values in the chunk (they were inserted in the same order as the key in this case)
+    # of values in the chunk (we copied from the original table, so they are in the same order)
     assert (
         local_engine_empty.run_sql(
             SQL("SELECT key FROM {}.{}").format(
@@ -208,7 +208,7 @@ def test_commit_chunking_order(local_engine_empty):
             ),
             return_shape=ResultShape.MANY_ONE,
         )
-        == list(range(1, 6))
+        == list(range(5, 0, -1))
     )
 
     # Commit again overwriting objects and changing the sort order
@@ -1054,9 +1054,7 @@ def test_create_object_out_of_band(local_engine_empty):
         # Test passing pg_temp without a schema fails (temporary tables aren't
         # in information_schema and so we can't infer their schema)
         object_manager.create_base_fragment(
-            source_schema="pg_temp",
-            source_table="test",
-            namespace="test",
+            source_schema="pg_temp", source_table="test", namespace="test"
         )
 
     object_id = object_manager.create_base_fragment(
