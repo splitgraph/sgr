@@ -211,6 +211,16 @@ class AirbyteDataSource(SyncableDataSource, ABC):
             default_sync_mode="append_dedup" if use_state else "overwrite",
         )
 
+        # We can also store the state at this point, since only the raw tables depend on it.
+        store_ingestion_state(
+            repository,
+            new_image_hash,
+            current_state=state,
+            new_state=json.dumps(new_state) if new_state else "{}",
+        )
+        add_timestamp_tags(repository, new_image_hash)
+        repository.commit_engines()
+
         # Run normalization
         # This converts the raw Airbyte tables (with JSON) into actual tables with fields.
         # We first replace the raw table fragments that Airbyte wrote out with the actual full
@@ -234,15 +244,6 @@ class AirbyteDataSource(SyncableDataSource, ABC):
 
         logging.info("Storing processed Airbyte tables")
         _store_processed_airbyte_tables(repository, new_image_hash, staging_schema)
-
-        store_ingestion_state(
-            repository,
-            new_image_hash,
-            current_state=state,
-            new_state=json.dumps(new_state) if new_state else "{}",
-        )
-        add_timestamp_tags(repository, new_image_hash)
-
         repository.commit_engines()
 
         return new_image_hash
