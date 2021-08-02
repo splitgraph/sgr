@@ -1,39 +1,50 @@
+import datetime
+import os
 import re
+from distutils.dir_util import copy_tree
 from unittest import mock
 
 import pytest
+from psycopg2.sql import Identifier, SQL
+from test.splitgraph.conftest import INGESTION_RESOURCES
+
+from splitgraph.core.repository import Repository
+from splitgraph.core.types import TableColumn, TableParams
+from splitgraph.engine import ResultShape
+from splitgraph.hooks.data_source import merge_jsonschema
+from splitgraph.ingestion.airbyte.data_source import AirbyteDataSource
+from splitgraph.ingestion.airbyte.docker_utils import SubprocessError
 from splitgraph.ingestion.airbyte.models import (
     AirbyteCatalog,
     AirbyteStream,
     SyncMode,
     DestinationSyncMode,
 )
-from psycopg2.sql import Identifier, SQL
-
-from splitgraph.core.repository import Repository
-from splitgraph.core.types import TableColumn, TableParams
-from splitgraph.engine import ResultShape
-from splitgraph.ingestion.airbyte.docker_utils import SubprocessError
 from splitgraph.ingestion.airbyte.utils import select_streams
-from splitgraph.ingestion.airbyte.data_source import AirbyteDataSource
 
 
 class MySQLAirbyteDataSource(AirbyteDataSource):
     docker_image = "airbyte/source-mysql:latest"
     airbyte_name = "airbyte-mysql"
 
-    credentials_schema = {"type": "object", "properties": {"password": {"type": "string"}}}
-    params_schema = {
-        "type": "object",
-        "properties": {
-            "host": {"type": "string"},
-            "port": {"type": "integer"},
-            "database": {"type": "string"},
-            "username": {"type": "string"},
-            "replication_method": {"type": "string"},
+    credentials_schema = merge_jsonschema(
+        AirbyteDataSource.credentials_schema,
+        {"type": "object", "properties": {"password": {"type": "string"}}},
+    )
+    params_schema = merge_jsonschema(
+        AirbyteDataSource.credentials_schema,
+        {
+            "type": "object",
+            "properties": {
+                "host": {"type": "string"},
+                "port": {"type": "integer"},
+                "database": {"type": "string"},
+                "username": {"type": "string"},
+                "replication_method": {"type": "string"},
+            },
+            "required": ["host", "port", "database", "username", "replication_method"],
         },
-        "required": ["host", "port", "database", "username", "replication_method"],
-    }
+    )
 
     @classmethod
     def get_name(cls) -> str:
@@ -44,7 +55,9 @@ class MySQLAirbyteDataSource(AirbyteDataSource):
         return "MySQL (Airbyte)"
 
 
-def _source(local_engine_empty, table_params=None):
+def _source(local_engine_empty, table_params=None, extra_params=None, extra_credentials=None):
+    extra_params = extra_params or {}
+    extra_credentials = extra_credentials or {}
     return MySQLAirbyteDataSource(
         engine=local_engine_empty,
         params={
@@ -53,10 +66,9 @@ def _source(local_engine_empty, table_params=None):
             "port": 3306,
             "database": "mysqlschema",
             "username": "originuser",
+            **extra_params,
         },
-        credentials={
-            "password": "originpass",
-        },
+        credentials={"password": "originpass", **extra_credentials},
         tables=table_params,
     )
 
@@ -357,6 +369,64 @@ def test_airbyte_mysql_source_pk_override(local_engine_empty):
     assert len(repo.images()) == 1
     repo.images["latest"].checkout()
     _assert_normalized_data(repo)
+
+
+@pytest.mark.mounting
+def test_airbyte_mysql_source_no_normalization(local_engine_empty):
+    repo = Repository.from_schema(TEST_REPO)
+
+    source = _source(local_engine_empty, extra_params={"normalization_mode": "none"})
+    source.load(repo)
+    expected_tables = [
+        "_airbyte_raw_mushrooms",
+        "_sg_ingestion_state",
+    ]
+
+    assert len(repo.images()) == 1
+    image = repo.images["latest"]
+    assert sorted(image.get_tables()) == expected_tables
+
+
+@pytest.mark.mounting
+def test_airbyte_mysql_source_custom_normalization(local_engine_empty):
+    # Pass in a Git repo with a dbt project that will do custom normalization for us.
+    repo = Repository.from_schema(TEST_REPO)
+    fixture_git_repo = os.path.join(INGESTION_RESOURCES, "dbt")
+
+    source = _source(
+        local_engine_empty,
+        extra_params={"normalization_mode": "git", "normalization_git_branch": "some/branch"},
+        extra_credentials={"normalization_git_url": "https://some-repo"},
+    )
+
+    # Use a mock so that we don't have to actually turn our fixture into a Git repo
+    # and make the process pull it from a local file path.
+    def _prepare_git_repo(url, target_path, ref):
+        assert url == "https://some-repo"
+        assert ref == "some/branch"
+        # Use copy_tree from distutils because shutil breaks if target_path exists.
+        copy_tree(fixture_git_repo, target_path)
+
+    with mock.patch("splitgraph.ingestion.dbt.utils.prepare_git_repo", _prepare_git_repo):
+        source.load(repo)
+
+    expected_tables = [
+        "_airbyte_raw_mushrooms",
+        "_sg_ingestion_state",
+        "dim_mushrooms",
+    ]
+
+    assert len(repo.images()) == 1
+    image = repo.images["latest"]
+    assert sorted(image.get_tables()) == expected_tables
+
+    image.checkout()
+    assert repo.run_sql(
+        "SELECT mushroom_name, discovered_on FROM dim_mushrooms ORDER BY discovered_on ASC"
+    ) == [
+        ("portobello", datetime.datetime(2012, 11, 11, 8, 6, 26)),
+        ("deathcap", datetime.datetime(2018, 3, 17, 8, 6, 26)),
+    ]
 
 
 def _assert_state(repo):

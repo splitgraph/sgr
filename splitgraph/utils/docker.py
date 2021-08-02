@@ -64,15 +64,16 @@ def copy_dir_to_container(
     target_path: str,
     exclude_names: Optional[List[str]] = None,
 ) -> None:
+    exclude_names = exclude_names or []
     stream = BytesIO()
     tar = TarFile(fileobj=stream, mode="w")
     tar.add(
         name=source_path,
-        arcname=".",
+        arcname=target_path,
         recursive=True,
-        filter=lambda ti: ti if ti.name in (exclude_names or []) else None,
+        filter=lambda ti: None if ti.name in exclude_names else ti,
     )
     tar.close()
 
     stream.seek(0)
-    container.put_archive(path=os.path.dirname(target_path), data=stream.read())
+    container.put_archive(path="/", data=stream.read())

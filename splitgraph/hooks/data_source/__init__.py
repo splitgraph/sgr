@@ -150,5 +150,5 @@ def _load_source(source_name, source_class_name):
 
 def merge_jsonschema(left: Dict[str, Any], right: Dict[str, Any]) -> Dict[str, Any]:
     result = deepcopy(left)
-    result["properties"] = result["properties"].update(right["properties"])
+    result["properties"] = {**result["properties"], **right.get("properties", {})}
     return result

@@ -84,6 +84,18 @@ class AirbyteDataSource(SyncableDataSource, ABC):
         },
     }
 
+    # Base parameters/credentials for this data source (allowing users to pass in a Git repo
+    # with a dbt project). Note that classes inheriting this should keep this JSONSchema by
+    # redefining it as:
+    #
+    #   credentials_schema = merge_jsonschema(
+    #       AirbyteDataSource.credentials_schema,
+    #       {"type": "object", "properties": {...}},
+    #   )
+    #   params_schema = merge_jsonschema(
+    #       AirbyteDataSource.credentials_schema,
+    #       {"type": "object", "properties": {...}},
+    #   )
     params_schema = {
         "type": "object",
         "properties": {
@@ -287,9 +299,9 @@ class AirbyteDataSource(SyncableDataSource, ABC):
             logging.info("Using a dbt project from Git")
 
             try:
-                git_url = self.params["normalization_git_url"]
+                git_url = self.credentials["normalization_git_url"]
             except KeyError:
-                raise ValueError("No normalization_git_url specified in plugin parameters!")
+                raise ValueError("No normalization_git_url specified in plugin credentials!")
             git_ref = self.params.get("normalization_git_branch", "master")
 
             run_dbt_transformation_from_git(

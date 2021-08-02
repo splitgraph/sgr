@@ -1,0 +1,1 @@
+This is a dbt project used in an integration test. 

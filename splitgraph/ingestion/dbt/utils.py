@@ -53,7 +53,7 @@ def make_dbt_profile(conn_params: Dict[str, Any], schema: str, threads: int = 32
                     "type": "postgres",
                     "dbname": conn_params["SG_ENGINE_DB_NAME"],
                     "host": conn_params["SG_ENGINE_HOST"],
-                    "port": conn_params["SG_ENGINE_PORT"],
+                    "port": int(conn_params["SG_ENGINE_PORT"]),
                     "user": conn_params["SG_ENGINE_USER"],
                     "pass": conn_params["SG_ENGINE_PWD"],
                     "schema": schema,
@@ -141,7 +141,7 @@ def run_dbt_transformation_from_git(
 
         # Make a dbt profile file that points to our engine
         profile = make_dbt_profile(engine.conn_params, schema)
-        with open(os.path.join(tmp_dir, "profiles.yaml"), "w") as f:
+        with open(os.path.join(tmp_dir, "profiles.yml"), "w") as f:
             yaml.safe_dump(profile, f)
 
         # Create the normalization container
