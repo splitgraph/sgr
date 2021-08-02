@@ -1,8 +1,9 @@
 import logging
 import os
 import types
+from copy import deepcopy
 from importlib import import_module
-from typing import Dict, Type, List, Optional, cast
+from typing import Dict, Type, List, Optional, cast, Any
 
 from .base import DataSource
 from .fdw import PostgreSQLDataSource, MongoDataSource, ElasticSearchDataSource, MySQLDataSource
@@ -145,3 +146,9 @@ def _load_source(source_name, source_class_name):
             get_singleton(CONFIG, "SG_CONFIG_FILE"),
         )
     return data_source
+
+
+def merge_jsonschema(left: Dict[str, Any], right: Dict[str, Any]) -> Dict[str, Any]:
+    result = deepcopy(left)
+    result["properties"] = result["properties"].update(right["properties"])
+    return result
