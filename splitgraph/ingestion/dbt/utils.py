@@ -1,10 +1,23 @@
 import logging
 import os
 import subprocess
-from typing import Dict, Any
+from random import getrandbits
+from tempfile import TemporaryDirectory
+from typing import Dict, Any, TYPE_CHECKING
 
 import yaml
+from docker.types import LogConfig
 from yaml import YAMLError
+
+from splitgraph.ingestion.airbyte.docker_utils import (
+    remove_at_end,
+    wait_not_failed,
+    detect_network_mode,
+)
+from splitgraph.utils.docker import get_docker_client, copy_dir_to_container
+
+if TYPE_CHECKING:
+    from splitgraph.engine.postgres.engine import PostgresEngine
 
 
 def prepare_git_repo(url: str, target_path: str, ref: str = "master") -> None:
@@ -92,3 +105,65 @@ def patch_dbt_project_sources(project_path: str, schema: str) -> None:
 
             with open(filepath, "w") as f:
                 yaml.safe_dump(data, f, sort_keys=False)
+
+
+def run_dbt_transformation_from_git(
+    engine: "PostgresEngine",
+    schema: str,
+    repository_url: str,
+    repository_ref: str = "master",
+    dbt_image: str = "airbyte/normalization:0.1.36",
+):
+    """
+    Run a dbt transformation from Git on a dataset checked out into a schema
+    :param engine: Engine the data is on
+    :param schema: Staging schema (the raw data may be checked out in LQ mode). All sources
+        and targets in the dbt project will be repointed to that schema.
+    :param repository_url: URL of the Git repository with the dbt project (including the
+        password/access token if required
+    :param repository_ref: Branch or commit hash to check out.
+    :param dbt_image: Docker image to use for dbt.
+    :return:
+    """
+
+    # Clone the repo into a temporary location and patch it to point to our staging schema
+    client = get_docker_client()
+    network_mode = detect_network_mode(client)
+    with TemporaryDirectory() as tmp_dir:
+        # Prepare the target directory that we'll copy into the dbt container.
+        # We can't bind mount it since we ourselves could be running inside of Docker.
+        target_path = os.path.join(tmp_dir, "dbt_project")
+        os.mkdir(target_path)
+
+        # Add a Git repo and switch all of its sources to use our staging schema
+        prepare_git_repo(repository_url, target_path, repository_ref)
+        patch_dbt_project_sources(target_path, schema)
+
+        # Make a dbt profile file that points to our engine
+        profile = make_dbt_profile(engine.conn_params, schema)
+        with open(os.path.join(tmp_dir, "profiles.yaml"), "w") as f:
+            yaml.safe_dump(profile, f)
+
+        # Create the normalization container
+        # We'll use Airbyte's image for now (since they have an image with dbt installed and our
+        # Airbyte load is currently the only user of this function), but at this point
+        # there isn't much that makes us require it.
+        entrypoint = ["/bin/bash"]
+        command = [
+            "-c",
+            "dbt run --profiles-dir /data --project-dir /data/dbt_project --profile splitgraph",
+        ]
+        client.images.pull(dbt_image)
+        container = client.containers.create(
+            image=dbt_image,
+            name="sg-dbt-{:08x}".format(getrandbits(64)),
+            entrypoint=entrypoint,
+            command=command,
+            network_mode=network_mode,
+            log_config=LogConfig(type="json-file", config={"max-size": "10m", "max-file": "3"}),
+        )
+
+        with remove_at_end(container):
+            copy_dir_to_container(container, tmp_dir, "/data", exclude_names=[".git"])
+            container.start()
+            wait_not_failed(container, mirror_logs=True)
