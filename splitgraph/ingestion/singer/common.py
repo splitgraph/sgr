@@ -145,10 +145,7 @@ def store_ingestion_state(
         (new_state,),
     )
     object_id = repository.objects.create_base_fragment(
-        "pg_temp",
-        INGESTION_STATE_TABLE,
-        repository.namespace,
-        table_schema=INGESTION_STATE_SCHEMA,
+        "pg_temp", INGESTION_STATE_TABLE, repository.namespace, table_schema=INGESTION_STATE_SCHEMA
     )
     # If the state exists already, overwrite it; otherwise, add new state table.
     if current_state:
