@@ -197,7 +197,7 @@ def make_repositories(
 class ListExternalCredentialsResponse(BaseModel):
     class ExternalCredential(BaseModel):
         plugin_name: str
-        credential_name: str
+        credential_name: Optional[str]
         credential_id: str
 
     credentials: List[ExternalCredential]
