@@ -929,10 +929,12 @@ class FragmentManager(MetadataManager):
         in_fragment_order: Optional[List[str]] = None,
         overwrite: bool = False,
     ) -> List[str]:
-        table_pk = [p[0] for p in self.object_engine.get_change_key(source_schema, source_table)]
         table_schema = table_schema or self.object_engine.get_full_table_schema(
             source_schema, source_table
         )
+        change_key = get_change_key(table_schema)
+        table_pk = [p[0] for p in change_key]
+        surrogate_pk = not any(t.is_pk for t in table_schema)
 
         # We need to do multiple things here in a specific way to not tank the performance:
         #  * Chunk the table up ordering by PK (or potentially another chunk key in the future)
@@ -968,24 +970,25 @@ class FragmentManager(MetadataManager):
 
         pk_sql = SQL(",").join(Identifier(p) for p in table_pk)
 
+        # If we don't have a PK, we cast the whole row to text when partitioning
+        # the table as well as selecting from it (add an _sg_surrogate_pk col)
+        cast_if_surrogate = SQL("::text" if surrogate_pk else "")
         # Compute the partition boundaries
-        # We cast the PK to text here to avoid corner cases with tables that
-        # don't have a PK and have NULLs in some columns.
         tmp_table_query = (
             SQL("CREATE TABLE {}.{} AS WITH _row_nums AS (SELECT").format(
                 Identifier(source_schema), Identifier(temp_table)
             )
-            + SQL("(ROW_NUMBER() OVER (ORDER BY ")
+            + SQL("(ROW_NUMBER() OVER (ORDER BY (")
             + pk_sql
+            + SQL(")")
+            + cast_if_surrogate
             + SQL(") - 1) _sg_tmp_row_num, ")
-            + pk_sql
+            + (SQL("(") + pk_sql + SQL(")::text AS _sg_surrogate_pk") if surrogate_pk else pk_sql)
             + SQL(" FROM {}.{}").format(Identifier(source_schema), Identifier(source_table))
             + SQL(") SELECT ")
             + SQL("_sg_tmp_row_num / %s AS _sg_tmp_partition_id, ")
-            + SQL("(")
-            + pk_sql
-            + SQL(")::text AS _sg_tmp_partition_start ")
-            + SQL("FROM _row_nums WHERE _sg_tmp_row_num %% %s = 0")
+            + (SQL("_sg_surrogate_pk") if surrogate_pk else pk_sql)
+            + SQL(" FROM _row_nums WHERE _sg_tmp_row_num %% %s = 0")
         )
         object_ids = []
 
@@ -993,10 +996,9 @@ class FragmentManager(MetadataManager):
             self.object_engine.run_sql(tmp_table_query, (chunk_size, chunk_size))
 
             all_chunks = self.object_engine.run_sql(
-                SQL(
-                    "SELECT _sg_tmp_partition_id, _sg_tmp_partition_start"
-                    " FROM {}.{} ORDER BY _sg_tmp_partition_id"
-                ).format(Identifier(source_schema), Identifier(temp_table))
+                SQL("SELECT * FROM {}.{} ORDER BY _sg_tmp_partition_id").format(
+                    Identifier(source_schema), Identifier(temp_table)
+                )
             )
             logging.debug("Chunk boundaries: %s", all_chunks)
 
@@ -1015,15 +1017,30 @@ class FragmentManager(MetadataManager):
                 # is 10x slower than plugging the PK in directly
                 # https://stackoverflow.com/questions/14987321/postgresql-in-operator-with-subquery-poor-performance ?
 
-                chunk_condition = SQL("WHERE (") + pk_sql + SQL(")::text >= %s")
-                chunk_args = [all_chunks[chunk_id][1]]
+                _pk_placeholder = (
+                    ",".join(itertools.repeat("%s", len(table_pk))) if not surrogate_pk else "%s"
+                )
+                chunk_condition = (
+                    SQL("WHERE (")
+                    + pk_sql
+                    + SQL(")")
+                    + cast_if_surrogate
+                    + SQL(" >= (" + _pk_placeholder + ")")
+                )
+                chunk_args = all_chunks[chunk_id][1:]
                 if chunk_id + 1 < len(all_chunks):
-                    chunk_condition += SQL(" AND (") + pk_sql + SQL(")::text < %s")
-                    chunk_args.append(all_chunks[chunk_id + 1][1])
-
+                    chunk_condition += (
+                        SQL(" AND (")
+                        + pk_sql
+                        + SQL(")")
+                        + cast_if_surrogate
+                        + SQL(" < (" + _pk_placeholder + ")")
+                    )
+                    chunk_args = chunk_args + all_chunks[chunk_id + 1][1:]
                 logging.debug(
-                    "Storing chunk %s. Boundaries: %s",
+                    "Storing chunk %s. Condition: %s. Boundaries: %s",
                     chunk_id,
+                    chunk_condition.as_string(self.object_engine.connection),
                     chunk_args,
                 )
                 new_fragment = self.create_base_fragment(

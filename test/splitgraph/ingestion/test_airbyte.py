@@ -303,7 +303,6 @@ def test_airbyte_mysql_source_end_to_end(local_engine_empty, mode):
 
     if mode == "sync":
         _assert_state(repo)
-        breakpoint()
         _assert_scd_data(repo)
 
         # Run another sync
