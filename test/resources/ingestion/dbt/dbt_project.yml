@@ -1,0 +1,30 @@
+name: 'sg_dbt_integration_test'
+version: '1.0'
+config-version: 2
+
+profile: 'some_profile'
+
+source-paths: ["models"]
+docs-paths: ["docs"]
+analysis-paths: ["analysis"]
+test-paths: ["tests"]
+data-paths: ["data"]
+macro-paths: ["macros"]
+
+target-path: "../build"  # directory which will store compiled SQL files
+log-path: "../logs"  # directory which will store DBT logs
+modules-path: "/tmp/dbt_modules"  # directory which will store external DBT dependencies
+
+clean-targets:         # directories to be removed by `dbt clean`
+    - "build"
+    - "dbt_modules"
+
+quoting:
+  database: true
+  schema: false
+  identifier: true
+
+models:
+  sg_dbt_integration_test:
+    +materialized: table
+    +unlogged: true

@@ -49,6 +49,7 @@ from .utils import (
     select_streams,
     get_pk_cursor_fields,
 )
+from ..dbt.utils import run_dbt_transformation_from_git
 from ..singer.common import store_ingestion_state, add_timestamp_tags
 
 
@@ -83,6 +84,50 @@ class AirbyteDataSource(SyncableDataSource, ABC):
         },
     }
 
+    # Base parameters/credentials for this data source (allowing users to pass in a Git repo
+    # with a dbt project). Note that classes inheriting this should keep this JSONSchema by
+    # redefining it as:
+    #
+    #   credentials_schema = merge_jsonschema(
+    #       AirbyteDataSource.credentials_schema,
+    #       {"type": "object", "properties": {...}},
+    #   )
+    #   params_schema = merge_jsonschema(
+    #       AirbyteDataSource.credentials_schema,
+    #       {"type": "object", "properties": {...}},
+    #   )
+    params_schema = {
+        "type": "object",
+        "properties": {
+            "normalization_mode": {
+                "type": "string",
+                "description": "Whether to normalize raw Airbyte tables. "
+                "`none` is no normalization, `basic` is Airbyte's basic normalization, "
+                "`custom` is a custom dbt transformation on the data.",
+                "enum": ["none", "basic", "custom"],
+                "default": ["basic"],
+            },
+            "normalization_git_branch": {
+                "type": "string",
+                "description": "Branch or commit hash to use for the normalization dbt project.",
+                "default": "master",
+            },
+        },
+    }
+
+    credentials_schema = {
+        "type": "object",
+        "properties": {
+            # This is a secret since the git URL might have a password in it.
+            "normalization_git_url": {
+                "type": "string",
+                "description": "For `custom` normalization, a URL to the Git repo "
+                "with the dbt project, for example,"
+                "`https://uname:pass_or_token@github.com/organisation/repository.git`.",
+            },
+        },
+    }
+
     def get_airbyte_config(self) -> AirbyteConfig:
         return {**self.params, **self.credentials}
 
@@ -98,7 +143,8 @@ class AirbyteDataSource(SyncableDataSource, ABC):
     def load(self, repository: "Repository", tables: Optional[TableInfo] = None) -> str:
         return self.sync(repository, image_hash=None, tables=tables, use_state=False)
 
-    def _make_postgres_config(self, engine: PostgresEngine, schema: str) -> AirbyteConfig:
+    @staticmethod
+    def _make_postgres_config(engine: PostgresEngine, schema: str) -> AirbyteConfig:
         return {
             "host": engine.conn_params["SG_ENGINE_HOST"],
             "port": int(engine.conn_params["SG_ENGINE_PORT"] or 5432),
@@ -211,6 +257,21 @@ class AirbyteDataSource(SyncableDataSource, ABC):
             default_sync_mode="append_dedup" if use_state else "overwrite",
         )
 
+        # We can also store the state at this point, since only the raw tables depend on it.
+        store_ingestion_state(
+            repository,
+            new_image_hash,
+            current_state=state,
+            new_state=json.dumps(new_state) if new_state else "{}",
+        )
+        add_timestamp_tags(repository, new_image_hash)
+        repository.commit_engines()
+
+        normalization_mode = self.params.get("normalization_mode", "basic")
+
+        if normalization_mode == "none":
+            return new_image_hash
+
         # Run normalization
         # This converts the raw Airbyte tables (with JSON) into actual tables with fields.
         # We first replace the raw table fragments that Airbyte wrote out with the actual full
@@ -222,27 +283,33 @@ class AirbyteDataSource(SyncableDataSource, ABC):
         repository.object_engine.create_schema(staging_schema)
         new_image.lq_checkout(staging_schema, only_tables=raw_tables)
         repository.commit_engines()
-
-        # Now run the normalization container
-        # This actually always recreates the normalized tables from scratch.
-        # https://github.com/airbytehq/airbyte/issues/4286
         logging.info("Running Airbyte T step (normalization)")
-        with self._normalization_container(client, network_mode) as normalization_container:
-            add_files(normalization_container, dest_files)
-            normalization_container.start()
-            wait_not_failed(normalization_container, mirror_logs=True)
 
-        logging.info("Storing processed Airbyte tables")
+        if normalization_mode == "basic":
+            # Run Airbyte's basic normalization container that autogenerates a dbt model from
+            # the catalog file.
+            # This actually always recreates the normalized tables from scratch.
+            # https://github.com/airbytehq/airbyte/issues/4286
+            logging.info("Using basic normalization")
+            with self._normalization_container(client, network_mode) as normalization_container:
+                add_files(normalization_container, dest_files)
+                normalization_container.start()
+                wait_not_failed(normalization_container, mirror_logs=True)
+        else:
+            logging.info("Using a dbt project from Git")
+
+            try:
+                git_url = self.credentials["normalization_git_url"]
+            except KeyError:
+                raise ValueError("No normalization_git_url specified in plugin credentials!")
+            git_ref = self.params.get("normalization_git_branch", "master")
+
+            run_dbt_transformation_from_git(
+                repository.object_engine, staging_schema, git_url, git_ref
+            )
+
+        logging.info("Storing normalized tables")
         _store_processed_airbyte_tables(repository, new_image_hash, staging_schema)
-
-        store_ingestion_state(
-            repository,
-            new_image_hash,
-            current_state=state,
-            new_state=json.dumps(new_state) if new_state else "{}",
-        )
-        add_timestamp_tags(repository, new_image_hash)
-
         repository.commit_engines()
 
         return new_image_hash

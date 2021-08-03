@@ -1,0 +1,10 @@
+version: 2
+sources:
+- name: airbyte_raw
+  schema: deliberately_wrong_schema_to_make_sure_we_change_it
+  quoting:
+    database: true
+    schema: false
+    identifier: false
+  tables:
+  - name: _airbyte_raw_mushrooms

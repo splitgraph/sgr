@@ -9,6 +9,7 @@ import logging
 import math
 import operator
 import struct
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import reduce
 from hashlib import sha256
@@ -16,10 +17,10 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union, TYPE_CHECKING, 
 
 from psycopg2._json import Json
 from psycopg2.errors import UniqueViolation
-from psycopg2.sql import SQL, Identifier
+from psycopg2.sql import SQL, Identifier, Composable
 from tqdm import tqdm
 
-from splitgraph.config import SPLITGRAPH_API_SCHEMA, SG_CMD_ASCII
+from splitgraph.config import SPLITGRAPH_API_SCHEMA, SG_CMD_ASCII, get_singleton, CONFIG
 from splitgraph.core.indexing.bloom import generate_bloom_index, filter_bloom_index
 from splitgraph.core.indexing.range import (
     generate_range_index,
@@ -58,11 +59,6 @@ def _split_changeset(
         # This change matches one of the chunks
         changesets_by_segment[bisect.bisect_left(maxs, pk)][pk] = data
     return changesets_by_segment, before_changesets, after_changesets
-
-
-def _log_commit_progress(table_size, no_chunks):
-    """Shim to avoid sgr spamming output with commit progress for small images"""
-    return table_size > 500000 or no_chunks > 100
 
 
 def _key(c):
@@ -707,8 +703,8 @@ class FragmentManager(MetadataManager):
         schema: str,
         table: str,
         table_schema: Optional[TableSchema] = None,
-        chunk_id_col: Optional[str] = None,
-        chunk_id: Optional[int] = None,
+        chunk_condition_sql: Optional[Composable] = None,
+        chunk_condition_args: Optional[List[Any]] = None,
     ) -> Tuple[str, int]:
         """
         Calculates the homomorphic hash of table contents.
@@ -716,8 +712,8 @@ class FragmentManager(MetadataManager):
         :param schema: Schema the table belongs to
         :param table: Name of the table
         :param table_schema: Schema of the table
-        :param chunk_id_col: Column the table is partitioned on
-        :param chunk_id: Column value to get rows from
+        :param chunk_condition_sql: Column the table is partitioned on
+        :param chunk_condition_args: Column value to get rows from
         :return: A 64-character (256-bit) hexadecimal string with the content hash of the table
             and the number of rows in the hash.
         """
@@ -730,9 +726,9 @@ class FragmentManager(MetadataManager):
             )
         )
         args = None
-        if chunk_id_col:
-            digest_query += SQL(" WHERE {} = %s").format(Identifier(chunk_id_col))
-            args = [chunk_id]
+        if chunk_condition_sql:
+            digest_query += SQL(" ") + chunk_condition_sql
+            args = chunk_condition_args
 
         row_digests = self.object_engine.run_sql(
             digest_query, args, return_shape=ResultShape.MANY_ONE
@@ -748,32 +744,32 @@ class FragmentManager(MetadataManager):
         source_schema: str,
         source_table: str,
         namespace: str,
-        chunk_id_col: Optional[str] = None,
-        chunk_id: Optional[int] = None,
+        chunk_condition_sql: Optional[Composable] = None,
+        chunk_condition_args: Optional[List[Any]] = None,
         extra_indexes: Optional[ExtraIndexInfo] = None,
         in_fragment_order: Optional[List[str]] = None,
         overwrite: bool = False,
         table_schema: Optional[TableSchema] = None,
     ) -> str:
         if source_schema == "pg_temp" and not table_schema:
-            raise ValueError(
-                "Cannot infer the schema of temporary tables, " "pass in table_schema!"
-            )
+            raise ValueError("Cannot infer the schema of temporary tables, pass in table_schema!")
 
         # Get schema (apart from the chunk ID column)
         # Fragments can't be reused in tables with different schemas
         # even if the contents match (e.g. '1' vs 1). Hence, include the table schema
         # n the object ID as well.
         table_schema = table_schema or [
-            c
-            for c in self.object_engine.get_full_table_schema(source_schema, source_table)
-            if c.name != chunk_id_col
+            c for c in self.object_engine.get_full_table_schema(source_schema, source_table)
         ]
 
         schema_hash = self._calculate_schema_hash(table_schema)
         # Get content hash for this chunk.
         content_hash, rows_inserted = self.calculate_content_hash(
-            source_schema, source_table, table_schema, chunk_id_col=chunk_id_col, chunk_id=chunk_id
+            source_schema,
+            source_table,
+            table_schema,
+            chunk_condition_sql=chunk_condition_sql,
+            chunk_condition_args=chunk_condition_args,
         )
 
         # Object IDs are also used to key tables in Postgres so they can't be more than 63 characters.
@@ -792,11 +788,11 @@ class FragmentManager(MetadataManager):
                 + Identifier(SG_UD_FLAG)
                 + SQL("FROM {}.{}").format(Identifier(source_schema), Identifier(source_table))
             )
-            source_query_args = []
+            source_query_args = None
 
-            if chunk_id_col:
-                source_query += SQL("WHERE {} = %s").format(Identifier(chunk_id_col))
-                source_query_args = [chunk_id]
+            if chunk_condition_sql:
+                source_query += SQL(" ") + chunk_condition_sql
+                source_query_args = chunk_condition_args
 
             if in_fragment_order:
                 source_query += SQL(" ") + self._get_order_by_clause(
@@ -885,40 +881,39 @@ class FragmentManager(MetadataManager):
         source_schema = source_schema or repository.to_schema()
         source_table = source_table or table_name
 
-        table_size = self.object_engine.run_sql(
-            SQL("SELECT COUNT (1) FROM {}.{}").format(
+        table_not_empty = self.object_engine.run_sql(
+            SQL("SELECT EXISTS(SELECT 1 FROM {}.{})").format(
                 Identifier(source_schema), Identifier(source_table)
             ),
             return_shape=ResultShape.ONE_ONE,
         )
 
         table_schema = self.object_engine.get_full_table_schema(source_schema, source_table)
-        if chunk_size and table_size:
+        if chunk_size and table_not_empty:
             object_ids = self._chunk_table(
                 repository,
                 source_schema,
                 source_table,
-                table_size,
                 chunk_size,
                 extra_indexes,
                 in_fragment_order=in_fragment_order,
                 overwrite=overwrite,
             )
 
-        elif table_size:
+        elif table_not_empty:
             object_ids = [
                 self.create_base_fragment(
                     source_schema,
                     source_table,
                     repository.namespace,
                     extra_indexes=extra_indexes,
-                    table_schema=table_schema,
                     in_fragment_order=in_fragment_order,
                     overwrite=overwrite,
+                    table_schema=table_schema,
                 )
             ]
         else:
-            # If table_size == 0, then we don't link it to any objects and simply store its schema
+            # If the table is empty, then we don't link it to any objects and simply store its schema
             object_ids = []
         self.register_tables(repository, [(image_hash, table_name, table_schema, object_ids)])
         return object_ids
@@ -928,18 +923,18 @@ class FragmentManager(MetadataManager):
         repository: "Repository",
         source_schema: str,
         source_table: str,
-        table_size: int,
         chunk_size: int,
         extra_indexes: Optional[ExtraIndexInfo] = None,
         table_schema: Optional[TableSchema] = None,
         in_fragment_order: Optional[List[str]] = None,
         overwrite: bool = False,
     ) -> List[str]:
-        table_pk = [p[0] for p in self.object_engine.get_change_key(source_schema, source_table)]
         table_schema = table_schema or self.object_engine.get_full_table_schema(
             source_schema, source_table
         )
-        object_ids = []
+        change_key = get_change_key(table_schema)
+        table_pk = [p[0] for p in change_key]
+        surrogate_pk = not any(t.is_pk for t in table_schema)
 
         # We need to do multiple things here in a specific way to not tank the performance:
         #  * Chunk the table up ordering by PK (or potentially another chunk key in the future)
@@ -964,68 +959,118 @@ class FragmentManager(MetadataManager):
         # scans which also took more than 15 minutes on a 8M row table, no matter whether the
         # table had indexes on the join key.
         #
-        # In the current setup, we compute the partition key and extract the table contents
+        # Fourth attempt was: compute the partition key and extract the table contents
         # into a TEMPORARY table, then create an index on that partition key, then copy data
-        # out of it into CStore. The first part takes 50 seconds, the second takes 16 seconds
-        # and after that extracting a chunk takes a few seconds.
-
-        temp_table = "sg_tmp_partition_" + source_table
-        chunk_id_col = "sg_tmp_partition_id"
+        # out of it into CStore. This still meant having to copy the table over twice.
+        #
+        # Current incarnation: create a temporary table with partition boundaries and then
+        # use that as the chunking condition (lower <= pk < upper)
+        logging.info("Processing table %s", source_table)
+        temp_table = "_sg_tmp_partition_" + source_table
 
         pk_sql = SQL(",").join(Identifier(p) for p in table_pk)
-        # Example query: CREATE TEMPORARY TABLE sg_tmp_partition_table AS SELECT *,
-        # RANK () OVER (ORDER BY pk) / chunk_size sg_tmp_partition_id FROM source_schema.table
-        logging.info("Processing table %s", source_table)
-        no_chunks = int(math.ceil(table_size / chunk_size))
 
-        log_progress = _log_commit_progress(table_size, no_chunks)
-        log_func = logging.info if log_progress else logging.debug
-
-        log_func("Computing table partitions")
+        # If we don't have a PK, we cast the whole row to text when partitioning
+        # the table as well as selecting from it (add an _sg_surrogate_pk col)
+        cast_if_surrogate = SQL("::text" if surrogate_pk else "")
+        # Compute the partition boundaries
         tmp_table_query = (
-            SQL("CREATE TEMPORARY TABLE {} AS SELECT *, (ROW_NUMBER() OVER (ORDER BY ").format(
-                Identifier(temp_table)
+            SQL("CREATE TABLE {}.{} AS WITH _row_nums AS (SELECT").format(
+                Identifier(source_schema), Identifier(temp_table)
             )
+            + SQL("(ROW_NUMBER() OVER (ORDER BY (")
             + pk_sql
-            + SQL(") - 1) / %s {} FROM {}.{}").format(
-                Identifier(chunk_id_col), Identifier(source_schema), Identifier(source_table)
-            )
+            + SQL(")")
+            + cast_if_surrogate
+            + SQL(") - 1) _sg_tmp_row_num, ")
+            + (SQL("(") + pk_sql + SQL(")::text AS _sg_surrogate_pk") if surrogate_pk else pk_sql)
+            + SQL(" FROM {}.{}").format(Identifier(source_schema), Identifier(source_table))
+            + SQL(") SELECT ")
+            + SQL("_sg_tmp_row_num / %s AS _sg_tmp_partition_id, ")
+            + (SQL("_sg_surrogate_pk") if surrogate_pk else pk_sql)
+            + SQL(" FROM _row_nums WHERE _sg_tmp_row_num %% %s = 0")
         )
-        self.object_engine.run_sql(tmp_table_query, (chunk_size,))
+        object_ids = []
 
-        log_func("Indexing the partition key")
-        self.object_engine.run_sql(
-            SQL("CREATE INDEX {} ON {}({})").format(
-                Identifier("idx_" + temp_table), Identifier(temp_table), Identifier(chunk_id_col)
+        try:
+            self.object_engine.run_sql(tmp_table_query, (chunk_size, chunk_size))
+
+            all_chunks = self.object_engine.run_sql(
+                SQL("SELECT * FROM {}.{} ORDER BY _sg_tmp_partition_id").format(
+                    Identifier(source_schema), Identifier(temp_table)
+                )
             )
-        )
+            logging.debug("Chunk boundaries: %s", all_chunks)
 
-        log_func("Storing and indexing the table")
-        pbar = tqdm(
-            range(0, no_chunks),
-            unit="objs",
-            total=no_chunks,
-            ascii=SG_CMD_ASCII,
-            disable=not log_progress,
-        )
+            log_progress = len(all_chunks) > 10
+            log_func = logging.info if log_progress else logging.debug
 
-        for chunk_id in pbar:
-            new_fragment = self.create_base_fragment(
-                "pg_temp",
-                temp_table,
-                repository.namespace,
-                chunk_id_col=chunk_id_col,
-                chunk_id=chunk_id,
-                extra_indexes=extra_indexes,
-                table_schema=table_schema,
-                in_fragment_order=in_fragment_order,
-                overwrite=overwrite,
-            )
-            object_ids.append(new_fragment)
+            log_func("Storing and indexing the table")
 
-        # Temporary tables get deleted at the end of tx but sometimes we might run
-        # multiple sg operations in the same transaction and clash.
-        self.object_engine.delete_table("pg_temp", temp_table)
+            worker_threads = int(get_singleton(CONFIG, "SG_ENGINE_POOL")) - 1
+
+            def _store_object(chunk_id: int):
+                # Build the condition for the chunk. For some reason, this:
+                #
+                #   WHERE [pk] >= (SELECT [pk] FROM [partition_table] WHERE partition_id = chunk_id)
+                #
+                # is 10x slower than plugging the PK in directly
+                # https://stackoverflow.com/questions/14987321/postgresql-in-operator-with-subquery-poor-performance ?
+
+                _pk_placeholder = (
+                    ",".join(itertools.repeat("%s", len(table_pk))) if not surrogate_pk else "%s"
+                )
+                chunk_condition = (
+                    SQL("WHERE (")
+                    + pk_sql
+                    + SQL(")")
+                    + cast_if_surrogate
+                    + SQL(" >= (" + _pk_placeholder + ")")
+                )
+                chunk_args = all_chunks[chunk_id][1:]
+                if chunk_id + 1 < len(all_chunks):
+                    chunk_condition += (
+                        SQL(" AND (")
+                        + pk_sql
+                        + SQL(")")
+                        + cast_if_surrogate
+                        + SQL(" < (" + _pk_placeholder + ")")
+                    )
+                    chunk_args = chunk_args + all_chunks[chunk_id + 1][1:]
+                logging.debug(
+                    "Storing chunk %s. Condition: %s. Boundaries: %s",
+                    chunk_id,
+                    chunk_condition.as_string(self.object_engine.connection),
+                    chunk_args,
+                )
+                new_fragment = self.create_base_fragment(
+                    source_schema,
+                    source_table,
+                    repository.namespace,
+                    chunk_condition_sql=chunk_condition,
+                    chunk_condition_args=chunk_args,
+                    extra_indexes=extra_indexes,
+                    in_fragment_order=in_fragment_order,
+                    overwrite=overwrite,
+                    table_schema=table_schema,
+                )
+                self.metadata_engine.commit()
+                return new_fragment
+
+            with ThreadPoolExecutor(max_workers=worker_threads) as tpe:
+                pbar = tqdm(
+                    tpe.map(_store_object, range(0, len(all_chunks))),
+                    total=len(all_chunks),
+                    unit="objs",
+                    ascii=SG_CMD_ASCII,
+                    disable=not log_progress,
+                )
+                for object_id in pbar:
+                    object_ids.append(object_id)
+                    pbar.set_postfix(object=object_id[:10] + "...")
+        finally:
+            self.object_engine.close_others()
+            self.object_engine.delete_table(source_schema, temp_table)
         return object_ids
 
     def filter_fragments(self, object_ids: List[str], table: "Table", quals: Any) -> List[str]:

@@ -2,7 +2,7 @@ import os
 import time
 from io import BytesIO
 from tarfile import TarInfo, TarFile
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, List
 
 if TYPE_CHECKING:
     from docker.models.containers import Container
@@ -56,3 +56,24 @@ def copy_to_container(
 
     stream.seek(0)
     container.put_archive(path=os.path.dirname(target_path), data=stream.read())
+
+
+def copy_dir_to_container(
+    container: "Container",
+    source_path: str,
+    target_path: str,
+    exclude_names: Optional[List[str]] = None,
+) -> None:
+    exclude_names = exclude_names or []
+    stream = BytesIO()
+    tar = TarFile(fileobj=stream, mode="w")
+    tar.add(
+        name=source_path,
+        arcname=target_path,
+        recursive=True,
+        filter=lambda ti: None if ti.name in exclude_names else ti,
+    )
+    tar.close()
+
+    stream.seek(0)
+    container.put_archive(path="/", data=stream.read())
