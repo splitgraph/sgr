@@ -754,13 +754,12 @@ class FragmentManager(MetadataManager):
         if source_schema == "pg_temp" and not table_schema:
             raise ValueError("Cannot infer the schema of temporary tables, pass in table_schema!")
 
-        # Get schema (apart from the chunk ID column)
         # Fragments can't be reused in tables with different schemas
         # even if the contents match (e.g. '1' vs 1). Hence, include the table schema
-        # n the object ID as well.
-        table_schema = table_schema or [
-            c for c in self.object_engine.get_full_table_schema(source_schema, source_table)
-        ]
+        # in the object ID as well.
+        table_schema = table_schema or self.object_engine.get_full_table_schema(
+            source_schema, source_table
+        )
 
         schema_hash = self._calculate_schema_hash(table_schema)
         # Get content hash for this chunk.
@@ -864,6 +863,7 @@ class FragmentManager(MetadataManager):
         extra_indexes: Optional[ExtraIndexInfo] = None,
         in_fragment_order: Optional[List[str]] = None,
         overwrite: bool = False,
+        table_schema: Optional[TableSchema] = None,
     ) -> List[str]:
         """
         Copies the full table verbatim into one or more new base fragments and registers them.
@@ -877,6 +877,9 @@ class FragmentManager(MetadataManager):
         :param extra_indexes: Dictionary of {index_type: column: index_specific_kwargs}.
         :param in_fragment_order: Key to sort data inside each chunk by.
         :param overwrite: Overwrite physical objects that already exist.
+        :param table_schema: Override the columns that will be picked from the original table
+            (e.g. to change their order or primary keys). Note that the schema must be a subset
+            of the original schema and this method doesn't verify PK constraints.
         """
         source_schema = source_schema or repository.to_schema()
         source_table = source_table or table_name
@@ -888,7 +891,9 @@ class FragmentManager(MetadataManager):
             return_shape=ResultShape.ONE_ONE,
         )
 
-        table_schema = self.object_engine.get_full_table_schema(source_schema, source_table)
+        table_schema = table_schema or self.object_engine.get_full_table_schema(
+            source_schema, source_table
+        )
         if chunk_size and table_not_empty:
             object_ids = self._chunk_table(
                 repository,
@@ -898,6 +903,7 @@ class FragmentManager(MetadataManager):
                 extra_indexes,
                 in_fragment_order=in_fragment_order,
                 overwrite=overwrite,
+                table_schema=table_schema,
             )
 
         elif table_not_empty:
