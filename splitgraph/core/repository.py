@@ -907,17 +907,21 @@ class Repository:
             self.object_engine.copy_table(
                 source_schema, source_table, SPLITGRAPH_META_SCHEMA, tmp_object_id
             )
-
-        # This is kind of a waste: if the table is indeed new (and fits in one chunk), the fragment manager will copy it
-        # over once again and give it the new object ID. Maybe the fragment manager could rename the table in this case.
-        actual_objects = self.objects.record_table_as_base(
-            self,
-            target_table,
-            target_hash,
-            source_schema=SPLITGRAPH_META_SCHEMA,
-            source_table=tmp_object_id,
-        )
-        self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
+        # This is kind of a waste: if the table is indeed new (and fits in one chunk),
+        # the fragment manager will copy it over once again and give it the new object ID.
+        # Maybe the fragment manager could rename the table in this case.
+        try:
+            # Commit so that the other threads can see the table.
+            self.object_engine.commit()
+            actual_objects = self.objects.record_table_as_base(
+                self,
+                target_table,
+                target_hash,
+                source_schema=SPLITGRAPH_META_SCHEMA,
+                source_table=tmp_object_id,
+            )
+        finally:
+            self.object_engine.delete_table(SPLITGRAPH_META_SCHEMA, tmp_object_id)
         if do_checkout:
             self.images.by_hash(target_hash).get_table(target_table).materialize(
                 target_table, self.to_schema()
