@@ -131,10 +131,16 @@ class QueryPlan:
         # This can sometimes be important if we're querying wide tables with JSON data where
         # a single cell can be a few KB -- in some cases, this can make PG think it's going to get
         # less data than there actually be and pick suboptimal plans.
+        total_rows_inserted = sum(o.rows_inserted for o in object_meta.values())
+
         self.size_per_row = (
-            sum(o.size for o in object_meta.values())
-            / sum(o.rows_inserted for o in object_meta.values())
-            * _CSTORE_COMPRESSION
+            (
+                sum(o.size for o in object_meta.values())
+                / sum(o.rows_inserted for o in object_meta.values())
+                * _CSTORE_COMPRESSION
+            )
+            if total_rows_inserted
+            else 0
         )
 
         self.tracer.log("filter_objects")
