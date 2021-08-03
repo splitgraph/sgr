@@ -38,6 +38,7 @@ class External(BaseModel):
     plugin: str
     params: Dict[str, Any]
     tables: Dict[str, Table]
+    is_live: bool = True
     schedule: Optional[IngestionSchedule]
 
 
@@ -196,7 +197,7 @@ def make_repositories(
 class ListExternalCredentialsResponse(BaseModel):
     class ExternalCredential(BaseModel):
         plugin_name: str
-        credential_name: str
+        credential_name: Optional[str]
         credential_id: str
 
     credentials: List[ExternalCredential]
@@ -265,7 +266,7 @@ class AddExternalRepositoryRequest(BaseModel):
                 for table_name, table in external.tables.items()
             },
             credential_id=credential_id,
-            is_live=True,
+            is_live=external.is_live,
             schedule=external.schedule,
         )
 
