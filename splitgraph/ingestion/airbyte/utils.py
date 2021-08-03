@@ -75,6 +75,7 @@ def _store_raw_airbyte_tables(
         if not sync_mode:
             logging.warning(
                 "Couldn't detect the sync mode for %s, falling back to %s",
+                raw_table,
                 default_sync_mode,
             )
             sync_mode = default_sync_mode
@@ -87,10 +88,12 @@ def _store_raw_airbyte_tables(
                 current_schema = current_image.get_table(raw_table).table_schema
                 if current_schema != AIRBYTE_RAW_SCHEMA:
                     raise AssertionError(
-                        "Schema for %s changed! Old: %s, new: %s",
-                        raw_table,
-                        current_schema,
-                        AIRBYTE_RAW_SCHEMA,
+                        "Schema for %s changed! Old: %s, new: %s"
+                        % (
+                            raw_table,
+                            current_schema,
+                            AIRBYTE_RAW_SCHEMA,
+                        )
                     )
             except TableNotFoundError:
                 pass
