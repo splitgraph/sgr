@@ -5,7 +5,7 @@ import re
 from abc import ABC
 from contextlib import contextmanager
 from random import getrandbits
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List, Tuple, Generator
 
 import docker.errors
 import pydantic
@@ -51,6 +51,15 @@ from .utils import (
 )
 from ..dbt.utils import run_dbt_transformation_from_git
 from ..singer.common import store_ingestion_state, add_timestamp_tags
+
+
+@contextmanager
+def delete_schema_at_end(engine: "PostgresEngine", schema: str) -> Generator:
+    try:
+        yield
+    finally:
+        engine.delete_schema(schema)
+        engine.commit()
 
 
 class AirbyteDataSource(SyncableDataSource, ABC):
@@ -226,46 +235,45 @@ class AirbyteDataSource(SyncableDataSource, ABC):
         # Set up a staging schema for the data
         # Delete the slashes or Airbyte will do it for us.
         staging_schema = "sg_tmp_" + repository.to_schema().replace("/", "_").replace("-", "_")
-        repository.object_engine.delete_schema(staging_schema)
-        repository.object_engine.create_schema(staging_schema)
-        repository.commit_engines()
-
         dst_config = self._make_postgres_config(repository.object_engine, staging_schema)
-
         client = get_docker_client()
         network_mode = detect_network_mode(client)
 
-        # Run the Airbyte source and receiver and pipe data between them, writing it
-        # out into a temporary schema.
+        with delete_schema_at_end(repository.object_engine, staging_schema):
+            repository.object_engine.delete_schema(staging_schema)
+            repository.object_engine.create_schema(staging_schema)
+            repository.commit_engines()
+            # Run the Airbyte source and receiver and pipe data between them, writing it
+            # out into a temporary schema.
 
-        logging.info("Running Airbyte EL process")
-        dest_files, new_state, sync_modes = self._run_airbyte_el(
-            client, network_mode, src_config, dst_config, configured_catalog, dst_catalog, state
-        )
+            logging.info("Running Airbyte EL process")
+            dest_files, new_state, sync_modes = self._run_airbyte_el(
+                client, network_mode, src_config, dst_config, configured_catalog, dst_catalog, state
+            )
 
-        # At this stage, Airbyte wrote out the raw tables into the staging schema: they have
-        # the form _airbyte_tmp_STREAM_NAME and schema (hash, raw_json, date). These raw tables
-        # are append-or-truncate only, so we append/replace them in the existing Splitgraph image
-        # at this stage.
+            # At this stage, Airbyte wrote out the raw tables into the staging schema: they have
+            # the form _airbyte_tmp_STREAM_NAME and schema (hash, raw_json, date). These raw tables
+            # are append-or-truncate only, so we append/replace them in the existing Splitgraph image
+            # at this stage.
 
-        logging.info("Storing raw tables as Splitgraph images")
-        raw_tables = _store_raw_airbyte_tables(
-            repository,
-            new_image_hash,
-            staging_schema,
-            sync_modes,
-            default_sync_mode="append_dedup" if use_state else "overwrite",
-        )
+            logging.info("Storing raw tables as Splitgraph images")
+            raw_tables = _store_raw_airbyte_tables(
+                repository,
+                new_image_hash,
+                staging_schema,
+                sync_modes,
+                default_sync_mode="append_dedup" if use_state else "overwrite",
+            )
 
-        # We can also store the state at this point, since only the raw tables depend on it.
-        store_ingestion_state(
-            repository,
-            new_image_hash,
-            current_state=state,
-            new_state=json.dumps(new_state) if new_state else "{}",
-        )
-        add_timestamp_tags(repository, new_image_hash)
-        repository.commit_engines()
+            # We can also store the state at this point, since only the raw tables depend on it.
+            store_ingestion_state(
+                repository,
+                new_image_hash,
+                current_state=state,
+                new_state=json.dumps(new_state) if new_state else "{}",
+            )
+            add_timestamp_tags(repository, new_image_hash)
+            repository.commit_engines()
 
         normalization_mode = self.params.get("normalization_mode", "basic")
 
@@ -279,38 +287,38 @@ class AirbyteDataSource(SyncableDataSource, ABC):
         # scan through them and build the actual ingested data.
 
         new_image = repository.images.by_hash(new_image_hash)
-        repository.object_engine.delete_schema(staging_schema)
-        repository.object_engine.create_schema(staging_schema)
-        new_image.lq_checkout(staging_schema, only_tables=raw_tables)
-        repository.commit_engines()
-        logging.info("Running Airbyte T step (normalization)")
+        with delete_schema_at_end(repository.object_engine, staging_schema):
+            repository.object_engine.create_schema(staging_schema)
+            new_image.lq_checkout(staging_schema, only_tables=raw_tables)
+            repository.commit_engines()
+            logging.info("Running Airbyte T step (normalization)")
 
-        if normalization_mode == "basic":
-            # Run Airbyte's basic normalization container that autogenerates a dbt model from
-            # the catalog file.
-            # This actually always recreates the normalized tables from scratch.
-            # https://github.com/airbytehq/airbyte/issues/4286
-            logging.info("Using basic normalization")
-            with self._normalization_container(client, network_mode) as normalization_container:
-                add_files(normalization_container, dest_files)
-                normalization_container.start()
-                wait_not_failed(normalization_container, mirror_logs=True)
-        else:
-            logging.info("Using a dbt project from Git")
+            if normalization_mode == "basic":
+                # Run Airbyte's basic normalization container that autogenerates a dbt model from
+                # the catalog file.
+                # This actually always recreates the normalized tables from scratch.
+                # https://github.com/airbytehq/airbyte/issues/4286
+                logging.info("Using basic normalization")
+                with self._normalization_container(client, network_mode) as normalization_container:
+                    add_files(normalization_container, dest_files)
+                    normalization_container.start()
+                    wait_not_failed(normalization_container, mirror_logs=True)
+            else:
+                logging.info("Using a dbt project from Git")
 
-            try:
-                git_url = self.credentials["normalization_git_url"]
-            except KeyError:
-                raise ValueError("No normalization_git_url specified in plugin credentials!")
-            git_ref = self.params.get("normalization_git_branch", "master")
+                try:
+                    git_url = self.credentials["normalization_git_url"]
+                except KeyError:
+                    raise ValueError("No normalization_git_url specified in plugin credentials!")
+                git_ref = self.params.get("normalization_git_branch", "master")
 
-            run_dbt_transformation_from_git(
-                repository.object_engine, staging_schema, git_url, git_ref
-            )
+                run_dbt_transformation_from_git(
+                    repository.object_engine, staging_schema, git_url, git_ref
+                )
 
-        logging.info("Storing normalized tables")
-        _store_processed_airbyte_tables(repository, new_image_hash, staging_schema)
-        repository.commit_engines()
+            logging.info("Storing normalized tables")
+            _store_processed_airbyte_tables(repository, new_image_hash, staging_schema)
+            repository.commit_engines()
 
         return new_image_hash
 
