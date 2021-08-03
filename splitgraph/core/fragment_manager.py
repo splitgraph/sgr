@@ -969,6 +969,8 @@ class FragmentManager(MetadataManager):
         pk_sql = SQL(",").join(Identifier(p) for p in table_pk)
 
         # Compute the partition boundaries
+        # We cast the PK to text here to avoid corner cases with tables that
+        # don't have a PK and have NULLs in some columns.
         tmp_table_query = (
             SQL("CREATE TABLE {}.{} AS WITH _row_nums AS (SELECT").format(
                 Identifier(source_schema), Identifier(temp_table)
@@ -980,7 +982,9 @@ class FragmentManager(MetadataManager):
             + SQL(" FROM {}.{}").format(Identifier(source_schema), Identifier(source_table))
             + SQL(") SELECT ")
             + SQL("_sg_tmp_row_num / %s AS _sg_tmp_partition_id, ")
+            + SQL("(")
             + pk_sql
+            + SQL(")::text AS _sg_tmp_partition_start ")
             + SQL("FROM _row_nums WHERE _sg_tmp_row_num %% %s = 0")
         )
         object_ids = []
@@ -989,10 +993,12 @@ class FragmentManager(MetadataManager):
             self.object_engine.run_sql(tmp_table_query, (chunk_size, chunk_size))
 
             all_chunks = self.object_engine.run_sql(
-                SQL("SELECT * FROM {}.{} ORDER BY _sg_tmp_partition_id").format(
-                    Identifier(source_schema), Identifier(temp_table)
-                )
+                SQL(
+                    "SELECT _sg_tmp_partition_id, _sg_tmp_partition_start"
+                    " FROM {}.{} ORDER BY _sg_tmp_partition_id"
+                ).format(Identifier(source_schema), Identifier(temp_table))
             )
+            logging.debug("Chunk boundaries: %s", all_chunks)
 
             log_progress = len(all_chunks) > 10
             log_func = logging.info if log_progress else logging.debug
@@ -1009,22 +1015,17 @@ class FragmentManager(MetadataManager):
                 # is 10x slower than plugging the PK in directly
                 # https://stackoverflow.com/questions/14987321/postgresql-in-operator-with-subquery-poor-performance ?
 
-                chunk_condition = (
-                    SQL("WHERE (")
-                    + pk_sql
-                    + SQL(") >= (" + ",".join(itertools.repeat("%s", len(table_pk))))
-                    + SQL(")")
-                )
-                chunk_args = all_chunks[chunk_id][1:]
+                chunk_condition = SQL("WHERE (") + pk_sql + SQL(")::text >= %s")
+                chunk_args = [all_chunks[chunk_id][1]]
                 if chunk_id + 1 < len(all_chunks):
-                    chunk_condition += (
-                        SQL(" AND (")
-                        + pk_sql
-                        + SQL(") < (" + ",".join(itertools.repeat("%s", len(table_pk))))
-                        + SQL(")")
-                    )
-                    chunk_args = chunk_args + all_chunks[chunk_id + 1][1:]
+                    chunk_condition += SQL(" AND (") + pk_sql + SQL(")::text < %s")
+                    chunk_args.append(all_chunks[chunk_id + 1][1])
 
+                logging.debug(
+                    "Storing chunk %s. Boundaries: %s",
+                    chunk_id,
+                    chunk_args,
+                )
                 new_fragment = self.create_base_fragment(
                     source_schema,
                     source_table,

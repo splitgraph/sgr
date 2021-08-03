@@ -303,6 +303,7 @@ def test_airbyte_mysql_source_end_to_end(local_engine_empty, mode):
 
     if mode == "sync":
         _assert_state(repo)
+        breakpoint()
         _assert_scd_data(repo)
 
         # Run another sync
@@ -449,7 +450,7 @@ def _assert_state_empty(repo):
 
 def _assert_scd_data(repo):
     assert repo.run_sql(
-        "SELECT row_to_json(m) FROM mushrooms_scd m ORDER BY _airbyte_start_at ASC",
+        "SELECT row_to_json(m) FROM mushrooms_scd m ORDER BY discovery ASC",
         return_shape=ResultShape.MANY_ONE,
     ) == [
         {
