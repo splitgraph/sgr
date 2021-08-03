@@ -1054,6 +1054,7 @@ class FragmentManager(MetadataManager):
                     overwrite=overwrite,
                     table_schema=table_schema,
                 )
+                self.object_engine.commit()
                 self.metadata_engine.commit()
                 return new_fragment
 
