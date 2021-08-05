@@ -68,7 +68,7 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
 
         # Extract credentials from the cmdline params
         credentials = Credentials({})
-        for k in cast(Dict[str, Any], cls.credentials_schema["properties"]).keys():
+        for k in cast(Dict[str, Any], cls.credentials_schema.get("properties", {})).keys():
             if k in params:
                 credentials[k] = params[k]
 
