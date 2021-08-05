@@ -197,3 +197,25 @@ def test_mount_elasticsearch(local_engine_empty):
 
     finally:
         repo.delete()
+
+
+@pytest.mark.mounting
+def test_mount_with_empty_credentials(local_engine_empty):
+    class EmptyCredentialsSchemaDataSource(PostgreSQLDataSource):
+        credentials_schema = {"type": "object"}
+
+        def get_user_options(self):
+            return {"user": "originro", "password": "originpass"}
+
+    handler = EmptyCredentialsSchemaDataSource(
+        engine=local_engine_empty,
+        credentials={},
+        params={"host": "pgorigin", "port": 5432, "dbname": "origindb", "remote_schema": "public"},
+    )
+
+    tables = handler.introspect()
+    assert tables
+    assert handler.from_commandline(
+        handler.engine,
+        {"host": "pgorigin", "port": 5432, "dbname": "origindb", "remote_schema": "public"},
+    )

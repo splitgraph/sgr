@@ -114,7 +114,7 @@ To run the test suite related to "mounting" and importing data from other databa
 (PostgreSQL, MySQL, Mongo), do
 
 ```
-docker-compose -f test/architecture/docker-compose.core.yml -f test/architecture/docker-compose.core.yml up -d
+docker-compose -f test/architecture/docker-compose.core.yml -f test/architecture/docker-compose.mounting.yml up -d
 poetry run pytest -m mounting
 ```
 
