@@ -129,7 +129,12 @@ def make_csv_reader(
     stream.reset()
     # https://docs.python.org/3/library/csv.html#id3
     # Open with newline="" for universal newlines
-    io_stream = io.TextIOWrapper(io.BufferedReader(stream), encoding=csv_options.encoding, newline="", errors="ignore" if csv_options.ignore_decode_errors else "strict")  # type: ignore
+    io_stream = io.TextIOWrapper(
+        io.BufferedReader(stream),
+        encoding=csv_options.encoding,
+        newline="",
+        errors="ignore" if csv_options.ignore_decode_errors else "strict",
+    )
 
     reader = csv.reader(io_stream, **csv_options.to_csv_kwargs())
     return csv_options, reader
