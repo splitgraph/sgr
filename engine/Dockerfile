@@ -197,7 +197,7 @@ ENV PYTHONPATH "${PYTHONPATH}:/splitgraph:/pg_es_fdw"
 ARG with_postgis
 RUN test -z "${with_postgis}" || (\
     export POSTGIS_MAJOR=3 && \
-    export POSTGIS_VERSION=3.1.2+dfsg-1~exp2.pgdg100+1 && \
+    export POSTGIS_VERSION=3.1.3+dfsg-1~exp1.pgdg100+1 && \
     apt-get update \
       && apt-cache showpkg postgresql-$PG_MAJOR-postgis-$POSTGIS_MAJOR \
       && apt-get install -y --no-install-recommends \
