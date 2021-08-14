@@ -1,13 +1,11 @@
 """
 Common internal functions used by Splitgraph commands.
 """
+import importlib.resources
 import logging
-import os
-import sys
 from datetime import date, datetime, time
 from decimal import Decimal
 from functools import wraps
-from pkgutil import get_data
 from random import getrandbits
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING, cast, Set
 
@@ -18,10 +16,10 @@ from splitgraph.core.migration import source_files_to_apply, set_installed_versi
 from splitgraph.core.output import parse_dt, parse_date
 from splitgraph.core.sql import select
 from splitgraph.exceptions import (
-    EngineInitializationError,
     ImageNotFoundError,
     RepositoryNotFoundError,
 )
+from splitgraph.resources import splitgraph_meta
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PsycopgEngine, PostgresEngine
@@ -41,14 +39,6 @@ META_TABLES = [
     "version",
 ]
 OBJECT_MANAGER_TABLES = ["object_cache_status", "object_cache_occupancy"]
-_SPLITGRAPH_META_DIR = "resources/splitgraph_meta"
-
-
-def resource_path(relative_path):
-    base_path = getattr(
-        sys, "_MEIPASS", os.path.join(os.path.dirname(os.path.abspath(__file__)), "../..")
-    )
-    return os.path.join(base_path, relative_path)
 
 
 def set_tag(repository: "Repository", image_hash: Optional[str], tag: str) -> None:
@@ -152,16 +142,18 @@ def ensure_metadata_schema(engine: "PsycopgEngine") -> None:
     ".git" under Git version control...
     """
 
+    schema_files = [f for f in importlib.resources.contents(splitgraph_meta) if f.endswith("sql")]
+
     files, target_version = source_files_to_apply(
         engine,
         schema_name=SPLITGRAPH_META_SCHEMA,
-        schema_files=os.listdir(resource_path(os.path.join("splitgraph", _SPLITGRAPH_META_DIR))),
+        schema_files=schema_files,
     )
 
     if not files:
         return
     for name in files:
-        data = get_data_safe("splitgraph", os.path.join(_SPLITGRAPH_META_DIR, name)).decode("utf-8")
+        data = importlib.resources.read_text(splitgraph_meta, name)
         logging.info("Running %s", name)
         engine.run_sql(data)
     set_installed_version(engine, SPLITGRAPH_META_SCHEMA, target_version)
@@ -440,15 +432,6 @@ class CallbackList(list):
     def __call__(self, *args, **kwargs) -> None:
         for listener in self:
             listener(*args, **kwargs)
-
-
-def get_data_safe(package: str, resource: str) -> bytes:
-    result = get_data(package, resource)
-    if result is None:
-        raise EngineInitializationError(
-            "Resource %s not found in package %s!" % (resource, package)
-        )
-    return result
 
 
 def get_temporary_table_id() -> str:

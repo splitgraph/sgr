@@ -1,6 +1,6 @@
 """Default Splitgraph engine: uses PostgreSQL to store metadata and actual objects and an audit stored procedure
 to track changes, as well as the Postgres FDW interface to upload/download objects to/from other Postgres engines."""
-
+import importlib.resources
 import itertools
 import json
 import logging
@@ -40,7 +40,7 @@ from tqdm import tqdm
 from splitgraph.__version__ import __version__
 from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCHEMA, SG_CMD_ASCII
 from splitgraph.core import server
-from splitgraph.core.common import ensure_metadata_schema, META_TABLES, get_data_safe
+from splitgraph.core.common import ensure_metadata_schema, META_TABLES
 from splitgraph.core.sql import select
 from splitgraph.core.types import TableColumn, TableSchema
 from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
@@ -53,6 +53,7 @@ from splitgraph.exceptions import (
     ObjectMountingError,
 )
 from splitgraph.hooks.mount_handlers import mount_postgres
+from splitgraph.resources import static
 
 if TYPE_CHECKING:
     # Import the connection object under a different name as it shadows
@@ -62,9 +63,9 @@ if TYPE_CHECKING:
 psycopg2.extensions.register_adapter(dict, Json)
 
 _AUDIT_SCHEMA = "splitgraph_audit"
-_AUDIT_TRIGGER = "resources/static/audit_trigger.sql"
-_PUSH_PULL = "resources/static/splitgraph_api.sql"
-_CSTORE = "resources/static/cstore.sql"
+_AUDIT_TRIGGER = "audit_trigger.sql"
+_PUSH_PULL = "splitgraph_api.sql"
+_CSTORE = "cstore.sql"
 CSTORE_SERVER = "cstore_server"
 _PACKAGE = "splitgraph"
 ROW_TRIGGER_NAME = "audit_trigger_row"
@@ -764,22 +765,22 @@ class PsycopgEngine(SQLEngine):
 
         # Install the push/pull API functions
         logging.info("Installing Splitgraph API functions...")
-        push_pull = get_data_safe(_PACKAGE, _PUSH_PULL)
-        self.run_sql(push_pull.decode("utf-8"))
+        push_pull = importlib.resources.read_text(static, _PUSH_PULL)
+        self.run_sql(push_pull)
 
         if skip_object_handling:
             logging.info("Skipping installation of audit triggers/CStore as specified.")
         else:
             # Install CStore management routines
             logging.info("Installing CStore management functions...")
-            cstore = get_data_safe(_PACKAGE, _CSTORE)
-            self.run_sql(cstore.decode("utf-8"))
+            push_pull = importlib.resources.read_text(static, _CSTORE)
+            self.run_sql(push_pull)
 
             # Install the audit trigger if it doesn't exist
             if not self.schema_exists(_AUDIT_SCHEMA):
                 logging.info("Installing the audit trigger...")
-                audit_trigger = get_data_safe(_PACKAGE, _AUDIT_TRIGGER)
-                self.run_sql(audit_trigger.decode("utf-8"))
+                audit_trigger = importlib.resources.read_text(static, _AUDIT_TRIGGER)
+                self.run_sql(audit_trigger)
             else:
                 logging.info("Skipping the audit trigger as it's already installed.")
 
