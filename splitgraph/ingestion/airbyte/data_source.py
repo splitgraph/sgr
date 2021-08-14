@@ -137,8 +137,14 @@ class AirbyteDataSource(SyncableDataSource, ABC):
         },
     }
 
+    _internal_params = ["normalization_mode", "normalization_git_branch", "normalization_git_url"]
+
     def get_airbyte_config(self) -> AirbyteConfig:
-        return {**self.params, **self.credentials}
+        return {
+            k: v
+            for k, v in {**self.params, **self.credentials}.items()
+            if k not in self._internal_params
+        }
 
     def _sync(
         self,
