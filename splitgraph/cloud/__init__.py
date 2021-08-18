@@ -756,19 +756,6 @@ class GQLAPIClient:
         Update metadata for a single repository.
         """
         response = self._gql(self._prepare_upsert_metadata_gql(namespace, repository, metadata))
-        if (
-            response.status_code == 400
-            and 'Cannot query field \\"createRepoTopicsAgg\\" on type \\"Mutation\\"'
-            in response.text
-        ):
-            # TODO: hack, delete when all upgraded.
-            #  We don't yet have API versioning on the GQL side and there's a breaking change
-            #  coming that'll rename createRepoTopic to createRepoTopicsAgg. If there's
-            #  an error calling the latter, rewrite the query to call the former instead.
-            logging.debug("Using old metadata replacement query")
-            response = self._gql(
-                self._prepare_upsert_metadata_gql(namespace, repository, metadata, v1=True)
-            )
         return response
 
     def bulk_upsert_metadata(
