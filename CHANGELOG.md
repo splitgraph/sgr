@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.2.16 (2021-08-18)
+
+  * Various Airbyte ingestion improvements and support for different normalization modes, including a custom dbt model (https://github.com/splitgraph/splitgraph/pull/510, https://github.com/splitgraph/splitgraph/pull/513, https://github.com/splitgraph/splitgraph/pull/514)
+  * Fix mount for data source with empty credentials schema (https://github.com/splitgraph/splitgraph/pull/515)
+  * Fix `sgr cloud load`/`dump` (https://github.com/splitgraph/splitgraph/pull/520)
+
+Full set of changes: [`v0.2.15...v0.2.16`](https://github.com/splitgraph/splitgraph/compare/v0.2.15...v0.2.16)
+
+
 ## v0.2.15 (2021-07-26)
 
   * API functionality to get the raw URL for a data source (https://github.com/splitgraph/splitgraph/pull/457)
