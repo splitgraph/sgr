@@ -83,7 +83,7 @@ class RepositoriesYAML(BaseModel):
 class MetadataResponse(BaseModel):
     class RepoTopicsResponse(BaseModel):
         class RepositoryTopics(BaseModel):
-            topics: List[str]
+            topic: str
 
         nodes: List[RepositoryTopics]
 
@@ -116,9 +116,7 @@ class MetadataResponse(BaseModel):
         return Metadata(
             readme=Metadata.Readme(text=profile.readme),
             description=profile.description,
-            topics=[
-                t for node in self.repoTopicsByNamespaceAndRepository.nodes for t in node.topics
-            ],
+            topics=[node.topic for node in self.repoTopicsByNamespaceAndRepository.nodes],
             sources=profile.sources,
             license=profile.license,
             extra_metadata=profile.metadata.upstream_metadata if profile.metadata else None,

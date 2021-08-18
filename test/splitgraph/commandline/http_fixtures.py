@@ -170,7 +170,9 @@ def gql_metadata_get():
         _somerepo_2 = {
             "namespace": "otheruser",
             "repository": "somerepo_2",
-            "repoTopicsByNamespaceAndRepository": {"nodes": [{"topics": ["topic_1", "topic_2"]}]},
+            "repoTopicsByNamespaceAndRepository": {
+                "nodes": [{"topic": "topic_1"}, {"topic": "topic_2"}]
+            },
             "repoProfileByNamespaceAndRepository": {
                 "description": "Repository Description 2",
                 "license": None,

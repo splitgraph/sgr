@@ -197,7 +197,7 @@ _GET_REPO_METADATA_QUERY = """query GetRepositoryMetadata%s {
       repository
       repoTopicsByNamespaceAndRepository {
         nodes {
-          topics
+          topic
         }
       }
       repoProfileByNamespaceAndRepository {
