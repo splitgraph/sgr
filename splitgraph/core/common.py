@@ -315,15 +315,10 @@ def _gather_sync_metadata(target, source, overwrite_objects, overwrite_tags, sin
     table_objects = list({o for table in table_meta for o in table[3]})
     new_objects = list(set(target.objects.get_new_objects(table_objects)))
 
-    # Ignore overwrite_objects for calculating which objects to upload the flag
-    # is only for overwriting metadata).
-    if new_objects:
-        object_locations = source.objects.get_external_object_locations(new_objects)
-    else:
-        object_locations = []
-
     if overwrite_objects:
         new_objects = list(all_objects)
+
+    object_locations = source.objects.get_external_object_locations(new_objects)
 
     if new_objects:
         object_meta = source.objects.get_object_meta(new_objects)
