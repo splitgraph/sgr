@@ -297,6 +297,7 @@ def add_engine_c(
             raise EngineSetupError(
                 f"Docker container with Splitgraph engine {container_name} already exists. Delete it with docker rm -f {container_name}.",
             ) from e
+        raise
 
     click.echo("Container created, ID %s" % container.short_id)
 
