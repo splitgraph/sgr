@@ -30,10 +30,10 @@ from splitgraph.cloud.models import (
     AddExternalRepositoryRequest,
     AddExternalRepositoriesRequest,
 )
-from splitgraph.commandline.engine import patch_and_save_config
 from splitgraph.config import create_config_dict, get_singleton, CONFIG
 from splitgraph.config.config import get_from_subsection, set_in_subsection, get_all_in_subsection
 from splitgraph.config.export import overwrite_config
+from splitgraph.config.management import patch_and_save_config
 from splitgraph.exceptions import (
     AuthAPIError,
     GQLAPIError,

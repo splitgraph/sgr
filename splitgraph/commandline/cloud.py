@@ -12,7 +12,6 @@ from urllib.parse import urlparse, quote
 
 import click
 from click import wrap_text
-from tqdm import tqdm
 
 from splitgraph.cloud.models import Metadata, RepositoriesYAML, AddExternalRepositoryRequest
 from splitgraph.commandline.common import (
@@ -21,11 +20,12 @@ from splitgraph.commandline.common import (
     emit_sql_results,
     Color,
 )
-from splitgraph.commandline.engine import patch_and_save_config, inject_config_into_engines
-from splitgraph.core.output import pluralise
+from splitgraph.commandline.engine import inject_config_into_engines
 
 # Hardcoded database name for the Splitgraph DDN (ddn instead of sgregistry)
 from splitgraph.config.config import get_from_subsection
+from splitgraph.config.management import patch_and_save_config
+from splitgraph.core.output import pluralise
 
 _DDN_DBNAME = "ddn"
 
