@@ -5,7 +5,8 @@ from itertools import islice
 
 import click
 
-from splitgraph.commandline.common import ImageType, RepositoryType, ResettableStream
+from splitgraph.commandline.common import ImageType, RepositoryType
+from splitgraph.core.output import ResettableStream
 
 
 @click.group(name="csv")

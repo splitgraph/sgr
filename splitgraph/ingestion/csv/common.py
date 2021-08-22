@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
 import chardet
 
-from splitgraph.commandline.common import ResettableStream
+from splitgraph.core.output import ResettableStream
 
 
 class CSVOptions(NamedTuple):

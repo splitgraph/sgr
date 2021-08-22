@@ -18,14 +18,13 @@ from splitgraph.commandline.common import (
     ImageType,
     RepositoryType,
     emit_sql_results,
-    Color,
 )
 from splitgraph.commandline.engine import inject_config_into_engines
 
 # Hardcoded database name for the Splitgraph DDN (ddn instead of sgregistry)
 from splitgraph.config.config import get_from_subsection
 from splitgraph.config.management import patch_and_save_config
-from splitgraph.core.output import pluralise
+from splitgraph.core.output import pluralise, Color
 
 _DDN_DBNAME = "ddn"
 

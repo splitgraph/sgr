@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING, List
 
 import click
 
-from splitgraph.commandline.common import Color
 from splitgraph.config import SG_CMD_ASCII
+from splitgraph.core.output import Color
 
 if TYPE_CHECKING:
     from splitgraph.core.repository import Repository

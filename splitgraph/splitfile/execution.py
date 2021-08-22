@@ -30,7 +30,7 @@ from ._parsing import (
     extract_all_table_aliases,
     parse_custom_command,
 )
-from ..core.output import pluralise, truncate_line, conn_string_to_dict
+from ..core.output import pluralise, truncate_line, conn_string_to_dict, Color
 from ..core.types import ProvenanceLine
 
 
@@ -183,8 +183,6 @@ def execute_commands(
             nonlocal repo_created
             output.init()
             repo_created = True
-
-    from splitgraph.commandline.common import Color
 
     node_list = parse_commands(commands, params=params)
 

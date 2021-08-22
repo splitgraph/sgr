@@ -17,7 +17,7 @@ import shlex
 import click
 import yaml
 
-from splitgraph.commandline.common import Color
+from splitgraph.core.output import Color
 
 _ANSI_CONTROL = re.compile(r"(\x1B[@-_][0-?]*[ -/]*[@-~])")
 _SPLIT = re.compile(r"(\x1B[@-_][0-?]*[ -/]*[@-~]|\s+|.)")
