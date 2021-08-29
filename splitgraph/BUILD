@@ -1,4 +1,6 @@
-python_library()
+python_library(
+    skip_black=True,
+)
 
 pex_binary(
     name="sgr",
