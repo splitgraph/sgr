@@ -1,16 +1,16 @@
 from abc import ABCMeta, abstractmethod
 from typing import (
-    Dict,
-    Tuple,
-    Any,
-    NamedTuple,
-    Optional,
-    List,
-    Sequence,
-    Union,
-    TypeVar,
     TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    NamedTuple,
     NewType,
+    Optional,
+    Sequence,
+    Tuple,
+    TypeVar,
+    Union,
 )
 
 if TYPE_CHECKING:

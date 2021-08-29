@@ -1,15 +1,15 @@
 import operator
-from datetime import date, datetime as dt
+from datetime import date
+from datetime import datetime as dt
 from decimal import Decimal
 from functools import reduce
+from test.splitgraph.commands.test_layered_querying import _prepare_fully_remote_repo
+from test.splitgraph.conftest import OUTPUT, PG_DATA, SMALL_OBJECT_SIZE
 from unittest import mock
 from unittest.mock import patch
 
 import pytest
 from psycopg2.sql import SQL, Identifier
-from test.splitgraph.commands.test_layered_querying import _prepare_fully_remote_repo
-from test.splitgraph.conftest import OUTPUT, PG_DATA, SMALL_OBJECT_SIZE
-
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.fragment_manager import Digest
 from splitgraph.core.metadata_manager import OBJECT_COLS

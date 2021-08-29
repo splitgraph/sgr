@@ -1,6 +1,5 @@
 from click.testing import CliRunner
-
-from splitgraph.commandline import commit_c, sql_c, tag_c, checkout_c
+from splitgraph.commandline import checkout_c, commit_c, sql_c, tag_c
 from splitgraph.engine import get_engine
 
 

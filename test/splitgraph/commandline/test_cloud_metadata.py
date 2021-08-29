@@ -1,45 +1,44 @@
 import os
 import tempfile
 from tempfile import TemporaryDirectory
-from unittest.mock import patch, PropertyMock
-
-import httpretty
-import pytest
-import yaml
-from click.testing import CliRunner
-
-from splitgraph.commandline.cloud import (
-    readme_c,
-    description_c,
-    metadata_c,
-    search_c,
-    dump_c,
-    load_c,
-)
-from splitgraph.exceptions import (
-    GQLUnauthenticatedError,
-    GQLUnauthorizedError,
-    GQLRepoDoesntExistError,
-    GQLAPIError,
-)
 from test.splitgraph.commandline.http_fixtures import (
-    GQL_ENDPOINT,
-    QUERY_ENDPOINT,
     ACCESS_TOKEN,
-    gql_metadata_operation,
-    gql_metadata_get,
+    AUTH_ENDPOINT,
+    GQL_ENDPOINT,
     INVALID_METADATA,
+    QUERY_ENDPOINT,
     VALID_METADATA,
-    list_external_credentials,
-    update_external_credential,
     add_external_credential,
     add_external_repo,
     assert_repository_profiles,
     assert_repository_sources,
     assert_repository_topics,
-    AUTH_ENDPOINT,
+    gql_metadata_get,
+    gql_metadata_operation,
+    list_external_credentials,
+    update_external_credential,
 )
 from test.splitgraph.conftest import RESOURCES
+from unittest.mock import PropertyMock, patch
+
+import httpretty
+import pytest
+import yaml
+from click.testing import CliRunner
+from splitgraph.commandline.cloud import (
+    description_c,
+    dump_c,
+    load_c,
+    metadata_c,
+    readme_c,
+    search_c,
+)
+from splitgraph.exceptions import (
+    GQLAPIError,
+    GQLRepoDoesntExistError,
+    GQLUnauthenticatedError,
+    GQLUnauthorizedError,
+)
 
 
 @httpretty.activate(allow_net_connect=False)

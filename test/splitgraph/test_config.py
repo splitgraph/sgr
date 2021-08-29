@@ -5,17 +5,15 @@ from contextlib import contextmanager
 from unittest.mock import patch
 
 import pytest
-
-from splitgraph.config import CONFIG, create_config_dict
-from splitgraph.config import keys
+from splitgraph.config import CONFIG, create_config_dict, keys
 from splitgraph.config.argument_config import get_arg_tuples, get_argument_config_value
 from splitgraph.config.config_file_config import hoist_section
 from splitgraph.config.environment_config import get_environment_config_value
 from splitgraph.config.system_config import (
-    get_explicit_config_file_location,
-    get_explicit_config_file_dirs,
-    get_config_file,
     VALID_CONFIG_FILE_NAMES,
+    get_config_file,
+    get_explicit_config_file_dirs,
+    get_explicit_config_file_location,
 )
 from splitgraph.core.engine import _parse_paths_overrides
 

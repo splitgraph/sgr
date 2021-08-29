@@ -1,5 +1,4 @@
 import pytest
-
 from splitgraph.core.repository import Repository
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import ImageNotFoundError

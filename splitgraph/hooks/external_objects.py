@@ -2,7 +2,7 @@
 Hooks for registering handlers to upload/download objects from external locations into Splitgraph's cache.
 """
 from importlib import import_module
-from typing import Any, Dict, Callable, List, Tuple, Sequence, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Sequence, Tuple
 
 from splitgraph.config import CONFIG
 from splitgraph.config.config import get_from_section

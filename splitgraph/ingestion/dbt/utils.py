@@ -3,18 +3,17 @@ import os
 import subprocess
 from random import getrandbits
 from tempfile import TemporaryDirectory
-from typing import Dict, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict
 
 import yaml
 from docker.types import LogConfig
-from yaml import YAMLError
-
 from splitgraph.ingestion.airbyte.docker_utils import (
+    detect_network_mode,
     remove_at_end,
     wait_not_failed,
-    detect_network_mode,
 )
-from splitgraph.utils.docker import get_docker_client, copy_dir_to_container
+from splitgraph.utils.docker import copy_dir_to_container, get_docker_client
+from yaml import YAMLError
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PostgresEngine

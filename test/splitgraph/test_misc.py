@@ -1,14 +1,13 @@
-from datetime import datetime as dt, datetime
+from datetime import datetime as dt
 from unittest.mock import patch
 
 import pytest
 from psycopg2.errors import CheckViolation
-
 from splitgraph.cloud.models import ExternalTableRequest
 from splitgraph.core.common import Tracer, adapt, coerce_val_to_json
-from splitgraph.core.output import parse_dt
 from splitgraph.core.engine import lookup_repository
 from splitgraph.core.metadata_manager import Object
+from splitgraph.core.output import parse_dt
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import (
     TableColumn,

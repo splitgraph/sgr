@@ -1,9 +1,9 @@
-import pytest
-from psycopg2.sql import SQL, Identifier
 from test.splitgraph.conftest import PG_MNT
 
+import pytest
+from psycopg2.sql import SQL, Identifier
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
-from splitgraph.core.repository import clone, Repository
+from splitgraph.core.repository import Repository, clone
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import ImageNotFoundError
 

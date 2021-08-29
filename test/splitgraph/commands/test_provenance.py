@@ -1,8 +1,7 @@
 import datetime
-
-import pytest
 from test.splitgraph.conftest import OUTPUT, load_splitfile, prepare_lq_repo
 
+import pytest
 from splitgraph.splitfile import execute_commands
 from splitgraph.splitfile.execution import rebuild_image
 

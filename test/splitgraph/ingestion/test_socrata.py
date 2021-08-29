@@ -1,27 +1,25 @@
 import json
 import os
+from test.splitgraph.conftest import INGESTION_RESOURCES
 from typing import NamedTuple
 from unittest import mock
-from unittest.mock import MagicMock, call, Mock
+from unittest.mock import MagicMock, Mock, call
 
 import pytest
 from sodapy import Socrata
-
-from splitgraph.ingestion.socrata.mount import SocrataDataSource
-from test.splitgraph.conftest import INGESTION_RESOURCES
-
 from splitgraph.core.types import TableColumn
 from splitgraph.exceptions import RepositoryNotFoundError
 from splitgraph.hooks.mount_handlers import mount
+from splitgraph.ingestion.common import dedupe_sg_schema
+from splitgraph.ingestion.socrata.mount import SocrataDataSource
 from splitgraph.ingestion.socrata.querying import (
+    ANY,
+    _socrata_to_pg_type,
+    cols_to_socrata,
     estimate_socrata_rows_width,
     quals_to_socrata,
-    ANY,
-    cols_to_socrata,
     sortkeys_to_socrata,
-    _socrata_to_pg_type,
 )
-from splitgraph.ingestion.common import dedupe_sg_schema
 
 
 class Q:

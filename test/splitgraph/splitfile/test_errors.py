@@ -1,12 +1,12 @@
 """
 Tests for various internal errors (e.g. missing objects) not breaking the executor
 """
+from test.splitgraph.conftest import OUTPUT, load_splitfile
+
 import psycopg2
 import pytest
 from parsimonious import IncompleteParseError
 from psycopg2.sql import SQL, Identifier
-from test.splitgraph.conftest import OUTPUT, load_splitfile
-
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import ObjectCacheError
 from splitgraph.splitfile._parsing import parse_commands

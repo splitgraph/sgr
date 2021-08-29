@@ -2,12 +2,11 @@ import datetime
 import os
 import re
 from distutils.dir_util import copy_tree
+from test.splitgraph.conftest import INGESTION_RESOURCES
 from unittest import mock
 
 import pytest
-from psycopg2.sql import Identifier, SQL
-from test.splitgraph.conftest import INGESTION_RESOURCES
-
+from psycopg2.sql import SQL, Identifier
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableColumn, TableParams
 from splitgraph.engine import ResultShape
@@ -17,8 +16,8 @@ from splitgraph.ingestion.airbyte.docker_utils import SubprocessError
 from splitgraph.ingestion.airbyte.models import (
     AirbyteCatalog,
     AirbyteStream,
-    SyncMode,
     DestinationSyncMode,
+    SyncMode,
 )
 from splitgraph.ingestion.airbyte.utils import select_streams
 

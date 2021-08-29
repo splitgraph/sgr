@@ -6,7 +6,6 @@ from typing import Tuple, Type
 
 import click
 from click.core import Command
-
 from splitgraph.commandline.common import JsonType
 from splitgraph.hooks.data_source import get_data_source, get_data_sources
 from splitgraph.hooks.data_source.fdw import ForeignDataWrapperDataSource

@@ -2,20 +2,19 @@
 
 import csv
 from io import StringIO
-from typing import Optional, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, Union
 
 import pandas as pd
 from pandas.core.frame import DataFrame
 from pandas.core.series import Series
 from pandas.io.sql import get_schema
-from psycopg2.sql import Identifier, SQL
-from sqlalchemy import create_engine
-from sqlalchemy.engine.base import Engine
-
+from psycopg2.sql import SQL, Identifier
 from splitgraph.core.image import Image
 from splitgraph.core.repository import Repository
 from splitgraph.ingestion.common import IngestionAdapter
 from splitgraph.ingestion.csv import copy_csv_buffer
+from sqlalchemy import create_engine
+from sqlalchemy.engine.base import Engine
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PostgresEngine, PsycopgEngine

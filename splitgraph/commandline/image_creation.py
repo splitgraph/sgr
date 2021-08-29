@@ -5,8 +5,12 @@ import sys
 from collections import defaultdict
 
 import click
-
-from splitgraph.commandline.common import ImageType, RepositoryType, JsonType, remote_switch_option
+from splitgraph.commandline.common import (
+    ImageType,
+    JsonType,
+    RepositoryType,
+    remote_switch_option,
+)
 from splitgraph.config import DEFAULT_CHUNK_SIZE
 from splitgraph.exceptions import TableNotFoundError
 

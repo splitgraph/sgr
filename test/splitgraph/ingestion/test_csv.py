@@ -1,11 +1,11 @@
 import json
 import os
 from io import BytesIO
+from test.splitgraph.conftest import INGESTION_RESOURCES_CSV
 from unittest import mock
 
 import pytest
-
-from splitgraph.core.types import TableColumn, MountError, unwrap
+from splitgraph.core.types import MountError, TableColumn, unwrap
 from splitgraph.engine import ResultShape
 from splitgraph.hooks.s3_server import MINIO
 from splitgraph.ingestion.common import generate_column_names
@@ -13,7 +13,6 @@ from splitgraph.ingestion.csv import CSVDataSource
 from splitgraph.ingestion.csv.common import CSVOptions, make_csv_reader
 from splitgraph.ingestion.csv.fdw import CSVForeignDataWrapper
 from splitgraph.ingestion.inference import infer_sg_schema
-from test.splitgraph.conftest import INGESTION_RESOURCES_CSV
 
 _s3_win_1252_opts = {
     "s3_object": "some_prefix/encoding-win-1252.csv",

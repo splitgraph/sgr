@@ -2,8 +2,8 @@ import io
 import os
 import re
 import time
-from datetime import datetime, date
-from typing import Union, List, Any, Optional, Dict
+from datetime import date, datetime
+from typing import Any, Dict, List, Optional, Union
 
 
 def pretty_size(size: Union[int, float]) -> str:

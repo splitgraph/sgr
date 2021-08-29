@@ -7,24 +7,23 @@ import string
 import subprocess
 from copy import copy
 from glob import glob
-from typing import Dict, Optional, cast, Tuple
-from urllib.parse import urlparse, quote
+from typing import Dict, Optional, Tuple, cast
+from urllib.parse import quote, urlparse
 
 import click
 from click import wrap_text
-
-from splitgraph.cloud.models import Metadata, RepositoriesYAML, AddExternalRepositoryRequest
-from splitgraph.commandline.common import (
-    ImageType,
-    RepositoryType,
-    emit_sql_results,
+from splitgraph.cloud.models import (
+    AddExternalRepositoryRequest,
+    Metadata,
+    RepositoriesYAML,
 )
+from splitgraph.commandline.common import ImageType, RepositoryType, emit_sql_results
 from splitgraph.commandline.engine import inject_config_into_engines
 
 # Hardcoded database name for the Splitgraph DDN (ddn instead of sgregistry)
 from splitgraph.config.config import get_from_subsection
 from splitgraph.config.management import patch_and_save_config
-from splitgraph.core.output import pluralise, Color
+from splitgraph.core.output import Color, pluralise
 
 _DDN_DBNAME = "ddn"
 
@@ -52,7 +51,7 @@ def register_c(username, password, email, remote, accept_tos, skip_inject):
     obtains a set of machine (API) credentials for the client to communicate
     with the registry and configures the data.splitgraph.com engine.
     """
-    from splitgraph.cloud import RESTAPIClient, DEFAULT_REMOTES
+    from splitgraph.cloud import DEFAULT_REMOTES, RESTAPIClient
     from splitgraph.config import CONFIG
     from splitgraph.config.config import get_all_in_subsection
 
@@ -163,9 +162,9 @@ def login_c(username, password, remote, overwrite, skip_inject):
 
     If you want to log in using an existing API key pair, use `sgr cloud login-api` instead.
     """
+    from splitgraph.cloud import DEFAULT_REMOTES, RESTAPIClient, get_token_claim
     from splitgraph.config import CONFIG
     from splitgraph.config.config import get_all_in_subsection
-    from splitgraph.cloud import RESTAPIClient, get_token_claim, DEFAULT_REMOTES
 
     client = RESTAPIClient(remote)
 
@@ -242,7 +241,7 @@ def login_api_c(api_key, api_secret, remote, skip_inject):
     This will inject the API keys for the registry into the configuration file
     and generate a new access token.
     """
-    from splitgraph.cloud import RESTAPIClient, get_token_claim, DEFAULT_REMOTES
+    from splitgraph.cloud import DEFAULT_REMOTES, RESTAPIClient, get_token_claim
     from splitgraph.config import CONFIG
     from splitgraph.config.config import get_all_in_subsection
 
@@ -314,8 +313,8 @@ def curl_c(remote, request_type, image, request_params, curl_args):
     `--curl-args` allows to pass extra arguments to curl. Note that every argument must be prefixed
     with `--curl-args`, e.g. `--curl-args --cacert --curl-args /path/to/ca.pem`.
     """
-    from splitgraph.config import CONFIG
     from splitgraph.cloud import RESTAPIClient, get_headers
+    from splitgraph.config import CONFIG
 
     repository, hash_or_tag = image
 
@@ -384,7 +383,7 @@ def sql_c(remote, show_all, json, query):
     If a query is passed, this will run an SQL query against the SQL endpoint.
     """
     ddn_params = _get_ddn_conn_params(remote)
-    from splitgraph.engine.postgres.engine import get_conn_str, PostgresEngine
+    from splitgraph.engine.postgres.engine import PostgresEngine, get_conn_str
 
     if not query:
         click.echo(get_conn_str(ddn_params))
@@ -657,8 +656,7 @@ def load_c(remote, readme_dir, repositories_file, limit_repositories):
     ```
     """
     import yaml
-    from splitgraph.cloud import GQLAPIClient
-    from splitgraph.cloud import RESTAPIClient
+    from splitgraph.cloud import GQLAPIClient, RESTAPIClient
 
     repo_yaml = RepositoriesYAML.parse_obj(yaml.safe_load(repositories_file))
 
@@ -780,8 +778,8 @@ def token_c(remote):
 @click.argument("domain_name")
 def add_c(remote, skip_inject, domain_name):
     """Add a remote Splitgraph registry to .sgconfig with default parameters"""
-    from splitgraph.config.config import get_all_in_subsection
     from splitgraph.config import CONFIG
+    from splitgraph.config.config import get_all_in_subsection
 
     if domain_name.startswith(("data", "www", "api")):
         raise click.BadArgumentUsage(

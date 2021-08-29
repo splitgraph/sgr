@@ -3,12 +3,12 @@ sgr commands related to getting information out of / about images
 """
 
 from collections import Counter, defaultdict
-from typing import List, Optional, Tuple, Union, Dict, cast, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union, cast
 
 import click
 
-from .common import ImageType, RepositoryType, remote_switch_option, emit_sql_results
 from ..core._drawing import format_image_hash, format_tags, format_time
+from .common import ImageType, RepositoryType, emit_sql_results, remote_switch_option
 
 if TYPE_CHECKING:
     from splitgraph.core.repository import Repository
@@ -31,8 +31,9 @@ def log_c(image_spec, tree):
     been checked out in this case.
     """
     from splitgraph.core._drawing import render_tree
-    from ..core.output import truncate_line
     from tabulate import tabulate
+
+    from ..core.output import truncate_line
 
     repository, hash_or_tag = image_spec
 
@@ -266,11 +267,12 @@ def object_c(object_id):
     the smallest and largest values for every column are stored in the fragment's metadata. This information is used
     to choose which objects to download in order to execute a query against a table.
     """
+    from splitgraph.core.indexing.bloom import describe
     from splitgraph.core.object_manager import ObjectManager
-    from splitgraph.engine import get_engine, ResultShape
+    from splitgraph.engine import ResultShape, get_engine
+
     from ..core.output import pretty_size
     from ..core.sql import select
-    from splitgraph.core.indexing.bloom import describe
 
     object_manager = ObjectManager(get_engine())
     object_meta = object_manager.get_object_meta([object_id])
@@ -407,6 +409,7 @@ def sql_c(sql, schema, image, show_all, json, no_transaction):
 def _emit_repository_data(repositories, engine):
     from splitgraph.engine import ResultShape
     from tabulate import tabulate
+
     from ..core.output import pretty_size
 
     click.echo("Local repositories: \n")

@@ -2,12 +2,11 @@
 import base64
 import json
 import time
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import httpretty
 import pytest
 from requests import HTTPError
-
 from splitgraph.cloud import RESTAPIClient
 from splitgraph.exceptions import AuthAPIError
 

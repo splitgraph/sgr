@@ -1,29 +1,25 @@
-from copy import deepcopy
-
 import json
 import logging
-import psycopg2
 import re
 from abc import ABC, abstractmethod
-from psycopg2.sql import SQL, Identifier
-from typing import Optional, Mapping, Dict, List, Any, cast, TYPE_CHECKING, Tuple
+from copy import deepcopy
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple, cast
 
+import psycopg2
+from psycopg2.sql import SQL, Identifier
 from splitgraph.core.types import (
-    TableSchema,
-    TableColumn,
-    dict_to_table_schema_params,
-    TableParams,
-    TableInfo,
-    PreviewResult,
-    MountError,
-    IntrospectionResult,
     Credentials,
+    IntrospectionResult,
+    MountError,
+    PreviewResult,
+    TableColumn,
+    TableInfo,
+    TableParams,
+    TableSchema,
+    dict_to_table_schema_params,
 )
-from splitgraph.exceptions import get_exception_name, DataSourceError
-from splitgraph.hooks.data_source.base import (
-    MountableDataSource,
-    LoadableDataSource,
-)
+from splitgraph.exceptions import DataSourceError, get_exception_name
+from splitgraph.hooks.data_source.base import LoadableDataSource, MountableDataSource
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PostgresEngine
@@ -167,8 +163,8 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
         # to mount the actual table. By default, just call out into mount()
 
         # Local import here since this data source gets imported by the commandline entry point
-        from splitgraph.core.common import get_temporary_table_id
         import jsonschema
+        from splitgraph.core.common import get_temporary_table_id
 
         tmp_schema = get_temporary_table_id()
         try:
@@ -316,7 +312,7 @@ def init_fdw(
     :param user_options: Dictionary of user options
     :param overwrite: If the server already exists, delete and recreate it.
     """
-    from psycopg2.sql import Identifier, SQL
+    from psycopg2.sql import SQL, Identifier
 
     if overwrite:
         engine.run_sql(SQL("DROP SERVER IF EXISTS {} CASCADE").format(Identifier(server_id)))
@@ -342,7 +338,7 @@ def init_fdw(
 
 
 def _format_options(option_names):
-    from psycopg2.sql import Identifier, SQL
+    from psycopg2.sql import SQL, Identifier
 
     return (
         SQL(" OPTIONS (")
@@ -359,7 +355,7 @@ def import_foreign_schema(
     tables: List[str],
     options: Optional[Dict[str, str]] = None,
 ) -> List[MountError]:
-    from psycopg2.sql import Identifier, SQL
+    from psycopg2.sql import SQL, Identifier
 
     # Construct a query: import schema limit to (%s, %s, ...) from server mountpoint_server into mountpoint
     query = SQL("IMPORT FOREIGN SCHEMA {} ").format(Identifier(remote_schema))

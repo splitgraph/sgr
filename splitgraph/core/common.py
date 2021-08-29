@@ -7,24 +7,31 @@ from datetime import date, datetime, time
 from decimal import Decimal
 from functools import wraps
 from random import getrandbits
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, TYPE_CHECKING, cast, Set
-
-from psycopg2.sql import Identifier, SQL
-
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
-from splitgraph.core.migration import source_files_to_apply, set_installed_version
-from splitgraph.core.output import parse_dt, parse_date
-from splitgraph.core.sql import select
-from splitgraph.exceptions import (
-    ImageNotFoundError,
-    RepositoryNotFoundError,
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+    cast,
 )
+
+from psycopg2.sql import SQL, Identifier
+from splitgraph.config import SPLITGRAPH_API_SCHEMA, SPLITGRAPH_META_SCHEMA
+from splitgraph.core.migration import set_installed_version, source_files_to_apply
+from splitgraph.core.output import parse_date, parse_dt
+from splitgraph.core.sql import select
+from splitgraph.exceptions import ImageNotFoundError, RepositoryNotFoundError
 from splitgraph.resources import splitgraph_meta
 
 if TYPE_CHECKING:
-    from splitgraph.engine.postgres.engine import PsycopgEngine, PostgresEngine
     from splitgraph.core.image import Image
     from splitgraph.core.repository import Repository
+    from splitgraph.engine.postgres.engine import PostgresEngine, PsycopgEngine
 
 META_TABLES = [
     "images",

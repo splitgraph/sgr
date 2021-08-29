@@ -3,8 +3,7 @@ import subprocess
 import tempfile
 
 import yaml
-
-from splitgraph.ingestion.dbt.utils import prepare_git_repo, patch_dbt_project_sources
+from splitgraph.ingestion.dbt.utils import patch_dbt_project_sources, prepare_git_repo
 
 _REPO_PATH = "https://github.com/splitgraph/jaffle_shop_archive"
 

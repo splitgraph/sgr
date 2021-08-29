@@ -5,7 +5,6 @@ from hashlib import sha256
 from typing import TYPE_CHECKING
 
 import click
-
 from splitgraph.commandline.common import RepositoryType
 from splitgraph.core.types import TableColumn
 
@@ -46,8 +45,7 @@ def generate_table(repository: "Repository", table_name: str, size: int) -> None
     :param table_name: Name of the table to generate
     :param size: Number of rows in the table.
     """
-    from psycopg2.sql import SQL
-    from psycopg2.sql import Identifier
+    from psycopg2.sql import SQL, Identifier
 
     repository.engine.create_table(
         repository.to_schema(),
@@ -76,9 +74,9 @@ def alter_table(
     :param rows_deleted: Number of rows to remove
     :param rows_updated: Number of rows to update
     """
-    from splitgraph.engine import ResultShape
+    from psycopg2.sql import SQL, Identifier
     from splitgraph.core.sql import select
-    from psycopg2.sql import Identifier, SQL
+    from splitgraph.engine import ResultShape
 
     keys = repository.run_sql(
         select(table_name, "key", schema=repository.to_schema()), return_shape=ResultShape.MANY_ONE

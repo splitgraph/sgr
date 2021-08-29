@@ -5,19 +5,18 @@ import re
 from abc import ABC
 from contextlib import contextmanager
 from random import getrandbits
-from typing import Optional, Dict, List, Tuple, Generator
+from typing import Dict, Generator, List, Optional, Tuple
 
 import docker.errors
 import pydantic
 from docker import DockerClient
 from docker.models.containers import Container
 from docker.types import LogConfig
-
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import (
+    IntrospectionResult,
     SyncState,
     TableInfo,
-    IntrospectionResult,
     TableParams,
     get_table_params,
 )
@@ -27,30 +26,27 @@ from splitgraph.hooks.data_source.base import (
     get_ingestion_state,
     prepare_new_image,
 )
-from splitgraph.utils.docker import get_docker_client, copy_to_container
+from splitgraph.utils.docker import copy_to_container, get_docker_client
+
+from ..dbt.utils import run_dbt_transformation_from_git
+from ..singer.common import add_timestamp_tags, store_ingestion_state
 from .docker_utils import (
     add_files,
-    remove_at_end,
-    wait_not_failed,
     build_command,
     detect_network_mode,
+    remove_at_end,
+    wait_not_failed,
 )
-from .models import (
-    AirbyteCatalog,
-    ConfiguredAirbyteCatalog,
-    AirbyteMessage,
-)
+from .models import AirbyteCatalog, AirbyteMessage, ConfiguredAirbyteCatalog
 from .utils import (
     AirbyteConfig,
     _airbyte_message_reader,
-    _store_raw_airbyte_tables,
     _store_processed_airbyte_tables,
+    _store_raw_airbyte_tables,
+    get_pk_cursor_fields,
     get_sg_schema,
     select_streams,
-    get_pk_cursor_fields,
 )
-from ..dbt.utils import run_dbt_transformation_from_git
-from ..singer.common import store_ingestion_state, add_timestamp_tags
 
 
 @contextmanager

@@ -5,35 +5,35 @@ import threading
 from contextlib import contextmanager
 from math import ceil
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
+    Dict,
+    Generator,
     Iterator,
     List,
     Optional,
-    Tuple,
-    TYPE_CHECKING,
-    Dict,
     Sequence,
+    Tuple,
     cast,
-    Generator,
 )
 
-from psycopg2.sql import SQL, Identifier, Composable
-from tqdm import tqdm
-
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA, SG_CMD_ASCII
+from psycopg2.sql import SQL, Composable, Identifier
+from splitgraph.config import (
+    SG_CMD_ASCII,
+    SPLITGRAPH_API_SCHEMA,
+    SPLITGRAPH_META_SCHEMA,
+)
 from splitgraph.core.common import Tracer, get_temporary_table_id
-from splitgraph.core.fragment_manager import (
-    get_chunk_groups,
-    ExtraIndexInfo,
-)
+from splitgraph.core.fragment_manager import ExtraIndexInfo, get_chunk_groups
 from splitgraph.core.indexing.range import quals_to_sql
 from splitgraph.core.output import pluralise, truncate_list
 from splitgraph.core.sql import select
-from splitgraph.core.types import TableSchema, Quals
+from splitgraph.core.types import Quals, TableSchema
 from splitgraph.engine import ResultShape
 from splitgraph.engine.postgres.engine import get_change_key
 from splitgraph.exceptions import ObjectIndexingError
+from tqdm import tqdm
 
 if TYPE_CHECKING:
     from splitgraph.core.image import Image

@@ -1,7 +1,7 @@
 """Module imported by Multicorn on the Splitgraph engine server: a foreign data wrapper that implements
 layered querying (read-only queries to Splitgraph tables without materialization)."""
 import logging
-from typing import Optional, Callable, TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, Optional
 
 import splitgraph.config
 from splitgraph.config import get_singleton
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 try:
-    from multicorn import ForeignDataWrapper, ANY
+    from multicorn import ANY, ForeignDataWrapper
     from multicorn.utils import log_to_postgres
 except ImportError:
     # Multicorn not installed (OK if we're not on the engine machine).

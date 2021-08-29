@@ -1,16 +1,15 @@
 import itertools
 from datetime import datetime as dt
+from test.splitgraph.conftest import (
+    OUTPUT,
+    SMALL_OBJECT_SIZE,
+    _assert_cache_occupancy,
+    _cleanup_minio,
+    prepare_lq_repo,
+)
 from unittest import mock
 
 import pytest
-from test.splitgraph.conftest import (
-    OUTPUT,
-    _cleanup_minio,
-    SMALL_OBJECT_SIZE,
-    _assert_cache_occupancy,
-    prepare_lq_repo,
-)
-
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.indexing.range import _quals_to_clause
 from splitgraph.core.repository import clone

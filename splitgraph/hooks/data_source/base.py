@@ -1,27 +1,26 @@
 from abc import ABC, abstractmethod
 from random import getrandbits
-from typing import Dict, Any, Optional, TYPE_CHECKING, cast, Tuple, List
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast
 
 from psycopg2._json import Json
 from psycopg2.sql import SQL, Identifier
-
 from splitgraph.config import DEFAULT_CHUNK_SIZE
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.image import Image
 from splitgraph.core.types import (
-    TableColumn,
     Credentials,
-    Params,
-    TableInfo,
-    SyncState,
-    MountError,
     IntrospectionResult,
+    MountError,
+    Params,
+    SyncState,
+    TableColumn,
+    TableInfo,
 )
 from splitgraph.engine import ResultShape
 
 if TYPE_CHECKING:
-    from splitgraph.engine.postgres.engine import PostgresEngine
     from splitgraph.core.repository import Repository
+    from splitgraph.engine.postgres.engine import PostgresEngine
 
 INGESTION_STATE_TABLE = "_sg_ingestion_state"
 INGESTION_STATE_SCHEMA = [

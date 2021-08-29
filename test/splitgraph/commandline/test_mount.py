@@ -2,22 +2,21 @@ import json
 import os
 import tempfile
 from decimal import Decimal
+from test.splitgraph.conftest import INGESTION_RESOURCES, MG_MNT, OUTPUT
 from unittest import mock
 
 import pytest
 from click.testing import CliRunner
-from test.splitgraph.conftest import OUTPUT, MG_MNT, INGESTION_RESOURCES
-
-from splitgraph.commandline import status_c, rm_c, cleanup_c, init_c, mount_c, import_c
+from splitgraph.commandline import cleanup_c, import_c, init_c, mount_c, rm_c, status_c
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.repository import Repository
-from splitgraph.hooks.data_source.fdw import PostgreSQLDataSource
 from splitgraph.hooks.data_source import (
-    get_data_sources,
     _load_source,
-    get_data_source,
     _register_plugin_dir_data_sources,
+    get_data_source,
+    get_data_sources,
 )
+from splitgraph.hooks.data_source.fdw import PostgreSQLDataSource
 from splitgraph.ingestion.socrata.mount import SocrataDataSource
 
 _MONGO_PARAMS = {

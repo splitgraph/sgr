@@ -44,8 +44,8 @@ def build_c(splitfile, args, output_repository):
     Executes ``my_other.splitfile`` with parameters ``PARAM1`` and ``PARAM2`` set to
     ``VAL1`` and  ``VAL2``, respectively.
     """
-    from splitgraph.splitfile import execute_commands
     from splitgraph.core.repository import Repository
+    from splitgraph.splitfile import execute_commands
 
     args = {k: v for k, v in args}
     click.echo("Executing Splitfile %s with arguments %r" % (splitfile.name, args))
@@ -173,8 +173,8 @@ def dependents_c(image_spec, source_on, dependents_on):
     will show all images on the local engine that derived data from `noaa/climate:latest`
     on the Splitgraph registry.
     """
-    from splitgraph.engine import get_engine
     from splitgraph.core.repository import Repository
+    from splitgraph.engine import get_engine
 
     source_engine = get_engine(source_on) if source_on else get_engine()
     repository, image = image_spec

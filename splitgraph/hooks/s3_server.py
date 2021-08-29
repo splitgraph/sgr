@@ -6,7 +6,6 @@ from typing import List
 
 from minio.api import Minio
 from minio.deleteobjects import DeleteObject
-
 from splitgraph.config import CONFIG
 
 S3_HOST = CONFIG["SG_S3_HOST"]

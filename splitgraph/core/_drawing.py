@@ -1,12 +1,11 @@
 """
 Routines for rendering a Splitgraph repository as a tree of images
 """
-from collections import defaultdict, OrderedDict
+from collections import OrderedDict, defaultdict
 from datetime import datetime
 from typing import TYPE_CHECKING, List
 
 import click
-
 from splitgraph.config import SG_CMD_ASCII
 from splitgraph.core.output import Color
 

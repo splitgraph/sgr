@@ -1,7 +1,7 @@
 """
 Extra wrapper code for mount handlers
 """
-from typing import Dict, Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from splitgraph.exceptions import DataSourceError
 
@@ -47,8 +47,8 @@ def mount(
     :param tables: List of tables to mount or their schemas
     """
     # Workaround for circular imports
+    from psycopg2.sql import SQL, Identifier
     from splitgraph.engine import get_engine
-    from psycopg2.sql import Identifier, SQL
     from splitgraph.hooks.data_source import get_data_source
     from splitgraph.hooks.data_source.fdw import ForeignDataWrapperDataSource
 

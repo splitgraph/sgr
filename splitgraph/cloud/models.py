@@ -2,12 +2,10 @@
 Definitions for the repositories.yml format that's used to batch-populate a Splitgraph catalog
 with repositories and their metadata.
 """
-from typing import Dict, List, Optional, Any, Union
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field
-
-from splitgraph.core.types import TableSchema, Params
-
+from splitgraph.core.types import Params, TableSchema
 
 # Models for the externals API data (tables, plugin params etc)
 

@@ -4,7 +4,6 @@ import logging
 from itertools import islice
 
 import click
-
 from splitgraph.commandline.common import ImageType, RepositoryType
 from splitgraph.core.output import ResettableStream
 
@@ -122,8 +121,9 @@ def csv_import(
     If `-r` is passed, the table will instead be deleted and recreated from the CSV file if it exists.
     """
     import csv
-    from splitgraph.ingestion.inference import infer_sg_schema
+
     from splitgraph.ingestion.csv import csv_adapter
+    from splitgraph.ingestion.inference import infer_sg_schema
 
     if not primary_key:
         click.echo(

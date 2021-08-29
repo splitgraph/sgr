@@ -10,36 +10,46 @@ import traceback
 import click
 import click_log
 from click_log import ColorFormatter
-
 from splitgraph.__version__ import __version__
 from splitgraph.commandline.cloud import cloud_c
 from splitgraph.commandline.engine import engine_c
 from splitgraph.commandline.example import example
-from splitgraph.commandline.image_creation import checkout_c, commit_c, tag_c, import_c, reindex_c
+from splitgraph.commandline.image_creation import (
+    checkout_c,
+    commit_c,
+    import_c,
+    reindex_c,
+    tag_c,
+)
 from splitgraph.commandline.image_info import (
-    log_c,
     diff_c,
+    log_c,
+    object_c,
+    objects_c,
     show_c,
     sql_c,
     status_c,
-    object_c,
-    objects_c,
     table_c,
 )
 from splitgraph.commandline.ingestion import csv_group
 from splitgraph.commandline.misc import (
-    rm_c,
-    init_c,
     cleanup_c,
     config_c,
-    prune_c,
     dump_c,
     eval_c,
+    init_c,
+    prune_c,
+    rm_c,
     upgrade_c,
 )
 from splitgraph.commandline.mount import mount_c
-from splitgraph.commandline.push_pull import pull_c, clone_c, push_c, upstream_c
-from splitgraph.commandline.splitfile import build_c, provenance_c, rebuild_c, dependents_c
+from splitgraph.commandline.push_pull import clone_c, pull_c, push_c, upstream_c
+from splitgraph.commandline.splitfile import (
+    build_c,
+    dependents_c,
+    provenance_c,
+    rebuild_c,
+)
 from splitgraph.exceptions import get_exception_name
 from splitgraph.ingestion.singer.commandline import singer_group
 
@@ -76,8 +86,8 @@ def _patch_wrap_text():
 
 def _do_version_check():
     """Do a pre-flight version check -- by default we only do it once a day"""
-    from splitgraph.cloud import RESTAPIClient
     from packaging.version import Version
+    from splitgraph.cloud import RESTAPIClient
     from splitgraph.config import CONFIG, get_singleton
 
     api_client = RESTAPIClient(get_singleton(CONFIG, "SG_UPDATE_REMOTE"))
@@ -101,9 +111,9 @@ class WithExceptionHandler(click.Group):
         return super().get_command(ctx, cmd_name)
 
     def invoke(self, ctx):
-        from splitgraph.engine import get_engine
         import psycopg2.extensions
         import psycopg2.extras
+        from splitgraph.engine import get_engine
 
         # Allow users to send SIGINT to quickly terminate sgr (instead of waiting for a PG
         # statement to finish)

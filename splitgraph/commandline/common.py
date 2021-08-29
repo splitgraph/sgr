@@ -3,17 +3,16 @@ Various common functions used by the command line interface.
 """
 import json
 from functools import wraps
-from typing import Optional, Tuple, TYPE_CHECKING, Union, List, Any
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 
 import click
 from click.core import Context, Parameter
-
 from splitgraph.config import REMOTES
 from splitgraph.exceptions import RepositoryNotFoundError
 
 if TYPE_CHECKING:
-    from splitgraph.core.repository import Repository
     from splitgraph.core.image import Image
+    from splitgraph.core.repository import Repository
 
 
 class ImageType(click.ParamType):
@@ -169,6 +168,7 @@ def remote_switch_option(*names, **kwargs):
 def sql_results_to_str(results: List[Tuple[Any]], use_json: bool = False) -> str:
     if use_json:
         import json
+
         from splitgraph.core.common import coerce_val_to_json
 
         return json.dumps(coerce_val_to_json(results))

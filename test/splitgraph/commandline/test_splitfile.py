@@ -1,10 +1,9 @@
+from test.splitgraph.conftest import OUTPUT, RESOURCES
 from unittest import mock
 from unittest.mock import call
 
 from click.testing import CliRunner
-from test.splitgraph.conftest import RESOURCES, OUTPUT
-
-from splitgraph.commandline import build_c, provenance_c, rebuild_c, dependents_c
+from splitgraph.commandline import build_c, dependents_c, provenance_c, rebuild_c
 from splitgraph.core.repository import Repository
 
 

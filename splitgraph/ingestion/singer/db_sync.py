@@ -3,20 +3,20 @@ import itertools
 import logging
 import sys
 import traceback
-from typing import Optional, Tuple, BinaryIO, TextIO
+from typing import BinaryIO, Optional, TextIO, Tuple
 
 import target_postgres
-from target_postgres import DbSync
-from target_postgres.db_sync import column_type, flatten_key
-
 from splitgraph.config import CONFIG
 from splitgraph.core.image import Image
 from splitgraph.core.repository import Repository
-from splitgraph.core.types import TableSchema, TableColumn
+from splitgraph.core.types import TableColumn, TableSchema
 from splitgraph.engine.postgres.engine import get_change_key
 from splitgraph.exceptions import TableNotFoundError
 from splitgraph.ingestion.common import merge_tables
-from .common import _migrate_schema, log_exception, _make_changeset, rollback_at_end
+from target_postgres import DbSync
+from target_postgres.db_sync import column_type, flatten_key
+
+from .common import _make_changeset, _migrate_schema, log_exception, rollback_at_end
 
 
 def select_breadcrumb(stream_message, breadcrumb):

@@ -1,12 +1,16 @@
-from datetime import datetime as dt, timedelta
+from datetime import datetime as dt
+from datetime import timedelta
+from test.splitgraph.commands.test_layered_querying import _prepare_fully_remote_repo
+from test.splitgraph.conftest import OUTPUT
 from unittest import mock
 
 import pytest
-from test.splitgraph.commands.test_layered_querying import _prepare_fully_remote_repo
-from test.splitgraph.conftest import OUTPUT
-
-from splitgraph.core.indexing.bloom import _prepare_bloom_quals, filter_bloom_index, describe
-from splitgraph.core.repository import clone, Repository
+from splitgraph.core.indexing.bloom import (
+    _prepare_bloom_quals,
+    describe,
+    filter_bloom_index,
+)
+from splitgraph.core.repository import Repository, clone
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import ObjectIndexingError
 

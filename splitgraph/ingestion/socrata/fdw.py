@@ -2,19 +2,19 @@
 that communicates to Socrata datasets using sodapy."""
 import json
 import logging
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 import splitgraph.config
 from splitgraph.config import get_singleton
 from splitgraph.ingestion.socrata.querying import (
+    cols_to_socrata,
     estimate_socrata_rows_width,
     quals_to_socrata,
-    cols_to_socrata,
     sortkeys_to_socrata,
 )
 
 try:
-    from multicorn import ForeignDataWrapper, ANY
+    from multicorn import ANY, ForeignDataWrapper
 except ImportError:
     # Multicorn not installed (OK if we're not on the engine -- tests).
     ForeignDataWrapper = object

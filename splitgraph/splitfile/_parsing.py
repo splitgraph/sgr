@@ -4,11 +4,10 @@ Internal functions for parsing Splitfiles.
 
 import re
 import shlex
-from typing import Dict, List, Optional, Tuple, Union, TYPE_CHECKING, Sequence, TypeVar
+from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple, TypeVar, Union
 
 from parsimonious import Grammar
 from parsimonious.nodes import Node, RegexNode
-
 from splitgraph.exceptions import SplitfileError
 
 if TYPE_CHECKING:
