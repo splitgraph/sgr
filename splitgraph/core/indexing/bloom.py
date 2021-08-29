@@ -259,7 +259,7 @@ def filter_bloom_index(engine: "PsycopgEngine", object_ids: List[str], quals: An
     # Load the index: my SQLfu isn't strong enough to create a query that takes
     # care of varying values of K and varying signature sizes.
     bloom_index = engine.run_sql(
-        SQL(
+        SQL(  # nosec
             "SELECT object_id, index -> 'bloom' FROM {}.{} WHERE object_id IN ("
             + ",".join(itertools.repeat("%s", len(object_ids)))
             + ")"

@@ -276,7 +276,7 @@ class MetadataManager:
         :return: List of objects and their creation times.
         """
         candidates = self.metadata_engine.run_sql(
-            SQL(
+            SQL(  # nosec
                 "SELECT object_id, created FROM {0}.objects "
                 "WHERE object_id NOT IN (SELECT unnest(object_ids) "
                 "FROM {0}.tables) "

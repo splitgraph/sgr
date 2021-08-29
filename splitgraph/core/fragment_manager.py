@@ -366,8 +366,9 @@ class FragmentManager(MetadataManager):
         # Horror alert: we hash newly created tables by essentially calling digest(row::text) in Postgres and
         # we don't really know how it turns some types to strings. So instead we give Postgres all of its deleted
         # rows back and ask it to hash them for us in the same way.
+        # TODO we do not quote pg_type here
         inner_tuple = "(" + ",".join("%s::" + c.pg_type for c in table_schema) + ")"
-        query = (
+        query = (  # nosec
             "SELECT digest(o::text, 'sha256') FROM (VALUES "
             + ",".join(itertools.repeat(inner_tuple, len(rows)))
             + ") o"
@@ -1174,7 +1175,7 @@ class FragmentManager(MetadataManager):
         for i in range(0, len(objects), 100):
             to_delete = objects[i : i + 100]
             table_types = self.object_engine.run_sql(
-                SQL(
+                SQL(  # nosec
                     "SELECT table_name, table_type FROM information_schema.tables "
                     "WHERE table_schema = %s AND table_name IN ("
                     + ",".join(itertools.repeat("%s", len(to_delete)))

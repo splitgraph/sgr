@@ -296,7 +296,9 @@ def _eval(command, args):
     command_locals = locals().copy()
     command_locals.update({k: v for k, v in args})
 
-    exec(command, globals(), command_locals)
+    # The whole point of this function is to unsafely run Python code from the cmdline,
+    # so silence the Bandit warning.
+    exec(command, globals(), command_locals)  # nosec
 
 
 @click.command(name="eval")

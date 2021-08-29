@@ -124,7 +124,7 @@ class ObjectManager(FragmentManager):
         """
         return int(
             self.object_engine.run_sql(
-                SQL(
+                SQL(  # nosec
                     "SELECT COALESCE(sum(splitgraph_api.get_object_size("
                     "quote_ident(t.table_name))), 0)"
                     " FROM information_schema.tables t"
@@ -485,7 +485,7 @@ class ObjectManager(FragmentManager):
         # subtract objects that we have locally and insert the remaining entries as new cache entries.
 
         claimed = self.object_engine.run_sql(
-            SQL(
+            SQL(  # nosec
                 "UPDATE {}.object_cache_status SET refcount = refcount + 1, "
                 "last_used = %s WHERE object_id IN ("
             ).format(Identifier(SPLITGRAPH_META_SCHEMA))
@@ -518,7 +518,7 @@ class ObjectManager(FragmentManager):
     def _set_ready_flags(self, objects: List[str], is_ready: bool = True) -> None:
         if objects:
             self.object_engine.run_sql(
-                SQL(
+                SQL(  # nosec
                     "UPDATE {0}.object_cache_status SET ready = %s WHERE object_id IN ("
                     + ",".join(itertools.repeat("%s", len(objects)))
                     + ")"
@@ -530,7 +530,7 @@ class ObjectManager(FragmentManager):
         """Decreases objects' refcounts."""
         if objects:
             self.object_engine.run_sql(
-                SQL(
+                SQL(  # nosec
                     "UPDATE {}.{} SET refcount = refcount - 1 WHERE object_id IN ("
                     + ",".join(itertools.repeat("%s", len(objects)))
                     + ")"
@@ -679,7 +679,7 @@ class ObjectManager(FragmentManager):
         if not to_delete:
             return
         self.object_engine.run_sql(
-            SQL(
+            SQL(  # nosec
                 "DELETE FROM {}.{} WHERE object_id IN ("
                 + ",".join(itertools.repeat("%s", len(to_delete)))
                 + ")"

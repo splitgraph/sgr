@@ -553,11 +553,11 @@ def search_c(remote, query, limit=10):
 def _normalise_filename(filename):
     """
     Strips out odd characters from a string so that it can be used as a valid filename.
-    In order for the result to be unique, we also makea short hash of the original
+    In order for the result to be unique, we also make a short hash of the original
     string and stick it on the end
     """
     base = "".join(c for c in filename if c in VALID_FILENAME_CHARACTERS)
-    short_hash = hashlib.sha1(filename.encode()).hexdigest()[:4]
+    short_hash = hashlib.sha1(filename.encode()).hexdigest()[:4]  # nosec
     return f"{base}.{short_hash}"
 
 
