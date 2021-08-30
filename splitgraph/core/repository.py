@@ -264,7 +264,8 @@ class Repository:
             return result
         try:
             engine = get_engine(result[0])
-        except KeyError:
+        # Ignore errors if the engine doesn't exist or the params aren't in the config
+        except (KeyError, ValueError):
             logging.warning(
                 "Repository %s/%s has upstream on remote %s which doesn't exist in the config.",
                 self.namespace,
