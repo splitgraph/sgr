@@ -1,7 +1,7 @@
 import base64
 import json
 import urllib.parse
-from typing import Dict, Optional, Any
+from typing import Any, Dict, Optional
 
 from splitgraph.core.types import TableInfo
 from splitgraph.hooks.data_source.fdw import ForeignDataWrapperDataSource
@@ -9,8 +9,8 @@ from splitgraph.ingestion.common import build_commandline_help
 
 
 def _encode_private_key(privkey: str):
-    from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.backends import default_backend
+    from cryptography.hazmat.primitives import serialization
 
     if "PRIVATE KEY" in privkey:
         # Strip various markers and newlines from the private key, leaving

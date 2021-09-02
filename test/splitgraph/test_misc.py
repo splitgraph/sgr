@@ -1,14 +1,13 @@
-from datetime import datetime as dt, datetime
+from datetime import datetime as dt
 from unittest.mock import patch
 
 import pytest
 from psycopg2.errors import CheckViolation
-
 from splitgraph.cloud.models import ExternalTableRequest
 from splitgraph.core.common import Tracer, adapt, coerce_val_to_json
-from splitgraph.core.output import parse_dt
 from splitgraph.core.engine import lookup_repository
 from splitgraph.core.metadata_manager import Object
+from splitgraph.core.output import parse_dt
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import (
     TableColumn,
@@ -84,7 +83,7 @@ def test_metadata_constraints_object_ids_hashes(local_engine_empty):
                     format="FRAG",
                     namespace="",
                     size=42,
-                    created=datetime.utcnow(),
+                    created=dt.utcnow(),
                     insertion_hash="0" * 64,
                     deletion_hash="0" * 64,
                     object_index={},
@@ -102,7 +101,7 @@ def test_metadata_constraints_object_ids_hashes(local_engine_empty):
                     format="FRAG",
                     namespace="",
                     size=42,
-                    created=datetime.utcnow(),
+                    created=dt.utcnow(),
                     insertion_hash="0" * 64,
                     deletion_hash="0" * 64,
                     object_index={},
@@ -120,7 +119,7 @@ def test_metadata_constraints_object_ids_hashes(local_engine_empty):
                     format="FRAG",
                     namespace="",
                     size=42,
-                    created=datetime.utcnow(),
+                    created=dt.utcnow(),
                     insertion_hash="0" * 64,
                     deletion_hash="0" * 64,
                     object_index={},
@@ -138,7 +137,7 @@ def test_metadata_constraints_object_ids_hashes(local_engine_empty):
                     format="FRAG",
                     namespace="",
                     size=42,
-                    created=datetime.utcnow(),
+                    created=dt.utcnow(),
                     insertion_hash="broken",
                     deletion_hash="0" * 64,
                     object_index={},
@@ -156,7 +155,7 @@ def test_metadata_constraints_object_ids_hashes(local_engine_empty):
                     format="FRAG",
                     namespace="",
                     size=42,
-                    created=datetime.utcnow(),
+                    created=dt.utcnow(),
                     insertion_hash="0" * 64,
                     deletion_hash="broken",
                     object_index={},
@@ -177,7 +176,7 @@ def test_metadata_constraints_table_objects(local_engine_empty):
                 format="FRAG",
                 namespace="",
                 size=42,
-                created=datetime.utcnow(),
+                created=dt.utcnow(),
                 insertion_hash="0" * 64,
                 deletion_hash="0" * 64,
                 object_index={},
@@ -222,7 +221,7 @@ def test_large_api_calls(unprivileged_pg_repo):
         format="FRAG",
         namespace=unprivileged_pg_repo.namespace,
         size=42,
-        created=datetime.utcnow(),
+        created=dt.utcnow(),
         insertion_hash="0" * 64,
         deletion_hash="0" * 64,
         object_index={"bloom": [42, "A" * API_MAX_QUERY_LENGTH]},
@@ -245,7 +244,7 @@ def test_large_api_calls(unprivileged_pg_repo):
             format="FRAG",
             namespace=unprivileged_pg_repo.namespace,
             size=42,
-            created=datetime.utcnow(),
+            created=dt.utcnow(),
             insertion_hash="0" * 64,
             deletion_hash="0" * 64,
             object_index={"bloom": [42, "A" * 1024]},
@@ -303,9 +302,9 @@ def test_pg_type_adapt():
 
 
 def test_val_to_json():
-    assert coerce_val_to_json(datetime(2010, 1, 1)) == "2010-01-01 00:00:00"
-    assert coerce_val_to_json([1, 2, datetime(2010, 1, 1)]) == [1, 2, "2010-01-01 00:00:00"]
-    assert coerce_val_to_json({"one": 1, "two": 2, "datetime": datetime(2010, 1, 1)}) == {
+    assert coerce_val_to_json(dt(2010, 1, 1)) == "2010-01-01 00:00:00"
+    assert coerce_val_to_json([1, 2, dt(2010, 1, 1)]) == [1, 2, "2010-01-01 00:00:00"]
+    assert coerce_val_to_json({"one": 1, "two": 2, "datetime": dt(2010, 1, 1)}) == {
         "one": 1,
         "two": 2,
         "datetime": "2010-01-01 00:00:00",
@@ -313,8 +312,8 @@ def test_val_to_json():
 
 
 def test_parse_dt():
-    assert parse_dt("2020-01-01 12:00:01.123456") == datetime(2020, 1, 1, 12, 0, 1, 123456)
-    assert parse_dt("2020-01-01T12:34:56") == datetime(2020, 1, 1, 12, 34, 56)
+    assert parse_dt("2020-01-01 12:00:01.123456") == dt(2020, 1, 1, 12, 0, 1, 123456)
+    assert parse_dt("2020-01-01T12:34:56") == dt(2020, 1, 1, 12, 34, 56)
 
     with pytest.raises(ValueError):
         parse_dt("not a dt")

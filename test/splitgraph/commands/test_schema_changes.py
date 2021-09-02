@@ -1,5 +1,4 @@
 import pytest
-
 from splitgraph.core.types import TableColumn, TableSchema
 from splitgraph.engine.postgres.engine import SG_UD_FLAG
 

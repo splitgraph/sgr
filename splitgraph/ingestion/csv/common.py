@@ -1,6 +1,6 @@
 import csv
 import io
-from typing import Dict, Tuple, NamedTuple, TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Dict, NamedTuple, Tuple
 
 from minio import Minio
 
@@ -8,8 +8,7 @@ if TYPE_CHECKING:
     import _csv
 
 import chardet
-
-from splitgraph.commandline.common import ResettableStream
+from splitgraph.core.output import ResettableStream
 
 
 class CSVOptions(NamedTuple):

@@ -2,13 +2,12 @@ import os
 import shlex
 import subprocess
 from datetime import datetime as dt
+from test.splitgraph.conftest import INGESTION_RESOURCES, INGESTION_RESOURCES_CSV
 
 import pytest
 from click.testing import CliRunner
-
-from splitgraph.commandline.ingestion import csv_import, csv_export
+from splitgraph.commandline.ingestion import csv_export, csv_import
 from splitgraph.core.types import TableColumn
-from test.splitgraph.conftest import INGESTION_RESOURCES, INGESTION_RESOURCES_CSV
 
 
 @pytest.mark.parametrize("custom_separator", [False, True])

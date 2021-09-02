@@ -13,25 +13,37 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import reduce
 from hashlib import sha256
-from typing import Any, Dict, List, Optional, Set, Tuple, Union, TYPE_CHECKING, cast, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    TypeVar,
+    Union,
+    cast,
+)
 
 from psycopg2._json import Json
 from psycopg2.errors import UniqueViolation
-from psycopg2.sql import SQL, Identifier, Composable
+from psycopg2.sql import SQL, Composable, Identifier
+from splitgraph.config import CONFIG, SG_CMD_ASCII, SPLITGRAPH_API_SCHEMA, get_singleton
+from splitgraph.core.indexing.bloom import filter_bloom_index, generate_bloom_index
+from splitgraph.core.indexing.range import filter_range_index, generate_range_index
+from splitgraph.core.metadata_manager import MetadataManager, Object
+from splitgraph.core.types import Changeset, Comparable, TableSchema
+from splitgraph.engine import ResultShape
+from splitgraph.engine.postgres.engine import (
+    SG_UD_FLAG,
+    add_ud_flag_column,
+    get_change_key,
+)
+from splitgraph.exceptions import SplitGraphError
 from tqdm import tqdm
 
-from splitgraph.config import SPLITGRAPH_API_SCHEMA, SG_CMD_ASCII, get_singleton, CONFIG
-from splitgraph.core.indexing.bloom import generate_bloom_index, filter_bloom_index
-from splitgraph.core.indexing.range import (
-    generate_range_index,
-    filter_range_index,
-)
-from splitgraph.core.metadata_manager import MetadataManager, Object
-from splitgraph.core.types import Changeset, TableSchema, Comparable
-from splitgraph.engine import ResultShape
-from splitgraph.engine.postgres.engine import SG_UD_FLAG, add_ud_flag_column, get_change_key
-from splitgraph.exceptions import SplitGraphError
-from .common import adapt, SPLITGRAPH_META_SCHEMA, get_temporary_table_id
+from .common import SPLITGRAPH_META_SCHEMA, adapt, get_temporary_table_id
 from .sql import select
 
 if TYPE_CHECKING:
@@ -366,8 +378,9 @@ class FragmentManager(MetadataManager):
         # Horror alert: we hash newly created tables by essentially calling digest(row::text) in Postgres and
         # we don't really know how it turns some types to strings. So instead we give Postgres all of its deleted
         # rows back and ask it to hash them for us in the same way.
+        # TODO we do not quote pg_type here
         inner_tuple = "(" + ",".join("%s::" + c.pg_type for c in table_schema) + ")"
-        query = (
+        query = (  # nosec
             "SELECT digest(o::text, 'sha256') FROM (VALUES "
             + ",".join(itertools.repeat(inner_tuple, len(rows)))
             + ") o"
@@ -1174,7 +1187,7 @@ class FragmentManager(MetadataManager):
         for i in range(0, len(objects), 100):
             to_delete = objects[i : i + 100]
             table_types = self.object_engine.run_sql(
-                SQL(
+                SQL(  # nosec
                     "SELECT table_name, table_type FROM information_schema.tables "
                     "WHERE table_schema = %s AND table_name IN ("
                     + ",".join(itertools.repeat("%s", len(to_delete)))

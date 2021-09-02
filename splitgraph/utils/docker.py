@@ -1,8 +1,8 @@
 import os
 import time
 from io import BytesIO
-from tarfile import TarInfo, TarFile
-from typing import Optional, TYPE_CHECKING, List
+from tarfile import TarFile, TarInfo
+from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
     from docker.models.containers import Container

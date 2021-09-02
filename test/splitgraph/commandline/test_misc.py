@@ -1,40 +1,43 @@
 import os
 import tempfile
 from pathlib import Path
+from test.splitgraph.commands.test_commit_diff import _alter_diff_splitting_dataset
+from test.splitgraph.conftest import API_RESOURCES, OUTPUT
 from unittest import mock
-from unittest.mock import sentinel, call, patch
+from unittest.mock import call, patch, sentinel
 
 import httpretty
 import pytest
 from click import ClickException
 from click.testing import CliRunner
-from test.splitgraph.commands.test_commit_diff import _alter_diff_splitting_dataset
-from test.splitgraph.conftest import API_RESOURCES, OUTPUT
-
 from splitgraph.commandline import (
-    upstream_c,
-    import_c,
-    rm_c,
-    prune_c,
+    cli,
     config_c,
     dump_c,
     eval_c,
-    cli,
+    import_c,
+    prune_c,
+    rm_c,
+    upstream_c,
 )
 from splitgraph.commandline.common import ImageType, RepositoryType
-from splitgraph.commandline.example import generate_c, alter_c, splitfile_c
+from splitgraph.commandline.example import alter_c, generate_c, splitfile_c
 from splitgraph.commandline.misc import (
     _get_binary_url_for,
-    upgrade_c,
-    _get_system_id,
     _get_download_paths,
+    _get_system_id,
+    upgrade_c,
 )
 from splitgraph.config import PG_PWD, PG_USER
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.fragment_manager import FragmentManager
 from splitgraph.core.repository import Repository
 from splitgraph.engine import ResultShape
-from splitgraph.exceptions import TableNotFoundError, ImageNotFoundError, RepositoryNotFoundError
+from splitgraph.exceptions import (
+    ImageNotFoundError,
+    RepositoryNotFoundError,
+    TableNotFoundError,
+)
 
 
 def test_image_spec_parsing():

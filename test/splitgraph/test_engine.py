@@ -1,30 +1,33 @@
 from io import StringIO
+from test.splitgraph.conftest import SPLITGRAPH_ENGINE_CONTAINER
 from unittest import mock
-from unittest.mock import Mock, MagicMock, call
+from unittest.mock import MagicMock, Mock, call
 
 import docker
 import psycopg2
 import pytest
 from packaging.version import Version
-from test.splitgraph.conftest import SPLITGRAPH_ENGINE_CONTAINER
-
 from splitgraph.__version__ import __version__
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
+from splitgraph.config import CONFIG, SPLITGRAPH_META_SCHEMA
 from splitgraph.core.common import ensure_metadata_schema
-from splitgraph.core.engine import get_current_repositories, lookup_repository, repository_exists
+from splitgraph.core.engine import (
+    get_current_repositories,
+    lookup_repository,
+    repository_exists,
+)
 from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.repository import Repository
-from splitgraph.engine import _prepare_engine_config, ResultShape
+from splitgraph.engine import ResultShape, _prepare_engine_config
 from splitgraph.engine.postgres.engine import (
-    PostgresEngine,
     _API_VERSION,
-    _paginate_by_size,
+    PostgresEngine,
     PsycopgEngine,
+    _paginate_by_size,
 )
 from splitgraph.exceptions import (
+    APICompatibilityError,
     EngineInitializationError,
     ObjectNotFoundError,
-    APICompatibilityError,
 )
 
 

@@ -1,13 +1,13 @@
-from typing import Optional, Dict, Any, Tuple, cast
+from typing import Any, Dict, Optional, Tuple, cast
 
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import (
-    TableSchema,
+    IntrospectionResult,
+    SyncState,
     TableColumn,
     TableInfo,
-    SyncState,
     TableParams,
-    IntrospectionResult,
+    TableSchema,
 )
 from splitgraph.engine import ResultShape
 from splitgraph.hooks.data_source.base import SyncableDataSource

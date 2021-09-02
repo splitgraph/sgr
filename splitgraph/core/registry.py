@@ -2,11 +2,10 @@
 Functions for communicating with the remote Splitgraph catalog
 """
 
-from typing import Optional, Union, TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Optional, Union, cast
 
 from psycopg2.sql import SQL, Identifier
-
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
+from splitgraph.config import SPLITGRAPH_API_SCHEMA, SPLITGRAPH_META_SCHEMA
 from splitgraph.engine import ResultShape
 
 if TYPE_CHECKING:

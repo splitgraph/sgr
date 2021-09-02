@@ -7,23 +7,22 @@ import logging
 import sys
 import time
 from contextlib import contextmanager
-from io import BytesIO
-from io import TextIOWrapper
+from io import BytesIO, TextIOWrapper
 from pathlib import PurePosixPath
 from threading import get_ident
 from typing import (
+    TYPE_CHECKING,
     Any,
     Dict,
+    Iterable,
     Iterator,
     List,
     Optional,
-    Tuple,
-    Union,
-    TYPE_CHECKING,
     Sequence,
-    cast,
+    Tuple,
     TypeVar,
-    Iterable,
+    Union,
+    cast,
 )
 
 import psycopg2
@@ -31,29 +30,38 @@ import psycopg2.extensions
 from packaging.version import Version
 from psycopg2 import DatabaseError
 from psycopg2.errors import InvalidSchemaName, UndefinedTable
-from psycopg2.extras import execute_batch, Json
-from psycopg2.pool import ThreadedConnectionPool, AbstractConnectionPool
-from psycopg2.sql import Composed, SQL
-from psycopg2.sql import Identifier
-from tqdm import tqdm
-
+from psycopg2.extras import Json, execute_batch
+from psycopg2.pool import AbstractConnectionPool, ThreadedConnectionPool
+from psycopg2.sql import SQL, Composed, Identifier
 from splitgraph.__version__ import __version__
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, SPLITGRAPH_API_SCHEMA, SG_CMD_ASCII
+from splitgraph.config import (
+    CONFIG,
+    SG_CMD_ASCII,
+    SPLITGRAPH_API_SCHEMA,
+    SPLITGRAPH_META_SCHEMA,
+)
 from splitgraph.core import server
-from splitgraph.core.common import ensure_metadata_schema, META_TABLES
+from splitgraph.core.common import META_TABLES, ensure_metadata_schema
 from splitgraph.core.sql import select
 from splitgraph.core.types import TableColumn, TableSchema
-from splitgraph.engine import ResultShape, ObjectEngine, ChangeEngine, SQLEngine, switch_engine
+from splitgraph.engine import (
+    ChangeEngine,
+    ObjectEngine,
+    ResultShape,
+    SQLEngine,
+    switch_engine,
+)
 from splitgraph.exceptions import (
-    EngineInitializationError,
-    ObjectNotFoundError,
-    AuthAPIError,
-    IncompleteObjectDownloadError,
     APICompatibilityError,
+    AuthAPIError,
+    EngineInitializationError,
+    IncompleteObjectDownloadError,
     ObjectMountingError,
+    ObjectNotFoundError,
 )
 from splitgraph.hooks.mount_handlers import mount_postgres
 from splitgraph.resources import static
+from tqdm import tqdm
 
 if TYPE_CHECKING:
     # Import the connection object under a different name as it shadows

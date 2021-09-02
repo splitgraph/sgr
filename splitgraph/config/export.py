@@ -3,7 +3,7 @@ from typing import Dict, cast
 
 from splitgraph.config import get_singleton
 from splitgraph.config.config import get_all_in_section
-from splitgraph.config.keys import KEYS, DEFAULTS, ConfigDict, SENSITIVE_KEY_SUFFIXES
+from splitgraph.config.keys import DEFAULTS, KEYS, SENSITIVE_KEY_SUFFIXES, ConfigDict
 
 
 def _kv_to_str(key: str, value: str, no_shielding: bool) -> str:

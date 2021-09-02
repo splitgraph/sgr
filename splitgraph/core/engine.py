@@ -2,13 +2,13 @@
 Routines for managing Splitgraph engines, including looking up repositories and managing objects.
 """
 import logging
-from typing import Dict, List, Tuple, TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from psycopg2.sql import SQL, Identifier
-
 from splitgraph.config import CONFIG, SPLITGRAPH_API_SCHEMA, get_singleton
-from splitgraph.engine import get_engine, ResultShape
+from splitgraph.engine import ResultShape, get_engine
 from splitgraph.exceptions import RepositoryNotFoundError
+
 from .sql import select
 
 if TYPE_CHECKING:

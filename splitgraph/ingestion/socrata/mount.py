@@ -2,13 +2,15 @@
 import json
 import logging
 from copy import deepcopy
-from typing import Optional, Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from psycopg2.sql import SQL, Identifier
-
-from splitgraph.core.types import TableInfo, MountError, Credentials
+from splitgraph.core.types import Credentials, MountError, TableInfo
 from splitgraph.exceptions import RepositoryNotFoundError
-from splitgraph.hooks.data_source.fdw import create_foreign_table, ForeignDataWrapperDataSource
+from splitgraph.hooks.data_source.fdw import (
+    ForeignDataWrapperDataSource,
+    create_foreign_table,
+)
 
 
 class SocrataDataSource(ForeignDataWrapperDataSource):
@@ -84,8 +86,8 @@ class SocrataDataSource(ForeignDataWrapperDataSource):
     def _create_foreign_tables(
         self, schema: str, server_id: str, tables: TableInfo
     ) -> List[MountError]:
-        from sodapy import Socrata
         from psycopg2.sql import SQL
+        from sodapy import Socrata
 
         logging.info("Getting Socrata metadata")
         client = Socrata(domain=self.params["domain"], app_token=self.credentials.get("app_token"))
@@ -145,8 +147,7 @@ class SocrataDataSource(ForeignDataWrapperDataSource):
 def generate_socrata_mount_queries(sought_ids, datasets, mountpoint, server_id, tables: TableInfo):
     # Local imports since this module gets run from commandline entrypoint on startup.
 
-    from splitgraph.core.output import slugify
-    from splitgraph.core.output import pluralise
+    from splitgraph.core.output import pluralise, slugify
     from splitgraph.ingestion.socrata.querying import socrata_to_sg_schema
 
     found_ids = set(d["resource"]["id"] for d in datasets)

@@ -8,22 +8,16 @@ from itertools import islice
 from typing import Optional
 
 import requests
-from urllib3 import HTTPResponse
-
 import splitgraph.config
 from splitgraph.config import get_singleton
 from splitgraph.exceptions import get_exception_name
 from splitgraph.ingestion.common import generate_column_names
-from splitgraph.ingestion.csv.common import CSVOptions, make_csv_reader, get_s3_params
+from splitgraph.ingestion.csv.common import CSVOptions, get_s3_params, make_csv_reader
 from splitgraph.ingestion.inference import infer_sg_schema
+from urllib3 import HTTPResponse
 
 try:
-    from multicorn import (
-        ForeignDataWrapper,
-        ANY,
-        TableDefinition,
-        ColumnDefinition,
-    )
+    from multicorn import ANY, ColumnDefinition, ForeignDataWrapper, TableDefinition
 except ImportError:
     # Multicorn not installed (OK if we're not on the engine -- tests).
     ForeignDataWrapper = object

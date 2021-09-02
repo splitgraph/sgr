@@ -3,15 +3,17 @@ import traceback
 from collections import Callable
 from datetime import datetime as dt
 from functools import wraps
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 from psycopg2.sql import SQL, Identifier
-
 from splitgraph.core.repository import Repository
-from splitgraph.core.types import TableSchema, Changeset
+from splitgraph.core.types import Changeset, TableSchema
 from splitgraph.engine import validate_type
-from splitgraph.engine.postgres.engine import get_change_key, PostgresEngine
-from splitgraph.hooks.data_source.base import INGESTION_STATE_TABLE, INGESTION_STATE_SCHEMA
+from splitgraph.engine.postgres.engine import PostgresEngine, get_change_key
+from splitgraph.hooks.data_source.base import (
+    INGESTION_STATE_SCHEMA,
+    INGESTION_STATE_TABLE,
+)
 
 SingerConfig = Dict[str, Any]
 SingerCatalog = Dict[str, Any]

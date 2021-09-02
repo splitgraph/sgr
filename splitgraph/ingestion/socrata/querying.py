@@ -1,6 +1,6 @@
-from typing import Dict, Any, Tuple, Optional
+from typing import Any, Dict, Optional, Tuple
 
-from splitgraph.core.types import TableSchema, TableColumn
+from splitgraph.core.types import TableColumn, TableSchema
 from splitgraph.ingestion.common import dedupe_sg_schema
 
 try:

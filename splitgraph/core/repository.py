@@ -9,45 +9,55 @@ from contextlib import contextmanager
 from datetime import datetime
 from io import TextIOWrapper
 from random import getrandbits
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, Set, Sequence, cast
+from typing import (
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+    cast,
+)
 
-from psycopg2.sql import Composed
-from psycopg2.sql import SQL, Identifier
-
+from psycopg2.sql import SQL, Composed, Identifier
 from splitgraph.config import (
-    SPLITGRAPH_META_SCHEMA,
-    SPLITGRAPH_API_SCHEMA,
-    FDW_CLASS,
-    get_singleton,
     CONFIG,
+    FDW_CLASS,
+    SPLITGRAPH_API_SCHEMA,
+    SPLITGRAPH_META_SCHEMA,
+    get_singleton,
 )
 from splitgraph.core.fragment_manager import ExtraIndexInfo
 from splitgraph.core.image import Image
 from splitgraph.core.image_manager import ImageManager
-from splitgraph.core.sql import validate_import_sql, select, insert
+from splitgraph.core.sql import insert, select, validate_import_sql
 from splitgraph.core.table import Table
 from splitgraph.core.types import TableSchema
 from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import (
     CheckoutError,
-    TableNotFoundError,
     IncompleteObjectUploadError,
     RepositoryNotFoundError,
+    TableNotFoundError,
 )
+
+from ..engine import ResultShape
 from .common import (
+    aggregate_changes,
+    gather_sync_metadata,
+    get_temporary_table_id,
+    manage_audit,
     manage_audit_triggers,
     set_head,
-    manage_audit,
-    aggregate_changes,
-    slow_diff,
-    gather_sync_metadata,
     set_tags_batch,
-    get_temporary_table_id,
+    slow_diff,
 )
-from .output import pluralise
-from .engine import lookup_repository, get_engine
+from .engine import get_engine, lookup_repository
 from .object_manager import ObjectManager
-from ..engine import ResultShape
+from .output import pluralise
 
 
 class Repository:
@@ -254,7 +264,8 @@ class Repository:
             return result
         try:
             engine = get_engine(result[0])
-        except KeyError:
+        # Ignore errors if the engine doesn't exist or the params aren't in the config
+        except (KeyError, ValueError):
             logging.warning(
                 "Repository %s/%s has upstream on remote %s which doesn't exist in the config.",
                 self.namespace,
@@ -1196,13 +1207,10 @@ def _sync(
             set_head(target, None)
         else:
             # If we're overwriting, upload all objects that we're pushing metadata for
-            # (apart from objects with a different namespace -- won't be able to overwrite those).
             new_objects = target.objects.get_new_objects(list(object_meta.keys()))
 
             objects_to_push = (
-                new_objects
-                if not reupload_objects
-                else [o for o, om in object_meta.items() if om.namespace == target.namespace]
+                new_objects if not reupload_objects else [o for o, om in object_meta.items()]
             )
 
             # Transaction handling here is finicky as we don't want to hold an open transaction
@@ -1243,12 +1251,7 @@ def _sync(
                 namespace=target.namespace,
             )
 
-            # Don't register locations for objects that we overwrote (actual URLs are supposed
-            # to stay the same).
-            new_locations = [o for o in new_locations if o[0] in new_objects]
-            target.objects.register_object_locations(
-                [o for o in set(object_locations + new_locations) if o[0] in successful]
-            )
+            target.objects.register_object_locations(list(set(object_locations + new_locations)))
             source.objects.register_object_locations(new_locations)
 
             if partial_upload_failure:

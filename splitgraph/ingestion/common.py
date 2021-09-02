@@ -1,12 +1,11 @@
 from abc import abstractmethod
-from typing import Optional, Union, Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 from psycopg2.sql import SQL, Identifier
-
 from splitgraph.core.image import Image
 from splitgraph.core.repository import Repository
 from splitgraph.core.sql import POSTGRES_MAX_IDENTIFIER
-from splitgraph.core.types import TableSchema, TableColumn
+from splitgraph.core.types import TableColumn, TableSchema
 from splitgraph.engine.postgres.engine import PsycopgEngine
 from splitgraph.exceptions import CheckoutError
 

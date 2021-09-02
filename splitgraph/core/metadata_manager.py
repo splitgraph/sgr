@@ -3,15 +3,25 @@ Classes related to managing table/image/object metadata tables.
 """
 import itertools
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING, NamedTuple, cast, Sequence
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    NamedTuple,
+    Optional,
+    Sequence,
+    Tuple,
+    cast,
+)
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
-
 from splitgraph.config import SPLITGRAPH_API_SCHEMA, SPLITGRAPH_META_SCHEMA
 from splitgraph.core.types import TableSchema
 from splitgraph.engine import ResultShape
 from splitgraph.engine.postgres.engine import API_MAX_VARIADIC_ARGS, chunk
+
 from .sql import select
 
 if TYPE_CHECKING:
@@ -276,7 +286,7 @@ class MetadataManager:
         :return: List of objects and their creation times.
         """
         candidates = self.metadata_engine.run_sql(
-            SQL(
+            SQL(  # nosec
                 "SELECT object_id, created FROM {0}.objects "
                 "WHERE object_id NOT IN (SELECT unnest(object_ids) "
                 "FROM {0}.tables) "

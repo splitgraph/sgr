@@ -10,25 +10,25 @@ from threading import Thread
 from typing import Optional, cast
 
 from splitgraph.core.repository import Repository
-from splitgraph.core.types import TableParams, TableInfo, SyncState, IntrospectionResult
+from splitgraph.core.types import IntrospectionResult, SyncState, TableInfo, TableParams
 from splitgraph.exceptions import DataSourceError
 from splitgraph.hooks.data_source.base import (
+    SyncableDataSource,
     get_ingestion_state,
     prepare_new_image,
-    SyncableDataSource,
 )
 from splitgraph.ingestion.singer.common import (
-    SingerConfig,
     SingerCatalog,
+    SingerConfig,
     SingerState,
-    store_ingestion_state,
     add_timestamp_tags,
+    store_ingestion_state,
 )
 from splitgraph.ingestion.singer.db_sync import (
-    get_table_name,
-    get_sg_schema,
-    run_patched_sync,
     get_key_properties,
+    get_sg_schema,
+    get_table_name,
+    run_patched_sync,
     select_breadcrumb,
 )
 

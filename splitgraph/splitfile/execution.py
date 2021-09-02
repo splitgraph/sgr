@@ -7,14 +7,13 @@ import logging
 from hashlib import sha256
 from importlib import import_module
 from random import getrandbits
-from typing import Callable, Dict, List, Optional, cast, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, cast
 
 from parsimonious.nodes import Node
 from psycopg2.sql import SQL, Identifier
-
 from splitgraph.config import CONFIG
 from splitgraph.config.config import get_all_in_section, get_singleton
-from splitgraph.core.engine import repository_exists, lookup_repository
+from splitgraph.core.engine import lookup_repository, repository_exists
 from splitgraph.core.image import Image
 from splitgraph.core.repository import Repository, clone
 from splitgraph.core.sql import prepare_splitfile_sql, validate_import_sql
@@ -22,16 +21,17 @@ from splitgraph.engine import get_engine
 from splitgraph.engine.postgres.engine import PostgresEngine
 from splitgraph.exceptions import ImageNotFoundError, SplitfileError
 from splitgraph.hooks.mount_handlers import mount
+
+from ..core.output import Color, conn_string_to_dict, pluralise, truncate_line
+from ..core.types import ProvenanceLine
 from ._parsing import (
-    parse_commands,
+    extract_all_table_aliases,
     extract_nodes,
     get_first_or_none,
-    parse_image_spec,
-    extract_all_table_aliases,
+    parse_commands,
     parse_custom_command,
+    parse_image_spec,
 )
-from ..core.output import pluralise, truncate_line, conn_string_to_dict
-from ..core.types import ProvenanceLine
 
 
 def _combine_hashes(hashes: List[str]) -> str:
@@ -183,8 +183,6 @@ def execute_commands(
             nonlocal repo_created
             output.init()
             repo_created = True
-
-    from splitgraph.commandline.common import Color
 
     node_list = parse_commands(commands, params=params)
 

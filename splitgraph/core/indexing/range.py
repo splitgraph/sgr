@@ -1,13 +1,21 @@
 import logging
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, cast, TYPE_CHECKING
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    cast,
+)
 
-from psycopg2.sql import Composed, SQL, Composable
-from psycopg2.sql import Identifier
-
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, SPLITGRAPH_API_SCHEMA
+from psycopg2.sql import SQL, Composable, Composed, Identifier
+from splitgraph.config import SPLITGRAPH_API_SCHEMA, SPLITGRAPH_META_SCHEMA
 from splitgraph.core.common import adapt, coerce_val_to_json
 from splitgraph.core.sql import select
-from splitgraph.core.types import Quals, Changeset, TableSchema, Comparable
+from splitgraph.core.types import Changeset, Comparable, Quals, TableSchema
 from splitgraph.engine import ResultShape
 from splitgraph.engine.postgres.engine import PG_INDEXABLE_TYPES
 

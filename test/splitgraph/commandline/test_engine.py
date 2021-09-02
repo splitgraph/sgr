@@ -3,28 +3,27 @@ import os
 import shutil
 import subprocess
 from pathlib import Path, PureWindowsPath
+from test.splitgraph.conftest import SG_ENGINE_PREFIX
 from unittest.mock import Mock, patch, sentinel
 
 import docker
 import pytest
 import requests
 from click.testing import CliRunner
-from test.splitgraph.conftest import SG_ENGINE_PREFIX
-
 from splitgraph.__version__ import __version__
 from splitgraph.commandline.engine import (
-    add_engine_c,
-    list_engines_c,
-    delete_engine_c,
-    stop_engine_c,
-    start_engine_c,
-    inject_config_into_engines,
-    configure_engine_c,
-    version_engine_c,
-    upgrade_engine_c,
-    log_engine_c,
     _convert_source_path,
+    add_engine_c,
+    configure_engine_c,
+    delete_engine_c,
+    inject_config_into_engines,
     list_engines,
+    list_engines_c,
+    log_engine_c,
+    start_engine_c,
+    stop_engine_c,
+    upgrade_engine_c,
+    version_engine_c,
 )
 from splitgraph.config import CONFIG
 from splitgraph.config.config import patch_config

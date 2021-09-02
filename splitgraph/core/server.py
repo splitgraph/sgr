@@ -49,6 +49,7 @@ def upload_object(object_id: str, urls: ObjectUrls):
 
 def download_object(object_id: str, urls: ObjectUrls):
     import shutil
+
     import requests
 
     object_path = os.path.join(SG_ENGINE_OBJECT_PATH, object_id)

@@ -3,18 +3,20 @@ import os
 import shutil
 from datetime import datetime
 from decimal import Decimal
+from test.splitgraph.conftest import INGESTION_RESOURCES
 from unittest import mock
 
 import psycopg2
 import pytest
 from click.testing import CliRunner
-from test.splitgraph.conftest import INGESTION_RESOURCES
-
 from splitgraph.core.repository import Repository
 from splitgraph.core.types import TableColumn
 from splitgraph.engine import ResultShape
 from splitgraph.ingestion.singer.commandline import singer_target
-from splitgraph.ingestion.singer.data_source import GenericSingerDataSource, MySQLSingerDataSource
+from splitgraph.ingestion.singer.data_source import (
+    GenericSingerDataSource,
+    MySQLSingerDataSource,
+)
 from splitgraph.ingestion.singer.db_sync import select_breadcrumb
 
 TEST_REPO = "test/singer"

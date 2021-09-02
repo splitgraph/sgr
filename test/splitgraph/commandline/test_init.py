@@ -2,12 +2,11 @@ import os
 import subprocess
 
 from click.testing import CliRunner
-
 from splitgraph.commandline import init_c
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.engine import init_engine
 from splitgraph.core.migration import get_installed_version
-from splitgraph.engine import get_engine, ResultShape
+from splitgraph.engine import ResultShape, get_engine
 
 
 def test_init_new_db():

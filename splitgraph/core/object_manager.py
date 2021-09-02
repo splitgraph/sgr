@@ -7,38 +7,38 @@ from collections import defaultdict
 from contextlib import contextmanager
 from datetime import datetime as dt
 from typing import (
+    TYPE_CHECKING,
     Any,
+    DefaultDict,
     Dict,
     Iterator,
     List,
     Optional,
+    Sequence,
     Tuple,
     Union,
-    TYPE_CHECKING,
-    DefaultDict,
-    Sequence,
 )
 
 from psycopg2.sql import SQL, Identifier
-
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG, get_singleton
+from splitgraph.config import CONFIG, SPLITGRAPH_META_SCHEMA, get_singleton
 from splitgraph.core.fragment_manager import FragmentManager
 from splitgraph.core.types import Quals
 from splitgraph.engine import ResultShape, switch_engine
 from splitgraph.exceptions import (
-    SplitGraphError,
-    ObjectCacheError,
-    IncompleteObjectUploadError,
     IncompleteObjectDownloadError,
+    IncompleteObjectUploadError,
+    ObjectCacheError,
+    SplitGraphError,
 )
 from splitgraph.hooks.external_objects import get_external_object_handler
-from .common import META_TABLES, Tracer, CallbackList
-from .output import pretty_size, pluralise, truncate_list
-from .sql import select, insert
+
+from .common import META_TABLES, CallbackList, Tracer
+from .output import pluralise, pretty_size, truncate_list
+from .sql import insert, select
 
 if TYPE_CHECKING:
     from splitgraph.core.table import Table
-    from splitgraph.engine.postgres.engine import PsycopgEngine, PostgresEngine
+    from splitgraph.engine.postgres.engine import PostgresEngine, PsycopgEngine
 
 
 class ObjectManager(FragmentManager):
@@ -124,7 +124,7 @@ class ObjectManager(FragmentManager):
         """
         return int(
             self.object_engine.run_sql(
-                SQL(
+                SQL(  # nosec
                     "SELECT COALESCE(sum(splitgraph_api.get_object_size("
                     "quote_ident(t.table_name))), 0)"
                     " FROM information_schema.tables t"
@@ -485,7 +485,7 @@ class ObjectManager(FragmentManager):
         # subtract objects that we have locally and insert the remaining entries as new cache entries.
 
         claimed = self.object_engine.run_sql(
-            SQL(
+            SQL(  # nosec
                 "UPDATE {}.object_cache_status SET refcount = refcount + 1, "
                 "last_used = %s WHERE object_id IN ("
             ).format(Identifier(SPLITGRAPH_META_SCHEMA))
@@ -518,7 +518,7 @@ class ObjectManager(FragmentManager):
     def _set_ready_flags(self, objects: List[str], is_ready: bool = True) -> None:
         if objects:
             self.object_engine.run_sql(
-                SQL(
+                SQL(  # nosec
                     "UPDATE {0}.object_cache_status SET ready = %s WHERE object_id IN ("
                     + ",".join(itertools.repeat("%s", len(objects)))
                     + ")"
@@ -530,7 +530,7 @@ class ObjectManager(FragmentManager):
         """Decreases objects' refcounts."""
         if objects:
             self.object_engine.run_sql(
-                SQL(
+                SQL(  # nosec
                     "UPDATE {}.{} SET refcount = refcount - 1 WHERE object_id IN ("
                     + ",".join(itertools.repeat("%s", len(objects)))
                     + ")"
@@ -679,7 +679,7 @@ class ObjectManager(FragmentManager):
         if not to_delete:
             return
         self.object_engine.run_sql(
-            SQL(
+            SQL(  # nosec
                 "DELETE FROM {}.{} WHERE object_id IN ("
                 + ",".join(itertools.repeat("%s", len(to_delete)))
                 + ")"

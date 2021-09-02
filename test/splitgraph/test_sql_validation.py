@@ -1,6 +1,9 @@
 import pytest
-
-from splitgraph.core.sql import prepare_splitfile_sql, validate_import_sql, _rewrite_sql_fallback
+from splitgraph.core.sql import (
+    _rewrite_sql_fallback,
+    prepare_splitfile_sql,
+    validate_import_sql,
+)
 from splitgraph.exceptions import UnsupportedSQLError
 
 

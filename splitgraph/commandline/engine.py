@@ -2,39 +2,18 @@ import logging
 import os
 import platform
 from pathlib import Path, PureWindowsPath
-from typing import Dict, Any, cast, Optional
+from typing import Any, Dict, Optional, cast
 from urllib.parse import urlparse
 
 import click
-from tqdm import tqdm
-
 from splitgraph.__version__ import __version__
 from splitgraph.config import CONFIG, SG_CMD_ASCII, get_singleton
+from splitgraph.config.management import patch_and_save_config
 from splitgraph.exceptions import DockerUnavailableError, EngineSetupError
-from splitgraph.utils.docker import get_docker_client, copy_to_container
+from splitgraph.utils.docker import copy_to_container, get_docker_client
+from tqdm import tqdm
 
 DEFAULT_ENGINE = "default"
-
-
-def patch_and_save_config(config, patch):
-    from splitgraph.config.config import patch_config
-    from splitgraph.config.system_config import HOME_SUB_DIR
-    from splitgraph.config.export import overwrite_config
-    from pathlib import Path
-    import os
-
-    config_path = config["SG_CONFIG_FILE"]
-    if not config_path:
-        # Default to creating a config in the user's homedir rather than local.
-        config_dir = Path(os.environ["HOME"]) / Path(HOME_SUB_DIR)
-        config_path = config_dir / Path(".sgconfig")
-        logging.debug("No config file detected, creating one at %s" % config_path)
-        config_dir.mkdir(exist_ok=True, parents=True)
-    else:
-        logging.debug("Updating the existing config file at %s" % config_path)
-    new_config = patch_config(config, patch)
-    overwrite_config(new_config, config_path)
-    return str(config_path)
 
 
 def inject_config_into_engines(engine_prefix, config_path):
@@ -233,10 +212,10 @@ def add_engine_c(
     its data and metadata volumes will have names `splitgraph_engine_default_data` and
     `splitgraph_engine_default_metadata`.
     """
-    from splitgraph.engine.postgres.engine import PostgresEngine
-    from splitgraph.config import CONFIG
-    from docker.types import Mount
     import docker
+    from docker.types import Mount
+    from splitgraph.config import CONFIG
+    from splitgraph.engine.postgres.engine import PostgresEngine
 
     client = get_docker_client()
 
@@ -297,6 +276,7 @@ def add_engine_c(
             raise EngineSetupError(
                 f"Docker container with Splitgraph engine {container_name} already exists. Delete it with docker rm -f {container_name}.",
             ) from e
+        raise
 
     click.echo("Container created, ID %s" % container.short_id)
 

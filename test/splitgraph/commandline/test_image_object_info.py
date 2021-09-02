@@ -1,19 +1,18 @@
 from datetime import datetime
+from test.splitgraph.conftest import OUTPUT
 from unittest import mock
 
 from click.testing import CliRunner
-from test.splitgraph.conftest import OUTPUT
-
 from splitgraph.commandline import (
-    status_c,
-    sql_c,
-    diff_c,
     commit_c,
+    diff_c,
     log_c,
-    show_c,
-    table_c,
     object_c,
     objects_c,
+    show_c,
+    sql_c,
+    status_c,
+    table_c,
 )
 from splitgraph.core.metadata_manager import OBJECT_COLS
 from splitgraph.core.repository import Repository

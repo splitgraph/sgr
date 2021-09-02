@@ -10,13 +10,22 @@ import threading
 from abc import ABC
 from contextlib import contextmanager
 from enum import Enum
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, TYPE_CHECKING, cast, Sequence
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+    cast,
+)
 
-from psycopg2.sql import Composed
-from psycopg2.sql import SQL, Identifier
-
+from psycopg2.sql import SQL, Composed, Identifier
 from splitgraph.config import CONFIG
-from splitgraph.config.config import get_singleton, ConfigDict, get_all_in_section
+from splitgraph.config.config import ConfigDict, get_all_in_section, get_singleton
 from splitgraph.core.types import TableColumn, TableSchema
 
 if TYPE_CHECKING:

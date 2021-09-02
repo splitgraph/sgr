@@ -7,39 +7,53 @@ import time
 import warnings
 from functools import wraps
 from json import JSONDecodeError
-from typing import Callable, List, Union, Tuple, cast, Optional, Dict, Any, Type, TypeVar
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+    cast,
+)
 
 import requests
 from pydantic import BaseModel
 from requests import HTTPError
 from requests.models import Response
-
 from splitgraph.__version__ import __version__
 from splitgraph.cloud.models import (
+    AddExternalCredentialRequest,
+    AddExternalRepositoriesRequest,
+    AddExternalRepositoryRequest,
     Credential,
-    Metadata,
-    MetadataResponse,
     External,
     ExternalResponse,
-    make_repositories,
-    Repository,
     ListExternalCredentialsResponse,
+    Metadata,
+    MetadataResponse,
+    Repository,
     UpdateExternalCredentialRequest,
-    AddExternalCredentialRequest,
     UpdateExternalCredentialResponse,
-    AddExternalRepositoryRequest,
-    AddExternalRepositoriesRequest,
+    make_repositories,
 )
-from splitgraph.commandline.engine import patch_and_save_config
-from splitgraph.config import create_config_dict, get_singleton, CONFIG
-from splitgraph.config.config import get_from_subsection, set_in_subsection, get_all_in_subsection
+from splitgraph.config import CONFIG, create_config_dict, get_singleton
+from splitgraph.config.config import (
+    get_all_in_subsection,
+    get_from_subsection,
+    set_in_subsection,
+)
 from splitgraph.config.export import overwrite_config
+from splitgraph.config.management import patch_and_save_config
 from splitgraph.exceptions import (
     AuthAPIError,
     GQLAPIError,
-    GQLUnauthorizedError,
-    GQLUnauthenticatedError,
     GQLRepoDoesntExistError,
+    GQLUnauthenticatedError,
+    GQLUnauthorizedError,
 )
 
 

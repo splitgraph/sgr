@@ -3,14 +3,19 @@ import os
 import types
 from copy import deepcopy
 from importlib import import_module
-from typing import Dict, Type, List, Optional, cast, Any
+from typing import Any, Dict, List, Optional, Type, cast
 
-from .base import DataSource
-from .fdw import PostgreSQLDataSource, MongoDataSource, ElasticSearchDataSource, MySQLDataSource
 from ...config import CONFIG, get_singleton
 from ...config.config import get_all_in_section
 from ...config.keys import DEFAULTS
 from ...exceptions import DataSourceError
+from .base import DataSource
+from .fdw import (
+    ElasticSearchDataSource,
+    MongoDataSource,
+    MySQLDataSource,
+    PostgreSQLDataSource,
+)
 
 _DATA_SOURCES: Dict[str, Type[DataSource]] = {}
 _data_sources_registered = False

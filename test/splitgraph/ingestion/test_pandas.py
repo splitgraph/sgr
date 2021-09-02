@@ -3,7 +3,6 @@ from datetime import datetime as dt
 from io import StringIO
 
 import pytest
-
 from splitgraph.core.types import TableColumn
 
 try:
@@ -12,7 +11,7 @@ except ImportError:
     # If Pandas isn't installed, pytest will skip these tests
     # (see pytest.importorskip).
     pass
-from test.splitgraph.conftest import load_csv, INGESTION_RESOURCES_CSV
+from test.splitgraph.conftest import INGESTION_RESOURCES_CSV, load_csv
 
 pd = pytest.importorskip("pandas")
 assert_frame_equal = pytest.importorskip("pandas.util.testing").assert_frame_equal

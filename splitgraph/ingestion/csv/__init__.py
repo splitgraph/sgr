@@ -1,12 +1,14 @@
 import json
 from copy import deepcopy
 from datetime import timedelta
-from typing import Optional, TYPE_CHECKING, Dict, List, Tuple, Any
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from psycopg2.sql import SQL, Identifier
-
-from splitgraph.core.types import TableInfo, MountError, Credentials
-from splitgraph.hooks.data_source.fdw import ForeignDataWrapperDataSource, import_foreign_schema
+from splitgraph.core.types import Credentials, MountError, TableInfo
+from splitgraph.hooks.data_source.fdw import (
+    ForeignDataWrapperDataSource,
+    import_foreign_schema,
+)
 from splitgraph.ingestion.common import IngestionAdapter, build_commandline_help
 
 if TYPE_CHECKING:

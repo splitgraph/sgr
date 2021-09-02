@@ -2,18 +2,17 @@ import json
 import logging
 import time
 from datetime import datetime as dt
+from test.splitgraph.conftest import OUTPUT, _assert_cache_occupancy, prepare_lq_repo
 from unittest import mock
 from unittest.mock import call
 
 import pytest
-from test.splitgraph.conftest import _assert_cache_occupancy, OUTPUT, prepare_lq_repo
-
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
+from splitgraph.config import CONFIG, SPLITGRAPH_META_SCHEMA
 from splitgraph.core.common import META_TABLES
 from splitgraph.core.fragment_manager import get_chunk_groups
 from splitgraph.core.indexing.range import extract_min_max_pks
 from splitgraph.core.object_manager import ObjectManager
-from splitgraph.core.repository import clone, Repository
+from splitgraph.core.repository import Repository, clone
 from splitgraph.core.table import _generate_select_query
 from splitgraph.engine import ResultShape, _prepare_engine_config
 from splitgraph.engine.postgres.engine import PostgresEngine

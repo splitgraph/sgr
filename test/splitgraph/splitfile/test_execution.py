@@ -1,19 +1,18 @@
 import datetime
 import os
-
-import pytest
 from test.splitgraph.conftest import OUTPUT, RESOURCES, load_splitfile, prepare_lq_repo
 
+import pytest
 from splitgraph.core.engine import get_current_repositories
-from splitgraph.core.repository import clone, Repository
+from splitgraph.core.repository import Repository, clone
 from splitgraph.exceptions import SplitfileError
 from splitgraph.splitfile._parsing import (
-    preprocess,
-    parse_commands,
+    extract_all_table_aliases,
     extract_nodes,
     get_first_or_none,
+    parse_commands,
     parse_image_spec,
-    extract_all_table_aliases,
+    preprocess,
 )
 from splitgraph.splitfile.execution import execute_commands
 

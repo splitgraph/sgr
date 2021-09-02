@@ -5,22 +5,18 @@ import docker
 import docker.errors
 import pytest
 from minio.deleteobjects import DeleteObject
-from psycopg2.sql import Identifier, SQL
-
-from splitgraph.utils.docker import copy_to_container
-from splitgraph.config import SPLITGRAPH_META_SCHEMA, CONFIG
+from psycopg2.sql import SQL, Identifier
+from splitgraph.config import CONFIG, SPLITGRAPH_META_SCHEMA
 from splitgraph.core.common import META_TABLES
 from splitgraph.core.engine import get_current_repositories
 from splitgraph.core.object_manager import ObjectManager
-from splitgraph.core.registry import (
-    setup_registry_mode,
-    set_info_key,
-)
+from splitgraph.core.registry import set_info_key, setup_registry_mode
 from splitgraph.core.repository import Repository, clone
 from splitgraph.core.types import TableColumn
-from splitgraph.engine import get_engine, ResultShape, switch_engine
+from splitgraph.engine import ResultShape, get_engine, switch_engine
 from splitgraph.hooks.mount_handlers import mount
 from splitgraph.hooks.s3_server import MINIO, S3_BUCKET
+from splitgraph.utils.docker import copy_to_container
 
 # Clear out the logging root handler that was installed by click_log
 for handler in logging.root.handlers[:]:
@@ -276,8 +272,9 @@ def global_fs(request):
     # So we initialize pyfakefs only once and reset the filesystem
     # (a cheap operation) after every test instead.
 
-    from pyfakefs.fake_filesystem_unittest import Patcher
     import tokenize
+
+    from pyfakefs.fake_filesystem_unittest import Patcher
 
     patcher = Patcher()
     patcher.setUp()

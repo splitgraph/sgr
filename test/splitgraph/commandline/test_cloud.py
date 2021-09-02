@@ -1,47 +1,42 @@
 import json
 import os
 from contextlib import contextmanager
+from test.splitgraph.commandline.http_fixtures import (
+    ACCESS_TOKEN,
+    API_KEY,
+    API_SECRET,
+    AUTH_ENDPOINT,
+    REFRESH_TOKEN,
+    REMOTE,
+    REMOTE_CONFIG,
+    access_token,
+    create_credentials,
+    refresh_token,
+    register_user,
+    tos,
+)
 from typing import Optional
-from unittest.mock import patch, PropertyMock, call, Mock
+from unittest.mock import Mock, PropertyMock, call, patch
 
 import httpretty
 import pytest
 from click.testing import CliRunner
 from httpretty.core import HTTPrettyRequest
-from test.splitgraph.commandline.http_fixtures import (
-    ACCESS_TOKEN,
-    REMOTE,
-    AUTH_ENDPOINT,
-    REFRESH_TOKEN,
-    API_KEY,
-    API_SECRET,
-    REMOTE_CONFIG,
-    register_user,
-    refresh_token,
-    access_token,
-    create_credentials,
-    tos,
-)
-
 from splitgraph.__version__ import __version__
 from splitgraph.commandline import cli
 from splitgraph.commandline.cloud import (
-    register_c,
-    login_c,
+    add_c,
     curl_c,
     login_api_c,
+    login_c,
+    register_c,
     sql_c,
-    add_c,
 )
 from splitgraph.config import create_config_dict
 from splitgraph.config.config import patch_config
-from splitgraph.config.config_file_config import (
-    get_config_dict_from_config_file,
-)
+from splitgraph.config.config_file_config import get_config_dict_from_config_file
 from splitgraph.config.keys import DEFAULTS
-from splitgraph.exceptions import (
-    AuthAPIError,
-)
+from splitgraph.exceptions import AuthAPIError
 
 
 @httpretty.activate(allow_net_connect=False)
@@ -62,13 +57,12 @@ def test_commandline_registration_normal():
 
     runner = CliRunner()
 
-    with patch("splitgraph.config.export.overwrite_config"), patch(
-        "splitgraph.config.config.patch_config"
-    ) as pc, patch("splitgraph.config.CONFIG", source_config), patch(
-        "splitgraph.cloud.create_config_dict", return_value=source_config
-    ), patch(
+    with patch("splitgraph.commandline.cloud.patch_and_save_config") as pc, patch(
+        "splitgraph.config.CONFIG", source_config
+    ), patch("splitgraph.cloud.create_config_dict", return_value=source_config), patch(
         "splitgraph.commandline.cloud.inject_config_into_engines"
     ) as ic:
+        pc.return_value = source_config["SG_CONFIG_FILE"]
         # First don't agree to ToS, then agree
         args = [
             "--username",
@@ -147,11 +141,11 @@ def test_commandline_registration_user_error():
 
 @contextmanager
 def _patch_login_funcs(source_config):
-    with patch("splitgraph.config.export.overwrite_config"):
-        with patch("splitgraph.config.config.patch_config") as pc:
-            with patch("splitgraph.commandline.cloud.inject_config_into_engines") as ic:
-                with patch("splitgraph.config.CONFIG", source_config):
-                    yield pc, ic
+    with patch("splitgraph.commandline.cloud.patch_and_save_config") as pc:
+        with patch("splitgraph.commandline.cloud.inject_config_into_engines") as ic:
+            with patch("splitgraph.config.CONFIG", source_config):
+                pc.return_value = source_config["SG_CONFIG_FILE"]
+                yield pc, ic
 
 
 @contextmanager

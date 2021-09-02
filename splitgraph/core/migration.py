@@ -2,12 +2,20 @@ import logging
 import re
 from collections import defaultdict
 from datetime import datetime
-from typing import Optional, Tuple, cast, TYPE_CHECKING, List, TypeVar, Dict, DefaultDict
+from typing import (
+    TYPE_CHECKING,
+    DefaultDict,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    cast,
+)
 
 from packaging.version import Version
 from psycopg2.sql import SQL, Identifier
-
-from splitgraph.core.sql import select, insert
+from splitgraph.core.sql import insert, select
 from splitgraph.engine import ResultShape
 
 if TYPE_CHECKING:

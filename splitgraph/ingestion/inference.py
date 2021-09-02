@@ -1,8 +1,8 @@
 import json
-from typing import Dict, Optional, List, Tuple, Sequence, Callable
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
-from splitgraph.core.output import parse_dt, parse_date, parse_time
-from splitgraph.core.types import TableSchema, TableColumn
+from splitgraph.core.output import parse_date, parse_dt, parse_time
+from splitgraph.core.types import TableColumn, TableSchema
 
 
 def parse_boolean(boolean: str):

@@ -1,13 +1,13 @@
 import logging
 import os
 import socket
+import subprocess
 from contextlib import contextmanager
-from typing import List, Tuple, Any
+from typing import Any, List, Tuple
 
 import docker.errors
 from docker import DockerClient
 from docker.models.containers import Container
-
 from splitgraph.exceptions import SplitGraphError
 from splitgraph.utils.docker import copy_to_container
 
@@ -80,7 +80,8 @@ def detect_network_mode(client: DockerClient) -> str:
     # This also applies in case we're running a source against a database that's also running
     # in Docker -- we want to mimic sgr too.
     if os.path.exists("/.dockerenv"):
-        our_container_id = client.containers.get(socket.gethostname()).id
+        with open("/proc/1/cpuset", "r") as f:
+            our_container_id = os.path.basename(f.read().strip())
         return f"container:{our_container_id}"
     else:
         return "host"

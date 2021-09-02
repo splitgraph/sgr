@@ -1,18 +1,20 @@
+from test.splitgraph.conftest import PG_MNT
 from unittest.mock import patch
 
 import pytest
-from test.splitgraph.conftest import PG_MNT
-
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.repository import clone
 from splitgraph.engine import ResultShape
-from splitgraph.exceptions import IncompleteObjectUploadError, IncompleteObjectDownloadError
+from splitgraph.exceptions import (
+    IncompleteObjectDownloadError,
+    IncompleteObjectUploadError,
+)
 from splitgraph.hooks.s3 import S3ExternalObjectHandler
 from splitgraph.hooks.s3_server import (
-    get_object_upload_urls,
-    get_object_download_urls,
     S3_HOST,
     S3_PORT,
+    get_object_download_urls,
+    get_object_upload_urls,
 )
 
 

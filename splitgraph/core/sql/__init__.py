@@ -1,15 +1,14 @@
 """Routines for managing SQL statements"""
 import logging
 import re
-from typing import Callable, Dict, List, Union, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
-from psycopg2.sql import Composed, SQL, Identifier
-
+from psycopg2.sql import SQL, Composed, Identifier
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.sql._validation import (
     IMPORT_SQL_PERMITTED_STATEMENTS,
-    SPLITFILE_SQL_PERMITTED_STATEMENTS,
     PG_CATALOG_TABLES,
+    SPLITFILE_SQL_PERMITTED_STATEMENTS,
 )
 
 try:

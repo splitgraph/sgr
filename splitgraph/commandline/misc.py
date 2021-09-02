@@ -10,13 +10,13 @@ import subprocess
 import sys
 import uuid
 from pathlib import Path
-from typing import Tuple, Optional
+from typing import Optional, Tuple
 
 import click
 from packaging.version import Version
-
 from splitgraph.__version__ import __version__
 from splitgraph.exceptions import CheckoutError
+
 from .common import ImageType, RepositoryType, remote_switch_option
 from .engine import list_engines
 
@@ -61,9 +61,9 @@ def rm_c(image_spec, yes):
     Note this will not delete images that import tables from the deleted images via Splitfiles or indeed the
     physical objects containing the actual tables.
     """
+    from splitgraph.core.engine import repository_exists
     from splitgraph.core.repository import Repository
     from splitgraph.engine import get_engine
-    from splitgraph.core.engine import repository_exists
 
     engine = get_engine()
 
@@ -201,6 +201,7 @@ def cleanup_c():
     """
     from splitgraph.core.object_manager import ObjectManager
     from splitgraph.engine import get_engine
+
     from ..core.output import pluralise
 
     deleted = ObjectManager(get_engine()).cleanup()
@@ -256,8 +257,8 @@ def config_c(no_shielding, config_format, conn_string):
     ```
     """
 
-    from splitgraph.config.export import serialize_config
     from splitgraph.config import CONFIG
+    from splitgraph.config.export import serialize_config
     from splitgraph.engine import get_engine
     from splitgraph.engine.postgres.engine import get_conn_str
 
@@ -286,9 +287,9 @@ def dump_c(repository, exclude_object_contents):
 def _eval(command, args):
     # appease PyCharm
     # noinspection PyUnresolvedReferences
+    from splitgraph.core.object_manager import ObjectManager
     from splitgraph.core.repository import Repository
     from splitgraph.engine import get_engine
-    from splitgraph.core.object_manager import ObjectManager
 
     engine = get_engine()
     object_manager = ObjectManager(object_engine=engine, metadata_engine=engine)
@@ -296,7 +297,9 @@ def _eval(command, args):
     command_locals = locals().copy()
     command_locals.update({k: v for k, v in args})
 
-    exec(command, globals(), command_locals)
+    # The whole point of this function is to unsafely run Python code from the cmdline,
+    # so silence the Bandit warning.
+    exec(command, globals(), command_locals)  # nosec
 
 
 @click.command(name="eval")
@@ -401,9 +404,9 @@ def upgrade_c(skip_engine_upgrade, path, force, version):
     by `sgr engine`.
     """
     import requests
-    from tqdm import tqdm
-    from splitgraph.config import CONFIG, SG_CMD_ASCII
     from splitgraph.cloud import get_headers
+    from splitgraph.config import CONFIG, SG_CMD_ASCII
+    from tqdm import tqdm
 
     # Detect if we're running from a Pyinstaller binary
     if not hasattr(sys, "frozen") and not force and not path:

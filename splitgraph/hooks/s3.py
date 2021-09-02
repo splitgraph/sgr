@@ -3,14 +3,16 @@ Plugin for uploading Splitgraph objects from the cache to an external S3-like ob
 """
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Tuple
 
-from tqdm import tqdm
-
-from splitgraph.config import CONFIG, get_singleton, SG_CMD_ASCII
-from splitgraph.engine import get_engine, ResultShape
-from splitgraph.exceptions import IncompleteObjectUploadError, IncompleteObjectDownloadError
+from splitgraph.config import CONFIG, SG_CMD_ASCII, get_singleton
+from splitgraph.engine import ResultShape, get_engine
+from splitgraph.exceptions import (
+    IncompleteObjectDownloadError,
+    IncompleteObjectUploadError,
+)
 from splitgraph.hooks.external_objects import ExternalObjectHandler
+from tqdm import tqdm
 
 if TYPE_CHECKING:
     from splitgraph.engine.postgres.engine import PsycopgEngine

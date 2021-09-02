@@ -5,32 +5,32 @@ from contextlib import contextmanager
 from datetime import datetime
 from random import getrandbits
 from typing import (
+    TYPE_CHECKING,
     Dict,
     Iterator,
     List,
+    NamedTuple,
     Optional,
     Tuple,
-    TYPE_CHECKING,
-    NamedTuple,
     cast,
 )
 
 from psycopg2.extras import Json
 from psycopg2.sql import SQL, Identifier
-
 from splitgraph.config import (
-    SPLITGRAPH_META_SCHEMA,
-    SPLITGRAPH_API_SCHEMA,
-    FDW_CLASS,
-    get_singleton,
     CONFIG,
+    FDW_CLASS,
+    SPLITGRAPH_API_SCHEMA,
+    SPLITGRAPH_META_SCHEMA,
+    get_singleton,
 )
 from splitgraph.engine import ResultShape
 from splitgraph.exceptions import SplitGraphError, TableNotFoundError
-from .common import set_tag, manage_audit, set_head
-from .sql import select, prepare_splitfile_sql, POSTGRES_MAX_IDENTIFIER
+
+from .common import manage_audit, set_head, set_tag
+from .sql import POSTGRES_MAX_IDENTIFIER, prepare_splitfile_sql, select
 from .table import Table
-from .types import TableColumn, ProvenanceLine
+from .types import ProvenanceLine, TableColumn
 
 if TYPE_CHECKING:
     from .repository import Repository

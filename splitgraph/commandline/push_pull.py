@@ -6,8 +6,7 @@ import sys
 from typing import Optional
 
 import click
-
-from splitgraph.commandline.common import RepositoryType, ImageType, JsonType
+from splitgraph.commandline.common import ImageType, JsonType, RepositoryType
 from splitgraph.config import CONFIG, REMOTES
 from splitgraph.config.config import get_from_subsection
 
@@ -67,9 +66,8 @@ def clone_c(
     The lookup path for the repository is governed by the ``SG_REPO_LOOKUP`` and ``SG_REPO_LOOKUP_OVERRIDE``
     config parameters and can be overridden by the command line ``--remote`` option.
     """
-    from splitgraph.core.repository import Repository
+    from splitgraph.core.repository import Repository, clone
     from splitgraph.engine import get_engine
-    from splitgraph.core.repository import clone
 
     remote_repository, image = remote_repository_or_image
 

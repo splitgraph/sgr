@@ -1,21 +1,18 @@
 """
 Various common functions used by the command line interface.
 """
-import io
 import json
-import os
 from functools import wraps
-from typing import Optional, Tuple, TYPE_CHECKING, Union, List, Any
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 
 import click
 from click.core import Context, Parameter
-
 from splitgraph.config import REMOTES
 from splitgraph.exceptions import RepositoryNotFoundError
 
 if TYPE_CHECKING:
-    from splitgraph.core.repository import Repository
     from splitgraph.core.image import Image
+    from splitgraph.core.repository import Repository
 
 
 class ImageType(click.ParamType):
@@ -106,23 +103,6 @@ class JsonType(click.ParamType):
         return load_json_param(value, param, ctx)
 
 
-class Color:
-    """
-    An enumeration of console colors
-    """
-
-    PURPLE = "\033[95m"
-    CYAN = "\033[96m"
-    DARKCYAN = "\033[36m"
-    BLUE = "\033[94m"
-    GREEN = "\033[92m"
-    YELLOW = "\033[93m"
-    RED = "\033[91m"
-    BOLD = "\033[1m"
-    UNDERLINE = "\033[4m"
-    END = "\033[0m"
-
-
 def remote_switch_option(*names, **kwargs):
     """
     Adds an option to switch global SG_ENGINE for this invocation of sgr.
@@ -188,6 +168,7 @@ def remote_switch_option(*names, **kwargs):
 def sql_results_to_str(results: List[Tuple[Any]], use_json: bool = False) -> str:
     if use_json:
         import json
+
         from splitgraph.core.common import coerce_val_to_json
 
         return json.dumps(coerce_val_to_json(results))
@@ -207,54 +188,3 @@ def emit_sql_results(results, use_json=False, show_all=False):
             click.echo("...")
     else:
         click.echo(sql_results_to_str(results, use_json))
-
-
-class ResettableStream(io.RawIOBase):
-    """Stream that supports reading from the underlying stream and resetting the position once.
-
-    We can't use fseek() in this case, since we might be reading from a pipe. So, we operate
-    this stream in two modes. In the first mode, we mirror all reads into a separate buffer
-    (consuming the input stream). After the user calls reset(), we first output data from the
-    mirrored copy, then continue consuming the input stream (simulating seek(0).
-    """
-
-    def __init__(self, stream):
-        self._stream = stream
-        self._buffer: Optional[io.BytesIO] = io.BytesIO()
-        self._is_reset = False
-
-    def reset(self):
-        if self._is_reset:
-            raise ValueError("Stream can only be reset once!")
-        self._is_reset = True
-
-    def readable(self):
-        return True
-
-    def _append_to_buf(self, contents):
-        assert self._buffer
-        oldpos = self._buffer.tell()
-        self._buffer.seek(0, os.SEEK_END)
-        self._buffer.write(contents)
-        self._buffer.seek(oldpos)
-
-    def readinto(self, b):
-        buffer_length = len(b)
-        contents = b""
-        if self._is_reset and self._buffer:
-            assert self._buffer
-            # Try reading from the buffer, if it's not exhausted
-            contents = self._buffer.read(buffer_length)
-            if len(contents) == 0:
-                self._buffer = None
-
-        if not contents:
-            # Read from the underlying stream
-            contents = self._stream.read(buffer_length)
-
-        # If we haven't reset yet, mirror the contents into the buffer
-        if not self._is_reset:
-            self._append_to_buf(contents)
-
-        b[: len(contents)] = contents
-        return len(contents)
