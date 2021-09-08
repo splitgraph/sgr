@@ -69,7 +69,7 @@ def _validate_node(
         node_validators[node_class](node)
     elif node_class.endswith("Stmt") and node_class not in permitted_statements:
         message = "Unsupported statement type %s" % node_class
-        if node.ast_node.location:
+        if "location" in node.attribute_names and node.ast_node.location:
             message += " near character %d" % node.ast_node.location
         raise UnsupportedSQLError(message + "!")
 
