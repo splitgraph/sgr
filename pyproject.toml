@@ -14,9 +14,9 @@ click = "^7"
 psycopg2-binary = "^2"
 parsimonious = "^0.8"
 minio = ">=4"
-pglast = {version = "==1.17", markers = 'sys_platform != "win32"'}
+pglast = {version = "==3.4", markers = 'sys_platform != "win32"'}
 requests = ">=2.22"
-docker = ">=4.0,<=5.0.0"
+docker = ">=5.0.2"
 click_log = ">=0.3.2"
 tqdm = ">=4.46.0"
 packaging = ">=20.1"

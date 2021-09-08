@@ -15,7 +15,7 @@ try:
     from pglast import parse_sql
     from pglast.node import Node, Scalar
     from pglast.parser import ParseError
-    from pglast.printer import IndentedStream
+    from pglast.stream import IndentedStream
 
     _VALIDATION_SUPPORTED = True
 except ImportError:
@@ -28,10 +28,10 @@ POSTGRES_MAX_IDENTIFIER = 63
 
 
 def _validate_range_var(node: "Node") -> None:
-    if "schemaname" in node.attribute_names:
+    if node.ast_node.schemaname:
         raise UnsupportedSQLError("Table names must not be schema-qualified!")
-    if node["relname"].value in PG_CATALOG_TABLES:
-        raise UnsupportedSQLError("Invalid table name %s!" % node["relname"].value)
+    if node.ast_node.relname in PG_CATALOG_TABLES:
+        raise UnsupportedSQLError("Invalid table name %s!" % node.ast_node.relname)
 
 
 def _validate_funccall(node: "Node"):
@@ -69,8 +69,8 @@ def _validate_node(
         node_validators[node_class](node)
     elif node_class.endswith("Stmt") and node_class not in permitted_statements:
         message = "Unsupported statement type %s" % node_class
-        if isinstance(node["location"], Scalar):
-            message += " near character %d" % node["location"].value
+        if "location" in node.attribute_names and node.ast_node.location:
+            message += " near character %d" % node.ast_node.location
         raise UnsupportedSQLError(message + "!")
 
 
@@ -180,25 +180,27 @@ def prepare_splitfile_sql(sql: str, image_mapper: Callable) -> Tuple[str, str]:
         if not isinstance(node, Node) or node.node_tag != "RangeVar":
             continue
 
-        if node["relname"].value in PG_CATALOG_TABLES:
-            raise UnsupportedSQLError("Invalid table name %s!" % node["relname"].value)
-        if "schemaname" not in node.attribute_names:
+        ast_node = node.ast_node
+
+        if ast_node.relname in PG_CATALOG_TABLES:
+            raise UnsupportedSQLError("Invalid table name %s!" % ast_node.relname)
+        if not ast_node.schemaname:
             continue
 
-        schema_name = recover_original_schema_name(sql, node["schemaname"].value)
+        schema_name = recover_original_schema_name(sql, ast_node.schemaname)
 
         # If the table name is schema-qualified, rewrite it to talk to a LQ shim
         repo, hash_or_tag = parse_repo_tag_or_hash(schema_name, default="latest")
         temporary_schema, canonical_name = image_mapper(repo, hash_or_tag)
 
         # We have to access the internal parse tree here to rewrite the schema.
-        node._parse_tree["schemaname"] = temporary_schema
-        future_rewrites.append((node._parse_tree, canonical_name))
+        ast_node.schemaname = temporary_schema
+        future_rewrites.append((ast_node, canonical_name))
 
     rewritten_sql = _emit_ast(tree)
 
     for tree_subset, canonical_name in future_rewrites:
-        tree_subset["schemaname"] = canonical_name
+        tree_subset.schemaname = canonical_name
 
     canonical_sql = _emit_ast(tree)
     return rewritten_sql, canonical_sql
