@@ -20,7 +20,7 @@ from splitgraph.engine import ResultShape
 
 if TYPE_CHECKING:
     from splitgraph.core.repository import Repository
-    from splitgraph.engine.postgres.engine import PostgresEngine
+    from splitgraph.engine.postgres.engine import PsycopgEngine
 
 INGESTION_STATE_TABLE = "_sg_ingestion_state"
 INGESTION_STATE_SCHEMA = [
@@ -50,7 +50,7 @@ class DataSource(ABC):
 
     def __init__(
         self,
-        engine: "PostgresEngine",
+        engine: "PsycopgEngine",
         credentials: Credentials,
         params: Params,
         tables: Optional[TableInfo] = None,
