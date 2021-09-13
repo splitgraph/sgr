@@ -22,7 +22,7 @@ from splitgraph.exceptions import DataSourceError, get_exception_name
 from splitgraph.hooks.data_source.base import LoadableDataSource, MountableDataSource
 
 if TYPE_CHECKING:
-    from splitgraph.engine.postgres.engine import PostgresEngine
+    from splitgraph.engine.postgres.engine import PsycopgEngine
 
 
 class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC):
@@ -295,7 +295,7 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
 
 
 def init_fdw(
-    engine: "PostgresEngine",
+    engine: "PsycopgEngine",
     server_id: str,
     wrapper: str,
     server_options: Optional[Mapping[str, Optional[str]]] = None,
@@ -348,7 +348,7 @@ def _format_options(option_names):
 
 
 def import_foreign_schema(
-    engine: "PostgresEngine",
+    engine: "PsycopgEngine",
     mountpoint: str,
     remote_schema: str,
     server_id: str,
