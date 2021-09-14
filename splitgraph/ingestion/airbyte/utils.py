@@ -219,6 +219,13 @@ def select_streams(
             primary_key_overrides,
         )
 
+        # Fix for a weird bug in the file source where the JSONSchema
+        # contains "properties" inside of a "properties" object for some reason.
+        if "properties" in stream.json_schema["properties"] and isinstance(
+            stream.json_schema["properties"]["properties"], dict
+        ):
+            stream.json_schema["properties"] = stream.json_schema["properties"]["properties"]
+
         sync_configured = False
         if sync:
             if (
