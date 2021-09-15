@@ -589,7 +589,7 @@ class RESTAPIClient:
             verify=self.verify,
             data=request.json(by_alias=True, exclude_unset=True) if request else None,
         )
-        logging.debug(response.json())
+        logging.debug(response.text)
         response.raise_for_status()
 
         if response_class:

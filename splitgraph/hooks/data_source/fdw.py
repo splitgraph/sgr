@@ -287,7 +287,10 @@ class ForeignDataWrapperDataSource(MountableDataSource, LoadableDataSource, ABC)
                     self.engine.copy_table(tmp_schema, t, schema, t)
                     self.engine.commit()
                 except psycopg2.DatabaseError as e:
-                    logging.warning("Error ingesting table %s", t, exc_info=e)
+                    logging.exception("Error ingesting table %s", t, exc_info=e)
+                    raise DataSourceError(
+                        "Error ingesting table %s: %s: %s" % (t, get_exception_name(e), e)
+                    )
         finally:
             self.engine.rollback()
             self.engine.delete_schema(tmp_schema)
