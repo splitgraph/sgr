@@ -260,6 +260,7 @@ def example(skip, no_pause, dump_asciinema, dump_screens, asciinema_width, ascii
                 output.print()
 
         env = os.environ.copy()
+        env.update(block.get("env", {}))
         for l in block["commands"]:
             output._add_to_current_screen("command", "$ " + l.rstrip("\n").replace("\n", "\r\n"))
             mo, so = pty.openpty()  # provide tty to enable line-buffering
@@ -267,7 +268,7 @@ def example(skip, no_pause, dump_asciinema, dump_screens, asciinema_width, ascii
 
             # Set terminal window size -- pretend we're 100 cols, 120 rows, 600x800 pixels.
             fcntl.ioctl(so, termios.TIOCSWINSZ, struct.pack("HHHH", 100, 120, 600, 800))
-
+            # breakpoint()
             proc = subprocess.Popen(
                 l,
                 shell=True,
