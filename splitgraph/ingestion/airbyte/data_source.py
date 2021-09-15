@@ -28,8 +28,9 @@ from splitgraph.hooks.data_source.base import (
 )
 from splitgraph.utils.docker import copy_to_container, get_docker_client
 
+from ..common import add_timestamp_tags
 from ..dbt.utils import run_dbt_transformation_from_git
-from ..singer.common import add_timestamp_tags, store_ingestion_state
+from ..singer.common import store_ingestion_state
 from .docker_utils import (
     add_files,
     build_command,

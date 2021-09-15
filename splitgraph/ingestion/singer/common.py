@@ -1,7 +1,6 @@
 import logging
 import traceback
 from collections import Callable
-from datetime import datetime as dt
 from functools import wraps
 from typing import Any, Dict, Optional
 
@@ -163,12 +162,3 @@ def store_ingestion_state(
             repository,
             [(image_hash, INGESTION_STATE_TABLE, INGESTION_STATE_SCHEMA, [object_id])],
         )
-
-
-def add_timestamp_tags(repository: Repository, image_hash: str):
-    ingestion_time = dt.utcnow()
-    short_tag = ingestion_time.strftime("%Y%m%d")
-    long_tag = short_tag + "-" + ingestion_time.strftime("%H%M%S")
-    new_image = repository.images.by_hash(image_hash)
-    new_image.tag(short_tag)
-    new_image.tag(long_tag)

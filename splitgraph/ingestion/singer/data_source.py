@@ -17,11 +17,11 @@ from splitgraph.hooks.data_source.base import (
     get_ingestion_state,
     prepare_new_image,
 )
+from splitgraph.ingestion.common import add_timestamp_tags
 from splitgraph.ingestion.singer.common import (
     SingerCatalog,
     SingerConfig,
     SingerState,
-    add_timestamp_tags,
     store_ingestion_state,
 )
 from splitgraph.ingestion.singer.db_sync import (

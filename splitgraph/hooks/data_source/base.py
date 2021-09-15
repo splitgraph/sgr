@@ -17,7 +17,7 @@ from splitgraph.core.types import (
     TableInfo,
 )
 from splitgraph.engine import ResultShape
-from splitgraph.ingestion.singer.common import add_timestamp_tags
+from splitgraph.ingestion.common import add_timestamp_tags
 
 if TYPE_CHECKING:
     from splitgraph.core.repository import Repository
