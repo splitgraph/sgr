@@ -17,6 +17,7 @@ from splitgraph.core.types import (
     TableInfo,
 )
 from splitgraph.engine import ResultShape
+from splitgraph.ingestion.singer.common import add_timestamp_tags
 
 if TYPE_CHECKING:
     from splitgraph.core.repository import Repository
@@ -141,6 +142,7 @@ class LoadableDataSource(DataSource, ABC):
                 chunk_size=DEFAULT_CHUNK_SIZE,
                 schema=tmp_schema,
             )
+            add_timestamp_tags(repository, image_hash)
         finally:
             repository.object_engine.delete_schema(tmp_schema)
             repository.commit_engines()
