@@ -335,7 +335,7 @@ def init_fdw(
 
     if user_options:
         create_mapping = SQL("CREATE USER MAPPING IF NOT EXISTS FOR {} SERVER {}").format(
-            "PUBLIC" if role is None else Identifier(role), Identifier(server_id)
+            SQL("PUBLIC") if role is None else Identifier(role), Identifier(server_id)
         )
         user_keys, user_vals = zip(*user_options.items())
         create_mapping += _format_options(user_keys)
@@ -530,8 +530,8 @@ Mounts one or more collections on a remote Mongo database as a set of foreign ta
 {
     "table_name": {
         "schema": {"col1": "type1"...},
-        "options": {"database": <dbname>, "collection": <collection>} 
-    } 
+        "options": {"database": <dbname>, "collection": <collection>}
+    }
 }
 ```
 """
@@ -586,7 +586,7 @@ class MySQLDataSource(ForeignDataWrapperDataSource):
 Mounts a schema on a remote MySQL database as a set of foreign tables locally."""
 
     commandline_kwargs_help: str = """dbname: Remote MySQL database name (required)
-tables: Tables to mount (default all). If a list, then will use IMPORT FOREIGN SCHEMA.
+tables: Tables to mount (default all). If a list, then will use IMPORT FOREIGN SCHEMA.x
 If a dictionary, must have the format
     {"table_name": {"schema": {"col_1": "type_1", ...},
                     "options": {[get passed to CREATE FOREIGN TABLE]}}}.
