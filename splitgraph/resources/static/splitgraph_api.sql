@@ -396,7 +396,7 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp, public;
 
 --
 -- OBJECT API
