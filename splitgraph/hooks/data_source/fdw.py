@@ -586,7 +586,7 @@ class MySQLDataSource(ForeignDataWrapperDataSource):
 Mounts a schema on a remote MySQL database as a set of foreign tables locally."""
 
     commandline_kwargs_help: str = """dbname: Remote MySQL database name (required)
-tables: Tables to mount (default all). If a list, then will use IMPORT FOREIGN SCHEMA.x
+tables: Tables to mount (default all). If a list, then will use IMPORT FOREIGN SCHEMA.
 If a dictionary, must have the format
     {"table_name": {"schema": {"col_1": "type_1", ...},
                     "options": {[get passed to CREATE FOREIGN TABLE]}}}.
