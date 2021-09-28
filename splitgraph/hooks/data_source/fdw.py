@@ -314,7 +314,7 @@ def init_fdw(
     :param wrapper: Name of the foreign data wrapper (must be installed as an extension on the engine)
     :param server_options: Dictionary of FDW options
     :param user_options: Dictionary of user options
-    :param role: The name of the roll for which the user mapping is created; defaults to public.
+    :param role: The name of the role for which the user mapping is created; defaults to public.
     :param overwrite: If the server already exists, delete and recreate it.
     """
     from psycopg2.sql import SQL, Identifier
