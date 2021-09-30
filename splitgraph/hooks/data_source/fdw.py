@@ -303,6 +303,7 @@ def init_fdw(
     wrapper: str,
     server_options: Optional[Mapping[str, Optional[str]]] = None,
     user_options: Optional[Mapping[str, str]] = None,
+    role: Optional[str] = None,
     overwrite: bool = True,
 ) -> None:
     """
@@ -313,6 +314,7 @@ def init_fdw(
     :param wrapper: Name of the foreign data wrapper (must be installed as an extension on the engine)
     :param server_options: Dictionary of FDW options
     :param user_options: Dictionary of user options
+    :param role: The name of the role for which the user mapping is created; defaults to public.
     :param overwrite: If the server already exists, delete and recreate it.
     """
     from psycopg2.sql import SQL, Identifier
@@ -332,8 +334,8 @@ def init_fdw(
         engine.run_sql(create_server)
 
     if user_options:
-        create_mapping = SQL("CREATE USER MAPPING IF NOT EXISTS FOR PUBLIC SERVER {}").format(
-            Identifier(server_id)
+        create_mapping = SQL("CREATE USER MAPPING IF NOT EXISTS FOR {} SERVER {}").format(
+            SQL("PUBLIC") if role is None else Identifier(role), Identifier(server_id)
         )
         user_keys, user_vals = zip(*user_options.items())
         create_mapping += _format_options(user_keys)
@@ -528,8 +530,8 @@ Mounts one or more collections on a remote Mongo database as a set of foreign ta
 {
     "table_name": {
         "schema": {"col1": "type1"...},
-        "options": {"database": <dbname>, "collection": <collection>} 
-    } 
+        "options": {"database": <dbname>, "collection": <collection>}
+    }
 }
 ```
 """

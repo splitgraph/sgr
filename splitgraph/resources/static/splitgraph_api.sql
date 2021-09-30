@@ -303,7 +303,7 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp, public;
 
 -- Delete image.
 -- Note this doesn't delete references to the image, e.g. where
@@ -334,7 +334,7 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp, public;
 
 -- tag_image (namespace, repository, image_hash, tag)
 CREATE OR REPLACE FUNCTION splitgraph_api.tag_image (
@@ -396,7 +396,7 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp, public;
 
 --
 -- OBJECT API
