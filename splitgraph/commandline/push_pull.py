@@ -131,7 +131,7 @@ def push_c(
     tags,
 ):
     """
-    Push images the Splitgraph registry or another engine.
+    Push images to the Splitgraph registry or another engine.
 
     If an image is not specified (e.g. `sgr push noaa/climate`, this will push all new images.
 
