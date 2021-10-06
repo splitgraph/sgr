@@ -280,10 +280,10 @@ def test_csv_data_source_s3(local_engine_empty):
     assert len(preview["fruits.csv"]) == 4
     assert len(preview["encoding-win-1252.csv"]) == 3
     assert len(preview["rdu-weather-history.csv"]) == 10
-    assert preview["doesnt_exist"] == MountError(
+    assert preview["doesnt_exist"] == MountError.construct(
         table_name="doesnt_exist", error="minio.error.S3Error", error_text=mock.ANY
     )
-    assert preview["exists_but_broken"] == MountError(
+    assert preview["exists_but_broken"] == MountError.construct(
         table_name="exists_but_broken",
         error="psycopg2.errors.InvalidDatetimeFormat",
         error_text='invalid input syntax for type date: "1"',
@@ -391,12 +391,12 @@ def test_csv_data_source_multiple(local_engine_empty):
                 "autodetect_encoding": False,
             },
         ),
-        "from_url_broken": MountError(
+        "from_url_broken": MountError.construct(
             table_name="from_url_broken",
             error="requests.exceptions.MissingSchema",
             error_text="Invalid URL 'invalid_url': No schema supplied. Perhaps you meant http://invalid_url?",
         ),
-        "from_s3_broken": MountError(
+        "from_s3_broken": MountError.construct(
             table_name="from_s3_broken",
             error="minio.error.S3Error",
             error_text=mock.ANY,

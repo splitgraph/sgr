@@ -229,6 +229,8 @@ class AddExternalRepositoryRequest(BaseModel):
     is_live: bool
     tables: Optional[Dict[str, ExternalTableRequest]]
     credential_id: Optional[str]
+    credential_name: Optional[str]
+    credential_data: Optional[Dict[str, Any]]
     schedule: Optional[IngestionSchedule]
 
     @classmethod

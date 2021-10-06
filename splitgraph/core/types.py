@@ -13,6 +13,8 @@ from typing import (
     Union,
 )
 
+from pydantic import BaseModel
+
 if TYPE_CHECKING:
     from splitgraph.cloud.models import ExternalTableRequest
 
@@ -41,7 +43,7 @@ TableInfo = Union[List[str], Dict[str, Tuple[TableSchema, TableParams]]]
 SyncState = NewType("SyncState", Dict[str, Any])
 
 
-class MountError(NamedTuple):
+class MountError(BaseModel):
     table_name: str
     error: str
     error_text: str
