@@ -16,9 +16,7 @@ from splitgraph.hooks.data_source.fdw import (
 class SocrataDataSource(ForeignDataWrapperDataSource):
     credentials_schema = {
         "type": "object",
-        "properties": {
-            "app_token": {"type": ["string", "null"], "description": "Socrata app token, optional"}
-        },
+        "properties": {"app_token": {"type": "string", "description": "Socrata app token"}},
     }
 
     params_schema = {
