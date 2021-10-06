@@ -34,18 +34,36 @@ class SnowflakeDataSource(ForeignDataWrapperDataSource):
         "type": "object",
         "properties": {
             "username": {"type": "string", "description": "Username"},
-            "password": {"type": "string", "description": "Password"},
+            "secret": {
+                "type": "object",
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "required": ["secret_type", "password"],
+                        "properties": {
+                            "secret_type": {"type": "string", "const": "password"},
+                            "password": {"type": "string", "description": "Password"},
+                        },
+                    },
+                    {
+                        "type": "object",
+                        "required": ["secret_type", "private_key"],
+                        "properties": {
+                            "secret_type": {"type": "string", "const": "private_key"},
+                            "private_key": {
+                                "type": "string",
+                                "description": "Private key in PEM format",
+                            },
+                        },
+                    },
+                ],
+            },
             "account": {
                 "type": "string",
                 "description": "Account Locator, e.g. xy12345.us-east-2.aws. For more information, see https://docs.snowflake.com/en/user-guide/connecting.html",
             },
-            "private_key": {
-                "type": "string",
-                "description": "Private key in PEM format",
-            },
         },
         "required": ["username", "account"],
-        "oneOf": [{"required": ["password"]}, {"required": ["private_key"]}],
     }
 
     params_schema = {

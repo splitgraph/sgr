@@ -4,7 +4,7 @@ from datetime import timedelta
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from psycopg2.sql import SQL, Identifier
-from splitgraph.core.types import Credentials, MountError, TableInfo
+from splitgraph.core.types import Credentials, MountError, TableInfo, Params
 from splitgraph.hooks.data_source.fdw import (
     ForeignDataWrapperDataSource,
     import_foreign_schema,
@@ -78,16 +78,50 @@ class CSVDataSource(ForeignDataWrapperDataSource):
     params_schema: Dict[str, Any] = {
         "type": "object",
         "properties": {
-            "url": {"type": "string", "description": "HTTP URL to the CSV file"},
-            "s3_endpoint": {
-                "type": "string",
-                "description": "S3 endpoint (including port if required)",
+            "connection": {
+                "type": "object",
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "required": ["connection_type", "url"],
+                        "properties": {
+                            "connection_type": {"type": "string", "const": "http"},
+                            "url": {"type": "string", "description": "HTTP URL to the CSV file"},
+                        },
+                    },
+                    {
+                        "type": "object",
+                        "required": ["connection_type", "s3_endpoint", "s3_bucket"],
+                        "properties": {
+                            "connection_type": {"type": "string", "const": "s3"},
+                            "s3_endpoint": {
+                                "type": "string",
+                                "description": "S3 endpoint (including port if required)",
+                            },
+                            "s3_region": {
+                                "type": "string",
+                                "description": "Region of the S3 bucket",
+                            },
+                            "s3_secure": {
+                                "type": "boolean",
+                                "description": "Whether to use HTTPS for S3 access",
+                            },
+                            "s3_bucket": {
+                                "type": "string",
+                                "description": "Bucket the object is in",
+                            },
+                            "s3_object": {
+                                "type": "string",
+                                "description": "Limit the import to a single object",
+                            },
+                            "s3_object_prefix": {
+                                "type": "string",
+                                "description": "Prefix for object in S3 bucket",
+                            },
+                        },
+                    },
+                ],
             },
-            "s3_region": {"type": "string", "description": "Region of the S3 bucket"},
-            "s3_secure": {"type": "boolean", "description": "Whether to use HTTPS for S3 access"},
-            "s3_bucket": {"type": "string", "description": "Bucket the object is in"},
-            "s3_object": {"type": "string", "description": "Limit the import to a single object"},
-            "s3_object_prefix": {"type": "string", "description": "Prefix for object in S3 bucket"},
             "autodetect_header": {
                 "type": "boolean",
                 "description": "Detect whether the CSV file has a header automatically",
@@ -123,7 +157,6 @@ class CSVDataSource(ForeignDataWrapperDataSource):
             },
             "quotechar": {"type": "string", "description": "Character used to quote fields"},
         },
-        "oneOf": [{"required": ["url"]}, {"required": ["s3_endpoint", "s3_bucket"]}],
     }
 
     table_params_schema: Dict[str, Any] = {
@@ -186,6 +219,31 @@ EOF
             if k in params:
                 credentials[k] = params[k]
         return cls(engine, credentials, params)
+
+    @classmethod
+    def migrate_params(cls, params: Params) -> Params:
+        # TODO figure out how/when/whether to apply this migration to the DB and how data sources
+        #  should define their config migrations.
+
+        if "url" in params:
+            params["connection"] = {"connection_type": "http", "url": params["url"]}
+        else:
+            connection = {"connection_type": "s3"}
+            for key in [
+                "s3_endpoint",
+                "s3_region",
+                "s3_secure",
+                "s3_bucket",
+                "s3_object",
+                "s3_object_prefix",
+            ]:
+                try:
+                    connection[key] = params.pop(key)
+                except KeyError:
+                    pass
+
+            params["connection"] = connection
+        return params
 
     def get_table_options(
         self, table_name: str, tables: Optional[TableInfo] = None
