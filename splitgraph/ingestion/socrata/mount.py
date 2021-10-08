@@ -70,7 +70,7 @@ class SocrataDataSource(ForeignDataWrapperDataSource):
         if isinstance(tables, dict) and isinstance(next(iter(tables.values())), str):
             tables = {k: ([], {"socrata_id": v}) for k, v in tables.items()}
 
-        credentials = Credentials({"app_token": params.pop("app_token", None)})
+        credentials = Credentials({})
         return cls(engine, credentials, params, tables)
 
     def get_server_options(self):
