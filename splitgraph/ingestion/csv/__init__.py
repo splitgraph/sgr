@@ -4,7 +4,7 @@ from datetime import timedelta
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from psycopg2.sql import SQL, Identifier
-from splitgraph.core.types import Credentials, MountError, TableInfo, Params
+from splitgraph.core.types import Credentials, MountError, Params, TableInfo
 from splitgraph.hooks.data_source.fdw import (
     ForeignDataWrapperDataSource,
     import_foreign_schema,
@@ -200,6 +200,18 @@ EOF
         build_commandline_help(credentials_schema) + "\n" + build_commandline_help(params_schema)
     )
 
+    def __init__(
+        self,
+        engine: "PsycopgEngine",
+        credentials: Credentials,
+        params: Params,
+        tables: Optional[TableInfo] = None,
+    ):
+        # TODO this is a hack to automatically accept both old and new versions of CSV params.
+        #  We might need a more robust data source config migration system.
+        params = CSVDataSource.migrate_params(params)
+        super().__init__(engine, credentials, params, tables)
+
     def get_fdw_name(self):
         return "multicorn"
 
@@ -222,11 +234,10 @@ EOF
 
     @classmethod
     def migrate_params(cls, params: Params) -> Params:
-        # TODO figure out how/when/whether to apply this migration to the DB and how data sources
-        #  should define their config migrations.
-
+        params = deepcopy(params)
         if "url" in params:
             params["connection"] = {"connection_type": "http", "url": params["url"]}
+            del params["url"]
         else:
             connection = {"connection_type": "s3"}
             for key in [
@@ -316,8 +327,13 @@ EOF
             "wrapper": "splitgraph.ingestion.csv.fdw.CSVForeignDataWrapper"
         }
         for k in self.params_schema["properties"].keys():
+            # Flatten the options and extract connection parameters
             if k in self.params:
-                options[k] = str(self.params[k])
+                if k != "connection":
+                    options[k] = str(self.params[k])
+                else:
+                    options.update(self.params[k])
+
         for k in self.credentials_schema["properties"].keys():
             if k in self.credentials:
                 options[k] = str(self.credentials[k])
@@ -361,9 +377,10 @@ EOF
 
         # Merge the table options to take care of overrides and use them to get URLs
         # for each table.
+        server_options = self.get_server_options()
         for table in tables:
             table_options = super().get_table_options(table, tables)
-            full_options = {**self.credentials, **self.params, **table_options}
+            full_options = {**server_options, **table_options}
             result[table] = self._get_url(full_options)
 
         return result
