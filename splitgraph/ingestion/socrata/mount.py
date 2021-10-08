@@ -28,7 +28,10 @@ class SocrataDataSource(ForeignDataWrapperDataSource):
             },
             "batch_size": {
                 "type": "integer",
-                "description": "Amount of rows to fetch from Socrata per request (limit parameter). Maximum 50000.",
+                "description": "Amount of rows to fetch from Socrata per request (limit parameter)",
+                "minimum": 1,
+                "default": 1000,
+                "maximum": 50000,
             },
         },
         "required": ["domain"],
