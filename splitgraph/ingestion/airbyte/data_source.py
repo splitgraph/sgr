@@ -77,12 +77,14 @@ class AirbyteDataSource(SyncableDataSource, ABC):
         "properties": {
             "airbyte_cursor_fields": {
                 "type": "array",
+                "title": "Cursor field(s)",
                 "description": "Fields in this stream to be used as a cursor "
                 "for incremental replication (overrides Airbyte configuration's cursor_field)",
                 "items": {"type": "string"},
             },
             "airbyte_primary_key_fields": {
                 "type": "array",
+                "title": "Primary key field(s)",
                 "description": "Fields in this stream to be used as a primary key for deduplication "
                 "(overrides Airbyte configuration's primary_key)",
                 "items": {"type": "string"},
@@ -99,7 +101,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
     #       {"type": "object", "properties": {...}},
     #   )
     #   params_schema = merge_jsonschema(
-    #       AirbyteDataSource.credentials_schema,
+    #       AirbyteDataSource.params_schema,
     #       {"type": "object", "properties": {...}},
     #   )
     params_schema = {
@@ -107,6 +109,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
         "properties": {
             "normalization_mode": {
                 "type": "string",
+                "title": "Post-ingestion normalization",
                 "description": "Whether to normalize raw Airbyte tables. "
                 "`none` is no normalization, `basic` is Airbyte's basic normalization, "
                 "`custom` is a custom dbt transformation on the data.",
@@ -115,6 +118,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
             },
             "normalization_git_branch": {
                 "type": "string",
+                "title": "dbt model Git branch",
                 "description": "Branch or commit hash to use for the normalization dbt project.",
                 "default": "master",
             },
@@ -127,6 +131,7 @@ class AirbyteDataSource(SyncableDataSource, ABC):
             # This is a secret since the git URL might have a password in it.
             "normalization_git_url": {
                 "type": "string",
+                "title": "dbt model Git URL",
                 "description": "For `custom` normalization, a URL to the Git repo "
                 "with the dbt project, for example,"
                 "`https://uname:pass_or_token@github.com/organisation/repository.git`.",
