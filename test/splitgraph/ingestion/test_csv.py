@@ -5,7 +5,7 @@ from test.splitgraph.conftest import INGESTION_RESOURCES_CSV
 from unittest import mock
 
 import pytest
-from splitgraph.core.types import MountError, TableColumn, unwrap
+from splitgraph.core.types import MountError, Params, TableColumn, unwrap
 from splitgraph.engine import ResultShape
 from splitgraph.hooks.s3_server import MINIO
 from splitgraph.ingestion.common import generate_column_names
@@ -35,6 +35,33 @@ _s3_fruits_opts = {
     "header": "true",
     "quotechar": '"',
 }
+
+
+def test_csv_param_migration():
+    assert CSVDataSource.migrate_params(
+        Params(
+            {
+                "s3_endpoint": "objectstorage:9000",
+                "s3_secure": False,
+                "s3_bucket": "test_csv",
+                "delimiter": ",",
+            }
+        )
+    ) == Params(
+        {
+            "delimiter": ",",
+            "connection": {
+                "connection_type": "s3",
+                "s3_endpoint": "objectstorage:9000",
+                "s3_secure": False,
+                "s3_bucket": "test_csv",
+            },
+        }
+    )
+
+    assert CSVDataSource.migrate_params(Params({"url": "some-url"})) == Params(
+        {"connection": {"connection_type": "http", "url": "some-url"}}
+    )
 
 
 def test_csv_introspection_s3():

@@ -16,9 +16,7 @@ from splitgraph.hooks.data_source.fdw import (
 class SocrataDataSource(ForeignDataWrapperDataSource):
     credentials_schema = {
         "type": "object",
-        "properties": {
-            "app_token": {"type": ["string", "null"], "description": "Socrata app token, optional"}
-        },
+        "properties": {"app_token": {"type": "string", "description": "Socrata app token"}},
     }
 
     params_schema = {
@@ -30,7 +28,10 @@ class SocrataDataSource(ForeignDataWrapperDataSource):
             },
             "batch_size": {
                 "type": "integer",
-                "description": "Amount of rows to fetch from Socrata per request (limit parameter). Maximum 50000.",
+                "description": "Amount of rows to fetch from Socrata per request (limit parameter)",
+                "minimum": 1,
+                "default": 1000,
+                "maximum": 50000,
             },
         },
         "required": ["domain"],
@@ -69,7 +70,7 @@ class SocrataDataSource(ForeignDataWrapperDataSource):
         if isinstance(tables, dict) and isinstance(next(iter(tables.values())), str):
             tables = {k: ([], {"socrata_id": v}) for k, v in tables.items()}
 
-        credentials = Credentials({"app_token": params.pop("app_token", None)})
+        credentials = Credentials({})
         return cls(engine, credentials, params, tables)
 
     def get_server_options(self):
