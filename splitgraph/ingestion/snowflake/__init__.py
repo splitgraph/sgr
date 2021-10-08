@@ -1,11 +1,15 @@
 import base64
 import json
 import urllib.parse
-from typing import Any, Dict, Optional
+from copy import deepcopy
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from splitgraph.core.types import TableInfo
+from splitgraph.core.types import Credentials, Params, TableInfo
 from splitgraph.hooks.data_source.fdw import ForeignDataWrapperDataSource
 from splitgraph.ingestion.common import build_commandline_help
+
+if TYPE_CHECKING:
+    from splitgraph.engine.postgres.engine import PsycopgEngine
 
 
 def _encode_private_key(privkey: str):
@@ -146,6 +150,18 @@ EOF
         + "The schema parameter is required when subquery isn't used."
     )
 
+    def __init__(
+        self,
+        engine: "PsycopgEngine",
+        credentials: Credentials,
+        params: Params,
+        tables: Optional[TableInfo] = None,
+    ):
+        # TODO this is a hack to automatically accept both old and new versions of CSV params.
+        #  We might need a more robust data source config migration system.
+        credentials = SnowflakeDataSource.migrate_credentials(credentials)
+        super().__init__(engine, credentials, params, tables)
+
     def get_fdw_name(self):
         return "multicorn"
 
@@ -183,19 +199,35 @@ EOF
         if "batch_size" in self.params:
             options["batch_size"] = str(self.params["batch_size"])
 
-        if "private_key" in self.credentials:
+        if self.credentials["secret"]["secret_type"] == "private_key":
             options["connect_args"] = json.dumps(
-                {"private_key": _encode_private_key(self.credentials["private_key"])}
+                {"private_key": _encode_private_key(self.credentials["secret"]["private_key"])}
             )
 
         return options
+
+    @classmethod
+    def migrate_credentials(cls, credentials: Credentials) -> Credentials:
+        credentials = deepcopy(credentials)
+        if "private_key" in credentials:
+            credentials["secret"] = {
+                "secret_type": "private_key",
+                "private_key": credentials.pop("private_key"),
+            }
+        elif "password" in credentials:
+            credentials["secret"] = {
+                "secret_type": "password",
+                "password": credentials.pop("password"),
+            }
+
+        return credentials
 
     def _build_db_url(self) -> str:
         """Construct the SQLAlchemy Snowflake db_url"""
 
         uname = self.credentials["username"]
-        if "password" in self.credentials:
-            uname += f":{self.credentials['password']}"
+        if self.credentials["secret"]["secret_type"] == "password":
+            uname += f":{self.credentials['secret']['password']}"
 
         db_url = f"snowflake://{uname}@{self.credentials['account']}"
         if "database" in self.params:
