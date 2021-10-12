@@ -51,19 +51,35 @@ $$
 LANGUAGE plpgsql
 SECURITY DEFINER;
 
-CREATE OR REPLACE FUNCTION splitgraph_api.check_privilege (
-    namespace varchar
+CREATE OR REPLACE FUNCTION splitgraph_api.check_objects_privilege (
+    _object_ids varchar[],
+    _action varchar DEFAULT 'repository.read'
 )
     RETURNS void
     AS $$
 BEGIN
-    IF splitgraph_api.bypass_privilege () THEN
+    -- A no-op privilege check that can be overridden
+    RETURN;
+END;
+$$
+LANGUAGE plpgsql
+SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION splitgraph_api.check_privilege (
+    _namespace varchar,
+    _repository varchar DEFAULT NULL,
+    _action varchar DEFAULT 'repository.read'
+)
+    RETURNS void
+    AS $$
+BEGIN
+    IF splitgraph_api.bypass_privilege () OR _action = 'repository.read' THEN
         RETURN;
     END IF;
     -- Here "current_user" is the definer, "session_user" is the caller and we can access another session variable
     -- to establish identity.
     -- Use IS DISTINCT FROM rather than != to catch namespace=NULL
-    IF splitgraph_api.get_current_username () IS DISTINCT FROM namespace THEN
+    IF splitgraph_api.get_current_username () IS DISTINCT FROM _namespace THEN
         RAISE insufficient_privilege
         USING MESSAGE = 'You do not have access to this namespace!';
     END IF;
@@ -89,6 +105,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_images (
         )
         AS $$
 BEGIN
+    PERFORM splitgraph_api.check_privilege (_namespace, _repository);
     RETURN QUERY
     SELECT i.image_hash,
         i.parent_id,
@@ -102,7 +119,7 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp, public;
 
 
 -- get_repository_size(namespace, repository): get repository size in bytes (counting tables
@@ -114,6 +131,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_repository_size (
     RETURNS BIGINT
     AS $$
 BEGIN
+    PERFORM splitgraph_api.check_privilege (_namespace, _repository);
     RETURN (WITH iob AS (
             SELECT DISTINCT unnest(object_ids) AS object_id
             FROM splitgraph_meta.tables t
@@ -126,7 +144,7 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp, public;
 
 -- Search for an image by its hash prefix. Currently the prefix feature
 -- is only used for better API/cmdline UX -- pushes/pulls to the registry
@@ -145,6 +163,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_image (
         )
         AS $$
 BEGIN
+    PERFORM splitgraph_api.check_privilege (_namespace, _repository);
     RETURN QUERY
     SELECT i.image_hash,
         i.parent_id,
@@ -159,7 +178,7 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp, public;
 
 -- get_tagged_images(namespace, repository): get hashes of all images with a tag.
 CREATE OR REPLACE FUNCTION splitgraph_api.get_tagged_images (
@@ -172,6 +191,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_tagged_images (
         )
         AS $$
 BEGIN
+    PERFORM splitgraph_api.check_privilege (_namespace, _repository);
     RETURN QUERY
     SELECT t.image_hash,
         t.tag
@@ -181,7 +201,7 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp, public;
 
 -- get_image_size(namespace, repository, image_hash): get image size in bytes (counting tables
 -- that share objects only once)
@@ -193,6 +213,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_image_size (
     RETURNS BIGINT
     AS $$
 BEGIN
+    PERFORM splitgraph_api.check_privilege (_namespace, _repository);
     RETURN (WITH iob AS (
             SELECT DISTINCT image_hash,
                 unnest(object_ids) AS object_id
@@ -207,7 +228,7 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp, public;
 
 -- get_image_dependencies(namespace, repository, image_hash): get all images
 -- that this Splitfile-built image depends on.
@@ -223,6 +244,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_image_dependencies (
         )
         AS $$
 BEGIN
+    PERFORM splitgraph_api.check_privilege (_namespace, _repository);
     RETURN QUERY WITH provenance_data AS (
         SELECT jsonb_array_elements(i.provenance_data) AS d
         FROM splitgraph_meta.images i
@@ -248,7 +270,7 @@ WHERE d ->> 'source_namespace' IS NOT NULL
 END
 $$
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp, public;
 
 -- get_image_dependents(namespace, repository, image_hash): get all images in this
 -- repository that were built by a Splitfile and used this image through a FROM command.
@@ -266,6 +288,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_image_dependents (
 DECLARE
     FILTER JSONB;
 BEGIN
+    PERFORM splitgraph_api.check_privilege (_namespace, _repository);
     FILTER = jsonb_build_array (jsonb_build_object('source_namespace',
 	_namespace, 'source', _repository, 'source_hash', _image_hash));
     RETURN QUERY
@@ -278,7 +301,7 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp, public;
 
 -- Consider merging writes to all tables into one big routine (e.g. also include a list of tables here, which
 -- will get added to the tables table)
@@ -295,7 +318,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.add_image (
     RETURNS void
     AS $$
 BEGIN
-    PERFORM splitgraph_api.check_privilege (namespace);
+    PERFORM splitgraph_api.check_privilege (namespace, repository, 'repository.push_image');
     INSERT INTO splitgraph_meta.images (namespace, repository, image_hash,
 	parent_id, created, comment, provenance_data)
 	VALUES (namespace, repository, image_hash, parent_id, created, comment,
@@ -318,7 +341,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.delete_image (
     RETURNS void
     AS $$
 BEGIN
-    PERFORM splitgraph_api.check_privilege (_namespace);
+    PERFORM splitgraph_api.check_privilege (_namespace, _repository, 'repository.delete');
     DELETE FROM splitgraph_meta.tags
     WHERE namespace = _namespace
         AND repository = _repository
@@ -346,7 +369,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.tag_image (
     RETURNS void
     AS $$
 BEGIN
-    PERFORM splitgraph_api.check_privilege (_namespace);
+    PERFORM splitgraph_api.check_privilege (_namespace, _repository, 'repository.update_metadata');
     INSERT INTO splitgraph_meta.tags (namespace, repository, image_hash, tag)
         VALUES (_namespace, _repository, _image_hash, _tag)
     ON CONFLICT (namespace, repository, tag)
@@ -355,7 +378,7 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp, public;
 
 CREATE OR REPLACE FUNCTION splitgraph_api.delete_tag (
     _namespace varchar,
@@ -365,7 +388,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.delete_tag (
     RETURNS void
     AS $$
 BEGIN
-    PERFORM splitgraph_api.check_privilege (_namespace);
+    PERFORM splitgraph_api.check_privilege (_namespace, _repository, 'repository.update_metadata');
     DELETE FROM splitgraph_meta.tags
         WHERE namespace = _namespace
         AND repository = _repository
@@ -373,7 +396,7 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp, public;
 
 -- delete_repository(namespace, repository)
 CREATE OR REPLACE FUNCTION splitgraph_api.delete_repository (
@@ -383,7 +406,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.delete_repository (
     RETURNS void
     AS $$
 BEGIN
-    PERFORM splitgraph_api.check_privilege (_namespace);
+    PERFORM splitgraph_api.check_privilege (_namespace, _repository, 'repository.delete');
     DELETE FROM splitgraph_meta.tables
     WHERE namespace = _namespace
         AND repository = _repository;
@@ -408,6 +431,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_new_objects (
     RETURNS varchar[]
     AS $$
 BEGIN
+    PERFORM splitgraph_api.check_objects_privilege (object_ids);
     RETURN ARRAY (
         SELECT o
         FROM unnest(object_ids) o
@@ -417,7 +441,7 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp, public;
 
 -- get_object_meta(object_ids): get metadata for objects
 CREATE OR REPLACE FUNCTION splitgraph_api.get_object_meta (
@@ -437,6 +461,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_object_meta (
         )
         AS $$
 BEGIN
+    PERFORM splitgraph_api.check_objects_privilege (object_ids);
     RETURN QUERY
     SELECT o.object_id,
         o.format,
@@ -453,7 +478,7 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp, public;
 
 -- get_object_locations(object_ids): get external locations for objects
 CREATE OR REPLACE FUNCTION splitgraph_api.get_object_locations (
@@ -466,6 +491,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_object_locations (
         )
         AS $$
 BEGIN
+    PERFORM splitgraph_api.check_objects_privilege (object_ids);
     RETURN QUERY
     SELECT o.object_id,
         o.location,
@@ -475,7 +501,7 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp, public;
 
 -- add_object(object_id, format, namespace, size, insertion_hash, deletion_hash, index)
 -- If the object already exists, it gets overwritten (making sure the caller has permissions
@@ -513,6 +539,7 @@ BEGIN
 		    _rows_deleted);
     ELSE
         PERFORM splitgraph_api.check_privilege (existing.namespace);
+        PERFORM splitgraph_api.check_objects_privilege (ARRAY[_object_id], 'repository.push_image');
         UPDATE
             splitgraph_meta.objects
         SET format = _format,
@@ -527,7 +554,7 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp, public;
 
 -- add_object_location(object_id, location, protocol)
 CREATE OR REPLACE FUNCTION splitgraph_api.add_object_location (
@@ -537,14 +564,8 @@ CREATE OR REPLACE FUNCTION splitgraph_api.add_object_location (
 )
     RETURNS void
     AS $$
-DECLARE
-    namespace varchar;
 BEGIN
-    namespace = (
-        SELECT o.namespace
-        FROM splitgraph_meta.objects o
-        WHERE o.object_id = _object_id);
-    PERFORM splitgraph_api.check_privilege (namespace);
+    PERFORM splitgraph_api.check_objects_privilege (ARRAY[_object_id], 'repository.push_image');
     INSERT INTO splitgraph_meta.object_locations (object_id, LOCATION, protocol)
         VALUES (_object_id, LOCATION, protocol)
     ON CONFLICT (object_id)
@@ -552,7 +573,7 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp, public;
 
 --
 -- TABLE API
@@ -571,6 +592,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_tables (
         )
         AS $$
 BEGIN
+    PERFORM splitgraph_api.check_privilege (_namespace, _repository);
     RETURN QUERY
     SELECT t.table_name,
         t.table_schema,
@@ -582,7 +604,7 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp, public;
 
 -- get_tables(namespace, repository): list all tables in a given repository together with
 -- images they belong to.
@@ -598,6 +620,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_all_tables (
         )
         AS $$
 BEGIN
+    PERFORM splitgraph_api.check_privilege (_namespace, _repository);
     RETURN QUERY
     SELECT t.image_hash,
         t.table_name,
@@ -609,7 +632,7 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp, public;
 
 -- add_table(namespace, repository, table_name, table_schema, object_ids) -- add a table to an existing image.
 -- Technically, we shouldn't allow this to be done once the image has been created (so maybe that idea with only having
@@ -628,7 +651,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.add_table (
     RETURNS void
     AS $$
 BEGIN
-    PERFORM splitgraph_api.check_privilege (_namespace);
+    PERFORM splitgraph_api.check_privilege (_namespace, _repository, 'repository.push_image');
     INSERT INTO splitgraph_meta.tables (namespace, repository, image_hash,
 	table_name, table_schema, object_ids)
         VALUES (_namespace, _repository, _image_hash, _table_name, _table_schema, _object_ids)
@@ -639,7 +662,7 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp, public;
 
 -- get_table_size(namespace, repository, image_hash, table_name): get table size in bytes
 CREATE OR REPLACE FUNCTION splitgraph_api.get_table_size (
@@ -651,6 +674,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_table_size (
     RETURNS BIGINT
     AS $$
 BEGIN
+    PERFORM splitgraph_api.check_privilege (_namespace, _repository);
     RETURN (WITH iob AS (
             SELECT unnest(object_ids) AS object_id
             FROM splitgraph_meta.tables t
@@ -665,7 +689,7 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp, public;
 
 -- get_table_length: use object metadata to get the number of rows in a table. Will return
 -- NULL if some objects have an unknown number of rows.
@@ -678,6 +702,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_table_length (
     RETURNS INTEGER
     AS $$
 BEGIN
+    PERFORM splitgraph_api.check_privilege (_namespace, _repository);
     RETURN (WITH iob AS (
             SELECT unnest(object_ids) AS object_id
             FROM splitgraph_meta.tables t
@@ -692,7 +717,7 @@ BEGIN
 END
 $$
 LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp;
+SECURITY DEFINER SET search_path = splitgraph_meta, pg_temp, public;
 
 --
 -- S3 UPLOAD/DOWNLOAD API
