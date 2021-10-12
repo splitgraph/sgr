@@ -431,7 +431,6 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_new_objects (
     RETURNS varchar[]
     AS $$
 BEGIN
-    PERFORM splitgraph_api.check_objects_privilege (object_ids);
     RETURN ARRAY (
         SELECT o
         FROM unnest(object_ids) o
