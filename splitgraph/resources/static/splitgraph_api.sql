@@ -370,7 +370,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.tag_image (
     RETURNS void
     AS $$
 BEGIN
-    PERFORM splitgraph_api.check_privilege (_namespace, _repository, 'repository.update_metadata');
+    PERFORM splitgraph_api.check_privilege (_namespace, _repository, 'repository.push_image');
     INSERT INTO splitgraph_meta.tags (namespace, repository, image_hash, tag)
         VALUES (_namespace, _repository, _image_hash, _tag)
     ON CONFLICT (namespace, repository, tag)
@@ -389,7 +389,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.delete_tag (
     RETURNS void
     AS $$
 BEGIN
-    PERFORM splitgraph_api.check_privilege (_namespace, _repository, 'repository.update_metadata');
+    PERFORM splitgraph_api.check_privilege (_namespace, _repository, 'repository.push_image');
     DELETE FROM splitgraph_meta.tags
         WHERE namespace = _namespace
         AND repository = _repository
@@ -527,7 +527,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.add_object (
 DECLARE
     existing record;
 BEGIN
-    PERFORM splitgraph_api.check_privilege (_namespace);
+    PERFORM splitgraph_api.check_privilege (_namespace, _action => 'repository.push_image');
     -- Do SELECT FOR UPDATE to lock the row if it actually does exist to avoid two people
     -- calling this at the same time
     SELECT * INTO existing
@@ -542,7 +542,7 @@ BEGIN
 		    _insertion_hash, _deletion_hash, _index, _rows_inserted,
 		    _rows_deleted);
     ELSE
-        PERFORM splitgraph_api.check_privilege (existing.namespace);
+        PERFORM splitgraph_api.check_privilege (existing.namespace, _action => 'repository.push_image');
         PERFORM splitgraph_api.check_objects_privilege (ARRAY[_object_id], 'repository.push_image', true);
         UPDATE
             splitgraph_meta.objects
@@ -568,7 +568,14 @@ CREATE OR REPLACE FUNCTION splitgraph_api.add_object_location (
 )
     RETURNS void
     AS $$
+DECLARE
+    namespace varchar;
 BEGIN
+    namespace = (
+        SELECT o.namespace
+        FROM splitgraph_meta.objects o
+        WHERE o.object_id = _object_id);
+    PERFORM splitgraph_api.check_privilege (namespace, _action => 'repository.push_image');
     PERFORM splitgraph_api.check_objects_privilege (ARRAY[_object_id], 'repository.push_image', true);
     INSERT INTO splitgraph_meta.object_locations (object_id, LOCATION, protocol)
         VALUES (_object_id, LOCATION, protocol)
