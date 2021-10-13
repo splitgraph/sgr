@@ -53,13 +53,14 @@ SECURITY DEFINER;
 
 CREATE OR REPLACE FUNCTION splitgraph_api.check_objects_privilege (
     _object_ids varchar[],
-    _action varchar DEFAULT 'repository.read'
+    _action varchar DEFAULT 'repository.read',
+    _raise_error boolean DEFAULT false
 )
-    RETURNS void
+    RETURNS varchar[]
     AS $$
 BEGIN
     -- A no-op privilege check that can be overridden
-    RETURN;
+    RETURN _object_ids;
 END;
 $$
 LANGUAGE plpgsql
@@ -459,8 +460,10 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_object_meta (
             rows_deleted integer
         )
         AS $$
+DECLARE
+    _allowed_object_ids varchar[];
 BEGIN
-    PERFORM splitgraph_api.check_objects_privilege (object_ids);
+    SELECT splitgraph_api.check_objects_privilege (object_ids) INTO _allowed_object_ids;
     RETURN QUERY
     SELECT o.object_id,
         o.format,
@@ -473,7 +476,7 @@ BEGIN
         o.rows_inserted,
         o.rows_deleted
     FROM splitgraph_meta.objects o
-    WHERE o.object_id = ANY (object_ids);
+    WHERE o.object_id = ANY (_allowed_object_ids);
 END
 $$
 LANGUAGE plpgsql
@@ -489,14 +492,16 @@ CREATE OR REPLACE FUNCTION splitgraph_api.get_object_locations (
             protocol varchar
         )
         AS $$
+DECLARE
+    _allowed_object_ids varchar[];
 BEGIN
-    PERFORM splitgraph_api.check_objects_privilege (object_ids);
+    SELECT splitgraph_api.check_objects_privilege (object_ids) INTO _allowed_object_ids;
     RETURN QUERY
     SELECT o.object_id,
         o.location,
         o.protocol
     FROM splitgraph_meta.object_locations o
-    WHERE o.object_id = ANY (object_ids);
+    WHERE o.object_id = ANY (_allowed_object_ids);
 END
 $$
 LANGUAGE plpgsql
@@ -538,7 +543,7 @@ BEGIN
 		    _rows_deleted);
     ELSE
         PERFORM splitgraph_api.check_privilege (existing.namespace);
-        PERFORM splitgraph_api.check_objects_privilege (ARRAY[_object_id], 'repository.push_image');
+        PERFORM splitgraph_api.check_objects_privilege (ARRAY[_object_id], 'repository.push_image', true);
         UPDATE
             splitgraph_meta.objects
         SET format = _format,
@@ -564,7 +569,7 @@ CREATE OR REPLACE FUNCTION splitgraph_api.add_object_location (
     RETURNS void
     AS $$
 BEGIN
-    PERFORM splitgraph_api.check_objects_privilege (ARRAY[_object_id], 'repository.push_image');
+    PERFORM splitgraph_api.check_objects_privilege (ARRAY[_object_id], 'repository.push_image', true);
     INSERT INTO splitgraph_meta.object_locations (object_id, LOCATION, protocol)
         VALUES (_object_id, LOCATION, protocol)
     ON CONFLICT (object_id)
