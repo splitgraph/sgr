@@ -91,14 +91,14 @@ def test_push_others(local_engine_empty, readonly_pg_repo):
 
     with pytest.raises(ProgrammingError) as e:
         destination.push(remote_repository=readonly_pg_repo, handler="S3")
-    assert "You do not have access to this namespace!" in str(e.value)
+    assert "You do not have sufficient permissions on this namespace!" in str(e.value)
 
 
 @pytest.mark.registry
 def test_delete_others(readonly_pg_repo):
     with pytest.raises(ProgrammingError) as e:
         readonly_pg_repo.delete(uncheckout=False)
-    assert "You do not have access to this namespace!" in str(e.value)
+    assert "You do not have sufficient permissions on this namespace!" in str(e.value)
 
     with pytest.raises(ProgrammingError) as e:
         readonly_pg_repo.images.delete([readonly_pg_repo.images["latest"].image_hash])
@@ -128,13 +128,13 @@ def test_overwrite_other_object_meta(readonly_pg_repo):
 
     with pytest.raises(ProgrammingError) as e:
         readonly_pg_repo.objects.register_objects([object_meta])
-    assert "You do not have access to this namespace!" in str(e.value)
+    assert "You do not have sufficient permissions on this namespace!" in str(e.value)
     object_meta = readonly_pg_repo.objects.get_object_meta(fruits.objects)[fruits.objects[0]]
     assert object_meta.size != 12345
 
     with pytest.raises(ProgrammingError) as e:
         readonly_pg_repo.objects.register_objects([object_meta], namespace=REMOTE_NAMESPACE)
-    assert "You do not have access to this namespace!" in str(e.value)
+    assert "You do not have sufficient permissions on this namespace!" in str(e.value)
 
 
 @pytest.mark.registry
@@ -146,7 +146,7 @@ def test_impersonate_external_object(readonly_pg_repo):
     # an object that they own.
     with pytest.raises(ProgrammingError) as e:
         readonly_pg_repo.objects.register_object_locations([(sample_object, "fake_location", "S3")])
-    assert "You do not have access to this namespace!" in str(e.value)
+    assert "You do not have sufficient permissions on this namespace!" in str(e.value)
 
 
 @pytest.mark.registry

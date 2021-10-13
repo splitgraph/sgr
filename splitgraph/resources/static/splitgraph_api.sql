@@ -82,7 +82,7 @@ BEGIN
     -- Use IS DISTINCT FROM rather than != to catch namespace=NULL
     IF splitgraph_api.get_current_username () IS DISTINCT FROM _namespace THEN
         RAISE insufficient_privilege
-        USING MESSAGE = 'You do not have access to this namespace!';
+        USING MESSAGE = 'You do not have sufficient permissions on this namespace!';
     END IF;
 END;
 $$
