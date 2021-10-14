@@ -3,7 +3,6 @@ import logging
 import re
 from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
-import pglast.node
 from psycopg2.sql import SQL, Composed, Identifier
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.sql._validation import (
@@ -14,6 +13,7 @@ from splitgraph.core.sql._validation import (
 
 try:
     from pglast import parse_sql
+    import pglast.node
     from pglast.node import Node, Scalar
     from pglast.parser import ParseError
     from pglast.stream import IndentedStream
