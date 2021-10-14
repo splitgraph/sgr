@@ -81,7 +81,7 @@ def _get_local_image_for_import(hash_or_tag: str, repository: Repository) -> Tup
     else:
         # For local repositories, first try to pull them to see if they are clones of a remote.
         if source_repo.upstream:
-            source_repo.pull()
+            source_repo.pull(single_image=tag_or_hash)
         source_image = source_repo.images[hash_or_tag]
 
     return source_image, repo_is_temporary
@@ -302,7 +302,7 @@ def _execute_from(node: Node, output: Repository) -> Tuple[Repository, Optional[
         if source_repo.engine.name == "LOCAL":
             # For local repositories, make sure to update them if they've an upstream
             if source_repo.upstream:
-                source_repo.pull()
+                source_repo.pull(single_image=tag_or_hash)
 
         # Get the target image hash from the source repo: otherwise, if the tag is, say, 'latest' and
         # the output has just had the base commit (000...) created in it, that commit will be the latest.
