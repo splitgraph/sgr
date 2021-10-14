@@ -3,6 +3,7 @@ import logging
 import re
 from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
+import pglast.node
 from psycopg2.sql import SQL, Composed, Identifier
 from splitgraph.config import SPLITGRAPH_META_SCHEMA
 from splitgraph.core.sql._validation import (
@@ -44,7 +45,13 @@ def _validate_funccall(node: "Node"):
     if len(funcname) != 1:
         # e.g. pg_catalog.substring
         funcname = funcname[1]
-    if funcname.val.startswith("pg_"):
+    if isinstance(funcname, pglast.node.List):
+        funcname_s = funcname.string_value
+    elif funcname.node_tag == "String":
+        funcname_s = funcname.val.value
+    else:
+        raise AssertionError
+    if funcname_s.startswith("pg_"):
         raise UnsupportedSQLError("Unsupported function name %s!" % funcname)
 
 

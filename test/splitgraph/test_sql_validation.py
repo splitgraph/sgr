@@ -162,6 +162,10 @@ def test_validate_function_call():
     succeeds_on_both("SELECT extract_date(42)")
 
 
+def test_validate_complex_function_call():
+    succeeds_on_both("SELECT substring(lpad(\"TractId\"::text, 11, '0') from 0 for 6) AS county_id")
+
+
 def test_validate_pg_function_call():
     fails_on_both("SELECT pg_do_shady_things(42)")
 
