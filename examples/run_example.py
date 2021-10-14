@@ -218,7 +218,7 @@ class RecorderOutput:
 def example(skip, no_pause, dump_asciinema, dump_screens, asciinema_width, asciinema_height, file):
     """Run commands in an example YAML file."""
     with open(file, "r") as f:
-        commands = yaml.load(f)
+        commands = yaml.safe_load(f)
     current_prompt = ""
 
     output = RecorderOutput(

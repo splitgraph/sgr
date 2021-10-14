@@ -273,7 +273,7 @@ def test_commandline_dump():
 
                 with open(os.path.join(tmpdir, "repositories.yml")) as f:
                     output = f.read()
-                assert yaml.load(output) == {
+                assert yaml.safe_load(output) == {
                     "repositories": [
                         {
                             "namespace": "otheruser",
@@ -337,7 +337,7 @@ def test_commandline_dump():
 
                 with open(os.path.join(tmpdir, "repositories.yml")) as f:
                     output = f.read()
-                assert yaml.load(output) == {"repositories": [_somerepo_1_dump]}
+                assert yaml.safe_load(output) == {"repositories": [_somerepo_1_dump]}
 
 
 @httpretty.activate(allow_net_connect=False)
