@@ -44,7 +44,7 @@ def _validate_funccall(node: "Node"):
     if len(funcname) != 1:
         # e.g. pg_catalog.substring
         funcname = funcname[1]
-    if funcname.string_value.startswith("pg_"):
+    if funcname.val.startswith("pg_"):
         raise UnsupportedSQLError("Unsupported function name %s!" % funcname)
 
 
