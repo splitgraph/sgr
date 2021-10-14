@@ -81,7 +81,7 @@ def _get_local_image_for_import(hash_or_tag: str, repository: Repository) -> Tup
     else:
         # For local repositories, first try to pull them to see if they are clones of a remote.
         if source_repo.upstream:
-            source_repo.pull(single_image=tag_or_hash)
+            source_repo.pull(single_image=hash_or_tag)
         source_image = source_repo.images[hash_or_tag]
 
     return source_image, repo_is_temporary
