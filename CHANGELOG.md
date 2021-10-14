@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.2.17 (2021-10-14)
+
+  * Code refactor / optimizations (https://github.com/splitgraph/splitgraph/pull/531)
+  * Support for pluggable authorization logic (https://github.com/splitgraph/splitgraph/pull/542, https://github.com/splitgraph/splitgraph/pull/549)
+  * FDW JSONSchema fixes (https://github.com/splitgraph/splitgraph/pull/545)
+  * Upgrade pglast to 3.4 to fix issues with Splitfile validation (https://github.com/splitgraph/splitgraph/pull/534)
+  * Speed up Splitfile builds (https://github.com/splitgraph/splitgraph/pull/550)
+
+Full set of changes: [`v0.2.16...v0.2.17`](https://github.com/splitgraph/splitgraph/compare/v0.2.16...v0.2.17)
+
 ## v0.2.16 (2021-08-18)
 
   * Various Airbyte ingestion improvements and support for different normalization modes, including a custom dbt model (https://github.com/splitgraph/splitgraph/pull/510, https://github.com/splitgraph/splitgraph/pull/513, https://github.com/splitgraph/splitgraph/pull/514)
