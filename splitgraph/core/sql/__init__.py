@@ -12,8 +12,8 @@ from splitgraph.core.sql._validation import (
 )
 
 try:
-    from pglast import parse_sql
     import pglast.node
+    from pglast import parse_sql
     from pglast.node import Node, Scalar
     from pglast.parser import ParseError
     from pglast.stream import IndentedStream
