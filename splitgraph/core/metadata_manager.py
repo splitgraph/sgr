@@ -81,7 +81,7 @@ class MetadataManager:
                 else getattr(o, a if a != "index" else "object_index")
                 for a in OBJECT_COLS
             )
-            for o in objects
+            for o in sorted(objects, key=lambda o: o.object_id)
         ]
 
         self.metadata_engine.run_sql_batch(
@@ -161,7 +161,7 @@ class MetadataManager:
             SQL("SELECT {}.add_object_location(%s,%s,%s)").format(
                 Identifier(SPLITGRAPH_API_SCHEMA)
             ),
-            object_locations,
+            sorted(object_locations, key=lambda o: str(o[0])),
         )
 
     def get_all_objects(self) -> List[str]:
