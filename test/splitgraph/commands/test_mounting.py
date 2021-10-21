@@ -157,8 +157,6 @@ def test_mount_elasticsearch(local_engine_empty):
             repo.to_schema(),
             "elasticsearch",
             dict(
-                username=None,
-                password=None,
                 host="elasticsearch",
                 port=9200,
                 tables={

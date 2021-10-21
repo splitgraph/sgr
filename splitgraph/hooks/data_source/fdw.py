@@ -626,8 +626,8 @@ class ElasticSearchDataSource(ForeignDataWrapperDataSource):
     credentials_schema = {
         "type": "object",
         "properties": {
-            "username": {"type": ["string", "null"]},
-            "password": {"type": ["string", "null"]},
+            "username": {"type": "string"},
+            "password": {"type": "string"},
         },
     }
 
@@ -715,13 +715,17 @@ EOF
         )
 
     def get_server_options(self):
-        return {
+        result = {
             "wrapper": "pg_es_fdw.ElasticsearchFDW",
             "host": self.params["host"],
             "port": self.params["port"],
-            "username": self.credentials["username"],
-            "password": self.credentials["password"],
         }
+
+        for key in ["username", "password"]:
+            if key in self.credentials:
+                result[key] = self.credentials[key]
+
+        return result
 
     def get_fdw_name(self):
         return "multicorn"
