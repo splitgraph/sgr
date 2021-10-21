@@ -329,7 +329,7 @@ def init_fdw(
     if server_options:
         server_keys, server_vals = zip(*server_options.items())
         create_server += _format_options(server_keys)
-        engine.run_sql(create_server, [str(v) if v is not None else None for v in server_vals])
+        engine.run_sql(create_server, [str(v) for v in server_vals])
     else:
         engine.run_sql(create_server)
 
@@ -339,7 +339,7 @@ def init_fdw(
         )
         user_keys, user_vals = zip(*user_options.items())
         create_mapping += _format_options(user_keys)
-        engine.run_sql(create_mapping, [str(v) if v is not None else None for v in user_vals])
+        engine.run_sql(create_mapping, [str(v) for v in user_vals])
 
 
 def _format_options(option_names):
@@ -715,13 +715,17 @@ EOF
         )
 
     def get_server_options(self):
-        return {
+        result = {
             "wrapper": "pg_es_fdw.ElasticsearchFDW",
             "host": self.params["host"],
             "port": self.params["port"],
-            "username": self.credentials.get("username"),
-            "password": self.credentials.get("password"),
         }
+
+        for key in ["username", "password"]:
+            if key in self.credentials:
+                result[key] = self.credentials[key]
+
+        return result
 
     def get_fdw_name(self):
         return "multicorn"
