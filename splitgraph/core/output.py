@@ -76,12 +76,12 @@ def conn_string_to_dict(connection: Optional[str]) -> Dict[str, Any]:
         # In the future, we could turn all of these options into actual Click options,
         # but then we'd also have to parse the docstring deeper to find out the types the function
         # requires, how to serialize them etc etc. Idea for a click-contrib addon perhaps?
-        return dict(
-            host=match.group(4),
-            port=int(match.group(5)),
-            username=match.group(2),
-            password=match.group(3),
-        )
+        result = {"host": match.group(4), "port": int(match.group(5))}
+        if match.group(2):
+            result["username"] = match.group(2)
+        if match.group(3):
+            result["password"] = match.group(3)
+        return result
     else:
         return {}
 

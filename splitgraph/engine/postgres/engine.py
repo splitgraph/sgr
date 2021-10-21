@@ -100,7 +100,7 @@ API_MAX_QUERY_LENGTH = 261000
 # In addition, some API calls (like get_object_meta) allow variadic arguments
 # to decrease the number of roundtrips the client has to do -- limit this to a sane
 # number.
-API_MAX_VARIADIC_ARGS = 1000
+API_MAX_VARIADIC_ARGS = 100
 
 
 # PG types we can run max/min/comparisons on
