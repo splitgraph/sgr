@@ -1,3 +1,3 @@
-python_library(
+python_sources(
     skip_black=True,
 )

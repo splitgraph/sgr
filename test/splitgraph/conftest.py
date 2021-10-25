@@ -97,7 +97,11 @@ def _mount_mongo(repository):
                         "database": "origindb",
                         "collection": "stuff",
                     },
-                    "schema": {"name": "text", "duration": "numeric", "happy": "boolean"},
+                    "schema": {
+                        "name": "text",
+                        "duration": "numeric",
+                        "happy": "boolean",
+                    },
                 },
             ),
         ),
@@ -164,13 +168,15 @@ def healthcheck_mounting():
     try:
         assert (
             get_engine().run_sql(
-                'SELECT COUNT(*) FROM "test/pg_mount".fruits', return_shape=ResultShape.ONE_ONE
+                'SELECT COUNT(*) FROM "test/pg_mount".fruits',
+                return_shape=ResultShape.ONE_ONE,
             )
             is not None
         )
         assert (
             get_engine().run_sql(
-                'SELECT COUNT(*) FROM "test_mg_mount".stuff', return_shape=ResultShape.ONE_ONE
+                'SELECT COUNT(*) FROM "test_mg_mount".stuff',
+                return_shape=ResultShape.ONE_ONE,
             )
             is not None
         )
@@ -258,7 +264,8 @@ def clean_out_engine(engine):
 
 
 with open(
-    os.path.join(os.path.dirname(__file__), "../architecture/data/pgorigin/setup.sql"), "r"
+    os.path.join(os.path.dirname(__file__), "../architecture/data/pgorigin/setup.sql"),
+    "r",
 ) as f:
     PG_DATA = f.read()
 

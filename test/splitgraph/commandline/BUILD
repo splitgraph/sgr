@@ -1,4 +1,4 @@
-python_library(
+python_sources(
     skip_mypy=True,
     skip_black=True,
 )

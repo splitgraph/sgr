@@ -1,4 +1,4 @@
-python_library(
+python_sources(
     skip_black=True,
 )
 
@@ -13,5 +13,5 @@ pex_binary(
         "src/py/splitgraph/splitgraph/ingestion/socrata",
         "src/py/splitgraph/splitgraph/ingestion/snowflake",
         "src/py/splitgraph/splitgraph/hooks",
-    ]
+    ],
 )
