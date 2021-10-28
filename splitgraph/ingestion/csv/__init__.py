@@ -164,6 +164,8 @@ class CSVDataSource(ForeignDataWrapperDataSource):
         "properties": {
             "url": {"type": "string", "description": "HTTP URL to the CSV file"},
             "s3_object": {"type": "string", "description": "S3 object of the CSV file"},
+            # Add various CSV dialect overrides to the table params schema.
+            **{k: v for k, v in params_schema["properties"].items() if k != "connection"},
         },
     }
 
