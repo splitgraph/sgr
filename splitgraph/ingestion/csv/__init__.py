@@ -235,6 +235,9 @@ EOF
     @classmethod
     def migrate_params(cls, params: Params) -> Params:
         params = deepcopy(params)
+        if "connection" in params:
+            return params
+
         if "url" in params:
             params["connection"] = {"connection_type": "http", "url": params["url"]}
             del params["url"]
