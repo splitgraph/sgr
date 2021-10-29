@@ -239,7 +239,11 @@ def execute_commands(
 
 
 def checkout_if_changed(repository: Repository, image_hash: str) -> None:
-    if repository.head != image_hash or repository.has_pending_changes():
+    if (
+        repository.head is None
+        or (repository.head.image_hash != image_hash)
+        or repository.has_pending_changes()
+    ):
         repository.images.by_hash(image_hash).checkout()
     else:
         logging.info(
