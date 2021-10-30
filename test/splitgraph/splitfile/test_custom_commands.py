@@ -6,8 +6,7 @@ from psycopg2.sql import SQL, Identifier
 from splitgraph.engine import get_engine
 from splitgraph.exceptions import SplitfileError
 from splitgraph.hooks.splitfile_commands import PluginCommand
-from splitgraph.splitfile import execute_commands
-from splitgraph.splitfile.execution import _combine_hashes
+from splitgraph.splitfile.execution import _combine_hashes, execute_commands
 
 
 class DummyCommand(PluginCommand):
