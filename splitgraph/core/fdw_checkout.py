@@ -16,7 +16,6 @@ if TYPE_CHECKING:
 
 try:
     from multicorn import ANY, ForeignDataWrapper
-    from multicorn.utils import log_to_postgres
 except ImportError:
     # Multicorn not installed (OK if we're not on the engine machine).
     pass

@@ -7,7 +7,7 @@ from splitgraph.engine.postgres.engine import PsycopgEngine
 
 
 @pytest.mark.parametrize(
-    "files, current_version, target_version, expected_files",
+    ("files", "current_version", "target_version", "expected_files"),
     [
         # No schema installed at all
         (["test--0.0.1.sql"], None, None, ["test--0.0.1.sql"]),

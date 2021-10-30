@@ -17,15 +17,15 @@ def succeeds_on_both(sql):
 
 
 def fails_on_both(sql):
-    with pytest.raises(UnsupportedSQLError) as e:
+    with pytest.raises(UnsupportedSQLError):
         prepare_splitfile_sql(sql, dummy_mapper)
-    with pytest.raises(UnsupportedSQLError) as e:
+    with pytest.raises(UnsupportedSQLError):
         validate_import_sql(sql)
 
 
 def succeeds_on_sql_fails_on_import(sql):
     prepare_splitfile_sql(sql, dummy_mapper)
-    with pytest.raises(UnsupportedSQLError) as e:
+    with pytest.raises(UnsupportedSQLError):
         validate_import_sql(sql)
 
 
@@ -202,7 +202,7 @@ def _mapper(repo, hash_or_tag):
 
 
 @pytest.mark.parametrize(
-    "source,rewritten,canonical",
+    ("source", "rewritten", "canonical"),
     [
         (
             'CREATE TABLE output AS SELECT * FROM "ns/repo:tag".input',
@@ -245,7 +245,7 @@ def test_rewrite(source, rewritten, canonical):
 
 
 @pytest.mark.parametrize(
-    "source,rewritten,canonical",
+    ("source", "rewritten", "canonical"),
     [
         (
             'CREATE TABLE output AS SELECT * FROM "ns/repo:tag".input',

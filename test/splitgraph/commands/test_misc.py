@@ -118,19 +118,19 @@ def test_image_resolution(pg_repo_local):
     assert pg_repo_local.images[head.image_hash[:10]] == head
     assert pg_repo_local.images["latest"] == head
     with pytest.raises(ImageNotFoundError):
-        img = pg_repo_local.images["abcdef1234567890abcdef"]
+        pg_repo_local.images["abcdef1234567890abcdef"]
     with pytest.raises(ImageNotFoundError):
-        img = pg_repo_local.images["some_weird_tag"]
+        pg_repo_local.images["some_weird_tag"]
 
 
 def test_tag_errors(pg_repo_local):
     pg_repo_local.uncheckout()
     with pytest.raises(ImageNotFoundError) as e:
-        head = pg_repo_local.images.by_tag("HEAD")
+        pg_repo_local.images.by_tag("HEAD")
     assert "No current checked out revision found" in str(e.value)
 
     with pytest.raises(ImageNotFoundError) as e:
-        tag = pg_repo_local.images.by_tag("notatag")
+        pg_repo_local.images.by_tag("notatag")
     assert "Tag notatag not found" in str(e.value)
 
 

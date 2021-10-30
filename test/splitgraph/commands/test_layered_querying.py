@@ -145,7 +145,7 @@ class TestLayeredQuerying:
     def test_direct_table_lq_query_plan_cache(self, lq_test_repo):
         table = lq_test_repo.head.get_table("fruits")
 
-        quals, expected = ([[("fruit_id", "=", "2")]], [{"name": "guitar", "timestamp": _DT}])
+        quals, _ = ([[("fruit_id", "=", "2")]], [{"name": "guitar", "timestamp": _DT}])
 
         # Check "query plan" is reused and the table doesn't run qual filtering again
         with mock.patch.object(

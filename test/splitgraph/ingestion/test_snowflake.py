@@ -37,7 +37,7 @@ BwzG3ZjEjRTm10AOOGb62hi9JA==
 -----END PRIVATE KEY-----
 """
 
-_sample_privkey_b64 = "".join(l for l in _sample_privkey.strip().split("\n")[1:-1] if l)
+_sample_privkey_b64 = "".join(line for line in _sample_privkey.strip().split("\n")[1:-1] if line)
 
 
 def test_snowflake_data_source_dburl_conversion_warehouse():

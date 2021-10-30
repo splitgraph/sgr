@@ -29,8 +29,6 @@ from splitgraph.cloud.models import (
     AddExternalCredentialRequest,
     AddExternalRepositoriesRequest,
     AddExternalRepositoryRequest,
-    Credential,
-    External,
     ExternalResponse,
     ListExternalCredentialsResponse,
     Metadata,

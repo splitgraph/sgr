@@ -30,8 +30,8 @@ def test_auth_api_user_error():
     with pytest.raises(AuthAPIError) as e:
         client.get_refresh_token("someuser", "somepassword")
 
-        assert isinstance(e.__cause__, HTTPError)
-        assert "403" in str(e.__cause__)
+    assert isinstance(e.__cause__, HTTPError)
+    assert "403" in str(e.__cause__)
 
 
 @httpretty.activate(allow_net_connect=False)
@@ -48,7 +48,7 @@ def test_auth_api_server_error_missing_entries():
     with pytest.raises(AuthAPIError) as e:
         client.create_machine_credentials("AAABBBB", "somepassword")
 
-        assert "Missing entries" in str(e)
+    assert "Missing entries" in str(e)
 
 
 @httpretty.activate(allow_net_connect=False)
@@ -65,7 +65,7 @@ def test_auth_api_server_error_no_json():
     with pytest.raises(AuthAPIError) as e:
         client.get_refresh_token("someuser", "somepassword")
 
-        assert "deadcafebeef-feed12345678" in str(e)
+    assert "deadcafebeef-feed12345678" in str(e)
 
 
 def test_auth_api_access_token_property_no_refresh():
@@ -75,8 +75,8 @@ def test_auth_api_access_token_property_no_refresh():
     # (there won't be if we just use the default config).
 
     with pytest.raises(AuthAPIError) as e:
-        token = client.access_token
-        assert "No refresh token found in the config" in str(e)
+        client.access_token
+    assert "No refresh token found in the config" in str(e)
 
 
 def _make_dummy_access_token(exp):
@@ -133,7 +133,7 @@ def test_auth_api_access_token_property_expired():
         },
     ):
         with patch("splitgraph.cloud.overwrite_config") as oc:
-            token = client.access_token
+            client.access_token
 
     oc.assert_called_once_with(
         {

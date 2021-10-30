@@ -87,7 +87,7 @@ def test_splitfile_incomplete_provenance(local_engine_empty, pg_repo_remote_mult
         output=OUTPUT,
     )
     head_img = OUTPUT.head
-    image_with_mount = head_img.get_log()[-2]
+    head_img.get_log()[-2]
     recreated_commands = head_img.to_splitfile(ignore_irreproducible=True)
 
     assert recreated_commands == [

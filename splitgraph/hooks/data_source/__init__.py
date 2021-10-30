@@ -10,12 +10,6 @@ from ...config.config import get_all_in_section
 from ...config.keys import DEFAULTS
 from ...exceptions import DataSourceError
 from .base import DataSource
-from .fdw import (
-    ElasticSearchDataSource,
-    MongoDataSource,
-    MySQLDataSource,
-    PostgreSQLDataSource,
-)
 
 _DATA_SOURCES: Dict[str, Type[DataSource]] = {}
 _data_sources_registered = False

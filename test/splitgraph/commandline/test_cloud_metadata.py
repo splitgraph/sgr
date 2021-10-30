@@ -43,7 +43,7 @@ from splitgraph.exceptions import (
 
 @httpretty.activate(allow_net_connect=False)
 @pytest.mark.parametrize(
-    "namespace,repository,readme,token,expected",
+    ("namespace", "repository", "readme", "token", "expected"),
     [
         ("someuser", "somerepo", "somereadme", ACCESS_TOKEN, True),
         ("someuser", "somerepo", "somereadme", "not_a_token", GQLUnauthenticatedError),
