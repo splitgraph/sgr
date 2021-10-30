@@ -189,14 +189,14 @@ def test_metadata_constraints_table_objects(local_engine_empty):
 
     with pytest.raises(
         CheckViolation, match="Some objects in the object_ids array aren't registered!"
-    ) as e:
+    ):
         R.objects.register_tables(
             R, [("cafecafe" * 8, "table", [(1, "key", "integer", True)], ["object_doesnt_exist"])]
         )
 
     with pytest.raises(
         CheckViolation, match="Some objects in the object_ids array aren't registered!"
-    ) as e:
+    ):
         R.objects.register_tables(
             R,
             [
