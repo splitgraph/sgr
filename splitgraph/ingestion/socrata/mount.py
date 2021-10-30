@@ -151,7 +151,7 @@ def generate_socrata_mount_queries(sought_ids, datasets, mountpoint, server_id, 
     from splitgraph.core.output import pluralise, slugify
     from splitgraph.ingestion.socrata.querying import socrata_to_sg_schema
 
-    found_ids = set(d["resource"]["id"] for d in datasets)
+    found_ids = {d["resource"]["id"] for d in datasets}
     logging.info("Loaded metadata for %s", pluralise("Socrata table", len(found_ids)))
 
     tables_inv = _get_table_map(found_ids, sought_ids, tables)

@@ -398,7 +398,12 @@ class RESTAPIClient:
         :param email: Email
         :param accept_tos: Accept the Terms of Service if they exist
         """
-        body = dict(username=username, password=password, email=email, accept_tos=accept_tos)
+        body = {
+            "username": username,
+            "password": password,
+            "email": email,
+            "accept_tos": accept_tos,
+        }
 
         headers = get_headers()
         try:
@@ -421,7 +426,7 @@ class RESTAPIClient:
         :param password: Password
         :return: Tuple of (access_token, refresh_token).
         """
-        body = dict(username=username, password=password)
+        body = {"username": username, "password": password}
         return requests.post(
             self.endpoint + "/refresh_token", json=body, verify=self.verify, headers=get_headers()
         )
@@ -437,7 +442,7 @@ class RESTAPIClient:
         :param password: Password
         :return: Tuple of (key, secret).
         """
-        body = dict(password=password)
+        body = {"password": password}
         return requests.post(
             self.endpoint + "/create_machine_credentials",
             json=body,
@@ -454,7 +459,7 @@ class RESTAPIClient:
         :return: New access token.
         """
 
-        body = dict(refresh_token=refresh_token)
+        body = {"refresh_token": refresh_token}
         return requests.post(
             self.endpoint + "/access_token", json=body, verify=self.verify, headers=get_headers()
         )
@@ -469,7 +474,7 @@ class RESTAPIClient:
         :return: New access token.
         """
 
-        body = dict(api_key=api_key, api_secret=api_secret)
+        body = {"api_key": api_key, "api_secret": api_secret}
         return requests.post(
             self.endpoint + "/access_token", json=body, verify=self.verify, headers=get_headers()
         )
@@ -774,16 +779,16 @@ class GQLAPIClient:
     def bulk_upsert_metadata(
         self, namespace_list: List[str], repository_list: List[str], metadata_list: List[Metadata]
     ):
-        repo_profiles: Dict[str, List[Any]] = dict(
-            namespaces=namespace_list,
-            repositories=repository_list,
-            descriptions=[],
-            readmes=[],
-            licenses=[],
-            metadata=[],
-        )
-        repo_sources: Dict[str, List[Any]] = dict(namespaces=[], repositories=[], sources=[])
-        repo_topics: Dict[str, List[str]] = dict(namespaces=[], repositories=[], topics=[])
+        repo_profiles: Dict[str, List[Any]] = {
+            "namespaces": namespace_list,
+            "repositories": repository_list,
+            "descriptions": [],
+            "readmes": [],
+            "licenses": [],
+            "metadata": [],
+        }
+        repo_sources: Dict[str, List[Any]] = {"namespaces": [], "repositories": [], "sources": []}
+        repo_topics: Dict[str, List[str]] = {"namespaces": [], "repositories": [], "topics": []}
 
         # populate mutation payloads
         for ind, metadata in enumerate(metadata_list):

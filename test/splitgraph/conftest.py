@@ -68,15 +68,15 @@ def _mount_postgres(repository, tables=None):
     mount(
         "tmp",
         "postgres_fdw",
-        dict(
-            host="pgorigin",
-            port=5432,
-            username="originro",
-            password="originpass",
-            dbname="origindb",
-            remote_schema="public",
-            tables=tables,
-        ),
+        {
+            "host": "pgorigin",
+            "port": 5432,
+            "username": "originro",
+            "password": "originpass",
+            "dbname": "origindb",
+            "remote_schema": "public",
+            "tables": tables,
+        },
     )
     repository.import_tables([], R("tmp"), [], foreign_tables=True, do_checkout=True)
     R("tmp").delete()
@@ -86,13 +86,13 @@ def _mount_mongo(repository):
     mount(
         "tmp",
         "mongo_fdw",
-        dict(
-            host="mongoorigin",
-            port=27017,
-            username="originro",
-            password="originpass",
-            tables=dict(
-                stuff={
+        {
+            "host": "mongoorigin",
+            "port": 27017,
+            "username": "originro",
+            "password": "originpass",
+            "tables": {
+                "stuff": {
                     "options": {
                         "database": "origindb",
                         "collection": "stuff",
@@ -102,9 +102,9 @@ def _mount_mongo(repository):
                         "duration": "numeric",
                         "happy": "boolean",
                     },
-                },
-            ),
-        ),
+                }
+            },
+        },
     )
     repository.import_tables([], R("tmp"), [], foreign_tables=True, do_checkout=True)
     R("tmp").delete()
@@ -115,13 +115,13 @@ def _mount_mysql(repository):
     mount(
         repository.to_schema(),
         "mysql_fdw",
-        dict(
-            host="mysqlorigin",
-            port=3306,
-            username="originuser",
-            password="originpass",
-            dbname="mysqlschema",
-        ),
+        {
+            "host": "mysqlorigin",
+            "port": 3306,
+            "username": "originuser",
+            "password": "originpass",
+            "dbname": "mysqlschema",
+        },
         tables={
             "mushrooms": (
                 [

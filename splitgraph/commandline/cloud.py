@@ -274,7 +274,7 @@ def login_api_c(api_key, api_secret, remote, skip_inject):
         inject_config_into_engines(CONFIG["SG_ENGINE_PREFIX"], config_path)
 
 
-@click.command("curl", context_settings=dict(ignore_unknown_options=True))
+@click.command("curl", context_settings={"ignore_unknown_options": True})
 @click.option("--remote", default="data.splitgraph.com", help="Name of the remote registry to use.")
 @click.option(
     "-t", "--request-type", default="postgrest", type=click.Choice(["postgrest", "splitfile"])

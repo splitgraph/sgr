@@ -134,7 +134,7 @@ def prune_c(repository, yes):
 
     repository = Repository.from_template(repository, engine=get_engine())
 
-    all_images = set(image.image_hash for image in repository.images())
+    all_images = {image.image_hash for image in repository.images()}
     all_tagged_images = {i for i, t in repository.get_all_hashes_tags() if i}
     dangling_images = all_images.difference(
         repository.images.get_all_parent_images(all_tagged_images)
