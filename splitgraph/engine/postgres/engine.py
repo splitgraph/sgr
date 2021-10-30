@@ -30,7 +30,7 @@ import psycopg2.extensions
 from packaging.version import Version
 from psycopg2 import DatabaseError
 from psycopg2.errors import InvalidSchemaName, UndefinedTable
-from psycopg2.extras import Json, execute_batch
+from psycopg2.extras import Json
 from psycopg2.pool import AbstractConnectionPool, ThreadedConnectionPool
 from psycopg2.sql import SQL, Composed, Identifier
 from splitgraph.__version__ import __version__

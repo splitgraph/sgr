@@ -10,12 +10,7 @@ from click.testing import CliRunner
 from splitgraph.commandline import cleanup_c, import_c, init_c, mount_c, rm_c, status_c
 from splitgraph.core.engine import repository_exists
 from splitgraph.core.repository import Repository
-from splitgraph.hooks.data_source import (
-    _load_source,
-    _register_plugin_dir_data_sources,
-    get_data_source,
-    get_data_sources,
-)
+from splitgraph.hooks.data_source import _load_source, get_data_source, get_data_sources
 from splitgraph.hooks.data_source.fdw import PostgreSQLDataSource
 from splitgraph.ingestion.socrata.mount import SocrataDataSource
 

@@ -9,7 +9,6 @@ from splitgraph.exceptions import SplitfileError
 from splitgraph.splitfile._parsing import (
     extract_all_table_aliases,
     extract_nodes,
-    get_first_or_none,
     parse_commands,
     parse_image_spec,
     preprocess,

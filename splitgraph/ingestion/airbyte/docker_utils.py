@@ -1,7 +1,5 @@
 import logging
 import os
-import socket
-import subprocess
 from contextlib import contextmanager
 from typing import Any, List, Tuple
 

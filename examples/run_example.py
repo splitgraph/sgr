@@ -12,7 +12,6 @@ import subprocess
 import sys
 import termios
 import time
-import shlex
 
 import click
 import yaml

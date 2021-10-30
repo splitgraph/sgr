@@ -6,25 +6,13 @@ import bisect
 import itertools
 import json
 import logging
-import math
 import operator
 import struct
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import reduce
 from hashlib import sha256
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Dict,
-    List,
-    Optional,
-    Set,
-    Tuple,
-    TypeVar,
-    Union,
-    cast,
-)
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union, cast
 
 from psycopg2._json import Json
 from psycopg2.errors import UniqueViolation
@@ -33,7 +21,7 @@ from splitgraph.config import CONFIG, SG_CMD_ASCII, SPLITGRAPH_API_SCHEMA, get_s
 from splitgraph.core.indexing.bloom import filter_bloom_index, generate_bloom_index
 from splitgraph.core.indexing.range import filter_range_index, generate_range_index
 from splitgraph.core.metadata_manager import MetadataManager, Object
-from splitgraph.core.types import Changeset, Comparable, TableSchema
+from splitgraph.core.types import Changeset, TableSchema
 from splitgraph.engine import ResultShape
 from splitgraph.engine.postgres.engine import (
     SG_UD_FLAG,
