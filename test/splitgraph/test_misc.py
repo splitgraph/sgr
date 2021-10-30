@@ -192,7 +192,7 @@ def test_metadata_constraints_table_objects(local_engine_empty):
             R, [("cafecafe" * 8, "table", [(1, "key", "integer", True)], ["object_doesnt_exist"])]
         )
 
-    assert "Some objects in the object_ids array aren''t registered!" in str(e)
+    assert "Some objects in the object_ids array aren''t registered!" in str(e.value)
 
     with pytest.raises(CheckViolation) as e:
         R.objects.register_tables(
@@ -207,7 +207,7 @@ def test_metadata_constraints_table_objects(local_engine_empty):
             ],
         )
 
-    assert "Some objects in the object_ids array aren''t registered!" in str(e)
+    assert "Some objects in the object_ids array aren''t registered!" in str(e.value)
 
 
 @pytest.mark.registry

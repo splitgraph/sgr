@@ -260,7 +260,10 @@ def _get_sg_schema(flattened_schema, primary_key) -> TableSchema:
 
 
 # Taken from target-postgres and adapted to not crash on unsupported columns
-def _flatten_schema(d, parent_key=[], sep="__", level=0, max_level=0):
+def _flatten_schema(d, parent_key=None, sep="__", level=0, max_level=0):
+    if parent_key is None:
+        parent_key = []
+
     items = []
 
     if "properties" not in d:

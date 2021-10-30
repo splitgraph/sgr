@@ -138,7 +138,7 @@ def get_config_dict_from_file(sg_file: str, **kwargs) -> Dict[str, Dict[str, str
     config = ConfigParser(interpolation=ExtendedInterpolation())
 
     # Convert all keys to uppercase
-    setattr(config, "optionxform", lambda option: option.upper())
+    config.optionxform = lambda option: option.upper()  # type: ignore
     config.read(sg_file)
 
     config_dict = {s: dict(config.items(s, False)) for s in config.sections()}

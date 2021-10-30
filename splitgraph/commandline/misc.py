@@ -288,6 +288,7 @@ def _eval(command, args):
     # appease PyCharm
     # noinspection PyUnresolvedReferences
     from splitgraph.core.object_manager import ObjectManager
+    from splitgraph.core.repository import Repository  # noqa
     from splitgraph.engine import get_engine
 
     engine = get_engine()
