@@ -182,7 +182,7 @@ def chunk(sequence: Sequence[T], chunk_size: int = API_MAX_VARIADIC_ARGS) -> Ite
     curr_chunk: List[T] = []
     for i, curr in enumerate(sequence):
         curr_chunk.append(curr)
-        if i % chunk_size == 0:
+        if (i + 1) % chunk_size == 0:
             yield curr_chunk
             curr_chunk = []
     if curr_chunk:

@@ -541,7 +541,7 @@ class RESTAPIClient:
 
         headers = get_headers()
         if get_singleton(config, "SG_UPDATE_ANONYMOUS").lower() == "false":
-            with contextlib.suppress(KeyError):
+            with contextlib.suppress(AuthAPIError):
                 headers.update({"Authorization": "Bearer " + self.access_token})
 
         try:
