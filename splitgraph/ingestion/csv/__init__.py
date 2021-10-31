@@ -1,3 +1,4 @@
+import contextlib
 import json
 from copy import deepcopy
 from datetime import timedelta
@@ -253,10 +254,8 @@ EOF
                 "s3_object",
                 "s3_object_prefix",
             ]:
-                try:
+                with contextlib.suppress(KeyError):
                     connection[key] = params.pop(key)
-                except KeyError:
-                    pass
 
             params["connection"] = connection
         return params

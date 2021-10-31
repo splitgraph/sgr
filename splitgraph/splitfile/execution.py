@@ -299,10 +299,9 @@ def _execute_from(node: Node, output: Repository) -> Tuple[Repository, Optional[
         repository, tag_or_hash = parse_image_spec(repo_source)
         source_repo = lookup_repository(repository.to_schema(), include_local=True)
 
-        if source_repo.engine.name == "LOCAL":
+        if source_repo.engine.name == "LOCAL" and source_repo.upstream:
             # For local repositories, make sure to update them if they've an upstream
-            if source_repo.upstream:
-                source_repo.pull(single_image=tag_or_hash)
+            source_repo.pull(single_image=tag_or_hash)
 
         # Get the target image hash from the source repo: otherwise, if the tag is, say, 'latest' and
         # the output has just had the base commit (000...) created in it, that commit will be the latest.

@@ -1,5 +1,6 @@
 """Public API for interacting with the Splitgraph registry"""
 import base64
+import contextlib
 import json
 import logging
 import os
@@ -372,10 +373,8 @@ class RESTAPIClient:
         # Allow overriding the CA bundle for test purposes (requests doesn't use the system
         # cert store)
         self.verify: Union[bool, str] = True
-        try:
+        with contextlib.suppress(KeyError):
             self.verify = get_remote_param(remote, "SG_AUTH_API_CA_PATH")
-        except KeyError:
-            pass
 
         # How soon before the token expiry to refresh the token, in seconds.
         self.access_token_expiry_tolerance = 30
@@ -406,13 +405,11 @@ class RESTAPIClient:
         }
 
         headers = get_headers()
-        try:
-            headers["Authorization"] = "Bearer " + self.access_token
-        except AuthAPIError:
+        with contextlib.suppress(AuthAPIError):
             # We can optionally pass an access token for logged-in admin users to make new users
             # on the registry if new signups are disabled, but it will be missing in most cases
             # (since the user is registering anew)
-            pass
+            headers["Authorization"] = "Bearer " + self.access_token
         return requests.post(
             self.endpoint + "/register_user", json=body, verify=self.verify, headers=headers
         )
@@ -491,7 +488,7 @@ class RESTAPIClient:
 
         config = create_config_dict()
 
-        try:
+        with contextlib.suppress(KeyError):
             current_access_token = get_from_subsection(
                 config, "remotes", self.remote, "SG_CLOUD_ACCESS_TOKEN"
             )
@@ -499,8 +496,6 @@ class RESTAPIClient:
             now = time.time()
             if now < exp - self.access_token_expiry_tolerance:
                 return current_access_token
-        except KeyError:
-            pass
 
         # Token expired or non-existent, get a new one.
         try:
@@ -546,10 +541,8 @@ class RESTAPIClient:
 
         headers = get_headers()
         if get_singleton(config, "SG_UPDATE_ANONYMOUS").lower() == "false":
-            try:
+            with contextlib.suppress(KeyError):
                 headers.update({"Authorization": "Bearer " + self.access_token})
-            except AuthAPIError:
-                pass
 
         try:
             logging.debug("Running update check")

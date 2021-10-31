@@ -22,7 +22,7 @@ from splitgraph.ingestion.socrata.querying import (
 )
 
 
-class Q:
+class Q:  # noqa: SIM119
     def __init__(self, col, op, val, is_list=False, is_list_any=True):
         self.field_name = col
         if is_list:

@@ -2,6 +2,7 @@
 Miscellaneous image management sgr commands.
 """
 import atexit
+import contextlib
 import os
 import platform
 import shutil
@@ -441,10 +442,8 @@ def upgrade_c(skip_engine_upgrade, path, force, version):
     # Delete the temporary file at exit if we crash
 
     def _unlink():
-        try:
+        with contextlib.suppress(FileNotFoundError):
             temp_path.unlink()
-        except FileNotFoundError:
-            pass
 
     atexit.register(_unlink)
 
@@ -479,11 +478,9 @@ def upgrade_c(skip_engine_upgrade, path, force, version):
         # We hence rename ourselves to a .old file and ask the user to delete it if needed.
         if final_path.exists():
             backup_path = final_path.with_suffix(final_path.suffix + ".old")
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 # shutil.move() breaks on Windows otherwise.
                 backup_path.unlink()
-            except FileNotFoundError:
-                pass
             shutil.move(str(final_path), str(backup_path))
             click.echo("Old version has been backed up to %s." % backup_path)
 

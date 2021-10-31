@@ -1,3 +1,4 @@
+import contextlib
 import os
 from datetime import datetime as dt
 from io import StringIO
@@ -5,12 +6,11 @@ from io import StringIO
 import pytest
 from splitgraph.core.types import TableColumn
 
-try:
+with contextlib.suppress(ImportError):
     from splitgraph.ingestion.pandas import df_to_table, sql_to_df
-except ImportError:
+
     # If Pandas isn't installed, pytest will skip these tests
     # (see pytest.importorskip).
-    pass
 from test.splitgraph.conftest import INGESTION_RESOURCES_CSV, load_csv
 
 pd = pytest.importorskip("pandas")

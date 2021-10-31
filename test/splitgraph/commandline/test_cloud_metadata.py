@@ -72,19 +72,15 @@ def test_commandline_readme(namespace, repository, readme, token, expected):
         "splitgraph.cloud.RESTAPIClient.access_token",
         new_callable=PropertyMock,
         return_value=token,
-    ):
-        with patch("splitgraph.cloud.get_remote_param", return_value=GQL_ENDPOINT):
-            result = runner.invoke(readme_c, [namespace + "/" + repository, "-"], input=readme)
+    ), patch("splitgraph.cloud.get_remote_param", return_value=GQL_ENDPOINT):
+        result = runner.invoke(readme_c, [namespace + "/" + repository, "-"], input=readme)
 
-            if expected is True:
-                assert result.exit_code == 0
-                assert (
-                    "README updated for repository %s/%s." % (namespace, repository)
-                    in result.output
-                )
-            else:
-                assert result.exit_code != 0
-                assert isinstance(result.exception, expected)
+        if expected is True:
+            assert result.exit_code == 0
+            assert "README updated for repository %s/%s." % (namespace, repository) in result.output
+        else:
+            assert result.exit_code != 0
+            assert isinstance(result.exception, expected)
 
 
 @httpretty.activate(allow_net_connect=False)
@@ -106,20 +102,19 @@ def test_commandline_description():
         "splitgraph.cloud.RESTAPIClient.access_token",
         new_callable=PropertyMock,
         return_value=ACCESS_TOKEN,
-    ):
-        with patch("splitgraph.cloud.get_remote_param", return_value=GQL_ENDPOINT):
-            result = runner.invoke(
-                description_c,
-                ["someuser/somerepo", "some description"],
-                catch_exceptions=False,
-            )
+    ), patch("splitgraph.cloud.get_remote_param", return_value=GQL_ENDPOINT):
+        result = runner.invoke(
+            description_c,
+            ["someuser/somerepo", "some description"],
+            catch_exceptions=False,
+        )
 
-            assert result.exit_code == 0
-            assert "Description updated for repository someuser/somerepo." in result.output
+        assert result.exit_code == 0
+        assert "Description updated for repository someuser/somerepo." in result.output
 
-            result = runner.invoke(description_c, ["someuser/somerepo", "way too long" * 16])
-            assert result.exit_code == 1
-            assert "The description should be 160 characters or shorter!" in str(result.exc_info[1])
+        result = runner.invoke(description_c, ["someuser/somerepo", "way too long" * 16])
+        assert result.exit_code == 1
+        assert "The description should be 160 characters or shorter!" in str(result.exc_info[1])
 
 
 @httpretty.activate(allow_net_connect=False)
@@ -165,26 +160,25 @@ def test_commandline_metadata():
         "splitgraph.cloud.RESTAPIClient.access_token",
         new_callable=PropertyMock,
         return_value=ACCESS_TOKEN,
-    ):
-        with patch("splitgraph.cloud.get_remote_param", return_value=GQL_ENDPOINT):
-            result = runner.invoke(metadata_c, ["someuser/somerepo", "-"], input=INVALID_METADATA)
-            assert result.exit_code == 2
-            assert "Invalid metadata file" in result.output
+    ), patch("splitgraph.cloud.get_remote_param", return_value=GQL_ENDPOINT):
+        result = runner.invoke(metadata_c, ["someuser/somerepo", "-"], input=INVALID_METADATA)
+        assert result.exit_code == 2
+        assert "Invalid metadata file" in result.output
 
-            with TemporaryDirectory() as tmpdir:
-                test_readme_path = os.path.join(tmpdir, "test-readme.md")
-                with open(test_readme_path, "w") as f:
-                    f.write("# Sample dataset readme\n\nHello there\n")
+        with TemporaryDirectory() as tmpdir:
+            test_readme_path = os.path.join(tmpdir, "test-readme.md")
+            with open(test_readme_path, "w") as f:
+                f.write("# Sample dataset readme\n\nHello there\n")
 
-                result = runner.invoke(
-                    metadata_c,
-                    ["someuser/somerepo", "-"],
-                    input=VALID_METADATA.format(test_readme_path),
-                    catch_exceptions=False,
-                )
+            result = runner.invoke(
+                metadata_c,
+                ["someuser/somerepo", "-"],
+                input=VALID_METADATA.format(test_readme_path),
+                catch_exceptions=False,
+            )
 
-                assert result.exit_code == 0
-                assert "Metadata updated for repository someuser/somerepo." in result.output
+            assert result.exit_code == 0
+            assert "Metadata updated for repository someuser/somerepo." in result.output
 
 
 @httpretty.activate(allow_net_connect=False)
@@ -200,14 +194,13 @@ def test_commandline_search():
         "splitgraph.cloud.RESTAPIClient.access_token",
         new_callable=PropertyMock,
         return_value=ACCESS_TOKEN,
-    ):
-        with patch("splitgraph.cloud.get_remote_param", return_value=GQL_ENDPOINT):
-            result = runner.invoke(search_c, ["some_query", "--limit", "20"])
-            assert result.exit_code == 0
-            assert "namespace1/repo1" in result.output
-            assert "http://www.example.com/namespace2/repo2" in result.output
-            assert "Total results: 42" in result.output
-            assert "Visit http://www.example.com/search?q=some_query" in result.output
+    ), patch("splitgraph.cloud.get_remote_param", return_value=GQL_ENDPOINT):
+        result = runner.invoke(search_c, ["some_query", "--limit", "20"])
+        assert result.exit_code == 0
+        assert "namespace1/repo1" in result.output
+        assert "http://www.example.com/namespace2/repo2" in result.output
+        assert "Total results: 42" in result.output
+        assert "Visit http://www.example.com/search?q=some_query" in result.output
 
 
 @httpretty.activate(allow_net_connect=False)
@@ -219,125 +212,125 @@ def test_commandline_dump():
         "splitgraph.cloud.RESTAPIClient.access_token",
         new_callable=PropertyMock,
         return_value=ACCESS_TOKEN,
-    ):
-        with patch("splitgraph.cloud.get_remote_param", return_value=GQL_ENDPOINT):
-            with tempfile.TemporaryDirectory() as tmpdir:
-                result = runner.invoke(
-                    dump_c,
-                    [
-                        "--readme-dir",
-                        os.path.join(tmpdir, "readmes"),
-                        "-f",
-                        os.path.join(tmpdir, "repositories.yml"),
-                    ],
-                    catch_exceptions=False,
-                )
-                assert result.exit_code == 0
+    ), patch(
+        "splitgraph.cloud.get_remote_param", return_value=GQL_ENDPOINT
+    ), tempfile.TemporaryDirectory() as tmpdir:
+        result = runner.invoke(
+            dump_c,
+            [
+                "--readme-dir",
+                os.path.join(tmpdir, "readmes"),
+                "-f",
+                os.path.join(tmpdir, "repositories.yml"),
+            ],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0
 
-                contents = list(os.walk(tmpdir))
-                # Check the dump root
-                assert contents[0] == (tmpdir, ["readmes"], ["repositories.yml"])
+        contents = list(os.walk(tmpdir))
+        # Check the dump root
+        assert contents[0] == (tmpdir, ["readmes"], ["repositories.yml"])
 
-                # Check the readmes subdirectory: no directories
-                assert contents[1][:2] == (
-                    os.path.join(tmpdir, "readmes"),
-                    [],
-                )
+        # Check the readmes subdirectory: no directories
+        assert contents[1][:2] == (
+            os.path.join(tmpdir, "readmes"),
+            [],
+        )
 
-                # ... and two files
-                assert sorted(contents[1][2]) == [
-                    "otheruser-somerepo_2.fe37.md",
-                    "someuser-somerepo_1.b7f3.md",
-                ]
+        # ... and two files
+        assert sorted(contents[1][2]) == [
+            "otheruser-somerepo_2.fe37.md",
+            "someuser-somerepo_1.b7f3.md",
+        ]
 
-                _somerepo_1_dump = {
-                    "namespace": "someuser",
-                    "repository": "somerepo_1",
+        _somerepo_1_dump = {
+            "namespace": "someuser",
+            "repository": "somerepo_1",
+            "metadata": {
+                "readme": {"file": "someuser-somerepo_1.b7f3.md"},
+                "description": "Repository Description 1",
+                "extra_metadata": {"key_1": {"key_2": "value_1"}},
+                "topics": [],
+                "sources": [
+                    {
+                        "anchor": "test data source",
+                        "href": "https://example.com",
+                        "isCreator": True,
+                        "isSameAs": False,
+                    }
+                ],
+                "license": "Public Domain",
+            },
+            "external": None,
+        }
+
+        with open(os.path.join(tmpdir, "repositories.yml")) as f:
+            output = f.read()
+        assert yaml.safe_load(output) == {
+            "repositories": [
+                {
+                    "namespace": "otheruser",
+                    "repository": "somerepo_2",
                     "metadata": {
-                        "readme": {"file": "someuser-somerepo_1.b7f3.md"},
-                        "description": "Repository Description 1",
-                        "extra_metadata": {"key_1": {"key_2": "value_1"}},
-                        "topics": [],
+                        "readme": {"file": "otheruser-somerepo_2.fe37.md"},
+                        "description": "Repository Description 2",
+                        "extra_metadata": None,
+                        "topics": ["topic_1", "topic_2"],
                         "sources": [
                             {
                                 "anchor": "test data source",
                                 "href": "https://example.com",
-                                "isCreator": True,
-                                "isSameAs": False,
                             }
                         ],
-                        "license": "Public Domain",
+                        "license": None,
                     },
-                    "external": None,
-                }
-
-                with open(os.path.join(tmpdir, "repositories.yml")) as f:
-                    output = f.read()
-                assert yaml.safe_load(output) == {
-                    "repositories": [
-                        {
-                            "namespace": "otheruser",
-                            "repository": "somerepo_2",
-                            "metadata": {
-                                "readme": {"file": "otheruser-somerepo_2.fe37.md"},
-                                "description": "Repository Description 2",
-                                "extra_metadata": None,
-                                "topics": ["topic_1", "topic_2"],
-                                "sources": [
-                                    {
-                                        "anchor": "test data source",
-                                        "href": "https://example.com",
-                                    }
+                    "external": {
+                        "credential_id": "abcdef-123456",
+                        "plugin": "plugin",
+                        "params": {"plugin": "specific", "params": "here"},
+                        "tables": {
+                            "table_1": {
+                                "options": {"param_1": "val_1"},
+                                "schema": [
+                                    {"name": "id", "type": "text"},
+                                    {"name": "val", "type": "text"},
                                 ],
-                                "license": None,
                             },
-                            "external": {
-                                "credential_id": "abcdef-123456",
-                                "plugin": "plugin",
-                                "params": {"plugin": "specific", "params": "here"},
-                                "tables": {
-                                    "table_1": {
-                                        "options": {"param_1": "val_1"},
-                                        "schema": [
-                                            {"name": "id", "type": "text"},
-                                            {"name": "val", "type": "text"},
-                                        ],
-                                    },
-                                    "table_2": {"options": {"param_1": "val_2"}, "schema": []},
-                                    "table_3": {
-                                        "options": {},
-                                        "schema": [
-                                            {"name": "id", "type": "text"},
-                                            {"name": "val", "type": "text"},
-                                        ],
-                                    },
-                                },
+                            "table_2": {"options": {"param_1": "val_2"}, "schema": []},
+                            "table_3": {
+                                "options": {},
+                                "schema": [
+                                    {"name": "id", "type": "text"},
+                                    {"name": "val", "type": "text"},
+                                ],
                             },
                         },
-                        _somerepo_1_dump,
-                    ]
-                }
+                    },
+                },
+                _somerepo_1_dump,
+            ]
+        }
 
-                with open(os.path.join(tmpdir, "readmes", "someuser-somerepo_1.b7f3.md")) as f:
-                    assert f.read() == "Test Repo 1 Readme"
+        with open(os.path.join(tmpdir, "readmes", "someuser-somerepo_1.b7f3.md")) as f:
+            assert f.read() == "Test Repo 1 Readme"
 
-                # Dump a single repo
-                result = runner.invoke(
-                    dump_c,
-                    [
-                        "--readme-dir",
-                        os.path.join(tmpdir, "readmes"),
-                        "-f",
-                        os.path.join(tmpdir, "repositories.yml"),
-                        "someuser/somerepo_1",
-                    ],
-                    catch_exceptions=False,
-                )
-                assert result.exit_code == 0
+        # Dump a single repo
+        result = runner.invoke(
+            dump_c,
+            [
+                "--readme-dir",
+                os.path.join(tmpdir, "readmes"),
+                "-f",
+                os.path.join(tmpdir, "repositories.yml"),
+                "someuser/somerepo_1",
+            ],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0
 
-                with open(os.path.join(tmpdir, "repositories.yml")) as f:
-                    output = f.read()
-                assert yaml.safe_load(output) == {"repositories": [_somerepo_1_dump]}
+        with open(os.path.join(tmpdir, "repositories.yml")) as f:
+            output = f.read()
+        assert yaml.safe_load(output) == {"repositories": [_somerepo_1_dump]}
 
 
 @httpretty.activate(allow_net_connect=False)
@@ -384,24 +377,23 @@ def test_commandline_load():
         "splitgraph.cloud.RESTAPIClient.access_token",
         new_callable=PropertyMock,
         return_value=ACCESS_TOKEN,
-    ):
-        with patch("splitgraph.cloud.get_remote_param", get_remote_param):
-            result = runner.invoke(
-                load_c,
-                [
-                    "--readme-dir",
-                    os.path.join(RESOURCES, "repositories_yml", "readmes"),
-                    "-f",
-                    os.path.join(RESOURCES, "repositories_yml", "repositories.yml"),
-                ],
-                catch_exceptions=False,
-            )
-            assert result.exit_code == 0
+    ), patch("splitgraph.cloud.get_remote_param", get_remote_param):
+        result = runner.invoke(
+            load_c,
+            [
+                "--readme-dir",
+                os.path.join(RESOURCES, "repositories_yml", "readmes"),
+                "-f",
+                os.path.join(RESOURCES, "repositories_yml", "repositories.yml"),
+            ],
+            catch_exceptions=False,
+        )
+        assert result.exit_code == 0
 
-            reqs = httpretty.latest_requests()
+        reqs = httpretty.latest_requests()
 
-            assert_repository_topics(reqs.pop())
-            reqs.pop()  # discard duplicate request
-            assert_repository_sources(reqs.pop())
-            reqs.pop()  # discard duplicate request
-            assert_repository_profiles(reqs.pop())
+        assert_repository_topics(reqs.pop())
+        reqs.pop()  # discard duplicate request
+        assert_repository_sources(reqs.pop())
+        reqs.pop()  # discard duplicate request
+        assert_repository_profiles(reqs.pop())

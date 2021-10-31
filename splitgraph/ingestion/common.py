@@ -21,12 +21,10 @@ def schema_compatible(source_schema: TableSchema, target_schema: TableSchema) ->
     if len(source_schema) != len(target_schema):
         return False
 
-    for col1, col2 in zip(sorted(source_schema), sorted(target_schema)):
-        # Only check column names
-        if col1.name != col2.name:
-            return False
-
-    return True
+    # Only check column names
+    return all(
+        col1.name == col2.name for col1, col2 in zip(sorted(source_schema), sorted(target_schema))
+    )
 
 
 def merge_tables(
