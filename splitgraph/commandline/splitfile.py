@@ -45,7 +45,7 @@ def build_c(splitfile, args, output_repository):
     ``VAL1`` and  ``VAL2``, respectively.
     """
     from splitgraph.core.repository import Repository
-    from splitgraph.splitfile import execute_commands
+    from splitgraph.splitfile.execution import execute_commands
 
     args = {k: v for k, v in args}
     click.echo("Executing Splitfile %s with arguments %r" % (splitfile.name, args))
@@ -241,6 +241,6 @@ def rebuild_c(image_spec, update, against):
     click.echo("Rerunning %s:%s against:" % (str(repository), image.image_hash))
     click.echo("\n".join("%s:%s" % rs for rs in new_images.items()))
 
-    from splitgraph.splitfile import rebuild_image
+    from splitgraph.splitfile.execution import rebuild_image
 
     rebuild_image(image, new_images)

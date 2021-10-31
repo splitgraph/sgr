@@ -233,7 +233,7 @@ def test_object_cache_locally_created_dont_get_evicted(
     pg_repo_local = _setup_object_cache_test(pg_repo_remote)
 
     object_manager = pg_repo_local.objects
-    fruits_v2 = pg_repo_local.images[pg_repo_local.images["latest"].parent_id].get_table("fruits")
+    pg_repo_local.images[pg_repo_local.images["latest"].parent_id].get_table("fruits")
     head = pg_repo_local.images["latest"]
     head.checkout()
     pg_repo_local.run_sql("INSERT INTO fruits VALUES (5, 'banana')")
@@ -435,7 +435,7 @@ def test_object_cache_deferred(local_engine_empty, pg_repo_remote, clean_minio):
     with pytest.raises(ObjectCacheError) as e:
         with object_manager.ensure_objects(vegetables_v2):
             pass
-        assert "Not enough space will be reclaimed" in str(e.value)
+    assert "Not enough space will be reclaimed" in str(e.value)
 
     # Now call the callback and check the objects are released
     fruits_v3_callback()
@@ -454,12 +454,12 @@ def test_object_cache_deferred(local_engine_empty, pg_repo_remote, clean_minio):
 
 def test_object_cache_make_external(pg_repo_local, clean_minio):
     # Test marking objects as external and uploading them to S3
-    all_objects = list(sorted(pg_repo_local.objects.get_all_objects()))
+    all_objects = sorted(pg_repo_local.objects.get_all_objects())
 
     # Objects are local and don't exist externally: running eviction does nothing and local objects
     # don't count towards cache occupancy.
     pg_repo_local.objects.run_eviction(keep_objects=[], required_space=None)
-    assert list(sorted(pg_repo_local.objects.get_downloaded_objects())) == all_objects
+    assert sorted(pg_repo_local.objects.get_downloaded_objects()) == all_objects
     assert pg_repo_local.objects.get_cache_occupancy() == 0
 
     # Mark objects as external and upload them
@@ -471,14 +471,12 @@ def test_object_cache_make_external(pg_repo_local, clean_minio):
     assert not pg_repo_local.objects.get_downloaded_objects()
 
     # Download the objects again
-    with pg_repo_local.objects.ensure_objects(
-        pg_repo_local.images["latest"].get_table("fruits")
-    ) as obs1:
+    with pg_repo_local.objects.ensure_objects(pg_repo_local.images["latest"].get_table("fruits")):
         with pg_repo_local.objects.ensure_objects(
             pg_repo_local.images["latest"].get_table("vegetables")
-        ) as obs2:
+        ):
             _assert_cache_occupancy(pg_repo_local.objects, 2)
-            assert list(sorted(pg_repo_local.objects.get_downloaded_objects())) == all_objects
+            assert sorted(pg_repo_local.objects.get_downloaded_objects()) == all_objects
 
 
 def test_object_manager_index_clause_generation(pg_repo_local):

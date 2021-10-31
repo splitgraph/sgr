@@ -7,7 +7,7 @@ from splitgraph.engine.postgres.engine import PsycopgEngine
 
 
 @pytest.mark.parametrize(
-    "files, current_version, target_version, expected_files",
+    ("files", "current_version", "target_version", "expected_files"),
     [
         # No schema installed at all
         (["test--0.0.1.sql"], None, None, ["test--0.0.1.sql"]),
@@ -100,13 +100,13 @@ def test_source_files_to_apply(files, current_version, target_version, expected_
     engine = MagicMock(spec=PsycopgEngine)
     engine.run_sql.return_value = installed_version
 
-    kwargs = dict(
-        engine=engine,
-        schema_files=files,
-        schema_name=schema_name,
-        target_version=target_version,
-        static=(schema_name == "test_static"),
-    )
+    kwargs = {
+        "engine": engine,
+        "schema_files": files,
+        "schema_name": schema_name,
+        "target_version": target_version,
+        "static": (schema_name == "test_static"),
+    }
 
     if isinstance(expected_files, type):
         with pytest.raises(expected_files):

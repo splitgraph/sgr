@@ -11,7 +11,15 @@ from splitgraph.core.repository import Repository
 
 
 @pytest.mark.parametrize(
-    "repository,remote_repository,remote,available_remotes,upstream,expected_target,expected_remote",
+    (
+        "repository",
+        "remote_repository",
+        "remote",
+        "available_remotes",
+        "upstream",
+        "expected_target",
+        "expected_remote",
+    ),
     [
         (
             "climate",

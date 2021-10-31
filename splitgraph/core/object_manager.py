@@ -704,7 +704,7 @@ class ObjectManager(FragmentManager):
 
         existing_objects = self.get_downloaded_objects(limit_to=objects_to_fetch)
         logging.debug("Need to fetch %r, already exist: %r", objects_to_fetch, existing_objects)
-        objects_to_fetch = list(set(o for o in objects_to_fetch if o not in existing_objects))
+        objects_to_fetch = list({o for o in objects_to_fetch if o not in existing_objects})
         if not objects_to_fetch:
             logging.info("No new objects to download.")
             return []

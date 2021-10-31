@@ -2,8 +2,7 @@ import datetime
 from test.splitgraph.conftest import OUTPUT, load_splitfile, prepare_lq_repo
 
 import pytest
-from splitgraph.splitfile import execute_commands
-from splitgraph.splitfile.execution import rebuild_image
+from splitgraph.splitfile.execution import execute_commands, rebuild_image
 
 
 def test_provenance(local_engine_empty, pg_repo_remote_multitag):
@@ -87,7 +86,7 @@ def test_splitfile_incomplete_provenance(local_engine_empty, pg_repo_remote_mult
         output=OUTPUT,
     )
     head_img = OUTPUT.head
-    image_with_mount = head_img.get_log()[-2]
+    head_img.get_log()[-2]
     recreated_commands = head_img.to_splitfile(ignore_irreproducible=True)
 
     assert recreated_commands == [

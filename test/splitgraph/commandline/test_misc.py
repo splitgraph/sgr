@@ -412,7 +412,7 @@ def _gh_404(request, uri, response_headers):
 
 @httpretty.activate(allow_net_connect=False)
 @pytest.mark.parametrize(
-    "system,release,result",
+    ("system", "release", "result"),
     [
         (
             "linux",
@@ -469,7 +469,7 @@ def test_system_id_not_exists():
 
 
 @pytest.mark.parametrize(
-    "path,final_path",
+    ("path", "final_path"),
     [
         ("/home/user/", "/home/user/sgr"),
         ("/home/user/sgr_dest", "/home/user/sgr_dest"),
@@ -548,7 +548,7 @@ def test_rollback_on_error(local_engine_empty):
     OUTPUT.run_sql("CREATE TABLE test (key INTEGER PRIMARY KEY, value_1 VARCHAR, value_2 INTEGER)")
     for i in range(11):
         OUTPUT.run_sql("INSERT INTO test VALUES (%s, %s, %s)", (i + 1, chr(ord("a") + i), i * 2))
-    head = OUTPUT.commit(chunk_size=5, in_fragment_order={"test": ["key", "value_1"]})
+    OUTPUT.commit(chunk_size=5, in_fragment_order={"test": ["key", "value_1"]})
     assert len(OUTPUT.images()) == 2
     assert len(OUTPUT.objects.get_all_objects()) == 3
 

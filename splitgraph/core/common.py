@@ -29,7 +29,6 @@ from splitgraph.exceptions import ImageNotFoundError, RepositoryNotFoundError
 from splitgraph.resources import splitgraph_meta
 
 if TYPE_CHECKING:
-    from splitgraph.core.image import Image
     from splitgraph.core.repository import Repository
     from splitgraph.engine.postgres.engine import PostgresEngine, PsycopgEngine
 

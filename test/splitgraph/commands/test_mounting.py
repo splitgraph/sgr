@@ -156,10 +156,10 @@ def test_mount_elasticsearch(local_engine_empty):
         mount(
             repo.to_schema(),
             "elasticsearch",
-            dict(
-                host="elasticsearch",
-                port=9200,
-                tables={
+            {
+                "host": "elasticsearch",
+                "port": 9200,
+                "tables": {
                     "table_1": {
                         "schema": {
                             "id": "text",
@@ -175,7 +175,7 @@ def test_mount_elasticsearch(local_engine_empty):
                         },
                     }
                 },
-            ),
+            },
         )
 
         assert get_engine().get_full_table_schema(repo.to_schema(), "table_1") == [

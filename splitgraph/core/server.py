@@ -4,7 +4,7 @@ here so that they can get type- and syntax-checked.
 When inside of an LQFDW shim, these are called directly by the Splitgraph core code
 to avoid a redundant connection to the engine.
 """
-
+import contextlib
 import os.path
 from typing import List, Tuple
 from urllib.parse import urlparse
@@ -30,10 +30,8 @@ def verify(url: str):
 
 def _remove(path: str):
     # Wrapper around remove that doesn't throw if the file doesn't exist.
-    try:
+    with contextlib.suppress(FileNotFoundError):
         os.remove(path)
-    except FileNotFoundError:
-        pass
 
 
 def upload_object(object_id: str, urls: ObjectUrls):

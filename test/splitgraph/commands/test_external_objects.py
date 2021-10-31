@@ -162,7 +162,7 @@ def test_push_upload_error(
         "splitgraph.hooks.external_objects._EXTERNAL_OBJECT_HANDLERS",
         {"S3": _flaky_handler(incomplete=interrupted)},
     ):
-        with pytest.raises(Exception) as e:
+        with pytest.raises(Exception):
             PG_MNT.push(remote_repository=unprivileged_pg_repo, handler="S3", handler_options={})
 
     assert head not in unprivileged_pg_repo.images
@@ -231,7 +231,7 @@ def test_pull_download_error(local_engine_empty, unprivileged_pg_repo, clean_min
         "splitgraph.hooks.external_objects._EXTERNAL_OBJECT_HANDLERS",
         {"S3": _flaky_handler(interrupted)},
     ):
-        with pytest.raises(Exception) as e:
+        with pytest.raises(Exception):
             clone(unprivileged_pg_repo, local_repository=PG_MNT, download_all=True)
 
     # Check that the pull succeeded (repository registered locally) but the objects

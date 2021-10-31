@@ -3,6 +3,7 @@ import itertools
 import logging
 import sys
 import traceback
+from operator import itemgetter
 from typing import BinaryIO, Optional, TextIO, Tuple
 
 import target_postgres
@@ -184,7 +185,7 @@ class DbSyncProxy(DbSync):
         # into a cstore_fdw file.
 
         assert self._sg_schema() == old_table.table_schema
-        with old_table.image.query_schema(commit=False) as s:
+        with old_table.image.query_schema(commit=False):
             # If hard_delete is set, check the sdc_removed_at flag in the table: if it's
             # not NULL, we mark rows as deleted instead.
             hard_delete = bool(self.connection_config.get("hard_delete"))
@@ -259,7 +260,10 @@ def _get_sg_schema(flattened_schema, primary_key) -> TableSchema:
 
 
 # Taken from target-postgres and adapted to not crash on unsupported columns
-def _flatten_schema(d, parent_key=[], sep="__", level=0, max_level=0):
+def _flatten_schema(d, parent_key=None, sep="__", level=0, max_level=0):
+    if parent_key is None:
+        parent_key = []
+
     items = []
 
     if "properties" not in d:
@@ -267,7 +271,7 @@ def _flatten_schema(d, parent_key=[], sep="__", level=0, max_level=0):
 
     for k, v in d["properties"].items():
         new_key = flatten_key(k, parent_key, sep)
-        if "type" in v.keys():
+        if "type" in v:
             if "object" in v["type"] and "properties" in v and level < max_level:
                 items.extend(
                     _flatten_schema(
@@ -291,9 +295,8 @@ def _flatten_schema(d, parent_key=[], sep="__", level=0, max_level=0):
                     list(v.values())[0][0]["type"] = ["null", "object"]
                     items.append((new_key, list(v.values())[0][0]))
 
-    key_func = lambda item: item[0]
-    sorted_items = sorted(items, key=key_func)
-    for k, g in itertools.groupby(sorted_items, key=key_func):
+    sorted_items = sorted(items, key=itemgetter(0))
+    for k, g in itertools.groupby(sorted_items, key=itemgetter(0)):
         if len(list(g)) > 1:
             raise ValueError("Duplicate column name produced in schema: {}".format(k))
 

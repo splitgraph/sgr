@@ -186,10 +186,14 @@ class Digest:
     # In these routines, we treat each hash as a vector of 16 2-byte integers and do component-wise addition.
     # To simulate the wraparound behaviour of C shorts, throw away all remaining bits after the action.
     def __add__(self, other: "Digest") -> "Digest":
-        return Digest(tuple((l + r) & 0xFFFF for l, r in zip(self.shorts, other.shorts)))
+        return Digest(
+            tuple((left + right) & 0xFFFF for left, right in zip(self.shorts, other.shorts))
+        )
 
     def __sub__(self, other: "Digest") -> "Digest":
-        return Digest(tuple((l - r) & 0xFFFF for l, r in zip(self.shorts, other.shorts)))
+        return Digest(
+            tuple((left - right) & 0xFFFF for left, right in zip(self.shorts, other.shorts))
+        )
 
     def __neg__(self) -> "Digest":
         return Digest(tuple(-v & 0xFFFF for v in self.shorts))

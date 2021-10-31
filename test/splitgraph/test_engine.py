@@ -194,7 +194,7 @@ def test_client_api_compat(unprivileged_remote_engine):
     with mock.patch.object(unprivileged_remote_engine, "_call_version_func") as cvf:
         v = Version(_API_VERSION)
         cvf.return_value = "%d.%d.%d" % (v.major + 1, v.minor, v.micro)
-        with pytest.raises(APICompatibilityError) as e:
+        with pytest.raises(APICompatibilityError):
             unprivileged_remote_engine.run_sql("SELECT 1")
 
     unprivileged_remote_engine.close()

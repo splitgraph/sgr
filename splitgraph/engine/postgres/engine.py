@@ -180,13 +180,10 @@ T = TypeVar("T")
 
 def chunk(sequence: Sequence[T], chunk_size: int = API_MAX_VARIADIC_ARGS) -> Iterator[List[T]]:
     curr_chunk: List[T] = []
-    i = 0
-    for curr in sequence:
-        i += 1
+    for i, curr in enumerate(sequence):
         curr_chunk.append(curr)
-        if i >= chunk_size:
+        if (i + 1) % chunk_size == 0:
             yield curr_chunk
-            i = 0
             curr_chunk = []
     if curr_chunk:
         yield curr_chunk

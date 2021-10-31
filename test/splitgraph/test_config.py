@@ -35,7 +35,6 @@ def test_every_key_has_matching_arg_key():
 
 
 def test_every_key_has_docs():
-    _docs_ignore = []
     for key in keys.KEYS:
         assert key in keys.KEY_DOCS
 

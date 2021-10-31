@@ -22,7 +22,7 @@ from splitgraph.ingestion.socrata.querying import (
 )
 
 
-class Q:
+class Q:  # noqa: SIM119
     def __init__(self, col, op, val, is_list=False, is_list_any=True):
         self.field_name = col
         if is_list:
@@ -48,7 +48,7 @@ _col_map = {_long_name_col_sg: _long_name_col}
 
 
 @pytest.mark.parametrize(
-    "quals,expected",
+    ("quals", "expected"),
     [
         ([Q("some_col", ">", 42)], "(`some_col` > 42)"),
         (
@@ -354,7 +354,7 @@ def test_socrata_column_deduplication():
 
 
 @pytest.mark.parametrize(
-    "domain,dataset_id",
+    ("domain", "dataset_id"),
     [
         ("data.cityofchicago.org", "x2n5-8w5q"),
         # Popular for hire vehicles dataset

@@ -8,6 +8,7 @@ import httpretty
 import pytest
 from requests import HTTPError
 from splitgraph.cloud import RESTAPIClient
+from splitgraph.config import create_config_dict
 from splitgraph.exceptions import AuthAPIError
 
 # Methods currently are small enough and all exercised in test_commandline_registration_*,
@@ -30,8 +31,8 @@ def test_auth_api_user_error():
     with pytest.raises(AuthAPIError) as e:
         client.get_refresh_token("someuser", "somepassword")
 
-        assert isinstance(e.__cause__, HTTPError)
-        assert "403" in str(e.__cause__)
+    assert isinstance(e.value.__cause__, HTTPError)
+    assert "400" in str(e.value.__cause__)
 
 
 @httpretty.activate(allow_net_connect=False)
@@ -48,7 +49,7 @@ def test_auth_api_server_error_missing_entries():
     with pytest.raises(AuthAPIError) as e:
         client.create_machine_credentials("AAABBBB", "somepassword")
 
-        assert "Missing entries" in str(e)
+    assert "Missing entries" in str(e.value)
 
 
 @httpretty.activate(allow_net_connect=False)
@@ -58,25 +59,29 @@ def test_auth_api_server_error_no_json():
     def callback(request, uri, response_headers):
         return [500, response_headers, "Guru Meditation deadcafebeef-feed12345678"]
 
-    httpretty.register_uri(
-        httpretty.HTTPretty.POST, _ENDPOINT + "/get_refresh_token", body=callback
-    )
+    httpretty.register_uri(httpretty.HTTPretty.POST, _ENDPOINT + "/refresh_token", body=callback)
 
     with pytest.raises(AuthAPIError) as e:
         client.get_refresh_token("someuser", "somepassword")
 
-        assert "deadcafebeef-feed12345678" in str(e)
+    assert "500 Server Error: Internal Server Error" in str(e.value.__cause__)
 
 
 def test_auth_api_access_token_property_no_refresh():
     client = RESTAPIClient(_REMOTE)
 
     # Test that we raise an error if there's no refresh token in the config
-    # (there won't be if we just use the default config).
+    # Delete the API keys from the config (engine password) so that we don't try and
+    # get an access token with those.
+    config = create_config_dict()
+    del config["remotes"][_REMOTE]["SG_ENGINE_USER"]
+    del config["remotes"][_REMOTE]["SG_ENGINE_PWD"]
 
-    with pytest.raises(AuthAPIError) as e:
-        token = client.access_token
-        assert "No refresh token found in the config" in str(e)
+    with patch("splitgraph.cloud.create_config_dict", return_value=config), pytest.raises(
+        AuthAPIError
+    ) as e:
+        client.access_token
+    assert "No refresh token or API keys found in the config" in str(e.value)
 
 
 def _make_dummy_access_token(exp):
@@ -133,7 +138,7 @@ def test_auth_api_access_token_property_expired():
         },
     ):
         with patch("splitgraph.cloud.overwrite_config") as oc:
-            token = client.access_token
+            client.access_token
 
     oc.assert_called_once_with(
         {

@@ -1080,11 +1080,10 @@ class Repository:
             )
 
         # If the table is the same in the two images, short circuit as well.
-        if image_2 is not None:
-            if set(image_1.get_table(table_name).objects) == set(
-                image_2.get_table(table_name).objects
-            ):
-                return [] if not aggregate else (0, 0, 0)
+        if image_2 is not None and set(image_1.get_table(table_name).objects) == set(
+            image_2.get_table(table_name).objects
+        ):
+            return [] if not aggregate else (0, 0, 0)
 
         # Materialize both tables and compare them side-by-side.
         # TODO we can aggregate chunks in a similar way that LQ does it.

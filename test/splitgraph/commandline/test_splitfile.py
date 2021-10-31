@@ -10,7 +10,7 @@ from splitgraph.core.repository import Repository
 def test_splitfile_default():
     runner = CliRunner()
 
-    with mock.patch("splitgraph.splitfile.execute_commands") as ec:
+    with mock.patch("splitgraph.splitfile.execution.execute_commands") as ec:
         runner.invoke(
             build_c,
             [RESOURCES + "import_remote_multiple.splitfile", "-a", "TAG", "latest"],

@@ -1,3 +1,4 @@
+import contextlib
 import os
 from datetime import datetime as dt
 from io import StringIO
@@ -5,12 +6,11 @@ from io import StringIO
 import pytest
 from splitgraph.core.types import TableColumn
 
-try:
+with contextlib.suppress(ImportError):
     from splitgraph.ingestion.pandas import df_to_table, sql_to_df
-except ImportError:
+
     # If Pandas isn't installed, pytest will skip these tests
     # (see pytest.importorskip).
-    pass
 from test.splitgraph.conftest import INGESTION_RESOURCES_CSV, load_csv
 
 pd = pytest.importorskip("pandas")
@@ -139,7 +139,7 @@ def test_pandas_update_different_schema(ingestion_test_repo):
 
     with pytest.raises(ValueError) as e:
         df_to_table(truncated_df, ingestion_test_repo, "test_table", if_exists="patch")
-        assert "Schema changes are unsupported" in str(e.value)
+    assert "Schema changes are unsupported" in str(e.value)
 
     # Rename a column
     renamed_df = upd_df_1.copy()
@@ -147,7 +147,7 @@ def test_pandas_update_different_schema(ingestion_test_repo):
 
     with pytest.raises(ValueError) as e:
         df_to_table(renamed_df, ingestion_test_repo, "test_table", if_exists="patch")
-        assert "Schema changes are unsupported" in str(e.value)
+    assert "Schema changes are unsupported" in str(e.value)
 
 
 def test_evil_pandas_dataframes(ingestion_test_repo):
@@ -196,7 +196,7 @@ def test_pandas_update_type_changes_stricter(ingestion_test_repo):
 
 def test_pandas_read_basic(ingestion_test_repo):
     df_to_table(base_df, ingestion_test_repo, "test_table", if_exists="patch")
-    old = ingestion_test_repo.commit()
+    ingestion_test_repo.commit()
 
     # We currently don't detect the index column name since it's an arbitrary query that's passed.
     output = sql_to_df(
@@ -255,7 +255,7 @@ def test_pandas_read_lq_checkout(ingestion_test_repo):
 
 def test_pandas_read_roundtripping(ingestion_test_repo):
     df_to_table(base_df, ingestion_test_repo, "test_table", if_exists="patch")
-    old = ingestion_test_repo.commit()
+    ingestion_test_repo.commit()
     df_to_table(upd_df_1, ingestion_test_repo, "test_table", if_exists="patch")
     new = ingestion_test_repo.commit()
 

@@ -100,7 +100,7 @@ def test_delete_others(readonly_pg_repo):
         readonly_pg_repo.delete(uncheckout=False)
     assert "You do not have sufficient permissions on this namespace!" in str(e.value)
 
-    with pytest.raises(ProgrammingError) as e:
+    with pytest.raises(ProgrammingError):
         readonly_pg_repo.images.delete([readonly_pg_repo.images["latest"].image_hash])
 
     # Check the repository still exists on the remote.
@@ -153,10 +153,10 @@ def test_impersonate_external_object(readonly_pg_repo):
 def test_no_direct_table_access(unprivileged_pg_repo):
     # Canary to check users can't manipulate splitgraph_meta tables directly
     for table in META_TABLES:
-        with pytest.raises(psycopg2.Error) as e:
+        with pytest.raises(psycopg2.Error):
             unprivileged_pg_repo.engine.run_sql(select(table, "1"))
 
-        with pytest.raises(psycopg2.Error) as e:
+        with pytest.raises(psycopg2.Error):
             unprivileged_pg_repo.engine.run_sql(
                 SQL("DELETE FROM {}.{} WHERE 1 = 2").format(
                     Identifier(SPLITGRAPH_META_SCHEMA), Identifier(table)

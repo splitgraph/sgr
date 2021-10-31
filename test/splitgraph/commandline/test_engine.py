@@ -50,7 +50,7 @@ def _nuke_engines_and_volumes():
 
 
 @pytest.fixture()
-def teardown_test_engine():
+def _teardown_test_engine():
     _nuke_engines_and_volumes()
     try:
         yield
@@ -68,7 +68,8 @@ def _get_test_engine_image():
     )
 
 
-def test_commandline_engine_creation_list_stop_deletion(teardown_test_engine):
+@pytest.mark.usefixtures("_teardown_test_engine")
+def test_commandline_engine_creation_list_stop_deletion():
     runner = CliRunner()
     client = docker.from_env()
 
@@ -320,7 +321,8 @@ def test_inject_config_into_engines_unit():
             assert ctc.called_once_with(container_1, sentinel.config_path, "/.sgconfig")
 
 
-def test_commandline_engine_creation_config_patching_integration(teardown_test_engine, tmp_path):
+@pytest.mark.usefixtures("_teardown_test_engine")
+def test_commandline_engine_creation_config_patching_integration(tmp_path):
     # An end-to-end test for config patching where we actually try and access the engine
     # with the generated config.
 
@@ -363,7 +365,8 @@ def test_commandline_engine_creation_config_patching_integration(teardown_test_e
     assert result.returncode == 0
 
 
-def test_commandline_engine_creation_port_conflict(teardown_test_engine, tmp_path):
+@pytest.mark.usefixtures("_teardown_test_engine")
+def test_commandline_engine_creation_port_conflict(tmp_path):
     # Test creating the engine when there's a port conflict exits gracefully and
     # deletes the half-initialized container.
 

@@ -1,5 +1,6 @@
 """Public API for interacting with the Splitgraph registry"""
 import base64
+import contextlib
 import json
 import logging
 import os
@@ -29,8 +30,6 @@ from splitgraph.cloud.models import (
     AddExternalCredentialRequest,
     AddExternalRepositoriesRequest,
     AddExternalRepositoryRequest,
-    Credential,
-    External,
     ExternalResponse,
     ListExternalCredentialsResponse,
     Metadata,
@@ -374,10 +373,8 @@ class RESTAPIClient:
         # Allow overriding the CA bundle for test purposes (requests doesn't use the system
         # cert store)
         self.verify: Union[bool, str] = True
-        try:
+        with contextlib.suppress(KeyError):
             self.verify = get_remote_param(remote, "SG_AUTH_API_CA_PATH")
-        except KeyError:
-            pass
 
         # How soon before the token expiry to refresh the token, in seconds.
         self.access_token_expiry_tolerance = 30
@@ -400,16 +397,19 @@ class RESTAPIClient:
         :param email: Email
         :param accept_tos: Accept the Terms of Service if they exist
         """
-        body = dict(username=username, password=password, email=email, accept_tos=accept_tos)
+        body = {
+            "username": username,
+            "password": password,
+            "email": email,
+            "accept_tos": accept_tos,
+        }
 
         headers = get_headers()
-        try:
-            headers["Authorization"] = "Bearer " + self.access_token
-        except AuthAPIError:
+        with contextlib.suppress(AuthAPIError):
             # We can optionally pass an access token for logged-in admin users to make new users
             # on the registry if new signups are disabled, but it will be missing in most cases
             # (since the user is registering anew)
-            pass
+            headers["Authorization"] = "Bearer " + self.access_token
         return requests.post(
             self.endpoint + "/register_user", json=body, verify=self.verify, headers=headers
         )
@@ -423,7 +423,7 @@ class RESTAPIClient:
         :param password: Password
         :return: Tuple of (access_token, refresh_token).
         """
-        body = dict(username=username, password=password)
+        body = {"username": username, "password": password}
         return requests.post(
             self.endpoint + "/refresh_token", json=body, verify=self.verify, headers=get_headers()
         )
@@ -439,7 +439,7 @@ class RESTAPIClient:
         :param password: Password
         :return: Tuple of (key, secret).
         """
-        body = dict(password=password)
+        body = {"password": password}
         return requests.post(
             self.endpoint + "/create_machine_credentials",
             json=body,
@@ -456,7 +456,7 @@ class RESTAPIClient:
         :return: New access token.
         """
 
-        body = dict(refresh_token=refresh_token)
+        body = {"refresh_token": refresh_token}
         return requests.post(
             self.endpoint + "/access_token", json=body, verify=self.verify, headers=get_headers()
         )
@@ -471,7 +471,7 @@ class RESTAPIClient:
         :return: New access token.
         """
 
-        body = dict(api_key=api_key, api_secret=api_secret)
+        body = {"api_key": api_key, "api_secret": api_secret}
         return requests.post(
             self.endpoint + "/access_token", json=body, verify=self.verify, headers=get_headers()
         )
@@ -488,7 +488,7 @@ class RESTAPIClient:
 
         config = create_config_dict()
 
-        try:
+        with contextlib.suppress(KeyError):
             current_access_token = get_from_subsection(
                 config, "remotes", self.remote, "SG_CLOUD_ACCESS_TOKEN"
             )
@@ -496,8 +496,6 @@ class RESTAPIClient:
             now = time.time()
             if now < exp - self.access_token_expiry_tolerance:
                 return current_access_token
-        except KeyError:
-            pass
 
         # Token expired or non-existent, get a new one.
         try:
@@ -543,10 +541,8 @@ class RESTAPIClient:
 
         headers = get_headers()
         if get_singleton(config, "SG_UPDATE_ANONYMOUS").lower() == "false":
-            try:
+            with contextlib.suppress(AuthAPIError):
                 headers.update({"Authorization": "Bearer " + self.access_token})
-            except AuthAPIError:
-                pass
 
         try:
             logging.debug("Running update check")
@@ -776,16 +772,16 @@ class GQLAPIClient:
     def bulk_upsert_metadata(
         self, namespace_list: List[str], repository_list: List[str], metadata_list: List[Metadata]
     ):
-        repo_profiles: Dict[str, List[Any]] = dict(
-            namespaces=namespace_list,
-            repositories=repository_list,
-            descriptions=[],
-            readmes=[],
-            licenses=[],
-            metadata=[],
-        )
-        repo_sources: Dict[str, List[Any]] = dict(namespaces=[], repositories=[], sources=[])
-        repo_topics: Dict[str, List[str]] = dict(namespaces=[], repositories=[], topics=[])
+        repo_profiles: Dict[str, List[Any]] = {
+            "namespaces": namespace_list,
+            "repositories": repository_list,
+            "descriptions": [],
+            "readmes": [],
+            "licenses": [],
+            "metadata": [],
+        }
+        repo_sources: Dict[str, List[Any]] = {"namespaces": [], "repositories": [], "sources": []}
+        repo_topics: Dict[str, List[str]] = {"namespaces": [], "repositories": [], "topics": []}
 
         # populate mutation payloads
         for ind, metadata in enumerate(metadata_list):

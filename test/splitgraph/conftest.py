@@ -68,15 +68,15 @@ def _mount_postgres(repository, tables=None):
     mount(
         "tmp",
         "postgres_fdw",
-        dict(
-            host="pgorigin",
-            port=5432,
-            username="originro",
-            password="originpass",
-            dbname="origindb",
-            remote_schema="public",
-            tables=tables,
-        ),
+        {
+            "host": "pgorigin",
+            "port": 5432,
+            "username": "originro",
+            "password": "originpass",
+            "dbname": "origindb",
+            "remote_schema": "public",
+            "tables": tables,
+        },
     )
     repository.import_tables([], R("tmp"), [], foreign_tables=True, do_checkout=True)
     R("tmp").delete()
@@ -86,13 +86,13 @@ def _mount_mongo(repository):
     mount(
         "tmp",
         "mongo_fdw",
-        dict(
-            host="mongoorigin",
-            port=27017,
-            username="originro",
-            password="originpass",
-            tables=dict(
-                stuff={
+        {
+            "host": "mongoorigin",
+            "port": 27017,
+            "username": "originro",
+            "password": "originpass",
+            "tables": {
+                "stuff": {
                     "options": {
                         "database": "origindb",
                         "collection": "stuff",
@@ -102,9 +102,9 @@ def _mount_mongo(repository):
                         "duration": "numeric",
                         "happy": "boolean",
                     },
-                },
-            ),
-        ),
+                }
+            },
+        },
     )
     repository.import_tables([], R("tmp"), [], foreign_tables=True, do_checkout=True)
     R("tmp").delete()
@@ -115,13 +115,13 @@ def _mount_mysql(repository):
     mount(
         repository.to_schema(),
         "mysql_fdw",
-        dict(
-            host="mysqlorigin",
-            port=3306,
-            username="originuser",
-            password="originpass",
-            dbname="mysqlschema",
-        ),
+        {
+            "host": "mysqlorigin",
+            "port": 3306,
+            "username": "originuser",
+            "password": "originpass",
+            "dbname": "mysqlschema",
+        },
         tables={
             "mushrooms": (
                 [
@@ -321,7 +321,7 @@ def make_multitag_pg_repo(pg_repo):
 
 @pytest.fixture
 def pg_repo_local(local_engine_empty):
-    yield make_pg_repo(local_engine_empty)
+    return make_pg_repo(local_engine_empty)
 
 
 @pytest.fixture(scope="class")
@@ -373,7 +373,7 @@ def lq_test_repo(test_local_engine):
 
 @pytest.fixture
 def pg_repo_remote(remote_engine):
-    yield make_pg_repo(remote_engine)
+    return make_pg_repo(remote_engine)
 
 
 # remote_engine setup but registry-like (no audit triggers, no in-engine object storage)
@@ -410,7 +410,7 @@ def pg_repo_remote_registry(local_engine_empty, remote_engine_registry, clean_mi
     )
     staging.delete()
     staging.objects.cleanup()
-    yield result
+    return result
 
 
 @pytest.fixture
@@ -419,7 +419,7 @@ def unprivileged_pg_repo(unprivileged_remote_engine, pg_repo_remote_registry):
     access splitgraph_meta directly and has to use splitgraph_api. If access to
     splitgraph_meta is required, the test can use both fixtures and do e.g.
     pg_repo_remote_registry.objects.get_all_objects()"""
-    yield Repository.from_template(pg_repo_remote_registry, engine=unprivileged_remote_engine)
+    return Repository.from_template(pg_repo_remote_registry, engine=unprivileged_remote_engine)
 
 
 # Like unprivileged_pg_repo but we rename the repository (and all of its objects)
@@ -434,24 +434,24 @@ def readonly_pg_repo(unprivileged_remote_engine, pg_repo_remote_registry):
         (READONLY_NAMESPACE, REMOTE_NAMESPACE),
     )
     pg_repo_remote_registry.engine.commit()
-    yield Repository.from_template(target, engine=unprivileged_remote_engine)
+    return Repository.from_template(target, engine=unprivileged_remote_engine)
 
 
 @pytest.fixture
 def pg_repo_remote_multitag(pg_repo_remote):
-    yield make_multitag_pg_repo(pg_repo_remote)
+    return make_multitag_pg_repo(pg_repo_remote)
 
 
 @pytest.fixture
 def pg_repo_local_multitag(pg_repo_local):
-    yield make_multitag_pg_repo(pg_repo_local)
+    return make_multitag_pg_repo(pg_repo_local)
 
 
 @pytest.fixture
 def mg_repo_local(local_engine_empty):
     result = Repository("", "test_mg_mount", engine=local_engine_empty)
     _mount_mongo(result)
-    yield result
+    return result
 
 
 @pytest.fixture
@@ -459,7 +459,7 @@ def mg_repo_remote(remote_engine):
     result = Repository("", "test_mg_mount", engine=remote_engine)
     with switch_engine(remote_engine):
         _mount_mongo(result)
-    yield result
+    return result
 
 
 @pytest.fixture
