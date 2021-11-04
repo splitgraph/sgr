@@ -15,7 +15,7 @@ from splitgraph.core.object_manager import ObjectManager
 from splitgraph.core.repository import Repository, clone
 from splitgraph.core.table import _generate_select_query
 from splitgraph.engine import ResultShape, _prepare_engine_config
-from splitgraph.engine.postgres.engine import PostgresEngine
+from splitgraph.engine.postgres.engine import PostgresEngine, get_change_key
 from splitgraph.exceptions import ObjectNotFoundError
 
 _DT = dt(2019, 1, 1, 12)
@@ -585,6 +585,38 @@ def test_disjoint_table_lq_two_singletons_one_overwritten(pg_repo_local):
 
             # This time we had to apply the fragments in the final group (since there were two of them)
             _assert_fragments_applied(_gsc, apply_fragments, pg_repo_local)
+
+
+def test_query_plan_surrogate_pk_grouping(local_engine_empty):
+    # If a table doesn't have a PK, we use whole_row::text to chunk it.
+    OUTPUT.init()
+    OUTPUT.run_sql("CREATE TABLE test (key INTEGER, value_1 VARCHAR)")
+    OUTPUT.run_sql("INSERT INTO test VALUES (1, 'apple')")
+    OUTPUT.run_sql("INSERT INTO test VALUES (10, 'banana')")
+    OUTPUT.run_sql("INSERT INTO test VALUES (2, 'orange')")
+
+    head = OUTPUT.commit(chunk_size=2)
+    table = head.get_table("test")
+
+    # This makes two partitions, spanning (1, 'apple') -> (10, 'banana')
+    # and (2, 'orange') -> (2, 'orange'): this is because we use lexicographical order in this case.
+    assert sorted(table.objects) == [
+        "o03227f37c3f7c1ebabaaf87253dbe4f146a11ae47499a2578876b0ff03ce48",
+        "oea90d83872b91bfd77d16d5c0f1209cb892cb80c73eda1117ba8d9f8399692",
+    ]
+
+    # Check the raw get_min_max_pks output for this table
+    assert table.repository.objects.get_min_max_pks(
+        table.objects, get_change_key(table.table_schema)
+    ) == [((1, "apple"), (10, "banana")), ((2, "orange"), (2, "orange"))]
+
+    # Check that the query plan still treats the two objects as disjoint
+    plan = table.get_query_plan(
+        quals=None, columns=[c.name for c in table.table_schema], use_cache=False
+    )
+
+    assert sorted(plan.filtered_objects) == sorted(table.objects)
+    assert plan.non_singletons == []
 
 
 def _assert_fragments_applied(_gsc, apply_fragments, pg_repo_local):
