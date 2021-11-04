@@ -26,6 +26,7 @@ from splitgraph.engine import ResultShape
 from splitgraph.engine.postgres.engine import (
     SG_UD_FLAG,
     add_ud_flag_column,
+    chunk,
     get_change_key,
 )
 from splitgraph.exceptions import SplitGraphError
@@ -1141,6 +1142,42 @@ class FragmentManager(MetadataManager):
         # Preserve original object order.
         return [r for r in object_ids if r in objects_to_scan]
 
+    def generate_surrogate_pk(
+        self, table: "Table", object_pks: List[Tuple[Any, Any]]
+    ) -> List[Tuple[Any, Any]]:
+        """
+        When partitioning data, if the table doesn't have a primary key, we use a "surrogate"
+        primary key by concatenating the whole row as a string on the PG side (this is because
+        the whole row can sometimes contain NULLs which we can't compare in PG).
+
+        We need to mimic this when calculating if the objects we're about to scan through
+        overlap: e.g. using string comparison, "(some_country, 100)" < "(some_country, 20)",
+        whereas using typed comparison, (some_country, 100) > (some_country, 20).
+
+        To do this, we use a similar hack from when calculating changeset hashes: to avoid having
+        to reproduce how PG's ::text works, we give it back the rows and get it to cast them
+        to text for us.
+        """
+        inner_tuple = "(" + ",".join("%s::" + c.pg_type for c in table.table_schema) + ")"
+        rows = [r for o in object_pks for r in o]
+
+        result = []
+        for batch in chunk(rows, 1000):
+            query = (  # nosec
+                "SELECT o::text FROM (VALUES "
+                + ",".join(itertools.repeat(inner_tuple, len(batch)))
+                + ") o"
+            )
+            result.extend(
+                self.object_engine.run_sql(
+                    query,
+                    [o if not isinstance(o, dict) else Json(o) for row in batch for o in row],
+                    return_shape=ResultShape.MANY_ONE,
+                )
+            )
+        object_pks = list(zip(result[::2], result[1::2]))
+        return object_pks
+
     def _add_overlapping_objects(
         self, table: "Table", all_objects: List[str], filtered_objects: List[str]
     ) -> Set[str]:
@@ -1150,6 +1187,10 @@ class FragmentManager(MetadataManager):
 
         table_pk = get_change_key(table.table_schema)
         object_pks = self.get_min_max_pks(all_objects, table_pk)
+
+        surrogate_pk = not any(t.is_pk for t in table.table_schema)
+        if surrogate_pk:
+            object_pks = self.generate_surrogate_pk(table, object_pks)
 
         # Go through all objects and see if they 1) come after any of our chosen objects and 2)
         # overlap those objects' PKs (if they come after them)

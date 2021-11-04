@@ -183,6 +183,11 @@ class QueryPlan:
         # Get fragment boundaries (min-max PKs of every fragment).
         table_pk = get_change_key(self.table.table_schema)
         object_pks = self.object_manager.get_min_max_pks(self.filtered_objects, table_pk)
+
+        surrogate_pk = not any(t.is_pk for t in self.table.table_schema)
+        if surrogate_pk:
+            object_pks = self.table.repository.objects.generate_surrogate_pk(self.table, object_pks)
+
         # Group fragments into non-overlapping groups: those can be applied independently of each other.
         object_groups = get_chunk_groups(
             [
